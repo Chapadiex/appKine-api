@@ -228,17 +228,31 @@ Evidencia: 28 tests en verde — 12 convenciones de código, 5 arquitectura de m
 > `SerializationFeature` a `DateTimeFeature`, o sea `spring.jackson.datatype.datetime.*`.
 > Ante una duda de API, inspeccionar el jar antes de asumir la forma de 3.x.
 
-### Próximo paso — etapa AKINE-00.02
+### AKINE-00.02 — completada
 
-Baseline ejecutable y arquitectura comprobada. Ver el plan §13.
+Baseline ejecutable y arquitectura comprobada.
 
-- [ ] Commit inicial y protección de rama en `main`
-- [ ] Activar el job de SonarQube en `.github/workflows/ci.yml` (está listo, comentado)
-- [ ] Activar el umbral de cobertura en JaCoCo: 80 % general, 90 % en módulos críticos
-- [ ] ADRs en `docs/adr/` con las decisiones de AKINE-00.01
+- [x] Commit inicial del baseline en `main`
+- [x] **ADRs** en `docs/adr/` — 7 decisiones con alternativas y consecuencias
+- [x] **Umbral de cobertura activo** en JaCoCo (80 %). Medido: **100 %**
+- [x] **`maven-enforcer`**: Java 21 exacto, Maven ≥3.9, convergencia de dependencias
+- [x] `GlobalExceptionHandler` con tests — cubre el contrato de errores y el no-filtrado
+- [x] Reporte reproducible de baseline: `../docs/baseline-report.md`
+- [x] Harness de carga identificado (k6), sin ejecutar: `../docs/pruebas-de-carga.md`
+
+**32 pruebas** (23 unitarias/arquitectura + 9 integración). Cobertura 100 %.
+
+### Próximo paso — etapa AKINE-00.03
+
+Formalizar `DP-01`–`DP-09` como ADRs y rebaselinar el plan. Ver el plan §13.
+
+Pendientes que arrastra el backend:
+
+- [ ] Protección de rama en `main`
+- [ ] Activar el job de SonarQube en `.github/workflows/ci.yml` (listo, comentado)
 - [ ] Observabilidad: logging JSON, Prometheus, OpenTelemetry
-- [ ] Completar los `PENDIENTE` de `.claude/qa-config.md` que sigan abiertos
-- [ ] Registrar en el plan las rutas reales (ver `../docs/AKINE_IMPLEMENTATION_PLAN.md`)
+- [ ] Reglas `PACKAGE` de cobertura al 90 % para módulos críticos, cuando existan
+- [ ] Completar los `PENDIENTE(F1)` de `.claude/qa-config.md`
 
 ## 8. Checklist de cierre de tarea
 

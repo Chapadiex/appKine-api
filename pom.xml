@@ -21,6 +21,7 @@
 		<archunit.version>1.4.1</archunit.version>
 		<springdoc.version>3.1.0</springdoc.version>
 		<jacoco.version>0.8.13</jacoco.version>
+		<maven-enforcer.version>3.6.2</maven-enforcer.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
 		<akine.contract.version>0.1.0</akine.contract.version>
@@ -168,12 +169,51 @@
 				</executions>
 			</plugin>
 
-			<!-- Cobertura. El umbral se activa en AKINE-00.02, cuando exista codigo
-			     funcional que medir: 80% general, 90% en modulos criticos. -->
+			<!-- Reproducibilidad del build: fija las versiones de runtime y detecta
+			     conflictos de dependencias antes de que se manifiesten en ejecucion. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-enforcer-plugin</artifactId>
+				<version>${maven-enforcer.version}</version>
+				<executions>
+					<execution>
+						<id>enforce-build-reproducible</id>
+						<goals>
+							<goal>enforce</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<requireJavaVersion>
+									<!-- Java 21 exacto: compilar con 22+ y desplegar en 21 produce
+									     UnsupportedClassVersionError recien en runtime. -->
+									<version>[21,22)</version>
+									<message>AKINE requiere Java 21. Ver docs/ai-setup.md.</message>
+								</requireJavaVersion>
+								<requireMavenVersion>
+									<version>[3.9.0,)</version>
+								</requireMavenVersion>
+								<dependencyConvergence/>
+								<banDuplicatePomDependencyVersions/>
+							</rules>
+							<fail>true</fail>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!-- Cobertura con umbral activo (AKINE-00.02).
+			     El plan exige >=80% en codigo nuevo y >=90% en modulos criticos.
+			     El baseline mide 98%: el umbral es un piso, no una meta. -->
 			<plugin>
 				<groupId>org.jacoco</groupId>
 				<artifactId>jacoco-maven-plugin</artifactId>
 				<version>${jacoco.version}</version>
+				<configuration>
+					<excludes>
+						<!-- main() de Spring Boot: arranque, sin logica que probar. -->
+						<exclude>**/AkineApiApplication.class</exclude>
+					</excludes>
+				</configuration>
 				<executions>
 					<execution>
 						<id>prepare-agent</id>
@@ -187,6 +227,36 @@
 						<goals>
 							<goal>report</goal>
 						</goals>
+					</execution>
+					<execution>
+						<id>check-coverage</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.80</minimum>
+										</limit>
+										<limit>
+											<counter>INSTRUCTION</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.80</minimum>
+										</limit>
+									</limits>
+								</rule>
+								<!-- PENDIENTE(F1): al crear identity, organization, clinical y
+								     billing, agregar aqui reglas PACKAGE al 0.90 para esos
+								     modulos criticos. Hoy no existen y una regla sobre un
+								     paquete inexistente no verifica nada. -->
+							</rules>
+						</configuration>
 					</execution>
 				</executions>
 			</plugin>
