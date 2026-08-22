@@ -30,6 +30,19 @@ Convenciones de identificadores en la especificación:
 Todo cambio debe trazarse a un RF/RN concreto. Si no hay RF que lo respalde, no se implementa
 sin decisión explícita del usuario.
 
+**Decisiones ya tomadas — leer antes de rediscutir cualquiera:**
+
+| Dónde | Qué |
+|---|---|
+| `docs/adr/0001`–`0007` | Decisiones técnicas del baseline (módulos y `spi`, contrato OpenAPI, Flyway, persistencia multi-tenant, errores, tests de arquitectura, expandir–migrar–contraer) |
+| `docs/adr/0008`–`0016` | Decisiones de producto `DP-01`–`DP-09` formalizadas (onboarding compuesto, identidad única con contexto, alcance de la HC, series de turnos, máquinas de estado separadas, prepago configurable, alcance MVP, requisitos clínico-legales, versiones y SLO) |
+| `docs/seguridad/matriz-permisos-minima.md` | Roles, matriz de §32, semántica ejecutable de cada valor, catálogo de permisos e invariantes. **Vinculante** para toda evaluación de permiso |
+
+Un ADR aceptado no se edita: se supersede con uno nuevo. La spec es deliberadamente abstracta
+en varios puntos (estados de suscripción y membership, TTLs, lockout, política de contraseñas,
+outbox): lo que no está en la spec se resuelve como **decisión documentada** (§44 del
+documento de requerimientos), nunca se inventa en silencio.
+
 ## 3. Stack
 
 | Capa | Tecnología |

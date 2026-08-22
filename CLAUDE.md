@@ -242,9 +242,15 @@ Baseline ejecutable y arquitectura comprobada.
 
 **32 pruebas** (23 unitarias/arquitectura + 9 integración). Cobertura 100 %.
 
-### Próximo paso — etapa AKINE-00.03
+### AKINE-00.03 — completada
 
-Formalizar `DP-01`–`DP-09` como ADRs y rebaselinar el plan. Ver el plan §13.
+- [x] `DP-01`–`DP-09` como ADRs aceptadas: `docs/adr/0008`–`0016`
+- [x] Matriz mínima de permisos aprobada: `docs/seguridad/matriz-permisos-minima.md`
+- [x] Baseline verificado contra las decisiones — sin contradicciones
+- [x] Plan rebaselinado: huecos de la spec con etapa destino (registro de cierre en el plan)
+
+**F0 cerrada.** Próximo paso: **Fase F1** — etapas 01.01 (tenancy) → 01.02 (identidad + outbox)
+→ 01.03 (memberships, permisos, auditoría), en ese orden, con paralelismo dentro de cada una.
 
 Pendientes que arrastra el backend:
 
