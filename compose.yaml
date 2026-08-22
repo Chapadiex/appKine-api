@@ -1,0 +1,53 @@
+# Infraestructura local de AKINE.
+#
+# Levanta solo la base de datos: el backend y el frontend corren fuera del contenedor,
+# desde el IDE o desde la linea de comandos.
+#
+#   docker compose up -d
+#   docker compose ps
+#   docker compose down          # conserva los datos
+#   docker compose down -v       # borra el volumen: base vacia otra vez
+#
+# Consultas de validacion durante el QA, sin instalar cliente MySQL en la maquina:
+#   docker compose exec mysql mysql -u akine -pakine akine_local -e "SELECT 1;"
+#
+# Las credenciales de abajo son de una base LOCAL y efimera, con datos exclusivamente
+# sinteticos. No son secretos y no existen fuera de tu maquina. Los entornos reales
+# reciben sus credenciales por variable de entorno, nunca por archivo versionado.
+
+services:
+  mysql:
+    # Version fijada, no "latest": el build tiene que ser reproducible (plan, AKINE-00.01).
+    image: mysql:8.4
+    container_name: akine-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: akine_local
+      MYSQL_USER: akine
+      MYSQL_PASSWORD: akine
+      MYSQL_ROOT_PASSWORD: root
+      TZ: UTC
+    command:
+      # utf8mb4 desde el server: evita que una tabla sin charset explicito herede latin1.
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # La base guarda instantes UTC. La zona local se aplica en el dominio.
+      - --default-time-zone=+00:00
+    ports:
+      # Puerto del host parametrizable: si otro proyecto ya ocupa 3306, se levanta con
+      #   AKINE_DB_PORT=3307 docker compose up -d
+      # y se ajusta AKINE_DB_URL en consecuencia. Dentro del contenedor sigue siendo 3306.
+      - "${AKINE_DB_PORT:-3306}:3306"
+    volumes:
+      - akine-mysql-data:/var/lib/mysql
+    healthcheck:
+      # El backend no debe arrancar contra una base que todavia no acepta conexiones.
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  akine-mysql-data:
+    name: akine-mysql-data

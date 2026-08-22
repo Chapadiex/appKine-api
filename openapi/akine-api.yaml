@@ -1,0 +1,52 @@
+openapi: 3.1.0
+info:
+  contact:
+    name: AKINE
+    url: https://github.com/Chapadiex/appKine-api
+  description: |-
+    Contrato REST canonico de AKINE: SaaS multi-tenant para centros de kinesiologia, fisioterapia, rehabilitacion y actividades de salud.
+
+    Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
+  title: AKINE API
+  version: 0.1.0
+servers:
+- description: Servidor que sirve este contrato
+  url: /
+tags:
+- description: "Contrato tecnico: salud y versionado"
+  name: Platform
+paths:
+  /api/v1/version:
+    get:
+      description: Devuelve la identidad tecnica del backend en ejecucion y la version
+        SemVer del contrato OpenAPI que publica. El frontend la usa para verificar
+        que el cliente generado corresponde a la version desplegada.
+      operationId: version
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+          description: OK
+      summary: Version del backend y del contrato
+      tags:
+      - Platform
+components:
+  schemas:
+    VersionResponse:
+      type: object
+      description: Identidad tecnica del backend y version del contrato OpenAPI publicado
+      properties:
+        application:
+          type: string
+          description: Nombre de la aplicacion
+          example: akine-api
+        contract:
+          type: string
+          description: Version SemVer del contrato OpenAPI publicado
+          example: 0.1.0
+        version:
+          type: string
+          description: Version de la aplicacion
+          example: 0.0.1-SNAPSHOT

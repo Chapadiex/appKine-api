@@ -1,0 +1,60 @@
+# --- Entorno de IA (local, personal de cada máquina) ---
+.claude/qa-config.md
+.claude/settings.local.json
+
+# --- Java / Maven ---
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+replay_pid*
+
+# --- Spring Boot ---
+# application-local.yml SI se versiona: solo contiene los defaults del compose.yaml, con
+# fallback a variables de entorno y sin un solo secreto. Sin el, un clon limpio no puede
+# ejecutar el comando documentado de arranque.
+#
+# La regla que importa -ningun secreto versionado- la garantiza application.yml, que lee
+# todo valor sensible por ${VAR}.
+application-secrets.yml
+application-*-secrets.yml
+
+# --- Secretos y entorno ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+
+# --- IDE ---
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+!.vscode/extensions.json
+.settings/
+.project
+.classpath
+.factorypath
+nbproject/private/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# --- SO ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs y temporales ---
+*.log
+logs/
+tmp/

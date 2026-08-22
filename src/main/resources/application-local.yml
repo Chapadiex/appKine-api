@@ -1,0 +1,29 @@
+# Perfil local de desarrollo.
+#
+# Los valores de abajo son los del compose.yaml de este repo: una base LOCAL, efimera y
+# poblada exclusivamente con datos sinteticos. No son secretos y no existen fuera de tu
+# maquina.
+#
+# Si cambias el compose.yaml, cambia esto tambien.
+
+spring:
+  datasource:
+    url: ${AKINE_DB_URL:jdbc:mysql://localhost:3306/akine_local?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC}
+    username: ${AKINE_DB_USER:akine}
+    password: ${AKINE_DB_PASSWORD:akine}
+
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    com.akine: DEBUG
+    org.flywaydb: INFO
+
+management:
+  endpoint:
+    health:
+      # Solo en local: ver el detalle del health ayuda a diagnosticar la conexion a la DB.
+      show-details: always

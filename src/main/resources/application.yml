@@ -1,0 +1,101 @@
+# Configuracion base de akine-api.
+#
+# REGLA: este archivo NO contiene secretos. Todo valor sensible se inyecta por variable de
+# entorno con la sintaxis ${VAR}. Un secreto commiteado es un incidente, no un descuido.
+#
+# Los perfiles concretos viven en application-<perfil>.yml. El perfil local se activa con:
+#   ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+
+spring:
+  application:
+    name: akine-api
+
+  profiles:
+    # Sin perfil explicito no se arranca: evita que una config de desarrollo llegue a
+    # produccion por omision.
+    default: local
+
+  datasource:
+    url: ${AKINE_DB_URL}
+    username: ${AKINE_DB_USER}
+    password: ${AKINE_DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    # Flyway es la unica autoridad sobre el esquema. Hibernate no crea ni altera tablas:
+    # si falta una tabla, falta una migracion.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          # Fechas persistidas como instantes UTC (AGENT.md seccion 5).
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+  jackson:
+    default-property-inclusion: non_null
+    datatype:
+      datetime:
+        # Fechas como ISO-8601, nunca como epoch. Un timestamp numerico pierde la zona y
+        # obliga a cada consumidor a reinterpretarlo.
+        #
+        # OJO: en Jackson 3 (el que trae Boot 4) esta feature dejo de vivir en
+        # SerializationFeature y paso a DateTimeFeature. La clave vieja
+        # spring.jackson.serialization.write-dates-as-timestamps ya no bindea y rompe el
+        # arranque del contexto.
+        write-dates-as-timestamps: false
+
+server:
+  port: ${AKINE_PORT:8080}
+  error:
+    # Nunca exponer stack traces al cliente. El detalle va al log.
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Solo lo necesario. Ampliar endpoint por endpoint, con justificacion.
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  health:
+    db:
+      enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+  writer-with-order-by-keys: true
+  writer-with-default-pretty-printer: true
+
+akine:
+  application:
+    version: ${AKINE_APP_VERSION:0.0.1-SNAPSHOT}
+  # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
+  # akine.contract.version del pom.xml.
+  contract:
+    version: 0.1.0
+  security:
+    cors:
+      # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
+      # para el refresh token en cookie httpOnly (F1).
+      allowed-origins: ${AKINE_CORS_ORIGINS:http://localhost:4200}
+
+logging:
+  level:
+    root: INFO
+    com.akine: INFO
