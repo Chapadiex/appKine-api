@@ -8,14 +8,514 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.1.0
+  version: 0.2.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
 tags:
+- description: "Plan contratado, estado de la suscripcion e historico"
+  name: Suscripciones
 - description: "Contrato tecnico: salud y versionado"
   name: Platform
+- description: Alta y administracion de tenants y sus sedes
+  name: Organizaciones
+- description: Contextos de trabajo habilitados para la cuenta autenticada
+  name: Mi cuenta
+- description: "Catalogo comercial: que incluye cada plan"
+  name: Planes
 paths:
+  /api/v1/me/contexts:
+    get:
+      description: |-
+        Devuelve los pares Organizacion + Consultorio en los que la cuenta tiene una membership vigente y cuya organizacion admite operar. Es lo que alimenta la pantalla de seleccion de contexto.
+
+        Cada elemento trae los nombres junto a los ids porque este listado es exactamente lo que el usuario ve para elegir: resolverlos con llamadas adicionales exigiria pedir datos de organizaciones antes de tener contexto en ninguna.
+
+        No requiere contexto de tenant: es el endpoint con el que se averigua que contextos hay. Devuelve una lista vacia —no un error— cuando la cuenta todavia no tiene ninguno; el frontend distingue 'no elegiste' de 'no tenes donde'.
+
+        Este endpoint no cambia el contexto activo. Seleccionarlo renueva el token, y eso lo publica el modulo de identidad en 01.02 como POST /api/v1/auth/context.
+      operationId: listMyContexts
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuthorizedContextResponse"
+          description: Contextos habilitados. Lista vacia si la cuenta no tiene ninguno
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada. Nunca 401: un 401 haria que el\
+            \ cliente descarte el token y entre en un bucle de login"
+      summary: Contextos de trabajo habilitados
+      tags:
+      - Mi cuenta
+  /api/v1/organizations:
+    post:
+      description: |-
+        Crea la organizacion, su primer consultorio y su suscripcion en una sola transaccion. Reservado a la administracion de plataforma.
+
+        El primer consultorio se crea SIEMPRE, incluso por este camino: el contexto de trabajo es Organizacion + Consultorio, asi que un tenant sin ninguna sede no ofreceria ningun contexto seleccionable y quien entrara despues no tendria donde trabajar.
+
+        Este NO es el camino del alta self-service. Esa crea ademas la cuenta y la membership del fundador en la misma transaccion, y la resuelve el modulo de identidad en 01.02.
+
+        El header Idempotency-Key es obligatorio: identifica el intento, de modo que un reintento por timeout de red quede correlacionado en el log y en la auditoria en vez de parecer un alta distinta. En 01.01 el alta duplicada la cierra la unicidad del slug con 409 conflict, no un replay con 200: este camino administrativo no registra idempotencia porque no tiene propietario que registrar, y el registro de onboarding exige uno.
+      operationId: createOrganization
+      parameters:
+      - description: "Identificador unico del intento, generado por el cliente. Reintentar\
+          \ la misma alta debe reusar el mismo valor."
+        example: 0f9d5f6e-1c2b-4a3d-9e8f-7a6b5c4d3e2f
+        in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrganizationRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationResponse"
+          description: Organizacion creada. La cabecera Location apunta al recurso
+            nuevo
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, o falta el header Idempotency-Key"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La operacion esta reservada a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El plan indicado no existe o ya no es contratable
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El slug ya pertenece a otra organizacion, o la clave de idempotencia\
+            \ se reuso con otro contenido"
+      summary: Alta administrativa de una organizacion
+      tags:
+      - Organizaciones
+  /api/v1/organizations/{orgId}:
+    get:
+      description: "Devuelve el tenant con su estado operativo efectivo y la version\
+        \ que hay que reenviar para editarlo. Requiere ser miembro vigente de esa\
+        \ organizacion y que sea la del contexto activo. Una organizacion inexistente,\
+        \ dada de baja o de otro tenant se responden las tres igual con 404: distinguirlas\
+        \ permitiria enumerar los clientes del SaaS probando ids."
+      operationId: getOrganization
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationResponse"
+          description: Organizacion encontrada
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o pertenece a otro tenant. Los\
+            \ tres casos se responden igual"
+      summary: Datos de una organizacion
+      tags:
+      - Organizaciones
+    patch:
+      description: |-
+        Actualiza nombre y zona horaria. Requiere administrar esa organizacion.
+
+        El slug no se puede cambiar: se usa en URLs y en soporte, y renombrarlo rompe enlaces. Cambiar de identificador es crear otro tenant, no editar este.
+
+        La version enviada se compara antes de mutar. Si quedo vieja porque alguien mas edito mientras tanto, la respuesta es 409 conflict y hay que releer y reintentar: es preferible a pisar en silencio el cambio de otro.
+
+        Los campos omitidos o vacios se dejan como estan; no los borra.
+      operationId: updateOrganization
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrganizationRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationResponse"
+          description: "Organizacion actualizada, con la version nueva"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, o falta la version"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor esta en el tenant correcto pero no lo administra
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o pertenece a otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La version enviada quedo vieja: releer y reintentar"
+      summary: Editar los datos mutables de la organizacion
+      tags:
+      - Organizaciones
+  /api/v1/organizations/{orgId}/consultorios:
+    get:
+      description: "Listado paginado de los consultorios vigentes del tenant. Requiere\
+        \ ser miembro vigente de esa organizacion. Es la lectura minima que necesita\
+        \ el selector de contexto de trabajo; la administracion completa de consultorios\
+        \ llega en 02.01. El tamano de pagina se acota a 100: pedir mas devuelve ese\
+        \ maximo, no un error."
+      operationId: listOrganizationConsultorios
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Numero de pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: "Elementos por pagina, acotado a 100"
+        example: 20
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsultorioPageResponse"
+          description: Pagina de sedes. Contenido vacio si la pagina quedo fuera de
+            rango
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o pertenece a otro tenant"
+      summary: Sedes activas de la organizacion
+      tags:
+      - Organizaciones
+  /api/v1/organizations/{orgId}/subscription:
+    get:
+      description: |-
+        Devuelve el plan contratado, el estado de la suscripcion, el consumo actual de cada limite y los estados a los que se puede transicionar desde el actual.
+
+        Los allowedTargets existen para que el frontend no replique la maquina de estados: pinta las acciones que el backend dice que existen. Una copia de las reglas en el cliente obligaria a desplegar los dos lados a la vez para no ofrecer botones que fallan.
+
+        Requiere administrar esa organizacion. Una organizacion inexistente o de otro tenant se responden igual con 404.
+      operationId: getSubscription
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+          description: Suscripcion vigente con su consumo de limites
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor esta en el tenant correcto pero no lo administra
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La organizacion no existe, esta dada de baja, o es de otro\
+            \ tenant"
+      summary: Suscripcion vigente del tenant
+      tags:
+      - Suscripciones
+  /api/v1/organizations/{orgId}/subscription/plan-changes:
+    post:
+      description: |-
+        Contrata otro plan y lo registra en el historico. Reservado a la administracion de plataforma.
+
+        Un downgrade se acepta aunque el uso actual ya supere los limites del plan nuevo, y no toca un solo dato: no borra, no desactiva y no marca nada como invalido. Lo que existe sigue operativo y consultable. Lo unico que cambia es el futuro: la proxima alta que exceda el limite nuevo se rechaza. Los limites ya excedidos vuelven en warnings para que el cliente pueda ordenarse antes de chocarse, no como un rechazo.
+
+        Reintentar un cambio ya aplicado responde applied=false y no genera una segunda fila de historico ni un segundo evento: un reintento no puede producir un segundo efecto.
+
+        Requiere la suscripcion ACTIVA (409 subscription-suspended si no lo esta) y la version vigente (409 conflict si quedo vieja).
+      operationId: changeSubscriptionPlan
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanChangeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanChangeResponse"
+          description: "Plan cambiado, o ya vigente (applied=false). warnings trae\
+            \ los limites que el uso actual ya excede: son avisos, no rechazos"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el codigo de plan o la version esperada
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La operacion esta reservada a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La organizacion no es accesible, o el plan no es contratable"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: subscription-suspended si la suscripcion no esta ACTIVA; conflict
+            si la version enviada quedo vieja
+      summary: Cambiar el plan contratado
+      tags:
+      - Suscripciones
+  /api/v1/organizations/{orgId}/subscription/transitions:
+    get:
+      description: "Listado paginado de los cambios de estado y de plan, del hecho\
+        \ mas reciente al mas viejo. Es append-only: responde 'que le paso a este\
+        \ centro y cuando' meses despues, y por eso ninguna fila se edita ni se borra.\
+        \ La primera fila de toda suscripcion tiene fromStatus ausente y significa\
+        \ el alta. Requiere administrar esa organizacion. El tamano de pagina se acota\
+        \ a 100: pedir mas devuelve ese maximo, no un error."
+      operationId: listSubscriptionTransitions
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Numero de pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: "Elementos por pagina, acotado a 100"
+        example: 20
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionTransitionPageResponse"
+          description: "Pagina del historico, del hecho mas reciente al mas viejo"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor esta en el tenant correcto pero no lo administra
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La organizacion no existe, esta dada de baja, o es de otro\
+            \ tenant"
+      summary: Historico de la suscripcion
+      tags:
+      - Suscripciones
+    post:
+      description: |-
+        Registra el cambio de estado y lo agrega al historico. Reservado a la administracion de plataforma: suspender o cancelar un centro es una decision comercial, no una operacion que el propio centro se autoaplique.
+
+        Se valida todo antes de escribir nada. Una transicion rechazada no deja la suscripcion movida, ni una fila de historico, ni un evento de auditoria que sugiera que algo paso.
+
+        Enviar expectedStatus hace que la operacion se rechace con 409 si el estado real ya no es el que el actor creia, en vez de aplicarse sobre una premisa falsa. El motivo es obligatorio al suspender y al cancelar; omitirlo ahi es 400.
+
+        Un salto que la maquina de estados no admite —incluido repetir el estado actual— es 409 invalid-subscription-transition.
+      operationId: createSubscriptionTransition
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionTransitionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+          description: Transicion aplicada y registrada en el historico
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el estado destino, o falta el motivo donde es obligatorio"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La operacion esta reservada a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La organizacion no existe, esta dada de baja, o es de otro\
+            \ tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: invalid-subscription-transition si la maquina de estados no
+            admite el salto; conflict si expectedStatus no coincide con el real
+      summary: Aplicar una transicion de estado a la suscripcion
+      tags:
+      - Suscripciones
+  /api/v1/plans:
+    get:
+      description: "Devuelve los planes vigentes con sus limites cuantitativos y las\
+        \ funcionalidades que habilitan. Es la fuente de la pantalla de contratacion\
+        \ y de upgrade: el frontend no mantiene su propia copia del catalogo, porque\
+        \ una copia desactualizada ofreceria planes que el backend ya no acepta. Los\
+        \ planes se referencian siempre por su codigo, nunca por id."
+      operationId: listPlans
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlanResponse"
+          description: Catalogo vigente. Lista vacia si no hay planes contratables
+      summary: Catalogo de planes contratables
+      tags:
+      - Planes
   /api/v1/version:
     get:
       description: Devuelve la identidad tecnica del backend en ejecucion y la version
@@ -34,6 +534,482 @@ paths:
       - Platform
 components:
   schemas:
+    AuthorizedContextResponse:
+      type: object
+      description: Contexto de trabajo habilitado para la cuenta autenticada
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Identificador del consultorio
+          example: 1
+        consultorioName:
+          type: string
+          description: Nombre del consultorio
+          example: Sede Central
+        organizationId:
+          type: integer
+          format: int64
+          description: Identificador de la organizacion
+          example: 1
+        organizationName:
+          type: string
+          description: Nombre de la organizacion
+          example: Centro Kinesico Belgrano
+    ConsultorioPageResponse:
+      type: object
+      description: Pagina de sedes activas de la organizacion
+      properties:
+        content:
+          type: array
+          description: Sedes de esta pagina
+          items:
+            $ref: "#/components/schemas/ConsultorioResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de sedes activas
+          example: 3
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 1
+    ConsultorioResponse:
+      type: object
+      description: Sede (consultorio) de la organizacion
+      properties:
+        active:
+          type: boolean
+          description: false cuando la sede fue dada de baja logica
+          example: true
+        id:
+          type: integer
+          format: int64
+          description: Identificador del consultorio
+          example: 1
+        name:
+          type: string
+          description: Nombre de la sede
+          example: Sede Central
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion a la que pertenece
+          example: 1
+    CreateOrganizationRequest:
+      type: object
+      description: Datos para dar de alta una organizacion y su primer consultorio
+      properties:
+        name:
+          type: string
+          description: Nombre del centro
+          example: Centro Kinesico Belgrano
+          maxLength: 160
+          minLength: 0
+        planCode:
+          type: string
+          description: "Codigo del plan a contratar, del catalogo de GET /api/v1/plans"
+          example: BASICO
+          maxLength: 32
+          minLength: 0
+        slug:
+          type: string
+          description: "Identificador legible. Si se omite, se deriva del nombre y\
+            \ se resuelve cualquier colision automaticamente"
+          example: centro-kinesico-belgrano
+          maxLength: 64
+          minLength: 0
+        timezone:
+          type: string
+          description: "Zona horaria IANA del centro. Si se omite, se usa la zona\
+            \ por defecto de la plataforma"
+          example: America/Argentina/Buenos_Aires
+          maxLength: 64
+          minLength: 0
+      required:
+      - name
+      - planCode
+    LimitUsageResponse:
+      type: object
+      description: Consumo actual de un limite del plan contratado
+      properties:
+        code:
+          type: string
+          description: Codigo del limite
+          enum:
+          - MAX_CONSULTORIOS
+          - MAX_MIEMBROS_ACTIVOS
+          example: MAX_CONSULTORIOS
+        currentUsage:
+          type: integer
+          format: int64
+          description: Cantidad de recursos activos que consumen este limite
+          example: 2
+        exceeded:
+          type: boolean
+          description: "true cuando el uso actual ya supera el tope del plan. Un downgrade\
+            \ puede dejarlo en true sin borrar nada: lo existente sigue operativo\
+            \ y solo se rechazan las altas nuevas"
+          example: false
+        limitValue:
+          type: integer
+          format: int32
+          description: Tope que impone el plan. Ausente cuando el limite es ilimitado
+          example: 3
+    OrganizationResponse:
+      type: object
+      description: Organizacion (tenant) con su estado operativo efectivo
+      properties:
+        active:
+          type: boolean
+          description: false cuando la organizacion fue dada de baja logica
+          example: true
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la organizacion
+          example: 1
+        name:
+          type: string
+          description: Nombre del centro
+          example: Centro Kinesico Belgrano
+        operationalStatus:
+          type: string
+          description: "Estado operativo efectivo del tenant, derivado de la suscripcion\
+            \ y de la baja logica de la organizacion"
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - CANCELADA
+          - BAJA
+          example: ACTIVA
+        slug:
+          type: string
+          description: "Identificador legible y estable. No cambia al renombrar el\
+            \ centro: se usa en URLs y en soporte"
+          example: centro-kinesico-belgrano
+        timezone:
+          type: string
+          description: Zona horaria IANA del centro
+          example: America/Argentina/Buenos_Aires
+        version:
+          type: integer
+          format: int64
+          description: Version para bloqueo optimista. Devolverla tal cual en el PATCH
+          example: 0
+    PlanChangeRequest:
+      type: object
+      description: Plan a contratar y version esperada de la suscripcion
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: "Version de la suscripcion que el cliente cree vigente, tal\
+            \ como la devolvio el GET de la suscripcion"
+          example: 0
+          minimum: 0
+        planCode:
+          type: string
+          description: "Codigo del plan a contratar, del catalogo de GET /api/v1/plans"
+          example: PROFESIONAL
+          maxLength: 32
+          minLength: 0
+      required:
+      - expectedVersion
+      - planCode
+    PlanChangeResponse:
+      type: object
+      description: "Resultado del cambio de plan, con los limites que el uso actual\
+        \ ya excede"
+      properties:
+        applied:
+          type: boolean
+          description: false cuando el plan pedido ya era el vigente y no hubo cambio
+          example: true
+        subscription:
+          $ref: "#/components/schemas/SubscriptionResponse"
+          description: Suscripcion resultante
+        warnings:
+          type: array
+          description: "Limites que el uso actual YA supera con el plan nuevo. Informativos:\
+            \ nada se borro ni se desactivo, solo se rechazaran las altas futuras\
+            \ que los superen"
+          items:
+            $ref: "#/components/schemas/LimitUsageResponse"
+    PlanLimitResponse:
+      type: object
+      description: Limite cuantitativo incluido en un plan
+      properties:
+        code:
+          type: string
+          description: Codigo del limite
+          enum:
+          - MAX_CONSULTORIOS
+          - MAX_MIEMBROS_ACTIVOS
+          example: MAX_CONSULTORIOS
+        unlimited:
+          type: boolean
+          description: true cuando el plan no impone tope para este limite
+          example: false
+        value:
+          type: integer
+          format: int32
+          description: Valor maximo permitido. Ausente cuando el limite es ilimitado
+          example: 3
+    PlanResponse:
+      type: object
+      description: Plan del catalogo comercial con sus limites y funcionalidades
+      properties:
+        code:
+          type: string
+          description: "Codigo estable del plan, usado para contratarlo"
+          example: BASICO
+        features:
+          type: array
+          description: Funcionalidades habilitadas por el plan
+          items:
+            type: string
+            enum:
+            - REPORTES_AVANZADOS
+            - NOTIFICACIONES_PACIENTE
+        limits:
+          type: array
+          description: Limites cuantitativos que impone el plan
+          items:
+            $ref: "#/components/schemas/PlanLimitResponse"
+        name:
+          type: string
+          description: Nombre comercial del plan
+          example: Basico
+    ProblemDetail:
+      type: object
+      properties:
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        properties:
+          type: object
+          additionalProperties: {}
+        status:
+          type: integer
+          format: int32
+        title:
+          type: string
+        type:
+          type: string
+          format: uri
+    SubscriptionResponse:
+      type: object
+      description: "Suscripcion del tenant con su plan, estado y consumo de limites"
+      properties:
+        allowedTargets:
+          type: array
+          description: Estados a los que se puede transicionar desde el actual. Vacio
+            cuando el estado es terminal
+          example:
+          - SUSPENDIDA
+          - CANCELADA
+          items:
+            type: string
+            enum:
+            - ACTIVA
+            - SUSPENDIDA
+            - CANCELADA
+          uniqueItems: true
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la suscripcion
+          example: 1
+        limits:
+          type: array
+          description: Limites del plan con el consumo actual de cada uno
+          items:
+            $ref: "#/components/schemas/LimitUsageResponse"
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion titular de la suscripcion
+          example: 1
+        planCode:
+          type: string
+          description: Codigo del plan contratado
+          example: BASICO
+        planName:
+          type: string
+          description: Nombre comercial del plan contratado
+          example: Basico
+        startedAt:
+          type: string
+          format: date-time
+          description: Instante de alta de la suscripcion
+          example: 2026-01-15T13:45:00Z
+        status:
+          type: string
+          description: "Estado de la suscripcion. SUSPENDIDA permite lecturas y administracion,\
+            \ y rechaza mutaciones de negocio con 409. CANCELADA es terminal"
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - CANCELADA
+          example: ACTIVA
+        version:
+          type: integer
+          format: int64
+          description: Version para bloqueo optimista. Devolverla tal cual al cambiar
+            de plan
+          example: 0
+    SubscriptionTransitionPageResponse:
+      type: object
+      description: "Pagina del historico de la suscripcion, del hecho mas reciente\
+        \ al mas viejo"
+      properties:
+        content:
+          type: array
+          description: Hechos de esta pagina
+          items:
+            $ref: "#/components/schemas/SubscriptionTransitionResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de hechos en el historico
+          example: 37
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 2
+    SubscriptionTransitionRequest:
+      type: object
+      description: Transicion de estado a aplicar sobre la suscripcion
+      properties:
+        expectedStatus:
+          type: string
+          description: "Estado que el actor cree vigente. Si no coincide con el real,\
+            \ la operacion se rechaza con 409 en vez de aplicarse sobre una premisa\
+            \ falsa"
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - CANCELADA
+          example: ACTIVA
+        reason:
+          type: string
+          description: Motivo declarado del cambio. Obligatorio al suspender y al
+            cancelar
+          example: Falta de pago de tres periodos consecutivos
+          maxLength: 500
+          minLength: 0
+        toStatus:
+          type: string
+          description: "Estado destino. Debe estar entre los allowedTargets que publica\
+            \ GET /api/v1/organizations/{orgId}/subscription"
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - CANCELADA
+          example: SUSPENDIDA
+      required:
+      - toStatus
+    SubscriptionTransitionResponse:
+      type: object
+      description: Hecho registrado en el historico de la suscripcion
+      properties:
+        actorAccountId:
+          type: integer
+          format: int64
+          description: Cuenta que ejecuto el cambio. Ausente cuando lo origino un
+            proceso automatico
+          example: 42
+        fromPlanCode:
+          type: string
+          description: Codigo del plan previo. Ausente en la fila de alta
+          example: BASICO
+        fromStatus:
+          type: string
+          description: Estado previo. Ausente en la fila de alta de la suscripcion
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - CANCELADA
+          example: ACTIVA
+        id:
+          type: integer
+          format: int64
+          description: Identificador del hecho
+          example: 1
+        occurredAt:
+          type: string
+          format: date-time
+          description: Instante en que ocurrio el hecho
+          example: 2026-03-01T10:00:00Z
+        reason:
+          type: string
+          description: "Motivo declarado, cuando la transicion lo exige"
+          example: Falta de pago de tres periodos consecutivos
+        toPlanCode:
+          type: string
+          description: Codigo del plan resultante
+          example: PROFESIONAL
+        toStatus:
+          type: string
+          description: Estado resultante
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - CANCELADA
+          example: SUSPENDIDA
+    UpdateOrganizationRequest:
+      type: object
+      description: "Campos editables de la organizacion, con la version para bloqueo\
+        \ optimista"
+      properties:
+        name:
+          type: string
+          description: Nuevo nombre del centro. Omitirlo o enviarlo vacio lo deja
+            como esta
+          example: Centro Kinesico Belgrano Norte
+          maxLength: 160
+          minLength: 0
+        timezone:
+          type: string
+          description: Nueva zona horaria IANA. Omitirla o enviarla vacia la deja
+            como esta
+          example: America/Argentina/Cordoba
+          maxLength: 64
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: "Version que el cliente cree vigente, tal como la devolvio\
+            \ el GET"
+          example: 0
+          minimum: 0
+      required:
+      - version
     VersionResponse:
       type: object
       description: Identidad tecnica del backend y version del contrato OpenAPI publicado
