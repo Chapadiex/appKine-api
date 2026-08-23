@@ -5,7 +5,6 @@ import com.akine.organization.domain.port.MembershipRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Acceso a las memberships. Es el repositorio mas caliente del sistema: la resolucion de
@@ -30,8 +29,8 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 	 */
 	List<Membership> findAllByAccountIdAndActiveTrue(Long accountId);
 
-	/** La membership de una cuenta en un tenant concreto: la valida el filtro de contexto. */
-	Optional<Membership> findByOrganizationIdAndAccountIdAndActiveTrue(
+	/** Memberships activas de una cuenta en un tenant concreto. Ver el puerto: desde V10 pueden ser varias. */
+	List<Membership> findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(
 			Long organizationId, Long accountId);
 
 	List<Membership> findAllByOrganizationIdAndActiveTrue(Long organizationId);
@@ -43,6 +42,13 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 	 */
 	long countByOrganizationIdAndActiveTrue(Long organizationId);
 
-	/** Chequeo previo. La garantia real es {@code uk_membership_org_account}. */
+	/**
+	 * Chequeo previo de pertenencia. Sin llamadores hoy.
+	 *
+	 * <p>Ya NO es el chequeo previo de un unique: desde V10 la restriccion es
+	 * {@code uk_membership_org_account_scope} y una cuenta puede tener varias memberships en la
+	 * misma organizacion, una por alcance. Responde "esta cuenta tiene alguna membership aca",
+	 * que es otra pregunta.
+	 */
 	boolean existsByOrganizationIdAndAccountId(Long organizationId, Long accountId);
 }

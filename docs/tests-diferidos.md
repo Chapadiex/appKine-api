@@ -4,41 +4,53 @@ Registro explícito de escenarios **decididos y no ejecutados**. Existe para que
 por cubierto sin haber corrido: un escenario que no está en esta lista y no tiene test, es
 un olvido; uno que está acá, es una decisión con fecha.
 
-Se revisa al cerrar cada etapa. Una fila solo se borra cuando el test existe y pasa.
+Se revisa al cerrar cada etapa. Una fila solo se borra de la tabla de pendientes cuando el
+test existe y pasa.
 
 ---
 
-## Diferidos de AKINE-01.01 → destino AKINE-01.02
+## Ejecución de los diferidos de 01.01 — AKINE-01.02
 
-Motivo común: **todos necesitan una sesión autenticada real**, y el login llega en 01.02.
-Montar un backdoor de autenticación para que corran antes produciría tests verdes que no
-prueban el camino real.
+Los once escenarios recibieron test en `src/test/java/com/akine/diferidos/`. Los datos de abajo
+son la foto de `target/failsafe-reports` al **2026-08-23 15:30**, no una corrida hecha al escribir
+este documento.
 
-| # | Escenario | Qué verifica | Origen |
+### Cerrados: test escrito y en verde
+
+| # | Escenario | Test | Evidencia |
 |---|---|---|---|
-| 1 | Cross-tenant en todos los endpoints | Con contexto de la organización A, pedir organización, suscripción y consultorios de B devuelve **404** en los tres casos — nunca 403, que confirmaría la existencia | CA-\*-03; diseño §13 test 10 |
-| 2 | Membership revocada entre requests | Emitido el contexto, se revoca la membership: el request siguiente falla. Ventana de revocación cero | Caso QA 6; diseño §13 test 11 |
-| 3 | Suscripción SUSPENDIDA | Mutación de negocio → `409 subscription-suspended`; el GET de históricos sigue devolviendo 200 | RN-M01-002, CA-\*-06; test 12 |
-| 4 | Transición de suscripción concurrente | Dos `POST transitions` con el mismo `expectedStatus`: una gana, la otra recibe 409 | RNF-M01-003, caso QA 2; test 13 |
-| 5 | Onboarding con fallo parcial | Fallo inyectado a mitad de la transacción compuesta → rollback total, cero filas en las cuatro tablas | ADR-0008, CA-001-04; test 7 |
-| 6 | Onboarding con reintento concurrente | Dos hilos con la misma clave de idempotencia → un solo tenant creado | CA-001-05, caso QA 4; test 8 |
-| 7 | `Idempotency-Key` repetida por HTTP | Misma clave y mismo payload → replay; misma clave y payload distinto → 409 `idempotency-key-conflict` | Diseño §10; test 9 |
-| 8 | Límite de plan bajo concurrencia | Dos altas simultáneas del recurso número límite: una crea, la otra recibe `409 plan-limit-exceeded`. **Nunca dos.** Es el test que prueba que el bloqueo pesimista funciona | Challenge B-3 |
-| 9 | Uniques con alcance tenant | Mismo nombre de consultorio en dos organizaciones distintas: ambas válidas. En la misma: violación | ADR-0004; test 15 |
-| 10 | E2E de cambio de contexto sin fuga | Crear organización, seleccionar contexto, ver solo sus datos; cambiar de organización y comprobar que **no queda ningún dato residual** de la anterior | Criterio de aceptación de la etapa; diseño §13 test 22 |
-| 11 | E2E de errores sin internals | Ninguna respuesta de error contiene `com.akine`, `org.springframework` ni `stacktrace` | ADR-0005; test 23 |
+| 1 | Cross-tenant en todos los endpoints | `AislamientoDeTenantIT` — "Con contexto de A, los tres endpoints de B responden 404 y ninguno 403" | 3 tests, 0 fallos |
+| 2 | Membership revocada entre requests | `AislamientoDeTenantIT` — "ventana de revocacion cero" | ídem |
+| 3 | Suscripción SUSPENDIDA | `AislamientoDeTenantIT` — "la mutacion es 409 subscription-suspended y el historico sigue en 200" | ídem |
+| 4 | Transición de suscripción concurrente | `TransicionConcurrenteDeSuscripcionIT` | 1 test, 0 fallos |
+| 5 | Onboarding con fallo parcial | `RollbackDeOnboardingIT` | 1 test, 0 fallos |
+| 6 | Onboarding con reintento concurrente | `IdempotenciaYUniquesIT` — casos 6 y 6-bis | 6 tests, 0 fallos, 1 saltado |
+| 9 | Uniques con alcance tenant | `IdempotenciaYUniquesIT` — caso 9 | ídem |
 
-**Nota sobre el #8:** de los once, es el más importante. La carrera que corrige existía en el
-diseño original y se detectó en el design challenge; el test es lo único que evita que alguien
-"simplifique" la firma del `PlanGate` y la reintroduzca sin que nadie se entere.
+### Abiertos
+
+| # | Escenario | Estado | Motivo y etapa destino |
+|---|---|---|---|
+| 7 | `Idempotency-Key` repetida por HTTP | **parcial** — 7a (misma clave, mismo payload → replay) y 7c (el conflicto funciona en el alta compuesta de `organization`) pasan; **7b está `@Disabled`** en `IdempotenciaYUniquesIT:132` | La mitad "payload distinto" **no tiene camino HTTP**. `AccountRegistrationController:147` pasa `requestHash = null` por decisión documentada de 01.02, y la tabla `onboarding_registro` (migración V8) no tiene columna donde guardarlo. Como `identity` corta primero en el replay (`OnboardingService:137`), la comparación de hash que sí existe en `organization` nunca se ejecuta: la segunda alta responde `202` en vez de `409 idempotency-key-conflict`, o sea que le acusa recibo a un pedido que ignoró. El otro camino candidato, `POST /api/v1/organizations`, documenta explícitamente que su `Idempotency-Key` no registra idempotencia. Arreglarlo es una migración con `request_hash` más un cambio de API → **AKINE-01.03** |
+| 8 | Límite de plan bajo concurrencia | **rojo** — `LimiteDePlanConcurrenteIT` falla | Las dos altas simultáneas del recurso número límite entran las dos: `[exactamente un alta entra. Desenlaces: [OK 900000004, OK 900000005]] expected: 1L but was: 2L` (`LimiteDePlanConcurrenteIT:99`). Es un bug real de concurrencia, no del test: el bloqueo pesimista no está conteniendo la carrera. **Se corrige dentro de 01.02**, antes de cerrar la etapa |
+| 10 | E2E de cambio de contexto sin fuga | **sin test** | Crear organización, seleccionar contexto, ver solo sus datos; cambiar de organización y comprobar que no queda ningún dato residual. Requiere el frontend de 01.02 commiteado y un E2E de auth que hoy no existe (`e2e/smoke.spec.ts` no toca ningún flujo de sesión). Destino: **AKINE-01.03** |
+| 11 | E2E de errores sin internals | **sin test** | Ninguna respuesta de error contiene `com.akine`, `org.springframework` ni `stacktrace` (ADR-0005). Mismo bloqueo que el 10. Destino: **AKINE-01.03** |
+
+**Nota sobre el #8:** de los once es el más importante, y es el único que encontró el bug que
+buscaba. La carrera existía en el diseño original y se detectó en el design challenge; el test es
+lo único que evita que alguien "simplifique" la firma del `PlanGate` y la reintroduzca sin que
+nadie se entere. Mientras esté en rojo, **01.02 no puede declarar cerrado el escenario**.
 
 ---
 
 ## Cómo se cierra esta deuda
 
-Al ejecutar AKINE-01.02, la implementación del login habilita los once. El registro de cierre
-de esa etapa debe listar cada uno como ejecutado, o justificar por qué sigue diferido.
+Al cerrar AKINE-01.02, el registro de cierre debe dar cuenta de las cuatro filas abiertas: la 8
+en verde, y la 7b, la 10 y la 11 explícitamente reasignadas a 01.03 con su motivo.
 
-Mientras existan filas en esta tabla, el registro de cierre de la etapa correspondiente **no
-puede afirmar** que los criterios de aceptación asociados están cubiertos: están decididos y
+Mientras existan filas en la tabla de abiertos, el registro de cierre de la etapa correspondiente
+**no puede afirmar** que los criterios de aceptación asociados están cubiertos: están decididos y
 pendientes de verificación, que no es lo mismo.
+
+Los orígenes de cada escenario (RF/RN/CA y número de test del diseño de 01.01) están en el
+`@DisplayName` de cada test y en el historial de este archivo: `git log -p docs/tests-diferidos.md`.

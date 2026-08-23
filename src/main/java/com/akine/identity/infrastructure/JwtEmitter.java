@@ -19,6 +19,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
+import com.akine.platform.spi.config.PerfilesDeEjecucion;
 import com.akine.platform.spi.security.AccessTokenClaims;
 import com.akine.platform.spi.security.AccessTokenIssuer;
 import com.akine.platform.spi.security.AccessTokenScope;
@@ -54,11 +55,19 @@ import tools.jackson.databind.json.JsonMapper;
  * </ul>
  *
  * <h2>El secreto</h2>
- * <p>Minimo 32 bytes —256 bits, el largo del bloque de HMAC-SHA256—. Hay un valor de
- * desarrollo por default para que el proyecto arranque recien clonado, y <b>la aplicacion se
- * niega a arrancar con ese valor si hay un perfil de produccion activo</b>: un secreto de
- * firma versionado en un repositorio es una credencial publica, y con ella cualquiera emite
- * tokens de cualquier cuenta.
+ * <p>Minimo 32 bytes —256 bits, el largo del bloque de HMAC-SHA256— y <b>sin default</b>: sin
+ * secreto configurado la aplicacion no arranca (ADR-0017). El valor de desarrollo existe, es
+ * publico y vive unicamente en {@code application-local.yml}; presentarlo sin un perfil de
+ * desarrollo activo tambien impide el arranque.
+ *
+ * <p><b>Por que la regla esta al derecho.</b> Antes el default estaba en {@code application.yml}
+ * y el unico guardarrail era que el perfil se llamara {@code prod}, {@code produccion} o
+ * {@code production}. Cualquier despliegue con otro nombre —{@code staging}, {@code docker},
+ * {@code prd}, {@code k8s}— o sin perfil arrancaba firmando con una clave publica, y con esa
+ * clave se forja a mano un token con {@code scope:"context"} y el {@code accountId} de un
+ * profesional real: el {@code TenantContextFilter} lo valida contra la base, la membership
+ * existe, y entra a la historia clinica sin credenciales. Con {@code "rol":"PLATFORM_ADMIN"} ni
+ * siquiera consulta la base. Ver {@link PerfilesDeEjecucion}.
  *
  * <h2>Ventana de revocacion (D-3)</h2>
  * <p>No hay lista de revocacion por {@code jti}. Una cuenta bloqueada conserva su access token
@@ -90,15 +99,14 @@ public class JwtEmitter implements AccessTokenIssuer, AccessTokenVerifier {
 
 	/**
 	 * Secreto de desarrollo. Esta a la vista de todos a proposito: no es un secreto, es un
-	 * marcador que permite arrancar el proyecto sin configurar nada y que el arranque en
-	 * produccion rechaza.
+	 * marcador publico que permite trabajar en local sin configurar nada.
+	 *
+	 * <p><b>Ya no es el default de la configuracion.</b> Vive unicamente en
+	 * {@code application-local.yml}, o sea que solo existe si hay un perfil de desarrollo activo.
+	 * La comprobacion de abajo es la segunda barrera, por si alguien lo copia a otro lado.
 	 */
 	static final String SECRETO_DE_DESARROLLO =
 			"akine-desarrollo-secreto-de-firma-no-usar-en-produccion";
-
-	/** Perfiles ante los cuales el secreto de desarrollo deja de ser tolerable. */
-	private static final java.util.List<String> PERFILES_DE_PRODUCCION =
-			java.util.List.of("prod", "produccion", "production");
 
 	private static final ObjectMapper JSON = JsonMapper.builder().build();
 
@@ -111,8 +119,21 @@ public class JwtEmitter implements AccessTokenIssuer, AccessTokenVerifier {
 	 */
 	public JwtEmitter(JwtProperties properties, Environment environment) {
 		String valor = properties.getSecret();
-		byte[] material = valor == null ? new byte[0] : valor.getBytes(StandardCharsets.UTF_8);
+		boolean desarrollo = PerfilesDeEjecucion.esDesarrollo(environment);
 
+		if (valor == null || valor.isBlank()) {
+			// SIN SECRETO NO SE ARRANCA. Es el default y no admite excepcion: un arranque
+			// fallido con este mensaje es infinitamente mas barato que un despliegue firmando
+			// con una clave que nadie eligio.
+			throw new IllegalStateException(
+					"No hay secreto de firma para el access token. Configurar AKINE_JWT_SECRET "
+							+ "(propiedad akine.security.jwt.secret) con al menos "
+							+ MINIMO_BYTES_DE_SECRETO + " bytes. No hay valor por defecto fuera "
+							+ "de los perfiles de desarrollo "
+							+ PerfilesDeEjecucion.perfilesDeDesarrollo() + ".");
+		}
+
+		byte[] material = valor.getBytes(StandardCharsets.UTF_8);
 		if (material.length < MINIMO_BYTES_DE_SECRETO) {
 			throw new IllegalStateException(
 					"El secreto de firma del access token debe tener al menos "
@@ -121,10 +142,12 @@ public class JwtEmitter implements AccessTokenIssuer, AccessTokenVerifier {
 		}
 
 		if (SECRETO_DE_DESARROLLO.equals(valor)) {
-			if (esProduccion(environment)) {
+			if (!desarrollo) {
 				throw new IllegalStateException(
-						"Se esta usando el secreto de firma de DESARROLLO con un perfil de "
-								+ "produccion activo. Configurar AKINE_JWT_SECRET con al menos "
+						"Se esta usando el secreto de firma de DESARROLLO, que esta versionado "
+								+ "en el repositorio y por lo tanto es publico, sin ningun perfil "
+								+ "de desarrollo activo " + PerfilesDeEjecucion.perfilesDeDesarrollo()
+								+ ". Configurar AKINE_JWT_SECRET con al menos "
 								+ MINIMO_BYTES_DE_SECRETO + " bytes de material aleatorio.");
 			}
 			log.warn("Access token firmado con el secreto de DESARROLLO. Es publico: cualquiera "
@@ -133,15 +156,6 @@ public class JwtEmitter implements AccessTokenIssuer, AccessTokenVerifier {
 
 		this.secreto = material;
 		this.accessTtl = properties.getAccessTtl();
-	}
-
-	private static boolean esProduccion(Environment environment) {
-		for (String perfil : environment.getActiveProfiles()) {
-			if (PERFILES_DE_PRODUCCION.contains(perfil.toLowerCase(java.util.Locale.ROOT))) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	@Override
@@ -335,10 +349,12 @@ public class JwtEmitter implements AccessTokenIssuer, AccessTokenVerifier {
 		/**
 		 * Secreto simetrico de firma. Minimo 32 bytes.
 		 *
-		 * <p>El default es de desarrollo y es publico. En produccion entra por variable de
-		 * entorno y la aplicacion no arranca sin el.
+		 * <p><b>Sin default a proposito.</b> Que este campo nazca vacio es lo que hace que la
+		 * aplicacion no arranque cuando nadie configuro {@code AKINE_JWT_SECRET}. El valor de
+		 * desarrollo lo aporta {@code application-local.yml}, que solo se lee con un perfil de
+		 * desarrollo activo.
 		 */
-		private String secret = SECRETO_DE_DESARROLLO;
+		private String secret;
 
 		/**
 		 * Vigencia del access token. Diez minutos.

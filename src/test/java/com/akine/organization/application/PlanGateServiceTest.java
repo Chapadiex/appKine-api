@@ -65,6 +65,14 @@ class PlanGateServiceTest {
 	@Mock
 	private LongSupplier contador;
 
+	/**
+	 * Solo para construir el servicio: {@code createWithinLimit} abre su transaccion con el.
+	 * Los tests de esta clase invocan el gate SIN transaccion activa —es un objeto plano, sin
+	 * proxy—, asi que la verificacion de isolation no se dispara y no hay nada que simular.
+	 */
+	@Mock
+	private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
 	@InjectMocks
 	private PlanGateService gate;
 

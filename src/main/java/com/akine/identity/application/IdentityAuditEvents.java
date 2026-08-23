@@ -33,6 +33,16 @@ final class IdentityAuditEvents {
 	/** La persona confirmo el enlace y la cuenta quedo habilitada. */
 	static final String CUENTA_ACTIVADA = "CUENTA_ACTIVADA";
 
+	/**
+	 * Se volvio a emitir el enlace de activacion.
+	 *
+	 * <p>Solo se registra cuando realmente se emitio uno. El pedido sobre un email sin cuenta,
+	 * o sobre una que no esta pendiente, no deja rastro a proposito: auditar el intento
+	 * construiria en la tabla de auditoria el mismo indice de direcciones que el 202 uniforme
+	 * existe para no entregar.
+	 */
+	static final String ACTIVACION_REENVIADA = "ACTIVACION_REENVIADA";
+
 	/** Login aceptado. */
 	static final String LOGIN_EXITOSO = "LOGIN_EXITOSO";
 
@@ -50,6 +60,44 @@ final class IdentityAuditEvents {
 
 	/** Fallos consecutivos por encima del umbral: alimenta la alerta al administrador. */
 	static final String ACTIVIDAD_SOSPECHOSA = "ACTIVIDAD_SOSPECHOSA";
+
+	/** Se emitio el par access + refresh de una sesion nueva. */
+	static final String SESION_ABIERTA = "SESION_ABIERTA";
+
+	/** Un refresh vigente se canjeo por un par nuevo. La rotacion quedo enlazada en la tabla. */
+	static final String SESION_REFRESCADA = "SESION_REFRESCADA";
+
+	/**
+	 * Se presento un refresh ya rotado o ya revocado: hay una copia de la cadena dando vueltas.
+	 *
+	 * <p>Este evento es <b>lo unico</b> que distingue un robo de cookie de un token cualquiera
+	 * que no sirve: al cliente se le responde el mismo 401 en los dos casos, para no confirmarle
+	 * al atacante que su copia fue detectada. Sin este evento, la deteccion no quedaria en
+	 * ningun lado y nadie podria investigar por que a un usuario se le cayo la sesion.
+	 */
+	static final String REFRESH_REUSO_DETECTADO = "REFRESH_REUSO_DETECTADO";
+
+	/** La persona cerro la sesion en curso: se revoco la familia. */
+	static final String SESION_CERRADA = "SESION_CERRADA";
+
+	/** Se revocaron todas las sesiones vivas de la cuenta. */
+	static final String SESIONES_CERRADAS = "SESIONES_CERRADAS";
+
+	/**
+	 * La persona eligio Organizacion mas Consultorio y se le emitio un access acotado.
+	 *
+	 * <p>AGENT.md sec. 6 lo exige explicitamente: el cambio de contexto no pide login nuevo,
+	 * pero <b>queda auditado</b>. Es el registro de quien miro datos de que organizacion.
+	 */
+	static final String CONTEXTO_SELECCIONADO = "CONTEXTO_SELECCIONADO";
+
+	/**
+	 * Se pidio un contexto que la cuenta no tiene.
+	 *
+	 * <p>Al cliente se le responde 404, indistinguible de "no existe" (ADR-0019). Aca queda la
+	 * diferencia: alguien que prueba ids de consultorio ajenos genera una racha de estos.
+	 */
+	static final String CONTEXTO_RECHAZADO = "CONTEXTO_RECHAZADO";
 
 	/** Se pidio un restablecimiento de contrasena. */
 	static final String RESET_SOLICITADO = "RESET_SOLICITADO";

@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.akine.organization.domain.Consultorio;
 import com.akine.organization.domain.Membership;
+import com.akine.organization.domain.MembershipSelection;
 import com.akine.organization.domain.OperationalStatus;
 import com.akine.organization.domain.Organization;
 import com.akine.organization.domain.Subscription;
@@ -72,25 +73,29 @@ public class OrganizationMembershipDirectory implements MembershipDirectory {
 	public Optional<TenantMembership> resolveMembership(
 			long accountId, long organizationId, long consultorioId, Instant at) {
 
-		Optional<Membership> encontrada =
-				membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(organizationId, accountId);
+		// Una cuenta puede tener VARIAS memberships en la misma organizacion desde V10 (una por
+		// sede, mas la de alcance organizacion): RN-M02-002 exige que la misma persona pueda
+		// tener roles distintos en consultorios distintos. Este metodo decide un acceso, asi
+		// que la eleccion entre ellas es una decision de autorizacion y esta centralizada en
+		// MembershipSelection: se toman las VIGENTES cuyo alcance cubre la sede pedida y gana
+		// la mas especifica —la acotada a esa sede— sobre la de alcance organizacion. La
+		// membership de una sede existe para decir algo distinto de la general; si ganara la
+		// general, escribirla no tendria ningun efecto.
+		//
+		// Los tres filtros que hacia el codigo anterior siguen estando, dentro de applicableAt:
+		// vigencia (activa pero vencida no habilita), alcance (consultorio_id NULL habilita
+		// cualquier sede del tenant, con valor solo esa) y la baja logica, que ya filtro el
+		// repositorio. Vacio significa cualquiera de los tres, sin distinguir.
+		Optional<Membership> encontrada = MembershipSelection.applicableAt(
+				membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(
+						organizationId, accountId),
+				consultorioId,
+				at);
 		if (encontrada.isEmpty()) {
 			return Optional.empty();
 		}
 
 		Membership membership = encontrada.get();
-		if (!membership.isValidAt(at)) {
-			// Activa pero vencida: vigencia y baja logica son cosas distintas y las dos tienen
-			// que cumplirse.
-			return Optional.empty();
-		}
-
-		// consultorio_id NULL = alcance ORGANIZACION: habilita cualquier sede de esa
-		// organizacion. Con valor, habilita esa sede y ninguna otra.
-		Long alcance = membership.getConsultorioId();
-		if (alcance != null && alcance != consultorioId) {
-			return Optional.empty();
-		}
 
 		Optional<Consultorio> consultorio =
 				consultorioRepository.findByIdAndOrganizationIdAndActiveTrue(consultorioId, organizationId);

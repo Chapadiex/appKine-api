@@ -212,8 +212,8 @@ class AccountContextServiceTest {
 	@Test
 	@DisplayName("El contexto se autoriza con membership vigente, sede activa y tenant usable")
 	void contexto_valido_se_autoriza() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 		organizacionVigente();
 		suscripcionEn(SubscriptionStatus.ACTIVA);
 		sedeVigente(CONSULTORIO_ID, "Sede Centro");
@@ -225,8 +225,8 @@ class AccountContextServiceTest {
 	@Test
 	@DisplayName("Una membership acotada a otra sede no autoriza el contexto pedido")
 	void membership_de_otra_sede_no_autoriza() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(
 						Fixtures.membershipDeSede(OTRO_CONSULTORIO_ID, RoleCode.PROFESIONAL)));
 		organizacionVigente();
 		suscripcionEn(SubscriptionStatus.ACTIVA);
@@ -240,8 +240,8 @@ class AccountContextServiceTest {
 	@Test
 	@DisplayName("Sin membership en el tenant el contexto no se autoriza")
 	void sin_membership_no_se_autoriza() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.empty());
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of());
 
 		assertThat(accountContextService.isContextAuthorized(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 				.isFalse();
@@ -251,8 +251,8 @@ class AccountContextServiceTest {
 	@Test
 	@DisplayName("Con la sede dada de baja el contexto no se autoriza")
 	void sede_de_baja_no_autoriza() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 		organizacionVigente();
 		suscripcionEn(SubscriptionStatus.ACTIVA);
 		given(consultorioRepository.findByIdAndOrganizationIdAndActiveTrue(CONSULTORIO_ID, ORG_ID))
@@ -265,8 +265,8 @@ class AccountContextServiceTest {
 	@Test
 	@DisplayName("hasActiveMembership responde true con membership vigente y tenant usable")
 	void has_active_membership_responde_true() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 		organizacionVigente();
 		suscripcionEn(SubscriptionStatus.ACTIVA);
 
@@ -280,8 +280,8 @@ class AccountContextServiceTest {
 	void el_puntero_valido_se_devuelve() {
 		given(activeContextRepository.findByAccountId(ACCOUNT_ID))
 				.willReturn(Optional.of(Fixtures.puntero(ORG_ID, CONSULTORIO_ID)));
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 		organizacionVigente();
 		suscripcionEn(SubscriptionStatus.ACTIVA);
 		sedeVigente(CONSULTORIO_ID, "Sede Centro");
@@ -303,8 +303,8 @@ class AccountContextServiceTest {
 	void puntero_con_membership_revocada_no_se_devuelve() {
 		given(activeContextRepository.findByAccountId(ACCOUNT_ID))
 				.willReturn(Optional.of(Fixtures.puntero(ORG_ID, CONSULTORIO_ID)));
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVencida()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVencida()));
 
 		assertThat(accountContextService.activeContext(ACCOUNT_ID)).isEmpty();
 	}
@@ -314,8 +314,8 @@ class AccountContextServiceTest {
 	void puntero_a_sede_de_baja_no_se_devuelve() {
 		given(activeContextRepository.findByAccountId(ACCOUNT_ID))
 				.willReturn(Optional.of(Fixtures.puntero(ORG_ID, CONSULTORIO_ID)));
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 		organizacionVigente();
 		suscripcionEn(SubscriptionStatus.ACTIVA);
 		given(consultorioRepository.findByIdAndOrganizationIdAndActiveTrue(CONSULTORIO_ID, ORG_ID))
@@ -329,8 +329,8 @@ class AccountContextServiceTest {
 	void puntero_con_suscripcion_cancelada_no_se_devuelve() {
 		given(activeContextRepository.findByAccountId(ACCOUNT_ID))
 				.willReturn(Optional.of(Fixtures.puntero(ORG_ID, CONSULTORIO_ID)));
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 		organizacionVigente();
 		suscripcionEn(SubscriptionStatus.CANCELADA);
 
@@ -343,8 +343,8 @@ class AccountContextServiceTest {
 	@DisplayName("Seleccionar un contexto valido persiste el puntero y audita CONTEXT_SELECTED")
 	void seleccionar_persiste_y_audita() {
 		given(activeContextRepository.findByAccountId(ACCOUNT_ID)).willReturn(Optional.empty());
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 		organizacionVigente();
 		suscripcionEn(SubscriptionStatus.ACTIVA);
 		sedeVigente(CONSULTORIO_ID, "Sede Centro");
@@ -373,8 +373,8 @@ class AccountContextServiceTest {
 	void cambiar_de_sede_registra_el_origen() {
 		given(activeContextRepository.findByAccountId(ACCOUNT_ID))
 				.willReturn(Optional.of(Fixtures.puntero(ORG_ID, OTRO_CONSULTORIO_ID)));
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 		organizacionVigente();
 		suscripcionEn(SubscriptionStatus.ACTIVA);
 		sedeVigente(CONSULTORIO_ID, "Sede Centro");
@@ -394,8 +394,8 @@ class AccountContextServiceTest {
 	void reseleccionar_lo_mismo_no_audita() {
 		given(activeContextRepository.findByAccountId(ACCOUNT_ID))
 				.willReturn(Optional.of(Fixtures.puntero(ORG_ID, CONSULTORIO_ID)));
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 		organizacionVigente();
 		suscripcionEn(SubscriptionStatus.ACTIVA);
 		sedeVigente(CONSULTORIO_ID, "Sede Centro");
@@ -408,8 +408,8 @@ class AccountContextServiceTest {
 	@Test
 	@DisplayName("Un contexto no autorizado se rechaza y deja el puntero anterior intacto")
 	void contexto_no_autorizado_no_toca_el_puntero() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.empty());
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of());
 
 		assertThatThrownBy(() ->
 				accountContextService.selectContext(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
@@ -424,8 +424,8 @@ class AccountContextServiceTest {
 	@Test
 	@DisplayName("El snapshot de la membership expone rol, fundador y vigencia")
 	void el_snapshot_mapea_la_membership() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 
 		Optional<MembershipSnapshot> snapshot =
 				accountContextService.membership(ACCOUNT_ID, ORG_ID);
@@ -444,8 +444,8 @@ class AccountContextServiceTest {
 	@Test
 	@DisplayName("El snapshot de una membership vencida no habilita nada")
 	void el_snapshot_vencido_no_habilita() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVencida()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVencida()));
 
 		MembershipSnapshot snapshot =
 				accountContextService.membership(ACCOUNT_ID, ORG_ID).orElseThrow();
@@ -456,8 +456,8 @@ class AccountContextServiceTest {
 	@Test
 	@DisplayName("Sin membership en el tenant no hay snapshot")
 	void sin_membership_no_hay_snapshot() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.empty());
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of());
 
 		assertThat(accountContextService.membership(ACCOUNT_ID, ORG_ID)).isEmpty();
 	}
@@ -466,8 +466,8 @@ class AccountContextServiceTest {
 	@EnumSource(SubscriptionStatus.class)
 	@DisplayName("Solo CANCELADA impide seleccionar un contexto; el resto de estados deja entrar")
 	void solo_cancelada_impide_entrar(SubscriptionStatus estado) {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 		organizacionVigente();
 		suscripcionEn(estado);
 		if (estado != SubscriptionStatus.CANCELADA) {

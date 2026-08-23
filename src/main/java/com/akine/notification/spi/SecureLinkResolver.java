@@ -28,8 +28,13 @@ public interface SecureLinkResolver {
 	 *
 	 * <p>Devuelve {@link Optional#empty()} si el token ya no sirve: fue consumido, fue
 	 * revocado o expiro. Eso NO es un fallo transitorio y el worker no lo reintenta —reenviar
-	 * un enlace muerto no ayuda a nadie—: la fila pasa a {@code AGOTADA} con el motivo
+	 * un enlace muerto no ayuda a nadie—: la fila pasa a {@code FALLIDA} con el motivo
 	 * explicito y la persona pide uno nuevo (T-11).
+	 *
+	 * <p>{@code FALLIDA} y no {@code AGOTADA}: agotada significa que se reintento hasta gastar
+	 * el presupuesto de intentos, y aca no se reintenta ni una vez. La diferencia importa para
+	 * quien mire la cola: una fila agotada sugiere revisar el proveedor de correo, una fallida
+	 * por token muerto no tiene nada que revisar.
 	 *
 	 * @param tipo              tipo de notificacion, que determina la ruta del enlace
 	 * @param referenciaTokenId ID opaco del token, tal como se guardo al encolar

@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
 
+import java.util.List;
 import java.util.Optional;
 
 import static com.akine.organization.application.Fixtures.ACCOUNT_ID;
@@ -75,19 +76,19 @@ class ProvisionalAuthorizationGuardTest {
 	@Test
 	@DisplayName("Una membership ORG_ADMIN vigente en la organizacion del contexto habilita")
 	void org_admin_vigente_en_el_contexto_habilita() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigente()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigente()));
 
 		assertThatCode(() -> guard.requireOrgAdmin(ACCOUNT_ID, ORG_ID, ORG_ID, false))
 				.doesNotThrowAnyException();
 	}
 
 	@Test
-	@DisplayName("Ser ORG_ADMIN de otra organizacion no habilita la del contexto activo")
+	@DisplayName("Administrar desde el contexto de otra organizacion responde 404, no 403")
 	void ser_org_admin_en_otro_tenant_no_alcanza() {
+		// 403 confirmaria que ORG_ID existe: bastarian ids consecutivos para enumerar clientes.
 		assertThatThrownBy(() -> guard.requireOrgAdmin(ACCOUNT_ID, ORG_ID, OTRA_ORG_ID, false))
-				.isInstanceOf(AccessDeniedException.class)
-				.hasMessageContaining("contexto activo");
+				.isInstanceOf(OrganizationNotFoundException.class);
 
 		// Ni siquiera se pregunta por la membership: el contexto ya decidio.
 		verifyNoInteractions(membershipRepository);
@@ -96,15 +97,18 @@ class ProvisionalAuthorizationGuardTest {
 	@Test
 	@DisplayName("Un request sin contexto validado no puede administrar ninguna organizacion")
 	void sin_contexto_no_administra() {
+		// Aca si es 403 y no 404: no eligio donde trabaja todavia, y el frontend necesita
+		// distinguir "elegi un consultorio" de "eso no existe".
 		assertThatThrownBy(() -> guard.requireOrgAdmin(ACCOUNT_ID, ORG_ID, null, false))
-				.isInstanceOf(AccessDeniedException.class);
+				.isInstanceOf(AccessDeniedException.class)
+				.hasMessageContaining("contexto de trabajo activo");
 	}
 
 	@Test
 	@DisplayName("Una membership vencida no administra, aunque el rol sea el correcto")
 	void una_membership_vencida_no_administra() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVencida()));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVencida()));
 
 		assertThatThrownBy(() -> guard.requireOrgAdmin(ACCOUNT_ID, ORG_ID, ORG_ID, false))
 				.isInstanceOf(AccessDeniedException.class)
@@ -114,8 +118,8 @@ class ProvisionalAuthorizationGuardTest {
 	@Test
 	@DisplayName("Sin membership en el tenant no se administra")
 	void sin_membership_no_administra() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.empty());
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of());
 
 		assertThatThrownBy(() -> guard.requireOrgAdmin(ACCOUNT_ID, ORG_ID, ORG_ID, false))
 				.isInstanceOf(AccessDeniedException.class);
@@ -125,8 +129,8 @@ class ProvisionalAuthorizationGuardTest {
 	@EnumSource(value = RoleCode.class, mode = EnumSource.Mode.EXCLUDE, names = "ORG_ADMIN")
 	@DisplayName("Solo ORG_ADMIN administra la organizacion: cualquier otro rol se rechaza")
 	void ningun_otro_rol_administra(RoleCode rol) {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORG_ID, ACCOUNT_ID))
-				.willReturn(Optional.of(Fixtures.membershipVigenteCon(rol)));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID))
+				.willReturn(List.of(Fixtures.membershipVigenteCon(rol)));
 
 		assertThatThrownBy(() -> guard.requireOrgAdmin(ACCOUNT_ID, ORG_ID, ORG_ID, false))
 				.isInstanceOf(AccessDeniedException.class);

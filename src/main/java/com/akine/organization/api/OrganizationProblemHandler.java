@@ -6,6 +6,7 @@ import com.akine.organization.domain.exception.ContextNotAuthorizedException;
 import com.akine.organization.domain.exception.FeatureNotAvailableException;
 import com.akine.organization.domain.exception.InvalidSubscriptionTransitionException;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
+import com.akine.organization.domain.exception.OrganizationSlugTakenException;
 import com.akine.organization.domain.exception.PlanLimitExceededException;
 import com.akine.organization.domain.exception.SubscriptionSuspendedException;
 import org.slf4j.Logger;
@@ -62,6 +63,8 @@ public class OrganizationProblemHandler {
 			URI.create("https://akine.app/problems/feature-not-available");
 	private static final URI SUBSCRIPTION_SUSPENDED =
 			URI.create("https://akine.app/problems/subscription-suspended");
+	private static final URI ORGANIZATION_SLUG_TAKEN =
+			URI.create("https://akine.app/problems/organization-slug-taken");
 	private static final URI IDEMPOTENCY_KEY_CONFLICT =
 			URI.create("https://akine.app/problems/idempotency-key-conflict");
 
@@ -198,6 +201,29 @@ public class OrganizationProblemHandler {
 						+ "Use una clave nueva o reenvie la solicitud original.");
 		problem.setTitle("Clave de idempotencia en conflicto");
 		problem.setType(IDEMPOTENCY_KEY_CONFLICT);
+		return problem;
+	}
+
+	/**
+	 * El identificador legible pedido para la organizacion ya lo usa otro tenant.
+	 *
+	 * <p>409 y no 404: el slug es unico GLOBAL y el conflicto es con algo que el cliente
+	 * acaba de elegir, no con un recurso que este intentando ver. Y no revela nada util para
+	 * enumerar: el slug se usa en URLs publicas, asi que "esta tomado" es exactamente lo que
+	 * cualquiera puede averiguar tipeandolo en el navegador.
+	 *
+	 * <p><b>El slug NO vuelve en el cuerpo.</b> Lo mando el cliente y reflejar en la respuesta
+	 * lo que llega en el request es el vector clasico de XSS reflejado. Va al log.
+	 */
+	@ExceptionHandler(OrganizationSlugTakenException.class)
+	public ProblemDetail handleSlugTaken(OrganizationSlugTakenException exception) {
+		log.info("Slug de organizacion en conflicto: slug={}", exception.getSlug());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT,
+				"El identificador de la organizacion ya esta en uso. Elija otro.");
+		problem.setTitle("Identificador de organizacion en uso");
+		problem.setType(ORGANIZATION_SLUG_TAKEN);
 		return problem;
 	}
 

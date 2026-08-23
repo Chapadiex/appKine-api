@@ -18,11 +18,16 @@ import com.akine.organization.spi.PlanGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Optional;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 /**
  * Implementacion del control de plan (RF-M01-004).
@@ -41,18 +46,65 @@ public class PlanGateService implements PlanGate {
 	private final PlanLimitRepositoryPort planLimitRepository;
 	private final PlanFeatureRepositoryPort planFeatureRepository;
 	private final PlanLimitRejectionAuditor rejectionAuditor;
+	private final TransactionTemplate altaLimitada;
 
 	public PlanGateService(
 			OrganizationRepositoryPort organizationRepository,
 			SubscriptionRepositoryPort subscriptionRepository,
 			PlanLimitRepositoryPort planLimitRepository,
 			PlanFeatureRepositoryPort planFeatureRepository,
-			PlanLimitRejectionAuditor rejectionAuditor) {
+			PlanLimitRejectionAuditor rejectionAuditor,
+			PlatformTransactionManager transactionManager) {
 		this.organizationRepository = organizationRepository;
 		this.subscriptionRepository = subscriptionRepository;
 		this.planLimitRepository = planLimitRepository;
 		this.planFeatureRepository = planFeatureRepository;
 		this.rejectionAuditor = rejectionAuditor;
+		this.altaLimitada = altaLimitada(transactionManager);
+	}
+
+	/**
+	 * La transaccion del alta limitada: la unica del sistema con READ COMMITTED.
+	 *
+	 * <p>Es donde vive el arreglo del bug de visibilidad que se explica en
+	 * {@link PlanGate#createWithinLimit}. Se fija aca y no en la aplicacion entera porque el
+	 * unico protocolo que depende de ver lo que el bloqueo acaba de dejar pasar es este.
+	 */
+	private static TransactionTemplate altaLimitada(PlatformTransactionManager transactionManager) {
+		TransactionTemplate plantilla = new TransactionTemplate(transactionManager);
+		plantilla.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+		plantilla.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+		return plantilla;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Se rechaza de entrada si ya hay una transaccion abierta. No es purismo: al unirse a
+	 * una transaccion existente <b>Spring ignora la isolation declarada</b> —la fija quien la
+	 * abre—, asi que el alta correria en REPEATABLE READ y el conteo de abajo volveria a leer
+	 * de un snapshot anterior al bloqueo. Fallaria en silencio, dejando entrar altas de mas,
+	 * que es exactamente el bug que este metodo cierra. Mejor ruidoso.
+	 */
+	@Override
+	public <T> T createWithinLimit(
+			long organizationId,
+			LimitCode limit,
+			LongSupplier currentUsageCounter,
+			Supplier<T> creation) {
+
+		if (TransactionSynchronizationManager.isActualTransactionActive()) {
+			throw new IllegalStateException(
+					"createWithinLimit abre su propia transaccion con READ COMMITTED y no puede "
+							+ "unirse a una existente: al unirse heredaria la isolation del "
+							+ "llamador y el conteo del limite volveria a leer de un snapshot "
+							+ "viejo. Invocalo fuera de toda transaccion.");
+		}
+
+		return altaLimitada.execute(status -> {
+			evaluateCreationAndLock(organizationId, limit, currentUsageCounter);
+			return creation.get();
+		});
 	}
 
 	/**
@@ -69,11 +121,27 @@ public class PlanGateService implements PlanGate {
 	 *
 	 * <p>El orden de las lineas de abajo es la regla, no un detalle de estilo: bloquear,
 	 * <b>despues</b> contar, despues decidir.
+	 *
+	 * <p><b>Y el orden, solo, tampoco alcanza.</b> Quien lea el {@code SELECT ... FOR UPDATE}
+	 * de abajo va a suponer —como supuso el autor— que con eso el limite queda cerrado. No
+	 * queda: en REPEATABLE READ el bloqueo serializa el ACCESO y no la VISIBILIDAD. El hilo
+	 * que espera en el bloqueo entra recien cuando el otro commiteo, pero el conteo del paso 3
+	 * es una lectura consistente y lee del snapshot que fijo la primera lectura no bloqueante
+	 * de la transaccion —la del paso 1—, anterior a ese commit. Cuenta de menos y deja pasar
+	 * un alta de mas, sin error y sin rastro. Por eso la transaccion tiene que correr en READ
+	 * COMMITTED, y por eso existe {@link #createWithinLimit}, que es quien la abre asi.
 	 */
 	@Override
 	@Transactional(propagation = Propagation.MANDATORY)
 	public PlanDecision evaluateCreationAndLock(
 			long organizationId, LimitCode limit, LongSupplier currentUsageCounter) {
+
+		// 0. La isolation no se puede declarar aca: MANDATORY se une a la transaccion del
+		//    llamador y el atributo se ignora al unirse. Lo unico que se puede hacer es
+		//    verificarla y negarse ruidosamente, en vez de dejar pasar altas de mas en
+		//    silencio. Sin transaccion activa no se comprueba nada: eso ya lo cubre MANDATORY
+		//    en produccion, y en los tests unitarios este servicio corre sin proxy.
+		verificarIsolation();
 
 		// 1. La organizacion tiene que existir y estar vigente. Inexistente y de otro tenant
 		//    se responden igual: distinguirlos permitiria enumerar clientes del SaaS.
@@ -113,6 +181,37 @@ public class PlanGateService implements PlanGate {
 		}
 
 		return new PlanDecision(limit, planLimit.getLimitValue(), currentUsage, true);
+	}
+
+	/**
+	 * Exige que la transaccion en curso NO sea REPEATABLE READ.
+	 *
+	 * <p>{@code ISOLATION_DEFAULT} —que Spring representa como {@code null}— tambien se rechaza:
+	 * significa "la del motor", y en MySQL la del motor es justamente REPEATABLE READ. Adivinar
+	 * ahi seria adivinar en la direccion equivocada.
+	 *
+	 * <p><b>Lo que se lee aca es la isolation DECLARADA en la transaccion, no la real de la
+	 * conexion.</b> El dia que alguien fije READ COMMITTED en el datasource
+	 * ({@code spring.datasource.hikari.transaction-isolation}) o en el servidor, un
+	 * {@code @Transactional} corriente va a seguir declarando {@code DEFAULT} y este guard lo
+	 * va a rechazar aunque en la practica sea seguro. Es el lado en el que conviene
+	 * equivocarse: un 500 ruidoso en desarrollo contra altas de mas en produccion.
+	 */
+	private void verificarIsolation() {
+		if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+			return;
+		}
+		Integer isolation = TransactionSynchronizationManager.getCurrentTransactionIsolationLevel();
+		boolean visibilidadSuficiente = isolation != null
+				&& (isolation == TransactionDefinition.ISOLATION_READ_COMMITTED
+						|| isolation == TransactionDefinition.ISOLATION_SERIALIZABLE);
+		if (!visibilidadSuficiente) {
+			throw new IllegalStateException(
+					"La evaluacion de limite de plan exige READ COMMITTED en la transaccion que "
+							+ "la contiene: en REPEATABLE READ el conteo posterior al bloqueo lee "
+							+ "de un snapshot anterior y el limite se viola en silencio. Usa "
+							+ "PlanGate.createWithinLimit, que abre la transaccion correcta.");
+		}
 	}
 
 	/**

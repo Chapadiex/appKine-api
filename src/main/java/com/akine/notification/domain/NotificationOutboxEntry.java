@@ -1,5 +1,6 @@
 package com.akine.notification.domain;
 
+import com.akine.notification.domain.exception.InvalidOutboxTransitionException;
 import com.akine.notification.spi.NotificationType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -214,8 +215,20 @@ public class NotificationOutboxEntry extends TimestampedNotification {
 	/**
 	 * Reintento administrativo de una fila FALLIDA o AGOTADA: reinicia el contador y la
 	 * devuelve a la cola.
+	 *
+	 * <p><b>Por que hace falta el guard propio y no alcanza la maquina de estados.</b>
+	 * {@code PROCESANDO -> REINTENTABLE} es una transicion legal, porque la usa
+	 * {@link #recuperarLeaseVencido}. Sin este chequeo, un reintento administrativo sobre una
+	 * fila que un worker esta enviando en este momento la reabriria <b>y ademas le pondria el
+	 * contador de intentos en cero</b>: la notificacion se manda dos veces y pierde su unico
+	 * limite contra el bucle infinito. El guard equivalente ya vive en
+	 * {@code OutboxDispatchService}, pero una invariante de la entidad no puede depender de que
+	 * todos sus llamadores se acuerden.
 	 */
 	public void reintentarManualmente(Instant ahora) {
+		if (!estado.admiteReintentoManual()) {
+			throw new InvalidOutboxTransitionException(estado, OutboxStatus.REINTENTABLE);
+		}
 		OutboxStateMachine.assertTransitionAllowed(estado, OutboxStatus.REINTENTABLE);
 		this.estado = OutboxStatus.REINTENTABLE;
 		this.intentos = 0;

@@ -10,10 +10,12 @@ spring:
   application:
     name: akine-api
 
-  profiles:
-    # Sin perfil explicito no se arranca: evita que una config de desarrollo llegue a
-    # produccion por omision.
-    default: local
+  # NO hay `profiles.default`. Lo habia —`default: local`— y contradecia su propio comentario:
+  # arrancar sin SPRING_PROFILES_ACTIVE equivalia a arrancar en desarrollo, o sea que un
+  # despliegue al que se le olvidara la variable de entorno heredaba la configuracion comoda
+  # (incluido el secreto de firma publico de application-local.yml). El perfil de desarrollo se
+  # pide explicitamente:
+  #   ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 
   datasource:
     url: ${AKINE_DB_URL}
@@ -88,12 +90,45 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.2.0
+    version: 0.3.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
       # para el refresh token en cookie httpOnly (F1).
       allowed-origins: ${AKINE_CORS_ORIGINS:http://localhost:4200}
+    jwt:
+      # Secreto de firma del access token. SIN DEFAULT (ADR-0017): sin este valor la
+      # aplicacion NO ARRANCA. Minimo 32 bytes, por variable de entorno, jamas versionado.
+      # El valor de desarrollo —publico— vive solo en application-local.yml, asi que solo
+      # existe con un perfil de desarrollo activo.
+      secret: ${AKINE_JWT_SECRET:}
+      # Vigencia del access token. Es tambien la ventana durante la cual una cuenta recien
+      # bloqueada conserva acceso (ADR-0017 D-3): subirlo la agranda, bajarlo multiplica
+      # los refresh.
+      access-ttl: 10m
+    rate-limit:
+      # Limite de intentos sobre login, refresh, pedido de reset y reenvio de activacion.
+      # La clave es ruta + IP y NUNCA el email: un limite por cuenta seria un oraculo de
+      # existencia y tiraria abajo la uniformidad de ADR-0018.
+      #
+      # OJO: el contador vive en la memoria del proceso. Con mas de una instancia el limite
+      # se multiplica por la cantidad de instancias.
+      enabled: ${AKINE_RATE_LIMIT_ENABLED:true}
+      window: 1m
+      max-attempts: 30
+      # El alta self-service tiene su propio cupo, mucho mas chico. No es el mismo problema
+      # que el login: cada request con un email libre crea cuenta + organizacion +
+      # consultorio + suscripcion + membership, y cada request con un email ya registrado
+      # le encola un correo al buzon de la victima. Ademas es el endpoint que ADR-0018 llama
+      # "el mas facil de automatizar de todos" y en el que apoya su 202 uniforme.
+      # Registrarse es un acto unico: cinco intentos por minuto le sobran a una persona.
+      register-max-attempts: 5
+
+  identity:
+    session:
+      # Vigencia ABSOLUTA de la sesion de refresh desde el login (ADR-0017). La rotacion NO
+      # la extiende: una sesion robada no se vuelve eterna por usarla.
+      refresh-ttl: 12h
 
 logging:
   level:

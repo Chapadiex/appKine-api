@@ -57,6 +57,16 @@ public class OutboxNotificationBridge implements NotificationOutboxPort {
 		this.secureLinkVault = secureLinkVault;
 	}
 
+	/**
+	 * Sin transaccion a proposito: no escribe nada, solo valida. Exigir una transaccion aca
+	 * obligaria a los casos de uso a abrirla antes de poder rechazar un pedido invalido, que es
+	 * lo contrario de validar en el borde.
+	 */
+	@Override
+	public void validarDatosPlantilla(java.util.Map<String, String> datosPlantilla) {
+		notificationOutbox.validarDatosDeRender(datosPlantilla);
+	}
+
 	@Override
 	@Transactional(propagation = Propagation.MANDATORY)
 	public void encolar(Notificacion notificacion) {

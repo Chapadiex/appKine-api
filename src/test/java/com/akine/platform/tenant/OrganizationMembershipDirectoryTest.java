@@ -1,6 +1,7 @@
 package com.akine.platform.tenant;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
@@ -80,8 +81,8 @@ class OrganizationMembershipDirectoryTest {
 	@Test
 	@DisplayName("Sin membership en esa organizacion: vacio, y no se consulta nada mas")
 	void sin_membership() {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORGANIZACION, CUENTA))
-				.willReturn(Optional.empty());
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORGANIZACION, CUENTA))
+				.willReturn(List.of());
 
 		assertThat(resolver()).isEmpty();
 		verifyNoInteractions(consultorioRepository, organizationRepository, subscriptionRepository);
@@ -200,8 +201,8 @@ class OrganizationMembershipDirectoryTest {
 	}
 
 	private void dadaLaMembership(Membership membership) {
-		given(membershipRepository.findByOrganizationIdAndAccountIdAndActiveTrue(ORGANIZACION, CUENTA))
-				.willReturn(Optional.of(membership));
+		given(membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORGANIZACION, CUENTA))
+				.willReturn(List.of(membership));
 	}
 
 	private void dadoElConsultorioDeLaOrganizacion() {

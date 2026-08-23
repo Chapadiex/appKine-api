@@ -2,6 +2,8 @@ package com.akine.identity.infrastructure;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import com.akine.identity.domain.SessionSettings;
+
 import java.time.Duration;
 
 /**
@@ -24,6 +26,8 @@ import java.time.Duration;
  *       memory-kb: 19456
  *       iterations: 2
  *       parallelism: 1
+ *     session:
+ *       refresh-ttl: 12h
  * </pre>
  *
  * <p>Ningun secreto vive aca. El secreto de firma del access token entra por variable de
@@ -34,6 +38,7 @@ public class IdentityProperties {
 
 	private final Links links = new Links();
 	private final Hashing hashing = new Hashing();
+	private final Session session = new Session();
 
 	public Links getLinks() {
 		return links;
@@ -41,6 +46,36 @@ public class IdentityProperties {
 
 	public Hashing getHashing() {
 		return hashing;
+	}
+
+	public Session getSession() {
+		return session;
+	}
+
+	/**
+	 * Vigencia de la sesion de refresh (ADR-0017).
+	 *
+	 * <p>El TTL del access token NO vive aca: lo administra {@code JwtEmitter.JwtProperties}
+	 * bajo {@code akine.security.jwt}, junto al secreto de firma. Duplicarlo dejaria dos fuentes
+	 * de verdad para el mismo numero.
+	 */
+	public static class Session {
+
+		/**
+		 * Vigencia ABSOLUTA del refresh desde el login. La rotacion no la extiende.
+		 *
+		 * <p>Subirla convierte el robo de una cookie en una persistencia mas larga; bajarla
+		 * corta la jornada de trabajo antes. Doce horas es la jornada de un consultorio.
+		 */
+		private Duration refreshTtl = SessionSettings.REFRESH_TTL_POR_DEFECTO;
+
+		public Duration getRefreshTtl() {
+			return refreshTtl;
+		}
+
+		public void setRefreshTtl(Duration refreshTtl) {
+			this.refreshTtl = refreshTtl;
+		}
 	}
 
 	/** Base publica y rutas del frontend a las que apuntan los enlaces de correo. */

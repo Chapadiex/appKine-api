@@ -2,6 +2,7 @@ package com.akine.notification.infrastructure;
 
 import com.akine.notification.domain.OutboxWorkerSettings;
 import com.akine.notification.domain.port.EmailSender;
+import com.akine.notification.domain.port.JitterSource;
 import com.akine.notification.domain.port.NotificationClock;
 import com.akine.notification.spi.SecureLinkResolver;
 import org.slf4j.Logger;
@@ -14,6 +15,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Cableado del modulo {@code notification}.
@@ -32,6 +34,19 @@ public class NotificationConfig {
 	@Bean
 	public NotificationClock notificationClock() {
 		return Instant::now;
+	}
+
+	/**
+	 * Jitter real. Los tests inyectan un valor fijo y afirman la espera exacta de cada intento.
+	 *
+	 * <p>{@code ThreadLocalRandom} y no {@code Random}: el worker corre en el pool del
+	 * scheduler y una instancia compartida de {@code Random} serializa a todos sus hilos sobre
+	 * el mismo estado atomico. Aca no hace falta calidad criptografica —es la dispersion de una
+	 * espera, no un token—, asi que la version por hilo es la correcta.
+	 */
+	@Bean
+	public JitterSource jitterSource() {
+		return () -> ThreadLocalRandom.current().nextDouble();
 	}
 
 	@Bean

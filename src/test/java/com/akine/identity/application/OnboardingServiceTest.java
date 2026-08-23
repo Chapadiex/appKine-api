@@ -171,7 +171,12 @@ class OnboardingServiceTest {
 		// La cuenta existente no se toca, ni siquiera un contador.
 		verify(cuentaRepository, never()).saveAndFlush(any());
 		verify(cuentaRepository, never()).save(any());
-		verifyNoInteractions(organizationProvisioning, tokenGenerator);
+		// Del spi de organization se usa SOLO la validacion, que corre antes de mirar el email
+		// y es lo que hace que la respuesta sea la misma exista o no la cuenta (ADR-0018). Lo
+		// que no puede ocurrir es que se provisione un tenant.
+		verify(organizationProvisioning).validateTenantRequest(any(), any());
+		verify(organizationProvisioning, never()).provision(any());
+		verifyNoInteractions(tokenGenerator);
 		// Y no se audita: auditar aca construiria el indice de direcciones registradas que el
 		// 202 uniforme evita, en la tabla que mas gente consulta.
 		verifyNoInteractions(auditTrail);

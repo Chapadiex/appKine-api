@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
@@ -23,7 +24,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p><b>Requiere Docker corriendo.</b> Se ejecuta con {@code ./mvnw verify}, no con
  * {@code ./mvnw test}.
  */
+// Perfil de desarrollo explicito: desde el arreglo del secreto de firma, un contexto sin
+// perfil de desarrollo activo y sin AKINE_JWT_SECRET NO ARRANCA — que es exactamente el
+// comportamiento que se buscaba y el que fija ArranqueSinSecretoTest.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("local")
 @AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration.class)
 class AkineApiApplicationIT {

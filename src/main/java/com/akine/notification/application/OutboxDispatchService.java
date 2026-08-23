@@ -4,6 +4,7 @@ import com.akine.notification.domain.ErrorSanitizer;
 import com.akine.notification.domain.NotificationOutboxEntry;
 import com.akine.notification.domain.OutboxStatus;
 import com.akine.notification.domain.OutboxWorkerSettings;
+import com.akine.notification.domain.port.JitterSource;
 import com.akine.notification.domain.port.NotificationClock;
 import com.akine.notification.domain.port.NotificationOutboxRepositoryPort;
 import org.slf4j.Logger;
@@ -17,7 +18,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Las transacciones cortas del worker: reclamar, registrar el resultado, recuperar leases.
@@ -44,14 +44,17 @@ public class OutboxDispatchService {
 	private final NotificationOutboxRepositoryPort repository;
 	private final NotificationClock clock;
 	private final OutboxWorkerSettings settings;
+	private final JitterSource jitter;
 
 	public OutboxDispatchService(
 			NotificationOutboxRepositoryPort repository,
 			NotificationClock clock,
-			OutboxWorkerSettings settings) {
+			OutboxWorkerSettings settings,
+			JitterSource jitter) {
 		this.repository = repository;
 		this.clock = clock;
 		this.settings = settings;
+		this.jitter = jitter;
 	}
 
 	/**
@@ -129,7 +132,7 @@ public class OutboxDispatchService {
 		enProceso(id).ifPresent(entry -> {
 			Instant ahora = clock.now();
 			Optional<Duration> espera = settings.backoff()
-					.proximaEspera(entry.getIntentos() + 1, ThreadLocalRandom.current().nextDouble());
+					.proximaEspera(entry.getIntentos() + 1, jitter.next());
 			OutboxStatus resultado = entry.registrarFalloTransitorio(ahora, motivo, espera);
 			repository.save(entry);
 			if (resultado == OutboxStatus.AGOTADA) {

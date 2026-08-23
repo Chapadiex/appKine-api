@@ -103,7 +103,7 @@ public class SubscriptionService {
 			Long actorAccountId) {
 
 		organizationService.requireActive(organizationId);
-		Subscription subscription = require(organizationId);
+		Subscription subscription = requireForUpdate(organizationId);
 
 		if (expectedStatus != null && subscription.getStatus() != expectedStatus) {
 			throw new OptimisticLockingFailureException(
@@ -178,7 +178,7 @@ public class SubscriptionService {
 
 		organizationService.requireActive(organizationId);
 		Plan nuevoPlan = planCatalogService.requireContractable(planCode);
-		Subscription subscription = require(organizationId);
+		Subscription subscription = requireForUpdate(organizationId);
 
 		if (subscription.getVersion() != expectedVersion) {
 			throw new OptimisticLockingFailureException(
@@ -265,6 +265,33 @@ public class SubscriptionService {
 
 	private Subscription require(long organizationId) {
 		return subscriptionRepository.findByOrganizationId(organizationId)
+				.orElseThrow(() -> new OrganizationNotFoundException(organizationId));
+	}
+
+	/**
+	 * Lee la suscripcion para MODIFICARLA, bloqueando la fila desde el principio.
+	 *
+	 * <p><b>No es una precaucion: sin esto las dos escrituras se deadlockean.</b> Una
+	 * transaccion que lee la suscripcion sin bloqueo, la marca sucia y despues inserta la fila
+	 * de historico toma primero un bloqueo COMPARTIDO sobre la suscripcion —se lo pide la FK
+	 * del hijo— y recien al commitear pide el EXCLUSIVO para su {@code UPDATE} diferido. Dos
+	 * transacciones haciendo eso a la vez se piden S -&gt; X mutuamente: InnoDB detecta el
+	 * deadlock y mata a una con {@code CannotAcquireLockException}, que la capa HTTP no puede
+	 * distinguir de una caida y responde 500 donde el contrato promete 409.
+	 *
+	 * <p>Tomando el exclusivo en la primera lectura no hay escalada posible: la segunda
+	 * transaccion espera ahi y arranca cuando la primera ya commiteo. Y de paso la comparacion
+	 * de {@code expectedStatus} deja de ser una carrera: se decide sobre el estado bloqueado,
+	 * no sobre uno que puede cambiar entre el {@code SELECT} y el {@code UPDATE}.
+	 *
+	 * <p><b>Orden de bloqueo, que es lo unico que puede reintroducir un deadlock:</b> todos los
+	 * caminos que bloquean acá y en {@link PlanGateService} hacen lo mismo —lectura sin bloqueo
+	 * de {@code organization}, despues bloqueo exclusivo de {@code subscription}, despues las
+	 * tablas hijas—. Una sola fila bloqueada por transaccion y siempre la misma primero: no hay
+	 * ciclo que formar. Quien agregue un bloqueo nuevo lo toma DESPUES de este, nunca antes.
+	 */
+	private Subscription requireForUpdate(long organizationId) {
+		return subscriptionRepository.findByOrganizationIdForUpdate(organizationId)
 				.orElseThrow(() -> new OrganizationNotFoundException(organizationId));
 	}
 

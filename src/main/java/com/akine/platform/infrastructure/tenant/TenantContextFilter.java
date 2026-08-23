@@ -107,16 +107,28 @@ public class TenantContextFilter extends OncePerRequestFilter {
 
 	/**
 	 * Prefijos exceptuados. Actuator y la documentacion del contrato son infraestructura, no
-	 * negocio. Login y refresh todavia no existen: los publica 01.02 y quedan declarados aca
-	 * para que el dia que aparezcan no haya que acordarse de exceptuarlos —un login que exige
-	 * contexto no puede funcionar nunca.
+	 * negocio.
+	 *
+	 * <p><b>{@code /api/v1/auth} completo, y no solo login y refresh.</b> 01.02 declaraba esos
+	 * dos previendo la etapa; al publicarse los controllers quedo claro que el prefijo entero
+	 * tiene que estar. Los ocho endpoints publicos de identidad no traen principal y pasarian
+	 * igual, pero los otros dos si lo traen y <b>se romperian</b>:
+	 * {@code POST /api/v1/auth/context} se llama con un token {@code pre_context} —que por
+	 * definicion no lleva organizacion— y este filtro lo cortaria con
+	 * {@code 403 missing-tenant-context} justamente en el request con el que la persona iba a
+	 * elegir su contexto. Es el mismo bucle que la excepcion de {@code /api/v1/me/contexts}
+	 * evita, una vuelta mas adelante. {@code DELETE /api/v1/auth/sessions} tiene el mismo
+	 * problema: echarse a uno mismo de todos los dispositivos no puede depender de haber
+	 * elegido donde trabajar.
+	 *
+	 * <p>Exceptuar del CONTEXTO no es exceptuar de la AUTENTICACION: esos dos endpoints siguen
+	 * exigiendo un principal, porque no estan en la lista publica de {@code SecurityConfig}.
 	 */
 	private static final List<String> PREFIJOS_EXCEPTUADOS = List.of(
 			"/actuator",
 			"/v3/api-docs",
 			"/swagger-ui",
-			"/api/v1/auth/login",
-			"/api/v1/auth/refresh");
+			"/api/v1/auth");
 
 	/** Metodos sin efecto de escritura: siempre permitidos con la suscripcion suspendida. */
 	private static final List<String> METODOS_DE_LECTURA = List.of("GET", "HEAD", "OPTIONS", "TRACE");

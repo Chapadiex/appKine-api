@@ -91,9 +91,9 @@ public class AccountAdminService {
 	 *         no esta en un estado desde el que se pueda bloquear
 	 */
 	@Transactional
-	public Cuenta bloquear(Actor actor, long cuentaId, String motivo) {
-		return transicionar(actor, cuentaId, EstadoCuenta.BLOQUEADA, motivo,
-				IdentityAuditEvents.CUENTA_BLOQUEADA, MotivoRevocacion.BLOQUEO);
+	public AccountView bloquear(Actor actor, long cuentaId, String motivo) {
+		return AccountView.de(transicionar(actor, cuentaId, EstadoCuenta.BLOQUEADA, motivo,
+				IdentityAuditEvents.CUENTA_BLOQUEADA, MotivoRevocacion.BLOQUEO));
 	}
 
 	/**
@@ -108,9 +108,9 @@ public class AccountAdminService {
 	 * desbloquearon" es una pregunta que aparece en las mismas revisiones que la otra.
 	 */
 	@Transactional
-	public Cuenta desbloquear(Actor actor, long cuentaId, String motivo) {
-		return transicionar(actor, cuentaId, EstadoCuenta.ACTIVA, motivo,
-				IdentityAuditEvents.CUENTA_DESBLOQUEADA, MotivoRevocacion.BLOQUEO);
+	public AccountView desbloquear(Actor actor, long cuentaId, String motivo) {
+		return AccountView.de(transicionar(actor, cuentaId, EstadoCuenta.ACTIVA, motivo,
+				IdentityAuditEvents.CUENTA_DESBLOQUEADA, MotivoRevocacion.BLOQUEO));
 	}
 
 	/**
@@ -120,9 +120,9 @@ public class AccountAdminService {
 	 * legibles (RN-M02-004, ADR-0004)—: queda {@code active = 0} con {@code deleted_at}.
 	 */
 	@Transactional
-	public Cuenta desactivar(Actor actor, long cuentaId, String motivo) {
-		return transicionar(actor, cuentaId, EstadoCuenta.DESACTIVADA, motivo,
-				IdentityAuditEvents.CUENTA_DESACTIVADA, MotivoRevocacion.DESACTIVACION);
+	public AccountView desactivar(Actor actor, long cuentaId, String motivo) {
+		return AccountView.de(transicionar(actor, cuentaId, EstadoCuenta.DESACTIVADA, motivo,
+				IdentityAuditEvents.CUENTA_DESACTIVADA, MotivoRevocacion.DESACTIVACION));
 	}
 
 	/**

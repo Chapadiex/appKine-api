@@ -9,12 +9,23 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.ErrorResponse;
+import org.springframework.web.ErrorResponseException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Traduccion de excepciones a respuestas de error estables (RFC 7807 Problem Details).
@@ -98,6 +109,108 @@ public class GlobalExceptionHandler {
 		problem.setTitle("Header obligatorio ausente");
 		problem.setType(VALIDATION_ERROR);
 		return problem;
+	}
+
+	/**
+	 * Un valor de la URL o de la query no tiene el tipo que declara el contrato.
+	 *
+	 * <p>El caso tipico es un {@code {orgId}} que no es un numero. Sin este handler la
+	 * excepcion caia en la red de contencion de {@code Exception} y un error del cliente se
+	 * devolvia como <b>500</b>: contradice el contrato —que en esas rutas solo declara 200, 403
+	 * y 404— y despierta a operaciones por una URL mal tipeada.
+	 *
+	 * <p>Se nombra el parametro pero <b>no se repite el valor recibido</b>: viene del atacante y
+	 * reflejarlo en la respuesta es el vector clasico de XSS reflejado.
+	 */
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ProblemDetail handleTypeMismatch(MethodArgumentTypeMismatchException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST,
+				"El parametro '" + exception.getName() + "' no tiene el formato esperado");
+		problem.setTitle("Parametro invalido");
+		problem.setType(VALIDATION_ERROR);
+		return problem;
+	}
+
+	/**
+	 * El cuerpo del request no se puede leer: JSON sintacticamente roto, un tipo que no
+	 * corresponde —{@code "organizationId": "hola"} donde se espera un numero—, un cuerpo
+	 * vacio donde el contrato exige uno.
+	 *
+	 * <p>Sin este handler la excepcion caia en la red de contencion de {@code Exception} y un
+	 * JSON mal armado por el cliente se devolvia como <b>500</b>. No filtraba internals, pero
+	 * despertaba a operaciones por un error que no es del servidor y contradecia el contrato,
+	 * que en esas rutas no declara ningun 500.
+	 *
+	 * <p><b>El mensaje de la excepcion no se propaga.</b> Trae el fragmento del cuerpo recibido,
+	 * la posicion del caracter y el nombre de la clase Java que se estaba deserializando: lo
+	 * primero viene del atacante y reflejarlo es XSS reflejado, lo ultimo es un mapa del modelo
+	 * interno. El detalle util va al log.
+	 */
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ProblemDetail handleUnreadableBody(HttpMessageNotReadableException exception) {
+		log.info("Cuerpo del request ilegible: {}", exception.getMessage());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST,
+				"El cuerpo de la solicitud no se puede interpretar. Verifique que sea JSON "
+						+ "valido y que cada campo tenga el tipo que declara el contrato.");
+		problem.setTitle("Cuerpo invalido");
+		problem.setType(VALIDATION_ERROR);
+		return problem;
+	}
+
+	/**
+	 * Todo lo que Spring MVC ya sabe clasificar por si mismo: {@code Content-Type} no soportado
+	 * (415), metodo no permitido en esa ruta (405), {@code Accept} que no se puede satisfacer
+	 * (406), ruta inexistente (404), parametro de query obligatorio ausente (400)...
+	 *
+	 * <p>Se manejan juntos porque todos implementan {@link ErrorResponse} y <b>ya traen el
+	 * estado correcto</b>: lo unico que faltaba era no dejar que la red de contencion de
+	 * {@code Exception} los convirtiera en 500. Un {@code Content-Type: text/plain} contra un
+	 * endpoint JSON respondia 500 en vez de 415, y eso es un error del cliente disfrazado de
+	 * incidente de produccion.
+	 *
+	 * <p>Se toma el <b>estado</b> de la excepcion y nada mas: el cuerpo se arma aca, con un
+	 * texto fijo por familia de estado. El {@code ProblemDetail} que trae Spring incluye lo que
+	 * llego en el request —el {@code Content-Type} rechazado, el metodo usado, la ruta— y esa
+	 * es informacion del atacante que no se refleja. Los headers que si son parte del contrato,
+	 * como {@code Allow} o {@code Accept}, los sigue poniendo Spring en la respuesta.
+	 *
+	 * <p>Los handlers especificos de arriba ganan sobre este aunque su excepcion tambien
+	 * implemente {@code ErrorResponse}: Spring resuelve por cercania en la jerarquia de clases y
+	 * una coincidencia por interfaz es siempre la mas lejana.
+	 */
+	@ExceptionHandler({
+			HttpMediaTypeNotSupportedException.class,
+			HttpMediaTypeNotAcceptableException.class,
+			HttpRequestMethodNotSupportedException.class,
+			MissingServletRequestParameterException.class,
+			NoResourceFoundException.class,
+			ErrorResponseException.class})
+	public ResponseEntity<ProblemDetail> handleProtocolo(Exception exception) {
+		// Todas las declaradas arriba implementan ErrorResponse; el parametro es Exception
+		// porque @ExceptionHandler solo admite tipos que sean Throwable, y ErrorResponse es
+		// una interfaz que no lo es.
+		ErrorResponse respuesta = (ErrorResponse) exception;
+		HttpStatusCode status = respuesta.getStatusCode();
+		log.info("Request rechazado por el protocolo: status={}", status.value());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detalleDe(status));
+		problem.setTitle("Solicitud no procesable");
+		problem.setType(status.is4xxClientError() ? VALIDATION_ERROR : INTERNAL_ERROR);
+		return ResponseEntity.status(status).headers(respuesta.getHeaders()).body(problem);
+	}
+
+	/** Texto fijo por caso. Nunca incluye nada de lo que llego en el request. */
+	private String detalleDe(HttpStatusCode status) {
+		return switch (status.value()) {
+			case 404 -> "El recurso solicitado no existe o no esta disponible.";
+			case 405 -> "El metodo HTTP no esta permitido en esta ruta.";
+			case 406 -> "No se puede responder en ninguno de los formatos aceptados.";
+			case 415 -> "El tipo de contenido enviado no es compatible con esta operacion.";
+			default -> "La solicitud no se puede procesar tal como fue enviada.";
+		};
 	}
 
 	/**

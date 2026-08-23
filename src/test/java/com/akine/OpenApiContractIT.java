@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,7 +42,12 @@ import static org.assertj.core.api.Assertions.fail;
  *
  * <p><b>Requiere Docker corriendo.</b>
  */
+// El perfil de desarrollo es OBLIGATORIO aca, y por dos motivos que son el mismo arreglo:
+// el secreto de firma ya no tiene default —sin un perfil de desarrollo activo la aplicacion no
+// arranca— y la documentacion del contrato solo se publica en desarrollo, asi que sin el este
+// test recibiria un 401 al pedir /v3/api-docs.yaml. Ver PerfilesDeEjecucion.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("local")
 @AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration.class)
 class OpenApiContractIT {

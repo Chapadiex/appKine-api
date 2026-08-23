@@ -1,6 +1,7 @@
 package com.akine.organization.spi;
 
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 /**
  * Control de limites y funcionalidades del plan contratado (RF-M01-004).
@@ -55,6 +56,54 @@ import java.util.function.LongSupplier;
  * ({@code BUSINESS_RULE_VIOLATION}) y no {@code 403}.
  */
 public interface PlanGate {
+
+	/**
+	 * Ejecuta un alta limitada de punta a punta: abre la transaccion, evalua el limite y, si
+	 * entra, corre la creacion del consumidor. <b>Es la forma recomendada de usar el gate.</b>
+	 *
+	 * <h2>Por que el gate abre la transaccion y no el consumidor</h2>
+	 *
+	 * <p>Porque el bloqueo pesimista, solo, no alcanza, y de que alcance depende un atributo
+	 * que el gate no puede fijar desde adentro: la <b>isolation</b>.
+	 *
+	 * <p>En REPEATABLE READ —el default de InnoDB— la primera lectura no bloqueante de la
+	 * transaccion fija su snapshot. El {@code SELECT ... FOR UPDATE} posterior serializa el
+	 * ACCESO: el segundo hilo espera de verdad. Pero cuando por fin entra y cuenta, el conteo
+	 * es una lectura consistente y sigue viendo el snapshot viejo, anterior al commit del
+	 * primero. Cuenta de menos, decide que entra, y el limite se viola en silencio. El bloqueo
+	 * serializa el acceso, no la VISIBILIDAD.
+	 *
+	 * <p>Con READ COMMITTED cada sentencia toma su propia vista, asi que el conteo posterior al
+	 * bloqueo ve lo que el bloqueo acaba de dejar pasar, y el protocolo funciona como esta
+	 * escrito.
+	 *
+	 * <p>La isolation la fija <b>quien abre la transaccion</b>: anotarla en el metodo del gate
+	 * no serviria de nada, porque {@code MANDATORY} se une a una transaccion ya abierta y al
+	 * unirse el atributo se ignora. Y subirla para toda la aplicacion es una decision mucho
+	 * mas grande que la que este problema justifica. Por eso el gate ofrece este metodo: abre
+	 * la transaccion el mismo, con READ COMMITTED, y el alcance del cambio es exactamente el
+	 * alta limitada y nada mas.
+	 *
+	 * @param organizationId      tenant del alta
+	 * @param limit               limite a evaluar
+	 * @param currentUsageCounter cuenta los recursos ACTIVOS del tenant, dentro de la
+	 *                            transaccion y ya con el bloqueo tomado
+	 * @param creation            crea el recurso. Corre DENTRO de la misma transaccion y
+	 *                            despues de la decision; lo que devuelva se devuelve.
+	 *                            <b>No puede delegar la escritura en un metodo
+	 *                            {@code REQUIRES_NEW}:</b> eso la sacaria de esta transaccion
+	 *                            y por lo tanto de la proteccion del bloqueo, que es lo unico
+	 *                            que el gate no puede impedir desde adentro
+	 * @throws IllegalStateException si ya hay una transaccion abierta: unirse a ella heredaria
+	 *         su isolation y volveria a abrir la fuga que este metodo cierra
+	 * @throws com.akine.organization.domain.exception.PlanLimitExceededException si el alta
+	 *         excederia el limite (409)
+	 */
+	<T> T createWithinLimit(
+			long organizationId,
+			LimitCode limit,
+			LongSupplier currentUsageCounter,
+			Supplier<T> creation);
 
 	/**
 	 * Bloquea la suscripcion, cuenta el uso y decide si un alta mas entra.

@@ -61,9 +61,15 @@ class SubscriptionServiceTest {
 	@InjectMocks
 	private SubscriptionService subscriptionService;
 
+	/**
+	 * Toda transicion lee la suscripcion CON BLOQUEO: es lo que evita el deadlock S -&gt; X
+	 * entre el UPDATE diferido y el INSERT del historico, y lo que hace que la comparacion de
+	 * {@code expectedStatus} no sea una carrera. Si alguien vuelve a la lectura sin bloqueo,
+	 * estos tests fallan y ahi esta el aviso.
+	 */
 	private void tenantVigenteCon(Subscription subscription) {
 		given(organizationService.requireActive(ORG_ID)).willReturn(Fixtures.organizacion());
-		given(subscriptionRepository.findByOrganizationId(ORG_ID))
+		given(subscriptionRepository.findByOrganizationIdForUpdate(ORG_ID))
 				.willReturn(Optional.of(subscription));
 	}
 

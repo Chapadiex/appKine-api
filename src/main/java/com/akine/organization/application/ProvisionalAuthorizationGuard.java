@@ -1,6 +1,7 @@
 package com.akine.organization.application;
 
 import com.akine.organization.domain.Membership;
+import com.akine.organization.domain.MembershipSelection;
 import com.akine.organization.domain.RoleCode;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.organization.domain.port.MembershipRepositoryPort;
@@ -74,12 +75,24 @@ public class ProvisionalAuthorizationGuard {
 	 * Exige administrar la organizacion pedida.
 	 *
 	 * <p>{@code PLATFORM_ADMIN} pasa sin membership: administra la plataforma entera. Para
-	 * cualquier otro, las tres condiciones son necesarias — organizacion del contexto ==
-	 * organizacion pedida, membership vigente, rol {@code ORG_ADMIN}.
+	 * cualquier otro, las cuatro condiciones son necesarias — organizacion del contexto ==
+	 * organizacion pedida, membership vigente, <b>de alcance organizacion</b>, y rol
+	 * {@code ORG_ADMIN}.
+	 *
+	 * <p><b>El alcance es la condicion nueva y es una decision de seguridad.</b> Desde V10 una
+	 * cuenta puede tener varias memberships en la misma organizacion, y esto autoriza sobre la
+	 * organizacion ENTERA: editarla, mover su suscripcion. Una membership acotada a un
+	 * consultorio no puede habilitar mas alla de ese consultorio, asi que un {@code ORG_ADMIN}
+	 * de una sola sede NO administra el tenant. Aceptarlo seria una escalada de privilegio que
+	 * aparece sola el dia que 01.03 empiece a escribir memberships por sede. Hoy no cambia
+	 * ningun comportamiento: la unica membership que el sistema escribe —la del fundador— nace
+	 * con {@code consultorio_id = null}.
 	 *
 	 * @param contextOrganizationId organizacion del contexto ya validado del request, o
 	 *                              {@code null} si el request no trae contexto
-	 * @throws AccessDeniedException si no administra esa organizacion (403)
+	 * @throws AccessDeniedException         si no administra esa organizacion, o si el request
+	 *                                       no trae contexto validado (403)
+	 * @throws OrganizationNotFoundException si la organizacion pedida es de otro tenant (404)
 	 */
 	@Transactional(readOnly = true)
 	public void requireOrgAdmin(
@@ -90,8 +103,9 @@ public class ProvisionalAuthorizationGuard {
 		}
 		requireSameContext(accountId, organizationId, contextOrganizationId);
 
-		Optional<Membership> membership = membershipRepository
-				.findByOrganizationIdAndAccountIdAndActiveTrue(organizationId, accountId)
+		Optional<Membership> membership = MembershipSelection.organizationScoped(
+						membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(
+								organizationId, accountId))
 				.filter(m -> m.isValidAt(Instant.now()))
 				.filter(m -> m.getRoleCode() == RoleCode.ORG_ADMIN);
 
@@ -126,12 +140,31 @@ public class ProvisionalAuthorizationGuard {
 		}
 	}
 
+	/**
+	 * Exige que la organizacion pedida sea la del contexto ya validado del request.
+	 *
+	 * <p><b>Son dos rechazos distintos y no se responden igual.</b> Sin contexto activo el
+	 * actor todavia no eligio donde trabaja: es un 403 que el frontend traduce en "elegi un
+	 * consultorio", y por eso nunca puede ser un 401 —el interceptor borraria el token y
+	 * empezaria un bucle de login—. Con un contexto que no es el de la organizacion pedida, en
+	 * cambio, se esta preguntando por un tenant ajeno: eso es un 404, porque un 403 confirmaria
+	 * que esa organizacion existe y alcanzaria con probar ids consecutivos para enumerar los
+	 * clientes del SaaS.
+	 *
+	 * @throws AccessDeniedException        si el request no trae contexto validado (403)
+	 * @throws OrganizationNotFoundException si el contexto es de otra organizacion (404)
+	 */
 	private void requireSameContext(
 			long accountId, long organizationId, Long contextOrganizationId) {
-		if (contextOrganizationId == null || contextOrganizationId != organizationId) {
+		if (contextOrganizationId == null) {
+			log.info("Request sin contexto validado sobre una organizacion: "
+					+ "accountId={} organizationId={}", accountId, organizationId);
+			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
+		}
+		if (contextOrganizationId != organizationId) {
 			log.info("Contexto del request distinto de la organizacion pedida: "
 					+ "accountId={} organizationId={}", accountId, organizationId);
-			throw new AccessDeniedException("La organizacion pedida no es la del contexto activo");
+			throw new OrganizationNotFoundException(organizationId);
 		}
 	}
 }

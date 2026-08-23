@@ -72,9 +72,21 @@ class SubscriptionPlanChangeTest {
 	@InjectMocks
 	private SubscriptionService subscriptionService;
 
+	/** Para las LECTURAS: {@code find} y {@code history} no bloquean nada. */
 	private void tenantVigenteCon(Subscription subscription) {
 		given(organizationService.requireActive(ORG_ID)).willReturn(Fixtures.organizacion());
 		given(subscriptionRepository.findByOrganizationId(ORG_ID))
+				.willReturn(Optional.of(subscription));
+	}
+
+	/**
+	 * Para las ESCRITURAS: {@code changePlan} lee la suscripcion con bloqueo exclusivo, igual
+	 * que {@code transition}, para no escalar de compartido a exclusivo en el commit y
+	 * deadlockearse contra otra escritura del mismo tenant.
+	 */
+	private void tenantVigenteParaEscribirCon(Subscription subscription) {
+		given(organizationService.requireActive(ORG_ID)).willReturn(Fixtures.organizacion());
+		given(subscriptionRepository.findByOrganizationIdForUpdate(ORG_ID))
 				.willReturn(Optional.of(subscription));
 	}
 
@@ -93,7 +105,7 @@ class SubscriptionPlanChangeTest {
 	@DisplayName("Cambiar de plan persiste el plan nuevo, agrega historico y audita")
 	void cambiar_de_plan_persiste_y_audita() {
 		Subscription subscription = Fixtures.suscripcionActiva(PLAN_BASICO_ID);
-		tenantVigenteCon(subscription);
+		tenantVigenteParaEscribirCon(subscription);
 		planContratable("PRO", PLAN_PRO_ID);
 		planLegible(PLAN_BASICO_ID, "BASICO");
 		planLegible(PLAN_PRO_ID, "PRO");
@@ -132,7 +144,7 @@ class SubscriptionPlanChangeTest {
 	@DisplayName("Un downgrade que ya excede un limite se aplica igual y devuelve el aviso")
 	void un_downgrade_excedido_avisa_pero_no_rechaza() {
 		Subscription subscription = Fixtures.suscripcionActiva(PLAN_PRO_ID);
-		tenantVigenteCon(subscription);
+		tenantVigenteParaEscribirCon(subscription);
 		planContratable("BASICO", PLAN_BASICO_ID);
 		planLegible(PLAN_PRO_ID, "PRO");
 		planLegible(PLAN_BASICO_ID, "BASICO");
@@ -160,7 +172,7 @@ class SubscriptionPlanChangeTest {
 	@DisplayName("Cambiar al plan que ya estaba contratado no genera historico ni auditoria")
 	void cambiar_al_mismo_plan_no_tiene_efecto() {
 		Subscription subscription = Fixtures.suscripcionActiva(PLAN_BASICO_ID);
-		tenantVigenteCon(subscription);
+		tenantVigenteParaEscribirCon(subscription);
 		planContratable("BASICO", PLAN_BASICO_ID);
 		planLegible(PLAN_BASICO_ID, "BASICO");
 		given(planCatalogService.limitsOf(PLAN_BASICO_ID)).willReturn(List.of());
@@ -177,7 +189,7 @@ class SubscriptionPlanChangeTest {
 	@DisplayName("Cambiar de plan con una version desactualizada es conflicto y no persiste nada")
 	void version_vieja_es_conflicto() {
 		Subscription subscription = Fixtures.suscripcionActiva(PLAN_BASICO_ID);
-		tenantVigenteCon(subscription);
+		tenantVigenteParaEscribirCon(subscription);
 		planContratable("PRO", PLAN_PRO_ID);
 
 		assertThatThrownBy(() -> subscriptionService.changePlan(ORG_ID, "PRO", 9L, ACCOUNT_ID))
@@ -193,7 +205,7 @@ class SubscriptionPlanChangeTest {
 	void suspendida_no_cambia_de_plan() {
 		Subscription subscription =
 				Fixtures.suscripcionEn(PLAN_BASICO_ID, SubscriptionStatus.SUSPENDIDA);
-		tenantVigenteCon(subscription);
+		tenantVigenteParaEscribirCon(subscription);
 		planContratable("PRO", PLAN_PRO_ID);
 		planLegible(PLAN_BASICO_ID, "BASICO");
 

@@ -38,6 +38,47 @@ package com.akine.organization.spi;
 public interface InitialOrganizationProvisioning {
 
 	/**
+	 * Valida lo que este modulo sabe del pedido, <b>sin escribir nada</b>.
+	 *
+	 * <h2>Por que existe: el oraculo de existencia de cuentas por {@code planCode}</h2>
+	 *
+	 * <p>El registro self-service tiene dos caminos: si el email esta libre crea la cuenta y
+	 * llama a {@link #provision}, y si ya tiene cuenta no crea nada y encola un aviso. Todo lo
+	 * que valide este modulo lo valida SOLO el primer camino. Con eso, un {@code planCode}
+	 * inexistente respondia <b>404 si el email estaba libre y 202 si ya existia</b>: un unico
+	 * request publico, sin autenticacion y sin depender de tiempos, convertido en verificador
+	 * de direcciones de correo. Es exactamente lo que ADR-0018 existe para cerrar.
+	 *
+	 * <p>La solucion no es duplicar la validacion en el camino del duplicado —volveria a
+	 * divergir a la primera modificacion— sino <b>sacarla de los dos</b>: el llamador invoca
+	 * esto ANTES de mirar el email. Asi un plan invalido responde igual exista o no la cuenta
+	 * (el mismo 404) y un plan valido tambien (el mismo 202). Las dos ramas terminan en el
+	 * mismo estado y el mismo cuerpo para cualquier combinacion de {@code planCode} y
+	 * {@code organizationSlug}.
+	 *
+	 * <p>El orden importa y es al reves de lo intuitivo: validar DESPUES de mirar el email
+	 * —solo cuando hace falta— es lo que produce la fuga, porque quien manda un plan valido ve
+	 * un camino y quien manda uno invalido ve dos.
+	 *
+	 * <p>Es idempotente y no tiene efectos: se puede invocar tantas veces como haga falta.
+	 *
+	 * <p>Recibe los dos campos sueltos y no un {@link InitialOrganizationCommand} porque en el
+	 * momento en que hay que llamarlo <b>todavia no existe la cuenta</b> —justamente, se
+	 * valida antes de decidir si se crea— y el comando exige un {@code accountId} valido.
+	 * Fabricar uno falso para poder validar seria peor que pasar dos strings.
+	 *
+	 * @param planCode plan pedido, o {@code null} para el de defecto
+	 *                 ({@link InitialOrganizationCommand#PLAN_POR_DEFECTO})
+	 * @param organizationSlug slug explicito, o {@code null} si se va a derivar del nombre
+	 * @throws com.akine.organization.application.PlanNotFoundException si el plan no existe o
+	 *         ya no es contratable (404)
+	 * @throws com.akine.organization.domain.exception.OrganizationSlugTakenException si el slug
+	 *         explicito ya lo usa otro tenant (409). Solo se comprueba cuando el llamador
+	 *         manda uno: cuando se deriva del nombre, la colision se resuelve con sufijo
+	 */
+	void validateTenantRequest(String planCode, String organizationSlug);
+
+	/**
 	 * Crea organizacion + suscripcion + primer consultorio + membership del propietario.
 	 *
 	 * <p>La membership nace con {@code ORG_ADMIN} e {@code is_founder = true} (T-5). El rol
@@ -48,6 +89,11 @@ public interface InitialOrganizationProvisioning {
 	 * @return ids creados, con {@code created} indicando si esta invocacion los creo
 	 * @throws com.akine.organization.application.IdempotencyKeyConflictException si la clave
 	 *         ya se uso con un payload distinto
+	 * @throws OnboardingKeyTakenException si otro hilo registro la misma clave mientras esta
+	 *         invocacion trabajaba. <b>La transaccion queda revertida</b> y el llamador tiene
+	 *         que resolver fuera de ella: leer el JavaDoc de esa excepcion antes de atraparla
+	 * @throws com.akine.organization.domain.exception.OrganizationSlugTakenException si el slug
+	 *         pedido ya lo usa otro tenant. Tambien revierte la transaccion
 	 */
 	ProvisioningResult provision(InitialOrganizationCommand command);
 }

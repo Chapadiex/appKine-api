@@ -42,6 +42,27 @@ public interface NotificationOutboxPort {
 	void encolar(Notificacion notificacion);
 
 	/**
+	 * Valida los datos de render <b>sin encolar nada</b>, para poder hacerlo en el borde del caso
+	 * de uso.
+	 *
+	 * <h2>Por que un caso de uso querria validar antes de encolar</h2>
+	 *
+	 * <p>Porque la validacion, cuando vive dentro de una rama que solo corre a veces, se vuelve
+	 * observable — y lo que la hace correr o no correr suele ser justamente el dato privado que
+	 * el endpoint no puede revelar. Es el patron exacto del bug de {@code planCode}: en el alta
+	 * self-service, la validacion del payload vivia dentro de {@code emitirActivacion}, que solo
+	 * se ejecuta cuando el email esta libre. Con eso, un {@code firstName} sospechoso —"Password"
+	 * alcanza— respondia <b>400 si el email estaba libre y 202 si ya existia</b>: el padron
+	 * completo de cuentas, un request por direccion, sin autenticacion y sin depender de tiempos.
+	 *
+	 * <p>La regla no se duplica en el llamador: detras de este metodo corre el mismo validador
+	 * que usa {@link #encolar}.
+	 *
+	 * @throws IllegalArgumentException si los datos no pasan la validacion del outbox
+	 */
+	void validarDatosPlantilla(Map<String, String> datosPlantilla);
+
+	/**
 	 * Un correo pendiente de envio.
 	 *
 	 * @param organizationId  tenant al que pertenece, o {@code null} para un evento de

@@ -8,22 +8,590 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.2.0
+  version: 0.3.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
 tags:
 - description: "Plan contratado, estado de la suscripcion e historico"
   name: Suscripciones
+- description: Restablecimiento de contrasena por enlace de un solo uso
+  name: Recuperacion
+- description: Alta self-service y habilitacion de la cuenta
+  name: Registro y activacion
+- description: "Login, renovacion, seleccion de contexto y cierre de sesion"
+  name: Sesion
 - description: "Contrato tecnico: salud y versionado"
   name: Platform
 - description: Alta y administracion de tenants y sus sedes
   name: Organizaciones
+- description: "Bloqueo, desbloqueo y baja logica de cuentas de la propia organizacion"
+  name: Administracion de cuentas
 - description: Contextos de trabajo habilitados para la cuenta autenticada
   name: Mi cuenta
 - description: "Catalogo comercial: que incluye cada plan"
   name: Planes
 paths:
+  /api/v1/accounts/{accountId}/block:
+    post:
+      description: |-
+        Suspende el acceso y revoca todas las sesiones vivas de la cuenta en la misma transaccion. Es reversible con /unblock.
+
+        El access token ya emitido sigue siendo valido hasta diez minutos: la revocacion es real sobre el refresh, no sobre el access en vuelo (ADR-0017). No es un bug.
+
+        La persona bloqueada NO se entera por la aplicacion: su login sigue respondiendo el mismo 401 que una contrasena incorrecta (ADR-0018). Se entera por el canal administrativo.
+
+        El motivo es obligatorio y queda en la auditoria. Bloquear una cuenta ya bloqueada responde 409, no un 200 silencioso: dos administradores operando a la vez tienen que enterarse de que el otro llego primero.
+      operationId: blockAccount
+      parameters:
+      - description: Identificador de la cuenta
+        example: 42
+        in: path
+        name: accountId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountStateChangeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountResponse"
+          description: Cuenta bloqueada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, o el actor no administra su organizacion"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no existe o no tiene membership en la organizacion
+            del actor. Los dos casos responden igual
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no admite bloquearse desde su estado actual
+      summary: Bloquear una cuenta
+      tags:
+      - Administracion de cuentas
+  /api/v1/accounts/{accountId}/deactivate:
+    post:
+      description: |-
+        Estado TERMINAL: desde la aplicacion no hay vuelta. Revoca todas las sesiones vivas en la misma transaccion.
+
+        Es baja LOGICA: la fila no se borra. Los turnos, sesiones y movimientos que referencian a esta cuenta tienen que seguir siendo legibles (RN-M02-004, regla maestra 10). Lo que queda es active = 0 con deleted_at.
+
+        Como es irreversible, el motivo es lo unico que va a quedar para explicarla: escribirlo con precision no es formalidad.
+      operationId: deactivateAccount
+      parameters:
+      - description: Identificador de la cuenta
+        example: 42
+        in: path
+        name: accountId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountStateChangeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountResponse"
+          description: Cuenta desactivada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, o el actor no administra su organizacion"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no existe o no es de la organizacion del actor
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta ya estaba desactivada
+      summary: Baja logica de la cuenta
+      tags:
+      - Administracion de cuentas
+  /api/v1/accounts/{accountId}/unblock:
+    post:
+      description: |-
+        Vuelve la cuenta a ACTIVA. No revoca nada: llego aca sin sesiones vivas, porque el bloqueo ya las corto. La persona tiene que volver a loguearse.
+
+        El motivo se exige igual, aunque la maquina de estados no lo pida para este destino: devolverle el acceso a alguien es tan auditable como quitarselo, y "por que lo desbloquearon" aparece en las mismas revisiones que la otra pregunta.
+      operationId: unblockAccount
+      parameters:
+      - description: Identificador de la cuenta
+        example: 42
+        in: path
+        name: accountId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountStateChangeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountResponse"
+          description: Cuenta desbloqueada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, o el actor no administra su organizacion"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no existe o no es de la organizacion del actor
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no estaba bloqueada
+      summary: Devolver el acceso a una cuenta bloqueada
+      tags:
+      - Administracion de cuentas
+  /api/v1/auth/activate:
+    post:
+      description: |-
+        Consume el token del correo, deja la cuenta ACTIVA e invalida los demas enlaces de activacion que hubiera vivos. Si se pidio el reenvio tres veces, el que se use mata a los otros dos: un enlace no usado sigue siendo una llave.
+
+        La contrasena solo hace falta si la cuenta todavia no tiene credencial —invitacion, 01.03—. En el alta self-service ya la tiene y enviarla NO la cambia: cambiarla por este camino seria una toma de cuenta que esquiva el reset, que si revoca todas las sesiones.
+
+        Token inexistente, ya usado, invalidado por uno mas nuevo, vencido o del tipo equivocado responden los cinco el mismo 400 invalid-token. Decir "expirado" le confirmaria a quien prueba valores que acerto uno real.
+
+        Activar NO abre sesion: despues de esto el frontend manda al login.
+      operationId: activateAccount
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivateAccountRequest"
+        required: true
+      responses:
+        "204":
+          description: Cuenta activada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Token invalido, usado o vencido; o contrasena que no cumple\
+            \ la politica cuando la cuenta no tenia credencial"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no admite activarse desde su estado actual
+      summary: Confirmar el enlace y habilitar la cuenta
+      tags:
+      - Registro y activacion
+  /api/v1/auth/activation/resend:
+    post:
+      description: |-
+        Emite un enlace nuevo e invalida los anteriores. Es el camino para "el correo no me llego" o "el enlace vencio".
+
+        RESPUESTA UNIFORME (ADR-0018): 202 con el mismo cuerpo en los cuatro casos —cuenta pendiente, cuenta ya activa, cuenta bloqueada o desactivada, y email sin cuenta—. Solo el primero emite algo. La diferencia no se publica ni por el estado, ni por el cuerpo, ni por un header.
+
+        Emitir invalida los enlaces anteriores: pedir el reenvio tres veces deja UNA llave viva, no tres.
+      operationId: resendActivation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResendActivationRequest"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+          description: Solicitud aceptada. Mismo cuerpo exista o no la cuenta
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el email
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Demasiados intentos desde esta IP
+      summary: Reenviar el enlace de activacion
+      tags:
+      - Registro y activacion
+  /api/v1/auth/context:
+    post:
+      description: |-
+        Emite un access token acotado a una Organizacion y un Consultorio. Es el paso que convierte un token pre_context en uno operativo (DP-02).
+
+        NO renueva el refresh ni entrega una cookie nueva: la sesion es la misma, lo que cambia es el alcance del access. Lo que si hace es dejar el contexto recordado en la familia viva, para que la proxima renovacion vuelva sobre el mismo lugar en vez de devolver a la pantalla de seleccion cada diez minutos.
+
+        Sirve tambien para CAMBIAR de contexto sin volver a loguearse, y cada cambio queda auditado.
+
+        Un par no accesible —consultorio inexistente, de otra organizacion, membership vencida o suscripcion cancelada— responde 404, nunca 403: un 403 confirmaria que ese consultorio existe y bastaria recorrer ids para mapear los centros de la competencia.
+      operationId: selectContext
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SelectContextRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessTokenResponse"
+          description: Access token acotado al contexto elegido
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Identificadores ausentes o no positivos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El contexto no existe o no esta disponible para esta cuenta
+      summary: Elegir el contexto de trabajo y renovar el access token
+      tags:
+      - Sesion
+  /api/v1/auth/login:
+    post:
+      description: |-
+        Verifica las credenciales y emite el par de tokens de una sesion nueva.
+
+        El access token sale en el cuerpo y dura diez minutos. El refresh token NO sale en el cuerpo: viaja en la cookie akine_rt, que es httpOnly, Secure, SameSite=Strict y esta acotada a Path=/api/v1/auth. El cliente no puede leerla ni necesita hacerlo; para renovar solo llama a POST /auth/refresh con credentials incluidas.
+
+        El token sale con alcance pre_context: autentica la identidad y no habilita ninguna operacion de negocio. El paso siguiente es GET /api/v1/me/contexts y despues POST /api/v1/auth/context.
+
+        RECHAZO UNIFORME (ADR-0018): email inexistente, contrasena incorrecta y contrasena correcta sobre una cuenta bloqueada, desactivada o pendiente de activacion devuelven las tres el MISMO 401 con el MISMO cuerpo, y con un tiempo de respuesta equivalente. No hay forma de distinguir los tres casos desde el cliente, y es deliberado: la diferencia convertiria este endpoint en un verificador de direcciones y de credenciales filtradas de otros sitios. Quien tenga la cuenta bloqueada se entera por el canal administrativo.
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessTokenResponse"
+          description: Sesion abierta. El refresh viaja en la cabecera Set-Cookie
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el email o la contrasena
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Credenciales invalidas. Mismo cuerpo para las tres causas
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Demasiados intentos desde esta IP
+      summary: Autenticar y abrir una sesion
+      tags:
+      - Sesion
+  /api/v1/auth/logout:
+    post:
+      description: |-
+        Revoca la familia de refresh a la que pertenece la cookie presentada y borra la cookie del navegador.
+
+        SIEMPRE responde 204, incluso sin cookie o con una que no corresponde a ninguna sesion. Es idempotente por construccion y no es una comodidad: un logout que fallara ante un token desconocido seria un oraculo de tokens validos, y ademas dejaria al frontend sin poder limpiar su estado justo cuando la cookie ya no sirve.
+
+        Cierra SOLO esta sesion. Los otros dispositivos siguen abiertos; para echarlos a todos esta DELETE /api/v1/auth/sessions.
+      operationId: logout
+      responses:
+        "204":
+          description: "Sesion cerrada, o no habia ninguna. Siempre este codigo"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El Origin del request no es uno de los permitidos: se rechaza\
+            \ como CSRF"
+      summary: Cerrar la sesion en curso
+      tags:
+      - Sesion
+  /api/v1/auth/password-reset:
+    post:
+      description: |-
+        Emite un token de un solo uso, valido treinta minutos, y encola el correo con el enlace. Emitir uno nuevo invalida los anteriores: pedirlo tres veces deja UN enlace vivo, no tres.
+
+        RESPUESTA UNIFORME (ADR-0018): 202 con el mismo cuerpo y el mismo tiempo de respuesta exista o no la cuenta, y este o no habilitada. Solo el caso "existe y puede autenticarse" emite algo.
+
+        Consecuencia incomoda y deliberada: quien tenga la cuenta bloqueada va a recibir este 202, no va a recibir ningun correo, y no hay forma de que la aplicacion se lo diga. Se entera por el canal administrativo. Si se "arreglara" respondiendo distinto, el endpoint pasaria a confirmar que direcciones tienen cuenta.
+
+        El enlace apunta a una pantalla del frontend que lee el token de la query y lo reenvia por POST a /auth/password-reset/confirm.
+      operationId: requestPasswordReset
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequest"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+          description: Solicitud aceptada. Mismo cuerpo exista o no la cuenta
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el email
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Demasiados intentos desde esta IP
+      summary: Pedir un enlace para restablecer la contrasena
+      tags:
+      - Recuperacion
+  /api/v1/auth/password-reset/confirm:
+    post:
+      description: |-
+        Consume el token, fija la contrasena nueva y REVOCA TODAS las sesiones vivas de la cuenta en la misma transaccion. La respuesta borra ademas la cookie de refresh de este navegador, que quedo apuntando a una familia revocada.
+
+        Confirmar NO abre sesion: despues de esto el frontend manda al login. Es deliberado —la persona acaba de demostrar que controla el correo, no que recuerda la contrasena que acaba de elegir— y hace que el flujo termine siempre en el mismo lugar.
+
+        Token inexistente, usado, invalidado, vencido o de una cuenta que se bloqueo entre el pedido y la confirmacion: los cinco casos responden el mismo 400 invalid-token.
+      operationId: confirmPasswordReset
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetConfirmRequest"
+        required: true
+      responses:
+        "204":
+          description: Contrasena actualizada y sesiones revocadas
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Token invalido, usado o vencido; o contrasena que no cumple\
+            \ la politica"
+      summary: Fijar la contrasena nueva con el token del correo
+      tags:
+      - Recuperacion
+  /api/v1/auth/refresh:
+    post:
+      description: |-
+        Canjea el refresh de la cookie akine_rt por un par nuevo. No lleva cuerpo: la credencial es la cookie, y ponerla ademas en el body la expondria al JavaScript de la pagina.
+
+        ROTACION ESTRICTA: cada canje invalida el refresh presentado y entrega uno nuevo en la misma familia, heredando el vencimiento ABSOLUTO de la sesion. Renovar no extiende la sesion: a las doce horas del login cae aunque se haya refrescado sin parar.
+
+        DETECCION DE REUSO: presentar un refresh ya canjeado revoca la familia completa —victima y atacante quedan afuera— y responde 401. Ese 401 es IDENTICO al de un token inexistente o vencido: el cliente no puede distinguir "te detectamos" de "no servia", y es a proposito.
+
+        Si el contexto que la sesion recordaba dejo de ser accesible —membership revocada, suscripcion cancelada— el par nuevo sale degradado a pre_context en vez de fallar: la persona sigue autenticada y el frontend la manda a elegir contexto otra vez.
+
+        El frontend debe serializar las renovaciones concurrentes con una cola single-flight: dos pestanas refrescando a la vez producen un reuso legitimo y se quedan las dos afuera.
+      operationId: refreshSession
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessTokenResponse"
+          description: "Sesion renovada, con un refresh nuevo en Set-Cookie"
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Refresh ausente, invalido, vencido, revocado o reusado. Los\
+            \ cinco casos responden igual y la respuesta borra la cookie"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El Origin del request no es uno de los permitidos por configuracion:\
+            \ se rechaza como CSRF"
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Demasiados intentos desde esta IP
+      summary: Renovar la sesion presentando la cookie de refresh
+      tags:
+      - Sesion
+  /api/v1/auth/register:
+    post:
+      description: |-
+        Crea en una sola transaccion la cuenta del fundador, la organizacion, su primer consultorio, la suscripcion y la membership de administrador, y encola el correo con el enlace de activacion.
+
+        RESPUESTA UNIFORME (ADR-0018): 202 Accepted con el mismo cuerpo tanto si el email estaba libre como si ya tenia cuenta. En el segundo caso no se crea ni se modifica nada y se encola un correo de "ya tenes cuenta". No hay 409 email-already-registered y no va a haberlo: seria el oraculo de existencia que el 401 uniforme del login existe para cerrar.
+
+        La cuenta nace PENDIENTE_ACTIVACION. Hasta confirmar el enlace, el login responde 401 igual que con una contrasena incorrecta.
+
+        El header Idempotency-Key es obligatorio. Reintentar el alta con la misma clave devuelve el mismo desenlace sin crear una segunda cuenta ni mandar un segundo correo; el cliente debe generarlo una vez al abrir el formulario y reusarlo en cada reintento.
+
+        Los rechazos posibles no dicen nada sobre el email: 400 por contrasena que no cumple la politica o por campos ausentes, 404 por un planCode que no existe o ya no se contrata, y 409 por un organizationSlug ya tomado. Los tres se evaluan ANTES de mirar si el email tiene cuenta, justamente para que la respuesta sea la misma en los dos casos: validarlos despues convertiria el endpoint en un verificador de direcciones de correo.
+      operationId: registerAccount
+      parameters:
+      - description: "Identificador unico del intento, generado por el cliente. Reintentar\
+          \ la misma alta debe reusar el mismo valor."
+        example: 0f9d5f6e-1c2b-4a3d-9e8f-7a6b5c4d3e2f
+        in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterAccountRequest"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+          description: Solicitud aceptada. Mismo cuerpo exista o no la cuenta
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, contrasena que no cumple la politica, o\
+            \ falta el header Idempotency-Key"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El planCode pedido no existe o ya no se contrata. Misma respuesta
+            exista o no la cuenta
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El organizationSlug pedido ya lo usa otro tenant. Misma respuesta
+            exista o no la cuenta
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Demasiados intentos desde esta IP
+      summary: "Alta self-service de cuenta, organizacion y primer consultorio"
+      tags:
+      - Registro y activacion
+  /api/v1/auth/sessions:
+    delete:
+      description: |-
+        Revoca todos los refresh vivos de la cuenta autenticada, en todos sus dispositivos, y borra la cookie de este navegador.
+
+        Es la accion de "cerrar sesion en todos lados" que corresponde despues de perder un telefono o de sospechar un acceso ajeno. Opera SOLO sobre la propia cuenta: el identificador sale del principal y no hay parametro que lo cambie.
+
+        Los access token ya emitidos siguen siendo criptograficamente validos hasta diez minutos (ADR-0017): la revocacion es real sobre el refresh, no sobre el access en vuelo.
+      operationId: closeAllSessions
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClosedSessionsResponse"
+          description: Sesiones revocadas. Cero es un resultado valido
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada
+      summary: Cerrar todas las sesiones de la propia cuenta
+      tags:
+      - Sesion
   /api/v1/me/contexts:
     get:
       description: |-
@@ -534,6 +1102,128 @@ paths:
       - Platform
 components:
   schemas:
+    AcceptedResponse:
+      type: object
+      description: "Acuse uniforme: no revela si la cuenta existe"
+      properties:
+        message:
+          type: string
+          description: Mensaje uniforme para mostrarle a la persona
+          example: "Si el email corresponde a una cuenta, vas a recibir un correo\
+            \ con las instrucciones."
+    AccessTokenResponse:
+      type: object
+      description: "Access token de vida corta, para el header Authorization: Bearer"
+      properties:
+        accessToken:
+          type: string
+          description: "JWT compacto. Se guarda EN MEMORIA, nunca en localStorage"
+          example: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI0MiJ9.firma
+        consultorioId:
+          type: integer
+          format: int64
+          description: "Consultorio del contexto, null si el alcance es pre_context"
+          example: 1
+        expiresIn:
+          type: integer
+          format: int64
+          description: Segundos de vida restantes. El cliente programa el refresh
+            con este valor y no leyendo el token
+          example: 600
+        organizationId:
+          type: integer
+          format: int64
+          description: "Organizacion del contexto, null si el alcance es pre_context"
+          example: 1
+        roleCode:
+          type: string
+          description: "Rol de la membership al momento de emitir. Sirve para dibujar\
+            \ el menu; NO autoriza nada: el backend revalida en cada request"
+          example: ORG_ADMIN
+        scope:
+          type: string
+          description: "Alcance del token: pre_context (recien autenticado, sin contexto\
+            \ elegido) o context (acotado a organizacion y consultorio)"
+          enum:
+          - pre_context
+          - context
+          example: pre_context
+        tokenType:
+          type: string
+          description: Esquema de autorizacion
+          example: Bearer
+    AccountResponse:
+      type: object
+      description: Cuenta despues de la transicion administrativa
+      properties:
+        blockedAt:
+          type: string
+          format: date-time
+          description: "Momento del bloqueo, null si no esta bloqueada"
+          example: 2026-08-23T14:05:00Z
+        email:
+          type: string
+          description: Direccion de correo tal como se registro
+          example: ana.perez@ejemplo.test
+        firstName:
+          type: string
+          description: Nombre de la persona
+          example: Ana
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la cuenta
+          example: 42
+        lastName:
+          type: string
+          description: Apellido de la persona
+          example: Perez
+        status:
+          type: string
+          description: Estado de la cuenta despues de la transicion
+          enum:
+          - PENDIENTE_ACTIVACION
+          - ACTIVA
+          - BLOQUEADA
+          - DESACTIVADA
+          example: BLOQUEADA
+        updatedAt:
+          type: string
+          format: date-time
+          description: Ultima modificacion de la cuenta
+          example: 2026-08-23T14:05:00Z
+    AccountStateChangeRequest:
+      type: object
+      description: Motivo auditable de la transicion de estado de la cuenta
+      properties:
+        reason:
+          type: string
+          description: Por que se ejecuta la transicion. Queda en la auditoria
+          example: Baja del profesional por fin de contrato
+          maxLength: 500
+          minLength: 0
+      required:
+      - reason
+    ActivateAccountRequest:
+      type: object
+      description: "Token del enlace de activacion, con la contrasena si hace falta\
+        \ fijarla"
+      properties:
+        password:
+          type: string
+          description: Contrasena a fijar. Obligatoria solo si la cuenta todavia no
+            tiene credencial (invitacion); se ignora si ya la tiene
+          example: una-contrasena-larga-y-unica
+          maxLength: 256
+          minLength: 0
+        token:
+          type: string
+          description: Valor del enlace recibido por correo
+          example: 9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a
+          maxLength: 256
+          minLength: 0
+      required:
+      - token
     AuthorizedContextResponse:
       type: object
       description: Contexto de trabajo habilitado para la cuenta autenticada
@@ -556,6 +1246,15 @@ components:
           type: string
           description: Nombre de la organizacion
           example: Centro Kinesico Belgrano
+    ClosedSessionsResponse:
+      type: object
+      description: Resultado del cierre masivo de sesiones de la propia cuenta
+      properties:
+        closedSessions:
+          type: integer
+          format: int32
+          description: Sesiones vivas que se revocaron
+          example: 3
     ConsultorioPageResponse:
       type: object
       description: Pagina de sedes activas de la organizacion
@@ -667,6 +1366,26 @@ components:
           format: int32
           description: Tope que impone el plan. Ausente cuando el limite es ilimitado
           example: 3
+    LoginRequest:
+      type: object
+      description: Credenciales para abrir una sesion
+      properties:
+        email:
+          type: string
+          description: Direccion de correo de la cuenta
+          example: ana.perez@ejemplo.test
+          maxLength: 254
+          minLength: 0
+        password:
+          type: string
+          description: Contrasena en claro. Viaja solo por TLS y no se registra en
+            ningun log
+          example: una-contrasena-larga-y-unica
+          maxLength: 256
+          minLength: 0
+      required:
+      - email
+      - password
     OrganizationResponse:
       type: object
       description: Organizacion (tenant) con su estado operativo efectivo
@@ -708,6 +1427,37 @@ components:
           format: int64
           description: Version para bloqueo optimista. Devolverla tal cual en el PATCH
           example: 0
+    PasswordResetConfirmRequest:
+      type: object
+      description: Token del enlace de restablecimiento y contrasena nueva
+      properties:
+        password:
+          type: string
+          description: Contrasena nueva. La politica minima la valida el backend
+          example: otra-contrasena-larga-y-unica
+          maxLength: 256
+          minLength: 0
+        token:
+          type: string
+          description: Valor del enlace recibido por correo
+          example: 9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a
+          maxLength: 256
+          minLength: 0
+      required:
+      - password
+      - token
+    PasswordResetRequest:
+      type: object
+      description: Direccion para la que se pide restablecer la contrasena
+      properties:
+        email:
+          type: string
+          description: Direccion de correo de la cuenta
+          example: ana.perez@ejemplo.test
+          maxLength: 254
+          minLength: 0
+      required:
+      - email
     PlanChangeRequest:
       type: object
       description: Plan a contratar y version esperada de la suscripcion
@@ -811,6 +1561,98 @@ components:
         type:
           type: string
           format: uri
+    RegisterAccountRequest:
+      type: object
+      description: "Alta self-service de cuenta, organizacion y primer consultorio"
+      properties:
+        consultorioName:
+          type: string
+          description: Nombre de la primera sede. Si se omite se usa el de la organizacion
+          example: Sede Central
+          maxLength: 160
+          minLength: 0
+        email:
+          type: string
+          format: email
+          description: Direccion de correo del fundador. Sera su identidad unica
+          example: ana.perez@ejemplo.test
+          maxLength: 254
+          minLength: 0
+        firstName:
+          type: string
+          description: Nombre de la persona
+          example: Ana
+          maxLength: 80
+          minLength: 0
+        lastName:
+          type: string
+          description: Apellido de la persona
+          example: Perez
+          maxLength: 80
+          minLength: 0
+        organizationName:
+          type: string
+          description: Nombre del centro que se da de alta
+          example: Centro Kinesico Belgrano
+          maxLength: 160
+          minLength: 0
+        organizationSlug:
+          type: string
+          description: Identificador legible del tenant. Si se omite se deriva del
+            nombre y se resuelve cualquier colision
+          example: centro-kinesico-belgrano
+          maxLength: 64
+          minLength: 0
+        password:
+          type: string
+          description: Contrasena en claro. La politica minima la valida el backend
+          example: una-contrasena-larga-y-unica
+          maxLength: 256
+          minLength: 0
+        planCode:
+          type: string
+          description: "Plan a contratar, del catalogo de GET /api/v1/plans. Si se\
+            \ omite se usa el plan por defecto"
+          example: BASICO
+          maxLength: 32
+          minLength: 0
+      required:
+      - email
+      - firstName
+      - lastName
+      - organizationName
+      - password
+    ResendActivationRequest:
+      type: object
+      description: Direccion a la que reenviar el enlace de activacion
+      properties:
+        email:
+          type: string
+          description: Direccion de correo de la cuenta a activar
+          example: ana.perez@ejemplo.test
+          maxLength: 254
+          minLength: 0
+      required:
+      - email
+    SelectContextRequest:
+      type: object
+      description: Par Organizacion + Consultorio sobre el que se quiere trabajar
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Identificador del consultorio
+          example: 1
+          minimum: 0
+        organizationId:
+          type: integer
+          format: int64
+          description: Identificador de la organizacion
+          example: 1
+          minimum: 0
+      required:
+      - consultorioId
+      - organizationId
     SubscriptionResponse:
       type: object
       description: "Suscripcion del tenant con su plan, estado y consumo de limites"

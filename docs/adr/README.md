@@ -55,6 +55,13 @@ de commits, o directamente se revierte una decisión correcta por desconocer su 
 | [0017](0017-custodia-y-ciclo-de-vida-de-los-tokens.md) | Custodia y ciclo de vida de los tokens de sesión | Aceptado | AKINE-01.02 |
 | [0018](0018-anti-enumeracion-uniforme.md) | Respuestas uniformes: la autenticación no revela si una cuenta existe | Aceptado | AKINE-01.02 |
 | [0019](0019-identidad-global-sin-organization-id.md) | Las tablas de identidad no llevan `organization_id` | Aceptado | AKINE-01.02 |
+| [0020](0020-rol-de-plataforma-sin-organization-id.md) | `platform_role` no lleva `organization_id` | Aceptado | AKINE-01.03 |
+
+> La lista de excepciones a [ADR-0004](0004-convenciones-de-persistencia-multi-tenant.md) vive en
+> la tabla de [ADR-0019](0019-identidad-global-sin-organization-id.md) **más** la fila que agrega
+> [ADR-0020](0020-rol-de-plataforma-sin-organization-id.md). Como los ADR aceptados no se editan,
+> hay que leer las dos. Si aparece una tercera excepción, corresponde un ADR que consolide y
+> supersede a los anteriores en vez de sumar un salto más.
 
 > Los ADRs 0001–0007 cubren decisiones **técnicas** del baseline. Las decisiones de
 > producto `DP-01`–`DP-09` están formalizadas en los ADRs

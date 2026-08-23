@@ -17,6 +17,15 @@ spring:
       hibernate:
         format_sql: true
 
+akine:
+  security:
+    jwt:
+      # Secreto de firma de DESARROLLO. Es publico —esta versionado— y por eso vive ACA y no
+      # en application.yml: solo existe si este perfil esta activo. Fuera de un perfil de
+      # desarrollo, presentarlo impide el arranque (JwtEmitter), igual que no presentar
+      # ninguno. Para trabajar contra datos que importen, exportar AKINE_JWT_SECRET.
+      secret: ${AKINE_JWT_SECRET:akine-desarrollo-secreto-de-firma-no-usar-en-produccion}
+
 logging:
   level:
     com.akine: DEBUG

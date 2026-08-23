@@ -43,4 +43,28 @@ public interface NotificationOutbox {
 	 *                                  transaccion activa del llamador
 	 */
 	long enqueue(NotificationEnqueueCommand command);
+
+	/**
+	 * Aplica la misma validacion de {@code datosDeRender} que {@link #enqueue}, <b>sin encolar
+	 * nada</b>.
+	 *
+	 * <h2>Para que existe</h2>
+	 *
+	 * <p>Para que un productor pueda validar en el <b>borde</b>, antes de tomar cualquier
+	 * decision que dependa de datos privados. Es el mismo problema que ya se corrigio con
+	 * {@code planCode}: si la unica validacion vive dentro de la rama que encola, y esa rama solo
+	 * corre en uno de los dos caminos, la validacion se vuelve observable. En el alta
+	 * self-service eso convertia el {@code firstName} en un oraculo de existencia de cuentas —un
+	 * nombre con la palabra "Password" adentro daba 400 con el email libre y 202 con el email
+	 * tomado, porque el camino del duplicado encola un payload vacio y nunca validaba—.
+	 *
+	 * <p><b>No es una copia de la regla: es la misma.</b> Detras de este metodo y de
+	 * {@link #enqueue} corre exactamente el mismo validador. Duplicar la lista de fragmentos
+	 * prohibidos en el productor seria garantizar que las dos copias diverjan en la primera
+	 * modificacion.
+	 *
+	 * @throws IllegalArgumentException si una clave no esta en la lista blanca o un valor tiene
+	 *                                  pinta de enlace, token o secreto (T-11)
+	 */
+	void validarDatosDeRender(java.util.Map<String, String> datosDeRender);
 }

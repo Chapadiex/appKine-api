@@ -50,6 +50,19 @@ public class OutboxEnqueueService implements NotificationOutbox {
 		this.settings = settings;
 	}
 
+	/**
+	 * La validacion de {@code datosDeRender}, sola y sin efectos.
+	 *
+	 * <p>Sin transaccion y sin tocar la base: no encola nada. Existe para que un productor pueda
+	 * ejecutarla en el borde de su caso de uso, antes de ramificar por datos privados. Es
+	 * literalmente el mismo constructor que usa {@link #enqueue}, asi que no hay dos reglas que
+	 * puedan divergir.
+	 */
+	@Override
+	public void validarDatosDeRender(java.util.Map<String, String> datosDeRender) {
+		SanitizedPayload.of(datosDeRender);
+	}
+
 	@Override
 	@Transactional(propagation = Propagation.MANDATORY)
 	public long enqueue(NotificationEnqueueCommand command) {

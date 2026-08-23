@@ -114,6 +114,27 @@ public class Membership extends TimestampedEntity {
 		return validUntil == null || momento.isBefore(validUntil);
 	}
 
+	/**
+	 * Indica si la membership alcanza a toda la organizacion.
+	 *
+	 * <p>{@code consultorio_id} nulo significa "todas las sedes"; con valor significa esa sede
+	 * y ninguna otra. Son dos ALCANCES distintos, no dos formas de escribir lo mismo, y desde
+	 * la migracion V10 una cuenta puede tener las dos cosas a la vez en la misma organizacion.
+	 */
+	public boolean isOrganizationScoped() {
+		return consultorioId == null;
+	}
+
+	/**
+	 * Indica si la membership habilita trabajar en una sede concreta.
+	 *
+	 * <p>No mira la vigencia: alcance y vigencia son condiciones independientes y las dos
+	 * tienen que cumplirse. Quien decide combina esto con {@link #isValidAt(Instant)}.
+	 */
+	public boolean covers(long consultorioId) {
+		return this.consultorioId == null || this.consultorioId == consultorioId;
+	}
+
 	public void changeRole(RoleCode roleCode) {
 		this.roleCode = roleCode;
 	}

@@ -5,7 +5,9 @@ import com.akine.organization.domain.OrganizationOnboarding;
 import com.akine.organization.domain.RoleCode;
 import com.akine.organization.domain.port.MembershipRepositoryPort;
 import com.akine.organization.domain.port.OrganizationOnboardingRepositoryPort;
+import com.akine.organization.domain.exception.OrganizationSlugTakenException;
 import com.akine.organization.spi.InitialOrganizationCommand;
+import com.akine.organization.spi.OnboardingKeyTakenException;
 import com.akine.organization.spi.ProvisioningResult;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
@@ -34,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -42,7 +45,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
  *
  * <p>Los dos tests que sostienen la etapa son
  * {@link #el_fundador_nace_org_admin_y_founder()} —OWNER y ADMIN no existen en la matriz
- * aprobada— y {@link #el_reintento_concurrente_devuelve_el_resultado_del_ganador()}: si esa
+ * aprobada— y {@link #el_reintento_concurrente_sale_por_la_senal()}: si esa
  * rama se pierde, dos altas simultaneas con la misma clave le devuelven un 500 al segundo
  * cliente en lugar del tenant que ya se creo.
  */
@@ -201,35 +204,40 @@ class OnboardingServiceTest {
 	}
 
 	@Test
-	@DisplayName("El reintento CONCURRENTE relee y devuelve el resultado del ganador")
-	void el_reintento_concurrente_devuelve_el_resultado_del_ganador() {
+	@DisplayName("El reintento CONCURRENTE sale por la senal del spi, sin tocar la sesion rota")
+	void el_reintento_concurrente_sale_por_la_senal() {
 		altaNueva();
 		// El otro hilo inserto la misma clave entre nuestro SELECT y nuestro INSERT: quien
 		// decide es uk_onboarding_key, no un chequeo previo.
-		given(onboardingRepository.findByIdempotencyKey(CLAVE))
-				.willReturn(Optional.empty())
-				.willReturn(Optional.of(Fixtures.onboarding(CLAVE, HASH)));
+		given(onboardingRepository.findByIdempotencyKey(CLAVE)).willReturn(Optional.empty());
 		willThrow(new DataIntegrityViolationException("uk_onboarding_key"))
 				.given(onboardingRepository).saveAndFlush(any(OrganizationOnboarding.class));
 
-		ProvisioningResult resultado = onboardingService.provision(comando("BASICO", null));
+		assertThatThrownBy(() -> onboardingService.provision(comando("BASICO", null)))
+				.isInstanceOf(OnboardingKeyTakenException.class);
 
-		assertThat(resultado).isEqualTo(
-				new ProvisioningResult(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, false));
+		// Lo que este test fija es lo que NO se hace: releer al ganador sobre la sesion cuyo
+		// flush acaba de fallar. Despues de un flush fallido el EntityManager queda en estado
+		// indefinido y esa relectura terminaba en un 500 sobre un endpoint que promete un 202
+		// uniforme (ADR-0018). El unico SELECT por clave es el del paso 1.
+		verify(onboardingRepository, times(1)).findByIdempotencyKey(CLAVE);
 		// El perdedor no audita: el hecho ya lo registro el ganador.
 		verifyNoInteractions(auditTrail);
 	}
 
 	@Test
-	@DisplayName("Si tras la colision no aparece ningun ganador, el error se propaga")
-	void sin_ganador_la_colision_se_propaga() {
-		altaNueva();
+	@DisplayName("La colision del slug NO se confunde con la de la clave de idempotencia")
+	void la_colision_de_slug_no_se_confunde_con_la_de_la_clave() {
 		given(onboardingRepository.findByIdempotencyKey(CLAVE)).willReturn(Optional.empty());
-		willThrow(new DataIntegrityViolationException("otra restriccion"))
-				.given(onboardingRepository).saveAndFlush(any(OrganizationOnboarding.class));
+		given(planCatalogService.requireContractable(any())).willReturn(planBasico);
+		willThrow(new OrganizationSlugTakenException("centro-tomado"))
+				.given(organizationService).provisionTenant(
+						any(), any(), any(), any(), any(), any());
 
+		// Dos causas distintas con dos respuestas distintas: el slug tomado es un error del
+		// cliente (409) y la clave tomada es una carrera que termina en el 202 del ganador.
 		assertThatThrownBy(() -> onboardingService.provision(comando("BASICO", null)))
-				.isInstanceOf(DataIntegrityViolationException.class);
+				.isInstanceOf(OrganizationSlugTakenException.class);
 	}
 
 	@Test

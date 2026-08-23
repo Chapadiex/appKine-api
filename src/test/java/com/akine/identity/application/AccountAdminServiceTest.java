@@ -110,10 +110,11 @@ class AccountAdminServiceTest {
 		given(refreshTokenRepository.findByCuentaIdAndRevocadoEnIsNull(CUENTA_ID))
 				.willReturn(vivos);
 
-		Cuenta resultado = service.bloquear(ADMIN, CUENTA_ID, MOTIVO);
+		AccountView resultado = service.bloquear(ADMIN, CUENTA_ID, MOTIVO);
 
-		assertThat(resultado.getEstado()).isEqualTo(EstadoCuenta.BLOQUEADA);
-		assertThat(resultado.getBloqueadaMotivo()).isEqualTo(MOTIVO);
+		assertThat(resultado.estado()).isEqualTo(EstadoCuenta.BLOQUEADA.name());
+		assertThat(resultado.bloqueadaEn()).isNotNull();
+		assertThat(cuenta.getBloqueadaMotivo()).isEqualTo(MOTIVO);
 		assertThat(vivos).allSatisfy(sesion -> {
 			assertThat(sesion.getRevocadoEn()).isNotNull();
 			assertThat(sesion.getMotivoRevocacion()).isEqualTo(MotivoRevocacion.BLOQUEO);
@@ -174,11 +175,11 @@ class AccountAdminServiceTest {
 		Cuenta bloqueada = cuentaBloqueada();
 		given(cuentaRepository.findById(CUENTA_ID)).willReturn(Optional.of(bloqueada));
 
-		Cuenta resultado = service.desbloquear(ADMIN, CUENTA_ID, "el incidente se cerro");
+		AccountView resultado = service.desbloquear(ADMIN, CUENTA_ID, "el incidente se cerro");
 
-		assertThat(resultado.getEstado()).isEqualTo(EstadoCuenta.ACTIVA);
-		assertThat(resultado.getBloqueadaEn()).isNull();
-		assertThat(resultado.getBloqueadaMotivo()).isNull();
+		assertThat(resultado.estado()).isEqualTo(EstadoCuenta.ACTIVA.name());
+		assertThat(resultado.bloqueadaEn()).isNull();
+		assertThat(bloqueada.getBloqueadaMotivo()).isNull();
 		// No hay sesiones que cortar: el bloqueo ya las corto. Revocar de nuevo escribiria
 		// sobre filas ya revocadas y lo contaria como si algo hubiera pasado.
 		verify(refreshTokenRepository, never()).findByCuentaIdAndRevocadoEnIsNull(CUENTA_ID);
@@ -196,11 +197,11 @@ class AccountAdminServiceTest {
 		given(refreshTokenRepository.findByCuentaIdAndRevocadoEnIsNull(CUENTA_ID))
 				.willReturn(vivos);
 
-		Cuenta resultado = service.desactivar(ADMIN, CUENTA_ID, "baja del profesional");
+		AccountView resultado = service.desactivar(ADMIN, CUENTA_ID, "baja del profesional");
 
-		assertThat(resultado.getEstado()).isEqualTo(EstadoCuenta.DESACTIVADA);
-		assertThat(resultado.isActive()).isFalse();
-		assertThat(resultado.getDeletedAt()).isNotNull();
+		assertThat(resultado.estado()).isEqualTo(EstadoCuenta.DESACTIVADA.name());
+		assertThat(cuenta.isActive()).isFalse();
+		assertThat(cuenta.getDeletedAt()).isNotNull();
 		assertThat(vivos.get(0).getMotivoRevocacion()).isEqualTo(MotivoRevocacion.DESACTIVACION);
 		assertThat(capturarAuditoria().eventType()).isEqualTo("CUENTA_DESACTIVADA");
 	}

@@ -3,6 +3,7 @@ package com.akine.organization.application;
 import com.akine.organization.domain.AccountActiveContext;
 import com.akine.organization.domain.Consultorio;
 import com.akine.organization.domain.Membership;
+import com.akine.organization.domain.MembershipSelection;
 import com.akine.organization.domain.Organization;
 import com.akine.organization.domain.SubscriptionStatus;
 import com.akine.organization.domain.exception.ContextNotAuthorizedException;
@@ -93,13 +94,21 @@ public class AccountContextService implements AccountContextDirectory {
 			}
 			agregarSedes(contextos, membership, organization.get());
 		}
-		return List.copyOf(contextos);
+		// Sin duplicados: desde V10 una cuenta puede tener a la vez una membership de alcance
+		// organizacion —que produce una fila por sede— y otra acotada a una de esas sedes, y
+		// esa sede saldria dos veces. El selector de contexto del frontend mostraria la misma
+		// opcion repetida, y el usuario no tendria forma de saber cual elegir: el contexto es
+		// Organizacion + Consultorio (ADR-0009) y no depende de por que membership se llego.
+		return contextos.stream().distinct().toList();
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public boolean hasActiveMembership(long accountId, long organizationId) {
-		return membershipVigente(accountId, organizationId).isPresent();
+		// Pertenencia, no autorizacion: alcanza CUALQUIER membership vigente. Quien tiene una
+		// membership de una sola sede es igual de miembro de la organizacion que quien las
+		// tiene todas.
+		return !membershipsVigentes(accountId, organizationId).isEmpty();
 	}
 
 	/**
@@ -110,17 +119,21 @@ public class AccountContextService implements AccountContextDirectory {
 	 * y organizacion vigente con suscripcion no cancelada. Que falle cualquiera devuelve lo
 	 * mismo: el llamador no puede deducir cual fallo, y por lo tanto no puede usar este metodo
 	 * para averiguar si una organizacion ajena existe.
+	 *
+	 * <p>Con varias memberships posibles se toma la que <b>gobierna esa sede</b>
+	 * ({@link MembershipSelection#applicableAt}): la acotada a la sede si existe y sigue
+	 * vigente, y si no la de alcance organizacion. Filtrar por vigencia antes de elegir importa:
+	 * si se eligiera primero la mas especifica y despues se mirara la vigencia, una membership
+	 * de sede vencida taparia a la general viva y cerraria un acceso legitimo.
 	 */
 	@Override
 	@Transactional(readOnly = true)
 	public boolean isContextAuthorized(long accountId, long organizationId, long consultorioId) {
-		Optional<Membership> membership = membershipVigente(accountId, organizationId);
+		Optional<Membership> membership = MembershipSelection.applicableAt(
+				membershipsVigentes(accountId, organizationId), consultorioId, Instant.now());
 		if (membership.isEmpty()) {
-			return false;
-		}
-		Long alcance = membership.get().getConsultorioId();
-		if (alcance != null && alcance != consultorioId) {
-			// Membership acotada a otra sede. El alcance null significa "toda la organizacion".
+			// Sin membership, o con todas acotadas a otras sedes. El alcance null significa
+			// "toda la organizacion" y por eso cubre cualquier consultorio del tenant.
 			return false;
 		}
 		return consultorioRepository
@@ -206,24 +219,42 @@ public class AccountContextService implements AccountContextDirectory {
 	@Override
 	@Transactional(readOnly = true)
 	public Optional<MembershipSnapshot> membership(long accountId, long organizationId) {
-		return membershipRepository
-				.findByOrganizationIdAndAccountIdAndActiveTrue(organizationId, accountId)
+		// Criterio: la membership de ALCANCE ORGANIZACION. La pregunta que hace este contrato
+		// —"que es esta cuenta en esta organizacion"— no nombra ninguna sede, asi que solo
+		// puede responderla una membership que valga para toda la organizacion. Devolver una
+		// acotada a una sede seria una escalada silenciosa: su consumidor de 01.02
+		// (AccountAdminService) la usa para decidir si el actor ADMINISTRA el tenant entero, y
+		// un ORG_ADMIN de una sola sede pasaria a administrar todas.
+		return MembershipSelection.organizationScoped(membershipsDe(accountId, organizationId))
 				.map(this::toSnapshot);
 	}
 
-	/** Membership vigente de la cuenta en el tenant, si la organizacion sigue siendo usable. */
-	private Optional<Membership> membershipVigente(long accountId, long organizationId) {
-		Optional<Membership> membership = membershipRepository
-				.findByOrganizationIdAndAccountIdAndActiveTrue(organizationId, accountId)
-				.filter(m -> m.isValidAt(Instant.now()));
-		if (membership.isEmpty()) {
-			return Optional.empty();
+	/**
+	 * Memberships vigentes de la cuenta en el tenant, si la organizacion sigue siendo usable.
+	 *
+	 * <p>Devuelve todas las que estan vigentes —de sede y de organizacion— y deja la eleccion a
+	 * {@code MembershipSelection}, porque cual aplica depende de la pregunta. Si la
+	 * organizacion esta de baja o su suscripcion cancelada, no hay ninguna: el tenant entero
+	 * dejo de ser un lugar donde trabajar.
+	 */
+	private List<Membership> membershipsVigentes(long accountId, long organizationId) {
+		Instant ahora = Instant.now();
+		List<Membership> vigentes = membershipsDe(accountId, organizationId).stream()
+				.filter(m -> m.isValidAt(ahora))
+				.toList();
+		if (vigentes.isEmpty()) {
+			return List.of();
 		}
 		if (organizationRepository.findByIdAndActiveTrue(organizationId).isEmpty()
 				|| !esSeleccionable(organizationId)) {
-			return Optional.empty();
+			return List.of();
 		}
-		return membership;
+		return vigentes;
+	}
+
+	private List<Membership> membershipsDe(long accountId, long organizationId) {
+		return membershipRepository
+				.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(organizationId, accountId);
 	}
 
 	/**

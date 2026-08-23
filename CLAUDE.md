@@ -275,20 +275,64 @@ Reglas que esta etapa dejó fijadas y que las siguientes heredan:
 | La auditoría se escribe **en la transacción del negocio** | Un listener post-commit que falla deja la mutación sin rastro |
 | `organization` **jamás** importa `identity` | Evita el ciclo; la orquestación va siempre desde `identity` |
 
-### Próximo paso — etapa AKINE-01.02
+### AKINE-01.02 — construida, parcialmente commiteada
 
-Identidad, autenticación, recuperación y outbox de notificaciones. Diseño y challenge en el
-scratchpad de sesión; decisiones transversales en `decisiones-transversales-f1.md`.
+Identidad, autenticación, recuperación de contraseña y outbox de notificaciones.
 
-Lo primero que habilita: los 11 tests diferidos y las tres pantallas del frontend, que hoy no
-se pueden ejercitar.
+Módulo `identity` completo (dominio, aplicación y `api` con 4 controllers, 12 DTOs y advice
+propio), módulo `notification` con outbox transaccional, y `platform/infrastructure/security`
+con el filtro JWT, el rate limit de ventana fija y los handlers de error como Problem Details.
+El filtro CSRF por `Origin` vive en `SecurityConfig` (`OriginCsrfFilter`) y cubre los dos
+endpoints que se autentican con la cookie de refresh. Migraciones `V6`–`V9`: `cuenta`,
+`token_verificacion`, `refresh_token`, `onboarding_registro`, `notification_outbox`.
+
+Contrato **0.3.0**: 13 endpoints nuevos de `identity` sobre los 11 que ya había — 24
+operaciones en 22 paths, sin drift contra los mappings del código.
+
+Tres ADRs nuevas: `docs/adr/0017` (custodia y ciclo de vida de los tokens), `0018`
+(anti-enumeración uniforme), `0019` (identidad global sin `organization_id`).
+
+**785 anotaciones de test en 86 clases.** Últimos reportes en `target/` (2026-08-23 15:32):
+905 unitarios en verde y 21 de integración con **1 fallo abierto** — el escenario diferido 8.
+Cobertura **97,70 % instrucción · 87,42 % rama**, sobre un gate de 80 %; venía en 81,89 % al
+cierre de 01.01.
+
+> **Estado de commit: `9b4398a` está rotulado "en curso".** Deja fuera toda la capa `api` de
+> `identity`, `platform/infrastructure/security/` y los tests de la etapa: 50 rutas sin
+> commitear. El frontend no tiene ningún commit de 01.02.
+
+> **Los criterios de aceptación no están todos cubiertos.** De los 11 escenarios diferidos de
+> 01.01, siete corren en verde (1, 2, 3, 4, 5, 6 y 9); el 7 pasa a medias y su mitad faltante se
+> difiere a 01.03, el 8 falla y el 10 y el 11 son E2E sin escribir. Ver `docs/tests-diferidos.md`.
+
+Reglas que esta etapa dejó fijadas y que las siguientes heredan:
+
+| Regla | Por qué |
+|---|---|
+| Las tablas de `identity` **no llevan `organization_id`** | Una cuenta es global y precede a toda organización: ADR-0019, excepción explícita al ADR-0004 |
+| Login, registro y solicitud de recuperación responden **igual exista o no la cuenta** | Si la respuesta cambia, el endpoint es un oráculo de existencia de cuentas: ADR-0018 |
+| Access token en memoria del cliente, refresh en **cookie `httpOnly` con rotación estricta** | Cada canje invalida el refresh presentado. Un token robado sirve una sola vez: ADR-0017 |
+| Los dos endpoints que se autentican por cookie validan **`Origin` contra la lista blanca**, y un request sin `Origin` ni `Referer` **se rechaza** | `SameSite` depende del navegador; la validación de `Origin` la aplica el servidor |
+| Los correos salen por el **outbox transaccional**, nunca desde el servicio | Un envío fuera de la transacción manda el correo de una operación que después hace rollback |
+| `identity` orquesta hacia `organization` por el `spi`, nunca al revés | Cierra el ciclo que la regla de 01.01 ya prohibía en la otra dirección |
+| Los tokens sensibles **nunca en texto plano ni en logs** | RN-M02-003, restricción dura de la especificación |
+
+### Próximo paso — cerrar 01.02, después AKINE-01.03
+
+Para cerrar 01.02: dejar el escenario diferido 8 en verde, commitear en el orden
+backend → publicar contrato 0.3.0 → regenerar cliente del frontend, y escribir el registro de
+cierre en el plan.
+
+Después, AKINE-01.03: memberships, roles, permisos y auditoría. Arrastra dos deudas concretas
+de esta etapa — el escenario 7b, que necesita `request_hash` en `onboarding_registro` (migración
+más cambio de API), y los dos E2E de la lista de diferidos.
 
 Pendientes que arrastra el backend:
 
 - [ ] Protección de rama en `main`
 - [ ] Activar el job de SonarQube en `.github/workflows/ci.yml` (listo, comentado)
 - [ ] Observabilidad: logging JSON, Prometheus, OpenTelemetry
-- [ ] Reglas `PACKAGE` de cobertura al 90 % para módulos críticos, cuando existan
+- [ ] Reglas `PACKAGE` de cobertura al 90 % para módulos críticos: el `PENDIENTE(F1)` del `pom.xml` sigue abierto y `identity`, `organization` y `notification` ya existen
 - [ ] Completar los `PENDIENTE(F1)` de `.claude/qa-config.md`
 
 ## 8. Checklist de cierre de tarea

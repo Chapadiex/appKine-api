@@ -1,21 +1,29 @@
 package com.akine.platform.api;
 
-import com.akine.platform.infrastructure.config.SecurityConfig;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import static com.akine.PerfilesDeTest.SOLO_SLICE;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,8 +48,39 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({
 		GlobalExceptionHandlerTest.ControllerDePrueba.class,
 		GlobalExceptionHandler.class,
-		SecurityConfig.class})
+		GlobalExceptionHandlerTest.CadenaDeSlice.class})
+@ActiveProfiles(SOLO_SLICE)
 class GlobalExceptionHandlerTest {
+
+	/**
+	 * Cadena de seguridad propia del slice, permisiva.
+	 *
+	 * <p><b>Antes este test importaba {@code SecurityConfig}</b>, la cadena real de la
+	 * aplicacion. Dejo de servir cuando AKINE-01.02 la cerro con {@code anyRequest()
+	 * .authenticated()}: el controller de prueba vive en {@code /test/**}, que no es ni puede
+	 * ser una ruta publica de la aplicacion, asi que los cuatro casos pasaron a responder 401 y
+	 * el contrato de errores dejo de ejercitarse.
+	 *
+	 * <p>Es el mismo criterio que {@code ApiSliceSecurityConfig} en {@code organization.api}:
+	 * un slice prueba el comportamiento HTTP de su pieza, no la cadena de la aplicacion.
+	 * Heredarla lo ata a lo que esa clase permita en cada momento. Las respuestas 401 y 403 de
+	 * la cadena real tienen sus propios tests en
+	 * {@code com.akine.platform.security.SecurityChainTest}.
+	 */
+	@TestConfiguration
+	@EnableWebSecurity
+	static class CadenaDeSlice {
+
+		@Bean
+		SecurityFilterChain sliceSecurityFilterChain(HttpSecurity http) throws Exception {
+			http
+					.csrf(csrf -> csrf.disable())
+					.sessionManagement(session -> session
+							.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+					.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+			return http.build();
+		}
+	}
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -95,6 +134,61 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	@DisplayName("Un JSON sintacticamente roto es 400, no 500")
+	void json_roto_es_400() throws Exception {
+		mockMvc.perform(post("/test/validar")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"nombre\": \"Ana\", "))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.title").value("Cuerpo invalido"))
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/validation-error"));
+	}
+
+	@Test
+	@DisplayName("Un campo con el tipo equivocado es 400, y no repite lo recibido")
+	void tipo_equivocado_en_el_cuerpo_es_400() throws Exception {
+		String cuerpo = mockMvc.perform(post("/test/validar")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"nombre\":{\"inyectado\":\"<script>\"},\"email\":\"a@b.test\"}"))
+				.andExpect(status().isBadRequest())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		// Lo que llego en el request no se refleja: es el vector clasico de XSS reflejado, y
+		// ademas el mensaje crudo de Jackson nombra la clase Java que se estaba deserializando.
+		org.assertj.core.api.Assertions.assertThat(cuerpo)
+				.doesNotContain("inyectado")
+				.doesNotContain("script")
+				.doesNotContain("com.akine");
+	}
+
+	@Test
+	@DisplayName("Un Content-Type que el endpoint no consume es 415, no 500")
+	void content_type_no_soportado_es_415() throws Exception {
+		String cuerpo = mockMvc.perform(post("/test/validar")
+						.contentType(MediaType.TEXT_PLAIN)
+						.content("hola"))
+				.andExpect(status().isUnsupportedMediaType())
+				.andExpect(jsonPath("$.status").value(415))
+				.andExpect(jsonPath("$.title").value("Solicitud no procesable"))
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		org.assertj.core.api.Assertions.assertThat(cuerpo).doesNotContain("text/plain");
+	}
+
+	@Test
+	@DisplayName("Un metodo no permitido en la ruta es 405, no 500")
+	void metodo_no_permitido_es_405() throws Exception {
+		mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+						.delete("/test/validar"))
+				.andExpect(status().isMethodNotAllowed())
+				.andExpect(jsonPath("$.status").value(405));
+	}
+
+	@Test
 	@DisplayName("Un cuerpo valido pasa sin tocar el handler")
 	void cuerpo_valido_no_dispara_el_handler() throws Exception {
 		mockMvc.perform(post("/test/validar")
@@ -114,6 +208,7 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@RestController
+	@Profile(SOLO_SLICE)
 	@RequestMapping("/test")
 	static class ControllerDePrueba {
 

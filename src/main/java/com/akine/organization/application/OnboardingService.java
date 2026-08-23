@@ -8,6 +8,7 @@ import com.akine.organization.domain.port.MembershipRepositoryPort;
 import com.akine.organization.domain.port.OrganizationOnboardingRepositoryPort;
 import com.akine.organization.spi.InitialOrganizationCommand;
 import com.akine.organization.spi.InitialOrganizationProvisioning;
+import com.akine.organization.spi.OnboardingKeyTakenException;
 import com.akine.organization.spi.ProvisioningResult;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
@@ -57,6 +58,22 @@ public class OnboardingService implements InitialOrganizationProvisioning {
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>Solo lee. Se ejecuta en la transaccion del llamador si ya hay una —lo normal, porque
+	 * quien invoca esto es el registro self-service justo antes de decidir— y abre una de
+	 * lectura si no.
+	 */
+	@Override
+	@Transactional(readOnly = true, propagation = Propagation.REQUIRED)
+	public void validateTenantRequest(String planCode, String organizationSlug) {
+		planCatalogService.requireContractable(planCode == null || planCode.isBlank()
+				? InitialOrganizationCommand.PLAN_POR_DEFECTO
+				: planCode);
+		organizationService.requireSlugDisponible(organizationSlug);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p><b>{@code Propagation.REQUIRED} y jamas {@code REQUIRES_NEW}.</b> Este metodo se
 	 * ejecuta dentro de la transaccion que {@code identity} ya abrio para crear la cuenta. Con
 	 * {@code REQUIRES_NEW} las escrituras de aca commitearian por su cuenta y un fallo
@@ -79,6 +96,12 @@ public class OnboardingService implements InitialOrganizationProvisioning {
 			return replayDe(previo.get(), command);
 		}
 
+		// 2. Las mismas dos validaciones que hace validateTenantRequest —el llamador ya deberia
+		//    haberlas corrido ANTES de mirar el email, ver el spi—, aca desplegadas porque el
+		//    plan hace falta como entity y buscarlo dos veces seria un seek al pedo. Van
+		//    DESPUES del replay a proposito: un alta ya completada tiene que poder reproducirse
+		//    aunque el plan que contrato se haya retirado despues del catalogo.
+		organizationService.requireSlugDisponible(command.organizationSlug());
 		Plan plan = planCatalogService.requireContractable(command.planCodeOrDefault());
 
 		ProvisionedTenant tenant = organizationService.provisionTenant(
@@ -103,7 +126,7 @@ public class OnboardingService implements InitialOrganizationProvisioning {
 				true,
 				ahora));
 
-		// 2. El registro de idempotencia se inserta CON FLUSH y al final, con los ids ya
+		// 3. El registro de idempotencia se inserta CON FLUSH y al final, con los ids ya
 		//    asignados. El flush es lo que hace que la violacion del unique se manifieste aca
 		//    dentro y no al cerrar la transaccion, cuando ya no habria a quien avisarle.
 		try {
@@ -116,15 +139,33 @@ public class OnboardingService implements InitialOrganizationProvisioning {
 					membership.getId(),
 					ahora));
 		} catch (DataIntegrityViolationException colision) {
-			// 3. Reintento CONCURRENTE: otro hilo con la misma clave gano la carrera entre
+			// 4. Reintento CONCURRENTE: otro hilo con la misma clave gano la carrera entre
 			//    nuestro SELECT del paso 1 y este INSERT. Quien decide es uk_onboarding_key, no
 			//    un chequeo previo: dos hilos simultaneos leen ambos "no existe", asi que un
-			//    SELECT solo seria la misma carrera con otro nombre.
-			log.info("Alta compuesta concurrente detectada: se devuelve el resultado del ganador");
-			OrganizationOnboarding ganador = onboardingRepository
-					.findByIdempotencyKey(command.idempotencyKey())
-					.orElseThrow(() -> colision);
-			return replayDe(ganador, command);
+			//    SELECT solo seria la misma carrera con otro nombre. Ese razonamiento sigue en
+			//    pie; lo que no se puede es RECUPERARSE aca.
+			//
+			//    Antes se releia la fila del ganador con findByIdempotencyKey y se hacia el
+			//    replay. Sobre la sesion equivocada: el flush de arriba ya fallo, y despues de
+			//    un flush fallido el EntityManager queda en estado indefinido —la
+			//    especificacion de JPA prohibe seguir usandolo—. Lo que salia de ahi era un
+			//    AssertionFailure o un "Transaction marked as rollbackOnly", es decir un 500,
+			//    alcanzable con la misma Idempotency-Key y dos emails distintos, y otra vez
+			//    rompiendo la uniformidad del 202 de ADR-0018.
+			//
+			//    El unico movimiento legal es revertir y empezar de nuevo en una sesion limpia,
+			//    y esa decision no es de este modulo: provision corre con REQUIRED dentro de la
+			//    transaccion del llamador (ADR-0008), asi que el dueno del limite transaccional
+			//    es el unico que puede abrir uno nuevo. La senal sale por el spi y el llamador
+			//    resuelve. Ver OnboardingKeyTakenException.
+			//
+			//    Y no se confunde con uk_organization_slug: esa colision ya se separo en su
+			//    origen, dentro de provisionTenant, y sale como OrganizationSlugTakenException.
+			//    Son dos causas distintas con dos respuestas distintas —un error del cliente y
+			//    una carrera cuyo desenlace correcto es el 202 del ganador— y tratarlas igual
+			//    daba la respuesta equivocada en las dos.
+			log.info("Alta compuesta concurrente detectada: gano el otro hilo, se revierte esta");
+			throw new OnboardingKeyTakenException(command.idempotencyKey());
 		}
 
 		auditarMembership(tenant.organization().getId(), tenant.consultorio().getId(),

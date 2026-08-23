@@ -8,6 +8,15 @@ import java.util.Optional;
 /** Acceso a la tabla {@code refresh_token}. */
 public interface RefreshTokenRepositoryPort {
 
+	/**
+	 * Busca el refresh presentado.
+	 *
+	 * <p><b>Contrato: el adaptador serializa el acceso a esa fila</b> hasta el fin de la
+	 * transaccion. La rotacion con deteccion de reuso de ADR-0017 es "leer, comprobar
+	 * {@code usadoEn}, emitir sucesor, marcar" y sin serializar dos canjes simultaneos del mismo
+	 * token bifurcan la familia: los dos ven el {@code usadoEn} nulo y los dos emiten. Ver
+	 * {@code RefreshTokenRepository#findByTokenHash}.
+	 */
 	Optional<RefreshToken> findByTokenHash(String tokenHash);
 
 	/**

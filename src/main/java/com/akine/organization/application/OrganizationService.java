@@ -7,6 +7,7 @@ import com.akine.organization.domain.Plan;
 import com.akine.organization.domain.Subscription;
 import com.akine.organization.domain.SubscriptionTransition;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
+import com.akine.organization.domain.exception.OrganizationSlugTakenException;
 import com.akine.organization.domain.port.ConsultorioRepositoryPort;
 import com.akine.organization.domain.port.OrganizationRepositoryPort;
 import com.akine.organization.domain.port.SubscriptionRepositoryPort;
@@ -15,6 +16,7 @@ import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -110,8 +112,22 @@ public class OrganizationService {
 		String zona = timezone == null || timezone.isBlank() ? TIMEZONE_POR_DEFECTO : timezone;
 		Instant ahora = Instant.now();
 
-		Organization organization =
-				organizationRepository.save(new Organization(name, slugFinal, zona));
+		Organization organization;
+		try {
+			organization = organizationRepository.save(new Organization(name, slugFinal, zona));
+		} catch (DataIntegrityViolationException colision) {
+			// uk_organization_slug. Se traduce ACA, donde se sabe cual es el unique que choco:
+			// mas abajo, dentro del alta compuesta, hay OTRA violacion posible
+			// —uk_onboarding_key— y son dos causas con dos respuestas distintas. Tratarlas
+			// juntas, como se hacia antes, respondia mal las dos: al cliente que eligio un slug
+			// tomado le llegaba el desenlace de una carrera, y a la carrera le llegaba un 500.
+			//
+			// El chequeo previo de Slugs.derivar y de requireSlugDisponible no reemplaza a esta
+			// traduccion: entre el SELECT y el INSERT hay una ventana y quien decide de verdad
+			// es la restriccion.
+			log.info("Slug de organizacion ya tomado: slug={}", slugFinal);
+			throw new OrganizationSlugTakenException(slugFinal);
+		}
 		Consultorio consultorio = consultorioRepository.save(
 				new Consultorio(organization.getId(), consultorioName));
 		Subscription subscription = subscriptionRepository.save(
@@ -247,6 +263,32 @@ public class OrganizationService {
 		Organization organization = organizationRepository.findById(organizationId)
 				.orElseThrow(() -> new OrganizationNotFoundException(organizationId));
 		return subscriptionOf(organizationId).operationalStatus(organization.isActive());
+	}
+
+	/**
+	 * Exige que un slug explicito este disponible, sin escribir nada.
+	 *
+	 * <p>Solo mira los slugs que manda el llamador: cuando se deriva del nombre, la colision ya
+	 * la resuelve {@link Slugs#derivar} con un sufijo numerico y rechazar ahi seria inventar un
+	 * error donde hay una solucion.
+	 *
+	 * <p>Es un chequeo PREVIO, no una garantia: entre este SELECT y el INSERT hay una ventana y
+	 * quien cierra la carrera sigue siendo {@code uk_organization_slug}. Existe para que el
+	 * registro self-service pueda validarlo <b>antes</b> de mirar si el email tiene cuenta, que
+	 * es lo que hace que la respuesta sea la misma exista o no la cuenta (ADR-0018).
+	 *
+	 * @throws OrganizationSlugTakenException si el slug ya lo usa otro tenant (409)
+	 */
+	@Transactional(readOnly = true)
+	public void requireSlugDisponible(String slug) {
+		if (slug == null || slug.isBlank()) {
+			return;
+		}
+		String normalizado = Slugs.normalizar(slug);
+		if (organizationRepository.existsBySlug(normalizado)) {
+			log.info("Slug de organizacion ya tomado: slug={}", normalizado);
+			throw new OrganizationSlugTakenException(normalizado);
+		}
 	}
 
 	/** Organizacion vigente, o el mismo 404 que si no existiera. */
