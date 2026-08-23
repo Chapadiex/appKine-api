@@ -249,8 +249,39 @@ Baseline ejecutable y arquitectura comprobada.
 - [x] Baseline verificado contra las decisiones — sin contradicciones
 - [x] Plan rebaselinado: huecos de la spec con etapa destino (registro de cierre en el plan)
 
-**F0 cerrada.** Próximo paso: **Fase F1** — etapas 01.01 (tenancy) → 01.02 (identidad + outbox)
-→ 01.03 (memberships, permisos, auditoría), en ese orden, con paralelismo dentro de cada una.
+### AKINE-01.01 — completada con verificación parcial
+
+Primer módulo de negocio: `organization` (tenant, planes, suscripción, consultorio y membership
+mínimos) + tenancy técnico y auditoría en `platform`. Migraciones `V2`–`V5`. Contrato **0.2.0**
+con 10 endpoints.
+
+**357 pruebas backend** (348 unitarias/arquitectura + 9 integración). Cobertura **81,89 %** —
+bajó de 98,35 % al agregar la capa API sin tests por decisión explícita: **quedan 1,89 puntos
+de margen** sobre el piso.
+
+> **La etapa NO declara cubiertos sus criterios de aceptación funcionales.** Sin login (01.02)
+> ningún endpoint de negocio es ejercitable por un usuario. Lo verificado es la lógica; el
+> comportamiento de punta a punta queda pendiente. **11 escenarios diferidos** en
+> `docs/tests-diferidos.md`, cada uno con su origen y etapa destino.
+
+Reglas que esta etapa dejó fijadas y que las siguientes heredan:
+
+| Regla | Por qué |
+|---|---|
+| `application` consume **puertos en `domain`**, nunca repositorios de `infrastructure` | `AGENT.md` §4: `infrastructure → application`. ArchUnit lo verifica |
+| Las excepciones de un módulo se mapean en **su propio advice**, no en `GlobalExceptionHandler` | `platform.api → organization.domain` cierra un ciclo |
+| Cross-tenant → **404**, nunca 403 | Un 403 confirma que existe: bastaría probar ids consecutivos |
+| Falta de contexto → **403**, nunca 401 | El interceptor del frontend borra el token ante cualquier 401 → bucle de login |
+| La auditoría se escribe **en la transacción del negocio** | Un listener post-commit que falla deja la mutación sin rastro |
+| `organization` **jamás** importa `identity` | Evita el ciclo; la orquestación va siempre desde `identity` |
+
+### Próximo paso — etapa AKINE-01.02
+
+Identidad, autenticación, recuperación y outbox de notificaciones. Diseño y challenge en el
+scratchpad de sesión; decisiones transversales en `decisiones-transversales-f1.md`.
+
+Lo primero que habilita: los 11 tests diferidos y las tres pantallas del frontend, que hoy no
+se pueden ejercitar.
 
 Pendientes que arrastra el backend:
 
