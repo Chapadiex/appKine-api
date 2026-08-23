@@ -52,6 +52,9 @@ de commits, o directamente se revierte una decisión correcta por desconocer su 
 | [0014](0014-alcance-mvp-y-segunda-entrega-m28-m29.md) | Alcance del MVP (M01–M27) y segunda entrega obligatoria (M28–M29) | Aceptado | AKINE-00.03 |
 | [0015](0015-requisitos-clinicos-y-legales.md) | Requisitos clínicos y legales configurables por financiador, con gate de aprobación | Aceptado | AKINE-00.03 |
 | [0016](0016-versiones-tecnicas-y-slo.md) | Versiones técnicas confirmadas y SLO medibles | Aceptado | AKINE-00.03 |
+| [0017](0017-custodia-y-ciclo-de-vida-de-los-tokens.md) | Custodia y ciclo de vida de los tokens de sesión | Aceptado | AKINE-01.02 |
+| [0018](0018-anti-enumeracion-uniforme.md) | Respuestas uniformes: la autenticación no revela si una cuenta existe | Aceptado | AKINE-01.02 |
+| [0019](0019-identidad-global-sin-organization-id.md) | Las tablas de identidad no llevan `organization_id` | Aceptado | AKINE-01.02 |
 
 > Los ADRs 0001–0007 cubren decisiones **técnicas** del baseline. Las decisiones de
 > producto `DP-01`–`DP-09` están formalizadas en los ADRs

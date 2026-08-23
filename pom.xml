@@ -22,6 +22,7 @@
 		<springdoc.version>3.1.0</springdoc.version>
 		<jacoco.version>0.8.13</jacoco.version>
 		<maven-enforcer.version>3.6.2</maven-enforcer.version>
+		<bouncycastle.version>1.85.2</bouncycastle.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
 		<akine.contract.version>0.2.0</akine.contract.version>
@@ -68,6 +69,16 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+
+		<!-- Argon2id para el hashing de contrasenas (AKINE-01.02).
+		     Argon2PasswordEncoder de Spring Security delega en BouncyCastle y NO lo arrastra:
+		     sin esta dependencia el encoder lanza NoClassDefFoundError al primer registro real.
+		     Argon2id es memory-hard; el fallback PBKDF2 no lo es, asi que no son equivalentes. -->
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
+			<version>${bouncycastle.version}</version>
 		</dependency>
 
 		<!-- ===== Observabilidad ===== -->
