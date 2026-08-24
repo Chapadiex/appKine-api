@@ -39,7 +39,23 @@ public interface AuditEventRepository extends Repository<AuditEvent, Long> {
 	Page<AuditEvent> findAllByOrganizationIdAndActorAccountIdOrderByOccurredAtDesc(
 			Long organizationId, Long actorAccountId, Pageable pageable);
 
-	/** Ventana temporal de un tenant, para investigar un incidente acotado. */
+	/**
+	 * Ventana temporal de un tenant, para investigar un incidente acotado (RF-M24-004).
+	 *
+	 * <p>Usa {@code ix_audit_event_org_time}, que agrego la migracion V14. Antes de esa
+	 * migracion esta consulta era un scan del tenant entero: ninguno de los dos indices de V5
+	 * —por entidad y por actor— sirve para un rango sobre {@code occurred_at} filtrando solo por
+	 * organizacion, porque la columna del rango no queda en el prefijo del indice.
+	 */
 	Page<AuditEvent> findAllByOrganizationIdAndOccurredAtBetweenOrderByOccurredAtDesc(
 			Long organizationId, Instant desde, Instant hasta, Pageable pageable);
+
+	/**
+	 * Ventana temporal acotada a una sede.
+	 *
+	 * <p>Es el alcance de {@code auditoria:read} para {@code CONSULTORIO_ADMIN}, que la matriz
+	 * §6 define como "Consultorio". Usa {@code ix_audit_event_org_loc_time} (V14).
+	 */
+	Page<AuditEvent> findAllByOrganizationIdAndConsultorioIdAndOccurredAtBetweenOrderByOccurredAtDesc(
+			Long organizationId, Long consultorioId, Instant desde, Instant hasta, Pageable pageable);
 }

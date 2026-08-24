@@ -5,7 +5,7 @@ import com.akine.organization.api.dto.PlanChangeResponse;
 import com.akine.organization.api.dto.SubscriptionResponse;
 import com.akine.organization.api.dto.SubscriptionTransitionPageResponse;
 import com.akine.organization.api.dto.SubscriptionTransitionRequest;
-import com.akine.organization.application.ProvisionalAuthorizationGuard;
+import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.SubscriptionService;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
@@ -54,12 +54,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class SubscriptionController {
 
 	private final SubscriptionService subscriptionService;
-	private final ProvisionalAuthorizationGuard authorizationGuard;
+	private final AuthorizationGuard authorizationGuard;
 	private final TenantContextHolder tenantContextHolder;
 
 	public SubscriptionController(
 			SubscriptionService subscriptionService,
-			ProvisionalAuthorizationGuard authorizationGuard,
+			AuthorizationGuard authorizationGuard,
 			TenantContextHolder tenantContextHolder) {
 		this.subscriptionService = subscriptionService;
 		this.authorizationGuard = authorizationGuard;

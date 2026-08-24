@@ -90,7 +90,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.3.0
+    version: 0.6.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
@@ -123,6 +123,15 @@ akine:
       # "el mas facil de automatizar de todos" y en el que apoya su 202 uniforme.
       # Registrarse es un acto unico: cinco intentos por minuto le sobran a una persona.
       register-max-attempts: 5
+      # Alta directa de colaboradores (POST /api/v1/memberships). Tercer cupo, entre los otros
+      # dos. Ese endpoint responde 404 cuando el email no tiene cuenta, o sea que distingue
+      # direcciones registradas de las que no: un ORG_ADMIN comprometido podria enumerar la base
+      # del SaaS entero. Este limite es UNA de las dos mitigaciones obligatorias que hacen
+      # aceptable ese 404; la otra es auditar cada intento fallido en el tenant
+      # (MEMBERSHIP_ALTA_RECHAZADA). Retirar cualquiera de las dos obliga a rediscutir el codigo.
+      # No son 30 porque no hay reintento honesto que proteger —no se tipea ninguna contrasena—,
+      # y no son 5 porque incorporar un equipo entero de una sentada es un uso legitimo.
+      membership-max-attempts: 10
 
   identity:
     session:

@@ -18,7 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
  *
  * <p>Lo que se monta aca es deliberadamente lo minimo que el controller necesita para
  * ejercitarse: {@code permitAll} en la cadena, para que la decision de "quien puede hacer
- * que" quede donde el modulo la puso —{@code ProvisionalAuthorizationGuard} y
+ * que" quede donde el modulo la puso —{@code AuthorizationGuard} y
  * {@code ApiActor}— y sea eso lo que se verifica.
  *
  * <p>El principal se inyecta por request con el post-processor {@code authentication(..)} de

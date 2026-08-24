@@ -1,5 +1,6 @@
 package com.akine.platform.infrastructure.config;
 
+import com.akine.platform.spi.problem.ProblemType;
 import java.net.URI;
 import java.util.List;
 
@@ -403,7 +404,7 @@ public class SecurityConfig {
 	static final class OriginCsrfFilter extends org.springframework.web.filter.OncePerRequestFilter {
 
 		private static final URI TYPE_CSRF_RECHAZADO =
-				URI.create("https://akine.app/problems/csrf-rejected");
+				ProblemType.CSRF_REJECTED.uri();
 
 		private final List<String> origenesPermitidos;
 

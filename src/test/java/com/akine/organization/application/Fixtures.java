@@ -51,7 +51,7 @@ final class Fixtures {
 	}
 
 	static Consultorio consultorio(long id, String nombre) {
-		return conId(new Consultorio(ORG_ID, nombre), id);
+		return conId(new Consultorio(ORG_ID, nombre, "America/Argentina/Cordoba", null), id);
 	}
 
 	static Plan plan(long id, String code) {

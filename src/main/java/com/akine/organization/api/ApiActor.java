@@ -10,7 +10,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 /**
  * Lo que la capa {@code api} sabe de quien hace el request, listo para el guard de autorizacion.
  *
- * <p><b>Por que existe.</b> {@code ProvisionalAuthorizationGuard} vive en {@code application} y
+ * <p><b>Por que existe.</b> {@code AuthorizationGuard} vive en {@code application} y
  * recibe primitivos: no puede conocer HTTP, ni Spring Security, ni la forma del token —que
  * ademas todavia no existe, la define 01.02. Traducir "el request en curso" a
  * {@code (accountId, platformAdmin, contextOrganizationId)} es trabajo de esta capa, y tenerlo

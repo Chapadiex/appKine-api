@@ -33,6 +33,18 @@ services:
       - --collation-server=utf8mb4_0900_ai_ci
       # La base guarda instantes UTC. La zona local se aplica en el dominio.
       - --default-time-zone=+00:00
+      # AKINE-01.03: la migracion V14 crea dos triggers que hacen append-only a audit_event
+      # (RN-M24-001). Con el log binario activo —el default de MySQL 8.4— crear un trigger
+      # exige SUPER, y el usuario de la aplicacion no lo tiene ni debe tenerlo. Esta variable
+      # es la forma estandar de permitirlo sin dar SUPER.
+      #
+      # Que implica, dicho de frente: MySQL deja de exigir SUPER para crear triggers y funciones
+      # almacenadas, con lo que quien pueda ejecutar DDL en esta base puede crear un trigger que
+      # se replique a los esclavos. En un entorno real eso se compensa con lo de siempre: el
+      # usuario de la aplicacion no tiene DDL, y las migraciones las aplica un usuario dedicado.
+      # La alternativa —no crear los triggers— deja la inmutabilidad de la auditoria dependiendo
+      # de que ningun codigo llame a un DELETE, que es justamente lo que RN-M24-001 no acepta.
+      - --log-bin-trust-function-creators=1
     ports:
       # Puerto del host parametrizable: si otro proyecto ya ocupa 3306, se levanta con
       #   AKINE_DB_PORT=3307 docker compose up -d

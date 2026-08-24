@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.3.0
+  version: 0.6.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -21,16 +21,24 @@ tags:
   name: Registro y activacion
 - description: "Login, renovacion, seleccion de contexto y cierre de sesion"
   name: Sesion
+- description: Contextos de trabajo habilitados para la cuenta autenticada
+  name: Mi cuenta
+- description: "Alta, edicion y baja de las sedes de una organizacion"
+  name: Consultorios
+- description: "Administracion de la plataforma: acceso de soporte y roles globales"
+  name: Plataforma
 - description: "Contrato tecnico: salud y versionado"
   name: Platform
+- description: Consulta del registro de hechos de la organizacion
+  name: Auditoria
 - description: Alta y administracion de tenants y sus sedes
   name: Organizaciones
 - description: "Bloqueo, desbloqueo y baja logica de cuentas de la propia organizacion"
   name: Administracion de cuentas
-- description: Contextos de trabajo habilitados para la cuenta autenticada
-  name: Mi cuenta
 - description: "Catalogo comercial: que incluye cada plan"
   name: Planes
+- description: "Vinculos de las cuentas con la organizacion, sus roles y sus permisos"
+  name: Colaboradores
 paths:
   /api/v1/accounts/{accountId}/block:
     post:
@@ -622,6 +630,99 @@ paths:
       summary: Contextos de trabajo habilitados
       tags:
       - Mi cuenta
+  /api/v1/me/permissions:
+    get:
+      description: |-
+        Devuelve los codigos del catalogo que la cuenta tiene vigentes en la organizacion y la sede de su contexto activo, ya resueltos: rol base, permisos adicionales vigentes y acceso de soporte, todo aplanado en un array. El cliente no compone nada.
+
+        Se resuelve CONTRA LA BASE en cada llamada, no contra lo que porta el token. Un permiso revocado hace un minuto ya no aparece aca, aunque el access token siga siendo valido: leer del token daria una respuesta correcta al momento del login y falsa despues.
+
+        Es insumo de UX, no un mecanismo de seguridad. Cada pantalla que el frontend oculte con esto esta igualmente protegida en el backend; si esta lista mintiera, lo unico que pasaria es que se veria un boton que despues responde 403.
+
+        Exige contexto de trabajo. Sin el la respuesta es 403 missing-tenant-context, NUNCA 401: el interceptor del frontend borra el token ante cualquier 401 y arranca un bucle de login.
+      operationId: getMyPermissions
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EffectivePermissionsResponse"
+          description: Permisos efectivos. Array vacio si la cuenta no tiene ninguno
+            en este contexto
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, o no hay contexto de trabajo seleccionado\
+            \ (missing-tenant-context). Nunca 401"
+      summary: Permisos efectivos en el contexto activo
+      tags:
+      - Mi cuenta
+  /api/v1/memberships:
+    post:
+      description: |-
+        Requiere colaborador:manage sobre el alcance pedido. La organizacion sale del contexto de trabajo activo y NO se manda en el cuerpo.
+
+        No crea cuentas y no manda correos: vincula a alguien que ya se registro. Es una desviacion declarada de RF-M05-001/002 —el flujo de invitacion con aceptacion queda para una etapa posterior—, no el flujo definitivo.
+
+        Si el email no tiene cuenta la respuesta es 404. Esa respuesta distingue emails registrados de los que no, asi que la ruta tiene rate limit propio —10 por minuto y por IP— y CADA intento fallido queda auditado en el tenant como MEMBERSHIP_ALTA_RECHAZADA, con el actor y la direccion. Un barrido de la base no pasa desapercibido.
+
+        El motivo es obligatorio: es lo que responde, seis meses despues, por que esa persona tiene acceso a los datos del centro.
+      operationId: createDirectMembership
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMembershipRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedMembershipResponse"
+          description: Vinculo creado. Location apunta al recurso en el modulo de
+            organizacion
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el email, el rol o el motivo, o el rol no es un valor\
+            \ legal"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, no hay contexto de trabajo activo\
+            \ (missing-tenant-context), o falta colaborador:manage sobre el alcance\
+            \ pedido. Nunca 401"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ninguna cuenta tiene ese email, o la sede pedida no es de\
+            \ la organizacion del contexto. Los dos casos responden igual"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Esa cuenta ya tiene un vinculo con ese alcance, vigente o\
+            \ historico"
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Se alcanzo el limite de intentos de la ruta. Retry-After dice
+            en cuantos segundos reintentar
+      summary: Vincular una cuenta existente con la organizacion
+      tags:
+      - Colaboradores
   /api/v1/organizations:
     post:
       description: |-
@@ -783,13 +884,125 @@ paths:
       summary: Editar los datos mutables de la organizacion
       tags:
       - Organizaciones
+  /api/v1/organizations/{orgId}/audit-events:
+    get:
+      description: |-
+        Requiere auditoria:read. Hay que elegir EXACTAMENTE UNO de los tres filtros; combinarlos o no mandar ninguno responde 400.
+
+        1. entityType + entityId: historial de una entidad (RF-M24-002).
+        2. actorAccountId: actividad de una persona dentro del tenant (RF-M24-003).
+        3. from + to: ventana temporal (RF-M24-004). El rango no puede exceder los 90 dias, y to tiene que ser posterior a from.
+
+        size se recorta a 100 por request: un cliente que pide diez mil filas esta mal configurado, no atacando, y devolverle cien le sirve mas que un error.
+
+        Quien tiene el permiso con alcance de sede ve solo su sede. Ese recorte lo decide el evaluador de permisos, no un parametro.
+      operationId: listAuditEvents
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Tipo de entidad. Va junto con entityId
+        example: MEMBERSHIP
+        in: query
+        name: entityType
+        required: false
+        schema:
+          type: string
+      - description: Identificador de la entidad. Va junto con entityType
+        example: 42
+        in: query
+        name: entityId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: Cuenta cuya actividad se consulta
+        example: 18
+        in: query
+        name: actorAccountId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: Inicio de la ventana. Va junto con to
+        example: 2026-08-01T00:00:00Z
+        in: query
+        name: from
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - description: Fin de la ventana. Va junto con from. Como maximo 90 dias despues
+          de from
+        example: 2026-08-23T00:00:00Z
+        in: query
+        name: to
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - description: "Numero de pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: Elementos por pagina. Se recorta a 100
+        example: 20
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEventPageResponse"
+          description: Pagina de hechos que cumplen el filtro
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No se eligio exactamente un filtro, el rango esta invertido,\
+            \ o excede los 90 dias"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto de trabajo activo, o sin auditoria:read"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion no existe o no es la del contexto del actor
+      summary: Hechos registrados en la auditoria de la organizacion
+      tags:
+      - Auditoria
   /api/v1/organizations/{orgId}/consultorios:
     get:
-      description: "Listado paginado de los consultorios vigentes del tenant. Requiere\
-        \ ser miembro vigente de esa organizacion. Es la lectura minima que necesita\
-        \ el selector de contexto de trabajo; la administracion completa de consultorios\
-        \ llega en 02.01. El tamano de pagina se acota a 100: pedir mas devuelve ese\
-        \ maximo, no un error."
+      description: "Listado paginado de las sedes del tenant. Requiere ser miembro\
+        \ vigente de esa organizacion, y NO consultorio:manage: es la lectura que\
+        \ necesita el selector de contexto de trabajo, asi que restringirla dejaria\
+        \ a un profesional sin poder elegir sede. El parametro estado es opcional\
+        \ y su valor por defecto, ACTIVO, conserva el comportamiento historico del\
+        \ endpoint: un cliente que no lo manda ve exactamente lo mismo que antes.\
+        \ El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un\
+        \ error."
       operationId: listOrganizationConsultorios
       parameters:
       - description: Identificador de la organizacion
@@ -800,6 +1013,21 @@ paths:
         schema:
           type: integer
           format: int64
+      - description: "Que sedes devolver. ACTIVO son las vigentes, INACTIVO las dadas\
+          \ de baja, TODOS ambas. Una sede dada de baja conserva su historia y sigue\
+          \ siendo consultable, pero hay que pedirla explicitamente para que no aparezca\
+          \ por descuido en el selector de contexto."
+        example: ACTIVO
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          default: ACTIVO
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
       - description: "Numero de pagina, base cero"
         example: 0
         in: query
@@ -826,6 +1054,12 @@ paths:
                 $ref: "#/components/schemas/ConsultorioPageResponse"
           description: Pagina de sedes. Contenido vacio si la pagina quedo fuera de
             rango
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El valor de estado no pertenece al catalogo
         "403":
           content:
             application/problem+json:
@@ -838,9 +1072,817 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "No existe, esta dada de baja, o pertenece a otro tenant"
-      summary: Sedes activas de la organizacion
+      summary: Sedes de la organizacion
       tags:
       - Organizaciones
+    post:
+      description: |-
+        Crea una sede nueva en la organizacion. La PRIMERA sede no se crea por aca: la crea el alta de la organizacion en la misma transaccion, porque el contexto de trabajo es Organizacion + Consultorio y un tenant sin sede no ofreceria ningun contexto seleccionable.
+
+        Exige consultorio:manage con alcance ORGANIZACION. Un CONSULTORIO_ADMIN no puede crear sedes, y no hace falta ninguna regla especial para impedirlo: un alta no tiene sede objetivo —todavia no existe— asi que la interseccion con un alcance de una sola sede es vacia.
+
+        Pasa por el limite MAX_CONSULTORIOS del plan contratado. El header Idempotency-Key es obligatorio: reintentar con la misma clave y el mismo cuerpo devuelve la misma sede en vez de crear una segunda, que es lo que cubre el reintento despues de un timeout de red.
+
+        El primer box y el horario general de la sede NO se crean aca. Box es del modulo de espacios (AKINE-02.02) y el horario general depende de la disponibilidad profesional, que llega despues.
+      operationId: createConsultorio
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Identificador unico del intento, generado por el cliente. Reintentar\
+          \ la misma alta debe reusar el mismo valor."
+        example: 0f9d5f6e-1c2b-4a3d-9e8f-7a6b5c4d3e2f
+        in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConsultorioRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsultorioResponse"
+          description: "Sede creada, o la misma sede si es un reintento con la misma\
+            \ clave de idempotencia. La cabecera Location apunta al recurso"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, zona horaria que no es un identificador\
+            \ IANA, o falta el header Idempotency-Key"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage con alcance organizacion, o no hay\
+            \ contexto de trabajo seleccionado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La organizacion no existe, esta dada de baja, o es de otro\
+            \ tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Nombre repetido entre las sedes vigentes (consultorio-name-taken),\
+            \ limite del plan alcanzado (plan-limit-exceeded), suscripcion suspendida\
+            \ (subscription-suspended), o clave de idempotencia reusada con otro contenido\
+            \ (idempotency-key-conflict)"
+      summary: Alta de una sede adicional
+      tags:
+      - Consultorios
+  /api/v1/organizations/{orgId}/consultorios/{consultorioId}:
+    get:
+      description: |-
+        Devuelve la sede con su configuracion y la version que hay que reenviar para editarla.
+
+        Devuelve tambien las sedes INACTIVAS, con 200 y no con 404: RF-M03-004 exige que los historicos previos permanezcan disponibles. Lo que una sede inactiva rechaza son las operaciones nuevas, y eso se responde con 409.
+
+        Exige consultorio:manage sobre ESA sede, asi que un CONSULTORIO_ADMIN puede leer la suya y no las demas. Una sede de otro tenant responde 404, igual que una inexistente.
+      operationId: getConsultorio
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsultorioResponse"
+          description: "La sede, activa o dada de baja"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No existe o pertenece a otro tenant
+      summary: Datos de una sede
+      tags:
+      - Consultorios
+    patch:
+      description: |-
+        Cambia nombre, zona horaria, intervalo de agenda y datos institucionales (RF-M03-003). Los campos omitidos no se tocan; para borrar un dato institucional se manda cadena vacia.
+
+        version es obligatoria y se compara antes de mutar: si quedo vieja, la respuesta es 409 concurrent-modification y el cliente recarga. Sin eso, dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se entere.
+
+        Una sede INACTIVA no se puede editar: 409 consultorio-inactive.
+
+        Cambiar la zona horaria NO reinterpreta el pasado. Los instantes ya registrados son UTC y no se mueven; cambia como se proyectan de aca en adelante, y la pantalla tiene que decirlo con esas palabras.
+      operationId: updateConsultorio
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConsultorioRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsultorioResponse"
+          description: Sede actualizada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos o zona horaria que no es un identificador
+            IANA
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No existe o pertenece a otro tenant
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sede dada de baja (consultorio-inactive), nombre repetido\
+            \ (consultorio-name-taken) o version desactualizada (concurrent-modification)"
+      summary: Edicion de una sede
+      tags:
+      - Consultorios
+  /api/v1/organizations/{orgId}/consultorios/{consultorioId}/deactivate:
+    post:
+      description: |-
+        Da de baja la sede con motivo obligatorio (RF-M03-004). NO borra nada: la sede queda INACTIVA, sigue siendo legible por id y conserva intacta toda su historia. No hay reactivacion: ningun RF de M03 la pide.
+
+        Dos rechazos que hay que mostrar con su mensaje real y no con un generico:
+
+        - last-consultorio-required: es la ultima sede activa del tenant. Sin ninguna sede activa nadie podria canjear contexto y la organizacion quedaria operativamente muerta, recuperable solo con intervencion manual. Es una restriccion agregada al comportamiento del requerimiento, decidida explicitamente.
+        - consultorio-has-active-references: reservado. Hoy no lo emite nadie; lo emitira el modulo de agenda cuando existan turnos futuros sobre la sede.
+
+        Exige consultorio:manage con alcance ORGANIZACION, o sea que hoy solo un ORG_ADMIN puede dar de baja una sede. Es mas estricto que la lectura literal de la matriz de permisos, por el mismo criterio que impide que alguien se quite a si mismo su ultimo rol administrativo: nadie destruye el alcance desde el que opera. Queda como enmienda pendiente de confirmacion.
+      operationId: deactivateConsultorio
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateConsultorioRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsultorioResponse"
+          description: Sede dada de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage con alcance organizacion, o no hay\
+            \ contexto de trabajo seleccionado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No existe o pertenece a otro tenant
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Es la ultima sede activa (last-consultorio-required), ya estaba\
+            \ dada de baja (consultorio-already-inactive), o tiene referencias vigentes\
+            \ (consultorio-has-active-references)"
+      summary: Baja logica de una sede
+      tags:
+      - Consultorios
+  /api/v1/organizations/{orgId}/memberships:
+    get:
+      description: |-
+        Requiere colaborador:read. Devuelve TAMBIEN los vinculos suspendidos y revocados: quien administra tiene que poder ver quien estuvo, quien lo desvinculo y por que. Para eso existe la baja logica. El cliente distingue por el campo estado, no por ausencia.
+
+        size se acota a 100 por request. Pedir 500 devuelve 100, no un error.
+      operationId: listMemberships
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Numero de pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: Elementos por pagina. Se acota a 100
+        example: 20
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipPageResponse"
+          description: Pagina de colaboradores
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, no hay contexto de trabajo activo,\
+            \ o falta colaborador:read. Nunca 401"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion no existe o no es la del contexto del actor
+      summary: Colaboradores de la organizacion
+      tags:
+      - Colaboradores
+  /api/v1/organizations/{orgId}/memberships/{membershipId}:
+    get:
+      description: "Requiere colaborador:read. El vinculo se busca por (id, organizacion)\
+        \ y nunca por id pelado: uno de otro tenant responde 404 igual que uno inexistente."
+      operationId: getMembership
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del vinculo
+        example: 42
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipResponse"
+          description: El vinculo pedido
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo, o sin colaborador:read"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El vinculo no existe o es de otra organizacion
+      summary: Un colaborador de la organizacion
+      tags:
+      - Colaboradores
+    patch:
+      description: |-
+        Requiere colaborador:manage y motivo obligatorio. Los dos cambios se auditan por separado: mover a alguien de sede y cambiar lo que puede hacer son dos decisiones distintas.
+
+        changeScope existe porque null es un valor legitimo de consultorioId (significa alcance de toda la organizacion): sin la bandera, 'no tocar la sede' y 'ampliarla a la organizacion' serian el mismo request.
+
+        Solo opera sobre vinculos ACTIVA. Sobre uno suspendido o revocado responde 409 membership-not-active, no 404: el administrador ve esa fila en su propio listado y decirle 'no existe' no le explicaria nada.
+
+        Bajar de rol al ultimo administrador se rechaza con 409 igual que revocarlo: el tenant quedaria sin nadie que pueda repararlo.
+      operationId: changeMembership
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del vinculo
+        example: 42
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeMembershipRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipResponse"
+          description: Vinculo actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el motivo, o el rol no existe en el catalogo"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo, sin colaborador:manage, o\
+            \ el vinculo es el del fundador y el actor no es el fundador"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El vinculo o la sede destino no existen, o son de otra organizacion"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El vinculo no esta ACTIVA (membership-not-active), dejaria\
+            \ al tenant sin administradores (last-admin-required), el actor se quitaria\
+            \ su ultimo rol administrativo (self-revoke-not-allowed), o otro usuario\
+            \ modifico la fila (concurrent-modification)"
+      summary: Cambiar el rol y/o el alcance de un colaborador
+      tags:
+      - Colaboradores
+  /api/v1/organizations/{orgId}/memberships/{membershipId}/grants:
+    get:
+      description: |-
+        Requiere colaborador:read. Devuelve solo los vigentes: los dados de baja quedan en la fila para la auditoria, no para esta pantalla.
+
+        Es lo que alimenta la lista desde la que se revoca un permiso adicional. Sin este endpoint el cliente no tendria de donde sacar los codigos a dar de baja.
+      operationId: listMembershipGrants
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del vinculo
+        example: 42
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MembershipGrantResponse"
+          description: Permisos adicionales vigentes. Lista vacia si no tiene ninguno
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo, o sin colaborador:read"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El vinculo no existe o es de otra organizacion
+      summary: Permisos adicionales vigentes de un colaborador
+      tags:
+      - Colaboradores
+    post:
+      description: |-
+        Requiere colaborador:manage y motivo obligatorio. El catalogo de codigos otorgables es cerrado: un permiso que existe pero no es otorgable en esta fase se rechaza con 400, no se escribe.
+
+        Otorgar dos veces el mismo permiso responde 409 grant-already-active, y esa decision la toma la clave unica de la base y no un chequeo previo: dos administradores otorgando a la vez leerian los dos que no existe.
+      operationId: assignMembershipGrant
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del vinculo
+        example: 42
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignGrantRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipGrantResponse"
+          description: Permiso adicional otorgado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el motivo, o el codigo no existe o no es otorgable"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo, o sin colaborador:manage"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El vinculo no existe o es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ese permiso adicional ya esta vigente sobre el vinculo, o\
+            \ el vinculo no esta ACTIVA"
+      summary: Otorgar un permiso adicional a un colaborador
+      tags:
+      - Colaboradores
+  /api/v1/organizations/{orgId}/memberships/{membershipId}/grants/{permissionCode}:
+    delete:
+      description: |-
+        Requiere colaborador:manage. Baja LOGICA: la fila queda con su autor y su motivo.
+
+        Es idempotente hacia el mismo resultado: si el permiso ya no esta vigente responde 204 igual. Un 409 obligaria al cliente a distinguir dos situaciones que para el usuario son la misma: no lo tenia, y se lo acaban de quitar.
+
+        El motivo va como parametro y no en el cuerpo porque un DELETE con cuerpo no esta garantizado de punta a punta por proxies y clientes HTTP.
+      operationId: revokeMembershipGrant
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del vinculo
+        example: 42
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Codigo del permiso a dar de baja
+        example: auditoria:read-clinica
+        in: path
+        name: permissionCode
+        required: true
+        schema:
+          type: string
+      - description: Motivo declarado de la baja. Queda en la auditoria
+        in: query
+        name: reason
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: "Permiso adicional dado de baja, o ya no estaba vigente"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El codigo de permiso no existe en el catalogo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo, o sin colaborador:manage"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El vinculo no existe o es de otra organizacion
+      summary: Dar de baja un permiso adicional
+      tags:
+      - Colaboradores
+  /api/v1/organizations/{orgId}/memberships/{membershipId}/reactivate:
+    post:
+      description: "Requiere colaborador:manage. Solo aplica sobre vinculos SUSPENDIDA:\
+        \ uno revocado es terminal y responde 409. Devolverle el acceso a alguien\
+        \ es tan auditable como quitarselo, asi que el motivo se exige igual."
+      operationId: reactivateMembership
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del vinculo
+        example: 42
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MembershipReasonRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipResponse"
+          description: Vinculo reactivado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo, o sin colaborador:manage"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El vinculo no existe o es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El vinculo no estaba SUSPENDIDA
+      summary: Devolver a ACTIVA un vinculo suspendido
+      tags:
+      - Colaboradores
+  /api/v1/organizations/{orgId}/memberships/{membershipId}/revoke:
+    post:
+      description: |-
+        Requiere colaborador:manage y motivo obligatorio. Estado TERMINAL y sin borrado (RN-M05-003): la fila queda con quien revoco y por que, porque los historicos que la referencian tienen que seguir siendo legibles.
+
+        Es la operacion con los tres invariantes a la vez: ultimo administrador, self-revoke y proteccion del fundador. Los dos primeros responden 409; el tercero 403, porque es una restriccion sobre QUIEN puede hacerlo y no sobre el estado en que quedaria el tenant.
+
+        No es un DELETE porque no borra nada, y exige cuerpo porque el motivo es obligatorio.
+      operationId: revokeMembership
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del vinculo
+        example: 42
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MembershipReasonRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipResponse"
+          description: Vinculo revocado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo, sin colaborador:manage, o\
+            \ es el vinculo del fundador y el actor no es el fundador"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El vinculo no existe o es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El vinculo ya estaba revocado, dejaria al tenant sin administradores,\
+            \ o el actor se quitaria su ultimo rol administrativo"
+      summary: Revocar el vinculo de un colaborador
+      tags:
+      - Colaboradores
+  /api/v1/organizations/{orgId}/memberships/{membershipId}/suspend:
+    post:
+      description: "Requiere colaborador:manage y motivo obligatorio. Suspender saca\
+        \ a la persona igual que revocar mientras dura, asi que pasa por los mismos\
+        \ invariantes: no puede dejar al tenant sin administradores ni ser el ultimo\
+        \ rol administrativo del propio actor. Tratarlo como mas suave seria dejar\
+        \ la misma puerta abierta con otro nombre."
+      operationId: suspendMembership
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del vinculo
+        example: 42
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MembershipReasonRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipResponse"
+          description: Vinculo suspendido
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo, sin colaborador:manage, o\
+            \ es el vinculo del fundador"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El vinculo no existe o es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El vinculo no esta ACTIVA, o la suspension dejaria al tenant\
+            \ sin administradores"
+      summary: Suspender temporalmente un vinculo
+      tags:
+      - Colaboradores
   /api/v1/organizations/{orgId}/subscription:
     get:
       description: |-
@@ -1084,6 +2126,236 @@ paths:
       summary: Catalogo de planes contratables
       tags:
       - Planes
+  /api/v1/platform/organizations/{orgId}/support-access:
+    get:
+      description: |-
+        Reservado a la administracion de plataforma. Devuelve los accesos vigentes; los cerrados quedan en la fila para la auditoria.
+
+        La misma informacion le llega al tenant por SU propia auditoria, que es donde tiene sentido para el: un cliente tiene derecho a ver quien entro a sus datos y por que, sin pedirselo a nadie.
+      operationId: listSupportAccess
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SupportAccessResponse"
+          description: Accesos de soporte vigentes. Lista vacia si no hay ninguno
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, o la cuenta no administra la plataforma.\
+            \ Nunca 401 desde un endpoint de negocio"
+      summary: Accesos de soporte vigentes sobre una organizacion
+      tags:
+      - Plataforma
+    post:
+      description: |-
+        Reservado a la administracion de plataforma. Motivo obligatorio: sin motivo no hay soporte, hay acceso a datos de salud ajenos.
+
+        La duracion se pide en minutos y no puede exceder los 240 (cuatro horas), que es tambien el default. El tope no es un valor sugerido: dejar que quien pide el acceso elija su propia duracion convertiria 'acotado en tiempo' en 'acotado si el que entra quiere'.
+
+        El otorgamiento queda en la auditoria DEL TENANT, no solo en la de plataforma. Cada operacion que despues se ampare en este acceso se audita por separado como SUPPORT_ACCESS_USED.
+      operationId: grantSupportAccess
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantSupportAccessRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportAccessResponse"
+          description: Acceso de soporte concedido
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el motivo, o la duracion es invalida o excede el maximo"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, o la cuenta no administra la plataforma"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion no existe o esta dada de baja
+      summary: Conceder acceso de soporte sobre una organizacion
+      tags:
+      - Plataforma
+  /api/v1/platform/roles:
+    get:
+      description: |-
+        Reservado a la administracion de plataforma. Devuelve los vigentes; los revocados quedan en la fila para la auditoria, no en este listado.
+
+        No hay paginado: la cantidad de administradores de plataforma se cuenta con los dedos de una mano, y si algun dia no fuera asi, eso seria el problema.
+      operationId: listPlatformRoles
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlatformRoleResponse"
+          description: Roles de plataforma vigentes
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, o la cuenta no administra la plataforma.\
+            \ Nunca 401"
+      summary: Roles de plataforma vigentes
+      tags:
+      - Plataforma
+    post:
+      description: |-
+        Reservado a la administracion de plataforma. Motivo obligatorio: es el permiso mas alto del sistema.
+
+        La existencia de la cuenta NO se verifica: cuenta es propiedad del modulo de identidad y este modulo no puede consultarla. Un accountId inexistente falla contra la clave foranea y se responde como una solicitud invalida.
+
+        Otorgarlo dos veces responde 409: dos administradores operando a la vez tienen que enterarse de que el otro llego primero.
+      operationId: grantPlatformRole
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantPlatformRoleRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformRoleResponse"
+          description: Rol de plataforma otorgado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo o la cuenta destino
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, o la cuenta no administra la plataforma"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Esa cuenta ya tiene el rol de plataforma vigente
+      summary: Otorgar el rol de plataforma a una cuenta
+      tags:
+      - Plataforma
+  /api/v1/platform/roles/{platformRoleId}:
+    delete:
+      description: |-
+        Reservado a la administracion de plataforma. Baja LOGICA: la fila queda con su autor y su motivo.
+
+        No impide quedarse sin ningun administrador de plataforma, y es deliberado: un invariante aca impediria revocar de urgencia una cuenta comprometida, que es el caso en el que revocar mas importa. El rescate es el seed de migracion.
+
+        El motivo va como parametro y no en el cuerpo porque un DELETE con cuerpo no esta garantizado de punta a punta por proxies y clientes HTTP.
+      operationId: revokePlatformRole
+      parameters:
+      - description: Identificador del otorgamiento
+        example: 2
+        in: path
+        name: platformRoleId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Motivo declarado de la revocacion. Queda en la auditoria
+        in: query
+        name: reason
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Rol de plataforma revocado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, o la cuenta no administra la plataforma"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El rol no existe o ya estaba revocado
+      summary: Revocar un rol de plataforma
+      tags:
+      - Plataforma
+  /api/v1/platform/support-access/{supportAccessId}:
+    delete:
+      description: |-
+        Reservado a la administracion de plataforma. No borra: cierra. Que alguien haya entrado a un tenant y por que tiene que seguir siendo legible despues.
+
+        Un acceso inexistente o ya cerrado responde 404: para quien pregunta, los dos casos son el mismo.
+      operationId: revokeSupportAccess
+      parameters:
+      - description: Identificador del acceso de soporte
+        example: 5
+        in: path
+        name: supportAccessId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "204":
+          description: Acceso de soporte cerrado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, o la cuenta no administra la plataforma"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El acceso no existe o ya estaba cerrado
+      summary: Cerrar un acceso de soporte antes de su vencimiento
+      tags:
+      - Plataforma
   /api/v1/version:
     get:
       description: Devuelve la identidad tecnica del backend en ejecucion y la version
@@ -1224,6 +2496,122 @@ components:
           minLength: 0
       required:
       - token
+    AssignGrantRequest:
+      type: object
+      description: Permiso adicional a otorgar sobre un vinculo
+      properties:
+        permissionCode:
+          type: string
+          description: "Codigo del permiso, del catalogo de la matriz"
+          example: auditoria:read-clinica
+          maxLength: 60
+          minLength: 0
+        reason:
+          type: string
+          description: Motivo declarado del otorgamiento. Queda en la auditoria
+          example: Revision de historia clinica por reclamo del financiador
+          maxLength: 500
+          minLength: 0
+        validUntil:
+          type: string
+          format: date-time
+          description: "Vencimiento del permiso adicional. Sin el, rige hasta que\
+            \ se de de baja"
+          example: 2026-12-31T23:59:59Z
+      required:
+      - permissionCode
+      - reason
+    AuditEventPageResponse:
+      type: object
+      description: "Pagina del registro de auditoria, del hecho mas reciente al mas\
+        \ viejo"
+      properties:
+        content:
+          type: array
+          description: Hechos de esta pagina
+          items:
+            $ref: "#/components/schemas/AuditEventResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina. Nunca mayor a 100
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de hechos que cumplen el filtro
+          example: 412
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 21
+    AuditEventResponse:
+      type: object
+      description: Hecho registrado en la auditoria de la organizacion
+      properties:
+        actorAccountId:
+          type: integer
+          format: int64
+          description: Cuenta que ejecuto la operacion
+          example: 18
+        consultorioId:
+          type: integer
+          format: int64
+          description: "Sede sobre la que ocurrio, si aplica"
+          example: 3
+        correlationId:
+          type: string
+          description: Identificador que agrupa los hechos de un mismo request
+          example: 9f3c1d2a-4b5e-4a6f-8c7d-0e1f2a3b4c5d
+        details:
+          type: object
+          additionalProperties:
+            type: string
+          description: "Datos adicionales del hecho, siempre como texto plano"
+        entityId:
+          type: integer
+          format: int64
+          description: Identificador de la entidad afectada
+          example: 42
+        entityType:
+          type: string
+          description: Tipo de entidad afectada
+          example: MEMBERSHIP
+        eventType:
+          type: string
+          description: Tipo de hecho
+          example: MEMBERSHIP_ROLE_CHANGED
+        id:
+          type: integer
+          format: int64
+          description: Identificador del hecho
+          example: 1024
+        newState:
+          type: string
+          description: "Estado nuevo, si el hecho fue una transicion"
+          example: CONSULTORIO_ADMIN
+        occurredAt:
+          type: string
+          format: date-time
+          description: Momento en que ocurrio
+        organizationId:
+          type: integer
+          format: int64
+          description: "Organizacion sobre la que ocurrio, o null si es de plataforma"
+          example: 7
+        previousState:
+          type: string
+          description: "Estado anterior, si el hecho fue una transicion"
+          example: PROFESIONAL
+        reason:
+          type: string
+          description: Motivo declarado por quien ejecuto la operacion
     AuthorizedContextResponse:
       type: object
       description: Contexto de trabajo habilitado para la cuenta autenticada
@@ -1246,6 +2634,40 @@ components:
           type: string
           description: Nombre de la organizacion
           example: Centro Kinesico Belgrano
+    ChangeMembershipRequest:
+      type: object
+      description: Cambio de rol y/o de alcance de un vinculo
+      properties:
+        changeScope:
+          type: boolean
+          default: false
+          description: "Indica que consultorioId debe aplicarse. En false la sede\
+            \ no se toca, sea cual sea el valor de consultorioId"
+          example: false
+        consultorioId:
+          type: integer
+          format: int64
+          description: "Sede destino cuando changeScope es true. null significa alcance\
+            \ de toda la organizacion, no 'sin cambio'"
+          example: 3
+        reason:
+          type: string
+          description: Motivo declarado del cambio. Queda en la auditoria
+          example: Promocion a responsable de la sede Centro
+          maxLength: 500
+          minLength: 0
+        roleCode:
+          type: string
+          description: "Rol destino, o null para no tocarlo. PLATFORM_ADMIN no es\
+            \ un rol de vinculo y se rechaza con 400"
+          enum:
+          - ORG_ADMIN
+          - CONSULTORIO_ADMIN
+          - PROFESIONAL
+          - ADMINISTRATIVO
+          example: CONSULTORIO_ADMIN
+      required:
+      - reason
     ClosedSessionsResponse:
       type: object
       description: Resultado del cierre masivo de sesiones de la propia cuenta
@@ -1257,7 +2679,8 @@ components:
           example: 3
     ConsultorioPageResponse:
       type: object
-      description: Pagina de sedes activas de la organizacion
+      description: "Pagina de sedes de la organizacion, segun el filtro de estado\
+        \ pedido"
       properties:
         content:
           type: array
@@ -1277,7 +2700,7 @@ components:
         totalElements:
           type: integer
           format: int64
-          description: Cantidad total de sedes activas
+          description: Cantidad total de sedes que cumplen el filtro
           example: 3
         totalPages:
           type: integer
@@ -1292,20 +2715,155 @@ components:
           type: boolean
           description: false cuando la sede fue dada de baja logica
           example: true
+        addressLine:
+          type: string
+          description: "Direccion, si se cargo"
+          example: "Av. Colon 1234, Cordoba"
+        contactEmail:
+          type: string
+          description: "Email de contacto, si se cargo"
+          example: sede@ejemplo.test
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja. null si la sede esta activa
+          example: Cierre de la sucursal
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja logica. null si la sede esta activa
+        estado:
+          type: string
+          description: "Estado derivado de la sede: ACTIVO o INACTIVO"
+          example: ACTIVO
         id:
           type: integer
           format: int64
           description: Identificador del consultorio
           example: 1
+        legalName:
+          type: string
+          description: "Razon social, si se cargo"
+          example: Centro Kinesico SRL
         name:
           type: string
-          description: Nombre de la sede
+          description: Nombre de la sede. Unico entre las sedes vigentes del tenant
           example: Sede Central
         organizationId:
           type: integer
           format: int64
           description: Organizacion a la que pertenece
           example: 1
+        phone:
+          type: string
+          description: "Telefono de contacto, si se cargo"
+          example: +54 351 555-0000
+        slotMinutes:
+          type: integer
+          format: int32
+          description: "Intervalo por defecto de la agenda, en minutos"
+          example: 30
+        taxId:
+          type: string
+          description: "Identificacion fiscal, si se cargo"
+          example: 30-12345678-9
+        timezone:
+          type: string
+          description: "Zona horaria IANA efectiva de la sede. Es la que rige el dia\
+            \ operativo y la agenda, no la de la organizacion"
+          example: America/Argentina/Cordoba
+        version:
+          type: integer
+          format: int64
+          description: "Version para el control de concurrencia optimista. Hay que\
+            \ reenviarla al editar: sin ella dos ediciones simultaneas se pisan"
+          example: 0
+    CreateConsultorioRequest:
+      type: object
+      description: Datos para dar de alta una sede adicional
+      properties:
+        addressLine:
+          type: string
+          description: Direccion
+          maxLength: 240
+          minLength: 0
+        contactEmail:
+          type: string
+          format: email
+          description: Email de contacto
+          maxLength: 160
+          minLength: 0
+        legalName:
+          type: string
+          description: Razon social
+          maxLength: 200
+          minLength: 0
+        name:
+          type: string
+          description: "Nombre de la sede. Unico entre las sedes VIGENTES del tenant:\
+            \ el nombre de una sede dada de baja se puede reusar"
+          example: Sede Norte
+          maxLength: 160
+          minLength: 0
+        phone:
+          type: string
+          description: Telefono de contacto
+          maxLength: 40
+          minLength: 0
+        slotMinutes:
+          type: integer
+          format: int32
+          description: "Intervalo por defecto de la agenda, en minutos. Si se omite,\
+            \ 30"
+          example: 30
+          maximum: 480
+          minimum: 5
+        taxId:
+          type: string
+          description: Identificacion fiscal
+          maxLength: 32
+          minLength: 0
+        timezone:
+          type: string
+          description: "Zona horaria IANA de la sede. Si se omite, se hereda la de\
+            \ la organizacion. Solo se aceptan identificadores IANA: un offset fijo\
+            \ como -03:00 no conoce el horario de verano y correria la agenda"
+          example: America/Argentina/Cordoba
+          maxLength: 64
+          minLength: 0
+      required:
+      - name
+    CreateMembershipRequest:
+      type: object
+      description: Datos del vinculo a crear entre una cuenta existente y la organizacion
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede del vinculo. Ausente o null para alcance organizacion
+          example: 3
+        email:
+          type: string
+          format: email
+          description: Email de la cuenta a vincular. Tiene que existir
+          example: kine@centro.test
+          maxLength: 320
+          minLength: 0
+        reason:
+          type: string
+          description: Motivo declarado del alta. Queda en la auditoria
+          example: Incorporacion del kinesiologo de la sede centro
+          maxLength: 500
+          minLength: 0
+        roleCode:
+          type: string
+          description: Rol de la matriz de permisos
+          example: CONSULTORIO_ADMIN
+          maxLength: 64
+          minLength: 0
+      required:
+      - email
+      - reason
+      - roleCode
     CreateOrganizationRequest:
       type: object
       description: Datos para dar de alta una organizacion y su primer consultorio
@@ -1339,6 +2897,84 @@ components:
       required:
       - name
       - planCode
+    CreatedMembershipResponse:
+      type: object
+      description: Identificador del vinculo creado por el alta directa
+      properties:
+        membershipId:
+          type: integer
+          format: int64
+          description: Identificador del vinculo creado
+          example: 42
+    DeactivateConsultorioRequest:
+      type: object
+      description: Motivo declarado de la baja de una sede
+      properties:
+        reason:
+          type: string
+          description: Por que se da de baja la sede. Queda en la auditoria y en la
+            propia fila
+          example: Cierre definitivo de la sucursal
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
+    EffectivePermissionsResponse:
+      type: object
+      description: Permisos efectivos de la cuenta en su contexto de trabajo activo
+      properties:
+        permissions:
+          type: array
+          description: "Codigos del catalogo que la cuenta tiene vigentes en este\
+            \ contexto, en orden alfabetico estable"
+          example:
+          - auditoria:read
+          - colaborador:manage
+          - colaborador:read
+          items:
+            type: string
+    GrantPlatformRoleRequest:
+      type: object
+      description: Rol de plataforma a otorgar
+      properties:
+        accountId:
+          type: integer
+          format: int64
+          description: Cuenta que recibe el rol
+          example: 18
+          minimum: 0
+        reason:
+          type: string
+          description: Motivo declarado. Otorgar el permiso mas alto del sistema lo
+            exige
+          example: "Alta del segundo administrador de plataforma, ticket OPS-118"
+          maxLength: 500
+          minLength: 0
+      required:
+      - accountId
+      - reason
+    GrantSupportAccessRequest:
+      type: object
+      description: Acceso de soporte a conceder sobre una organizacion
+      properties:
+        durationMinutes:
+          type: integer
+          format: int32
+          default: 240
+          description: Duracion en minutos. Por defecto y como maximo 240 (cuatro
+            horas)
+          example: 60
+          maximum: 240
+          minimum: 1
+        reason:
+          type: string
+          description: "Por que se necesita entrar al tenant. Queda en la auditoria\
+            \ del cliente, no solo en la de plataforma"
+          example: "Incidente 4821: la caja no cierra y el cliente pidio asistencia"
+          maxLength: 500
+          minLength: 0
+      required:
+      - reason
     LimitUsageResponse:
       type: object
       description: Consumo actual de un limite del plan contratado
@@ -1386,6 +3022,160 @@ components:
       required:
       - email
       - password
+    MembershipGrantResponse:
+      type: object
+      description: Permiso adicional otorgado a un colaborador
+      properties:
+        active:
+          type: boolean
+          description: "Baja logica: false cuando el permiso ya fue dado de baja"
+          example: true
+        grantedByAccountId:
+          type: integer
+          format: int64
+          description: Cuenta que lo otorgo
+          example: 4
+        id:
+          type: integer
+          format: int64
+          description: Identificador del permiso adicional
+          example: 12
+        membershipId:
+          type: integer
+          format: int64
+          description: Vinculo sobre el que se otorgo
+          example: 42
+        permissionCode:
+          type: string
+          description: "Codigo del permiso, del catalogo de la matriz"
+          example: auditoria:read-clinica
+        reason:
+          type: string
+          description: Motivo declarado del otorgamiento
+        validFrom:
+          type: string
+          format: date-time
+          description: Momento desde el que rige
+        validUntil:
+          type: string
+          format: date-time
+          description: "Momento hasta el que rige, o null si no vence"
+    MembershipPageResponse:
+      type: object
+      description: Pagina de colaboradores de la organizacion
+      properties:
+        content:
+          type: array
+          description: Vinculos de esta pagina
+          items:
+            $ref: "#/components/schemas/MembershipResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: "Cantidad total de vinculos, incluidos los revocados"
+          example: 37
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 2
+    MembershipReasonRequest:
+      type: object
+      description: Motivo auditable de la operacion sobre el vinculo
+      properties:
+        reason:
+          type: string
+          description: Por que se ejecuta la operacion. Queda en la auditoria
+          example: Licencia sin goce de haberes por tres meses
+          maxLength: 500
+          minLength: 0
+      required:
+      - reason
+    MembershipResponse:
+      type: object
+      description: Vinculo de una cuenta con la organizacion
+      properties:
+        accountEmail:
+          type: string
+          description: Email de la cuenta vinculada. null si la cuenta no se pudo
+            resolver
+          example: ana.perez@ejemplo.test
+        accountId:
+          type: integer
+          format: int64
+          description: Cuenta vinculada
+          example: 18
+        accountName:
+          type: string
+          description: Nombre completo de la cuenta vinculada. null si la cuenta no
+            se pudo resolver
+          example: Ana Perez
+        active:
+          type: boolean
+          description: "Baja logica: false cuando el vinculo ya no cuenta"
+          example: true
+        consultorioId:
+          type: integer
+          format: int64
+          description: "Sede a la que esta acotado, o null si alcanza toda la organizacion"
+          example: 3
+        estado:
+          type: string
+          description: Estado del vinculo
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - REVOCADA
+          example: ACTIVA
+        founder:
+          type: boolean
+          description: Indica si es el vinculo de quien creo la organizacion
+          example: false
+        id:
+          type: integer
+          format: int64
+          description: Identificador del vinculo
+          example: 42
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion a la que pertenece el vinculo
+          example: 7
+        revokedByAccountId:
+          type: integer
+          format: int64
+          description: "Cuenta que revoco el vinculo, si fue revocado"
+          example: 4
+        revokedReason:
+          type: string
+          description: "Motivo declarado de la revocacion, si fue revocado"
+        roleCode:
+          type: string
+          description: Rol asignado en la matriz de permisos
+          enum:
+          - ORG_ADMIN
+          - CONSULTORIO_ADMIN
+          - PROFESIONAL
+          - ADMINISTRATIVO
+          example: PROFESIONAL
+        validFrom:
+          type: string
+          format: date-time
+          description: Momento desde el que el vinculo es valido
+        validUntil:
+          type: string
+          format: date-time
+          description: "Momento hasta el que el vinculo es valido, o null si no vence"
     OrganizationResponse:
       type: object
       description: Organizacion (tenant) con su estado operativo efectivo
@@ -1542,6 +3332,44 @@ components:
           type: string
           description: Nombre comercial del plan
           example: Basico
+    PlatformRoleResponse:
+      type: object
+      description: Rol de plataforma vigente sobre una cuenta
+      properties:
+        accountId:
+          type: integer
+          format: int64
+          description: Cuenta que administra la plataforma
+          example: 1
+        active:
+          type: boolean
+          description: "Baja logica: false cuando el rol ya fue revocado"
+          example: true
+        grantedByAccountId:
+          type: integer
+          format: int64
+          description: "Cuenta que lo otorgo, o null si vino del seed de migracion"
+          example: 1
+        id:
+          type: integer
+          format: int64
+          description: Identificador del otorgamiento
+          example: 2
+        reason:
+          type: string
+          description: Motivo declarado del otorgamiento
+        roleCode:
+          type: string
+          description: Codigo del rol
+          example: PLATFORM_ADMIN
+        validFrom:
+          type: string
+          format: date-time
+          description: Momento desde el que rige
+        validUntil:
+          type: string
+          format: date-time
+          description: "Vencimiento, o null si no vence"
     ProblemDetail:
       type: object
       properties:
@@ -1561,6 +3389,42 @@ components:
         type:
           type: string
           format: uri
+    ProblemType:
+      type: string
+      description: |-
+        Catalogo cerrado de los valores que puede tomar el campo type de un Problem Detail (RFC 7807). Es el unico campo del error pensado para que lo lea una maquina: el status agrupa demasiado y el detail es texto para personas. Ramificar por este valor y nunca por el detail.
+
+        Agregar un valor es un cambio aditivo; quitarlo o resignificarlo es incompatible y exige version mayor del contrato.
+      enum:
+      - https://akine.app/problems/validation-error
+      - https://akine.app/problems/unauthorized
+      - https://akine.app/problems/forbidden
+      - https://akine.app/problems/not-found
+      - https://akine.app/problems/conflict
+      - https://akine.app/problems/rate-limited
+      - https://akine.app/problems/internal-error
+      - https://akine.app/problems/invalid-credentials
+      - https://akine.app/problems/invalid-refresh
+      - https://akine.app/problems/invalid-token
+      - https://akine.app/problems/missing-tenant-context
+      - https://akine.app/problems/csrf-rejected
+      - https://akine.app/problems/organization-slug-taken
+      - https://akine.app/problems/invalid-subscription-transition
+      - https://akine.app/problems/plan-limit-exceeded
+      - https://akine.app/problems/feature-not-available
+      - https://akine.app/problems/subscription-suspended
+      - https://akine.app/problems/idempotency-key-conflict
+      - https://akine.app/problems/concurrent-modification
+      - https://akine.app/problems/membership-already-exists
+      - https://akine.app/problems/membership-not-active
+      - https://akine.app/problems/last-admin-required
+      - https://akine.app/problems/self-revoke-not-allowed
+      - https://akine.app/problems/grant-already-active
+      - https://akine.app/problems/consultorio-name-taken
+      - https://akine.app/problems/consultorio-inactive
+      - https://akine.app/problems/consultorio-already-inactive
+      - https://akine.app/problems/last-consultorio-required
+      - https://akine.app/problems/consultorio-has-active-references
     RegisterAccountRequest:
       type: object
       description: "Alta self-service de cuenta, organizacion y primer consultorio"
@@ -1824,6 +3688,105 @@ components:
           - SUSPENDIDA
           - CANCELADA
           example: SUSPENDIDA
+    SupportAccessResponse:
+      type: object
+      description: Acceso de soporte concedido sobre una organizacion
+      properties:
+        accountId:
+          type: integer
+          format: int64
+          description: Cuenta de plataforma que entra al tenant
+          example: 1
+        active:
+          type: boolean
+          description: "Baja logica: false cuando el acceso ya fue cerrado"
+          example: true
+        grantedByAccountId:
+          type: integer
+          format: int64
+          description: Cuenta que lo concedio
+          example: 1
+        id:
+          type: integer
+          format: int64
+          description: Identificador del acceso
+          example: 5
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion sobre la que rige
+          example: 7
+        reason:
+          type: string
+          description: Motivo declarado. Sin motivo no hay soporte
+        revokedAt:
+          type: string
+          format: date-time
+          description: "Momento en que se cerro antes de vencer, si se cerro"
+        validFrom:
+          type: string
+          format: date-time
+          description: Momento desde el que rige
+        validUntil:
+          type: string
+          format: date-time
+          description: Vencimiento. Como maximo cuatro horas despues del otorgamiento
+    UpdateConsultorioRequest:
+      type: object
+      description: Cambios a aplicar sobre una sede. Los campos omitidos no se tocan
+      properties:
+        addressLine:
+          type: string
+          description: Direccion. Cadena vacia la borra
+          maxLength: 240
+          minLength: 0
+        contactEmail:
+          type: string
+          format: email
+          description: Email de contacto. Cadena vacia lo borra
+          maxLength: 160
+          minLength: 0
+        legalName:
+          type: string
+          description: Razon social. Cadena vacia la borra
+          maxLength: 200
+          minLength: 0
+        name:
+          type: string
+          description: Nuevo nombre. Unico entre las sedes vigentes del tenant
+          maxLength: 160
+          minLength: 0
+        phone:
+          type: string
+          description: Telefono. Cadena vacia lo borra
+          maxLength: 40
+          minLength: 0
+        slotMinutes:
+          type: integer
+          format: int32
+          description: "Nuevo intervalo por defecto de la agenda, en minutos"
+          maximum: 480
+          minimum: 5
+        taxId:
+          type: string
+          description: Identificacion fiscal. Cadena vacia la borra
+          maxLength: 32
+          minLength: 0
+        timezone:
+          type: string
+          description: Nueva zona horaria IANA de la sede
+          example: America/Argentina/Cordoba
+          maxLength: 64
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: "Version leida del recurso. Si quedo vieja, la edicion se rechaza\
+            \ con 409 en vez de pisar el cambio de otro"
+          example: 0
+          minimum: 0
+      required:
+      - version
     UpdateOrganizationRequest:
       type: object
       description: "Campos editables de la organizacion, con la version para bloqueo\

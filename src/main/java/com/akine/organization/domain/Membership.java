@@ -59,6 +59,22 @@ public class Membership extends TimestampedEntity {
 	@Column(name = "is_founder", nullable = false)
 	private boolean founder;
 
+	/**
+	 * Estado del vinculo (§33). Ver {@link MembershipEstado}: es una TERCERA condicion, junto
+	 * con {@code active} y la ventana de vigencia, no un reemplazo de ninguna de las dos.
+	 */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "estado", nullable = false, length = 20)
+	private MembershipEstado estado = MembershipEstado.ACTIVA;
+
+	/** Quien revoco. {@code null} mientras el vinculo no fue revocado. */
+	@Column(name = "revoked_by_account_id")
+	private Long revokedByAccountId;
+
+	/** Motivo declarado de la revocacion. Obligatorio al revocar. */
+	@Column(name = "revoked_reason", length = 500)
+	private String revokedReason;
+
 	@Column(name = "valid_from", nullable = false)
 	private Instant validFrom;
 
@@ -99,13 +115,18 @@ public class Membership extends TimestampedEntity {
 	/**
 	 * Indica si la membership esta vigente en un instante dado.
 	 *
-	 * <p>Vigencia y baja logica son cosas distintas y las dos tienen que cumplirse: una
-	 * membership puede estar activa pero con la vigencia vencida, y en ese caso no habilita
-	 * ningun contexto. Esta pregunta se responde en CADA request, sin cache: por eso una
-	 * revocacion deja de servir en el request siguiente, sin ventana de gracia.
+	 * <p>Vigencia, baja logica y estado son TRES cosas distintas y las tres tienen que
+	 * cumplirse: una membership puede estar activa pero con la vigencia vencida, o vigente pero
+	 * suspendida, y en ninguno de los dos casos habilita nada. Esta pregunta se responde en CADA
+	 * request, sin cache: por eso una revocacion deja de servir en el request siguiente, sin
+	 * ventana de gracia.
+	 *
+	 * <p>El estado se suma aca en AKINE-01.03 y no en el llamador a proposito: si la
+	 * comprobacion viviera en quien pregunta, alcanzaria con que un solo camino se olvidara de
+	 * hacerla para que una membership suspendida siguiera abriendo contextos.
 	 */
 	public boolean isValidAt(Instant momento) {
-		if (!active) {
+		if (!active || !estado.habilita()) {
 			return false;
 		}
 		if (momento.isBefore(validFrom)) {
@@ -135,8 +156,85 @@ public class Membership extends TimestampedEntity {
 		return this.consultorioId == null || this.consultorioId == consultorioId;
 	}
 
+	/**
+	 * Cambia el rol de seguridad del vinculo (RF-M02-004).
+	 *
+	 * <p>Solo desde {@link MembershipEstado#ACTIVA}: cambiarle el rol a un vinculo revocado
+	 * escribiria una transicion sobre algo que ya no existe, y la auditoria diria que paso algo
+	 * que no paso. Quien llama decide si eso es un 409 o una operacion imposible; aca es un
+	 * invariante de la entidad.
+	 *
+	 * <p>{@code PLATFORM_ADMIN} no es un valor legal: la matriz §1.3 dice que ese rol no tiene
+	 * membership en ninguna organizacion (ADR-0020). La base lo impide con un {@code CHECK} y
+	 * esta guarda lo impide antes de llegar a la base, para que el error sea comprensible.
+	 */
 	public void changeRole(RoleCode roleCode) {
+		if (roleCode == RoleCode.PLATFORM_ADMIN) {
+			throw new IllegalArgumentException(
+					"PLATFORM_ADMIN no es un rol de membership: vive en platform_role (ADR-0020)");
+		}
+		if (!estado.habilita()) {
+			throw new IllegalStateException(
+					"No se le puede cambiar el rol a una membership en estado " + estado);
+		}
 		this.roleCode = roleCode;
+	}
+
+	/**
+	 * Cambia el alcance del vinculo: de una sede a otra, o a alcance organizacion
+	 * ({@code null}).
+	 *
+	 * <p>Es una operacion distinta del cambio de rol y se audita aparte
+	 * ({@code MEMBERSHIP_SCOPE_CHANGED}): mover a alguien de sede y cambiarle lo que puede hacer
+	 * son dos decisiones, y mezclarlas en un solo evento hace la auditoria ilegible.
+	 */
+	public void changeScope(Long consultorioId) {
+		if (!estado.habilita()) {
+			throw new IllegalStateException(
+					"No se le puede cambiar el alcance a una membership en estado " + estado);
+		}
+		this.consultorioId = consultorioId;
+	}
+
+	/** Suspende el vinculo temporalmente. Reversible con {@link #reactivar()}. */
+	public void suspender() {
+		exigirTransicion(MembershipEstado.SUSPENDIDA);
+		this.estado = MembershipEstado.SUSPENDIDA;
+	}
+
+	/** Devuelve un vinculo suspendido a {@link MembershipEstado#ACTIVA}. */
+	public void reactivar() {
+		exigirTransicion(MembershipEstado.ACTIVA);
+		this.estado = MembershipEstado.ACTIVA;
+	}
+
+	/**
+	 * Revoca el vinculo: estado TERMINAL.
+	 *
+	 * <p>Cierra la vigencia, marca la baja logica y deja constancia de quien y por que. La fila
+	 * <b>no se borra nunca</b> (RN-M05-003, regla maestra 10): revocar no borra autoria, y todo
+	 * lo que esa persona hizo tiene que seguir siendo atribuible.
+	 *
+	 * @throws IllegalArgumentException si no se declara motivo
+	 */
+	public void revocar(Long revokedByAccountId, String motivo, Instant occurredAt) {
+		if (motivo == null || motivo.isBlank()) {
+			throw new IllegalArgumentException(
+					"La revocacion de una membership exige un motivo declarado (RN-M05-003)");
+		}
+		exigirTransicion(MembershipEstado.REVOCADA);
+		this.estado = MembershipEstado.REVOCADA;
+		this.revokedByAccountId = revokedByAccountId;
+		this.revokedReason = motivo;
+		endValidity(occurredAt);
+		deactivate(occurredAt);
+	}
+
+	private void exigirTransicion(MembershipEstado destino) {
+		if (!estado.puedePasarA(destino)) {
+			throw new IllegalStateException(
+					"La membership no admite pasar de " + estado + " a " + destino);
+		}
 	}
 
 	/** Cierra la vigencia sin borrar la fila: el vinculo historico se conserva. */
@@ -171,6 +269,18 @@ public class Membership extends TimestampedEntity {
 
 	public boolean isFounder() {
 		return founder;
+	}
+
+	public MembershipEstado getEstado() {
+		return estado;
+	}
+
+	public Long getRevokedByAccountId() {
+		return revokedByAccountId;
+	}
+
+	public String getRevokedReason() {
+		return revokedReason;
 	}
 
 	public Instant getValidFrom() {

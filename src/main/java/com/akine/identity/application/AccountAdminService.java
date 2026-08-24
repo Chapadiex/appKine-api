@@ -8,8 +8,8 @@ import com.akine.identity.domain.RefreshToken;
 import com.akine.identity.domain.exception.AccountNotFoundException;
 import com.akine.identity.domain.port.CuentaRepositoryPort;
 import com.akine.identity.domain.port.RefreshTokenRepositoryPort;
-import com.akine.organization.spi.AccountContextDirectory;
-import com.akine.organization.spi.MembershipSnapshot;
+import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +21,6 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Bloqueo, desbloqueo y desactivacion de cuentas (RF-M02-005, diseño §4.8).
@@ -45,40 +44,45 @@ import java.util.Optional;
  * sus sesiones siguen renovandose. El access token ya emitido si sobrevive hasta su TTL
  * (&le; 10 min): es una ventana aceptada y documentada, no un olvido.
  *
- * <h2>Autorizacion interina</h2>
+ * <h2>Autorizacion</h2>
  *
- * <p><b>TODO(AKINE-01.03):</b> reemplazar {@link #autorizar} por el evaluador de la matriz de
- * permisos. Toda la autorizacion de esta clase pasa por ese metodo justamente para que el
- * reemplazo sea un solo cambio en un solo lugar.
+ * <p>Toda la autorizacion de esta clase pasa por un solo metodo privado —{@link #autorizar}— y
+ * desde AKINE-01.03 ese metodo delega en el evaluador de la matriz de permisos de
+ * {@code organization}. El servicio ya no compara roles ni consulta memberships.
  *
- * <p>Hoy son dos condiciones, y la segunda es la que evita la fuga cross-tenant: el actor
- * administra la organizacion desde la que opera —membership vigente con rol {@code ORG_ADMIN},
- * revalidada contra la base y no creida del token—, y la cuenta objetivo <b>tiene membership en
- * esa misma organizacion</b>. Una cuenta ajena se responde como inexistente (404, jamas 403):
- * un "prohibido" confirmaria que ese id existe y alcanzaria con recorrer numeros para enumerar
- * las cuentas de los demas centros.
+ * <p>La condicion que evita la fuga cross-tenant <b>no se relajo</b>: la cuenta objetivo tiene
+ * que tener membership en la organizacion del actor. Viaja como {@code targetAccountId} y la
+ * absorbe el evaluador, tal como ADR-0019 lo exige —la matriz decide QUE puede hacer el actor,
+ * la membership sigue decidiendo SOBRE QUIEN—. Una cuenta ajena se responde como inexistente
+ * (404, jamas 403): un "prohibido" confirmaria que ese id existe y alcanzaria con recorrer
+ * numeros para enumerar las cuentas de los demas centros.
  */
 @Service
 public class AccountAdminService {
 
 	private static final Logger log = LoggerFactory.getLogger(AccountAdminService.class);
 
-	/** Rol de la matriz aprobada que habilita administrar una organizacion. */
-	private static final String ROL_ADMIN_ORGANIZACION = "ORG_ADMIN";
+	/**
+	 * Permiso de la matriz que habilita administrar colaboradores.
+	 *
+	 * <p>Viaja como texto y no como el enum de {@code organization.domain}: ese paquete es
+	 * privado de su modulo y ArchUnit rechaza importarlo.
+	 */
+	private static final String PERMISO_GESTION_DE_COLABORADORES = "colaborador:manage";
 
 	private final CuentaRepositoryPort cuentaRepository;
 	private final RefreshTokenRepositoryPort refreshTokenRepository;
-	private final AccountContextDirectory accountContextDirectory;
+	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 
 	public AccountAdminService(
 			CuentaRepositoryPort cuentaRepository,
 			RefreshTokenRepositoryPort refreshTokenRepository,
-			AccountContextDirectory accountContextDirectory,
+			PermissionGuard permissionGuard,
 			AuditTrail auditTrail) {
 		this.cuentaRepository = cuentaRepository;
 		this.refreshTokenRepository = refreshTokenRepository;
-		this.accountContextDirectory = accountContextDirectory;
+		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 	}
 
@@ -187,10 +191,11 @@ public class AccountAdminService {
 	}
 
 	/**
-	 * Autorizacion interina de 01.02.
+	 * Exige el permiso de la matriz para operar sobre la cuenta objetivo.
 	 *
-	 * <p>TODO(AKINE-01.03): esto lo reemplaza el evaluador de la matriz de permisos, que ademas
-	 * va a distinguir entre bloquear y desactivar. Hoy las tres operaciones piden lo mismo.
+	 * <p>Desde AKINE-01.03 lo decide el evaluador de {@code organization}, no este servicio. Lo
+	 * que sigue sin distinguirse es bloquear de desactivar: la matriz no tiene todavia dos
+	 * permisos separados para eso, y las tres operaciones piden {@code colaborador:manage}.
 	 *
 	 * @throws AccessDeniedException    si el actor no administra la organizacion (403)
 	 * @throws AccountNotFoundException si la cuenta objetivo no es de esa organizacion (404)
@@ -208,28 +213,28 @@ public class AccountAdminService {
 					"La operacion administrativa requiere un contexto de organizacion activo");
 		}
 
-		// El rol se revalida contra la base y no se cree del token: un claim dice que rol se
-		// pide, no cual es legitimo ahora mismo (RN-M01-003).
-		Optional<MembershipSnapshot> membership =
-				accountContextDirectory.membership(actor.accountId(), organizationId);
-		boolean administra = membership
-				.filter(snapshot -> snapshot.validAt(Instant.now()))
-				.filter(snapshot -> ROL_ADMIN_ORGANIZACION.equals(snapshot.roleCode()))
-				.isPresent();
-
-		if (!administra) {
-			log.info("Operacion administrativa rechazada: actorAccountId={} organizationId={}",
-					actor.accountId(), organizationId);
-			throw new AccessDeniedException("Se requiere administrar la organizacion");
-		}
-
-		if (!accountContextDirectory.hasActiveMembership(cuentaId, organizationId)) {
-			// Cuenta de otra organizacion, o inexistente: el mismo 404 para las dos. Distinguir
-			// dejaria enumerar las cuentas de organizaciones ajenas preguntando por ids.
-			log.info("Operacion administrativa sobre una cuenta ajena: actorAccountId={} "
-					+ "cuentaId={} organizationId={}", actor.accountId(), cuentaId, organizationId);
-			throw new AccountNotFoundException(cuentaId);
-		}
+		// El permiso lo decide el evaluador de la matriz, no este servicio. La verificacion "la
+		// cuenta objetivo tiene membership en esta organizacion" NO se relajo: viaja como
+		// targetAccountId y la absorbe el evaluador, tal como ADR-0019 lo exige —la matriz decide
+		// QUE puede hacer el actor, la membership sigue decidiendo SOBRE QUIEN—. Un objetivo de
+		// otra organizacion sale por el camino de alcance, que es 404 y nunca 403.
+		//
+		// consultorioId va en null a proposito: bloquear o desactivar una cuenta afecta a la
+		// persona en TODA la organizacion, no en una sede. Con null, el evaluador exige una
+		// membership de alcance organizacion, que es lo mismo que exigia el codigo anterior.
+		//
+		// El tipo de las excepciones que esto puede lanzar NO se nombra aca, y eso es parte del
+		// diseño: ArchUnit prohibe que identity importe organization.domain, y una excepcion que
+		// se deja propagar no genera un import. Las traduce el advice de organization, que es
+		// @RestControllerAdvice y por lo tanto global. Es el mismo mecanismo, ya probado, de
+		// ContextNotAuthorizedException.
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PERMISO_GESTION_DE_COLABORADORES,
+				organizationId,
+				null,
+				cuentaId,
+				Instant.now()));
 	}
 
 	/** Corta todas las sesiones vivas de la cuenta, dentro de esta transaccion. */
@@ -250,7 +255,7 @@ public class AccountAdminService {
 	 * <p>Primitivos y no un principal: {@code application} no puede conocer HTTP ni la forma del
 	 * token. La capa {@code api} traduce el request a estos tres datos y los pasa; cuando el
 	 * principal exista, este servicio no cambia. Es el mismo criterio que
-	 * {@code ProvisionalAuthorizationGuard} de {@code organization}.
+	 * {@code AuthorizationGuard} de {@code organization}.
 	 *
 	 * @param accountId      cuenta autenticada que opera
 	 * @param organizationId organizacion del contexto YA VALIDADO del request, o {@code null} si

@@ -3,7 +3,10 @@ package com.akine.organization.infrastructure;
 import com.akine.organization.domain.Membership;
 import com.akine.organization.domain.port.MembershipRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -51,4 +54,34 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 	 * que es otra pregunta.
 	 */
 	boolean existsByOrganizationIdAndAccountId(Long organizationId, Long accountId);
+
+	/**
+	 * Conteo de administradores vigentes del tenant con lock compartido sobre las filas
+	 * contadas. La explicacion completa —y por que quitarle el {@code FOR SHARE} reintroduce el
+	 * bug de las dos revocaciones simetricas— esta en el puerto.
+	 *
+	 * <p>Es una consulta NATIVA a proposito: {@code FOR SHARE} sobre un agregado no tiene
+	 * equivalente confiable en JPQL, y {@code @Lock(PESSIMISTIC_READ)} sobre una consulta de
+	 * agregacion no garantiza que Hibernate emita la clausula de bloqueo. Aca la sentencia es
+	 * exactamente la que corre, y eso es justamente lo que hay que poder auditar.
+	 *
+	 * <p>{@code role_code} se compara contra el literal y no contra un parametro: es el unico
+	 * rol que este invariante mira, y dejarlo escrito hace que un cambio de la matriz aparezca
+	 * como diff en esta linea.
+	 */
+	@Query(value = """
+			SELECT COUNT(*) FROM membership
+			 WHERE organization_id = :organizationId
+			   AND role_code = 'ORG_ADMIN'
+			   AND estado = 'ACTIVA'
+			   AND active = 1
+			   AND valid_from <= :at
+			   AND (valid_until IS NULL OR valid_until > :at)
+			   AND id <> :excludedMembershipId
+			 FOR SHARE
+			""", nativeQuery = true)
+	long countActiveOrgAdminsForShare(
+			@Param("organizationId") Long organizationId,
+			@Param("at") Instant at,
+			@Param("excludedMembershipId") Long excludedMembershipId);
 }

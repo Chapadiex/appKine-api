@@ -1,8 +1,12 @@
 package com.akine.organization.api;
 
+import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.spi.AccountContextDirectory;
 import com.akine.organization.spi.AuthorizedContext;
+import com.akine.organization.spi.PermissionEvaluator;
+import com.akine.platform.spi.tenant.RequestTenantContext;
 import com.akine.platform.spi.tenant.TenantContextHolder;
+import com.akine.platform.spi.tenant.TenantOperationalStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,8 +15,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -38,7 +44,19 @@ class MeContextControllerTest {
 	private AccountContextDirectory accountContextDirectory;
 
 	@MockitoBean
+	private PermissionEvaluator permissionEvaluator;
+
+	@MockitoBean
+	private AuthorizationGuard authorizationGuard;
+
+	@MockitoBean
 	private TenantContextHolder tenantContextHolder;
+
+	private void conContexto(long organizationId, Long consultorioId) {
+		given(tenantContextHolder.current()).willReturn(Optional.of(new RequestTenantContext(
+				7L, organizationId, consultorioId, "ORG_ADMIN", TenantOperationalStatus.ACTIVA)));
+		given(authorizationGuard.consultorioDelContexto()).willReturn(consultorioId);
+	}
 
 	@Test
 	@DisplayName("Devuelve cada contexto con los nombres, que es lo que el usuario ve para elegir")
@@ -94,5 +112,60 @@ class MeContextControllerTest {
 
 		verify(accountContextDirectory).authorizedContexts(99L);
 		verify(accountContextDirectory, never()).authorizedContexts(1L);
+	}
+
+	// =================================================================================
+	// GET /me/permissions
+	// =================================================================================
+
+	@Test
+	@DisplayName("Devuelve un array plano de codigos ya resueltos, en orden estable")
+	void permisos_efectivos_son_un_array_plano() throws Exception {
+		conContexto(1L, 10L);
+		// El evaluador devuelve un Set: el orden lo fija el DTO, no la iteracion del Set. Dos
+		// respuestas iguales tienen que serializarse igual o el cliente vera diffs fantasma.
+		given(permissionEvaluator.effectivePermissions(7L, 1L, 10L)).willReturn(
+				new LinkedHashSet<>(List.of("colaborador:read", "auditoria:read",
+						"colaborador:manage")));
+
+		mockMvc.perform(get("/api/v1/me/permissions").with(ApiActors.miembro(7L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.permissions.length()").value(3))
+				.andExpect(jsonPath("$.permissions[0]").value("auditoria:read"))
+				.andExpect(jsonPath("$.permissions[1]").value("colaborador:manage"))
+				.andExpect(jsonPath("$.permissions[2]").value("colaborador:read"));
+	}
+
+	@Test
+	@DisplayName("Sin permisos en el contexto devuelve un array vacio, no un error")
+	void sin_permisos_devuelve_array_vacio() throws Exception {
+		conContexto(1L, 10L);
+		given(permissionEvaluator.effectivePermissions(7L, 1L, 10L)).willReturn(Set.of());
+
+		mockMvc.perform(get("/api/v1/me/permissions").with(ApiActors.miembro(7L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.permissions").isArray())
+				.andExpect(jsonPath("$.permissions.length()").value(0));
+	}
+
+	@Test
+	@DisplayName("Sin contexto de trabajo es 403 missing-tenant-context, jamas 401")
+	void sin_contexto_es_403_missing_tenant_context() throws Exception {
+		// Este caso solo lo alcanza un PLATFORM_ADMIN: para el resto ya respondio
+		// TenantContextFilter. El type importa tanto como el codigo: el frontend ramifica por
+		// el para llevar al selector de contexto en vez de mostrar "no tenes permiso", y un 401
+		// haria que el interceptor borre el token y arranque un bucle de login.
+		given(tenantContextHolder.current()).willReturn(Optional.empty());
+
+		mockMvc.perform(get("/api/v1/me/permissions").with(ApiActors.platformAdmin(7L)))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.status").value(403))
+				.andExpect(jsonPath("$.type")
+						.value("https://akine.app/problems/missing-tenant-context"));
+
+		verify(permissionEvaluator, never())
+				.effectivePermissions(org.mockito.ArgumentMatchers.anyLong(),
+						org.mockito.ArgumentMatchers.anyLong(),
+						org.mockito.ArgumentMatchers.any());
 	}
 }

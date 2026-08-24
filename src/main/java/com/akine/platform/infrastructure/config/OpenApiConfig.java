@@ -2,10 +2,14 @@ package com.akine.platform.infrastructure.config;
 
 import java.util.List;
 
+import com.akine.platform.spi.problem.ProblemType;
+import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.servers.Server;
+import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -58,5 +62,57 @@ public class OpenApiConfig {
 								genera su cliente TypeScript desde una version fijada de este \
 								contrato y no define DTO manuales.""")
 						.contact(new Contact().name("AKINE").url("https://github.com/Chapadiex/appKine-api")));
+	}
+
+	/**
+	 * Publica el catalogo de {@code type} de Problem Details como el schema {@code ProblemType}.
+	 *
+	 * <h2>Que problema resuelve</h2>
+	 *
+	 * <p>El {@code type} es el unico campo de un Problem Detail que una maquina puede ramificar:
+	 * el {@code status} agrupa demasiado —los cuatro conflictos de colaborador y los seis de sede
+	 * son todos 409— y el {@code detail} es prosa en castellano que cambia sin aviso. Hasta ahora
+	 * los valores solo aparecian dentro de las <b>descripciones</b> de las operaciones, o sea en
+	 * texto libre, y el cliente mantenia su propia lista escrita a mano. Dos listas hechas por
+	 * separado divergen.
+	 *
+	 * <p>Publicado como enum de strings, el generador del frontend produce un tipo cerrado: usar
+	 * un valor que no esta en el catalogo deja de compilar del lado del cliente, que es la
+	 * verificacion que antes no existia en ningun lado.
+	 *
+	 * <h2>Por que un schema aparte y no un campo tipado en {@code ProblemDetail}</h2>
+	 *
+	 * <p>{@code ProblemDetail} es el schema estandar que aporta Spring: retipar ahi su
+	 * {@code type} de {@code string/uri} a un enum cerrado es un cambio <b>incompatible</b> sobre
+	 * un schema que ya consumen todas las respuestas de error, y ademas mentiria — un 500 de un
+	 * componente que todavia no adopto el catalogo saldria con un {@code type} fuera del enum y
+	 * el cliente lo rechazaria al deserializar. El catalogo va al lado, y el campo sigue siendo
+	 * una URI libre.
+	 *
+	 * <h2>Por que un {@code OpenApiCustomizer} y no {@code .components()} en el bean de arriba</h2>
+	 *
+	 * <p>El customizer corre <b>despues</b> de que springdoc calculo los componentes a partir de
+	 * los controllers, asi que agrega sin riesgo de que la generacion pise lo declarado a mano.
+	 *
+	 * <p>Los valores salen de {@link ProblemType}, que es de donde los sacan tambien los tres
+	 * advices: el contrato no puede quedar desincronizado del codigo porque es el mismo dato.
+	 */
+	@Bean
+	public OpenApiCustomizer akineProblemTypeCatalog() {
+		return openApi -> {
+			if (openApi.getComponents() == null) {
+				openApi.setComponents(new Components());
+			}
+			openApi.getComponents().addSchemas("ProblemType", new StringSchema()
+					._enum(ProblemType.valores())
+					.description("""
+							Catalogo cerrado de los valores que puede tomar el campo type de un \
+							Problem Detail (RFC 7807). Es el unico campo del error pensado para \
+							que lo lea una maquina: el status agrupa demasiado y el detail es \
+							texto para personas. Ramificar por este valor y nunca por el detail.
+
+							Agregar un valor es un cambio aditivo; quitarlo o resignificarlo es \
+							incompatible y exige version mayor del contrato."""));
+		};
 	}
 }

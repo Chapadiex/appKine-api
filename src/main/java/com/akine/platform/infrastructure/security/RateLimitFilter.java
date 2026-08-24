@@ -24,7 +24,12 @@ import jakarta.servlet.http.HttpServletResponse;
  * donde un desconocido puede repetir un intento sin costo: fuerza bruta de contrasenas, prueba
  * masiva de refresh robados y uso del correo saliente como amplificador de spam. El hash de
  * contrasena es caro a proposito (Argon2id, ADR-0018), asi que repetir el login tambien es un
- * vector de agotamiento de CPU.
+ * vector de agotamiento de CPU. El alta self-service tiene su propio cupo, mas chico.
+ *
+ * <p><b>Y una ruta autenticada</b>, desde AKINE-01.03: el alta directa de colaboradores. Rompe
+ * el patron a proposito. No la abusa un desconocido sino una sesion legitima comprometida, y lo
+ * que se repite no es un intento de entrar sino una <b>pregunta</b>: "¿esta direccion tiene
+ * cuenta?". Ver {@link #RUTA_DE_ALTA_DE_COLABORADOR}.
  *
  * <h2>La clave es ruta mas IP, y nunca el email</h2>
  *
@@ -79,6 +84,32 @@ public class RateLimitFilter extends OncePerRequestFilter {
 	static final String RUTA_DE_REGISTRO = "/api/v1/auth/register";
 
 	/**
+	 * El alta directa de colaboradores. Tercer cupo, distinto de los otros dos.
+	 *
+	 * <p><b>Es una mitigacion obligatoria, no una precaucion.</b> El endpoint recibe un email y
+	 * responde 404 si no tiene cuenta: eso lo hace un <b>oraculo de enumeracion autenticado</b>.
+	 * Un {@code ORG_ADMIN} comprometido puede recorrer direcciones y aprender cuales estan
+	 * registradas en el SaaS entero. La decision del usuario del 24/08/2026 acepta ese 404 con
+	 * dos contrapartidas: este limite y la auditoria de cada intento fallido. Retirar cualquiera
+	 * de las dos obliga a volver a discutir el codigo de respuesta.
+	 *
+	 * <p><b>Por que diez y no treinta ni cinco.</b> No es un login fallido: no hay contrasena
+	 * que tipear mal —el reintento honesto por torpeza no existe aca— ni Argon2id que agotar,
+	 * asi que los treinta del cupo general sobran por un factor de tres. Tampoco es el alta
+	 * publica: quien llega hasta aca ya se autentico, ya tiene contexto y ya tiene
+	 * {@code colaborador:manage}, asi que los cinco del registro serian una molestia real para
+	 * quien incorpora un equipo entero de una sentada. Es una accion administrativa deliberada,
+	 * que una persona hace de a una y leyendo lo que escribe: diez por minuto le sobran, y le
+	 * ponen a la automatizacion un techo de 14.400 direcciones por dia y por IP, cada una con su
+	 * fila de auditoria. Sin limite, la misma lista se barre en segundos y en un solo evento.
+	 *
+	 * <p>El cupo es por IP y no por cuenta, igual que todo en esta clase: un contador por cuenta
+	 * seria trivial de evadir rotando sesiones, y este filtro corre antes de autenticar, asi que
+	 * ni siquiera sabe quien pregunta.
+	 */
+	static final String RUTA_DE_ALTA_DE_COLABORADOR = "/api/v1/memberships";
+
+	/**
 	 * Rutas limitadas con el cupo general.
 	 *
 	 * <p>Un endpoint publico de identidad que nace sin limite es un endpoint sin limite en
@@ -92,17 +123,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
 	private final FixedWindowRateLimiter limiter;
 	private final FixedWindowRateLimiter limiterDeRegistro;
+	private final FixedWindowRateLimiter limiterDeAltaDeColaborador;
 	private final Clock clock;
 	private final boolean habilitado;
 
 	public RateLimitFilter(
 			FixedWindowRateLimiter limiter,
 			FixedWindowRateLimiter limiterDeRegistro,
+			FixedWindowRateLimiter limiterDeAltaDeColaborador,
 			Clock clock,
 			boolean habilitado) {
 
 		this.limiter = limiter;
 		this.limiterDeRegistro = limiterDeRegistro;
+		this.limiterDeAltaDeColaborador = limiterDeAltaDeColaborador;
 		this.clock = clock;
 		this.habilitado = habilitado;
 	}
@@ -205,6 +239,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
 	private FixedWindowRateLimiter limiterDe(String ruta) {
 		if (esFronteraDe(ruta, RUTA_DE_REGISTRO)) {
 			return limiterDeRegistro;
+		}
+		if (esFronteraDe(ruta, RUTA_DE_ALTA_DE_COLABORADOR)) {
+			return limiterDeAltaDeColaborador;
 		}
 		return RUTAS_LIMITADAS.stream().anyMatch(limitada -> esFronteraDe(ruta, limitada))
 				? limiter

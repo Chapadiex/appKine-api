@@ -3,7 +3,7 @@ package com.akine.organization.api;
 import com.akine.organization.application.LimitUsageView;
 import com.akine.organization.application.PlanChangeOutcome;
 import com.akine.organization.application.PlanNotFoundException;
-import com.akine.organization.application.ProvisionalAuthorizationGuard;
+import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.SubscriptionService;
 import com.akine.organization.application.SubscriptionTransitionView;
 import com.akine.organization.application.SubscriptionView;
@@ -65,7 +65,7 @@ class SubscriptionControllerTest {
 	private SubscriptionService subscriptionService;
 
 	@MockitoBean
-	private ProvisionalAuthorizationGuard authorizationGuard;
+	private AuthorizationGuard authorizationGuard;
 
 	@MockitoBean
 	private TenantContextHolder tenantContextHolder;

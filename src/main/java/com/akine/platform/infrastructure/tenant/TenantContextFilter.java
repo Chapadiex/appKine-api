@@ -1,5 +1,6 @@
 package com.akine.platform.infrastructure.tenant;
 
+import com.akine.platform.spi.problem.ProblemType;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Clock;
@@ -89,10 +90,10 @@ public class TenantContextFilter extends OncePerRequestFilter {
 	private static final Logger log = LoggerFactory.getLogger(TenantContextFilter.class);
 
 	private static final URI MISSING_TENANT_CONTEXT =
-			URI.create("https://akine.app/problems/missing-tenant-context");
-	private static final URI NOT_FOUND = URI.create("https://akine.app/problems/not-found");
+			ProblemType.MISSING_TENANT_CONTEXT.uri();
+	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI SUBSCRIPTION_SUSPENDED =
-			URI.create("https://akine.app/problems/subscription-suspended");
+			ProblemType.SUBSCRIPTION_SUSPENDED.uri();
 
 	/**
 	 * Rutas que operan con identidad autenticada pero SIN contexto de tenant.

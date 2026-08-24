@@ -128,8 +128,11 @@ public class OrganizationService {
 			log.info("Slug de organizacion ya tomado: slug={}", slugFinal);
 			throw new OrganizationSlugTakenException(slugFinal);
 		}
+		// La sede nace con la zona de la organizacion. Desde 02.01 la zona vive en el
+		// consultorio y la de la organizacion es solo el valor que se propone: copiarla aca es
+		// lo que hace que el backfill de V17 sea exacto y no una aproximacion.
 		Consultorio consultorio = consultorioRepository.save(
-				new Consultorio(organization.getId(), consultorioName));
+				new Consultorio(organization.getId(), consultorioName, zona, null));
 		Subscription subscription = subscriptionRepository.save(
 				new Subscription(organization.getId(), plan.getId(), ahora));
 
@@ -242,13 +245,28 @@ public class OrganizationService {
 		return toView(organization, subscriptionOf(organizationId));
 	}
 
-	/** Sedes activas del tenant. Lectura minima: la configuracion completa llega en 02.01. */
+	/**
+	 * Sedes del tenant, filtradas por estado (RF-M03-001, RNF-M03-004).
+	 *
+	 * <p><b>Sin permiso propio, y tiene que seguir asi.</b> La autorizacion de este listado es
+	 * "miembro vigente del tenant" desde 01.01, porque es el insumo del selector de contexto de
+	 * trabajo: restringirlo a {@code consultorio:manage} dejaria a un {@code PROFESIONAL} sin
+	 * poder elegir sede, o sea sin salida despues del login. La matriz no tiene un
+	 * {@code consultorio:read}, asi que queda declarado como excepcion al catalogo (D-10,
+	 * abierta y compartida con la D-9 de 01.03).
+	 *
+	 * <p>El default {@code ACTIVO} conserva el comportamiento que el endpoint ya tenia: un
+	 * cliente viejo no ve ninguna diferencia, y por eso el cambio de contrato es aditivo.
+	 */
 	@Transactional(readOnly = true)
-	public List<ConsultorioView> consultorios(long organizationId) {
+	public List<ConsultorioView> consultorios(long organizationId, ConsultorioEstadoFiltro estado) {
 		requireActive(organizationId);
-		return consultorioRepository.findAllByOrganizationIdAndActiveTrue(organizationId).stream()
-				.map(c -> new ConsultorioView(
-						c.getId(), c.getOrganizationId(), c.getName(), c.isActive()))
+		List<Consultorio> sedes = estado == ConsultorioEstadoFiltro.ACTIVO
+				? consultorioRepository.findAllByOrganizationIdAndActiveTrue(organizationId)
+				: consultorioRepository.findAllByOrganizationId(organizationId);
+		return sedes.stream()
+				.filter(c -> estado != ConsultorioEstadoFiltro.INACTIVO || !c.isActive())
+				.map(ConsultorioView::de)
 				.toList();
 	}
 

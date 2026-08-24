@@ -17,7 +17,7 @@ import java.util.List;
  * porque el filtro por tenant ya ocurrio en la base. Cuando 02.01 traiga la administracion
  * completa de consultorios, el recorte baja al repositorio sin cambiar este contrato.
  */
-@Schema(description = "Pagina de sedes activas de la organizacion")
+@Schema(description = "Pagina de sedes de la organizacion, segun el filtro de estado pedido")
 public record ConsultorioPageResponse(
 
 		@Schema(description = "Sedes de esta pagina")
@@ -29,7 +29,7 @@ public record ConsultorioPageResponse(
 		@Schema(description = "Cantidad de elementos por pagina", example = "20")
 		int size,
 
-		@Schema(description = "Cantidad total de sedes activas", example = "3")
+		@Schema(description = "Cantidad total de sedes que cumplen el filtro", example = "3")
 		long totalElements,
 
 		@Schema(description = "Cantidad total de paginas disponibles", example = "1")

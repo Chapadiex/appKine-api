@@ -1,5 +1,6 @@
 package com.akine.platform.api;
 
+import com.akine.platform.spi.problem.ProblemType;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -70,10 +71,10 @@ public class GlobalExceptionHandler {
 
 	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-	private static final URI VALIDATION_ERROR = URI.create("https://akine.app/problems/validation-error");
-	private static final URI FORBIDDEN = URI.create("https://akine.app/problems/forbidden");
-	private static final URI CONFLICT = URI.create("https://akine.app/problems/conflict");
-	private static final URI INTERNAL_ERROR = URI.create("https://akine.app/problems/internal-error");
+	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
+	private static final URI FORBIDDEN = ProblemType.FORBIDDEN.uri();
+	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
+	private static final URI INTERNAL_ERROR = ProblemType.INTERNAL_ERROR.uri();
 
 	/**
 	 * Falla de validacion de un {@code @Valid}. Devuelve los campos rechazados: es

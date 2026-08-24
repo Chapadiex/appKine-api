@@ -29,13 +29,20 @@ class RateLimitFilterTest {
 	private static final String IP = "203.0.113.7";
 
 	private RateLimitFilter filtro(int maximo, boolean habilitado) {
-		return filtro(maximo, maximo, habilitado);
+		return filtro(maximo, maximo, maximo, habilitado);
 	}
 
 	private RateLimitFilter filtro(int maximo, int maximoDeRegistro, boolean habilitado) {
+		return filtro(maximo, maximoDeRegistro, maximo, habilitado);
+	}
+
+	private RateLimitFilter filtro(
+			int maximo, int maximoDeRegistro, int maximoDeAltaDeColaborador, boolean habilitado) {
+
 		return new RateLimitFilter(
 				new FixedWindowRateLimiter(Duration.ofMinutes(1), maximo),
 				new FixedWindowRateLimiter(Duration.ofMinutes(1), maximoDeRegistro),
+				new FixedWindowRateLimiter(Duration.ofMinutes(1), maximoDeAltaDeColaborador),
 				Clock.fixed(T0, ZoneOffset.UTC),
 				habilitado);
 	}
@@ -110,6 +117,29 @@ class RateLimitFilterTest {
 		// Agotar el login no puede dejar sin refresh a quien ya tiene sesion abierta.
 		assertThat(ejecutar(filtro, requestDe("/api/v1/auth/refresh", IP, null)).getStatus())
 				.isEqualTo(200);
+	}
+
+	@Test
+	@DisplayName("el alta directa de colaboradores tiene su propio cupo, y agotarlo no toca el login")
+	void el_alta_de_colaborador_tiene_su_propio_cupo() throws Exception {
+		// Este limite es una de las dos mitigaciones que hacen aceptable el 404 del email
+		// desconocido (decision del 24/08/2026). Si la ruta dejara de estar limitada, el
+		// endpoint volveria a ser un oraculo de enumeracion sin techo, y nada mas lo notaria.
+		RateLimitFilter filtro = filtro(5, 5, 2, true);
+
+		assertThat(ejecutar(filtro, requestDe("/api/v1/memberships", IP, null)).getStatus())
+				.isEqualTo(200);
+		assertThat(ejecutar(filtro, requestDe("/api/v1/memberships", IP, null)).getStatus())
+				.isEqualTo(200);
+		assertThat(ejecutar(filtro, requestDe("/api/v1/memberships", IP, null)).getStatus())
+				.isEqualTo(429);
+
+		// Cupo propio: barrer emails no puede dejar sin entrar al resto del consultorio.
+		assertThat(ejecutar(filtro, requestDe("/api/v1/auth/login", IP, null)).getStatus())
+				.isEqualTo(200);
+		// Y la gestion de colaboradores de organization, que es otra ruta, no se limita.
+		assertThat(ejecutar(filtro, requestDe("/api/v1/organizations/7/memberships", IP, null))
+				.getStatus()).isEqualTo(200);
 	}
 
 	@Test

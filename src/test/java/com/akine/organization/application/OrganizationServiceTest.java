@@ -290,9 +290,9 @@ class OrganizationServiceTest {
 						Fixtures.consultorio(CONSULTORIO_ID, "Sede Centro"),
 						Fixtures.consultorio(OTRO_CONSULTORIO_ID, "Sede Sur")));
 
-		assertThat(organizationService.consultorios(ORG_ID)).containsExactly(
-				new ConsultorioView(CONSULTORIO_ID, ORG_ID, "Sede Centro", true),
-				new ConsultorioView(OTRO_CONSULTORIO_ID, ORG_ID, "Sede Sur", true));
+		assertThat(organizationService.consultorios(ORG_ID, ConsultorioEstadoFiltro.ACTIVO)).containsExactly(
+				sede(CONSULTORIO_ID, ORG_ID, "Sede Centro"),
+				sede(OTRO_CONSULTORIO_ID, ORG_ID, "Sede Sur"));
 	}
 
 	@Test
@@ -328,5 +328,18 @@ class OrganizationServiceTest {
 
 		assertThatThrownBy(() -> organizationService.operationalStatus(ORG_ID))
 				.isInstanceOf(OrganizationNotFoundException.class);
+	}
+
+	/**
+	 * Sede activa con la configuracion por defecto, para no repetir catorce campos por linea.
+	 *
+	 * <p>{@code ConsultorioView} crecio en AKINE-02.01 con la configuracion de la sede; lo que
+	 * estos casos afirman sigue siendo lo mismo de antes, asi que el resto de los campos se
+	 * fijan aca en su valor neutro.
+	 */
+	private static ConsultorioView sede(long id, long orgId, String name) {
+		return new ConsultorioView(
+				id, orgId, name, "America/Argentina/Cordoba", 30,
+				null, null, null, null, null, true, null, null, 0L);
 	}
 }

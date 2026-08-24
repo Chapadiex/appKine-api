@@ -109,6 +109,24 @@ final class IdentityAuditEvents {
 	static final String CUENTA_DESBLOQUEADA = "CUENTA_DESBLOQUEADA";
 	static final String CUENTA_DESACTIVADA = "CUENTA_DESACTIVADA";
 
+	/**
+	 * Se intento dar de alta un colaborador con un email que no tiene cuenta.
+	 *
+	 * <p><b>Es una de las dos mitigaciones obligatorias del 404 de ese endpoint</b>, no
+	 * telemetria. El alta directa recibe un email y responde distinto segun exista la cuenta:
+	 * eso lo convierte en un oraculo de enumeracion para quien tenga
+	 * {@code colaborador:manage}. Sin este evento, un barrido de la base del SaaS no dejaria
+	 * ningun rastro; con el, deja una racha del mismo actor en la auditoria DEL TENANT, que ya
+	 * es consultable por actor (RF-M24-003).
+	 *
+	 * <p>Contrasta a proposito con {@link #ACTIVACION_REENVIADA}, que NO registra el intento
+	 * sobre un email sin cuenta: aquel es un endpoint publico y anonimo, donde auditar el
+	 * intento construiria el padron de direcciones que el 202 uniforme existe para no entregar.
+	 * Este es autenticado y con permiso, asi que el actor ya esta identificado y lo unico que se
+	 * registra son direcciones que <b>no</b> tienen cuenta.
+	 */
+	static final String MEMBERSHIP_ALTA_RECHAZADA = "MEMBERSHIP_ALTA_RECHAZADA";
+
 	/** Entidad sobre la que recaen todos los eventos del modulo. */
 	static final String ENTITY_CUENTA = "Cuenta";
 
@@ -138,6 +156,42 @@ final class IdentityAuditEvents {
 	 * tenant. Los eventos administrativos —bloquear, desactivar— si lo llevan, porque los
 	 * ejecuta un administrador desde su organizacion.
 	 */
+	/**
+	 * Registra el intento de alta directa sobre un email sin cuenta.
+	 *
+	 * <p>Tiene metodo propio y no reusa {@link #registrar} por dos diferencias que importan:
+	 * lleva {@code consultorioId} —el alcance del vinculo que se pidio, que
+	 * {@link #registrar} fija en {@code null} porque los eventos de cuenta no tienen sede— y
+	 * apunta a {@code entityId = null}, porque el hecho es justamente que no hay fila a la que
+	 * apuntar. La consulta que lo encuentra es la de actor (RF-M24-003), no la de entidad.
+	 *
+	 * @param details contexto del intento: email tipeado, rol y sede pedidos. <b>Nunca</b>
+	 *                secretos: aca no viaja ninguno, el endpoint no recibe contrasenas
+	 */
+	static void registrarIntentoDeAlta(
+			AuditTrail auditTrail,
+			Long organizationId,
+			Long consultorioId,
+			Long actorAccountId,
+			Map<String, String> details,
+			String motivo,
+			Instant ahora) {
+
+		auditTrail.record(new AuditEntry(
+				organizationId,
+				consultorioId,
+				actorAccountId,
+				MEMBERSHIP_ALTA_RECHAZADA,
+				ENTITY_CUENTA,
+				null,
+				null,
+				null,
+				details,
+				motivo,
+				correlationId(),
+				ahora));
+	}
+
 	static void registrar(
 			AuditTrail auditTrail,
 			String eventType,

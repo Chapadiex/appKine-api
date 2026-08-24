@@ -40,10 +40,36 @@ import java.util.Optional;
  *       privilegio silenciosa el dia que 01.03 empiece a escribir memberships por sede.</li>
  * </ol>
  *
- * <p>Los dos criterios son <b>fail-closed</b>: ante la duda alcanzan menos, no mas. Cuando
- * 01.03 traiga la evaluacion fina de la matriz de permisos —y si trae jerarquia de roles— es el
- * momento de revisar si "lo mas especifico gana" debe convivir con "lo mas privilegiado gana";
- * mientras no exista esa jerarquia, elegir por privilegio seria inventarla aca.
+ * <p>Los dos criterios son <b>fail-closed</b>: ante la duda alcanzan menos, no mas.
+ *
+ * <h2>La revision que AKINE-01.03 debia hacer, y su resultado: no se cambia nada</h2>
+ *
+ * <p>La version anterior de este javadoc decia que cuando 01.03 trajera la evaluacion fina de
+ * la matriz —y con ella una jerarquia real de roles— era el momento de revisar si "lo mas
+ * especifico gana" debia convivir con "lo mas privilegiado gana". La jerarquia ya existe:
+ * {@code RolePermissions} es la tabla §6 de la matriz hecha codigo. La revision se hizo y el
+ * criterio <b>se mantiene</b>. Los tres motivos, para que no haya que rehacerla:
+ *
+ * <ol>
+ *   <li><b>Elegir por privilegio invierte el sentido de escribir una membership de sede.</b> Si
+ *       alguien es {@code ORG_ADMIN} de la organizacion y ademas se le escribio una membership
+ *       de {@code PROFESIONAL} en una sede concreta, esa segunda fila existe justamente para
+ *       decir "aca hace otra cosa". Ganando la mas privilegiada, escribirla no tendria ningun
+ *       efecto y la unica forma de acotarle el alcance a alguien seria revocarle la general —lo
+ *       que le sacaria el acceso a todas las demas sedes—.</li>
+ *   <li><b>"Mas privilegiado" no esta definido y definirlo seria inventar spec.</b> La matriz
+ *       asigna permisos por rol; no declara un orden total entre roles. {@code PROFESIONAL} y
+ *       {@code ADMINISTRATIVO} no son comparables: tienen celdas distintas, no mas y menos.
+ *       Cualquier orden que se escribiera aca seria una decision de producto tomada en una
+ *       clase de utilidad.</li>
+ *   <li><b>El criterio actual es el unico fail-closed de los dos.</b> Ante dos memberships que
+ *       dicen cosas distintas, la especifica alcanza menos. Un evaluador que ante la duda
+ *       concede mas es un agujero.</li>
+ * </ol>
+ *
+ * <p>Consecuencia practica, dicha para que no sorprenda: un {@code ORG_ADMIN} con una membership
+ * adicional de {@code PROFESIONAL} en una sede <b>no administra esa sede</b> mientras opera en
+ * ella. Es el comportamiento correcto y es el que el evaluador aplica.
  */
 public final class MembershipSelection {
 

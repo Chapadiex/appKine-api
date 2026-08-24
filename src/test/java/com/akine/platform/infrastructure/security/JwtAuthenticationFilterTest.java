@@ -1,5 +1,6 @@
 package com.akine.platform.infrastructure.security;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -47,13 +48,26 @@ class JwtAuthenticationFilterTest {
 	}
 
 	private static JwtAuthenticationFilter filtroQueAcepta(AccessTokenClaims claims) {
+		return filtroQueAcepta(claims, false);
+	}
+
+	/**
+	 * Filtro con un directorio de plataforma falso.
+	 *
+	 * <p>Desde AKINE-01.03 el filtro consulta {@code platform_role} por el puerto
+	 * {@code PlatformRoleDirectory}: el rol de plataforma ya NO sale del claim {@code rol}.
+	 */
+	private static JwtAuthenticationFilter filtroQueAcepta(
+			AccessTokenClaims claims, boolean esAdminDePlataforma) {
 		AccessTokenVerifier verificador = token -> Optional.of(claims);
-		return new JwtAuthenticationFilter(verificador);
+		return new JwtAuthenticationFilter(
+				verificador, (accountId, at) -> esAdminDePlataforma, Clock.systemUTC());
 	}
 
 	private static JwtAuthenticationFilter filtroQueRechaza() {
 		AccessTokenVerifier verificador = token -> Optional.empty();
-		return new JwtAuthenticationFilter(verificador);
+		return new JwtAuthenticationFilter(
+				verificador, (accountId, at) -> false, Clock.systemUTC());
 	}
 
 	private static MockHttpServletRequest conBearer(String valor) {
@@ -100,14 +114,17 @@ class JwtAuthenticationFilterTest {
 	}
 
 	@Test
-	@DisplayName("el rol PLATFORM_ADMIN del claim marca al principal, y ningun otro lo hace")
+	@DisplayName("el rol de plataforma sale de la tabla y no del claim del token")
 	void solo_platform_admin_marca_al_principal() {
+		// El claim ya no decide nada: un token que dice PLATFORM_ADMIN no lo es si la tabla no
+		// lo respalda, y uno que dice ORG_ADMIN si lo es cuando la tabla lo dice. Autorizar por
+		// el claim convertiria la ventana de revocacion en el TTL del token (ADR-0020).
 		assertThat(new AuthenticatedJwtPrincipal(
-				claims(AccessTokenScope.CONTEXT, "PLATFORM_ADMIN")).platformAdmin()).isTrue();
+				claims(AccessTokenScope.CONTEXT, "PLATFORM_ADMIN"), false).platformAdmin()).isFalse();
 		assertThat(new AuthenticatedJwtPrincipal(
-				claims(AccessTokenScope.CONTEXT, "ORG_ADMIN")).platformAdmin()).isFalse();
+				claims(AccessTokenScope.CONTEXT, "ORG_ADMIN"), true).platformAdmin()).isTrue();
 		assertThat(new AuthenticatedJwtPrincipal(
-				claims(AccessTokenScope.CONTEXT, null)).platformAdmin()).isFalse();
+				claims(AccessTokenScope.CONTEXT, null), false).platformAdmin()).isFalse();
 	}
 
 	@Test

@@ -1,10 +1,11 @@
 package com.akine.organization.api;
 
+import com.akine.organization.application.ConsultorioEstadoFiltro;
 import com.akine.organization.application.ConsultorioView;
 import com.akine.organization.application.OrganizationService;
 import com.akine.organization.application.OrganizationView;
 import com.akine.organization.application.PlanNotFoundException;
-import com.akine.organization.application.ProvisionalAuthorizationGuard;
+import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.domain.OperationalStatus;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.platform.spi.tenant.TenantContextHolder;
@@ -44,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Contrato HTTP de la administracion del tenant (RF-M01-001, RF-M01-003, RF-M01-004).
  *
  * <p>Lo que se verifica aca es exclusivamente la capa {@code api}: que el request se valide en
- * formato, que la autorizacion se delegue siempre en {@link ProvisionalAuthorizationGuard}, y
+ * formato, que la autorizacion se delegue siempre en {@link AuthorizationGuard}, y
  * que cada excepcion salga con el codigo y el cuerpo que el contrato promete. Las reglas de
  * negocio son de {@code application} y tienen sus propios tests.
  */
@@ -61,7 +62,7 @@ class OrganizationControllerTest {
 	private OrganizationService organizationService;
 
 	@MockitoBean
-	private ProvisionalAuthorizationGuard authorizationGuard;
+	private AuthorizationGuard authorizationGuard;
 
 	@MockitoBean
 	private TenantContextHolder tenantContextHolder;
@@ -383,9 +384,9 @@ class OrganizationControllerTest {
 	@Test
 	@DisplayName("El listado de sedes devuelve la pagina pedida con sus totales")
 	void listado_de_sedes_devuelve_la_pagina() throws Exception {
-		given(organizationService.consultorios(1L)).willReturn(List.of(
-				new ConsultorioView(10L, 1L, "Sede Central", true),
-				new ConsultorioView(11L, 1L, "Sede Norte", true)));
+		given(organizationService.consultorios(1L, ConsultorioEstadoFiltro.ACTIVO)).willReturn(List.of(
+				sede(10L, 1L, "Sede Central"),
+				sede(11L, 1L, "Sede Norte")));
 
 		mockMvc.perform(get("/api/v1/organizations/1/consultorios").with(ApiActors.miembro(7L)))
 				.andExpect(status().isOk())
@@ -405,8 +406,8 @@ class OrganizationControllerTest {
 	@Test
 	@DisplayName("Un size por encima del tope se acota a 100, no se rechaza con 400")
 	void size_excesivo_se_acota_al_maximo() throws Exception {
-		given(organizationService.consultorios(1L)).willReturn(List.of(
-				new ConsultorioView(10L, 1L, "Sede Central", true)));
+		given(organizationService.consultorios(1L, ConsultorioEstadoFiltro.ACTIVO)).willReturn(List.of(
+				sede(10L, 1L, "Sede Central")));
 
 		mockMvc.perform(get("/api/v1/organizations/1/consultorios")
 						.param("size", "5000")
@@ -419,8 +420,8 @@ class OrganizationControllerTest {
 	@Test
 	@DisplayName("Una pagina negativa o un size cero se normalizan en vez de fallar")
 	void parametros_de_paginado_absurdos_se_normalizan() throws Exception {
-		given(organizationService.consultorios(1L)).willReturn(List.of(
-				new ConsultorioView(10L, 1L, "Sede Central", true)));
+		given(organizationService.consultorios(1L, ConsultorioEstadoFiltro.ACTIVO)).willReturn(List.of(
+				sede(10L, 1L, "Sede Central")));
 
 		mockMvc.perform(get("/api/v1/organizations/1/consultorios")
 						.param("page", "-3")
@@ -435,8 +436,8 @@ class OrganizationControllerTest {
 	@Test
 	@DisplayName("Una pagina fuera de rango devuelve contenido vacio, no un error")
 	void pagina_fuera_de_rango_devuelve_contenido_vacio() throws Exception {
-		given(organizationService.consultorios(1L)).willReturn(List.of(
-				new ConsultorioView(10L, 1L, "Sede Central", true)));
+		given(organizationService.consultorios(1L, ConsultorioEstadoFiltro.ACTIVO)).willReturn(List.of(
+				sede(10L, 1L, "Sede Central")));
 
 		mockMvc.perform(get("/api/v1/organizations/1/consultorios")
 						.param("page", "10")
@@ -450,9 +451,9 @@ class OrganizationControllerTest {
 	@Test
 	@DisplayName("La segunda pagina trae el recorte correcto del listado completo")
 	void la_segunda_pagina_recorta_el_listado() throws Exception {
-		given(organizationService.consultorios(1L)).willReturn(
+		given(organizationService.consultorios(1L, ConsultorioEstadoFiltro.ACTIVO)).willReturn(
 				IntStream.rangeClosed(1, 5)
-						.mapToObj(i -> new ConsultorioView(i, 1L, "Sede " + i, true))
+						.mapToObj(i -> sede(i, 1L, "Sede " + i))
 						.toList());
 
 		mockMvc.perform(get("/api/v1/organizations/1/consultorios")
@@ -477,7 +478,7 @@ class OrganizationControllerTest {
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.type").value("https://akine.app/problems/not-found"));
 
-		verify(organizationService, never()).consultorios(anyLong());
+		verify(organizationService, never()).consultorios(anyLong(), any());
 	}
 
 	@Test
@@ -506,5 +507,18 @@ class OrganizationControllerTest {
 				true,
 				version,
 				OperationalStatus.ACTIVA);
+	}
+
+	/**
+	 * Sede activa con la configuracion por defecto, para no repetir catorce campos por linea.
+	 *
+	 * <p>{@code ConsultorioView} crecio en AKINE-02.01 con la configuracion de la sede; lo que
+	 * estos casos afirman sigue siendo lo mismo de antes, asi que el resto de los campos se
+	 * fijan aca en su valor neutro.
+	 */
+	private static ConsultorioView sede(long id, long orgId, String name) {
+		return new ConsultorioView(
+				id, orgId, name, "America/Argentina/Cordoba", 30,
+				null, null, null, null, null, true, null, null, 0L);
 	}
 }

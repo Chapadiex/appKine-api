@@ -1053,3 +1053,71 @@ memoria del sistema.
 | R-3 | **Tercer seek indexado por request.** La D-10 de 01.03 advierte que hay que medir antes de agregar el tercero, y la revalidación de la sede del contexto (§4.2) es ese tercero. Medición obligatoria antes del cierre |
 | R-4 | **Un cambio de plan a la baja puede dejar más sedes activas que el tope.** `PlanLimit` decide altas, no estados existentes. Ninguna etapa definió qué pasa con el excedente; 01.01 dejó la lectura informativa de límites excedidos y nada más |
 | R-5 | El fallback "zona del consultorio → zona de la organización" de la ventana N→N+1 **tiene que borrarse**. Si sobrevive, editar la zona de la organización mueve el día operativo histórico de sedes que nunca fijaron la suya |
+
+---
+
+## 13. Estado de implementación — backend, 24/08/2026
+
+Backend implementado y en verde. **Dos decisiones las tomó el implementador y quedan pendientes
+de confirmación del usuario.** No están escondidas en el código: cada una está anotada donde se
+aplica, y acá está el resumen para revisarlas juntas.
+
+### 13.1 Decisión A — el horario general no entra; solo el intervalo, como columna
+
+**Qué se hizo.** `consultorio.slot_minutes INT NOT NULL DEFAULT 30`. Cero tablas hijas de
+horarios. Es la **opción C de la D-2**.
+
+**Por qué.** RN-M03-004 dice que el horario general **no sustituye** la disponibilidad
+profesional individual. Una tabla `consultorio_horario` en F1 —antes de que exista esa
+disponibilidad (M05/M12) y antes de los slots que la consumen (F5)— invita a que la agenda de F5
+la tome como fuente de verdad, que es exactamente lo que la regla prohíbe. El intervalo, en
+cambio, es el único parámetro que la agenda va a necesitar sí o sí y no expresa disponibilidad
+por sí mismo.
+
+**Qué cuesta.** RF-M03-002 queda más incompleto de lo que ya quedaba por el box. Ver
+`docs/tests-diferidos.md` §AKINE-02.01.
+
+**Dónde está anotado:** cabecera de `V16__m03_consultorio_expandir.sql`, el `COMMENT` de la
+propia columna en la base, y el javadoc de `Consultorio.slotMinutes`.
+
+**Cómo se revierte si el usuario decide lo contrario:** se agrega la tabla hija en F5 sin tocar
+esta columna ni migrar un solo dato.
+
+### 13.2 Decisión B — solo `ORG_ADMIN` da de baja una sede
+
+**Qué se hizo.** `POST .../consultorios/{id}/deactivate` evalúa `consultorio:manage` con
+**alcance ORGANIZACIÓN** (`consultorioId = null` en la `PermissionQuery`). Un
+`CONSULTORIO_ADMIN` recibe **403** incluso sobre su propia sede. La edición y la lectura sí se
+evalúan **con la sede como alcance**, así que un `CONSULTORIO_ADMIN` edita la suya con
+normalidad: la restricción es solo sobre la baja. Es la **opción A de la D-6**.
+
+**Por qué se aparta de la matriz.** La matriz §6 le da `consultorio:manage` con alcance
+consultorio, y la baja de la propia sede cae literalmente dentro de ese alcance. Se rechaza por
+analogía con el `self-revoke` que 01.03 ya prohíbe: **nadie destruye el alcance desde el que
+opera**. Un `CONSULTORIO_ADMIN` que da de baja su única sede se deja sin contexto de trabajo y
+sin forma de deshacerlo; solo un `ORG_ADMIN` puede rescatarlo.
+
+**Es una enmienda a un documento vinculante y está pendiente de confirmación**, igual que se
+hizo con la enmienda §9.1 de la matriz. Mientras no se confirme, la implementación es la
+estricta: es el lado en el que conviene equivocarse.
+
+**Dónde está anotado:** javadoc de `ConsultorioService.deactivate` y la descripción OpenAPI del
+endpoint, que la publica al frontend.
+
+**Cómo se revierte si se confirma la lectura literal:** pasar `consultorioId` en la
+`PermissionQuery` de ese método. Una línea. El invariante de la última sede activa sigue
+protegiendo el caso peor.
+
+### 13.3 Lo que la implementación encontró y el diseño decía distinto
+
+- **§4.2 del diseño dice que 02.01 tiene que extender la revalidación por request al estado de
+  la sede. Ya estaba hecho.** `OrganizationMembershipDirectory.resolveMembership` —el camino que
+  corre en CADA request desde 01.01— resuelve la sede con
+  `findByIdAndOrganizationIdAndActiveTrue`. Una sede dada de baja deja de resolver contexto en el
+  request siguiente sin que 02.01 agregue nada. **No se agregó ningún puerto nuevo y no hay un
+  tercer seek por request**, así que el riesgo R-3 y su "medición obligatoria" no aplican.
+- **D-7 se cumple con dos mecanismos y no con uno.** El lock de `subscription` como primera
+  sentencia serializa el ACCESO; el conteo con `FOR SHARE` serializa la VISIBILIDAD. Con el lock
+  solo, en `REPEATABLE READ` las dos bajas simétricas cuentan la sede de la otra y las dos pasan.
+- **El plan por defecto del alta self-service no permite una segunda sede** (`BASICO`,
+  `MAX_CONSULTORIOS = 1`). Ver la nota final de `docs/tests-diferidos.md`.

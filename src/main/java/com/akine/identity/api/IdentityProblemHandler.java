@@ -1,5 +1,7 @@
 package com.akine.identity.api;
 
+import com.akine.platform.spi.problem.ProblemType;
+import com.akine.identity.application.EmailSinCuentaException;
 import com.akine.identity.domain.exception.AccountNotFoundException;
 import com.akine.identity.domain.exception.ContextNotAvailableException;
 import com.akine.identity.domain.exception.InvalidAccountTransitionException;
@@ -63,14 +65,12 @@ public class IdentityProblemHandler {
 
 	private static final Logger log = LoggerFactory.getLogger(IdentityProblemHandler.class);
 
-	private static final String BASE = "https://akine.app/problems/";
-
-	private static final URI INVALID_CREDENTIALS = URI.create(BASE + "invalid-credentials");
-	private static final URI INVALID_REFRESH = URI.create(BASE + "invalid-refresh");
-	private static final URI INVALID_TOKEN = URI.create(BASE + "invalid-token");
-	private static final URI VALIDATION_ERROR = URI.create(BASE + "validation-error");
-	private static final URI NOT_FOUND = URI.create(BASE + "not-found");
-	private static final URI CONFLICT = URI.create(BASE + "conflict");
+	private static final URI INVALID_CREDENTIALS = ProblemType.INVALID_CREDENTIALS.uri();
+	private static final URI INVALID_REFRESH = ProblemType.INVALID_REFRESH.uri();
+	private static final URI INVALID_TOKEN = ProblemType.INVALID_TOKEN.uri();
+	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
+	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
+	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
 
 	/**
 	 * Credenciales rechazadas (RF-M02-002, ADR-0018).
@@ -187,6 +187,27 @@ public class IdentityProblemHandler {
 	@ExceptionHandler(AccountNotFoundException.class)
 	public ProblemDetail handleAccountNotFound(AccountNotFoundException exception) {
 		log.debug("Cuenta no alcanzable para el actor");
+		return noEncontrado();
+	}
+
+	/**
+	 * El email tipeado en un alta directa no tiene cuenta.
+	 *
+	 * <p><b>Mismo cuerpo, palabra por palabra, que el 404 de una cuenta ajena.</b> No es
+	 * casualidad ni ahorro: distinguir "ese email no existe" de "esa cuenta no es tuya" seria
+	 * agregar un segundo oraculo encima del que la decision ya acepto. Lo que este 404 revela es
+	 * unicamente si la direccion esta registrada, y eso ya se paga con las dos mitigaciones de
+	 * {@code MembershipProvisioningController}: rate limit propio de la ruta y auditoria de cada
+	 * intento fallido en el tenant.
+	 *
+	 * <p>El mensaje interno de la excepcion lleva la direccion normalizada y <b>no</b> viaja al
+	 * cliente: el cuerpo se arma aca desde cero.
+	 */
+	@ExceptionHandler(EmailSinCuentaException.class)
+	public ProblemDetail handleEmailSinCuenta(EmailSinCuentaException exception) {
+		// Sin la direccion: el rastro con la direccion es el evento de auditoria del tenant, que
+		// tiene la retencion y el control de acceso que el log de aplicacion no tiene.
+		log.debug("Alta directa sobre un email sin cuenta");
 		return noEncontrado();
 	}
 

@@ -238,10 +238,12 @@ class IdempotenciaYUniquesIT extends BaseEscenarioDiferido {
 		assertThat(consultoriosLlamados(a.organizationId(), nombreCompartido)).isEqualTo(1);
 		assertThat(consultoriosLlamados(b.organizationId(), nombreCompartido)).isEqualTo(1);
 
-		// Dentro de la MISMA organizacion, repetirlo viola uk_consultorio_org_name.
+		// Dentro de la MISMA organizacion, repetirlo viola uk_consultorio_org_name_vigente.
+		// El discriminador deleted_key vale el centinela 1970-01-01 en las dos filas activas,
+		// asi que colisionan: es justo lo que un unique sobre deleted_at habria dejado pasar.
 		assertThatThrownBy(() -> insertarConsultorio(a.organizationId(), nombreCompartido))
-				.as("uk_consultorio_org_name = (organization_id, name): repetir dentro del "
-						+ "tenant tiene que fallar")
+				.as("uk_consultorio_org_name_vigente = (organization_id, name, deleted_key): repetir "
+						+ "entre las sedes VIGENTES del tenant tiene que fallar")
 				.isInstanceOf(DuplicateKeyException.class);
 
 		assertThat(consultoriosLlamados(a.organizationId(), nombreCompartido))
@@ -294,13 +296,22 @@ class IdempotenciaYUniquesIT extends BaseEscenarioDiferido {
 				.isEqualTo(200);
 	}
 
+	/**
+	 * {@code valid_from} un minuto en el pasado, por la misma razon que
+	 * {@code sembrarRolDePlataforma}: el reloj del contenedor de MySQL y el de la JVM se
+	 * desfasan —hasta un segundo, y en los dos sentidos, dentro de una misma corrida—. Con
+	 * {@code UTC_TIMESTAMP(6)} exacto la membership sembrada puede quedar vigente recien un
+	 * segundo despues, y la resolucion de contexto no la ve: el escenario de las DOS
+	 * memberships pasaria a verificar una sola sin que nadie se entere.
+	 */
 	private void insertarMembership(
 			Long organizationId, Long consultorioId, Long accountId, String rol) {
 		jdbc.update("""
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, UTC_TIMESTAMP(6), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE), 1, 0,
+				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioId, accountId, rol);
 	}
 
@@ -321,9 +332,9 @@ class IdempotenciaYUniquesIT extends BaseEscenarioDiferido {
 
 	private void insertarConsultorioSinId(long organizationId, String nombre) {
 		jdbc.update("""
-				INSERT INTO consultorio (organization_id, name, active, version,
+				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, nombre);
 	}
 

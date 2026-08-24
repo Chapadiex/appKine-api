@@ -8,8 +8,10 @@ import com.akine.identity.domain.exception.AccountNotFoundException;
 import com.akine.identity.domain.exception.InvalidAccountTransitionException;
 import com.akine.identity.domain.port.CuentaRepositoryPort;
 import com.akine.identity.domain.port.RefreshTokenRepositoryPort;
-import com.akine.organization.spi.AccountContextDirectory;
-import com.akine.organization.spi.MembershipSnapshot;
+import com.akine.organization.domain.exception.OrganizationNotFoundException;
+import com.akine.organization.domain.exception.PermissionDeniedException;
+import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.junit.jupiter.api.DisplayName;
@@ -35,7 +37,9 @@ import static com.akine.identity.IdentityFixtures.refreshVivo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -69,8 +73,15 @@ class AccountAdminServiceTest {
 	@Mock
 	private RefreshTokenRepositoryPort refreshTokenRepository;
 
+	/**
+	 * Desde AKINE-01.03 la autorizacion de este servicio la decide el evaluador de la matriz de
+	 * permisos de {@code organization}, no el servicio. Aca se simula esa decision: que un rol
+	 * concreto tenga o no {@code colaborador:manage} se prueba en
+	 * {@code PermissionEvaluatorServiceTest}, y duplicarlo haria que la matriz viviera en dos
+	 * lugares.
+	 */
 	@Mock
-	private AccountContextDirectory accountContextDirectory;
+	private PermissionGuard permissionGuard;
 
 	@Mock
 	private AuditTrail auditTrail;
@@ -79,14 +90,12 @@ class AccountAdminServiceTest {
 	private AccountAdminService service;
 
 	private void actorAdministraLaOrganizacion() {
-		given(accountContextDirectory.membership(ACTOR_ID, ORG_ID))
-				.willReturn(Optional.of(new MembershipSnapshot(
-						60L, "ORG_ADMIN", true,
-						Instant.now().minus(30, ChronoUnit.DAYS), null, true)));
+		// El evaluador concede: no lanza. Es todo lo que este servicio necesita saber.
 	}
 
 	private void cuentaObjetivoEsDeLaOrganizacion() {
-		given(accountContextDirectory.hasActiveMembership(CUENTA_ID, ORG_ID)).willReturn(true);
+		// La pertenencia de la cuenta objetivo viaja como targetAccountId y la resuelve el
+		// evaluador (ADR-0019). El servicio ya no la consulta por su cuenta.
 	}
 
 	private AuditEntry capturarAuditoria() {
@@ -213,40 +222,52 @@ class AccountAdminServiceTest {
 	@Test
 	@DisplayName("una cuenta de otra organizacion es inexistente: 404, jamas 403")
 	void una_cuenta_de_otra_organizacion_es_inexistente() {
-		actorAdministraLaOrganizacion();
-		given(accountContextDirectory.hasActiveMembership(CUENTA_ID, ORG_ID)).willReturn(false);
+		// El evaluador resuelve el alcance del objetivo (ADR-0019) y responde 404 —no 403—
+		// cuando la cuenta no es de la organizacion del actor. Aca se simula ese rechazo: un
+		// 403 confirmaria que ese id existe y bastaria con recorrer numeros para enumerar las
+		// cuentas de los demas centros.
+		willThrow(new OrganizationNotFoundException(ORG_ID))
+				.given(permissionGuard).requirePermission(any());
 
 		assertThatThrownBy(() -> service.bloquear(ADMIN, CUENTA_ID, MOTIVO))
-				.isInstanceOf(AccountNotFoundException.class);
+				.isInstanceOf(OrganizationNotFoundException.class);
 
 		verifyNoInteractions(cuentaRepository, auditTrail);
 	}
 
 	@Test
-	@DisplayName("sin rol de administrador no se opera ninguna cuenta")
+	@DisplayName("sin el permiso de la matriz no se opera ninguna cuenta")
 	void sin_rol_de_administrador_no_se_opera() {
-		given(accountContextDirectory.membership(ACTOR_ID, ORG_ID))
-				.willReturn(Optional.of(new MembershipSnapshot(
-						60L, "PROFESIONAL", false,
-						Instant.now().minus(30, ChronoUnit.DAYS), null, true)));
+		willThrow(new PermissionDeniedException("colaborador:manage", ACTOR_ID, ORG_ID))
+				.given(permissionGuard).requirePermission(any());
 
 		assertThatThrownBy(() -> service.bloquear(ADMIN, CUENTA_ID, MOTIVO))
-				.isInstanceOf(AccessDeniedException.class);
+				.isInstanceOf(PermissionDeniedException.class);
 
 		verifyNoInteractions(cuentaRepository, auditTrail);
 	}
 
 	@Test
-	@DisplayName("una membership vencida no habilita: el rol se revalida, no se cree")
-	void una_membership_vencida_no_habilita() {
-		given(accountContextDirectory.membership(ACTOR_ID, ORG_ID))
-				.willReturn(Optional.of(new MembershipSnapshot(
-						60L, "ORG_ADMIN", true,
-						Instant.now().minus(30, ChronoUnit.DAYS),
-						Instant.now().minus(1, ChronoUnit.DAYS), true)));
+	@DisplayName("se pide colaborador:manage sobre la cuenta objetivo, con la organizacion del contexto")
+	void se_pide_el_permiso_correcto() {
+		Cuenta cuenta = cuentaActiva();
+		given(cuentaRepository.findById(CUENTA_ID)).willReturn(Optional.of(cuenta));
+		given(refreshTokenRepository.findByCuentaIdAndRevocadoEnIsNull(CUENTA_ID))
+				.willReturn(List.of());
 
-		assertThatThrownBy(() -> service.bloquear(ADMIN, CUENTA_ID, MOTIVO))
-				.isInstanceOf(AccessDeniedException.class);
+		service.bloquear(ADMIN, CUENTA_ID, MOTIVO);
+
+		ArgumentCaptor<PermissionQuery> pedido = ArgumentCaptor.forClass(PermissionQuery.class);
+		verify(permissionGuard).requirePermission(pedido.capture());
+
+		assertThat(pedido.getValue().permissionCode()).isEqualTo("colaborador:manage");
+		assertThat(pedido.getValue().accountId()).isEqualTo(ACTOR_ID);
+		assertThat(pedido.getValue().organizationId()).isEqualTo(ORG_ID);
+		// La cuenta objetivo viaja como targetAccountId: es lo que hace que el evaluador
+		// verifique que pertenece a la organizacion del actor (ADR-0019).
+		assertThat(pedido.getValue().targetAccountId()).isEqualTo(CUENTA_ID);
+		// Sin consultorio: bloquear una cuenta la afecta en TODA la organizacion, no en una sede.
+		assertThat(pedido.getValue().consultorioId()).isNull();
 	}
 
 	@Test
@@ -258,7 +279,7 @@ class AccountAdminServiceTest {
 		assertThatThrownBy(() -> service.bloquear(sinContexto, CUENTA_ID, MOTIVO))
 				.isInstanceOf(AccessDeniedException.class);
 
-		verifyNoInteractions(accountContextDirectory, cuentaRepository);
+		verifyNoInteractions(permissionGuard, cuentaRepository);
 	}
 
 	@Test
@@ -272,8 +293,9 @@ class AccountAdminServiceTest {
 		service.bloquear(ADMIN_PLATAFORMA, CUENTA_ID, MOTIVO);
 
 		assertThat(cuenta.getEstado()).isEqualTo(EstadoCuenta.BLOQUEADA);
-		verifyNoInteractions(accountContextDirectory);
+		verifyNoInteractions(permissionGuard);
 	}
+
 
 	@Test
 	@DisplayName("una cuenta que no existe se responde igual que una ajena")

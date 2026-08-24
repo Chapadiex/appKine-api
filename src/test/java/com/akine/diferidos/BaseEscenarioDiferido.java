@@ -284,6 +284,43 @@ abstract class BaseEscenarioDiferido {
 				.doesNotContain("stacktrace");
 	}
 
+	/**
+	 * Le da a una cuenta el rol de plataforma, escribiendo la fila que el sistema realmente lee.
+	 *
+	 * <p>Desde AKINE-01.03 {@code PLATFORM_ADMIN} vive en {@code platform_role} (ADR-0020) y no
+	 * en {@code membership.role_code}, que ademas tiene un {@code CHECK} que lo prohibe desde la
+	 * migracion V11: la matriz seccion 1.3 dice que ese rol no tiene membership en ninguna
+	 * organizacion.
+	 *
+	 * <p><b>No es un backdoor de autenticacion.</b> La cuenta se registro y se autentico por el
+	 * camino real; lo unico que se siembra es el dato administrativo que en produccion entra por
+	 * el seed de la migracion V15 o por {@code PlatformRoleService}. Ese servicio exige que
+	 * quien otorga ya sea administrador de plataforma, asi que arrancar desde cero por HTTP es
+	 * imposible por construccion — que es exactamente el punto del bootstrap.
+	 *
+	 * <p>El rol se revalida en CADA request, asi que sembrarlo antes o despues del login da el
+	 * mismo resultado.
+	 *
+	 * <p><b>{@code valid_from} se siembra un minuto en el pasado, y no es cosmetico:</b> el
+	 * reloj del contenedor de MySQL y el de la JVM del test no estan sincronizados al
+	 * microsegundo. Con {@code UTC_TIMESTAMP(6)} exacto, la vigencia puede quedar unos
+	 * milisegundos en el FUTURO respecto del instante con el que el evaluador la compara, y el
+	 * request siguiente responde 403 de forma intermitente. Se detecto corriendo el escenario de
+	 * bajas concurrentes de AKINE-02.01, donde fallaban dos de cinco repeticiones.
+	 */
+	protected void sembrarRolDePlataforma(long cuentaId) {
+		int filas = jdbc.update("""
+				INSERT INTO platform_role (account_id, role_code, granted_by_account_id, reason,
+				                           valid_from, active, version, created_at, updated_at)
+				VALUES (?, 'PLATFORM_ADMIN', NULL, 'Fixture sintetico de test de integracion',
+				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE), 1, 0,
+				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", cuentaId);
+		assertThat(filas)
+				.as("el rol de plataforma tiene que quedar sembrado para la cuenta %s", cuentaId)
+				.isEqualTo(1);
+	}
+
 	protected long contarFilas(String tabla) {
 		Long total = jdbc.queryForObject("SELECT COUNT(*) FROM " + tabla, Long.class);
 		return total == null ? 0L : total;

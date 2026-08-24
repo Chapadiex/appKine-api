@@ -1,7 +1,10 @@
 package com.akine.organization.api;
 
 import com.akine.organization.api.dto.AuthorizedContextResponse;
+import com.akine.organization.api.dto.EffectivePermissionsResponse;
+import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.spi.AccountContextDirectory;
+import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -50,12 +53,18 @@ import java.util.List;
 public class MeContextController {
 
 	private final AccountContextDirectory accountContextDirectory;
+	private final PermissionEvaluator permissionEvaluator;
+	private final AuthorizationGuard authorizationGuard;
 	private final TenantContextHolder tenantContextHolder;
 
 	public MeContextController(
 			AccountContextDirectory accountContextDirectory,
+			PermissionEvaluator permissionEvaluator,
+			AuthorizationGuard authorizationGuard,
 			TenantContextHolder tenantContextHolder) {
 		this.accountContextDirectory = accountContextDirectory;
+		this.permissionEvaluator = permissionEvaluator;
+		this.authorizationGuard = authorizationGuard;
 		this.tenantContextHolder = tenantContextHolder;
 	}
 
@@ -103,5 +112,61 @@ public class MeContextController {
 						.toList();
 
 		return ResponseEntity.ok(contextos);
+	}
+
+	@GetMapping("/permissions")
+	@Operation(
+			operationId = "getMyPermissions",
+			summary = "Permisos efectivos en el contexto activo",
+			description = """
+					Devuelve los codigos del catalogo que la cuenta tiene vigentes en la \
+					organizacion y la sede de su contexto activo, ya resueltos: rol base, permisos \
+					adicionales vigentes y acceso de soporte, todo aplanado en un array. El \
+					cliente no compone nada.
+
+					Se resuelve CONTRA LA BASE en cada llamada, no contra lo que porta el token. \
+					Un permiso revocado hace un minuto ya no aparece aca, aunque el access token \
+					siga siendo valido: leer del token daria una respuesta correcta al momento del \
+					login y falsa despues.
+
+					Es insumo de UX, no un mecanismo de seguridad. Cada pantalla que el frontend \
+					oculte con esto esta igualmente protegida en el backend; si esta lista \
+					mintiera, lo unico que pasaria es que se veria un boton que despues responde \
+					403.
+
+					Exige contexto de trabajo. Sin el la respuesta es 403 missing-tenant-context, \
+					NUNCA 401: el interceptor del frontend borra el token ante cualquier 401 y \
+					arranca un bucle de login.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "200",
+					description = "Permisos efectivos. Array vacio si la cuenta no tiene ninguno "
+							+ "en este contexto",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = EffectivePermissionsResponse.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "No hay sesion autenticada, o no hay contexto de trabajo "
+							+ "seleccionado (missing-tenant-context). Nunca 401",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<EffectivePermissionsResponse> permissions() {
+		ApiActor actor = ApiActor.current(tenantContextHolder);
+
+		Long organizationId = actor.contextOrganizationId();
+		if (organizationId == null) {
+			// Solo llega aca un PLATFORM_ADMIN: TenantContextFilter deja pasar sin contexto a
+			// quien opera por encima de los tenants, y para todos los demas ya respondio el.
+			throw new MissingTenantContextException(
+					"Los permisos efectivos se calculan sobre un contexto de trabajo");
+		}
+
+		return ResponseEntity.ok(EffectivePermissionsResponse.of(
+				permissionEvaluator.effectivePermissions(
+						actor.accountId(),
+						organizationId,
+						authorizationGuard.consultorioDelContexto())));
 	}
 }

@@ -14,15 +14,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <h2>Como se consigue un PLATFORM_ADMIN sin backdoor</h2>
  *
  * <p>{@code POST .../subscription/transitions} esta reservado a la administracion de
- * plataforma, y {@code AuthenticatedJwtPrincipal.platformAdmin()} sale del claim {@code rol},
- * que a su vez sale de la <b>membership revalidada</b> en la seleccion de contexto. Asi que el
- * rol se siembra donde el sistema lo lee: en la fila de {@code membership}, cuyo
- * {@code role_code} admite {@code PLATFORM_ADMIN} desde la migracion V3 y cuyo enum
- * {@code RoleCode} lo declara.
+ * plataforma. <b>Desde AKINE-01.03 ese rol sale de la tabla {@code platform_role}</b> (ADR-0020)
+ * y no del claim {@code rol} del token: se revalida contra la base en cada request, sin cache.
+ *
+ * <p>Este test se escribio antes de esa etapa y sembraba el rol con
+ * {@code UPDATE membership SET role_code = PLATFORM_ADMIN}. Eso ya no es posible ni deberia
+ * serlo: la migracion V11 agrego el {@code CHECK} que lo prohibe, porque la matriz seccion 1.3
+ * dice que ese rol no tiene membership en ninguna organizacion. Ahora se siembra la fila que
+ * corresponde.
  *
  * <p>El token sigue saliendo de {@code /auth/login} mas {@code /auth/context}: nada se firma a
- * mano y el claim no lo propone el cliente. Es el mismo camino que va a formalizar 01.03
- * cuando defina de donde nace ese rol.
+ * mano y el claim no lo propone el cliente.
  *
  * <h2>Que encontro, y como quedo</h2>
  *
@@ -88,20 +90,17 @@ class TransicionConcurrenteDeSuscripcionIT extends BaseEscenarioDiferido {
 	// =================================================================================
 
 	/**
-	 * Abre una sesion real cuya membership tiene {@code role_code = PLATFORM_ADMIN}.
+	 * Abre una sesion real de una cuenta con rol de plataforma vigente.
 	 *
-	 * <p>El orden importa: primero se siembra el rol y RECIEN DESPUES se hace login y se elige
-	 * contexto. Al reves, el token saldria con el rol viejo, porque el claim se resuelve en la
-	 * seleccion de contexto y no en cada request.
+	 * <p><b>El orden ya no importa</b>, y eso es lo que cambio en AKINE-01.03: el rol se lee de
+	 * {@code platform_role} en CADA request, asi que sembrarlo antes o despues del login da lo
+	 * mismo. Antes habia que sembrarlo primero, porque el claim se resolvia en la seleccion de
+	 * contexto y un token emitido antes salia con el rol viejo — es decir, la ventana de
+	 * revocacion del permiso mas alto del sistema era el TTL del token.
 	 */
 	private String tokenDeAdminDePlataforma() {
 		Sesion admin = altaCompleta("admin-plataforma");
-
-		int filas = jdbc.update(
-				"UPDATE membership SET role_code = 'PLATFORM_ADMIN' WHERE account_id = ?",
-				admin.cuentaId());
-		assertThat(filas).isEqualTo(1);
-
+		sembrarRolDePlataforma(admin.cuentaId());
 		return abrirSesion(admin.email()).token();
 	}
 

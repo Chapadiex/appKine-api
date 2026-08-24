@@ -1,5 +1,6 @@
 package com.akine.platform.infrastructure.security;
 
+import com.akine.platform.spi.problem.ProblemType;
 import java.io.IOException;
 import java.net.URI;
 import java.util.LinkedHashMap;
@@ -33,11 +34,11 @@ import tools.jackson.databind.json.JsonMapper;
 final class ProblemResponses {
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
-	static final String BASE = "https://akine.app/problems/";
+	static final String BASE = ProblemType.BASE;
 
-	static final URI UNAUTHORIZED = URI.create(BASE + "unauthorized");
-	static final URI FORBIDDEN = URI.create(BASE + "forbidden");
-	static final URI RATE_LIMITED = URI.create(BASE + "rate-limited");
+	static final URI UNAUTHORIZED = ProblemType.UNAUTHORIZED.uri();
+	static final URI FORBIDDEN = ProblemType.FORBIDDEN.uri();
+	static final URI RATE_LIMITED = ProblemType.RATE_LIMITED.uri();
 
 	private static final ObjectMapper JSON = JsonMapper.builder().build();
 

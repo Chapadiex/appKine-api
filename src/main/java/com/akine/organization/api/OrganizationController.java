@@ -4,10 +4,11 @@ import com.akine.organization.api.dto.ConsultorioPageResponse;
 import com.akine.organization.api.dto.CreateOrganizationRequest;
 import com.akine.organization.api.dto.OrganizationResponse;
 import com.akine.organization.api.dto.UpdateOrganizationRequest;
+import com.akine.organization.application.ConsultorioEstadoFiltro;
 import com.akine.organization.application.ConsultorioView;
 import com.akine.organization.application.OrganizationService;
 import com.akine.organization.application.OrganizationView;
-import com.akine.organization.application.ProvisionalAuthorizationGuard;
+import com.akine.organization.application.AuthorizationGuard;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -45,7 +46,7 @@ import java.util.List;
  * dentro de su alcance pero le falta el permiso —por ejemplo, un miembro que intenta editar.
  *
  * <h2>Quien decide los permisos</h2>
- * {@link ProvisionalAuthorizationGuard}, siempre. Los controllers no evaluan reglas por su
+ * {@link AuthorizationGuard}, siempre. Los controllers no evaluan reglas por su
  * cuenta ni las duplican: cuando 01.03 traiga la evaluacion fina de permisos, se reemplaza un
  * solo lugar y estos metodos no cambian.
  *
@@ -60,12 +61,12 @@ public class OrganizationController {
 	private static final Logger log = LoggerFactory.getLogger(OrganizationController.class);
 
 	private final OrganizationService organizationService;
-	private final ProvisionalAuthorizationGuard authorizationGuard;
+	private final AuthorizationGuard authorizationGuard;
 	private final TenantContextHolder tenantContextHolder;
 
 	public OrganizationController(
 			OrganizationService organizationService,
-			ProvisionalAuthorizationGuard authorizationGuard,
+			AuthorizationGuard authorizationGuard,
 			TenantContextHolder tenantContextHolder) {
 		this.organizationService = organizationService;
 		this.authorizationGuard = authorizationGuard;
@@ -267,11 +268,14 @@ public class OrganizationController {
 	@GetMapping("/{orgId}/consultorios")
 	@Operation(
 			operationId = "listOrganizationConsultorios",
-			summary = "Sedes activas de la organizacion",
-			description = "Listado paginado de los consultorios vigentes del tenant. Requiere ser "
-					+ "miembro vigente de esa organizacion. Es la lectura minima que necesita el "
-					+ "selector de contexto de trabajo; la administracion completa de consultorios "
-					+ "llega en 02.01. El tamano de pagina se acota a "
+			summary = "Sedes de la organizacion",
+			description = "Listado paginado de las sedes del tenant. Requiere ser miembro "
+					+ "vigente de esa organizacion, y NO consultorio:manage: es la lectura que "
+					+ "necesita el selector de contexto de trabajo, asi que restringirla dejaria "
+					+ "a un profesional sin poder elegir sede. El parametro estado es opcional y "
+					+ "su valor por defecto, ACTIVO, conserva el comportamiento historico del "
+					+ "endpoint: un cliente que no lo manda ve exactamente lo mismo que antes. "
+					+ "El tamano de pagina se acota a "
 					+ ApiPaging.TAMANO_MAXIMO + ": pedir mas devuelve ese maximo, no un error.")
 	@ApiResponses({
 			@ApiResponse(
@@ -280,6 +284,12 @@ public class OrganizationController {
 					content = @Content(
 							mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = ConsultorioPageResponse.class))),
+			@ApiResponse(
+					responseCode = "400",
+					description = "El valor de estado no pertenece al catalogo",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
 					description = "No hay sesion autenticada",
@@ -296,6 +306,15 @@ public class OrganizationController {
 			@Parameter(description = "Identificador de la organizacion", example = "1")
 			@PathVariable long orgId,
 
+			@Parameter(
+					description = "Que sedes devolver. ACTIVO son las vigentes, INACTIVO las "
+							+ "dadas de baja, TODOS ambas. Una sede dada de baja conserva su "
+							+ "historia y sigue siendo consultable, pero hay que pedirla "
+							+ "explicitamente para que no aparezca por descuido en el selector "
+							+ "de contexto.",
+					example = "ACTIVO")
+			@RequestParam(defaultValue = "ACTIVO") ConsultorioEstadoFiltro estado,
+
 			@Parameter(description = "Numero de pagina, base cero", example = "0")
 			@RequestParam(defaultValue = ApiPaging.PAGINA_POR_DEFECTO) int page,
 
@@ -306,7 +325,7 @@ public class OrganizationController {
 		authorizationGuard.requireMember(
 				actor.accountId(), orgId, actor.contextOrganizationId(), actor.platformAdmin());
 
-		List<ConsultorioView> sedes = organizationService.consultorios(orgId);
+		List<ConsultorioView> sedes = organizationService.consultorios(orgId, estado);
 		return ResponseEntity.ok(
 				ConsultorioPageResponse.of(sedes, ApiPaging.pagina(page), ApiPaging.tamano(size)));
 	}

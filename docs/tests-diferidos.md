@@ -54,3 +54,53 @@ pendientes de verificación, que no es lo mismo.
 
 Los orígenes de cada escenario (RF/RN/CA y número de test del diseño de 01.01) están en el
 `@DisplayName` de cada test y en el historial de este archivo: `git log -p docs/tests-diferidos.md`.
+
+---
+
+## AKINE-02.01 — cobertura declarada como PARCIAL
+
+### CA-M03-002 — **parcialmente cubierto**, con etapa destino
+
+RF-M03-002 pide, literalmente: *"Crear consultorio, primer box, horario general e intervalo
+inicial"*. Lo que 02.01 entrega de esos cuatro:
+
+| Pieza del RF | Estado en 02.01 | Etapa destino |
+|---|---|---|
+| Crear consultorio | **cubierto** — `POST /api/v1/organizations/{orgId}/consultorios` | — |
+| Intervalo inicial | **cubierto** — `slot_minutes`, columna de `consultorio` | — |
+| **Primer box** | **NO cubierto** | **AKINE-02.02** |
+| **Horario general** | **NO cubierto** | **F5 / agenda** |
+
+**Por qué el box no entra, y por qué no es negociable.** `Box`/`Espacio` es del módulo
+`resource` (M04) y el plan lo asigna a AKINE-02.02. Que `organization` cree una fila en una
+tabla de `resource` viola la regla 1 de `AGENT.md` §4 —cada tabla tiene un módulo propietario— y
+`ModuleArchitectureTest` lo rechaza. No hay forma de "cubrirlo igual": la única alternativa era
+adelantar el módulo entero.
+
+**Por qué el horario general tampoco.** RN-M03-004 dice que el horario general **no sustituye**
+la disponibilidad profesional individual. Modelarlo como tabla hija en F1 —antes de que exista
+esa disponibilidad (M05/M12) y antes de los slots que la consumen (F5)— es la forma más rápida
+de que la agenda futura lo tome como fuente de verdad, que es exactamente lo que esa regla
+prohíbe. Es una decisión del implementador, revisable, y está anotada como tal en
+`V16__m03_consultorio_expandir.sql` y en `Consultorio.slotMinutes`.
+
+**Consecuencia:** ni el registro de cierre de 02.01 ni ningún reporte pueden afirmar que
+CA-M03-002 está cubierto. Está cubierto **en dos de sus cuatro piezas**, y las otras dos tienen
+etapa destino escrita acá.
+
+### Escenarios de 02.01 decididos y no ejecutados
+
+| # | Escenario | Motivo y etapa destino |
+|---|---|---|
+| 12 | **Baja bloqueada por turnos futuros** | El puerto `organization.spi.ConsultorioDeactivationProbe` está declarado y el código `409 consultorio-has-active-references` está publicado en el contrato, pero **la lista de implementaciones es vacía**: `scheduling` no existe. No hay nada que probar hasta que exista. Destino: **F5 (M12)**, junto con la decisión abierta sobre qué pasa con los turnos ya reservados |
+| 13 | **Alta de sede concurrente contra una mutación de membership del mismo tenant** | Es el test que vigila el orden de bloqueo único `subscription → organization`. No está escrito: exige montar dos sesiones con roles distintos en el mismo tenant, y el alta de membership por API entró en 01.03 como alta directa reservada a `identity`. Mientras tanto, el orden lo sostienen dos comentarios que se citan mutuamente —`ConsultorioService.bloquearTenant` y `MembershipService.bloquearTenant`— y **ninguna herramienta los compara**. Destino: **AKINE-02.02** |
+| 14 | **Un `PROFESIONAL` acotado a una sede no ve la sede nueva y recibe 403 al crear por API** | La membership acotada a una sede que hace falta para montarlo **no la crea ningún endpoint** que un test pueda usar sin sembrar por SQL, y un E2E que siembra por SQL deja de ser de punta a punta justo en el paso que importa. Destino: **AKINE-02.02** |
+| 15 | **E2E del recorrido completo de sedes** (registro → login → contexto → crear sede → selector → cambiar contexto → baja con motivo → detalle legible → auditoría) | Es de `appKine-web` y de esta etapa solo depende el backend. Destino: el cierre de 02.01 del lado del frontend |
+
+**Y una nota que no es un test diferido sino un hallazgo de producto.** El plan por defecto del
+alta self-service es `BASICO`, y `BASICO` tiene `MAX_CONSULTORIOS = 1` (seed de `V4`). O sea que
+**un tenant recién registrado no puede crear ni una sola sede adicional** hasta cambiar de plan,
+y el cambio de plan está reservado a `PLATFORM_ADMIN`. El límite funciona como corresponde —lo
+prueba `ConsultoriosIT`, que tiene que contratar `PROFESIONAL` por el endpoint real para poder
+crear la segunda sede— pero es lo primero que va a encontrar cualquiera que pruebe la pantalla
+nueva con una cuenta nueva. No se cambió nada: el catálogo de planes es una decisión de negocio.

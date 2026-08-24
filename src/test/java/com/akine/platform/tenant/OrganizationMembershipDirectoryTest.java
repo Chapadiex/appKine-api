@@ -207,7 +207,7 @@ class OrganizationMembershipDirectoryTest {
 
 	private void dadoElConsultorioDeLaOrganizacion() {
 		given(consultorioRepository.findByIdAndOrganizationIdAndActiveTrue(CONSULTORIO, ORGANIZACION))
-				.willReturn(Optional.of(new Consultorio(ORGANIZACION, "Sede Centro")));
+				.willReturn(Optional.of(new Consultorio(ORGANIZACION, "Sede Centro", "America/Argentina/Cordoba", null)));
 	}
 
 	private void dadaLaOrganizacionVigente() {

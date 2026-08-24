@@ -50,6 +50,18 @@ class SecurityChainPerfilDesconocidoTest {
 	@MockitoBean
 	private AccessTokenVerifier accessTokenVerifier;
 
+	/**
+	 * El directorio del rol de plataforma tambien se simula.
+	 *
+	 * <p>Desde AKINE-01.03 la cadena lo consulta en cada request autenticado para saber si la
+	 * cuenta administra la plataforma: ese dato ya no sale del claim del token (ADR-0020). Lo
+	 * implementa {@code organization}, que este slice no levanta, asi que sin este doble el
+	 * contexto no arranca. Por defecto Mockito devuelve {@code false}, que es fail-closed y es
+	 * lo que estos tests necesitan.
+	 */
+	@MockitoBean
+	private com.akine.platform.spi.tenant.PlatformRoleDirectory platformRoleDirectory;
+
 	@Test
 	@DisplayName("un perfil que no es de desarrollo cierra la documentacion, aunque no se llame prod")
 	void un_perfil_desconocido_cierra_la_documentacion() throws Exception {

@@ -9,6 +9,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import com.akine.platform.spi.security.AccessTokenVerifier;
+import com.akine.platform.spi.tenant.PlatformRoleDirectory;
 
 /**
  * Cableado de las piezas de autenticacion de la cadena.
@@ -37,8 +38,9 @@ public class SecurityFiltersConfig {
 	 * sabe ni debe saberlo (ADR-0001).
 	 */
 	@Bean
-	public JwtAuthenticationFilter jwtAuthenticationFilter(AccessTokenVerifier verifier) {
-		return new JwtAuthenticationFilter(verifier);
+	public JwtAuthenticationFilter jwtAuthenticationFilter(
+			AccessTokenVerifier verifier, PlatformRoleDirectory platformRoleDirectory) {
+		return new JwtAuthenticationFilter(verifier, platformRoleDirectory, Clock.systemUTC());
 	}
 
 	@Bean
@@ -56,6 +58,8 @@ public class SecurityFiltersConfig {
 				new FixedWindowRateLimiter(properties.getWindow(), properties.getMaxAttempts()),
 				new FixedWindowRateLimiter(
 						properties.getWindow(), properties.getRegisterMaxAttempts()),
+				new FixedWindowRateLimiter(
+						properties.getWindow(), properties.getMembershipMaxAttempts()),
 				Clock.systemUTC(),
 				properties.isEnabled());
 	}
@@ -80,6 +84,7 @@ public class SecurityFiltersConfig {
 	 *       window: 1m
 	 *       max-attempts: 30
 	 *       register-max-attempts: 5
+	 *       membership-max-attempts: 10
 	 * </pre>
 	 *
 	 * <p>Los valores por defecto son holgados a proposito. El limite existe para frenar la
@@ -114,6 +119,19 @@ public class SecurityFiltersConfig {
 		 */
 		private int registerMaxAttempts = 5;
 
+		/**
+		 * Altas directas de colaborador permitidas por ventana y por clave.
+		 *
+		 * <p>Entre los otros dos y a proposito. El endpoint responde 404 cuando el email no
+		 * tiene cuenta, asi que es un oraculo de enumeracion para quien ya se autentico: este
+		 * numero es una de las dos mitigaciones que hacen aceptable ese 404 —la otra es auditar
+		 * cada intento fallido—. No son treinta porque no hay reintento honesto que proteger
+		 * (nadie tipea mal una contrasena aca), y no son cinco porque quien incorpora un equipo
+		 * entero de una sentada es un uso legitimo. Ver
+		 * {@code RateLimitFilter.RUTA_DE_ALTA_DE_COLABORADOR}.
+		 */
+		private int membershipMaxAttempts = 10;
+
 		public boolean isEnabled() {
 			return enabled;
 		}
@@ -144,6 +162,14 @@ public class SecurityFiltersConfig {
 
 		public void setRegisterMaxAttempts(int registerMaxAttempts) {
 			this.registerMaxAttempts = registerMaxAttempts;
+		}
+
+		public int getMembershipMaxAttempts() {
+			return membershipMaxAttempts;
+		}
+
+		public void setMembershipMaxAttempts(int membershipMaxAttempts) {
+			this.membershipMaxAttempts = membershipMaxAttempts;
 		}
 	}
 }

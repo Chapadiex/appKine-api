@@ -145,3 +145,161 @@ Lo que cada rol tiene **implícito** para las acciones de F1. Todo lo que no fig
 | Flag organizacional "paciente puede ver su HC" (Propia autorizada) | F4 |
 | Catálogo definitivo de restricciones "Limitado" en reportes | F8 |
 | Si `auditoria:read-clinica` requiere además relación asistencial (DP-03) | F4 |
+
+---
+
+## 9. Enmiendas — AKINE-01.03
+
+La matriz es **vinculante**: nada de lo que sigue se aplicó en silencio. Cada punto es una
+diferencia real entre lo que dicen las secciones 1–8 y lo que el código hace, con su motivo y su
+alcance. Si una enmienda no está acá, no existe.
+
+### 9.1 Lectura básica de la organización y de sus consultorios — **enmienda aprobada**
+
+**Qué dice la matriz.** La sección 6 da `tenant:read` únicamente a `ORG_ADMIN` (alcance
+organización) y a `PLATFORM_ADMIN` (global). Leído a la letra, un `PROFESIONAL` no puede leer
+nada de su propia organización.
+
+**Qué hace el código.** `GET /api/v1/organizations/{orgId}` y
+`GET /api/v1/organizations/{orgId}/consultorios` están habilitados para **cualquier miembro
+vigente**, con cualquier rol. Lo aplica `AuthorizationGuard.requireMember`, que decide por
+**pertenencia** y no por permiso.
+
+**Por qué.** Dos motivos, y ninguno es de comodidad:
+
+1. **Es el comportamiento vigente desde AKINE-01.01** y los dos endpoints están publicados en el
+   contrato `0.2.0`. Ajustarlos a la letra de la sección 6 sería un cambio **incompatible** en
+   endpoints ya publicados, no una corrección.
+2. **El selector de contexto no funciona sin eso.** Después del login, la persona elige
+   organización + consultorio (ADR-0009). Para elegir necesita ver el nombre de su organización
+   y sus sedes. Un `PROFESIONAL` sin esa lectura no puede ni entrar a trabajar.
+
+**Qué NO habilita la enmienda.** Los datos de la **suscripción** siguen detrás de `tenant:read`,
+y por lo tanto siguen siendo de `ORG_ADMIN`. La enmienda cubre el perfil de la organización y el
+listado de sedes; nada más.
+
+**Alcance.** Fase 1. La etapa que revise el catálogo de la sección 5 debería decidir si esta
+lectura merece un código propio —algo como `tenant:read-basic`— en vez de quedar como una
+excepción por pertenencia. Hoy inventarlo sería agregar un código que la matriz no declara.
+
+### 9.2 `tenant:read` cubre también la edición de la propia organización — **contradicción interna, no enmienda**
+
+La sección 4 dice que el "Limitado" de `ORG_ADMIN` en *Gestionar tenant* **incluye editar los
+datos de su propia organización** (y excluye cambiar de plan y suspender, que son de plataforma).
+La sección 6, en cambio, le da a `ORG_ADMIN` solo `tenant:read`, y la sección 5 no declara ningún
+código para "editar la propia organización".
+
+**Las dos secciones no coinciden entre sí.** AKINE-01.03 se resolvió por el lado que preserva el
+comportamiento vigente y el texto de la sección 4: `PATCH /organizations/{orgId}` exige
+`tenant:read` con alcance organización. **No se inventó un código nuevo**, porque el catálogo es
+vinculante y agregarle una fila es una decisión de la matriz, no de una etapa.
+
+Queda registrado para la etapa que enmiende el catálogo: o la sección 4 se acota a solo lectura,
+o la sección 5 gana un código de edición y la sección 6 se lo asigna a `ORG_ADMIN`.
+
+### 9.3 Desviación declarada de RF-M05-001 y RF-M05-002 — alta directa en vez de invitación
+
+**Decisión del usuario del 23/08/2026 (D-1, opción B).** El flujo de invitación por correo
+—invitar, aceptar, rechazar, revocar la invitación— **no entra en AKINE-01.03**. En su lugar
+entra el **alta directa por un administrador** sobre una cuenta que ya existe
+(`organization.spi.MembershipProvisioning`).
+
+Es una **desviación declarada**, no un olvido: el plan de la etapa nombra esos dos RF. Sin el
+alta directa la etapa quedaba sin ninguna vía para crear memberships, con `colaborador:manage`
+evaluándose sobre un conjunto de una sola fila y RN-M02-002 soportada por el esquema y sin camino
+de usuario.
+
+**Lo que la desviación no cubre**, y viaja con RF-M05-001/002 a la etapa que los reciba: no hay
+consentimiento de la persona vinculada, no hay alta de cuentas nuevas por esta vía, y el estado
+`INVITADA` no existe.
+
+**Consecuencia de ownership que hay que respetar:** el endpoint del alta directa vive en
+`identity.api`, no en `organization.api`. Un administrador tipea un **email**, y `cuenta` es de
+`identity`; `organization` no compila contra ese módulo, así que la traducción email → `accountId`
+ocurre del lado de `identity`, que después entra por el `spi`.
+
+### 9.4 Acceso de soporte — hueco de la sección 8, cerrado (D-3)
+
+La sección 8 declaraba el modelo de acceso de soporte como hueco con etapa destino 01.03. Queda
+cerrado así, por decisión del usuario del 23/08/2026:
+
+| Pregunta | Decisión | Qué se aceptó a cambio |
+|---|---|---|
+| Quién lo otorga | El propio `PLATFORM_ADMIN`, con **motivo obligatorio** | Es el modelo más débil de los tres evaluados. Los otros dos —cuatro ojos, o aprobación del `ORG_ADMIN`— no sirven para el caso que motiva casi todo el soporte, que es "el tenant no puede entrar" |
+| Duración | **4 horas** | Una hora genera fricción operativa real; veinticuatro deja abierta una ventana de un día sobre datos de salud ajenos |
+| Si el tenant se entera | **Sí**: `SUPPORT_ACCESS_GRANTED` se escribe con el `organization_id` del tenant, así que aparece en su propia consulta de auditoría | El aviso **por correo** no se implementó: resolverlo exige el email de una cuenta, y `organization` no puede leer `identity`. Queda como pendiente declarado |
+
+Además, **cada operación** realizada al amparo de un acceso vigente deja `SUPPORT_ACCESS_USED`
+(sección 7), no solo el otorgamiento.
+
+**Lo que el rol de plataforma NO habilita por sí solo.** La sección 6 le da "Global" a las
+acciones administrativas del *contrato* del tenant (alta de organización, plan, suscripción,
+colaboradores) y "Soporte"/"Restringido" a las que tocan **datos de personas**. El evaluador
+respeta esa diferencia literalmente: los alcances `SOPORTE` y `RESTRINGIDO` **exigen**
+`support_access` vigente; `GLOBAL` no. `auditoria:read-clinica` con alcance `RESTRINGIDO`
+**deniega siempre en Fase 1**, porque el permiso clínico que la sección 3 le exige además no
+existe hasta F4.
+
+### 9.5 Alcance de `auditoria:read` para `CONSULTORIO_ADMIN` — **sigue abierto** (D-7)
+
+Implementado tal como lo dice la sección 6: alcance "Consultorio", filtrando por
+`consultorio_id`. **Consecuencia incómoda que no se tapó:** casi todos los eventos que el sistema
+escribe hoy llevan `consultorio_id` nulo, porque las operaciones de M01/M02 son de alcance
+organización. Con el filtro estricto, un `CONSULTORIO_ADMIN` abre la pantalla de auditoría y **no
+ve nada**.
+
+Se implementó la versión estricta porque es la única que no concede de más: mostrarle además los
+eventos de alcance organización le expondría transiciones de suscripción y datos del tenant que
+no le competen. La alternativa siempre se puede agregar; al revés, no.
+
+### 9.6 Límites de la consulta de auditoría — defaults provisorios (D-8)
+
+Sin RF que los respalde. Fijados en `AuditQueryService`, en un solo lugar y con nombre:
+rango máximo **90 días**, tamaño máximo de página **100**, orden siempre `occurred_at DESC`.
+Sin tope, un `from=1970` sobre un tenant grande es un scan y un problema de disponibilidad.
+
+### 9.7 `tenant:read` y `auditoria:read` de `PLATFORM_ADMIN` pasan a alcance `SOPORTE` — **enmienda aprobada**
+
+**La sección 6 y la sección 7 se contradicen, y la contradicción no se puede dejar abierta.**
+La sección 6 le da `Global` a toda la columna de `PLATFORM_ADMIN` salvo la auditoría clínica.
+La sección 7 declara el invariante contrario: *"`PLATFORM_ADMIN` accede a datos de un tenant
+**solo** por acceso de soporte justificado y auditado"* (§32, DP-03). Las dos son vinculantes.
+
+**Qué pasaba mientras la contradicción estuvo abierta.** Ganaba la sección 6 en todos lados, y
+por lo tanto **ninguna celda de la tabla era `SOPORTE`**: la rama `SOPORTE` del evaluador era
+código muerto y nada del sistema exigía nunca un `support_access` vigente. El párrafo final de
+§9.4 —"los alcances `SOPORTE` y `RESTRINGIDO` exigen `support_access` vigente"— era cierto sobre
+el evaluador y vacío sobre la tabla, porque no había ninguna celda así. El acceso de soporte
+quedaba reducido a un flag opcional en la decisión, que además cuatro servicios ignoraban.
+
+**Cómo se resolvió: por el lado que falla cerrado, y solo en las lecturas.** La matriz no alcanza
+para decidirlo —los dos párrafos son igual de vinculantes y dicen lo contrario—, así que se eligió
+la opción que no concede de más:
+
+| Permiso | Antes | Ahora | Por qué |
+|---|---|---|---|
+| `tenant:read` | Global | **Soporte** | Es el perfil del tenant, sus sedes y su suscripción: datos del tenant, que es exactamente lo que §7 protege |
+| `auditoria:read` | Global | **Soporte** | Es el mapa de lo que hace un cliente. Sin esto, se podía leer el rastro de un tenant sin dejar rastro de haberlo leído |
+| `tenant:manage` | Global | **Global** (sin cambio) | Es el **contrato** del tenant —alta, cambio de plan, suspensión—, no sus datos. Es la capacidad de intervenir en un incidente, y ya deja su propia fila de auditoría nominal. Exigirle soporte dejaría a la plataforma sin poder suspender un tenant abusivo |
+
+| `colaborador:read` | Global | **Soporte** | Decisión del usuario, 24/08/2026. Es el **padrón de personas** de un centro ajeno, que es literalmente lo que §7 protege, y una lectura no deja ninguna otra fila: sin `SUPPORT_ACCESS_USED` no queda evidencia de que ocurrió |
+
+**El criterio que separa `Global` de `Soporte` en esta columna es una sola pregunta:** ¿la
+operación deja por sí misma una fila que diga quién la hizo y por qué?
+
+Las **mutaciones** la dejan —`SUBSCRIPTION_TRANSITIONED`, `MEMBERSHIP_*`, `CONSULTORIO_*`, todas
+con actor y motivo obligatorio—, así que el hecho queda trazado aunque no se registre además como
+uso de soporte. Las **lecturas** no dejan nada. Por eso las tres lecturas de datos de un tenant
+—`tenant:read`, `auditoria:read` y `colaborador:read`— quedaron en `Soporte`, y las mutaciones
+en `Global`.
+
+**Lo que esta enmienda NO cierra, y queda reportado sin tapar.** `consultorio:manage` y
+`colaborador:manage` siguen en `Global`, por el criterio de arriba: son mutaciones y dejan su
+propia fila nominal. Exigirles soporte sumaría un paso a operaciones de rescate sin agregar
+trazabilidad que no exista ya. **Es una decisión tomada, no un descuido**, y se revisa si alguna
+vez una de esas mutaciones deja de auditar con actor y motivo.
+
+**Consecuencia operativa que hay que saber.** Un `PLATFORM_ADMIN` que crea una organización por
+`POST /organizations` no puede leerla de vuelta sin autoconcederse un acceso de soporte. Es el
+costo aceptado del fail-closed, y es de un solo paso: el acceso se autoconcede con motivo y dura
+cuatro horas (§9.4).

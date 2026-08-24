@@ -15,6 +15,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.akine.platform.spi.security.AccessTokenClaims;
 import com.akine.platform.spi.security.AccessTokenVerifier;
+import com.akine.platform.spi.tenant.PlatformRoleDirectory;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -29,7 +30,11 @@ import jakarta.servlet.http.HttpServletResponse;
  * <p>Verifica la firma y la vigencia del access token, arma un
  * {@link AuthenticatedJwtPrincipal} y lo deja en el {@code SecurityContext} para que
  * {@code TenantContextFilter} —que corre despues de {@code AuthorizationFilter}— lo encuentre.
- * <b>No consulta la base.</b> Ni el estado de la cuenta ni la membership: lo primero seria un
+ * <b>Consulta la base una sola vez, y solo para el rol de plataforma.</b> Desde AKINE-01.03
+ * pregunta {@code platform_role} por el puerto {@link PlatformRoleDirectory} para saber si la
+ * cuenta administra la plataforma: ese dato no puede salir del claim {@code rol} sin convertir
+ * la ventana de revocacion del permiso mas alto del sistema en el TTL del token (ADR-0020).
+ * <b>Lo demas sigue sin consultarse.</b> Ni el estado de la cuenta ni la membership: lo primero seria un
  * {@code SELECT} extra en todo request autenticado para cubrir un evento raro, y se resolvio
  * aceptando la ventana de 10 minutos del TTL (ADR-0017 D-3); lo segundo es trabajo del filtro
  * de contexto, que si lo hace y sin cache.
@@ -70,8 +75,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 	private final AccessTokenVerifier accessTokenVerifier;
 
-	public JwtAuthenticationFilter(AccessTokenVerifier accessTokenVerifier) {
+	/**
+	 * Origen de dato del rol de plataforma (ADR-0020).
+	 *
+	 * <p>Puerto invertido: lo implementa {@code organization.infrastructure.tenant} leyendo
+	 * {@code platform_role}. {@code platform} nunca compila contra {@code organization}.
+	 */
+	private final PlatformRoleDirectory platformRoleDirectory;
+
+	private final java.time.Clock clock;
+
+	public JwtAuthenticationFilter(
+			AccessTokenVerifier accessTokenVerifier,
+			PlatformRoleDirectory platformRoleDirectory,
+			java.time.Clock clock) {
 		this.accessTokenVerifier = accessTokenVerifier;
+		this.platformRoleDirectory = platformRoleDirectory;
+		this.clock = clock;
 	}
 
 	@Override
@@ -94,9 +114,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			return;
 		}
 
+		// El rol de plataforma se revalida contra la base en CADA request y sin cache
+		// (ADR-0020). No sale del claim `rol`: autorizar por ese claim convertiria la ventana de
+		// revocacion del permiso mas alto del sistema en el TTL del token, que es exactamente lo
+		// que AccessTokenClaims documenta que no hay que hacer. Es un seek indexado sobre
+		// platform_role, la misma decision —y el mismo precio— que la revalidacion de membership
+		// del filtro de contexto (T-7).
+		boolean platformAdmin = platformRoleDirectory.isPlatformAdmin(
+				claims.get().accountId(), clock.instant());
+
 		SecurityContext contexto = SecurityContextHolder.createEmptyContext();
 		contexto.setAuthentication(new UsernamePasswordAuthenticationToken(
-				new AuthenticatedJwtPrincipal(claims.get()),
+				new AuthenticatedJwtPrincipal(claims.get(), platformAdmin),
 				// Sin credenciales en el contexto: el token ya se verifico y guardarlo lo
 				// dejaria disponible para cualquier cosa que serialice el principal.
 				null,
