@@ -303,3 +303,58 @@ vez una de esas mutaciones deja de auditar con actor y motivo.
 `POST /organizations` no puede leerla de vuelta sin autoconcederse un acceso de soporte. Es el
 costo aceptado del fail-closed, y es de un solo paso: el acceso se autoconcede con motivo y dura
 cuatro horas (§9.4).
+
+---
+
+## 10. Enmiendas — AKINE-02.02 (Espacios, boxes y capacidad física)
+
+Mismo criterio que la sección 9: nada se aplicó en silencio. Cada punto es una diferencia real
+entre lo que dicen las secciones 1–8 y lo que el código hace, con su motivo y su alcance.
+
+### 10.1 `espacio:read` — **PROPUESTO, no implementado**
+
+**El hueco, en una línea.** La etapa 02.02 exige que "profesionales/administrativos" puedan
+**consultar** los espacios de la sede. El catálogo de la sección 5 **no tiene ningún código de
+lectura de espacios**: el único que aplica al recurso físico es `consultorio:manage`, y la
+sección 6 se lo niega justamente a esos dos roles.
+
+**Lo que 02.02 hizo, y por qué no inventó el código.** Las mutaciones —alta, edición, baja—
+exigen `consultorio:manage` con alcance CONSULTORIO, que es lo que la matriz dice. Las
+**lecturas** —detalle, listado y disponibilidad— autorizan por **pertenencia**: membership
+vigente en la organización, con cualquier rol. Es la enmienda §9.1 ya aprobada aplicada al
+mismo caso y por el mismo motivo — sin esa lectura un `PROFESIONAL` no puede ver en qué box
+atiende, igual que sin el listado de sedes no puede elegir dónde trabaja.
+
+**No se agregó `espacio:read` al catálogo** porque el catálogo es **vinculante** y agregarle una
+fila es una decisión de la matriz, no de una etapa. Es exactamente el razonamiento con el que
+01.03 se negó a inventar un código de edición de organización (§9.2).
+
+**La propuesta concreta, para la etapa que enmiende el catálogo:**
+
+| Código | Acción | Fase |
+|---|---|---|
+| `espacio:read` | Consultar el catálogo físico y la disponibilidad de una sede | F2 |
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `espacio:read` | Soporte | Org | Consultorio | Consultorio | Consultorio | — |
+
+`Soporte` para `PLATFORM_ADMIN` por el criterio ya fijado en §9.7: es una lectura de datos de un
+tenant y una lectura no deja por sí misma ninguna otra fila. Hoy el código llega al mismo
+resultado exigiéndole `tenant:read`, que ya tiene alcance `SOPORTE`.
+
+**Si se aprueba, el cambio es de una línea por punto de autorización** —reemplazar la
+comprobación de pertenencia por una evaluación de `espacio:read`— y **no afecta al contrato**:
+los códigos HTTP de rechazo (404 fuera de alcance, 403 sin contexto) no cambian.
+
+### 10.2 Lo que 02.02 NO habilita — dicho para que nadie lo asuma
+
+- **`PLATFORM_ADMIN` no puede mutar espacios.** No tiene contexto de tenant y la mutación lo
+  exige, así que recibe 403. Es deliberado: el catálogo físico de un centro es del centro, y no
+  existe ninguna operación de rescate que requiera crear un box ajeno. Se aparta de la columna
+  `Global` que la sección 6 le da a *Gestionar consultorio*, y se aparta **hacia el lado que no
+  concede de más**, igual que §9.7.
+- **La mutación exige que la sede de la ruta sea la del contexto validado**, incluso para un
+  `ORG_ADMIN`, que tiene alcance organización. Es más estricto que la matriz: la sede del
+  contexto es la única que el sistema revalidó contra la base en ese request. Un `ORG_ADMIN` que
+  quiera administrar otra sede cambia de contexto primero.

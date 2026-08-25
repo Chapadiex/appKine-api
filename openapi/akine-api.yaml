@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.6.0
+  version: 0.7.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -37,6 +37,9 @@ tags:
   name: Administracion de cuentas
 - description: "Catalogo comercial: que incluye cada plan"
   name: Planes
+- description: "Alta, edicion, baja y disponibilidad de los espacios fisicos de una\
+    \ sede"
+  name: Espacios
 - description: "Vinculos de las cuentas con la organizacion, sus roles y sus permisos"
   name: Colaboradores
 paths:
@@ -1338,6 +1341,450 @@ paths:
       summary: Baja logica de una sede
       tags:
       - Consultorios
+  /api/v1/organizations/{orgId}/consultorios/{consultorioId}/espacios:
+    get:
+      description: |-
+        Listado paginado de los espacios de la sede. Requiere ser miembro vigente de la organizacion, con cualquier rol, y NO consultorio:manage: es la lectura que necesita un profesional para saber en que box atiende, asi que restringirla al administrador dejaria a la mitad del equipo sin poder consultarla.
+
+        El parametro estado por defecto vale ACTIVO, y eso es lo que hace que un selector de reserva NUNCA ofrezca un espacio dado de baja (RN-M04-002). Los inactivos hay que pedirlos explicitamente, y la pantalla de administracion los necesita para explicar por que un nombre esta tomado o libre.
+
+        El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un error.
+      operationId: listEspacios
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Que espacios devolver. ACTIVO son los vigentes, INACTIVO los\
+          \ dados de baja, TODOS ambos."
+        example: ACTIVO
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          default: ACTIVO
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      - description: "Numero de pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: "Elementos por pagina, acotado a 100"
+        example: 20
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EspacioPageResponse"
+          description: Pagina de espacios. Contenido vacio si la pagina quedo fuera
+            de rango
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El valor de estado no pertenece al catalogo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o no hay contexto de trabajo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede no existe, o no se es miembro de esa organizacion"
+      summary: Espacios de la sede
+      tags:
+      - Espacios
+    post:
+      description: |-
+        Crea un box, gimnasio, gabinete, sala grupal u otro recurso fisico en la sede (RF-M04-001, RF-M04-007).
+
+        Exige consultorio:manage sobre ESA sede, asi que pasan un ORG_ADMIN de la organizacion y el CONSULTORIO_ADMIN de esa sede, y no un PROFESIONAL ni un ADMINISTRATIVO.
+
+        Solo name es obligatorio. Los defaults son tipo=BOX, capacidad=1, validFrom=ahora y sin fin de vigencia, que es el caso mas frecuente.
+
+        No lleva Idempotency-Key, a diferencia del alta de una sede, y es deliberado: un espacio no consume cupo de ningun plan, asi que lo unico que un reintento podria producir es una fila duplicada, y contra eso el unique de nombre entre los espacios vigentes es una garantia mas fuerte que una clave —no depende de que el cliente la mande ni de que la reuse bien—. El reintento responde 409 espacio-name-taken y no crea nada. La contrapartida: despues de un timeout de red hay que releer el listado para saber si el alta original entro.
+
+        La sede tiene que estar ACTIVA: una sede dada de baja no origina hechos nuevos y responde 409 consultorio-inactive.
+      operationId: createEspacio
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEspacioRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EspacioResponse"
+          description: Espacio creado. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, capacidad fuera de rango, tipo que no pertenece\
+            \ al catalogo, o ventana de vigencia incoherente"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto\
+            \ de trabajo seleccionado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o pertenece a otro tenant
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Nombre repetido entre los espacios vigentes de la sede (espacio-name-taken),\
+            \ sede dada de baja (consultorio-inactive), o suscripcion suspendida (subscription-suspended)"
+      summary: Alta de un espacio
+      tags:
+      - Espacios
+  /api/v1/organizations/{orgId}/consultorios/{consultorioId}/espacios/availability:
+    get:
+      description: |-
+        Devuelve los espacios de la sede que estan EN SERVICIO durante toda la ventana pedida (RF-M04-003): activos y con su vigencia cubriendo el intervalo completo. Los dados de baja y los que estan fuera de su ventana operativa NO aparecen, que es el criterio de aceptacion de la etapa.
+
+        LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. Esta consulta responde si el recurso esta en servicio, NO si esta libre de reservas. Los turnos y las inscripciones son de modulos que todavia no existen, asi que lugaresComprometidos es SIEMPRE 0 en esta version del contrato y lugaresDisponibles siempre igual a capacidad. Cuando la agenda exista, esos dos numeros van a cambiar solos y este contrato no cambia. Rotular disponible=true como "el box esta libre" va a ser mentira en cuanto exista la agenda.
+
+        La ventana es semiabierta: hasta es exclusivo. Se exige hasta posterior a desde y un maximo de 31 dias, que es la unidad natural de una agenda; sin tope, una ventana de diez años sobre un centro grande es un scan.
+      operationId: checkEspaciosAvailability
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Inicio de la ventana, instante UTC en formato ISO-8601"
+        example: 2026-09-01T13:00:00Z
+        in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - description: "Fin de la ventana, EXCLUSIVO, instante UTC en formato ISO-8601"
+        example: 2026-09-01T14:00:00Z
+        in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EspacioAvailabilityResponse"
+          description: "Espacios en servicio para la ventana, ordenados por nombre.\
+            \ Lista vacia si ninguno lo esta"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ventana ausente, invertida, o de mas de 31 dias"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o no hay contexto de trabajo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede no existe, o no se es miembro de esa organizacion"
+      summary: Disponibilidad base de los espacios de la sede
+      tags:
+      - Espacios
+  /api/v1/organizations/{orgId}/consultorios/{consultorioId}/espacios/{espacioId}:
+    get:
+      description: |-
+        Devuelve el espacio con su configuracion y la version que hay que reenviar para editarlo.
+
+        Devuelve tambien los espacios INACTIVOS, con 200 y no con 404: RN-M04-003 exige que los historicos conserven su nombre y su estado. Lo que un espacio inactivo rechaza son las operaciones nuevas, y eso se responde con 409.
+
+        estado y enServicio son dos cosas distintas: el primero es el ciclo de vida administrativo y el segundo dice si el recurso se ofrece AHORA, lo que ademas exige estar dentro de la ventana de vigencia. Un box ACTIVO que entra en servicio el mes que viene tiene estado=ACTIVO y enServicio=false.
+      operationId: getEspacio
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del espacio
+        example: 1
+        in: path
+        name: espacioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EspacioResponse"
+          description: "El espacio, activo o dado de baja"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o no hay contexto de trabajo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, es de otra sede, o pertenece a otro tenant"
+      summary: Datos de un espacio
+      tags:
+      - Espacios
+    patch:
+      description: |-
+        Cambia nombre, tipo, capacidad, observacion y ventana de vigencia (RF-M04-002, RF-M04-007). Los campos omitidos no se tocan; para borrar la observacion se manda cadena vacia, y para dejar el espacio sin fin de vigencia se manda clearValidUntil=true.
+
+        version es obligatoria y se compara antes de mutar: si quedo vieja, la respuesta es 409 concurrent-modification y el cliente recarga. Sin eso, dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se entere.
+
+        REDUCIR la capacidad pasa por una comprobacion adicional contra la ocupacion ya comprometida, dentro de una transaccion que bloquea la fila del espacio. Si no alcanza, 409 espacio-capacity-below-occupancy, con los dos numeros en el cuerpo para que la pantalla pueda decir a cuanto SI se puede bajar. AVISO AL CLIENTE: mientras no exista el modulo de agenda esa ocupacion es siempre cero y toda reduccion procede; el codigo esta publicado desde ya para que su aparicion no sea un cambio de comportamiento sorpresivo.
+
+        La sede del espacio NO se puede cambiar: mover un box de sede cambiaria el significado de todos los hechos historicos que lo referencian. Un espacio que se muda es uno que se da de baja y otro que se crea.
+
+        Un espacio INACTIVO no se puede editar: 409 espacio-inactive.
+      operationId: updateEspacio
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del espacio
+        example: 1
+        in: path
+        name: espacioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEspacioRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EspacioResponse"
+          description: Espacio actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, capacidad fuera de rango o ventana de vigencia\
+            \ incoherente"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, es de otra sede, o pertenece a otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Espacio dado de baja (espacio-inactive), nombre repetido (espacio-name-taken),\
+            \ version desactualizada (concurrent-modification), o capacidad por debajo\
+            \ de la ocupacion comprometida (espacio-capacity-below-occupancy)"
+      summary: Edicion de un espacio
+      tags:
+      - Espacios
+  /api/v1/organizations/{orgId}/consultorios/{consultorioId}/espacios/{espacioId}/deactivate:
+    post:
+      description: |-
+        Da de baja el espacio con motivo obligatorio (RF-M04-006). NO borra nada: el espacio queda INACTIVO, sigue siendo legible por id y conserva su nombre y su estado (RN-M04-003). Deja de ofrecerse para reservas nuevas (RN-M04-002) y libera su nombre para un espacio nuevo de la misma sede.
+
+        No hay reactivacion: ningun RF de M04 la pide, y un recurso que vuelve de una refaccion es una ventana de vigencia nueva, no una baja deshecha. Si lo que se quiere es sacarlo de servicio temporalmente, el camino es editar validUntil, no dar de baja.
+
+        El codigo espacio-has-active-references esta RESERVADO: hoy no lo emite nadie; lo emitira el modulo de agenda cuando existan turnos futuros sobre el espacio. La pantalla de confirmacion de baja deberia estar preparada para mostrarlo.
+
+        Exige consultorio:manage sobre esa sede.
+      operationId: deactivateEspacio
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del espacio
+        example: 1
+        in: path
+        name: espacioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateEspacioRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EspacioResponse"
+          description: Espacio dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, es de otra sede, o pertenece a otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ya estaba dado de baja (espacio-already-inactive), o tiene\
+            \ referencias vigentes (espacio-has-active-references)"
+      summary: Baja logica de un espacio
+      tags:
+      - Espacios
   /api/v1/organizations/{orgId}/memberships:
     get:
       description: |-
@@ -2832,6 +3279,58 @@ components:
           minLength: 0
       required:
       - name
+    CreateEspacioRequest:
+      type: object
+      description: Datos para dar de alta un espacio en la sede
+      properties:
+        capacidad:
+          type: integer
+          format: int32
+          description: "Personas simultaneas que admite. Si se omite, 1, que es el\
+            \ caso de un box individual"
+          example: 1
+          maximum: 1000
+          minimum: 1
+        name:
+          type: string
+          description: "Nombre operativo del espacio. Unico entre los espacios VIGENTES\
+            \ de la sede: el nombre de uno dado de baja se puede reusar"
+          example: Box 1
+          maxLength: 160
+          minLength: 0
+        notes:
+          type: string
+          description: Observacion operativa libre. Nunca contenido clinico
+          maxLength: 280
+          minLength: 0
+        tipo:
+          type: string
+          description: "Clasificacion fisica del recurso. Si se omite, BOX. NO habilita\
+            \ servicios ni define roles: eso lo resuelve la habilitacion por Oferta\
+            \ de Servicio (RN-M04-007)"
+          enum:
+          - BOX
+          - GIMNASIO
+          - GABINETE
+          - SALA_GRUPAL
+          - PILETA
+          - OTRO
+          example: BOX
+        validFrom:
+          type: string
+          format: date-time
+          description: "Instante UTC desde el que el espacio esta en servicio. Si\
+            \ se omite, el momento del alta. Es la ventana OPERATIVA, distinta de\
+            \ la baja logica"
+          example: 2026-09-01T00:00:00Z
+        validUntil:
+          type: string
+          format: date-time
+          description: "Instante UTC hasta el que esta en servicio, EXCLUSIVO. Omitirlo\
+            \ significa sin fin previsto, que es lo normal"
+          example: 2027-01-01T00:00:00Z
+      required:
+      - name
     CreateMembershipRequest:
       type: object
       description: Datos del vinculo a crear entre una cuenta existente y la organizacion
@@ -2919,6 +3418,19 @@ components:
           minLength: 0
       required:
       - reason
+    DeactivateEspacioRequest:
+      type: object
+      description: Motivo de la baja logica del espacio
+      properties:
+        reason:
+          type: string
+          description: Por que se da de baja. Queda en la auditoria y en la fila del
+            espacio
+          example: Refaccion definitiva del ala oeste
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
     EffectivePermissionsResponse:
       type: object
       description: Permisos efectivos de la cuenta en su contexto de trabajo activo
@@ -2933,6 +3445,161 @@ components:
           - colaborador:read
           items:
             type: string
+    EspacioAvailabilityResponse:
+      type: object
+      description: Disponibilidad de un espacio para la ventana consultada
+      properties:
+        capacidad:
+          type: integer
+          format: int32
+          description: Capacidad configurada del espacio
+          example: 1
+        desde:
+          type: string
+          format: date-time
+          description: "Inicio de la ventana consultada, en UTC"
+          example: 2026-09-01T13:00:00Z
+        disponible:
+          type: boolean
+          description: "Si el espacio se puede ofrecer para esa ventana. Hoy equivale\
+            \ a estar en servicio: la ocupacion real llega con el modulo de agenda"
+          example: true
+        espacioId:
+          type: integer
+          format: int64
+          description: Identificador del espacio
+          example: 1
+        hasta:
+          type: string
+          format: date-time
+          description: "Fin de la ventana consultada, exclusivo, en UTC"
+          example: 2026-09-01T14:00:00Z
+        lugaresComprometidos:
+          type: integer
+          format: int64
+          description: "Lugares ya comprometidos en la ventana. SIEMPRE 0 en esta\
+            \ version del contrato: no existe todavia ningun modulo que reserve"
+          example: 0
+        lugaresDisponibles:
+          type: integer
+          format: int64
+          description: Lugares libres = capacidad - lugaresComprometidos
+          example: 1
+        name:
+          type: string
+          description: Nombre operativo del espacio
+          example: Box 1
+        tipo:
+          type: string
+          description: Clasificacion fisica del recurso
+          example: BOX
+    EspacioPageResponse:
+      type: object
+      description: "Pagina de espacios de la sede, segun el filtro de estado pedido"
+      properties:
+        content:
+          type: array
+          description: Espacios de esta pagina
+          items:
+            $ref: "#/components/schemas/EspacioResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de espacios que cumplen el filtro
+          example: 4
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 1
+    EspacioResponse:
+      type: object
+      description: "Espacio fisico de una sede: box, gimnasio, gabinete o sala grupal"
+      properties:
+        capacidad:
+          type: integer
+          format: int32
+          description: Personas simultaneas que admite
+          example: 1
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede a la que pertenece (RN-M04-001)
+          example: 1
+        deactivationReason:
+          type: string
+          description: "Motivo declarado de la baja, o null"
+          example: Refaccion definitiva del ala oeste
+        deletedAt:
+          type: string
+          format: date-time
+          description: "Instante UTC de la baja logica, o null si esta activo"
+        enServicio:
+          type: boolean
+          description: Si se ofrece para una reserva AHORA. Exige estado ACTIVO Y
+            estar dentro de la ventana operativa (RN-M04-002)
+          example: true
+        estado:
+          type: string
+          description: "Ciclo de vida administrativo, derivado. ACTIVO o INACTIVO"
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        id:
+          type: integer
+          format: int64
+          description: Identificador del espacio
+          example: 1
+        name:
+          type: string
+          description: Nombre operativo. Unico entre los espacios vigentes de la sede
+          example: Box 1
+        notes:
+          type: string
+          description: "Observacion operativa, o null"
+          example: Camilla electrica
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion a la que pertenece
+          example: 1
+        tipo:
+          type: string
+          description: Clasificacion fisica del recurso
+          enum:
+          - BOX
+          - GIMNASIO
+          - GABINETE
+          - SALA_GRUPAL
+          - PILETA
+          - OTRO
+          example: BOX
+        validFrom:
+          type: string
+          format: date-time
+          description: Instante UTC desde el que esta en servicio
+          example: 2026-09-01T00:00:00Z
+        validUntil:
+          type: string
+          format: date-time
+          description: "Instante UTC hasta el que esta en servicio, exclusivo. null\
+            \ = sin fin previsto"
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para editar
+          example: 0
     GrantPlatformRoleRequest:
       type: object
       description: Rol de plataforma a otorgar
@@ -3425,6 +4092,11 @@ components:
       - https://akine.app/problems/consultorio-already-inactive
       - https://akine.app/problems/last-consultorio-required
       - https://akine.app/problems/consultorio-has-active-references
+      - https://akine.app/problems/espacio-name-taken
+      - https://akine.app/problems/espacio-inactive
+      - https://akine.app/problems/espacio-already-inactive
+      - https://akine.app/problems/espacio-capacity-below-occupancy
+      - https://akine.app/problems/espacio-has-active-references
     RegisterAccountRequest:
       type: object
       description: "Alta self-service de cuenta, organizacion y primer consultorio"
@@ -3785,6 +4457,63 @@ components:
             \ con 409 en vez de pisar el cambio de otro"
           example: 0
           minimum: 0
+      required:
+      - version
+    UpdateEspacioRequest:
+      type: object
+      description: Cambios a aplicar sobre un espacio. Los campos omitidos no se modifican
+      properties:
+        capacidad:
+          type: integer
+          format: int32
+          description: Nueva capacidad. Reducirla por debajo de lo ya comprometido
+            responde 409 espacio-capacity-below-occupancy
+          example: 2
+          maximum: 1000
+          minimum: 1
+        clearValidUntil:
+          type: boolean
+          description: "Deja el espacio SIN fin de vigencia. Hace explicito lo que\
+            \ un campo omitido no puede expresar: 'no toques el fin' y 'sacale el\
+            \ fin' son dos intenciones distintas y con un solo campo nulable la segunda\
+            \ no se puede pedir"
+          example: false
+        name:
+          type: string
+          description: Nuevo nombre. Unico entre los espacios vigentes de la sede
+          example: Box 1 - Traumatologia
+          maxLength: 160
+          minLength: 0
+        notes:
+          type: string
+          description: Nueva observacion. Cadena vacia la borra
+          maxLength: 280
+          minLength: 0
+        tipo:
+          type: string
+          description: Nueva clasificacion fisica
+          enum:
+          - BOX
+          - GIMNASIO
+          - GABINETE
+          - SALA_GRUPAL
+          - PILETA
+          - OTRO
+        validFrom:
+          type: string
+          format: date-time
+          description: "Nuevo inicio de la ventana operativa, en UTC"
+        validUntil:
+          type: string
+          format: date-time
+          description: "Nuevo fin de la ventana operativa, EXCLUSIVO, en UTC. Se ignora\
+            \ si clearValidUntil es true"
+        version:
+          type: integer
+          format: int64
+          description: "Version que el cliente leyo. Si quedo vieja, 409 concurrent-modification\
+            \ y hay que recargar"
+          example: 0
       required:
       - version
     UpdateOrganizationRequest:

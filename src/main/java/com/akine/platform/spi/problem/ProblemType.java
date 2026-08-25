@@ -105,7 +105,26 @@ public enum ProblemType {
 	/** La baja dejaria a la organizacion sin ninguna sede activa. */
 	LAST_CONSULTORIO_REQUIRED("last-consultorio-required"),
 	/** La sede tiene referencias vigentes que impiden darla de baja. */
-	CONSULTORIO_HAS_ACTIVE_REFERENCES("consultorio-has-active-references");
+	CONSULTORIO_HAS_ACTIVE_REFERENCES("consultorio-has-active-references"),
+
+	// --- Espacios (M04) -------------------------------------------------------------------
+	/** Ya hay un espacio vigente con ese nombre en esa sede. */
+	ESPACIO_NAME_TAKEN("espacio-name-taken"),
+	/** El espacio esta dado de baja y la operacion exige uno activo. */
+	ESPACIO_INACTIVE("espacio-inactive"),
+	/** El espacio ya estaba dado de baja. */
+	ESPACIO_ALREADY_INACTIVE("espacio-already-inactive"),
+	/**
+	 * La capacidad pedida es menor que la ocupacion ya comprometida.
+	 *
+	 * <p><b>Reservado en F2.</b> No lo emite nadie mientras no exista ningun modulo que reserve
+	 * lugares; se publica desde ya para que su aparicion en F5 no sea un cambio de
+	 * comportamiento sorpresivo para el cliente. Lleva {@code requestedCapacity} y
+	 * {@code currentOccupancy} como propiedades extra.
+	 */
+	ESPACIO_CAPACITY_BELOW_OCCUPANCY("espacio-capacity-below-occupancy"),
+	/** El espacio tiene ocupacion vigente que impide darlo de baja. <b>Reservado en F2</b>. */
+	ESPACIO_HAS_ACTIVE_REFERENCES("espacio-has-active-references");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
