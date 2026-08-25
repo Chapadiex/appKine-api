@@ -26,6 +26,24 @@ akine:
       # ninguno. Para trabajar contra datos que importen, exportar AKINE_JWT_SECRET.
       secret: ${AKINE_JWT_SECRET:akine-desarrollo-secreto-de-firma-no-usar-en-produccion}
 
+  notification:
+    email:
+      # En local se envia DE VERDAD, contra el Mailpit del compose.yaml. La bandeja se mira en
+      # http://localhost:8025 y nada sale de esta maquina.
+      #
+      # Por que smtp y no log: el modo log deja el circuito a medias —el correo se registra y
+      # se descarta— y con el no se puede verificar lo unico que importa del canal, que es que
+      # el mensaje llegue con su enlace. Para volver al modo log sin tocar este archivo:
+      #   AKINE_EMAIL_MODE=log ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+      mode: ${AKINE_EMAIL_MODE:smtp}
+      smtp:
+        host: ${AKINE_MAIL_HOST:localhost}
+        port: ${AKINE_MAIL_PORT:1025}
+        # Mailpit local: sin usuario, sin contrasena y sin TLS. No hay ningun secreto que
+        # versionar. 'ninguna' SOLO se acepta en perfiles de desarrollo; fuera de ellos
+        # NotificationConfig no arranca con este valor.
+        transport-security: ${AKINE_MAIL_TRANSPORT_SECURITY:ninguna}
+
 logging:
   level:
     com.akine: DEBUG

@@ -1,7 +1,7 @@
 # Infraestructura local de AKINE.
 #
-# Levanta solo la base de datos: el backend y el frontend corren fuera del contenedor,
-# desde el IDE o desde la linea de comandos.
+# Levanta la base de datos y el servidor SMTP de prueba: el backend y el frontend corren
+# fuera del contenedor, desde el IDE o desde la linea de comandos.
 #
 #   docker compose up -d
 #   docker compose ps
@@ -59,6 +59,46 @@ services:
       timeout: 5s
       retries: 20
       start_period: 30s
+
+  # Servidor SMTP de desarrollo (AKINE-01.02b).
+  #
+  # Acepta todo lo que se le mande y NO lo reenvia a ningun lado: los correos quedan en el
+  # contenedor y se miran por su interfaz web. Es exactamente lo que hace falta para trabajar
+  # sobre activaciones e invitaciones sin riesgo de escribirle de verdad al buzon de alguien.
+  #
+  #   SMTP:            localhost:1025   (sin autenticacion, sin TLS)
+  #   Bandeja de entrada: http://localhost:8025
+  #
+  # Se elige Mailpit sobre MailHog porque MailHog esta sin mantenimiento desde 2020; Mailpit es
+  # su sucesor de facto, tiene la misma forma de uso y sigue recibiendo arreglos.
+  #
+  # SIN CREDENCIALES: el servidor arranca abierto porque solo escucha en esta maquina y solo
+  # recibe datos sinteticos. No hay nada que versionar. Los entornos reales usan un relay de
+  # verdad y reciben host, usuario y contrasena por variable de entorno.
+  mailpit:
+    # Version fijada, no "latest": misma regla que MySQL.
+    image: axllent/mailpit:v1.21.8
+    container_name: akine-mailpit
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+      # Los mensajes viven en memoria y se pierden al bajar el contenedor. Es lo correcto: un
+      # correo de activacion lleva un enlace de un solo uso, y no hay razon para que sobreviva
+      # a la sesion de trabajo que lo genero.
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      # Bandeja web. Parametrizable por si el 8025 esta ocupado.
+      - "${AKINE_MAILPIT_UI_PORT:-8025}:8025"
+      # SMTP. Es el que apunta application-local.yml.
+      - "${AKINE_MAILPIT_SMTP_PORT:-1025}:1025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
 volumes:
   akine-mysql-data:

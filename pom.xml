@@ -23,6 +23,7 @@
 		<jacoco.version>0.8.13</jacoco.version>
 		<maven-enforcer.version>3.6.2</maven-enforcer.version>
 		<bouncycastle.version>1.85.2</bouncycastle.version>
+		<greenmail.version>2.1.9</greenmail.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
 		<akine.contract.version>0.7.0</akine.contract.version>
@@ -81,6 +82,16 @@
 			<version>${bouncycastle.version}</version>
 		</dependency>
 
+		<!-- ===== Correo saliente (AKINE-01.02b) =====
+		     Aporta spring-context-support (JavaMailSender), jakarta.mail-api y la
+		     implementacion Angus. Sin esto SmtpEmailSender no puede existir y el unico
+		     adaptador disponible es el de log, que no envia nada: ADR-0018 apoya su 202
+		     uniforme en que el usuario legitimo llegue a destino por este canal. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
 		<!-- ===== Observabilidad ===== -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -131,6 +142,16 @@
 		<dependency>
 			<groupId>org.testcontainers</groupId>
 			<artifactId>testcontainers-mysql</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- Servidor SMTP en proceso para el test que verifica que el correo LLEGA de verdad.
+		     No alcanza con afirmar que el adaptador no explota: lo que hay que probar es que
+		     del otro lado aparece un mensaje con destinatario, asunto y cuerpo. -->
+		<dependency>
+			<groupId>com.icegreen</groupId>
+			<artifactId>greenmail-junit5</artifactId>
+			<version>${greenmail.version}</version>
 			<scope>test</scope>
 		</dependency>
 
