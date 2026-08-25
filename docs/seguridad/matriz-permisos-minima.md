@@ -372,3 +372,84 @@ matriz pide y el motivo por el que la enmienda hacía falta.
   `ORG_ADMIN`, que tiene alcance organización. Es más estricto que la matriz: la sede del
   contexto es la única que el sistema revalidó contra la base en ese request. Un `ORG_ADMIN` que
   quiera administrar otra sede cambia de contexto primero.
+
+## 11. Enmiendas — AKINE-02.05 (Especialidades, prácticas y nomencladores)
+
+Mismo criterio que las secciones 9 y 10: nada se aplicó en silencio. Cada punto es una diferencia
+real entre lo que dicen las secciones 1–8 y lo que el código hace, con su motivo y su alcance.
+
+### 11.1 `catalogo:read` y `catalogo:manage` — **PROPUESTOS, sin aplicar**
+
+**El hueco que los origina, en una línea.** M06 introduce cuatro tablas de catálogo clínico
+—especialidad, práctica, nomenclador y sus vigencias— y el catálogo de la sección 5 **no tiene
+ningún código para ellas**. Ninguno de los existentes describe la acción: `consultorio:manage` es
+la administración de una sede y un catálogo clínico no es configuración de una sede —es de la
+organización, o de la plataforma—; `espacio:read` es el catálogo **físico**; `convenio:manage` es
+de M16 y es F3.
+
+**Lo que 02.05 hizo mientras tanto, y por qué no inventó los códigos.** El catálogo de la sección
+5 es **vinculante** y agregarle una fila es una decisión de la matriz, no de una etapa — el mismo
+razonamiento con el que 01.03 se negó a inventar un código de edición de organización (§9.2) y
+con el que 02.02 dejó `espacio:read` propuesto en §10.1 sin aplicarlo. La autorización interina
+es:
+
+| Operación | Autorización interina de 02.05 | Código propuesto |
+|---|---|---|
+| Leer el catálogo (búsqueda, detalle, vigencias) | **Pertenencia**: cualquier membership vigente en la organización del contexto | `catalogo:read` |
+| Crear, editar y dar de baja un concepto **contextual** | `consultorio:manage` sobre la sede del contexto | `catalogo:manage` |
+| Crear, editar y dar de baja un concepto **global** | Rol de plataforma, sin permiso de tenant de por medio | `catalogo:manage` con alcance Global |
+| Solicitar el alta de un concepto global (RF-M06-005) | `consultorio:manage` sobre la sede del contexto | `catalogo:manage` |
+| Resolver una solicitud | Rol de plataforma | `catalogo:manage` con alcance Global |
+
+**La propuesta.** Dos códigos, no uno: leer el catálogo lo necesita todo el equipo clínico y
+administrativo —sin eso, un profesional no puede elegir la práctica que acaba de hacer—, y
+administrarlo no.
+
+| Código | Acción | Fase |
+|---|---|---|
+| `catalogo:read` | Consultar el catálogo clínico —especialidades, prácticas, nomencladores y vigencias— global y propio | F2 |
+| `catalogo:manage` | Administrar los conceptos del catálogo clínico y las solicitudes de alta | F2 |
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `catalogo:read` | Global | Org | Consultorio | Consultorio | Consultorio | — |
+| `catalogo:manage` | Global | Org | Consultorio | — | — | — |
+
+**Por qué `Global` para `PLATFORM_ADMIN` y no `Soporte`, que es lo contrario de lo que §10.1
+decidió para `espacio:read`.** No es una excepción al criterio de §9.7 —*¿la operación deja por
+sí misma una fila que diga quién la hizo y por qué?*—: es que **la pregunta no aplica**. En este
+módulo el administrador de plataforma **no lee ni escribe datos de ningún tenant**: lo único que
+alcanza es el catálogo **común**, que no es de nadie en particular y que ya ven todos los
+tenants. `support_access` protege el acceso al dato de un cliente; acá no hay dato de un cliente
+al que acceder. Es el mismo tratamiento que el catálogo de planes (`plan`, `plan_limit`,
+`plan_feature`), que tampoco pasa por soporte.
+
+**Diferencia entre lo interino y lo propuesto, dicha para que la aprobación sea informada:**
+
+- Un `PACIENTE` con membership vigente **hoy lee el catálogo por pertenencia** y con
+  `catalogo:read` aprobado recibiría 403. Es el mismo efecto colateral que §10.1 declaró para
+  `espacio:read`, y el motivo por el que la enmienda hace falta.
+- `consultorio:manage` como permiso interino de mutación **le da al `CONSULTORIO_ADMIN` un
+  alcance que el catálogo no tiene**: el catálogo es de la organización, no de la sede, así que
+  el administrador de una sede puede crear un concepto que las demás sedes del mismo tenant van a
+  ver. Con `catalogo:manage` la fila `Consultorio` conserva ese comportamiento a propósito —la
+  etapa lo pide de frente: *"admin consultorio para conceptos contextuales/solicitudes"*— pero
+  queda dicho que es una elección y no una consecuencia.
+- Nada más cambia. **Los códigos HTTP de rechazo son los mismos** antes y después de la
+  aprobación: 404 fuera de alcance, 403 sin contexto o sin el permiso.
+
+### 11.2 Lo que 02.05 NO habilita — dicho para que nadie lo asuma
+
+- **`PLATFORM_ADMIN` no ve ni muta conceptos contextuales de ningún tenant.** No es un olvido: el
+  catálogo propio de un centro es información comercial suya, no existe ninguna operación de
+  rescate que exija tocarlo, y concederlo obligaría además a exigir `support_access` y a auditar
+  cada lectura. Se aparta hacia el lado que no concede de más, igual que §10.2.
+  Consecuencia práctica: la bandeja de solicitudes (`GET /api/v1/catalogo-solicitudes`) es la
+  **única** consulta cross-tenant del módulo, y devuelve el pedido —nombre propuesto,
+  justificación— y no el catálogo del centro.
+- **`PLATFORM_ADMIN` no puede pedir el alta de un concepto global.** No se pide conceptos a sí
+  mismo: los crea. Recibe 403.
+- **Un administrador de tenant no puede promover su concepto a global**, ni al crearlo ni
+  editándolo. El camino es la solicitud, y la decide la plataforma.
+- **Aprobar una solicitud no crea el concepto global.** La aprobación es una decisión registrada;
+  la publicación del concepto pasa por el alta normal, con el rol de plataforma.

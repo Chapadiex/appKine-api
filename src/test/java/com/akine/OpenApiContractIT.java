@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -105,6 +107,73 @@ class OpenApiContractIT {
 
 		assertThat(contrato).contains("version:");
 		assertThat(contrato).contains("/api/v1/version");
+	}
+
+	/**
+	 * La version del contrato vive en DOS lugares y hasta AKINE-02.05 <b>nada verificaba que
+	 * coincidieran</b>.
+	 *
+	 * <p>{@code pom.xml} declara la propiedad {@code akine.contract.version} y
+	 * {@code application.yml} declara {@code akine.contract.version} otra vez, y es esta ultima
+	 * la que springdoc publica en {@code info.version}. Bumpear una sola de las dos regenera el
+	 * YAML con la version vieja y <b>el build pasa igual</b>: el gate de drift compara el
+	 * contenido del contrato contra si mismo, y un contrato coherente con una version
+	 * equivocada es exactamente igual de coherente.
+	 *
+	 * <p>El sintoma aparece rio abajo y es caro: el frontend fija su cliente contra "0.8.0",
+	 * recibe un contrato que dice 0.8.0 y trae operaciones de 0.9.0, y la matriz de
+	 * compatibilidad entre repos deja de significar nada. Ya se colo una vez.
+	 *
+	 * <p>Se lee el {@code pom.xml} del disco por la misma razon por la que este test ya lee
+	 * {@code openapi/akine-api.yaml}: son los dos artefactos versionados que el gate compara, y
+	 * filtrar la propiedad a un recurso para poder inyectarla agregaria configuracion de build
+	 * para verificar la configuracion de build.
+	 */
+	@Test
+	@DisplayName("La version del contrato coincide entre pom.xml y application.yml")
+	void la_version_del_contrato_no_esta_bifurcada() throws IOException {
+		String pom = Files.readString(Path.of("pom.xml"), StandardCharsets.UTF_8);
+		Matcher enElPom = Pattern
+				.compile("<akine\\.contract\\.version>([^<]+)</akine\\.contract\\.version>")
+				.matcher(pom);
+		assertThat(enElPom.find())
+				.as("pom.xml tiene que declarar la propiedad akine.contract.version")
+				.isTrue();
+
+		String publicada = versionPublicada(descargarContrato());
+
+		assertThat(publicada)
+				.as("""
+						La version del contrato esta bifurcada.
+
+						pom.xml declara %s y el contrato publicado dice %s. Las dos salen de \
+						propiedades distintas —pom.xml y application.yml— y nada mas las \
+						compara: bumpear una sola regenera el YAML con la version vieja y el \
+						gate de drift pasa igual, porque compara el contrato contra si mismo.
+
+						Corregir application.yml (akine.contract.version) o pom.xml, y \
+						regenerar:
+						    %s""".formatted(enElPom.group(1), publicada, COMANDO_ACTUALIZAR))
+				.isEqualTo(enElPom.group(1));
+	}
+
+	/**
+	 * {@code info.version} del contrato generado.
+	 *
+	 * <p>Se busca dentro del bloque {@code info:} y no con un {@code contains} del numero: el
+	 * mismo texto puede aparecer en un ejemplo o en una descripcion, y un test que pasa por
+	 * casualidad es peor que ninguno.
+	 */
+	private static String versionPublicada(String contrato) {
+		Matcher enElContrato = Pattern
+				.compile("^info:$.*?^  version: \"?([^\"\\s]+)\"?$",
+						Pattern.MULTILINE | Pattern.DOTALL)
+				.matcher(normalizar(contrato));
+
+		assertThat(enElContrato.find())
+				.as("el contrato generado tiene que declarar info.version")
+				.isTrue();
+		return enElContrato.group(1);
 	}
 
 	private String descargarContrato() {

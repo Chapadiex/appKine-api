@@ -124,7 +124,19 @@ public enum ProblemType {
 	 */
 	ESPACIO_CAPACITY_BELOW_OCCUPANCY("espacio-capacity-below-occupancy"),
 	/** El espacio tiene ocupacion vigente que impide darlo de baja. <b>Reservado en F2</b>. */
-	ESPACIO_HAS_ACTIVE_REFERENCES("espacio-has-active-references");
+	ESPACIO_HAS_ACTIVE_REFERENCES("espacio-has-active-references"),
+
+	// --- Catalogo clinico: especialidades, practicas y nomencladores (M06) -----------------
+	CATALOGO_CODE_TAKEN("catalogo-code-taken"),
+	CATALOGO_NAME_TAKEN("catalogo-name-taken"),
+	CATALOGO_INACTIVE("catalogo-inactive"),
+	CATALOGO_ALREADY_INACTIVE("catalogo-already-inactive"),
+	CATALOGO_REFERENCE_INACTIVE("catalogo-reference-inactive"),
+	CATALOGO_HAS_ACTIVE_REFERENCES("catalogo-has-active-references"),
+	CATALOGO_SCOPE_MISMATCH("catalogo-scope-mismatch"),
+	NOMENCLADOR_VIGENCIA_OVERLAP("nomenclador-vigencia-overlap"),
+	CATALOGO_SOLICITUD_DUPLICADA("catalogo-solicitud-duplicada"),
+	CATALOGO_SOLICITUD_YA_RESUELTA("catalogo-solicitud-ya-resuelta");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

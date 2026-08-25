@@ -36,6 +36,34 @@ final class AuditEvents {
 
 	static final String ENTITY_ESPACIO = "Espacio";
 
+	// --- Catalogo clinico (M06, AKINE-02.05) --------------------------------------------
+
+	static final String CATALOGO_CREATED = "CATALOGO_CREATED";
+
+	static final String CATALOGO_UPDATED = "CATALOGO_UPDATED";
+
+	static final String CATALOGO_DEACTIVATED = "CATALOGO_DEACTIVATED";
+
+	static final String CATALOGO_VIGENCIA_CREATED = "CATALOGO_VIGENCIA_CREATED";
+
+	static final String CATALOGO_VIGENCIA_DEACTIVATED = "CATALOGO_VIGENCIA_DEACTIVATED";
+
+	static final String CATALOGO_SOLICITUD_CREATED = "CATALOGO_SOLICITUD_CREATED";
+
+	static final String CATALOGO_SOLICITUD_RESOLVED = "CATALOGO_SOLICITUD_RESOLVED";
+
+	/**
+	 * Un solo {@code entityType} para los cuatro conceptos, con el tipo concreto en los
+	 * detalles.
+	 *
+	 * <p>Cuatro valores distintos obligarian a quien consulta la auditoria a conocer los cuatro
+	 * para responder "que paso con el catalogo", que es la pregunta que realmente se hace. El
+	 * detalle {@code tipo} conserva la precision para cuando haga falta.
+	 */
+	static final String ENTITY_CATALOGO = "CatalogoConcepto";
+
+	static final String ENTITY_CATALOGO_SOLICITUD = "CatalogoSolicitud";
+
 	/** Clave con la que Micrometer Tracing publica el trace id del request en el MDC. */
 	private static final String MDC_TRACE_ID = "traceId";
 

@@ -29,6 +29,26 @@ public final class PermissionCodes {
 	 */
 	public static final String CONSULTORIO_MANAGE = "consultorio:manage";
 
+	/*
+	 * AKINE-02.05 usa CONSULTORIO_MANAGE tambien para mutar el CATALOGO CLINICO contextual
+	 * —especialidades, practicas, nomencladores y solicitudes—, y es una autorizacion INTERINA,
+	 * no la definitiva.
+	 *
+	 * M06 necesita dos codigos que el catalogo de la matriz no tiene: `catalogo:read` y
+	 * `catalogo:manage`. Esta etapa NO los inventa, por la misma regla con la que 01.03 se nego a
+	 * inventar un codigo de edicion de organizacion (§9.2) y 02.02 dejo `espacio:read` propuesto
+	 * (§10.1): el catalogo de la seccion 5 es vinculante y agregarle una fila es una decision de
+	 * la matriz, no de una etapa.
+	 *
+	 * La propuesta, con su tabla de asignacion por rol y con las dos diferencias respecto de lo
+	 * interino, esta en docs/seguridad/matriz-permisos-minima.md §11.1. Las LECTURAS del catalogo
+	 * no evaluan ningun permiso: se autorizan por pertenencia, igual que hacian las de espacios
+	 * antes de que `espacio:read` se aprobara.
+	 *
+	 * Cuando los codigos se aprueben, cambia a que se llama al evaluador y nada mas: los codigos
+	 * HTTP de rechazo son los mismos.
+	 */
+
 	/**
 	 * Consultar el catalogo fisico y la disponibilidad de una sede. Es lo que exigen las tres
 	 * lecturas —detalle, listado y disponibilidad—, y por eso un {@code PROFESIONAL} y un

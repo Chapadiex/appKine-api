@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.8.0
+  version: 0.9.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -21,6 +21,8 @@ tags:
   name: Registro y activacion
 - description: "Login, renovacion, seleccion de contexto y cierre de sesion"
   name: Sesion
+- description: "Especialidades, practicas, nomencladores y sus vigencias (M06)"
+  name: Catalogo clinico
 - description: Contextos de trabajo habilitados para la cuenta autenticada
   name: Mi cuenta
 - description: "Alta, edicion y baja de las sedes de una organizacion"
@@ -603,6 +605,728 @@ paths:
       summary: Cerrar todas las sesiones de la propia cuenta
       tags:
       - Sesion
+  /api/v1/catalogo-solicitudes:
+    get:
+      description: |-
+        Un administrador de tenant ve LAS SUYAS; un administrador de plataforma ve la bandeja completa de todos los tenants. Es la unica consulta cross-tenant del modulo, y por eso el rol se verifica antes de elegir la consulta y no filtrando el resultado despues.
+
+        El filtro estado es opcional: sin el, todas. Ordenadas de la mas reciente a la mas vieja.
+
+        No hay paginado, y es una decision consciente: la cantidad de conceptos que un centro pide agregar al catalogo comun se cuenta con los dedos. Si algun dia no fuera asi, eso seria el problema.
+      operationId: listCatalogoSolicitudes
+      parameters:
+      - description: Solo las solicitudes en ese estado
+        example: PENDIENTE
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDIENTE
+          - APROBADA
+          - RECHAZADA
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CatalogoSolicitudResponse"
+          description: Solicitudes visibles. Lista vacia si no hay ninguna
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El valor de estado no pertenece al catalogo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o no hay contexto de trabajo
+      summary: Solicitudes de alta de catalogo
+      tags:
+      - Catalogo clinico
+    post:
+      description: |-
+        Registra el pedido de un centro para que la plataforma incorpore una especialidad, una practica o un nomenclador al catalogo comun (RF-M06-005).
+
+        La justificacion es obligatoria: sin ella la plataforma no puede decidir y la solicitud es ruido.
+
+        Un segundo pedido identico —mismo tenant, mismo tipo, mismo nombre— mientras el primero sigue PENDIENTE responde 409 catalogo-solicitud-duplicada. Es la idempotencia frente a un reintento por timeout de red, y la sostiene un unique de la base, no una comprobacion previa: entre un SELECT y un INSERT caben dos requests. Volver a pedir algo ya RECHAZADO si esta permitido, con argumentos nuevos.
+
+        La administracion de plataforma no puede usar este endpoint: no se pide conceptos a si misma, los crea.
+
+        Exige consultorio:manage sobre la sede del contexto.
+      operationId: createCatalogoSolicitud
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCatalogoSolicitudRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoSolicitudResponse"
+          description: Solicitud registrada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el tipo, el nombre propuesto o la justificacion"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, sin consultorio:manage, o es un administrador\
+            \ de plataforma"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya hay una solicitud PENDIENTE por ese mismo concepto (catalogo-solicitud-duplicada)
+      summary: Pedir el alta de un concepto global
+      tags:
+      - Catalogo clinico
+  /api/v1/catalogo-solicitudes/{solicitudId}/resolve:
+    post:
+      description: |-
+        Reservado a la administracion de plataforma. La resolucion es TERMINAL: una solicitud aprobada o rechazada no se reabre. Si la plataforma se equivoco, el centro vuelve a pedir, y esa segunda solicitud es una fila nueva con su propia justificacion y su propia fecha.
+
+        APROBAR NO CREA EL CONCEPTO GLOBAL, y es deliberado: el concepto que la plataforma termina publicando casi nunca es el que el centro propuso —el codigo se normaliza, el nombre se unifica con los que ya existen— y crearlo automaticamente desde el texto de un pedido llenaria el catalogo comun de duplicados con nombres parecidos, que es exactamente lo que este circuito existe para evitar. La plataforma aprueba y despues publica el concepto por el alta normal.
+
+        La nota es obligatoria en los dos desenlaces. version se compara antes de mutar: dos administradores de plataforma sobre la misma bandeja tienen que enterarse de que el otro llego primero.
+      operationId: resolveCatalogoSolicitud
+      parameters:
+      - description: Identificador de la solicitud
+        example: 1
+        in: path
+        name: solicitudId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveCatalogoSolicitudRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoSolicitudResponse"
+          description: Solicitud resuelta
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta la nota, falta la version, o el desenlace es PENDIENTE"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no administra la plataforma. Nunca 401
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La solicitud no existe
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ya estaba resuelta (catalogo-solicitud-ya-resuelta), o version\
+            \ desactualizada (concurrent-modification)"
+      summary: Aprobar o rechazar una solicitud
+      tags:
+      - Catalogo clinico
+  /api/v1/catalogos/nomencladores/{nomencladorId}/items:
+    get:
+      description: |-
+        Devuelve las vigencias de los codigos del nomenclador, ordenadas por codigo y, dentro de cada codigo, de la mas nueva a la mas vieja: es el orden en el que la pantalla las necesita, porque lo primero que se consulta es que rige hoy y despues que regia antes.
+
+        estado vale ACTIVO por defecto. practicaId y codigo son filtros opcionales: codigo es exacto —no una busqueda— porque un codigo de nomenclador se conoce entero o no se conoce.
+
+        Esta consulta es el historial completo. La resolucion puntual —que decia este codigo el dia D— la usan los modulos de convenios y sesiones por el puerto interno del modulo, no por HTTP.
+      operationId: listNomencladorVigencias
+      parameters:
+      - description: Identificador del nomenclador
+        example: 1
+        in: path
+        name: nomencladorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Que vigencias devolver segun su ciclo de vida
+        example: ACTIVO
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          default: ACTIVO
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      - description: Solo las vigencias que codifican esa practica
+        example: 1
+        in: query
+        name: practicaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: Solo las vigencias de ese codigo exacto
+        example: 27.01.01
+        in: query
+        name: codigo
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CatalogoConceptoResponse"
+          description: Vigencias del nomenclador. Lista vacia si no hay ninguna
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o no hay contexto de trabajo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El nomenclador no existe o es de otro tenant
+      summary: Vigencias de un nomenclador
+      tags:
+      - Catalogo clinico
+    post:
+      description: |-
+        Define que dice un codigo del nomenclador durante una ventana de tiempo, y con que valor de referencia (RF-M06-003, RN-M06-003).
+
+        LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. Actualizar un codigo NO es editar su vigencia anterior: es cerrar la vieja —PATCH con validUntil— y crear una nueva desde ese mismo instante. Editar la vieja borraria lo que ese codigo decia cuando se uso, y un convenio de 2024 dejaria de poder explicarse. Como el fin de vigencia es EXCLUSIVO, cerrar en T y abrir en T no se solapa.
+
+        Dos vigencias del mismo codigo que se pisan responden 409 nomenclador-vigencia-overlap, con la ventana en conflicto en el cuerpo para que la pantalla pueda decir contra que choco.
+
+        La vigencia HEREDA el duenio del nomenclador y no lo puede elegir: por eso no hay campo alcance. Un nomenclador GLOBAL solo puede codificar practicas GLOBALES (409 catalogo-scope-mismatch).
+
+        Exige poder mutar el nomenclador: consultorio:manage si es del tenant, rol de plataforma si es global.
+      operationId: createNomencladorVigencia
+      parameters:
+      - description: Identificador del nomenclador
+        example: 1
+        in: path
+        name: nomencladorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVigenciaRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoConceptoResponse"
+          description: Vigencia creada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, valor negativo o ventana incoherente"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, o sin permiso para mutar ese nomenclador"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El nomenclador o la practica no existen, o son de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Vigencias solapadas (nomenclador-vigencia-overlap), nomenclador\
+            \ o practica dados de baja (catalogo-reference-inactive), o alcance incompatible\
+            \ (catalogo-scope-mismatch)"
+      summary: Nueva vigencia de un codigo del nomenclador
+      tags:
+      - Catalogo clinico
+  /api/v1/catalogos/nomencladores/{nomencladorId}/items/{itemId}/deactivate:
+    post:
+      description: |-
+        Da de baja una vigencia cargada por error, con motivo obligatorio.
+
+        NO es el camino para cerrar una vigencia que termino: eso se hace poniendole validUntil con PATCH. Dar de baja la saca de las selecciones nuevas pero deja intacto lo que ya resolvio, porque la resolucion historica de un codigo no filtra por estado —justamente para que un convenio viejo siga diciendo lo que decia—.
+
+        Exige poder mutar el nomenclador al que pertenece.
+      operationId: deactivateNomencladorVigencia
+      parameters:
+      - description: Identificador del nomenclador
+        example: 1
+        in: path
+        name: nomencladorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la vigencia
+        example: 1
+        in: path
+        name: itemId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateCatalogoRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoConceptoResponse"
+          description: Vigencia dada de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, o sin permiso para mutar ese nomenclador"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El nomenclador o la vigencia no existen, son de otro tenant,\
+            \ o la vigencia pertenece a otro nomenclador"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya estaba dada de baja (catalogo-already-inactive)
+      summary: Baja logica de una vigencia
+      tags:
+      - Catalogo clinico
+  /api/v1/catalogos/{tipo}:
+    get:
+      description: |-
+        Devuelve los conceptos que el tenant del contexto puede ver: los del catalogo de PLATAFORMA mas los PROPIOS, en la misma lista (RF-M06-004). Es la consulta de todo selector clinico y economico.
+
+        El texto q se compara contra el nombre Y el codigo, sin distinguir mayusculas ni acentos —lo resuelve la collation de la base, no una columna normalizada—. Los comodines del cliente se escapan, asi que tipear un % no devuelve el catalogo entero.
+
+        estado vale ACTIVO por defecto, y eso es lo que hace que un selector NUNCA ofrezca un concepto dado de baja. Los inactivos hay que pedirlos explicitamente, y la pantalla de administracion los necesita para explicar por que un codigo esta tomado o libre.
+
+        alcance vale TODOS por defecto, que es lo que un formulario necesita: al elegir una practica no importa si es de plataforma o del centro. GLOBAL y ORGANIZACION existen para la pantalla de administracion, que si tiene que separarlas porque lo global no lo puede editar el tenant.
+
+        especialidadId solo aplica a practicas y se ignora en los otros tipos.
+
+        El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un error.
+      operationId: searchCatalogo
+      parameters:
+      - description: Coleccion del catalogo
+        example: practicas
+        in: path
+        name: tipo
+        required: true
+        schema:
+          type: string
+          enum:
+          - especialidades
+          - practicas
+          - nomencladores
+      - description: Texto a buscar en el nombre o en el codigo
+        example: kinesio
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: Que conceptos devolver segun su ciclo de vida
+        example: ACTIVO
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          default: ACTIVO
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      - description: Que conceptos devolver segun su duenio
+        example: TODOS
+        in: query
+        name: alcance
+        required: false
+        schema:
+          type: string
+          default: TODOS
+          enum:
+          - GLOBAL
+          - ORGANIZACION
+          - TODOS
+      - description: Solo practicas de esa especialidad. Ignorado en los otros tipos
+        example: 1
+        in: query
+        name: especialidadId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: "Numero de pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: "Elementos por pagina, acotado a 100"
+        example: 20
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoConceptoPageResponse"
+          description: Pagina de conceptos. Contenido vacio si la pagina quedo fuera
+            de rango
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Tipo de ruta desconocido, o valor de estado o alcance fuera\
+            \ del catalogo"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o no hay contexto de trabajo
+      summary: Busqueda incremental en el catalogo
+      tags:
+      - Catalogo clinico
+    post:
+      description: |-
+        Crea una especialidad, una practica o un nomenclador (RF-M06-001..003).
+
+        El campo alcance del cuerpo decide el duenio y quien puede crearlo: ORGANIZACION exige consultorio:manage sobre la sede del contexto —pasan ORG_ADMIN y CONSULTORIO_ADMIN—; GLOBAL exige rol de plataforma. Si se omite, ORGANIZACION.
+
+        especialidadId es obligatorio al crear una practica. Una practica GLOBAL solo puede colgar de una especialidad GLOBAL: al reves seria dejar que un centro decida el destino de un concepto que ven todos los demas, y responde 409 catalogo-scope-mismatch.
+
+        El codigo es unico entre los conceptos VIGENTES del mismo duenio, y el nombre tambien —comparado sin distinguir mayusculas ni acentos—. El codigo de uno dado de baja SI se puede reusar.
+
+        No lleva Idempotency-Key y es deliberado: un concepto no consume cupo de ningun plan, asi que lo unico que un reintento podria producir es una fila duplicada, y contra eso el unique de codigo es una garantia mas fuerte que una clave que depende de que el cliente la mande bien. El reintento responde 409 y no crea nada; despues de un timeout de red hay que releer el listado.
+      operationId: createCatalogoConcepto
+      parameters:
+      - description: Coleccion del catalogo
+        example: practicas
+        in: path
+        name: tipo
+        required: true
+        schema:
+          type: string
+          enum:
+          - especialidades
+          - practicas
+          - nomencladores
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCatalogoConceptoRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoConceptoResponse"
+          description: Concepto creado. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Tipo de ruta desconocido, campos invalidos, falta especialidadId\
+            \ en una practica, o ventana de vigencia incoherente"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, sin consultorio:manage para un concepto\
+            \ contextual, o sin rol de plataforma para uno global"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La especialidad referenciada no existe o es de otro tenant
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Codigo repetido (catalogo-code-taken), nombre repetido (catalogo-name-taken),\
+            \ especialidad dada de baja (catalogo-reference-inactive), o alcance incompatible\
+            \ (catalogo-scope-mismatch)"
+      summary: Alta de un concepto del catalogo
+      tags:
+      - Catalogo clinico
+  /api/v1/catalogos/{tipo}/{conceptoId}:
+    get:
+      description: |-
+        Devuelve el concepto con su alcance, su vigencia y la version que hay que reenviar para editarlo.
+
+        Devuelve tambien los conceptos INACTIVOS, con 200 y no con 404: RN-M06-001 y RN-M06-002 exigen que los catalogos usados historicamente sigan resolviendo con su nombre y su estado. Lo que un concepto inactivo rechaza son las operaciones nuevas, y eso se responde con 409.
+
+        estado y vigente son dos cosas distintas: el primero es el ciclo de vida administrativo y el segundo dice si el concepto se puede ELEGIR ahora, lo que ademas exige estar dentro de la ventana de vigencia. Una practica ACTIVA que entra en vigor el mes que viene tiene estado=ACTIVO y vigente=false.
+      operationId: getCatalogoConcepto
+      parameters:
+      - description: Coleccion del catalogo
+        example: practicas
+        in: path
+        name: tipo
+        required: true
+        schema:
+          type: string
+          enum:
+          - especialidades
+          - practicas
+          - nomencladores
+      - description: Identificador del concepto
+        example: 1
+        in: path
+        name: conceptoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoConceptoResponse"
+          description: "El concepto, activo o dado de baja"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o no hay contexto de trabajo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, o es un concepto contextual de otro tenant"
+      summary: Datos de un concepto del catalogo
+      tags:
+      - Catalogo clinico
+    patch:
+      description: |-
+        Cambia nombre, descripcion y ventana de vigencia. Los campos omitidos no se tocan; para borrar la descripcion se manda cadena vacia, y para dejar el concepto sin fin de vigencia se manda clearValidUntil=true.
+
+        El CODIGO no se puede cambiar: es la clave estable con la que los convenios y las sesiones referencian el concepto, y mutarlo haria que un historico de 2024 apunte a algo que hoy significa otra cosa. Renombrar es cambiar name.
+
+        El ALCANCE tampoco: promover un concepto propio a global lo haria visible para todos los tenants sin que ninguno lo haya pedido. El camino es POST /api/v1/catalogo-solicitudes.
+
+        version es obligatoria y se compara antes de mutar: si quedo vieja, 409 concurrent-modification y el cliente recarga. Sin eso, dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero.
+
+        Un concepto INACTIVO no se puede editar: 409 catalogo-inactive.
+      operationId: updateCatalogoConcepto
+      parameters:
+      - description: Coleccion del catalogo
+        example: practicas
+        in: path
+        name: tipo
+        required: true
+        schema:
+          type: string
+          enum:
+          - especialidades
+          - practicas
+          - nomencladores
+      - description: Identificador del concepto
+        example: 1
+        in: path
+        name: conceptoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCatalogoConceptoRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoConceptoResponse"
+          description: Concepto actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos o ventana de vigencia incoherente
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin consultorio:manage sobre un concepto propio,\
+            \ o sin rol de plataforma sobre uno global"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, o es un concepto contextual de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Concepto dado de baja (catalogo-inactive), nombre repetido\
+            \ (catalogo-name-taken), o version desactualizada (concurrent-modification)"
+      summary: Edicion de un concepto del catalogo
+      tags:
+      - Catalogo clinico
+  /api/v1/catalogos/{tipo}/{conceptoId}/deactivate:
+    post:
+      description: |-
+        Da de baja el concepto con motivo obligatorio (RN-M06-001). NO borra nada: queda INACTIVO, sigue siendo legible por id y conserva su codigo y su nombre, asi que toda sesion, convenio o presentacion que lo referencie sigue resolviendo (RN-M06-002). Deja de ofrecerse para selecciones nuevas y libera su codigo y su nombre para un concepto nuevo del mismo duenio.
+
+        No hay reactivacion: ningun RF de M06 la pide, y un concepto que vuelve es una vigencia nueva, no una baja deshecha. Si lo que se quiere es sacarlo de circulacion temporalmente, el camino es editar validUntil.
+
+        Una ESPECIALIDAD con practicas vigentes colgando NO se puede dar de baja: 409 catalogo-has-active-references, con el conteo en el cuerpo. Un NOMENCLADOR con vigencias abiertas, tampoco. Ojo con la distincion: estar usado HISTORICAMENTE no bloquea la baja —eso es justamente lo que RN-M06-001 pide que sobreviva—; lo que bloquea es dejar colgando algo que todavia se ofrece.
+      operationId: deactivateCatalogoConcepto
+      parameters:
+      - description: Coleccion del catalogo
+        example: practicas
+        in: path
+        name: tipo
+        required: true
+        schema:
+          type: string
+          enum:
+          - especialidades
+          - practicas
+          - nomencladores
+      - description: Identificador del concepto
+        example: 1
+        in: path
+        name: conceptoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateCatalogoRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoConceptoResponse"
+          description: Concepto dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin consultorio:manage sobre un concepto propio,\
+            \ o sin rol de plataforma sobre uno global"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, o es un concepto contextual de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ya estaba dado de baja (catalogo-already-inactive), o tiene\
+            \ conceptos vigentes colgando (catalogo-has-active-references)"
+      summary: Baja logica de un concepto del catalogo
+      tags:
+      - Catalogo clinico
   /api/v1/me/contexts:
     get:
       description: |-
@@ -3084,6 +3808,211 @@ components:
           type: string
           description: Nombre de la organizacion
           example: Centro Kinesico Belgrano
+    CatalogoConceptoPageResponse:
+      type: object
+      description: "Pagina de conceptos del catalogo, segun los filtros pedidos"
+      properties:
+        content:
+          type: array
+          description: Conceptos de esta pagina
+          items:
+            $ref: "#/components/schemas/CatalogoConceptoResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de conceptos que cumplen el filtro
+          example: 37
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 2
+    CatalogoConceptoResponse:
+      type: object
+      description: "Concepto del catalogo clinico, global de plataforma o propio del\
+        \ tenant"
+      properties:
+        alcance:
+          type: string
+          description: Duenio del concepto
+          enum:
+          - GLOBAL
+          - ORGANIZACION
+          example: ORGANIZACION
+        codigo:
+          type: string
+          description: Clave estable. No cambia nunca
+          example: KIN-001
+        deactivationReason:
+          type: string
+          description: "Motivo declarado de la baja, o null"
+        deletedAt:
+          type: string
+          format: date-time
+          description: "Instante UTC de la baja logica, o null si esta activo"
+        descripcion:
+          type: string
+          description: "Descripcion libre, o null"
+        especialidadId:
+          type: integer
+          format: int64
+          description: Especialidad a la que pertenece. Solo en practicas
+          example: 1
+        estado:
+          type: string
+          description: "Ciclo de vida administrativo, derivado"
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        id:
+          type: integer
+          format: int64
+          description: Identificador del concepto
+          example: 1
+        name:
+          type: string
+          description: Nombre visible
+          example: Sesion de kinesiologia motora
+        nomencladorId:
+          type: integer
+          format: int64
+          description: Nomenclador al que pertenece. Solo en vigencias
+          example: 1
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion propietaria. null cuando el concepto es GLOBAL
+          example: 1
+        practicaId:
+          type: integer
+          format: int64
+          description: Practica que codifica. Solo en vigencias
+          example: 1
+        tipo:
+          type: string
+          description: Que clase de concepto es
+          enum:
+          - ESPECIALIDAD
+          - PRACTICA
+          - NOMENCLADOR
+          example: PRACTICA
+        validFrom:
+          type: string
+          format: date-time
+          description: Instante UTC desde el que se puede elegir
+          example: 2026-09-01T00:00:00Z
+        validUntil:
+          type: string
+          format: date-time
+          description: "Instante UTC hasta el que se puede elegir, exclusivo. null\
+            \ = sin fin previsto"
+        valorReferencia:
+          type: number
+          description: Valor publicado por el nomenclador para esta vigencia. NO es
+            el arancel cobrable. Solo en vigencias
+          example: 1250.0
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para editar
+          example: 0
+        vigente:
+          type: boolean
+          description: Si se puede elegir AHORA. Exige estado ACTIVO Y estar dentro
+            de la ventana de vigencia
+          example: true
+    CatalogoSolicitudResponse:
+      type: object
+      description: Pedido de un tenant para que la plataforma incorpore un concepto
+        global
+      properties:
+        codigoPropuesto:
+          type: string
+          description: "Codigo sugerido, o null. El centro propone, la plataforma\
+            \ dispone"
+        conceptoId:
+          type: integer
+          format: int64
+          description: "Concepto global creado al aprobar, si se creo. Aprobar NO\
+            \ crea el concepto automaticamente: la plataforma lo publica por el alta\
+            \ normal"
+        consultorioId:
+          type: integer
+          format: int64
+          description: "Sede desde la que se pidio, o null. Es trazabilidad: la solicitud\
+            \ es de la organizacion"
+          example: 1
+        createdAt:
+          type: string
+          format: date-time
+          description: Instante UTC del pedido
+        estado:
+          type: string
+          description: Estado de la solicitud
+          enum:
+          - PENDIENTE
+          - APROBADA
+          - RECHAZADA
+          example: PENDIENTE
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la solicitud
+          example: 1
+        justificacion:
+          type: string
+          description: Por que hace falta
+          example: Tres profesionales del centro la ejercen y hoy no hay forma de
+            registrarla
+        nombrePropuesto:
+          type: string
+          description: Nombre propuesto por el centro
+          example: Terapia ocupacional
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion que solicita
+          example: 1
+        resolucionNota:
+          type: string
+          description: "Motivo de la aprobacion o del rechazo, o null"
+        resueltaAt:
+          type: string
+          format: date-time
+          description: "Instante UTC de la resolucion, o null"
+        resueltaPorAccountId:
+          type: integer
+          format: int64
+          description: "Cuenta de plataforma que la resolvio, o null"
+        solicitadaPorAccountId:
+          type: integer
+          format: int64
+          description: Cuenta que la creo
+          example: 1
+        tipo:
+          type: string
+          description: Que concepto global se pide
+          enum:
+          - ESPECIALIDAD
+          - PRACTICA
+          - NOMENCLADOR
+          example: ESPECIALIDAD
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para resolver
+          example: 0
     ChangeMembershipRequest:
       type: object
       description: Cambio de rol y/o de alcance de un vinculo
@@ -3227,6 +4156,96 @@ components:
           description: "Version para el control de concurrencia optimista. Hay que\
             \ reenviarla al editar: sin ella dos ediciones simultaneas se pisan"
           example: 0
+    CreateCatalogoConceptoRequest:
+      type: object
+      description: Datos para dar de alta un concepto del catalogo clinico
+      properties:
+        alcance:
+          type: string
+          description: "Duenio del concepto. GLOBAL lo publica en el catalogo de plataforma\
+            \ y exige rol de plataforma; ORGANIZACION lo crea para el tenant del contexto.\
+            \ Si se omite, ORGANIZACION"
+          enum:
+          - GLOBAL
+          - ORGANIZACION
+          example: ORGANIZACION
+        codigo:
+          type: string
+          description: "Clave estable. Es lo que los convenios y las sesiones guardan,\
+            \ y por eso NO se puede cambiar despues. Unico entre los conceptos VIGENTES\
+            \ del mismo duenio: el codigo de uno dado de baja se puede reusar"
+          example: KIN
+          maxLength: 48
+          minLength: 0
+        descripcion:
+          type: string
+          description: Descripcion libre. Nunca contenido clinico
+          maxLength: 280
+          minLength: 0
+        especialidadId:
+          type: integer
+          format: int64
+          description: "Especialidad a la que pertenece. OBLIGATORIO al crear una\
+            \ practica, ignorado en los otros tipos. Una practica GLOBAL solo puede\
+            \ colgar de una especialidad GLOBAL: si no, 409 catalogo-scope-mismatch"
+          example: 1
+        name:
+          type: string
+          description: "Nombre visible. Unico entre los conceptos vigentes del mismo\
+            \ duenio, comparado sin distinguir mayusculas ni acentos"
+          example: Kinesiologia
+          maxLength: 160
+          minLength: 0
+        validFrom:
+          type: string
+          format: date-time
+          description: "Instante UTC desde el que el concepto se puede elegir. Si\
+            \ se omite, el momento del alta. Es la VIGENCIA, distinta de la baja logica"
+          example: 2026-09-01T00:00:00Z
+        validUntil:
+          type: string
+          format: date-time
+          description: "Instante UTC hasta el que se puede elegir, EXCLUSIVO. Omitirlo\
+            \ significa sin fin previsto, que es lo normal"
+      required:
+      - codigo
+      - name
+    CreateCatalogoSolicitudRequest:
+      type: object
+      description: Datos del pedido de alta de un concepto global
+      properties:
+        codigoPropuesto:
+          type: string
+          description: "Codigo sugerido. Opcional: el centro propone, la plataforma\
+            \ dispone"
+          maxLength: 48
+          minLength: 0
+        justificacion:
+          type: string
+          description: "Por que hace falta. Obligatoria: sin ella la plataforma no\
+            \ puede decidir y la solicitud es ruido"
+          example: Tres profesionales del centro la ejercen y hoy no hay forma de
+            registrarla
+          maxLength: 500
+          minLength: 0
+        nombrePropuesto:
+          type: string
+          description: Nombre propuesto
+          example: Terapia ocupacional
+          maxLength: 160
+          minLength: 0
+        tipo:
+          type: string
+          description: Que concepto global se pide
+          enum:
+          - ESPECIALIDAD
+          - PRACTICA
+          - NOMENCLADOR
+          example: ESPECIALIDAD
+      required:
+      - justificacion
+      - nombrePropuesto
+      - tipo
     CreateConsultorioRequest:
       type: object
       description: Datos para dar de alta una sede adicional
@@ -3399,6 +4418,57 @@ components:
       required:
       - name
       - planCode
+    CreateVigenciaRequest:
+      type: object
+      description: Nueva vigencia de un codigo dentro de un nomenclador
+      properties:
+        codigo:
+          type: string
+          description: "Codigo dentro del nomenclador. Se repite entre vigencias del\
+            \ mismo concepto a proposito: cada fila es una version de ese codigo"
+          example: 27.01.01
+          maxLength: 48
+          minLength: 0
+        descripcion:
+          type: string
+          description: Descripcion libre
+          maxLength: 280
+          minLength: 0
+        name:
+          type: string
+          description: Denominacion publicada para ESTA vigencia. Se guarda por vigencia
+            porque los renombres son parte de la historia
+          example: Sesion de kinesiologia motora
+          maxLength: 160
+          minLength: 0
+        practicaId:
+          type: integer
+          format: int64
+          description: Prestacion que este codigo representa. Tiene que ser visible
+            y estar vigente. Una vigencia de un nomenclador GLOBAL solo puede codificar
+            una practica GLOBAL
+          example: 1
+        validFrom:
+          type: string
+          format: date-time
+          description: "Inicio de la vigencia, en UTC. Si se omite, el momento del\
+            \ alta"
+          example: 2026-01-01T00:00:00Z
+        validUntil:
+          type: string
+          format: date-time
+          description: "Fin de la vigencia, EXCLUSIVO. Omitirlo la deja abierta"
+        valorReferencia:
+          type: number
+          description: "Valor o unidades que publica el nomenclador para esta ventana.\
+            \ NO es el arancel cobrable: el arancel lo fija el convenio y puede apartarse\
+            \ de este"
+          example: 1250.0
+          minimum: 0
+      required:
+      - codigo
+      - name
+      - practicaId
     CreatedMembershipResponse:
       type: object
       description: Identificador del vinculo creado por el alta directa
@@ -3408,6 +4478,18 @@ components:
           format: int64
           description: Identificador del vinculo creado
           example: 42
+    DeactivateCatalogoRequest:
+      type: object
+      description: Motivo de la baja logica de un concepto del catalogo
+      properties:
+        reason:
+          type: string
+          description: Por que se da de baja. Queda en la fila y en la auditoria
+          example: Reemplazada por la practica del nomenclador 2026
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
     DeactivateConsultorioRequest:
       type: object
       description: Motivo declarado de la baja de una sede
@@ -4100,6 +5182,16 @@ components:
       - https://akine.app/problems/espacio-already-inactive
       - https://akine.app/problems/espacio-capacity-below-occupancy
       - https://akine.app/problems/espacio-has-active-references
+      - https://akine.app/problems/catalogo-code-taken
+      - https://akine.app/problems/catalogo-name-taken
+      - https://akine.app/problems/catalogo-inactive
+      - https://akine.app/problems/catalogo-already-inactive
+      - https://akine.app/problems/catalogo-reference-inactive
+      - https://akine.app/problems/catalogo-has-active-references
+      - https://akine.app/problems/catalogo-scope-mismatch
+      - https://akine.app/problems/nomenclador-vigencia-overlap
+      - https://akine.app/problems/catalogo-solicitud-duplicada
+      - https://akine.app/problems/catalogo-solicitud-ya-resuelta
     RegisterAccountRequest:
       type: object
       description: "Alta self-service de cuenta, organizacion y primer consultorio"
@@ -4173,6 +5265,32 @@ components:
           minLength: 0
       required:
       - email
+    ResolveCatalogoSolicitudRequest:
+      type: object
+      description: Aprobacion o rechazo de una solicitud de catalogo
+      properties:
+        estado:
+          type: string
+          description: Desenlace. PENDIENTE no es una resolucion y se rechaza con
+            400
+          enum:
+          - APROBADA
+          - RECHAZADA
+          example: APROBADA
+        nota:
+          type: string
+          description: Motivo de la decision
+          maxLength: 500
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: "Version que el cliente leyo. Si quedo vieja, 409 concurrent-modification"
+          example: 0
+      required:
+      - estado
+      - nota
+      - version
     SelectContextRequest:
       type: object
       description: Par Organizacion + Consultorio sobre el que se quiere trabajar
@@ -4406,6 +5524,49 @@ components:
           type: string
           format: date-time
           description: Vencimiento. Como maximo cuatro horas despues del otorgamiento
+    UpdateCatalogoConceptoRequest:
+      type: object
+      description: Cambios a aplicar sobre un concepto del catalogo
+      properties:
+        clearValidUntil:
+          type: boolean
+          description: "Deja el concepto sin fin de vigencia. Hace explicito lo que\
+            \ un campo omitido no puede expresar: 'no toques el fin' y 'sacale el\
+            \ fin' son dos intenciones distintas"
+          example: false
+        descripcion:
+          type: string
+          description: Nueva descripcion. Cadena vacia la borra
+          maxLength: 280
+          minLength: 0
+        name:
+          type: string
+          description: Nuevo nombre visible
+          maxLength: 160
+          minLength: 0
+        validFrom:
+          type: string
+          format: date-time
+          description: "Nuevo inicio de la vigencia, en UTC"
+        validUntil:
+          type: string
+          format: date-time
+          description: "Nuevo fin de la vigencia, EXCLUSIVO. Se ignora si clearValidUntil\
+            \ es true"
+        valorReferencia:
+          type: number
+          description: "Solo para una vigencia de nomenclador: corrige el valor publicado.\
+            \ Corregir NO es actualizar el nomenclador; actualizarlo es cerrar esta\
+            \ vigencia y abrir una nueva"
+          minimum: 0
+        version:
+          type: integer
+          format: int64
+          description: "Version que el cliente leyo. Si quedo vieja, 409 concurrent-modification\
+            \ y hay que recargar"
+          example: 0
+      required:
+      - version
     UpdateConsultorioRequest:
       type: object
       description: Cambios a aplicar sobre una sede. Los campos omitidos no se tocan

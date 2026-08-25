@@ -56,12 +56,20 @@ de commits, o directamente se revierte una decisión correcta por desconocer su 
 | [0018](0018-anti-enumeracion-uniforme.md) | Respuestas uniformes: la autenticación no revela si una cuenta existe | Aceptado | AKINE-01.02 |
 | [0019](0019-identidad-global-sin-organization-id.md) | Las tablas de identidad no llevan `organization_id` | Aceptado | AKINE-01.02 |
 | [0020](0020-rol-de-plataforma-sin-organization-id.md) | `platform_role` no lleva `organization_id` | Aceptado | AKINE-01.03 |
+| [0021](0021-catalogos-clinicos-globales-sin-organization-id.md) | Los catálogos clínicos llevan `organization_id` nullable | Aceptado | AKINE-02.05 |
 
 > La lista de excepciones a [ADR-0004](0004-convenciones-de-persistencia-multi-tenant.md) vive en
-> la tabla de [ADR-0019](0019-identidad-global-sin-organization-id.md) **más** la fila que agrega
-> [ADR-0020](0020-rol-de-plataforma-sin-organization-id.md). Como los ADR aceptados no se editan,
-> hay que leer las dos. Si aparece una tercera excepción, corresponde un ADR que consolide y
-> supersede a los anteriores en vez de sumar un salto más.
+> la tabla de [ADR-0019](0019-identidad-global-sin-organization-id.md) **más** las filas que
+> agregan [ADR-0020](0020-rol-de-plataforma-sin-organization-id.md) y
+> [ADR-0021](0021-catalogos-clinicos-globales-sin-organization-id.md). Como los ADR aceptados no
+> se editan, hay que leer los tres.
+>
+> **Deuda declarada.** Esta nota decía que la tercera excepción debía llegar como un ADR que
+> consolidara a los anteriores. AKINE-02.05 la agregó igual de forma incremental, con el
+> precedente de ADR-0020, porque consolidar exigía superseder dos ADR cuyo contenido es mucho más
+> que la tabla de excepciones —el aislamiento de identidad en 0019, el rol de plataforma en
+> 0020— y esa reescritura no pertenece al alcance de una etapa de catálogos. **La consolidación
+> queda pendiente y es lo que corresponde antes de la cuarta excepción, no después.**
 
 > Los ADRs 0001–0007 cubren decisiones **técnicas** del baseline. Las decisiones de
 > producto `DP-01`–`DP-09` están formalizadas en los ADRs
