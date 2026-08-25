@@ -31,6 +31,17 @@ public enum PermissionCode {
 	/** Gestionar consultorio. Fase 1 (minimo) / F2. Los endpoints que lo consumen son de 02.01. */
 	CONSULTORIO_MANAGE("consultorio:manage"),
 
+	/**
+	 * Consultar el catalogo fisico y la disponibilidad de una sede. F2.
+	 *
+	 * <p>Aprobado el 25/08/2026 sobre la propuesta que 02.02 dejo escrita en la §10.1 de la
+	 * matriz; la fila vive en la §5 y en la §6 desde entonces. Existe porque el catalogo no
+	 * tenia <b>ningun</b> codigo de lectura de espacios: el unico aplicable era
+	 * {@link #CONSULTORIO_MANAGE}, que la §6 le niega justamente a {@code PROFESIONAL} y
+	 * {@code ADMINISTRATIVO}, que son los que necesitan ver en que box atienden.
+	 */
+	ESPACIO_READ("espacio:read"),
+
 	/** Gestionar colaboradores: alta, asignar rol, suspender, revocar. Fase 1. */
 	COLABORADOR_MANAGE("colaborador:manage"),
 

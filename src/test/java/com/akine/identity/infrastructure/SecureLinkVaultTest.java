@@ -11,9 +11,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Traspaso efimero del enlace entre quien encola y quien envia.
  *
- * <p>Lo que se verifica aca no es una comodidad sino una propiedad de seguridad: el enlace se
- * entrega UNA sola vez y no sobrevive a su vencimiento. Un mapa que retuviera credenciales
- * seria a la vez una fuga de memoria y una bolsa de llaves vivas en el heap.
+ * <p>Lo que se verifica aca son dos propiedades en tension. La de seguridad: el enlace se borra
+ * cuando el envio termina y no sobrevive a su vencimiento —un mapa que retuviera credenciales
+ * seria a la vez una fuga de memoria y una bolsa de llaves vivas en el heap—. Y la de
+ * disponibilidad: leerlo NO lo borra, porque el outbox lo resuelve antes de enviar y el
+ * reintento tiene que encontrarlo. Consumir es un paso aparte.
  */
 class SecureLinkVaultTest {
 
@@ -27,15 +29,36 @@ class SecureLinkVaultTest {
 	}
 
 	@Test
-	@DisplayName("el enlace se entrega una vez y despues ya no esta")
-	void el_enlace_se_entrega_una_sola_vez() {
+	@DisplayName("leer no consume: el enlace sigue disponible para el reintento")
+	void leer_no_consume() {
 		SecureLinkVault vault = vault(Duration.ofMinutes(10));
 		Instant ahora = Instant.now();
 
 		vault.guardar(REFERENCIA, ENLACE, ahora);
 
-		assertThat(vault.tomar(REFERENCIA, ahora)).contains(ENLACE);
-		assertThat(vault.tomar(REFERENCIA, ahora)).isEmpty();
+		// Si leer borrara, el segundo intento del outbox —el que existe porque el relay se
+		// cayo— se quedaria sin enlace y la fila moriria por "token invalido" con el token vivo.
+		assertThat(vault.leer(REFERENCIA, ahora)).contains(ENLACE);
+		assertThat(vault.leer(REFERENCIA, ahora)).contains(ENLACE);
+		assertThat(vault.pendientes()).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("consumir borra el enlace y es idempotente")
+	void consumir_borra_y_es_idempotente() {
+		SecureLinkVault vault = vault(Duration.ofMinutes(10));
+		Instant ahora = Instant.now();
+		vault.guardar(REFERENCIA, ENLACE, ahora);
+
+		vault.consumir(REFERENCIA);
+
+		assertThat(vault.leer(REFERENCIA, ahora)).isEmpty();
+		assertThat(vault.pendientes()).isZero();
+
+		// Reprocesar un resultado ya escrito no puede ser un error.
+		vault.consumir(REFERENCIA);
+		vault.consumir("no-existe");
+		vault.consumir(null);
 		assertThat(vault.pendientes()).isZero();
 	}
 
@@ -46,8 +69,8 @@ class SecureLinkVaultTest {
 
 		// Es el caso del reinicio del proceso: el enlace se perdio y la notificacion queda
 		// fallida con motivo, que es preferible a persistir la credencial para sobrevivirlo.
-		assertThat(vault.tomar("no-existe", Instant.now())).isEmpty();
-		assertThat(vault.tomar(null, Instant.now())).isEmpty();
+		assertThat(vault.leer("no-existe", Instant.now())).isEmpty();
+		assertThat(vault.leer(null, Instant.now())).isEmpty();
 	}
 
 	@Test
@@ -58,7 +81,7 @@ class SecureLinkVaultTest {
 
 		vault.guardar(REFERENCIA, ENLACE, emision);
 
-		assertThat(vault.tomar(REFERENCIA, emision.plus(Duration.ofMinutes(11)))).isEmpty();
+		assertThat(vault.leer(REFERENCIA, emision.plus(Duration.ofMinutes(11)))).isEmpty();
 		assertThat(vault.pendientes())
 				.as("el vencido tiene que salir del mapa, no quedarse ocupando memoria")
 				.isZero();
@@ -74,7 +97,7 @@ class SecureLinkVaultTest {
 		vault.guardar(REFERENCIA, ENLACE + "-nuevo", ahora);
 
 		// Es el mismo criterio que en la base: emitir un token nuevo invalida los anteriores.
-		assertThat(vault.tomar(REFERENCIA, ahora)).contains(ENLACE + "-nuevo");
+		assertThat(vault.leer(REFERENCIA, ahora)).contains(ENLACE + "-nuevo");
 	}
 
 	@Test

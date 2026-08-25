@@ -72,7 +72,22 @@ public class IdentitySecureLinkResolver implements SecureLinkResolver {
 			return Optional.empty();
 		}
 
-		return secureLinkVault.tomar(referenciaTokenId, ahora);
+		return secureLinkVault.leer(referenciaTokenId, ahora);
+	}
+
+	/**
+	 * Suelta el enlace: el worker termino con esta notificacion, con exito o para siempre.
+	 *
+	 * <p>No toca la base ni el token —consumir el token es cosa de quien usa el enlace, no de
+	 * quien lo transporta—: solo libera la copia en claro que el vault sostenia mientras duraba
+	 * el envio. Sin transaccion, idempotente y sin lanzar, como pide el puerto.
+	 */
+	@Override
+	public void consumeLink(NotificationType tipo, String referenciaTokenId) {
+		if (tipoDeTokenDe(tipo).isEmpty()) {
+			return;
+		}
+		secureLinkVault.consumir(referenciaTokenId);
 	}
 
 	/**

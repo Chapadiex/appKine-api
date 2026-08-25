@@ -98,6 +98,7 @@ Códigos `<dominio>:<acción>`. Estable, en minúsculas, sin significado de UI. 
 | `tenant:manage` | Gestionar tenant | **F1** |
 | `tenant:read` | Ver datos y suscripción de la propia organización (el "Limitado" de `ORG_ADMIN`) | **F1** |
 | `consultorio:manage` | Gestionar consultorio | **F1** (mínimo) / F2 |
+| `espacio:read` | Consultar el catálogo físico y la disponibilidad de una sede | F2 |
 | `colaborador:manage` | Gestionar colaboradores: invitar, asignar rol, revocar, desvincular | **F1** |
 | `colaborador:read` | Listar colaboradores del alcance | **F1** |
 | `auditoria:read` | Consultar auditoría operativa del alcance | **F1** |
@@ -120,10 +121,14 @@ Lo que cada rol tiene **implícito** para las acciones de F1. Todo lo que no fig
 | `tenant:manage` | Global | — | — | — | — | — |
 | `tenant:read` | Global | Org | — | — | — | — |
 | `consultorio:manage` | Global | Org | Consultorio | — | — | — |
+| `espacio:read` | Soporte | Org | Consultorio | Consultorio | Consultorio | — |
 | `colaborador:manage` | Global | Org | Consultorio | — | — | — |
 | `colaborador:read` | Global | Org | Consultorio | Consultorio | Consultorio | — |
 | `auditoria:read` | Global | Org | Consultorio | — | — | — |
 | `auditoria:read-clinica` | Restringido (grant + soporte) | No por defecto (grant) | No por defecto (grant) | — | — | — |
+
+> `espacio:read` es de **F2** y está en esta tabla porque su módulo ya existe (M04, etapa
+> 02.02). Se aprobó el **25/08/2026**; el registro de la decisión está en §10.1.
 
 ## 7. Invariantes que F1 debe hacer cumplir
 
@@ -311,25 +316,25 @@ cuatro horas (§9.4).
 Mismo criterio que la sección 9: nada se aplicó en silencio. Cada punto es una diferencia real
 entre lo que dicen las secciones 1–8 y lo que el código hace, con su motivo y su alcance.
 
-### 10.1 `espacio:read` — **PROPUESTO, no implementado**
+### 10.1 `espacio:read` — **APROBADO el 25/08/2026, en el catálogo**
 
-**El hueco, en una línea.** La etapa 02.02 exige que "profesionales/administrativos" puedan
-**consultar** los espacios de la sede. El catálogo de la sección 5 **no tiene ningún código de
-lectura de espacios**: el único que aplica al recurso físico es `consultorio:manage`, y la
-sección 6 se lo niega justamente a esos dos roles.
+**El hueco que lo originó, en una línea.** La etapa 02.02 exige que "profesionales/administrativos"
+puedan **consultar** los espacios de la sede. El catálogo de la sección 5 **no tenía ningún
+código de lectura de espacios**: el único que aplicaba al recurso físico era
+`consultorio:manage`, y la sección 6 se lo niega justamente a esos dos roles.
 
-**Lo que 02.02 hizo, y por qué no inventó el código.** Las mutaciones —alta, edición, baja—
-exigen `consultorio:manage` con alcance CONSULTORIO, que es lo que la matriz dice. Las
-**lecturas** —detalle, listado y disponibilidad— autorizan por **pertenencia**: membership
-vigente en la organización, con cualquier rol. Es la enmienda §9.1 ya aprobada aplicada al
-mismo caso y por el mismo motivo — sin esa lectura un `PROFESIONAL` no puede ver en qué box
-atiende, igual que sin el listado de sedes no puede elegir dónde trabaja.
+**Lo que 02.02 hizo mientras tanto, y por qué no inventó el código.** Las mutaciones —alta,
+edición, baja— exigen `consultorio:manage` con alcance CONSULTORIO, que es lo que la matriz
+dice. Las **lecturas** —detalle, listado y disponibilidad— autorizaban por **pertenencia**:
+membership vigente en la organización, con cualquier rol. No agregó `espacio:read` al catálogo
+porque el catálogo es **vinculante** y agregarle una fila es una decisión de la matriz, no de
+una etapa — el mismo razonamiento con el que 01.03 se negó a inventar un código de edición de
+organización (§9.2). La propuesta quedó escrita acá, sin aplicar.
 
-**No se agregó `espacio:read` al catálogo** porque el catálogo es **vinculante** y agregarle una
-fila es una decisión de la matriz, no de una etapa. Es exactamente el razonamiento con el que
-01.03 se negó a inventar un código de edición de organización (§9.2).
-
-**La propuesta concreta, para la etapa que enmiende el catálogo:**
+**La decisión.** Aprobada por el usuario (Exequiel Santoro, dueño del producto) el
+**25/08/2026**, sobre la propuesta que 02.02 dejó escrita en esta sección. La fila vive desde
+entonces en el catálogo §5 y en la asignación base §6, que es donde vive lo aprobado; acá queda
+solo el registro de la decisión.
 
 | Código | Acción | Fase |
 |---|---|---|
@@ -339,13 +344,22 @@ fila es una decisión de la matriz, no de una etapa. Es exactamente el razonamie
 |---|---|---|---|---|---|---|
 | `espacio:read` | Soporte | Org | Consultorio | Consultorio | Consultorio | — |
 
-`Soporte` para `PLATFORM_ADMIN` por el criterio ya fijado en §9.7: es una lectura de datos de un
-tenant y una lectura no deja por sí misma ninguna otra fila. Hoy el código llega al mismo
-resultado exigiéndole `tenant:read`, que ya tiene alcance `SOPORTE`.
+`Soporte` para `PLATFORM_ADMIN` por el criterio ya fijado en §9.7 —*¿la operación deja por sí
+misma una fila que diga quién la hizo y por qué?*—: es una lectura de datos de un tenant y una
+lectura no deja ninguna. No es decorativo: **sin `support_access` vigente da 403, y con él
+escribe `SUPPORT_ACCESS_USED`** en la auditoría del tenant leído.
 
-**Si se aprueba, el cambio es de una línea por punto de autorización** —reemplazar la
-comprobación de pertenencia por una evaluación de `espacio:read`— y **no afecta al contrato**:
-los códigos HTTP de rechazo (404 fuera de alcance, 403 sin contexto) no cambian.
+**Lo aplicado.** Las tres lecturas de `EspacioController` —detalle, listado y disponibilidad—
+exigen `espacio:read` con la sede como alcance. La comprobación de **pertenencia sigue primero**
+y el permiso va después: un tenant ajeno tiene que salir por 404 y el evaluador de permisos
+responde 403, así que invertir el orden convertiría la lectura en un oráculo de existencia de
+organizaciones. El `PLATFORM_ADMIN` pasa por el mismo código —antes pasaba por `tenant:read`—.
+**El contrato no cambia**: los códigos HTTP de rechazo (404 fuera de alcance, 403 sin contexto o
+sin permiso) son los mismos.
+
+**Efecto colateral que hay que decir:** una membership con rol `PACIENTE` antes leía el catálogo
+físico por pertenencia y ahora recibe 403, porque su celda es `—`. Es el comportamiento que la
+matriz pide y el motivo por el que la enmienda hacía falta.
 
 ### 10.2 Lo que 02.02 NO habilita — dicho para que nadie lo asuma
 

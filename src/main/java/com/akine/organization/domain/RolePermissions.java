@@ -118,10 +118,14 @@ public final class RolePermissions {
 		// `consultorio:manage` y `colaborador:manage` quedan GLOBAL a proposito: son mutaciones,
 		// dejan su propia fila nominal, y exigirles soporte sumaria un paso a operaciones de
 		// rescate sin agregar trazabilidad que no exista ya. Escrito en la matriz §9.7.
+		// `espacio:read` entra con SOPORTE por la misma pregunta: leer el catalogo fisico de un
+		// centro ajeno no deja por si mismo ninguna fila que diga quien lo hizo ni por que.
+		// Aprobado el 25/08/2026, matriz §5, §6 y §10.1.
 		tabla.put(RoleCode.PLATFORM_ADMIN, Map.of(
 				PermissionCode.TENANT_MANAGE, PermissionScope.GLOBAL,
 				PermissionCode.TENANT_READ, PermissionScope.SOPORTE,
 				PermissionCode.CONSULTORIO_MANAGE, PermissionScope.GLOBAL,
+				PermissionCode.ESPACIO_READ, PermissionScope.SOPORTE,
 				PermissionCode.COLABORADOR_MANAGE, PermissionScope.GLOBAL,
 				PermissionCode.COLABORADOR_READ, PermissionScope.SOPORTE,
 				PermissionCode.AUDITORIA_READ, PermissionScope.SOPORTE,
@@ -133,6 +137,7 @@ public final class RolePermissions {
 		tabla.put(RoleCode.ORG_ADMIN, Map.of(
 				PermissionCode.TENANT_READ, PermissionScope.ORGANIZACION,
 				PermissionCode.CONSULTORIO_MANAGE, PermissionScope.ORGANIZACION,
+				PermissionCode.ESPACIO_READ, PermissionScope.ORGANIZACION,
 				PermissionCode.COLABORADOR_MANAGE, PermissionScope.ORGANIZACION,
 				PermissionCode.COLABORADOR_READ, PermissionScope.ORGANIZACION,
 				PermissionCode.AUDITORIA_READ, PermissionScope.ORGANIZACION));
@@ -140,16 +145,21 @@ public final class RolePermissions {
 		// CONSULTORIO_ADMIN — todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
 		tabla.put(RoleCode.CONSULTORIO_ADMIN, Map.of(
 				PermissionCode.CONSULTORIO_MANAGE, PermissionScope.CONSULTORIO,
+				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.COLABORADOR_MANAGE, PermissionScope.CONSULTORIO,
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.AUDITORIA_READ, PermissionScope.CONSULTORIO));
 
-		// PROFESIONAL y ADMINISTRATIVO — en F1 solo ven la lista de colaboradores de su sede.
-		// Todo lo clinico y economico de sus columnas es de F4 en adelante.
+		// PROFESIONAL y ADMINISTRATIVO — ven la lista de colaboradores de su sede y, desde la
+		// aprobacion del 25/08/2026, el catalogo fisico de esa misma sede: sin `espacio:read` un
+		// profesional no puede saber en que box atiende. Todo lo clinico y economico de sus
+		// columnas sigue siendo de F4 en adelante.
 		tabla.put(RoleCode.PROFESIONAL, Map.of(
-				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO));
+				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
+				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO));
 		tabla.put(RoleCode.ADMINISTRATIVO, Map.of(
-				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO));
+				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
+				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO));
 
 		// PACIENTE — ninguna fila de la matriz §6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.

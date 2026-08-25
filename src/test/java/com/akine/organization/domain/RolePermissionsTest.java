@@ -45,6 +45,9 @@ class RolePermissionsTest {
 			// RolePermissions.
 			"PLATFORM_ADMIN,     TENANT_READ,             SOPORTE",
 			"PLATFORM_ADMIN,     CONSULTORIO_MANAGE,      GLOBAL",
+			// espacio:read entra con SOPORTE por el mismo criterio de §9.7: leer el catalogo
+			// fisico de un centro ajeno no deja por si mismo ninguna fila que lo registre.
+			"PLATFORM_ADMIN,     ESPACIO_READ,            SOPORTE",
 			"PLATFORM_ADMIN,     COLABORADOR_MANAGE,      GLOBAL",
 			"PLATFORM_ADMIN,     COLABORADOR_READ,        SOPORTE",
 			// Idem: leer el rastro de un tenant sin dejar rastro de haberlo leido era el peor
@@ -55,19 +58,25 @@ class RolePermissionsTest {
 			// ORG_ADMIN — todo con alcance de organizacion.
 			"ORG_ADMIN,          TENANT_READ,             ORGANIZACION",
 			"ORG_ADMIN,          CONSULTORIO_MANAGE,      ORGANIZACION",
+			"ORG_ADMIN,          ESPACIO_READ,            ORGANIZACION",
 			"ORG_ADMIN,          COLABORADOR_MANAGE,      ORGANIZACION",
 			"ORG_ADMIN,          COLABORADOR_READ,        ORGANIZACION",
 			"ORG_ADMIN,          AUDITORIA_READ,          ORGANIZACION",
 
 			// CONSULTORIO_ADMIN — todo acotado a SU sede.
 			"CONSULTORIO_ADMIN,  CONSULTORIO_MANAGE,      CONSULTORIO",
+			"CONSULTORIO_ADMIN,  ESPACIO_READ,            CONSULTORIO",
 			"CONSULTORIO_ADMIN,  COLABORADOR_MANAGE,      CONSULTORIO",
 			"CONSULTORIO_ADMIN,  COLABORADOR_READ,        CONSULTORIO",
 			"CONSULTORIO_ADMIN,  AUDITORIA_READ,          CONSULTORIO",
 
-			// PROFESIONAL y ADMINISTRATIVO — en F1 solo la lista de colaboradores de su sede.
+			// PROFESIONAL y ADMINISTRATIVO — la lista de colaboradores de su sede y, desde el
+			// 25/08/2026, el catalogo fisico de esa misma sede: sin espacio:read un profesional
+			// no puede ver en que box atiende.
 			"PROFESIONAL,        COLABORADOR_READ,        CONSULTORIO",
-			"ADMINISTRATIVO,     COLABORADOR_READ,        CONSULTORIO"})
+			"PROFESIONAL,        ESPACIO_READ,            CONSULTORIO",
+			"ADMINISTRATIVO,     COLABORADOR_READ,        CONSULTORIO",
+			"ADMINISTRATIVO,     ESPACIO_READ,            CONSULTORIO"})
 	@DisplayName("Cada celda que concede lo hace con el alcance que dice la matriz")
 	void las_celdas_que_conceden(RoleCode rol, PermissionCode permiso, PermissionScope alcance) {
 		assertThat(RolePermissions.baseScope(rol, permiso)).contains(alcance);

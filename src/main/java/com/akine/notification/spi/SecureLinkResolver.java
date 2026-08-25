@@ -40,4 +40,23 @@ public interface SecureLinkResolver {
 	 * @param referenciaTokenId ID opaco del token, tal como se guardo al encolar
 	 */
 	Optional<String> resolveLink(NotificationType tipo, String referenciaTokenId);
+
+	/**
+	 * Avisa que el enlace ya no hace falta: el envio termino.
+	 *
+	 * <p><b>Por que resolver y consumir son dos operaciones y no una.</b> El worker resuelve el
+	 * enlace ANTES de entregarlo al canal de correo; si resolver lo consumiera, el primer fallo
+	 * transitorio —un relay caido— dejaria al reintento sin enlace y la fila moriria FALLIDA con
+	 * el motivo equivocado, con el token todavia vivo. Todo el backoff quedaria decorativo justo
+	 * para las notificaciones con enlace.
+	 *
+	 * <p>El worker lo llama <b>tras un envio exitoso y tras un fallo permanente</b>, nunca tras
+	 * uno transitorio. Tiene que ser <b>idempotente y no lanzar</b>: se invoca despues de haber
+	 * registrado el resultado en la base, y una excepcion aca no puede desandar esa escritura ni
+	 * contaminar el resultado del lote.
+	 *
+	 * @param tipo              tipo de notificacion, el mismo con el que se resolvio
+	 * @param referenciaTokenId ID opaco del token, tal como se guardo al encolar
+	 */
+	void consumeLink(NotificationType tipo, String referenciaTokenId);
 }

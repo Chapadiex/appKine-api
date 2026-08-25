@@ -50,31 +50,24 @@ import java.util.Map;
  *   </tr>
  *   <tr>
  *     <td>Lecturas (detalle, listado, disponibilidad)</td>
- *     <td><b>Pertenencia</b>: membership vigente en la organizacion</td>
- *     <td>Cualquier miembro vigente, incluidos {@code PROFESIONAL} y {@code ADMINISTRATIVO}</td>
+ *     <td>{@code espacio:read} <b>con la sede como alcance</b>, sobre pertenencia ya
+ *         comprobada</td>
+ *     <td>Todo rol de la sede salvo {@code PACIENTE}: incluye {@code PROFESIONAL} y
+ *         {@code ADMINISTRATIVO}</td>
  *   </tr>
  * </table>
  *
- * <p><b>Lo segundo es una decision que hay que declarar, no un descuido.</b> La etapa pide
- * "profesionales/administrativos solo consulta segun permiso", y el catalogo de la matriz
- * seccion 5 <b>no tiene ningun codigo de lectura de espacios</b>: el unico que aplica es
- * {@code consultorio:manage}, que la seccion 6 le niega a los dos roles que tienen que poder
- * consultar. Las opciones eran tres:
+ * <p><b>Sobre {@code espacio:read}.</b> Cuando 02.02 se construyo, el catalogo de la matriz
+ * seccion 5 <b>no tenia ningun codigo de lectura de espacios</b> —el unico aplicable era
+ * {@code consultorio:manage}, que la seccion 6 le niega justamente a los dos roles que tienen
+ * que poder consultar—, asi que las lecturas autorizaban por <b>pertenencia</b> y el codigo
+ * quedaba PROPUESTO en la seccion 10.1. <b>Se aprobo el 25/08/2026</b>: la fila esta en la
+ * seccion 5 y en la 6, y estas tres lecturas la exigen.
  *
- * <ol>
- *   <li>usar {@code consultorio:manage} tambien en las lecturas — deja a un profesional sin
- *       poder ver en que box atiende, que es lo contrario de lo que la etapa pide;</li>
- *   <li>inventar {@code espacio:read} — el catalogo es <b>vinculante</b> y agregarle una fila
- *       es una decision de la matriz, no de una etapa. Es exactamente el razonamiento con el
- *       que 01.03 se nego a inventar un codigo de edicion de organizacion (matriz 9.2);</li>
- *   <li>autorizar por pertenencia y registrarlo — es lo que se hizo, y es la enmienda 9.1 ya
- *       aprobada aplicada al mismo caso: el listado de sedes autoriza por pertenencia por el
- *       mismo motivo, que sin el nadie puede elegir donde trabaja.</li>
- * </ol>
- *
- * <p><b>{@code espacio:read} queda PROPUESTO</b> en la seccion 9.8 de
- * {@code docs/seguridad/matriz-permisos-minima.md}, sin implementar, para la etapa que enmiende
- * el catalogo.
+ * <p><b>El orden de las dos comprobaciones no es cosmetico.</b> Primero pertenencia, despues
+ * permiso. Un tenant ajeno tiene que salir por 404 —un 403 confirmaria que esa organizacion
+ * existe y bastaria recorrer ids—, y el evaluador de permisos responde 403. Dentro del propio
+ * tenant, en cambio, quien decide es el permiso: ahi 403 no filtra nada que el actor no sepa.
  *
  * <h2>Bloqueos: que se bloquea y que deliberadamente NO</h2>
  *
@@ -510,8 +503,9 @@ public class EspacioService {
 	/**
 	 * Exige poder LEER los espacios de esa sede.
 	 *
-	 * <p>Autoriza por <b>pertenencia</b> y no por permiso: ver la tabla del javadoc de la clase
-	 * y la enmienda 9.1 de la matriz, que resuelve el mismo caso para el listado de sedes.
+	 * <p>Exige <b>pertenencia y despues {@code espacio:read}</b> con la sede como alcance. En ese
+	 * orden: el tenant ajeno sale por 404 antes de que el evaluador pueda contestar 403. Ver la
+	 * tabla del javadoc de la clase.
 	 *
 	 * <p><b>Rechaza con 404 y no con 403.</b> Responder "prohibido" confirmaria que esa
 	 * organizacion o esa sede existen, y bastaria recorrer ids para mapear el SaaS. La unica
@@ -522,8 +516,9 @@ public class EspacioService {
 	 *
 	 * <p><b>El {@code PLATFORM_ADMIN} va por otro camino y es mas estricto, no menos.</b> No
 	 * tiene membership en ningun tenant (matriz seccion 1.3), asi que la comprobacion de
-	 * pertenencia lo dejaria afuera siempre. Pasa por {@code tenant:read}, que desde la enmienda
-	 * 9.7 tiene alcance {@code SOPORTE}: sin {@code support_access} vigente es 403 exista o no
+	 * pertenencia lo dejaria afuera siempre. Pasa por el mismo {@code espacio:read}, que en su
+	 * columna tiene alcance {@code SOPORTE} —criterio de la enmienda 9.7, aplicado a la fila
+	 * aprobada el 25/08/2026—: sin {@code support_access} vigente es 403 exista o no
 	 * la organizacion —respuesta uniforme, no sirve para enumerar— y con soporte queda
 	 * {@code SUPPORT_ACCESS_USED} en la auditoria del tenant leido.
 	 */
@@ -545,6 +540,17 @@ public class EspacioService {
 			throw new ConsultorioNotAccessibleException(consultorioId);
 		}
 
+		// La pertenencia se comprobo ARRIBA y a proposito, antes del permiso: un tenant ajeno
+		// tiene que salir por 404, y un 403 del evaluador confirmaria que esa organizacion
+		// existe. Adentro del propio tenant, quien decide es el permiso.
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.ESPACIO_READ,
+				organizationId,
+				consultorioId,
+				null,
+				Instant.now()));
+
 		// La sede tiene que existir y ser del tenant. Se lee activa o no: un espacio de una sede
 		// dada de baja sigue siendo consultable, igual que la sede misma (RF-M03-004).
 		exigirSedeDelTenant(organizationId, consultorioId);
@@ -555,14 +561,14 @@ public class EspacioService {
 
 		Instant ahora = Instant.now();
 		PermissionDecision decision = permissionGuard.requirePermission(PermissionQuery.of(
-				actor.accountId(), PermissionCodes.TENANT_READ, organizationId, ahora));
+				actor.accountId(), PermissionCodes.ESPACIO_READ, organizationId, ahora));
 
 		if (decision.viaSupportAccess()) {
 			// Transaccion propia: esta lectura es readOnly y ademas puede terminar en 404, y en
 			// los dos casos la fila se perderia. Ver SupportAccessAuditor.
 			supportAccessAuditor.record(usoDeSoporte(
 					organizationId, consultorioId, actor.accountId(),
-					PermissionCodes.TENANT_READ, consultorioId, ahora));
+					PermissionCodes.ESPACIO_READ, consultorioId, ahora));
 		}
 		exigirSedeDelTenant(organizationId, consultorioId);
 	}

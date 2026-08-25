@@ -90,7 +90,7 @@ class OutboxNotificationBridgeTest {
 				ENLACE,
 				"reset:500"));
 
-		assertThat(vault.tomar("500", Instant.now())).contains(ENLACE);
+		assertThat(vault.leer("500", Instant.now())).contains(ENLACE);
 	}
 
 	@Test

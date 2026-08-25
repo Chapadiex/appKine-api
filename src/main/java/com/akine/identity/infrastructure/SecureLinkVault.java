@@ -28,9 +28,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * que lo genero, y el envio ocurre despues del commit, en otro hilo.
  *
  * <p>Este componente es ese puente y nada mas: un mapa en memoria, con vencimiento, del que el
- * enlace se saca UNA vez. Cumple las dos reglas que importan — el token en claro no toca la
- * base, ni el payload consultable, ni los backups, ni el log— sin obligar a {@code notification}
- * a conocer a {@code identity}.
+ * enlace se lee cuantas veces haga falta y se borra recien cuando el envio termino. Cumple las
+ * dos reglas que importan —el token en claro no toca la base, ni el payload consultable, ni los
+ * backups, ni el log— sin obligar a {@code notification} a conocer a {@code identity}.
  *
  * <h2>Lo que se pierde, dicho de frente</h2>
  *
@@ -42,7 +42,24 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Vive solo en el proceso: con mas de una instancia del backend, el worker de la instancia B
  * no ve lo que encolo la A. El outbox lo trata como enlace no disponible, no como un envio
- * roto. <b>TODO(AKINE-01.03):</b> cerrar esto de raiz —lo correcto es que el correo se redacte
+ * roto.
+ *
+ * <p><b>La credencial vive mas tiempo, y esa es la contrapartida aceptada.</b> Desde que leer
+ * dejo de borrar (decision del 25/08/2026), el enlace en claro sobrevive en el heap todo lo que
+ * dure el backoff del outbox —hasta unos minutos con los cinco intentos por defecto— en vez de
+ * desaparecer en el primer intento. Se eligio a sabiendas: la alternativa era un enlace de un
+ * solo intento efectivo, o sea que cualquier hipo del relay condenara la activacion o la
+ * recuperacion de esa persona con un motivo que ademas miente. El techo real lo sigue poniendo
+ * el TTL de {@code akine.identity.links.ttl}, que se purga en cada operacion; el enlace nunca
+ * sobrevive al token que representa. Esto es una decision con costo, no un descuido.
+ *
+ * <p><b>Y con eso, un envio duplicado es posible.</b> Si el proceso muere entre "el SMTP acepto
+ * el mensaje" y "la fila quedo ENVIADA", el lease vencido reencola la fila y —ahora que el
+ * enlace sigue vivo— sale un segundo correo valido a la misma persona. Antes ese caso terminaba
+ * en FALLIDA. <b>Se prefiere el duplicado</b>, y el razonamiento completo esta en
+ * {@code notification.application.OutboxDispatcher}.
+ *
+ * <p><b>TODO(AKINE-01.03):</b> cerrar esto de raiz —lo correcto es que el correo se redacte
  * en la misma transaccion, o que el token se cifre con una clave del entorno en vez de
  * hashearse— es una decision de diseño que excede esta etapa.
  */
@@ -73,21 +90,28 @@ public class SecureLinkVault {
 	}
 
 	/**
-	 * Saca el enlace y lo borra del mapa.
+	 * Lee el enlace SIN borrarlo.
 	 *
-	 * <p>Se consume, no se lee: dejarlo mantendria una credencial viva en el heap despues de
-	 * haber cumplido su unico proposito. Un reintento administrativo del envio no va a
-	 * encontrarlo, y esta bien que asi sea.
+	 * <p><b>Leer no es consumir, y esa separacion es el punto.</b> El worker resuelve el enlace
+	 * ANTES de llamar al adaptador de correo. Si leerlo lo borrara, un relay caido —un fallo
+	 * transitorio, de los que el outbox existe para absorber— dejaria al segundo intento sin
+	 * enlace, y la fila terminaria FALLIDA con el motivo "el token referenciado ya no es valido"
+	 * mientras el token esta perfectamente vivo. Para toda notificacion con enlace —activacion,
+	 * recuperacion, invitacion— el presupuesto real de reintentos seria de UNO, y el backoff, el
+	 * jitter y los cinco intentos quedarian decorativos justo para los mensajes que importan.
+	 *
+	 * <p>El borrado lo hace {@link #consumir(String)}, que el worker llama recien tras un envio
+	 * exitoso o un fallo permanente.
 	 */
-	public Optional<String> tomar(String referenciaTokenId, Instant ahora) {
+	public Optional<String> leer(String referenciaTokenId, Instant ahora) {
 		if (referenciaTokenId == null) {
 			return Optional.empty();
 		}
 		purgarVencidos(ahora);
-		EnlaceEnEspera entrada = enEspera.remove(referenciaTokenId);
+		EnlaceEnEspera entrada = enEspera.get(referenciaTokenId);
 		if (entrada == null) {
 			log.warn("No hay enlace disponible para la referencia de token pedida: el proceso se "
-					+ "reinicio, el envio lo consumio antes o vencio. La notificacion no puede "
+					+ "reinicio, el envio ya lo consumio o vencio. La notificacion no puede "
 					+ "enviarse y la persona debe pedir una nueva");
 			return Optional.empty();
 		}
@@ -95,6 +119,24 @@ public class SecureLinkVault {
 			return Optional.empty();
 		}
 		return Optional.of(entrada.enlace());
+	}
+
+	/**
+	 * Borra el enlace: el envio termino y ya no hace falta.
+	 *
+	 * <p>Lo llama el worker tras un envio exitoso <b>y tambien tras un fallo permanente</b>. Las
+	 * dos mitades hacen falta: si solo consumiera el exito, el enlace de un mensaje que murio en
+	 * FALLIDA se quedaria en memoria hasta que lo barra el TTL o hasta el reinicio.
+	 *
+	 * <p>Idempotente y silencioso: consumir dos veces, o consumir una referencia que nunca se
+	 * guardo, no es un error. El worker puede reprocesar un resultado ya escrito y eso tiene que
+	 * seguir siendo inocuo.
+	 */
+	public void consumir(String referenciaTokenId) {
+		if (referenciaTokenId == null) {
+			return;
+		}
+		enEspera.remove(referenciaTokenId);
 	}
 
 	/** Cuantos enlaces estan esperando envio. Existe para los tests, no para el negocio. */

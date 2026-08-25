@@ -32,6 +32,29 @@ import java.util.Optional;
  * hay ninguno —el worker solo transporta; la cuenta, el token y la invitacion ya existian
  * antes de que el mail saliera—. El enlace es de un solo uso, asi que el segundo mail no
  * habilita una segunda activacion.
+ *
+ * <p><b>El enlace se resuelve antes de enviar y se suelta despues.</b> Resolver no consume:
+ * consumir al resolver le daba a toda notificacion con enlace un presupuesto real de UN intento
+ * —el segundo no encontraba el enlace y la fila moria FALLIDA por "token invalido" con el token
+ * vivo—. El aviso de que ya no hace falta ({@code SecureLinkResolver#consumeLink}) sale tras un
+ * envio exitoso y tras un fallo permanente; nunca tras uno transitorio, porque esa fila vuelve
+ * a la cola y va a necesitarlo.
+ *
+ * <p><b>Que pasa entonces en la ventana honesta de arriba, y por que se eligio asi.</b> Si el
+ * proceso muere entre "el SMTP acepto" y "la fila quedo ENVIADA", el lease vencido reencola la
+ * fila y ahora el enlace sigue disponible: sale un <b>segundo correo valido</b> a la misma
+ * persona. Antes de este cambio, ese mismo caso terminaba en FALLIDA con el correo ya
+ * entregado. <b>Se prefiere el duplicado</b>, por tres razones:
+ * <ol>
+ *   <li>el duplicado no duplica ningun efecto de negocio (RN-M26-003) y el enlace es de un solo
+ *       uso: la persona activa con el que abra primero y el otro queda muerto;</li>
+ *   <li>una fila FALLIDA con el correo entregado <b>miente</b> a quien mira la cola: invita a
+ *       reintentar a mano o a decirle a la persona que pida otro correo que no necesita, y
+ *       falsea toda metrica de entrega;</li>
+ *   <li>el modo de falla se elige por su peor caso. El del duplicado es un correo de mas,
+ *       molesto y explicable. El de la fila mentirosa es una persona que no puede entrar
+ *       mientras el sistema informa que el envio fallo.</li>
+ * </ol>
  */
 @Service
 public class OutboxDispatcher {
@@ -74,12 +97,14 @@ public class OutboxDispatcher {
 				// ayuda, la persona pide uno nuevo.
 				dispatchService.registrarFalloPermanente(pendiente.id(),
 						"El token referenciado ya no es valido: fue consumido, revocado o vencio");
+				soltarEnlace(pendiente);
 				return;
 			}
 			EmailMessage mensaje = EmailTemplates.render(
 					pendiente.tipo(), pendiente.destinatario(), pendiente.payload(), enlace);
 			emailSender.send(mensaje);
 			dispatchService.registrarExito(pendiente.id());
+			soltarEnlace(pendiente);
 		} catch (EmailDeliveryException e) {
 			registrarFallo(pendiente, ErrorSanitizer.sanitize(e), e.esTransitorio());
 		} catch (IllegalArgumentException | IllegalStateException e) {
@@ -106,9 +131,32 @@ public class OutboxDispatcher {
 		log.debug("Fallo la entrega de la notificacion id={} (transitorio={})",
 				pendiente.id(), transitorio);
 		if (transitorio) {
+			// El enlace NO se suelta: esta fila vuelve a la cola y el proximo intento lo necesita.
 			dispatchService.registrarFalloTransitorio(pendiente.id(), motivo);
 		} else {
 			dispatchService.registrarFalloPermanente(pendiente.id(), motivo);
+			soltarEnlace(pendiente);
+		}
+	}
+
+	/**
+	 * Avisa al dueño del token que el enlace ya no hace falta.
+	 *
+	 * <p>Se llama <b>despues</b> de registrar el resultado y nunca tras un fallo transitorio: la
+	 * fila que vuelve a la cola necesita su enlace en el proximo intento. Cualquier excepcion se
+	 * traga a proposito: el resultado ya esta escrito en la base y no puede desandarse por un
+	 * problema al liberar memoria. Si se propagara, el catch de la entrega degradaria un envio
+	 * exitoso a "fallo transitorio" y el mismo correo saldria de nuevo.
+	 */
+	private void soltarEnlace(PendingDelivery pendiente) {
+		if (!pendiente.tipo().requiereEnlaceSeguro()) {
+			return;
+		}
+		try {
+			linkResolver.consumeLink(pendiente.tipo(), pendiente.referenciaTokenId());
+		} catch (RuntimeException e) {
+			log.warn("No se pudo soltar el enlace de la notificacion id={}: {}",
+					pendiente.id(), ErrorSanitizer.sanitize(e));
 		}
 	}
 }

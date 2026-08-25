@@ -507,7 +507,7 @@ class PermissionEvaluatorServiceTest {
 
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 					.containsExactlyInAnyOrder(
-							"tenant:read", "consultorio:manage",
+							"tenant:read", "consultorio:manage", "espacio:read",
 							"colaborador:manage", "colaborador:read", "auditoria:read");
 		}
 
@@ -566,7 +566,7 @@ class PermissionEvaluatorServiceTest {
 		}
 
 		@Test
-		@DisplayName("Un PROFESIONAL solo ve la lectura de colaboradores")
+		@DisplayName("Un PROFESIONAL ve las dos lecturas de su sede y nada mas")
 		void los_de_un_profesional() {
 			sinRolDePlataforma();
 			memberships(Fixtures.membershipDeSede(CONSULTORIO_ID, RoleCode.PROFESIONAL));
@@ -574,7 +574,7 @@ class PermissionEvaluatorServiceTest {
 					.willReturn(List.of());
 
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
-					.containsExactly("colaborador:read");
+					.containsExactlyInAnyOrder("colaborador:read", "espacio:read");
 		}
 	}
 

@@ -4,6 +4,7 @@ import com.akine.notification.domain.OutboxWorkerSettings;
 import com.akine.notification.domain.port.EmailSender;
 import com.akine.notification.domain.port.JitterSource;
 import com.akine.notification.domain.port.NotificationClock;
+import com.akine.notification.spi.NotificationType;
 import com.akine.notification.spi.SecureLinkResolver;
 import com.akine.platform.spi.config.PerfilesDeEjecucion;
 import org.slf4j.Logger;
@@ -208,6 +209,18 @@ public class NotificationConfig {
 	public SecureLinkResolver secureLinkResolverNoDisponible() {
 		log.warn("Ningun modulo registro un SecureLinkResolver: las notificaciones con enlace "
 				+ "seguro quedaran FALLIDAS. Lo implementa el modulo dueño de los tokens.");
-		return (tipo, referenciaTokenId) -> Optional.empty();
+		return new SecureLinkResolver() {
+			@Override
+			public Optional<String> resolveLink(
+					NotificationType tipo, String referenciaTokenId) {
+				return Optional.empty();
+			}
+
+			@Override
+			public void consumeLink(
+					NotificationType tipo, String referenciaTokenId) {
+				// No hay nada que soltar: este resolutor nunca entrego un enlace.
+			}
+		};
 	}
 }

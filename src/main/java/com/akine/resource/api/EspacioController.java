@@ -73,15 +73,16 @@ import java.util.List;
  * <ul>
  *   <li><b>Mutar</b> exige {@code consultorio:manage} sobre esa sede: pasan {@code ORG_ADMIN} y
  *       el {@code CONSULTORIO_ADMIN} de esa sede.</li>
- *   <li><b>Leer</b> exige ser miembro vigente de la organizacion, con cualquier rol. Es lo que
- *       la etapa pide —"profesionales/administrativos solo consulta"— y es la enmienda 9.1 de
- *       la matriz aplicada al mismo caso que el listado de sedes: sin esa lectura, un
- *       profesional no puede ver en que box atiende.</li>
+ *   <li><b>Leer</b> exige {@code espacio:read} sobre esa sede, sobre una pertenencia ya
+ *       comprobada: pasan todos los roles de la sede salvo {@code PACIENTE}, incluidos
+ *       {@code PROFESIONAL} y {@code ADMINISTRATIVO}, que es lo que la etapa pide —sin esa
+ *       lectura un profesional no puede ver en que box atiende—.</li>
  * </ul>
  *
- * <p><b>El catalogo de la matriz no tiene un codigo de lectura de espacios.</b>
- * {@code espacio:read} queda PROPUESTO en la seccion 9.8 de la matriz y sin implementar: el
- * catalogo es vinculante y agregarle una fila es una decision de la matriz, no de una etapa.
+ * <p>{@code espacio:read} estuvo PROPUESTO en la seccion 10.1 de la matriz mientras 02.02
+ * autorizaba estas lecturas por pertenencia. <b>Se aprobo el 25/08/2026</b> y hoy es una fila
+ * del catalogo (secciones 5 y 6) como cualquier otra. Los codigos de rechazo no cambiaron:
+ * 404 fuera de alcance, 403 sin contexto o sin el permiso.
  *
  * <h2>Lo que esta etapa deliberadamente NO trae</h2>
  *

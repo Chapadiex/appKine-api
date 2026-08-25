@@ -13,8 +13,9 @@ package com.akine.resource.domain;
  *
  * <p><b>Ningun codigo de aca es nuevo.</b> Los dos salen de la seccion 5 de
  * {@code docs/seguridad/matriz-permisos-minima.md}, que es vinculante: una etapa no le agrega
- * filas al catalogo. La propuesta de {@code espacio:read} —que M04 justificaria y que hoy no
- * existe— esta registrada en la seccion 9.8 de ese documento y <b>no se implementa aca</b>.
+ * filas al catalogo. {@code espacio:read} estuvo PROPUESTO en la seccion 10.1 mientras 02.02 lo
+ * autorizaba por pertenencia; se aprobo el <b>25/08/2026</b> y desde entonces esta en la
+ * seccion 5 y en la 6 como cualquier otro codigo del catalogo.
  */
 public final class PermissionCodes {
 
@@ -29,15 +30,19 @@ public final class PermissionCodes {
 	public static final String CONSULTORIO_MANAGE = "consultorio:manage";
 
 	/**
-	 * Lectura de datos del tenant. <b>Solo se usa para el {@code PLATFORM_ADMIN}</b>, que no
-	 * tiene membership en ningun tenant (matriz seccion 1.3) y por lo tanto no puede pasar por
-	 * la comprobacion de pertenencia que autoriza a todos los demas.
+	 * Consultar el catalogo fisico y la disponibilidad de una sede. Es lo que exigen las tres
+	 * lecturas —detalle, listado y disponibilidad—, y por eso un {@code PROFESIONAL} y un
+	 * {@code ADMINISTRATIVO} pueden consultarlas y un {@code PACIENTE} no.
 	 *
-	 * <p>Su alcance es {@code SOPORTE} desde la enmienda 9.7 de la matriz: sin
-	 * {@code support_access} vigente el resultado es 403, y con el queda
+	 * <p>Se evalua con la sede como alcance, igual que {@link #CONSULTORIO_MANAGE}: la formula
+	 * del evaluador le da al {@code ORG_ADMIN} todas las sedes de su organizacion y al
+	 * {@code CONSULTORIO_ADMIN} la suya, sin ningun caso especial escrito.
+	 *
+	 * <p>Para el {@code PLATFORM_ADMIN} su alcance es {@code SOPORTE} (matriz seccion 6, con el
+	 * criterio de la 9.7): sin {@code support_access} vigente da 403, y con el deja
 	 * {@code SUPPORT_ACCESS_USED} en la auditoria del tenant leido.
 	 */
-	public static final String TENANT_READ = "tenant:read";
+	public static final String ESPACIO_READ = "espacio:read";
 
 	private PermissionCodes() {
 		// Catalogo de constantes.
