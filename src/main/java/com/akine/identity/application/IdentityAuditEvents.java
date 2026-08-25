@@ -127,8 +127,34 @@ final class IdentityAuditEvents {
 	 */
 	static final String MEMBERSHIP_ALTA_RECHAZADA = "MEMBERSHIP_ALTA_RECHAZADA";
 
+	// --- Ciclo de vida de la invitacion a colaborar (M05, AKINE-02.03) ---------------------
+
+	/** Un administrador emitio una invitacion. Es el acto donde se autoriza el vinculo futuro. */
+	static final String INVITACION_EMITIDA = "INVITACION_EMITIDA";
+
+	/** Se roto el token de una invitacion pendiente. El anterior dejo de servir en ese acto. */
+	static final String INVITACION_REENVIADA = "INVITACION_REENVIADA";
+
+	/** El administrador la retiro antes de que la respondieran. Lleva motivo obligatorio. */
+	static final String INVITACION_CANCELADA = "INVITACION_CANCELADA";
+
+	/**
+	 * El invitado acepto y quedo vinculado.
+	 *
+	 * <p>Va acompanado del {@code MEMBERSHIP_CREATED} que escribe {@code organization} en la
+	 * misma transaccion: son dos hechos y no uno. Este dice que una persona respondio que si;
+	 * aquel, que existe un vinculo. La revocacion posterior del vinculo no borra este.
+	 */
+	static final String INVITACION_ACEPTADA = "INVITACION_ACEPTADA";
+
+	/** El invitado dijo que no. El motivo es opcional: no le debe una explicacion a nadie. */
+	static final String INVITACION_RECHAZADA = "INVITACION_RECHAZADA";
+
 	/** Entidad sobre la que recaen todos los eventos del modulo. */
 	static final String ENTITY_CUENTA = "Cuenta";
+
+	/** Entidad de los eventos del ciclo de vida de la invitacion. */
+	static final String ENTITY_INVITACION = "ColaboradorInvitacion";
 
 	/** Clave con la que Micrometer Tracing publica el trace id del request en el MDC. */
 	private static final String MDC_TRACE_ID = "traceId";
@@ -211,6 +237,49 @@ final class IdentityAuditEvents {
 				eventType,
 				ENTITY_CUENTA,
 				cuentaId,
+				estadoAnterior,
+				estadoNuevo,
+				details,
+				motivo,
+				correlationId(),
+				ahora));
+	}
+
+	/**
+	 * Registra un hecho del ciclo de vida de una invitacion.
+	 *
+	 * <p>Metodo propio y no {@link #registrar} por dos diferencias: la entidad es la invitacion
+	 * y no la cuenta —al emitirla puede no existir ninguna cuenta a la que apuntar— y
+	 * {@code organizationId} <b>siempre</b> viaja, porque a diferencia del resto de los eventos
+	 * de identidad estos si ocurren adentro de un tenant: es su auditoria la que tiene que
+	 * poder responder quien invito a quien.
+	 *
+	 * <p>{@code consultorioId} lleva el alcance del vinculo propuesto, o {@code null} para
+	 * alcance organizacion. Es el mismo dato que ya guarda la fila, repetido aca porque la
+	 * consulta de auditoria por sede no puede hacer join contra la invitacion.
+	 *
+	 * @param details contexto del hecho. <b>Nunca el token</b>, ni entero ni truncado
+	 */
+	static void registrarInvitacion(
+			AuditTrail auditTrail,
+			String eventType,
+			long organizationId,
+			Long consultorioId,
+			Long invitacionId,
+			Long actorAccountId,
+			String estadoAnterior,
+			String estadoNuevo,
+			Map<String, String> details,
+			String motivo,
+			Instant ahora) {
+
+		auditTrail.record(new AuditEntry(
+				organizationId,
+				consultorioId,
+				actorAccountId,
+				eventType,
+				ENTITY_INVITACION,
+				invitacionId,
 				estadoAnterior,
 				estadoNuevo,
 				details,

@@ -108,6 +108,7 @@ public class OutboxNotificationBridge implements NotificationOutboxPort {
 			case ACTIVACION_CUENTA -> NotificationType.ACTIVACION_CUENTA;
 			case CUENTA_YA_REGISTRADA -> NotificationType.CUENTA_YA_REGISTRADA;
 			case RESET_PASSWORD -> NotificationType.RECUPERACION_PASSWORD;
+			case INVITACION_COLABORADOR -> NotificationType.INVITACION_COLABORADOR;
 		};
 	}
 

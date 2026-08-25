@@ -3,11 +3,16 @@ package com.akine.identity.api;
 import com.akine.platform.spi.problem.ProblemType;
 import com.akine.identity.application.EmailSinCuentaException;
 import com.akine.identity.domain.exception.AccountNotFoundException;
+import com.akine.identity.domain.exception.ColaboradorYaVinculadoException;
 import com.akine.identity.domain.exception.ContextNotAvailableException;
 import com.akine.identity.domain.exception.InvalidAccountTransitionException;
 import com.akine.identity.domain.exception.InvalidCredentialsException;
 import com.akine.identity.domain.exception.InvalidRefreshTokenException;
 import com.akine.identity.domain.exception.InvalidVerificationTokenException;
+import com.akine.identity.domain.exception.InvitacionNoPendienteException;
+import com.akine.identity.domain.exception.InvitacionNotAccessibleException;
+import com.akine.identity.domain.exception.InvitacionPendienteDuplicadaException;
+import com.akine.identity.domain.exception.InvitacionVencidaException;
 import com.akine.identity.domain.exception.PasswordPolicyViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +76,11 @@ public class IdentityProblemHandler {
 	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
+	private static final URI INVITACION_PENDIENTE_DUPLICADA =
+			ProblemType.INVITACION_PENDIENTE_DUPLICADA.uri();
+	private static final URI INVITACION_VENCIDA = ProblemType.INVITACION_VENCIDA.uri();
+	private static final URI INVITACION_YA_RESUELTA = ProblemType.INVITACION_YA_RESUELTA.uri();
+	private static final URI COLABORADOR_YA_VINCULADO = ProblemType.COLABORADOR_YA_VINCULADO.uri();
 
 	/**
 	 * Credenciales rechazadas (RF-M02-002, ADR-0018).
@@ -234,6 +244,94 @@ public class IdentityProblemHandler {
 		problem.setProperty("fromStatus", exception.getDesde().name());
 		problem.setProperty("toStatus", exception.getHacia().name());
 		return problem;
+	}
+
+	/**
+	 * Ya hay una invitacion pendiente para ese email en ese alcance.
+	 *
+	 * <p>409 y no 200 con la invitacion existente: el administrador pidio emitir una nueva y no
+	 * la emitio nadie. Lo que quiere en ese caso es <b>reenviar</b>, que rota el token de la que
+	 * ya esta, y el mensaje lo dice para que no tenga que adivinarlo.
+	 */
+	@ExceptionHandler(InvitacionPendienteDuplicadaException.class)
+	public ProblemDetail handleInvitacionDuplicada(InvitacionPendienteDuplicadaException exception) {
+		log.debug("Invitacion duplicada sobre un email ya invitado");
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT,
+				"Ya hay una invitacion pendiente para esa persona en ese alcance. Si el enlace "
+						+ "vencio o no le llego, reenviala en vez de emitir una nueva.");
+		problem.setTitle("Invitacion pendiente duplicada");
+		problem.setType(INVITACION_PENDIENTE_DUPLICADA);
+		return problem;
+	}
+
+	/**
+	 * El enlace de la invitacion existe pero vencio.
+	 *
+	 * <p>409 y no 404, contra la regla uniforme del resto del modulo, y es deliberado: quien
+	 * presenta el token ya demostro que llega al buzon del invitado, asi que no hay nada que
+	 * enumerar. Confundirlo con "no existe" mandaria al invitado a reportar que el sistema esta
+	 * roto cuando lo unico que necesita es pedir un reenvio.
+	 */
+	@ExceptionHandler(InvitacionVencidaException.class)
+	public ProblemDetail handleInvitacionVencida(InvitacionVencidaException exception) {
+		log.debug("Invitacion vencida presentada");
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT,
+				"Esta invitacion vencio. Pedile a quien te invito que te la reenvie: el enlace "
+						+ "nuevo llega al mismo correo.");
+		problem.setTitle("Invitacion vencida");
+		problem.setType(INVITACION_VENCIDA);
+		return problem;
+	}
+
+	/**
+	 * Se intento resolver una invitacion que ya no esta pendiente.
+	 *
+	 * <p>Es el caso de dos personas operando la misma invitacion a la vez, o del invitado que
+	 * abre el enlace dos veces. Responder 200 en silencio le diria a la segunda que su accion
+	 * tuvo efecto cuando lo que quedo registrado es la primera.
+	 */
+	@ExceptionHandler(InvitacionNoPendienteException.class)
+	public ProblemDetail handleInvitacionResuelta(InvitacionNoPendienteException exception) {
+		log.debug("Invitacion ya resuelta");
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT,
+				"Esta invitacion ya fue resuelta. Recarga para ver como quedo.");
+		problem.setTitle("Invitacion ya resuelta");
+		problem.setType(INVITACION_YA_RESUELTA);
+		problem.setProperty("estado", exception.getEstado().name());
+		return problem;
+	}
+
+	/**
+	 * La persona ya tiene vinculo con la organizacion.
+	 *
+	 * <p>No revela nada que quien invita no pueda ver: sus propios colaboradores ya los lista.
+	 * Del lado del invitado tampoco, porque para llegar aca tuvo que presentar el token.
+	 */
+	@ExceptionHandler(ColaboradorYaVinculadoException.class)
+	public ProblemDetail handleYaVinculado(ColaboradorYaVinculadoException exception) {
+		log.debug("Invitacion sobre una persona ya vinculada");
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT,
+				"Esa persona ya trabaja en esta organizacion. Si lo que queres es cambiarle el rol "
+						+ "o la sede, hacelo desde el listado de colaboradores.");
+		problem.setTitle("Colaborador ya vinculado");
+		problem.setType(COLABORADOR_YA_VINCULADO);
+		return problem;
+	}
+
+	/**
+	 * La invitacion no existe, es de otro tenant, o el token no resuelve.
+	 *
+	 * <p>Los tres responden igual (ADR-0018): distinguirlos permitiria enumerar invitaciones
+	 * ajenas probando ids y, en el camino publico, averiguar si una direccion fue invitada.
+	 */
+	@ExceptionHandler(InvitacionNotAccessibleException.class)
+	public ProblemDetail handleInvitacionNoAccesible(InvitacionNotAccessibleException exception) {
+		log.debug("Invitacion no alcanzable");
+		return noEncontrado();
 	}
 
 	/** Cuerpo unico de 404: mismo texto para no existe, no accesible y de otro tenant. */

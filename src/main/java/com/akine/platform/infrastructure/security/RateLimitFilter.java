@@ -119,7 +119,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
 			"/api/v1/auth/login",
 			"/api/v1/auth/refresh",
 			"/api/v1/auth/password-reset",
-			"/api/v1/auth/activation/resend");
+			"/api/v1/auth/activation/resend",
+			// Invitacion a colaborar (M05). Las tres son publicas y las tres reciben un token:
+			// sin limite, probar tokens al azar contra `accept` es gratis. Que el espacio de
+			// busqueda sea enorme no reemplaza al limite —lo hace caro, no imposible— y ademas
+			// `preview` responde distinto para un token vencido, que es una senal aprovechable.
+			"/api/v1/auth/invitations");
 
 	private final FixedWindowRateLimiter limiter;
 	private final FixedWindowRateLimiter limiterDeRegistro;

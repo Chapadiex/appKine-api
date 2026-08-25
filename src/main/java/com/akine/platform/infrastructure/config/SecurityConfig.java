@@ -118,7 +118,13 @@ public class SecurityConfig {
 			"/api/v1/auth/activation/resend",
 			// Recuperacion de contrasena.
 			"/api/v1/auth/password-reset",
-			"/api/v1/auth/password-reset/confirm"
+			"/api/v1/auth/password-reset/confirm",
+			// Invitacion a colaborar (M05). Las tres son publicas porque quien acepta o rechaza
+			// no tiene sesion —y muchas veces ni cuenta—: lo que lo autoriza es el token del
+			// enlace, que prueba que llega al buzon al que se emitio la invitacion.
+			"/api/v1/auth/invitations/preview",
+			"/api/v1/auth/invitations/accept",
+			"/api/v1/auth/invitations/decline"
 	};
 
 	/**

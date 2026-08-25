@@ -19,10 +19,12 @@ import com.akine.organization.domain.port.ConsultorioRepositoryPort;
 import com.akine.organization.domain.port.MembershipGrantRepositoryPort;
 import com.akine.organization.domain.port.MembershipRepositoryPort;
 import com.akine.organization.domain.port.SubscriptionRepositoryPort;
+import com.akine.organization.spi.ColaboradorDesvinculacionProbe;
 import com.akine.organization.spi.DirectMembershipCommand;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.PlanGate;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.identity.AccountIdentityDirectory;
@@ -34,6 +36,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -102,6 +105,22 @@ class MembershipServiceTest {
 
 	@Mock
 	private AccountIdentityDirectory accountDirectory;
+
+	@Mock
+	private PlanGate planGate;
+
+	@Mock
+	private TenantUsageCounter usageCounter;
+
+	/**
+	 * Sin ninguna sonda enchufada, que es el estado real hoy: M12 no existe.
+	 *
+	 * <p>{@code @Spy} sobre una lista vacia y no {@code @Mock}: lo que el servicio hace con
+	 * ella es recorrerla, y un mock de {@code List} devolveria un iterador vacio igual pero sin
+	 * decir nada sobre el caso real. Ver {@code ColaboradorDesvinculacionProbe}.
+	 */
+	@Spy
+	private List<ColaboradorDesvinculacionProbe> desvinculacionProbes = List.of();
 
 	@InjectMocks
 	private MembershipService service;

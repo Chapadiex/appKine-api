@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.9.0
+  version: 0.10.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -23,8 +23,14 @@ tags:
   name: Sesion
 - description: "Especialidades, practicas, nomencladores y sus vigencias (M06)"
   name: Catalogo clinico
+- description: "Consulta, aceptacion y rechazo de una invitacion, con el token como\
+    \ unica autoridad (M05)"
+  name: Invitaciones recibidas
 - description: Contextos de trabajo habilitados para la cuenta autenticada
   name: Mi cuenta
+- description: "Emision, listado, reenvio y cancelacion de invitaciones a colaborar\
+    \ (M05)"
+  name: Invitaciones
 - description: "Alta, edicion y baja de las sedes de una organizacion"
   name: Consultorios
 - description: "Administracion de la plataforma: acceso de soporte y roles globales"
@@ -338,6 +344,144 @@ paths:
       summary: Elegir el contexto de trabajo y renovar el access token
       tags:
       - Sesion
+  /api/v1/auth/invitations/accept:
+    post:
+      description: |-
+        Publico: la autoridad es el token.
+
+        Si el invitado no tiene cuenta, la crea EN ESTE MISMO ACTO y ya ACTIVA, sin un segundo correo de activacion: el token que acaba de presentar ya probo que llega a esa direccion, y verificarlo dos veces solo agrega el paso donde la mitad de la gente abandona. Para eso hacen falta nombre y contrasena, que pasa por la misma politica que el registro self-service.
+
+        Si ya tiene cuenta, nombre y contrasena se IGNORAN. Reescribirlos seria una via para tomarle la cuenta a otro con solo invitarlo.
+
+        NO DEVUELVE SESION. Quien acepta con una cuenta que ya tenia probo que llega al buzon, no que la cuenta sea suya: una casilla abierta en una maquina compartida alcanza para lo primero y no para lo segundo. La pantalla siguiente es el login.
+
+        Aceptar consume cupo del plan. Si el tenant llego al tope, la respuesta es 409 y la invitacion queda pendiente.
+      operationId: acceptInvitacion
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInvitacionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedInvitacionResponse"
+          description: Vinculo creado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el token, o faltan nombre y contrasena cuando hay que\
+            \ crear la cuenta, o la contrasena no cumple la politica"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El token no resuelve o la invitacion ya fue resuelta
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El enlace vencio (invitacion-vencida), la persona ya fue vinculada\
+            \ por otro camino (colaborador-ya-vinculado), o el tenant llego al tope\
+            \ de miembros de su plan"
+      summary: Aceptar una invitacion y quedar vinculado
+      tags:
+      - Invitaciones recibidas
+  /api/v1/auth/invitations/decline:
+    post:
+      description: |-
+        Publico: la autoridad es el token.
+
+        Consume la invitacion —queda RECHAZADA y el enlace deja de servir— y NO CREA NINGUNA CUENTA: quien no quiere entrar no tiene por que quedar registrado en AKINE.
+
+        El motivo es opcional. Rechazar una oferta de trabajo no exige explicarse. La cancelacion del administrador, en cambio, si exige motivo.
+
+        El rechazo no bloquea nada: se puede volver a invitar a esa persona mas adelante.
+      operationId: declineInvitacion
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeclineInvitacionRequest"
+        required: true
+      responses:
+        "204":
+          description: Invitacion rechazada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el token
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El token no resuelve o la invitacion ya fue resuelta
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El enlace vencio (invitacion-vencida)
+      summary: Rechazar una invitacion recibida
+      tags:
+      - Invitaciones recibidas
+  /api/v1/auth/invitations/preview:
+    post:
+      description: |-
+        Publico: la autoridad es el token, no una sesion.
+
+        NO CONSUME LA INVITACION. Un enlace que se gasta al mirarlo deja al invitado sin poder aceptar apenas recargue la pantalla, o apenas su cliente de correo lo pre-visite para armar una vista previa.
+
+        requiereRegistro le dice a la pantalla si pedir nombre y contrasena. Es lo unico que este endpoint revela sobre la existencia de una cuenta, y solo se lo revela a quien ya probo que llega a ese buzon.
+
+        La respuesta no trae ningun id: quien presenta el token no pertenece a la organizacion, y cada id que se le entregue es una pieza mas para adivinar el resto.
+      operationId: previewInvitacion
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitacionTokenRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitacionPreviewResponse"
+          description: Datos de la invitacion
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el token
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El token no resuelve, o la invitacion ya fue resuelta. Los\
+            \ casos responden igual"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El enlace vencio (invitacion-vencida). Se distingue del 404\
+            \ a proposito: la salida es pedir un reenvio"
+      summary: "Ver que dice una invitacion, sin consumirla"
+      tags:
+      - Invitaciones recibidas
   /api/v1/auth/login:
     post:
       description: |-
@@ -1720,6 +1864,222 @@ paths:
       summary: Hechos registrados en la auditoria de la organizacion
       tags:
       - Auditoria
+  /api/v1/organizations/{orgId}/colaborador-invitaciones:
+    get:
+      description: |-
+        Requiere colaborador:manage, y no colaborador:read: lo que se ve aca son direcciones de correo de personas que todavia no aceptaron nada. No es la lista de colaboradores, es la lista de a quien se le escribio.
+
+        Sin paginar a proposito: una organizacion tiene decenas de invitaciones en toda su vida, no miles, y el filtro por estado es lo que hace util al listado.
+
+        Una invitacion vencida figura PENDIENTE con vencida=true. Expirar no es una decision de nadie y por eso no se materializa como estado: se deriva del reloj en cada lectura.
+      operationId: listColaboradorInvitaciones
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Filtra por estado. Ausente devuelve todas
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDIENTE
+          - ACEPTADA
+          - RECHAZADA
+          - CANCELADA
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InvitacionResponse"
+          description: "Invitaciones de la organizacion, de la mas nueva a la mas\
+            \ vieja"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo o sin colaborador:manage"
+      summary: Listar las invitaciones de la organizacion
+      tags:
+      - Invitaciones
+    post:
+      description: |-
+        Requiere colaborador:manage sobre el alcance pedido. La organizacion sale del contexto de trabajo activo.
+
+        A diferencia del alta directa, la persona invitada PUEDE NO TENER CUENTA: la crea al aceptar, en el mismo acto, sin un segundo correo de activacion. El vinculo nace cuando acepta, no ahora.
+
+        Emitir no consume cupo del plan; aceptar si. La contracara declarada es que cinco invitaciones pendientes con un solo lugar libre significan que cuatro reciben 409 al aceptar: entra el que llega primero.
+
+        Solo puede haber UNA invitacion pendiente por persona y alcance. Si el enlace vencio o no llego, el camino es reenviar, no emitir otra.
+      operationId: createColaboradorInvitacion
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitacionRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitacionResponse"
+          description: Invitacion emitida y correo encolado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el email o el rol, o el rol no es un valor legal"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto de trabajo activo (missing-tenant-context),\
+            \ o sin colaborador:manage sobre el alcance pedido. Nunca 401"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede pedida no es de la organizacion del contexto
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ya hay una invitacion pendiente igual (invitacion-pendiente-duplicada),\
+            \ o la persona ya trabaja en la organizacion (colaborador-ya-vinculado)"
+      summary: Invitar a alguien a colaborar
+      tags:
+      - Invitaciones
+  /api/v1/organizations/{orgId}/colaborador-invitaciones/{invitacionId}/cancel:
+    post:
+      description: |-
+        El motivo es obligatorio: cancelar es una decision del administrador sobre alguien a quien ya le escribio, y tiene que responder por que seis meses despues. El rechazo del invitado, en cambio, no exige motivo.
+
+        La cancelacion es terminal y libera el email: se puede volver a invitar a esa persona mas adelante.
+      operationId: cancelColaboradorInvitacion
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: invitacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelInvitacionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitacionResponse"
+          description: Invitacion cancelada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo o sin colaborador:manage"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La invitacion no existe o es de otro tenant
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La invitacion ya fue resuelta (invitacion-ya-resuelta)
+      summary: Retirar una invitacion pendiente
+      tags:
+      - Invitaciones
+  /api/v1/organizations/{orgId}/colaborador-invitaciones/{invitacionId}/resend:
+    post:
+      description: |-
+        Emite un token nuevo y vuelve a mandar el correo. EL TOKEN ANTERIOR DEJA DE SERVIR en el mismo acto: dos enlaces validos para la misma invitacion dejan al invitado eligiendo cual usar.
+
+        No crea una invitacion nueva. Conserva el id, la autoria y la fecha original, que es lo que hace que el listado siga diciendo desde cuando se espera respuesta.
+
+        La respuesta NO trae el token: va al correo y a ningun lado mas.
+      operationId: resendColaboradorInvitacion
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: invitacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitacionResponse"
+          description: Token rotado y correo encolado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo o sin colaborador:manage"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La invitacion no existe o es de otro tenant. Los dos responden
+            igual
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La invitacion ya fue aceptada, rechazada o cancelada (invitacion-ya-resuelta)"
+      summary: Reenviar una invitacion pendiente
+      tags:
+      - Invitaciones
   /api/v1/organizations/{orgId}/consultorios:
     get:
       description: "Listado paginado de las sedes del tenant. Requiere ser miembro\
@@ -2684,6 +3044,54 @@ paths:
       summary: Cambiar el rol y/o el alcance de un colaborador
       tags:
       - Colaboradores
+  /api/v1/organizations/{orgId}/memberships/{membershipId}/desvinculacion-impacto:
+    get:
+      description: |-
+        Requiere colaborador:read, y no colaborador:manage: sirve para DECIDIR, y quien decide suele mirar antes de tener el permiso de ejecutar.
+
+        ESTO NO BLOQUEA NADA. RN-M05-004 pide que los turnos futuros queden visibles para resolucion, no que impidan la desvinculacion: cuando alguien renuncia, renuncio. Es la diferencia con la baja de una sede, donde las operaciones vigentes si la impiden.
+
+        Hoy responde siempre count=0: M12 (agenda) no existe todavia y no hay ninguna sonda enchufada. La operacion se publica igual para que la pantalla de desvinculacion se escriba una sola vez y el numero aparezca el dia que la agenda exista, sin cambiar el contrato.
+      operationId: getDesvinculacionImpacto
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del vinculo
+        example: 42
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DesvinculacionImpactoResponse"
+          description: Trabajo pendiente. count=0 mientras no exista la agenda
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo, o sin colaborador:read"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El vinculo no existe o es de otra organizacion
+      summary: Que quedaria pendiente si se desvincula a este colaborador
+      tags:
+      - Colaboradores
   /api/v1/organizations/{orgId}/memberships/{membershipId}/grants:
     get:
       description: |-
@@ -3548,6 +3956,61 @@ paths:
       - Platform
 components:
   schemas:
+    AcceptInvitacionRequest:
+      type: object
+      description: "Aceptacion de una invitacion, con los datos de alta si hacen falta"
+      properties:
+        apellido:
+          type: string
+          description: Apellido. Opcional
+          example: Gomez
+          maxLength: 120
+          minLength: 0
+        nombre:
+          type: string
+          description: Nombre. Obligatorio solo si el invitado no tiene cuenta todavia
+          example: Ana
+          maxLength: 120
+          minLength: 0
+        password:
+          type: string
+          format: password
+          description: Contrasena elegida. Obligatoria solo si el invitado no tiene
+            cuenta todavia. Misma politica que el registro
+          maxLength: 128
+          minLength: 0
+        token:
+          type: string
+          description: Token recibido por correo
+          maxLength: 512
+          minLength: 0
+      required:
+      - token
+    AcceptedInvitacionResponse:
+      type: object
+      description: Vinculo creado al aceptar la invitacion
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: "Sede del vinculo, o null si es de toda la organizacion"
+        cuentaCreada:
+          type: boolean
+          description: Si la cuenta se creo en este mismo acto
+        cuentaId:
+          type: integer
+          format: int64
+          description: Cuenta que quedo vinculada
+          example: 42
+        membershipId:
+          type: integer
+          format: int64
+          description: Vinculo creado
+          example: 17
+        organizationId:
+          type: integer
+          format: int64
+          example: 1
     AcceptedResponse:
       type: object
       description: "Acuse uniforme: no revela si la cuenta existe"
@@ -3808,6 +4271,18 @@ components:
           type: string
           description: Nombre de la organizacion
           example: Centro Kinesico Belgrano
+    CancelInvitacionRequest:
+      type: object
+      description: Motivo con el que se retira una invitacion pendiente
+      properties:
+        reason:
+          type: string
+          description: Motivo declarado de la cancelacion
+          example: Se equivoco de direccion de correo
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
     CatalogoConceptoPageResponse:
       type: object
       description: "Pagina de conceptos del catalogo, segun los filtros pedidos"
@@ -4353,6 +4828,31 @@ components:
           example: 2027-01-01T00:00:00Z
       required:
       - name
+    CreateInvitacionRequest:
+      type: object
+      description: Datos de la invitacion a emitir
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede del vinculo propuesto. Ausente o null para alcance organizacion
+          example: 3
+        email:
+          type: string
+          format: email
+          description: Email de la persona a invitar. Puede no tener cuenta todavia
+          example: kine@centro.test
+          maxLength: 320
+          minLength: 0
+        roleCode:
+          type: string
+          description: Rol con el que quedaria vinculada al aceptar
+          example: PROFESIONAL
+          maxLength: 64
+          minLength: 0
+      required:
+      - email
+      - roleCode
     CreateMembershipRequest:
       type: object
       description: Datos del vinculo a crear entre una cuenta existente y la organizacion
@@ -4516,6 +5016,40 @@ components:
           minLength: 0
       required:
       - reason
+    DeclineInvitacionRequest:
+      type: object
+      description: Rechazo de una invitacion recibida
+      properties:
+        reason:
+          type: string
+          description: Motivo del rechazo. Opcional
+          example: Ya no estoy disponible
+          maxLength: 280
+          minLength: 0
+        token:
+          type: string
+          description: Token recibido por correo
+          maxLength: 512
+          minLength: 0
+      required:
+      - token
+    DesvinculacionImpactoResponse:
+      type: object
+      description: Trabajo pendiente que quedaria sin dueño al desvincular
+      properties:
+        count:
+          type: integer
+          format: int64
+          description: Cuantos son. Cero si no hay nada
+          example: 0
+        desde:
+          type: string
+          format: date-time
+          description: Instante del primero
+        tipo:
+          type: string
+          description: "Que queda pendiente, en plural"
+          example: turnos
     EffectivePermissionsResponse:
       type: object
       description: Permisos efectivos de la cuenta en su contexto de trabajo activo
@@ -4727,6 +5261,100 @@ components:
           minLength: 0
       required:
       - reason
+    InvitacionPreviewResponse:
+      type: object
+      description: Lo que el invitado necesita saber para decidir
+      properties:
+        consultorioNombre:
+          type: string
+          description: "Sede del vinculo, o null si es de toda la organizacion"
+        email:
+          type: string
+          description: Direccion a la que se emitio
+          example: kine@centro.test
+        expiraEn:
+          type: string
+          format: date-time
+          description: Hasta cuando sirve el enlace
+        organizacionNombre:
+          type: string
+          description: Organizacion que invita
+          example: Centro Belgrano
+        requiereRegistro:
+          type: boolean
+          description: Si al aceptar hay que crear la cuenta
+        roleCode:
+          type: string
+          example: PROFESIONAL
+    InvitacionResponse:
+      type: object
+      description: Invitacion emitida por la organizacion
+      properties:
+        aceptadaPorAccountId:
+          type: integer
+          format: int64
+          description: "Cuenta que acepto, si alguien acepto"
+        consultorioId:
+          type: integer
+          format: int64
+          description: "Sede del vinculo propuesto, o null si es de toda la organizacion"
+        createdAt:
+          type: string
+          format: date-time
+        email:
+          type: string
+          example: kine@centro.test
+        estado:
+          type: string
+          description: "PENDIENTE, ACEPTADA, RECHAZADA o CANCELADA"
+          example: PENDIENTE
+        expiraEn:
+          type: string
+          format: date-time
+        id:
+          type: integer
+          format: int64
+          example: 12
+        invitadaPorAccountId:
+          type: integer
+          format: int64
+          description: Cuenta del administrador que la emitio
+        membershipId:
+          type: integer
+          format: int64
+          description: "Vinculo creado al aceptar, si se acepto"
+        organizationId:
+          type: integer
+          format: int64
+          example: 1
+        resolucionNota:
+          type: string
+          description: Motivo del rechazo o de la cancelacion
+        resueltaEn:
+          type: string
+          format: date-time
+          description: Cuando dejo de estar pendiente. Null mientras lo este
+        roleCode:
+          type: string
+          example: PROFESIONAL
+        vencida:
+          type: boolean
+          description: Si el enlace ya vencio. Puede ser true con estado PENDIENTE
+        version:
+          type: integer
+          format: int64
+          description: Version para el control de concurrencia optimista
+    InvitacionTokenRequest:
+      type: object
+      description: Token del enlace de invitacion
+      properties:
+        token:
+          type: string
+          description: Token recibido por correo
+          maxLength: 512
+          minLength: 0
+      required:
+      - token
     LimitUsageResponse:
       type: object
       description: Consumo actual de un limite del plan contratado
@@ -5192,6 +5820,10 @@ components:
       - https://akine.app/problems/nomenclador-vigencia-overlap
       - https://akine.app/problems/catalogo-solicitud-duplicada
       - https://akine.app/problems/catalogo-solicitud-ya-resuelta
+      - https://akine.app/problems/invitacion-pendiente-duplicada
+      - https://akine.app/problems/invitacion-vencida
+      - https://akine.app/problems/invitacion-ya-resuelta
+      - https://akine.app/problems/colaborador-ya-vinculado
     RegisterAccountRequest:
       type: object
       description: "Alta self-service de cuenta, organizacion y primer consultorio"

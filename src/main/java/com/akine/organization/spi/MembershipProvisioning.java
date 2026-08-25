@@ -42,4 +42,35 @@ public interface MembershipProvisioning {
 			boolean actorPlatformAdmin,
 			long organizationId,
 			DirectMembershipCommand command);
+
+	/**
+	 * Crea la membership que nace al aceptarse una invitacion (RF-M05-002).
+	 *
+	 * <p><b>No evalua permisos, y eso es la decision, no un descuido.</b> Quien acepta no
+	 * pertenece todavia al tenant: no tiene ni puede tener {@code colaborador:manage} sobre el,
+	 * asi que exigirlo haria que ninguna invitacion pudiera aceptarse jamas. La autorizacion
+	 * ocurrio antes, cuando el administrador emitio la invitacion con ese permiso, y quedo
+	 * auditada ahi. Lo que autoriza este paso es el <b>token</b>, que {@code identity} ya
+	 * verifico contra el hash guardado, y que prueba que quien lo presenta llega al buzon del
+	 * invitado.
+	 *
+	 * <p>Por eso este metodo es de uso <b>exclusivo</b> del servicio de invitaciones. Llamarlo
+	 * desde cualquier otro lado es crear memberships sin autorizar a nadie.
+	 *
+	 * <p>Lo que si hace, igual que {@code createDirect}: bloquea el tenant en el orden del
+	 * sistema, valida el rol y la sede, respeta el limite de plan {@code MAX_MIEMBROS_ACTIVOS}
+	 * y audita {@code MEMBERSHIP_CREATED} dentro de la misma transaccion, con el origen y la
+	 * invitacion en los detalles.
+	 *
+	 * @param organizationId tenant de la invitacion, ya leido de la invitacion y no del cliente
+	 * @param command        datos del vinculo
+	 * @return el id de la membership creada
+	 * @throws com.akine.organization.domain.exception.OrganizationNotFoundException si el tenant
+	 *         o la sede ya no existen (404)
+	 * @throws com.akine.organization.domain.exception.MembershipAlreadyExistsException si esa
+	 *         cuenta ya tiene un vinculo con ese alcance, vigente o historico (409)
+	 * @throws com.akine.organization.domain.exception.PlanLimitExceededException si el tenant
+	 *         llego al tope de miembros de su plan (409)
+	 */
+	long createFromInvitation(long organizationId, InvitationMembershipCommand command);
 }

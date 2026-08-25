@@ -84,11 +84,23 @@ public class IdentityProperties {
 		/** Origen publico del frontend. Sin barra final: se normaliza igual si la trae. */
 		private String baseUrl = "http://localhost:4200";
 
-		/** Pantalla que consume un token de ACTIVACION. */
-		private String activationPath = "/activar";
+		/**
+		 * Pantalla que consume un token de ACTIVACION.
+		 *
+		 * <p><b>El prefijo {@code /auth} no es decorativo.</b> El frontend monta las pantallas
+		 * publicas bajo esa ruta ({@code features/auth} con {@code loadChildren} en
+		 * {@code app.routes.ts}), asi que un enlace a {@code /activar} pelado cae en el comodin
+		 * {@code **} y el usuario ve la pantalla de "no encontrada" con un token perfectamente
+		 * valido en la URL. Estuvo asi desde 01.02 y se corrige en 02.03, que es la etapa que
+		 * agrega el tercer enlace de correo y donde el error se volvio sistematico.
+		 */
+		private String activationPath = "/auth/activar";
 
-		/** Pantalla que consume un token de RESET. */
-		private String resetPath = "/restablecer";
+		/** Pantalla que consume un token de RESET. Ver {@link #activationPath}. */
+		private String resetPath = "/auth/restablecer";
+
+		/** Pantalla que consume un token de INVITACION (M05, AKINE-02.03). */
+		private String invitationPath = "/auth/invitacion";
 
 		/** Nombre del parametro de query que transporta el token. */
 		private String tokenParam = "token";
@@ -122,6 +134,14 @@ public class IdentityProperties {
 
 		public void setResetPath(String resetPath) {
 			this.resetPath = resetPath;
+		}
+
+		public String getInvitationPath() {
+			return invitationPath;
+		}
+
+		public void setInvitationPath(String invitationPath) {
+			this.invitationPath = invitationPath;
 		}
 
 		public String getTokenParam() {

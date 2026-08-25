@@ -16,7 +16,21 @@ public enum TipoTokenVerificacion {
 	ACTIVACION(Duration.ofDays(7)),
 
 	/** Habilita fijar una contrasena nueva. Corto a proposito. */
-	RESET(Duration.ofMinutes(30));
+	RESET(Duration.ofMinutes(30)),
+
+	/**
+	 * Invita a colaborar en una organizacion (M05, AKINE-02.03).
+	 *
+	 * <p><b>Es el unico tipo que NO produce una fila en {@code token_verificacion}</b>: esa
+	 * tabla exige {@code cuenta_id NOT NULL} y una invitacion se emite antes de que la cuenta
+	 * exista. Su hash vive en {@code colaborador_invitacion}. Igual esta aca porque este enum
+	 * es lo que decide la vigencia y la ruta del enlace, y las dos cosas aplican.
+	 *
+	 * <p>Catorce dias, entre los siete de la activacion y los treinta minutos del reset: quien
+	 * recibe una invitacion no la estaba esperando —a diferencia de quien acaba de pedir un
+	 * reset— y suele responderla cuando vuelve de trabajar, no en el momento.
+	 */
+	INVITACION(Duration.ofDays(14));
 
 	private final Duration vigencia;
 

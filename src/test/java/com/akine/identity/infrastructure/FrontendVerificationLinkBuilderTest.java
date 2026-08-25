@@ -16,15 +16,29 @@ class FrontendVerificationLinkBuilderTest {
 		return new FrontendVerificationLinkBuilder(properties);
 	}
 
+	/**
+	 * Los tres tipos apuntan a pantallas distintas, y las tres <b>bajo {@code /auth}</b>.
+	 *
+	 * <p>El prefijo es lo que este test existe para fijar. El frontend monta las pantallas
+	 * publicas bajo esa ruta, asi que un enlace a {@code /activar} pelado cae en el comodin
+	 * {@code **} del router y el usuario ve "pagina no encontrada" con un token perfectamente
+	 * valido en la URL.
+	 *
+	 * <p><b>Estuvo roto desde 01.02 y ningun test lo vio</b>, porque los tres casos de abajo
+	 * fijaban el valor por defecto que estaba mal y los demas tests del builder configuraban su
+	 * propia ruta. Se corrige en 02.03, que es la etapa que agrega el tercer enlace de correo.
+	 */
 	@Test
-	@DisplayName("activacion y reset apuntan a pantallas distintas")
+	@DisplayName("los tres tipos apuntan a su pantalla, bajo /auth como las sirve el frontend")
 	void cada_tipo_tiene_su_pantalla() {
 		FrontendVerificationLinkBuilder builder = builder("https://app.akine.test");
 
 		assertThat(builder.enlaceDe(TipoTokenVerificacion.ACTIVACION, "abc123"))
-				.isEqualTo("https://app.akine.test/activar?token=abc123");
+				.isEqualTo("https://app.akine.test/auth/activar?token=abc123");
 		assertThat(builder.enlaceDe(TipoTokenVerificacion.RESET, "abc123"))
-				.isEqualTo("https://app.akine.test/restablecer?token=abc123");
+				.isEqualTo("https://app.akine.test/auth/restablecer?token=abc123");
+		assertThat(builder.enlaceDe(TipoTokenVerificacion.INVITACION, "abc123"))
+				.isEqualTo("https://app.akine.test/auth/invitacion?token=abc123");
 	}
 
 	@Test
@@ -32,7 +46,7 @@ class FrontendVerificationLinkBuilderTest {
 	void la_barra_final_no_se_duplica() {
 		assertThat(builder("https://app.akine.test/")
 				.enlaceDe(TipoTokenVerificacion.ACTIVACION, "abc123"))
-				.isEqualTo("https://app.akine.test/activar?token=abc123");
+				.isEqualTo("https://app.akine.test/auth/activar?token=abc123");
 	}
 
 	@Test
@@ -42,7 +56,7 @@ class FrontendVerificationLinkBuilderTest {
 		// quien lo llama: un token con un & sin escapar llega roto y el soporte no lo entiende.
 		assertThat(builder("https://app.akine.test")
 				.enlaceDe(TipoTokenVerificacion.RESET, "a+b/c=d&e"))
-				.isEqualTo("https://app.akine.test/restablecer?token=a%2Bb%2Fc%3Dd%26e");
+				.isEqualTo("https://app.akine.test/auth/restablecer?token=a%2Bb%2Fc%3Dd%26e");
 	}
 
 	@Test

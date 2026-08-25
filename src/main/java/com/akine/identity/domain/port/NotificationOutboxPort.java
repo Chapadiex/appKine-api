@@ -113,6 +113,19 @@ public interface NotificationOutboxPort {
 		CUENTA_YA_REGISTRADA,
 
 		/** Restablecimiento de contrasena: lleva el enlace de reset. */
-		RESET_PASSWORD
+		RESET_PASSWORD,
+
+		/**
+		 * Invitacion a colaborar en una organizacion (M05, RF-M05-001).
+		 *
+		 * <p>Lleva el enlace de la invitacion, que es la credencial del invitado: quien lo
+		 * presenta demostro que llega a ese buzon, y eso es lo que le permite aceptar o
+		 * rechazar sin sesion.
+		 *
+		 * <p>Es el unico correo de {@code identity} que <b>no</b> le habla a alguien que hizo
+		 * algo: al invitado no le pidio nada nadie. Por eso su plantilla nombra quien invita y
+		 * a que organizacion — sin eso es indistinguible de un correo no solicitado.
+		 */
+		INVITACION_COLABORADOR
 	}
 }

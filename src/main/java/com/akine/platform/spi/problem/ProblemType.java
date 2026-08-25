@@ -136,7 +136,13 @@ public enum ProblemType {
 	CATALOGO_SCOPE_MISMATCH("catalogo-scope-mismatch"),
 	NOMENCLADOR_VIGENCIA_OVERLAP("nomenclador-vigencia-overlap"),
 	CATALOGO_SOLICITUD_DUPLICADA("catalogo-solicitud-duplicada"),
-	CATALOGO_SOLICITUD_YA_RESUELTA("catalogo-solicitud-ya-resuelta");
+	CATALOGO_SOLICITUD_YA_RESUELTA("catalogo-solicitud-ya-resuelta"),
+
+	// --- Invitacion a colaborar (M05) ------------------------------------------------------
+	INVITACION_PENDIENTE_DUPLICADA("invitacion-pendiente-duplicada"),
+	INVITACION_VENCIDA("invitacion-vencida"),
+	INVITACION_YA_RESUELTA("invitacion-ya-resuelta"),
+	COLABORADOR_YA_VINCULADO("colaborador-ya-vinculado");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

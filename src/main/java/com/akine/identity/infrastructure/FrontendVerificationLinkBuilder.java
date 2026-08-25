@@ -58,6 +58,7 @@ public class FrontendVerificationLinkBuilder implements VerificationLinkBuilder 
 		return switch (tipo) {
 			case ACTIVACION -> links.getActivationPath();
 			case RESET -> links.getResetPath();
+			case INVITACION -> links.getInvitationPath();
 		};
 	}
 

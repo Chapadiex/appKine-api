@@ -2,6 +2,7 @@ package com.akine.organization.api;
 
 import com.akine.organization.api.dto.AssignGrantRequest;
 import com.akine.organization.api.dto.ChangeMembershipRequest;
+import com.akine.organization.api.dto.DesvinculacionImpactoResponse;
 import com.akine.organization.api.dto.MembershipGrantResponse;
 import com.akine.organization.api.dto.MembershipPageResponse;
 import com.akine.organization.api.dto.MembershipReasonRequest;
@@ -217,6 +218,54 @@ public class MembershipController {
 						.toList();
 
 		return ResponseEntity.ok(grants);
+	}
+
+	@GetMapping("/{membershipId}/desvinculacion-impacto")
+	@Operation(
+			operationId = "getDesvinculacionImpacto",
+			summary = "Que quedaria pendiente si se desvincula a este colaborador",
+			description = """
+					Requiere colaborador:read, y no colaborador:manage: sirve para DECIDIR, y \
+					quien decide suele mirar antes de tener el permiso de ejecutar.
+
+					ESTO NO BLOQUEA NADA. RN-M05-004 pide que los turnos futuros queden visibles \
+					para resolucion, no que impidan la desvinculacion: cuando alguien renuncia, \
+					renuncio. Es la diferencia con la baja de una sede, donde las operaciones \
+					vigentes si la impiden.
+
+					Hoy responde siempre count=0: M12 (agenda) no existe todavia y no hay ninguna \
+					sonda enchufada. La operacion se publica igual para que la pantalla de \
+					desvinculacion se escriba una sola vez y el numero aparezca el dia que la \
+					agenda exista, sin cambiar el contrato.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "200",
+					description = "Trabajo pendiente. count=0 mientras no exista la agenda",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(
+									implementation = DesvinculacionImpactoResponse.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin sesion, sin contexto activo, o sin colaborador:read",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El vinculo no existe o es de otra organizacion",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<DesvinculacionImpactoResponse> desvinculacionImpacto(
+			@Parameter(description = "Identificador de la organizacion", example = "7")
+			@PathVariable long orgId,
+
+			@Parameter(description = "Identificador del vinculo", example = "42")
+			@PathVariable long membershipId) {
+
+		return ResponseEntity.ok(DesvinculacionImpactoResponse.de(
+				membershipService.desvinculacionImpacto(actor(), orgId, membershipId)));
 	}
 
 	// =================================================================================

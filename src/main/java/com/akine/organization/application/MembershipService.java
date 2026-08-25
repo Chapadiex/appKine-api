@@ -19,12 +19,16 @@ import com.akine.organization.domain.port.ConsultorioRepositoryPort;
 import com.akine.organization.domain.port.MembershipGrantRepositoryPort;
 import com.akine.organization.domain.port.MembershipRepositoryPort;
 import com.akine.organization.domain.port.SubscriptionRepositoryPort;
+import com.akine.organization.spi.ColaboradorDesvinculacionProbe;
 import com.akine.organization.spi.DirectMembershipCommand;
+import com.akine.organization.spi.InvitationMembershipCommand;
+import com.akine.organization.spi.LimitCode;
 import com.akine.organization.spi.MembershipProvisioning;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.organization.spi.PlanGate;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.identity.AccountIdentity;
@@ -127,6 +131,9 @@ public class MembershipService implements MembershipProvisioning {
 	private final AuditTrail auditTrail;
 	private final SupportAccessReadAuditor supportAccessReadAuditor;
 	private final AccountIdentityDirectory accountDirectory;
+	private final List<ColaboradorDesvinculacionProbe> desvinculacionProbes;
+	private final PlanGate planGate;
+	private final TenantUsageCounter usageCounter;
 
 	public MembershipService(
 			MembershipRepositoryPort membershipRepository,
@@ -137,9 +144,15 @@ public class MembershipService implements MembershipProvisioning {
 			PermissionEvaluator permissionEvaluator,
 			AuditTrail auditTrail,
 			SupportAccessReadAuditor supportAccessReadAuditor,
-			AccountIdentityDirectory accountDirectory) {
+			AccountIdentityDirectory accountDirectory,
+			List<ColaboradorDesvinculacionProbe> desvinculacionProbes,
+			PlanGate planGate,
+			TenantUsageCounter usageCounter) {
 		this.supportAccessReadAuditor = supportAccessReadAuditor;
 		this.accountDirectory = accountDirectory;
+		this.desvinculacionProbes = desvinculacionProbes;
+		this.planGate = planGate;
+		this.usageCounter = usageCounter;
 		this.membershipRepository = membershipRepository;
 		this.grantRepository = grantRepository;
 		this.subscriptionRepository = subscriptionRepository;
@@ -219,7 +232,13 @@ public class MembershipService implements MembershipProvisioning {
 			long organizationId,
 			DirectMembershipCommand command) {
 
-		// Orden de bloqueo unico del sistema: subscription -> organization. Primera sentencia.
+		// Limite de plan PRIMERO, porque es quien bloquea `subscription`: el orden de bloqueo
+		// del sistema es subscription -> organization y este metodo no lo decide, lo respeta.
+		// Ver `exigirCupoDeMiembros` para por que este metodo cuenta con un limite que la etapa
+		// anterior tenia configurado y no aplicaba.
+		exigirCupoDeMiembros(organizationId);
+
+		// Y despues el bloqueo del tenant, que agrega la fila de `organization`.
 		bloquearTenant(organizationId);
 
 		// El actor entra sin sede propia: este metodo llega desde `identity.api`, que no le pasa
@@ -231,13 +250,117 @@ public class MembershipService implements MembershipProvisioning {
 				actor, organizationId, PermissionCode.COLABORADOR_MANAGE,
 				command.consultorioId(), null);
 
-		RoleCode rol = rolValido(command.roleCode());
 		exigirMotivo(command.reason(), "el alta de un colaborador");
-		validarSede(organizationId, command.consultorioId());
+
+		return persistirVinculo(
+				organizationId,
+				command.accountId(),
+				command.consultorioId(),
+				command.roleCode(),
+				actorAccountId,
+				command.reason(),
+				Map.of("accountId", String.valueOf(command.accountId())));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p><b>La diferencia con {@link #createDirect} es una sola linea: no hay
+	 * {@code exigirEnAlcance}.</b> Todo lo demas —el orden de bloqueo, el limite de plan, la
+	 * validacion del rol y de la sede, el manejo de la clave duplicada y la auditoria— es
+	 * identico, y por eso los dos comparten {@link #persistirVinculo}.
+	 *
+	 * <p>Por que no hay permiso: quien acepta no pertenece al tenant todavia. Exigirle
+	 * {@code colaborador:manage} sobre una organizacion en la que no tiene membership haria que
+	 * ninguna invitacion pudiera aceptarse nunca. La autorizacion ya ocurrio —el administrador
+	 * emitio la invitacion con ese permiso, y ese acto quedo auditado— y lo que prueba que esta
+	 * es la persona invitada es el token, que {@code identity} verifico contra el hash antes de
+	 * llamar aca. El javadoc de la interfaz lo dice tambien, porque quien lea el SPI sin abrir
+	 * esta clase tiene que enterarse igual.
+	 *
+	 * <p><b>El rol se revalida.</b> Entre la emision y la aceptacion pueden pasar semanas, y en
+	 * el medio {@code RoleCode} puede haber perdido un valor. Confiar en que lo guardado sigue
+	 * siendo valido es confiar en el pasado.
+	 *
+	 * <p>La auditoria deja {@code origen=invitacion} y el id de la invitacion en los detalles.
+	 * Sin eso, el evento diria que la membership se creo sola: el actor es el propio invitado,
+	 * que no decidio nada — decidio quien lo invito.
+	 */
+	@Override
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public long createFromInvitation(long organizationId, InvitationMembershipCommand command) {
+		exigirCupoDeMiembros(organizationId);
+		bloquearTenant(organizationId);
+
+		Map<String, String> detalles = new LinkedHashMap<>();
+		detalles.put("accountId", String.valueOf(command.accountId()));
+		detalles.put("origen", "invitacion");
+		detalles.put("invitacionId", String.valueOf(command.invitacionId()));
+		detalles.put("invitadaPorAccountId", String.valueOf(command.invitadaPorAccountId()));
+
+		return persistirVinculo(
+				organizationId,
+				command.accountId(),
+				command.consultorioId(),
+				command.roleCode(),
+				// El actor del evento es quien acepta: es quien produjo el hecho. Quien lo
+				// decidio va en los detalles, que es donde se puede distinguir una cosa de la
+				// otra sin inventar un actor que no ejecuto nada.
+				command.accountId(),
+				"Aceptacion de la invitacion " + command.invitacionId(),
+				detalles);
+	}
+
+	/**
+	 * Exige que el tenant tenga cupo de miembros en su plan.
+	 *
+	 * <p><b>Esto no estaba y el limite ya existia.</b> {@code MAX_MIEMBROS_ACTIVOS} esta en
+	 * {@code LimitCode} desde 00.01 y {@code TenantUsageCounter} sabe contarlo desde 01.03, pero
+	 * ninguna alta lo consultaba: un plan que declaraba cinco miembros admitia quinientos. Se
+	 * cierra en 02.03 porque es la etapa que convierte el alta de colaboradores en un flujo real
+	 * —hasta ahora era un endpoint que solo servia para cuentas ya registradas— y porque dejar
+	 * la invitacion sin gate seria publicar la via por la que el limite se evade.
+	 *
+	 * <p>Se llama <b>antes</b> de {@link #bloquearTenant} porque el gate es quien toma el
+	 * bloqueo de {@code subscription}, que es el primero del orden del sistema. Invertirlo
+	 * tomaria los dos bloqueos al reves y reintroduciria el deadlock que 02.01 documento.
+	 *
+	 * <p>Corre con {@code Propagation.MANDATORY} dentro de la transaccion de quien llama, que
+	 * <b>tiene que estar en READ COMMITTED</b>: en REPEATABLE READ el conteo lee de un snapshot
+	 * anterior al bloqueo y el limite se viola en silencio. Los dos metodos que llaman aca lo
+	 * declaran; {@code PlanGateService.verificarIsolation} lo comprueba en tiempo de ejecucion.
+	 *
+	 * @throws com.akine.organization.domain.exception.PlanLimitExceededException si no hay cupo
+	 */
+	private void exigirCupoDeMiembros(long organizationId) {
+		planGate.evaluateCreationAndLock(
+				organizationId,
+				LimitCode.MAX_MIEMBROS_ACTIVOS,
+				() -> usageCounter.count(LimitCode.MAX_MIEMBROS_ACTIVOS, organizationId));
+	}
+
+	/**
+	 * Persiste el vinculo y lo audita. Es el tronco comun del alta directa y de la aceptacion.
+	 *
+	 * <p>Asume que el tenant ya esta bloqueado y que la autorizacion —la que corresponda a cada
+	 * camino— ya ocurrio. No autoriza nada por su cuenta: si lo hiciera, la aceptacion de una
+	 * invitacion tendria que inventarse un permiso que el invitado no tiene.
+	 */
+	private long persistirVinculo(
+			long organizationId,
+			long accountId,
+			Long consultorioId,
+			String roleCode,
+			long actorAccountId,
+			String motivo,
+			Map<String, String> detalles) {
+
+		RoleCode rol = rolValido(roleCode);
+		validarSede(organizationId, consultorioId);
 
 		Instant ahora = Instant.now();
 		Membership membership = new Membership(
-				organizationId, command.consultorioId(), command.accountId(), rol, false, ahora);
+				organizationId, consultorioId, accountId, rol, false, ahora);
 
 		Membership persistida;
 		try {
@@ -248,13 +371,12 @@ public class MembershipService implements MembershipProvisioning {
 			// Y desde aca NO se vuelve a tocar la sesion JPA: ni auditoria, ni lecturas. Una
 			// sesion reusada despues de un flush fallido tira AssertionFailure.
 			log.info("Alta de membership rechazada por clave duplicada: organizationId={} accountId={}",
-					organizationId, command.accountId());
-			throw new MembershipAlreadyExistsException(organizationId, command.consultorioId());
+					organizationId, accountId);
+			throw new MembershipAlreadyExistsException(organizationId, consultorioId);
 		}
 
 		auditar(AuditEvents.MEMBERSHIP_CREATED, AuditEvents.ENTITY_MEMBERSHIP, persistida,
-				actorAccountId, null, rol.name(), command.reason(),
-				Map.of("accountId", String.valueOf(command.accountId())), ahora);
+				actorAccountId, null, rol.name(), motivo, detalles, ahora);
 
 		return persistida.getId();
 	}
@@ -408,13 +530,78 @@ public class MembershipService implements MembershipProvisioning {
 		Instant ahora = Instant.now();
 		exigirQueNoSeaElUltimoAdmin(actor, organizationId, membership, ahora);
 
+		// RN-M05-004: lo que queda pendiente NO impide la revocacion, pero tiene que quedar
+		// escrito. Ver `ColaboradorDesvinculacionProbe` para por que esta sonda informa y la de
+		// consultorios bloquea, que son dos reglas distintas y es facil confundirlas.
+		ColaboradorDesvinculacionProbe.Impacto impacto =
+				impactoDe(organizationId, membership, ahora);
+
 		MembershipEstado anterior = membership.getEstado();
 		membership.revocar(actor.accountId(), motivo, ahora);
 		auditar(AuditEvents.MEMBERSHIP_REVOKED, AuditEvents.ENTITY_MEMBERSHIP, membership,
 				actor.accountId(), anterior.name(), MembershipEstado.REVOCADA.name(), motivo,
-				Map.of(), ahora);
+				detallesDelImpacto(impacto), ahora);
 
 		return conCuenta(membershipRepository.save(membership));
+	}
+
+	/**
+	 * Que quedaria pendiente si se desvinculara a este colaborador (RN-M05-004).
+	 *
+	 * <p>Es una <b>lectura</b> y por eso pide {@code colaborador:read} y no
+	 * {@code colaborador:manage}: sirve para decidir, y quien decide suele mirar antes de tener
+	 * el permiso de ejecutar. Exigir el permiso de escritura convertiria el analisis previo en
+	 * algo que solo puede ver quien ya podia hacerlo sin mirar.
+	 *
+	 * <p>Hoy devuelve siempre "nada": no hay ninguna sonda implementada porque M12 no existe.
+	 * La operacion se publica igual para que la interfaz de desvinculacion se escriba una sola
+	 * vez, y para que el dia que la agenda enchufe su sonda el numero aparezca sin cambiar el
+	 * contrato.
+	 */
+	@Transactional(readOnly = true)
+	public ColaboradorDesvinculacionProbe.Impacto desvinculacionImpacto(
+			OperatingActor actor, long organizationId, long membershipId) {
+
+		exigirEnLectura(actor, organizationId, PermissionCode.COLABORADOR_READ, membershipId);
+		Membership membership = cargar(organizationId, membershipId);
+		return impactoDe(organizationId, membership, Instant.now());
+	}
+
+	/**
+	 * Recorre las sondas y devuelve el primer impacto con contenido.
+	 *
+	 * <p>El primero y no la suma: sumar "14 turnos" con "3 sesiones abiertas" da 17 de nada.
+	 * Cuando exista mas de una sonda —hoy no hay ninguna— esto tiene que pasar a devolver la
+	 * lista entera y la respuesta de la API a ser un array. Queda anotado acá y no en un
+	 * comentario suelto porque el cambio es de contrato.
+	 */
+	private ColaboradorDesvinculacionProbe.Impacto impactoDe(
+			long organizationId, Membership membership, Instant at) {
+
+		for (ColaboradorDesvinculacionProbe sonda : desvinculacionProbes) {
+			ColaboradorDesvinculacionProbe.Impacto impacto = sonda.pendingWorkOn(
+					organizationId, membership.getId(), membership.getAccountId(), at);
+			if (impacto != null && impacto.hayAlgo()) {
+				return impacto;
+			}
+		}
+		return ColaboradorDesvinculacionProbe.Impacto.ninguno();
+	}
+
+	/** Detalles del evento de revocacion. Vacio cuando no hay nada pendiente. */
+	private static Map<String, String> detallesDelImpacto(
+			ColaboradorDesvinculacionProbe.Impacto impacto) {
+
+		if (!impacto.hayAlgo()) {
+			return Map.of();
+		}
+		Map<String, String> detalles = new LinkedHashMap<>();
+		detalles.put("pendienteTipo", impacto.tipo());
+		detalles.put("pendienteCount", String.valueOf(impacto.count()));
+		if (impacto.desde() != null) {
+			detalles.put("pendienteDesde", impacto.desde().toString());
+		}
+		return detalles;
 	}
 
 	// =================================================================================
