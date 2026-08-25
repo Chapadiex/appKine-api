@@ -207,11 +207,11 @@ public class EspacioController {
 			operationId = "listEspacios",
 			summary = "Espacios de la sede",
 			description = """
-					Listado paginado de los espacios de la sede. Requiere ser miembro vigente de \
-					la organizacion, con cualquier rol, y NO consultorio:manage: es la lectura \
-					que necesita un profesional para saber en que box atiende, asi que \
-					restringirla al administrador dejaria a la mitad del equipo sin poder \
-					consultarla.
+					Listado paginado de los espacios de la sede. Exige espacio:read sobre esa \
+					sede, y NO consultorio:manage: es la lectura que necesita un profesional \
+					para saber en que box atiende, asi que restringirla al administrador dejaria \
+					a la mitad del equipo sin poder consultarla. Lo tienen todos los roles de la \
+					sede salvo PACIENTE, que recibe 403.
 
 					El parametro estado por defecto vale ACTIVO, y eso es lo que hace que un \
 					selector de reserva NUNCA ofrezca un espacio dado de baja (RN-M04-002). Los \
@@ -236,7 +236,8 @@ public class EspacioController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "No hay sesion autenticada o no hay contexto de trabajo",
+					description = "No hay sesion autenticada, no hay contexto de trabajo, o "
+							+ "falta espacio:read sobre esa sede",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -278,7 +279,8 @@ public class EspacioController {
 			summary = "Datos de un espacio",
 			description = """
 					Devuelve el espacio con su configuracion y la version que hay que reenviar \
-					para editarlo.
+					para editarlo. Exige espacio:read sobre esa sede, no consultorio:manage: lo \
+					tienen todos los roles de la sede salvo PACIENTE, que recibe 403.
 
 					Devuelve tambien los espacios INACTIVOS, con 200 y no con 404: RN-M04-003 \
 					exige que los historicos conserven su nombre y su estado. Lo que un espacio \
@@ -297,7 +299,8 @@ public class EspacioController {
 							schema = @Schema(implementation = EspacioResponse.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "No hay sesion autenticada o no hay contexto de trabajo",
+					description = "No hay sesion autenticada, no hay contexto de trabajo, o "
+							+ "falta espacio:read sobre esa sede",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -490,7 +493,9 @@ public class EspacioController {
 					Devuelve los espacios de la sede que estan EN SERVICIO durante toda la \
 					ventana pedida (RF-M04-003): activos y con su vigencia cubriendo el \
 					intervalo completo. Los dados de baja y los que estan fuera de su ventana \
-					operativa NO aparecen, que es el criterio de aceptacion de la etapa.
+					operativa NO aparecen, que es el criterio de aceptacion de la etapa. Exige \
+					espacio:read sobre esa sede, no consultorio:manage: lo tienen todos los \
+					roles de la sede salvo PACIENTE, que recibe 403.
 
 					LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. Esta consulta responde si el \
 					recurso esta en servicio, NO si esta libre de reservas. Los turnos y las \
@@ -522,7 +527,8 @@ public class EspacioController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "No hay sesion autenticada o no hay contexto de trabajo",
+					description = "No hay sesion autenticada, no hay contexto de trabajo, o "
+							+ "falta espacio:read sobre esa sede",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

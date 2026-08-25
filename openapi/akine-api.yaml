@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.7.0
+  version: 0.8.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -1344,7 +1344,7 @@ paths:
   /api/v1/organizations/{orgId}/consultorios/{consultorioId}/espacios:
     get:
       description: |-
-        Listado paginado de los espacios de la sede. Requiere ser miembro vigente de la organizacion, con cualquier rol, y NO consultorio:manage: es la lectura que necesita un profesional para saber en que box atiende, asi que restringirla al administrador dejaria a la mitad del equipo sin poder consultarla.
+        Listado paginado de los espacios de la sede. Exige espacio:read sobre esa sede, y NO consultorio:manage: es la lectura que necesita un profesional para saber en que box atiende, asi que restringirla al administrador dejaria a la mitad del equipo sin poder consultarla. Lo tienen todos los roles de la sede salvo PACIENTE, que recibe 403.
 
         El parametro estado por defecto vale ACTIVO, y eso es lo que hace que un selector de reserva NUNCA ofrezca un espacio dado de baja (RN-M04-002). Los inactivos hay que pedirlos explicitamente, y la pantalla de administracion los necesita para explicar por que un nombre esta tomado o libre.
 
@@ -1417,7 +1417,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: No hay sesion autenticada o no hay contexto de trabajo
+          description: "No hay sesion autenticada, no hay contexto de trabajo, o falta\
+            \ espacio:read sobre esa sede"
         "404":
           content:
             application/problem+json:
@@ -1502,7 +1503,7 @@ paths:
   /api/v1/organizations/{orgId}/consultorios/{consultorioId}/espacios/availability:
     get:
       description: |-
-        Devuelve los espacios de la sede que estan EN SERVICIO durante toda la ventana pedida (RF-M04-003): activos y con su vigencia cubriendo el intervalo completo. Los dados de baja y los que estan fuera de su ventana operativa NO aparecen, que es el criterio de aceptacion de la etapa.
+        Devuelve los espacios de la sede que estan EN SERVICIO durante toda la ventana pedida (RF-M04-003): activos y con su vigencia cubriendo el intervalo completo. Los dados de baja y los que estan fuera de su ventana operativa NO aparecen, que es el criterio de aceptacion de la etapa. Exige espacio:read sobre esa sede, no consultorio:manage: lo tienen todos los roles de la sede salvo PACIENTE, que recibe 403.
 
         LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. Esta consulta responde si el recurso esta en servicio, NO si esta libre de reservas. Los turnos y las inscripciones son de modulos que todavia no existen, asi que lugaresComprometidos es SIEMPRE 0 en esta version del contrato y lugaresDisponibles siempre igual a capacidad. Cuando la agenda exista, esos dos numeros van a cambiar solos y este contrato no cambia. Rotular disponible=true como "el box esta libre" va a ser mentira en cuanto exista la agenda.
 
@@ -1562,7 +1563,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: No hay sesion autenticada o no hay contexto de trabajo
+          description: "No hay sesion autenticada, no hay contexto de trabajo, o falta\
+            \ espacio:read sobre esa sede"
         "404":
           content:
             application/problem+json:
@@ -1575,7 +1577,7 @@ paths:
   /api/v1/organizations/{orgId}/consultorios/{consultorioId}/espacios/{espacioId}:
     get:
       description: |-
-        Devuelve el espacio con su configuracion y la version que hay que reenviar para editarlo.
+        Devuelve el espacio con su configuracion y la version que hay que reenviar para editarlo. Exige espacio:read sobre esa sede, no consultorio:manage: lo tienen todos los roles de la sede salvo PACIENTE, que recibe 403.
 
         Devuelve tambien los espacios INACTIVOS, con 200 y no con 404: RN-M04-003 exige que los historicos conserven su nombre y su estado. Lo que un espacio inactivo rechaza son las operaciones nuevas, y eso se responde con 409.
 
@@ -1618,7 +1620,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: No hay sesion autenticada o no hay contexto de trabajo
+          description: "No hay sesion autenticada, no hay contexto de trabajo, o falta\
+            \ espacio:read sobre esa sede"
         "404":
           content:
             application/problem+json:

@@ -129,32 +129,89 @@ class MembershipConcurrenteIT extends BaseEscenarioDiferido {
 	// C-6 — N revocaciones simultaneas
 	// =================================================================================
 
+	/**
+	 * <h2>Por que la forma anterior de este test no podia fallar, y por que igual fallaba</h2>
+	 *
+	 * <p>El test decia "con tres administradores" y montaba <b>cuatro</b>: los tres sembrados mas
+	 * el fundador, que {@code escenarioConAdmins} deja como {@code ORG_ADMIN}. Los diez hilos
+	 * revocaban solo a los tres sembrados y usaban al fundador de actor, asi que al cuarto no lo
+	 * tocaba nadie. Consecuencias, las dos malas:
+	 *
+	 * <ul>
+	 *   <li><b>La cota inferior era inalcanzable.</b> La organizacion no podia quedarse sin
+	 *       administradores <b>aunque se borrara el invariante entero</b>. Medido: con la llamada
+	 *       a {@code exigirQueNoSeaElUltimoAdmin} comentada en {@code MembershipService.revoke},
+	 *       en las 10 repeticiones quedo siempre <b>una fila {@code ORG_ADMIN ACTIVA}</b> en la
+	 *       base — la del fundador, que nadie revocaba. Un {@code isBetween(1, 3)} cuyo limite
+	 *       inferior no se puede alcanzar no afirma nada.</li>
+	 *   <li><b>Y esa fila de mas era lo unico que si podia hacerlo fallar.</b> El
+	 *       {@code valid_from} del fundador lo escribe {@code OnboardingService} con
+	 *       {@code Instant.now()} de la <b>JVM</b>, mientras que {@link #adminsVigentes} filtra la
+	 *       vigencia contra {@code UTC_TIMESTAMP(6)} del <b>motor</b>. Cuando el reloj del
+	 *       contenedor se atrasa respecto del de la JVM —el desfasaje que
+	 *       {@link #sembrarMembership} documenta— la vigencia del fundador queda "en el futuro",
+	 *       el conteo lo excluye y devuelve cero con el invariante intacto. Medido en 25
+	 *       repeticiones: el margen entre el {@code valid_from} del fundador y el reloj del motor
+	 *       cayo de +3,88 s a <b>-0,45 s</b> a lo largo de la corrida, y las dos ultimas
+	 *       repeticiones dieron rojo con una unica fila {@code ORG_ADMIN ACTIVA} en la base.
+	 *       Ese era el flake.</li>
+	 * </ul>
+	 *
+	 * <h2>La forma que si prueba el invariante</h2>
+	 *
+	 * <p>El fundador baja a {@code CONSULTORIO_ADMIN}. Es el otro rol de la matriz con
+	 * {@code colaborador:manage}, asi que <b>sigue pudiendo revocar</b>, pero deja de ser
+	 * {@code ORG_ADMIN} y por lo tanto deja de contar para el invariante, que es sobre
+	 * {@code ORG_ADMIN} y solo sobre el. Ahora los administradores son exactamente los tres que
+	 * dice el nombre, los diez hilos pueden entre todos dejar la organizacion en cero, y lo unico
+	 * que lo impide es {@code exigirQueNoSeaElUltimoAdmin}. Comprobado: con esa llamada comentada
+	 * el test da rojo con {@code 0} administradores en la base.
+	 *
+	 * <p>De paso desaparece el flake, sin tocar la asercion: las tres filas que se cuentan las
+	 * sembro {@link #sembrarMembership} con el reloj del MOTOR y un minuto de colchon, asi que el
+	 * conteo compara ese reloj contra si mismo. La fila del fundador, que es la unica escrita con
+	 * el reloj de la JVM, ya no entra en el conteo.
+	 *
+	 * <p>Los objetivos se repiten a proposito —tres memberships, diez intentos—: el segundo
+	 * intento sobre la misma membership tiene que dar un 409 de estado, no un 500 ni una segunda
+	 * revocacion.
+	 */
 	@Test
 	@DisplayName("C-6. Diez revocaciones simultaneas con tres administradores: nunca queda cero")
 	void diez_revocaciones_simultaneas_nunca_dejan_cero() {
 		Escenario escenario = escenarioConAdmins(3);
+		degradarAlFundador(escenario, "CONSULTORIO_ADMIN");
 
 		List<Callable<String>> intentos = new ArrayList<>();
 		for (int i = 0; i < 10; i++) {
-			// Cada hilo intenta revocar a UNO de los tres, con el actor fundador. Se repiten a
-			// proposito: el segundo intento sobre la misma membership tiene que dar 409 de
-			// estado, no 500 ni una segunda revocacion.
 			long objetivo = escenario.membershipsAdmin().get(i % 3);
 			intentos.add(revocar(escenario, escenario.cuentaFundador(), objetivo));
 		}
 
 		List<Concurrencia.Resultado<String>> resultados = Concurrencia.enParalelo(intentos);
+		String diag = diagnostico(escenario, resultados);
 		assertSinFallosDeInfraestructura(resultados);
 
-		long vigentes = adminsVigentes(escenario.organizationId());
-		assertThat(vigentes)
-				.as("nunca cero, y nunca mas de los que habia")
+		// Nunca cero, y nunca mas de los tres que habia. El limite inferior es el invariante; el
+		// superior descarta que una revocacion se haya "deshecho" o que el conteo mire otro tenant.
+		assertThat(adminsVigentes(escenario.organizationId()))
+				.as("nunca cero, y nunca mas de los que habia%s", diag)
 				.isBetween(1L, 3L);
+
+		// Y el invariante tiene que haberse DISPARADO, no solo haberse cumplido: con diez intentos
+		// sobre tres administradores, alguno pidio revocar al ultimo que quedaba. Sin esto, una
+		// corrida en la que los diez hilos se pisaran de otra forma daria verde sin haber ejercido
+		// la regla que el test existe para verificar.
+		assertThat(resultados.stream().filter(Concurrencia.Resultado::fallo)
+						.map(r -> raiz(r.error()))
+						.anyMatch(LastAdminException.class::isInstance))
+				.as("el invariante del ultimo administrador tiene que haberse ejercido%s", diag)
+				.isTrue();
 
 		// Las que fallaron lo hicieron por reglas de negocio, no por la base.
 		resultados.stream().filter(Concurrencia.Resultado::fallo).forEach(r ->
 				assertThat(raiz(r.error()))
-						.as("desenlace inesperado: %s", r.error())
+						.as("desenlace inesperado: %s%s", cadena(r.error()), diag)
 						.isInstanceOfAny(LastAdminException.class,
 								MembershipNotActiveException.class,
 								SelfRevokeNotAllowedException.class));
@@ -457,12 +514,23 @@ class MembershipConcurrenteIT extends BaseEscenarioDiferido {
 		return texto.toString();
 	}
 
-	/** Baja al fundador a un rol no administrativo, para dejar solo los admins sembrados. */
+	/** Saca al fundador de {@code ORG_ADMIN}, para dejar solo los admins sembrados. */
 	private void degradarAlFundador(Escenario escenario) {
+		degradarAlFundador(escenario, "PROFESIONAL");
+	}
+
+	/**
+	 * Le cambia el rol al fundador.
+	 *
+	 * <p>El rol destino no es un detalle: {@code PROFESIONAL} lo deja sin
+	 * {@code colaborador:manage} y por lo tanto sin poder revocar a nadie, mientras que
+	 * {@code CONSULTORIO_ADMIN} se lo conserva pero lo saca del conteo del invariante, que mira
+	 * {@code ORG_ADMIN} y nada mas. C-1 quiere lo primero; C-6, lo segundo.
+	 */
+	private void degradarAlFundador(Escenario escenario, String rol) {
 		int filas = jdbc.update(
-				"UPDATE membership SET role_code = 'PROFESIONAL' "
-						+ "WHERE organization_id = ? AND account_id = ?",
-				escenario.organizationId(), escenario.cuentaFundador());
+				"UPDATE membership SET role_code = ? WHERE organization_id = ? AND account_id = ?",
+				rol, escenario.organizationId(), escenario.cuentaFundador());
 		assertThat(filas).isEqualTo(1);
 	}
 
