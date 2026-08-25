@@ -278,6 +278,12 @@ docker compose exec mysql mysql -u akine -pakine akine_local -e "SELECT 1;"
 ```
 Consultas de validación durante el QA. No hace falta cliente MySQL en la máquina.
 
+**Bandeja de correo de desarrollo: <http://localhost:8025>**
+`docker compose up -d` levanta también un Mailpit (SMTP en `localhost:1025`, sin credenciales
+y sin TLS). El perfil `local` envía **de verdad** contra él: las activaciones, recuperaciones e
+invitaciones aparecen ahí con su enlace de un solo uso, y nada sale de la máquina. Para volver
+al adaptador que solo registra en el log: `AKINE_EMAIL_MODE=log`.
+
 ### Endpoints existentes
 
 | Ruta | Qué es |

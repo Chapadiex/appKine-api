@@ -133,6 +133,34 @@ akine:
       # y no son 5 porque incorporar un equipo entero de una sentada es un uso legitimo.
       membership-max-attempts: 10
 
+  notification:
+    email:
+      # log | smtp. El default 'log' registra el mensaje y NO envia nada: sirve para
+      # desarrollo y NO se acepta fuera de los perfiles de desarrollo, donde la aplicacion
+      # no arranca en ese modo (NotificationConfig). Un despliegue en modo log responde 202
+      # a cada activacion y a cada recuperacion y tira el correo sin dejar rastro, que es la
+      # forma mas silenciosa de romper ADR-0018.
+      mode: ${AKINE_EMAIL_MODE:log}
+      # Remitente. El valor de abajo es el de desarrollo, esta versionado y su dominio no es
+      # enrutable: fuera de un perfil de desarrollo hay que definir AKINE_MAIL_FROM.
+      from: ${AKINE_MAIL_FROM:no-reply@akine.local}
+      base-url: ${AKINE_PUBLIC_BASE_URL:http://localhost:4200}
+      smtp:
+        # SIN DEFAULT, misma regla que el secreto de firma del JWT (ADR-0017): en modo smtp,
+        # sin este valor la aplicacion NO ARRANCA. Un default comodo aca seria un despliegue
+        # apuntando a un servidor que no es el suyo, descartando cada correo en silencio.
+        host: ${AKINE_MAIL_HOST:}
+        port: ${AKINE_MAIL_PORT:587}
+        username: ${AKINE_MAIL_USER:}
+        # Jamas versionada.
+        password: ${AKINE_MAIL_PASSWORD:}
+        # starttls | ssl | ninguna. 'ninguna' manda la contrasena del relay en claro y solo
+        # se acepta en perfiles de desarrollo.
+        transport-security: ${AKINE_MAIL_TRANSPORT_SECURITY:starttls}
+        # Tope para conectar, leer y escribir. Sin esto JavaMail espera para siempre y un
+        # relay que no contesta deja colgado al worker con el lote entero en PROCESANDO.
+        timeout: 10s
+
   identity:
     session:
       # Vigencia ABSOLUTA de la sesion de refresh desde el login (ADR-0017). La rotacion NO
