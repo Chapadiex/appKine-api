@@ -9,6 +9,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -66,16 +70,28 @@ public class BloqueDisponibilidad extends MarcaTemporal {
 	@Column(name = "membership_id", nullable = false, updatable = false)
 	private Long membershipId;
 
-	/** ISO-8601: lunes = 1 .. domingo = 7. */
+	/**
+	 * ISO-8601: lunes = 1 .. domingo = 7.
+	 *
+	 * <p>La columna es {@code TINYINT} (V23), no {@code TINYINT(1)} como el resto de los
+	 * booleanos de este esquema. Sin {@link JdbcTypeCode}, Hibernate infiere {@code INTEGER}
+	 * para un atributo {@code int} y {@code ddl-auto: validate} rechaza la fila
+	 * ("found [tinyint], but expecting [integer]") apenas arranca cualquier contexto de Spring
+	 * con esta entidad. La anotacion fuerza el tipo JDBC correcto sin tocar el tipo Java: sigue
+	 * siendo {@code int} para quien consuma {@link #getDiaSemana()}.
+	 */
+	@JdbcTypeCode(SqlTypes.TINYINT)
 	@Column(name = "dia_semana", nullable = false)
 	private int diaSemana;
 
 	@Convert(converter = HoraLocalConverter.class)
+	@JdbcType(HoraJdbcType.class)
 	@Column(name = "hora_desde", nullable = false)
 	private LocalTime horaDesde;
 
 	/** EXCLUSIVA. Admite {@link IntervaloLocal#FIN_DE_DIA}; nunca cruza medianoche (V23). */
 	@Convert(converter = HoraLocalConverter.class)
+	@JdbcType(HoraJdbcType.class)
 	@Column(name = "hora_hasta", nullable = false)
 	private LocalTime horaHasta;
 

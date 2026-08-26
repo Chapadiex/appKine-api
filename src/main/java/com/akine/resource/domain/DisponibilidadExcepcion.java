@@ -11,6 +11,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
+import org.hibernate.annotations.JdbcType;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -75,11 +77,13 @@ public class DisponibilidadExcepcion extends MarcaTemporal {
 
 	/** {@code null} junto con {@link #horaHasta} significa DIA COMPLETO. */
 	@Convert(converter = HoraLocalConverter.class)
+	@JdbcType(HoraJdbcType.class)
 	@Column(name = "hora_desde")
 	private LocalTime horaDesde;
 
 	/** EXCLUSIVA. Admite {@link IntervaloLocal#FIN_DE_DIA}. */
 	@Convert(converter = HoraLocalConverter.class)
+	@JdbcType(HoraJdbcType.class)
 	@Column(name = "hora_hasta")
 	private LocalTime horaHasta;
 
