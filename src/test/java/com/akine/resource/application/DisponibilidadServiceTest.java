@@ -10,6 +10,7 @@ import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.resource.domain.BloqueDisponibilidad;
 import com.akine.resource.domain.CalendarioSede;
+import com.akine.resource.domain.exception.BloqueNotAccessibleException;
 import com.akine.resource.domain.exception.BloqueSolapadoException;
 import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
 import com.akine.resource.domain.exception.ProfesionalNoVinculadoException;
@@ -34,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -71,6 +73,7 @@ class DisponibilidadServiceTest {
 	private static final long MEMBERSHIP_ID = 30L;
 	private static final long ACCOUNT_ID = 40L;
 	private static final long BLOQUE_ID = 50L;
+	private static final long OTRA_MEMBERSHIP_ID = 31L;
 	private static final String ZONA = "America/Argentina/Buenos_Aires";
 
 	private static final int MARTES = 2;
@@ -193,6 +196,29 @@ class DisponibilidadServiceTest {
 	}
 
 	@Test
+	@DisplayName("Un bloque de OTRO profesional no se edita: 404, aunque el actor administre la sede")
+	void un_bloque_de_otro_profesional_no_se_puede_editar() {
+		// PUT /consultorios/20/profesionales/31/disponibilidad/50 donde el bloque 50 es del
+		// profesional 30. El actor es un CONSULTORIO_ADMIN legitimo y el permiso alcanza: lo unico
+		// que separa un 404 de una edicion exitosa auditada contra el profesional equivocado es
+		// que la carga compare la membership de la ruta con la de la fila.
+		given(membershipDirectory.find(ORG_ID, OTRA_MEMBERSHIP_ID))
+				.willReturn(Optional.of(new ConsultorioMembershipSnapshot(
+						OTRA_MEMBERSHIP_ID, 41L, ORG_ID, CONSULTORIO_ID, "PROFESIONAL", "ACTIVA",
+						Instant.parse("2026-01-01T00:00:00Z"), null, true, true)));
+		given(bloques.findByIdScoped(BLOQUE_ID, ORG_ID, CONSULTORIO_ID))
+				.willReturn(Optional.of(bloque(BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0))));
+
+		assertThatThrownBy(() -> service.editar(
+				actor, CONSULTORIO_ID, OTRA_MEMBERSHIP_ID, BLOQUE_ID,
+				new BloqueEdicionCommand(null, LocalTime.of(10, 0), null, null, null, false, 0L)))
+				.isInstanceOf(BloqueNotAccessibleException.class);
+
+		verify(bloques, never()).save(any());
+		verifyNoInteractions(auditTrail);
+	}
+
+	@Test
 	@DisplayName("Una membership que no cubre la sede se rechaza con 409, no con 404")
 	void una_membership_que_no_cubre_la_sede_es_rechazada() {
 		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID))
@@ -258,6 +284,84 @@ class DisponibilidadServiceTest {
 		verify(bloques).save(any());
 	}
 
+	@Test
+	@DisplayName("Dos temporadas del mismo horario no se solapan: marzo-junio y septiembre conviven")
+	void dos_temporadas_del_mismo_horario_no_se_solapan() {
+		// Horas que SI se pisan (11-12 esta en los dos) pero vigencias disjuntas. Si alguien saca
+		// la comparacion de vigencia de exigirSinSolapamiento, esto se convierte en un 409 y el
+		// horario de temporada deja de poder cargarse.
+		given(bloques.findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID))
+				.willReturn(List.of(bloque(BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0),
+						DESDE_MARZO, LocalDate.of(2026, 6, 1))));
+
+		BloqueAltaCommand temporadaDePrimavera = new BloqueAltaCommand(
+				MARTES, LocalTime.of(11, 0), LocalTime.of(13, 0),
+				LocalDate.of(2026, 9, 1), null);
+
+		service.crear(actor, CONSULTORIO_ID, MEMBERSHIP_ID, temporadaDePrimavera);
+
+		verify(bloques).save(any());
+	}
+
+	@Test
+	@DisplayName("Mismo dia y mismas horas con OTRA vigencia no es el mismo bloque: se crea, no se reusa")
+	void un_alta_con_otra_vigencia_no_es_el_mismo_bloque() {
+		// Mismo dia y mismas horas que el existente, pero otra temporada. Si alguien saca la
+		// vigencia de coincideExacto, esto devuelve el bloque de MARZO como si fuera un reintento
+		// y el horario de septiembre no se crea nunca.
+		given(bloques.findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID))
+				.willReturn(List.of(bloque(BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0),
+						DESDE_MARZO, LocalDate.of(2026, 6, 1))));
+
+		BloqueAltaCommand mismoHorarioOtraTemporada = new BloqueAltaCommand(
+				MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0), LocalDate.of(2026, 9, 1), null);
+
+		service.crear(actor, CONSULTORIO_ID, MEMBERSHIP_ID, mismoHorarioOtraTemporada);
+
+		ArgumentCaptor<BloqueDisponibilidad> creado =
+				ArgumentCaptor.forClass(BloqueDisponibilidad.class);
+		verify(bloques).save(creado.capture());
+		assertThat(creado.getValue().getVigenciaDesde()).isEqualTo(LocalDate.of(2026, 9, 1));
+	}
+
+	@Test
+	@DisplayName("El reintento que cruza la medianoche sigue siendo idempotente (CA-M05-003-05)")
+	void el_reintento_que_cruza_la_medianoche_sigue_siendo_idempotente() {
+		// Primer intento a las 23:59:58 con vigenciaDesde nula: la fila quedo con la fecha de AYER.
+		// El reintento llega despues de medianoche y resolveria HOY. Exigir igualdad de fechas le
+		// daria 409 justo al caso que la idempotencia existe para cubrir.
+		LocalDate ayer = LocalDate.now(ZoneId.of(ZONA)).minusDays(1);
+		given(bloques.findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID))
+				.willReturn(List.of(bloque(BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0),
+						ayer, null)));
+
+		BloqueAltaCommand desdeAhora = new BloqueAltaCommand(
+				MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0), null, null);
+
+		BloqueView vista = service.crear(actor, CONSULTORIO_ID, MEMBERSHIP_ID, desdeAhora);
+
+		assertThat(vista.id()).isEqualTo(BLOQUE_ID);
+		verify(bloques, never()).save(any());
+		verifyNoInteractions(auditTrail);
+	}
+
+	@Test
+	@DisplayName("Un bloque de vigencia FUTURA no satisface un pedido de 'que rija desde ahora'")
+	void un_bloque_que_todavia_no_rige_no_satisface_un_alta_desde_ahora() {
+		LocalDate elMesQueViene = LocalDate.now(ZoneId.of(ZONA)).plusMonths(1);
+		given(bloques.findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID))
+				.willReturn(List.of(bloque(BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0),
+						elMesQueViene, null)));
+
+		BloqueAltaCommand desdeAhora = new BloqueAltaCommand(
+				MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0), null, null);
+
+		// No es el mismo pedido: el existente no cubre HOY. Y como las dos vigencias se pisan de
+		// aca en adelante, el alta es un conflicto real.
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, MEMBERSHIP_ID, desdeAhora))
+				.isInstanceOf(BloqueSolapadoException.class);
+	}
+
 	// =================================================================================
 	// Concurrencia
 	// =================================================================================
@@ -270,6 +374,74 @@ class DisponibilidadServiceTest {
 		InOrder protocolo = inOrder(calendarios, bloques);
 		protocolo.verify(calendarios).lockByScope(ORG_ID, CONSULTORIO_ID);
 		protocolo.verify(bloques).findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID);
+	}
+
+	@Test
+	@DisplayName("La edicion tambien bloquea antes de leer el bloque, no despues")
+	void la_edicion_toma_el_lock_antes_de_leer_el_bloque() {
+		given(bloques.findByIdScoped(BLOQUE_ID, ORG_ID, CONSULTORIO_ID))
+				.willReturn(Optional.of(bloque(BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0))));
+
+		service.editar(actor, CONSULTORIO_ID, MEMBERSHIP_ID, BLOQUE_ID,
+				new BloqueEdicionCommand(null, LocalTime.of(10, 0), null, null, null, false, 0L));
+
+		InOrder protocolo = inOrder(calendarios, bloques);
+		protocolo.verify(calendarios).lockByScope(ORG_ID, CONSULTORIO_ID);
+		protocolo.verify(bloques).findByIdScoped(BLOQUE_ID, ORG_ID, CONSULTORIO_ID);
+	}
+
+	@Test
+	@DisplayName("El calendario de la sede se crea a demanda y se bloquea recien despues")
+	void el_calendario_de_la_sede_se_crea_a_demanda() {
+		// Primera disponibilidad que se carga en esta sede: la fila que sirve de punto de
+		// serializacion todavia no existe.
+		given(calendarios.lockByScope(ORG_ID, CONSULTORIO_ID))
+				.willReturn(Optional.empty(), Optional.of(new CalendarioSede(ORG_ID, CONSULTORIO_ID)));
+
+		service.crear(actor, CONSULTORIO_ID, MEMBERSHIP_ID, altaMartes());
+
+		InOrder protocolo = inOrder(calendarios, bloques);
+		protocolo.verify(calendarios).lockByScope(ORG_ID, CONSULTORIO_ID);
+		protocolo.verify(calendarios).save(any(CalendarioSede.class));
+		protocolo.verify(calendarios).lockByScope(ORG_ID, CONSULTORIO_ID);
+		protocolo.verify(bloques).findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID);
+	}
+
+	@Test
+	@DisplayName("Si el calendario no se puede bloquear ni despues de crearlo, falla ruidosamente")
+	void si_el_calendario_no_se_puede_bloquear_despues_de_crearlo_falla() {
+		given(calendarios.lockByScope(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.empty());
+
+		// Nunca deberia pasar. Seguir sin el lock si podria: seria escribir disponibilidad sin el
+		// unico mecanismo que impide que dos altas concurrentes se pisen.
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, MEMBERSHIP_ID, altaMartes()))
+				.isInstanceOf(IllegalStateException.class);
+
+		verify(bloques, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("La sonda de impacto se pregunta por el tramo que la edicion RECORTA, no por el que deja")
+	void la_edicion_pregunta_por_el_tramo_que_recorta() {
+		// Bloque sin fin de vigencia con turnos hacia adelante. El administrador le pone fin en
+		// diez dias: los turnos que esa edicion deja huerfanos son los POSTERIORES a ese fin. Una
+		// ventana derivada del estado nuevo terminaria justo ahi y responderia cero.
+		given(bloques.findByIdScoped(BLOQUE_ID, ORG_ID, CONSULTORIO_ID))
+				.willReturn(Optional.of(bloque(BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0))));
+
+		LocalDate nuevoFin = LocalDate.now(ZoneId.of(ZONA)).plusDays(10);
+		service.editar(actor, CONSULTORIO_ID, MEMBERSHIP_ID, BLOQUE_ID,
+				new BloqueEdicionCommand(null, null, null, null, nuevoFin, false, 0L));
+
+		ArgumentCaptor<Instant> hasta = ArgumentCaptor.forClass(Instant.class);
+		verify(impactProbe).turnosEn(
+				org.mockito.ArgumentMatchers.eq(ORG_ID),
+				org.mockito.ArgumentMatchers.eq(CONSULTORIO_ID),
+				org.mockito.ArgumentMatchers.eq(MEMBERSHIP_ID),
+				any(), hasta.capture());
+
+		Instant finDeLaVentanaNueva = nuevoFin.atStartOfDay(ZoneId.of(ZONA)).toInstant();
+		assertThat(hasta.getValue()).isAfter(finDeLaVentanaNueva);
 	}
 
 	@Test
@@ -325,6 +497,11 @@ class DisponibilidadServiceTest {
 				ArgumentCaptor.forClass(BloqueDisponibilidad.class);
 		verify(bloques).save(guardado.capture());
 
+		// La baja tambien lee un bloque, y tambien tiene que bloquear primero.
+		InOrder protocolo = inOrder(calendarios, bloques);
+		protocolo.verify(calendarios).lockByScope(ORG_ID, CONSULTORIO_ID);
+		protocolo.verify(bloques).findByIdScoped(BLOQUE_ID, ORG_ID, CONSULTORIO_ID);
+
 		assertThat(guardado.getValue().isActive()).isFalse();
 		assertThat(guardado.getValue().getDeletedAt()).isNotNull();
 		assertThat(guardado.getValue().getDeactivationReason())
@@ -372,8 +549,16 @@ class DisponibilidadServiceTest {
 	}
 
 	private static BloqueDisponibilidad bloque(long id, int dia, LocalTime desde, LocalTime hasta) {
+		return bloque(id, dia, desde, hasta, DESDE_MARZO, null);
+	}
+
+	private static BloqueDisponibilidad bloque(
+			long id, int dia, LocalTime desde, LocalTime hasta,
+			LocalDate vigenciaDesde, LocalDate vigenciaHasta) {
+
 		BloqueDisponibilidad bloque = new BloqueDisponibilidad(
-				ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, dia, desde, hasta, DESDE_MARZO, null);
+				ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, dia, desde, hasta,
+				vigenciaDesde, vigenciaHasta);
 		ReflectionTestUtils.setField(bloque, "id", id);
 		return bloque;
 	}

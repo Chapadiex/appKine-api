@@ -81,6 +81,10 @@ import java.util.Optional;
  * Un alta que solapa SIN coincidir devuelve 409. Un reintento de red cae siempre en el primer
  * caso, que es lo que el criterio pide.
  *
+ * <p>Con un {@code vigenciaDesde} nulo —"que rija desde ahora"— la comparacion no exige que el
+ * inicio coincida con el dia de hoy, o el reintento que cruza la medianoche recibiria 409. El
+ * criterio completo esta en {@link #coincideExacto}.
+ *
  * <h2>Quien NO puede llegar aca, dicho para que no se lea como un hueco</h2>
  *
  * <p><b>El {@code PLATFORM_ADMIN} no opera esta API.</b> La matriz seccion 6 le da
@@ -195,17 +199,17 @@ public class DisponibilidadService {
 		int dia = command.diaSemana();
 		LocalTime horaDesde = command.horaDesde();
 		LocalTime horaHasta = command.horaHasta();
-		LocalDate vigenciaDesde = command.vigenciaDesde() == null
-				? LocalDate.ofInstant(ahora, zonaDe(sede))
-				: command.vigenciaDesde();
+		LocalDate hoy = LocalDate.ofInstant(ahora, zonaDe(sede));
+		LocalDate vigenciaDesde =
+				command.vigenciaDesde() == null ? hoy : command.vigenciaDesde();
 		LocalDate vigenciaHasta = command.vigenciaHasta();
 
 		List<BloqueDisponibilidad> activos =
 				bloques.findActivosDe(organizationId, consultorioId, membershipId);
 
 		Optional<BloqueDisponibilidad> yaCargado = activos.stream()
-				.filter(existente -> coincideExacto(
-						existente, dia, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta))
+				.filter(existente -> coincideExacto(existente, dia, horaDesde, horaHasta,
+						command.vigenciaDesde(), vigenciaHasta, hoy))
 				.findFirst();
 		if (yaCargado.isPresent()) {
 			// Idempotencia sin Idempotency-Key: es el reintento de red. Devolver el bloque que ya
@@ -293,6 +297,14 @@ public class DisponibilidadService {
 		}
 
 		Map<String, String> detalles = cambios(bloque, command);
+
+		// El fin de vigencia ANTERIOR se guarda antes de mutar, y es lo que hace correcta la
+		// ventana de la sonda. Ver impactoDe: los turnos que una edicion deja huerfanos son
+		// justamente los que caen DESPUES del nuevo fin, o sea fuera de la ventana que el estado
+		// posterior describe. Preguntando solo por el estado nuevo, la respuesta seria cero
+		// exactamente en el caso que la pregunta existe para detectar.
+		LocalDate finDeVigenciaPrevio = bloque.getVigenciaHasta();
+
 		bloque.updateDatos(
 				command.diaSemana(), command.horaDesde(), command.horaHasta(),
 				command.vigenciaDesde(), command.vigenciaHasta(), command.limpiarVigenciaHasta());
@@ -305,8 +317,9 @@ public class DisponibilidadService {
 				bloque.getVigenciaDesde(), bloque.getVigenciaHasta());
 
 		BloqueDisponibilidad guardado = bloques.save(bloque);
-		DisponibilidadImpactProbe.Impacto impacto =
-				impactoDe(organizationId, consultorioId, membershipId, guardado, sede, ahora);
+		DisponibilidadImpactProbe.Impacto impacto = impactoDe(
+				organizationId, consultorioId, membershipId, sede, ahora,
+				finDeVigenciaPrevio, guardado.getVigenciaHasta());
 		if (impacto.hayAlgo()) {
 			detalles.put("turnosAfectados", String.valueOf(impacto.turnosAfectados()));
 		}
@@ -363,8 +376,9 @@ public class DisponibilidadService {
 
 		// La sonda se consulta ANTES de la baja: despues, la disponibilidad resultante ya no
 		// contiene la franja y la pregunta "que turnos quedan afuera" perderia su referencia.
-		DisponibilidadImpactProbe.Impacto impacto =
-				impactoDe(organizationId, consultorioId, membershipId, bloque, sede, ahora);
+		DisponibilidadImpactProbe.Impacto impacto = impactoDe(
+				organizationId, consultorioId, membershipId, sede, ahora,
+				bloque.getVigenciaHasta(), bloque.getVigenciaHasta());
 
 		bloque.deactivate(ahora, motivo);
 		BloqueDisponibilidad guardado = bloques.save(bloque);
@@ -620,20 +634,55 @@ public class DisponibilidadService {
 	 * dos direcciones: si "coincidir" se implementara como "solapar", un bloque apenas distinto
 	 * devolveria el viejo en vez de rechazarse; y si el reintento exacto pasara por el chequeo de
 	 * solapamiento, devolveria 409 en vez del bloque que ya existe.
+	 *
+	 * <p><b>La vigencia forma parte de la comparacion y no es un adorno.</b> Sacarla convertiria
+	 * un horario de temporada en un falso positivo: con un bloque "martes 09-12, marzo a junio"
+	 * cargado, un alta de "martes 09-12, desde septiembre y sin fin" devolveria el bloque de MARZO
+	 * como si fuera el mismo pedido, y el horario de septiembre nunca se crearia.
+	 *
+	 * <h2>El caso {@code vigenciaDesde} nula, y por que no compara contra hoy</h2>
+	 *
+	 * <p>Un {@code vigenciaDesde} nulo no dice "empieza el 26 de agosto": dice <b>"que rija desde
+	 * ahora"</b>. Resolverlo a la fecha de hoy y despues exigir igualdad rompe la idempotencia
+	 * justo en el borde del dia: un POST a las 23:59:58 que sufre timeout y se reintenta a las
+	 * 00:00:01 resuelve D+1, no coincide con la fila que dejo el primer intento y recibe 409 — que
+	 * es exactamente el caso que CA-M05-003-05 existe para evitar.
+	 *
+	 * <p>Por eso, cuando el pedido no trae inicio, la comparacion es dia, horas y fin de vigencia,
+	 * y ademas se exige que el candidato este ACTIVO y <b>ya rigiendo</b>
+	 * ({@code vigenciaDesde <= hoy}). No es una concesion a la comodidad: un pedido de "que rija
+	 * desde ahora" queda genuinamente satisfecho por un bloque activo del mismo dia y las mismas
+	 * horas que ya cubre este momento. Un bloque de vigencia FUTURA no lo satisface, y por eso el
+	 * {@code isAfter} esta ahi.
+	 *
+	 * <p>La contrapartida, dicha y no tapada: un alta sin inicio que reproduce el horario de un
+	 * bloque que ya rige desde marzo devuelve 200 con ese bloque en vez de 409. Antes de este
+	 * criterio devolvia 409 por solapamiento. Es un cambio de codigo de respuesta deliberado y
+	 * <b>no se crea nada de mas en ninguno de los dos casos</b>, que es lo que el criterio pide.
+	 *
+	 * @param vigenciaDesdePedida el inicio TAL COMO LLEGO, sin resolver. {@code null} = "desde
+	 *                            ahora", y ese matiz es justamente lo que se pierde si se pasa el
+	 *                            valor ya resuelto
 	 */
 	private static boolean coincideExacto(
 			BloqueDisponibilidad existente,
 			int dia,
 			LocalTime horaDesde,
 			LocalTime horaHasta,
-			LocalDate vigenciaDesde,
-			LocalDate vigenciaHasta) {
+			LocalDate vigenciaDesdePedida,
+			LocalDate vigenciaHasta,
+			LocalDate hoy) {
 
-		return existente.getDiaSemana() == dia
-				&& existente.getHoraDesde().equals(horaDesde)
-				&& existente.getHoraHasta().equals(horaHasta)
-				&& existente.getVigenciaDesde().equals(vigenciaDesde)
-				&& java.util.Objects.equals(existente.getVigenciaHasta(), vigenciaHasta);
+		if (existente.getDiaSemana() != dia
+				|| !existente.getHoraDesde().equals(horaDesde)
+				|| !existente.getHoraHasta().equals(horaHasta)
+				|| !java.util.Objects.equals(existente.getVigenciaHasta(), vigenciaHasta)) {
+			return false;
+		}
+		if (vigenciaDesdePedida == null) {
+			return existente.isOperable() && !existente.getVigenciaDesde().isAfter(hoy);
+		}
+		return existente.getVigenciaDesde().equals(vigenciaDesdePedida);
 	}
 
 	// =================================================================================
@@ -684,23 +733,54 @@ public class DisponibilidadService {
 	/**
 	 * Pregunta a la sonda cuantos turnos futuros deja en conflicto el cambio (RN-M05-004).
 	 *
-	 * <p>La ventana va desde AHORA —los turnos pasados no se tocan— hasta el fin de vigencia del
-	 * bloque, o hasta {@link #DIAS_DE_HORIZONTE_DE_IMPACTO} si no tiene fin previsto. La zona de
-	 * la sede es la que traduce ese dia local a un instante: usar UTC correria el limite hasta
-	 * tres horas en Argentina y dejaria turnos del ultimo dia afuera de la cuenta.
+	 * <h2>La ventana sale de la UNION del estado anterior y el nuevo, no del nuevo</h2>
+	 *
+	 * <p>Es el error que este metodo existe para no cometer, y no se ve hasta que
+	 * {@code scheduling} exista. Un bloque "martes 09-12, sin fin" con turnos reservados hasta
+	 * diciembre al que el administrador le pone {@code vigenciaHasta = 2026-09-01}: los turnos
+	 * que esa edicion deja huerfanos son <b>exactamente los del 2026-09-01 en adelante</b>. Una
+	 * ventana derivada del estado POSTERIOR termina el 2026-09-01, o sea que consulta justo el
+	 * tramo que la edicion NO rompe y responde cero.
+	 *
+	 * <p>Por eso se toma el fin MAS LEJANO entre el anterior y el nuevo. Con la union, la ventana
+	 * cubre el tramo que se recorta —que es el que interesa— y tambien el caso simetrico de una
+	 * edicion que ALARGA la vigencia, donde el conflicto puede estar mas alla del fin viejo. Un
+	 * {@code null} de cualquiera de los dos lados significa "sin fin" y gana siempre: se cae al
+	 * horizonte.
+	 *
+	 * <p>Es la misma razon por la que {@link #darDeBaja} consulta la sonda ANTES de desactivar.
+	 * Una baja es el caso extremo de un recorte, y ahi los dos extremos coinciden porque la
+	 * vigencia no cambia.
+	 *
+	 * <p>La ventana arranca en AHORA —los turnos pasados no se tocan— y la zona de la sede es la
+	 * que traduce el dia local a un instante: usar UTC correria el limite hasta tres horas en
+	 * Argentina y dejaria turnos del ultimo dia afuera de la cuenta.
+	 *
+	 * @param finPrevio fin de vigencia ANTES del cambio, {@code null} si no tenia
+	 * @param finNuevo  fin de vigencia DESPUES del cambio, {@code null} si no tiene
 	 */
 	private DisponibilidadImpactProbe.Impacto impactoDe(
 			long organizationId,
 			long consultorioId,
 			long membershipId,
-			BloqueDisponibilidad bloque,
 			ConsultorioSnapshot sede,
-			Instant ahora) {
+			Instant ahora,
+			LocalDate finPrevio,
+			LocalDate finNuevo) {
 
 		ZoneId zona = zonaDe(sede);
-		LocalDate fin = bloque.getVigenciaHasta() != null
-				? bloque.getVigenciaHasta()
-				: LocalDate.ofInstant(ahora, zona).plusDays(DIAS_DE_HORIZONTE_DE_IMPACTO);
+		LocalDate horizonte =
+				LocalDate.ofInstant(ahora, zona).plusDays(DIAS_DE_HORIZONTE_DE_IMPACTO);
+
+		LocalDate fin;
+		if (finPrevio == null || finNuevo == null) {
+			fin = horizonte;
+		} else {
+			LocalDate masLejano = finPrevio.isAfter(finNuevo) ? finPrevio : finNuevo;
+			// El horizonte tambien acota el caso acotado: sin el, un fin de vigencia a diez años
+			// convertiria cada edicion en un scan de la agenda entera.
+			fin = masLejano.isAfter(horizonte) ? horizonte : masLejano;
+		}
 		Instant hasta = fin.atStartOfDay(zona).toInstant();
 
 		if (!hasta.isAfter(ahora)) {

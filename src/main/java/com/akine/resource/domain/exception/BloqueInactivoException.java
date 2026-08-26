@@ -3,10 +3,15 @@ package com.akine.resource.domain.exception;
 /**
  * Se intento mutar un bloque de disponibilidad dado de baja (409).
  *
- * <p>409 y no 404: el actor tiene el permiso y el bloque esta en su alcance; lo que no admite la
- * operacion es el ESTADO. Y no 404 porque el bloque se sigue leyendo (RN-M05-003, la historia se
- * conserva): responder que no existe justo cuando se lo quiere editar contradiria la lectura que
- * acaba de devolverlo.
+ * <p>409 y no 404: el actor tiene el permiso, el bloque esta en su alcance y el servicio lo
+ * <b>encontro</b> — la carga interna lo devuelve, activo o no. Lo que no admite la operacion es
+ * el ESTADO, y ese es exactamente el caso de un 409.
+ *
+ * <p>Un 404 diria "no existe" sobre una fila que el sistema conserva a proposito (RN-M05-003) y
+ * que el propio mensaje de error tiene que poder explicar: "ese bloque ya estaba dado de baja" es
+ * informacion distinta de "ese bloque no existe", y la primera es la unica que le sirve al
+ * administrador que acaba de apretar el boton dos veces. Ademas dejaria a
+ * {@code BloqueNotAccessibleException} significando dos cosas incompatibles a la vez.
  *
  * <p>La operacion viaja en la excepcion por el mismo motivo que en
  * {@code EspacioInactiveException}: "no se puede editar un bloque dado de baja" y "ese bloque ya
