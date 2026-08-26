@@ -128,9 +128,19 @@ class ResourceDesvinculacionProbeTest {
 				.countVigentesDe(eq(ORG_ID), eq(MEMBERSHIP_ID), any());
 	}
 
-	/** Convierte {@code at} a la misma fecha UTC que usa la sonda, para verificar el filtro. */
+	/**
+	 * La fecha de corte es {@code at} llevado a fecha UTC, y las DOS consultas tienen que recibir
+	 * exactamente esa.
+	 *
+	 * <p>Se verifica tambien sobre el contador desde que {@code countVigentesDe} dejo de contar
+	 * los bloques vencidos y empezo a recibir una fecha: si la sonda le pasara
+	 * {@code LocalDate.now()} o una fecha corrida de huso, el conteo de "bloques colgando" saldria
+	 * mal por un dia y <b>ningun test de integracion lo veria</b> — el bloque vencido de
+	 * {@code DisponibilidadIT} termina cinco meses antes del corte, asi que un off-by-one queda
+	 * invisible ahi. Este {@code verify} es el unico lugar donde ese error se cae.
+	 */
 	@Test
-	@DisplayName("la fecha de corte de excepciones futuras es 'at' llevado a fecha UTC")
+	@DisplayName("la fecha de corte es 'at' llevado a fecha UTC, en las dos consultas")
 	void la_fecha_de_corte_es_at_en_utc() {
 		given(bloqueRepository.countVigentesDe(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(0L);
@@ -139,8 +149,9 @@ class ResourceDesvinculacionProbeTest {
 
 		probe.pendingWorkOn(ORG_ID, MEMBERSHIP_ID, ACCOUNT_ID, AT);
 
-		verify(excepcionRepository).findFuturasDeLaMembership(
-				ORG_ID, MEMBERSHIP_ID, LocalDate.ofInstant(AT, ZoneOffset.UTC));
+		LocalDate corte = LocalDate.ofInstant(AT, ZoneOffset.UTC);
+		verify(excepcionRepository).findFuturasDeLaMembership(ORG_ID, MEMBERSHIP_ID, corte);
+		verify(bloqueRepository).countVigentesDe(ORG_ID, MEMBERSHIP_ID, corte);
 	}
 
 	private static DisponibilidadExcepcion excepcion(LocalDate fechaDesde) {

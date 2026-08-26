@@ -45,7 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -110,11 +109,10 @@ class DisponibilidadIT {
 	/**
 	 * Feriado AR sembrado por V22, y por lo tanto el dia donde la politica de la sede se nota.
 	 *
-	 * <p><b>Tiene que caer DESPUES del arranque del vinculo del fixture</b>, que se siembra
-	 * "ahora menos un minuto". Con una fecha anterior el dia sale vacio por {@code VINCULO} —el
-	 * profesional todavia no se habia incorporado— y el escenario del feriado nunca llega a
-	 * evaluarse: el test daria rojo sin que haya nada roto. Paso con el 9 de julio mientras se
-	 * escribia esta tarea.
+	 * <p>Solo tiene que ser una fecha con feriado sembrado: <b>no hay ninguna restriccion respecto
+	 * de hoy</b>. La hubo mientras el fixture arrancaba el vinculo "hace un minuto" —una fecha
+	 * anterior salia vacia por {@code VINCULO} y el escenario del feriado nunca se evaluaba— y esa
+	 * dependencia del calendario se elimino en su origen: ver {@link #insertarMembership}.
 	 */
 	private static final LocalDate FERIADO = LocalDate.of(2026, 12, 25);
 
@@ -408,9 +406,13 @@ class DisponibilidadIT {
 		// dia vacio sea el vinculo.
 		LocalDate martes = LocalDate.of(2026, 9, 1);
 
+		// El dia de la semana sale de la fecha, igual que en el escenario del feriado: un numero a
+		// mano se desincroniza en silencio el dia que alguien mueva la constante, y el sintoma seria
+		// un dia vacio que se confunde con el que este test va a buscar a proposito.
 		BloqueView creado = disponibilidadService.crear(
 				fixture.admin(), fixture.consultorioId(), fixture.profesionalMembershipId(),
-				new BloqueAltaCommand(2, LocalTime.of(9, 0), LocalTime.of(13, 0), martes, null));
+				new BloqueAltaCommand(martes.getDayOfWeek().getValue(),
+						LocalTime.of(9, 0), LocalTime.of(13, 0), martes, null));
 
 		DisponibilidadEfectivaView antes = efectivaService.efectiva(
 				fixture.admin(), fixture.consultorioId(), fixture.profesionalMembershipId(),
@@ -686,22 +688,26 @@ class DisponibilidadIT {
 	 * es package-private de ese paquete y hacerlo publico expondria infraestructura de los
 	 * escenarios diferidos a todo el arbol de tests.
 	 *
-	 * <p>Dos sincronizadores y no uno: un {@link CountDownLatch} para no medir el costo de crear
-	 * los hilos, y una {@link CyclicBarrier} justo antes de la operacion, que <b>ningun hilo cruza
-	 * hasta que llegaron todos</b>. Un {@code invokeAll} a secas no garantiza nada: el primer hilo
-	 * puede terminar antes de que arranque el segundo, y entonces el test da verde porque la
-	 * ejecucion fue SECUENCIAL, no porque el lock funcione.
+	 * <p>El sincronizador es la {@link CyclicBarrier} justo antes de la operacion: <b>ningun hilo
+	 * la cruza hasta que llegaron todos</b>, y la ventana entre el cruce y la primera sentencia es
+	 * de nanosegundos contra una operacion que tarda milisegundos.
+	 *
+	 * <p>El original de {@code com.akine.diferidos} tiene ademas un {@code CountDownLatch} de
+	 * arranque que se decrementa y <b>nunca se espera</b>: no sincroniza nada. Aca no se copio. El
+	 * original queda como esta, que es otra tarea.
+	 *
+	 * <p>La barrera si hace falta: un {@code invokeAll} a secas no garantiza nada, porque el primer
+	 * hilo puede terminar antes de que arranque el segundo y entonces el test da verde por haber
+	 * corrido SECUENCIALMENTE, no porque el lock funcione.
 	 */
 	private static <T> List<Desenlace<T>> enParalelo(List<Callable<T>> tareas) {
 		int cantidad = tareas.size();
-		CountDownLatch listos = new CountDownLatch(cantidad);
 		CyclicBarrier barrera = new CyclicBarrier(cantidad);
 
 		try (ExecutorService pool = Executors.newFixedThreadPool(cantidad)) {
 			List<Future<Desenlace<T>>> futuros = new ArrayList<>(cantidad);
 			for (Callable<T> tarea : tareas) {
 				futuros.add(pool.submit(() -> {
-					listos.countDown();
 					try {
 						barrera.await(30, TimeUnit.SECONDS);
 						return new Desenlace<>(tarea.call(), null);
@@ -854,11 +860,26 @@ class DisponibilidadIT {
 	}
 
 	/**
-	 * {@code valid_from} se siembra un minuto en el pasado, y no es cosmetico: el reloj del
-	 * contenedor de MySQL y el de la JVM del test no estan sincronizados al microsegundo, y con
-	 * {@code UTC_TIMESTAMP(6)} exacto la vigencia puede quedar unos milisegundos en el FUTURO
-	 * respecto del instante contra el que se la compara. Mismo motivo, y mismo remedio, que en
-	 * {@code BaseEscenarioDiferido#sembrarRolDePlataforma}.
+	 * {@code valid_from} se siembra CINCO ANOS en el pasado, y los dos motivos importan.
+	 *
+	 * <p><b>Uno: el desfasaje de relojes.</b> El del contenedor de MySQL y el de la JVM del test no
+	 * estan sincronizados al microsegundo, y con {@code UTC_TIMESTAMP(6)} exacto la vigencia puede
+	 * quedar unos milisegundos en el FUTURO respecto del instante contra el que se la compara,
+	 * produciendo 403 intermitentes. Es el mismo problema, y el mismo remedio, que en
+	 * {@code BaseEscenarioDiferido#sembrarRolDePlataforma}. Para eso alcanzaba con un minuto.
+	 *
+	 * <p><b>Dos, y es el que obliga a los cinco anos: los escenarios de esta clase usan fechas
+	 * FIJAS y este valor se corre solo con el reloj de pared.</b> Con un minuto en el pasado, el
+	 * vinculo arranca "hoy", asi que toda fecha de escenario anterior a hoy cae ANTES del arranque
+	 * del vinculo y {@code DisponibilidadEfectivaService} vacia el dia con
+	 * {@code razonVacio = VINCULO}. El test se pone rojo el dia que el calendario pasa la fecha,
+	 * <b>sin que haya nada roto</b>, y el sintoma apunta al calculador: quien lo herede va a buscar
+	 * un bug que no existe. Ya paso una vez mientras se escribia la tarea 12, con el 9 de julio.
+	 *
+	 * <p>Mover la constante del escenario arreglaba UN caso y dejaba la bomba armada para el
+	 * siguiente. La causa esta aca, en el fixture: un vinculo que arranco hace cinco anos cubre
+	 * cualquier fecha que un escenario elija, hoy y dentro de tres anos, y sigue sirviendo igual de
+	 * bien contra el desfasaje de relojes.
 	 */
 	private long insertarMembership(
 			long organizationId, long consultorioId, long accountId, String rol) {
@@ -867,7 +888,7 @@ class DisponibilidadIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE), 'ACTIVA',
+				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 'ACTIVA',
 				        1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioId, accountId, rol);
 		return jdbc.queryForObject("""
