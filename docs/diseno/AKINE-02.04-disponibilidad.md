@@ -191,17 +191,40 @@ no alcanza para validar "esta membership es de esta sede y estaba vigente en est
 // organization.spi
 public record ConsultorioMembershipSnapshot(
         long membershipId, long accountId, long organizationId, Long consultorioId,
-        String roleCode, Instant validFrom, Instant validUntil, boolean active) {
-    public boolean validAt(Instant momento) { /* vigencia Y baja lógica */ }
+        String roleCode, String estado, boolean habilitada,
+        Instant validFrom, Instant validUntil, boolean active) {
+
+    /** Vigencia, baja logica Y estado. Los tres, no dos. */
+    public boolean validAt(Instant momento) { … }
+
+    /** {@code true} si el vinculo habilita en esa sede: la propia, o alcance organizacion. */
+    public boolean cubreConsultorio(long consultorioId) { … }
 }
 
-public interface MembershipDirectory {
+public interface ConsultorioMembershipDirectory {
     Optional<ConsultorioMembershipSnapshot> find(long organizationId, long membershipId);
 }
 ```
 
 Registro nuevo en vez de agregarle campos a `MembershipSnapshot`: ese record ya lo consume
 `identity`, y sumarle componentes rompe a todos sus constructores.
+
+**Dos cosas de este bloque cambiaron durante la implementación y conviene decir por qué.**
+
+*El nombre.* La interfaz iba a llamarse `MembershipDirectory`, hasta que apareció que **ya
+existía** `platform.spi.tenant.MembershipDirectory` —que resuelve por **cuenta**, no por id de
+membership— implementada por `organization.infrastructure.tenant.OrganizationMembershipDirectory`.
+Dos interfaces y dos clases con el mismo nombre simple, un subpaquete aparte, es un bean mal
+inyectado esperando a ocurrir. El par nuevo se llama `ConsultorioMembershipDirectory` y
+`OrganizationConsultorioMembershipDirectory`, en línea con el record que ya se llamaba así.
+
+*`estado` y `habilitada`.* La primera versión de `validAt` copiaba a `MembershipSnapshot` y miraba
+solo `active` más la vigencia. `Membership.validAt`, en el dominio, **sí** consulta
+`estado.habilita()`. O sea: una membership **`SUSPENDIDA` leía como válida**, y un profesional
+suspendido habría seguido ofreciendo horarios — exactamente lo contrario de para qué sirve
+suspender a alguien. `habilitada` lo calcula el **adaptador** desde `MembershipEstado.habilita()`,
+nunca comparando strings dentro del record: decidir qué estados habilitan es lógica de dominio y
+reimplementarla en el SPI deja que las dos versiones se separen en silencio.
 
 ### SPI nuevo en `resource` — la costura de F5
 
@@ -232,8 +255,10 @@ de la sede. Salida: intervalos con `Instant` y **la regla que los produjo**.
 
 ```
 1. timezone := consultorio.timezone      (ConsultorioDirectory; NOT NULL desde V18)
-2. membership válida en la ventana       (MembershipDirectory.validAt)
-   - si no lo está: la disponibilidad efectiva es vacía. No es un error.
+2. membership válida en la ventana       (ConsultorioMembershipDirectory)
+   - atajo barato: si el vínculo no cubre NADA de la ventana, efectiva vacía sin leer nada.
+     No es un error.
+   - la comprobación fina va POR DÍA, en el paso 3e.
 3. por cada fecha local F en [desde, hasta):
    a. BASE     := bloques con dia_semana = ISO(F), activos, cuya vigencia cubre F
    b. APERTURA := BASE union excepciones APERTURA que cubren F (de la sede y del profesional)
@@ -243,6 +268,7 @@ de la sede. Salida: intervalos con `Instant` y **la regla que los produjo**.
                      los bloques base de (a) se DESCARTAN para esa fecha
    d. EFECTIVA := APERTURA menos excepciones CIERRE que cubren F (sede y profesional)
                   menos FERIADO
+   e. si el vínculo NO cubre el día F -> el día queda vacío, razonVacio = VINCULO
 4. convertir cada intervalo local a Instant con ZoneId(timezone)
 5. anotar en cada intervalo qué regla lo creó y qué regla lo recortó
 ```
@@ -274,6 +300,26 @@ especial y los bloques base aplican normalmente.
 disponibilidad efectiva sea determinista y **explique qué regla la afecta**". Sin el origen
 en la respuesta, el CA no se puede declarar cubierto y la pantalla no puede mostrarle al
 admin por qué un martes quedó vacío.
+
+### Por qué la vigencia del vínculo se mira día por día
+
+Con una sola comprobación gruesa contra la ventana entera, un vínculo que termina el 15 de marzo
+devuelve sus bloques **todo** marzo: la pantalla ofrece turnos el 20 con alguien que ya no trabaja
+en el centro, y el motor de slots de F5 los va a reservar.
+
+Por eso el día que el vínculo no cubre se vacía con `VINCULO` como motivo. **`razonVacio` tiene
+entonces cuatro valores** —`FERIADO`, `CIERRE`, `VINCULO` y `null`— y el frontend necesita un texto
+propio para cada uno: *"ese día no atiende"* y *"ya no trabaja acá"* no son lo mismo para quien
+mira la agenda, y mostrar el mismo cartel manda al admin a buscar un cierre que no existe.
+
+La comprobación se hace sobre el **día entero** `[F, F+1)` y no sobre el instante de arranque:
+`validAt(00:00)` descartaría la tarde del día en que alguien se incorpora a las 14:00. Para el
+caso de vencimiento las dos formas dan lo mismo.
+
+> **Lo que esto todavía no resuelve.** La precisión intra-día real —ofrecer solo las horas
+> posteriores al alta, no el día completo— exige intersectar el intervalo del bloque con la
+> vigencia del vínculo, y el calculador no puede hacerlo con su firma actual. Hoy, el día del alta
+> se ofrece entero.
 
 ### Horario de verano
 
@@ -313,16 +359,37 @@ caliente.
 - El bloqueo se toma **al principio** de la transacción, antes de cualquier lectura de
   bloques.
 
-Para el read-modify-write de una edición se suma el **bloqueo optimista** por `version`, igual
-que en `espacio`: una versión vieja produce `409 concurrent-modification` en vez de pisar el
-cambio ajeno en silencio.
+Para el read-modify-write de la edición **de un bloque** se suma el **bloqueo optimista** por
+`version`, igual que en `espacio`: una versión vieja produce `409 concurrent-modification` en vez
+de pisar el cambio ajeno en silencio.
 
-### Idempotencia (CA-M05-003-05 y CA-M05-004-05)
+**`PUT /calendario` es la excepción, y es deliberada:** no exige `expectedVersion` y no devuelve
+409. Dos administradores que cambian la política de feriados a la vez no están en conflicto —
+gana el segundo, que es la respuesta correcta para un flag booleano de sede. Por eso su request
+**no lleva campo `version`** y el contrato no debe publicarlo.
 
-Sin `Idempotency-Key`. Un alta cuyo `(membership, día, horas, vigencia)` coincide **exacto**
-con un bloque activo existente devuelve **200 con ese bloque**, no un duplicado y no un 409.
-Un alta que **solapa sin coincidir** devuelve **409**. Un reintento de red cae siempre en el
-primer caso, que es lo que el criterio pide.
+### Idempotencia
+
+**Bloques (CA-M05-003-05).** Sin `Idempotency-Key`. Un alta cuyo `(membership, día, horas,
+vigencia)` coincide **exacto** con un bloque activo existente devuelve **200 con ese bloque**, no
+un duplicado y no un 409. Un alta que **solapa sin coincidir** devuelve **409**. Un reintento de
+red cae siempre en el primer caso, que es lo que el criterio pide.
+
+*Caso borde de la medianoche:* cuando el alta viene **sin** `vigenciaDesde` —o sea "desde ahora"—
+la comparación exacta usa día, horas y `vigenciaHasta`, y además exige que el candidato esté
+activo y **ya vigente**. Sin eso, un reintento que cruza la medianoche resuelve una fecha distinta
+a la del primer intento, la coincidencia falla y el cliente recibe 409 justo en el escenario que
+la idempotencia existe para cubrir.
+
+**Excepciones (CA-M05-004-05): NO hay 409 por solapamiento, y es a propósito.** Este documento
+decía lo contrario hasta el 26/08/2026, arrastrando la regla de los bloques a un caso donde no
+aplica. Dos excepciones que se pisan sin ser idénticas son **las dos legítimas**: una licencia de
+diez días y una ausencia puntual en el medio conviven sin contradecirse, y la efectiva las resta a
+las dos. Un alta que coincide **exacto** con una excepción activa devuelve **200 con ella**;
+cualquier otra cosa **crea una fila nueva**.
+
+`POST /excepciones` sí puede devolver 409, pero **nunca por solapamiento**: solo si la sede está
+inactiva o si el profesional no está vinculado a ella.
 
 ---
 
@@ -443,6 +510,38 @@ RN-M05-004 —"los turnos futuros afectados deben quedar visibles para resoluci�
 | `DisponibilidadImpactProbe` sin implementación real | F5 — `scheduling` |
 | El seed de feriados envejece; los trasladables se deciden por decreto | Mantenimiento anual |
 | Horario general del consultorio (`RF-M03-002`, `CA-M03-002` parcial) | F5 |
+
+### Cosas que el código hace y este documento no decía
+
+Una auditoría del 26/08/2026 comparó el documento contra el código y encontró estos silencios.
+Se escriben acá porque un comportamiento que nadie anotó es un comportamiento que nadie va a
+recordar, y de este documento sale el registro de cierre de la etapa.
+
+**1. El `PLATFORM_ADMIN` no puede operar ninguno de los diez endpoints.** Las rutas de M05 no
+llevan `organizationId`, así que el rol de plataforma no tiene contexto de tenant y cae en el 403
+uniforme. Por eso los servicios no tienen camino de soporte ni emiten `SUPPORT_ACCESS_USED`:
+sería código muerto. Es deliberado, y **es una diferencia con `EspacioService`**. La consecuencia
+concreta: soporte de plataforma no puede diagnosticar la disponibilidad de un centro. Darle
+paridad es una decisión de contrato, no un fix.
+
+**2. Ventana de carrera en el primer write de una sede.** Dos requests que sean los **primeros**
+de esa sede pueden ver los dos que falta la fila de `consultorio_calendario`, insertar los dos, y
+el unique falla a uno. No se atrapa la violación porque la sesión JPA queda inutilizable después
+del flush fallido —la trampa ya conocida en este repositorio—. Un reintento lo resuelve, y en la
+práctica `PUT /calendario` crea la fila mucho antes.
+
+**3. Una membership `REVOCADA` sin `validUntil` borra su historia entera, no solo su futuro.**
+Un admin que revisa el mes pasado de un profesional revocado sin fecha de fin **no ve nada**,
+incluidos los días que la persona sí trabajó. Es herencia de `ConsultorioMembershipSnapshot`, que
+no guarda historia de estado: `habilitada` es un booleano de *ahora*, no una serie temporal.
+Arreglarlo exige que el SPI devuelva la vigencia del estado, no solo su valor actual.
+
+**4. El día del alta de un vínculo se ofrece entero**, incluidas las horas previas al alta. Ver
+§4, "Por qué la vigencia del vínculo se mira día por día".
+
+**5. La concurrencia del lock está razonada, no medida** hasta que exista el test de dos
+transacciones reales contra MySQL. El `InOrder` sobre mocks fija que el lock se **pide** antes de
+leer; que el lock **funcione** es otra afirmación.
 
 ---
 
