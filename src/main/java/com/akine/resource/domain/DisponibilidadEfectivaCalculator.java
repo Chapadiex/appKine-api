@@ -24,8 +24,11 @@ import java.util.Set;
  *
  * <p>El FERIADO va tercero y no ultimo por una razon distinta: un feriado no es una decision
  * operativa sino un hecho del calendario (diseno §1), y la forma en que un centro declara que
- * ese dia atiende es cargando una APERTURA explicita. Por eso el feriado solo cierra cuando no
- * hay ninguna apertura para esa fecha, y por eso se evalua despues de juntar las aperturas.
+ * ese dia atiende es cargando una APERTURA explicita. Por eso se evalua despues de juntar las
+ * aperturas, y por eso esa apertura no se limita a cancelar el cierre: REEMPLAZA al horario
+ * base de esa fecha. Si se limitara a cancelarlo, un centro que abre de 10 a 14 un feriado que
+ * cae lunes terminaria ofreciendo su lunes completo de 08 a 18, y la apertura que cargo a mano
+ * no habria cambiado nada.
  *
  * <h2>Como se garantiza el determinismo</h2>
  *
@@ -141,28 +144,42 @@ public final class DisponibilidadEfectivaCalculator {
 			Set<LocalDate> feriadosQueCierran) {
 
 		// Etapa 1: el horario base del dia de la semana, con su vigencia.
-		List<FranjaEfectiva> abierto = new ArrayList<>();
+		List<FranjaEfectiva> base = new ArrayList<>();
 		int diaSemana = fecha.getDayOfWeek().getValue();
 		for (BloqueDisponibilidad bloque : bloques) {
 			if (bloque.getDiaSemana() == diaSemana && bloque.vigenteEn(fecha)) {
-				abierto.add(new FranjaEfectiva(
+				base.add(new FranjaEfectiva(
 						bloque.intervalo(), OrigenFranja.BLOQUE, null, bloque.getId()));
 			}
 		}
 
-		// Etapa 2: las aperturas suman atencion sobre el horario base.
+		// Etapa 2: las aperturas habilitan atencion donde no la habia.
 		List<DisponibilidadExcepcion> aperturas = delTipo(aplicables, TipoExcepcion.APERTURA, fecha);
+		List<FranjaEfectiva> abiertoPorApertura = new ArrayList<>(aperturas.size());
 		for (DisponibilidadExcepcion apertura : aperturas) {
-			abierto.add(new FranjaEfectiva(
+			abiertoPorApertura.add(new FranjaEfectiva(
 					apertura.intervalo().orElse(DIA_ENTERO),
 					OrigenFranja.APERTURA,
 					null,
 					apertura.getId()));
 		}
 
-		// Etapa 3: el feriado cierra el dia, salvo que una apertura explicita diga lo contrario.
-		if (feriadosQueCierran.contains(fecha) && aperturas.isEmpty()) {
-			return DiaCalculado.vacio(OrigenFranja.FERIADO, null);
+		// Etapa 3: el feriado que la sede decidio cerrar.
+		List<FranjaEfectiva> abierto;
+		if (feriadosQueCierran.contains(fecha)) {
+			if (aperturas.isEmpty()) {
+				return DiaCalculado.vacio(OrigenFranja.FERIADO, null);
+			}
+			// La apertura explicita REEMPLAZA al horario base, no solo cancela el cierre por
+			// feriado. Un centro que cierra los feriados y declara "este 25 abrimos de 10 a 14"
+			// esta declarando como es ese dia, no sumandole cuatro horas a su lunes de siempre.
+			// Con la union, el 10-14 quedaria tapado por el 08-18 habitual: la apertura no
+			// habria servido para nada y el sistema ofreceria ocho horas de turnos en un dia
+			// que el centro abrio por cuatro. Por eso el horario base se descarta.
+			abierto = abiertoPorApertura;
+		} else {
+			abierto = new ArrayList<>(base);
+			abierto.addAll(abiertoPorApertura);
 		}
 
 		// Etapa 4, y va ultima por RN-M05-002: los cierres recortan todo lo anterior.

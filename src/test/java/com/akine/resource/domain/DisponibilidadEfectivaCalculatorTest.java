@@ -47,6 +47,7 @@ class DisponibilidadEfectivaCalculatorTest {
 
 	private static final LocalTime OCHO = LocalTime.of(8, 0);
 	private static final LocalTime NUEVE = LocalTime.of(9, 0);
+	private static final LocalTime DIEZ = LocalTime.of(10, 0);
 	private static final LocalTime ONCE = LocalTime.of(11, 0);
 	private static final LocalTime DOCE = LocalTime.of(12, 0);
 	private static final LocalTime TRECE = LocalTime.of(13, 0);
@@ -382,9 +383,37 @@ class DisponibilidadEfectivaCalculatorTest {
 			DiaCalculado dia = unDia(LUNES, List.of(bloque), List.of(atiendeIgual), Set.of(LUNES));
 
 			assertThat(dia.estaVacio()).as("la apertura explicita gana al feriado").isFalse();
-			assertThat(intervalos(dia)).containsExactly(
-					new IntervaloLocal(OCHO, DOCE), new IntervaloLocal(CATORCE, DIECIOCHO));
 			assertThat(dia.razonVacio()).isNull();
+			assertThat(intervalos(dia))
+					.as("el dia es el que declaro la apertura, no el horario de siempre")
+					.containsExactly(new IntervaloLocal(CATORCE, DIECIOCHO))
+					.doesNotContain(new IntervaloLocal(OCHO, DOCE));
+			assertThat(dia.franjas()).singleElement()
+					.extracting(FranjaEfectiva::origen)
+					.isEqualTo(OrigenFranja.APERTURA);
+		}
+
+		/**
+		 * El caso concreto que decidio la regla: el centro trabaja los lunes de 08 a 18 y cierra
+		 * los feriados; el 25 cae lunes y el admin declara "abrimos de 10 a 14". Si la apertura
+		 * solo cancelara el cierre, el dia resolveria a 08-18 —la apertura no habria servido de
+		 * nada y el sistema ofreceria ocho horas de turnos en un dia abierto por cuatro.
+		 */
+		@Test
+		void una_apertura_en_un_feriado_descarta_el_bloque_base() {
+			BloqueDisponibilidad jornadaHabitual =
+					bloque(1L, PROFESIONAL, DIA_LUNES, OCHO, DIECIOCHO, LUNES, null);
+			DisponibilidadExcepcion abrimosCorto = excepcion(
+					50L, PROFESIONAL, TipoExcepcion.APERTURA, MotivoExcepcion.AMPLIACION,
+					LUNES, MARTES, DIEZ, CATORCE);
+
+			DiaCalculado dia =
+					unDia(LUNES, List.of(jornadaHabitual), List.of(abrimosCorto), Set.of(LUNES));
+
+			assertThat(intervalos(dia)).containsExactly(new IntervaloLocal(DIEZ, CATORCE));
+			assertThat(dia.franjas())
+					.as("ninguna franja puede venir del horario base en un feriado con apertura")
+					.noneMatch(franja -> franja.origen() == OrigenFranja.BLOQUE);
 		}
 	}
 
