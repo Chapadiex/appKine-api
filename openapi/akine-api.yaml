@@ -1802,8 +1802,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta el motivo de la baja, o el cuerpo esta vacio o mal\
-            \ formado"
+          description: "Falta el motivo de la baja, o el cuerpo esta vacio o mal formado"
         "403":
           content:
             application/problem+json:
@@ -2110,8 +2109,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta el motivo de la baja, o el cuerpo esta vacio o mal\
-            \ formado"
+          description: "Falta el motivo de la baja, o el cuerpo esta vacio o mal formado"
         "403":
           content:
             application/problem+json:
@@ -2148,7 +2146,7 @@ paths:
 
         El PROFESIONAL no se puede cambiar: reasignar un bloque a otra persona no es una edicion sino un bloque nuevo (RN-M05-001), y permitirlo dejaria la autoria historica apuntando a quien nunca atendio en esa franja.
 
-        version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 concurrent-modification y el cliente recarga. Sin eso dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se entere.
+        version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 con type conflict —el generico, NO concurrent-modification, que es el que emite organization para el mismo hecho— y el cliente recarga. Sin eso dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se entere.
 
         AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El impacto se INFORMA, no bloquea: quien decide que hacer con esos turnos es la pantalla. Hoy ese numero es siempre 0 porque el modulo de agenda no existe; va a dejar de serlo sin cambiar este contrato.
 
@@ -2217,8 +2215,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Bloque dado de baja (bloque-inactivo), solapamiento con otro\
-            \ activo (bloque-solapado), version desactualizada (concurrent-modification),\
-            \ o profesional sin vinculo vigente en esa sede (profesional-no-vinculado)"
+            \ activo (bloque-solapado), version desactualizada (conflict), o profesional\
+            \ sin vinculo vigente en esa sede (profesional-no-vinculado)"
       summary: Edicion de un bloque de disponibilidad
       tags:
       - Disponibilidad profesional
@@ -6101,10 +6099,8 @@ components:
             VINCULO — el vinculo del profesional NO estaba vigente ese dia: todavia no se habia incorporado, o ya se habia desvinculado. NO es lo mismo que "no atiende ese dia", y mostrarle el mismo cartel a los dos hace que un admin busque un cierre que no existe.
 
             null — cuarto estado, y no un descuido: o el dia TIENE franjas, o quedo vacio porque NINGUNA regla lo abrio. Eso no es una regla que lo afecte, es la ausencia de reglas, y se distingue mirando franjas.
-          enum:
-          - FERIADO
-          - CIERRE
-          - VINCULO
+
+            NO se declara como enum en el contrato aunque la lista sea cerrada: un campo nullable con enum se publica en OpenAPI 3.1 como un tipo que ADMITE el nulo junto a un enum que NO lo contiene, y un cliente generado con validacion estricta rechazaria nuestra propia respuesta la primera vez que un dia llegue sin razon. La enumeracion vive en esta prosa a proposito.
           example: CIERRE
         reglaVacio:
           type: integer
@@ -6453,10 +6449,14 @@ components:
           type:
           - string
           - "null"
-          description: "CIERRE si una excepcion recorto la franja, null si nada la\
-            \ recorto. Es lo que explica por que termina a las 11 y no a las 13"
-          enum:
-          - CIERRE
+          description: |-
+            Por que la franja quedo mas corta que la regla que la produjo. DOS estados, y el segundo es el normal:
+
+            CIERRE — una excepcion de tipo CIERRE le recorto un pedazo. Es lo que explica por que la franja termina a las 11 y no a las 13.
+
+            null — nada la recorto: la franja es la regla entera.
+
+            NO se declara como enum en el contrato aunque la lista sea cerrada. Ver la nota de razonVacio: un campo nullable con enum se publica en OpenAPI 3.1 con un tipo que admite el nulo y un enum que no lo contiene, y un cliente generado con validacion estricta rechazaria nuestra propia respuesta.
           example: CIERRE
         reglaId:
           type: integer
@@ -7439,7 +7439,7 @@ components:
           type: integer
           format: int64
           description: "Version que el cliente leyo. Se compara ANTES de mutar: si\
-            \ quedo vieja la respuesta es 409 concurrent-modification y hay que recargar.\
+            \ quedo vieja la respuesta es 409 con type conflict y hay que recargar.\
             \ Sin esto dos ediciones simultaneas se pisan y el segundo en guardar\
             \ borra el cambio del primero sin que nadie se entere"
           example: 0
@@ -7473,8 +7473,7 @@ components:
           description: Pais cuyo calendario de feriados usa la sede. Omitirlo lo deja
             como estaba; el valor por defecto de una sede nueva es AR
           example: AR
-          maxLength: 2
-          minLength: 2
+          pattern: "[A-Za-z]{2}"
     UpdateCatalogoConceptoRequest:
       type: object
       description: Cambios a aplicar sobre un concepto del catalogo
