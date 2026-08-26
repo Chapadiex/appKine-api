@@ -64,6 +64,31 @@ public final class PermissionCodes {
 	 */
 	public static final String ESPACIO_READ = "espacio:read";
 
+	/**
+	 * Listar colaboradores del alcance. Es lo que exigen las LECTURAS de disponibilidad
+	 * profesional (M05, AKINE-02.04): la disponibilidad de un profesional es informacion de un
+	 * colaborador, asi que el codigo aplica sin estirarlo.
+	 *
+	 * <p><b>No es un codigo nuevo.</b> Sale de la seccion 5 de la matriz, es de F1 y esta
+	 * aprobado desde 01.03. La seccion 6 se lo da a {@code PROFESIONAL} y a
+	 * {@code ADMINISTRATIVO} con alcance Consultorio, y de ahi sale —sin inventar nada— la
+	 * politica confirmada de M05: <b>el profesional LEE su disponibilidad y no la edita</b>. Las
+	 * mutaciones exigen {@link #CONSULTORIO_MANAGE}, que la misma seccion 6 le niega a esos dos
+	 * roles.
+	 *
+	 * <p><b>Deliberadamente NO se usa {@link #ESPACIO_READ} para esto</b>, aunque su descripcion
+	 * hable de "la disponibilidad de una sede": esa es la disponibilidad del ESPACIO FISICO
+	 * (M04, RF-M04-003), que responde si un box esta en servicio. Son dos conceptos ortogonales
+	 * y mezclarlos daria acceso al horario de las personas a quien solo pidio ver los boxes.
+	 *
+	 * <p>Su alcance para el {@code PLATFORM_ADMIN} es {@code SOPORTE} (matriz seccion 6, decision
+	 * del 24/08/2026: el padron de personas de un centro ajeno es literalmente lo que la seccion
+	 * 7 protege). Hoy eso no se ejerce por disponibilidad: las rutas de M05 cuelgan de la sede y
+	 * no llevan {@code organizationId}, asi que un actor sin contexto de tenant no puede siquiera
+	 * nombrar el tenant que quiere leer. Ver el javadoc de {@code DisponibilidadService}.
+	 */
+	public static final String COLABORADOR_READ = "colaborador:read";
+
 	private PermissionCodes() {
 		// Catalogo de constantes.
 	}

@@ -64,6 +64,24 @@ final class AuditEvents {
 
 	static final String ENTITY_CATALOGO_SOLICITUD = "CatalogoSolicitud";
 
+	// --- Disponibilidad profesional (M05, AKINE-02.04) ----------------------------------
+
+	/** Alta de un bloque recurrente de disponibilidad (RF-M05-003). */
+	static final String DISPONIBILIDAD_BLOQUE_CREATED = "DISPONIBILIDAD_BLOQUE_CREATED";
+
+	/** Edicion de dia, horas o vigencia de un bloque (RF-M05-005). */
+	static final String DISPONIBILIDAD_BLOQUE_UPDATED = "DISPONIBILIDAD_BLOQUE_UPDATED";
+
+	/**
+	 * Baja logica de un bloque. Motivo obligatorio.
+	 *
+	 * <p>{@code previousState}/{@code newState} llevan el estado DERIVADO —{@code ACTIVO} /
+	 * {@code INACTIVO}—, que no existe como columna: ver {@code BloqueDisponibilidad}.
+	 */
+	static final String DISPONIBILIDAD_BLOQUE_DEACTIVATED = "DISPONIBILIDAD_BLOQUE_DEACTIVATED";
+
+	static final String ENTITY_BLOQUE_DISPONIBILIDAD = "BloqueDisponibilidad";
+
 	/** Clave con la que Micrometer Tracing publica el trace id del request en el MDC. */
 	private static final String MDC_TRACE_ID = "traceId";
 
