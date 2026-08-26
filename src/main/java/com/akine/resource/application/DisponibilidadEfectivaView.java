@@ -46,10 +46,16 @@ public record DisponibilidadEfectivaView(
 	 *                      puede rellenarlo:</b> el calculador recibe las fechas de feriado como
 	 *                      un {@code Set<LocalDate>} sin ids ni nombres, asi que sin este campo
 	 *                      la pantalla dice "cerrado" y no puede decir por que
-	 * @param razonVacio    por que el dia no tiene franjas: {@code "FERIADO"} o {@code "CIERRE"}.
-	 *                      {@code null} si el dia TIENE franjas y tambien —tercer estado, no un
+	 * @param razonVacio    por que el dia no tiene franjas: {@code "FERIADO"}, {@code "CIERRE"} o
+	 *                      {@code "VINCULO"} —este ultimo cuando la membership no cubria ese dia,
+	 *                      porque todavia no estaba vinculada o porque ya se habia desvinculado—.
+	 *                      {@code null} si el dia TIENE franjas y tambien —cuarto estado, no un
 	 *                      descuido— si quedo vacio porque NINGUNA regla lo abrio: eso no es una
-	 *                      regla que lo afecte, es la ausencia de reglas
+	 *                      regla que lo afecte, es la ausencia de reglas.
+	 *                      <p>El dia vaciado por {@code VINCULO} no necesita ningun campo nuevo en
+	 *                      {@link FranjaResuelta}: por definicion no tiene ni una franja que
+	 *                      anotar, y lo que hay que explicar es el DIA. Es exactamente la misma
+	 *                      forma que ya tienen {@code FERIADO} y el cierre que vacia el dia entero
 	 * @param reglaVacio    id de la fila que lo vacio, para que la pantalla pueda linkearla.
 	 *                      {@code null} cuando la regla no tiene id que ofrecer: un feriado se
 	 *                      resuelve por fecha, no por id de excepcion

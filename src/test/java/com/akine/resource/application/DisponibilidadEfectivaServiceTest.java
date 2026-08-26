@@ -393,4 +393,131 @@ class DisponibilidadEfectivaServiceTest {
 				Instant.parse("2020-01-01T00:00:00Z"), Instant.parse("2021-01-01T00:00:00Z"),
 				true, false);
 	}
+
+	/**
+	 * Ruling R13: la vigencia se evalua DIA POR DIA.
+	 *
+	 * <p>El caso concreto que motivo el ruling: un vinculo que termina el 15 y una consulta de
+	 * todo el mes. Con el control grueso —solapamiento contra la ventana entera— la membership
+	 * "cubre la ventana" y sus bloques salian los 31 dias, asi que el sistema ofrecia turnos el 20
+	 * con alguien que ya no trabaja en el centro. No fallaba nada: cada franja seguia trayendo un
+	 * reglaId legitimo.
+	 */
+	@Test
+	@DisplayName("Una membership que vence a mitad de la ventana atiende antes del vencimiento y no despues")
+	void una_membership_que_vence_a_mitad_de_ventana_no_atiende_despues() {
+		// Vinculo hasta el 11 de marzo a las 00:00 de la sede (03:00Z): el martes 10 lo cubre y
+		// el martes 17 no.
+		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID)).willReturn(Optional.of(
+				new ConsultorioMembershipSnapshot(
+						MEMBERSHIP_ID, ACCOUNT_ID, ORG_ID, CONSULTORIO_ID, "PROFESIONAL", "ACTIVA",
+						Instant.parse("2020-01-01T00:00:00Z"),
+						Instant.parse("2026-03-11T03:00:00Z"), true, true)));
+		darBloque(DIA_MARTES, LocalTime.of(9, 0), LocalTime.of(13, 0));
+
+		DisponibilidadEfectivaView efectiva = service.efectiva(
+				actor, CONSULTORIO_ID, MEMBERSHIP_ID,
+				LocalDate.of(2026, 3, 1), LocalDate.of(2026, 4, 1));
+
+		DiaEfectivo antes = diaDe(efectiva, LocalDate.of(2026, 3, 10));
+		assertThat(antes.franjas())
+				.as("el martes 10 el vinculo seguia vigente: atiende")
+				.hasSize(1);
+		assertThat(antes.razonVacio()).isNull();
+
+		DiaEfectivo despues = diaDe(efectiva, LocalDate.of(2026, 3, 17));
+		assertThat(despues.franjas())
+				.as("el martes 17 ya estaba desvinculado: con el control grueso este dia traia "
+						+ "una franja de 09 a 13 y el motor de agenda la iba a reservar")
+				.isEmpty();
+		assertThat(despues.razonVacio())
+				.as("y el dia vacio tiene que decir POR QUE: sin VINCULO es indistinguible de un "
+						+ "dia en el que nadie cargo horario")
+				.isEqualTo("VINCULO");
+		assertThat(despues.reglaVacio())
+				.as("un vinculo vencido no tiene id de excepcion que ofrecer")
+				.isNull();
+	}
+
+	@Test
+	@DisplayName("Un dia anterior al alta del vinculo tambien se vacia con VINCULO")
+	void un_dia_anterior_al_alta_del_vinculo_se_vacia_con_vinculo() {
+		// Se incorpora el 11 de marzo: el martes 3 todavia no estaba.
+		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID)).willReturn(Optional.of(
+				new ConsultorioMembershipSnapshot(
+						MEMBERSHIP_ID, ACCOUNT_ID, ORG_ID, CONSULTORIO_ID, "PROFESIONAL", "ACTIVA",
+						Instant.parse("2026-03-11T03:00:00Z"), null, true, true)));
+		darBloque(DIA_MARTES, LocalTime.of(9, 0), LocalTime.of(13, 0));
+
+		DisponibilidadEfectivaView efectiva = service.efectiva(
+				actor, CONSULTORIO_ID, MEMBERSHIP_ID,
+				LocalDate.of(2026, 3, 1), LocalDate.of(2026, 4, 1));
+
+		assertThat(diaDe(efectiva, LocalDate.of(2026, 3, 3)).razonVacio()).isEqualTo("VINCULO");
+		assertThat(diaDe(efectiva, LocalDate.of(2026, 3, 17)).franjas()).hasSize(1);
+	}
+
+	@Test
+	@DisplayName("La membership que no cubre ni un dia de la ventana explica sus dias con VINCULO igual que el recorte fino")
+	void el_atajo_grueso_explica_los_dias_con_la_misma_razon_que_el_recorte_fino() {
+		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID)).willReturn(Optional.of(desvinculada()));
+
+		DisponibilidadEfectivaView efectiva = service.efectiva(
+				actor, CONSULTORIO_ID, MEMBERSHIP_ID, MARTES, MARTES.plusDays(7));
+
+		assertThat(efectiva.dias()).allSatisfy(dia ->
+				assertThat(dia.razonVacio()).isEqualTo("VINCULO"));
+	}
+
+	private static DiaEfectivo diaDe(DisponibilidadEfectivaView efectiva, LocalDate fecha) {
+		return efectiva.dias().stream()
+				.filter(dia -> dia.fecha().equals(fecha))
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("La ventana no trajo el dia " + fecha));
+	}
+
+	@Test
+	@DisplayName("Un cierre de SEDE vacia el dia de un profesional que no tiene ninguna excepcion propia")
+	void un_cierre_de_sede_alcanza_al_profesional_sin_excepciones_propias() {
+		darBloque(DIA_MARTES, LocalTime.of(9, 0), LocalTime.of(13, 0));
+
+		// membershipId nulo: alcance SEDE ENTERA. La consulta lo devuelve junto con las del
+		// profesional a proposito; si el servicio no le pasara el membershipId al calculador, el
+		// calculador no podria distinguir esto de la ausencia de otro colega.
+		DisponibilidadExcepcion deSede = new DisponibilidadExcepcion(
+				ORG_ID, CONSULTORIO_ID, null,
+				TipoExcepcion.CIERRE, MotivoExcepcion.BLOQUEO,
+				MARTES, MARTES.plusDays(1), null, null, null, null);
+		ReflectionTestUtils.setField(deSede, "id", 777L);
+		given(excepciones.findQueCubren(anyLong(), anyLong(), anyLong(), any(), any()))
+				.willReturn(List.of(deSede));
+
+		DiaEfectivo dia = unicoDia(MARTES);
+
+		assertThat(dia.franjas())
+				.as("el corte de luz de la sede cierra a todos, tengan o no una ausencia cargada")
+				.isEmpty();
+		assertThat(dia.razonVacio()).isEqualTo("CIERRE");
+		assertThat(dia.reglaVacio())
+				.as("y la pantalla puede linkear la excepcion de sede que lo explica")
+				.isEqualTo(777L);
+	}
+
+	@Test
+	@DisplayName("La excepcion de OTRO profesional no toca la disponibilidad de este")
+	void la_excepcion_de_otro_profesional_no_afecta_a_este() {
+		darBloque(DIA_MARTES, LocalTime.of(9, 0), LocalTime.of(13, 0));
+
+		DisponibilidadExcepcion deUnColega = new DisponibilidadExcepcion(
+				ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID + 1,
+				TipoExcepcion.CIERRE, MotivoExcepcion.LICENCIA,
+				MARTES, MARTES.plusDays(1), null, null, null, null);
+		ReflectionTestUtils.setField(deUnColega, "id", 778L);
+		given(excepciones.findQueCubren(anyLong(), anyLong(), anyLong(), any(), any()))
+				.willReturn(List.of(deUnColega));
+
+		assertThat(unicoDia(MARTES).franjas())
+				.as("la licencia de un colega no es una licencia de esta persona")
+				.hasSize(1);
+	}
 }

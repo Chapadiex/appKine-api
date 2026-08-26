@@ -16,6 +16,7 @@ import com.akine.resource.domain.DisponibilidadExcepcion;
 import com.akine.resource.domain.Feriado;
 import com.akine.resource.domain.FranjaEfectiva;
 import com.akine.resource.domain.IntervaloLocal;
+import com.akine.resource.domain.OrigenFranja;
 import com.akine.resource.domain.PermissionCodes;
 import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
 import com.akine.resource.domain.exception.ProfesionalNotAccessibleException;
@@ -80,6 +81,14 @@ import java.util.stream.Collectors;
  * error</b>: un profesional desvinculado no atiende, pero preguntarlo es legitimo y la pantalla
  * de un administrador que revisa el mes pasado tiene que poder mostrarlo. Sus bloques
  * <b>no se tocan</b>: RN-M05-003 conserva la historia y esta lectura no borra nada.
+ *
+ * <p><b>Se evalua DIA POR DIA, no contra la ventana entera</b> (ruling R13). Con el control
+ * grueso, un vinculo que termina el 15 de marzo seguia ofreciendo turnos el 20 en una consulta
+ * de todo marzo, y el motor de agenda los iba a reservar contra alguien que ya no trabaja en el
+ * centro. El dia que el vinculo no cubre se vacia con {@link OrigenFranja#VINCULO} como razon:
+ * sin ese valor el dia saldria como "vacio sin explicacion" y seria indistinguible de un dia en
+ * el que nadie cargo horario. El control grueso sobrevive como atajo —una membership que no
+ * cubre ni un dia se responde sin leer una sola regla— pero ya no es el unico.
  *
  * <h2>5. El nombre del feriado</h2>
  *
@@ -148,11 +157,11 @@ public class DisponibilidadEfectivaService {
 	 *   1. sede + huso                  -&gt; 404 si es de otro tenant, ANTES del permiso
 	 *   2. colaborador:read             -&gt; 403
 	 *   3. ventana coherente y acotada  -&gt; 400
-	 *   4. membership vigente en la ventana; si no, disponibilidad VACIA (no es error)
+	 *   4. membership: si no cubre NI UN dia de la ventana, disponibilidad VACIA (no es error)
 	 *   5. bloques, excepciones y feriados de la ventana, TODOS acotados a la sede
 	 *   6. feriadosQueCierran = feriados de la ventana SI la sede cierra por feriado
 	 *   7. calculador (hora local)
-	 *   8. conversion a Instant con la zona de la sede
+	 *   8. recorte por vigencia DIA POR DIA (ruling R13) y conversion a Instant con la zona
 	 * </pre>
 	 *
 	 * <p><b>El paso 3 despues del 2, y no antes.</b> Validar la ventana primero seria contestar
@@ -195,9 +204,11 @@ public class DisponibilidadEfectivaService {
 		ConsultorioMembershipSnapshot profesional = membershipDirectory.find(organizationId, membershipId)
 				.orElseThrow(() -> new ProfesionalNotAccessibleException(membershipId));
 
-		if (!vinculadaEnLaVentana(profesional, consultorioId, desde, hasta, zona)) {
-			// No es un error: es la respuesta correcta para quien no estaba vinculado. Y no se
-			// toca ninguna fila — sus bloques siguen enteros, con su autoria (RN-M05-003).
+		if (!vinculadaEntre(profesional, consultorioId, desde, hasta, zona)) {
+			// Atajo barato, NO el control principal: el vinculo no cubre ni un dia de la ventana,
+			// asi que no hay nada que calcular y no se lee una sola regla. No es un error: es la
+			// respuesta correcta para quien no estaba vinculado. Y no se toca ninguna fila — sus
+			// bloques siguen enteros, con su autoria (RN-M05-003).
 			log.info("Disponibilidad efectiva de una membership no vigente en la ventana: "
 					+ "consultorioId={} membershipId={} ventana={}..{}",
 					consultorioId, membershipId, desde, hasta);
@@ -217,7 +228,15 @@ public class DisponibilidadEfectivaService {
 
 		List<DiaEfectivo> dias = new ArrayList<>(calculado.size());
 		for (Map.Entry<LocalDate, DiaCalculado> dia : calculado.entrySet()) {
-			dias.add(proyectar(dia.getKey(), dia.getValue(), zona, feriadosDeLaVentana));
+			LocalDate fecha = dia.getKey();
+			// Ruling R13: la vigencia se evalua DIA POR DIA, despues del calculo. El calculador no
+			// la conoce —no esta entre sus entradas y no puede estarlo sin cambiarle la firma—, asi
+			// que sin este recorte un vinculo que vence el 15 sigue ofreciendo turnos el 20 y el
+			// motor de agenda los va a reservar contra alguien que ya no trabaja en el centro.
+			DiaCalculado delDia = vinculadaEse(profesional, consultorioId, fecha, zona)
+					? dia.getValue()
+					: DiaCalculado.vacio(OrigenFranja.VINCULO, null);
+			dias.add(proyectar(fecha, delDia, zona, feriadosDeLaVentana));
 		}
 
 		return new DisponibilidadEfectivaView(membershipId, consultorioId, zona.getId(), dias);
@@ -290,6 +309,11 @@ public class DisponibilidadEfectivaService {
 	 * calculador nunca omite un dia: la pantalla dibuja una grilla de fechas, y una respuesta sin
 	 * dias la dejaria en blanco sin poder distinguir "no atiende" de "no cargo". Los feriados
 	 * viajan igual, porque siguen siendo feriados aunque nadie atienda.
+	 *
+	 * <p>Cada dia lleva {@link OrigenFranja#VINCULO} como razon, igual que los dias que el recorte
+	 * por vigencia vacia uno por uno en el camino normal. Es el MISMO hecho —el vinculo no cubria
+	 * ese dia— y tiene que explicarse igual, si no la pantalla muestra dos textos distintos segun
+	 * si la ventana entera quedo afuera o solo una parte.
 	 */
 	private static DisponibilidadEfectivaView vacia(
 			long consultorioId,
@@ -306,7 +330,7 @@ public class DisponibilidadEfectivaService {
 					fecha,
 					feriado != null,
 					feriado == null ? null : feriado.getNombre(),
-					null,
+					OrigenFranja.VINCULO.name(),
 					null,
 					List.of()));
 		}
@@ -346,22 +370,32 @@ public class DisponibilidadEfectivaService {
 	}
 
 	/**
-	 * {@code true} si el vinculo habilita a ese profesional en esa sede en algun momento de la
-	 * ventana.
+	 * {@code true} si el vinculo habilita a ese profesional en esa sede en algun momento de
+	 * {@code [desde, hasta)}.
 	 *
 	 * <p>Son dos preguntas y las dos hacen falta: que el vinculo CUBRA la sede —el de alcance
-	 * organizacion cubre todas, el de otra sede no cubre esta— y que su vigencia se SOLAPE con la
-	 * ventana. La segunda se evalua contra la ventana entera y no dia por dia: es lo que el diseno
-	 * §4 paso 2 pide, y el calculador no tiene ninguna entrada por la que recibir una vigencia que
-	 * cambia dentro de la ventana. Consecuencia declarada: una membership que vence a mitad de la
-	 * ventana devuelve sus bloques tambien despues del vencimiento. Acotarlo exige que el
-	 * calculador conozca la vigencia del vinculo, que es un cambio de su firma y de otra etapa.
+	 * organizacion cubre todas, el de otra sede no cubre esta— y que su vigencia se SOLAPE con el
+	 * intervalo pedido.
 	 *
-	 * <p>Los limites se convierten con la zona de la sede y no con UTC: el "primer instante de la
-	 * ventana" de un centro argentino son las 03:00 UTC de ese dia, y usar UTC correria el limite
-	 * hasta tres horas.
+	 * <p><b>Se usa con dos granularidades distintas y por eso esta parametrizado por fechas.</b>
+	 * Con la ventana entera es el atajo barato: una membership que no cubre ni un dia se responde
+	 * vacia sin leer una sola regla. Con UN dia —{@code [F, F+1)}— es el control fino que exige el
+	 * ruling R13, el que impide que un vinculo vencido el 15 siga ofreciendo turnos el 20.
+	 *
+	 * <p><b>Por que un intervalo y no {@code validAt} sobre el arranque del dia.</b> Es el mismo
+	 * predicado que {@code validAt} evalua —{@code active}, {@code habilitada} y
+	 * {@code [validFrom, validUntil)}— pero medido sobre el dia entero en vez de sobre un solo
+	 * instante. La diferencia aparece el dia en que alguien se incorpora: un vinculo que arranca a
+	 * las 14:00 no es valido a las 00:00, y preguntar solo por el arranque del dia tiraria a la
+	 * basura la tarde en la que esa persona si atiende. Del lado del vencimiento —que es el caso
+	 * que R13 nombra— las dos formas dan exactamente lo mismo.
+	 *
+	 * <p>Los limites se convierten con la zona de la sede y no con UTC: el "primer instante" de un
+	 * dia de un centro argentino son las 03:00 UTC, y mezclar un dia local con un
+	 * {@code Instant} de vigencia sin pasar por el huso es como entran los errores de un dia de
+	 * corrimiento.
 	 */
-	private static boolean vinculadaEnLaVentana(
+	private static boolean vinculadaEntre(
 			ConsultorioMembershipSnapshot profesional,
 			long consultorioId,
 			LocalDate desde,
@@ -381,6 +415,16 @@ public class DisponibilidadEfectivaService {
 		boolean terminaDespuesDelInicio =
 				profesional.validUntil() == null || profesional.validUntil().isAfter(inicio);
 		return empiezaAntesDelFin && terminaDespuesDelInicio;
+	}
+
+	/** El vinculo cubre ese dia local completo. Ver {@link #vinculadaEntre}. */
+	private static boolean vinculadaEse(
+			ConsultorioMembershipSnapshot profesional,
+			long consultorioId,
+			LocalDate fecha,
+			ZoneId zona) {
+
+		return vinculadaEntre(profesional, consultorioId, fecha, fecha.plusDays(1), zona);
 	}
 
 	// =================================================================================
