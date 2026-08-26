@@ -177,7 +177,9 @@ public class ExcepcionService {
 		log.info("Excepcion de disponibilidad creada: consultorioId={} excepcionId={} alcance={}",
 				consultorioId, guardada.getId(), membershipId == null ? "SEDE" : membershipId);
 
-		return ExcepcionView.de(guardada);
+		// nueva = true SOLO en este camino: el controller responde 201 aca y 200 en el reintento
+		// idempotente de mas arriba.
+		return ExcepcionView.nueva(guardada);
 	}
 
 	// =================================================================================

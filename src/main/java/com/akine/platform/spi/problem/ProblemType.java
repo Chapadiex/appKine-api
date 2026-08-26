@@ -142,7 +142,26 @@ public enum ProblemType {
 	INVITACION_PENDIENTE_DUPLICADA("invitacion-pendiente-duplicada"),
 	INVITACION_VENCIDA("invitacion-vencida"),
 	INVITACION_YA_RESUELTA("invitacion-ya-resuelta"),
-	COLABORADOR_YA_VINCULADO("colaborador-ya-vinculado");
+	COLABORADOR_YA_VINCULADO("colaborador-ya-vinculado"),
+
+	// --- Disponibilidad profesional, excepciones y calendario de sede (M05, AKINE-02.04) -----
+	/** El bloque pedido se pisa con otro bloque activo del mismo profesional en esa sede. */
+	BLOQUE_SOLAPADO("bloque-solapado"),
+	/** El bloque esta dado de baja y la operacion exige uno vigente. */
+	BLOQUE_INACTIVO("bloque-inactivo"),
+	/** El bloque ya estaba dado de baja. */
+	BLOQUE_ALREADY_INACTIVE("bloque-already-inactive"),
+	/** La membership existe en el tenant pero no habilita a atender en ESA sede (RN-M05-001). */
+	PROFESIONAL_NO_VINCULADO("profesional-no-vinculado"),
+	/**
+	 * La ventana {@code [desde, hasta)} supera el tope consultable (400).
+	 *
+	 * <p>Lleva {@code maximoDias} como propiedad extra, y no es decoracion: es lo que le permite
+	 * a la pantalla recortar la ventana sola en vez de mostrarle un error al usuario.
+	 */
+	VENTANA_DEMASIADO_AMPLIA("ventana-demasiado-amplia"),
+	/** La excepcion de disponibilidad ya estaba dada de baja. */
+	EXCEPCION_ALREADY_INACTIVE("excepcion-already-inactive");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

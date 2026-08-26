@@ -238,7 +238,9 @@ public class DisponibilidadService {
 		log.info("Bloque de disponibilidad creado: consultorioId={} membershipId={} bloqueId={}",
 				consultorioId, membershipId, guardado.getId());
 
-		return BloqueView.de(guardado);
+		// nuevo = true SOLO en este camino: es lo que le permite al controller responder 201 en
+		// el alta real y 200 en el reintento idempotente de mas arriba.
+		return BloqueView.nuevo(guardado);
 	}
 
 	// =================================================================================

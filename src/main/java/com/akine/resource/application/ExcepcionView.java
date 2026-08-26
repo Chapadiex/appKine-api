@@ -16,6 +16,12 @@ import java.time.LocalTime;
  * @param horaDesde    {@code null} junto con {@code horaHasta} significa DIA COMPLETO
  * @param estado       DERIVADO de {@code active}, no una columna
  * @param version      la que hay que reenviar para editar
+ * @param nuevo        {@code true} SOLO cuando este pedido creo la fila. Existe para que la capa
+ *                     {@code api} pueda responder <b>201</b> en el alta real y <b>200</b> en el
+ *                     alta idempotente sin volver a consultar la base: la vista de la fila que ya
+ *                     existia es indistinguible de la de la recien creada. En toda lectura vale
+ *                     {@code false} y <b>no viaja en el contrato</b>: lo que el cliente ve es el
+ *                     codigo HTTP
  */
 public record ExcepcionView(
 		long id,
@@ -33,9 +39,20 @@ public record ExcepcionView(
 		String estado,
 		Instant deletedAt,
 		String deactivationReason,
-		long version) {
+		long version,
+		boolean nuevo) {
 
+	/** Lectura, baja, o el alta IDEMPOTENTE que devolvio la fila que ya existia. */
 	public static ExcepcionView de(DisponibilidadExcepcion excepcion) {
+		return construir(excepcion, false);
+	}
+
+	/** Vista de una excepcion que ESTE pedido acaba de crear. El controller la traduce a 201. */
+	public static ExcepcionView nueva(DisponibilidadExcepcion excepcion) {
+		return construir(excepcion, true);
+	}
+
+	private static ExcepcionView construir(DisponibilidadExcepcion excepcion, boolean nuevo) {
 		return new ExcepcionView(
 				excepcion.getId(),
 				excepcion.getOrganizationId(),
@@ -52,6 +69,7 @@ public record ExcepcionView(
 				excepcion.isActive() ? "ACTIVO" : "INACTIVO",
 				excepcion.getDeletedAt(),
 				excepcion.getDeactivationReason(),
-				excepcion.getVersion());
+				excepcion.getVersion(),
+				nuevo);
 	}
 }

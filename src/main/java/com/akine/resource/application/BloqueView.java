@@ -32,6 +32,14 @@ import java.time.LocalTime;
  *                             agregar disponibilidad no puede dejar ningun turno afuera
  * @param primerTurnoAfectado  instante del primero de esos turnos, para que la pantalla pueda
  *                             decir "desde el martes". {@code null} cuando no hay ninguno
+ * @param nuevo                {@code true} SOLO cuando este pedido creo la fila. Existe para que
+ *                             la capa {@code api} pueda distinguir un alta real de un alta
+ *                             idempotente y responder <b>201</b> o <b>200</b> sin volver a
+ *                             consultar la base. Es la unica forma de saberlo desde afuera: la
+ *                             vista del bloque que ya existia es indistinguible de la del recien
+ *                             creado. En toda lectura vale {@code false}, porque leer no crea
+ *                             nada, y <b>no viaja en el contrato</b>: lo que el cliente ve es el
+ *                             codigo HTTP
  */
 public record BloqueView(
 		long id,
@@ -48,14 +56,33 @@ public record BloqueView(
 		String deactivationReason,
 		long version,
 		long turnosAfectados,
-		Instant primerTurnoAfectado) {
+		Instant primerTurnoAfectado,
+		boolean nuevo) {
 
-	/** Vista de un bloque que no cambia disponibilidad hacia atras: lectura o alta. */
+	/**
+	 * Vista de un bloque que no cambia disponibilidad hacia atras: lectura, edicion, o el alta
+	 * IDEMPOTENTE que devolvio la fila que ya existia.
+	 */
 	public static BloqueView de(BloqueDisponibilidad bloque) {
 		return de(bloque, DisponibilidadImpactProbe.Impacto.ninguno());
 	}
 
 	public static BloqueView de(BloqueDisponibilidad bloque, DisponibilidadImpactProbe.Impacto impacto) {
+		return construir(bloque, impacto, false);
+	}
+
+	/**
+	 * Vista de un bloque que ESTE pedido acaba de crear.
+	 *
+	 * <p>Unico camino que marca {@code nuevo}. El controller lo traduce a 201 con
+	 * {@code Location}; todo lo demas sale 200.
+	 */
+	public static BloqueView nuevo(BloqueDisponibilidad bloque) {
+		return construir(bloque, DisponibilidadImpactProbe.Impacto.ninguno(), true);
+	}
+
+	private static BloqueView construir(
+			BloqueDisponibilidad bloque, DisponibilidadImpactProbe.Impacto impacto, boolean nuevo) {
 		return new BloqueView(
 				bloque.getId(),
 				bloque.getOrganizationId(),
@@ -71,6 +98,7 @@ public record BloqueView(
 				bloque.getDeactivationReason(),
 				bloque.getVersion(),
 				impacto.turnosAfectados(),
-				impacto.primero());
+				impacto.primero(),
+				nuevo);
 	}
 }
