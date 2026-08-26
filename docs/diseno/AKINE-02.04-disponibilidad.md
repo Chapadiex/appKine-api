@@ -238,7 +238,9 @@ de la sede. Salida: intervalos con `Instant` y **la regla que los produjo**.
    a. BASE     := bloques con dia_semana = ISO(F), activos, cuya vigencia cubre F
    b. APERTURA := BASE union excepciones APERTURA que cubren F (de la sede y del profesional)
    c. FERIADO  := si existe feriado(pais, F) Y consultorio_calendario.cierra_por_feriado
-                  -> cierre de día completo, salvo que exista una APERTURA explícita para F
+                  -> si NO hay APERTURA que cubra F: el día queda vacío, razonVacio = FERIADO
+                  -> si HAY APERTURA que cubre F: el día parte SOLO de esas aperturas;
+                     los bloques base de (a) se DESCARTAN para esa fecha
    d. EFECTIVA := APERTURA menos excepciones CIERRE que cubren F (sede y profesional)
                   menos FERIADO
 4. convertir cada intervalo local a Instant con ZoneId(timezone)
@@ -248,6 +250,25 @@ de la sede. Salida: intervalos con `Instant` y **la regla que los produjo**.
 **El orden lo fija RN-M05-002: las excepciones prevalecen sobre el horario base.** Por eso
 `CIERRE` se aplica **último** y puede recortar incluso lo que abrió una `APERTURA`. Es
 determinista y no depende del orden de inserción de las filas.
+
+### Por qué una apertura en un feriado descarta el horario base
+
+Este punto decía otra cosa hasta el 26/08/2026 y estaba mal. La versión anterior hacía que la
+apertura **solo cancelara** el cierre por feriado, lo que deja vivos los bloques base.
+
+El caso que lo rompe: un centro trabaja los lunes de 08:00 a 18:00 y su política es cerrar los
+feriados. El 25 de diciembre cae lunes y el admin declara "este año abrimos de 10:00 a 14:00".
+Con la regla vieja el día resolvía a `08:00–18:00 ∪ 10:00–14:00 = 08:00–18:00`: **la apertura no
+servía para nada** y el sistema ofrecía ocho horas de turnos un día que el centro pensaba abrir
+cuatro. Declarar una apertura especial tiene que significar que la apertura *es* el día.
+
+Consecuencia que hay que tener presente: una apertura de **alcance sede** (`membership_id NULL`)
+en un feriado descarta el horario base de **todos** los profesionales de esa sede ese día. Es
+coherente con la regla, pero una apertura de sede mal cargada recorta la agenda de todo el mundo,
+así que la pantalla avisa al guardar (§7).
+
+Cuando el feriado **no** cierra —porque la sede tiene `cierra_por_feriado = false`— no pasa nada
+especial y los bloques base aplican normalmente.
 
 **El paso 5 no es un extra: es el criterio de aceptación.** El plan pide que "la
 disponibilidad efectiva sea determinista y **explique qué regla la afecta**". Sin el origen
