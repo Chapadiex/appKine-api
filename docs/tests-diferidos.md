@@ -120,3 +120,22 @@ implementado acá por `ResourceDesvinculacionProbe`) no está en esta lista porq
 `scheduling`: los bloques y las excepciones de disponibilidad ya existen (`V22`/`V23`), y contar
 cuántos quedan colgando de una membership es verificable hoy. `ResourceDesvinculacionProbeTest`
 lo cubre.
+
+### Escenarios de 02.04 decididos y no ejecutados — verificación de interfaz
+
+Estos no dependen de que exista otro módulo: dependen de correrlos. Se anotan acá porque una
+etapa cerrada sin ellos no está verificada en uso, y decirlo por escrito es lo único que impide
+que se lea como si lo estuviera.
+
+| # | Escenario | Motivo y etapa destino |
+|---|---|---|
+| 17 | **E2E del recorrido de horarios**: cargar disponibilidad, meter un cierre que la recorta, ver el preview explicando la regla, intentar un bloque solapado y recibir el `409`. Origen: AKINE-02.04, paso 1 de la tarea 18 | **No corrido.** Exige el stack real levantado —`docker compose up -d`, backend en `local`, frontend en `4200`— y un navegador. Destino: sesión de verificación de interfaz, junto con los E2E pendientes de 02.02, 02.03 y 02.05 |
+| 18 | **QA manual contra la base** de las cuatro pantallas de `/horarios`: validar la persistencia consultando la DB después de cada write, y verificar que un token del tenant B no ve la disponibilidad del tenant A. Origen: AKINE-02.04, paso 2 de la tarea 18 | **No corrido.** `CLAUDE.md` §6 lo declara **bloqueante para deploy**, así que esta etapa no se puede desplegar hasta que corra. Mismo estado que 02.02, 02.03 y 02.05 |
+| 19 | **Contraste de color de todas las pantallas del repositorio** | **No verificable con las herramientas actuales.** La regla `color-contrast` de axe **nunca reporta bajo jsdom**: siempre vuelve `incomplete`, porque jsdom no calcula layout. Ninguna auditoría de accesibilidad del repositorio lo cubre, no solo las de esta etapa. Se suma que los estados nuevos de modo lectura no pasaron por axe y que no hay regla CSS para `input:disabled` en `resource.css`. Destino: sin herramienta asignada — exige un runner con layout real |
+
+**Y una deuda de esta etapa que no es un test sino una decisión que espera al usuario.** La
+cobertura de **rama** del backend está en **78,03 %** (2135 de 2736) y el `pom.xml` **no gatea
+`BRANCH`**: gatea `LINE` e `INSTRUCTION` sobre el BUNDLE. Por eso `verify` pasa legítimamente
+mientras la rama cayó nueve puntos desde el 87,42 % que declaraba el cierre de 01.02. Agregar el
+gate hoy rompe el build, así que exige primero un tramo de cobertura. Está anotado en el registro
+de cierre de 02.04 y en los dos `CLAUDE.md`.
