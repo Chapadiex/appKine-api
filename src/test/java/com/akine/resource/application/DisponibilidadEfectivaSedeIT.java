@@ -79,6 +79,16 @@ class DisponibilidadEfectivaSedeIT {
 
 	private static final int DIA_MARTES = 2;
 
+	/**
+	 * Navidad 2026, que cae VIERNES y esta sembrada por V22 como feriado INAMOVIBLE.
+	 *
+	 * <p>Es el caso del diseno §4 palabra por palabra: el centro trabaja ese dia de la semana,
+	 * su politica es cerrar los feriados, y el admin declara una apertura especial.
+	 */
+	private static final LocalDate NAVIDAD = LocalDate.of(2026, 12, 25);
+
+	private static final int DIA_VIERNES = 5;
+
 	/** UTC-03 todo el anio: las 09:00 locales son las 12:00Z. */
 	private static final String ZONA = "America/Argentina/Cordoba";
 
@@ -126,8 +136,8 @@ class DisponibilidadEfectivaSedeIT {
 		// las dos sedes, que es exactamente lo que hace posible la mezcla.
 		long membershipId = insertarMembershipDeOrganizacion(organizationId, accountId);
 
-		insertarBloque(organizationId, sedeA, membershipId, "09:00:00", "13:00:00");
-		insertarBloque(organizationId, sedeB, membershipId, "15:00:00", "19:00:00");
+		insertarBloque(organizationId, sedeA, membershipId, DIA_MARTES, "09:00:00", "13:00:00");
+		insertarBloque(organizationId, sedeB, membershipId, DIA_MARTES, "15:00:00", "19:00:00");
 
 		given(consultorioDirectory.find(organizationId, sedeA)).willReturn(Optional.of(
 				new ConsultorioSnapshot(sedeA, organizationId, "Sede A", ZONA, true)));
@@ -160,6 +170,87 @@ class DisponibilidadEfectivaSedeIT {
 
 		// La fila de la otra sede sigue existiendo: no se filtro borrandola.
 		assertThat(idDelBloque(organizationId, sedeB, membershipId)).isNotNull();
+	}
+
+	@Test
+	@DisplayName("Una APERTURA de SEDE en un feriado reemplaza el horario base de TODOS los profesionales de esa sede")
+	void una_apertura_de_sede_en_un_feriado_reemplaza_el_horario_base_de_todos() {
+		// Es la operacion mas destructiva que entrega la etapa y hasta ahora su radio de accion
+		// estaba afirmado solo en un test de funcion pura con UN profesional sintetico. El caso
+		// real es el de dos: el diseno §4 dice que la apertura DESCARTA los bloques base de ese
+		// dia para toda la sede, y una apertura mal cargada recorta la agenda de todo el mundo.
+		// Es el escenario para el que el frontend construyo un dialogo de confirmacion entero.
+		String sufijo = UUID.randomUUID().toString().substring(0, 8);
+		long organizationId = insertarOrganization(sufijo);
+		long sede = insertarConsultorio(organizationId, "Sede Feriado " + sufijo);
+
+		long unProfesional = insertarMembershipDeOrganizacion(
+				organizationId, insertarCuenta("uno-" + sufijo));
+		long otroProfesional = insertarMembershipDeOrganizacion(
+				organizationId, insertarCuenta("dos-" + sufijo));
+
+		// Los dos trabajan los viernes de 08:00 a 18:00.
+		insertarBloque(organizationId, sede, unProfesional, DIA_VIERNES, "08:00:00", "18:00:00");
+		insertarBloque(organizationId, sede, otroProfesional, DIA_VIERNES, "08:00:00", "18:00:00");
+
+		// La sede cierra los feriados, que es el default de V23; se persiste explicito para no
+		// depender de que este test corra sobre una sede sin fila de politica.
+		jdbc.update("""
+				INSERT INTO consultorio_calendario
+				    (organization_id, consultorio_id, pais, cierra_por_feriado, version,
+				     created_at, updated_at)
+				VALUES (?, ?, 'AR', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", organizationId, sede);
+
+		// APERTURA de SEDE: membership_id NULL. "Este año abrimos de 10 a 14."
+		jdbc.update("""
+				INSERT INTO disponibilidad_excepcion
+				    (organization_id, consultorio_id, membership_id, tipo, motivo,
+				     fecha_desde, fecha_hasta, hora_desde, hora_hasta, active, version,
+				     created_at, updated_at)
+				VALUES (?, ?, NULL, 'APERTURA', 'AMPLIACION', ?, ?, '10:00:00', '14:00:00', 1, 0,
+				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", organizationId, sede, NAVIDAD, NAVIDAD.plusDays(1));
+
+		given(consultorioDirectory.find(organizationId, sede)).willReturn(Optional.of(
+				new ConsultorioSnapshot(sede, organizationId, "Sede Feriado", ZONA, true)));
+
+		for (long membershipId : new long[] {unProfesional, otroProfesional}) {
+			given(membershipDirectory.find(organizationId, membershipId)).willReturn(Optional.of(
+					new ConsultorioMembershipSnapshot(
+							membershipId, 0L, organizationId, null, "PROFESIONAL", "ACTIVA",
+							Instant.parse("2020-01-01T00:00:00Z"), null, true, true)));
+
+			OperatingActor actor = new OperatingActor(0L, false, organizationId, sede);
+			DisponibilidadEfectivaView efectiva =
+					service.efectiva(actor, sede, membershipId, NAVIDAD, NAVIDAD.plusDays(1));
+
+			assertThat(efectiva.dias()).hasSize(1);
+			DiaEfectivo dia = efectiva.dias().getFirst();
+
+			assertThat(dia.franjas())
+					.as("membershipId=%d: una sola franja, la de la apertura", membershipId)
+					.hasSize(1);
+
+			FranjaResuelta franja = dia.franjas().getFirst();
+			assertThat(franja.origen())
+					.as("membershipId=%d: la franja la produjo la APERTURA, no el bloque base",
+							membershipId)
+					.isEqualTo("APERTURA");
+			// 10:00 y 14:00 locales en UTC-03. Si el horario base sobreviviera, el dia arrancaria
+			// a las 08:00 locales (11:00Z) y terminaria a las 18:00 (21:00Z).
+			assertThat(franja.desde()).isEqualTo(Instant.parse("2026-12-25T13:00:00Z"));
+			assertThat(franja.hasta()).isEqualTo(Instant.parse("2026-12-25T17:00:00Z"));
+
+			assertThat(dia.esFeriado())
+					.as("membershipId=%d: sigue siendo feriado; lo que la apertura cambia es que "
+							+ "el centro abre, no el calendario", membershipId)
+					.isTrue();
+		}
+
+		// Y los bloques base siguen enteros en la base: la apertura no los borro (RN-M05-003).
+		assertThat(idDelBloque(organizationId, sede, unProfesional)).isNotNull();
+		assertThat(idDelBloque(organizationId, sede, otroProfesional)).isNotNull();
 	}
 
 	// =================================================================================
@@ -215,7 +306,7 @@ class DisponibilidadEfectivaSedeIT {
 	}
 
 	private void insertarBloque(
-			long organizationId, long consultorioId, long membershipId,
+			long organizationId, long consultorioId, long membershipId, int diaSemana,
 			String horaDesde, String horaHasta) {
 
 		jdbc.update("""
@@ -223,7 +314,7 @@ class DisponibilidadEfectivaSedeIT {
 				    (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				     hora_hasta, vigencia_desde, active, version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, ?, '2020-01-01', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-				""", organizationId, consultorioId, membershipId, DIA_MARTES, horaDesde, horaHasta);
+				""", organizationId, consultorioId, membershipId, diaSemana, horaDesde, horaHasta);
 	}
 
 	private Long idDelBloque(long organizationId, long consultorioId, long membershipId) {

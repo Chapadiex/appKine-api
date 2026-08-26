@@ -1,9 +1,7 @@
 package com.akine.resource.application;
 
 import com.akine.organization.spi.ConsultorioDirectory;
-import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
-import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.resource.domain.CalendarioSede;
@@ -13,7 +11,6 @@ import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSe
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.FeriadoRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -184,24 +181,12 @@ public class CalendarioService {
 	// =================================================================================
 
 	/**
-	 * Toma el {@code FOR UPDATE} sobre la fila de politica, creandola a demanda.
-	 *
-	 * <p>Se intenta el lock ANTES de comprobar si la fila existe: preguntar primero con una
-	 * lectura comun y bloquear despues es la escalada S-&gt;X que con dos transacciones en este
-	 * camino termina en deadlock y no en espera. Misma ventana angosta declarada que en
-	 * {@code DisponibilidadService}: dos primeros requests simultaneos de la misma sede insertan
-	 * los dos y el unique rechaza a uno, que se resuelve con un reintento del cliente.
+	 * Toma el {@code FOR UPDATE} sobre la fila de politica, creandola a demanda, y la devuelve
+	 * para editarla. Ver {@link BloqueoDeSede}: es el mismo lock que serializa los writes de
+	 * disponibilidad de la sede, y es a proposito que sea el mismo.
 	 */
 	private CalendarioSede bloquearOCrear(long organizationId, long consultorioId) {
-		Optional<CalendarioSede> bloqueada = calendarios.lockByScope(organizationId, consultorioId);
-		if (bloqueada.isPresent()) {
-			return bloqueada.get();
-		}
-		calendarios.save(new CalendarioSede(organizationId, consultorioId));
-		return calendarios.lockByScope(organizationId, consultorioId)
-				.orElseThrow(() -> new IllegalStateException(
-						"El calendario de la sede " + consultorioId + " no se pudo bloquear "
-								+ "inmediatamente despues de crearlo"));
+		return BloqueoDeSede.tomar(calendarios, organizationId, consultorioId);
 	}
 
 	// =================================================================================
@@ -209,50 +194,27 @@ public class CalendarioService {
 	// =================================================================================
 
 	private long exigirLectura(OperatingActor actor, long consultorioId) {
-		if (actor.contextOrganizationId() == null) {
-			log.info("Lectura de calendario sin contexto validado: accountId={}", actor.accountId());
-			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
-		}
-		long organizationId = actor.contextOrganizationId();
+		long organizationId = AutorizacionDeSede.exigirContexto(actor, "Lectura de calendario");
 		exigirSedeDelTenant(organizationId, consultorioId);
 
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.COLABORADOR_READ,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
+		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
+				PermissionCodes.COLABORADOR_READ, organizationId, consultorioId);
 		return organizationId;
 	}
 
-	/** Ver {@code DisponibilidadService#exigirContextoDeLaSede}: mismo control, mismo motivo. */
-	private long exigirContextoDeLaSede(OperatingActor actor, long consultorioId) {
-		if (actor.contextOrganizationId() == null || actor.consultorioId() == null) {
-			log.info("Mutacion de calendario sin contexto validado: accountId={}", actor.accountId());
-			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
-		}
-		if (actor.consultorioId() != consultorioId) {
-			log.info("Mutacion de calendario fuera del contexto del request: accountId={} consultorioId={}",
-					actor.accountId(), consultorioId);
-			throw new ConsultorioNotAccessibleException(consultorioId);
-		}
-		return actor.contextOrganizationId();
+	/** Ver {@link AutorizacionDeSede#exigirContextoDeLaSede}. */
+	private static long exigirContextoDeLaSede(OperatingActor actor, long consultorioId) {
+		return AutorizacionDeSede.exigirContextoDeLaSede(
+				actor, consultorioId, "Mutacion de calendario");
 	}
 
 	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.CONSULTORIO_MANAGE,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
+		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
+				PermissionCodes.CONSULTORIO_MANAGE, organizationId, consultorioId);
 	}
 
-	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {
-		return consultorioDirectory.find(organizationId, consultorioId)
-				.orElseThrow(() -> new ConsultorioNotAccessibleException(consultorioId));
+	private void exigirSedeDelTenant(long organizationId, long consultorioId) {
+		AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId);
 	}
 
 	// =================================================================================

@@ -66,22 +66,32 @@ CREATE TABLE feriado
 -- siempre, caiga el dia de la semana que caiga. No hay decreto que los mueva, asi que no hay
 -- nada que verificar anio a anio mas alla de la fecha en si.
 --
--- Se agregan DOS feriados TRASLADABLES de 2026 —17 de agosto (San Martin) y 12 de octubre
--- (Diversidad Cultural)— y SOLO de 2026, porque para ese anio la fecha observada YA ES PUBLICA
--- Y VERIFICABLE: ambos caen lunes en 2026, asi que el decreto no los mueve y la fecha calendario
--- coincide con la fecha observada. No es una inferencia de la regla de traslado: es el
--- resultado ya publicado.
+-- Se agregan TRES feriados TRASLADABLES de 2026 —17 de agosto (San Martin), 12 de octubre
+-- (Diversidad Cultural) y 20 de noviembre (Soberania Nacional)— y SOLO de 2026, porque para ese
+-- anio la fecha observada YA ES PUBLICA Y VERIFICABLE. No es una inferencia de la regla de
+-- traslado: es el resultado ya publicado.
+--
+-- LA COLUMNA `fecha` GUARDA LA FECHA OBSERVADA, NO LA CONMEMORATIVA
+--
+-- Es lo que hace que la tabla sirva para algo: el dia que el centro cierra es el dia observado.
+-- Para San Martin y Diversidad Cultural las dos fechas coinciden —ambos caen lunes en 2026, asi
+-- que el decreto no los mueve—. Para el Dia de la Soberania Nacional NO coinciden: la fecha
+-- conmemorativa es el 20 de noviembre de 2026, que cae VIERNES, y la fecha observada es el
+-- LUNES 23 de noviembre de 2026. La fila lleva el 23. Sembrar el 20 cerraria el centro el dia
+-- equivocado y dejaria abierto el que la gente no trabaja, que es el peor de los dos errores
+-- porque nadie lo denuncia hasta que llega el lunes. El nombre conserva la denominacion oficial:
+-- lo que se traslada es la observancia, no la conmemoracion.
 --
 -- QUE NO SE CARGA, Y POR QUE (RULING R4 — no inventar fechas)
 --
--- * Los MISMOS DOS trasladables para 2027 (San Martin 17/08, Diversidad Cultural 12/10):
---   quedan AFUERA. El decreto que fija la fecha observada de 2027 se firma habitualmente
---   sobre el cierre de 2026, y a la fecha de este seed no hay decreto publicado que confirmar.
---   Cargar la fecha calendario a secas seria asumir que no se trasladan, que es precisamente lo
---   que un decreto puede cambiar.
--- * Paso a la Inmortalidad del General Guemes (17 de junio) y Dia de la Soberania Nacional
---   (20 de noviembre), en NINGUNO de los dos anios: son trasladables y no forman parte del
---   conjunto que esta migracion pudo verificar con certeza para su fecha observada.
+-- * Los MISMOS TRES trasladables para 2027 (San Martin 17/08, Diversidad Cultural 12/10,
+--   Soberania Nacional 20/11): quedan AFUERA. El decreto que fija la fecha observada de 2027 se
+--   firma habitualmente sobre el cierre de 2026, y a la fecha de este seed no hay decreto
+--   publicado que confirmar. Cargar la fecha calendario a secas seria asumir que no se
+--   trasladan, que es precisamente lo que un decreto puede cambiar.
+-- * Paso a la Inmortalidad del General Guemes (17 de junio), en NINGUNO de los dos anios: es
+--   trasladable y no forma parte del conjunto que esta migracion pudo verificar con certeza
+--   para su fecha observada.
 -- * Carnaval y Viernes Santo, en NINGUNO de los dos anios: son moviles por el calendario
 --   liturgico, no por decreto, y no son responsabilidad de esta migracion inventarlos.
 -- * Cualquier PUENTE (dia no laborable declarado ad-hoc): no existen por adelantado, se
@@ -103,6 +113,9 @@ INSERT INTO feriado (pais, fecha, nombre, tipo, created_at, updated_at) VALUES
  ('AR', '2026-07-09', 'Día de la Independencia', 'INAMOVIBLE', NOW(6), NOW(6)),
  ('AR', '2026-08-17', 'Paso a la Inmortalidad del General José de San Martín', 'TRASLADABLE', NOW(6), NOW(6)),
  ('AR', '2026-10-12', 'Día del Respeto a la Diversidad Cultural', 'TRASLADABLE', NOW(6), NOW(6)),
+ -- Conmemoracion el viernes 20/11/2026; observancia trasladada al LUNES 23/11/2026, que es la
+ -- fecha que va en la columna. Ver "LA COLUMNA `fecha` GUARDA LA FECHA OBSERVADA" mas arriba.
+ ('AR', '2026-11-23', 'Día de la Soberanía Nacional', 'TRASLADABLE', NOW(6), NOW(6)),
  ('AR', '2026-12-08', 'Inmaculada Concepción de María', 'INAMOVIBLE', NOW(6), NOW(6)),
  ('AR', '2026-12-25', 'Navidad', 'INAMOVIBLE', NOW(6), NOW(6)),
 

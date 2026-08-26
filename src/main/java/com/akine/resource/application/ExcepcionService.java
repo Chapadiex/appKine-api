@@ -2,13 +2,9 @@ package com.akine.resource.application;
 
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
-import com.akine.organization.spi.ConsultorioMembershipSnapshot;
-import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
-import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
-import com.akine.resource.domain.CalendarioSede;
 import com.akine.resource.domain.DisponibilidadExcepcion;
 import com.akine.resource.domain.PermissionCodes;
 import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
@@ -21,7 +17,6 @@ import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSe
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -106,7 +101,7 @@ public class ExcepcionService {
 	 * <pre>
 	 *   1. contexto y sede de la ruta        -&gt; 403 sin contexto, 404 si es de otro tenant
 	 *   2. consultorio:manage sobre la sede  -&gt; 403
-	 *   3. si el alcance es un profesional, que el vinculo lo habilite en esa sede
+	 *   3. si el alcance es un profesional, que el vinculo lo habilite en esa sede Y que atienda
 	 *   4. lockByScope                       &lt;- ANTES de leer ninguna excepcion
 	 *   5. coincidencia exacta -&gt; devolver esa excepcion (CA-M05-004-05)
 	 *   6. guardar y auditar EN LA MISMA TRANSACCION
@@ -118,7 +113,8 @@ public class ExcepcionService {
 	 * @throws ConsultorioNotAccessibleException si la sede no existe o es de otro tenant (404)
 	 * @throws ConsultorioNotOperableException si la sede esta dada de baja (409)
 	 * @throws ProfesionalNotAccessibleException si la membership no existe en el tenant (404)
-	 * @throws ProfesionalNoVinculadoException si la membership no habilita en esa sede (409)
+	 * @throws ProfesionalNoVinculadoException si la membership no habilita en esa sede o si su rol
+	 *         no atiende pacientes (409)
 	 * @throws IllegalArgumentException si el rango de fechas o el horario son incoherentes (400)
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
@@ -326,104 +322,67 @@ public class ExcepcionService {
 	// Concurrencia
 	// =================================================================================
 
-	/**
-	 * Toma el {@code FOR UPDATE} sobre la fila de {@code consultorio_calendario} de la sede,
-	 * creandola a demanda si es la primera vez.
-	 *
-	 * <p>Es el mismo protocolo que {@code DisponibilidadService}, y la ventana angosta que declara
-	 * aquel —dos requests que son los PRIMEROS de esa sede al mismo tiempo insertan los dos y el
-	 * unique rechaza a uno— vale igual aca, con el mismo remedio: un reintento del cliente, que ya
-	 * encuentra la fila creada.
-	 */
+	/** Ver {@link BloqueoDeSede}: mismo lock que los bloques, y por el mismo motivo. */
 	private void bloquearLaSede(long organizationId, long consultorioId) {
-		if (calendarios.lockByScope(organizationId, consultorioId).isPresent()) {
-			return;
-		}
-		calendarios.save(new CalendarioSede(organizationId, consultorioId));
-		calendarios.lockByScope(organizationId, consultorioId)
-				.orElseThrow(() -> new IllegalStateException(
-						"El calendario de la sede " + consultorioId + " no se pudo bloquear "
-								+ "inmediatamente despues de crearlo"));
+		BloqueoDeSede.tomar(calendarios, organizationId, consultorioId);
 	}
 
 	// =================================================================================
 	// Autorizacion
 	// =================================================================================
 
-	/** Ver {@code DisponibilidadService#exigirContextoDeLaSede}: mismo control, mismo motivo. */
-	private long exigirContextoDeLaSede(OperatingActor actor, long consultorioId) {
-		if (actor.contextOrganizationId() == null || actor.consultorioId() == null) {
-			log.info("Mutacion de excepciones sin contexto validado: accountId={}", actor.accountId());
-			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
-		}
-		if (actor.consultorioId() != consultorioId) {
-			log.info("Mutacion de excepciones fuera del contexto del request: accountId={} consultorioId={}",
-					actor.accountId(), consultorioId);
-			throw new ConsultorioNotAccessibleException(consultorioId);
-		}
-		return actor.contextOrganizationId();
+	/** Ver {@link AutorizacionDeSede#exigirContextoDeLaSede}. */
+	private static long exigirContextoDeLaSede(OperatingActor actor, long consultorioId) {
+		return AutorizacionDeSede.exigirContextoDeLaSede(
+				actor, consultorioId, "Mutacion de excepciones");
 	}
 
 	/** Pertenencia primero, permiso despues: un tenant ajeno sale por 404 y nunca por 403. */
 	private long exigirLectura(OperatingActor actor, long consultorioId) {
-		if (actor.contextOrganizationId() == null) {
-			log.info("Lectura de excepciones sin contexto validado: accountId={}", actor.accountId());
-			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
-		}
-		long organizationId = actor.contextOrganizationId();
+		long organizationId = AutorizacionDeSede.exigirContexto(actor, "Lectura de excepciones");
 		exigirSedeDelTenant(organizationId, consultorioId);
 
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.COLABORADOR_READ,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
+		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
+				PermissionCodes.COLABORADOR_READ, organizationId, consultorioId);
 		return organizationId;
 	}
 
 	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.CONSULTORIO_MANAGE,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
-	}
-
-	private void exigirProfesionalDeLaSede(
-			long organizationId, long consultorioId, long membershipId, Instant ahora) {
-
-		ConsultorioMembershipSnapshot profesional =
-				exigirProfesionalDelTenant(organizationId, membershipId);
-		if (!profesional.validAt(ahora) || !profesional.cubreConsultorio(consultorioId)) {
-			throw new ProfesionalNoVinculadoException(membershipId, consultorioId);
-		}
-	}
-
-	private ConsultorioMembershipSnapshot exigirProfesionalDelTenant(
-			long organizationId, long membershipId) {
-
-		return membershipDirectory.find(organizationId, membershipId)
-				.orElseThrow(() -> new ProfesionalNotAccessibleException(membershipId));
-	}
-
-	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {
-		return consultorioDirectory.find(organizationId, consultorioId)
-				.orElseThrow(() -> new ConsultorioNotAccessibleException(consultorioId));
+		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
+				PermissionCodes.CONSULTORIO_MANAGE, organizationId, consultorioId);
 	}
 
 	/**
-	 * La sede tiene que estar ACTIVA para recibir una excepcion nueva. 409 y no 404: la sede
-	 * existe y el actor la puede leer; lo que no admite la operacion es su estado (RN-M03-003).
+	 * Exige que la membership habilite en la sede Y que su rol atienda pacientes.
+	 *
+	 * <p>Es el mismo control que el alta de un bloque, y por el mismo motivo: una excepcion con
+	 * alcance de profesional recorta o amplia <b>la disponibilidad de esa persona</b>, asi que
+	 * quien no puede ser sujeto de disponibilidad tampoco puede serlo de una excepcion suya. Ver
+	 * {@link AutorizacionDeSede#exigirProfesionalQueAtiende} para por que el criterio no es
+	 * {@code roleCode == PROFESIONAL}.
+	 */
+	private void exigirProfesionalDeLaSede(
+			long organizationId, long consultorioId, long membershipId, Instant ahora) {
+
+		AutorizacionDeSede.exigirProfesionalQueAtiende(
+				membershipDirectory, organizationId, consultorioId, membershipId, ahora);
+	}
+
+	/** Solo existencia, sin vigencia ni rol: RN-M05-003, la historia se puede seguir leyendo. */
+	private void exigirProfesionalDelTenant(long organizationId, long membershipId) {
+		AutorizacionDeSede.exigirVinculoDelTenant(membershipDirectory, organizationId, membershipId);
+	}
+
+	private void exigirSedeDelTenant(long organizationId, long consultorioId) {
+		AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId);
+	}
+
+	/**
+	 * La sede tiene que estar ACTIVA para recibir una excepcion nueva. Ver
+	 * {@link AutorizacionDeSede#exigirSedeOperable}.
 	 */
 	private void exigirSedeOperable(long organizationId, long consultorioId) {
-		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		if (!sede.active()) {
-			throw new ConsultorioNotOperableException(consultorioId);
-		}
+		AutorizacionDeSede.exigirSedeOperable(consultorioDirectory, organizationId, consultorioId);
 	}
 
 	// =================================================================================

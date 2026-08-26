@@ -125,6 +125,25 @@ class FeriadoMigrationIT {
 				.isEqualTo("Día de la Independencia");
 	}
 
+	@Test
+	@DisplayName("el Dia de la Soberania Nacional 2026 se siembra en su fecha OBSERVADA, el lunes 23")
+	void la_soberania_nacional_se_siembra_en_la_fecha_observada() {
+		// La conmemoracion es el viernes 20/11/2026 y la observancia se traslada al lunes 23. La
+		// columna `fecha` guarda la OBSERVADA, que es el dia en que el centro cierra: sembrar el
+		// 20 cerraria el centro el dia equivocado y lo dejaria abierto el dia que nadie trabaja,
+		// que es el peor de los dos errores porque nadie lo denuncia hasta que llega el lunes.
+		assertThat(jdbc().queryForObject(
+				"SELECT nombre FROM feriado WHERE pais = 'AR' AND fecha = '2026-11-23'",
+				String.class))
+				.isEqualTo("Día de la Soberanía Nacional");
+
+		assertThat(jdbc().queryForObject("""
+				SELECT COUNT(*) FROM feriado WHERE pais = 'AR' AND fecha = '2026-11-20'
+				""", Integer.class))
+				.as("la fecha conmemorativa NO se siembra: no es el dia observado")
+				.isZero();
+	}
+
 	// =================================================================================
 	// El CHECK de tipo
 	// =================================================================================

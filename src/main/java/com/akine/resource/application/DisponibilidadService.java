@@ -2,14 +2,11 @@ package com.akine.resource.application;
 
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
-import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
-import com.akine.organization.spi.PermissionQuery;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.resource.domain.BloqueDisponibilidad;
-import com.akine.resource.domain.CalendarioSede;
 import com.akine.resource.domain.IntervaloLocal;
 import com.akine.resource.domain.PermissionCodes;
 import com.akine.resource.domain.exception.BloqueInactivoException;
@@ -18,14 +15,12 @@ import com.akine.resource.domain.exception.BloqueSolapadoException;
 import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
 import com.akine.resource.domain.exception.ConsultorioNotOperableException;
 import com.akine.resource.domain.exception.ProfesionalNoVinculadoException;
-import com.akine.resource.domain.exception.ProfesionalNotAccessibleException;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDisponibilidadRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import com.akine.resource.spi.DisponibilidadImpactProbe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +53,14 @@ import java.util.Optional;
  * <p><b>El orden de las comprobaciones no es cosmetico.</b> Primero pertenencia, despues
  * permiso: un tenant ajeno sale por 404 —un 403 confirmaria que existe— y el evaluador de
  * permisos responde 403.
+ *
+ * <h2>Quien puede ser SUJETO de disponibilidad</h2>
+ *
+ * <p>Es una pregunta distinta de "quien puede editarla", y hasta el ruling R18 no la contestaba
+ * nadie en el backend: el unico lugar del sistema donde vivia la regla era el filtro por
+ * {@code PROFESIONAL} de una pantalla. El control esta ahora en
+ * {@link AutorizacionDeSede#exigirProfesionalQueAtiende}, con el razonamiento completo de por
+ * que <b>no</b> es {@code roleCode == PROFESIONAL}.
  *
  * <h2>El lock, y por que no esta donde uno lo pondria</h2>
  *
@@ -180,7 +183,8 @@ public class DisponibilidadService {
 	 *
 	 * @throws ConsultorioNotAccessibleException si la sede no existe o es de otro tenant (404)
 	 * @throws ConsultorioNotOperableException si la sede esta dada de baja (409)
-	 * @throws ProfesionalNoVinculadoException si la membership no habilita en esa sede (409)
+	 * @throws ProfesionalNoVinculadoException si la membership no habilita en esa sede o si su rol
+	 *         no atiende pacientes (409)
 	 * @throws BloqueSolapadoException si se pisa con otro bloque activo (409)
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
@@ -430,29 +434,12 @@ public class DisponibilidadService {
 	// =================================================================================
 
 	/**
-	 * Exige que la sede de la RUTA sea la del contexto ya validado, y devuelve su organizacion.
-	 *
-	 * <p>La organizacion no viaja por parametro: sale del contexto que {@code TenantContextFilter}
-	 * revalido en este request, nunca del cliente. Comparar ademas la sede es mas estricto de lo
-	 * que la matriz exige —un {@code ORG_ADMIN} tiene alcance organizacion— y es deliberado, por
-	 * el mismo motivo que en {@code EspacioService}: la sede del contexto es la unica que el
-	 * sistema revalido contra la base, y sin la comparacion un administrador con contexto en la
-	 * sede A mutaria el horario de la B escribiendo otro numero en la URL.
-	 *
-	 * <p>Falta de contexto es <b>403 y nunca 401</b>: el interceptor del frontend borra el token
-	 * ante cualquier 401 y dejaria al usuario en un bucle de login del que no sale.
+	 * Ver {@link AutorizacionDeSede#exigirContextoDeLaSede}: la sede de la RUTA tiene que ser la
+	 * del contexto ya validado, y de ahi sale la organizacion.
 	 */
-	private long exigirContextoDeLaSede(OperatingActor actor, long consultorioId) {
-		if (actor.contextOrganizationId() == null || actor.consultorioId() == null) {
-			log.info("Mutacion de disponibilidad sin contexto validado: accountId={}", actor.accountId());
-			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
-		}
-		if (actor.consultorioId() != consultorioId) {
-			log.info("Mutacion de disponibilidad fuera del contexto del request: accountId={} consultorioId={}",
-					actor.accountId(), consultorioId);
-			throw new ConsultorioNotAccessibleException(consultorioId);
-		}
-		return actor.contextOrganizationId();
+	private static long exigirContextoDeLaSede(OperatingActor actor, long consultorioId) {
+		return AutorizacionDeSede.exigirContextoDeLaSede(
+				actor, consultorioId, "Mutacion de disponibilidad");
 	}
 
 	/**
@@ -470,108 +457,61 @@ public class DisponibilidadService {
 	 * duplique la decision. Es la misma asimetria que {@code EspacioService} ya sostiene.
 	 */
 	private long exigirLectura(OperatingActor actor, long consultorioId) {
-		if (actor.contextOrganizationId() == null) {
-			log.info("Lectura de disponibilidad sin contexto validado: accountId={}", actor.accountId());
-			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
-		}
-		long organizationId = actor.contextOrganizationId();
+		long organizationId =
+				AutorizacionDeSede.exigirContexto(actor, "Lectura de disponibilidad");
 		exigirSedeDelTenant(organizationId, consultorioId);
 
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.COLABORADOR_READ,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
+		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
+				PermissionCodes.COLABORADOR_READ, organizationId, consultorioId);
 		return organizationId;
 	}
 
 	/**
 	 * Exige {@code consultorio:manage} SOBRE ESA SEDE, en una MUTACION.
 	 *
-	 * <p>Con la sede como alcance, un {@code CONSULTORIO_ADMIN} pasa sobre la suya y un
-	 * {@code ORG_ADMIN} sobre todas — que es lo que dice la matriz seccion 6, sin ningun caso
-	 * especial escrito: es la formula del evaluador operando. Y como la seccion 6 se lo niega a
-	 * {@code PROFESIONAL} y {@code ADMINISTRATIVO}, esta sola linea es la que implementa "el
-	 * profesional no edita su propia disponibilidad" sin inventar ningun codigo nuevo.
+	 * <p>Como la matriz seccion 6 le niega ese codigo a {@code PROFESIONAL} y
+	 * {@code ADMINISTRATIVO}, esta sola linea es la que implementa "el profesional no edita su
+	 * propia disponibilidad" sin inventar ningun codigo nuevo. Ver
+	 * {@link AutorizacionDeSede#exigirPermiso}.
 	 */
 	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.CONSULTORIO_MANAGE,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
+		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
+				PermissionCodes.CONSULTORIO_MANAGE, organizationId, consultorioId);
 	}
 
 	/**
-	 * Exige que la membership exista en el tenant y HABILITE en esa sede.
+	 * Exige que la membership exista, habilite en esa sede y sea de alguien que ATIENDE.
 	 *
-	 * <p>Son dos preguntas distintas y las dos hacen falta. Que no resuelva sale por 404, como
-	 * cualquier id ajeno o inexistente. Que resuelva pero no habilite —otra sede, vigencia
-	 * vencida, SUSPENDIDA o REVOCADA— sale por 409: ver
-	 * {@link ProfesionalNoVinculadoException}.
+	 * <p>Es el control del alta y de la edicion, o sea de todo lo que pone disponibilidad en
+	 * efecto hacia adelante. El criterio de "atiende" —y por que NO es
+	 * {@code roleCode == PROFESIONAL}— esta en
+	 * {@link AutorizacionDeSede#exigirProfesionalQueAtiende}.
 	 */
 	private void exigirProfesionalDeLaSede(
 			long organizationId, long consultorioId, long membershipId, Instant ahora) {
 
-		ConsultorioMembershipSnapshot profesional =
-				exigirProfesionalDelTenant(organizationId, membershipId);
-
-		if (!profesional.validAt(ahora) || !profesional.cubreConsultorio(consultorioId)) {
-			throw new ProfesionalNoVinculadoException(membershipId, consultorioId);
-		}
+		AutorizacionDeSede.exigirProfesionalQueAtiende(
+				membershipDirectory, organizationId, consultorioId, membershipId, ahora);
 	}
 
 	/**
-	 * Exige solo que la membership EXISTA en el tenant, sin mirar si habilita.
+	 * Exige solo que la membership EXISTA en el tenant, sin mirar si habilita ni que rol tiene.
 	 *
 	 * <p>Es la comprobacion de las operaciones que miran hacia atras —listar el horario, darlo de
 	 * baja— y la diferencia con {@link #exigirProfesionalDeLaSede} es RN-M05-003: desvincular a un
-	 * profesional no borra sus bloques ni su autoria. Exigir un vinculo vigente para LEER dejaria
-	 * al administrador sin poder revisar el horario de quien acaba de irse, y exigirlo para dar de
-	 * baja lo dejaria sin poder ordenar lo que quedo. Lo que si exige vinculo vigente es cargar o
-	 * mover horario, que es poner disponibilidad en efecto hacia adelante.
+	 * profesional no borra sus bloques ni su autoria.
 	 */
-	private ConsultorioMembershipSnapshot exigirProfesionalDelTenant(
-			long organizationId, long membershipId) {
-
-		return membershipDirectory.find(organizationId, membershipId)
-				.orElseThrow(() -> new ProfesionalNotAccessibleException(membershipId));
+	private void exigirProfesionalDelTenant(long organizationId, long membershipId) {
+		AutorizacionDeSede.exigirVinculoDelTenant(membershipDirectory, organizationId, membershipId);
 	}
 
 	// =================================================================================
 	// Concurrencia
 	// =================================================================================
 
-	/**
-	 * Toma el {@code FOR UPDATE} sobre la fila de {@code consultorio_calendario} de la sede,
-	 * creandola a demanda si es la primera vez.
-	 *
-	 * <p><b>Se intenta el lock ANTES de comprobar si la fila existe.</b> Preguntar primero con
-	 * una lectura comun y bloquear despues seria exactamente la escalada S-&gt;X que este metodo
-	 * existe para evitar.
-	 *
-	 * <p>Queda una ventana angosta y declarada: si dos requests son los PRIMEROS de esa sede al
-	 * mismo tiempo, los dos ven la fila ausente y los dos la insertan; el unique de
-	 * {@code consultorio_calendario} rechaza a uno y ese request falla. No se atrapa la violacion
-	 * porque no serviria de nada — la sesion JPA queda inutilizable despues de un flush fallido y
-	 * el {@code lockByScope} siguiente tiraria {@code AssertionFailure} igual—. El remedio es un
-	 * reintento del cliente, que ya encuentra la fila creada. Es la unica vez en la vida de una
-	 * sede que puede pasar, y la tarea 8 la cierra antes en la practica: el {@code PUT} de
-	 * politica de calendario crea la fila en el alta de la sede.
-	 */
+	/** Ver {@link BloqueoDeSede}: el lock se toma ANTES de leer ningun bloque. */
 	private void bloquearLaSede(long organizationId, long consultorioId) {
-		if (calendarios.lockByScope(organizationId, consultorioId).isPresent()) {
-			return;
-		}
-		calendarios.save(new CalendarioSede(organizationId, consultorioId));
-		calendarios.lockByScope(organizationId, consultorioId)
-				.orElseThrow(() -> new IllegalStateException(
-						"El calendario de la sede " + consultorioId + " no se pudo bloquear "
-								+ "inmediatamente despues de crearlo"));
+		BloqueoDeSede.tomar(calendarios, organizationId, consultorioId);
 	}
 
 	// =================================================================================
@@ -711,25 +651,17 @@ public class DisponibilidadService {
 	}
 
 	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {
-		return consultorioDirectory.find(organizationId, consultorioId)
-				.orElseThrow(() -> new ConsultorioNotAccessibleException(consultorioId));
+		return AutorizacionDeSede.exigirSedeDelTenant(
+				consultorioDirectory, organizationId, consultorioId);
 	}
 
 	/**
-	 * La sede tiene que estar ACTIVA para recibir horario nuevo.
-	 *
-	 * <p>409 y no 404: la sede existe y el actor la puede leer; lo que no admite la operacion es
-	 * su estado. Es RN-M03-003 un nivel mas abajo — una sede inactiva no origina hechos nuevos, y
-	 * un bloque de disponibilidad nuevo es un hecho nuevo. La EDICION y la BAJA no lo exigen a
-	 * proposito: son las dos operaciones con las que se ordena el horario de una sede que se esta
-	 * cerrando, y prohibirlas la dejaria congelada.
+	 * La sede tiene que estar ACTIVA para recibir horario nuevo: un bloque de disponibilidad
+	 * nuevo es un hecho nuevo. Ver {@link AutorizacionDeSede#exigirSedeOperable}.
 	 */
 	private ConsultorioSnapshot exigirSedeOperable(long organizationId, long consultorioId) {
-		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		if (!sede.active()) {
-			throw new ConsultorioNotOperableException(consultorioId);
-		}
-		return sede;
+		return AutorizacionDeSede.exigirSedeOperable(
+				consultorioDirectory, organizationId, consultorioId);
 	}
 
 	/**

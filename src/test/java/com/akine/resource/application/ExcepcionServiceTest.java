@@ -13,12 +13,15 @@ import com.akine.resource.domain.MotivoExcepcion;
 import com.akine.resource.domain.TipoExcepcion;
 import com.akine.resource.domain.exception.ExcepcionInactivaException;
 import com.akine.resource.domain.exception.ExcepcionNotAccessibleException;
+import com.akine.resource.domain.exception.ProfesionalNoVinculadoException;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -255,8 +258,48 @@ class ExcepcionServiceTest {
 	}
 
 	// =================================================================================
+	// Quien puede ser SUJETO de una excepcion de profesional (ruling R18)
+	// =================================================================================
+
+	@ParameterizedTest(name = "un vinculo {0} SI puede tener una excepcion propia")
+	@ValueSource(strings = {"PROFESIONAL", "CONSULTORIO_ADMIN", "ORG_ADMIN"})
+	@DisplayName("Los tres roles que atienden pacientes pueden ser sujeto de una excepcion")
+	void los_roles_que_atienden_pueden_tener_excepcion(String roleCode) {
+		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID))
+				.willReturn(Optional.of(conRol(roleCode)));
+
+		ExcepcionView vista = service.crear(actor, CONSULTORIO_ID, altaDeCierre(MEMBERSHIP_ID));
+
+		assertThat(vista.nuevo()).isTrue();
+		verify(excepciones).save(any());
+	}
+
+	@ParameterizedTest(name = "un vinculo {0} NO puede tener una excepcion propia")
+	@ValueSource(strings = {"ADMINISTRATIVO", "PACIENTE"})
+	@DisplayName("Los dos roles que por definicion no atienden reciben 409 tambien en la excepcion")
+	void los_roles_que_no_atienden_no_pueden_tener_excepcion(String roleCode) {
+		// Una excepcion con alcance de profesional recorta o amplia LA DISPONIBILIDAD DE ESA
+		// PERSONA: si no puede tener disponibilidad, tampoco puede tener una excepcion suya. Sin
+		// este control quedaba una segunda puerta abierta al mismo dato invalido.
+		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID))
+				.willReturn(Optional.of(conRol(roleCode)));
+
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, altaDeCierre(MEMBERSHIP_ID)))
+				.isInstanceOf(ProfesionalNoVinculadoException.class);
+
+		verify(excepciones, never()).save(any());
+		verifyNoInteractions(auditTrail);
+	}
+
+	// =================================================================================
 	// Auxiliares
 	// =================================================================================
+
+	private static ConsultorioMembershipSnapshot conRol(String roleCode) {
+		return new ConsultorioMembershipSnapshot(
+				MEMBERSHIP_ID, ACCOUNT_ID, ORG_ID, CONSULTORIO_ID, roleCode, "ACTIVA",
+				Instant.parse("2020-01-01T00:00:00Z"), null, true, true);
+	}
 
 	private static ExcepcionAltaCommand altaDeCierre(Long membershipId) {
 		return new ExcepcionAltaCommand(

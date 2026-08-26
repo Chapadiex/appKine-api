@@ -21,6 +21,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -541,8 +543,115 @@ class DisponibilidadServiceTest {
 	}
 
 	// =================================================================================
+	// Quien puede ser SUJETO de disponibilidad (ruling R18)
+	// =================================================================================
+
+	@ParameterizedTest(name = "un vinculo {0} SI puede tener disponibilidad")
+	@ValueSource(strings = {"PROFESIONAL", "CONSULTORIO_ADMIN", "ORG_ADMIN"})
+	@DisplayName("Los tres roles que atienden pacientes pueden ser sujeto de un bloque")
+	void los_roles_que_atienden_pueden_tener_disponibilidad(String roleCode) {
+		// CONSULTORIO_ADMIN y ORG_ADMIN NO son un caso raro que haya que tolerar: en un centro
+		// chico el duenio atiende, y la matriz seccion 1.2 dice explicitamente que el rol de
+		// seguridad no es la profesion. Filtrar por roleCode == PROFESIONAL —que es el fix
+		// "obvio"— le impediria cargarse el horario a la persona que abrio el centro.
+		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID))
+				.willReturn(Optional.of(conRol(roleCode)));
+
+		BloqueView vista = service.crear(actor, CONSULTORIO_ID, MEMBERSHIP_ID, altaMartes());
+
+		assertThat(vista.nuevo()).isTrue();
+		verify(bloques).save(any());
+	}
+
+	@ParameterizedTest(name = "un vinculo {0} NO puede tener disponibilidad")
+	@ValueSource(strings = {"ADMINISTRATIVO", "PACIENTE"})
+	@DisplayName("Los dos roles que por definicion no atienden reciben 409 y no se escribe nada")
+	void los_roles_que_no_atienden_no_pueden_tener_disponibilidad(String roleCode) {
+		// El agujero que este control cierra: antes del ruling R18, un POST con curl contra la
+		// membership de la recepcionista devolvia 201 y /efectiva empezaba a servir franjas
+		// reales contra ella. La unica regla que existia era un filtro de TypeScript.
+		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID))
+				.willReturn(Optional.of(conRol(roleCode)));
+
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, MEMBERSHIP_ID, altaMartes()))
+				.isInstanceOf(ProfesionalNoVinculadoException.class);
+
+		verify(bloques, never()).save(any());
+		verifyNoInteractions(auditTrail);
+	}
+
+	@Test
+	@DisplayName("La EDICION aplica el mismo control de rol que el alta")
+	void la_edicion_tambien_rechaza_a_quien_no_atiende() {
+		// Mover un bloque tambien es poner disponibilidad en efecto hacia adelante. Sin el
+		// control aca, bastaria crear con un rol valido y despues cambiar el rol del vinculo.
+		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID))
+				.willReturn(Optional.of(conRol("ADMINISTRATIVO")));
+
+		assertThatThrownBy(() -> service.editar(actor, CONSULTORIO_ID, MEMBERSHIP_ID, BLOQUE_ID,
+				new BloqueEdicionCommand(null, LocalTime.of(10, 0), null, null, null, false, 0L)))
+				.isInstanceOf(ProfesionalNoVinculadoException.class);
+
+		verify(bloques, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("La BAJA no mira el rol: RN-M05-003, lo que ya se cargo se tiene que poder ordenar")
+	void la_baja_no_mira_el_rol() {
+		// Un vinculo que cambio de rol —o que nunca debio tener horario— deja bloques cargados.
+		// Si la baja exigiera rol, el administrador no podria limpiarlos y quedarian computando.
+		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID))
+				.willReturn(Optional.of(conRol("ADMINISTRATIVO")));
+		given(bloques.findByIdScoped(BLOQUE_ID, ORG_ID, CONSULTORIO_ID))
+				.willReturn(Optional.of(bloque(BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0))));
+
+		BloqueView vista = service.darDeBaja(
+				actor, CONSULTORIO_ID, MEMBERSHIP_ID, BLOQUE_ID, "cargado por error");
+
+		assertThat(vista.estado()).isEqualTo("INACTIVO");
+	}
+
+	// =================================================================================
+	// La ventana de la sonda de impacto
+	// =================================================================================
+
+	@Test
+	@DisplayName("Con los dos fines de vigencia presentes, la ventana llega al MAS LEJANO de los dos")
+	void la_ventana_de_impacto_es_la_union_de_los_dos_fines() {
+		// Es la rama "los dos no nulos" de impactoDe, que es la union que justifico el fix T7 y
+		// que hasta ahora no estaba afirmada por ningun test. Un bloque que termina en 40 dias al
+		// que la edicion le adelanta el fin a 10: los turnos que quedan huerfanos son los que
+		// caen ENTRE el dia 10 y el dia 40. Una ventana derivada del estado nuevo terminaria en
+		// el dia 10 y responderia cero exactamente en el caso que la pregunta existe para
+		// detectar.
+		LocalDate finPrevio = LocalDate.now(ZoneId.of(ZONA)).plusDays(40);
+		LocalDate finNuevo = LocalDate.now(ZoneId.of(ZONA)).plusDays(10);
+
+		given(bloques.findByIdScoped(BLOQUE_ID, ORG_ID, CONSULTORIO_ID))
+				.willReturn(Optional.of(bloque(
+						BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0),
+						DESDE_MARZO, finPrevio)));
+
+		service.editar(actor, CONSULTORIO_ID, MEMBERSHIP_ID, BLOQUE_ID,
+				new BloqueEdicionCommand(null, null, null, null, finNuevo, false, 0L));
+
+		ArgumentCaptor<Instant> hasta = ArgumentCaptor.forClass(Instant.class);
+		verify(impactProbe).turnosEn(anyLong(), anyLong(), anyLong(), any(), hasta.capture());
+
+		assertThat(hasta.getValue())
+				.as("el fin MAS LEJANO de los dos, no el nuevo y tampoco el horizonte de 90 dias")
+				.isEqualTo(finPrevio.atStartOfDay(ZoneId.of(ZONA)).toInstant());
+	}
+
+	// =================================================================================
 	// Fixtures sinteticas
 	// =================================================================================
+
+	private static ConsultorioMembershipSnapshot conRol(String roleCode) {
+		return new ConsultorioMembershipSnapshot(
+				MEMBERSHIP_ID, ACCOUNT_ID, ORG_ID, CONSULTORIO_ID, roleCode, "ACTIVA",
+				Instant.parse("2026-01-01T00:00:00Z"), null, true, true);
+	}
 
 	private static BloqueAltaCommand altaMartes() {
 		return new BloqueAltaCommand(MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0), DESDE_MARZO, null);

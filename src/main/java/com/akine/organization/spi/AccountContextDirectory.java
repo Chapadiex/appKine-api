@@ -80,6 +80,20 @@ public interface AccountContextDirectory {
 	 *
 	 * <p>Devuelve tambien las no vigentes para que 01.03 pueda explicar por que un acceso
 	 * fallo; quien decide sobre permisos usa {@link MembershipSnapshot#validAt}.
+	 *
+	 * <p><b>Cuidado con {@link MembershipSnapshot#validAt}: mira vigencia y baja logica, y NO
+	 * mira {@code estado}.</b> Una membership {@code SUSPENDIDA} o {@code REVOCADA} que siga
+	 * dentro de su ventana y con {@code active = 1} responde {@code true}. No es un descuido de
+	 * este metodo y no se arregla cambiandolo: {@code validAt} es el predicado del que cuelgan
+	 * identity y el login, y ampliarlo es una decision con ese alcance, no un fix de un
+	 * consumidor nuevo.
+	 *
+	 * <p>Quien necesite "vigente Y habilitada" —los tres controles, como los hace
+	 * {@code Membership.isValidAt} en el dominio— tiene que usar
+	 * {@link ConsultorioMembershipSnapshot#validAt}, que si consulta el estado porque el
+	 * adaptador le calcula {@code habilitada} desde {@code MembershipEstado.habilita()}. Es el
+	 * contrato que consume {@code resource} (M05) justamente para que un profesional suspendido
+	 * no siga ofreciendo disponibilidad.
 	 */
 	Optional<MembershipSnapshot> membership(long accountId, long organizationId);
 }

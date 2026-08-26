@@ -5,7 +5,6 @@ import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
-import com.akine.organization.spi.PermissionQuery;
 import com.akine.resource.application.DisponibilidadEfectivaView.DiaEfectivo;
 import com.akine.resource.application.DisponibilidadEfectivaView.FranjaResuelta;
 import com.akine.resource.domain.BloqueDisponibilidad;
@@ -360,11 +359,14 @@ public class DisponibilidadEfectivaService {
 				.collect(Collectors.toMap(
 						Feriado::getFecha,
 						feriado -> feriado,
-						// V22 no tiene un unique por (pais, fecha): dos filas para el mismo dia
-						// son posibles. Gana la primera, que es la que el ORDER BY del motor
-						// devolvio antes; quedarse con una es suficiente porque lo unico que se
-						// usa es el nombre, y un merge que lanzara convertiria un dato mal
-						// cargado en un 500 de una consulta de lectura.
+						// V22 SI tiene un unique por (pais, fecha) —uk_feriado_pais_fecha—, asi
+						// que dos filas para el mismo dia no pueden existir y esta funcion de
+						// merge no deberia ejecutarse nunca. Se deja igual porque
+						// Collectors.toMap LANZA ante una clave repetida: si alguna vez alguien
+						// afloja ese unique en una migracion futura, la alternativa a esta linea
+						// es un 500 en una consulta de lectura. Gana la primera fila, que es la
+						// que el ORDER BY del motor devolvio antes, y alcanza porque lo unico
+						// que se usa de ella es el nombre.
 						(primero, segundo) -> primero,
 						LinkedHashMap::new));
 	}
@@ -435,13 +437,8 @@ public class DisponibilidadEfectivaService {
 	 * Falta de contexto es <b>403 y nunca 401</b>: el interceptor del frontend borra el token ante
 	 * cualquier 401 y dejaria al usuario en un bucle de login del que no sale.
 	 */
-	private long exigirContexto(OperatingActor actor) {
-		if (actor.contextOrganizationId() == null) {
-			log.info("Lectura de disponibilidad efectiva sin contexto validado: accountId={}",
-					actor.accountId());
-			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
-		}
-		return actor.contextOrganizationId();
+	private static long exigirContexto(OperatingActor actor) {
+		return AutorizacionDeSede.exigirContexto(actor, "Lectura de disponibilidad efectiva");
 	}
 
 	/**
@@ -453,17 +450,12 @@ public class DisponibilidadEfectivaService {
 	 * regla que duplique la decision solo agregaria un lugar donde equivocarse.
 	 */
 	private void exigirLectura(OperatingActor actor, long organizationId, long consultorioId) {
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.COLABORADOR_READ,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
+		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
+				PermissionCodes.COLABORADOR_READ, organizationId, consultorioId);
 	}
 
 	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {
-		return consultorioDirectory.find(organizationId, consultorioId)
-				.orElseThrow(() -> new ConsultorioNotAccessibleException(consultorioId));
+		return AutorizacionDeSede.exigirSedeDelTenant(
+				consultorioDirectory, organizationId, consultorioId);
 	}
 }

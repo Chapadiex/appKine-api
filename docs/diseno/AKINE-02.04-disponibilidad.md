@@ -511,6 +511,34 @@ RN-M05-004 —"los turnos futuros afectados deben quedar visibles para resoluci�
 | El seed de feriados envejece; los trasladables se deciden por decreto | Mantenimiento anual |
 | Horario general del consultorio (`RF-M03-002`, `CA-M03-002` parcial) | F5 |
 
+### Quién puede ser SUJETO de disponibilidad — ruling R18 (26/08/2026)
+
+Es una pregunta distinta de "quién puede editarla", y hasta este ruling **no la contestaba nadie
+en el backend**: el único lugar del sistema donde vivía la regla era el filtro a `PROFESIONAL` de
+`profesionales-de-la-sede.ts`. Un `POST .../profesionales/{id de una membership ADMINISTRATIVO}
+/disponibilidad` con curl devolvía **201**, y `/efectiva` empezaba a servir franjas reales contra
+la recepcionista — que el motor de turnos de F5 iba a ofrecer como reservables.
+
+**El control está ahora en el backend, y NO es `roleCode == PROFESIONAL`.** Eso sería un error en
+la otra dirección: la matriz §1.2 declara que *rol de seguridad ≠ disciplina ≠ especialidad ≠
+habilitación* (RN-M05-005) y prohíbe crear roles por profesión. En un centro chico el dueño
+atiende: un `CONSULTORIO_ADMIN` o un `ORG_ADMIN` con agenda propia es lo normal.
+
+| Rol | ¿Puede ser sujeto de disponibilidad? |
+|---|---|
+| `PROFESIONAL`, `CONSULTORIO_ADMIN`, `ORG_ADMIN` | **Sí** |
+| `ADMINISTRATIVO`, `PACIENTE` | **No** — 409 `ProfesionalNoVinculadoException` |
+
+Es **lista de excluidos y no de admitidos**: un rol clínico nuevo en la matriz debe entrar por
+defecto, no quedar afuera en silencio con un 409 que nadie entiende.
+
+Se aplica en las tres puertas por las que una membership llega a ser sujeto de disponibilidad:
+alta de bloque, edición de bloque y alta de excepción con alcance de profesional. **No** se aplica
+en la baja ni en las lecturas (RN-M05-003: lo que ya se cargó se tiene que poder ordenar y leer).
+La lista de solo-`PROFESIONAL` del frontend sigue siendo correcta como **default de UX**.
+
+Implementación y razonamiento completo: `AutorizacionDeSede.ROLES_QUE_NO_ATIENDEN`.
+
 ### Cosas que el código hace y este documento no decía
 
 Una auditoría del 26/08/2026 comparó el documento contra el código y encontró estos silencios.
