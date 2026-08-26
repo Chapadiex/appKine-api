@@ -342,7 +342,22 @@ Cambio **aditivo**: bump menor, sin ventana de compatibilidad.
 | `DELETE` | `/api/v1/consultorios/{cid}/excepciones/{id}` | `consultorio:manage` |
 | `GET` | `/api/v1/consultorios/{cid}/calendario?desde&hasta` | `colaborador:read` |
 | `PUT` | `/api/v1/consultorios/{cid}/calendario` | `consultorio:manage` |
-| `GET` | `/api/v1/feriados?pais&desde&hasta` | autenticado |
+
+> **Eran once. Son diez: `GET /api/v1/feriados` se cayó del contrato el 26/08/2026.**
+>
+> Ningún servicio de esta etapa puede servirlo. `CalendarioService.ver` es **por sede**: exige
+> `consultorioId` y autoriza con `colaborador:read`. Una lectura global de feriados no la crea
+> ninguna tarea, así que el endpoint habría necesitado inventar un método fuera de plan o un
+> controller sin nada detrás.
+>
+> Y no hace falta: `GET /api/v1/consultorios/{cid}/calendario?desde&hasta` ya devuelve la política
+> de la sede **junto con los feriados de la ventana**, que es exactamente lo que necesitan las
+> pantallas de esta etapa — el calendario muestra los feriados en el contexto de una sede que
+> cierra o no cierra en ellos. Una lista global sin sede no tiene consumidor acá, y un endpoint
+> sin llamador es superficie que hay que mantener, versionar y proteger para nada.
+>
+> Si más adelante aparece una pantalla que necesite feriados sin sede en la mano, se agrega
+> entonces, con su servicio y su autorización pensadas para ese caso.
 
 Reglas heredadas que se aplican sin excepción: **cross-tenant → 404, nunca 403**; **falta de
 contexto → 403, nunca 401**; la ventana `desde/hasta` lleva **tope máximo** (el mismo
