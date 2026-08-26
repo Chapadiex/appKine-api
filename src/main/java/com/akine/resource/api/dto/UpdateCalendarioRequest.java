@@ -1,7 +1,7 @@
 package com.akine.resource.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 
 /**
  * Edicion de la politica de calendario de una sede (RF-M05-004).
@@ -27,7 +27,11 @@ public record UpdateCalendarioRequest(
 						+ "como estaba; el valor por defecto de una sede nueva es AR",
 				example = "AR",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		@Size(max = 2, min = 2, message = "El pais es un codigo de dos letras")
+		// Pattern y no Size: el @ApiResponse promete 400 para "no es un codigo de dos letras", y
+		// con Size a secas {"pais":"12"} pasaba la validacion y llegaba al servicio. La anotacion
+		// y lo que el contrato promete tienen que decir lo mismo.
+		@Pattern(regexp = "[A-Za-z]{2}",
+				message = "El pais es un codigo de dos letras, por ejemplo AR")
 		String pais,
 
 		@Schema(

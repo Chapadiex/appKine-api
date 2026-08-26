@@ -287,8 +287,9 @@ public class DisponibilidadController {
 					una edicion sino un bloque nuevo (RN-M05-001), y permitirlo dejaria la \
 					autoria historica apuntando a quien nunca atendio en esa franja.
 
-					version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 \
-					concurrent-modification y el cliente recarga. Sin eso dos ediciones \
+					version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 con \
+					type conflict —el generico, NO concurrent-modification, que es el que emite \
+					organization para el mismo hecho— y el cliente recarga. Sin eso dos ediciones \
 					simultaneas se pisan y el segundo en guardar borra el cambio del primero sin \
 					que nadie se entere.
 
@@ -329,7 +330,7 @@ public class DisponibilidadController {
 					responseCode = "409",
 					description = "Bloque dado de baja (bloque-inactivo), solapamiento con otro "
 							+ "activo (bloque-solapado), version desactualizada "
-							+ "(concurrent-modification), o profesional sin vinculo vigente en "
+							+ "(conflict), o profesional sin vinculo vigente en "
 							+ "esa sede (profesional-no-vinculado)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -399,7 +400,16 @@ public class DisponibilidadController {
 							schema = @Schema(implementation = BloqueResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "Falta el motivo de la baja, o el cuerpo no viene",
+					description = "Falta el motivo de la baja, o el cuerpo esta vacio o mal "
+							+ "formado",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "415",
+					description = "Falta la cabecera Content-Type: application/json en el cuerpo "
+							+ "del DELETE. Algunos clientes HTTP generados no la emiten por "
+							+ "defecto en un DELETE con cuerpo",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

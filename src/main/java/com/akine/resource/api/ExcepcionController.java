@@ -291,7 +291,16 @@ public class ExcepcionController {
 							schema = @Schema(implementation = ExcepcionResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "Falta el motivo de la baja, o el cuerpo no viene",
+					description = "Falta el motivo de la baja, o el cuerpo esta vacio o mal "
+							+ "formado",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "415",
+					description = "Falta la cabecera Content-Type: application/json en el cuerpo "
+							+ "del DELETE. Algunos clientes HTTP generados no la emiten por "
+							+ "defecto en un DELETE con cuerpo",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

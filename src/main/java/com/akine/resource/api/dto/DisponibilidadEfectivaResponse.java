@@ -107,9 +107,15 @@ public record DisponibilidadEfectivaResponse(
 
 							null — cuarto estado, y no un descuido: o el dia TIENE franjas, o \
 							quedo vacio porque NINGUNA regla lo abrio. Eso no es una regla que \
-							lo afecte, es la ausencia de reglas, y se distingue mirando franjas.""",
+							lo afecte, es la ausencia de reglas, y se distingue mirando franjas.
+
+							NO se declara como enum en el contrato aunque la lista sea cerrada: \
+							un campo nullable con enum se publica en OpenAPI 3.1 como un tipo que \
+							ADMITE el nulo junto a un enum que NO lo contiene, y un cliente \
+							generado con validacion estricta rechazaria nuestra propia respuesta \
+							la primera vez que un dia llegue sin razon. La enumeracion vive en \
+							esta prosa a proposito.""",
 					example = "CIERRE",
-					allowableValues = {"FERIADO", "CIERRE", "VINCULO"},
 					nullable = true)
 			String razonVacio,
 
@@ -157,9 +163,23 @@ public record DisponibilidadEfectivaResponse(
 					example = "BLOQUE", allowableValues = {"BLOQUE", "APERTURA"})
 			String origen,
 
-			@Schema(description = "CIERRE si una excepcion recorto la franja, null si nada la "
-					+ "recorto. Es lo que explica por que termina a las 11 y no a las 13",
-					example = "CIERRE", allowableValues = {"CIERRE"}, nullable = true)
+			@Schema(
+					description = """
+							Por que la franja quedo mas corta que la regla que la produjo. DOS \
+							estados, y el segundo es el normal:
+
+							CIERRE — una excepcion de tipo CIERRE le recorto un pedazo. Es lo que \
+							explica por que la franja termina a las 11 y no a las 13.
+
+							null — nada la recorto: la franja es la regla entera.
+
+							NO se declara como enum en el contrato aunque la lista sea cerrada. \
+							Ver la nota de razonVacio: un campo nullable con enum se publica en \
+							OpenAPI 3.1 con un tipo que admite el nulo y un enum que no lo \
+							contiene, y un cliente generado con validacion estricta rechazaria \
+							nuestra propia respuesta.""",
+					example = "CIERRE",
+					nullable = true)
 			String recortadoPor,
 
 			@Schema(description = "Id de la fila que produjo la franja —el bloque o la excepcion "

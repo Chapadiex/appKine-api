@@ -7,8 +7,13 @@ import com.akine.resource.application.DisponibilidadEfectivaService;
 import com.akine.resource.application.DisponibilidadEfectivaView;
 import com.akine.resource.application.DisponibilidadService;
 import com.akine.resource.domain.IntervaloLocal;
+import com.akine.resource.domain.exception.BloqueInactivoException;
+import com.akine.resource.domain.exception.BloqueNotAccessibleException;
 import com.akine.resource.domain.exception.BloqueSolapadoException;
 import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
+import com.akine.resource.domain.exception.ConsultorioNotOperableException;
+import com.akine.resource.domain.exception.ProfesionalNoVinculadoException;
+import com.akine.resource.domain.exception.ProfesionalNotAccessibleException;
 import com.akine.resource.domain.exception.VentanaDemasiadoAmpliaException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -35,6 +41,7 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -289,6 +296,155 @@ class DisponibilidadControllerTest {
 
 		verify(disponibilidadService)
 				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+	}
+
+	@Test
+	@DisplayName("Un DELETE sin cuerpo ni Content-Type devuelve 415 y no 400: la operacion exige "
+			+ "cuerpo, asi que el request no llega siquiera a validarse")
+	void una_baja_sin_content_type_devuelve_415() throws Exception {
+		mockMvc.perform(delete(RUTA + "/50").with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isUnsupportedMediaType());
+
+		verify(disponibilidadService, never())
+				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+	}
+
+	// =====================================================================================
+	// Los dos lados del ternario de BloqueInactivoException
+	// =====================================================================================
+
+	@Test
+	@DisplayName("Editar un bloque dado de baja dice bloque-inactivo")
+	void la_edicion_de_un_bloque_inactivo_dice_bloque_inactivo() throws Exception {
+		willThrow(new BloqueInactivoException(50L, BloqueInactivoException.Operacion.EDICION))
+				.given(disponibilidadService).editar(any(), anyLong(), anyLong(), anyLong(), any());
+
+		mockMvc.perform(put(RUTA + "/50")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"diaSemana\":3,\"version\":0}")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/bloque-inactivo"));
+	}
+
+	@Test
+	@DisplayName("Dar de baja dos veces dice bloque-already-inactive, NO bloque-inactivo: el "
+			+ "frontend ramifica por type, y con el ternario invertido un boton de borrar le "
+			+ "diria al usuario que no se puede editar")
+	void la_baja_repetida_dice_bloque_already_inactive() throws Exception {
+		willThrow(new BloqueInactivoException(50L, BloqueInactivoException.Operacion.BAJA))
+				.given(disponibilidadService)
+				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+
+		mockMvc.perform(delete(RUTA + "/50")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"reason\":\"Ya no atiende ese dia\"}")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type")
+						.value("https://akine.app/problems/bloque-already-inactive"));
+	}
+
+	// =====================================================================================
+	// El resto de los desenlaces del advice
+	// =====================================================================================
+
+	@Test
+	@DisplayName("Un bloque de otro profesional devuelve 404: sin ese control, un admin legitimo "
+			+ "editaria el bloque ajeno cambiando un id en la URL")
+	void un_bloque_de_otro_profesional_devuelve_404() throws Exception {
+		willThrow(new BloqueNotAccessibleException(50L))
+				.given(disponibilidadService).editar(any(), anyLong(), anyLong(), anyLong(), any());
+
+		mockMvc.perform(put(RUTA + "/50")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"diaSemana\":3,\"version\":0}")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/not-found"));
+	}
+
+	@Test
+	@DisplayName("Un profesional de otro tenant devuelve 404 y no 409")
+	void un_profesional_de_otro_tenant_devuelve_404() throws Exception {
+		willThrow(new ProfesionalNotAccessibleException(30L))
+				.given(disponibilidadService).listar(any(), anyLong(), anyLong());
+
+		mockMvc.perform(get(RUTA).with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/not-found"));
+	}
+
+	@Test
+	@DisplayName("Un profesional sin vinculo vigente en la sede devuelve 409 con los dos ids")
+	void un_profesional_no_vinculado_devuelve_409() throws Exception {
+		willThrow(new ProfesionalNoVinculadoException(30L, 20L))
+				.given(disponibilidadService).crear(any(), anyLong(), anyLong(), any());
+
+		mockMvc.perform(post(RUTA)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"diaSemana":2,"horaDesde":"09:00","horaHasta":"13:00"}""")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type")
+						.value("https://akine.app/problems/profesional-no-vinculado"))
+				.andExpect(jsonPath("$.membershipId").value(30))
+				.andExpect(jsonPath("$.consultorioId").value(20));
+	}
+
+	@Test
+	@DisplayName("El alta sobre una sede dada de baja devuelve 409 consultorio-inactive, que lo "
+			+ "mapea el advice de espacios del mismo modulo y no este")
+	void el_alta_sobre_una_sede_inactiva_devuelve_409() throws Exception {
+		willThrow(new ConsultorioNotOperableException(20L))
+				.given(disponibilidadService).crear(any(), anyLong(), anyLong(), any());
+
+		mockMvc.perform(post(RUTA)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"diaSemana":2,"horaDesde":"09:00","horaHasta":"13:00"}""")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type")
+						.value("https://akine.app/problems/consultorio-inactive"));
+	}
+
+	@Test
+	@DisplayName("Una version vieja devuelve 409 con type conflict, NO concurrent-modification: "
+			+ "resource lanza el OptimisticLockingFailureException plano y el advice global lo "
+			+ "traduce al generico. Este test fija lo que el contrato promete de verdad")
+	void una_version_vieja_devuelve_409_con_type_conflict() throws Exception {
+		willThrow(new OptimisticLockingFailureException("version vieja"))
+				.given(disponibilidadService).editar(any(), anyLong(), anyLong(), anyLong(), any());
+
+		mockMvc.perform(put(RUTA + "/50")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"diaSemana\":3,\"version\":0}")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isConflict())
+				// organization emite concurrent-modification para el mismo hecho, porque ahi lo
+				// levanta el @Version de JPA como ObjectOptimisticLockingFailureException. La
+				// divergencia esta documentada en DisponibilidadProblemHandler.
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/conflict"));
+	}
+
+	@Test
+	@DisplayName("Una ventana invertida devuelve 400 validation-error, que es un type distinto "
+			+ "del de la ventana demasiado amplia: son dos cosas distintas que el cliente puede "
+			+ "hacer al respecto")
+	void una_ventana_invertida_devuelve_400_validation_error() throws Exception {
+		willThrow(new IllegalArgumentException("El fin de la ventana debe ser posterior"))
+				.given(disponibilidadEfectivaService)
+				.efectiva(any(), anyLong(), anyLong(), any(), any());
+
+		mockMvc.perform(get(RUTA + "/efectiva")
+						.param("desde", "2026-10-01")
+						.param("hasta", "2026-09-01")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.type")
+						.value("https://akine.app/problems/validation-error"));
 	}
 
 	// =====================================================================================
