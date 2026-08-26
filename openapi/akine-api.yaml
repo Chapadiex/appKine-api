@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.10.0
+  version: 0.11.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -19,6 +19,8 @@ tags:
   name: Recuperacion
 - description: Alta self-service y habilitacion de la cuenta
   name: Registro y activacion
+- description: Horario semanal de un profesional en una sede y su disponibilidad efectiva
+  name: Disponibilidad profesional
 - description: "Login, renovacion, seleccion de contexto y cierre de sesion"
   name: Sesion
 - description: "Especialidades, practicas, nomencladores y sus vigencias (M06)"
@@ -26,6 +28,8 @@ tags:
 - description: "Consulta, aceptacion y rechazo de una invitacion, con el token como\
     \ unica autoridad (M05)"
   name: Invitaciones recibidas
+- description: Politica de feriados de una sede y feriados del periodo consultado
+  name: Calendario de sede
 - description: Contextos de trabajo habilitados para la cuenta autenticada
   name: Mi cuenta
 - description: "Emision, listado, reenvio y cancelacion de invitaciones a colaborar\
@@ -48,6 +52,8 @@ tags:
 - description: "Alta, edicion, baja y disponibilidad de los espacios fisicos de una\
     \ sede"
   name: Espacios
+- description: Cierres y aperturas puntuales de una sede o de un profesional
+  name: Excepciones de disponibilidad
 - description: "Vinculos de las cuentas con la organizacion, sus roles y sus permisos"
   name: Colaboradores
 paths:
@@ -1471,6 +1477,751 @@ paths:
       summary: Baja logica de un concepto del catalogo
       tags:
       - Catalogo clinico
+  /api/v1/consultorios/{consultorioId}/calendario:
+    get:
+      description: |-
+        Devuelve juntas las dos cosas que la pantalla de calendario necesita a la vez: si esta sede cierra los feriados de su pais, y cuales son los feriados que caen en la ventana que se esta mirando.
+
+        existePersistida = false significa que la sede todavia no tiene fila propia y lo que se devuelve son los valores por defecto. Es informacion util: dice que nadie edito nunca la politica de esa sede, no que no tenga una. LA LECTURA NO CREA LA FILA: un GET que escribe convierte una consulta en una mutacion que nadie pidio.
+
+        La ventana es semiabierta: hasta es EXCLUSIVO, y un feriado que cae exactamente en hasta NO viaja. hasta == desde es 400, no "un dia". El maximo es de 366 dias; el error trae maximoDias para que la pantalla recorte sola.
+
+        Exige colaborador:read sobre esa sede.
+      operationId: getCalendarioSede
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Primer dia de la ventana, fecha local ISO-8601"
+        example: 2026-01-01
+        in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Fin de la ventana, EXCLUSIVO, fecha local ISO-8601"
+        example: 2027-01-01
+        in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarioSedeResponse"
+          description: Politica de la sede y feriados de la ventana
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ventana ausente, invertida o vacia (validation-error), o de\
+            \ mas de 366 dias (ventana-demasiado-amplia, con maximoDias)"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, no hay contexto de trabajo, o falta\
+            \ colaborador:read sobre esa sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o pertenece a otro tenant
+      summary: Politica de calendario de la sede y feriados de la ventana
+      tags:
+      - Calendario de sede
+    put:
+      description: |-
+        Cambia el pais del calendario y si la sede cierra sus feriados. Crea la fila a demanda si es la primera vez. Exige consultorio:manage sobre ESA sede.
+
+        Semantica de PATCH aunque el verbo sea PUT: cada campo omitido queda como estaba. cierraPorFeriado OMITIDO no es false — ese es el error que convierte "no toques la politica" en "abri todos los feriados" para todos los profesionales de la sede, hacia adelante y hacia atras. Por el alcance de ese cambio, la edicion se audita aunque sea un solo flag.
+
+        NO LLEVA version Y NO PUEDE DAR 409 POR CONCURRENCIA. La fila se crea a demanda: un cliente que nunca la vio no tiene version que mandar, y exigirsela le impediria su primera edicion. Consecuencia declarada: dos administradores que editan a la vez no producen conflicto, gana el segundo, y la auditoria conserva los dos cambios con su autor. La version viaja igual en la respuesta, para que la pantalla pueda detectar que alguien mas la cambio.
+
+        feriados viene VACIA en esta respuesta: un PUT no tiene ventana. Vacia significa "no se pregunto", nunca "no hay feriados"; quien quiera la lista vuelve a leer con su ventana.
+      operationId: updateCalendarioSede
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCalendarioRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarioSedeResponse"
+          description: "Politica actualizada. feriados viene vacia: el PUT no tiene\
+            \ ventana"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El pais viene vacio o no es un codigo de dos letras
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o pertenece a otro tenant
+      summary: Edicion de la politica de calendario de la sede
+      tags:
+      - Calendario de sede
+  /api/v1/consultorios/{consultorioId}/excepciones:
+    get:
+      description: |-
+        Devuelve las excepciones ACTIVAS cuya ventana de fechas se solapa con [desde, hasta).
+
+        LAS DOS RESPUESTAS SON DISTINTAS, Y NO POR CASUALIDAD:
+
+        CON membershipId devuelve las de ESE profesional MAS las de alcance SEDE ENTERA. Las dos poblaciones son obligatorias: si devolviera solo las suyas, un cierre de sede completo dejaria de aplicarsele sin que nada lo detecte.
+
+        SIN membershipId devuelve SOLO las de alcance SEDE. Es la vista del calendario del centro; devolver ahi las de todos los profesionales convertiria una vista de sede en un listado de ausencias de personas, que es informacion de otra pantalla y de otro permiso.
+
+        La ventana es semiabierta: hasta es EXCLUSIVO, y hasta == desde es 400, no "un dia". El maximo es de 366 dias; el error trae maximoDias para que la pantalla recorte sola.
+
+        Un profesional DESVINCULADO se sigue pudiendo consultar: RN-M05-003, desvincular no borra su historia.
+
+        Exige colaborador:read sobre esa sede.
+      operationId: listExcepciones
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Primer dia de la ventana, fecha local ISO-8601"
+        example: 2026-09-01
+        in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Fin de la ventana, EXCLUSIVO, fecha local ISO-8601"
+        example: 2026-10-01
+        in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Vinculo del profesional. OMITIRLO devuelve SOLO las excepciones\
+          \ de alcance SEDE, no las de todos los profesionales"
+        example: 1
+        in: query
+        name: membershipId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ExcepcionResponse"
+          description: Excepciones activas que cubren parte de la ventana. Lista vacia
+            si no hay ninguna
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ventana ausente, invertida o vacia (validation-error), o de\
+            \ mas de 366 dias (ventana-demasiado-amplia, con maximoDias)"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, no hay contexto de trabajo, o falta\
+            \ colaborador:read sobre esa sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o el profesional no existen, o pertenecen a otro tenant"
+      summary: Excepciones vigentes de la sede en una ventana
+      tags:
+      - Excepciones de disponibilidad
+    post:
+      description: |-
+        Carga una excepcion al horario base: una ausencia, una licencia, un bloqueo o una ampliacion excepcional (RF-M05-004). Exige consultorio:manage sobre ESA sede.
+
+        RESPONDE 201 O 200, Y UN CLIENTE QUE SOLO CONTEMPLE 201 SE ROMPE. El alta es IDEMPOTENTE sin Idempotency-Key (CA-M05-004-05): un pedido que coincide EXACTAMENTE con una excepcion activa que ya existe devuelve 200 con esa fila, no crea nada y no vuelve a auditar. notes y feriadoId quedan FUERA de esa comparacion. Solo el alta que crea la fila responde 201, y solo ella trae Location.
+
+        NO HAY 409 POR SOLAPAMIENTO, Y ES UNA DIFERENCIA DELIBERADA CON LOS BLOQUES. Dos excepciones que se pisan sin ser identicas son las dos legitimas y las dos se guardan: una ausencia de una tarde dentro de una licencia mas larga es un hecho corriente, no un conflicto. No escribir manejo de error de solapamiento para esta operacion: nunca lo va a emitir.
+
+        Los 409 que SI existen aca son otros dos, y ninguno depende de las fechas: la sede dada de baja (consultorio-inactive) y el profesional sin vinculo vigente en esa sede (profesional-no-vinculado), este ultimo solo cuando se manda membershipId.
+
+        OMITIR membershipId significa SEDE ENTERA —afecta a TODOS los profesionales—, no un dato faltante. Y fechaHasta es EXCLUSIVA: un cierre de un solo dia se carga como [D, D+1). Mandar fechaDesde == fechaHasta cierra cero dias.
+
+        APERTURA no es el caso raro: es como un centro declara que atiende un feriado o que suma una banda un sabado puntual.
+      operationId: createExcepcion
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExcepcionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExcepcionResponse"
+          description: "ALTA IDEMPOTENTE: ya existia una excepcion activa identica\
+            \ y se devuelve esa. No se creo ninguna fila y no hay Location"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExcepcionResponse"
+          description: Excepcion creada. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos obligatorios ausentes, rango de fechas incoherente,\
+            \ o una sola de las dos horas (vienen las dos o ninguna)"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o el profesional no existen, o pertenecen a otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sede dada de baja (consultorio-inactive), o profesional sin\
+            \ vinculo vigente en esa sede (profesional-no-vinculado). NUNCA por solapamiento:\
+            \ dos excepciones que se pisan son las dos validas"
+      summary: Alta de un cierre o de una apertura puntual
+      tags:
+      - Excepciones de disponibilidad
+  /api/v1/consultorios/{consultorioId}/excepciones/{excepcionId}:
+    delete:
+      description: |-
+        Da de baja la excepcion con MOTIVO OBLIGATORIO en el cuerpo. NO borra nada: la fila queda INACTIVA con su motivo, su autor y su instante, y sus fechas intactas. Cancelar una licencia es un hecho que hay que poder reconstruir.
+
+        El motivo va en el CUERPO y no en la query string: en la URL quedaria en los logs de acceso de cualquier proxy intermedio.
+
+        Se permite aunque la sede este dada de baja y aunque el profesional ya se haya desvinculado: son las operaciones con las que se ordena el calendario de un centro que se esta cerrando.
+
+        Dar de baja dos veces es 409 excepcion-already-inactive: "ya estaba dada de baja" es informacion distinta de "no existe".
+
+        Exige consultorio:manage sobre esa sede.
+      operationId: deactivateExcepcion
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la excepcion
+        example: 1
+        in: path
+        name: excepcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateExcepcionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExcepcionResponse"
+          description: "Excepcion dada de baja, con sus fechas intactas"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el motivo de la baja, o el cuerpo esta vacio o mal\
+            \ formado"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La excepcion no existe, es de otra sede o de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya estaba dada de baja (excepcion-already-inactive)
+        "415":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta la cabecera Content-Type: application/json en el cuerpo\
+            \ del DELETE. Algunos clientes HTTP generados no la emiten por defecto\
+            \ en un DELETE con cuerpo"
+      summary: Baja logica de una excepcion de disponibilidad
+      tags:
+      - Excepciones de disponibilidad
+  /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad:
+    get:
+      description: |-
+        Devuelve los bloques ACTIVOS del profesional en esa sede, ordenados por dia y hora (RF-M05-003). Es la lectura de las REGLAS: que horario tiene cargado. La lectura del RESULTADO —que dias y horas concretas atiende— es /disponibilidad/efectiva, y las dos conviven a proposito.
+
+        Exige colaborador:read sobre esa sede, no consultorio:manage: sin eso un profesional no podria ver su propio horario.
+
+        Un profesional DESVINCULADO se sigue pudiendo consultar: RN-M05-003 dice que desvincular no borra bloques ni autoria, y exigir vinculo vigente para leer dejaria al administrador sin poder revisar el horario de quien se fue.
+
+        Los bloques dados de baja NO aparecen. Esta version del contrato no tiene filtro de estado; la fila sobrevive en la base y en la auditoria.
+      operationId: listBloquesDisponibilidad
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Vinculo del profesional
+        example: 1
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BloqueResponse"
+          description: "Bloques activos del profesional, ordenados por dia y hora.\
+            \ Lista vacia si no tiene horario cargado"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, no hay contexto de trabajo, o falta\
+            \ colaborador:read sobre esa sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o el profesional no existen, o pertenecen a otro tenant"
+      summary: Horario semanal cargado de un profesional en la sede
+      tags:
+      - Disponibilidad profesional
+    post:
+      description: |-
+        Carga un tramo del horario semanal del profesional en esa sede: "los martes de 09 a 13, desde marzo" (RF-M05-003). Exige consultorio:manage sobre ESA sede.
+
+        RESPONDE 201 O 200, Y UN CLIENTE QUE SOLO CONTEMPLE 201 SE ROMPE. El alta es IDEMPOTENTE sin Idempotency-Key: si el pedido reproduce EXACTAMENTE un bloque activo que ya existe —mismo dia, mismas horas, misma vigencia— la respuesta es 200 con ese bloque, no se crea ninguna fila y no se vuelve a auditar. Es el reintento de red, y el historial tiene que quedar como lo dejo el primer intento. Solo el alta que CREA la fila responde 201, y solo ella trae la cabecera Location.
+
+        Un alta sin vigenciaDesde que reproduce un bloque que YA rige tambien entra por ahi: el pedido "que rija desde ahora" esta genuinamente satisfecho.
+
+        Coincidir NO es lo mismo que solapar. Un bloque que se pisa con otro sin reproducirlo exactamente es 409 bloque-solapado. Y solapar no es ser contiguo: la hora de fin es EXCLUSIVA, asi que 09:00-12:00 y 12:00-15:00 conviven —manana y tarde— sin conflicto.
+
+        Dos temporadas del mismo horario tampoco se solapan: el mismo "martes de 09 a 13" cargado para marzo y para septiembre no es un conflicto, es un horario de temporada. Se comparan las tres cosas: dia, horas Y ventana de vigencia.
+
+        La sede tiene que estar ACTIVA: una sede dada de baja no origina hechos nuevos y responde 409 consultorio-inactive. La EDICION y la BAJA si se permiten sobre una sede inactiva, que es con lo que se ordena el horario de un centro que se esta cerrando.
+
+        El profesional tiene que tener un vinculo VIGENTE que lo habilite en esa sede (RN-M05-001), o la respuesta es 409 profesional-no-vinculado.
+      operationId: createBloqueDisponibilidad
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Vinculo del profesional
+        example: 1
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBloqueRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BloqueResponse"
+          description: "ALTA IDEMPOTENTE: ya existia un bloque activo identico y se\
+            \ devuelve ese. No se creo ninguna fila y no hay Location"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BloqueResponse"
+          description: Bloque creado. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Dia fuera de 1..7, horas ausentes, u horario incoherente"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto\
+            \ de trabajo seleccionado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o el profesional no existen, o pertenecen a otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Solapamiento con otro bloque activo (bloque-solapado), sede\
+            \ dada de baja (consultorio-inactive), o profesional sin vinculo vigente\
+            \ en esa sede (profesional-no-vinculado)"
+      summary: Alta de un bloque recurrente de disponibilidad
+      tags:
+      - Disponibilidad profesional
+  /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad/efectiva:
+    get:
+      description: |-
+        Resuelve que dias y horas CONCRETAS atiende el profesional en esa sede durante la ventana pedida, aplicando todo junto: la vigencia de cada bloque, las excepciones de la sede, las del profesional, la vigencia de su vinculo y la politica de feriados de la sede.
+
+        LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. franja.origen, franja.recortadoPor y dia.razonVacio NO son extras: son el criterio de aceptacion de la etapa —"la disponibilidad efectiva explica que regla la afecta"—. Una pantalla que dibuje las franjas y descarte esos tres campos deja al administrador sin poder saber por que un dia esta en blanco, que es justamente donde no puede adivinarlo.
+
+        razonVacio tiene CUATRO valores y confundir dos de ellos manda a alguien a buscar algo que no existe: FERIADO, CIERRE, VINCULO —el vinculo del profesional no estaba vigente ese dia— y null. "No atiende ese dia" y "ya no trabaja aca" necesitan textos distintos.
+
+        NUNCA se omite un dia de [desde, hasta), ni siquiera si el profesional ya no trabaja en el centro: la pantalla dibuja una grilla de fechas y un dia faltante la correria.
+
+        Las franjas viajan en INSTANTES UTC y no en horas de pared: la hora local ya esta en la lectura de las REGLAS, y lo que consume un resultado de disponibilidad es una agenda, que compara instantes. timezone viaja aparte para poder rotular. Una franja que llega al fin del dia trae el INICIO DEL DIA SIGUIENTE, no las 23:59:59.999999999.
+
+        La ventana es semiabierta: hasta es EXCLUSIVO. hasta == desde es 400, no "un dia". El maximo es de 366 dias —un ano completo, aunque sea bisiesto—: sin tope, una ventana enorme es un scan, porque la disponibilidad efectiva no esta materializada y se resuelve un dia por iteracion. El error de ventana demasiado amplia trae maximoDias en el cuerpo para que la pantalla recorte sola.
+
+        Exige colaborador:read sobre esa sede.
+      operationId: getDisponibilidadEfectiva
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Vinculo del profesional
+        example: 1
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Primer dia de la ventana, fecha local ISO-8601"
+        example: 2026-09-01
+        in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Fin de la ventana, EXCLUSIVO, fecha local ISO-8601"
+        example: 2026-10-01
+        in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisponibilidadEfectivaResponse"
+          description: "Un dia por cada fecha de la ventana, en orden ascendente"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ventana ausente, invertida o vacia (validation-error), o de\
+            \ mas de 366 dias (ventana-demasiado-amplia, con maximoDias)"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay sesion autenticada, no hay contexto de trabajo, o falta\
+            \ colaborador:read sobre esa sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o el profesional no existen, o pertenecen a otro tenant"
+      summary: "Disponibilidad efectiva del profesional, dia por dia"
+      tags:
+      - Disponibilidad profesional
+  /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad/{bloqueId}:
+    delete:
+      description: |-
+        Da de baja el bloque con MOTIVO OBLIGATORIO en el cuerpo. NO borra nada: la fila queda INACTIVA con su motivo, su autor y su instante (RN-M05-003). Una baja sin motivo no se puede revisar seis meses despues, que es exactamente cuando se la revisa.
+
+        El motivo va en el CUERPO y no en la query string a proposito: un motivo en la URL queda en los logs de acceso de cualquier proxy intermedio.
+
+        Devuelve el bloque dado de baja, no un 204 vacio, porque el cuerpo trae turnosAfectados: la baja QUITA disponibilidad y los turnos que caian ahi quedan en conflicto (RN-M05-004). El impacto se INFORMA, no bloquea —ADR-0011 prohibe decidir en cascada por el usuario—, y hoy vale siempre 0 porque el modulo de agenda no existe.
+
+        Se permite aunque la sede este dada de baja y aunque el profesional ya se haya desvinculado: son las operaciones con las que se ordena el horario de un centro que se esta cerrando, y prohibirlas lo dejarian congelado.
+
+        No hay reactivacion. Un bloque que vuelve es una regla nueva.
+
+        Dar de baja dos veces es 409 bloque-already-inactive: "ya estaba dado de baja" es informacion distinta de "no existe", y es la unica que le sirve al administrador que apreto el boton dos veces.
+
+        Exige consultorio:manage sobre esa sede.
+      operationId: deactivateBloqueDisponibilidad
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Vinculo del profesional
+        example: 1
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del bloque
+        example: 1
+        in: path
+        name: bloqueId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateBloqueRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BloqueResponse"
+          description: "Bloque dado de baja, con el impacto informado"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el motivo de la baja, o el cuerpo esta vacio o mal\
+            \ formado"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El bloque no existe, es de otra sede, de otro profesional\
+            \ o de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya estaba dado de baja (bloque-already-inactive)
+        "415":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta la cabecera Content-Type: application/json en el cuerpo\
+            \ del DELETE. Algunos clientes HTTP generados no la emiten por defecto\
+            \ en un DELETE con cuerpo"
+      summary: Baja logica de un bloque de disponibilidad
+      tags:
+      - Disponibilidad profesional
+    put:
+      description: |-
+        Cambia dia, horas o ventana de vigencia de un bloque vigente (RF-M05-005). Los campos omitidos NO se tocan; para dejar el bloque sin fin de vigencia se manda limpiarVigenciaHasta=true, porque un null no puede expresar la diferencia entre "no toques el fin" y "saca el fin".
+
+        El PROFESIONAL no se puede cambiar: reasignar un bloque a otra persona no es una edicion sino un bloque nuevo (RN-M05-001), y permitirlo dejaria la autoria historica apuntando a quien nunca atendio en esa franja.
+
+        version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 concurrent-modification y el cliente recarga. Sin eso dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se entere.
+
+        AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El impacto se INFORMA, no bloquea: quien decide que hacer con esos turnos es la pantalla. Hoy ese numero es siempre 0 porque el modulo de agenda no existe; va a dejar de serlo sin cambiar este contrato.
+
+        Un bloque dado de baja no se puede editar: 409 bloque-inactivo.
+      operationId: updateBloqueDisponibilidad
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Vinculo del profesional
+        example: 1
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del bloque
+        example: 1
+        in: path
+        name: bloqueId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBloqueRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BloqueResponse"
+          description: Bloque actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Dia fuera de 1..7, version ausente, u horario incoherente"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El bloque no existe, es de otra sede, de otro profesional\
+            \ o de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Bloque dado de baja (bloque-inactivo), solapamiento con otro\
+            \ activo (bloque-solapado), version desactualizada (concurrent-modification),\
+            \ o profesional sin vinculo vigente en esa sede (profesional-no-vinculado)"
+      summary: Edicion de un bloque de disponibilidad
+      tags:
+      - Disponibilidad profesional
   /api/v1/me/contexts:
     get:
       description: |-
@@ -4271,6 +5022,127 @@ components:
           type: string
           description: Nombre de la organizacion
           example: Centro Kinesico Belgrano
+    BloqueResponse:
+      type: object
+      description: Bloque recurrente de disponibilidad de un profesional en una sede
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede en la que rige el bloque
+          example: 1
+        deactivationReason:
+          type: string
+          description: Motivo declarado en la baja. null si el bloque esta vigente
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante de la baja logica. null si el bloque esta vigente
+        diaSemana:
+          type: integer
+          format: int32
+          description: "Dia de la semana, ISO-8601: lunes = 1 .. domingo = 7"
+          example: 2
+        estado:
+          type: string
+          description: "ACTIVO o INACTIVO. DERIVADO, no una columna"
+          example: ACTIVO
+        horaDesde:
+          type: string
+          description: "Hora local de inicio, en la zona de la sede"
+          example: 09:00
+        horaHasta:
+          type: string
+          description: "Hora local de fin, EXCLUSIVA. Un bloque que llega a la medianoche\
+            \ viaja como 24:00 y se reenvia igual: 00:00 significaria el principio\
+            \ del dia"
+          example: 13:00
+        id:
+          type: integer
+          format: int64
+          description: Identificador del bloque
+          example: 1
+        membershipId:
+          type: integer
+          format: int64
+          description: Vinculo del profesional al que pertenece el bloque
+          example: 1
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion propietaria
+          example: 1
+        primerTurnoAfectado:
+          type: string
+          format: date-time
+          description: "Instante del primero de esos turnos, para que la pantalla\
+            \ pueda decir \"desde el martes\". null cuando no hay ninguno, que es\
+            \ siempre hoy"
+        turnosAfectados:
+          type: integer
+          format: int64
+          description: "Turnos futuros que este cambio dejaria en conflicto (RN-M05-004).\
+            \ SIEMPRE 0 en esta version del contrato: el modulo de agenda no existe\
+            \ todavia. En un ALTA es 0 por construccion —agregar disponibilidad no\
+            \ deja ningun turno afuera—; en una edicion o una baja va a dejar de ser\
+            \ 0 cuando exista F5, sin cambiar este contrato"
+          example: 0
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para editar. Una version vieja da 409
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que el bloque rige
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Primer dia en que el bloque ya NO rige, EXCLUSIVO. null =\
+            \ sin fin previsto"
+          example: 2027-01-01
+    CalendarioSedeResponse:
+      type: object
+      description: Politica de calendario de la sede y feriados de la ventana consultada
+      properties:
+        cierraPorFeriado:
+          type: boolean
+          description: Si la sede cierra los feriados de ese pais. Un centro de guardia
+            atiende los feriados y el modelo tiene que poder decirlo
+          example: true
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede a la que pertenece la politica
+          example: 1
+        existePersistida:
+          type: boolean
+          description: "false cuando la sede todavia no tiene fila propia y lo que\
+            \ se devuelve son los valores por defecto. Es informacion util: dice que\
+            \ nadie edito nunca la politica de esa sede, no que no tenga una. La LECTURA\
+            \ no crea la fila —un GET que escribe es una mutacion que nadie pidio—\
+            ; aparece en la primera edicion o en el primer write de disponibilidad\
+            \ de la sede"
+          example: false
+        feriados:
+          type: array
+          description: "Feriados del pais que caen en [desde, hasta). VACIA en la\
+            \ respuesta del PUT, que no tiene ventana: vacia significa \"no se pregunto\""
+          items:
+            $ref: "#/components/schemas/FeriadoResponse"
+        pais:
+          type: string
+          description: Pais cuyo calendario de feriados usa la sede
+          example: AR
+        version:
+          type: integer
+          format: int64
+          description: "Version de la fila de politica. Viaja aunque la edicion NO\
+            \ la exija: es lo que le permite a la pantalla detectar que alguien mas\
+            \ la cambio"
+          example: 0
     CancelInvitacionRequest:
       type: object
       description: Motivo con el que se retira una invitacion pendiente
@@ -4631,6 +5503,48 @@ components:
           description: "Version para el control de concurrencia optimista. Hay que\
             \ reenviarla al editar: sin ella dos ediciones simultaneas se pisan"
           example: 0
+    CreateBloqueRequest:
+      type: object
+      description: Datos para dar de alta un bloque recurrente de disponibilidad
+      properties:
+        diaSemana:
+          type: integer
+          format: int32
+          description: "Dia de la semana en formato ISO-8601: lunes = 1 .. domingo\
+            \ = 7"
+          example: 2
+          maximum: 7
+          minimum: 1
+        horaDesde:
+          type: string
+          description: "Hora local de inicio, en la zona de la sede. NUNCA un instante\
+            \ UTC: un lunes 09:00 tiene que seguir siendo 09:00 despues de un cambio\
+            \ de huso o de horario de verano"
+          example: 09:00
+        horaHasta:
+          type: string
+          description: "Hora local de fin, EXCLUSIVA. Un bloque que llega a la medianoche\
+            \ se manda como 24:00, que es el unico valor que expresa el final del\
+            \ dia en un extremo exclusivo: 00:00 significaria el principio. Nunca\
+            \ cruza al dia siguiente"
+          example: 13:00
+        vigenciaDesde:
+          type: string
+          format: date
+          description: "Primer dia en que el bloque rige. Omitirlo significa HOY en\
+            \ la zona de la sede, que es lo que quiere decir quien carga el horario\
+            \ de un profesional que ya esta atendiendo"
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Primer dia en que el bloque ya NO rige, EXCLUSIVO. Omitirlo\
+            \ significa sin fin previsto, que es el caso normal"
+          example: 2027-01-01
+      required:
+      - diaSemana
+      - horaDesde
+      - horaHasta
     CreateCatalogoConceptoRequest:
       type: object
       description: Datos para dar de alta un concepto del catalogo clinico
@@ -4828,6 +5742,75 @@ components:
           example: 2027-01-01T00:00:00Z
       required:
       - name
+    CreateExcepcionRequest:
+      type: object
+      description: Datos para dar de alta un cierre o una apertura puntual
+      properties:
+        fechaDesde:
+          type: string
+          format: date
+          description: Primer dia cubierto por la excepcion
+          example: 2026-09-07
+        fechaHasta:
+          type: string
+          format: date
+          description: "Primer dia YA NO cubierto, EXCLUSIVO. Un cierre de un solo\
+            \ dia se carga como [D, D+1)"
+          example: 2026-09-08
+        feriadoId:
+          type: integer
+          format: int64
+          description: "Feriado que motivo la excepcion, para trazar el origen cuando\
+            \ la carga nace del calendario nacional"
+          example: 5
+        horaDesde:
+          type: string
+          description: Hora local de inicio. OMITIRLA junto con horaHasta significa
+            DIA COMPLETO. Vienen las dos o ninguna
+          example: 14:00
+        horaHasta:
+          type: string
+          description: "Hora local de fin, EXCLUSIVA. 24:00 para llegar a la medianoche.\
+            \ Viene junto con horaDesde o no viene ninguna"
+          example: 18:00
+        membershipId:
+          type: integer
+          format: int64
+          description: "Vinculo del profesional al que se le carga la excepcion. OMITIRLO\
+            \ significa SEDE ENTERA —afecta a TODOS los profesionales—, no un dato\
+            \ faltante"
+          example: 1
+        motivo:
+          type: string
+          description: "Motivo, de lista cerrada, para que un reporte pueda agrupar\
+            \ sin normalizar despues"
+          enum:
+          - AUSENCIA
+          - LICENCIA
+          - FERIADO
+          - BLOQUEO
+          - AMPLIACION
+          - OTRO
+          example: LICENCIA
+        notes:
+          type: string
+          description: Texto libre operativo. NUNCA informacion clinica
+          maxLength: 280
+          minLength: 0
+        tipo:
+          type: string
+          description: "CIERRE recorta disponibilidad; APERTURA la habilita donde\
+            \ no la habia. La apertura NO es el caso raro: es como un centro declara\
+            \ que atiende un feriado o que suma una banda un sabado puntual"
+          enum:
+          - CIERRE
+          - APERTURA
+          example: CIERRE
+      required:
+      - fechaDesde
+      - fechaHasta
+      - motivo
+      - tipo
     CreateInvitacionRequest:
       type: object
       description: Datos de la invitacion a emitir
@@ -4978,6 +5961,19 @@ components:
           format: int64
           description: Identificador del vinculo creado
           example: 42
+    DeactivateBloqueRequest:
+      type: object
+      description: Motivo de la baja logica del bloque de disponibilidad
+      properties:
+        reason:
+          type: string
+          description: Por que se da de baja. Queda en la auditoria y en la fila del
+            bloque
+          example: El profesional dejo de atender los martes por la manana
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
     DeactivateCatalogoRequest:
       type: object
       description: Motivo de la baja logica de un concepto del catalogo
@@ -5016,6 +6012,20 @@ components:
           minLength: 0
       required:
       - reason
+    DeactivateExcepcionRequest:
+      type: object
+      description: Motivo de la baja logica de la excepcion de disponibilidad
+      properties:
+        reason:
+          type: string
+          description: Por que se da de baja. Queda en la auditoria y en la fila de
+            la excepcion
+          example: "La licencia se cancelo: el profesional finalmente atiende esa\
+            \ semana"
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
     DeclineInvitacionRequest:
       type: object
       description: Rechazo de una invitacion recibida
@@ -5050,6 +6060,87 @@ components:
           type: string
           description: "Que queda pendiente, en plural"
           example: turnos
+    DiaEfectivoResponse:
+      type: object
+      description: "Un dia de la ventana, con sus franjas y con la razon si quedo\
+        \ vacio"
+      properties:
+        esFeriado:
+          type: boolean
+          description: "Si la fecha es feriado del pais de la sede. Es el HECHO del\
+            \ calendario, no la decision de la sede: vale true aunque el centro atienda\
+            \ ese dia"
+          example: false
+        fecha:
+          type: string
+          format: date
+          description: Fecha local del dia
+          example: 2026-09-07
+        feriadoNombre:
+          type: string
+          description: "Nombre del feriado, o null si no lo hay. Sin el, la pantalla\
+            \ dice \"cerrado\" y no puede decir por que"
+          example: Dia de la Independencia
+        franjas:
+          type: array
+          description: "Franjas de atencion del dia, ya en instantes UTC. Vacia si\
+            \ el dia no tiene atencion"
+          items:
+            $ref: "#/components/schemas/FranjaResueltaResponse"
+        razonVacio:
+          type:
+          - string
+          - "null"
+          description: |-
+            Por que el dia no tiene ni una franja. CUATRO estados, y confundir dos de ellos manda al administrador a buscar algo que no existe:
+
+            FERIADO — es feriado del pais y la sede cierra los feriados.
+
+            CIERRE — una excepcion de tipo CIERRE tapo el dia entero. reglaVacio trae su id para linkearla.
+
+            VINCULO — el vinculo del profesional NO estaba vigente ese dia: todavia no se habia incorporado, o ya se habia desvinculado. NO es lo mismo que "no atiende ese dia", y mostrarle el mismo cartel a los dos hace que un admin busque un cierre que no existe.
+
+            null — cuarto estado, y no un descuido: o el dia TIENE franjas, o quedo vacio porque NINGUNA regla lo abrio. Eso no es una regla que lo afecte, es la ausencia de reglas, y se distingue mirando franjas.
+          enum:
+          - FERIADO
+          - CIERRE
+          - VINCULO
+          example: CIERRE
+        reglaVacio:
+          type: integer
+          format: int64
+          description: "Id de la fila que vacio el dia, para que la pantalla pueda\
+            \ linkearla. null cuando la regla no tiene id que ofrecer: un feriado\
+            \ se resuelve por fecha, no por id de excepcion"
+          example: 7
+    DisponibilidadEfectivaResponse:
+      type: object
+      description: "Disponibilidad efectiva de un profesional en una sede, dia por\
+        \ dia"
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede consultada
+          example: 1
+        dias:
+          type: array
+          description: "Una entrada por cada fecha local de [desde, hasta), en orden\
+            \ ascendente. Los dias sin atencion viajan igual, con su razon"
+          items:
+            $ref: "#/components/schemas/DiaEfectivoResponse"
+        membershipId:
+          type: integer
+          format: int64
+          description: Vinculo del profesional consultado
+          example: 1
+        timezone:
+          type: string
+          description: Zona horaria con la que se convirtieron las horas de pared
+            a instantes. Viaja para que la pantalla pueda rotularla y para que un
+            bug de huso se vea en la respuesta en vez de deducirse de instantes corridos
+            una hora
+          example: America/Argentina/Cordoba
     EffectivePermissionsResponse:
       type: object
       description: Permisos efectivos de la cuenta en su contexto de trabajo activo
@@ -5219,6 +6310,160 @@ components:
           format: int64
           description: Version a reenviar para editar
           example: 0
+    ExcepcionResponse:
+      type: object
+      description: Cierre o apertura puntual de disponibilidad
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede en la que rige la excepcion
+          example: 1
+        deactivationReason:
+          type: string
+          description: Motivo declarado en la baja. null si la excepcion esta vigente
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante de la baja logica. null si la excepcion esta vigente
+        estado:
+          type: string
+          description: "ACTIVO o INACTIVO. DERIVADO, no una columna"
+          example: ACTIVO
+        fechaDesde:
+          type: string
+          format: date
+          description: Primer dia cubierto
+          example: 2026-09-07
+        fechaHasta:
+          type: string
+          format: date
+          description: "Primer dia YA NO cubierto, EXCLUSIVO"
+          example: 2026-09-08
+        feriadoId:
+          type: integer
+          format: int64
+          description: "Feriado que motivo la excepcion, si la carga nacio del calendario\
+            \ nacional"
+          example: 5
+        horaDesde:
+          type: string
+          description: Hora local de inicio. null junto con horaHasta = DIA COMPLETO
+          example: 14:00
+        horaHasta:
+          type: string
+          description: "Hora local de fin, EXCLUSIVA. La medianoche viaja como 24:00"
+          example: 18:00
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la excepcion
+          example: 1
+        membershipId:
+          type: integer
+          format: int64
+          description: "Vinculo del profesional afectado. null = alcance SEDE ENTERA.\
+            \ La pantalla TIENE que mostrarlo distinto: una excepcion de sede afecta\
+            \ a todos los profesionales, y en un feriado una APERTURA de sede reemplaza\
+            \ el horario base de todos ellos"
+          example: 1
+        motivo:
+          type: string
+          description: "Motivo declarado, de lista cerrada"
+          enum:
+          - AUSENCIA
+          - LICENCIA
+          - FERIADO
+          - BLOQUEO
+          - AMPLIACION
+          - OTRO
+          example: LICENCIA
+        notes:
+          type: string
+          description: Texto libre operativo. Nunca informacion clinica
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion propietaria
+          example: 1
+        tipo:
+          type: string
+          description: CIERRE recorta disponibilidad; APERTURA la habilita
+          enum:
+          - CIERRE
+          - APERTURA
+          example: CIERRE
+        version:
+          type: integer
+          format: int64
+          description: Version de la fila
+          example: 0
+    FeriadoResponse:
+      type: object
+      description: Feriado del calendario nacional que cae en la ventana consultada
+      properties:
+        fecha:
+          type: string
+          format: date
+          description: Fecha del feriado
+          example: 2026-07-09
+        id:
+          type: integer
+          format: int64
+          description: Identificador del feriado
+          example: 5
+        nombre:
+          type: string
+          description: Nombre con el que la pantalla lo rotula
+          example: Dia de la Independencia
+        pais:
+          type: string
+          description: Pais del calendario al que pertenece
+          example: AR
+        tipo:
+          type: string
+          description: "Clasificacion del feriado. Texto y no enum: la lista valida\
+            \ la fija el CHECK de la migracion y esta version del contrato no ramifica\
+            \ comportamiento por tipo, solo lo muestra"
+          example: INAMOVIBLE
+    FranjaResueltaResponse:
+      type: object
+      description: "Una franja de atencion resuelta, con la regla que la produjo"
+      properties:
+        desde:
+          type: string
+          format: date-time
+          description: Instante UTC de inicio
+          example: 2026-09-07T12:00:00Z
+        hasta:
+          type: string
+          format: date-time
+          description: "Instante UTC de fin, EXCLUSIVO. Una franja que llega al fin\
+            \ del dia trae aca el INICIO DEL DIA SIGUIENTE, no las 23:59:59.999999999"
+          example: 2026-09-07T16:00:00Z
+        origen:
+          type: string
+          description: Que regla produjo la franja. BLOQUE = el horario base; APERTURA
+            = una excepcion que habilito atencion donde no la habia
+          enum:
+          - BLOQUE
+          - APERTURA
+          example: BLOQUE
+        recortadoPor:
+          type:
+          - string
+          - "null"
+          description: "CIERRE si una excepcion recorto la franja, null si nada la\
+            \ recorto. Es lo que explica por que termina a las 11 y no a las 13"
+          enum:
+          - CIERRE
+          example: CIERRE
+        reglaId:
+          type: integer
+          format: int64
+          description: Id de la fila que produjo la franja —el bloque o la excepcion
+            de apertura— para que la pantalla pueda linkearla
+          example: 501
     GrantPlatformRoleRequest:
       type: object
       description: Rol de plataforma a otorgar
@@ -5824,6 +7069,12 @@ components:
       - https://akine.app/problems/invitacion-vencida
       - https://akine.app/problems/invitacion-ya-resuelta
       - https://akine.app/problems/colaborador-ya-vinculado
+      - https://akine.app/problems/bloque-solapado
+      - https://akine.app/problems/bloque-inactivo
+      - https://akine.app/problems/bloque-already-inactive
+      - https://akine.app/problems/profesional-no-vinculado
+      - https://akine.app/problems/ventana-demasiado-amplia
+      - https://akine.app/problems/excepcion-already-inactive
     RegisterAccountRequest:
       type: object
       description: "Alta self-service de cuenta, organizacion y primer consultorio"
@@ -6156,6 +7407,74 @@ components:
           type: string
           format: date-time
           description: Vencimiento. Como maximo cuatro horas despues del otorgamiento
+    UpdateBloqueRequest:
+      type: object
+      description: Cambios a aplicar sobre un bloque de disponibilidad vigente
+      properties:
+        diaSemana:
+          type: integer
+          format: int32
+          description: "Nuevo dia de la semana, ISO-8601: lunes = 1 .. domingo = 7.\
+            \ Omitirlo lo deja como estaba"
+          example: 3
+          maximum: 7
+          minimum: 1
+        horaDesde:
+          type: string
+          description: Nueva hora local de inicio. Omitirla la deja como estaba
+          example: 10:00
+        horaHasta:
+          type: string
+          description: "Nueva hora local de fin, EXCLUSIVA. 24:00 para un bloque que\
+            \ llega a la medianoche. Omitirla la deja como estaba"
+          example: 24:00
+        limpiarVigenciaHasta:
+          type: boolean
+          description: "Saca el fin de vigencia y deja el bloque sin fin previsto.\
+            \ Existe porque un null no puede expresarlo: \"no toques el fin\" y \"\
+            saca el fin\" son dos intenciones distintas, y con un solo campo nulable\
+            \ la segunda es imposible de pedir"
+          example: false
+        version:
+          type: integer
+          format: int64
+          description: "Version que el cliente leyo. Se compara ANTES de mutar: si\
+            \ quedo vieja la respuesta es 409 concurrent-modification y hay que recargar.\
+            \ Sin esto dos ediciones simultaneas se pisan y el segundo en guardar\
+            \ borra el cambio del primero sin que nadie se entere"
+          example: 0
+          minimum: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Nuevo primer dia de vigencia. Omitirlo lo deja como estaba
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Nuevo fin de vigencia, EXCLUSIVO. Se IGNORA si limpiarVigenciaHasta\
+            \ viene en true"
+          example: 2027-01-01
+      required:
+      - version
+    UpdateCalendarioRequest:
+      type: object
+      description: Cambios a aplicar sobre la politica de calendario de la sede
+      properties:
+        cierraPorFeriado:
+          type: boolean
+          description: "Si la sede cierra los feriados de ese pais. OMITIRLO lo deja\
+            \ como estaba: null NO es false. Apagarlo abre de golpe todos los feriados\
+            \ del calendario para todos los profesionales de la sede, por eso el cambio\
+            \ se audita aunque sea un solo flag"
+          example: true
+        pais:
+          type: string
+          description: Pais cuyo calendario de feriados usa la sede. Omitirlo lo deja
+            como estaba; el valor por defecto de una sede nueva es AR
+          example: AR
+          maxLength: 2
+          minLength: 2
     UpdateCatalogoConceptoRequest:
       type: object
       description: Cambios a aplicar sobre un concepto del catalogo
