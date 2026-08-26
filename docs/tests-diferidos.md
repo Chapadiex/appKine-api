@@ -104,3 +104,19 @@ y el cambio de plan está reservado a `PLATFORM_ADMIN`. El límite funciona como
 prueba `ConsultoriosIT`, que tiene que contratar `PROFESIONAL` por el endpoint real para poder
 crear la segunda sede— pero es lo primero que va a encontrar cualquiera que pruebe la pantalla
 nueva con una cuenta nueva. No se cambió nada: el catálogo de planes es una decisión de negocio.
+
+---
+
+## AKINE-02.04 — la costura hacia `scheduling`
+
+### Escenarios de 02.04 decididos y no ejecutados
+
+| # | Escenario | Motivo y etapa destino |
+|---|---|---|
+| 16 | **RN-M05-004 — los turnos futuros afectados quedan visibles para resolución.** Origen: AKINE-02.04. Destino: **F5** (`scheduling`, M12). No se puede ejecutar: no existe ningún turno que pueda estar afectado. La costura está declarada (`resource.spi.DisponibilidadImpactProbe`) y hoy devuelve cero por construcción. Al implementarla, este escenario se ejecuta sin cambiar el contrato |
+
+**Lo que sí corre en esta etapa.** `ColaboradorDesvinculacionProbe` (definido por `organization`,
+implementado acá por `ResourceDesvinculacionProbe`) no está en esta lista porque no depende de
+`scheduling`: los bloques y las excepciones de disponibilidad ya existen (`V22`/`V23`), y contar
+cuántos quedan colgando de una membership es verificable hoy. `ResourceDesvinculacionProbeTest`
+lo cubre.

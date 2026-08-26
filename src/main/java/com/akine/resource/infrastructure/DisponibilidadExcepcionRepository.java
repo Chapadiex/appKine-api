@@ -67,4 +67,29 @@ public interface DisponibilidadExcepcionRepository
 			@Param("id") Long id,
 			@Param("organizationId") Long organizationId,
 			@Param("consultorioId") Long consultorioId);
+
+	/**
+	 * Excepciones ACTIVAS de esa membership PUNTUAL (nunca de alcance sede) que todavia no
+	 * terminaron, ordenadas por {@code fechaDesde} ascendente.
+	 *
+	 * <p>Alimenta {@code ResourceDesvinculacionProbe} (RN-M05-004) y por eso, a proposito, es lo
+	 * opuesto de {@link #findQueCubren}: aca {@code membershipId IS NULL} NO entra. Una excepcion
+	 * de sede entera no es "de" este profesional y no queda huerfana porque el se desvincule —
+	 * la sede sigue existiendo — asi que contarla en el impacto de ESTA persona seria over-conteo.
+	 * Tampoco acota por {@code consultorioId}: la pantalla de desvinculacion pregunta por la
+	 * membership sola, igual que {@code countByOrganizationIdAndMembershipIdAndActiveTrue} en
+	 * {@code BloqueDisponibilidadRepository}.
+	 */
+	@Query("""
+			SELECT e FROM DisponibilidadExcepcion e
+			 WHERE e.organizationId = :organizationId
+			   AND e.membershipId = :membershipId
+			   AND e.active = true
+			   AND e.fechaHasta > :fecha
+			 ORDER BY e.fechaDesde ASC
+			""")
+	List<DisponibilidadExcepcion> findFuturasDeLaMembership(
+			@Param("organizationId") Long organizationId,
+			@Param("membershipId") Long membershipId,
+			@Param("fecha") LocalDate fecha);
 }

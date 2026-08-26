@@ -79,4 +79,15 @@ public interface BloqueDisponibilidadRepository
 			@Param("id") Long id,
 			@Param("organizationId") Long organizationId,
 			@Param("consultorioId") Long consultorioId);
+
+	/**
+	 * Cuenta de bloques ACTIVOS de esa membership, sin acotar por {@code consultorioId}.
+	 *
+	 * <p>Alimenta {@code ResourceDesvinculacionProbe} (RN-M05-004). A diferencia de todas las
+	 * consultas de arriba, esta no conoce la sede porque quien pregunta —
+	 * {@code organization.spi.ColaboradorDesvinculacionProbe}— identifica a la membership sola:
+	 * la pantalla de desvinculacion pregunta "que le queda a esta persona", no "que le queda en
+	 * esta sede puntual".
+	 */
+	long countByOrganizationIdAndMembershipIdAndActiveTrue(Long organizationId, Long membershipId);
 }
