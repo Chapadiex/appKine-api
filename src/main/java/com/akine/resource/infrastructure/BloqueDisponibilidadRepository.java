@@ -81,13 +81,33 @@ public interface BloqueDisponibilidadRepository
 			@Param("consultorioId") Long consultorioId);
 
 	/**
-	 * Cuenta de bloques ACTIVOS de esa membership, sin acotar por {@code consultorioId}.
+	 * Cuenta de bloques de esa membership que TODAVIA rigen, sin acotar por
+	 * {@code consultorioId}.
 	 *
 	 * <p>Alimenta {@code ResourceDesvinculacionProbe} (RN-M05-004). A diferencia de todas las
 	 * consultas de arriba, esta no conoce la sede porque quien pregunta —
 	 * {@code organization.spi.ColaboradorDesvinculacionProbe}— identifica a la membership sola:
 	 * la pantalla de desvinculacion pregunta "que le queda a esta persona", no "que le queda en
 	 * esta sede puntual".
+	 *
+	 * <p><b>El filtro por vigencia no es cosmetico y la version anterior no lo tenia.</b> Contar
+	 * {@code active = true} a secas suma tambien los bloques cuya {@code vigencia_hasta} ya paso:
+	 * un profesional con un horario que termino en marzo y que nadie dio de baja —porque no hacia
+	 * falta, la ventana operativa ya lo habia apagado— inflaba el numero de "bloques colgando"
+	 * que ve quien esta por desvincularlo. El numero inflado es PLAUSIBLE, y por eso nadie lo
+	 * audita: se confirma la desvinculacion creyendo que queda trabajo por ordenar que en
+	 * realidad no existe. {@code vigenciaHasta IS NULL} significa "sin fin previsto", que si
+	 * cuenta. Lo fija {@code DisponibilidadIT} contra MySQL real.
 	 */
-	long countByOrganizationIdAndMembershipIdAndActiveTrue(Long organizationId, Long membershipId);
+	@Query("""
+			SELECT COUNT(b) FROM BloqueDisponibilidad b
+			 WHERE b.organizationId = :organizationId
+			   AND b.membershipId = :membershipId
+			   AND b.active = true
+			   AND (b.vigenciaHasta IS NULL OR b.vigenciaHasta > :fecha)
+			""")
+	long countVigentesDe(
+			@Param("organizationId") Long organizationId,
+			@Param("membershipId") Long membershipId,
+			@Param("fecha") LocalDate fecha);
 }

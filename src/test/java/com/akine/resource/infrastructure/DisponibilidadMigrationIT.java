@@ -79,21 +79,35 @@ class DisponibilidadMigrationIT {
 	@DisplayName("todos los indices secundarios y uniques de las tres tablas empiezan por organization_id")
 	void todos_los_indices_de_las_tres_tablas_empiezan_por_organization_id() {
 		for (String tabla : TABLAS) {
-			// RULING R3: la PRIMARY KEY es (id) y queda excluida a proposito. Ademas se
-			// excluyen los indices cuyo nombre empieza con fk_: InnoDB los crea el solo
-			// cuando la columna referenciada (por ejemplo consultorio_id) no es la columna
-			// mas a la izquierda de ningun otro indice, para poder validar la FK rapido. Son
-			// soporte interno del motor, no un indice de consulta diseñado por la aplicacion,
-			// y la convencion de nombres de V1 (pk_/uk_/fk_/ix_) ya los distingue de uk_/ix_.
-			// Lo que importa es el alcance tenant de los indices DISEÑADOS: uk_ e ix_.
+			// RULING R3, cerrado en la tarea 12: la PRIMARY KEY es (id) y queda excluida a
+			// proposito. Los indices de soporte de FK tambien, pero ya NO por el prefijo `fk_`
+			// de su nombre.
+			//
+			// Por que cambio: InnoDB crea solo un indice por cada FK cuya columna referenciada
+			// no sea la mas a la izquierda de ningun otro indice, y lo nombra como la constraint.
+			// Filtrar por `NOT LIKE 'fk\_%'` funcionaba, pero se apoyaba en la CONVENCION DE
+			// NOMBRES de V1: el dia que alguien declare un indice diseñado llamado `fk_algo`, o
+			// que una FK se llame de otra forma, el filtro empieza a tapar o a destapar cosas en
+			// silencio — y este test existe justamente para que un indice sin alcance de tenant
+			// no pase inadvertido.
+			//
+			// Ahora se pregunta por lo que el indice ES y no por como se llama: se excluyen los
+			// que coinciden con una FOREIGN KEY DECLARADA en table_constraints. Es un hecho del
+			// catalogo, no un acuerdo de nomenclatura. Lo que queda bajo verificacion son los
+			// indices y uniques DISEÑADOS por la aplicacion.
 			List<Map<String, Object>> primeraColumnaPorIndice = jdbc().queryForList("""
-					SELECT index_name, column_name
-					  FROM information_schema.statistics
-					 WHERE table_schema = DATABASE()
-					   AND table_name = ?
-					   AND index_name <> 'PRIMARY'
-					   AND index_name NOT LIKE 'fk\\_%'
-					   AND seq_in_index = 1
+					SELECT s.index_name, s.column_name
+					  FROM information_schema.statistics s
+					 WHERE s.table_schema = DATABASE()
+					   AND s.table_name = ?
+					   AND s.index_name <> 'PRIMARY'
+					   AND s.seq_in_index = 1
+					   AND NOT EXISTS (
+					       SELECT 1 FROM information_schema.table_constraints tc
+					        WHERE tc.table_schema = s.table_schema
+					          AND tc.table_name = s.table_name
+					          AND tc.constraint_name = s.index_name
+					          AND tc.constraint_type = 'FOREIGN KEY')
 					""", tabla);
 
 			assertThat(primeraColumnaPorIndice)
@@ -122,6 +136,17 @@ class DisponibilidadMigrationIT {
 
 		assertThatThrownBy(() -> insertarBloque(fixture, 1, "10:00:00", "09:00:00"))
 				.as("hora_hasta <= hora_desde tiene que violar ck_profesional_disponibilidad_horario")
+				.isInstanceOf(UncategorizedSQLException.class)
+				.hasMessageContaining("ck_profesional_disponibilidad_horario");
+
+		// El borde de la igualdad, que es lo que el nombre del test promete y hasta la tarea 12
+		// no verificaba. No es un caso de laboratorio: hora_hasta es EXCLUSIVA, asi que un bloque
+		// de 09:00 a 09:00 es una franja de duracion cero. Si el CHECK dijera ">=" en vez de ">",
+		// esa fila entraria, no ofreceria ni un turno y no romperia nada — un horario cargado que
+		// simplemente no existe.
+		assertThatThrownBy(() -> insertarBloque(fixture, 1, "09:00:00", "09:00:00"))
+				.as("hora_hasta == hora_desde es una franja vacia y tambien tiene que violar "
+						+ "ck_profesional_disponibilidad_horario")
 				.isInstanceOf(UncategorizedSQLException.class)
 				.hasMessageContaining("ck_profesional_disponibilidad_horario");
 	}
@@ -183,6 +208,35 @@ class DisponibilidadMigrationIT {
 						+ "ck_profesional_disponibilidad_baja_coherente")
 				.isInstanceOf(UncategorizedSQLException.class)
 				.hasMessageContaining("ck_profesional_disponibilidad_baja_coherente");
+	}
+
+	/**
+	 * El gemelo de {@code ck_profesional_disponibilidad_baja_coherente} sobre la otra tabla.
+	 *
+	 * <p>Existia desde V23 y <b>ningun test lo ejercitaba</b>: la tarea 2 cubrio el CHECK de los
+	 * bloques y dio por hecho el de las excepciones porque es el mismo patron. Es justo el tipo de
+	 * constraint que se cae en una migracion futura sin que nadie lo note, y lo que protege es que
+	 * {@code active}, {@code deleted_at} y {@code deactivation_reason} se muevan juntos: una
+	 * excepcion con {@code active = 0} y sin motivo es una baja que no responde por que.
+	 */
+	@Test
+	@DisplayName("el CHECK de baja coherente de la excepcion rechaza active = 0 sin deleted_at")
+	void el_check_de_baja_coherente_de_la_excepcion_rechaza_active_0_sin_deleted_at() {
+		Fixture fixture = crearFixture();
+
+		assertThatThrownBy(() -> jdbc().update("""
+				INSERT INTO disponibilidad_excepcion
+				    (organization_id, consultorio_id, membership_id, tipo, motivo,
+				     fecha_desde, fecha_hasta, hora_desde, hora_hasta, active, deleted_at,
+				     deactivation_reason, version, created_at, updated_at)
+				VALUES (?, ?, ?, 'CIERRE', 'AUSENCIA', CURRENT_DATE(),
+				        DATE_ADD(CURRENT_DATE(), INTERVAL 1 DAY), NULL, NULL,
+				        0, NULL, NULL, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", fixture.organizationId(), fixture.consultorioId(), fixture.membershipId()))
+				.as("active = 0 con deleted_at NULL tiene que violar "
+						+ "ck_disponibilidad_excepcion_baja_coherente")
+				.isInstanceOf(UncategorizedSQLException.class)
+				.hasMessageContaining("ck_disponibilidad_excepcion_baja_coherente");
 	}
 
 	// =================================================================================

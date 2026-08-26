@@ -102,7 +102,7 @@ public interface DisponibilidadExcepcionRepository
 	 * de sede entera no es "de" este profesional y no queda huerfana porque el se desvincule —
 	 * la sede sigue existiendo — asi que contarla en el impacto de ESTA persona seria over-conteo.
 	 * Tampoco acota por {@code consultorioId}: la pantalla de desvinculacion pregunta por la
-	 * membership sola, igual que {@code countByOrganizationIdAndMembershipIdAndActiveTrue} en
+	 * membership sola, igual que {@code countVigentesDe} en
 	 * {@code BloqueDisponibilidadRepository}.
 	 */
 	@Query("""

@@ -52,7 +52,7 @@ class ResourceDesvinculacionProbeTest {
 	@Test
 	@DisplayName("sin bloques activos ni excepciones futuras, no hay nada que reportar")
 	void sin_bloques_ni_excepciones_devuelve_ninguno() {
-		given(bloqueRepository.countByOrganizationIdAndMembershipIdAndActiveTrue(ORG_ID, MEMBERSHIP_ID))
+		given(bloqueRepository.countVigentesDe(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(0L);
 		given(excepcionRepository.findFuturasDeLaMembership(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(List.of());
@@ -66,7 +66,7 @@ class ResourceDesvinculacionProbeTest {
 	@Test
 	@DisplayName("solo bloques activos: el primero es 'at', porque un bloque activo ya rige ahora")
 	void solo_bloques_activos_reporta_desde_at() {
-		given(bloqueRepository.countByOrganizationIdAndMembershipIdAndActiveTrue(ORG_ID, MEMBERSHIP_ID))
+		given(bloqueRepository.countVigentesDe(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(3L);
 		given(excepcionRepository.findFuturasDeLaMembership(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(List.of());
@@ -82,7 +82,7 @@ class ResourceDesvinculacionProbeTest {
 	@Test
 	@DisplayName("solo excepciones futuras: el primero es la fecha de la mas temprana")
 	void solo_excepciones_futuras_reporta_la_fecha_mas_temprana() {
-		given(bloqueRepository.countByOrganizationIdAndMembershipIdAndActiveTrue(ORG_ID, MEMBERSHIP_ID))
+		given(bloqueRepository.countVigentesDe(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(0L);
 		DisponibilidadExcepcion masTemprana = excepcion(LocalDate.of(2026, 9, 10));
 		DisponibilidadExcepcion masTardia = excepcion(LocalDate.of(2026, 10, 1));
@@ -100,7 +100,7 @@ class ResourceDesvinculacionProbeTest {
 	@Test
 	@DisplayName("bloques y excepciones a la vez: el tipo combina ambos y el total es la suma")
 	void bloques_y_excepciones_combinan_tipo_y_suman_total() {
-		given(bloqueRepository.countByOrganizationIdAndMembershipIdAndActiveTrue(ORG_ID, MEMBERSHIP_ID))
+		given(bloqueRepository.countVigentesDe(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(2L);
 		given(excepcionRepository.findFuturasDeLaMembership(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(List.of(excepcion(LocalDate.of(2026, 9, 15))));
@@ -116,7 +116,7 @@ class ResourceDesvinculacionProbeTest {
 	@Test
 	@DisplayName("accountId no participa de la busqueda: bloques y excepciones se indexan por membership")
 	void account_id_no_participa_de_la_busqueda() {
-		given(bloqueRepository.countByOrganizationIdAndMembershipIdAndActiveTrue(ORG_ID, MEMBERSHIP_ID))
+		given(bloqueRepository.countVigentesDe(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(0L);
 		given(excepcionRepository.findFuturasDeLaMembership(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(List.of());
@@ -125,14 +125,14 @@ class ResourceDesvinculacionProbeTest {
 		probe.pendingWorkOn(ORG_ID, MEMBERSHIP_ID, 1L, AT);
 
 		verify(bloqueRepository, org.mockito.Mockito.times(2))
-				.countByOrganizationIdAndMembershipIdAndActiveTrue(ORG_ID, MEMBERSHIP_ID);
+				.countVigentesDe(eq(ORG_ID), eq(MEMBERSHIP_ID), any());
 	}
 
 	/** Convierte {@code at} a la misma fecha UTC que usa la sonda, para verificar el filtro. */
 	@Test
 	@DisplayName("la fecha de corte de excepciones futuras es 'at' llevado a fecha UTC")
 	void la_fecha_de_corte_es_at_en_utc() {
-		given(bloqueRepository.countByOrganizationIdAndMembershipIdAndActiveTrue(ORG_ID, MEMBERSHIP_ID))
+		given(bloqueRepository.countVigentesDe(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(0L);
 		given(excepcionRepository.findFuturasDeLaMembership(eq(ORG_ID), eq(MEMBERSHIP_ID), any()))
 				.willReturn(List.of());

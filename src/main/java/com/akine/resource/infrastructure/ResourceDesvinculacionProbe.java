@@ -45,6 +45,11 @@ import java.util.List;
  * desvincule, asi que contarlas en el impacto de esta persona seria sumar algo que no le
  * pertenece y no queda huerfano por su baja.
  *
+ * <p>Tampoco los bloques cuya {@code vigencia_hasta} ya paso. Un horario que termino en marzo no
+ * "queda colgando" de nadie: la ventana operativa ya lo apago, aunque su fila siga activa porque
+ * nunca hizo falta darla de baja. Contarlos infla el impacto con un numero plausible que nadie
+ * audita. Ver {@code BloqueDisponibilidadRepository#countVigentesDe}.
+ *
  * <h2>El {@code desde} que se reporta, y por que es una aproximacion declarada</h2>
  *
  * <p>Un bloque recurrente no tiene una unica "proxima ocurrencia" barata de calcular sin repetir
@@ -84,10 +89,9 @@ public class ResourceDesvinculacionProbe implements ColaboradorDesvinculacionPro
 	@Override
 	@Transactional(readOnly = true)
 	public Impacto pendingWorkOn(long organizationId, long membershipId, long accountId, Instant at) {
-		long bloquesActivos =
-				bloqueRepository.countByOrganizationIdAndMembershipIdAndActiveTrue(organizationId, membershipId);
-
 		LocalDate fecha = LocalDate.ofInstant(at, ZoneOffset.UTC);
+		long bloquesActivos = bloqueRepository.countVigentesDe(organizationId, membershipId, fecha);
+
 		List<DisponibilidadExcepcion> excepcionesFuturas =
 				excepcionRepository.findFuturasDeLaMembership(organizationId, membershipId, fecha);
 
