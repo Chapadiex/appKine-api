@@ -362,6 +362,14 @@ class DisponibilidadEfectivaCalculatorTest {
 			assertThat(dia.razonVacio()).isEqualTo(OrigenFranja.FERIADO);
 		}
 
+		/**
+		 * Control negativo, y hay que leerlo por lo que es: el calculador NO puede saber que ese
+		 * lunes hay un feriado que la sede decidio no cerrar. Su entrada, feriadosQueCierran, ya
+		 * viene cruzada contra consultorio_calendario.cierra_por_feriado, asi que "hay feriado
+		 * pero la sede abre" y "no hay feriado" le llegan como exactamente el mismo Set vacio.
+		 * Lo que este test fija es que sin esa fecha el dia sale normal; el cruce de feriado
+		 * contra la politica de la sede lo prueba el servicio (Tarea 8), no esta clase.
+		 */
 		@Test
 		void un_feriado_no_cierra_si_la_sede_no_cierra_por_feriado() {
 			BloqueDisponibilidad bloque = bloque(1L, PROFESIONAL, DIA_LUNES, OCHO, DOCE, LUNES, null);
@@ -468,9 +476,34 @@ class DisponibilidadEfectivaCalculatorTest {
 
 			assertThat(efectiva.get(LUNES).franjas()).isEmpty();
 			assertThat(efectiva.get(LUNES).razonVacio()).isEqualTo(OrigenFranja.FERIADO);
+			assertThat(efectiva.get(LUNES).reglaVacio())
+					.as("un feriado se resuelve por fecha: no hay id de excepcion que ofrecer")
+					.isNull();
 			assertThat(efectiva.get(MARTES).razonVacio())
 					.as("un dia vacio porque nadie lo abrio no inventa una regla")
 					.isNull();
+		}
+
+		/**
+		 * El complemento del test anterior: un cierre cargado que no toca nada NO explica un dia
+		 * vacio. Lo que distingue "lo vacio un cierre" de "nadie lo abrio" es si algun cierre
+		 * llego a recortar algo, no si habia cierres en la lista. Si esa condicion se aflojara a
+		 * !cierres.isEmpty(), este dia se reportaria como cerrado por la excepcion de las 14 y el
+		 * admin buscaria la causa donde no esta.
+		 */
+		@Test
+		void un_cierre_que_no_recorto_nada_no_explica_un_dia_vacio() {
+			DisponibilidadExcepcion tardeCerrada = excepcion(
+					50L, PROFESIONAL, TipoExcepcion.CIERRE, MotivoExcepcion.BLOQUEO,
+					LUNES, MARTES, CATORCE, DIECISEIS);
+
+			DiaCalculado dia = unDia(LUNES, List.of(), List.of(tardeCerrada), Set.of());
+
+			assertThat(dia.estaVacio()).isTrue();
+			assertThat(dia.razonVacio())
+					.as("el dia esta vacio porque nadie lo abrio, no por el cierre de las 14")
+					.isNull();
+			assertThat(dia.reglaVacio()).isNull();
 		}
 	}
 
@@ -511,6 +544,51 @@ class DisponibilidadEfectivaCalculatorTest {
 				assertThat(calcular(LUNES, JUEVES, bloques, excepciones, Set.of(MIERCOLES)))
 						.as("permutacion %d de la entrada", intento)
 						.isEqualTo(esperado);
+			}
+		}
+
+		/**
+		 * El caso que hace que los comparadores sean load-bearing y no decorativos. Dos cierres
+		 * sobre el mismo bloque: 51 lo tapa entero, 50 solo un pedazo del medio. El unico valor
+		 * del resultado que depende del orden en que se apliquen es reglaVacio, y sin el orden
+		 * total explicito sale el id de la fila que la base haya devuelto primero: la pantalla
+		 * mandaria al admin a mirar la excepcion equivocada.
+		 *
+		 * <p>Con ORDEN_EXCEPCIONES el mas amplio va primero (08:00 antes que 09:00) y el dia
+		 * queda explicado por 51. Si se borran los .sorted(...) del calculador, este test falla
+		 * y ningun otro: es el unico que llega a primerCierreQueRecorto con mas de un candidato.
+		 */
+		@Test
+		void el_id_del_cierre_que_vacio_el_dia_no_depende_del_orden_de_entrada() {
+			BloqueDisponibilidad manana = bloque(1L, PROFESIONAL, DIA_LUNES, OCHO, DOCE, LUNES, null);
+			DisponibilidadExcepcion recorteDelMedio = excepcion(
+					50L, PROFESIONAL, TipoExcepcion.CIERRE, MotivoExcepcion.BLOQUEO,
+					LUNES, MARTES, NUEVE, ONCE);
+			DisponibilidadExcepcion tapaTodo = excepcion(
+					51L, PROFESIONAL, TipoExcepcion.CIERRE, MotivoExcepcion.AUSENCIA,
+					LUNES, MARTES, OCHO, DOCE);
+
+			DiaCalculado comoLlego = unDia(
+					LUNES, List.of(manana), List.of(recorteDelMedio, tapaTodo), Set.of());
+			DiaCalculado alReves = unDia(
+					LUNES, List.of(manana), List.of(tapaTodo, recorteDelMedio), Set.of());
+
+			assertThat(comoLlego.estaVacio()).isTrue();
+			assertThat(comoLlego)
+					.as("el mismo dia calculado con las filas al reves tiene que ser identico")
+					.isEqualTo(alReves);
+			assertThat(comoLlego.reglaVacio())
+					.as("lo explica el cierre que efectivamente tapo el dia, no el que llego primero")
+					.isEqualTo(51L);
+
+			List<DisponibilidadExcepcion> barajadas =
+					new ArrayList<>(List.of(recorteDelMedio, tapaTodo));
+			Random random = new Random(20260827L);
+			for (int intento = 0; intento < 20; intento++) {
+				Collections.shuffle(barajadas, random);
+				assertThat(unDia(LUNES, List.of(manana), barajadas, Set.of()).reglaVacio())
+						.as("permutacion %d", intento)
+						.isEqualTo(51L);
 			}
 		}
 	}

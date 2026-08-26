@@ -243,9 +243,15 @@ public final class DisponibilidadEfectivaCalculator {
 	}
 
 	/**
-	 * Se quedan las excepciones de la sede entera y las de este profesional. La de un companero
-	 * se descarta aca y no solo en la consulta: que el alcance lo decida el calculo lo hace
-	 * testeable sin base de datos, y evita que un repositorio distraido filtre de menos.
+	 * Se quedan las excepciones de la sede entera ({@code membershipId} nulo) y las de este
+	 * profesional; la de un companero se descarta. Ese filtro esta aca —y no solo en la
+	 * consulta— para que el alcance por profesional se pueda probar sin base de datos.
+	 *
+	 * <p><b>Filtrar por sede es responsabilidad de quien llama.</b> Esta clase no recibe
+	 * {@code consultorioId} y por lo tanto no puede distinguir una excepcion de otra sede: si la
+	 * consulta trae filas de mas, entran al calculo. Y no alcanza con mirar el
+	 * {@code membershipId}: una membership de alcance organizacion ({@code consultorio_id} nulo,
+	 * legal desde V10) puede tener bloques y excepciones en dos sedes bajo el mismo id.
 	 */
 	private static List<DisponibilidadExcepcion> excepcionesAplicables(
 			long membershipId, List<DisponibilidadExcepcion> excepciones) {
