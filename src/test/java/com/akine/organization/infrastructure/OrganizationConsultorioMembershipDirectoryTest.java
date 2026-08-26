@@ -19,15 +19,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 
 /**
- * Tests de {@link OrganizationMembershipDirectory}, adaptador de
- * {@code com.akine.organization.spi.MembershipDirectory}.
+ * Tests de {@link OrganizationConsultorioMembershipDirectory}, adaptador de
+ * {@code com.akine.organization.spi.ConsultorioMembershipDirectory}.
  *
  * <p>Igual que el repositorio que envuelve, el filtro de tenant es la garantia central: se
  * verifica que la consulta se delega tal cual en {@code findByIdAndOrganizationId} y que el
  * adaptador nunca "arregla" un resultado vacio inventando datos.
  */
 @ExtendWith(MockitoExtension.class)
-class OrganizationMembershipDirectoryTest {
+class OrganizationConsultorioMembershipDirectoryTest {
 
 	private static final long ORG_ID = 10L;
 	private static final long OTRA_ORG_ID = 11L;
@@ -40,7 +40,7 @@ class OrganizationMembershipDirectoryTest {
 	private MembershipRepository membershipRepository;
 
 	@InjectMocks
-	private OrganizationMembershipDirectory directory;
+	private OrganizationConsultorioMembershipDirectory directory;
 
 	@Test
 	@DisplayName("no resuelve una membership de otro tenant")
@@ -104,6 +104,25 @@ class OrganizationMembershipDirectoryTest {
 		ConsultorioMembershipSnapshot foto = directory.find(ORG_ID, MEMBERSHIP_ID).orElseThrow();
 
 		assertThat(foto.active()).isFalse();
+		assertThat(foto.validAt(Instant.now())).isFalse();
+	}
+
+	@Test
+	@DisplayName("validAt es false si la membership esta suspendida")
+	void valid_at_es_false_si_la_membership_esta_suspendida() {
+		// Suspendida no toca `active` (baja logica) ni la ventana de vigencia: es la TERCERA
+		// condicion. Si el snapshot solo mirara active + vigencia, esta membership leeria como
+		// valida, y un profesional suspendido seguiria ofreciendo disponibilidad.
+		Membership membership = membershipDeAlcanceOrganizacion();
+		membership.suspender();
+		given(membershipRepository.findByIdAndOrganizationId(MEMBERSHIP_ID, ORG_ID))
+				.willReturn(Optional.of(membership));
+
+		ConsultorioMembershipSnapshot foto = directory.find(ORG_ID, MEMBERSHIP_ID).orElseThrow();
+
+		assertThat(foto.active()).isTrue();
+		assertThat(foto.estado()).isEqualTo("SUSPENDIDA");
+		assertThat(foto.habilitada()).isFalse();
 		assertThat(foto.validAt(Instant.now())).isFalse();
 	}
 
