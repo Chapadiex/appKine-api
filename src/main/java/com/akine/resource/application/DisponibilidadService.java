@@ -797,16 +797,11 @@ public class DisponibilidadService {
 	 * alta (AKINE-02.01).
 	 */
 	private static ZoneId zonaDe(ConsultorioSnapshot sede) {
-		if (sede.timezone() == null || sede.timezone().isBlank()) {
-			return ZoneId.of("UTC");
-		}
-		try {
-			return ZoneId.of(sede.timezone());
-		} catch (RuntimeException husoDesconocido) {
-			log.warn("Sede con zona horaria invalida, se usa UTC: consultorioId={} timezone={}",
-					sede.id(), sede.timezone());
-			return ZoneId.of("UTC");
-		}
+		// La politica vive en ZonaSede, que es el unico lugar del modulo donde esta escrita: la
+		// tarea 8 sumo un segundo consumidor —DisponibilidadEfectivaService— y dos copias del
+		// mismo metodo privado es como se termina con dos comportamientos distintos ante una sede
+		// mal cargada.
+		return ZonaSede.de(sede);
 	}
 
 	private static Map<String, String> cambios(

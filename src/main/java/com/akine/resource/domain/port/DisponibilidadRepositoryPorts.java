@@ -90,6 +90,24 @@ public final class DisponibilidadRepositoryPorts {
 				LocalDate desde, LocalDate hasta);
 
 		/**
+		 * Excepciones ACTIVAS de alcance SEDE ENTERA ({@code membershipId IS NULL}) cuya ventana
+		 * de fechas se solapa con {@code [desde, hasta)}. Ninguna de un profesional puntual.
+		 *
+		 * <p><b>Existe porque {@link #findQueCubren} no puede expresar este caso.</b> Aquel toma
+		 * un {@code Long membershipId} no nulable y siempre agrega las de sede a las del
+		 * profesional; no hay forma de pedirle "solo las de la sede". El endpoint
+		 * {@code GET /consultorios/{cid}/excepciones} lleva {@code membershipId} OPCIONAL, y sin
+		 * el la pantalla de calendario de la sede quiere ver exactamente los cierres que afectan
+		 * a todos.
+		 *
+		 * <p>La alternativa —pasarle a {@link #findQueCubren} un id centinela que no exista— es
+		 * como se cuelan los bugs de alcance: el dia que ese id exista de verdad, el listado de
+		 * la sede empieza a mostrar en silencio las excepciones de un profesional cualquiera.
+		 */
+		List<DisponibilidadExcepcion> findDeSedeQueCubren(
+				Long organizationId, Long consultorioId, LocalDate desde, LocalDate hasta);
+
+		/**
 		 * Una excepcion por id, acotada al tenant y a la sede, activa o no. Deliberadamente NO
 		 * acotada por membership: una excepcion de sede entera no tiene una unica membership
 		 * duena, y el llamador ya sabe a que sede pertenece por la ruta.

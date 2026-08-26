@@ -52,6 +52,31 @@ public interface DisponibilidadExcepcionRepository
 			@Param("hasta") LocalDate hasta);
 
 	/**
+	 * Excepciones ACTIVAS de alcance SEDE ENTERA que se solapan con {@code [desde, hasta)}.
+	 *
+	 * <p>Es el complemento exacto de {@link #findQueCubren}, no un caso particular suyo: alli
+	 * {@code membershipId} es obligatorio y las de sede se SUMAN a las del profesional; aca solo
+	 * entran las de sede. Lo pide el listado de excepciones sin {@code membershipId}, que es la
+	 * pantalla de calendario de la sede. La cubre {@code ix_disponibilidad_excepcion_sede_fechas}.
+	 */
+	@Query("""
+			SELECT e FROM DisponibilidadExcepcion e
+			 WHERE e.organizationId = :organizationId
+			   AND e.consultorioId = :consultorioId
+			   AND e.membershipId IS NULL
+			   AND e.active = true
+			   AND e.fechaDesde < :hasta
+			   AND e.fechaHasta > :desde
+			 ORDER BY e.fechaDesde ASC
+			""")
+	@Override
+	List<DisponibilidadExcepcion> findDeSedeQueCubren(
+			@Param("organizationId") Long organizationId,
+			@Param("consultorioId") Long consultorioId,
+			@Param("desde") LocalDate desde,
+			@Param("hasta") LocalDate hasta);
+
+	/**
 	 * Una excepcion por id, acotada al tenant y a la sede, activa o no. Sin acotar por
 	 * membership: una excepcion de sede entera no tiene una unica duena, y la ruta ya fija la
 	 * sede.

@@ -82,6 +82,26 @@ final class AuditEvents {
 
 	static final String ENTITY_BLOQUE_DISPONIBILIDAD = "BloqueDisponibilidad";
 
+	/** Alta de un cierre o de una apertura puntual (RF-M05-004). */
+	static final String DISPONIBILIDAD_EXCEPCION_CREATED = "DISPONIBILIDAD_EXCEPCION_CREATED";
+
+	/** Baja logica de una excepcion. Motivo obligatorio. */
+	static final String DISPONIBILIDAD_EXCEPCION_DEACTIVATED = "DISPONIBILIDAD_EXCEPCION_DEACTIVATED";
+
+	static final String ENTITY_EXCEPCION_DISPONIBILIDAD = "DisponibilidadExcepcion";
+
+	/**
+	 * Edicion de la politica de calendario de una sede: pais y cierre automatico por feriado.
+	 *
+	 * <p>Se audita aunque sea un solo flag porque cambia la disponibilidad efectiva de TODOS los
+	 * profesionales de la sede hacia adelante y hacia atras: apagar {@code cierraPorFeriado} abre
+	 * de golpe todos los feriados del calendario. Un cambio con ese alcance tiene que tener autor
+	 * y fecha.
+	 */
+	static final String CALENDARIO_SEDE_UPDATED = "CALENDARIO_SEDE_UPDATED";
+
+	static final String ENTITY_CALENDARIO_SEDE = "CalendarioSede";
+
 	/** Clave con la que Micrometer Tracing publica el trace id del request en el MDC. */
 	private static final String MDC_TRACE_ID = "traceId";
 
