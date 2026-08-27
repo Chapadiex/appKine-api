@@ -39,6 +39,28 @@ final class AuditEvents {
 
 	static final String ENTITY_SERVICIO = "Servicio";
 
+	// --- Ofertas de servicio por consultorio (M27/M03, AKINE-02.06) ---------------------
+
+	/**
+	 * Alta de una Oferta en una sede (RF-M03-006, RF-M27-003).
+	 *
+	 * <p><b>Estas tres filas SI llevan {@code organizationId} y {@code consultorioId}</b>, al
+	 * reves que las tres de arriba. No es una inconsistencia: un Servicio es global y atribuirle
+	 * a un centro un cambio del catalogo comun seria una linea de auditoria falsa, mientras que
+	 * una Oferta es configuracion comercial de una sede concreta y omitir su tenant dejaria un
+	 * evento que nadie puede atribuir ni recuperar en la consulta de auditoria del centro, que
+	 * filtra por organizacion.
+	 */
+	static final String OFERTA_CREATED = "OFERTA_CREATED";
+
+	/** Edicion de la configuracion de una Oferta. Ni el servicio ni la sede: son inmutables. */
+	static final String OFERTA_UPDATED = "OFERTA_UPDATED";
+
+	/** Baja logica de una Oferta (RN-M27-007). Motivo obligatorio. */
+	static final String OFERTA_DEACTIVATED = "OFERTA_DEACTIVATED";
+
+	static final String ENTITY_OFERTA = "OfertaServicioConsultorio";
+
 	private static final String MDC_TRACE_ID = "traceId";
 
 	private AuditEvents() {
