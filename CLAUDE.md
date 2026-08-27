@@ -325,32 +325,38 @@ sección final. Resumen de qué entregó cada una y qué regla dejó fijada:
 |---|---|---|
 | **01.03** | Memberships, roles, permisos y auditoría base | Los permisos se resuelven por membership vigente; nada de roles hardcodeados en los servicios |
 | **02.01** | Consultorios, onboarding y contexto operativo | Orden de bloqueo único `subscription → organization`; invertirlo reintroduce un deadlock documentado |
-| **02.02** | Espacios y boxes (M04) | **Se commiteó sin registro de cierre en el plan.** Hueco de documentación abierto: nadie que no haya estado en esa sesión puede reconstruir sus decisiones |
+| **02.02** | Espacios y boxes (M04) | Se commiteó sin registro de cierre; el suyo se escribió un día después y **se declara reconstrucción, no acta**. Es la única etapa cerrada sin diseño propio en `docs/diseno/` |
 | **02.05** | Catálogo clínico: especialidades, prácticas y nomencladores | Filtrar por `owner_key = IFNULL(organization_id, 0)`, nunca por `organization_id`: varios `NULL` no colisionan en MySQL (ADR-0021) |
 | **02.03** | Ciclo de vida de colaboradores: invitación por email | `MAX_MIEMBROS_ACTIVOS` ahora **sí** se aplica: cualquier alta de membership puede recibir 409 por tope de plan |
 | **02.04** | Disponibilidad semanal, excepciones y feriados (M05) | Disponibilidad ≠ turno; la efectiva se calcula al leer y no se materializa; el lock de escritura es la fila de `consultorio_calendario` de la sede y se toma **antes** de leer nada |
+| **02.06** | Servicio global y oferta por sede (M27) | La baja de un servicio **no cascadea**: las ofertas que ya lo prestaban siguen operando y sólo se impide crear ofertas nuevas. Un catálogo global va exceptuado de `TenantContextFilter`; las ofertas no pueden estarlo. Cada módulo necesita su `ApiActor` **con nombre propio** o Spring no arranca |
 
 > **02.05 se ejecutó antes que 02.03 y 02.04.** No es un salto arbitrario: §14 del plan declara
 > que depende únicamente de 01.03.
 
-### Estado vigente (26/08/2026)
+### Estado vigente (27/08/2026)
 
-Rama `akine-01.02-identidad`, **43 commits**, último `094edc6`. Migraciones **V1–V23**.
-Contrato **0.11.0**, propietario del `openapi/akine-api.yaml`, sin drift; el cliente del
-frontend está regenerado y fijado en la misma versión.
+Rama `akine-01.02-identidad`, **57 commits**, último `b578b15`. Migraciones **V1–V25**.
+Contrato **0.12.0** con 89 operaciones, propietario del `openapi/akine-api.yaml`, sin drift; el
+cliente del frontend está regenerado y fijado en la misma versión.
 
-Módulos: `platform`, `organization`, `identity`, `notification`, `resource`.
-**22 ADRs** en `docs/adr/`, matriz de permisos en `docs/seguridad/`, diseños de etapa en
+Módulos: `platform`, `organization`, `identity`, `notification`, `resource`, `offering`.
+**23 ADRs** en `docs/adr/`, matriz de permisos en `docs/seguridad/`, diseños de etapa en
 `docs/diseno/`.
 
-`./mvnw verify` **VERDE**: **1527 unitarias + 118 de integración** contra MySQL 8.4 real vía
+`./mvnw verify` **VERDE**: **1291 unitarias + 135 de integración** contra MySQL 8.4 real vía
 Testcontainers, 1 diferida.
 
-> **La cobertura de rama está en 78,03 %, no en el 80 que este archivo daba por sentado.**
-> `pom.xml` gatea `LINE` (89,69 %) e `INSTRUCTION` (88,94 %) sobre el BUNDLE y **no gatea
+> **La cobertura de rama está en 76,36 %, no en el 80 que este archivo daba por sentado.**
+> `pom.xml` gatea `LINE` (87,73 %) e `INSTRUCTION` (86,94 %) sobre el BUNDLE y **no gatea
 > `BRANCH`**, así que el build pasa legítimamente. El cierre de 01.02 declaraba 87,42 % de rama:
-> cayó nueve puntos entre 02.01 y 02.04 y ningún gate lo detectó. Agregar la regla hoy rompe el
-> build, así que primero hay que subir la cobertura. **Es una decisión pendiente del usuario.**
+> cayó nueve puntos entre 02.01 y 02.04, y 02.06 le sacó otro punto y medio al sumar dos
+> controllers sin tests propios. Ningún gate lo detectó en ninguna de las dos caídas. Agregar la
+> regla hoy rompe el build, así que primero hay que subir la cobertura. **Es una decisión
+> pendiente del usuario.**
+>
+> El frontend sí gatea `BRANCH`, y por eso **02.06 le rompió el build ahí y hubo que escribir
+> tests antes de poder cerrar**. Es la diferencia práctica entre tener el gate y no tenerlo.
 
 > **El QA manual del §6 no se corrió para 02.02, 02.03, 02.04 ni 02.05**, y tampoco los E2E de
 > esas etapas. §6 lo declara bloqueante para deploy: esas cuatro etapas están cerradas con esa
@@ -366,7 +372,7 @@ Testcontainers, 1 diferida.
 > **El OpenAPI no declara ningún `securityScheme`**, en ningún módulo. Preexistente. El frontend
 > funciona porque agrega la autenticación por interceptor; un cliente generado no lo sabría.
 
-### Próximo paso — AKINE-02.06
+### Próximo paso — AKINE-02.07
 
 Pendientes que arrastra el backend:
 
@@ -377,7 +383,7 @@ Pendientes que arrastra el backend:
 - [ ] Gate de `BRANCH` en JaCoCo, después de subir la cobertura de rama
 - [ ] Completar los `PENDIENTE(F1)` de `.claude/qa-config.md`
 - [ ] Escenario diferido 7b: `request_hash` en `onboarding_registro` (migración más cambio de API)
-- [ ] Registro de cierre de AKINE-02.02
+- [x] Registro de cierre de AKINE-02.02 — escrito el 26/08, declarado como reconstrucción
 
 ## 8. Checklist de cierre de tarea
 
