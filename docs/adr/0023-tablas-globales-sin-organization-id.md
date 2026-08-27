@@ -104,6 +104,7 @@ Vigente a AKINE-02.06. **Fuera de esta lista, ADR-0004 se aplica sin discusión.
 | `cuenta` | Sin `organization_id`; `email_normalizado` `UNIQUE` global | Identidad única cross-tenant ([ADR-0009](0009-identidad-unica-con-seleccion-de-contexto.md)). El `UNIQUE` global **es** la materialización de RF-M02-001 | 0019 |
 | `token_verificacion`, `refresh_token` | Sin `organization_id`; `token_hash` `UNIQUE` global | Cuelgan de la cuenta, que es global. El token se presenta **antes** de que haya contexto | 0019 |
 | `organization_onboarding.idempotency_key`, `onboarding_registro.clave_idempotencia` | `UNIQUE` global | La clave nace antes del tenant: la genera el cliente al abrir el formulario | 0019 |
+| `onboarding_registro` | `organization_id` **nullable**, referencia lógica sin FK física | La fila nace **antes** que el tenant: el registro self-service existe mientras la organización todavía no. `NULL` = registro sin organización creada aún, y se completa al darla de alta. **Precisión agregada en 0023:** ADR-0019 listaba esta tabla sólo por su `UNIQUE` de idempotencia y daba la columna nullable por implícita. El test la exige declarada | 0019 / 0023 |
 | `notification_outbox` | `organization_id` nullable; `clave_idempotente` `UNIQUE` global | Hay notificaciones previas al tenant (activación, recuperación). `NULL` = evento de identidad global | 0019 |
 | `audit_event` | `organization_id` nullable | `NULL` **sólo** para eventos de plataforma sin tenant. Todo evento de negocio lo lleva | 0019 |
 | `account_active_context` | Lleva `organization_id`, pero `UNIQUE (account_id)` es global | Un contexto activo por cuenta: el sujeto es la cuenta, cross-org por naturaleza | 0019 |
@@ -112,6 +113,45 @@ Vigente a AKINE-02.06. **Fuera de esta lista, ADR-0004 se aplica sin discusión.
 | `especialidad`, `practica`, `nomenclador`, `nomenclador_item` | `organization_id` **nullable**; los `UNIQUE` van sobre `owner_key = IFNULL(organization_id, 0)` | **Dos poblaciones en la misma tabla**: `NULL` = concepto de plataforma que ven todos; valor = concepto propio del tenant. Se consultan juntas en el mismo selector | 0021 |
 | `feriado` | Sin `organization_id`, ninguna columna de tenant | Hecho del calendario público nacional. La decisión de la sede —si cierra ese día— vive en `consultorio_calendario`, que sí lleva `organization_id NOT NULL` | 0022 |
 | **`servicio`** | **Sin `organization_id` y sin `owner_key`** | **Concepto del catálogo global de la plataforma (RN-M27-001, §30.6, que no lista `organizationId` entre sus campos). Cómo lo presta un centro concreto vive en `oferta_servicio_consultorio`, que sí lleva `organization_id NOT NULL` (regla maestra 14)** | **0023** |
+
+> **Un hallazgo de la consolidación, y por qué la fila de `onboarding_registro` está desdoblada.**
+> Los cuatro ADR superseded afirmaban en sus consecuencias que existía *"un test genérico «toda
+> tabla lleva `organization_id`» con lista de exclusión"*. **No existía**: la regla la sostenía la
+> revisión humana de cada `.sql`. AKINE-02.06 lo escribió —ver la sección siguiente— y al correrlo
+> contra el esquema real apareció que `onboarding_registro` tiene la columna **nullable** y que la
+> lista de ADR-0019 la nombraba **sólo por su `UNIQUE` de idempotencia**, dando la columna por
+> implícita. No es una excepción nueva: es el mismo hecho que ADR-0019 ya justificaba —la fila
+> precede al tenant— escrito con la precisión que un test puede verificar. **No se encontró
+> ninguna otra tabla fuera de la lista sin `organization_id NOT NULL`.**
+
+### Cómo se hace cumplir esta regla
+
+`src/test/java/com/akine/architecture/EsquemaMultiTenantIT.java`, contra el **esquema real**
+migrado por Flyway sobre MySQL 8.4. Recorre `information_schema` tabla por tabla y exige
+`organization_id NOT NULL` en todas, salvo las de la lista de arriba, que están **escritas a mano
+con su motivo al lado**.
+
+Tres decisiones sobre cómo está construido, porque cada una podría haberse tomado al revés y
+haber dejado un gate que no atrapa nada:
+
+- **Contra el esquema, no contra las entidades JPA.** Una regla de ArchUnit no puede ver lo único
+  que importa acá: **una tabla sin entidad**. `feriado` vivió sin entidad hasta que 02.04 la mapeó,
+  y `servicio` y `oferta_servicio_consultorio` no tienen ninguna al cerrar la tarea 1. Un gate que
+  sólo mirara entidades habría dado verde sobre exactamente las tablas que esta etapa creó.
+- **La lista es explícita, nunca un patrón.** Excluir "toda tabla que no tenga la columna" pasaría
+  por alto el error que el test existe para atrapar. Con la lista a mano, una tabla **nueva** sin
+  `organization_id` **falla** hasta que alguien la agregue deliberadamente — y ese momento, el de
+  tener que escribir el motivo, es cuando corresponde consultar este ADR y demostrar las tres
+  condiciones. El mensaje de fallo se las recita.
+- **La lista tampoco es un salvoconducto.** Un segundo test verifica que cada excepción tenga en el
+  esquema **exactamente la forma declarada** —sin columna, o nullable—, así que una tabla listada
+  que cambie de forma en una migración futura también rompe. Un tercero detecta entradas muertas, y
+  un cuarto que el esquema esté realmente migrado, porque si la lista de tablas viniera vacía los
+  otros tres pasarían sin mirar nada.
+
+**El array no reemplaza a este ADR: lo materializa.** Un array dice *qué* está excluido y nunca
+*por qué*, y es el porqué lo que hace falta al diseñar la tabla número cuarenta. Los dos se mueven
+juntos.
 
 **Lo que NO es excepción, y por qué se anota:** `catalogo_solicitud` lleva `organization_id NOT
 NULL` —una solicitud siempre la hace un tenant concreto—, y `consultorio_calendario`,
@@ -204,7 +244,14 @@ cuerpo no lo es.
 array).** El test que exige `organization_id` necesita esa lista de todos modos. Descartada como
 *sustituto*: un array en un test dice **qué** está excluido y nunca **por qué**, y es justo el
 porqué lo que hace falta al diseñar la tabla número cuarenta. La lista del test es la
-materialización de este ADR, no su reemplazo, y tiene que citarlo.
+materialización de este ADR, no su reemplazo, y tiene que citarlo. **Como complemento sí se
+escribió, y es `EsquemaMultiTenantIT`** — ver "Cómo se hace cumplir esta regla".
+
+**Escribir el gate como regla de ArchUnit sobre las entidades JPA anotadas con `@Table`.** Es más
+barato: corre en milisegundos, sin Docker ni base. Descartada porque **no puede ver una tabla sin
+entidad**, que es justo el caso peligroso: `feriado` vivió sin entidad hasta 02.04, y `servicio` y
+`oferta_servicio_consultorio` no tienen ninguna al cerrar la tarea 1 de esta etapa. Un gate que
+diera verde sobre las tablas recién creadas sería peor que no tenerlo, porque además tranquiliza.
 
 **Relajar ADR-0004 para que diga "casi toda tabla".** Descartada: el valor de ADR-0004 está en
 que es categórico. Una regla con excusa incorporada deja de ser una barrera y pasa a ser una
@@ -275,6 +322,13 @@ discutir caso por caso en un code review.
   especialidad global; una `oferta_servicio_consultorio` sí puede referenciar un `servicio`
   global, porque la dependencia va en la dirección permitida. Ninguna FK puede expresarlo —compara
   ids, no alcances— así que lo sostiene la aplicación con test dedicado.
-- **El test genérico "toda tabla lleva `organization_id NOT NULL`" mantiene su lista de exclusión
-  sincronizada con la tabla de este ADR**, y sólo con ella. Ya no hay que consultar cinco
-  archivos.
+- **`EsquemaMultiTenantIT` mantiene su lista de exclusión sincronizada con la tabla de este ADR**,
+  y sólo con ella. Ya no hay que consultar cinco archivos, y ya no es una lista que los ADR
+  mencionan sin que exista. **Agregar una entrada al array sin agregar la fila acá deja el gate
+  verde y la decisión sin registrar**, que es exactamente como la regla muere en silencio.
+- **Lo que este gate NO cubre, y sigue siendo revisión humana:** que todo `UNIQUE` e índice
+  *empiece* por `organization_id`. Eso se verifica hoy tabla por tabla, en el `*MigrationIT` de
+  cada etapa (`EspacioMigrationIT`, `DisponibilidadMigrationIT`,
+  `ServicioYOfertaMigrationIT`), no de forma genérica. Generalizarlo es posible con el mismo
+  `information_schema` y excluyendo FK por `table_constraints`, pero necesita su propia lista de
+  excepciones —los `UNIQUE` globales de identidad, los de `owner_key`— y no se hizo en esta etapa.
