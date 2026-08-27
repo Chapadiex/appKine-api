@@ -81,7 +81,8 @@ Una tabla puede omitir `organization_id NOT NULL` **si y sólo si cumple las tre
    formas admitidas hasta hoy son tres, y ninguna es "confiar en el código":
    - **Aislamiento por sujeto** (identidad, rol de plataforma): todo acceso parte de `cuenta_id`
      resuelto desde el `sub` del token, y no existe endpoint que devuelva filas por un criterio
-     externo. Ver ADR-0019 §"Qué las aísla".
+     externo. Ver el párrafo "Qué las aísla, ya que no es el tenant" en la decisión de
+     [ADR-0019](0019-identidad-global-sin-organization-id.md).
    - **No hay nada que aislar** (`plan`, `feriado`, `servicio`): la tabla es pública para todos
      los tenants por diseño. El control es de **escritura**, no de lectura: mutarla exige rol de
      plataforma, y un administrador de tenant recibe `403` si lo intenta.
@@ -97,22 +98,38 @@ sigue siendo **no**.
 
 Vigente a AKINE-02.06. **Fuera de esta lista, ADR-0004 se aplica sin discusión.**
 
-| Objeto | Forma de la excepción | Por qué califica | Origen |
-|---|---|---|---|
-| `organization` | Sin `organization_id`; `slug` `UNIQUE` global | **Es** el tenant: su `id` *es* el `organization_id`. El slug es su clave pública en URLs | 0019 |
-| `plan`, `plan_limit`, `plan_feature` | Sin `organization_id`; `plan.code` `UNIQUE` global | Catálogo comercial de la plataforma. No es dato de un tenant: es la oferta que todos consumen | 0019 |
-| `cuenta` | Sin `organization_id`; `email_normalizado` `UNIQUE` global | Identidad única cross-tenant ([ADR-0009](0009-identidad-unica-con-seleccion-de-contexto.md)). El `UNIQUE` global **es** la materialización de RF-M02-001 | 0019 |
-| `token_verificacion`, `refresh_token` | Sin `organization_id`; `token_hash` `UNIQUE` global | Cuelgan de la cuenta, que es global. El token se presenta **antes** de que haya contexto | 0019 |
-| `organization_onboarding.idempotency_key`, `onboarding_registro.clave_idempotencia` | `UNIQUE` global | La clave nace antes del tenant: la genera el cliente al abrir el formulario | 0019 |
-| `onboarding_registro` | `organization_id` **nullable**, referencia lógica sin FK física | La fila nace **antes** que el tenant: el registro self-service existe mientras la organización todavía no. `NULL` = registro sin organización creada aún, y se completa al darla de alta. **Precisión agregada en 0023:** ADR-0019 listaba esta tabla sólo por su `UNIQUE` de idempotencia y daba la columna nullable por implícita. El test la exige declarada | 0019 / 0023 |
-| `notification_outbox` | `organization_id` nullable; `clave_idempotente` `UNIQUE` global | Hay notificaciones previas al tenant (activación, recuperación). `NULL` = evento de identidad global | 0019 |
-| `audit_event` | `organization_id` nullable | `NULL` **sólo** para eventos de plataforma sin tenant. Todo evento de negocio lo lleva | 0019 |
-| `account_active_context` | Lleva `organization_id`, pero `UNIQUE (account_id)` es global | Un contexto activo por cuenta: el sujeto es la cuenta, cross-org por naturaleza | 0019 |
-| `platform_schema_info` | Sin `organization_id` | Tabla técnica de infraestructura, no de negocio | 0019 |
-| `platform_role` | Sin `organization_id`; `UNIQUE (account_id, rol_activo)` global | Rol **de la plataforma**, no de un tenant. La matriz §1.3 lo define como el rol sin membership en ninguna organización: acotarlo a un tenant sería el rol contrario | 0020 |
-| `especialidad`, `practica`, `nomenclador`, `nomenclador_item` | `organization_id` **nullable**; los `UNIQUE` van sobre `owner_key = IFNULL(organization_id, 0)` | **Dos poblaciones en la misma tabla**: `NULL` = concepto de plataforma que ven todos; valor = concepto propio del tenant. Se consultan juntas en el mismo selector | 0021 |
-| `feriado` | Sin `organization_id`, ninguna columna de tenant | Hecho del calendario público nacional. La decisión de la sede —si cierra ese día— vive en `consultorio_calendario`, que sí lleva `organization_id NOT NULL` | 0022 |
-| **`servicio`** | **Sin `organization_id` y sin `owner_key`** | **Concepto del catálogo global de la plataforma (RN-M27-001, §30.6, que no lista `organizationId` entre sus campos). Cómo lo presta un centro concreto vive en `oferta_servicio_consultorio`, que sí lleva `organization_id NOT NULL` (regla maestra 14)** | **0023** |
+| Objeto | Forma de la excepción | Por qué califica | Origen | ¿La refleja el array del gate? |
+|---|---|---|---|---|
+| `organization` | Sin `organization_id`; `slug` `UNIQUE` global | **Es** el tenant: su `id` *es* el `organization_id`. El slug es su clave pública en URLs | 0019 | **columna** — sí |
+| `plan`, `plan_limit`, `plan_feature` | Sin `organization_id`; `plan.code` `UNIQUE` global | Catálogo comercial de la plataforma. No es dato de un tenant: es la oferta que todos consumen | 0019 | **columna** — sí |
+| `cuenta` | Sin `organization_id`; `email_normalizado` `UNIQUE` global | Identidad única cross-tenant ([ADR-0009](0009-identidad-unica-con-seleccion-de-contexto.md)). El `UNIQUE` global **es** la materialización de RF-M02-001 | 0019 | **columna** — sí |
+| `token_verificacion`, `refresh_token` | Sin `organization_id`; `token_hash` `UNIQUE` global | Cuelgan de la cuenta, que es global. El token se presenta **antes** de que haya contexto | 0019 | **columna** — sí |
+| `organization_onboarding.idempotency_key`, `onboarding_registro.clave_idempotencia` | `UNIQUE` global | La clave nace antes del tenant: la genera el cliente al abrir el formulario | 0019 | **`UNIQUE`** — no, y no debe |
+| `onboarding_registro` | `organization_id` **nullable**, referencia lógica sin FK física | La fila nace **antes** que el tenant: el registro self-service existe mientras la organización todavía no. `NULL` = registro sin organización creada aún, y se completa al darla de alta. **Precisión agregada en 0023:** ADR-0019 listaba esta tabla sólo por su `UNIQUE` de idempotencia y daba la columna nullable por implícita. El test la exige declarada | 0019 / 0023 | **columna** — sí |
+| `notification_outbox` | `organization_id` nullable; `clave_idempotente` `UNIQUE` global | Hay notificaciones previas al tenant (activación, recuperación). `NULL` = evento de identidad global | 0019 | **columna** — sí |
+| `audit_event` | `organization_id` nullable | `NULL` **sólo** para eventos de plataforma sin tenant. Todo evento de negocio lo lleva | 0019 | **columna** — sí |
+| `account_active_context` | Lleva `organization_id`, pero `UNIQUE (account_id)` es global | Un contexto activo por cuenta: el sujeto es la cuenta, cross-org por naturaleza | 0019 | **`UNIQUE`** — no, y no debe |
+| `platform_schema_info` | Sin `organization_id` | Tabla técnica de infraestructura, no de negocio | 0019 | **columna** — sí |
+| `platform_role` | Sin `organization_id`; `UNIQUE (account_id, rol_activo)` global | Rol **de la plataforma**, no de un tenant. La matriz §1.3 lo define como el rol sin membership en ninguna organización: acotarlo a un tenant sería el rol contrario | 0020 | **columna** — sí |
+| `especialidad`, `practica`, `nomenclador`, `nomenclador_item` | `organization_id` **nullable**; los `UNIQUE` van sobre `owner_key = IFNULL(organization_id, 0)` | **Dos poblaciones en la misma tabla**: `NULL` = concepto de plataforma que ven todos; valor = concepto propio del tenant. Se consultan juntas en el mismo selector | 0021 | **columna** — sí |
+| `feriado` | Sin `organization_id`, ninguna columna de tenant | Hecho del calendario público nacional. La decisión de la sede —si cierra ese día— vive en `consultorio_calendario`, que sí lleva `organization_id NOT NULL` | 0022 | **columna** — sí |
+| **`servicio`** | **Sin `organization_id` y sin `owner_key`** | **Concepto del catálogo global de la plataforma (RN-M27-001, §30.6, que no lista `organizationId` entre sus campos). Cómo lo presta un centro concreto vive en `oferta_servicio_consultorio`, que sí lleva `organization_id NOT NULL` (regla maestra 14)** | **0023** | **columna** — sí |
+
+> **Dos clases de excepción viven en esta tabla, y la última columna las separa.** La mayoría son
+> **excepciones de columna**: la tabla no lleva `organization_id`, o lo lleva nullable. Ésas son las
+> que el array de `EsquemaMultiTenantIT` refleja una por una.
+>
+> Dos filas no lo son: `organization_onboarding.idempotency_key` /
+> `onboarding_registro.clave_idempotencia` y `account_active_context` son **excepciones de alcance
+> de un `UNIQUE`**. Sus tablas llevan `organization_id NOT NULL` como corresponde —lo excepcional es
+> que un índice único suyo no incluya el tenant— así que **no tienen ni deben tener entrada en el
+> array**: el gate las verifica como a cualquier otra tabla, y así tiene que seguir.
+>
+> **Agregarlas al array "para que coincida con la tabla" es el error que esta columna previene:**
+> dejaría de exigirles `organization_id NOT NULL` sin que nadie lo note. Con
+> `account_active_context` el segundo test lo atraparía —declararla `SIN_COLUMNA` choca con el
+> esquema, que la tiene `NOT NULL`—, pero con la otra fila no hay red, porque nombra columnas y no
+> una tabla. La regla es la última columna, no el parecido entre las dos listas.
 
 > **Un hallazgo de la consolidación, y por qué la fila de `onboarding_registro` está desdoblada.**
 > Los cuatro ADR superseded afirmaban en sus consecuencias que existía *"un test genérico «toda
@@ -322,10 +339,13 @@ discutir caso por caso en un code review.
   especialidad global; una `oferta_servicio_consultorio` sí puede referenciar un `servicio`
   global, porque la dependencia va en la dirección permitida. Ninguna FK puede expresarlo —compara
   ids, no alcances— así que lo sostiene la aplicación con test dedicado.
-- **`EsquemaMultiTenantIT` mantiene su lista de exclusión sincronizada con la tabla de este ADR**,
-  y sólo con ella. Ya no hay que consultar cinco archivos, y ya no es una lista que los ADR
-  mencionan sin que exista. **Agregar una entrada al array sin agregar la fila acá deja el gate
-  verde y la decisión sin registrar**, que es exactamente como la regla muere en silencio.
+- **`EsquemaMultiTenantIT` mantiene su lista de exclusión sincronizada con las filas de excepción
+  de columna de la tabla de este ADR** —las marcadas "sí" en la última columna—, y sólo con ellas.
+  **Las dos filas de excepción de `UNIQUE` no van al array y no son un desfasaje**: agregarlas
+  dejaría de exigirle `organization_id NOT NULL` a dos tablas que sí lo llevan. Ya no hay que
+  consultar cinco archivos, y ya no es una lista que los ADR mencionan sin que exista. **Agregar
+  una entrada al array sin agregar la fila acá deja el gate verde y la decisión sin registrar**,
+  que es exactamente como la regla muere en silencio.
 - **Lo que este gate NO cubre, y sigue siendo revisión humana:** que todo `UNIQUE` e índice
   *empiece* por `organization_id`. Eso se verifica hoy tabla por tabla, en el `*MigrationIT` de
   cada etapa (`EspacioMigrationIT`, `DisponibilidadMigrationIT`,
