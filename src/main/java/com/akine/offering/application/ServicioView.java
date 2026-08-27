@@ -2,6 +2,8 @@ package com.akine.offering.application;
 
 import com.akine.offering.domain.Servicio;
 
+import java.time.Instant;
+
 /**
  * Proyeccion de lectura de un Servicio del catalogo global. Es lo unico que cruza el borde del
  * servicio de aplicacion: la entity nunca sale (AGENT.md seccion 4, regla 6).
@@ -23,7 +25,7 @@ public record ServicioView(
 		boolean requiereCasoClinicoDefault,
 		boolean generaRegistroClinicoDefault,
 		String estado,
-		java.time.Instant deletedAt,
+		Instant deletedAt,
 		String deactivationReason,
 		long version) {
 

@@ -228,10 +228,21 @@ public class ServicioService {
 		try {
 			guardado = servicios.saveAndFlush(servicio);
 		} catch (DataIntegrityViolationException choque) {
-			// El unico unique que una edicion puede violar es el de nombre: el codigo es
-			// updatable = false y ni siquiera viaja en el comando.
-			log.info("Edicion de servicio rechazada por nombre repetido: servicioId={}", servicioId);
-			throw new ServicioNombreTakenException(nombre);
+			// El unico UNIQUE que una edicion puede violar es el de nombre —el codigo es
+			// updatable = false y ni siquiera viaja en el comando—, pero
+			// DataIntegrityViolationException NO la levanta solo un unique: un valor demasiado
+			// largo para su columna, bajo el modo estricto de MySQL, llega por la misma puerta.
+			// Traducir el bloque entero a "nombre repetido" produciria un 409 que MIENTE: un PATCH
+			// que solo manda una descripcion de 3000 caracteres —sin tocar el nombre— responderia
+			// "ya existe un servicio vigente con ese nombre" con nombre = null, cuando es un 400.
+			// Por eso se discrimina con la misma senal que usa persistir, y lo que no reconoce se
+			// deja propagar: un 500 honesto es mejor que un 409 inventado.
+			if (esConflictoDeNombre(choque)) {
+				log.info("Edicion de servicio rechazada por nombre repetido: servicioId={}",
+						servicioId);
+				throw new ServicioNombreTakenException(nombre);
+			}
+			throw choque;
 		}
 
 		Instant ahora = Instant.now();

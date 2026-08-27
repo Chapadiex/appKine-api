@@ -158,23 +158,58 @@ class ServicioServiceTest {
 				.isInstanceOf(ServicioNombreTakenException.class);
 	}
 
+	/**
+	 * El brief nombra este test {@code un_codigo_de_un_servicio_dado_de_baja_se_puede_reusar}, y
+	 * ese nombre prometia mas de lo que un test unitario puede dar: <b>aca no se construye ningun
+	 * servicio dado de baja</b>, porque el reuso lo garantiza el {@code deleted_key} del unique
+	 * {@code uk_servicio_codigo_vigente} y eso solo es observable contra MySQL real —le toca al IT
+	 * de la Tarea 8—.
+	 *
+	 * <p>Lo que si es de esta capa, y es load-bearing, es la <b>precondicion</b> del reuso: que el
+	 * alta no pre-chequee el codigo. Un pre-chequeo escrito de la forma natural —mirando activos e
+	 * inactivos— rechazaria un alta perfectamente legitima y ningun {@code deleted_key} lo salvaria.
+	 * El nombre del metodo dice ahora eso, que es lo que realmente se prueba.
+	 */
 	@Test
-	@DisplayName("El codigo de un servicio dado de baja se puede reusar: nadie lo pre-chequea")
-	void un_codigo_de_un_servicio_dado_de_baja_se_puede_reusar() {
-		// El unique uk_servicio_codigo_vigente lleva deleted_key como discriminador, asi que la
-		// base ACEPTA este INSERT: el codigo quedo libre al darse de baja el servicio anterior.
+	@DisplayName("El alta no pre-chequea el codigo, que es la precondicion de que uno liberado se reuse")
+	void el_alta_no_pre_chequea_el_codigo() {
 		ServicioView creado = service.crear(plataforma, altaValida());
 
 		assertThat(creado.codigo()).isEqualTo("KINE-DEPORTIVA");
 		assertThat(creado.estado()).isEqualTo("ACTIVO");
 
-		// Y esta es la aserción que protege el reuso de verdad: el alta NO consulta el catalogo
-		// antes de insertar. Un pre-chequeo "¿ya existe este codigo?" tendria dos defectos, y el
-		// segundo es el grave: una ventana de carrera entre el SELECT y el INSERT, y —si mirara
-		// activos e inactivos, que es como se escribe mal— rechazaria este alta perfectamente
-		// legitima. La unica comprobacion sin ventana es el unique.
+		// La aserción que importa: el alta NO consulta el catalogo antes de insertar. Un pre-chequeo
+		// "¿ya existe este codigo?" tendria dos defectos, y el segundo es el grave: una ventana de
+		// carrera entre el SELECT y el INSERT, y —si mirara activos e inactivos, que es como se
+		// escribe mal— rechazaria el alta que reusa un codigo liberado por una baja logica. La
+		// unica comprobacion sin ventana es el unique.
 		verify(servicios, never()).buscar(anyString(), anyInt());
 		verify(servicios, never()).findById(any());
+	}
+
+	@Test
+	@DisplayName("Un fallo de integridad que NO es el unique de nombre se propaga: no se disfraza de 409")
+	void una_violacion_de_integridad_ajena_al_unique_de_nombre_se_propaga() {
+		// El caso concreto: PATCH que solo manda una descripcion demasiado larga. El nombre ni se
+		// toca —queda null—, pero MySQL en modo estricto rechaza el UPDATE y Spring lo envuelve en
+		// la MISMA DataIntegrityViolationException que levanta un unique.
+		Servicio servicio = servicioVigente();
+		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(servicio));
+		DataIntegrityViolationException largoExcedido = new DataIntegrityViolationException(
+				"could not execute statement",
+				new RuntimeException("Data too long for column 'descripcion' at row 1"));
+		willThrow(largoExcedido).given(servicios).saveAndFlush(any());
+
+		ServicioEdicionCommand soloDescripcion =
+				new ServicioEdicionCommand(null, "x".repeat(3000), null, null, null, null, 0L);
+
+		// Un catch incondicional responderia 409 "ya existe un servicio vigente con ese nombre" con
+		// nombre = null, cuando el problema es un largo y corresponde un 400. Un 409 que miente es
+		// peor que no traducir: manda al usuario a cambiar un nombre que nunca fue el problema.
+		assertThatThrownBy(() -> service.editar(plataforma, SERVICIO_ID, soloDescripcion))
+				.isSameAs(largoExcedido);
+
+		verifyNoInteractions(auditTrail);
 	}
 
 	// =================================================================================
@@ -257,11 +292,25 @@ class ServicioServiceTest {
 		// solo: lo prueba que el metodo que la produjo sea transaccional y de escritura.
 		// AuditTrail.record es Propagation.MANDATORY, asi que un listener post-commit ni siquiera
 		// podria llamarlo — y este assert impide que alguien "arregle" eso aflojando la demarcacion.
-		Transactional demarcacion = ServicioService.class
-				.getMethod("crear", OperatingActor.class, ServicioAltaCommand.class)
-				.getAnnotation(Transactional.class);
-		assertThat(demarcacion).isNotNull();
-		assertThat(demarcacion.readOnly()).isFalse();
+		// Se fijan las TRES mutaciones, no solo la que este test ejercita: editar y darDeBaja
+		// tambien auditan, y una demarcacion floja en cualquiera de ellas produce el mismo agujero
+		// —una mutacion sin rastro— sin que este test se entere si solo mira crear.
+		assertThat(demarcacionDe("crear", OperatingActor.class, ServicioAltaCommand.class))
+				.isNotNull()
+				.extracting(Transactional::readOnly).isEqualTo(false);
+		assertThat(demarcacionDe(
+						"editar", OperatingActor.class, long.class, ServicioEdicionCommand.class))
+				.isNotNull()
+				.extracting(Transactional::readOnly).isEqualTo(false);
+		assertThat(demarcacionDe("darDeBaja", OperatingActor.class, long.class, String.class))
+				.isNotNull()
+				.extracting(Transactional::readOnly).isEqualTo(false);
+	}
+
+	private static Transactional demarcacionDe(String metodo, Class<?>... firma)
+			throws NoSuchMethodException {
+
+		return ServicioService.class.getMethod(metodo, firma).getAnnotation(Transactional.class);
 	}
 
 	// =================================================================================
