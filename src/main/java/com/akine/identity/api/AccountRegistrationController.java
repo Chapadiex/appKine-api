@@ -183,7 +183,18 @@ public class AccountRegistrationController {
 		return ResponseEntity.accepted().body(AcceptedResponse.de(ACUSE_REGISTRO));
 	}
 
-	@PostMapping(path = "/activate", consumes = MediaType.APPLICATION_JSON_VALUE)
+	// PRODUCES EXPLICITO, Y NO ES DECORACION. El 204 no lleva cuerpo, asi que lo unico que
+	// esta operacion declara producir en el contrato es el problem+json de sus errores, y eso es
+	// exactamente lo que el cliente generado manda en Accept. Con el produces de clase —solo
+	// application/json— Spring respondia 406 ANTES de entrar al metodo, y la activacion por
+	// enlace de correo quedaba rota de punta a punta. Declarar los dos deja pasar al cliente
+	// generado y a cualquier llamador que pida application/json.
+	//
+	// No lo agarraba ningun test: los unitarios del frontend usan HttpTestingController, que no
+	// negocia contenido, y los de integracion de aca mandan el Accept de MockMvc. Solo aparece
+	// con el cliente generado real contra el servidor real.
+	@PostMapping(path = "/activate", consumes = MediaType.APPLICATION_JSON_VALUE,
+			produces = { MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE })
 	@Operation(
 			operationId = "activateAccount",
 			summary = "Confirmar el enlace y habilitar la cuenta",

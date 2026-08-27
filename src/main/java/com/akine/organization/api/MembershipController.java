@@ -584,7 +584,11 @@ public class MembershipController {
 		return ResponseEntity.status(201).body(otorgado);
 	}
 
-	@DeleteMapping("/{membershipId}/grants/{permissionCode}")
+	// Produces explicito por lo mismo que en AccountRegistrationController.activate: sin cuerpo
+	// en el 204 el contrato solo declara problem+json, el cliente generado lo manda en Accept y
+	// el produces de clase lo rechazaba con 406.
+	@DeleteMapping(path = "/{membershipId}/grants/{permissionCode}",
+			produces = { MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE })
 	@Operation(
 			operationId = "revokeMembershipGrant",
 			summary = "Dar de baja un permiso adicional",

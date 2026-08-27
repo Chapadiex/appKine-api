@@ -178,7 +178,11 @@ public class InvitacionPublicaController {
 						request.token(), request.nombre(), request.apellido(), request.password()))));
 	}
 
-	@PostMapping(path = "/decline", consumes = MediaType.APPLICATION_JSON_VALUE)
+	// Produces explicito por lo mismo que en AccountRegistrationController.activate: sin cuerpo
+	// en el 204 el contrato solo declara problem+json, el cliente generado lo manda en Accept y
+	// el produces de clase lo rechazaba con 406.
+	@PostMapping(path = "/decline", consumes = MediaType.APPLICATION_JSON_VALUE,
+			produces = { MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE })
 	@Operation(
 			operationId = "declineInvitacion",
 			summary = "Rechazar una invitacion recibida",

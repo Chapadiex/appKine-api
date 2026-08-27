@@ -275,7 +275,11 @@ public class AuthSessionController {
 	// Cerrar
 	// =================================================================================
 
-	@PostMapping("/logout")
+	// Produces explicito por lo mismo que en AccountRegistrationController.activate: sin cuerpo
+	// en el 204 el contrato solo declara problem+json, el cliente generado lo manda en Accept y
+	// el produces de clase lo rechazaba con 406.
+	@PostMapping(path = "/logout",
+			produces = { MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE })
 	@Operation(
 			operationId = "logout",
 			summary = "Cerrar la sesion en curso",

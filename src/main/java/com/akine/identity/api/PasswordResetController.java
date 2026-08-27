@@ -101,7 +101,11 @@ public class PasswordResetController {
 		return ResponseEntity.accepted().body(AcceptedResponse.de(ACUSE));
 	}
 
-	@PostMapping(path = "/password-reset/confirm", consumes = MediaType.APPLICATION_JSON_VALUE)
+	// Produces explicito por lo mismo que en AccountRegistrationController.activate: sin cuerpo
+	// en el 204 el contrato solo declara problem+json, el cliente generado lo manda en Accept y
+	// el produces de clase lo rechazaba con 406.
+	@PostMapping(path = "/password-reset/confirm", consumes = MediaType.APPLICATION_JSON_VALUE,
+			produces = { MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE })
 	@Operation(
 			operationId = "confirmPasswordReset",
 			summary = "Fijar la contrasena nueva con el token del correo",

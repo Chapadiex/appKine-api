@@ -154,7 +154,11 @@ public class PlatformRoleController {
 		return ResponseEntity.status(201).body(otorgado);
 	}
 
-	@DeleteMapping("/{platformRoleId}")
+	// Produces explicito por lo mismo que en AccountRegistrationController.activate: sin cuerpo
+	// en el 204 el contrato solo declara problem+json, el cliente generado lo manda en Accept y
+	// el produces de clase lo rechazaba con 406.
+	@DeleteMapping(path = "/{platformRoleId}",
+			produces = { MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE })
 	@Operation(
 			operationId = "revokePlatformRole",
 			summary = "Revocar un rol de plataforma",

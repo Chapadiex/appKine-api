@@ -159,7 +159,11 @@ public class PlatformSupportAccessController {
 		return ResponseEntity.status(201).body(concedido);
 	}
 
-	@DeleteMapping("/support-access/{supportAccessId}")
+	// Produces explicito por lo mismo que en AccountRegistrationController.activate: sin cuerpo
+	// en el 204 el contrato solo declara problem+json, el cliente generado lo manda en Accept y
+	// el produces de clase lo rechazaba con 406.
+	@DeleteMapping(path = "/support-access/{supportAccessId}",
+			produces = { MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE })
 	@Operation(
 			operationId = "revokeSupportAccess",
 			summary = "Cerrar un acceso de soporte antes de su vencimiento",
