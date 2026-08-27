@@ -161,7 +161,30 @@ public enum ProblemType {
 	 */
 	VENTANA_DEMASIADO_AMPLIA("ventana-demasiado-amplia"),
 	/** La excepcion de disponibilidad ya estaba dada de baja. */
-	EXCEPCION_ALREADY_INACTIVE("excepcion-already-inactive");
+	EXCEPCION_ALREADY_INACTIVE("excepcion-already-inactive"),
+
+	// --- Servicio global y oferta por consultorio (M27, AKINE-02.06) ------------------------
+	/** Ya existe un servicio VIGENTE con ese codigo en el catalogo global. */
+	SERVICIO_CODIGO_TAKEN("servicio-codigo-taken"),
+	/** Ya existe un servicio VIGENTE con ese nombre. Comparado sin mayusculas ni acentos. */
+	SERVICIO_NOMBRE_TAKEN("servicio-nombre-taken"),
+	/**
+	 * El servicio esta dado de baja y la operacion exige uno vigente.
+	 *
+	 * <p>Es el 409 de RF-M27-002: la baja de un servicio global NO cascadea sobre las ofertas
+	 * que ya lo referencian —siguen operando—, lo que impide es crear ofertas nuevas sobre el.
+	 */
+	SERVICIO_INACTIVO("servicio-inactivo"),
+	/** El servicio ya estaba dado de baja. */
+	SERVICIO_ALREADY_INACTIVE("servicio-already-inactive"),
+	/** Ya existe una oferta VIGENTE con ese nombre comercial en esa sede. */
+	OFERTA_NOMBRE_COMERCIAL_TAKEN("oferta-nombre-comercial-taken"),
+	/** La oferta esta dada de baja: no admite ediciones. Sus historicos siguen resolviendo. */
+	OFERTA_INACTIVA("oferta-inactiva"),
+	/** La oferta ya estaba dada de baja. */
+	OFERTA_ALREADY_INACTIVE("oferta-already-inactive"),
+	/** La sede existe y es accesible, pero su estado no admite operar sobre ella. */
+	CONSULTORIO_NO_OPERABLE("consultorio-no-operable");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

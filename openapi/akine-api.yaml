@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.11.0
+  version: 0.12.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -35,6 +35,8 @@ tags:
 - description: "Emision, listado, reenvio y cancelacion de invitaciones a colaborar\
     \ (M05)"
   name: Invitaciones
+- description: Catalogo global de servicios y como cada sede los presta (M27)
+  name: Servicios y ofertas
 - description: "Alta, edicion y baja de las sedes de una organizacion"
   name: Consultorios
 - description: "Administracion de la plataforma: acceso de soporte y roles globales"
@@ -1832,6 +1834,260 @@ paths:
       summary: Baja logica de una excepcion de disponibilidad
       tags:
       - Excepciones de disponibilidad
+  /api/v1/consultorios/{consultorioId}/ofertas:
+    get:
+      description: |-
+        Devuelve las ofertas de esa sede ordenadas por nombre comercial. Exige pertenencia a la sede.
+
+        estado filtra por ciclo de vida y por defecto trae solo las ACTIVAS. servicioId, si viene, acota a las ofertas de ese servicio.
+
+        OJO CON ESTADO Y VIGENTEHOY: son dos cosas distintas. estado dice si la oferta fue dada de baja; vigenteHoy dice si ADEMAS hoy cae dentro de su ventana de vigencia, calculado en la zona horaria DE LA SEDE y no en la del servidor ni en la del navegador. Una oferta ACTIVA que arranca el mes que viene tiene estado=ACTIVO y vigenteHoy=false, y es correcto que no aparezca todavia en un selector de reserva. Es la misma distincion que espacio hace entre activo y en servicio.
+      operationId: listOfertas
+      parameters:
+      - description: Sede cuyas ofertas se listan
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Filtro por ciclo de vida. Si se omite, ACTIVO"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      - description: "Acota a las ofertas de ese servicio global. Si se omite, todas"
+        example: 12
+        in: query
+        name: servicioId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OfertaResponse"
+          description: "Ofertas de la sede, ordenadas por nombre comercial"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo elegido, o sin pertenencia a la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Listar las ofertas de la sede
+      tags:
+      - Servicios y ofertas
+    post:
+      description: |-
+        Declara que esta sede presta un servicio del catalogo global, y en que condiciones. Exige consultorio:manage sobre esa sede.
+
+        El servicio tiene que estar VIGENTE: sobre uno dado de baja responde 409 servicio-inactivo. Es el unico efecto que la baja de un servicio global tiene sobre los centros; las ofertas que ya existian siguen operando.
+
+        LO QUE SE OMITE, HEREDA. modalidad, requiereCasoClinico y generaRegistroClinico toman el default del servicio si no vienen. Omitirlos NO es apagarlos.
+
+        El nombre comercial es unico entre las ofertas VIGENTES de esa sede, comparado sin distinguir mayusculas ni acentos. El de una oferta dada de baja si se puede reusar.
+
+        El esquema de cobro se guarda como texto declarado y NADIE lo resuelve: los modulos que lo interpretarian no existen todavia (RN-M27-006). Se pide para no perder el dato, no para ramificar por el.
+      operationId: createOferta
+      parameters:
+      - description: Sede donde se da de alta la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOfertaRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfertaResponse"
+          description: Oferta creada. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, o ventana de vigencia incoherente"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o el servicio no existen, o la sede es de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Nombre comercial repetido (oferta-nombre-comercial-taken),\
+            \ servicio dado de baja (servicio-inactivo), o sede no operable (consultorio-no-operable)"
+      summary: Dar de alta una oferta en la sede
+      tags:
+      - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}:
+    delete:
+      description: |-
+        Baja LOGICA con motivo obligatorio. Exige consultorio:manage sobre esa sede.
+
+        RN-M27-007: la oferta deja de admitir reservas nuevas y CONSERVA sus historicos. RF-M27-002 prohibe el borrado fisico cuando hay referencias.
+
+        El motivo es obligatorio: sin el, la auditoria no responde por que seis meses despues.
+
+        No hay reactivacion. Una oferta que vuelve es una ventana de vigencia nueva, no una baja deshecha. Si lo que se quiere es sacarla de circulacion un tiempo, el camino es editar vigenciaHasta, no dar de baja.
+      operationId: deactivateOferta
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la oferta
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateOfferingRequest"
+        required: true
+      responses:
+        "204":
+          description: Oferta dada de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La oferta ya estaba dada de baja (oferta-already-inactive)
+      summary: Dar de baja una oferta de la sede
+      tags:
+      - Servicios y ofertas
+    put:
+      description: |-
+        Exige consultorio:manage sobre esa sede.
+
+        El servicio NO se puede cambiar y por eso no esta en el cuerpo: cambiarlo convertiria esta oferta en otra cosa mientras conserva su id y sus historicos. Lo que corresponde es dar de baja esta y crear la que si presta el otro servicio.
+
+        Los campos en null NO se tocan. Por eso existen limpiarPrecio, limpiarEsquemaCobro y limpiarVigenciaHasta: sin ellos no habria forma de expresar "sacale el precio", porque mandar precioBase: null es indistinguible de no mandarlo. Cuando un limpiar viene en true, el valor correspondiente se ignora.
+
+        Una oferta dada de baja no admite ediciones: 409 oferta-inactiva.
+      operationId: updateOferta
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la oferta
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOfertaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfertaResponse"
+          description: Oferta actualizada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos o ventana de vigencia incoherente
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Nombre comercial repetido (oferta-nombre-comercial-taken),\
+            \ oferta dada de baja (oferta-inactiva), o version desactualizada (conflict)"
+      summary: Editar una oferta de la sede
+      tags:
+      - Servicios y ofertas
   /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad:
     get:
       description: |-
@@ -4687,6 +4943,214 @@ paths:
       summary: Cerrar un acceso de soporte antes de su vencimiento
       tags:
       - Plataforma
+  /api/v1/servicios:
+    get:
+      description: |-
+        Devuelve los servicios de la plataforma ordenados por nombre.
+
+        q busca por nombre y por codigo, sin distinguir mayusculas ni acentos. Los comodines que el usuario escriba se escapan: un % tecleado busca un % literal y no todo el catalogo.
+
+        estado filtra por ciclo de vida y por defecto trae solo los ACTIVOS. Con el default, un selector de alta de oferta nunca ofrece un servicio dado de baja, que es lo que evita que el 409 servicio-inactivo tenga que aparecer en esa pantalla.
+
+        No exige contexto de trabajo elegido: el catalogo global es el mismo para todos los centros y no hay ninguna fila que acotar por tenant.
+      operationId: listServicios
+      parameters:
+      - description: Texto a buscar en el nombre y en el codigo. Vacio trae todo
+        example: kinesio
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Filtro por ciclo de vida. Si se omite, ACTIVO"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ServicioResponse"
+          description: "Servicios del catalogo, ordenados por nombre"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin sesion autenticada
+      summary: Listar el catalogo global de servicios
+      tags:
+      - Servicios y ofertas
+    post:
+      description: |-
+        Exige rol de plataforma: lo que se crea aca lo ven todos los centros del SaaS.
+
+        El codigo es unico entre los servicios VIGENTES y no se puede cambiar despues: es lo que las ofertas guardan. El codigo de un servicio dado de baja SI se puede reusar. El nombre tambien es unico entre los vigentes, comparado sin distinguir mayusculas ni acentos.
+
+        modalidadDefault, requiereCasoClinicoDefault y generaRegistroClinicoDefault son DEFAULTS que la oferta hereda si no dice otra cosa. No son restricciones: una sede puede ofrecer en grupal un servicio cuyo default es individual.
+
+        No lleva Idempotency-Key y es deliberado: un servicio no consume cupo de ningun plan, asi que lo unico que un reintento podria producir es una fila duplicada, y contra eso el unique de codigo es una garantia mas fuerte que una clave que depende de que el cliente la mande bien.
+      operationId: createServicio
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServicioRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicioResponse"
+          description: Servicio creado. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos o faltantes
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin rol de plataforma
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Codigo repetido (servicio-codigo-taken) o nombre repetido (servicio-nombre-taken)
+            entre los servicios vigentes
+      summary: Dar de alta un servicio del catalogo global
+      tags:
+      - Servicios y ofertas
+  /api/v1/servicios/{servicioId}:
+    delete:
+      description: |-
+        Baja LOGICA con motivo obligatorio. Exige rol de plataforma.
+
+        LA BAJA NO CASCADEA, y esto es lo mas importante de la operacion. Las ofertas activas de los centros que ya referencian este servicio SIGUEN OPERANDO: RF-M27-002 prohibe el borrado fisico cuando hay referencias y RN-M03-006 prohibe afectar historicos. Lo unico que la baja impide es CREAR ofertas nuevas sobre el, que responden 409 servicio-inactivo.
+
+        El motivo es obligatorio: sin el, la auditoria no responde por que seis meses despues.
+
+        No hay reactivacion. Un servicio que vuelve es un alta nueva, no una baja deshecha: modelarlo al reves borraria el rastro de que dejo de ofrecerse.
+      operationId: deactivateServicio
+      parameters:
+      - description: Identificador del servicio
+        example: 12
+        in: path
+        name: servicioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateOfferingRequest"
+        required: true
+      responses:
+        "204":
+          description: Servicio dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin rol de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El servicio no existe
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El servicio ya estaba dado de baja (servicio-already-inactive)
+      summary: Dar de baja un servicio del catalogo global
+      tags:
+      - Servicios y ofertas
+    put:
+      description: |-
+        Exige rol de plataforma.
+
+        El codigo NO se puede cambiar y por eso no esta en el cuerpo: es la clave con la que las ofertas de todos los centros lo referencian, y cambiarlo seria reescribir el significado de filas que ya existen en tenants que no participan de esta llamada. Renombrar es cambiar nombre.
+
+        Los campos que llegan en null NO se tocan. Es edicion parcial declarada: obligar a mandar el recurso entero forzaria a la pantalla a releerlo antes de cada guardado para no pisar lo que otro cambio en el medio, y expectedVersion ya resuelve ese problema mejor.
+
+        Un servicio dado de baja no admite ediciones: 409 servicio-inactivo. Sus datos historicos siguen siendo consultables.
+      operationId: updateServicio
+      parameters:
+      - description: Identificador del servicio
+        example: 12
+        in: path
+        name: servicioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateServicioRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicioResponse"
+          description: Servicio actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin rol de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El servicio no existe
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Nombre repetido (servicio-nombre-taken), servicio dado de\
+            \ baja (servicio-inactivo), o version desactualizada (conflict)"
+      summary: Editar un servicio del catalogo global
+      tags:
+      - Servicios y ofertas
   /api/v1/version:
     get:
       description: Devuelve la identidad tecnica del backend en ejecucion y la version
@@ -5866,6 +6330,102 @@ components:
       - email
       - reason
       - roleCode
+    CreateOfertaRequest:
+      type: object
+      description: Datos para dar de alta una oferta de servicio en una sede
+      properties:
+        admiteObraSocial:
+          type: boolean
+          description: "Si se puede presentar a un financiador. Si se omite, false"
+        capacidad:
+          type: integer
+          format: int32
+          description: "Personas que admite a la vez. OBLIGATORIA y sin default: una\
+            \ oferta INDIVIDUAL admite 1 y hay que decirlo. RF-M27-003 no la deriva\
+            \ de la modalidad, porque un box con dos camillas puede atender de a dos\
+            \ en individual"
+          example: 1
+          minimum: 0
+        descripcion:
+          type: string
+          description: Descripcion libre. Nunca contenido clinico
+          maxLength: 280
+          minLength: 0
+        duracionMinutos:
+          type: integer
+          format: int32
+          description: Duracion de la prestacion en minutos
+          example: 45
+          minimum: 0
+        esquemaCobro:
+          type: string
+          description: "Esquema de cobro declarado, texto libre acotado. Se guarda\
+            \ sin resolverse: los modulos que lo interpretarian no existen todavia"
+          example: SESION_SUELTA
+          maxLength: 32
+          minLength: 0
+        generaRegistroClinico:
+          type: boolean
+          description: "Si genera registro clinico. Si se omite, hereda del servicio"
+        modalidad:
+          type: string
+          description: "Individual o grupal. Si se omite, hereda la del servicio"
+          enum:
+          - INDIVIDUAL
+          - GRUPAL
+          example: INDIVIDUAL
+        moneda:
+          type: string
+          description: "Moneda del precio, ISO 4217. NO tiene default y no puede tenerlo:\
+            \ un importe sin moneda no significa nada, y asumir ARS convertiria en\
+            \ pesos el precio de un centro que cobra en otra cosa. Va junto con precioBase:\
+            \ los dos o ninguno, y mandar uno solo responde 400"
+          example: ARS
+          maxLength: 3
+          minLength: 0
+        nombreComercial:
+          type: string
+          description: "Como lo llama el centro. Unico entre las ofertas VIGENTES\
+            \ de esa sede, comparado sin distinguir mayusculas ni acentos"
+          example: Kinesiologia - sesion de 45 minutos
+          maxLength: 160
+          minLength: 0
+        precioBase:
+          type: number
+          description: "Precio de lista. Omitirlo NO es cero: es que el centro todavia\
+            \ no lo fijo. Va SIEMPRE junto con moneda: los dos o ninguno"
+          example: 18000.0
+          minimum: 0
+        requiereCasoClinico:
+          type: boolean
+          description: "Si exige caso clinico abierto. Si se omite, hereda del servicio"
+        requiereEspacio:
+          type: boolean
+          description: "Si la reserva exige asignar espacio. Si se omite, false"
+        requiereProfesional:
+          type: boolean
+          description: "Si la reserva exige asignar profesional. Si se omite, false"
+        servicioId:
+          type: integer
+          format: int64
+          description: "Servicio del catalogo global que esta oferta presta. Tiene\
+            \ que estar VIGENTE: sobre uno dado de baja responde 409 servicio-inactivo"
+          example: 12
+        vigenciaDesde:
+          type: string
+          format: date
+          description: "Primer dia en que se puede reservar, en la zona de la sede.\
+            \ Si se omite, hoy"
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia INCLUSIVE. Omitirlo = sin fin previsto, que es\
+            \ un estado real y no un dato faltante"
+      required:
+      - capacidad
+      - duracionMinutos
+      - nombreComercial
+      - servicioId
     CreateOrganizationRequest:
       type: object
       description: Datos para dar de alta una organizacion y su primer consultorio
@@ -5899,6 +6459,62 @@ components:
       required:
       - name
       - planCode
+    CreateServicioRequest:
+      type: object
+      description: Datos para dar de alta un servicio del catalogo global
+      properties:
+        codigo:
+          type: string
+          description: "Clave estable con la que las ofertas lo referencian. NO se\
+            \ puede cambiar despues. Unico entre los servicios VIGENTES: el codigo\
+            \ de uno dado de baja si se puede reusar"
+          example: KINESIOLOGIA_SESION
+          maxLength: 64
+          minLength: 0
+        descripcion:
+          type: string
+          description: Descripcion libre. Nunca contenido clinico
+          maxLength: 280
+          minLength: 0
+        generaRegistroClinicoDefault:
+          type: boolean
+          description: "Default de si la prestacion genera registro clinico. Si se\
+            \ omite, false"
+        modalidadDefault:
+          type: string
+          description: "Modalidad SUGERIDA al crear una oferta. La oferta puede apartarse:\
+            \ esto es un default, no una restriccion"
+          enum:
+          - INDIVIDUAL
+          - GRUPAL
+          example: INDIVIDUAL
+        naturaleza:
+          type: string
+          description: "Que clase de prestacion es. Ninguna regla del sistema ramifica\
+            \ por este valor: lo que decide el comportamiento son los defaults de\
+            \ abajo y lo que la oferta termine declarando"
+          enum:
+          - CLINICO
+          - TERAPEUTICO
+          - PREVENTIVO
+          - BIENESTAR
+          example: TERAPEUTICO
+        nombre:
+          type: string
+          description: "Nombre visible. Unico entre los servicios vigentes, comparado\
+            \ sin distinguir mayusculas ni acentos"
+          example: Sesion de kinesiologia
+          maxLength: 160
+          minLength: 0
+        requiereCasoClinicoDefault:
+          type: boolean
+          description: "Default de si la prestacion exige un caso clinico abierto.\
+            \ Si se omite, false"
+      required:
+      - codigo
+      - modalidadDefault
+      - naturaleza
+      - nombre
     CreateVigenciaRequest:
       type: object
       description: Nueva vigencia de un codigo dentro de un nomenclador
@@ -6020,6 +6636,18 @@ components:
             la excepcion
           example: "La licencia se cancelo: el profesional finalmente atiende esa\
             \ semana"
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
+    DeactivateOfferingRequest:
+      type: object
+      description: Motivo de la baja logica
+      properties:
+        reason:
+          type: string
+          description: Por que se da de baja. Queda en la fila y en la auditoria
+          example: El centro dejo de prestar el servicio
           maxLength: 280
           minLength: 0
       required:
@@ -6801,6 +7429,120 @@ components:
           type: string
           format: date-time
           description: "Momento hasta el que el vinculo es valido, o null si no vence"
+    OfertaResponse:
+      type: object
+      description: Oferta de un servicio en una sede concreta
+      properties:
+        admiteObraSocial:
+          type: boolean
+          description: Si la oferta se puede presentar a un financiador
+        capacidad:
+          type: integer
+          format: int32
+          description: Personas que admite a la vez. Una oferta INDIVIDUAL admite
+            1
+          example: 1
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede que presta el servicio
+          example: 3
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja. Null mientras este vigente
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja logica. Null mientras este vigente
+        descripcion:
+          type: string
+          description: Descripcion libre. Nunca contenido clinico
+        duracionMinutos:
+          type: integer
+          format: int32
+          description: Duracion de la prestacion en minutos
+          example: 45
+        esquemaCobro:
+          type: string
+          description: "Esquema de cobro DECLARADO, texto libre acotado. No lo resuelve\
+            \ nadie todavia: los modulos de facturacion y cobros no existen (RN-M27-006).\
+            \ Se guarda para no perder el dato, no para ramificar"
+          example: SESION_SUELTA
+        estado:
+          type: string
+          description: "Ciclo de vida administrativo. Una oferta INACTIVA se sigue\
+            \ leyendo con 200: sus historicos tienen que seguir resolviendo"
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        generaRegistroClinico:
+          type: boolean
+          description: Si al prestarse genera registro clinico
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la oferta
+          example: 34
+        modalidad:
+          type: string
+          description: Individual o grupal
+          enum:
+          - INDIVIDUAL
+          - GRUPAL
+          example: INDIVIDUAL
+        moneda:
+          type: string
+          description: "Moneda del precio, ISO 4217"
+          example: ARS
+        nombreComercial:
+          type: string
+          description: "Como lo llama el centro. Unico entre las ofertas VIGENTES\
+            \ de esa sede, comparado sin distinguir mayusculas ni acentos"
+          example: Kinesiologia - sesion de 45 minutos
+        organizationId:
+          type: integer
+          format: int64
+          description: Tenant propietario de la oferta
+          example: 7
+        precioBase:
+          type: number
+          description: "Precio de lista declarado. Null cuando el centro todavia no\
+            \ lo fijo, que es un estado real y no un cero"
+          example: 18000.0
+        requiereCasoClinico:
+          type: boolean
+          description: Si exige un caso clinico abierto para reservarse
+        requiereEspacio:
+          type: boolean
+          description: Si la reserva exige asignar un espacio fisico
+        requiereProfesional:
+          type: boolean
+          description: Si la reserva exige asignar un profesional
+        servicioId:
+          type: integer
+          format: int64
+          description: Servicio del catalogo global que esta oferta presta
+          example: 12
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: "Primer dia en que la oferta se puede reservar, en la zona\
+            \ de la sede"
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia, INCLUSIVE, en que se puede reservar. Null = sin\
+            \ fin previsto, que es un estado real y no un dato faltante"
+        vigenteHoy:
+          type: boolean
+          description: "Si HOY cae dentro de la ventana de vigencia, en la zona horaria\
+            \ de la sede. Distinto de estado: ver la descripcion del esquema"
     OrganizationResponse:
       type: object
       description: Organizacion (tenant) con su estado operativo efectivo
@@ -7075,6 +7817,14 @@ components:
       - https://akine.app/problems/profesional-no-vinculado
       - https://akine.app/problems/ventana-demasiado-amplia
       - https://akine.app/problems/excepcion-already-inactive
+      - https://akine.app/problems/servicio-codigo-taken
+      - https://akine.app/problems/servicio-nombre-taken
+      - https://akine.app/problems/servicio-inactivo
+      - https://akine.app/problems/servicio-already-inactive
+      - https://akine.app/problems/oferta-nombre-comercial-taken
+      - https://akine.app/problems/oferta-inactiva
+      - https://akine.app/problems/oferta-already-inactive
+      - https://akine.app/problems/consultorio-no-operable
     RegisterAccountRequest:
       type: object
       description: "Alta self-service de cuenta, organizacion y primer consultorio"
@@ -7193,6 +7943,71 @@ components:
       required:
       - consultorioId
       - organizationId
+    ServicioResponse:
+      type: object
+      description: Servicio del catalogo global de la plataforma
+      properties:
+        codigo:
+          type: string
+          description: "Clave estable con la que las ofertas lo referencian. No cambia\
+            \ nunca: renombrar es cambiar nombre, no codigo"
+          example: KINESIOLOGIA_SESION
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja. Null mientras este vigente
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja logica. Null mientras este vigente
+        descripcion:
+          type: string
+          description: Descripcion libre. Nunca contenido clinico
+        estado:
+          type: string
+          description: "Ciclo de vida. Un servicio INACTIVO se sigue leyendo con 200:\
+            \ los historicos que lo referencian tienen que seguir resolviendo"
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        generaRegistroClinicoDefault:
+          type: boolean
+          description: Si por defecto la prestacion genera registro clinico
+        id:
+          type: integer
+          format: int64
+          description: Identificador del servicio
+          example: 12
+        modalidadDefault:
+          type: string
+          description: Modalidad sugerida al crear una oferta. La oferta puede apartarse
+          enum:
+          - INDIVIDUAL
+          - GRUPAL
+          example: INDIVIDUAL
+        naturaleza:
+          type: string
+          description: "Que clase de prestacion es. No condiciona por nombre ninguna\
+            \ regla: lo que decide el comportamiento son los tres campos de abajo"
+          enum:
+          - CLINICO
+          - TERAPEUTICO
+          - PREVENTIVO
+          - BIENESTAR
+          example: TERAPEUTICO
+        nombre:
+          type: string
+          description: Nombre visible del servicio
+          example: Sesion de kinesiologia
+        requiereCasoClinicoDefault:
+          type: boolean
+          description: Si por defecto la prestacion exige un caso clinico abierto
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista. Se manda de vuelta en expectedVersion
+            al editar o dar de baja
+          example: 0
     SubscriptionResponse:
       type: object
       description: "Suscripcion del tenant con su plan, estado y consumo de limites"
@@ -7630,6 +8445,95 @@ components:
           example: 0
       required:
       - version
+    UpdateOfertaRequest:
+      type: object
+      description: Campos a modificar de una oferta
+      properties:
+        admiteObraSocial:
+          type: boolean
+          description: Null deja el actual
+        capacidad:
+          type: integer
+          format: int32
+          description: Capacidad nueva. Null deja la actual
+          minimum: 0
+        descripcion:
+          type: string
+          description: Descripcion nueva. Null deja la actual
+          maxLength: 280
+          minLength: 0
+        duracionMinutos:
+          type: integer
+          format: int32
+          description: Duracion nueva en minutos. Null deja la actual
+          minimum: 0
+        esquemaCobro:
+          type: string
+          description: Esquema de cobro nuevo. Null deja el actual
+          maxLength: 32
+          minLength: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          description: "Version que el cliente cree estar editando. Si la fila avanzo\
+            \ desde entonces, responde 409 conflict y no pisa nada"
+          example: 0
+          minimum: 0
+        generaRegistroClinico:
+          type: boolean
+          description: Null deja el actual
+        limpiarEsquemaCobro:
+          type: boolean
+          description: "Dejar la oferta SIN esquema de cobro declarado. Si se omite,\
+            \ false"
+        limpiarPrecio:
+          type: boolean
+          description: "Dejar la oferta SIN precio declarado. Ignora precioBase si\
+            \ ambos vienen. Si se omite, false"
+        limpiarVigenciaHasta:
+          type: boolean
+          description: "Dejar la oferta SIN fin de vigencia. Ignora vigenciaHasta\
+            \ si ambos vienen. Si se omite, false"
+        modalidad:
+          type: string
+          description: Modalidad nueva. Null deja la actual
+          enum:
+          - INDIVIDUAL
+          - GRUPAL
+        moneda:
+          type: string
+          description: "Moneda nueva, ISO 4217. Null deja la actual"
+          maxLength: 3
+          minLength: 0
+        nombreComercial:
+          type: string
+          description: Nombre comercial nuevo. Null deja el actual
+          maxLength: 160
+          minLength: 0
+        precioBase:
+          type: number
+          description: "Precio nuevo. Null deja el actual; para borrarlo, limpiarPrecio"
+          minimum: 0
+        requiereCasoClinico:
+          type: boolean
+          description: Null deja el actual
+        requiereEspacio:
+          type: boolean
+          description: Null deja el actual
+        requiereProfesional:
+          type: boolean
+          description: Null deja el actual
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Inicio de vigencia nuevo. Null deja el actual
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Fin de vigencia nuevo, INCLUSIVE. Null deja el actual; para\
+            \ dejarla sin fin previsto, limpiarVigenciaHasta"
+      required:
+      - expectedVersion
     UpdateOrganizationRequest:
       type: object
       description: "Campos editables de la organizacion, con la version para bloqueo\
@@ -7658,6 +8562,49 @@ components:
           minimum: 0
       required:
       - version
+    UpdateServicioRequest:
+      type: object
+      description: Campos a modificar de un servicio del catalogo global
+      properties:
+        descripcion:
+          type: string
+          description: Descripcion nueva. Null deja la actual
+          maxLength: 280
+          minLength: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          description: "Version que el cliente cree estar editando. Si la fila avanzo\
+            \ desde entonces, responde 409 conflict y no pisa nada"
+          example: 0
+          minimum: 0
+        generaRegistroClinicoDefault:
+          type: boolean
+          description: Default de registro clinico nuevo. Null deja el actual
+        modalidadDefault:
+          type: string
+          description: Modalidad por defecto nueva. Null deja la actual
+          enum:
+          - INDIVIDUAL
+          - GRUPAL
+        naturaleza:
+          type: string
+          description: Naturaleza nueva. Null deja la actual
+          enum:
+          - CLINICO
+          - TERAPEUTICO
+          - PREVENTIVO
+          - BIENESTAR
+        nombre:
+          type: string
+          description: Nombre visible nuevo. Null deja el actual
+          maxLength: 160
+          minLength: 0
+        requiereCasoClinicoDefault:
+          type: boolean
+          description: Default de caso clinico nuevo. Null deja el actual
+      required:
+      - expectedVersion
     VersionResponse:
       type: object
       description: Identidad tecnica del backend y version del contrato OpenAPI publicado
