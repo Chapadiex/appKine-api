@@ -2,6 +2,7 @@ package com.akine.offering.api;
 
 import com.akine.offering.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.offering.domain.exception.ConsultorioNoOperableException;
+import com.akine.offering.domain.exception.HabilitacionNoAccesibleException;
 import com.akine.offering.domain.exception.OfertaInactivaException;
 import com.akine.offering.domain.exception.OfertaNombreComercialTakenException;
 import com.akine.offering.domain.exception.OfertaNotAccessibleException;
@@ -82,6 +83,25 @@ public class OfferingProblemHandler {
 		log.debug("Consultorio no accesible desde offering: consultorioId={}",
 				exception.getConsultorioId());
 		return noEncontrado("La sede no existe.");
+	}
+
+	/**
+	 * El recurso que se quiso habilitar no existe, es de otro tenant o es de otra sede.
+	 *
+	 * <p>Los tres casos responden 404 y con el mismo texto. Distinguirlos confirmaria que ese id
+	 * existe en alguna parte, y bastaria recorrer numeros para averiguar cuanta gente y cuantos
+	 * boxes tiene cada centro del SaaS.
+	 */
+	@ExceptionHandler(HabilitacionNoAccesibleException.class)
+	public ProblemDetail handleHabilitacionNoAccesible(
+			HabilitacionNoAccesibleException exception) {
+
+		log.debug("Recurso no accesible para habilitar: tipo={} id={}",
+				exception.getTipo(), exception.getRecursoId());
+
+		return noEncontrado("profesional".equals(exception.getTipo())
+				? "Ese profesional no existe en este centro, o no atiende en esta sede."
+				: "Ese espacio no existe en esta sede.");
 	}
 
 	// =================================================================================

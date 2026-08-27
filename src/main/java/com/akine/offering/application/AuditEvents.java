@@ -71,4 +71,23 @@ final class AuditEvents {
 	static String correlationId() {
 		return MDC.get(MDC_TRACE_ID);
 	}
+
+	// --- Habilitaciones de Oferta (M27/M04/M05, AKINE-02.07) ----------------------------
+
+	static final String HABILITACION_PROFESIONAL_GRANTED = "HABILITACION_PROFESIONAL_GRANTED";
+
+	static final String HABILITACION_PROFESIONAL_REVOKED = "HABILITACION_PROFESIONAL_REVOKED";
+
+	static final String HABILITACION_ESPACIO_GRANTED = "HABILITACION_ESPACIO_GRANTED";
+
+	static final String HABILITACION_ESPACIO_REVOKED = "HABILITACION_ESPACIO_REVOKED";
+
+	/**
+	 * La entidad auditada es la OFERTA, no la fila de habilitacion.
+	 *
+	 * <p>A quien le importa el rastro es a quien pregunta "quien podia prestar esta oferta en
+	 * marzo": esa pregunta se hace sobre la oferta. Auditar contra el id de una fila que ademas
+	 * puede haberse dado de baja obligaria a reconstruir la cadena para responderla.
+	 */
+	static final String ENTITY_HABILITACION = "Oferta";
 }

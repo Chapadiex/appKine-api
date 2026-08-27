@@ -1,5 +1,7 @@
 package com.akine.offering.domain.port;
 
+import com.akine.offering.domain.OfertaEspacioHabilitado;
+import com.akine.offering.domain.OfertaProfesionalHabilitado;
 import com.akine.offering.domain.OfertaServicioConsultorio;
 import com.akine.offering.domain.Servicio;
 
@@ -171,5 +173,40 @@ public final class OfferingRepositoryPorts {
 		List<OfertaServicioConsultorio>
 				findAllByOrganizationIdAndConsultorioIdAndServicioIdOrderByNombreComercialAsc(
 						Long organizationId, Long consultorioId, Long servicioId);
+	}
+
+	/**
+	 * Habilitaciones de profesionales por Oferta (AKINE-02.07).
+	 *
+	 * <p>Las lecturas devuelven la lista COMPLETA de la oferta, activas e inactivas, y quien
+	 * filtra es la capa de aplicacion. No es descuido: la pantalla necesita mostrar la fila dada
+	 * de baja con su motivo —esconderla dejaria al administrador sin entender por que la
+	 * capacidad efectiva cambio sola— y el mismo metodo sirve para el diff del PUT.
+	 */
+	public interface OfertaProfesionalHabilitadoRepositoryPort {
+
+		OfertaProfesionalHabilitado save(OfertaProfesionalHabilitado habilitacion);
+
+		List<OfertaProfesionalHabilitado> findAllByOrganizationIdAndOfertaId(
+				Long organizationId, Long ofertaId);
+
+		List<OfertaProfesionalHabilitado> findAllByOrganizationIdAndOfertaIdAndActive(
+				Long organizationId, Long ofertaId, boolean active);
+
+		/** Cuantas habilitaciones vigentes deja colgando desvincular a este profesional. */
+		long countByOrganizationIdAndMembershipIdAndActive(
+				Long organizationId, Long membershipId, boolean active);
+	}
+
+	/** Habilitaciones de espacios por Oferta (AKINE-02.07). Mismo criterio de lectura. */
+	public interface OfertaEspacioHabilitadoRepositoryPort {
+
+		OfertaEspacioHabilitado save(OfertaEspacioHabilitado habilitacion);
+
+		List<OfertaEspacioHabilitado> findAllByOrganizationIdAndOfertaId(
+				Long organizationId, Long ofertaId);
+
+		List<OfertaEspacioHabilitado> findAllByOrganizationIdAndOfertaIdAndActive(
+				Long organizationId, Long ofertaId, boolean active);
 	}
 }
