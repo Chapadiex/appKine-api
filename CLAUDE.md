@@ -335,7 +335,7 @@ sección final. Resumen de qué entregó cada una y qué regla dejó fijada:
 
 ### Estado vigente (26/08/2026)
 
-Rama `akine-01.02-identidad`, **41 commits**, último `be39da4`. Migraciones **V1–V23**.
+Rama `akine-01.02-identidad`, **43 commits**, último `094edc6`. Migraciones **V1–V23**.
 Contrato **0.11.0**, propietario del `openapi/akine-api.yaml`, sin drift; el cliente del
 frontend está regenerado y fijado en la misma versión.
 
