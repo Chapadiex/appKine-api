@@ -1,8 +1,16 @@
 # ADR-0020 — `platform_role` no lleva `organization_id`
 
-- **Estado:** Aceptado
+- **Estado:** Superseded by [ADR-0023](0023-tablas-globales-sin-organization-id.md)
 - **Fecha:** 2026-08-23
 - **Etapa:** AKINE-01.03
+
+> **Superseded por [ADR-0023](0023-tablas-globales-sin-organization-id.md) (AKINE-02.06).**
+>
+> Este ADR pedía, en sus consecuencias negativas, que *"si llegan dos o tres más, corresponde un
+> ADR que consolide y supersede a los anteriores"*. Eso es ADR-0023, que es la **autoridad
+> vigente** sobre las excepciones a ADR-0004 y donde vive ahora la fila de `platform_role`.
+> Este documento se conserva por su valor histórico: el argumento completo sobre por qué el rol
+> de plataforma no pertenece a ningún tenant, y las alternativas descartadas, siguen acá.
 
 ## Contexto
 

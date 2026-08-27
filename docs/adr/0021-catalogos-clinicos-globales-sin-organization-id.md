@@ -1,8 +1,17 @@
 # ADR-0021 — Los catálogos clínicos llevan `organization_id` nullable
 
-- **Estado:** Aceptado
+- **Estado:** Superseded by [ADR-0023](0023-tablas-globales-sin-organization-id.md)
 - **Fecha:** 2026-08-25
 - **Etapa:** AKINE-02.05
+
+> **Superseded por [ADR-0023](0023-tablas-globales-sin-organization-id.md) (AKINE-02.06).**
+>
+> Este ADR exigía, en "Qué obliga a hacer", que *"la etapa que agregue la cuarta excepción a
+> ADR-0004 **no escribe otro ADR incremental**: consolida los cuatro en uno que los supersede"*.
+> Eso es ADR-0023, que es la **autoridad vigente** y donde viven ahora la fila de los catálogos
+> clínicos y el criterio general. Este documento se conserva por su valor histórico: la
+> explicación completa de la trampa de los `NULL` en los `UNIQUE` de MySQL y del centinela
+> `owner_key` sigue acá, y ADR-0023 la cita en vez de repetirla.
 
 ## Contexto
 

@@ -54,22 +54,24 @@ de commits, o directamente se revierte una decisión correcta por desconocer su 
 | [0016](0016-versiones-tecnicas-y-slo.md) | Versiones técnicas confirmadas y SLO medibles | Aceptado | AKINE-00.03 |
 | [0017](0017-custodia-y-ciclo-de-vida-de-los-tokens.md) | Custodia y ciclo de vida de los tokens de sesión | Aceptado | AKINE-01.02 |
 | [0018](0018-anti-enumeracion-uniforme.md) | Respuestas uniformes: la autenticación no revela si una cuenta existe | Aceptado | AKINE-01.02 |
-| [0019](0019-identidad-global-sin-organization-id.md) | Las tablas de identidad no llevan `organization_id` | Aceptado | AKINE-01.02 |
-| [0020](0020-rol-de-plataforma-sin-organization-id.md) | `platform_role` no lleva `organization_id` | Aceptado | AKINE-01.03 |
-| [0021](0021-catalogos-clinicos-globales-sin-organization-id.md) | Los catálogos clínicos llevan `organization_id` nullable | Aceptado | AKINE-02.05 |
+| [0019](0019-identidad-global-sin-organization-id.md) | Las tablas de identidad no llevan `organization_id` | Superseded by ADR-0023 | AKINE-01.02 |
+| [0020](0020-rol-de-plataforma-sin-organization-id.md) | `platform_role` no lleva `organization_id` | Superseded by ADR-0023 | AKINE-01.03 |
+| [0021](0021-catalogos-clinicos-globales-sin-organization-id.md) | Los catálogos clínicos llevan `organization_id` nullable | Superseded by ADR-0023 | AKINE-02.05 |
+| [0022](0022-feriados-globales-sin-organization-id.md) | `feriado` es global, sin `organization_id` | Superseded by ADR-0023 | AKINE-02.04 |
+| [0023](0023-tablas-globales-sin-organization-id.md) | Qué tabla puede no llevar `organization_id`: criterio único y lista consolidada | Aceptado | AKINE-02.06 |
 
-> La lista de excepciones a [ADR-0004](0004-convenciones-de-persistencia-multi-tenant.md) vive en
-> la tabla de [ADR-0019](0019-identidad-global-sin-organization-id.md) **más** las filas que
-> agregan [ADR-0020](0020-rol-de-plataforma-sin-organization-id.md) y
-> [ADR-0021](0021-catalogos-clinicos-globales-sin-organization-id.md). Como los ADR aceptados no
-> se editan, hay que leer los tres.
+> **La lista de excepciones a [ADR-0004](0004-convenciones-de-persistencia-multi-tenant.md) vive
+> en [ADR-0023](0023-tablas-globales-sin-organization-id.md), y sólo ahí.** Ese ADR consolida las
+> cuatro excepciones incrementales —0019, 0020, 0021 y 0022, que quedan superseded— y agrega lo
+> que faltaba: **el criterio escrito** de qué hace que una tabla sea legítimamente global, y qué
+> **no** califica. Una excepción nueva agrega una fila a la tabla de ADR-0023; ya no se escribe
+> un ADR incremental por caso.
 >
-> **Deuda declarada.** Esta nota decía que la tercera excepción debía llegar como un ADR que
-> consolidara a los anteriores. AKINE-02.05 la agregó igual de forma incremental, con el
-> precedente de ADR-0020, porque consolidar exigía superseder dos ADR cuyo contenido es mucho más
-> que la tabla de excepciones —el aislamiento de identidad en 0019, el rol de plataforma en
-> 0020— y esa reescritura no pertenece al alcance de una etapa de catálogos. **La consolidación
-> queda pendiente y es lo que corresponde antes de la cuarta excepción, no después.**
+> Los cuatro superseded se conservan por su valor histórico y siguen siendo la referencia del
+> argumento completo de cada caso: el aislamiento por cuenta en 0019, el rol de plataforma en
+> 0020, la trampa de los `NULL` en los `UNIQUE` de MySQL y el centinela `owner_key` en 0021.
+> Las migraciones anteriores a 02.06 citan en su cabecera el ADR vigente al momento de
+> escribirse, que es lo correcto: quien las lea sigue el puntero hasta ADR-0023.
 
 > Los ADRs 0001–0007 cubren decisiones **técnicas** del baseline. Las decisiones de
 > producto `DP-01`–`DP-09` están formalizadas en los ADRs

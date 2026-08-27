@@ -1,8 +1,16 @@
 # ADR-0019 — Las tablas de identidad no llevan `organization_id`
 
-- **Estado:** Aceptado
+- **Estado:** Superseded by [ADR-0023](0023-tablas-globales-sin-organization-id.md)
 - **Fecha:** 2026-08-22
 - **Etapa:** AKINE-01.02
+
+> **Superseded por [ADR-0023](0023-tablas-globales-sin-organization-id.md) (AKINE-02.06).**
+>
+> Su **lista de excepciones a ADR-0004 y el criterio para ampliarla viven ahora en ADR-0023**,
+> que consolida las cuatro excepciones incrementales en una sola lista con el criterio escrito.
+> Este documento se conserva por su valor histórico y sigue siendo la referencia del argumento
+> completo sobre por qué el aislamiento de identidad es **por cuenta** y no por tenant. Para
+> saber si una tabla nueva puede omitir `organization_id`, la autoridad vigente es ADR-0023.
 
 ## Contexto
 

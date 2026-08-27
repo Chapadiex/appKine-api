@@ -1,8 +1,15 @@
 # ADR-0022 — `feriado` es global, sin `organization_id`
 
-- **Estado:** Aceptado
+- **Estado:** Superseded by [ADR-0023](0023-tablas-globales-sin-organization-id.md)
 - **Fecha:** 2026-08-26
 - **Etapa:** AKINE-02.04
+
+> **Superseded por [ADR-0023](0023-tablas-globales-sin-organization-id.md) (AKINE-02.06).**
+>
+> Este ADR fue la **cuarta** excepción y no consolidó, como le exigían ADR-0020 y ADR-0021: su
+> propia línea final reconoce la deuda y la difiere una vez más. La deuda la paga ADR-0023,
+> escrito en AKINE-02.06 al aparecer la quinta —`servicio`—, que es la **autoridad vigente** y
+> donde vive ahora la fila de `feriado`. Este documento se conserva por su valor histórico.
 
 ## Contexto
 
