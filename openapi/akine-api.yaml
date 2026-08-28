@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.12.0
+  version: 0.13.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -41,6 +41,8 @@ tags:
   name: Consultorios
 - description: "Administracion de la plataforma: acceso de soporte y roles globales"
   name: Plataforma
+- description: Padron de personas y activacion del perfil clinico (M07)
+  name: Personas
 - description: "Contrato tecnico: salud y versionado"
   name: Platform
 - description: Consulta del registro de hechos de la organizacion
@@ -2086,6 +2088,268 @@ paths:
           description: "Nombre comercial repetido (oferta-nombre-comercial-taken),\
             \ oferta dada de baja (oferta-inactiva), o version desactualizada (conflict)"
       summary: Editar una oferta de la sede
+      tags:
+      - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/habilitaciones:
+    get:
+      description: |-
+        Devuelve las habilitaciones de profesional y de espacio, ACTIVAS E INACTIVAS, mas la capacidad efectiva.
+
+        LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. Una lista vacia significa que la oferta NO esta restringida: cualquier profesional con vinculo vigente puede prestarla y puede prestarse en cualquier espacio de la sede. NO significa que no pueda nadie. Para eso estan restringidaPorProfesional y restringidaPorEspacio, que lo dicen explicito.
+
+        Las habilitaciones dadas de baja vienen igual, con su motivo. No se esconden: esconderlas dejaria al administrador sin entender por que la capacidad efectiva cambio sola.
+
+        Lo mismo con las que apuntan a un recurso que ya no sirve. vinculoVigente en false es un colaborador que se desvinculo; enServicio en false es un espacio que se dio de baja en su propio modulo. La habilitacion sigue existiendo y la fila lo dice.
+
+        capacidadEfectiva es el minimo entre la capacidad de la oferta y la de los espacios habilitados que estan en servicio. Sin espacios habilitados es igual a la comercial: no hay ningun espacio concreto contra el cual acotarla. espacioQueLimita nombra cual la acota, y mostrar un numero mas chico sin ese nombre es un defecto de la pantalla.
+      operationId: getHabilitaciones
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta configurada
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HabilitacionesResponse"
+          description: Configuracion de la oferta
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin pertenencia a la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta o la sede no existen, o son de otro tenant"
+      summary: Ver quien puede prestar la oferta y donde
+      tags:
+      - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/habilitaciones/espacios:
+    put:
+      description: |-
+        REEMPLAZA EL CONJUNTO COMPLETO, con el mismo criterio que el de profesionales.
+
+        Mandar una lista VACIA quita la restriccion y deja que la oferta pueda prestarse en cualquier espacio de la sede.
+
+        Que un espacio sirva para una oferta NO se infiere de su tipo ni de su nombre (RF-M04-008): elegir "Pileta" al dar de alta un espacio no autoriza hidroterapia ahi, lo autoriza estar en esta lista.
+
+        Solo se aceptan espacios de ESTA sede. Un espacio no se muda entre sedes, asi que habilitar el de otra seria configurar algo que no se puede usar nunca: responde 404.
+
+        OJO CON LA CAPACIDAD: habilitar un espacio mas chico que la capacidad comercial de la oferta BAJA la capacidad efectiva, porque es el minimo entre las dos. No es un error y la respuesta lo explica en espacioQueLimita.
+      operationId: reemplazarEspaciosHabilitados
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta configurada
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReemplazarHabilitacionesRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HabilitacionesResponse"
+          description: Configuracion resultante
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta la lista o expectedVersion
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta, la sede o algun espacio no existen, no son de este\
+            \ tenant, o el espacio es de otra sede"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version desactualizada (conflict), oferta dada de baja (oferta-inactiva),\
+            \ o sede no operable (consultorio-no-operable)"
+      summary: Fijar en que espacios puede prestarse la oferta
+      tags:
+      - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/habilitaciones/profesionales:
+    put:
+      description: |-
+        REEMPLAZA EL CONJUNTO COMPLETO. Lo que entra y no estaba se crea, lo que estaba y no entra se da de baja con motivo automatico, y lo que sigue no se toca: conserva su id, su vigencia y su version.
+
+        Mandar una lista VACIA es la operacion legitima de quitar la restriccion, y deja la oferta disponible para cualquier profesional con vinculo vigente. No es un error y no se rechaza. La respuesta devuelve restringidaPorProfesional en false para que la pantalla lo pueda decir con palabras: quien borra la ultima habilitacion creyendo que restringe, abre la oferta a todos.
+
+        Cada id es una MEMBERSHIP, no una cuenta: la misma persona puede ser profesional en un centro y administrativa en otro, y habilitar la cuenta habilitaria a alguien que en esta organizacion no atiende. Se aceptan las memberships de toda la organizacion y las acotadas a ESTA sede; una acotada a otra sede responde 404, porque esa persona no atiende aca.
+
+        expectedVersion es la de la OFERTA. Es lo que impide que el segundo administrador en guardar borre en silencio lo que agrego el primero.
+      operationId: reemplazarProfesionalesHabilitados
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta configurada
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReemplazarHabilitacionesRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HabilitacionesResponse"
+          description: Configuracion resultante
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta la lista o expectedVersion
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta, la sede o alguna membership no existen, no son\
+            \ de este tenant, o la membership esta acotada a otra sede"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version desactualizada (conflict), oferta dada de baja (oferta-inactiva),\
+            \ o sede no operable (consultorio-no-operable)"
+      summary: Fijar que profesionales pueden prestar la oferta
+      tags:
+      - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/validacion:
+    get:
+      description: |-
+        Responde la mitad calculable de RF-M05-008 y RF-M04-009. La otra mitad —reservar de verdad— es de la etapa de agenda, que va a consumir exactamente este endpoint.
+
+        Los dos parametros son opcionales: se puede preguntar solo por el profesional, solo por el espacio, o por los dos. Sin ninguno valida la oferta sola, que sigue siendo una pregunta util: ¿esta oferta se puede usar hoy?
+
+        DEVUELVE TODOS LOS MOTIVOS QUE FALLAN, NO EL PRIMERO. Si al profesional le falta habilitacion y ademas el espacio esta fuera de servicio, arreglar uno solo no alcanza, y decirlo de a uno obliga al usuario a dos vueltas.
+
+        Cada motivo trae un codigo estable para ramificar sin leer prosa. Los ocho posibles son: oferta-inactiva, oferta-fuera-de-vigencia, profesional-no-habilitado, habilitacion-fuera-de-vigencia, vinculo-no-vigente, espacio-no-habilitado, espacio-fuera-de-servicio y capacidad-insuficiente.
+
+        capacidad-insuficiente NO es un rechazo duro: la oferta se puede prestar igual con menos gente. Es informacion para que la agenda decida, y por eso viaja como motivo y no como error.
+      operationId: validarOferta
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta a validar
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Membership del profesional que prestaria la oferta
+        example: 215
+        in: query
+        name: membershipId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: Espacio donde se prestaria
+        example: 3
+        in: query
+        name: espacioId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidacionDeOfertaResponse"
+          description: "Resultado de la validacion, con sus motivos"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin pertenencia a la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta o la sede no existen, o son de otro tenant"
+      summary: "Saber si esa combinacion puede prestarse, y por que no"
       tags:
       - Servicios y ofertas
   /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad:
@@ -4693,6 +4957,263 @@ paths:
       summary: Aplicar una transicion de estado a la suscripcion
       tags:
       - Suscripciones
+  /api/v1/personas:
+    get:
+      description: |-
+        Busca por documento, apellido, nombre o telefono, todo con el mismo parametro q. La comparacion ignora mayusculas y acentos, y los separadores del documento y del telefono: buscar 12345678, 12.345.678 o Perez encuentra a la misma persona.
+
+        Sin q devuelve el padron completo, paginado y ordenado por apellido.
+
+        estado filtra por ciclo de vida y por defecto trae solo las ACTIVAS. perfil filtra por perfil clinico y por defecto no filtra: la busqueda del mostrador no sabe de antemano si quien busca es paciente.
+
+        OJO: esPaciente es DERIVADO y de solo lectura. Una persona sin perfil clinico es una persona valida y completa —RN-M07-006—, no una ficha a medio cargar.
+      operationId: buscarPersonas
+      parameters:
+      - description: "Texto libre: documento, apellido, nombre o telefono"
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: Filtro por ciclo de vida. Por defecto solo las ACTIVAS
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      - description: Filtro por perfil clinico. Por defecto indistinto
+        in: query
+        name: perfil
+        required: false
+        schema:
+          type: string
+          enum:
+          - CON_PERFIL
+          - SIN_PERFIL
+          - TODOS
+      - description: "Pagina, base cero"
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: "Tamano de pagina, acotado a 100"
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaPageResponse"
+          description: Pagina de personas del padron
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+      summary: Buscar personas en el padron
+      tags:
+      - Personas
+    post:
+      description: |-
+        Registra una PERSONA. NO crea perfil de paciente, ni historia clinica, ni caso, ni sesion: eso es RF-M07-010 y no hay ningun parametro que lo cambie. Convertirla en paciente es POST /personas/{personaId}/perfil-paciente.
+
+        Solo el apellido y el nombre son obligatorios. El documento es opcional porque una persona sin DNI es un caso real, y exigirlo obligaria al mostrador a inventar uno.
+
+        DOS RECHAZOS DISTINTOS Y NO SE CONFUNDEN:
+                       - persona-documento-taken es DURO. Ya hay alguien vigente con ese documento en la organizacion. No se puede confirmar ni saltear.
+                       - persona-posible-duplicado es una ADVERTENCIA. Coincide el nombre completo o el telefono con alguien ya registrado. Viene con la lista de candidatos; si el operador confirma que es otra persona, se reenvia con confirmaPosibleDuplicado en true. Es RN-M07-001 —busqueda previa a la creacion— hecho cumplir por el backend y no solo por la pantalla.
+      operationId: crearPersona
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePersonaRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaResponse"
+          description: Persona creada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo activo, o sin paciente:manage"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Documento repetido, o posibles duplicados sin confirmar"
+      summary: Dar de alta una persona
+      tags:
+      - Personas
+  /api/v1/personas/{personaId}:
+    get:
+      description: |-
+        Devuelve la ficha administrativa. Una persona INACTIVA responde 200: sus historicos tienen que seguir resolviendo (RN-M07-004).
+
+        Una persona de otra organizacion responde 404 y no 403: distinguirlas confirmaria que ese id existe.
+      operationId: verPersona
+      parameters:
+      - in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaResponse"
+          description: La persona
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, o es de otra organizacion"
+      summary: Ver una persona del padron
+      tags:
+      - Personas
+    patch:
+      description: |-
+        Edicion parcial: lo que no viene, no se toca. Un campo en null NO vacia el valor guardado.
+
+        Una persona INACTIVA responde 409: reabrir una ficha dada de baja para cambiarle el nombre reescribiria el historico que RN-M07-004 protege.
+
+        La deteccion de posibles duplicados NO corre en la edicion —pediria confirmacion cada vez que se corrige un telefono—, pero el documento repetido se sigue rechazando: eso lo verifica el unique, no una rama de codigo.
+      operationId: editarPersona
+      parameters:
+      - in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePersonaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaResponse"
+          description: Persona actualizada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo activo, o sin paciente:manage"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, o es de otra organizacion"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Persona inactiva, documento repetido o version desactualizada"
+      summary: Editar los datos administrativos de una persona
+      tags:
+      - Personas
+  /api/v1/personas/{personaId}/perfil-paciente:
+    post:
+      description: |-
+        Convierte funcionalmente a la persona en paciente, reutilizando su identidad (RF-M07-008, RN-M07-007). No recibe ningun dato personal: si lo recibiera, existiria la forma de que la ficha clinica y la administrativa se separaran.
+
+        ES IDEMPOTENTE Y RESPONDE 200, no 201 y no 409. Activar dos veces no es un error del operador: es el boton tocado dos veces o el request reintentado despues de un timeout, y la respuesta correcta es el perfil que ya existe.
+
+        ACTIVAR UN PERFIL NO CREA HISTORIA CLINICA. La HC es M09 y la crea el modulo clinico cuando exista; esto declara que la persona es paciente y nada mas (regla maestra 1).
+
+        Una persona INACTIVA responde 409. Una persona vigente cuyo perfil anterior fue dado de baja SI se puede reactivar: es un alta nueva y el unique lo permite.
+      operationId: activarPerfilPaciente
+      parameters:
+      - in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivarPerfilPacienteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonaResponse"
+          description: "Perfil activado, o el que ya estaba vigente"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo activo, o sin paciente:manage"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, o es de otra organizacion"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona esta dada de baja
+      summary: Activar el perfil clinico de una persona
+      tags:
+      - Personas
   /api/v1/plans:
     get:
       description: "Devuelve los planes vigentes con sus limites cuantitativos y las\
@@ -5326,6 +5847,17 @@ components:
           minLength: 0
       required:
       - reason
+    ActivarPerfilPacienteRequest:
+      type: object
+      description: "Activacion del perfil clinico. No recibe datos personales: los\
+        \ reutiliza"
+      properties:
+        motivo:
+          type: string
+          description: Motivo declarado de la activacion. Opcional
+          example: Inicia rehabilitacion post quirurgica
+          maxLength: 280
+          minLength: 0
     ActivateAccountRequest:
       type: object
       description: "Token del enlace de activacion, con la contrasena si hace falta\
@@ -6459,6 +6991,79 @@ components:
       required:
       - name
       - planCode
+    CreatePersonaRequest:
+      type: object
+      description: Datos para dar de alta una persona. No crea ningun perfil clinico
+      properties:
+        apellido:
+          type: string
+          description: Apellido
+          example: Perez
+          maxLength: 120
+          minLength: 0
+        confirmaPosibleDuplicado:
+          type: boolean
+          description: "El operador ya vio las coincidencias y declara que es otra\
+            \ persona. Sin esto, un alta que coincide en nombre completo o en telefono\
+            \ con alguien ya registrado se rechaza con 409 persona-posible-duplicado\
+            \ y la lista de candidatos. NO saltea el documento repetido, que es un\
+            \ invariante duro"
+          example: false
+        email:
+          type: string
+          format: email
+          description: "Correo de contacto ADMINISTRATIVO. No es una credencial de\
+            \ acceso: la cuenta del portal es otra entidad y puede no existir"
+          example: ana.perez@example.com
+          maxLength: 320
+          minLength: 0
+        fechaNacimiento:
+          type: string
+          format: date
+          description: "Fecha de nacimiento. Opcional: un alta de mostrador puede\
+            \ no tenerla, y exigirla trabaria el alta por un dato que se completa\
+            \ despues"
+          example: 1985-03-14
+        nombre:
+          type: string
+          description: Nombre
+          example: Ana Maria
+          maxLength: 120
+          minLength: 0
+        notas:
+          type: string
+          description: "Observaciones ADMINISTRATIVAS. Ningun dato clinico va aca:\
+            \ la informacion clinica vive en los modulos clinicos (RN-M07-003)"
+          maxLength: 500
+          minLength: 0
+        numeroDocumento:
+          type: string
+          description: "Numero de documento tal como figura. Se guarda como se tipeo\
+            \ y se compara normalizado, asi que 12.345.678 y 12345678 son el mismo\
+            \ documento y el segundo no entra si ya existe el primero"
+          example: "12345678"
+          maxLength: 32
+          minLength: 0
+        telefono:
+          type: string
+          description: Telefono de contacto
+          example: +54 11 5555-0000
+          maxLength: 40
+          minLength: 0
+        tipoDocumento:
+          type: string
+          description: "Tipo de documento. Viaja junto con el numero: los dos o ninguno"
+          enum:
+          - DNI
+          - LC
+          - LE
+          - CI
+          - PASAPORTE
+          - OTRO
+          example: DNI
+      required:
+      - apellido
+      - nombre
     CreateServicioRequest:
       type: object
       description: Datos para dar de alta un servicio del catalogo global
@@ -6827,6 +7432,68 @@ components:
           type: string
           description: Clasificacion fisica del recurso
           example: BOX
+    EspacioHabilitado:
+      type: object
+      description: Espacio en el que la oferta puede prestarse
+      properties:
+        capacidad:
+          type: integer
+          format: int32
+          description: Personas que admite el espacio
+          example: 6
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja. Null mientras este activa
+        enServicio:
+          type: boolean
+          description: "Si el espacio sigue operativo. Puede ser false con la habilitacion\
+            \ intacta: el espacio se dio de baja en su propio modulo y esta fila quedo\
+            \ apuntandolo. Se muestra con su motivo, porque esconderla dejaria sin\
+            \ explicar por que la capacidad efectiva cambio sola"
+        espacioId:
+          type: integer
+          format: int64
+          description: Espacio habilitado
+          example: 3
+        estado:
+          type: string
+          description: Ciclo de vida de la habilitacion
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la habilitacion
+          example: 7
+        nombre:
+          type: string
+          description: Nombre del espacio. Null si ya no se puede resolver
+        tipo:
+          type: string
+          description: Tipo fisico del espacio
+          example: SALA_GRUPAL
+        validFrom:
+          type: string
+          format: date-time
+          description: Instante UTC desde el que la habilitacion rige
+        validUntil:
+          type: string
+          format: date-time
+          description: "Instante UTC hasta el que rige, EXCLUSIVO. Null = sin fin"
+        version:
+          type: integer
+          format: int64
+          description: Version de la habilitacion
+          example: 0
+        vigenteHoy:
+          type: boolean
+          description: Si la habilitacion rige AHORA
     EspacioPageResponse:
       type: object
       description: "Pagina de espacios de la sede, segun el filtro de estado pedido"
@@ -7134,6 +7801,52 @@ components:
           minLength: 0
       required:
       - reason
+    HabilitacionesResponse:
+      type: object
+      description: "Profesionales y espacios habilitados de una oferta, con su capacidad\
+        \ real"
+      properties:
+        capacidadComercial:
+          type: integer
+          format: int32
+          description: Capacidad que declara la oferta
+          example: 8
+        capacidadEfectiva:
+          type: integer
+          format: int32
+          description: "Minimo entre la comercial y la de los espacios habilitados\
+            \ que estan en servicio. Sin espacios habilitados es igual a la comercial:\
+            \ no hay ningun espacio concreto contra el cual acotarla todavia"
+          example: 6
+        espacioQueLimita:
+          type: string
+          description: "Nombre del espacio que fija la efectiva, o null si ninguno\
+            \ la acota. Un numero mas chico sin este dato es un defecto de la pantalla"
+          example: Sala grupal chica
+        espacios:
+          type: array
+          description: "Habilitaciones de espacio, activas e inactivas"
+          items:
+            $ref: "#/components/schemas/EspacioHabilitado"
+        ofertaId:
+          type: integer
+          format: int64
+          description: Oferta configurada
+          example: 34
+        profesionales:
+          type: array
+          description: "Habilitaciones de profesional, activas e inactivas"
+          items:
+            $ref: "#/components/schemas/ProfesionalHabilitado"
+        restringidaPorEspacio:
+          type: boolean
+          description: "Si la oferta esta restringida a una lista de espacios. false\
+            \ significa que puede prestarse en cualquiera, NO en ninguno"
+        restringidaPorProfesional:
+          type: boolean
+          description: "Si la oferta esta restringida a una lista de profesionales.\
+            \ false significa que cualquier profesional con vinculo vigente puede\
+            \ prestarla, NO que no pueda ninguno"
     InvitacionPreviewResponse:
       type: object
       description: Lo que el invitado necesita saber para decidir
@@ -7429,6 +8142,26 @@ components:
           type: string
           format: date-time
           description: "Momento hasta el que el vinculo es valido, o null si no vence"
+    MotivoDeRechazo:
+      type: object
+      description: Una condicion que impide prestar la oferta
+      properties:
+        codigo:
+          type: string
+          description: "Codigo estable, para que la pantalla ramifique sin leer prosa"
+          enum:
+          - oferta-inactiva
+          - oferta-fuera-de-vigencia
+          - profesional-no-habilitado
+          - habilitacion-fuera-de-vigencia
+          - vinculo-no-vigente
+          - espacio-no-habilitado
+          - espacio-fuera-de-servicio
+          - capacidad-insuficiente
+          example: profesional-no-habilitado
+        detalle:
+          type: string
+          description: "Texto para mostrar, que nombra el recurso concreto"
     OfertaResponse:
       type: object
       description: Oferta de un servicio en una sede concreta
@@ -7615,6 +8348,117 @@ components:
           minLength: 0
       required:
       - email
+    PersonaPageResponse:
+      type: object
+      description: "Pagina de personas del padron, segun los filtros pedidos"
+      properties:
+        content:
+          type: array
+          description: Personas de esta pagina
+          items:
+            $ref: "#/components/schemas/PersonaResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de personas que cumplen el filtro
+          example: 134
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 7
+    PersonaResponse:
+      type: object
+      description: Persona del padron. Ser persona no implica ser paciente
+      properties:
+        apellido:
+          type: string
+          description: Apellido
+          example: Perez
+        deactivationReason:
+          type: string
+          description: "Motivo declarado de la baja, o null"
+        deletedAt:
+          type: string
+          format: date-time
+          description: "Instante UTC de la baja logica, o null"
+        email:
+          type: string
+          description: "Correo de contacto administrativo, o null"
+        esPaciente:
+          type: boolean
+          description: "Si la persona tiene perfil clinico VIGENTE en esta organizacion.\
+            \ Derivado, no una columna. false no significa que nunca lo tuvo: puede\
+            \ haberlo tenido y estar dado de baja"
+          example: false
+        estado:
+          type: string
+          description: "Ciclo de vida administrativo de la ficha. Una persona INACTIVA\
+            \ se sigue leyendo con 200: sus historicos tienen que resolver"
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        fechaNacimiento:
+          type: string
+          format: date
+          description: "Fecha de nacimiento, o null"
+          example: 1985-03-14
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la persona
+          example: 42
+        nombre:
+          type: string
+          description: Nombre
+          example: Ana Maria
+        notas:
+          type: string
+          description: "Observaciones administrativas, o null"
+        numeroDocumento:
+          type: string
+          description: Numero de documento tal como se cargo
+          example: "12345678"
+        perfilActivadoEn:
+          type: string
+          format: date-time
+          description: "Instante UTC en que se activo el perfil clinico, o null"
+        perfilPacienteId:
+          type: integer
+          format: int64
+          description: "Id del perfil clinico vigente, o null si no es paciente"
+          example: 7
+        telefono:
+          type: string
+          description: "Telefono de contacto, o null"
+          example: +54 11 5555-0000
+        tipoDocumento:
+          type: string
+          description: "Tipo de documento, o null si no declaro documento"
+          enum:
+          - DNI
+          - LC
+          - LE
+          - CI
+          - PASAPORTE
+          - OTRO
+          example: DNI
+        version:
+          type: integer
+          format: int64
+          description: Version para el bloqueo optimista. Reenviarla al editar
+          example: 0
     PlanChangeRequest:
       type: object
       description: Plan a contratar y version esperada de la suscripcion
@@ -7825,6 +8669,88 @@ components:
       - https://akine.app/problems/oferta-inactiva
       - https://akine.app/problems/oferta-already-inactive
       - https://akine.app/problems/consultorio-no-operable
+      - https://akine.app/problems/persona-documento-taken
+      - https://akine.app/problems/persona-posible-duplicado
+      - https://akine.app/problems/persona-inactiva
+    ProfesionalHabilitado:
+      type: object
+      description: Profesional habilitado para prestar la oferta
+      properties:
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja. Null mientras este activa
+        estado:
+          type: string
+          description: Ciclo de vida de la habilitacion
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la habilitacion
+          example: 12
+        membershipId:
+          type: integer
+          format: int64
+          description: Vinculo del profesional con la organizacion
+          example: 215
+        nombre:
+          type: string
+          description: Nombre de la persona. Null si su cuenta ya no se puede resolver
+        roleCode:
+          type: string
+          description: Rol de ese vinculo
+          example: PROFESIONAL
+        validFrom:
+          type: string
+          format: date-time
+          description: Instante UTC desde el que la habilitacion rige
+        validUntil:
+          type: string
+          format: date-time
+          description: "Instante UTC hasta el que rige, EXCLUSIVO. Null = sin fin"
+        version:
+          type: integer
+          format: int64
+          description: Version de la habilitacion
+          example: 0
+        vigenteHoy:
+          type: boolean
+          description: "Si la habilitacion rige AHORA. Distinto de estado: una activa\
+            \ que arranca el mes que viene tiene estado=ACTIVO y vigenteHoy=false"
+        vinculoVigente:
+          type: boolean
+          description: "Si la membership sigue habilitando a esa persona en la sede.\
+            \ Puede ser false con la habilitacion intacta: el colaborador se desvinculo\
+            \ y la fila quedo colgando. Se muestra, no se esconde"
+    ReemplazarHabilitacionesRequest:
+      type: object
+      description: "Conjunto completo de recursos habilitados. Reemplaza, no agrega"
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: "Version de la OFERTA que el cliente cree estar configurando.\
+            \ Es lo que serializa a dos administradores editando la misma configuracion:\
+            \ sin esto, el segundo en guardar borra en silencio lo que agrego el primero"
+          example: 0
+          minimum: 0
+        ids:
+          type: array
+          description: "Ids de los recursos que quedan habilitados: memberships de\
+            \ profesional o espacios, segun el endpoint. Lista vacia = quitar la restriccion"
+          items:
+            type: integer
+            format: int64
+      required:
+      - expectedVersion
+      - ids
     RegisterAccountRequest:
       type: object
       description: "Alta self-service de cuenta, organizacion y primer consultorio"
@@ -8562,6 +9488,73 @@ components:
           minimum: 0
       required:
       - version
+    UpdatePersonaRequest:
+      type: object
+      description: "Cambios a aplicar sobre una persona. Lo que no viene, no se toca"
+      properties:
+        apellido:
+          type: string
+          description: Apellido
+          example: Perez
+          maxLength: 120
+          minLength: 0
+        email:
+          type: string
+          format: email
+          description: Correo de contacto administrativo
+          example: ana.perez@example.com
+          maxLength: 320
+          minLength: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          description: "Version que el cliente leyo. Si quedo vieja, la edicion se\
+            \ rechaza con 409 en vez de pisar el cambio de otro operador"
+          example: 0
+          minimum: 0
+        fechaNacimiento:
+          type: string
+          format: date
+          description: Fecha de nacimiento
+          example: 1985-03-14
+        nombre:
+          type: string
+          description: Nombre
+          example: Ana Maria
+          maxLength: 120
+          minLength: 0
+        notas:
+          type: string
+          description: Observaciones administrativas. Nada clinico
+          maxLength: 500
+          minLength: 0
+        numeroDocumento:
+          type: string
+          description: "Numero de documento. Corregirlo puede chocar con el de otra\
+            \ persona vigente y responder 409, igual que en el alta"
+          example: "12345678"
+          maxLength: 32
+          minLength: 0
+        telefono:
+          type: string
+          description: Telefono de contacto
+          example: +54 11 5555-0000
+          maxLength: 40
+          minLength: 0
+        tipoDocumento:
+          type: string
+          description: "Tipo de documento. Mandar el tipo reemplaza el par completo;\
+            \ sin el, el documento no se toca"
+          enum:
+          - DNI
+          - LC
+          - LE
+          - CI
+          - PASAPORTE
+          - OTRO
+          example: DNI
+      required:
+      - expectedVersion
     UpdateServicioRequest:
       type: object
       description: Campos a modificar de un servicio del catalogo global
@@ -8605,6 +9598,40 @@ components:
           description: Default de caso clinico nuevo. Null deja el actual
       required:
       - expectedVersion
+    ValidacionDeOfertaResponse:
+      type: object
+      description: "Si la combinacion puede prestarse, y todos los motivos por los\
+        \ que no"
+      properties:
+        capacidadEfectiva:
+          type: integer
+          format: int32
+          description: Minimo entre la capacidad de la oferta y la de los espacios
+            habilitados en servicio
+          example: 6
+        espacioId:
+          type: integer
+          format: int64
+          description: "Espacio consultado, si se pregunto por uno"
+          example: 3
+        membershipId:
+          type: integer
+          format: int64
+          description: "Profesional consultado, si se pregunto por uno"
+          example: 215
+        motivos:
+          type: array
+          description: Condiciones que no se cumplen. Vacia si puedePrestarse es true
+          items:
+            $ref: "#/components/schemas/MotivoDeRechazo"
+        ofertaId:
+          type: integer
+          format: int64
+          description: Oferta consultada
+          example: 34
+        puedePrestarse:
+          type: boolean
+          description: true si no falla ninguna condicion
     VersionResponse:
       type: object
       description: Identidad tecnica del backend y version del contrato OpenAPI publicado
