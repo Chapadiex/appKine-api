@@ -184,7 +184,27 @@ public enum ProblemType {
 	/** La oferta ya estaba dada de baja. */
 	OFERTA_ALREADY_INACTIVE("oferta-already-inactive"),
 	/** La sede existe y es accesible, pero su estado no admite operar sobre ella. */
-	CONSULTORIO_NO_OPERABLE("consultorio-no-operable");
+	CONSULTORIO_NO_OPERABLE("consultorio-no-operable"),
+
+	// --- Personas y perfiles de paciente (M07, AKINE-03.01) ---------------------------------
+	/**
+	 * Ya existe una persona VIGENTE con ese documento en la organizacion.
+	 *
+	 * <p>Invariante DURO: no se puede confirmar ni saltear. Lleva {@code personaExistenteId} como
+	 * propiedad extra cuando se lo pudo determinar, para que la pantalla ofrezca abrir la ficha
+	 * que ya existe en vez de dejar al operador sin salida.
+	 */
+	PERSONA_DOCUMENTO_TAKEN("persona-documento-taken"),
+	/**
+	 * El alta coincide con personas ya registradas y nadie confirmo que sea otra distinta.
+	 *
+	 * <p>Es una ADVERTENCIA, no un invariante: reenviar el alta con {@code confirmaPosibleDuplicado}
+	 * la acepta. Es RN-M07-001 —busqueda previa a la creacion— hecho cumplir por el backend. Lleva
+	 * {@code candidatos} como propiedad extra, con los ids que coinciden.
+	 */
+	PERSONA_POSIBLE_DUPLICADO("persona-posible-duplicado"),
+	/** La persona esta dada de baja y la operacion exige una vigente. Se sigue leyendo con 200. */
+	PERSONA_INACTIVA("persona-inactiva");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

@@ -59,7 +59,16 @@ public enum PermissionCode {
 	 */
 	AUDITORIA_READ_CLINICA("auditoria:read-clinica"),
 
-	/** Gestionar paciente. F3. Sin asignacion base todavia: deniega. */
+	/**
+	 * Gestionar paciente. F3.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-03.01</b>, que es cuando nacio el modulo que lo
+	 * evalua: SOPORTE para {@code PLATFORM_ADMIN}, ORGANIZACION para {@code ORG_ADMIN},
+	 * CONSULTORIO para {@code CONSULTORIO_ADMIN} y {@code ADMINISTRATIVO}. El
+	 * {@code PROFESIONAL} lo recibe solo por grant explicito —la matriz §4 le dice "Segun
+	 * permiso"— y por eso es, junto con {@code auditoria:read-clinica}, uno de los dos codigos
+	 * que {@code membership_grant} admite.
+	 */
 	PACIENTE_MANAGE("paciente:manage"),
 
 	/** Ver Historia Clinica. F4. Sin asignacion base todavia: deniega. */

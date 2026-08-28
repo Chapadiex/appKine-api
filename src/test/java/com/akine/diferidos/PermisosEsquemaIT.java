@@ -217,10 +217,13 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 	void los_permisos_efectivos_del_fundador() {
 		Sesion tenant = altaCompleta("permisos-efectivos");
 
+		// `paciente:manage` se sumo en AKINE-03.01, cuando nacio el modulo que lo evalua: la
+		// matriz §4 se lo da al ORG_ADMIN —y el fundador lo es— con alcance organizacion.
 		assertThat(permissionEvaluator.effectivePermissions(
 				tenant.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
 				.containsExactlyInAnyOrder("tenant:read", "consultorio:manage", "espacio:read",
-						"colaborador:manage", "colaborador:read", "auditoria:read");
+						"colaborador:manage", "colaborador:read", "auditoria:read",
+						"paciente:manage");
 	}
 
 	@Test

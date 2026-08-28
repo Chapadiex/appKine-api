@@ -498,17 +498,21 @@ class PermissionEvaluatorServiceTest {
 	class Efectivos {
 
 		@Test
-		@DisplayName("Un ORG_ADMIN ve sus cinco permisos base de la matriz")
+		@DisplayName("Un ORG_ADMIN ve sus permisos base de la matriz")
 		void los_de_un_org_admin() {
 			sinRolDePlataforma();
 			memberships(Fixtures.membershipVigenteCon(RoleCode.ORG_ADMIN));
 			given(grantRepository.findAllByMembershipIdAndActiveTrue(MEMBERSHIP_ID))
 					.willReturn(List.of());
 
+			// `paciente:manage` se sumo en AKINE-03.01, cuando nacio el modulo que lo evalua: la
+			// matriz §4 se lo da al ORG_ADMIN con alcance organizacion y hasta esa etapa el codigo
+			// existia sin que lo tuviera nadie.
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 					.containsExactlyInAnyOrder(
 							"tenant:read", "consultorio:manage", "espacio:read",
-							"colaborador:manage", "colaborador:read", "auditoria:read");
+							"colaborador:manage", "colaborador:read", "auditoria:read",
+							"paciente:manage");
 		}
 
 		@Test

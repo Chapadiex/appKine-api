@@ -69,12 +69,17 @@ public final class RolePermissions {
 		return BASE.getOrDefault(role, Map.of());
 	}
 
-	/** Permisos que en F1 pueden otorgarse como grant adicional a una membership. */
+	/** Permisos que pueden otorgarse como grant adicional a una membership. */
 	public static Set<PermissionCode> otorgablesComoGrant() {
-		// Matriz §6: el unico "No por defecto (grant)" de la fase. El codigo valida contra este
-		// conjunto y rechaza cualquier otro con 400, en vez de escribir una fila invalida que
-		// nadie va a poder explicar despues.
-		return Set.of(PermissionCode.AUDITORIA_READ_CLINICA);
+		// El codigo valida contra este conjunto y rechaza cualquier otro con 400, en vez de
+		// escribir una fila invalida que nadie va a poder explicar despues.
+		//
+		// `auditoria:read-clinica` es el "No por defecto (grant)" de la matriz §6, y fue el unico
+		// hasta AKINE-03.01. `paciente:manage` entra ahi porque la matriz §4 le dice al
+		// PROFESIONAL "Segun permiso" en la fila "Gestionar paciente": no lo tiene por base —no
+		// esta en su fila de BASE— y se le concede por grant explicito. Sin esta linea esa celda
+		// de la matriz no tendria ninguna forma de cumplirse: el grant se rechazaria con 400.
+		return Set.of(PermissionCode.AUDITORIA_READ_CLINICA, PermissionCode.PACIENTE_MANAGE);
 	}
 
 	private static Map<RoleCode, Map<PermissionCode, PermissionScope>> base() {
@@ -129,7 +134,15 @@ public final class RolePermissions {
 				PermissionCode.COLABORADOR_MANAGE, PermissionScope.GLOBAL,
 				PermissionCode.COLABORADOR_READ, PermissionScope.SOPORTE,
 				PermissionCode.AUDITORIA_READ, PermissionScope.SOPORTE,
-				PermissionCode.AUDITORIA_READ_CLINICA, PermissionScope.RESTRINGIDO));
+				PermissionCode.AUDITORIA_READ_CLINICA, PermissionScope.RESTRINGIDO,
+				// `paciente:manage` entra con SOPORTE en AKINE-03.01: la matriz §4 le da
+				// literalmente "Soporte" a esta columna en la fila "Gestionar paciente". Es una
+				// MUTACION y las mutaciones de esta tabla suelen quedar GLOBAL porque dejan su
+				// propia fila nominal; aca no, y la diferencia es el dato: el padron de personas
+				// es exactamente lo que §7 protege, y la matriz ya lo habia decidido asi. El
+				// llamador deja `SUPPORT_ACCESS_USED` cuando la decision vuelve con
+				// viaSupportAccess — ver `person.application.PersonaService`.
+				PermissionCode.PACIENTE_MANAGE, PermissionScope.SOPORTE));
 
 		// ORG_ADMIN — "tenant:manage" NO esta: la matriz §4 acota su "Limitado" a editar su
 		// organizacion y ver su suscripcion, y deja el cambio de plan y la suspension para
@@ -140,7 +153,8 @@ public final class RolePermissions {
 				PermissionCode.ESPACIO_READ, PermissionScope.ORGANIZACION,
 				PermissionCode.COLABORADOR_MANAGE, PermissionScope.ORGANIZACION,
 				PermissionCode.COLABORADOR_READ, PermissionScope.ORGANIZACION,
-				PermissionCode.AUDITORIA_READ, PermissionScope.ORGANIZACION));
+				PermissionCode.AUDITORIA_READ, PermissionScope.ORGANIZACION,
+				PermissionCode.PACIENTE_MANAGE, PermissionScope.ORGANIZACION));
 
 		// CONSULTORIO_ADMIN — todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
 		tabla.put(RoleCode.CONSULTORIO_ADMIN, Map.of(
@@ -148,18 +162,26 @@ public final class RolePermissions {
 				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.COLABORADOR_MANAGE, PermissionScope.CONSULTORIO,
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.AUDITORIA_READ, PermissionScope.CONSULTORIO));
+				PermissionCode.AUDITORIA_READ, PermissionScope.CONSULTORIO,
+				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO));
 
 		// PROFESIONAL y ADMINISTRATIVO — ven la lista de colaboradores de su sede y, desde la
 		// aprobacion del 25/08/2026, el catalogo fisico de esa misma sede: sin `espacio:read` un
 		// profesional no puede saber en que box atiende. Todo lo clinico y economico de sus
 		// columnas sigue siendo de F4 en adelante.
+		//
+		// `paciente:manage` los separa, y es la unica fila de la matriz §4 donde estos dos roles
+		// difieren: al ADMINISTRATIVO le dice "Si" —dar de alta y editar fichas es literalmente
+		// su trabajo— y al PROFESIONAL le dice "Segun permiso", o sea NO por defecto y si por
+		// grant explicito. Por eso el profesional no lo tiene aca y si figura en
+		// `otorgablesComoGrant()`, que hasta AKINE-03.01 tenia un solo elemento.
 		tabla.put(RoleCode.PROFESIONAL, Map.of(
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO));
 		tabla.put(RoleCode.ADMINISTRATIVO, Map.of(
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO));
+				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
+				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO));
 
 		// PACIENTE — ninguna fila de la matriz §6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.

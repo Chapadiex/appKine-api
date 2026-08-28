@@ -120,9 +120,9 @@ class RolePermissionsTest {
 
 	@ParameterizedTest
 	@EnumSource(value = PermissionCode.class, names = {
-			"PACIENTE_MANAGE", "HC_READ", "HC_WRITE", "CASO_CREATE",
+			"HC_READ", "HC_WRITE", "CASO_CREATE",
 			"SESION_REGISTER", "CONVENIO_MANAGE", "COBRO_REGISTER", "CAJA_OPERATE", "REPORTE_READ"})
-	@DisplayName("Los permisos de F3 en adelante estan declarados y no los tiene NINGUN rol")
+	@DisplayName("Los permisos de fases futuras estan declarados y no los tiene NINGUN rol")
 	void los_permisos_de_fases_futuras_deniegan_para_todos(PermissionCode permiso) {
 		// Estan en el catalogo para que agregar una fase sea sumar filas y no rehacer el modelo.
 		// Que ninguno habilite nada todavia documenta que faltan por diseño: el dia que alguien
@@ -139,12 +139,45 @@ class RolePermissionsTest {
 	// =================================================================================
 
 	@Test
-	@DisplayName("El unico permiso otorgable como grant en F1 es auditoria:read-clinica")
-	void el_unico_grant_de_f1() {
-		// Matriz §6: es el unico "No por defecto (grant)" de la fase. Cualquier otro codigo se
-		// rechaza con 400 en vez de escribir una fila que el evaluador nunca va a mirar.
+	@DisplayName("Los permisos otorgables como grant son auditoria:read-clinica y paciente:manage")
+	void los_grants_declarados() {
+		// Cualquier otro codigo se rechaza con 400 en vez de escribir una fila que el evaluador
+		// nunca va a mirar.
+		//
+		// `auditoria:read-clinica` es el "No por defecto (grant)" de la matriz §6 y fue el unico
+		// hasta AKINE-03.01. `paciente:manage` entra ahi porque la matriz §4 le dice al
+		// PROFESIONAL "Segun permiso": no lo tiene por base y se le concede por grant explicito.
+		// Sin esa entrada, esa celda de la matriz no tendria ninguna forma de cumplirse.
 		assertThat(RolePermissions.otorgablesComoGrant())
-				.containsExactly(PermissionCode.AUDITORIA_READ_CLINICA);
+				.containsExactlyInAnyOrder(
+						PermissionCode.AUDITORIA_READ_CLINICA, PermissionCode.PACIENTE_MANAGE);
+	}
+
+	@Test
+	@DisplayName("paciente:manage tiene la asignacion base que la matriz seccion 4 le da")
+	void paciente_manage_quedo_cableado_en_03_01() {
+		// Hasta AKINE-03.01 este codigo existia y no lo tenia nadie: no habia modulo que lo
+		// evaluara. Ahora existe `person`, y estas cuatro celdas son la fila "Gestionar paciente"
+		// de la matriz §4 leida literalmente.
+		assertThat(RolePermissions.baseScope(RoleCode.PLATFORM_ADMIN, PermissionCode.PACIENTE_MANAGE))
+				.as("la matriz le da 'Soporte': puede intervenir, y queda auditado como tal")
+				.contains(PermissionScope.SOPORTE);
+		assertThat(RolePermissions.baseScope(RoleCode.ORG_ADMIN, PermissionCode.PACIENTE_MANAGE))
+				.contains(PermissionScope.ORGANIZACION);
+		assertThat(RolePermissions.baseScope(
+						RoleCode.CONSULTORIO_ADMIN, PermissionCode.PACIENTE_MANAGE))
+				.contains(PermissionScope.CONSULTORIO);
+		assertThat(RolePermissions.baseScope(
+						RoleCode.ADMINISTRATIVO, PermissionCode.PACIENTE_MANAGE))
+				.as("dar de alta y editar fichas es literalmente el trabajo del recepcionista")
+				.contains(PermissionScope.CONSULTORIO);
+
+		assertThat(RolePermissions.baseScope(RoleCode.PROFESIONAL, PermissionCode.PACIENTE_MANAGE))
+				.as("la matriz le dice 'Segun permiso': por grant, nunca por base")
+				.isEmpty();
+		assertThat(RolePermissions.baseScope(RoleCode.PACIENTE, PermissionCode.PACIENTE_MANAGE))
+				.as("su celda es 'Propio', y el alcance OWN no existe todavia en el evaluador")
+				.isEmpty();
 	}
 
 	// =================================================================================
