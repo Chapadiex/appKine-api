@@ -453,3 +453,54 @@ al que acceder. Es el mismo tratamiento que el catálogo de planes (`plan`, `pla
   editándolo. El camino es la solicitud, y la decide la plataforma.
 - **Aprobar una solicitud no crea el concepto global.** La aprobación es una decisión registrada;
   la publicación del concepto pasa por el alta normal, con el rol de plataforma.
+
+---
+
+## 12. Enmiendas — AKINE-03.01 (Persona y PerfilPaciente)
+
+`paciente:manage` figuraba en §5 desde el primer día con fase destino F3, y en el código con la
+nota *"sin asignación base todavía: deniega"*. Esta etapa creó el módulo que lo evalúa y le dio la
+asignación que §4 ya le daba. **No hay ningún código de permiso nuevo.**
+
+### 12.1 La fila "Gestionar paciente" de §4, cableada literalmente
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `paciente:manage` | **Soporte** | Org | Consultorio | — (solo por grant) | Consultorio | — |
+
+- **`PLATFORM_ADMIN` con Soporte y no Global.** §4 lo dice literalmente, y coincide con el
+  invariante de §7: el padrón de personas es exactamente el dato que esa sección protege. Es una
+  mutación —y las mutaciones suelen quedar Global porque dejan su propia fila nominal—, pero acá
+  manda lo que la matriz ya había decidido. `PersonaService` deja `SUPPORT_ACCESS_USED` cuando la
+  decisión vuelve con `viaSupportAccess`.
+- **`PROFESIONAL` solo por grant.** §4 le dice "Según permiso", que significa no por defecto y sí
+  por concesión explícita. Para que esa celda tuviera alguna forma de cumplirse hubo que sumar
+  `paciente:manage` a los códigos otorgables como grant: hasta esta etapa el único era
+  `auditoria:read-clinica`, y cualquier otro se rechazaba con 400.
+- **`PACIENTE` no recibe nada.** Su celda es "Propio", o sea alcance `OWN`, y ese alcance **no
+  está implementado en ninguna parte del sistema**: no existe vínculo entre una cuenta y una
+  persona, justamente porque RN-M07-002 los separa y ese vínculo es de la etapa de autoservicio.
+
+### 12.2 El permiso se evalúa CON la sede del contexto, aunque la Persona sea de la organización
+
+Es la decisión menos obvia de la etapa. Una `persona` no tiene `consultorio_id`: pertenece a la
+organización entera. El reflejo es evaluar con `consultorioId = null`, y **eso rompe la matriz**:
+`PermissionEvaluatorService.alcanceCubre` concede un alcance de sede solo cuando la consulta
+nombra una sede, así que con la consulta sin sede pasarían `ORG_ADMIN` y plataforma, y quedarían
+afuera `CONSULTORIO_ADMIN` y `ADMINISTRATIVO` — a quienes §4 les dice "Sí". El recepcionista no
+podría dar de alta a nadie.
+
+Por eso la consulta lleva la sede del contexto activo. Consecuencia: **sin contexto de sede no se
+muta el padrón** (403), igual que ofertas y disponibilidad. La persona no queda atada a esa sede.
+
+### 12.3 Las lecturas se autorizan por pertenencia, y eso concede de más
+
+**No existe `paciente:read`** y esta etapa no lo crea: la matriz no lo declara y una etapa no
+amplía la matriz (mismo criterio que 02.04, 02.05 y 02.06). Leer el padrón exige solo tener
+contexto de organización activo.
+
+**El hueco, dicho de frente:** con pertenencia sola, una membership con rol `PACIENTE` lee el
+padrón entero de su organización. §4 le asigna "Propio" a esa celda. Aprobar un `paciente:read`
+**no lo resolvería**: el problema no es el código de permiso sino el alcance `OWN`, que no existe.
+Queda como hueco conocido con etapa destino en el autoservicio, y no se tapa con un permiso que no
+cambiaría ningún comportamiento.
