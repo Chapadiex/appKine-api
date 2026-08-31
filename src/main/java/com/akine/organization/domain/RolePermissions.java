@@ -79,7 +79,17 @@ public final class RolePermissions {
 		// PROFESIONAL "Segun permiso" en la fila "Gestionar paciente": no lo tiene por base —no
 		// esta en su fila de BASE— y se le concede por grant explicito. Sin esta linea esa celda
 		// de la matriz no tendria ninguna forma de cumplirse: el grant se rechazaria con 400.
-		return Set.of(PermissionCode.AUDITORIA_READ_CLINICA, PermissionCode.PACIENTE_MANAGE);
+		//
+		// `hc:read` y `hc:write` entran en AKINE-04.01 (M09). La matriz §2 le dice al ORG_ADMIN
+		// "No por defecto" en Ver HC y al CONSULTORIO_ADMIN "Segun rol clinico"; la §3 traduce las
+		// dos a grant explicito sobre la membership. "Segun rol clinico" pide ademas habilitacion
+		// profesional vigente a la fecha del evento, y eso NO se evalua todavia: el grant es la
+		// mitad implementable, y la otra mitad queda anotada en el registro de cierre de la etapa.
+		return Set.of(
+				PermissionCode.AUDITORIA_READ_CLINICA,
+				PermissionCode.PACIENTE_MANAGE,
+				PermissionCode.HC_READ,
+				PermissionCode.HC_WRITE);
 	}
 
 	private static Map<RoleCode, Map<PermissionCode, PermissionScope>> base() {
@@ -126,15 +136,20 @@ public final class RolePermissions {
 		// `espacio:read` entra con SOPORTE por la misma pregunta: leer el catalogo fisico de un
 		// centro ajeno no deja por si mismo ninguna fila que diga quien lo hizo ni por que.
 		// Aprobado el 25/08/2026, matriz §5, §6 y §10.1.
-		tabla.put(RoleCode.PLATFORM_ADMIN, Map.of(
-				PermissionCode.TENANT_MANAGE, PermissionScope.GLOBAL,
-				PermissionCode.TENANT_READ, PermissionScope.SOPORTE,
-				PermissionCode.CONSULTORIO_MANAGE, PermissionScope.GLOBAL,
-				PermissionCode.ESPACIO_READ, PermissionScope.SOPORTE,
-				PermissionCode.COLABORADOR_MANAGE, PermissionScope.GLOBAL,
-				PermissionCode.COLABORADOR_READ, PermissionScope.SOPORTE,
-				PermissionCode.AUDITORIA_READ, PermissionScope.SOPORTE,
-				PermissionCode.AUDITORIA_READ_CLINICA, PermissionScope.RESTRINGIDO,
+		//
+		// **Esta tabla usa Map.ofEntries y no Map.of**: con `turno:read` (05.01) y `hc:read`
+		// (04.01) son ONCE pares, y `Map.of` admite diez como maximo. El limite es de sobrecargas
+		// del JDK, no del modelo, y el error que produce —"no suitable method found"— no dice eso
+		// en ninguna parte.
+		tabla.put(RoleCode.PLATFORM_ADMIN, Map.ofEntries(
+				Map.entry(PermissionCode.TENANT_MANAGE, PermissionScope.GLOBAL),
+				Map.entry(PermissionCode.TENANT_READ, PermissionScope.SOPORTE),
+				Map.entry(PermissionCode.CONSULTORIO_MANAGE, PermissionScope.GLOBAL),
+				Map.entry(PermissionCode.ESPACIO_READ, PermissionScope.SOPORTE),
+				Map.entry(PermissionCode.COLABORADOR_MANAGE, PermissionScope.GLOBAL),
+				Map.entry(PermissionCode.COLABORADOR_READ, PermissionScope.SOPORTE),
+				Map.entry(PermissionCode.AUDITORIA_READ, PermissionScope.SOPORTE),
+				Map.entry(PermissionCode.AUDITORIA_READ_CLINICA, PermissionScope.RESTRINGIDO),
 				// `paciente:manage` entra con SOPORTE en AKINE-03.01: la matriz §4 le da
 				// literalmente "Soporte" a esta columna en la fila "Gestionar paciente". Es una
 				// MUTACION y las mutaciones de esta tabla suelen quedar GLOBAL porque dejan su
@@ -142,11 +157,18 @@ public final class RolePermissions {
 				// es exactamente lo que §7 protege, y la matriz ya lo habia decidido asi. El
 				// llamador deja `SUPPORT_ACCESS_USED` cuando la decision vuelve con
 				// viaSupportAccess — ver `person.application.PersonaService`.
-				PermissionCode.PACIENTE_MANAGE, PermissionScope.SOPORTE,
-				// `turno:read` con SOPORTE y no GLOBAL: ver PermissionCode#TURNO_READ. Con este
-				// par la tabla de PLATFORM_ADMIN llega a DIEZ, que es el maximo de Map.of; el
-				// proximo par que se le agregue exige Map.ofEntries o no compila.
-				PermissionCode.TURNO_READ, PermissionScope.SOPORTE));
+				Map.entry(PermissionCode.PACIENTE_MANAGE, PermissionScope.SOPORTE),
+				// `turno:read` con SOPORTE y no GLOBAL en AKINE-05.01: hoy el buscador de slots no
+				// devuelve un solo dato de paciente, pero la misma agenda con 05.02 muestra quien
+				// tiene cada turno, y eso es lo que §7 protege. Mismo criterio que paciente:manage.
+				Map.entry(PermissionCode.TURNO_READ, PermissionScope.SOPORTE),
+				// `hc:read` entra con RESTRINGIDO en AKINE-04.01: es literalmente lo que la matriz
+				// §2 le pone a esta columna en la fila "Ver Historia Clinica", y §3 lo traduce a
+				// "denegado por defecto; solo con acceso de soporte justificado Y permiso adicional
+				// clinico. Nunca implicito". Hoy el evaluador rechaza RESTRINGIDO siempre, asi que
+				// la linea no cambia ninguna respuesta: esta para que la celda exista y para que
+				// nadie la complete mas adelante con GLOBAL creyendo que falta por descuido.
+				Map.entry(PermissionCode.HC_READ, PermissionScope.RESTRINGIDO)));
 
 		// ORG_ADMIN — "tenant:manage" NO esta: la matriz §4 acota su "Limitado" a editar su
 		// organizacion y ver su suscripcion, y deja el cambio de plan y la suspension para
@@ -181,10 +203,27 @@ public final class RolePermissions {
 		// su trabajo— y al PROFESIONAL le dice "Segun permiso", o sea NO por defecto y si por
 		// grant explicito. Por eso el profesional no lo tiene aca y si figura en
 		// `otorgablesComoGrant()`, que hasta AKINE-03.01 tenia un solo elemento.
+		//
+		// `hc:read` y `hc:write` entran en AKINE-04.01 y SOLO para el PROFESIONAL. La matriz §2 le
+		// dice "Si" en las dos filas de Historia Clinica y es el unico rol al que se las dice: es
+		// quien atiende. Alcance CONSULTORIO, que es el de su membership; que la historia sea de la
+		// organizacion (DP-03) no las convierte en permisos de organizacion — el alcance sigue
+		// siendo el de la membership con la que se decide.
+		//
+		// EL ADMINISTRATIVO NO LAS TIENE, Y ESO ES UNA DECISION, NO UN OLVIDO. Su celda de Ver HC
+		// dice "Limitado", y la §4 lo define sin ambiguedad: solo metadatos administrativos,
+		// NUNCA contenido clinico. Darle el mismo `hc:read` que al profesional y confiar en que la
+		// capa de presentacion recorte seria el control del lado equivocado —el backend es la
+		// autoridad, AGENT.md §1—, y distinguir las dos lecturas exige un codigo de permiso propio
+		// que el catalogo de la matriz §5 no tiene. La proyeccion existe y esta probada
+		// (`HistoriaClinicaView.soloMetadatos`); lo que falta es la decision de producto sobre como
+		// se otorga. Hasta entonces, cerrado.
 		tabla.put(RoleCode.PROFESIONAL, Map.of(
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO));
+				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
+				PermissionCode.HC_READ, PermissionScope.CONSULTORIO,
+				PermissionCode.HC_WRITE, PermissionScope.CONSULTORIO));
 		tabla.put(RoleCode.ADMINISTRATIVO, Map.of(
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,

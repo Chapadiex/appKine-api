@@ -237,9 +237,12 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				new DirectMembershipCommand(companiero.cuentaId(), tenant.consultorioId(),
 						"PROFESIONAL", MOTIVO));
 
+		// `hc:read` y `hc:write` se sumaron en AKINE-04.01: la matriz §2 se los da al PROFESIONAL
+		// con alcance de su sede.
 		assertThat(permissionEvaluator.effectivePermissions(
 				companiero.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
-				.containsExactlyInAnyOrder("colaborador:read", "espacio:read", "turno:read");
+				.containsExactlyInAnyOrder(
+						"colaborador:read", "espacio:read", "turno:read", "hc:read", "hc:write");
 
 		membershipService.revoke(actorDe(tenant), tenant.organizationId(), membership, MOTIVO);
 
