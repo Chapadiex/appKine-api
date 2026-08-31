@@ -73,8 +73,11 @@ class RolePermissionsTest {
 			// PROFESIONAL y ADMINISTRATIVO — la lista de colaboradores de su sede y, desde el
 			// 25/08/2026, el catalogo fisico de esa misma sede: sin espacio:read un profesional
 			// no puede ver en que box atiende.
+			"PLATFORM_ADMIN,     HC_READ,                 RESTRINGIDO",
 			"PROFESIONAL,        COLABORADOR_READ,        CONSULTORIO",
 			"PROFESIONAL,        ESPACIO_READ,            CONSULTORIO",
+			"PROFESIONAL,        HC_READ,                 CONSULTORIO",
+			"PROFESIONAL,        HC_WRITE,                CONSULTORIO",
 			"ADMINISTRATIVO,     COLABORADOR_READ,        CONSULTORIO",
 			"ADMINISTRATIVO,     ESPACIO_READ,            CONSULTORIO"})
 	@DisplayName("Cada celda que concede lo hace con el alcance que dice la matriz")
@@ -101,7 +104,11 @@ class RolePermissionsTest {
 			"PROFESIONAL,        TENANT_READ",
 			"ADMINISTRATIVO,     COLABORADOR_MANAGE",
 			"ADMINISTRATIVO,     AUDITORIA_READ",
-			"ADMINISTRATIVO,     CONSULTORIO_MANAGE"})
+			"ADMINISTRATIVO,     CONSULTORIO_MANAGE",
+			"ADMINISTRATIVO,     HC_READ",
+			"ADMINISTRATIVO,     HC_WRITE",
+			"ORG_ADMIN,          HC_READ",
+			"CONSULTORIO_ADMIN,  HC_READ"})
 	@DisplayName("Cada celda que deniega devuelve vacio, y vacio significa denegado")
 	void las_celdas_que_deniegan(RoleCode rol, PermissionCode permiso) {
 		assertThat(RolePermissions.baseScope(rol, permiso)).isEmpty();
@@ -120,7 +127,7 @@ class RolePermissionsTest {
 
 	@ParameterizedTest
 	@EnumSource(value = PermissionCode.class, names = {
-			"HC_READ", "HC_WRITE", "CASO_CREATE",
+			"CASO_CREATE",
 			"SESION_REGISTER", "CONVENIO_MANAGE", "COBRO_REGISTER", "CAJA_OPERATE", "REPORTE_READ"})
 	@DisplayName("Los permisos de fases futuras estan declarados y no los tiene NINGUN rol")
 	void los_permisos_de_fases_futuras_deniegan_para_todos(PermissionCode permiso) {
@@ -139,7 +146,7 @@ class RolePermissionsTest {
 	// =================================================================================
 
 	@Test
-	@DisplayName("Los permisos otorgables como grant son auditoria:read-clinica y paciente:manage")
+	@DisplayName("Los permisos otorgables como grant son los cuatro que la matriz declara")
 	void los_grants_declarados() {
 		// Cualquier otro codigo se rechaza con 400 en vez de escribir una fila que el evaluador
 		// nunca va a mirar.
@@ -148,9 +155,38 @@ class RolePermissionsTest {
 		// hasta AKINE-03.01. `paciente:manage` entra ahi porque la matriz §4 le dice al
 		// PROFESIONAL "Segun permiso": no lo tiene por base y se le concede por grant explicito.
 		// Sin esa entrada, esa celda de la matriz no tendria ninguna forma de cumplirse.
+		//
+		// `hc:read` y `hc:write` entran en AKINE-04.01, por las celdas "No por defecto" del
+		// ORG_ADMIN y "Segun rol clinico" del CONSULTORIO_ADMIN en las dos filas de Historia
+		// Clinica. La habilitacion profesional vigente que "Segun rol clinico" pide ademas no se
+		// evalua todavia: el grant es la mitad implementable.
 		assertThat(RolePermissions.otorgablesComoGrant())
 				.containsExactlyInAnyOrder(
-						PermissionCode.AUDITORIA_READ_CLINICA, PermissionCode.PACIENTE_MANAGE);
+						PermissionCode.AUDITORIA_READ_CLINICA,
+						PermissionCode.PACIENTE_MANAGE,
+						PermissionCode.HC_READ,
+						PermissionCode.HC_WRITE);
+	}
+
+	@Test
+	@DisplayName("hc:read y hc:write quedaron cableados como la matriz seccion 2 los da")
+	void los_permisos_clinicos_quedaron_cableados_en_04_01() {
+		assertThat(RolePermissions.baseScope(RoleCode.PROFESIONAL, PermissionCode.HC_READ))
+				.as("la matriz le dice 'Si': es quien atiende")
+				.contains(PermissionScope.CONSULTORIO);
+		assertThat(RolePermissions.baseScope(RoleCode.PROFESIONAL, PermissionCode.HC_WRITE))
+				.contains(PermissionScope.CONSULTORIO);
+		assertThat(RolePermissions.baseScope(RoleCode.PLATFORM_ADMIN, PermissionCode.HC_READ))
+				.as("'Restringido': el evaluador lo deniega siempre, y esta declarado igual")
+				.contains(PermissionScope.RESTRINGIDO);
+		assertThat(RolePermissions.baseScope(RoleCode.ADMINISTRATIVO, PermissionCode.HC_READ))
+				.as("su celda es 'Limitado' y no hay codigo de permiso que exprese ese recorte: "
+						+ "cerrado hasta que exista")
+				.isEmpty();
+		assertThat(RolePermissions.baseScope(RoleCode.PACIENTE, PermissionCode.HC_READ))
+				.as("'Propia autorizada': alcance OWN mas flag de organizacion, ninguno de los dos "
+						+ "implementado")
+				.isEmpty();
 	}
 
 	@Test

@@ -570,15 +570,18 @@ class PermissionEvaluatorServiceTest {
 		}
 
 		@Test
-		@DisplayName("Un PROFESIONAL ve las dos lecturas de su sede y nada mas")
+		@DisplayName("Un PROFESIONAL ve las lecturas de su sede y su historia clinica, nada mas")
 		void los_de_un_profesional() {
+			// `hc:read` y `hc:write` entraron en AKINE-04.01: la matriz seccion 2 le dice "Si" en
+			// las dos filas de Historia Clinica y es el unico rol al que se las dice.
 			sinRolDePlataforma();
 			memberships(Fixtures.membershipDeSede(CONSULTORIO_ID, RoleCode.PROFESIONAL));
 			given(grantRepository.findAllByMembershipIdAndActiveTrue(MEMBERSHIP_ID))
 					.willReturn(List.of());
 
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
-					.containsExactlyInAnyOrder("colaborador:read", "espacio:read");
+					.containsExactlyInAnyOrder(
+							"colaborador:read", "espacio:read", "hc:read", "hc:write");
 		}
 	}
 
