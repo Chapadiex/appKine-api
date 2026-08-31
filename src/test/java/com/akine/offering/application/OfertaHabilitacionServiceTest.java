@@ -46,6 +46,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 /**
  * Las reglas de la habilitacion de Ofertas, sin base de datos (AKINE-02.07).
@@ -122,7 +124,11 @@ class OfertaHabilitacionServiceTest {
 		given(consultorioDirectory.find(ORG, SEDE))
 				.willReturn(Optional.of(new ConsultorioSnapshot(SEDE, ORG, "Sede", ZONA, true)));
 		given(accountContextDirectory.hasActiveMembership(ACCOUNT_ID, ORG)).willReturn(true);
+		// Las dos: la lectura usa la primera y la configuracion la segunda, que ademas le fuerza
+		// el avance de version a la oferta.
 		given(ofertas.findByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE))
+				.willReturn(Optional.of(ofertaCapacidad(8)));
+		given(ofertas.findWithLockByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE))
 				.willReturn(Optional.of(ofertaCapacidad(8)));
 
 		given(membershipDirectory.find(ORG, MEMBERSHIP_A))
@@ -260,12 +266,39 @@ class OfertaHabilitacionServiceTest {
 	}
 
 	@Test
+	@DisplayName("configurar carga la oferta por el camino que le fuerza el avance de version, "
+			+ "que es lo unico que serializa a dos administradores")
+	void el_reemplazo_carga_la_oferta_forzando_el_incremento() {
+		// El test de arriba prueba que la COMPARACION funciona, no que la version se mueva. Y no
+		// se movia: las habilitaciones viven en otras tablas, un reemplazo no toca ninguna columna
+		// de `oferta`, y JPA no incrementa lo que nadie ensucio. Dos administradores leian los dos
+		// la version 0, los dos pasaban el control y el segundo borraba lo del primero, con 200.
+		//
+		// Que la version efectivamente avance lo decide Hibernate al cerrar la transaccion, y eso
+		// con mocks no se puede observar: lo verifica el test de integracion contra MySQL. Lo que
+		// SI se puede fijar aca es la costura que lo hace posible, o sea que el camino de
+		// escritura no vuelva a cargar por el metodo que no bloquea.
+		service.reemplazarProfesionales(actor(), ORG, SEDE, OFERTA_ID, Set.of(MEMBERSHIP_A), 0L);
+
+		then(ofertas).should().findWithLockByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE);
+		then(ofertas).should(never())
+				.findByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE);
+	}
+
+	@Test
+	@DisplayName("leer NO fuerza el avance de version: seria una escritura disfrazada de lectura")
+	void la_lectura_no_mueve_la_version() {
+		service.leer(actor(), ORG, SEDE, OFERTA_ID);
+
+		then(ofertas).should(never()).findWithLockByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE);
+	}
+
+	@Test
 	@DisplayName("no se puede configurar una oferta dada de baja")
 	void una_oferta_inactiva_no_se_configura() {
 		OfertaServicioConsultorio inactiva = ofertaCapacidad(8);
 		inactiva.deactivate(Instant.now(), "el centro dejo de prestarla");
-		given(ofertas.findByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE))
-				.willReturn(Optional.of(inactiva));
+		given(ofertas.findWithLockByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE)).willReturn(Optional.of(inactiva));
 
 		assertThatThrownBy(() -> service.reemplazarProfesionales(
 				actor(), ORG, SEDE, OFERTA_ID, Set.of(MEMBERSHIP_A), 0L))

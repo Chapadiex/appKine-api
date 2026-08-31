@@ -592,7 +592,13 @@ public class OfertaHabilitacionService {
 			throw new ConsultorioNoOperableException(sede.id());
 		}
 
-		OfertaServicioConsultorio oferta = cargar(organizationId, consultorioId, ofertaId);
+		// Por `findWithLockByIdAndOrganizationIdAndConsultorioId` y no por `cargar`: es lo que hace avanzar la version de la
+		// oferta al cerrar la transaccion. Sin ese avance, un reemplazo no ensucia ninguna columna
+		// de `oferta`, la version se queda quieta, y la comparacion de abajo nunca falla para el
+		// segundo administrador que guarda. Ver el javadoc del puerto.
+		OfertaServicioConsultorio oferta = ofertas
+				.findWithLockByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
+				.orElseThrow(() -> new OfertaNotAccessibleException(ofertaId));
 		if (!oferta.isOperable()) {
 			// Configurar quien presta una oferta dada de baja no tiene sentido y ademas
 			// reabriria por la ventana lo que la baja cerro por la puerta.

@@ -139,3 +139,23 @@ cobertura de **rama** del backend está en **78,03 %** (2135 de 2736) y el `pom.
 mientras la rama cayó nueve puntos desde el 87,42 % que declaraba el cierre de 01.02. Agregar el
 gate hoy rompe el build, así que exige primero un tramo de cobertura. Está anotado en el registro
 de cierre de 02.04 y en los dos `CLAUDE.md`.
+
+### Escenario de 02.07 — el incremento forzado de la versión de la oferta
+
+Este no se difiere por depender de otro módulo ni por pereza: **se difiere porque los mocks no
+pueden observarlo.** Que Hibernate suba la `version` al cerrar la transacción es comportamiento
+del proveedor de persistencia contra una base real, y un test con Mockito solo puede fijar la
+costura que lo habilita.
+
+| # | Escenario | Motivo y etapa destino |
+|---|---|---|
+| 20 | **Dos administradores configurando la misma oferta: el segundo en guardar recibe 409.** A y B leen la oferta en la misma versión; A reemplaza los profesionales; B guarda con la versión que leyó y **debe** chocar. Origen: AKINE-02.07, defecto encontrado el 30/08/2026 | **No corrido.** Exige MySQL real por Testcontainers y en esta máquina el motor de Docker no arranca sin elevación. Lo que sí está fijado en unitarias es que el camino de escritura carga la oferta por `findWithLockByIdAndOrganizationIdAndConsultorioId` —el método anotado con `OPTIMISTIC_FORCE_INCREMENT`— y que la lectura **no** lo usa. Destino: primera sesión con Docker disponible |
+
+**Por qué importa que este escenario existiera sin cubrir.** El test que había,
+`el_reemplazo_respeta_el_control_optimista`, pasa una versión desactualizada a mano y verifica que
+lance. Eso prueba que la **comparación** funciona; no prueba el escenario que su propio comentario
+describe, porque nunca simula dos guardados seguidos. Y en el escenario real la versión del segundo
+administrador **no estaba desactualizada**: un reemplazo de habilitaciones no toca ninguna columna
+de `oferta`, así que JPA no movía su `@Version` y el control no serializaba nada. Es la misma
+familia que las trampas de concurrencia ya documentadas: el test miraba el código de respuesta, no
+el escenario.

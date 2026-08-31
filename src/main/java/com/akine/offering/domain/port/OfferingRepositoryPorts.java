@@ -145,6 +145,28 @@ public final class OfferingRepositoryPorts {
 		Optional<OfertaServicioConsultorio> findByIdAndOrganizationIdAndConsultorioId(
 				Long id, Long organizationId, Long consultorioId);
 
+		/**
+		 * La misma oferta, pero cargada para CONFIGURARLA, forzando el avance de su version.
+		 *
+		 * <p>Existe por un agujero real y no por simetria. Las habilitaciones viven en sus
+		 * propias tablas y un reemplazo no toca ninguna columna de {@code oferta}, asi que JPA
+		 * no movia su {@code @Version}: dos administradores que abrian la misma oferta leian los
+		 * dos la misma version, los dos pasaban el control optimista y <b>el segundo en guardar
+		 * borraba en silencio lo que habia agregado el primero</b> — exactamente el escenario que
+		 * {@code expectedVersion} dice prevenir. Con el incremento forzado, el segundo recibe el
+		 * 409 que corresponde.
+		 *
+		 * <p>El incremento ocurre al cerrar la transaccion, no al leer, asi que la comparacion
+		 * contra {@code expectedVersion} sigue viendo la version previa. Es lo que se quiere: el
+		 * que llega con la version vigente guarda, y el que llega con una vieja choca.
+		 *
+		 * <p><b>Solo para el camino de escritura.</b> Las lecturas usan
+		 * {@link #findByIdAndOrganizationIdAndConsultorioId}: hacer avanzar la version por
+		 * consultar seria una escritura disfrazada de lectura.
+		 */
+		Optional<OfertaServicioConsultorio> findWithLockByIdAndOrganizationIdAndConsultorioId(
+				Long id, Long organizationId, Long consultorioId);
+
 		/** Todas las ofertas de la sede, activas e historicas, ordenadas por nombre comercial. */
 		List<OfertaServicioConsultorio> findAllByOrganizationIdAndConsultorioIdOrderByNombreComercialAsc(
 				Long organizationId, Long consultorioId);
