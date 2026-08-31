@@ -184,6 +184,16 @@ public enum ProblemType {
 	/** La oferta ya estaba dada de baja. */
 	OFERTA_ALREADY_INACTIVE("oferta-already-inactive"),
 	/** La sede existe y es accesible, pero su estado no admite operar sobre ella. */
+
+	/**
+	 * La oferta existe pero no puede agendar en ningun dia de la ventana pedida (M12).
+	 *
+	 * <p><b>409 y no 404 a proposito.</b> La oferta existe y quien pregunta la esta viendo en la
+	 * lista; un 404 mandaria a la pantalla a decir "no encontrada" sobre algo que el usuario tiene
+	 * delante. El motivo —de baja, o vigencia fuera de la ventana— viaja en el {@code detail} para
+	 * que la pantalla pueda ofrecer la accion correcta: reactivar la oferta, o mover la fecha.
+	 */
+	OFERTA_NO_AGENDABLE("oferta-no-agendable"),
 	CONSULTORIO_NO_OPERABLE("consultorio-no-operable"),
 
 	// --- Personas y perfiles de paciente (M07, AKINE-03.01) ---------------------------------

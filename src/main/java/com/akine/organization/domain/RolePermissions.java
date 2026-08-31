@@ -142,7 +142,11 @@ public final class RolePermissions {
 				// es exactamente lo que §7 protege, y la matriz ya lo habia decidido asi. El
 				// llamador deja `SUPPORT_ACCESS_USED` cuando la decision vuelve con
 				// viaSupportAccess — ver `person.application.PersonaService`.
-				PermissionCode.PACIENTE_MANAGE, PermissionScope.SOPORTE));
+				PermissionCode.PACIENTE_MANAGE, PermissionScope.SOPORTE,
+				// `turno:read` con SOPORTE y no GLOBAL: ver PermissionCode#TURNO_READ. Con este
+				// par la tabla de PLATFORM_ADMIN llega a DIEZ, que es el maximo de Map.of; el
+				// proximo par que se le agregue exige Map.ofEntries o no compila.
+				PermissionCode.TURNO_READ, PermissionScope.SOPORTE));
 
 		// ORG_ADMIN — "tenant:manage" NO esta: la matriz §4 acota su "Limitado" a editar su
 		// organizacion y ver su suscripcion, y deja el cambio de plan y la suspension para
@@ -154,7 +158,8 @@ public final class RolePermissions {
 				PermissionCode.COLABORADOR_MANAGE, PermissionScope.ORGANIZACION,
 				PermissionCode.COLABORADOR_READ, PermissionScope.ORGANIZACION,
 				PermissionCode.AUDITORIA_READ, PermissionScope.ORGANIZACION,
-				PermissionCode.PACIENTE_MANAGE, PermissionScope.ORGANIZACION));
+				PermissionCode.PACIENTE_MANAGE, PermissionScope.ORGANIZACION,
+				PermissionCode.TURNO_READ, PermissionScope.ORGANIZACION));
 
 		// CONSULTORIO_ADMIN — todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
 		tabla.put(RoleCode.CONSULTORIO_ADMIN, Map.of(
@@ -163,7 +168,8 @@ public final class RolePermissions {
 				PermissionCode.COLABORADOR_MANAGE, PermissionScope.CONSULTORIO,
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.AUDITORIA_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO));
+				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO,
+				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO));
 
 		// PROFESIONAL y ADMINISTRATIVO — ven la lista de colaboradores de su sede y, desde la
 		// aprobacion del 25/08/2026, el catalogo fisico de esa misma sede: sin `espacio:read` un
@@ -177,11 +183,13 @@ public final class RolePermissions {
 		// `otorgablesComoGrant()`, que hasta AKINE-03.01 tenia un solo elemento.
 		tabla.put(RoleCode.PROFESIONAL, Map.of(
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO));
+				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
+				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO));
 		tabla.put(RoleCode.ADMINISTRATIVO, Map.of(
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO));
+				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO,
+				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO));
 
 		// PACIENTE — ninguna fila de la matriz §6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.

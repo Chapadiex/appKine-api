@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.13.0
+  version: 0.14.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -41,6 +41,9 @@ tags:
   name: Consultorios
 - description: "Administracion de la plataforma: acceso de soporte y roles globales"
   name: Plataforma
+- description: "Turnos disponibles calculados a partir de disponibilidad, oferta y\
+    \ habilitaciones (M12)"
+  name: Agenda
 - description: Padron de personas y activacion del perfil clinico (M07)
   name: Personas
 - description: "Contrato tecnico: salud y versionado"
@@ -2090,6 +2093,104 @@ paths:
       summary: Editar una oferta de la sede
       tags:
       - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/agenda:
+    get:
+      description: |-
+        Devuelve los slots libres de una oferta entre dos fechas, dia por dia.
+
+        **Los slots se calculan al leer y no se persisten.** Un slot devuelto no es una reserva ni garantiza que se pueda reservar: entre esta lectura y la escritura puede entrar otro. La exclusion real es de la operacion de reserva.
+
+        **Ningun dia de la ventana se omite.** El dia sin turnos viaja con el motivo que lo explica, porque un dia en blanco sin explicacion es indistinguible de un error.
+
+        El extremo `hasta` es **exclusivo**, y la ventana no puede superar los 62 dias.
+      operationId: buscar
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Primera fecha incluida, local de la sede"
+        example: 2026-09-15
+        in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Fin de la ventana, **EXCLUSIVO**, local de la sede"
+        example: 2026-09-22
+        in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: Para acotar a un solo profesional habilitado. Sin este parametro
+          se devuelven los slots de todos.
+        example: 31
+        in: query
+        name: profesionalId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agenda"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Agenda"
+          description: Agenda calculada
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ventana invertida, vacia o mas ancha que el maximo"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `turno:read` en esa sede, o sin contexto de trabajo activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o la oferta no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta esta de baja, o su vigencia no toca la ventana pedida"
+      summary: Buscar turnos disponibles
+      tags:
+      - Agenda
   /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/habilitaciones:
     get:
       description: |-
@@ -5878,6 +5979,42 @@ components:
           minLength: 0
       required:
       - token
+    Agenda:
+      type: object
+      description: "Turnos disponibles de una oferta en una ventana de fechas. Los\
+        \ slots se calculan al leer y no se persisten: un slot devuelto no es una\
+        \ reserva ni la garantiza."
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede de la oferta
+          example: 7
+        dias:
+          type: array
+          description: "Una entrada por cada fecha de la ventana, en orden ascendente"
+          items:
+            $ref: "#/components/schemas/DiaDeAgenda"
+        duracionMinutos:
+          type: integer
+          format: int32
+          description: "Duracion de cada turno, en minutos"
+          example: 45
+        nombreComercial:
+          type: string
+          description: Nombre comercial de la oferta
+          example: Kinesiologia deportiva
+        ofertaId:
+          type: integer
+          format: int64
+          description: Oferta consultada
+          example: 42
+        timezone:
+          type: string
+          description: Zona horaria de la sede con la que se convirtieron los instantes.
+            Viaja para que la pantalla pueda rotularla y para que un error de huso
+            se vea en la respuesta en vez de deducirse de horarios corridos.
+          example: America/Argentina/Cordoba
     AssignGrantRequest:
       type: object
       description: Permiso adicional a otorgar sobre un vinculo
@@ -7291,6 +7428,36 @@ components:
           type: string
           description: "Que queda pendiente, en plural"
           example: turnos
+    DiaDeAgenda:
+      type: object
+      description: "Un dia resuelto: o tiene slots, o tiene motivo"
+      properties:
+        fecha:
+          type: string
+          format: date
+          description: Fecha local de la sede
+          example: 2026-09-15
+        motivoSinSlots:
+          type: string
+          description: "Por que el dia no tiene ningun slot. Ausente si el dia SI\
+            \ tiene slots. Nunca falta cuando la lista esta vacia: un dia en blanco\
+            \ sin explicacion es indistinguible de un error del sistema."
+          enum:
+          - FERIADO
+          - CIERRE
+          - VINCULO
+          - SIN_HORARIO
+          - OFERTA_NO_VIGENTE
+          - SIN_PROFESIONAL
+          - SIN_ESPACIO
+          - FRANJA_MAS_CORTA_QUE_LA_OFERTA
+          - COMPLETO
+          example: FERIADO
+        slots:
+          type: array
+          description: "Slots del dia, ordenados por instante de inicio"
+          items:
+            $ref: "#/components/schemas/SlotDisponible"
     DiaEfectivoResponse:
       type: object
       description: "Un dia de la ventana, con sus franjas y con la razon si quedo\
@@ -8668,6 +8835,7 @@ components:
       - https://akine.app/problems/oferta-nombre-comercial-taken
       - https://akine.app/problems/oferta-inactiva
       - https://akine.app/problems/oferta-already-inactive
+      - https://akine.app/problems/oferta-no-agendable
       - https://akine.app/problems/consultorio-no-operable
       - https://akine.app/problems/persona-documento-taken
       - https://akine.app/problems/persona-posible-duplicado
@@ -8934,6 +9102,46 @@ components:
           description: Version para el control optimista. Se manda de vuelta en expectedVersion
             al editar o dar de baja
           example: 0
+    SlotDisponible:
+      type: object
+      description: Un hueco concreto y reservable
+      properties:
+        cupoLibre:
+          type: integer
+          format: int32
+          description: "Cuantas quedan libres. Un slot completo viaja igual, con cero:\
+            \ la pantalla necesita poder mostrar 'completo' en vez de un hueco en\
+            \ la grilla, que el usuario leeria como 'no atiende a esa hora'."
+          example: 1
+        cupoTotal:
+          type: integer
+          format: int32
+          description: "Cuantas reservas admite el turno. 1 individual, mas grupal"
+          example: 1
+        desde:
+          type: string
+          format: date-time
+          description: "Instante de inicio, UTC"
+          example: 2026-09-15T12:00:00Z
+        espacioId:
+          type: integer
+          format: int64
+          description: "Espacio asignado. **Siempre ausente por ahora**: el motor\
+            \ verifica que exista al menos un espacio habilitado y en servicio, pero\
+            \ no elige cual. Elegirlo es parte de la reserva y tiene que ocurrir bajo\
+            \ el mismo lock que la crea, o dos busquedas concurrentes prometen el\
+            \ mismo box."
+        hasta:
+          type: string
+          format: date-time
+          description: "Instante de fin, UTC y EXCLUSIVO"
+          example: 2026-09-15T12:45:00Z
+        profesionalId:
+          type: integer
+          format: int64
+          description: Membership del profesional que atiende. Ausente si la oferta
+            no requiere profesional.
+          example: 31
     SubscriptionResponse:
       type: object
       description: "Suscripcion del tenant con su plan, estado y consumo de limites"

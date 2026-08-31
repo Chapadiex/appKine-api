@@ -223,7 +223,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				tenant.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
 				.containsExactlyInAnyOrder("tenant:read", "consultorio:manage", "espacio:read",
 						"colaborador:manage", "colaborador:read", "auditoria:read",
-						"paciente:manage");
+						"paciente:manage", "turno:read");
 	}
 
 	@Test
@@ -239,7 +239,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 
 		assertThat(permissionEvaluator.effectivePermissions(
 				companiero.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
-				.containsExactlyInAnyOrder("colaborador:read", "espacio:read");
+				.containsExactlyInAnyOrder("colaborador:read", "espacio:read", "turno:read");
 
 		membershipService.revoke(actorDe(tenant), tenant.organizationId(), membership, MOTIVO);
 

@@ -190,8 +190,43 @@ public class DisponibilidadEfectivaService {
 
 		VentanaConsultable.exigirValida(desde, hasta);
 
-		ZoneId zona = ZonaSede.de(sede);
+		return sinAutorizar(organizationId, sede, membershipId, desde, hasta);
+	}
 
+	/**
+	 * El mismo calculo que {@link #efectiva}, <b>sin autorizar y sin validar la ventana</b>.
+	 *
+	 * <p>Existe para {@code resource.spi.DisponibilidadDirectory}, que es la costura por la que el
+	 * motor de agenda (M12) lee disponibilidad. No se pudo reusar {@link #efectiva} porque el
+	 * permiso que exige es el equivocado: {@code colaborador:read} es de quien administra al
+	 * personal, y quien busca un turno contra una oferta no lo tiene ni deberia tenerlo.
+	 *
+	 * <p><b>El llamador asume tres responsabilidades</b>, y las tres se pierden en silencio si se
+	 * olvidan —ninguna hace fallar nada—:
+	 * <ol>
+	 *   <li><b>Pertenencia:</b> {@code sede} tiene que venir de {@code ConsultorioDirectory} con el
+	 *       {@code organizationId} del contexto. Un snapshot de otra organizacion produce
+	 *       disponibilidad legitima de un tenant ajeno.</li>
+	 *   <li><b>Permiso:</b> el suyo, no el de esta clase.</li>
+	 *   <li><b>Ventana acotada:</b> {@link VentanaConsultable} no se aplica aca. Una ventana de
+	 *       cinco anios se calcula entera y el motor de agenda tiene su propio tope, mas chico.</li>
+	 * </ol>
+	 *
+	 * <p>No se duplica el calculo del lado de {@code scheduling} justamente porque las cinco
+	 * responsabilidades que documenta la cabecera de esta clase —huso, fin de dia, filtro por
+	 * sede, vigencia dia por dia y nombre del feriado— son todas invisibles cuando se omiten. Una
+	 * segunda copia deriva de esta sin que ningun test lo note.
+	 */
+	@Transactional(readOnly = true)
+	public DisponibilidadEfectivaView sinAutorizar(
+			long organizationId,
+			ConsultorioSnapshot sede,
+			long membershipId,
+			LocalDate desde,
+			LocalDate hasta) {
+
+		long consultorioId = sede.id();
+		ZoneId zona = ZonaSede.de(sede);
 		// La politica de la sede se lee UNA sola vez: de ella salen el pais con el que se buscan
 		// los feriados y la decision de si cierran. Leerla dos veces —una por dato— serian dos
 		// consultas que ademas podrian ver versiones distintas de la misma fila.

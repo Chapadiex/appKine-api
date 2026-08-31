@@ -74,6 +74,16 @@ public abstract class Habilitacion extends MarcaTemporal {
 	@Column(name = "version", nullable = false)
 	private long version;
 
+	/**
+	 * Id de la fila. Lo declara cada subclase porque la {@code @Id} vive alli, no aca.
+	 *
+	 * <p>Se declara abstracto para que {@code offering.spi.OfertaDirectory} pueda proyectar las dos
+	 * tablas de habilitacion con un solo metodo. Sin esto, la unica alternativa es duplicar la
+	 * proyeccion —y con ella la logica de vigencia— una vez por tabla, que es exactamente el par de
+	 * lugares donde el mismo bug de bordes se arregla en uno solo.
+	 */
+	public abstract Long getId();
+
 	protected Habilitacion() {
 		// Requerido por JPA.
 	}

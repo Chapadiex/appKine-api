@@ -507,12 +507,14 @@ class PermissionEvaluatorServiceTest {
 
 			// `paciente:manage` se sumo en AKINE-03.01, cuando nacio el modulo que lo evalua: la
 			// matriz §4 se lo da al ORG_ADMIN con alcance organizacion y hasta esa etapa el codigo
-			// existia sin que lo tuviera nadie.
+			// existia sin que lo tuviera nadie. `turno:read` se sumo en AKINE-05.01 por el mismo
+			// motivo: la matriz literal de §32 no tiene fila de turnos, y la enmienda §13 le da
+			// alcance ORGANIZACION al ORG_ADMIN.
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 					.containsExactlyInAnyOrder(
 							"tenant:read", "consultorio:manage", "espacio:read",
 							"colaborador:manage", "colaborador:read", "auditoria:read",
-							"paciente:manage");
+							"paciente:manage", "turno:read");
 		}
 
 		@Test
@@ -578,7 +580,7 @@ class PermissionEvaluatorServiceTest {
 					.willReturn(List.of());
 
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
-					.containsExactlyInAnyOrder("colaborador:read", "espacio:read");
+					.containsExactlyInAnyOrder("colaborador:read", "espacio:read", "turno:read");
 		}
 	}
 

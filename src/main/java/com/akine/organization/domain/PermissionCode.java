@@ -71,6 +71,40 @@ public enum PermissionCode {
 	 */
 	PACIENTE_MANAGE("paciente:manage"),
 
+	/**
+	 * Ver la agenda y buscar turnos disponibles. F5.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-05.01</b>, la etapa que crea el motor que lo evalua.
+	 *
+	 * <p><b>La matriz literal de §32 no tiene fila de turnos</b>, asi que el alcance no sale de
+	 * ella sino de las filas vecinas, y queda declarado como enmienda §13 pendiente de aprobacion:
+	 * <ul>
+	 *   <li>{@code PLATFORM_ADMIN} — SOPORTE, no GLOBAL. Hoy el buscador de slots no devuelve un
+	 *       solo dato de paciente, pero la misma agenda con 05.02 muestra quien tiene cada turno,
+	 *       y eso es exactamente lo que §7 protege. Es el mismo criterio que
+	 *       {@link #PACIENTE_MANAGE}.</li>
+	 *   <li>{@code ADMINISTRATIVO} — CONSULTORIO. Dar turnos es literalmente su trabajo; la fila
+	 *       "Registrar Cobro" le dice "Si" y no habria forma de cobrar un turno que no puede ver.</li>
+	 *   <li>{@code PROFESIONAL} — CONSULTORIO, y sin grant. A diferencia de {@code paciente:manage},
+	 *       aca no hay una celda "Segun permiso" que respetar: un profesional que no puede ver su
+	 *       propia agenda no puede trabajar.</li>
+	 *   <li>{@code PACIENTE} — nada. La vista publica del buscador que le corresponderia esta
+	 *       fuera del alcance de DP-10, y darle el permiso sin ella solo abriria la agenda interna.</li>
+	 * </ul>
+	 */
+	TURNO_READ("turno:read"),
+
+	/**
+	 * Reservar, reprogramar y cancelar turnos. F5.
+	 *
+	 * <p><b>Sin asignacion base todavia: deniega.</b> La activa AKINE-05.02, que es la etapa que
+	 * crea la escritura. Declararlo aca y no alli es a proposito: el codigo tiene que existir
+	 * antes de que ningun endpoint lo nombre, y separar la declaracion de la asignacion evita
+	 * repetir lo que paso con {@code paciente:manage}, que vivio en el catalogo desde el dia uno
+	 * sin que lo tuviera nadie y sin que ninguna etapa declarara que eso era intencional.
+	 */
+	TURNO_MANAGE("turno:manage"),
+
 	/** Ver Historia Clinica. F4. Sin asignacion base todavia: deniega. */
 	HC_READ("hc:read"),
 
