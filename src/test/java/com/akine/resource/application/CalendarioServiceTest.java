@@ -100,8 +100,11 @@ class CalendarioServiceTest {
 
 	@BeforeEach
 	void setUp() {
+		// El iniciador real sobre el doble en memoria: su REQUIRES_NEW es un no-op sin proxy de
+		// Spring, y lo que estos tests necesitan es que la fila quede creada de verdad.
 		service = new CalendarioService(
-				calendarios, feriados, consultorioDirectory, permissionGuard, auditTrail);
+				calendarios, new CalendarioSedeIniciador(calendarios), feriados,
+				consultorioDirectory, permissionGuard, auditTrail);
 		efectiva = new DisponibilidadEfectivaService(
 				bloques, excepciones, feriados, calendarios,
 				consultorioDirectory, membershipDirectory, permissionGuard);
@@ -279,6 +282,14 @@ class CalendarioServiceTest {
 				filas.add(calendario);
 			}
 			return calendario;
+		}
+
+		/** Equivalente en memoria del {@code INSERT ... ON DUPLICATE KEY UPDATE}: no lanza nunca. */
+		@Override
+		public void crearSiFalta(long organizationId, long consultorioId) {
+			if (findByScope(organizationId, consultorioId).isEmpty()) {
+				save(new CalendarioSede(organizationId, consultorioId));
+			}
 		}
 
 		List<CalendarioSede> filas() {

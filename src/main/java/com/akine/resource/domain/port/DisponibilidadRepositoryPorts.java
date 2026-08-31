@@ -142,6 +142,16 @@ public final class DisponibilidadRepositoryPorts {
 		 */
 		Optional<CalendarioSede> lockByScope(Long organizationId, Long consultorioId);
 
+		/**
+		 * Crea la fila de la sede si todavia no existe, <b>sin lanzar nunca</b> y sin leer antes.
+		 *
+		 * <p>Es lo que hace posible tomar {@link #lockByScope} sobre una fila que siempre existe.
+		 * La crea {@code CalendarioSedeIniciador} en su propia transaccion; el motivo por el que
+		 * no puede crearse dentro de la transaccion que la va a bloquear —deadlock, no violacion
+		 * de unique— esta en el javadoc de esa clase.
+		 */
+		void crearSiFalta(long organizationId, long consultorioId);
+
 		CalendarioSede save(CalendarioSede calendario);
 	}
 }

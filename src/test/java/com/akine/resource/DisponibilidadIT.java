@@ -226,6 +226,88 @@ class DisponibilidadIT {
 				.hasSize(1);
 	}
 
+	/**
+	 * Lo mismo, pero siendo las DOS las PRIMERAS escrituras de la sede: la fila de
+	 * {@code consultorio_calendario} no existe cuando arranca la carrera.
+	 *
+	 * <p><b>Es el camino que el test de arriba nunca ejercita</b>, porque el crea la fila a
+	 * proposito antes de empezar. Mientras la fila se creaba perezosamente DENTRO de la
+	 * transaccion de la escritura —bloquear, ver el vacio, insertar, volver a bloquear— las dos
+	 * transacciones leian "no existe" y las dos intentaban el mismo INSERT. El javadoc de
+	 * {@code BloqueoDeSede} lo llamaba una ventana angosta cuyo "remedio es un reintento del
+	 * cliente": el remedio de un 500 en un pedido legitimo.
+	 *
+	 * <p>Este test <b>tiene que poder fallar y se verifico que falla</b>. Con la version anterior
+	 * de {@code BloqueoDeSede} el perdedor murio con
+	 * {@code DataIntegrityViolationException: Duplicate entry '1-1' for key
+	 * uk_consultorio_calendario_sede} y esta asercion quedo en rojo. El desenlace no es
+	 * determinista —el mismo patron en {@code scheduling} produjo un deadlock, con
+	 * {@code CannotAcquireLockException}— y por eso la asercion mira que el perdedor reciba
+	 * EXACTAMENTE {@code BloqueSolapadoException} en vez de enumerar las formas de fallar.
+	 *
+	 * <p><b>Y de paso responde la otra pregunta.</b> Un lock no alcanza si la transaccion ya fijo
+	 * su foto de lectura antes de tomarlo: con {@code REPEATABLE READ} —el default de MySQL—
+	 * InnoDB congela el snapshot en la PRIMERA lectura consistente, y aca hay tres antes del lock
+	 * (resolver la sede, evaluar el permiso, resolver la membership). El que espera el lock
+	 * seguiria leyendo la sede sin bloques y las dos altas entrarian.
+	 *
+	 * <p><b>No pasa, y se comprobo por que no pasa</b>: las tres mutaciones de M05 nacieron con
+	 * {@code Isolation.READ_COMMITTED} en 02.04. Sacandoselo a {@code DisponibilidadService#crear}
+	 * este test y su hermano de arriba fallan los dos con "OK bloque N, OK bloque M" —los dos
+	 * bloques solapados entran, que es el sintoma exacto del defecto—. O sea: el nivel de
+	 * aislamiento es la pieza que sostiene el lock, no un adorno.
+	 */
+	@Test
+	@DisplayName("las dos PRIMERAS altas de la sede tampoco pasan las dos: una guarda y la otra recibe 409")
+	void las_dos_primeras_altas_de_la_sede_no_pasan_las_dos() {
+		Fixture fixture = crearFixture();
+		OperatingActor admin = fixture.admin();
+
+		// A DIFERENCIA del test de arriba: NO se crea el calendario. La carrera arranca con la
+		// fila de serializacion ausente, que es el estado real de una sede recien dada de alta.
+		assertThat(contar("""
+				SELECT COUNT(*) FROM consultorio_calendario
+				 WHERE organization_id = ? AND consultorio_id = ?
+				""", fixture.organizationId(), fixture.consultorioId()))
+				.as("el escenario pierde todo su valor si algo creo la fila antes")
+				.isZero();
+
+		LocalDate vigencia = LocalDate.of(2026, 9, 1);
+		Callable<BloqueView> primera = () -> disponibilidadService.crear(
+				admin, fixture.consultorioId(), fixture.profesionalMembershipId(),
+				new BloqueAltaCommand(4, LocalTime.of(9, 0), LocalTime.of(13, 0), vigencia, null));
+		Callable<BloqueView> segunda = () -> disponibilidadService.crear(
+				admin, fixture.consultorioId(), fixture.profesionalMembershipId(),
+				new BloqueAltaCommand(4, LocalTime.of(11, 0), LocalTime.of(15, 0), vigencia, null));
+
+		List<Desenlace<BloqueView>> desenlaces = enParalelo(List.of(primera, segunda));
+
+		assertThat(desenlaces.stream().filter(d -> !d.fallo()).count())
+				.as("exactamente un alta entra. Desenlaces: %s", describir(desenlaces))
+				.isEqualTo(1);
+		assertThat(desenlaces.stream()
+				.filter(Desenlace::fallo)
+				.filter(d -> causaEs(d.error(), BloqueSolapadoException.class))
+				.count())
+				.as("la otra recibe BloqueSolapadoException, y NO un deadlock ni un "
+						+ "UnexpectedRollbackException por la fila de calendario. Desenlaces: %s",
+						describir(desenlaces))
+				.isEqualTo(1);
+
+		assertThat(bloques.findActivosDe(
+				fixture.organizationId(), fixture.consultorioId(), fixture.profesionalMembershipId()))
+				.as("NUNCA dos bloques solapados")
+				.hasSize(1);
+
+		assertThat(contar("""
+				SELECT COUNT(*) FROM consultorio_calendario
+				 WHERE organization_id = ? AND consultorio_id = ?
+				""", fixture.organizationId(), fixture.consultorioId()))
+				.as("y UNA sola fila de calendario: el INSERT ... ON DUPLICATE KEY resuelve la "
+						+ "carrera sin duplicar y sin lanzar")
+				.isEqualTo(1);
+	}
+
 	// =================================================================================
 	// RULING: el fin de dia tiene que sobrevivir el viaje de ida Y de vuelta
 	// =================================================================================
