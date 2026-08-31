@@ -1,0 +1,213 @@
+package com.akine.encounter.application;
+
+import com.akine.clinical.spi.HistoriaClinicaDirectory;
+import com.akine.clinical.spi.HistoriaClinicaSnapshot;
+import com.akine.encounter.domain.Sesion;
+import com.akine.encounter.domain.exception.SesionAjenaException;
+import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
+import com.akine.encounter.domain.port.SesionRepositoryPort;
+import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioMembershipSnapshot;
+import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionGuard;
+import com.akine.scheduling.spi.TurnoDirectory;
+import com.akine.scheduling.spi.TurnoSnapshot;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
+/**
+ * Las cuatro reglas de la atencion, y nada mas.
+ *
+ * <p>Sin tests de codigos HTTP, de validacion de forma ni del comportamiento de Spring: eso lo
+ * garantiza el framework y probarlo agrega tests que hay que mantener sin comprar nada.
+ */
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+@DisplayName("SesionService")
+class SesionServiceTest {
+
+	private static final long ORG_ID = 1L;
+	private static final long CONSULTORIO_ID = 7L;
+	private static final long TURNO_ID = 301L;
+	private static final long OFERTA_ID = 42L;
+	private static final long PERSONA_ID = 128L;
+	private static final long HISTORIA_ID = 88L;
+
+	private static final long CUENTA_PROPIA = 99L;
+	private static final long MEMBERSHIP_PROPIA = 31L;
+	private static final long MEMBERSHIP_AJENA = 32L;
+
+	@Mock private SesionRepositoryPort sesiones;
+	@Mock private TurnoDirectory turnos;
+	@Mock private HistoriaClinicaDirectory historias;
+	@Mock private ConsultorioDirectory consultorios;
+	@Mock private ConsultorioMembershipDirectory memberships;
+	@Mock private PermissionGuard permissionGuard;
+
+	private SesionService service;
+
+	private final OperatingActor actor =
+			new OperatingActor(CUENTA_PROPIA, false, ORG_ID, CONSULTORIO_ID);
+
+	@BeforeEach
+	void setUp() {
+		service = new SesionService(
+				sesiones, turnos, historias, consultorios, memberships, permissionGuard);
+
+		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
+				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
+		given(memberships.findByAccount(ORG_ID, CUENTA_PROPIA)).willReturn(List.of(
+				new ConsultorioMembershipSnapshot(MEMBERSHIP_PROPIA, CUENTA_PROPIA, ORG_ID,
+						CONSULTORIO_ID, "PROFESIONAL", "ACTIVA", Instant.EPOCH, null, true, true)));
+		given(historias.asegurar(anyLong(), anyLong(), anyLong())).willReturn(
+				new HistoriaClinicaSnapshot(HISTORIA_ID, ORG_ID, PERSONA_ID, Instant.EPOCH, true, 0));
+		// JPA asigna el id al persistir; el doble tiene que hacer lo mismo o el fixture
+		// representaria una sesion guardada sin id, que en produccion no ocurre.
+		given(sesiones.save(any())).willAnswer(invocacion -> {
+			Sesion guardada = invocacion.getArgument(0);
+			if (guardada.getId() == null) {
+				ReflectionTestUtils.setField(guardada, "id", 1L);
+			}
+			return guardada;
+		});
+	}
+
+	private static TurnoSnapshot turno(Long profesionalId, boolean vivo) {
+		return new TurnoSnapshot(TURNO_ID, ORG_ID, CONSULTORIO_ID, OFERTA_ID, PERSONA_ID,
+				profesionalId, null, Instant.EPOCH, Instant.EPOCH.plusSeconds(3600),
+				"CONFIRMADO", vivo);
+	}
+
+	/**
+	 * Una sesion como la devuelve la base: CON id.
+	 *
+	 * <p>El id se pone por reflexion porque la entidad no lo expone —lo asigna JPA al persistir— y
+	 * {@code SesionView} lo desempaqueta a un {@code long}. Sin esto el fixture representaria un
+	 * estado que en produccion no existe: una sesion guardada sin id.
+	 */
+	private static Sesion sesionExistente(long profesionalMembershipId) {
+		Sesion sesion = new Sesion(ORG_ID, CONSULTORIO_ID, HISTORIA_ID, TURNO_ID, OFERTA_ID,
+				profesionalMembershipId, Instant.EPOCH, CUENTA_PROPIA);
+		ReflectionTestUtils.setField(sesion, "id", 1L);
+		return sesion;
+	}
+
+	@Test
+	@DisplayName("El doble inicio devuelve la sesion que ya existe, no una segunda ni un 409")
+	void doble_inicio_es_idempotente() {
+		// RN-M14-001: un turno produce como mucho una sesion. Apretar dos veces o recargar la
+		// pantalla es el caso normal, no el raro, y un 409 obligaria a la pantalla a distinguir
+		// dos situaciones que para el usuario son la misma.
+		given(sesiones.findVivaPorTurno(ORG_ID, TURNO_ID))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		SesionView vista = service.iniciar(actor, CONSULTORIO_ID, TURNO_ID);
+
+		assertThat(vista.turnoId()).isEqualTo(TURNO_ID);
+		verify(sesiones, never()).save(any());
+		// Y no toca la Historia Clinica: `asegurar` es idempotente pero llamarla igual dejaria un
+		// evento de acceso clinico por cada doble click.
+		verify(historias, never()).asegurar(anyLong(), anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("Un turno de otro profesional no se puede atender")
+	void turno_de_otro_profesional() {
+		// Dejar que otro abra la sesion de un turno ajeno rompe la propiedad ANTES de que la
+		// sesion exista, y ahi el control de Sesion#exigirPropiedadDe ya no puede salvarla:
+		// quedaria registrada a nombre de quien la abrio.
+		given(sesiones.findVivaPorTurno(ORG_ID, TURNO_ID)).willReturn(Optional.empty());
+		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID))
+				.willReturn(Optional.of(turno(MEMBERSHIP_AJENA, true)));
+
+		assertThatThrownBy(() -> service.iniciar(actor, CONSULTORIO_ID, TURNO_ID))
+				.isInstanceOf(TurnoNoAtendibleException.class);
+	}
+
+	@Test
+	@DisplayName("Un turno sin profesional asignado lo atiende quien inicia")
+	void turno_sin_profesional() {
+		// Una oferta que no requiere profesional produce turnos sin uno —M27 lo permite— pero una
+		// ATENCION siempre la da alguien.
+		given(sesiones.findVivaPorTurno(ORG_ID, TURNO_ID)).willReturn(Optional.empty());
+		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID))
+				.willReturn(Optional.of(turno(null, true)));
+
+		assertThat(service.iniciar(actor, CONSULTORIO_ID, TURNO_ID).profesionalId())
+				.isEqualTo(MEMBERSHIP_PROPIA);
+	}
+
+	@Test
+	@DisplayName("Un turno dado de baja no habilita atencion")
+	void turno_dado_de_baja() {
+		given(sesiones.findVivaPorTurno(ORG_ID, TURNO_ID)).willReturn(Optional.empty());
+		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID))
+				.willReturn(Optional.of(turno(MEMBERSHIP_PROPIA, false)));
+
+		assertThatThrownBy(() -> service.iniciar(actor, CONSULTORIO_ID, TURNO_ID))
+				.isInstanceOf(TurnoNoAtendibleException.class);
+	}
+
+	@Test
+	@DisplayName("Nadie guarda en la sesion de otro profesional, aunque tenga el permiso")
+	void no_se_edita_la_sesion_ajena() {
+		// Es una regla de PROPIEDAD, no de autorizacion: los dos profesionales de la sede tienen
+		// el mismo `sesion:register`. Por eso vive en la entidad y no en el evaluador, y por eso
+		// el rechazo es 409 y no 403.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_AJENA)));
+
+		assertThatThrownBy(() ->
+				service.guardarBorrador(actor, CONSULTORIO_ID, 1L, "{}", 0L))
+				.isInstanceOf(SesionAjenaException.class);
+	}
+
+	@Test
+	@DisplayName("Una version vieja no pisa lo que otro guardo")
+	void el_autosave_no_pisa() {
+		// El caso real: dos pestanas del mismo profesional. Sin este control la segunda pisa a la
+		// primera en silencio y el profesional pierde lo que escribio sin enterarse.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		assertThatThrownBy(() ->
+				service.guardarBorrador(actor, CONSULTORIO_ID, 1L, "{}", 7L))
+				.isInstanceOf(OptimisticLockingFailureException.class);
+
+		verify(sesiones, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("Con la version correcta el borrador se guarda")
+	void el_autosave_guarda() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		SesionView vista = service.guardarBorrador(
+				actor, CONSULTORIO_ID, 1L, "{\"motivoConsulta\":\"dolor lumbar\"}", 0L);
+
+		assertThat(vista.borrador()).contains("dolor lumbar");
+		assertThat(vista.borradorGuardadoEn()).isNotNull();
+	}
+}

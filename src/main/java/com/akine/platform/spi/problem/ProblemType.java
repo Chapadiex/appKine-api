@@ -223,6 +223,21 @@ public enum ProblemType {
 	 * que la pantalla tiene que ofrecer activarlo como una accion propia.
 	 */
 	PERSONA_SIN_PERFIL_PACIENTE("persona-sin-perfil-paciente"),
+
+	// --- Atencion (M14) --------------------------------------------------------------------
+	/**
+	 * El turno existe pero no habilita una atencion: esta dado de baja, o lo atiende otro
+	 * profesional. Lleva {@code motivo}, porque cada caso lleva a una accion distinta.
+	 */
+	TURNO_NO_ATENDIBLE("turno-no-atendible"),
+	/**
+	 * Alguien intenta guardar en la sesion de otro profesional.
+	 *
+	 * <p><b>409 y no 403 a proposito.</b> Quien opera SI tiene {@code sesion:register}: lo que no
+	 * tiene es la propiedad de esa atencion. Un 403 mandaria al usuario a pedir un permiso que ya
+	 * tiene. Es una regla de propiedad, no de autorizacion.
+	 */
+	SESION_AJENA("sesion-ajena"),
 	CONSULTORIO_NO_OPERABLE("consultorio-no-operable"),
 
 	// --- Personas y perfiles de paciente (M07, AKINE-03.01) ---------------------------------

@@ -242,7 +242,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 		assertThat(permissionEvaluator.effectivePermissions(
 				companiero.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
 				.containsExactlyInAnyOrder(
-						"colaborador:read", "espacio:read", "turno:read", "turno:manage",
+						"colaborador:read", "espacio:read", "turno:read", "turno:manage", "sesion:register",
 						"hc:read", "hc:write");
 
 		membershipService.revoke(actorDe(tenant), tenant.organizationId(), membership, MOTIVO);

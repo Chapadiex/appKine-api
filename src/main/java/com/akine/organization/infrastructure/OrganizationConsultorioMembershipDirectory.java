@@ -6,6 +6,7 @@ import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -47,6 +48,16 @@ public class OrganizationConsultorioMembershipDirectory implements ConsultorioMe
 	public Optional<ConsultorioMembershipSnapshot> find(long organizationId, long membershipId) {
 		return membershipRepository.findByIdAndOrganizationId(membershipId, organizationId)
 				.map(OrganizationConsultorioMembershipDirectory::snapshot);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<ConsultorioMembershipSnapshot> findByAccount(long organizationId, long accountId) {
+		return membershipRepository
+				.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(organizationId, accountId)
+				.stream()
+				.map(OrganizationConsultorioMembershipDirectory::snapshot)
+				.toList();
 	}
 
 	private static ConsultorioMembershipSnapshot snapshot(Membership membership) {

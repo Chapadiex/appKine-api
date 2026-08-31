@@ -125,10 +125,29 @@ class RolePermissionsTest {
 	// Los permisos de fases futuras: probar que DENIEGAN es la mitad importante
 	// =================================================================================
 
+	@Test
+	@DisplayName("`sesion:register` lo tiene el PROFESIONAL y nadie mas")
+	void sesion_register_solo_el_profesional() {
+		// Salio de la lista de "fases futuras" en AKINE-06.01, la etapa que creo el modulo
+		// `encounter`. La matriz §2 le dice "Si" al PROFESIONAL en la fila Registrar Sesion y
+		// "Segun rol clinico" al CONSULTORIO_ADMIN, o sea NO por defecto. Al resto le dice "No".
+		assertThat(RolePermissions.baseScope(RoleCode.PROFESIONAL, PermissionCode.SESION_REGISTER))
+				.contains(PermissionScope.CONSULTORIO);
+
+		for (RoleCode rol : RoleCode.values()) {
+			if (rol == RoleCode.PROFESIONAL) {
+				continue;
+			}
+			assertThat(RolePermissions.baseScope(rol, PermissionCode.SESION_REGISTER))
+					.as("%s no registra atenciones: quien no atiende no las registra", rol)
+					.isEmpty();
+		}
+	}
+
 	@ParameterizedTest
 	@EnumSource(value = PermissionCode.class, names = {
 			"CASO_CREATE",
-			"SESION_REGISTER", "CONVENIO_MANAGE", "COBRO_REGISTER", "CAJA_OPERATE", "REPORTE_READ"})
+			"CONVENIO_MANAGE", "COBRO_REGISTER", "CAJA_OPERATE", "REPORTE_READ"})
 	@DisplayName("Los permisos de fases futuras estan declarados y no los tiene NINGUN rol")
 	void los_permisos_de_fases_futuras_deniegan_para_todos(PermissionCode permiso) {
 		// Estan en el catalogo para que agregar una fase sea sumar filas y no rehacer el modelo.

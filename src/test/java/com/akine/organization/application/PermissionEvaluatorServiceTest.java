@@ -583,7 +583,7 @@ class PermissionEvaluatorServiceTest {
 
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 					.containsExactlyInAnyOrder(
-							"colaborador:read", "espacio:read", "turno:read", "turno:manage",
+							"colaborador:read", "espacio:read", "turno:read", "turno:manage", "sesion:register",
 							"hc:read", "hc:write");
 		}
 	}

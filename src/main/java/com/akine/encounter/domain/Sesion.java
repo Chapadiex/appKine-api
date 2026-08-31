@@ -1,0 +1,210 @@
+package com.akine.encounter.domain;
+
+import com.akine.encounter.domain.exception.SesionAjenaException;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+/**
+ * Una atencion real. <b>No es el turno.</b>
+ *
+ * <p>DP-05: Turno, Recepcion y Sesion son tres maquinas de estado independientes. El Turno dice que
+ * un lugar quedo tomado; esta clase dice que hubo atencion. Por eso {@code turnoId} es opcional
+ * —RF-M14-002 admite atencion sin turno— y la sesion se guarda su propio profesional y su propia
+ * oferta en vez de leerlos del turno cada vez.
+ *
+ * <h2>De donde cuelga, y por que no de un Caso</h2>
+ *
+ * <p>El plan dice "una sesion pertenece a un Caso", y el Caso Clinico (04.03) quedo fuera del
+ * Paquete B por DP-10. Cuelga entonces de la <b>Historia Clinica</b>, que existe desde 04.01, es de
+ * la organizacion (DP-03) y es el contexto longitudinal del paciente. Cuando 04.03 llegue, agrega
+ * un {@code casoId} nullable y estas sesiones siguen siendo legibles.
+ *
+ * <h2>El borrador es opaco</h2>
+ *
+ * <p>Que campos tiene una evaluacion es asunto de 06.02 y 06.03, y 06.03 quedo cortada. Esta clase
+ * guarda el borrador, lo versiona y garantiza que no se pierda; no sabe ni valida su forma. Darle
+ * esquema hoy seria fijar en la base un formulario que todavia no esta decidido.
+ */
+@Entity
+@Table(name = "sesion")
+public class Sesion {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
+
+	@Column(name = "organization_id", nullable = false, updatable = false)
+	private Long organizationId;
+
+	@Column(name = "consultorio_id", nullable = false, updatable = false)
+	private Long consultorioId;
+
+	@Column(name = "historia_clinica_id", nullable = false, updatable = false)
+	private Long historiaClinicaId;
+
+	@Column(name = "turno_id", updatable = false)
+	private Long turnoId;
+
+	@Column(name = "oferta_id", nullable = false, updatable = false)
+	private Long ofertaId;
+
+	@Column(name = "profesional_membership_id", nullable = false, updatable = false)
+	private Long profesionalMembershipId;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "estado", nullable = false, length = 16)
+	private EstadoSesion estado;
+
+	@Column(name = "iniciada_en", nullable = false, updatable = false)
+	private Instant iniciadaEn;
+
+	@Column(name = "iniciada_por_cuenta_id", nullable = false, updatable = false)
+	private Long iniciadaPorCuentaId;
+
+	@Column(name = "borrador", columnDefinition = "json")
+	private String borrador;
+
+	@Column(name = "borrador_guardado_en")
+	private Instant borradorGuardadoEn;
+
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
+
+	/**
+	 * El control optimista <b>es</b> el autosave, no un adorno.
+	 *
+	 * <p>Dos pestanas del mismo profesional sobre la misma sesion son el caso normal. Sin esto la
+	 * segunda pisa a la primera en silencio y el profesional pierde lo que escribio sin enterarse.
+	 */
+	@Version
+	@Column(name = "version", nullable = false)
+	private long version;
+
+	protected Sesion() {
+		// Requerido por JPA.
+	}
+
+	public Sesion(
+			long organizationId,
+			long consultorioId,
+			long historiaClinicaId,
+			Long turnoId,
+			long ofertaId,
+			long profesionalMembershipId,
+			Instant iniciadaEn,
+			long iniciadaPorCuentaId) {
+
+		this.organizationId = organizationId;
+		this.consultorioId = consultorioId;
+		this.historiaClinicaId = historiaClinicaId;
+		this.turnoId = turnoId;
+		this.ofertaId = ofertaId;
+		this.profesionalMembershipId = profesionalMembershipId;
+		this.estado = EstadoSesion.BORRADOR;
+		this.iniciadaEn = iniciadaEn;
+		this.iniciadaPorCuentaId = iniciadaPorCuentaId;
+	}
+
+	/**
+	 * Guarda el borrador.
+	 *
+	 * <p>El contenido no se valida: ver la cabecera. Lo que si se hace cumplir es que la sesion
+	 * siga abierta — una sesion cerrada no se edita, se enmienda, y la enmienda es 06.06, que el
+	 * Paquete B dejo afuera.
+	 */
+	public void guardarBorrador(String contenido, Instant occurredAt) {
+		exigirAbierta();
+		this.borrador = contenido;
+		this.borradorGuardadoEn = occurredAt;
+	}
+
+	/**
+	 * Exige que quien opera sea el profesional de la sesion.
+	 *
+	 * <p>RN-M14-003 y la instruccion de la etapa: "bloqueo de edicion ajena". <b>El permiso no
+	 * alcanza</b>: dos profesionales de la misma sede tienen el mismo {@code sesion:register}, y sin
+	 * este control cualquiera de los dos escribe en la atencion del otro. Es una regla de propiedad,
+	 * no de autorizacion, y por eso vive en la entidad y no en el evaluador de permisos.
+	 *
+	 * <p>El reemplazo autorizado que menciona la etapa —otro profesional que continua una atencion—
+	 * necesita un registro propio de quien reemplaza a quien y por que. No existe todavia; hasta que
+	 * exista, esto es fail-closed.
+	 */
+	public void exigirPropiedadDe(long membershipId) {
+		if (!profesionalMembershipId.equals(membershipId)) {
+			throw new SesionAjenaException(id, profesionalMembershipId);
+		}
+	}
+
+	private void exigirAbierta() {
+		if (estado != EstadoSesion.BORRADOR) {
+			throw new IllegalStateException(
+					"La sesion " + id + " no esta abierta: " + estado);
+		}
+	}
+
+	public boolean estaViva() {
+		return deletedAt == null;
+	}
+
+	public Long getId() {
+		return id;
+	}
+
+	public Long getOrganizationId() {
+		return organizationId;
+	}
+
+	public Long getConsultorioId() {
+		return consultorioId;
+	}
+
+	public Long getHistoriaClinicaId() {
+		return historiaClinicaId;
+	}
+
+	public Long getTurnoId() {
+		return turnoId;
+	}
+
+	public Long getOfertaId() {
+		return ofertaId;
+	}
+
+	public Long getProfesionalMembershipId() {
+		return profesionalMembershipId;
+	}
+
+	public EstadoSesion getEstado() {
+		return estado;
+	}
+
+	public Instant getIniciadaEn() {
+		return iniciadaEn;
+	}
+
+	public Long getIniciadaPorCuentaId() {
+		return iniciadaPorCuentaId;
+	}
+
+	public String getBorrador() {
+		return borrador;
+	}
+
+	public Instant getBorradorGuardadoEn() {
+		return borradorGuardadoEn;
+	}
+
+	public long getVersion() {
+		return version;
+	}
+}

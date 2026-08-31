@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.15.0
+  version: 0.16.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -17,14 +17,8 @@ tags:
   name: Suscripciones
 - description: Restablecimiento de contrasena por enlace de un solo uso
   name: Recuperacion
-- description: Alta self-service y habilitacion de la cuenta
-  name: Registro y activacion
-- description: Horario semanal de un profesional en una sede y su disponibilidad efectiva
-  name: Disponibilidad profesional
 - description: "Login, renovacion, seleccion de contexto y cierre de sesion"
   name: Sesion
-- description: "Especialidades, practicas, nomencladores y sus vigencias (M06)"
-  name: Catalogo clinico
 - description: "Consulta, aceptacion y rechazo de una invitacion, con el token como\
     \ unica autoridad (M05)"
   name: Invitaciones recibidas
@@ -37,34 +31,42 @@ tags:
   name: Invitaciones
 - description: Reserva de slots con revalidacion atomica e idempotencia (M12)
   name: Turnos
-- description: Catalogo global de servicios y como cada sede los presta (M27)
-  name: Servicios y ofertas
-- description: "Alta, edicion y baja de las sedes de una organizacion"
-  name: Consultorios
 - description: "Administracion de la plataforma: acceso de soporte y roles globales"
   name: Plataforma
-- description: "Turnos disponibles calculados a partir de disponibilidad, oferta y\
-    \ habilitaciones (M12)"
-  name: Agenda
 - description: Padron de personas y activacion del perfil clinico (M07)
   name: Personas
 - description: "Contrato tecnico: salud y versionado"
   name: Platform
+- description: "Bloqueo, desbloqueo y baja logica de cuentas de la propia organizacion"
+  name: Administracion de cuentas
+- description: Cierres y aperturas puntuales de una sede o de un profesional
+  name: Excepciones de disponibilidad
+- description: "Vinculos de las cuentas con la organizacion, sus roles y sus permisos"
+  name: Colaboradores
+- description: Alta self-service y habilitacion de la cuenta
+  name: Registro y activacion
+- description: Horario semanal de un profesional en una sede y su disponibilidad efectiva
+  name: Disponibilidad profesional
+- description: "Especialidades, practicas, nomencladores y sus vigencias (M06)"
+  name: Catalogo clinico
+- description: Catalogo global de servicios y como cada sede los presta (M27)
+  name: Servicios y ofertas
+- description: "Alta, edicion y baja de las sedes de una organizacion"
+  name: Consultorios
+- description: "Turnos disponibles calculados a partir de disponibilidad, oferta y\
+    \ habilitaciones (M12)"
+  name: Agenda
 - description: Consulta del registro de hechos de la organizacion
   name: Auditoria
 - description: Alta y administracion de tenants y sus sedes
   name: Organizaciones
-- description: "Bloqueo, desbloqueo y baja logica de cuentas de la propia organizacion"
-  name: Administracion de cuentas
+- description: "Atencion real: inicio idempotente y guardado de borrador (M14)"
+  name: Sesiones
 - description: "Catalogo comercial: que incluye cada plan"
   name: Planes
 - description: "Alta, edicion, baja y disponibilidad de los espacios fisicos de una\
     \ sede"
   name: Espacios
-- description: Cierres y aperturas puntuales de una sede o de un profesional
-  name: Excepciones de disponibilidad
-- description: "Vinculos de las cuentas con la organizacion, sus roles y sus permisos"
-  name: Colaboradores
 paths:
   /api/v1/accounts/{accountId}/block:
     post:
@@ -2843,6 +2845,173 @@ paths:
       summary: Edicion de un bloque de disponibilidad
       tags:
       - Disponibilidad profesional
+  /api/v1/consultorios/{consultorioId}/sesiones/turnos/{turnoId}:
+    post:
+      description: |-
+        Abre la atencion, o **devuelve la que ya estaba abierta**.
+
+        El doble inicio es idempotente a proposito: un profesional que aprieta dos veces o recarga la pantalla es el caso normal, y un 409 le exigiria a la pantalla distinguir dos situaciones que para el usuario son la misma (RN-M14-001, un turno produce como mucho una sesion).
+
+        La Historia Clinica del paciente **se crea si no existia**. Exige perfil de paciente vigente: una atencion sobre alguien que solo es "persona" falla, y                no se crea historia clinica a nombre de quien no es paciente.
+
+                       Quien atiende es el profesional del turno. Si el turno tiene uno asignado y no es quien inicia, es 409: dejar que otro abra la sesion de un turno ajeno rompe la propiedad antes de que la sesion exista.
+      operationId: iniciar
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+          description: Atencion iniciada
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `sesion:register` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno no habilita una atencion, o la persona no es paciente"
+      summary: Iniciar la atencion de un turno
+      tags:
+      - Sesiones
+  /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}:
+    get:
+      description: "Devuelve la sesion con su borrador y su **version**, que es la\
+        \ que hay que devolver al guardar."
+      operationId: ver
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: sesionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+          description: Sesion
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion o la sede no existen, o son de otro tenant"
+      summary: Ver una sesion
+      tags:
+      - Sesiones
+  /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}/borrador:
+    put:
+      description: |-
+        Guarda el contenido parcial de la atencion. Pensado para llamarse seguido, desde el autosave de la pantalla.
+
+        **Hay que mandar la `version` que se leyo.** Dos pestanas del mismo profesional sobre la misma sesion son el caso normal; sin la version la segunda pisa a la primera en silencio y el profesional pierde lo que escribio. Un 409 `concurrent-modification` significa recargar.
+
+        **Solo el profesional de la sesion puede guardar.** No es cuestion de permiso —dos profesionales de la misma sede tienen el mismo `sesion:register`— sino de propiedad de esa atencion, y por eso el rechazo es 409 y no 403.
+
+        El contenido es **opaco**: que campos tiene una evaluacion lo define AKINE-06.02. Esta etapa garantiza que se guarda, se versiona y no se pierde.
+      operationId: guardarBorrador
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: sesionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardarBorrador"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+          description: Borrador guardado
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion la atiende otro profesional, o la version quedo\
+            \ vieja"
+      summary: Guardar el borrador de la atencion
+      tags:
+      - Sesiones
   /api/v1/consultorios/{consultorioId}/turnos/ofertas/{ofertaId}:
     post:
       description: |-
@@ -8105,6 +8274,29 @@ components:
           minLength: 0
       required:
       - reason
+    GuardarBorrador:
+      type: object
+      description: "Guardado parcial de la atencion. La version es obligatoria: sin\
+        \ ella dos pestanas del mismo profesional se pisan en silencio."
+      properties:
+        contenido:
+          type: string
+          description: "Contenido parcial de la atencion, como JSON. Opaco para el\
+            \ servidor."
+          example:
+            motivoConsulta: dolor lumbar
+            observaciones: ""
+          maxLength: 65000
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: Version que el cliente leyo. Un 409 `concurrent-modification`
+            significa que alguien guardo antes y hay que recargar.
+          example: 3
+          minimum: 0
+      required:
+      - version
     HabilitacionesResponse:
       type: object
       description: "Profesionales y espacios habilitados de una oferta, con su capacidad\
@@ -8977,6 +9169,8 @@ components:
       - https://akine.app/problems/slot-completo
       - https://akine.app/problems/recurso-ocupado
       - https://akine.app/problems/persona-sin-perfil-paciente
+      - https://akine.app/problems/turno-no-atendible
+      - https://akine.app/problems/sesion-ajena
       - https://akine.app/problems/consultorio-no-operable
       - https://akine.app/problems/persona-documento-taken
       - https://akine.app/problems/persona-posible-duplicado
@@ -9279,6 +9473,64 @@ components:
           description: Version para el control optimista. Se manda de vuelta en expectedVersion
             al editar o dar de baja
           example: 0
+    Sesion:
+      type: object
+      description: "Atencion real, con su borrador y su version de autosave"
+      properties:
+        borrador:
+          type: string
+          description: Contenido opaco tal como se guardo. Ausente si todavia no se
+            guardo nada.
+        borradorGuardadoEn:
+          type: string
+          format: date-time
+          example: 2026-09-15T12:18:03Z
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        estado:
+          type: string
+          description: "Estado de la ATENCION, no del turno ni del cobro"
+          enum:
+          - BORRADOR
+          example: BORRADOR
+        historiaClinicaId:
+          type: integer
+          format: int64
+          description: "Historia Clinica del paciente, de la ORGANIZACION y no de\
+            \ la sede (DP-03). Se crea al iniciar la primera atencion si no existia."
+          example: 88
+        id:
+          type: integer
+          format: int64
+          example: 501
+        iniciadaEn:
+          type: string
+          format: date-time
+          example: 2026-09-15T12:02:44Z
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        profesionalId:
+          type: integer
+          format: int64
+          description: Membership del profesional que atiende. Decide quien puede
+            guardar.
+          example: 31
+        turnoId:
+          type: integer
+          format: int64
+          description: Turno que origino la atencion. Ausente en una atencion sin
+            turno.
+          example: 301
+        version:
+          type: integer
+          format: int64
+          description: '**Devolvela al guardar.** Es lo que impide que dos pestanas
+            se pisen.'
+          example: 3
     SlotDisponible:
       type: object
       description: Un hueco concreto y reservable

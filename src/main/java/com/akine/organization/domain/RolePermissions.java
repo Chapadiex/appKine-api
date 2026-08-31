@@ -226,7 +226,12 @@ public final class RolePermissions {
 				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.HC_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.HC_WRITE, PermissionScope.CONSULTORIO,
-				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO));
+				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO,
+				// `sesion:register` entra con asignacion base en AKINE-06.01, la etapa que crea la
+				// atencion. La matriz §2 le dice "Si" al PROFESIONAL en la fila Registrar Sesion, y
+				// "Segun rol clinico" al CONSULTORIO_ADMIN —o sea NO por defecto—. A los demas les
+				// dice "No". Quien no atiende no registra atenciones.
+				PermissionCode.SESION_REGISTER, PermissionScope.CONSULTORIO));
 		tabla.put(RoleCode.ADMINISTRATIVO, Map.of(
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
