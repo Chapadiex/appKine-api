@@ -25,4 +25,15 @@ public interface SesionRepositoryPort {
 	 * unique y contestar un 409 que para el usuario no significa nada — apreto dos veces.
 	 */
 	Optional<Sesion> findVivaPorTurno(long organizationId, long turnoId);
+
+	/**
+	 * La sesion anterior del mismo paciente que tenga evaluacion cargada.
+	 *
+	 * <p>Es lo que permite comparar: "la vez pasada tenia 7". Se filtra por {@code evaluadaEn}
+	 * y no simplemente por la anterior en el tiempo, porque una sesion que se abrio y no se
+	 * evaluo no tiene nada contra que comparar y devolverla mostraria campos vacios donde el
+	 * profesional espera un numero.
+	 */
+	Optional<Sesion> findPreviaEvaluada(
+			long organizationId, long historiaClinicaId, java.time.Instant antesDe);
 }

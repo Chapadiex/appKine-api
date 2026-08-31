@@ -1,6 +1,7 @@
 package com.akine.encounter.api;
 
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
@@ -32,6 +33,7 @@ public class EncounterProblemHandler {
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI TURNO_NO_ATENDIBLE = ProblemType.TURNO_NO_ATENDIBLE.uri();
 	private static final URI SESION_AJENA = ProblemType.SESION_AJENA.uri();
+	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 
 	@ExceptionHandler(ConsultorioNoAccesibleException.class)
 	public ProblemDetail handleConsultorioNoAccesible(ConsultorioNoAccesibleException exception) {
@@ -67,6 +69,21 @@ public class EncounterProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(SESION_AJENA);
 		problem.setTitle("La atencion la registra otro profesional");
+		return problem;
+	}
+
+	/**
+	 * <b>400 y no 409.</b> Un dolor de 12 en una escala de 0 a 10 es un problema del CUERPO
+	 * enviado, no del estado del servidor: no depende de nada que pueda cambiar entre dos
+	 * peticiones, asi que un 409 —que sugiere reintentar— mandaria al cliente a repetir algo que
+	 * va a fallar igual.
+	 */
+	@ExceptionHandler(EvaluacionIncoherenteException.class)
+	public ProblemDetail handleEvaluacionIncoherente(EvaluacionIncoherenteException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(VALIDATION_ERROR);
+		problem.setTitle("La evaluacion tiene un dato invalido");
 		return problem;
 	}
 

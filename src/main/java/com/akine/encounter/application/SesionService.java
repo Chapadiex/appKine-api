@@ -2,6 +2,7 @@ package com.akine.encounter.application;
 
 import com.akine.clinical.spi.HistoriaClinicaDirectory;
 import com.akine.clinical.spi.HistoriaClinicaSnapshot;
+import com.akine.encounter.domain.EvaluacionBase;
 import com.akine.encounter.domain.PermissionCodes;
 import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
@@ -17,6 +18,7 @@ import com.akine.scheduling.spi.TurnoDirectory;
 import com.akine.scheduling.spi.TurnoSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -101,7 +103,8 @@ public class SesionService {
 		// ahora perderia el borrador que el profesional venia escribiendo.
 		var yaAbierta = sesiones.findVivaPorTurno(organizationId, turnoId);
 		if (yaAbierta.isPresent()) {
-			return SesionView.de(yaAbierta.get());
+			// Con la evaluacion previa: la pantalla la necesita apenas abre, no despues.
+			return conPrevia(yaAbierta.get(), organizationId);
 		}
 
 		TurnoSnapshot turno = turnos.find(organizationId, consultorioId, turnoId)
@@ -131,7 +134,7 @@ public class SesionService {
 		log.info("Sesion iniciada: sesionId={} turnoId={} historiaClinicaId={} profesional={}",
 				sesion.getId(), turnoId, historia.id(), profesionalMembershipId);
 
-		return SesionView.de(sesion);
+		return conPrevia(sesion, organizationId);
 	}
 
 	/**
@@ -160,17 +163,74 @@ public class SesionService {
 		// Propiedad, no permiso: ver la cabecera de la clase.
 		sesion.exigirPropiedadDe(membershipDe(actor, organizationId, consultorioId));
 
-		if (sesion.getVersion() != expectedVersion) {
-			// Se lanza el mismo tipo que JPA usaria, para que el handler global lo mapee igual y
-			// el cliente vea un solo comportamiento. La diferencia es que aca se detecta antes de
-			// escribir, con un mensaje que nombra la situacion.
-			throw new org.springframework.dao.OptimisticLockingFailureException(
-					"La sesion " + sesionId + " cambio desde que se leyo: version "
-							+ expectedVersion + " contra " + sesion.getVersion());
-		}
+		exigirVersion(sesion, expectedVersion);
 
 		sesion.guardarBorrador(contenido, Instant.now());
-		return SesionView.de(sesiones.save(sesion));
+		return conPrevia(sesiones.save(sesion), organizationId);
+	}
+
+
+	/**
+	 * Guarda la evaluacion base de una sesion abierta (RF-M14-003).
+	 *
+	 * <p>Mismos dos controles que el borrador: <b>propiedad</b> —la atencion es de un profesional, y
+	 * eso no es cuestion de permiso— y <b>version</b>, porque dos pestanas sobre la misma sesion son
+	 * el caso normal.
+	 *
+	 * <p>Lo que NO valida es que los campos esten. "Seguimiento no exige examen completo", asi que
+	 * una evaluacion con solo dolor y evolucion es valida. Ver {@link EvaluacionBase}.
+	 */
+	@Transactional
+	public SesionView evaluar(
+			OperatingActor actor, long consultorioId, long sesionId,
+			EvaluacionBase evaluacion, long expectedVersion) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirRegistro(actor, organizationId, consultorioId);
+
+		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
+				.filter(Sesion::estaViva)
+				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
+
+		sesion.exigirPropiedadDe(membershipDe(actor, organizationId, consultorioId));
+		exigirVersion(sesion, expectedVersion);
+
+		sesion.evaluar(evaluacion, Instant.now());
+		return conPrevia(sesiones.save(sesion), organizationId);
+	}
+
+	/**
+	 * Adjunta la evaluacion de la sesion ANTERIOR del mismo paciente.
+	 *
+	 * <p>Es la mitad "cambio" del requisito de la etapa, y viaja con la sesion en vez de en un
+	 * endpoint aparte porque la pantalla la necesita en el mismo momento: mostrar "la vez pasada
+	 * tenia 7" al lado del campo de dolor es lo que hace que el profesional cargue una evolucion
+	 * real en vez de la que recuerda.
+	 */
+	private SesionView conPrevia(Sesion sesion, long organizationId) {
+		return SesionView.de(sesion, sesiones
+				.findPreviaEvaluada(organizationId, sesion.getHistoriaClinicaId(), sesion.getIniciadaEn())
+				.map(previa -> new SesionView.EvaluacionPrevia(
+						previa.getIniciadaEn(),
+						previa.getDolorEva(),
+						previa.getEvolucion() == null ? null : previa.getEvolucion().name()))
+				.orElse(null));
+	}
+
+	/**
+	 * El control optimista, en un solo lugar.
+	 *
+	 * <p>Se lanza el mismo tipo que JPA usaria para que el handler global lo mapee igual y el
+	 * cliente vea un solo comportamiento; la diferencia es que aca se detecta antes de escribir,
+	 * con un mensaje que nombra la situacion.
+	 */
+	private static void exigirVersion(Sesion sesion, long expectedVersion) {
+		if (sesion.getVersion() != expectedVersion) {
+			throw new OptimisticLockingFailureException(
+					"La sesion " + sesion.getId() + " cambio desde que se leyo: version "
+							+ expectedVersion + " contra " + sesion.getVersion());
+		}
 	}
 
 	/** Lectura de una sesion. Exige {@code sesion:register} igual que la escritura. */
@@ -182,7 +242,7 @@ public class SesionService {
 
 		return sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
 				.filter(Sesion::estaViva)
-				.map(SesionView::de)
+				.map(sesion -> conPrevia(sesion, organizationId))
 				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
 	}
 

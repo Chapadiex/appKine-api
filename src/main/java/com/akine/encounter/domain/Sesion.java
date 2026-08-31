@@ -76,6 +76,36 @@ public class Sesion {
 	@Column(name = "borrador_guardado_en")
 	private Instant borradorGuardadoEn;
 
+	@Enumerated(EnumType.STRING)
+	@Column(name = "modo", length = 16)
+	private ModoSesion modo;
+
+	@Column(name = "motivo_clinico", length = 500)
+	private String motivoClinico;
+
+	@Column(name = "dolor_eva")
+	private Integer dolorEva;
+
+	@Column(name = "dolor_zona", length = 120)
+	private String dolorZona;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "dolor_lateralidad", length = 16)
+	private Lateralidad dolorLateralidad;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "evolucion", length = 16)
+	private Evolucion evolucion;
+
+	@Column(name = "objetivo_sesion", length = 500)
+	private String objetivoSesion;
+
+	@Column(name = "limitacion_funcional", length = 500)
+	private String limitacionFuncional;
+
+	@Column(name = "evaluada_en")
+	private Instant evaluadaEn;
+
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
@@ -145,6 +175,32 @@ public class Sesion {
 		}
 	}
 
+	/**
+	 * Guarda la evaluacion base.
+	 *
+	 * <p><b>Ningun campo es obligatorio, y es una regla de negocio.</b> "Seguimiento no exige examen
+	 * completo": una sesion de seguimiento carga dolor y evolucion y nada mas. Exigir cualquiera de
+	 * estos campos obligaria a inventar datos clinicos para poder guardar.
+	 *
+	 * <p>Lo unico que se valida es lo que seria FALSO, no lo que falta: el dolor fuera de la escala
+	 * y la lateralidad sin zona. El primero es un dato que despues alguien promedia; el segundo no
+	 * significa nada —"derecha" de que—.
+	 */
+	public void evaluar(EvaluacionBase evaluacion, Instant occurredAt) {
+		exigirAbierta();
+		evaluacion.exigirCoherente();
+
+		this.modo = evaluacion.modo();
+		this.motivoClinico = evaluacion.motivoClinico();
+		this.dolorEva = evaluacion.dolorEva();
+		this.dolorZona = evaluacion.dolorZona();
+		this.dolorLateralidad = evaluacion.dolorLateralidad();
+		this.evolucion = evaluacion.evolucion();
+		this.objetivoSesion = evaluacion.objetivoSesion();
+		this.limitacionFuncional = evaluacion.limitacionFuncional();
+		this.evaluadaEn = occurredAt;
+	}
+
 	private void exigirAbierta() {
 		if (estado != EstadoSesion.BORRADOR) {
 			throw new IllegalStateException(
@@ -204,6 +260,41 @@ public class Sesion {
 		return borradorGuardadoEn;
 	}
 
+	public ModoSesion getModo() {
+		return modo;
+	}
+
+	public String getMotivoClinico() {
+		return motivoClinico;
+	}
+
+	public Integer getDolorEva() {
+		return dolorEva;
+	}
+
+	public String getDolorZona() {
+		return dolorZona;
+	}
+
+	public Lateralidad getDolorLateralidad() {
+		return dolorLateralidad;
+	}
+
+	public Evolucion getEvolucion() {
+		return evolucion;
+	}
+
+	public String getObjetivoSesion() {
+		return objetivoSesion;
+	}
+
+	public String getLimitacionFuncional() {
+		return limitacionFuncional;
+	}
+
+	public Instant getEvaluadaEn() {
+		return evaluadaEn;
+	}
 	public long getVersion() {
 		return version;
 	}

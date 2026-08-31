@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.Optional;
 
 public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRepositoryPort {
@@ -38,4 +39,25 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 	Optional<Sesion> findVivaPorTurno(
 			@Param("organizationId") long organizationId,
 			@Param("turnoId") long turnoId);
+
+	/**
+	 * <p>{@code ORDER BY iniciadaEn DESC} con {@code LIMIT 1} via {@code Optional}: Spring Data lo
+	 * traduce a un {@code LIMIT}, y el indice {@code ix_sesion_comparacion} de V34 lo sostiene. Sin
+	 * ese indice esta consulta recorre toda la historia del paciente en cada apertura de sesion.
+	 */
+	@Override
+	@Query("""
+			SELECT s FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.historiaClinicaId = :historiaClinicaId
+			   AND s.iniciadaEn < :antesDe
+			   AND s.evaluadaEn IS NOT NULL
+			   AND s.deletedAt IS NULL
+			 ORDER BY s.iniciadaEn DESC
+			 LIMIT 1
+			""")
+	Optional<Sesion> findPreviaEvaluada(
+			@Param("organizationId") long organizationId,
+			@Param("historiaClinicaId") long historiaClinicaId,
+			@Param("antesDe") Instant antesDe);
 }

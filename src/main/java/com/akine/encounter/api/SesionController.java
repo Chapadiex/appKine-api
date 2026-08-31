@@ -1,6 +1,7 @@
 package com.akine.encounter.api;
 
 import com.akine.encounter.api.dto.GuardarBorradorRequest;
+import com.akine.encounter.api.dto.GuardarEvaluacionRequest;
 import com.akine.encounter.api.dto.SesionResponse;
 import com.akine.encounter.application.SesionService;
 import com.akine.encounter.application.SesionView;
@@ -143,5 +144,50 @@ public class SesionController {
 		return ResponseEntity.ok(SesionResponse.de(sesionService.guardarBorrador(
 				apiActor.current(), consultorioId, sesionId,
 				request.contenido(), request.version())));
+	}
+
+	@PutMapping("/{sesionId}/evaluacion")
+	@Operation(
+			summary = "Guardar la evaluacion base",
+			description = """
+					Guarda dolor, evolucion, objetivo y limitacion funcional como **datos \
+					tipados y consultables** (RF-M14-003). Es lo que distingue esta operacion del \
+					borrador de AKINE-06.01, que es JSON opaco: una evolucion clinica que no se \
+					puede comparar entre sesiones no sirve para nada.
+
+					**Ningun campo clinico es obligatorio.** "Seguimiento no exige examen \
+					completo": una sesion de seguimiento carga dolor y evolucion y nada mas, y esa \
+					es la mayoria de las sesiones de un tratamiento. Exigirlos obligaria a inventar \
+					datos clinicos para poder guardar.
+
+					Lo unico que se rechaza es lo que seria **falso**: un dolor fuera de la escala \
+					0-10, y una lateralidad sin zona —"derecha" de que—. Los dos son 400: no \
+					dependen de nada que pueda cambiar entre dos peticiones, asi que reintentar no \
+					los arregla.
+
+					La respuesta incluye `previa`, la evaluacion de la sesion anterior del mismo \
+					paciente, para poder mostrar el cambio.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Evaluacion guardada"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Dolor fuera de la escala, o lateralidad sin zona",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sesion o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "La sesion la atiende otro profesional, o la version quedo vieja",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<SesionResponse> evaluar(
+			@PathVariable long consultorioId,
+			@PathVariable long sesionId,
+			@RequestBody @Valid GuardarEvaluacionRequest request) {
+
+		return ResponseEntity.ok(SesionResponse.de(sesionService.evaluar(
+				apiActor.current(), consultorioId, sesionId,
+				request.aDominio(), request.version())));
 	}
 }

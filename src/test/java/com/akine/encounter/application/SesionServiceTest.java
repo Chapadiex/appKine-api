@@ -2,7 +2,12 @@ package com.akine.encounter.application;
 
 import com.akine.clinical.spi.HistoriaClinicaDirectory;
 import com.akine.clinical.spi.HistoriaClinicaSnapshot;
+import com.akine.encounter.domain.EvaluacionBase;
+import com.akine.encounter.domain.Evolucion;
+import com.akine.encounter.domain.Lateralidad;
+import com.akine.encounter.domain.ModoSesion;
 import com.akine.encounter.domain.Sesion;
+import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
@@ -209,5 +214,95 @@ class SesionServiceTest {
 
 		assertThat(vista.borrador()).contains("dolor lumbar");
 		assertThat(vista.borradorGuardadoEn()).isNotNull();
+	}
+
+	// =================================================================================
+	// Evaluacion base (AKINE-06.02)
+	// =================================================================================
+
+	private static EvaluacionBase evaluacion(Integer dolorEva, String zona, Lateralidad lado) {
+		return new EvaluacionBase(ModoSesion.RAPIDA, "dolor lumbar", dolorEva, zona, lado,
+				Evolucion.MEJOR, null, null);
+	}
+
+	@Test
+	@DisplayName("Una evaluacion de seguimiento con solo dolor y evolucion es valida")
+	void el_seguimiento_no_exige_examen_completo() {
+		// Es la regla de negocio de la etapa, no una comodidad: exigir campos obligaria al
+		// profesional a inventar datos clinicos para poder guardar. Y el seguimiento es la mayoria
+		// de las sesiones de un tratamiento.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		SesionView vista = service.evaluar(actor, CONSULTORIO_ID, 1L,
+				new EvaluacionBase(null, null, 6, null, null, Evolucion.MEJOR, null, null), 0L);
+
+		assertThat(vista.evaluacion().dolorEva()).isEqualTo(6);
+		assertThat(vista.evaluadaEn()).isNotNull();
+	}
+
+	@Test
+	@DisplayName("Un dolor fuera de la escala 0-10 se rechaza: es un dato que despues se promedia")
+	void el_dolor_fuera_de_escala() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		assertThatThrownBy(() ->
+				service.evaluar(actor, CONSULTORIO_ID, 1L, evaluacion(12, "Lumbar", null), 0L))
+				.isInstanceOf(EvaluacionIncoherenteException.class);
+	}
+
+	@Test
+	@DisplayName("La lateralidad sin zona no dice nada y se rechaza")
+	void la_lateralidad_sin_zona() {
+		// "Derecha" de que. Guardado ocupa el lugar de un dato real.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		assertThatThrownBy(() ->
+				service.evaluar(actor, CONSULTORIO_ID, 1L, evaluacion(5, null, Lateralidad.DERECHA), 0L))
+				.isInstanceOf(EvaluacionIncoherenteException.class);
+	}
+
+	@Test
+	@DisplayName("Una zona sin lateralidad SI es valida: una zona central no tiene lado")
+	void la_zona_sin_lateralidad() {
+		// La implicacion va en un solo sentido a proposito. Rechazar esto obligaria a declarar un
+		// lado para la lumbar, que no lo tiene.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		assertThat(service.evaluar(actor, CONSULTORIO_ID, 1L,
+				evaluacion(5, "Lumbar", null), 0L).evaluacion().dolorZona())
+				.isEqualTo("Lumbar");
+	}
+
+	@Test
+	@DisplayName("La evaluacion previa viaja con la sesion, para poder comparar")
+	void la_previa_viaja_con_la_sesion() {
+		// Sin esto la pantalla no puede mostrar "la vez pasada tenia 7" al lado del campo de dolor,
+		// que es lo que hace que el profesional cargue una evolucion real y no la que recuerda.
+		Sesion anterior = sesionExistente(MEMBERSHIP_PROPIA);
+		anterior.evaluar(evaluacion(7, "Lumbar", null), Instant.EPOCH);
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(sesiones.findPreviaEvaluada(anyLong(), anyLong(), any()))
+				.willReturn(Optional.of(anterior));
+
+		SesionView vista = service.ver(actor, CONSULTORIO_ID, 1L);
+
+		assertThat(vista.previa()).isNotNull();
+		assertThat(vista.previa().dolorEva()).isEqualTo(7);
+	}
+
+	@Test
+	@DisplayName("Nadie evalua la sesion de otro profesional")
+	void no_se_evalua_la_sesion_ajena() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_AJENA)));
+
+		assertThatThrownBy(() ->
+				service.evaluar(actor, CONSULTORIO_ID, 1L, evaluacion(5, "Lumbar", null), 0L))
+				.isInstanceOf(SesionAjenaException.class);
 	}
 }

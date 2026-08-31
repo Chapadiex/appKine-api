@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.16.0
+  version: 0.17.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -3010,6 +3010,77 @@ paths:
           description: "La sesion la atiende otro profesional, o la version quedo\
             \ vieja"
       summary: Guardar el borrador de la atencion
+      tags:
+      - Sesiones
+  /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}/evaluacion:
+    put:
+      description: |-
+        Guarda dolor, evolucion, objetivo y limitacion funcional como **datos tipados y consultables** (RF-M14-003). Es lo que distingue esta operacion del borrador de AKINE-06.01, que es JSON opaco: una evolucion clinica que no se puede comparar entre sesiones no sirve para nada.
+
+        **Ningun campo clinico es obligatorio.** "Seguimiento no exige examen completo": una sesion de seguimiento carga dolor y evolucion y nada mas, y esa es la mayoria de las sesiones de un tratamiento. Exigirlos obligaria a inventar datos clinicos para poder guardar.
+
+        Lo unico que se rechaza es lo que seria **falso**: un dolor fuera de la escala 0-10, y una lateralidad sin zona —"derecha" de que—. Los dos son 400: no dependen de nada que pueda cambiar entre dos peticiones, asi que reintentar no los arregla.
+
+        La respuesta incluye `previa`, la evaluacion de la sesion anterior del mismo paciente, para poder mostrar el cambio.
+      operationId: evaluar
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: sesionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardarEvaluacion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+          description: Evaluacion guardada
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Dolor fuera de la escala, o lateralidad sin zona"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion la atiende otro profesional, o la version quedo\
+            \ vieja"
+      summary: Guardar la evaluacion base
       tags:
       - Sesiones
   /api/v1/consultorios/{consultorioId}/turnos/ofertas/{ofertaId}:
@@ -8074,6 +8145,55 @@ components:
           format: int64
           description: Version a reenviar para editar
           example: 0
+    EvaluacionBase:
+      type: object
+      description: "Dolor, funcion y objetivo de la atencion"
+      properties:
+        dolorEva:
+          type: integer
+          format: int32
+          description: Escala 0 a 10
+          example: 6
+        dolorLateralidad:
+          type: string
+          enum:
+          - IZQUIERDA
+          - DERECHA
+          - BILATERAL
+          - NO_APLICA
+        dolorZona:
+          type: string
+        evolucion:
+          type: string
+          enum:
+          - MEJOR
+          - IGUAL
+          - PEOR
+          - SIN_REFERENCIA
+        limitacionFuncional:
+          type: string
+        modo:
+          type: string
+          enum:
+          - RAPIDA
+          - COMPLETA
+        motivoClinico:
+          type: string
+          description: No es un diagnostico
+        objetivoSesion:
+          type: string
+    EvaluacionPrevia:
+      type: object
+      description: Lo minimo para poder comparar
+      properties:
+        dolorEva:
+          type: integer
+          format: int32
+        evolucion:
+          type: string
+        iniciadaEn:
+          type: string
+          format: date-time
     ExcepcionResponse:
       type: object
       description: Cierre o apertura puntual de disponibilidad
@@ -8287,6 +8407,86 @@ components:
             motivoConsulta: dolor lumbar
             observaciones: ""
           maxLength: 65000
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: Version que el cliente leyo. Un 409 `concurrent-modification`
+            significa que alguien guardo antes y hay que recargar.
+          example: 3
+          minimum: 0
+      required:
+      - version
+    GuardarEvaluacion:
+      type: object
+      description: "Evaluacion base de la atencion. Todos los campos clinicos son\
+        \ opcionales: una sesion de seguimiento carga dolor y evolucion y nada mas."
+      properties:
+        dolorEva:
+          type: integer
+          format: int32
+          description: "Escala visual analogica, 0 a 10"
+          example: 6
+          maximum: 10
+          minimum: 0
+        dolorLateralidad:
+          type: string
+          description: "De que lado. `NO_APLICA` no es lo mismo que dejarlo vacio:\
+            \ una zona central no tiene lado, y decirlo distingue \"no corresponde\"\
+            \ de \"no lo cargue\". **Exige zona**: \"derecha\" de que."
+          enum:
+          - IZQUIERDA
+          - DERECHA
+          - BILATERAL
+          - NO_APLICA
+          example: NO_APLICA
+        dolorZona:
+          type: string
+          description: Zona corporal referida
+          example: Lumbar
+          maxLength: 120
+          minLength: 0
+        evolucion:
+          type: string
+          description: "Como viene respecto de la sesion anterior. `SIN_REFERENCIA`\
+            \ es el de la primera sesion: decir \"igual\" cuando no hay contra que\
+            \ comparar seria inventar un dato clinico."
+          enum:
+          - MEJOR
+          - IGUAL
+          - PEOR
+          - SIN_REFERENCIA
+          example: MEJOR
+        limitacionFuncional:
+          type: string
+          description: Que no puede hacer el paciente hoy
+          example: No puede atarse los cordones
+          maxLength: 500
+          minLength: 0
+        modo:
+          type: string
+          description: "Como se carga. **No condiciona que campos hacen falta**: es\
+            \ una decision de la pantalla sobre cuanto mostrar. Si condicionara campos,\
+            \ un profesional que empieza en rapida y necesita anotar una cosa mas\
+            \ tendria que cambiar de modo en medio de una atencion."
+          enum:
+          - RAPIDA
+          - COMPLETA
+          example: RAPIDA
+        motivoClinico:
+          type: string
+          description: "Lo que trae al paciente, en palabras del profesional. **No\
+            \ es un diagnostico**: el diagnostico es un acto medico que este sistema\
+            \ no registra."
+          example: "Dolor lumbar al agacharse, desde hace dos semanas"
+          maxLength: 500
+          minLength: 0
+        objetivoSesion:
+          type: string
+          description: "Que se busca en ESTA sesion. Distinto del objetivo del Plan\
+            \ de Tratamiento (M11), que es del tratamiento completo."
+          example: Reducir dolor en flexion
+          maxLength: 500
           minLength: 0
         version:
           type: integer
@@ -9495,6 +9695,13 @@ components:
           enum:
           - BORRADOR
           example: BORRADOR
+        evaluacion:
+          $ref: "#/components/schemas/EvaluacionBase"
+          description: Evaluacion base cargada. Todos sus campos pueden estar ausentes.
+        evaluadaEn:
+          type: string
+          format: date-time
+          example: 2026-09-15T12:21:00Z
         historiaClinicaId:
           type: integer
           format: int64
@@ -9513,6 +9720,14 @@ components:
           type: integer
           format: int64
           example: 42
+        previa:
+          $ref: "#/components/schemas/EvaluacionPrevia"
+          description: "Evaluacion de la sesion ANTERIOR del mismo paciente. Ausente\
+            \ si es la primera o si ninguna anterior llego a evaluarse. Viaja con\
+            \ la sesion y no en un endpoint aparte porque la pantalla la necesita\
+            \ en el mismo momento: mostrar \"la vez pasada tenia 7\" al lado del campo\
+            \ de dolor es lo que hace que se cargue una evolucion real y no la que\
+            \ se recuerda."
         profesionalId:
           type: integer
           format: int64
