@@ -70,6 +70,7 @@ public class ExcepcionService {
 
 	private final DisponibilidadExcepcionRepositoryPort excepciones;
 	private final CalendarioSedeRepositoryPort calendarios;
+	private final CalendarioSedeIniciador calendarioIniciador;
 	private final ConsultorioDirectory consultorioDirectory;
 	private final ConsultorioMembershipDirectory membershipDirectory;
 	private final PermissionGuard permissionGuard;
@@ -78,6 +79,7 @@ public class ExcepcionService {
 	public ExcepcionService(
 			DisponibilidadExcepcionRepositoryPort excepciones,
 			CalendarioSedeRepositoryPort calendarios,
+			CalendarioSedeIniciador calendarioIniciador,
 			ConsultorioDirectory consultorioDirectory,
 			ConsultorioMembershipDirectory membershipDirectory,
 			PermissionGuard permissionGuard,
@@ -85,6 +87,7 @@ public class ExcepcionService {
 
 		this.excepciones = excepciones;
 		this.calendarios = calendarios;
+		this.calendarioIniciador = calendarioIniciador;
 		this.consultorioDirectory = consultorioDirectory;
 		this.membershipDirectory = membershipDirectory;
 		this.permissionGuard = permissionGuard;
@@ -322,8 +325,15 @@ public class ExcepcionService {
 	// Concurrencia
 	// =================================================================================
 
-	/** Ver {@link BloqueoDeSede}: mismo lock que los bloques, y por el mismo motivo. */
+	/**
+	 * Ver {@link BloqueoDeSede}: mismo lock que los bloques, y por el mismo motivo.
+	 *
+	 * <p>La fila se asegura en una transaccion aparte y ANTES del lock, por lo mismo que en
+	 * {@code DisponibilidadService}: crearla dentro de esta transaccion produce un deadlock entre
+	 * las primeras N escrituras de una sede. Ver {@link CalendarioSedeIniciador}.
+	 */
 	private void bloquearLaSede(long organizationId, long consultorioId) {
+		calendarioIniciador.asegurar(organizationId, consultorioId);
 		BloqueoDeSede.tomar(calendarios, organizationId, consultorioId);
 	}
 

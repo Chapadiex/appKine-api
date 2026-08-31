@@ -55,6 +55,7 @@ public class CalendarioService {
 	private static final Logger log = LoggerFactory.getLogger(CalendarioService.class);
 
 	private final CalendarioSedeRepositoryPort calendarios;
+	private final CalendarioSedeIniciador calendarioIniciador;
 	private final FeriadoRepositoryPort feriados;
 	private final ConsultorioDirectory consultorioDirectory;
 	private final PermissionGuard permissionGuard;
@@ -62,12 +63,14 @@ public class CalendarioService {
 
 	public CalendarioService(
 			CalendarioSedeRepositoryPort calendarios,
+			CalendarioSedeIniciador calendarioIniciador,
 			FeriadoRepositoryPort feriados,
 			ConsultorioDirectory consultorioDirectory,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail) {
 
 		this.calendarios = calendarios;
+		this.calendarioIniciador = calendarioIniciador;
 		this.feriados = feriados;
 		this.consultorioDirectory = consultorioDirectory;
 		this.permissionGuard = permissionGuard;
@@ -181,11 +184,16 @@ public class CalendarioService {
 	// =================================================================================
 
 	/**
-	 * Toma el {@code FOR UPDATE} sobre la fila de politica, creandola a demanda, y la devuelve
-	 * para editarla. Ver {@link BloqueoDeSede}: es el mismo lock que serializa los writes de
-	 * disponibilidad de la sede, y es a proposito que sea el mismo.
+	 * Asegura la fila de politica en una transaccion aparte, toma el {@code FOR UPDATE} sobre
+	 * ella y la devuelve para editarla. Ver {@link BloqueoDeSede}: es el mismo lock que serializa
+	 * los writes de disponibilidad de la sede, y es a proposito que sea el mismo.
+	 *
+	 * <p>El alta ya no ocurre dentro de esta transaccion. Dos primeras ediciones concurrentes de
+	 * la politica de la misma sede insertaban las dos y se mataban con un deadlock; ver
+	 * {@link CalendarioSedeIniciador}.
 	 */
 	private CalendarioSede bloquearOCrear(long organizationId, long consultorioId) {
+		calendarioIniciador.asegurar(organizationId, consultorioId);
 		return BloqueoDeSede.tomar(calendarios, organizationId, consultorioId);
 	}
 

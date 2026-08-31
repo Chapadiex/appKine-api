@@ -3,6 +3,7 @@ package com.akine.resource.infrastructure;
 import com.akine.resource.domain.CalendarioSede;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -57,4 +58,44 @@ public interface CalendarioSedeRepository
 	Optional<CalendarioSede> lockByScope(
 			@Param("organizationId") Long organizationId,
 			@Param("consultorioId") Long consultorioId);
+
+	/**
+	 * Crea la fila si no existe. <b>Sin lanzar nunca</b>, y ese es todo el punto.
+	 *
+	 * <p>El camino obvio —leer, y si no esta insertar— tiene dos defectos que solo aparecen con
+	 * concurrencia real:
+	 *
+	 * <ol>
+	 *   <li><b>El perdedor recibe un 500.</b> Cuando N escrituras de disponibilidad concurrentes
+	 *       son las primeras de una sede, las N leen "no existe" y las N intentan el mismo
+	 *       INSERT. El desenlace lo decide InnoDB y no es determinista: violacion de unique
+	 *       ({@code DataIntegrityViolationException}) o deadlock sobre los gap locks del indice
+	 *       ({@code CannotAcquireLockException}). Ninguno de los dos es manejable arriba.</li>
+	 *   <li><b>Rollback-only.</b> Envolver el INSERT en un try/catch <b>no alcanza</b>: atrapar
+	 *       una excepcion de persistencia no des-marca la transaccion, asi que Spring igual
+	 *       intenta commitear una transaccion marcada para rollback y el llamador recibe
+	 *       {@code UnexpectedRollbackException}. La excepcion hay que EVITARLA, no atraparla.</li>
+	 * </ol>
+	 *
+	 * <p>{@code ON DUPLICATE KEY UPDATE id = id} es un no-op deliberado: el motor resuelve la
+	 * carrera en una sola sentencia atomica, sin excepcion y sin lectura previa. Es especifico de
+	 * MySQL, que es la base fijada por DP-09.
+	 *
+	 * <p>Los valores de politica son los mismos defaults que {@code CalendarioSede} aplica al
+	 * crearla a demanda (V23): la sede cierra los feriados del calendario argentino hasta que
+	 * alguien edite la politica.
+	 */
+	@Modifying
+	@Query(value = """
+			INSERT INTO consultorio_calendario
+			    (organization_id, consultorio_id, pais, cierra_por_feriado, version,
+			     created_at, updated_at)
+			VALUES (:organizationId, :consultorioId, 'AR', 1, 0,
+			        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+			ON DUPLICATE KEY UPDATE id = id
+			""", nativeQuery = true)
+	@Override
+	void crearSiFalta(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId);
 }

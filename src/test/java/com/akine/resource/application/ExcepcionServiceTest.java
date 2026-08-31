@@ -95,7 +95,8 @@ class ExcepcionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ExcepcionService(
-				excepciones, calendarios, consultorioDirectory, membershipDirectory,
+				excepciones, calendarios, new CalendarioSedeIniciador(calendarios),
+				consultorioDirectory, membershipDirectory,
 				permissionGuard, auditTrail);
 
 		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(

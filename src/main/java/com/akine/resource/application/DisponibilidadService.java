@@ -127,6 +127,7 @@ public class DisponibilidadService {
 
 	private final BloqueDisponibilidadRepositoryPort bloques;
 	private final CalendarioSedeRepositoryPort calendarios;
+	private final CalendarioSedeIniciador calendarioIniciador;
 	private final ConsultorioDirectory consultorioDirectory;
 	private final ConsultorioMembershipDirectory membershipDirectory;
 	private final PermissionGuard permissionGuard;
@@ -136,6 +137,7 @@ public class DisponibilidadService {
 	public DisponibilidadService(
 			BloqueDisponibilidadRepositoryPort bloques,
 			CalendarioSedeRepositoryPort calendarios,
+			CalendarioSedeIniciador calendarioIniciador,
 			ConsultorioDirectory consultorioDirectory,
 			ConsultorioMembershipDirectory membershipDirectory,
 			PermissionGuard permissionGuard,
@@ -144,6 +146,7 @@ public class DisponibilidadService {
 
 		this.bloques = bloques;
 		this.calendarios = calendarios;
+		this.calendarioIniciador = calendarioIniciador;
 		this.consultorioDirectory = consultorioDirectory;
 		this.membershipDirectory = membershipDirectory;
 		this.permissionGuard = permissionGuard;
@@ -509,8 +512,16 @@ public class DisponibilidadService {
 	// Concurrencia
 	// =================================================================================
 
-	/** Ver {@link BloqueoDeSede}: el lock se toma ANTES de leer ningun bloque. */
+	/**
+	 * Ver {@link BloqueoDeSede}: el lock se toma ANTES de leer ningun bloque.
+	 *
+	 * <p>La fila se asegura en una transaccion aparte y ANTES del lock. Crearla dentro de esta
+	 * transaccion —el camino que habia hasta ahora— produce un DEADLOCK entre las primeras N
+	 * escrituras concurrentes de una sede, y no la violacion de unique que una pierde
+	 * limpiamente: ver {@link CalendarioSedeIniciador}.
+	 */
 	private void bloquearLaSede(long organizationId, long consultorioId) {
+		calendarioIniciador.asegurar(organizationId, consultorioId);
 		BloqueoDeSede.tomar(calendarios, organizationId, consultorioId);
 	}
 

@@ -109,8 +109,11 @@ class DisponibilidadServiceTest {
 
 	@BeforeEach
 	void setUp() {
+		// El iniciador real sobre el puerto mockeado: su REQUIRES_NEW es un no-op sin proxy de
+		// Spring, y asi el InOrder de concurrencia ve el crearSiFalta sobre el mismo mock.
 		service = new DisponibilidadService(
-				bloques, calendarios, consultorioDirectory, membershipDirectory,
+				bloques, calendarios, new CalendarioSedeIniciador(calendarios),
+				consultorioDirectory, membershipDirectory,
 				permissionGuard, auditTrail, impactProbe);
 
 		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID))
@@ -393,24 +396,24 @@ class DisponibilidadServiceTest {
 	}
 
 	@Test
-	@DisplayName("El calendario de la sede se crea a demanda y se bloquea recien despues")
-	void el_calendario_de_la_sede_se_crea_a_demanda() {
-		// Primera disponibilidad que se carga en esta sede: la fila que sirve de punto de
-		// serializacion todavia no existe.
-		given(calendarios.lockByScope(ORG_ID, CONSULTORIO_ID))
-				.willReturn(Optional.empty(), Optional.of(new CalendarioSede(ORG_ID, CONSULTORIO_ID)));
-
+	@DisplayName("El calendario de la sede se asegura ANTES del lock, y nunca se inserta bajo el")
+	void el_calendario_de_la_sede_se_asegura_antes_del_lock() {
 		service.crear(actor, CONSULTORIO_ID, MEMBERSHIP_ID, altaMartes());
 
+		// El orden importa y es el que corrige el deadlock: asegurar la fila —en su propia
+		// transaccion, con un INSERT que no puede fallar— y recien despues bloquearla. El camino
+		// viejo bloqueaba, veia el vacio e insertaba DENTRO de esta transaccion, y N primeras
+		// escrituras concurrentes de una sede se mataban entre si.
 		InOrder protocolo = inOrder(calendarios, bloques);
-		protocolo.verify(calendarios).lockByScope(ORG_ID, CONSULTORIO_ID);
-		protocolo.verify(calendarios).save(any(CalendarioSede.class));
+		protocolo.verify(calendarios).crearSiFalta(ORG_ID, CONSULTORIO_ID);
 		protocolo.verify(calendarios).lockByScope(ORG_ID, CONSULTORIO_ID);
 		protocolo.verify(bloques).findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID);
+
+		verify(calendarios, never()).save(any(CalendarioSede.class));
 	}
 
 	@Test
-	@DisplayName("Si el calendario no se puede bloquear ni despues de crearlo, falla ruidosamente")
+	@DisplayName("Si el calendario no esta ni despues de asegurarlo, falla ruidosamente")
 	void si_el_calendario_no_se_puede_bloquear_despues_de_crearlo_falla() {
 		given(calendarios.lockByScope(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.empty());
 
