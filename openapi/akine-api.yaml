@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.14.0
+  version: 0.15.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -35,6 +35,8 @@ tags:
 - description: "Emision, listado, reenvio y cancelacion de invitaciones a colaborar\
     \ (M05)"
   name: Invitaciones
+- description: Reserva de slots con revalidacion atomica e idempotencia (M12)
+  name: Turnos
 - description: Catalogo global de servicios y como cada sede los presta (M27)
   name: Servicios y ofertas
 - description: "Alta, edicion y baja de las sedes de una organizacion"
@@ -2841,6 +2843,141 @@ paths:
       summary: Edicion de un bloque de disponibilidad
       tags:
       - Disponibilidad profesional
+  /api/v1/consultorios/{consultorioId}/turnos/ofertas/{ofertaId}:
+    post:
+      description: |-
+        Toma un slot de una oferta. **El servidor revalida todo**: que la oferta siga vigente ese dia, que el profesional siga habilitado y atendiendo en ese horario, que quede cupo y que ni el profesional ni el box tengan otro turno que se cruce.
+
+        **Una sola reserva gana.** Dos peticiones concurrentes por el mismo hueco se serializan; la segunda recibe un 409 con el tipo que corresponde a su caso.
+
+        Los cuatro conflictos son tipos distintos a proposito, porque llevan a la pantalla a acciones distintas: `slot-no-disponible` (recargar la agenda),                `slot-completo` (ofrecer el siguiente), `recurso-ocupado` (elegir otro horario o profesional) y `persona-sin-perfil-paciente` (activar el perfil).
+
+        **No hay cancelacion todavia**: llega en AKINE-05.03.
+      operationId: reservar
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReservarTurno"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+          description: "Reintento con la misma clave de idempotencia y el mismo pedido:\
+            \ se devuelve el turno ya creado, sin crear otro"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+          description: Turno reservado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `turno:manage` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la oferta o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El hueco dejo de existir, no queda cupo, el recurso esta ocupado,\
+            \ la persona no es paciente, o la clave de idempotencia se reuso con otro\
+            \ pedido"
+      summary: Reservar un turno
+      tags:
+      - Turnos
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/confirmacion:
+    post:
+      description: |-
+        Marca la reserva como confirmada. **Es idempotente**: confirmar dos veces devuelve 200 sin cambiar nada.
+
+        Confirmar es un estado de la RESERVA y no del cobro ni de la llegada del paciente: DP-06 deja el prepago como politica configurable y nunca como condicion del dominio clinico.
+      operationId: confirmar
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+          description: Turno confirmado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+      summary: Confirmar un turno reservado
+      tags:
+      - Turnos
   /api/v1/me/contexts:
     get:
       description: |-
@@ -8836,6 +8973,10 @@ components:
       - https://akine.app/problems/oferta-inactiva
       - https://akine.app/problems/oferta-already-inactive
       - https://akine.app/problems/oferta-no-agendable
+      - https://akine.app/problems/slot-no-disponible
+      - https://akine.app/problems/slot-completo
+      - https://akine.app/problems/recurso-ocupado
+      - https://akine.app/problems/persona-sin-perfil-paciente
       - https://akine.app/problems/consultorio-no-operable
       - https://akine.app/problems/persona-documento-taken
       - https://akine.app/problems/persona-posible-duplicado
@@ -8992,6 +9133,42 @@ components:
           minLength: 0
       required:
       - email
+    ReservarTurno:
+      type: object
+      description: "Reserva de un slot. El servidor revalida que el hueco siga existiendo:\
+        \ entre que la pantalla mostro la agenda y el usuario confirmo pudo cambiar\
+        \ el horario del profesional, entrar un feriado o vencer la oferta."
+      properties:
+        idempotencyKey:
+          type: string
+          description: "Clave del cliente para que un reintento no cree un segundo\
+            \ turno. Reusarla con **otro** contenido devuelve 409 `idempotency-key-conflict`,\
+            \ no el turno anterior. Omitirla desactiva la proteccion, que es legitimo\
+            \ en una carga manual."
+          example: b3f1c2a4-5d6e-4f70-8a91-2c3d4e5f6a7b
+          maxLength: 80
+          minLength: 0
+        inicio:
+          type: string
+          format: date-time
+          description: "Instante de inicio del slot elegido, UTC, tal como lo devolvio\
+            \ la agenda"
+          example: 2026-09-15T12:00:00Z
+        personaId:
+          type: integer
+          format: int64
+          description: "Persona del padron, que debe tener perfil de paciente vigente"
+          example: 128
+          minimum: 0
+        profesionalId:
+          type: integer
+          format: int64
+          description: Membership del profesional. Obligatorio si la oferta lo requiere.
+          example: 31
+          minimum: 0
+      required:
+      - inicio
+      - personaId
     ResolveCatalogoSolicitudRequest:
       type: object
       description: Aprobacion o rechazo de una solicitud de catalogo
@@ -9356,6 +9533,74 @@ components:
           type: string
           format: date-time
           description: Vencimiento. Como maximo cuatro horas despues del otorgamiento
+    Turno:
+      type: object
+      description: "Reserva de un slot. No es la prestacion: DP-05 separa Turno, Recepcion\
+        \ y Sesion."
+      properties:
+        confirmadoEn:
+          type: string
+          format: date-time
+          description: Ausente mientras el turno no se confirme
+          example: 2026-09-01T14:05:00Z
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        espacioId:
+          type: integer
+          format: int64
+          description: "Box asignado. **Lo elige el servidor al reservar**, no la\
+            \ busqueda: elegirlo fuera de la transaccion que crea el turno seria una\
+            \ promesa que dos busquedas concurrentes rompen. Ausente si la oferta\
+            \ no requiere espacio."
+          example: 55
+        estado:
+          type: string
+          description: "Estado de la RESERVA. Nunca dice que la atencion ocurrio:\
+            \ eso lo dice la Sesion."
+          enum:
+          - RESERVADO
+          - CONFIRMADO
+          example: RESERVADO
+        fin:
+          type: string
+          format: date-time
+          description: "Fin, UTC y EXCLUSIVO. Congelado al reservar: si despues se\
+            \ edita la duracion de la oferta, este turno no se mueve."
+          example: 2026-09-15T12:45:00Z
+        id:
+          type: integer
+          format: int64
+          example: 301
+        inicio:
+          type: string
+          format: date-time
+          description: "Inicio, UTC"
+          example: 2026-09-15T12:00:00Z
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        personaId:
+          type: integer
+          format: int64
+          description: Persona del padron para la que se reservo
+          example: 128
+        profesionalId:
+          type: integer
+          format: int64
+          description: Membership del profesional. Ausente si la oferta no lo requiere.
+          example: 31
+        reservadoEn:
+          type: string
+          format: date-time
+          example: 2026-09-01T14:03:11Z
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista de las mutaciones de 05.03
+          example: 0
     UpdateBloqueRequest:
       type: object
       description: Cambios a aplicar sobre un bloque de disponibilidad vigente

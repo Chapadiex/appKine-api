@@ -514,7 +514,7 @@ class PermissionEvaluatorServiceTest {
 					.containsExactlyInAnyOrder(
 							"tenant:read", "consultorio:manage", "espacio:read",
 							"colaborador:manage", "colaborador:read", "auditoria:read",
-							"paciente:manage", "turno:read");
+							"paciente:manage", "turno:read", "turno:manage");
 		}
 
 		@Test
@@ -583,7 +583,8 @@ class PermissionEvaluatorServiceTest {
 
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 					.containsExactlyInAnyOrder(
-							"colaborador:read", "espacio:read", "turno:read", "hc:read", "hc:write");
+							"colaborador:read", "espacio:read", "turno:read", "turno:manage",
+							"hc:read", "hc:write");
 		}
 	}
 

@@ -3,7 +3,14 @@ package com.akine.scheduling.api;
 import com.akine.platform.spi.problem.ProblemType;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
+import com.akine.scheduling.application.IdempotencyKeyConflictException;
 import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
+import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
+import com.akine.scheduling.domain.exception.PersonaSinPerfilPacienteException;
+import com.akine.scheduling.domain.exception.RecursoOcupadoException;
+import com.akine.scheduling.domain.exception.SlotCompletoException;
+import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
+import com.akine.scheduling.domain.exception.TurnoNotAccessibleException;
 import com.akine.scheduling.domain.exception.VentanaDeAgendaDemasiadoAmpliaException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +39,11 @@ public class SchedulingProblemHandler {
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI OFERTA_NO_AGENDABLE = ProblemType.OFERTA_NO_AGENDABLE.uri();
 	private static final URI VENTANA_DEMASIADO_AMPLIA = ProblemType.VENTANA_DEMASIADO_AMPLIA.uri();
+	private static final URI SLOT_NO_DISPONIBLE = ProblemType.SLOT_NO_DISPONIBLE.uri();
+	private static final URI SLOT_COMPLETO = ProblemType.SLOT_COMPLETO.uri();
+	private static final URI RECURSO_OCUPADO = ProblemType.RECURSO_OCUPADO.uri();
+	private static final URI PERSONA_SIN_PERFIL_PACIENTE = ProblemType.PERSONA_SIN_PERFIL_PACIENTE.uri();
+	private static final URI IDEMPOTENCY_KEY_CONFLICT = ProblemType.IDEMPOTENCY_KEY_CONFLICT.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -96,6 +108,81 @@ public class SchedulingProblemHandler {
 		problem.setType(VENTANA_DEMASIADO_AMPLIA);
 		problem.setTitle("La ventana consultada es demasiado amplia");
 		problem.setProperty("maxDays", exception.getMaximoDias());
+		return problem;
+	}
+	// =================================================================================
+	// Turnos — 404 y 409
+	// =================================================================================
+
+	@ExceptionHandler(TurnoNotAccessibleException.class)
+	public ProblemDetail handleTurnoNoAccesible(TurnoNotAccessibleException exception) {
+		log.debug("Turno no accesible: turnoId={}", exception.getTurnoId());
+		return noEncontrado("El turno no existe.");
+	}
+
+	@ExceptionHandler(PersonaNotAccessibleException.class)
+	public ProblemDetail handlePersonaNoAccesible(PersonaNotAccessibleException exception) {
+		log.debug("Persona no accesible desde la agenda: personaId={}", exception.getPersonaId());
+		return noEncontrado("La persona no existe.");
+	}
+
+	/**
+	 * <b>Un tipo propio y no un {@code conflict} generico.</b> "El hueco ya no existe" manda a la
+	 * pantalla a recargar la agenda; "no hay cupo" manda a ofrecer el turno siguiente. Con un tipo
+	 * unico el cliente tendria que adivinar leyendo prosa en castellano.
+	 */
+	@ExceptionHandler(SlotNoDisponibleException.class)
+	public ProblemDetail handleSlotNoDisponible(SlotNoDisponibleException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(SLOT_NO_DISPONIBLE);
+		problem.setTitle("El horario elegido ya no esta disponible");
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	@ExceptionHandler(SlotCompletoException.class)
+	public ProblemDetail handleSlotCompleto(SlotCompletoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(SLOT_COMPLETO);
+		problem.setTitle("El turno ya no tiene cupo");
+		problem.setProperty("cupoTotal", exception.getCupoTotal());
+		return problem;
+	}
+
+	@ExceptionHandler(RecursoOcupadoException.class)
+	public ProblemDetail handleRecursoOcupado(RecursoOcupadoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(RECURSO_OCUPADO);
+		problem.setTitle("El recurso ya esta ocupado en ese horario");
+		problem.setProperty("recurso", exception.getRecurso());
+		return problem;
+	}
+
+	@ExceptionHandler(PersonaSinPerfilPacienteException.class)
+	public ProblemDetail handlePersonaSinPerfil(PersonaSinPerfilPacienteException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(PERSONA_SIN_PERFIL_PACIENTE);
+		problem.setTitle("La persona no es paciente");
+		return problem;
+	}
+
+	/**
+	 * Reuso de una clave de idempotencia con un pedido distinto.
+	 *
+	 * <p>Reusa el tipo transversal {@code idempotency-key-conflict} que ya existia desde 01.01: es
+	 * la misma situacion de protocolo y publicar un segundo tipo para ella obligaria al cliente a
+	 * manejar dos codigos para un mismo caso.
+	 */
+	@ExceptionHandler(IdempotencyKeyConflictException.class)
+	public ProblemDetail handleIdempotencyConflict(IdempotencyKeyConflictException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(IDEMPOTENCY_KEY_CONFLICT);
+		problem.setTitle("La clave de idempotencia se reuso con otro pedido");
 		return problem;
 	}
 

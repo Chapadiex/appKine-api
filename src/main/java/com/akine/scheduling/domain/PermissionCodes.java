@@ -13,6 +13,9 @@ public final class PermissionCodes {
 	/** Ver la agenda y buscar turnos disponibles. */
 	public static final String TURNO_READ = "turno:read";
 
+	/** Reservar, confirmar y —desde 05.03— cancelar turnos. */
+	public static final String TURNO_MANAGE = "turno:manage";
+
 	private PermissionCodes() {
 	}
 }

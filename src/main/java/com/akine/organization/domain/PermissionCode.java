@@ -96,12 +96,22 @@ public enum PermissionCode {
 
 	/**
 	 * Reservar, reprogramar y cancelar turnos. F5.
+	 * Reservar, confirmar y —desde 05.03— cancelar turnos. F5.
 	 *
-	 * <p><b>Sin asignacion base todavia: deniega.</b> La activa AKINE-05.02, que es la etapa que
-	 * crea la escritura. Declararlo aca y no alli es a proposito: el codigo tiene que existir
-	 * antes de que ningun endpoint lo nombre, y separar la declaracion de la asignacion evita
-	 * repetir lo que paso con {@code paciente:manage}, que vivio en el catalogo desde el dia uno
-	 * sin que lo tuviera nadie y sin que ninguna etapa declarara que eso era intencional.
+	 * <p><b>Con asignacion base desde AKINE-05.02</b>, la etapa que crea la escritura. 05.01 lo
+	 * declaro sin asignacion a proposito: el codigo tiene que existir antes de que ningun endpoint
+	 * lo nombre, y separar la declaracion de la asignacion evita repetir lo que paso con
+	 * {@code paciente:manage}, que vivio en el catalogo desde el dia uno sin que lo tuviera nadie y
+	 * sin que ninguna etapa declarara que eso fuera intencional.
+	 *
+	 * <p><b>{@code PLATFORM_ADMIN} NO lo recibe</b>, a diferencia de {@code turno:read}. Reservar
+	 * es una accion operativa del centro, y la matriz §32 le dice "No" a esta columna en todas las
+	 * filas operativas —Registrar Cobro, Operar Caja—. Soporte mira, no opera.
+	 *
+	 * <p>Lo tienen {@code ORG_ADMIN} (organizacion), y con alcance de sede el
+	 * {@code CONSULTORIO_ADMIN}, el {@code ADMINISTRATIVO} —dar turnos es literalmente su trabajo—
+	 * y el {@code PROFESIONAL}, que agenda a sus propios pacientes. Parte de la enmienda §13, que
+	 * sigue pendiente de aprobacion.
 	 */
 	TURNO_MANAGE("turno:manage"),
 

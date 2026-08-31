@@ -181,7 +181,8 @@ public final class RolePermissions {
 				PermissionCode.COLABORADOR_READ, PermissionScope.ORGANIZACION,
 				PermissionCode.AUDITORIA_READ, PermissionScope.ORGANIZACION,
 				PermissionCode.PACIENTE_MANAGE, PermissionScope.ORGANIZACION,
-				PermissionCode.TURNO_READ, PermissionScope.ORGANIZACION));
+				PermissionCode.TURNO_READ, PermissionScope.ORGANIZACION,
+				PermissionCode.TURNO_MANAGE, PermissionScope.ORGANIZACION));
 
 		// CONSULTORIO_ADMIN — todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
 		tabla.put(RoleCode.CONSULTORIO_ADMIN, Map.of(
@@ -191,7 +192,8 @@ public final class RolePermissions {
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.AUDITORIA_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO,
-				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO));
+				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
+				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO));
 
 		// PROFESIONAL y ADMINISTRATIVO — ven la lista de colaboradores de su sede y, desde la
 		// aprobacion del 25/08/2026, el catalogo fisico de esa misma sede: sin `espacio:read` un
@@ -223,12 +225,14 @@ public final class RolePermissions {
 				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.HC_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.HC_WRITE, PermissionScope.CONSULTORIO));
+				PermissionCode.HC_WRITE, PermissionScope.CONSULTORIO,
+				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO));
 		tabla.put(RoleCode.ADMINISTRATIVO, Map.of(
 				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO,
-				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO));
+				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
+				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO));
 
 		// PACIENTE — ninguna fila de la matriz §6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.

@@ -194,6 +194,35 @@ public enum ProblemType {
 	 * que la pantalla pueda ofrecer la accion correcta: reactivar la oferta, o mover la fecha.
 	 */
 	OFERTA_NO_AGENDABLE("oferta-no-agendable"),
+
+	// --- Turnos (M12) ----------------------------------------------------------------------
+	/**
+	 * El hueco pedido dejo de existir entre que la pantalla lo mostro y el usuario confirmo.
+	 *
+	 * <p>Distinto de {@link #SLOT_COMPLETO}: aca el slot no existe —cerraron el dia, cambio el
+	 * horario, se cayo la habilitacion— y la pantalla tiene que RECARGAR la agenda. Con
+	 * {@code slot-completo} el horario sigue ahi y lo que corresponde es ofrecer el siguiente.
+	 * Dos acciones distintas exigen dos tipos distintos; un {@code conflict} generico obligaria al
+	 * cliente a adivinar leyendo prosa en castellano.
+	 */
+	SLOT_NO_DISPONIBLE("slot-no-disponible"),
+	/** El slot existe y ya no tiene cupo. Lleva {@code cupoTotal}. Ver {@link #SLOT_NO_DISPONIBLE}. */
+	SLOT_COMPLETO("slot-completo"),
+	/**
+	 * El profesional o el espacio ya tienen otro turno que se CRUZA con el intervalo pedido.
+	 *
+	 * <p>Se cruza, no coincide: dos ofertas de duraciones distintas producen slots que no caen en
+	 * la misma grilla. Lleva {@code recurso} para que la pantalla distinga "el profesional esta
+	 * ocupado" de "no queda ningun box", que llevan a acciones distintas.
+	 */
+	RECURSO_OCUPADO("recurso-ocupado"),
+	/**
+	 * La persona existe en el padron pero no tiene perfil de paciente vigente.
+	 *
+	 * <p>RF-M07-010: una Persona no es un Paciente. La reserva no activa el perfil en silencio, asi
+	 * que la pantalla tiene que ofrecer activarlo como una accion propia.
+	 */
+	PERSONA_SIN_PERFIL_PACIENTE("persona-sin-perfil-paciente"),
 	CONSULTORIO_NO_OPERABLE("consultorio-no-operable"),
 
 	// --- Personas y perfiles de paciente (M07, AKINE-03.01) ---------------------------------
