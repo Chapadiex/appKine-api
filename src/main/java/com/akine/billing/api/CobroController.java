@@ -116,7 +116,7 @@ public class CobroController {
 					responseCode = "404",
 					description = "El cobro o la sede no existen, o son de otro tenant",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
-	public ResponseEntity<CobroResponse> ver(
+	public ResponseEntity<CobroResponse> verCobro(
 			@PathVariable long consultorioId,
 			@PathVariable long cobroId) {
 
@@ -135,7 +135,7 @@ public class CobroController {
 					responseCode = "404",
 					description = "La sede no existe o es de otro tenant",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
-	public ResponseEntity<List<CobroResponse>> deLaPersona(
+	public ResponseEntity<List<CobroResponse>> cobrosDeLaPersona(
 			@PathVariable long consultorioId,
 			@RequestParam long personaId) {
 

@@ -158,6 +158,51 @@ class OpenApiContractIT {
 	}
 
 	/**
+	 * Ningun {@code operationId} puede venir desambiguado por springdoc.
+	 *
+	 * <p>Un {@code operationId} es un identificador <b>unico por documento</b>. Cuando dos metodos
+	 * de controllers distintos se llaman igual —{@code ver} en Cobros y {@code ver} en
+	 * Obligaciones—, springdoc no falla: publica el segundo como {@code ver_1} y sigue. El contrato
+	 * queda valido, el build pasa, y el problema aparece dos repos mas abajo.
+	 *
+	 * <p><b>Lo que rompe rio abajo, y ya rompio.</b> El generador de TypeScript convierte ese
+	 * sufijo en el nombre del metodo del cliente ({@code deLaPersona1}), asi que el frontend
+	 * termina llamando a algo cuyo nombre no describe nada. Y no es estable: el numero se asigna
+	 * por orden de aparicion, de modo que agregar una tercera operacion homonima —o renombrar
+	 * cualquiera de las otras dos— se lo pasa a otra. Ese dia el frontend deja de compilar en un
+	 * archivo que nadie toco, o peor, sigue compilando apuntando a la operacion equivocada.
+	 *
+	 * <p>Por eso el gate mira el sufijo y no la duplicacion: el sufijo es la huella que deja
+	 * springdoc al resolver el choque solo, y es lo unico que sobrevive hasta el YAML.
+	 */
+	@Test
+	@DisplayName("Ningun operationId quedo desambiguado con un sufijo numerico")
+	void los_operation_id_son_unicos_sin_ayuda_del_generador() {
+		Matcher desambiguado = Pattern
+				.compile("^\\s*operationId: (\\S+_\\d+)$", Pattern.MULTILINE)
+				.matcher(normalizar(descargarContrato()));
+
+		StringBuilder encontrados = new StringBuilder();
+		while (desambiguado.find()) {
+			encontrados.append("\n    ").append(desambiguado.group(1));
+		}
+
+		assertThat(encontrados.toString())
+				.as("""
+						springdoc desambiguo uno o mas operationId agregandoles un sufijo \
+						numerico, lo que significa que hay metodos de controller con el mismo \
+						nombre en controllers distintos.%s
+
+						Renombrar los metodos para que sean unicos en toda la API —por ejemplo \
+						verCobro y verObligacion en vez de dos ver— y regenerar:
+						    %s
+
+						No alcanza con editar el YAML: springdoc lo vuelve a generar desde los \
+						nombres de los metodos.""".formatted(encontrados, COMANDO_ACTUALIZAR))
+				.isEmpty();
+	}
+
+	/**
 	 * {@code info.version} del contrato generado.
 	 *
 	 * <p>Se busca dentro del bloque {@code info:} y no con un {@code contains} del numero: el

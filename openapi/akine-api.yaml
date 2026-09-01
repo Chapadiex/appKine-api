@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.21.0
+  version: 0.22.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -1616,7 +1616,7 @@ paths:
     get:
       description: "Los cobros de un paciente en toda la organizacion, del mas reciente\
         \ al mas viejo. Junto con las obligaciones forma su cuenta corriente."
-      operationId: deLaPersona
+      operationId: cobrosDeLaPersona
       parameters:
       - in: path
         name: consultorioId
@@ -1737,7 +1737,7 @@ paths:
       description: "Devuelve el cobro con su comprobante, sus medios y sus imputaciones.\
         \ **Es la reimpresion**: sin esta lectura, un operador que necesita el comprobante\
         \ de nuevo tendria como unica salida volver a registrar el cobro."
-      operationId: ver_2
+      operationId: verCobro
       parameters:
       - in: path
         name: consultorioId
@@ -2014,7 +2014,7 @@ paths:
         La deuda de un paciente en **toda la organizacion**, de la mas reciente a la mas vieja.
 
         El alcance es la organizacion y no la sede, aunque el permiso se evalue con la sede del contexto: la deuda de un paciente es una sola aunque se haya generado en dos sedes del mismo centro, y mostrarla partida obligaria al administrativo a sumar de memoria.
-      operationId: deLaPersona_1
+      operationId: obligacionesDeLaPersona
       parameters:
       - in: path
         name: consultorioId
@@ -2134,7 +2134,7 @@ paths:
       tags:
       - Obligaciones
     get:
-      operationId: ver_1
+      operationId: verObligacion
       parameters:
       - in: path
         name: consultorioId
@@ -3241,7 +3241,7 @@ paths:
     get:
       description: "Devuelve la sesion con su borrador y su **version**, que es la\
         \ que hay que devolver al guardar."
-      operationId: ver
+      operationId: verSesion
       parameters:
       - in: path
         name: consultorioId

@@ -66,7 +66,7 @@ public class ObligacionController {
 					responseCode = "404",
 					description = "La sede no existe o es de otro tenant",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
-	public ResponseEntity<List<ObligacionResponse>> deLaPersona(
+	public ResponseEntity<List<ObligacionResponse>> obligacionesDeLaPersona(
 			@PathVariable long consultorioId,
 			@RequestParam long personaId) {
 
@@ -84,7 +84,7 @@ public class ObligacionController {
 					responseCode = "404",
 					description = "La obligacion o la sede no existen, o son de otro tenant",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
-	public ResponseEntity<ObligacionResponse> ver(
+	public ResponseEntity<ObligacionResponse> verObligacion(
 			@PathVariable long consultorioId,
 			@PathVariable long obligacionId) {
 

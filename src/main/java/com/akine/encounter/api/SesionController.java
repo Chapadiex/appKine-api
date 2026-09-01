@@ -100,7 +100,7 @@ public class SesionController {
 					responseCode = "404",
 					description = "La sesion o la sede no existen, o son de otro tenant",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
-	public ResponseEntity<SesionResponse> ver(
+	public ResponseEntity<SesionResponse> verSesion(
 			@PathVariable long consultorioId,
 			@PathVariable long sesionId) {
 
