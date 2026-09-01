@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.17.0
+  version: 0.18.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -3010,6 +3010,77 @@ paths:
           description: "La sesion la atiende otro profesional, o la version quedo\
             \ vieja"
       summary: Guardar el borrador de la atencion
+      tags:
+      - Sesiones
+  /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}/cierre:
+    post:
+      description: |-
+        Cierra la sesion y le asigna su **correlativo por historia clinica** — "la sesion numero 8 de este paciente".
+
+        **Es idempotente.** Cerrar dos veces devuelve el mismo resultado con el mismo numero y no renumera: apretar dos veces "cerrar" es el caso normal, y renumerar una sesion cerrada seria reescribir historia clinica. La idempotencia se evalua ANTES de pedir un numero, para que un reintento no consuma un correlativo que despues nadie usa y deje huecos que parecen sesiones borradas.
+
+        **Cerrar no cobra.** DP-06: el cierre clinico no depende del pago y no crea ninguna obligacion economica. La obligacion se deriva despues, en AKINE-07.01, leyendo las sesiones cerradas.
+
+        **Una sesion cerrada no se edita.** Corregirla es una enmienda con su actor y su motivo, y eso es AKINE-06.06, fuera de alcance. Hasta entonces esto es fail-closed: es preferible no poder corregir a corregir sin dejar rastro.
+      operationId: cerrar
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: sesionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CerrarSesion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+          description: "Atencion cerrada, o ya lo estaba"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta la asistencia, o la nota de cierre con el paciente presente"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion la atiende otro profesional, o la version quedo\
+            \ vieja"
+      summary: Cerrar la atencion
       tags:
       - Sesiones
   /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}/evaluacion:
@@ -6868,6 +6939,68 @@ components:
           format: int64
           description: Version a reenviar para resolver
           example: 0
+    CerrarSesion:
+      type: object
+      description: "Cierre clinico de la atencion. Es idempotente: cerrar dos veces\
+        \ devuelve el mismo resultado y NO renumera."
+      properties:
+        asistencia:
+          type: string
+          description: "**Obligatorio.** Sin esto no se sabe si hubo prestacion. `AUSENTE`\
+            \ es un cierre legitimo —la ausencia tambien es un hecho— y evita que\
+            \ el turno quede abierto para siempre. Con `AUSENTE` nada mas es obligatorio:\
+            \ pedir resultado de una atencion que no ocurrio seria pedir que se invente."
+          enum:
+          - PRESENTE
+          - AUSENTE
+          example: PRESENTE
+        indicaciones:
+          type: string
+          description: Lo que el paciente se lleva
+          example: Repetir el ejercicio 2 veces por dia
+          maxLength: 1000
+          minLength: 0
+        notaDeCierre:
+          type: string
+          description: "**Obligatorio si el paciente asistio.** El detalle estructurado\
+            \ de tratamientos es AKINE-06.04, fuera de alcance, asi que esta nota\
+            \ es lo unico que registra que se hizo."
+          example: "Terapia manual lumbar, ejercicios de estabilizacion, 30 minutos"
+          maxLength: 2000
+          minLength: 0
+        proximaConducta:
+          type: string
+          description: Que sigue. Es lo que convierte una sesion suelta en un tratamiento.
+          enum:
+          - CONTINUA
+          - ALTA
+          - DERIVA
+          - REEVALUA
+          example: CONTINUA
+        respuestaTratamiento:
+          type: string
+          description: Como respondio a lo realizado hoy
+          example: Alivio inmediato del dolor
+          maxLength: 500
+          minLength: 0
+        tolerancia:
+          type: string
+          description: "Como tolero lo que se le hizo. Es distinto del resultado:\
+            \ se puede tolerar mal algo que funciona."
+          enum:
+          - BUENA
+          - REGULAR
+          - MALA
+          example: BUENA
+        version:
+          type: integer
+          format: int64
+          description: Version que el cliente leyo
+          example: 4
+          minimum: 0
+      required:
+      - asistencia
+      - version
     ChangeMembershipRequest:
       type: object
       description: Cambio de rol y/o de alcance de un vinculo
@@ -6902,6 +7035,35 @@ components:
           example: CONSULTORIO_ADMIN
       required:
       - reason
+    CierreDeSesion:
+      type: object
+      description: Resultado y proxima conducta
+      properties:
+        asistencia:
+          type: string
+          enum:
+          - PRESENTE
+          - AUSENTE
+        indicaciones:
+          type: string
+        notaDeCierre:
+          type: string
+          description: Lo unico que registra que se hizo mientras 06.04 no exista
+        proximaConducta:
+          type: string
+          enum:
+          - CONTINUA
+          - ALTA
+          - DERIVA
+          - REEVALUA
+        respuestaTratamiento:
+          type: string
+        tolerancia:
+          type: string
+          enum:
+          - BUENA
+          - REGULAR
+          - MALA
     ClosedSessionsResponse:
       type: object
       description: Resultado del cierre masivo de sesiones de la propia cuenta
@@ -9371,6 +9533,7 @@ components:
       - https://akine.app/problems/persona-sin-perfil-paciente
       - https://akine.app/problems/turno-no-atendible
       - https://akine.app/problems/sesion-ajena
+      - https://akine.app/problems/sesion-cerrada
       - https://akine.app/problems/consultorio-no-operable
       - https://akine.app/problems/persona-documento-taken
       - https://akine.app/problems/persona-posible-duplicado
@@ -9685,6 +9848,13 @@ components:
           type: string
           format: date-time
           example: 2026-09-15T12:18:03Z
+        cerradaEn:
+          type: string
+          format: date-time
+          example: 2026-09-15T12:48:00Z
+        cierre:
+          $ref: "#/components/schemas/CierreDeSesion"
+          description: Cierre clinico. Ausente si la sesion sigue abierta.
         consultorioId:
           type: integer
           format: int64
@@ -9716,6 +9886,13 @@ components:
           type: string
           format: date-time
           example: 2026-09-15T12:02:44Z
+        numeroSesion:
+          type: integer
+          format: int32
+          description: "Correlativo por historia clinica: \"la sesion numero 8 de\
+            \ este paciente\". **Ausente mientras la sesion este abierta**, y es lo\
+            \ que la marca como cerrada."
+          example: 8
         ofertaId:
           type: integer
           format: int64

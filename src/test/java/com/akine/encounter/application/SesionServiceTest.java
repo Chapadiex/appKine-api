@@ -2,14 +2,19 @@ package com.akine.encounter.application;
 
 import com.akine.clinical.spi.HistoriaClinicaDirectory;
 import com.akine.clinical.spi.HistoriaClinicaSnapshot;
+import com.akine.encounter.domain.Asistencia;
+import com.akine.encounter.domain.CierreDeSesion;
 import com.akine.encounter.domain.EvaluacionBase;
 import com.akine.encounter.domain.Evolucion;
 import com.akine.encounter.domain.Lateralidad;
 import com.akine.encounter.domain.ModoSesion;
 import com.akine.encounter.domain.Sesion;
+import com.akine.encounter.domain.exception.CierreIncompletoException;
 import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
+import com.akine.encounter.domain.exception.SesionCerradaException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
+import com.akine.encounter.domain.port.SesionNumeradorPort;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
@@ -69,6 +74,8 @@ class SesionServiceTest {
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private ConsultorioMembershipDirectory memberships;
 	@Mock private PermissionGuard permissionGuard;
+	@Mock private SesionNumeradorPort numerador;
+	@Mock private NumeradorIniciador numeradorIniciador;
 
 	private SesionService service;
 
@@ -78,7 +85,8 @@ class SesionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new SesionService(
-				sesiones, turnos, historias, consultorios, memberships, permissionGuard);
+				sesiones, turnos, historias, consultorios, memberships, permissionGuard,
+				numerador, numeradorIniciador);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -304,5 +312,86 @@ class SesionServiceTest {
 		assertThatThrownBy(() ->
 				service.evaluar(actor, CONSULTORIO_ID, 1L, evaluacion(5, "Lumbar", null), 0L))
 				.isInstanceOf(SesionAjenaException.class);
+	}
+
+	// =================================================================================
+	// Cierre (AKINE-06.05)
+	// =================================================================================
+
+	private static CierreDeSesion cierre(Asistencia asistencia, String nota) {
+		return new CierreDeSesion(asistencia, nota, null, null, null, null);
+	}
+
+	@Test
+	@DisplayName("Sin declarar asistencia no se puede cerrar: sin eso no se sabe si hubo prestacion")
+	void el_cierre_exige_asistencia() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		assertThatThrownBy(() ->
+				service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(null, "Terapia manual"), 0L))
+				.isInstanceOf(CierreIncompletoException.class);
+	}
+
+	@Test
+	@DisplayName("Con el paciente presente hay que decir que se hizo")
+	void el_cierre_presente_exige_nota() {
+		// La etapa valida "tratamiento o nota equivalente". El detalle estructurado es 06.04, que
+		// quedo cortada, asi que la nota es lo UNICO que registra que se hizo: no es un campo de
+		// descarte. Y de este cierre se deriva una obligacion economica.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		assertThatThrownBy(() ->
+				service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, null), 0L))
+				.isInstanceOf(CierreIncompletoException.class);
+	}
+
+	@Test
+	@DisplayName("Con el paciente AUSENTE se cierra sin nota: no hubo atencion que describir")
+	void el_ausente_cierra_sin_nota() {
+		// La ausencia tambien es un hecho clinico y economico, y no registrarla dejaria el turno
+		// abierto para siempre. Pedir resultado de una atencion que no ocurrio seria pedir que se
+		// invente.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(1);
+
+		assertThat(service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(Asistencia.AUSENTE, null), 0L)
+				.numeroSesion())
+				.isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("Cerrar dos veces no renumera ni pide un correlativo nuevo")
+	void el_cierre_es_idempotente() {
+		// Si la idempotencia se evaluara DESPUES de pedir el numero, cada reintento consumiria un
+		// correlativo que nadie usa y la numeracion del paciente quedaria con huecos que parecen
+		// sesiones borradas.
+		Sesion yaCerrada = sesionExistente(MEMBERSHIP_PROPIA);
+		yaCerrada.cerrar(cierre(Asistencia.PRESENTE, "Terapia manual"), 3, Instant.EPOCH, CUENTA_PROPIA);
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(yaCerrada));
+
+		SesionView vista = service.cerrar(
+				actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Otra cosa"), 99L);
+
+		assertThat(vista.numeroSesion()).isEqualTo(3);
+		assertThat(vista.cierre().notaDeCierre())
+				.as("y no se sobreescribe: corregir una sesion cerrada es una enmienda, no un segundo cierre")
+				.isEqualTo("Terapia manual");
+		verify(numerador, never()).incrementar(anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("Una sesion cerrada no admite mas borrador ni evaluacion")
+	void la_sesion_cerrada_no_se_edita() {
+		// Fail-closed hasta que exista la enmienda de 06.06: es preferible no poder corregir a
+		// corregir sin dejar rastro, que es historia clinica reescrita en silencio.
+		Sesion yaCerrada = sesionExistente(MEMBERSHIP_PROPIA);
+		yaCerrada.cerrar(cierre(Asistencia.PRESENTE, "Terapia manual"), 1, Instant.EPOCH, CUENTA_PROPIA);
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(yaCerrada));
+
+		assertThatThrownBy(() -> service.guardarBorrador(actor, CONSULTORIO_ID, 1L, "{}", 0L))
+				.isInstanceOf(SesionCerradaException.class);
 	}
 }

@@ -238,6 +238,14 @@ public enum ProblemType {
 	 * tiene. Es una regla de propiedad, no de autorizacion.
 	 */
 	SESION_AJENA("sesion-ajena"),
+	/**
+	 * Se intenta editar una atencion ya cerrada.
+	 *
+	 * <p>Corregirla es una ENMIENDA con su actor y su motivo —AKINE-06.06, fuera del Paquete B—.
+	 * Hasta que exista es fail-closed: es preferible no poder corregir a corregir sin dejar rastro,
+	 * porque lo segundo es historia clinica reescrita en silencio.
+	 */
+	SESION_CERRADA("sesion-cerrada"),
 	CONSULTORIO_NO_OPERABLE("consultorio-no-operable"),
 
 	// --- Personas y perfiles de paciente (M07, AKINE-03.01) ---------------------------------

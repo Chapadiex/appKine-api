@@ -2,12 +2,14 @@ package com.akine.encounter.application;
 
 import com.akine.clinical.spi.HistoriaClinicaDirectory;
 import com.akine.clinical.spi.HistoriaClinicaSnapshot;
+import com.akine.encounter.domain.CierreDeSesion;
 import com.akine.encounter.domain.EvaluacionBase;
 import com.akine.encounter.domain.PermissionCodes;
 import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
+import com.akine.encounter.domain.port.SesionNumeradorPort;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
@@ -68,6 +70,8 @@ public class SesionService {
 	private final ConsultorioDirectory consultorios;
 	private final ConsultorioMembershipDirectory memberships;
 	private final PermissionGuard permissionGuard;
+	private final SesionNumeradorPort numerador;
+	private final NumeradorIniciador numeradorIniciador;
 
 	public SesionService(
 			SesionRepositoryPort sesiones,
@@ -75,7 +79,9 @@ public class SesionService {
 			HistoriaClinicaDirectory historias,
 			ConsultorioDirectory consultorios,
 			ConsultorioMembershipDirectory memberships,
-			PermissionGuard permissionGuard) {
+			PermissionGuard permissionGuard,
+			SesionNumeradorPort numerador,
+			NumeradorIniciador numeradorIniciador) {
 
 		this.sesiones = sesiones;
 		this.turnos = turnos;
@@ -83,6 +89,8 @@ public class SesionService {
 		this.consultorios = consultorios;
 		this.memberships = memberships;
 		this.permissionGuard = permissionGuard;
+		this.numerador = numerador;
+		this.numeradorIniciador = numeradorIniciador;
 	}
 
 	/**
@@ -197,6 +205,71 @@ public class SesionService {
 		exigirVersion(sesion, expectedVersion);
 
 		sesion.evaluar(evaluacion, Instant.now());
+		return conPrevia(sesiones.save(sesion), organizationId);
+	}
+
+	/**
+	 * Cierra la atencion y le asigna su correlativo (RF-M14-006..008, RN-M14-005).
+	 *
+	 * <h2>El orden importa y no es negociable</h2>
+	 *
+	 * <pre>
+	 *   1. idempotencia   &lt;- ANTES de pedir un numero
+	 *   2. propiedad y version
+	 *   3. minimos del cierre
+	 *   4. asegurar el numerador  &lt;- en su PROPIA transaccion
+	 *   5. incrementar y leer     &lt;- toma el lock de fila y serializa
+	 *   6. cerrar
+	 * </pre>
+	 *
+	 * <p><b>El paso 1 va primero</b>: si no, cada reintento consume un correlativo que despues nadie
+	 * usa, y la numeracion del paciente queda con huecos que parecen sesiones borradas. Una sesion ya
+	 * cerrada se devuelve tal cual, con su numero — RN-M14-005 pide resultado estable ante retry, y
+	 * apretar dos veces "cerrar" es el caso normal.
+	 *
+	 * <p><b>El paso 4 va en una transaccion aparte</b> por la misma razon que en 05.02: crear la fila
+	 * dentro de esta produce un deadlock entre los primeros cierres concurrentes de una historia
+	 * clinica, y atrapar la excepcion no alcanza porque no des-marca la transaccion.
+	 *
+	 * <h2>Cerrar no cobra</h2>
+	 *
+	 * <p>DP-06 y la regla de la etapa: "cierre clinico != cobro". Este metodo no crea ninguna
+	 * obligacion economica; la deriva despues AKINE-07.01 leyendo las sesiones cerradas. Atarlas
+	 * haria que un problema de facturacion bloquee una historia clinica.
+	 */
+	@Transactional
+	public SesionView cerrar(
+			OperatingActor actor, long consultorioId, long sesionId,
+			CierreDeSesion cierre, long expectedVersion) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirRegistro(actor, organizationId, consultorioId);
+
+		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
+				.filter(Sesion::estaViva)
+				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
+
+		sesion.exigirPropiedadDe(membershipDe(actor, organizationId, consultorioId));
+
+		// PASO 1. Antes de tocar el numerador. Ver la cabecera.
+		if (sesion.estaCerrada()) {
+			return conPrevia(sesion, organizationId);
+		}
+
+		exigirVersion(sesion, expectedVersion);
+		cierre.exigirMinimos();
+
+		// PASO 4 y 5. La fila se asegura afuera; el incremento toma el lock y serializa.
+		numeradorIniciador.asegurar(organizationId, sesion.getHistoriaClinicaId());
+		numerador.incrementar(organizationId, sesion.getHistoriaClinicaId());
+		int numero = numerador.leerUltimo(organizationId, sesion.getHistoriaClinicaId());
+
+		sesion.cerrar(cierre, numero, Instant.now(), actor.accountId());
+
+		log.info("Sesion cerrada: sesionId={} numero={} historiaClinicaId={} asistencia={}",
+				sesionId, numero, sesion.getHistoriaClinicaId(), cierre.asistencia());
+
 		return conPrevia(sesiones.save(sesion), organizationId);
 	}
 

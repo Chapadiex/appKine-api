@@ -1,5 +1,6 @@
 package com.akine.encounter.api;
 
+import com.akine.encounter.api.dto.CerrarSesionRequest;
 import com.akine.encounter.api.dto.GuardarBorradorRequest;
 import com.akine.encounter.api.dto.GuardarEvaluacionRequest;
 import com.akine.encounter.api.dto.SesionResponse;
@@ -187,6 +188,51 @@ public class SesionController {
 			@RequestBody @Valid GuardarEvaluacionRequest request) {
 
 		return ResponseEntity.ok(SesionResponse.de(sesionService.evaluar(
+				apiActor.current(), consultorioId, sesionId,
+				request.aDominio(), request.version())));
+	}
+
+	@PostMapping("/{sesionId}/cierre")
+	@Operation(
+			summary = "Cerrar la atencion",
+			description = """
+					Cierra la sesion y le asigna su **correlativo por historia clinica** — "la \
+					sesion numero 8 de este paciente".
+
+					**Es idempotente.** Cerrar dos veces devuelve el mismo resultado con el mismo \
+					numero y no renumera: apretar dos veces "cerrar" es el caso normal, y \
+					renumerar una sesion cerrada seria reescribir historia clinica. La \
+					idempotencia se evalua ANTES de pedir un numero, para que un reintento no \
+					consuma un correlativo que despues nadie usa y deje huecos que parecen \
+					sesiones borradas.
+
+					**Cerrar no cobra.** DP-06: el cierre clinico no depende del pago y no crea \
+					ninguna obligacion economica. La obligacion se deriva despues, en \
+					AKINE-07.01, leyendo las sesiones cerradas.
+
+					**Una sesion cerrada no se edita.** Corregirla es una enmienda con su actor y \
+					su motivo, y eso es AKINE-06.06, fuera de alcance. Hasta entonces esto es \
+					fail-closed: es preferible no poder corregir a corregir sin dejar rastro.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Atencion cerrada, o ya lo estaba"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Falta la asistencia, o la nota de cierre con el paciente presente",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sesion o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "La sesion la atiende otro profesional, o la version quedo vieja",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<SesionResponse> cerrar(
+			@PathVariable long consultorioId,
+			@PathVariable long sesionId,
+			@RequestBody @Valid CerrarSesionRequest request) {
+
+		return ResponseEntity.ok(SesionResponse.de(sesionService.cerrar(
 				apiActor.current(), consultorioId, sesionId,
 				request.aDominio(), request.version())));
 	}

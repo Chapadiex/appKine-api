@@ -1,5 +1,6 @@
 package com.akine.encounter.application;
 
+import com.akine.encounter.domain.CierreDeSesion;
 import com.akine.encounter.domain.EvaluacionBase;
 import com.akine.encounter.domain.Sesion;
 
@@ -26,6 +27,9 @@ public record SesionView(
 		EvaluacionBase evaluacion,
 		Instant evaluadaEn,
 		EvaluacionPrevia previa,
+		Integer numeroSesion,
+		CierreDeSesion cierre,
+		Instant cerradaEn,
 		long version) {
 
 	/**
@@ -68,6 +72,15 @@ public record SesionView(
 						sesion.getLimitacionFuncional()),
 				sesion.getEvaluadaEn(),
 				previa,
+				sesion.getNumeroSesion(),
+				new CierreDeSesion(
+						sesion.getAsistencia(),
+						sesion.getNotaDeCierre(),
+						sesion.getRespuestaTratamiento(),
+						sesion.getTolerancia(),
+						sesion.getIndicaciones(),
+						sesion.getProximaConducta()),
+				sesion.getCerradaEn(),
 				sesion.getVersion());
 	}
 }

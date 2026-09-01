@@ -57,7 +57,29 @@ public record SesionResponse(
 						+ "y no en un endpoint aparte porque la pantalla la necesita en el mismo "
 						+ "momento: mostrar \"la vez pasada tenia 7\" al lado del campo de dolor es "
 						+ "lo que hace que se cargue una evolucion real y no la que se recuerda.")
-		PreviaResponse previa) {
+		PreviaResponse previa,
+
+		@Schema(
+				description = "Correlativo por historia clinica: \"la sesion numero 8 de este paciente\". "
+						+ "**Ausente mientras la sesion este abierta**, y es lo que la marca como cerrada.",
+				example = "8")
+		Integer numeroSesion,
+
+		@Schema(description = "Cierre clinico. Ausente si la sesion sigue abierta.")
+		CierreResponse cierre,
+
+		@Schema(example = "2026-09-15T12:48:00Z")
+		Instant cerradaEn) {
+
+	@Schema(name = "CierreDeSesion", description = "Resultado y proxima conducta")
+	public record CierreResponse(
+			@Schema(allowableValues = {"PRESENTE", "AUSENTE"}) String asistencia,
+			@Schema(description = "Lo unico que registra que se hizo mientras 06.04 no exista") String notaDeCierre,
+			String respuestaTratamiento,
+			@Schema(allowableValues = {"BUENA", "REGULAR", "MALA"}) String tolerancia,
+			String indicaciones,
+			@Schema(allowableValues = {"CONTINUA", "ALTA", "DERIVA", "REEVALUA"}) String proximaConducta) {
+	}
 
 	@Schema(name = "EvaluacionBase", description = "Dolor, funcion y objetivo de la atencion")
 	public record EvaluacionResponse(
@@ -94,7 +116,16 @@ public record SesionResponse(
 				vista.previa() == null ? null : new PreviaResponse(
 						vista.previa().iniciadaEn(),
 						vista.previa().dolorEva(),
-						vista.previa().evolucion()));
+						vista.previa().evolucion()),
+				vista.numeroSesion(),
+				vista.numeroSesion() == null ? null : new CierreResponse(
+						nombre(vista.cierre().asistencia()),
+						vista.cierre().notaDeCierre(),
+						vista.cierre().respuestaTratamiento(),
+						nombre(vista.cierre().tolerancia()),
+						vista.cierre().indicaciones(),
+						nombre(vista.cierre().proximaConducta())),
+				vista.cerradaEn());
 	}
 
 	/** Los enums viajan como texto para que el cliente no dependa del enum de este modulo. */

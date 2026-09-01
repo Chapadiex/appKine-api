@@ -1,8 +1,10 @@
 package com.akine.encounter.api;
 
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.encounter.domain.exception.CierreIncompletoException;
 import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
+import com.akine.encounter.domain.exception.SesionCerradaException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
 import com.akine.platform.spi.problem.ProblemType;
@@ -34,6 +36,7 @@ public class EncounterProblemHandler {
 	private static final URI TURNO_NO_ATENDIBLE = ProblemType.TURNO_NO_ATENDIBLE.uri();
 	private static final URI SESION_AJENA = ProblemType.SESION_AJENA.uri();
 	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
+	private static final URI SESION_CERRADA = ProblemType.SESION_CERRADA.uri();
 
 	@ExceptionHandler(ConsultorioNoAccesibleException.class)
 	public ProblemDetail handleConsultorioNoAccesible(ConsultorioNoAccesibleException exception) {
@@ -84,6 +87,30 @@ public class EncounterProblemHandler {
 				HttpStatus.BAD_REQUEST, exception.getMessage());
 		problem.setType(VALIDATION_ERROR);
 		problem.setTitle("La evaluacion tiene un dato invalido");
+		return problem;
+	}
+
+	/**
+	 * <b>409.</b> Corregir una sesion cerrada es una enmienda, no un segundo guardado. 06.06 no
+	 * existe todavia, asi que esto es fail-closed: es preferible no poder corregir a corregir sin
+	 * dejar rastro.
+	 */
+	@ExceptionHandler(SesionCerradaException.class)
+	public ProblemDetail handleSesionCerrada(SesionCerradaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(SESION_CERRADA);
+		problem.setTitle("La atencion ya esta cerrada");
+		return problem;
+	}
+
+	/** <b>400.</b> Falta un minimo del cierre; reintentar el mismo cuerpo falla igual. */
+	@ExceptionHandler(CierreIncompletoException.class)
+	public ProblemDetail handleCierreIncompleto(CierreIncompletoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(VALIDATION_ERROR);
+		problem.setTitle("Falta un dato para poder cerrar la atencion");
 		return problem;
 	}
 

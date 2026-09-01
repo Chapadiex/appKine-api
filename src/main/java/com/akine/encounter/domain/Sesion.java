@@ -1,6 +1,7 @@
 package com.akine.encounter.domain;
 
 import com.akine.encounter.domain.exception.SesionAjenaException;
+import com.akine.encounter.domain.exception.SesionCerradaException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -106,6 +107,36 @@ public class Sesion {
 	@Column(name = "evaluada_en")
 	private Instant evaluadaEn;
 
+	@Column(name = "numero_sesion")
+	private Integer numeroSesion;
+
+	@Column(name = "respuesta_tratamiento", length = 500)
+	private String respuestaTratamiento;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "tolerancia", length = 16)
+	private Tolerancia tolerancia;
+
+	@Column(name = "indicaciones", length = 1000)
+	private String indicaciones;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "proxima_conducta", length = 16)
+	private ProximaConducta proximaConducta;
+
+	@Column(name = "nota_de_cierre", length = 2000)
+	private String notaDeCierre;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "asistencia", length = 16)
+	private Asistencia asistencia;
+
+	@Column(name = "cerrada_en")
+	private Instant cerradaEn;
+
+	@Column(name = "cerrada_por_cuenta_id")
+	private Long cerradaPorCuentaId;
+
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
@@ -201,10 +232,60 @@ public class Sesion {
 		this.evaluadaEn = occurredAt;
 	}
 
+	/**
+	 * Cierra la atencion con el numero que le toca.
+	 *
+	 * <p><b>Es idempotente y esa es la mitad del requisito.</b> RN-M14-005 pide un comando con
+	 * resultado estable ante retry, y un profesional que aprieta dos veces "cerrar" es el caso
+	 * normal. Una sesion ya cerrada se devuelve tal cual: <b>no se renumera</b>, porque renumerar
+	 * una sesion cerrada es reescribir historia clinica, y no se sobreescriben sus datos, porque
+	 * corregir una sesion cerrada es una enmienda —06.06— y no un segundo cierre.
+	 *
+	 * <p>El llamador tiene que consultar {@link #estaCerrada()} ANTES de pedir un numero al
+	 * numerador: si no, cada reintento consume un correlativo que despues nadie usa, y la
+	 * numeracion del paciente queda con huecos que parecen sesiones borradas.
+	 */
+	public void cerrar(CierreDeSesion cierre, int numero, Instant occurredAt, long cerradaPorCuentaId) {
+		if (estaCerrada()) {
+			return;
+		}
+		cierre.exigirMinimos();
+
+		this.asistencia = cierre.asistencia();
+		this.notaDeCierre = cierre.notaDeCierre();
+		this.respuestaTratamiento = cierre.respuestaTratamiento();
+		this.tolerancia = cierre.tolerancia();
+		this.indicaciones = cierre.indicaciones();
+		this.proximaConducta = cierre.proximaConducta();
+
+		this.numeroSesion = numero;
+		this.cerradaEn = occurredAt;
+		this.cerradaPorCuentaId = cerradaPorCuentaId;
+	}
+
+	/**
+	 * {@code true} si la atencion ya se cerro.
+	 *
+	 * <p>Se decide por {@code numeroSesion} y no por el estado: el CHECK de V35 garantiza que el
+	 * numero, el instante y el actor van los tres o ninguno, asi que una fila a medio cerrar no
+	 * existe. Preguntar por el numero ademas es lo que impide consumir un correlativo por cada
+	 * reintento.
+	 */
+	public boolean estaCerrada() {
+		return numeroSesion != null;
+	}
+
+	/**
+	 * Una sesion cerrada no se edita.
+	 *
+	 * <p>Corregir lo que dice una atencion cerrada es una ENMIENDA, con su actor y su motivo, y eso
+	 * es 06.06 — fuera del Paquete B. Hasta que exista, esto es fail-closed: es preferible no poder
+	 * corregir a corregir sin dejar rastro, porque lo segundo es historia clinica reescrita en
+	 * silencio.
+	 */
 	private void exigirAbierta() {
-		if (estado != EstadoSesion.BORRADOR) {
-			throw new IllegalStateException(
-					"La sesion " + id + " no esta abierta: " + estado);
+		if (estaCerrada()) {
+			throw new SesionCerradaException(id);
 		}
 	}
 
@@ -294,6 +375,42 @@ public class Sesion {
 
 	public Instant getEvaluadaEn() {
 		return evaluadaEn;
+	}
+
+	public Integer getNumeroSesion() {
+		return numeroSesion;
+	}
+
+	public String getRespuestaTratamiento() {
+		return respuestaTratamiento;
+	}
+
+	public Tolerancia getTolerancia() {
+		return tolerancia;
+	}
+
+	public String getIndicaciones() {
+		return indicaciones;
+	}
+
+	public ProximaConducta getProximaConducta() {
+		return proximaConducta;
+	}
+
+	public String getNotaDeCierre() {
+		return notaDeCierre;
+	}
+
+	public Asistencia getAsistencia() {
+		return asistencia;
+	}
+
+	public Instant getCerradaEn() {
+		return cerradaEn;
+	}
+
+	public Long getCerradaPorCuentaId() {
+		return cerradaPorCuentaId;
 	}
 	public long getVersion() {
 		return version;
