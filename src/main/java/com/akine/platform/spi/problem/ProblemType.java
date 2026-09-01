@@ -257,6 +257,26 @@ public enum ProblemType {
 	 * el arqueo del dia no cerraria. Lo que corresponde es una devolucion, que es M19.
 	 */
 	OBLIGACION_CON_COBROS("obligacion-con-cobros"),
+
+	// --- Cobros (M19) ----------------------------------------------------------------------
+	/**
+	 * La suma de los medios, o la de las imputaciones, no da el total del cobro.
+	 *
+	 * <p>Son invariantes de RN-M19 que ninguna constraint puede expresar —MySQL no admite
+	 * subconsultas en un CHECK— asi que las verifica la aplicacion. Lleva {@code esperado} y
+	 * {@code recibido} para que la pantalla muestre la diferencia en vez de un mensaje generico.
+	 */
+	COBRO_NO_CUADRA("cobro-no-cuadra"),
+	/**
+	 * Se intento imputar mas de lo que la deuda debe.
+	 *
+	 * <p>Es el desenlace legitimo de una carrera: otro cobro se llevo la plata entre que la
+	 * pantalla mostro la cuenta corriente y el operador confirmo. Reintentar con la cuenta
+	 * recargada es la accion correcta.
+	 */
+	SALDO_INSUFICIENTE("saldo-insuficiente"),
+	/** La deuda esta anulada, ya pagada, o es de otra persona. Lleva {@code motivo}. */
+	OBLIGACION_NO_COBRABLE("obligacion-no-cobrable"),
 	CONSULTORIO_NO_OPERABLE("consultorio-no-operable"),
 
 	// --- Personas y perfiles de paciente (M07, AKINE-03.01) ---------------------------------

@@ -1,6 +1,12 @@
 package com.akine.billing.api;
 
+import com.akine.billing.application.IdempotencyKeyConflictException;
+import com.akine.billing.domain.exception.CobroNotAccessibleException;
 import com.akine.billing.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.billing.domain.exception.ImputacionesNoSumanException;
+import com.akine.billing.domain.exception.MediosNoSumanException;
+import com.akine.billing.domain.exception.ObligacionNoCobrableException;
+import com.akine.billing.domain.exception.SaldoInsuficienteException;
 import com.akine.billing.domain.exception.ObligacionAnuladaException;
 import com.akine.billing.domain.exception.ObligacionConCobrosException;
 import com.akine.billing.domain.exception.ObligacionNotAccessibleException;
@@ -26,6 +32,10 @@ public class BillingProblemHandler {
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI OBLIGACION_ALREADY_ANULADA = ProblemType.OBLIGACION_ALREADY_ANULADA.uri();
 	private static final URI OBLIGACION_CON_COBROS = ProblemType.OBLIGACION_CON_COBROS.uri();
+	private static final URI COBRO_NO_CUADRA = ProblemType.COBRO_NO_CUADRA.uri();
+	private static final URI SALDO_INSUFICIENTE = ProblemType.SALDO_INSUFICIENTE.uri();
+	private static final URI OBLIGACION_NO_COBRABLE = ProblemType.OBLIGACION_NO_COBRABLE.uri();
+	private static final URI IDEMPOTENCY_KEY_CONFLICT = ProblemType.IDEMPOTENCY_KEY_CONFLICT.uri();
 
 	@ExceptionHandler(ConsultorioNoAccesibleException.class)
 	public ProblemDetail handleConsultorioNoAccesible(ConsultorioNoAccesibleException exception) {
@@ -61,6 +71,78 @@ public class BillingProblemHandler {
 		problem.setType(OBLIGACION_CON_COBROS);
 		problem.setTitle("La obligacion ya tiene cobros imputados");
 		problem.setProperty("yaCobrado", exception.getYaCobrado());
+		return problem;
+	}
+	// =================================================================================
+	// Cobros — M19
+	// =================================================================================
+
+	@ExceptionHandler(CobroNotAccessibleException.class)
+	public ProblemDetail handleCobroNoAccesible(CobroNotAccessibleException exception) {
+		log.debug("Cobro no accesible: cobroId={}", exception.getCobroId());
+		return noEncontrado("El cobro no existe.");
+	}
+
+	/**
+	 * <b>400.</b> Los medios no dan el total.
+	 *
+	 * <p>Lleva las dos cifras para que la pantalla muestre la diferencia. Sin ellas, el operador
+	 * tiene que recontar a mano lo que el servidor ya sumo.
+	 */
+	@ExceptionHandler(MediosNoSumanException.class)
+	public ProblemDetail handleMediosNoSuman(MediosNoSumanException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(COBRO_NO_CUADRA);
+		problem.setTitle("Los medios de pago no dan el total");
+		problem.setProperty("esperado", exception.getTotal());
+		problem.setProperty("recibido", exception.getSumaDeMedios());
+		return problem;
+	}
+
+	@ExceptionHandler(ImputacionesNoSumanException.class)
+	public ProblemDetail handleImputacionesNoSuman(ImputacionesNoSumanException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(COBRO_NO_CUADRA);
+		problem.setTitle("Las imputaciones no dan el total");
+		problem.setProperty("esperado", exception.getTotal());
+		problem.setProperty("recibido", exception.getSumaImputada());
+		return problem;
+	}
+
+	/**
+	 * <b>409 y no 400.</b> El cuerpo era valido cuando se compuso; lo que cambio es el estado del
+	 * servidor porque otro cobro se llevo la plata. Reintentar con la cuenta corriente recargada es
+	 * la accion correcta, y un 400 sugeriria que el operador se equivoco.
+	 */
+	@ExceptionHandler(SaldoInsuficienteException.class)
+	public ProblemDetail handleSaldoInsuficiente(SaldoInsuficienteException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(SALDO_INSUFICIENTE);
+		problem.setTitle("La deuda ya no tiene ese saldo");
+		problem.setProperty("obligacionId", exception.getObligacionId());
+		problem.setProperty("importeIntentado", exception.getImporteIntentado());
+		return problem;
+	}
+
+	@ExceptionHandler(ObligacionNoCobrableException.class)
+	public ProblemDetail handleNoCobrable(ObligacionNoCobrableException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(OBLIGACION_NO_COBRABLE);
+		problem.setTitle("La deuda no admite este cobro");
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	@ExceptionHandler(IdempotencyKeyConflictException.class)
+	public ProblemDetail handleIdempotencyConflict(IdempotencyKeyConflictException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(IDEMPOTENCY_KEY_CONFLICT);
+		problem.setTitle("La clave de idempotencia se reuso con otro pedido");
 		return problem;
 	}
 

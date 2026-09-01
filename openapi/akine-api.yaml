@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.19.0
+  version: 0.20.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -58,6 +58,8 @@ tags:
 - description: "Turnos disponibles calculados a partir de disponibilidad, oferta y\
     \ habilitaciones (M12)"
   name: Agenda
+- description: "Dinero recibido, sus medios y sus imputaciones (M19)"
+  name: Cobros
 - description: Consulta del registro de hechos de la organizacion
   name: Auditoria
 - description: Alta y administracion de tenants y sus sedes
@@ -1610,6 +1612,167 @@ paths:
       summary: Edicion de la politica de calendario de la sede
       tags:
       - Calendario de sede
+  /api/v1/consultorios/{consultorioId}/cobros:
+    get:
+      description: "Los cobros de un paciente en toda la organizacion, del mas reciente\
+        \ al mas viejo. Junto con las obligaciones forma su cuenta corriente."
+      operationId: deLaPersona
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Cobro"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Cobro"
+          description: Cobros del paciente
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Cobros de un paciente
+      tags:
+      - Cobros
+    post:
+      description: |-
+        Recibe dinero por uno o varios medios y lo imputa a las deudas indicadas, emitiendo un **comprobante correlativo por sede**.
+
+        **Las dos sumas tienen que dar el total**: la de los medios y la de las imputaciones. Son invariantes de RN-M19 que ninguna constraint de base puede expresar, asi que las verifica el servidor y un cuerpo que no las cumple es 400. Sin la primera, un cobro de 8500 con un medio de 850 —un cero de menos— entraria igual, la deuda quedaria saldada y en la caja faltaria plata que nadie podria explicar.
+
+        **El descuento del saldo es atomico.** Si entre que la pantalla mostro la cuenta corriente y el operador confirmo otro cobro se llevo la plata, la respuesta es 409 `saldo-insuficiente` y no un saldo negativo.
+
+        **Manda `idempotencyKey`.** Un reintento devuelve el mismo cobro con el mismo comprobante; sin ella, un doble click cobra dos veces. La idempotencia se evalua antes de tocar el numerador, para que un reintento no consuma un numero de comprobante que despues nadie usa: la numeracion fiscal con huecos es peor que un cobro repetido.
+
+        **No hay anticipos ni anulacion todavia.** Los dos exigen la Caja (AKINE-07.03): un anticipo sin caja es plata que entro y que ningun arqueo puede encontrar, y un reintegro saca dinero de una caja que no existe.
+      operationId: registrar
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarCobro"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cobro"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Cobro"
+          description: Cobro registrado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Los medios o las imputaciones no suman el total
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `cobro:register` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Deuda anulada, pagada o de otra persona; saldo insuficiente;\
+            \ o clave de idempotencia reusada con otro pedido"
+      summary: Registrar un cobro
+      tags:
+      - Cobros
+  /api/v1/consultorios/{consultorioId}/cobros/{cobroId}:
+    get:
+      description: "Devuelve el cobro con su comprobante, sus medios y sus imputaciones.\
+        \ **Es la reimpresion**: sin esta lectura, un operador que necesita el comprobante\
+        \ de nuevo tendria como unica salida volver a registrar el cobro."
+      operationId: ver_2
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: cobroId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cobro"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Cobro"
+          description: Cobro
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El cobro o la sede no existen, o son de otro tenant"
+      summary: Recuperar un comprobante
+      tags:
+      - Cobros
   /api/v1/consultorios/{consultorioId}/excepciones:
     get:
       description: |-
@@ -1851,7 +2014,7 @@ paths:
         La deuda de un paciente en **toda la organizacion**, de la mas reciente a la mas vieja.
 
         El alcance es la organizacion y no la sede, aunque el permiso se evalue con la sede del contexto: la deuda de un paciente es una sola aunque se haya generado en dos sedes del mismo centro, y mostrarla partida obligaria al administrativo a sumar de memoria.
-      operationId: deLaPersona
+      operationId: deLaPersona_1
       parameters:
       - in: path
         name: consultorioId
@@ -7260,6 +7423,52 @@ components:
           format: int32
           description: Sesiones vivas que se revocaron
           example: 3
+    Cobro:
+      type: object
+      description: Dinero recibido. No es la deuda (M18) ni la caja (M20).
+      properties:
+        cobradoEn:
+          type: string
+          format: date-time
+          example: 2026-09-15T13:02:00Z
+        comprobanteNumero:
+          type: integer
+          format: int32
+          description: "Correlativo **por sede**. Es lo que el paciente se lleva,\
+            \ y un numero repetido seria un problema fiscal."
+          example: 142
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        id:
+          type: integer
+          format: int64
+          example: 5001
+        imputaciones:
+          type: array
+          description: Contra que deudas se aplico. Su suma da el total.
+          items:
+            $ref: "#/components/schemas/ImputacionAplicada"
+        medios:
+          type: array
+          description: Por que via entro. Su suma da el total.
+          items:
+            $ref: "#/components/schemas/MedioDeCobroAplicado"
+        moneda:
+          type: string
+          example: ARS
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+        total:
+          type: number
+          example: 8500.0
+        version:
+          type: integer
+          format: int64
+          example: 0
     ConsultorioPageResponse:
       type: object
       description: "Pagina de sedes de la organizacion, segun el filtro de estado\
@@ -8892,6 +9101,31 @@ components:
           description: "Si la oferta esta restringida a una lista de profesionales.\
             \ false significa que cualquier profesional con vinculo vigente puede\
             \ prestarla, NO que no pueda ninguno"
+    ImputacionAplicada:
+      type: object
+      properties:
+        importe:
+          type: number
+          description: Lo que ESTE cobro aplico. El saldo que quedo vive en la obligacion.
+        obligacionId:
+          type: integer
+          format: int64
+    ImputacionDeCobro:
+      type: object
+      properties:
+        importe:
+          type: number
+          description: Cuanto de este cobro paga esa deuda
+          example: 8500.0
+          minimum: 0.01
+        obligacionId:
+          type: integer
+          format: int64
+          example: 9001
+          minimum: 0
+      required:
+      - importe
+      - obligacionId
     InvitacionPreviewResponse:
       type: object
       description: Lo que el invitado necesita saber para decidir
@@ -9033,6 +9267,50 @@ components:
       required:
       - email
       - password
+    MedioDeCobro:
+      type: object
+      properties:
+        importe:
+          type: number
+          example: 8500.0
+          minimum: 0.01
+        medio:
+          type: string
+          description: "`OTRO` existe para billeteras virtuales, cheques o descuentos\
+            \ de convenio. Sin ese valor el operador elegiria el medio equivocado\
+            \ —normalmente efectivo— y el arqueo no cerraria por una razon que nadie\
+            \ podria rastrear."
+          enum:
+          - EFECTIVO
+          - TRANSFERENCIA
+          - TARJETA_DEBITO
+          - TARJETA_CREDITO
+          - OTRO
+          example: EFECTIVO
+        referencia:
+          type: string
+          description: "Numero de operacion, ultimos digitos, lo que corresponda"
+          example: op-99182
+          maxLength: 120
+          minLength: 0
+      required:
+      - importe
+      - medio
+    MedioDeCobroAplicado:
+      type: object
+      properties:
+        importe:
+          type: number
+        medio:
+          type: string
+          enum:
+          - EFECTIVO
+          - TRANSFERENCIA
+          - TARJETA_DEBITO
+          - TARJETA_CREDITO
+          - OTRO
+        referencia:
+          type: string
     MembershipGrantResponse:
       type: object
       description: Permiso adicional otorgado a un colaborador
@@ -9803,6 +10081,9 @@ components:
       - https://akine.app/problems/sesion-cerrada
       - https://akine.app/problems/obligacion-already-anulada
       - https://akine.app/problems/obligacion-con-cobros
+      - https://akine.app/problems/cobro-no-cuadra
+      - https://akine.app/problems/saldo-insuficiente
+      - https://akine.app/problems/obligacion-no-cobrable
       - https://akine.app/problems/consultorio-no-operable
       - https://akine.app/problems/persona-documento-taken
       - https://akine.app/problems/persona-posible-duplicado
@@ -9947,6 +10228,50 @@ components:
       - lastName
       - organizationName
       - password
+    RegistrarCobro:
+      type: object
+      description: "Dinero recibido, con sus medios y sus imputaciones. La suma de\
+        \ los medios y la de las imputaciones tienen que dar el total."
+      properties:
+        idempotencyKey:
+          type: string
+          description: "Clave del cliente para que un reintento no cobre dos veces.\
+            \ Reusarla con **otro** contenido devuelve 409, no el cobro anterior."
+          example: c4e2a1b0-7d3f-4e59-9a12-6b7c8d9e0f1a
+          maxLength: 80
+          minLength: 0
+        imputaciones:
+          type: array
+          description: "Contra que deudas se aplica. Un cobro puede saldar varias\
+            \ sesiones juntas. **Su suma tiene que dar el total**: mientras no existan\
+            \ los anticipos —AKINE-07.03, junto con la Caja— todo el dinero recibido\
+            \ tiene que aplicarse a alguna deuda."
+          items:
+            $ref: "#/components/schemas/ImputacionDeCobro"
+          minItems: 1
+        medios:
+          type: array
+          description: "Por que via entro. Puede ser mas de uno: mitad efectivo y\
+            \ mitad tarjeta es normal. **Su suma tiene que dar el total.**"
+          items:
+            $ref: "#/components/schemas/MedioDeCobro"
+          minItems: 1
+        personaId:
+          type: integer
+          format: int64
+          description: Quien paga
+          example: 128
+          minimum: 0
+        total:
+          type: number
+          description: "Total recibido. Decimal exacto, nunca float."
+          example: 8500.0
+          minimum: 0.01
+      required:
+      - imputaciones
+      - medios
+      - personaId
+      - total
     ResendActivationRequest:
       type: object
       description: Direccion a la que reenviar el enlace de activacion
