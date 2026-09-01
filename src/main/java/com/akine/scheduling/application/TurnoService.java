@@ -135,7 +135,7 @@ public class TurnoService {
 	 * @throws IdempotencyKeyConflictException      misma clave, pedido distinto (409)
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
-	public TurnoView reservar(
+	public ResultadoDeReserva reservar(
 			OperatingActor actor, long consultorioId, long ofertaId, ReservaCommand command) {
 
 		long organizationId = exigirContexto(actor);
@@ -155,7 +155,8 @@ public class TurnoService {
 				? Optional.empty()
 				: turnos.findByIdempotencyKey(organizationId, command.idempotencyKey());
 		if (yaCreado.isPresent()) {
-			return resolverReintento(yaCreado.get(), command, consultorioId, ofertaId);
+			return new ResultadoDeReserva(
+					resolverReintento(yaCreado.get(), command, consultorioId, ofertaId), false);
 		}
 
 		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, ofertaId)
@@ -210,7 +211,7 @@ public class TurnoService {
 		log.info("Turno reservado: turnoId={} consultorioId={} ofertaId={} personaId={} inicio={}",
 				turno.getId(), consultorioId, ofertaId, command.personaId(), inicio);
 
-		return TurnoView.de(turno);
+		return new ResultadoDeReserva(TurnoView.de(turno), true);
 	}
 
 	/**
@@ -284,10 +285,14 @@ public class TurnoService {
 			throw new SlotNoDisponibleException("la oferta exige profesional y no se indico ninguno");
 		}
 
-		boolean habilitado = ofertas
-				.profesionalesHabilitados(organizationId, consultorioId, oferta.id()).stream()
-				.filter(habilitacion -> habilitacion.recursoId() == command.profesionalId())
-				.anyMatch(habilitacion -> habilitacion.vigenteEn(inicio));
+		// Lista vacia significa TODOS, no ninguno: es la regla de V28, y aplicarla al reves
+		// rechazaria toda reserva de una oferta recien creada. Ver AgendaService#habilitadosOTodos.
+		List<HabilitacionSnapshot> habilitaciones =
+				ofertas.profesionalesHabilitados(organizationId, consultorioId, oferta.id());
+		boolean habilitado = habilitaciones.isEmpty()
+				|| habilitaciones.stream()
+						.filter(habilitacion -> habilitacion.recursoId() == command.profesionalId())
+						.anyMatch(habilitacion -> habilitacion.vigenteEn(inicio));
 		if (!habilitado) {
 			throw new SlotNoDisponibleException(
 					"el profesional ya no esta habilitado para esta oferta en esa fecha");
@@ -339,6 +344,18 @@ public class TurnoService {
 
 		List<HabilitacionSnapshot> habilitados =
 				ofertas.espaciosHabilitados(organizationId, consultorioId, ofertaId);
+		if (habilitados.isEmpty()) {
+			// Sin habilitaciones la oferta se puede prestar en cualquier espacio en servicio de la
+			// sede: misma regla de V28 que para los profesionales.
+			return espacios.enServicio(organizationId, consultorioId, inicio, fin).stream()
+					.filter(EspacioSnapshot::active)
+					.filter(EspacioSnapshot::enServicio)
+					.map(EspacioSnapshot::id)
+					.filter(espacioId -> turnos
+							.findVivosDeEspacioQueCruzan(organizationId, espacioId, inicio, fin).isEmpty())
+					.findFirst()
+					.orElseThrow(() -> new RecursoOcupadoException("espacio"));
+		}
 
 		for (HabilitacionSnapshot habilitacion : habilitados) {
 			if (!habilitacion.vigenteEn(inicio)) {

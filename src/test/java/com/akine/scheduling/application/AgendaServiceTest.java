@@ -4,6 +4,8 @@ import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.resource.spi.DisponibilidadDirectory;
@@ -69,6 +71,7 @@ class AgendaServiceTest {
 	@Mock private DisponibilidadDirectory disponibilidad;
 	@Mock private EspacioDirectory espacios;
 	@Mock private ConsultorioDirectory consultorios;
+	@Mock private ConsultorioMembershipDirectory memberships;
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private ReservaProbe reservas;
 
@@ -79,10 +82,13 @@ class AgendaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AgendaService(
-				ofertas, disponibilidad, espacios, consultorios, permissionGuard, reservas);
+				ofertas, disponibilidad, espacios, consultorios, memberships, permissionGuard, reservas);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede centro", ZONA.getId(), true)));
+		// Sin profesionales de la sede: los tests declaran sus habilitaciones explicitamente, y la
+		// regla de "lista vacia = todos" tiene su propio test.
+		given(memberships.findPorRolEnSede(anyLong(), anyLong(), any())).willReturn(List.of());
 	}
 
 	// =================================================================================
@@ -228,6 +234,29 @@ class AgendaServiceTest {
 			assertThat(dias).allSatisfy(dia ->
 					assertThat(dia.slots().isEmpty() == (dia.motivoSinSlots() != null)).isTrue());
 		}
+	}
+
+	@Test
+	@DisplayName("Sin habilitaciones cargadas, TODOS los profesionales de la sede pueden prestarla")
+	void la_lista_vacia_significa_todos() {
+		// Es la regla de V28 y la decision con mas consecuencias de 02.07: una oferta recien creada
+		// no tiene filas de habilitacion, y si eso significara "nadie puede prestarla", toda oferta
+		// naceria sin poder ofrecer un solo turno.
+		//
+		// La primera version del motor la invertia en silencio y devolvia SIN_PROFESIONAL. Lo
+		// destapo el QA manual contra el stack real, no un test: el doble devolvia la lista que el
+		// test le daba y nadie cuestionaba que significaba la lista vacia.
+		given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(30)));
+		given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+				.willReturn(List.of());
+		given(memberships.findPorRolEnSede(ORG_ID, CONSULTORIO_ID, "PROFESIONAL")).willReturn(List.of(
+				new ConsultorioMembershipSnapshot(PROFESIONAL_ID, 5L, ORG_ID, CONSULTORIO_ID,
+						"PROFESIONAL", "ACTIVA", Instant.EPOCH, null, true, true)));
+		conDisponibilidad(List.of(atiende(LUNES, "09:00", "10:00")));
+
+		assertThat(buscarUnDia().dias().get(0).slots())
+				.as("la oferta sin restringir la puede prestar cualquier profesional de la sede")
+				.hasSize(2);
 	}
 
 	@Nested

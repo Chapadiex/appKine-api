@@ -259,6 +259,7 @@ public class Sesion {
 		this.proximaConducta = cierre.proximaConducta();
 
 		this.numeroSesion = numero;
+		this.estado = EstadoSesion.CERRADA;
 		this.cerradaEn = occurredAt;
 		this.cerradaPorCuentaId = cerradaPorCuentaId;
 	}

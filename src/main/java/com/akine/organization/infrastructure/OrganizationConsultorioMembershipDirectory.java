@@ -60,6 +60,18 @@ public class OrganizationConsultorioMembershipDirectory implements ConsultorioMe
 				.toList();
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public List<ConsultorioMembershipSnapshot> findPorRolEnSede(
+			long organizationId, long consultorioId, String roleCode) {
+
+		return membershipRepository.findAllByOrganizationIdAndActiveTrue(organizationId).stream()
+				.map(OrganizationConsultorioMembershipDirectory::snapshot)
+				.filter(membership -> roleCode.equals(membership.roleCode()))
+				.filter(membership -> membership.cubreConsultorio(consultorioId))
+				.toList();
+	}
+
 	private static ConsultorioMembershipSnapshot snapshot(Membership membership) {
 		return new ConsultorioMembershipSnapshot(
 				membership.getId(),

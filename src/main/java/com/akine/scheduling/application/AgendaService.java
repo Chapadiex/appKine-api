@@ -4,6 +4,7 @@ import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
@@ -96,10 +97,14 @@ public class AgendaService {
 
 	private static final Logger log = LoggerFactory.getLogger(AgendaService.class);
 
+	/** El rol que atiende. Texto y no enum: `scheduling` no importa el dominio de `organization`. */
+	private static final String ROL_PROFESIONAL = "PROFESIONAL";
+
 	private final OfertaDirectory ofertas;
 	private final DisponibilidadDirectory disponibilidad;
 	private final EspacioDirectory espacios;
 	private final ConsultorioDirectory consultorios;
+	private final ConsultorioMembershipDirectory memberships;
 	private final PermissionGuard permissionGuard;
 	private final ReservaProbe reservas;
 
@@ -108,6 +113,7 @@ public class AgendaService {
 			DisponibilidadDirectory disponibilidad,
 			EspacioDirectory espacios,
 			ConsultorioDirectory consultorios,
+			ConsultorioMembershipDirectory memberships,
 			PermissionGuard permissionGuard,
 			ReservaProbe reservas) {
 
@@ -115,6 +121,7 @@ public class AgendaService {
 		this.disponibilidad = disponibilidad;
 		this.espacios = espacios;
 		this.consultorios = consultorios;
+		this.memberships = memberships;
 		this.permissionGuard = permissionGuard;
 		this.reservas = reservas;
 	}
@@ -160,7 +167,7 @@ public class AgendaService {
 
 		List<HabilitacionSnapshot> profesionales = oferta.requiereProfesional()
 				? filtrarPorProfesional(
-						ofertas.profesionalesHabilitados(organizationId, consultorioId, ofertaId),
+						habilitadosOTodos(organizationId, consultorioId, ofertaId),
 						profesionalId)
 				: List.of();
 
@@ -371,6 +378,12 @@ public class AgendaService {
 			long consultorioId,
 			Instant at) {
 
+		if (habilitados.isEmpty()) {
+			// Lista vacia significa TODOS: la oferta se puede prestar en cualquier espacio en
+			// servicio de la sede. Ver habilitadosOTodos.
+			return espacios.enServicio(organizationId, consultorioId, at, at.plusSeconds(1)).stream()
+					.anyMatch(espacio -> espacio.active() && espacio.enServicio());
+		}
 		return habilitados.stream()
 				.filter(habilitacion -> habilitacion.vigenteEn(at))
 				.map(habilitacion -> espacios.find(organizationId, habilitacion.recursoId(), at))
@@ -379,6 +392,38 @@ public class AgendaService {
 						.filter(EspacioSnapshot::enServicio)
 						.filter(candidato -> candidato.consultorioId() == consultorioId)
 						.isPresent());
+	}
+
+	/**
+	 * Los profesionales que pueden prestar la oferta.
+	 *
+	 * <p><b>Una lista de habilitaciones vacia significa TODOS, no ninguno.</b> Es la decision con
+	 * mas consecuencias de 02.07 y esta escrita en la cabecera de V28: una oferta recien creada no
+	 * tiene filas de habilitacion, y si eso significara "nadie puede prestarla", toda oferta naceria
+	 * sin poder ofrecer un solo turno. En cuanto se agrega la primera fila, la oferta pasa a estar
+	 * restringida.
+	 *
+	 * <p>Este metodo existe porque la primera version del motor leia las habilitaciones y devolvia
+	 * {@code SIN_PROFESIONAL} cuando no habia ninguna — invirtiendo la regla en silencio. Lo destapo
+	 * el QA manual contra el stack real: una organizacion recien creada, con su profesional y su
+	 * horario cargados, no ofrecia un solo turno. Ningun test con dobles podia verlo, porque el doble
+	 * devolvia la lista que el test le daba y nadie cuestionaba que significaba la lista vacia.
+	 *
+	 * <p>Los profesionales sinteticos que se arman para el caso "todos" llevan vigencia abierta: la
+	 * vigencia que importa ahi es la del VINCULO, y esa la evalua M05 dia por dia mas adelante.
+	 */
+	private List<HabilitacionSnapshot> habilitadosOTodos(
+			long organizationId, long consultorioId, long ofertaId) {
+
+		List<HabilitacionSnapshot> habilitados =
+				ofertas.profesionalesHabilitados(organizationId, consultorioId, ofertaId);
+		if (!habilitados.isEmpty()) {
+			return habilitados;
+		}
+		return memberships.findPorRolEnSede(organizationId, consultorioId, ROL_PROFESIONAL).stream()
+				.map(membership -> new HabilitacionSnapshot(
+						0L, membership.membershipId(), Instant.EPOCH, null, true))
+				.toList();
 	}
 
 	private static List<HabilitacionSnapshot> filtrarPorProfesional(

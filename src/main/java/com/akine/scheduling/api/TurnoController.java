@@ -88,7 +88,7 @@ public class TurnoController {
 			@PathVariable long ofertaId,
 			@RequestBody @Valid ReservarTurnoRequest request) {
 
-		TurnoView vista = turnoService.reservar(
+		var resultado = turnoService.reservar(
 				apiActor.current(), consultorioId, ofertaId,
 				new ReservaCommand(
 						request.personaId(),
@@ -96,9 +96,17 @@ public class TurnoController {
 						request.profesionalId(),
 						request.idempotencyKey()));
 
+		TurnoResponse cuerpo = TurnoResponse.de(resultado.turno());
+
+		// 200 cuando la clave de idempotencia ya tenia turno: un 201 afirmaria que se creo algo
+		// que no se creo, y el contrato promete 200 para ese caso.
+		if (!resultado.creado()) {
+			return ResponseEntity.ok(cuerpo);
+		}
 		return ResponseEntity
-				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/turnos/" + vista.id()))
-				.body(TurnoResponse.de(vista));
+				.created(URI.create(
+						"/api/v1/consultorios/" + consultorioId + "/turnos/" + resultado.turno().id()))
+				.body(cuerpo);
 	}
 
 	/**

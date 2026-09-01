@@ -139,7 +139,8 @@ class TurnoConcurrenteIT {
 
 		Callable<TurnoView> click = () -> turnoService.reservar(
 				fixture.actor(), fixture.consultorioId(), fixture.ofertaId(),
-				new ReservaCommand(fixture.personaA(), inicio, fixture.profesionalMembershipId(), clave));
+				new ReservaCommand(fixture.personaA(), inicio, fixture.profesionalMembershipId(), clave))
+				.turno();
 
 		List<Desenlace> desenlaces = enParalelo(List.of(click, click));
 
@@ -220,7 +221,8 @@ class TurnoConcurrenteIT {
 	private TurnoView reservar(Fixture fixture, long personaId, Instant inicio) {
 		return turnoService.reservar(
 				fixture.actor(), fixture.consultorioId(), fixture.ofertaId(),
-				new ReservaCommand(personaId, inicio, fixture.profesionalMembershipId(), null));
+				new ReservaCommand(personaId, inicio, fixture.profesionalMembershipId(), null))
+				.turno();
 	}
 
 	/**

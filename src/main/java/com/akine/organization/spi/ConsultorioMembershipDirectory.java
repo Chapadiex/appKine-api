@@ -36,4 +36,17 @@ public interface ConsultorioMembershipDirectory {
 	 * caso legitimo del vinculo organizacional, que cubre todas.
 	 */
 	List<ConsultorioMembershipSnapshot> findByAccount(long organizationId, long accountId);
+
+	/**
+	 * Los vinculos activos con un rol dado que cubren una sede.
+	 *
+	 * <p>Existe por la regla de V28: <b>una lista de habilitaciones vacia significa "todos", no
+	 * "ninguno"</b>. Sin esta consulta, el motor de agenda no tiene forma de saber quienes son
+	 * "todos" y una oferta recien creada —que a proposito no pide quince datos al darla de alta—
+	 * naceria sin poder ofrecer un solo turno.
+	 *
+	 * <p>Incluye los vinculos de alcance ORGANIZACION, que cubren todas las sedes.
+	 */
+	List<ConsultorioMembershipSnapshot> findPorRolEnSede(
+			long organizationId, long consultorioId, String roleCode);
 }
