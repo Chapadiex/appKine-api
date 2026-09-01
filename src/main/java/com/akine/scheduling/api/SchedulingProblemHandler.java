@@ -10,6 +10,8 @@ import com.akine.scheduling.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.SlotCompletoException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
+import com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException;
+import com.akine.scheduling.domain.exception.TurnoConAtencionException;
 import com.akine.scheduling.domain.exception.TurnoNotAccessibleException;
 import com.akine.scheduling.domain.exception.VentanaDeAgendaDemasiadoAmpliaException;
 import org.slf4j.Logger;
@@ -44,6 +46,8 @@ public class SchedulingProblemHandler {
 	private static final URI RECURSO_OCUPADO = ProblemType.RECURSO_OCUPADO.uri();
 	private static final URI PERSONA_SIN_PERFIL_PACIENTE = ProblemType.PERSONA_SIN_PERFIL_PACIENTE.uri();
 	private static final URI IDEMPOTENCY_KEY_CONFLICT = ProblemType.IDEMPOTENCY_KEY_CONFLICT.uri();
+	private static final URI TURNO_TRANSICION_NO_PERMITIDA = ProblemType.TURNO_TRANSICION_NO_PERMITIDA.uri();
+	private static final URI TURNO_CON_ATENCION = ProblemType.TURNO_CON_ATENCION.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -158,6 +162,39 @@ public class SchedulingProblemHandler {
 		problem.setType(RECURSO_OCUPADO);
 		problem.setTitle("El recurso ya esta ocupado en ese horario");
 		problem.setProperty("recurso", exception.getRecurso());
+		return problem;
+	}
+
+	/**
+	 * Transicion imposible: el turno ya cerro su ciclo, o su ventana temporal no la admite.
+	 *
+	 * <p>Lleva {@code motivo} como propiedad extra, y no es decoracion: "ya esta cancelado" y "ya
+	 * empezo" llevan al mismo tipo pero a mensajes distintos, y sin el la pantalla tendria que
+	 * leer prosa en castellano para saber cual mostrar.
+	 */
+	@ExceptionHandler(TransicionDeTurnoNoPermitidaException.class)
+	public ProblemDetail handleTransicionNoPermitida(TransicionDeTurnoNoPermitidaException exception) {
+		log.debug("Transicion de turno rechazada: turnoId={} motivo={}",
+				exception.getTurnoId(), exception.getMotivo());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(TURNO_TRANSICION_NO_PERMITIDA);
+		problem.setTitle("El turno no admite esa operacion");
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	/**
+	 * <b>Un tipo propio y no el de transicion invalida.</b> Los dos son 409, pero este manda a la
+	 * pantalla a otra parte: no hay que refrescar el turno, hay una atencion que resolver primero.
+	 */
+	@ExceptionHandler(TurnoConAtencionException.class)
+	public ProblemDetail handleTurnoConAtencion(TurnoConAtencionException exception) {
+		log.debug("Turno con atencion registrada: turnoId={}", exception.getTurnoId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(TURNO_CON_ATENCION);
+		problem.setTitle("El turno ya tiene una atencion registrada");
 		return problem;
 	}
 

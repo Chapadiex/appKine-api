@@ -11,7 +11,9 @@ import java.time.Instant;
  * la ficha por su propio endpoint, y duplicar nombre y documento aca los expondria en toda
  * respuesta de agenda —incluida la de un rol que puede ver turnos y no fichas—.
  *
- * @param version para el control optimista de las mutaciones que llegan en 05.03
+ * @param estado             RESERVADO, CONFIRMADO, CANCELADO o AUSENTE
+ * @param motivoCancelacion  presente solo si el turno esta cancelado
+ * @param version            para el control optimista de cancelar, mover y marcar ausencia
  */
 public record TurnoView(
 		long id,
@@ -25,6 +27,10 @@ public record TurnoView(
 		String estado,
 		Instant reservadoEn,
 		Instant confirmadoEn,
+		String motivoCancelacion,
+		Instant canceladoEn,
+		Instant ausenteEn,
+		Instant reprogramadoEn,
 		long version) {
 
 	public static TurnoView de(Turno turno) {
@@ -40,6 +46,10 @@ public record TurnoView(
 				turno.getEstado().name(),
 				turno.getReservadoEn(),
 				turno.getConfirmadoEn(),
+				turno.getMotivoCancelacion(),
+				turno.getCanceladoEn(),
+				turno.getAusenteEn(),
+				turno.getReprogramadoEn(),
 				turno.getVersion());
 	}
 }

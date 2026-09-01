@@ -2,6 +2,7 @@ package com.akine.scheduling.domain.port;
 
 import com.akine.scheduling.domain.AgendaSede;
 import com.akine.scheduling.domain.Turno;
+import com.akine.scheduling.domain.TurnoEvento;
 
 import java.time.Instant;
 import java.util.List;
@@ -79,5 +80,20 @@ public final class SchedulingRepositoryPorts {
 
 		/** Cuantos turnos vivos ocupan ese slot. Es el cupo consumido de una oferta grupal. */
 		long contarVivosEnSlot(long organizationId, long ofertaId, Instant inicio);
+	}
+
+	/**
+	 * Historial de transiciones (RF-M12-008). <b>Solo escribe e itera: no actualiza ni borra.</b>
+	 *
+	 * <p>La ausencia de {@code delete} y de {@code update} en este contrato no es un olvido: es la
+	 * unica garantia real de que el historial sea inmutable. La misma decision que
+	 * {@code platform.spi.audit.AuditTrail} tomo para la auditoria.
+	 */
+	public interface TurnoEventoRepositoryPort {
+
+		TurnoEvento registrar(TurnoEvento evento);
+
+		/** Los eventos de un turno, del mas viejo al mas nuevo. */
+		List<TurnoEvento> historial(long organizationId, long turnoId);
 	}
 }

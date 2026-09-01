@@ -1,6 +1,5 @@
 package com.akine.scheduling.application;
 
-import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
@@ -9,12 +8,11 @@ import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
-import com.akine.resource.spi.DisponibilidadDirectory;
-import com.akine.resource.spi.DisponibilidadDirectory.DiaDisponible;
-import com.akine.resource.spi.EspacioDirectory;
-import com.akine.resource.spi.EspacioSnapshot;
+import com.akine.scheduling.domain.EstadoTurno;
 import com.akine.scheduling.domain.PermissionCodes;
+import com.akine.scheduling.domain.TipoEventoTurno;
 import com.akine.scheduling.domain.Turno;
+import com.akine.scheduling.domain.TurnoEvento;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
@@ -25,6 +23,7 @@ import com.akine.scheduling.domain.exception.SlotCompletoException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
 import com.akine.scheduling.domain.exception.TurnoNotAccessibleException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.AgendaSedeRepositoryPort;
+import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoEventoRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,7 +35,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.List;
 import java.util.Optional;
 
 /**
@@ -73,16 +71,17 @@ import java.util.Optional;
  * 05.01 no persiste slots, asi que la unica forma de saber que el hueco sigue existiendo es
  * recalcularlo DENTRO de esta transaccion. RN-M12-004.
  *
- * <h2>Lo que esta etapa NO hace</h2>
+ * <h2>Que hace esta clase y que hace su vecina</h2>
  *
- * <p>No cancela, no reprograma y no registra ausencias: eso es 05.03, que el Paquete B de DP-10
- * dejo afuera. <b>Un turno reservado hoy no se puede deshacer desde ninguna pantalla</b>, y eso hay
- * que saberlo antes de cargar datos de demostracion.
+ * <p>Aca vive lo que <b>crea</b> la reserva: reservar y confirmar. Cancelar, reprogramar, registrar
+ * ausencia y leer el historial son {@link CicloDeTurnoService}, que 05.03 agrego al lado en vez de
+ * adentro. Las dos comparten el lock de la sede y el {@link RevalidadorDeSlot}, que es lo unico que
+ * tenian que compartir.
  *
- * <p>Tampoco notifica. La regla "un fallo de email no revierte la reserva" ya la garantiza el
- * outbox transaccional de M26 y nada de aca la rompe, pero cablear un tipo de notificacion nuevo
- * toca las plantillas de {@code notification} y el {@code SecureLinkResolver} de {@code identity},
- * que tiene un defecto abierto conocido. Se difiere a 05.03 con esa razon declarada.
+ * <p>Ninguna de las dos notifica. La regla "un fallo de email no revierte la reserva" ya la
+ * garantiza el outbox transaccional de M26, pero cablear un tipo de notificacion nuevo toca las
+ * plantillas de {@code notification} y el {@code SecureLinkResolver} de {@code identity}, que tiene
+ * un defecto abierto conocido. RF-M26-003 sigue diferido, con esa razon declarada.
  */
 @Service
 public class TurnoService {
@@ -90,35 +89,35 @@ public class TurnoService {
 	private static final Logger log = LoggerFactory.getLogger(TurnoService.class);
 
 	private final TurnoRepositoryPort turnos;
+	private final TurnoEventoRepositoryPort eventos;
 	private final AgendaSedeRepositoryPort agendas;
 	private final OfertaDirectory ofertas;
-	private final DisponibilidadDirectory disponibilidad;
-	private final EspacioDirectory espacios;
 	private final PacienteDirectory pacientes;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final AgendaSedeIniciador iniciador;
+	private final RevalidadorDeSlot revalidador;
 
 	public TurnoService(
 			TurnoRepositoryPort turnos,
+			TurnoEventoRepositoryPort eventos,
 			AgendaSedeRepositoryPort agendas,
 			OfertaDirectory ofertas,
-			DisponibilidadDirectory disponibilidad,
-			EspacioDirectory espacios,
 			PacienteDirectory pacientes,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
-			AgendaSedeIniciador iniciador) {
+			AgendaSedeIniciador iniciador,
+			RevalidadorDeSlot revalidador) {
 
 		this.turnos = turnos;
+		this.eventos = eventos;
 		this.agendas = agendas;
 		this.ofertas = ofertas;
-		this.disponibilidad = disponibilidad;
-		this.espacios = espacios;
 		this.pacientes = pacientes;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.iniciador = iniciador;
+		this.revalidador = revalidador;
 	}
 
 	/**
@@ -174,38 +173,22 @@ public class TurnoService {
 
 		exigirPacienteVigente(organizationId, command.personaId());
 
-		Long profesionalId = resolverProfesional(
-				organizationId, consultorioId, oferta, command, sede, inicio, fin);
-
-		// PASO 4. Cupo primero: es una sola consulta y descarta el caso mas frecuente —el slot
-		// grupal lleno— sin recorrer habilitaciones ni espacios.
-		long ocupados = turnos.contarVivosEnSlot(organizationId, ofertaId, inicio);
-		if (ocupados >= oferta.capacidad()) {
-			throw new SlotCompletoException(oferta.capacidad());
-		}
-
-		if (profesionalId != null
-				&& !turnos.findVivosDeProfesionalQueCruzan(
-						organizationId, profesionalId, inicio, fin).isEmpty()) {
-			// Para una oferta GRUPAL este control es correcto igual: los turnos del mismo slot
-			// tienen el mismo inicio, y este predicado los encontraria. Por eso se excluyen los de
-			// la misma oferta y hora, que no son un conflicto sino el grupo.
-			if (hayConflictoRealDeProfesional(organizationId, profesionalId, ofertaId, inicio, fin)) {
-				throw new RecursoOcupadoException("profesional");
-			}
-		}
-
-		Long espacioId = oferta.requiereEspacio()
-				? elegirEspacio(organizationId, consultorioId, ofertaId, inicio, fin)
-				: null;
+		// PASO 4. Los mismos controles que aplica una reprogramacion, y en el mismo lugar: las dos
+		// son escrituras de agenda. Ver RevalidadorDeSlot.
+		RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(new RevalidadorDeSlot.Pedido(
+				organizationId, consultorioId, sede, oferta, inicio, fin,
+				command.profesionalId(), null));
 
 		Instant ahora = Instant.now();
 		Turno turno = turnos.save(new Turno(
 				organizationId, consultorioId, ofertaId, command.personaId(),
-				profesionalId, espacioId, inicio, fin,
+				asignacion.profesionalId(), asignacion.espacioId(), inicio, fin,
 				actor.accountId(), ahora,
 				command.idempotencyKey(),
 				command.idempotencyKey() == null ? null : command.huella(consultorioId, ofertaId)));
+
+		eventos.registrar(TurnoEvento.de(
+				turno, TipoEventoTurno.RESERVA, null, null, actor.accountId(), ahora));
 
 		log.info("Turno reservado: turnoId={} consultorioId={} ofertaId={} personaId={} inicio={}",
 				turno.getId(), consultorioId, ofertaId, command.personaId(), inicio);
@@ -230,9 +213,21 @@ public class TurnoService {
 		Turno turno = turnos.findByIdInScope(organizationId, consultorioId, turnoId)
 				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
 
-		turno.confirmar(Instant.now());
+		EstadoTurno anterior = turno.getEstado();
+		Instant ahora = Instant.now();
+		turno.confirmar(ahora);
+		Turno confirmado = turnos.save(turno);
+
+		// Solo si hubo transicion: confirmar es idempotente, y registrar un evento por cada doble
+		// click llenaria el historial de filas que no cuentan ningun hecho nuevo.
+		if (anterior != confirmado.getEstado()) {
+			eventos.registrar(TurnoEvento.de(
+					confirmado, TipoEventoTurno.CONFIRMACION, anterior, null,
+					actor.accountId(), ahora));
+		}
+
 		log.info("Turno confirmado: turnoId={} consultorioId={}", turnoId, consultorioId);
-		return TurnoView.de(turnos.save(turno));
+		return TurnoView.de(confirmado);
 	}
 
 	// =================================================================================
@@ -255,115 +250,6 @@ public class TurnoService {
 		}
 		return TurnoView.de(existente);
 	}
-
-	// =================================================================================
-	// Revalidacion del slot
-	// =================================================================================
-
-	/**
-	 * Resuelve y revalida el profesional del turno.
-	 *
-	 * <p>Tres controles, y ninguno lo puede hacer el cliente: que este habilitado para la oferta y
-	 * vigente ese dia (02.07), y que el intervalo pedido caiga DENTRO de una franja de su
-	 * disponibilidad efectiva. El tercero es el que atrapa el caso de RN-M12-004: la pantalla
-	 * mostro el slot hace cinco minutos y desde entonces alguien cerro el dia.
-	 */
-	private Long resolverProfesional(
-			long organizationId,
-			long consultorioId,
-			OfertaSnapshot oferta,
-			ReservaCommand command,
-			ConsultorioSnapshot sede,
-			Instant inicio,
-			Instant fin) {
-
-		if (!oferta.requiereProfesional()) {
-			return null;
-		}
-		if (command.profesionalId() == null) {
-			throw new SlotNoDisponibleException("la oferta exige profesional y no se indico ninguno");
-		}
-
-		boolean habilitado = ofertas
-				.profesionalesHabilitados(organizationId, consultorioId, oferta.id()).stream()
-				.filter(habilitacion -> habilitacion.recursoId() == command.profesionalId())
-				.anyMatch(habilitacion -> habilitacion.vigenteEn(inicio));
-		if (!habilitado) {
-			throw new SlotNoDisponibleException(
-					"el profesional ya no esta habilitado para esta oferta en esa fecha");
-		}
-
-		LocalDate fecha = inicio.atZone(ZoneId.of(sede.timezone())).toLocalDate();
-		boolean dentroDeFranja = disponibilidad
-				.efectiva(organizationId, sede, command.profesionalId(), fecha, fecha.plusDays(1))
-				.stream()
-				.flatMap(dia -> dia.franjas().stream())
-				// Contiene, no se cruza: media consulta fuera del horario no es un turno valido.
-				.anyMatch(franja -> !franja.desde().isAfter(inicio) && !franja.hasta().isBefore(fin));
-		if (!dentroDeFranja) {
-			throw new SlotNoDisponibleException(
-					"el profesional ya no atiende en ese horario");
-		}
-
-		return command.profesionalId();
-	}
-
-	/**
-	 * {@code true} si el profesional tiene otro turno que se cruza y que NO es del mismo grupo.
-	 *
-	 * <p>Sin esta distincion, la segunda inscripcion a una clase grupal fallaria por "profesional
-	 * ocupado" contra la primera: los turnos de un mismo slot grupal comparten profesional, oferta
-	 * y hora a proposito. Lo que es conflicto es cualquier OTRO turno que se cruce.
-	 */
-	private boolean hayConflictoRealDeProfesional(
-			long organizationId, long profesionalId, long ofertaId, Instant inicio, Instant fin) {
-
-		return turnos.findVivosDeProfesionalQueCruzan(organizationId, profesionalId, inicio, fin)
-				.stream()
-				.anyMatch(otro -> !(otro.getOfertaId() == ofertaId && otro.getInicio().equals(inicio)));
-	}
-
-	/**
-	 * Elige el primer espacio habilitado, en servicio y libre en ese intervalo.
-	 *
-	 * <p><b>El primero y no el mejor.</b> Cualquier criterio de reparto —el menos usado, el mas
-	 * chico que alcance— exige leer mas estado dentro del lock que serializa toda la sede, y no
-	 * hay ninguna regla de negocio que lo pida. Un criterio se agrega despues sin cambiar la
-	 * estructura; la contencion no se saca.
-	 *
-	 * <p>El orden es el que devuelve el directorio, que es estable: la asignacion es determinista
-	 * para el mismo estado de la base.
-	 */
-	private Long elegirEspacio(
-			long organizationId, long consultorioId, long ofertaId, Instant inicio, Instant fin) {
-
-		List<HabilitacionSnapshot> habilitados =
-				ofertas.espaciosHabilitados(organizationId, consultorioId, ofertaId);
-
-		for (HabilitacionSnapshot habilitacion : habilitados) {
-			if (!habilitacion.vigenteEn(inicio)) {
-				continue;
-			}
-			Optional<EspacioSnapshot> espacio =
-					espacios.find(organizationId, habilitacion.recursoId(), inicio);
-			boolean utilizable = espacio
-					.filter(EspacioSnapshot::active)
-					.filter(EspacioSnapshot::enServicio)
-					.filter(candidato -> candidato.consultorioId() == consultorioId)
-					.isPresent();
-			if (!utilizable) {
-				continue;
-			}
-			if (turnos.findVivosDeEspacioQueCruzan(
-					organizationId, habilitacion.recursoId(), inicio, fin).isEmpty()) {
-				return habilitacion.recursoId();
-			}
-		}
-		// Se distingue de SlotNoDisponible: el hueco existe y el profesional atiende; lo que falta
-		// es un box. La pantalla puede ofrecer otro horario en vez de mandar a recargar la agenda.
-		throw new RecursoOcupadoException("espacio");
-	}
-
 	// =================================================================================
 	// Precondiciones
 	// =================================================================================
