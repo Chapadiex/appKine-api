@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.20.0
+  version: 0.21.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -24,13 +24,13 @@ tags:
   name: Invitaciones recibidas
 - description: Politica de feriados de una sede y feriados del periodo consultado
   name: Calendario de sede
+- description: Reserva de slots con revalidacion atomica e idempotencia (M12)
+  name: Turnos
 - description: Contextos de trabajo habilitados para la cuenta autenticada
   name: Mi cuenta
 - description: "Emision, listado, reenvio y cancelacion de invitaciones a colaborar\
     \ (M05)"
   name: Invitaciones
-- description: Reserva de slots con revalidacion atomica e idempotencia (M12)
-  name: Turnos
 - description: "Administracion de la plataforma: acceso de soporte y roles globales"
   name: Plataforma
 - description: Padron de personas y activacion del perfil clinico (M07)
@@ -3490,7 +3490,7 @@ paths:
 
         Los cuatro conflictos son tipos distintos a proposito, porque llevan a la pantalla a acciones distintas: `slot-no-disponible` (recargar la agenda),                `slot-completo` (ofrecer el siguiente), `recurso-ocupado` (elegir otro horario o profesional) y `persona-sin-perfil-paciente` (activar el perfil).
 
-        **No hay cancelacion todavia**: llega en AKINE-05.03.
+        Deshacer la reserva es otra operacion: `POST /{turnoId}/cancelacion`.
       operationId: reservar
       parameters:
       - in: path
@@ -3565,6 +3565,148 @@ paths:
       summary: Reservar un turno
       tags:
       - Turnos
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/ausencia:
+    post:
+      description: |-
+        **No libera el lugar**: la hora se consumio igual, el profesional estuvo ahi. Es la diferencia con cancelar.
+
+        **Nunca elimina nada, ni este turno ni ningun otro** (DP-04). El documento historico de 2019 borraba la serie ante la primera ausencia y esa conducta esta explicitamente derogada.
+
+        Solo se registra **despues** de la hora del turno: una ausencia anticipada no es una ausencia, es una cancelacion.
+
+        No prueba nada clinico. Que el paciente haya sido atendido lo dice la Sesion (DP-05), y por eso un turno con atencion registrada no admite esta marca.
+      operationId: registrarAusencia
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarAusencia"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+          description: Ausencia registrada
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno todavia no empezo, ya cerro su ciclo, tiene una atencion\
+            \ registrada, o la version quedo vieja"
+      summary: Registrar que el paciente no vino
+      tags:
+      - Turnos
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/cancelacion:
+    post:
+      description: |-
+        **Cancelar no borra** (RN-M12-002): la fila queda con su motivo, su actor y su historial. Lo que si hace es **liberar el lugar**, que vuelve a estar disponible en la agenda.
+
+        **El motivo es obligatorio** (DP-04), y la version tambien: si otro operador toco el turno entre medio, la cancelacion se rechaza en vez de pisarlo.
+
+        **Solo turnos futuros.** Un turno que ya empezo es inalterable; lo que se registra sobre el es una ausencia.
+
+        **No es idempotente**, a diferencia de confirmar: entre dos cancelaciones el lugar pudo haber sido tomado por otro paciente, y contestar 200 en silencio le haria creer al operador que su motivo quedo registrado.
+      operationId: cancelar
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelarTurno"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+          description: Turno cancelado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno ya cerro su ciclo, ya empezo, tiene una atencion\
+            \ registrada, o la version quedo vieja"
+      summary: Cancelar un turno futuro
+      tags:
+      - Turnos
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/confirmacion:
     post:
       description: |-
@@ -3614,6 +3756,133 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "El turno o la sede no existen, o son de otro tenant"
       summary: Confirmar un turno reservado
+      tags:
+      - Turnos
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/historial:
+    get:
+      description: |-
+        Todas las transiciones del turno, de la mas vieja a la mas nueva, con actor, fecha, motivo y —cuando hubo reprogramacion— el horario del que vino (RF-M12-008).
+
+        Exige `turno:read` y no `turno:manage`: leer quien cancelo y por que es parte de mirar la agenda, no de operarla.
+
+        Los turnos anteriores a la migracion `V38` tienen su evento de reserva reconstruido desde la propia fila; en esos, el actor de la confirmacion viaja vacio porque nunca se habia guardado.
+      operationId: historial
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventoDeTurno"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventoDeTurno"
+          description: Historial del turno
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+      summary: Historial de estados de un turno
+      tags:
+      - Turnos
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/reprogramacion:
+    post:
+      description: |-
+        **Es el mismo turno**: conserva id, paciente e historial (DP-04). No se cancela uno y se crea otro, entre otras cosas porque la Sesion de M14 cuelga del `turnoId` y ese vinculo se cortaria.
+
+        El servidor **revalida el destino entero** —vigencia de la oferta, habilitacion y horario del profesional, cupo y solapamiento— bajo el mismo lock de sede que usa una reserva, asi que dos reprogramaciones al mismo hueco no pasan las dos.
+
+        Un turno confirmado **vuelve a `RESERVADO`**: lo que el paciente confirmo era otro horario.
+      operationId: reprogramar
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReprogramarTurno"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+          description: Turno reprogramado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno, la sede o la oferta no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El horario nuevo ya no existe o no tiene lugar, el turno ya\
+            \ empezo o cerro su ciclo, tiene una atencion registrada, o la version\
+            \ quedo vieja"
+      summary: Mover un turno a otro horario
       tags:
       - Turnos
   /api/v1/me/contexts:
@@ -7084,6 +7353,27 @@ components:
           minLength: 0
       required:
       - reason
+    CancelarTurno:
+      type: object
+      description: Cancelacion de un turno futuro. Libera el lugar sin borrar la fila.
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: "Version que devolvio la ultima lectura del turno. Si otro\
+            \ operador lo modifico entre medio, la cancelacion se rechaza con 409\
+            \ en vez de pisarlo."
+          example: 0
+          minimum: 0
+        motivo:
+          type: string
+          description: Por que se cancela. **Obligatorio** (DP-04).
+          example: El paciente aviso que no puede venir
+          maxLength: 300
+          minLength: 0
+      required:
+      - expectedVersion
+      - motivo
     CatalogoConceptoPageResponse:
       type: object
       description: "Pagina de conceptos del catalogo, segun los filtros pedidos"
@@ -8752,6 +9042,64 @@ components:
         iniciadaEn:
           type: string
           format: date-time
+    EventoDeTurno:
+      type: object
+      description: "Transicion registrada de un turno: quien, cuando, de que estado\
+        \ a cual y con que motivo."
+      properties:
+        actorCuentaId:
+          type: integer
+          format: int64
+          description: "Cuenta que lo hizo. Ausente cuando lo hizo el sistema, o —\
+            en los eventos reconstruidos por la migracion V38— cuando el dato no existia."
+          example: 12
+        estadoAnterior:
+          type: string
+          description: Ausente solo en el evento de RESERVA.
+          example: CONFIRMADO
+        estadoNuevo:
+          type: string
+          example: CANCELADO
+        finAnterior:
+          type: string
+          format: date-time
+          example: 2026-09-15T12:45:00Z
+        finNuevo:
+          type: string
+          format: date-time
+          example: 2026-09-22T12:45:00Z
+        id:
+          type: integer
+          format: int64
+          example: 9001
+        inicioAnterior:
+          type: string
+          format: date-time
+          description: "Solo en una reprogramacion: de donde vino el turno."
+          example: 2026-09-15T12:00:00Z
+        inicioNuevo:
+          type: string
+          format: date-time
+          example: 2026-09-22T12:00:00Z
+        motivo:
+          type: string
+          description: Obligatorio en cancelacion y reprogramacion.
+          example: El paciente aviso que no puede venir
+        ocurridoEn:
+          type: string
+          format: date-time
+          example: 2026-09-10T11:20:00Z
+        tipo:
+          type: string
+          description: RESERVA y REPROGRAMACION terminan las dos en RESERVADO; el
+            tipo es lo que las distingue.
+          enum:
+          - RESERVA
+          - CONFIRMACION
+          - CANCELACION
+          - REPROGRAMACION
+          - AUSENCIA
+          example: CANCELACION
     ExcepcionResponse:
       type: object
       description: Cierre o apertura puntual de disponibilidad
@@ -10076,6 +10424,8 @@ components:
       - https://akine.app/problems/slot-completo
       - https://akine.app/problems/recurso-ocupado
       - https://akine.app/problems/persona-sin-perfil-paciente
+      - https://akine.app/problems/turno-transicion-no-permitida
+      - https://akine.app/problems/turno-con-atencion
       - https://akine.app/problems/turno-no-atendible
       - https://akine.app/problems/sesion-ajena
       - https://akine.app/problems/sesion-cerrada
@@ -10228,6 +10578,25 @@ components:
       - lastName
       - organizationName
       - password
+    RegistrarAusencia:
+      type: object
+      description: Registro de no asistencia. NO libera el lugar y no altera ningun
+        otro turno (DP-04).
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version que devolvio la ultima lectura del turno.
+          example: 1
+          minimum: 0
+        motivo:
+          type: string
+          description: Opcional.
+          example: No aviso
+          maxLength: 300
+          minLength: 0
+      required:
+      - expectedVersion
     RegistrarCobro:
       type: object
       description: "Dinero recibido, con sus medios y sus imputaciones. La suma de\
@@ -10272,6 +10641,42 @@ components:
       - medios
       - personaId
       - total
+    ReprogramarTurno:
+      type: object
+      description: "Mueve la reserva a otro intervalo. Es el MISMO turno: conserva\
+        \ id, paciente e historial. El servidor revalida el destino con los mismos\
+        \ controles que una reserva y bajo el mismo lock de sede."
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version que devolvio la ultima lectura del turno.
+          example: 0
+          minimum: 0
+        inicio:
+          type: string
+          format: date-time
+          description: "Instante de inicio del slot nuevo, UTC, tal como lo devolvio\
+            \ la agenda"
+          example: 2026-09-22T12:00:00Z
+        motivo:
+          type: string
+          description: Por que se mueve. **Obligatorio** (DP-04).
+          example: El profesional pidio el dia
+          maxLength: 300
+          minLength: 0
+        profesionalId:
+          type: integer
+          format: int64
+          description: "Membership del profesional en el horario nuevo. **Puede ser\
+            \ otro**: mover un turno porque el profesional se ausento es el caso mas\
+            \ frecuente."
+          example: 31
+          minimum: 0
+      required:
+      - expectedVersion
+      - inicio
+      - motivo
     ResendActivationRequest:
       type: object
       description: Direccion a la que reenviar el enlace de activacion
@@ -10776,10 +11181,20 @@ components:
       description: "Reserva de un slot. No es la prestacion: DP-05 separa Turno, Recepcion\
         \ y Sesion."
       properties:
+        ausenteEn:
+          type: string
+          format: date-time
+          description: Cuando se registro que el paciente no vino
+          example: 2026-09-15T12:30:00Z
+        canceladoEn:
+          type: string
+          format: date-time
+          example: 2026-09-10T11:20:00Z
         confirmadoEn:
           type: string
           format: date-time
-          description: Ausente mientras el turno no se confirme
+          description: "Ausente mientras el turno no se confirme. Una reprogramacion\
+            \ lo vuelve a vaciar: lo confirmado era otro horario."
           example: 2026-09-01T14:05:00Z
         consultorioId:
           type: integer
@@ -10796,10 +11211,13 @@ components:
         estado:
           type: string
           description: "Estado de la RESERVA. Nunca dice que la atencion ocurrio:\
-            \ eso lo dice la Sesion."
+            \ eso lo dice la Sesion. `CANCELADO` libera el lugar; `AUSENTE` **no**,\
+            \ porque la hora se consumio igual."
           enum:
           - RESERVADO
           - CONFIRMADO
+          - CANCELADO
+          - AUSENTE
           example: RESERVADO
         fin:
           type: string
@@ -10816,6 +11234,11 @@ components:
           format: date-time
           description: "Inicio, UTC"
           example: 2026-09-15T12:00:00Z
+        motivoCancelacion:
+          type: string
+          description: "Por que se cancelo. Obligatorio al cancelar (DP-04), ausente\
+            \ en cualquier otro estado."
+          example: El paciente aviso que no puede venir
         ofertaId:
           type: integer
           format: int64
@@ -10830,6 +11253,12 @@ components:
           format: int64
           description: Membership del profesional. Ausente si la oferta no lo requiere.
           example: 31
+        reprogramadoEn:
+          type: string
+          format: date-time
+          description: Ultima vez que el turno se movio de horario. El detalle completo
+            esta en el historial.
+          example: 2026-09-12T09:00:00Z
         reservadoEn:
           type: string
           format: date-time
@@ -10837,7 +11266,8 @@ components:
         version:
           type: integer
           format: int64
-          description: Version para el control optimista de las mutaciones de 05.03
+          description: "Version para el control optimista. Se envia al cancelar, mover\
+            \ o marcar ausencia."
           example: 0
     UpdateBloqueRequest:
       type: object

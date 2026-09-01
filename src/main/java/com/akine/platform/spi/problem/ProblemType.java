@@ -224,6 +224,25 @@ public enum ProblemType {
 	 */
 	PERSONA_SIN_PERFIL_PACIENTE("persona-sin-perfil-paciente"),
 
+	// --- Ciclo de vida del turno (M12, AKINE-05.03) ------------------------------------------
+	/**
+	 * La transicion pedida no existe en la maquina de estados del turno, o su ventana no la admite.
+	 *
+	 * <p>Un solo tipo para las dos familias —"ya esta cancelado" y "ya empezo"— con el
+	 * {@code motivo} como propiedad extra: para la pantalla el desenlace es el mismo, refrescar el
+	 * turno y explicar por que no se puede, y publicar dos tipos obligaria al cliente a manejar dos
+	 * codigos para una misma accion imposible.
+	 */
+	TURNO_TRANSICION_NO_PERMITIDA("turno-transicion-no-permitida"),
+	/**
+	 * El turno tiene una Sesion registrada: no se cancela, no se mueve y no se marca ausente.
+	 *
+	 * <p>Distinto del anterior porque lleva a otra accion: no hay nada que refrescar, hay una
+	 * atencion que resolver. DP-05 mantiene separadas las dos maquinas de estado y ninguna
+	 * transicion administrativa puede borrar la prueba de que la atencion ocurrio.
+	 */
+	TURNO_CON_ATENCION("turno-con-atencion"),
+
 	// --- Atencion (M14) --------------------------------------------------------------------
 	/**
 	 * El turno existe pero no habilita una atencion: esta dado de baja, o lo atiende otro

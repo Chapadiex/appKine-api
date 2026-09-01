@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -257,6 +258,30 @@ class AgendaServiceTest {
 		assertThat(buscarUnDia().dias().get(0).slots())
 				.as("la oferta sin restringir la puede prestar cualquier profesional de la sede")
 				.hasSize(2);
+	}
+
+	@Test
+	@DisplayName("Un slot ya reservado viaja con cupo cero, no se esconde de la grilla")
+	void el_slot_vendido_se_descuenta() {
+		// Durante 05.01 y 05.02 esto no pasaba: la sonda existia, devolvia vacio y nadie la
+		// reemplazo, asi que la agenda ofrecia huecos ya vendidos y el usuario se comia un 409 al
+		// confirmar. No corrompia nada, pero convertia un caso normal en un error.
+		//
+		// Y el slot NO se filtra: la pantalla tiene que poder decir "completo" en vez de dejar un
+		// hueco en la grilla, que el usuario leeria como "no atiende a esa hora".
+		given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(60)));
+		given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+				.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+		conDisponibilidad(List.of(atiende(LUNES, "09:00", "11:00")));
+		given(reservas.reservasPorInicio(anyLong(), anyLong(), anyLong(), any(), any(), any()))
+				.willReturn(Map.of(
+						LUNES.atTime(9, 0).atZone(ZONA).toInstant(), 1));
+
+		var slots = buscarUnDia().dias().get(0).slots();
+
+		assertThat(slots).hasSize(2);
+		assertThat(slots.get(0).cupoLibre()).as("el de las 09:00 esta tomado").isZero();
+		assertThat(slots.get(1).cupoLibre()).as("el de las 10:00 sigue libre").isEqualTo(1);
 	}
 
 	@Nested

@@ -100,4 +100,25 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("organizationId") long organizationId,
 			@Param("ofertaId") long ofertaId,
 			@Param("inicio") Instant inicio);
+
+	/**
+	 * <p>Se filtra por {@code inicio} dentro de la ventana y no por solapamiento: lo que el motor
+	 * necesita es el cupo consumido de cada SLOT, y un slot se identifica por su instante de inicio.
+	 * Un turno que empieza antes de la ventana y se mete adentro no ocupa ningun slot de esta oferta
+	 * — ocupa al profesional, y de eso se encarga la consulta de solapamiento.
+	 */
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.ofertaId = :ofertaId
+			   AND t.deletedAt IS NULL
+			   AND t.inicio >= :desde
+			   AND t.inicio < :hasta
+			""")
+	List<Turno> findVivosDeLaOfertaEnVentana(
+			@Param("organizationId") long organizationId,
+			@Param("ofertaId") long ofertaId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
 }

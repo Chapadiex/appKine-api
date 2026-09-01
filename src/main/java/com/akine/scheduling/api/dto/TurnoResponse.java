@@ -43,22 +43,41 @@ public record TurnoResponse(
 		@Schema(description = "Fin, UTC y EXCLUSIVO. Congelado al reservar: si despues se edita la duracion de la oferta, este turno no se mueve.", example = "2026-09-15T12:45:00Z")
 		Instant fin,
 
-		@Schema(description = "Estado de la RESERVA. Nunca dice que la atencion ocurrio: eso lo dice la Sesion.", allowableValues = {"RESERVADO", "CONFIRMADO"}, example = "RESERVADO")
+		@Schema(
+				description = "Estado de la RESERVA. Nunca dice que la atencion ocurrio: eso lo dice "
+						+ "la Sesion. `CANCELADO` libera el lugar; `AUSENTE` **no**, porque la hora "
+						+ "se consumio igual.",
+				allowableValues = {"RESERVADO", "CONFIRMADO", "CANCELADO", "AUSENTE"},
+				example = "RESERVADO")
 		String estado,
 
 		@Schema(example = "2026-09-01T14:03:11Z")
 		Instant reservadoEn,
 
-		@Schema(description = "Ausente mientras el turno no se confirme", example = "2026-09-01T14:05:00Z")
+		@Schema(description = "Ausente mientras el turno no se confirme. Una reprogramacion lo vuelve a vaciar: lo confirmado era otro horario.", example = "2026-09-01T14:05:00Z")
 		Instant confirmadoEn,
 
-		@Schema(description = "Version para el control optimista de las mutaciones de 05.03", example = "0")
+		@Schema(description = "Por que se cancelo. Obligatorio al cancelar (DP-04), ausente en cualquier otro estado.", example = "El paciente aviso que no puede venir")
+		String motivoCancelacion,
+
+		@Schema(example = "2026-09-10T11:20:00Z")
+		Instant canceladoEn,
+
+		@Schema(description = "Cuando se registro que el paciente no vino", example = "2026-09-15T12:30:00Z")
+		Instant ausenteEn,
+
+		@Schema(description = "Ultima vez que el turno se movio de horario. El detalle completo esta en el historial.", example = "2026-09-12T09:00:00Z")
+		Instant reprogramadoEn,
+
+		@Schema(description = "Version para el control optimista. Se envia al cancelar, mover o marcar ausencia.", example = "0")
 		long version) {
 
 	public static TurnoResponse de(TurnoView vista) {
 		return new TurnoResponse(
 				vista.id(), vista.consultorioId(), vista.ofertaId(), vista.personaId(),
 				vista.profesionalId(), vista.espacioId(), vista.inicio(), vista.fin(),
-				vista.estado(), vista.reservadoEn(), vista.confirmadoEn(), vista.version());
+				vista.estado(), vista.reservadoEn(), vista.confirmadoEn(),
+				vista.motivoCancelacion(), vista.canceladoEn(), vista.ausenteEn(),
+				vista.reprogramadoEn(), vista.version());
 	}
 }

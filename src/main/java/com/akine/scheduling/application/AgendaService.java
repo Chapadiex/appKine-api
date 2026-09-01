@@ -284,7 +284,8 @@ public class AgendaService {
 		}
 
 		if (!slots.isEmpty()) {
-			return DiaDeSlots.con(fecha, descontarReservas(slots));
+			return DiaDeSlots.con(fecha, descontarReservas(
+					slots, organizationId, consultorioId, oferta.id(), fecha, zona));
 		}
 		if (huboFranjas) {
 			// Hubo horario y hubo recursos, pero ninguna franja alcanzaba para un slot entero:
@@ -352,17 +353,47 @@ public class AgendaService {
 	/**
 	 * Descuenta de cada slot las reservas que ya lo tomaron.
 	 *
-	 * <p><b>Hoy no descuenta nada</b>: {@link ReservaProbe} devuelve el mapa vacio hasta que 05.02
-	 * cree la tabla {@code turno}. La llamada existe igual para que el cableado se ejercite desde
-	 * el primer dia — un {@code if} que salteara la sonda mientras no haya turnos dejaria este
-	 * camino sin correr nunca, y el dia que 05.02 lo active seria la primera vez que se ejecuta.
+	/**
+	 * Descuenta de cada slot las reservas que ya lo tomaron.
 	 *
-	 * <p>Los slots sin lugar <b>no se filtran</b>: viajan con {@code cupoLibre} en cero. La
-	 * pantalla necesita poder mostrar "14:00 completo" en vez de un hueco en la grilla, que el
-	 * usuario leeria como "no atiende a esa hora".
+	 * <p><b>Esto no hacia nada hasta el 01/09/2026 y es un defecto que vale recordar.</b> 05.01
+	 * declaro {@code ReservaProbe} como costura con una implementacion que devolvia el mapa vacio,
+	 * porque los turnos no existian; 05.02 los creo y no la reemplazo. Durante dos etapas la agenda
+	 * ofrecio huecos ya vendidos: el usuario elegia un horario que la pantalla mostraba libre y se
+	 * comia un 409 al confirmar. No corrompia nada —la reserva revalida bajo el lock— pero convertia
+	 * un caso normal en un error, que es justamente lo que el motor de slots existe para evitar.
+	 *
+	 * <p>Una costura con implementacion provisoria <b>no avisa</b> cuando le llega el momento de ser
+	 * reemplazada. El javadoc de la vieja decia "se borra en 05.02" y nadie la borro.
+	 *
+	 * <p>Los slots sin lugar <b>no se filtran</b>: viajan con {@code cupoLibre} en cero. La pantalla
+	 * necesita poder mostrar "14:00 completo" en vez de un hueco en la grilla, que el usuario leeria
+	 * como "no atiende a esa hora".
 	 */
-	private List<Slot> descontarReservas(List<Slot> slots) {
-		return slots;
+	private List<Slot> descontarReservas(
+			List<Slot> slots, long organizationId, long consultorioId, long ofertaId,
+			LocalDate fecha, ZoneId zona) {
+
+		if (slots.isEmpty()) {
+			return slots;
+		}
+		Instant desde = fecha.atStartOfDay(zona).toInstant();
+		Instant hasta = fecha.plusDays(1).atStartOfDay(zona).toInstant();
+		Map<Instant, Integer> tomados = reservas.reservasPorInicio(
+				organizationId, consultorioId, ofertaId, List.of(), desde, hasta);
+		if (tomados.isEmpty()) {
+			return slots;
+		}
+
+		List<Slot> conCupo = new ArrayList<>(slots.size());
+		for (Slot slot : slots) {
+			Instant inicio = fecha.atTime(slot.desde()).atZone(zona).toInstant();
+			int ocupados = tomados.getOrDefault(inicio, 0);
+			conCupo.add(new Slot(
+					slot.desde(), slot.hasta(), slot.profesionalId(), slot.espacioId(),
+					slot.cupoTotal(), Math.max(0, slot.cupoTotal() - ocupados)));
+		}
+		return conCupo;
 	}
 
 	/**

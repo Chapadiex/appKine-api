@@ -1,7 +1,13 @@
 package com.akine.scheduling.api;
 
+import com.akine.scheduling.api.dto.CancelarTurnoRequest;
+import com.akine.scheduling.api.dto.EventoDeTurnoResponse;
+import com.akine.scheduling.api.dto.RegistrarAusenciaRequest;
+import com.akine.scheduling.api.dto.ReprogramarTurnoRequest;
 import com.akine.scheduling.api.dto.ReservarTurnoRequest;
 import com.akine.scheduling.api.dto.TurnoResponse;
+import com.akine.scheduling.application.CicloDeTurnoService;
+import com.akine.scheduling.application.ReprogramacionCommand;
 import com.akine.scheduling.application.ReservaCommand;
 import com.akine.scheduling.application.TurnoService;
 import com.akine.scheduling.application.TurnoView;
@@ -15,6 +21,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.List;
 
 /**
  * Reserva y confirmacion de turnos (M12).
@@ -38,10 +46,16 @@ import java.net.URI;
 public class TurnoController {
 
 	private final TurnoService turnoService;
+	private final CicloDeTurnoService cicloService;
 	private final SchedulingApiActor apiActor;
 
-	public TurnoController(TurnoService turnoService, SchedulingApiActor apiActor) {
+	public TurnoController(
+			TurnoService turnoService,
+			CicloDeTurnoService cicloService,
+			SchedulingApiActor apiActor) {
+
 		this.turnoService = turnoService;
+		this.cicloService = cicloService;
 		this.apiActor = apiActor;
 	}
 
@@ -62,7 +76,7 @@ public class TurnoController {
                     `slot-completo` (ofrecer el siguiente), `recurso-ocupado` (elegir otro \
 					horario o profesional) y `persona-sin-perfil-paciente` (activar el perfil).
 
-					**No hay cancelacion todavia**: llega en AKINE-05.03.""")
+					Deshacer la reserva es otra operacion: `POST /{turnoId}/cancelacion`.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201", description = "Turno reservado"),
 			@ApiResponse(
@@ -140,5 +154,174 @@ public class TurnoController {
 
 		return ResponseEntity.ok(TurnoResponse.de(
 				turnoService.confirmar(apiActor.current(), consultorioId, turnoId)));
+	}
+
+	// =================================================================================
+	// Ciclo de vida — AKINE-05.03
+	// =================================================================================
+
+	/**
+	 * <p><b>POST a un sub-recurso y no DELETE sobre el turno</b>, en las tres transiciones. Un
+	 * DELETE prometeria que el turno deja de existir, y RN-M12-002 dice exactamente lo contrario:
+	 * la fila queda, con su motivo y su historial. Ademas una cancelacion lleva cuerpo —motivo y
+	 * version— y un DELETE con cuerpo es una discusion que no hace falta tener.
+	 */
+	@PostMapping("/{turnoId}/cancelacion")
+	@Operation(
+			summary = "Cancelar un turno futuro",
+			description = """
+					**Cancelar no borra** (RN-M12-002): la fila queda con su motivo, su actor y su \
+					historial. Lo que si hace es **liberar el lugar**, que vuelve a estar \
+					disponible en la agenda.
+
+					**El motivo es obligatorio** (DP-04), y la version tambien: si otro operador \
+					toco el turno entre medio, la cancelacion se rechaza en vez de pisarlo.
+
+					**Solo turnos futuros.** Un turno que ya empezo es inalterable; lo que se \
+					registra sobre el es una ausencia.
+
+					**No es idempotente**, a diferencia de confirmar: entre dos cancelaciones el \
+					lugar pudo haber sido tomado por otro paciente, y contestar 200 en silencio le \
+					haria creer al operador que su motivo quedo registrado.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Turno cancelado"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:manage` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El turno o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "El turno ya cerro su ciclo, ya empezo, tiene una atencion "
+							+ "registrada, o la version quedo vieja",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TurnoResponse> cancelar(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId,
+			@RequestBody @Valid CancelarTurnoRequest request) {
+
+		return ResponseEntity.ok(TurnoResponse.de(cicloService.cancelar(
+				apiActor.current(), consultorioId, turnoId,
+				request.motivo(), request.expectedVersion())));
+	}
+
+	@PostMapping("/{turnoId}/reprogramacion")
+	@Operation(
+			summary = "Mover un turno a otro horario",
+			description = """
+					**Es el mismo turno**: conserva id, paciente e historial (DP-04). No se cancela \
+					uno y se crea otro, entre otras cosas porque la Sesion de M14 cuelga del \
+					`turnoId` y ese vinculo se cortaria.
+
+					El servidor **revalida el destino entero** —vigencia de la oferta, habilitacion \
+					y horario del profesional, cupo y solapamiento— bajo el mismo lock de sede que \
+					usa una reserva, asi que dos reprogramaciones al mismo hueco no pasan las dos.
+
+					Un turno confirmado **vuelve a `RESERVADO`**: lo que el paciente confirmo era \
+					otro horario.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Turno reprogramado"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:manage` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El turno, la sede o la oferta no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "El horario nuevo ya no existe o no tiene lugar, el turno ya "
+							+ "empezo o cerro su ciclo, tiene una atencion registrada, o la "
+							+ "version quedo vieja",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TurnoResponse> reprogramar(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId,
+			@RequestBody @Valid ReprogramarTurnoRequest request) {
+
+		return ResponseEntity.ok(TurnoResponse.de(cicloService.reprogramar(
+				apiActor.current(), consultorioId, turnoId,
+				new ReprogramacionCommand(
+						request.inicio(), request.profesionalId(),
+						request.motivo(), request.expectedVersion()))));
+	}
+
+	@PostMapping("/{turnoId}/ausencia")
+	@Operation(
+			summary = "Registrar que el paciente no vino",
+			description = """
+					**No libera el lugar**: la hora se consumio igual, el profesional estuvo ahi. \
+					Es la diferencia con cancelar.
+
+					**Nunca elimina nada, ni este turno ni ningun otro** (DP-04). El documento \
+					historico de 2019 borraba la serie ante la primera ausencia y esa conducta \
+					esta explicitamente derogada.
+
+					Solo se registra **despues** de la hora del turno: una ausencia anticipada no \
+					es una ausencia, es una cancelacion.
+
+					No prueba nada clinico. Que el paciente haya sido atendido lo dice la Sesion \
+					(DP-05), y por eso un turno con atencion registrada no admite esta marca.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Ausencia registrada"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:manage` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El turno o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "El turno todavia no empezo, ya cerro su ciclo, tiene una "
+							+ "atencion registrada, o la version quedo vieja",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TurnoResponse> registrarAusencia(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId,
+			@RequestBody @Valid RegistrarAusenciaRequest request) {
+
+		return ResponseEntity.ok(TurnoResponse.de(cicloService.marcarAusente(
+				apiActor.current(), consultorioId, turnoId,
+				request.motivo(), request.expectedVersion())));
+	}
+
+	@GetMapping("/{turnoId}/historial")
+	@Operation(
+			summary = "Historial de estados de un turno",
+			description = """
+					Todas las transiciones del turno, de la mas vieja a la mas nueva, con actor, \
+					fecha, motivo y —cuando hubo reprogramacion— el horario del que vino \
+					(RF-M12-008).
+
+					Exige `turno:read` y no `turno:manage`: leer quien cancelo y por que es parte \
+					de mirar la agenda, no de operarla.
+
+					Los turnos anteriores a la migracion `V38` tienen su evento de reserva \
+					reconstruido desde la propia fila; en esos, el actor de la confirmacion viaja \
+					vacio porque nunca se habia guardado.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Historial del turno"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:read` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El turno o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<List<EventoDeTurnoResponse>> historial(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId) {
+
+		return ResponseEntity.ok(
+				cicloService.historial(apiActor.current(), consultorioId, turnoId).stream()
+						.map(EventoDeTurnoResponse::de)
+						.toList());
 	}
 }

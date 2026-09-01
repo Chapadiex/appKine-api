@@ -1,5 +1,7 @@
 package com.akine.scheduling.domain;
 
+import com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -83,6 +85,21 @@ public class Turno {
 	@Column(name = "confirmado_en")
 	private Instant confirmadoEn;
 
+	@Column(name = "motivo_cancelacion", length = 300)
+	private String motivoCancelacion;
+
+	@Column(name = "cancelado_en")
+	private Instant canceladoEn;
+
+	@Column(name = "cancelado_por_cuenta_id")
+	private Long canceladoPorCuentaId;
+
+	@Column(name = "ausente_en")
+	private Instant ausenteEn;
+
+	@Column(name = "reprogramado_en")
+	private Instant reprogramadoEn;
+
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
@@ -150,7 +167,105 @@ public class Turno {
 		this.confirmadoEn = occurredAt;
 	}
 
-	/** Un turno vivo ocupa lugar. Los dados de baja llegan en 05.03 y dejan de ocuparlo. */
+	/**
+	 * Cancela la reserva con motivo declarado. <b>Libera el lugar y conserva la fila.</b>
+	 *
+	 * <p>RN-M12-002 y DP-04: cancelar no elimina fisicamente, exige motivo y queda auditado. La
+	 * baja logica es lo que libera el lugar —las consultas de solapamiento filtran por
+	 * {@code deletedAt IS NULL}— asi que el hueco vuelve a estar disponible sin borrar nada.
+	 *
+	 * <p><b>No es idempotente, a diferencia de {@link #confirmar}.</b> Cancelar dos veces no es un
+	 * doble click sin consecuencias: entre las dos llamadas el lugar pudo haber sido tomado por
+	 * otro paciente, y devolver 200 en silencio le haria creer al operador que la segunda
+	 * cancelacion —quiza con otro motivo— quedo registrada.
+	 *
+	 * @throws TransicionDeTurnoNoPermitidaException si el turno ya termino su ciclo o ya empezo
+	 */
+	public void cancelar(String motivo, long cuentaId, Instant occurredAt) {
+		exigirEstadoTransitable("ya esta " + estado.name().toLowerCase());
+		if (!inicio.isAfter(occurredAt)) {
+			// DP-04: los turnos pasados o ya ejecutados permanecen inalterables. Un turno que ya
+			// paso y no ocurrio no se cancela: se marca AUSENTE, que es un hecho distinto.
+			throw new TransicionDeTurnoNoPermitidaException(
+					id, "ya empezo; un turno pasado se marca ausente, no se cancela");
+		}
+		if (motivo == null || motivo.isBlank()) {
+			throw new IllegalArgumentException("El motivo de cancelacion es obligatorio (DP-04)");
+		}
+		this.estado = EstadoTurno.CANCELADO;
+		this.motivoCancelacion = motivo.strip();
+		this.canceladoEn = occurredAt;
+		this.canceladoPorCuentaId = cuentaId;
+		this.deletedAt = occurredAt;
+	}
+
+	/**
+	 * Registra que el paciente no vino. <b>No libera el lugar</b> y no borra nada.
+	 *
+	 * <p>DP-04, que deroga explicitamente el comportamiento del documento historico de 2019: una
+	 * ausencia <b>nunca</b> elimina el turno y nunca altera los siguientes. El lugar sigue ocupado
+	 * porque la hora se consumio igual —el profesional estuvo ahi— y liberarlo haria que la agenda
+	 * del pasado mintiera sobre lo que ocurrio.
+	 *
+	 * @throws TransicionDeTurnoNoPermitidaException si el turno todavia no empezo o ya cerro
+	 */
+	public void marcarAusente(Instant occurredAt) {
+		exigirEstadoTransitable("ya esta " + estado.name().toLowerCase());
+		if (inicio.isAfter(occurredAt)) {
+			throw new TransicionDeTurnoNoPermitidaException(
+					id, "todavia no empezo; una ausencia solo se registra despues de la hora");
+		}
+		this.estado = EstadoTurno.AUSENTE;
+		this.ausenteEn = occurredAt;
+	}
+
+	/**
+	 * Mueve la reserva a otro intervalo. <b>Es el mismo turno</b>: conserva id, persona e historial.
+	 *
+	 * <p>DP-04 exige que cada Turno conserve identidad e historial propios, y ademas la Sesion de
+	 * M14 cuelga de {@code turno_id} con un unique: un reemplazo por par cancelado/nuevo cortaria
+	 * esa cadena. La trazabilidad la da {@code turno_evento}, que guarda el intervalo anterior.
+	 *
+	 * <p><b>Vuelve a {@code RESERVADO} aunque estuviera confirmado</b>, y no es un descuido: lo que
+	 * el paciente confirmo fue OTRO horario. Dejarlo confirmado convertiria la confirmacion en una
+	 * marca sin significado.
+	 *
+	 * @throws TransicionDeTurnoNoPermitidaException si el turno ya cerro su ciclo o ya empezo
+	 */
+	public void reprogramar(
+			Instant nuevoInicio,
+			Instant nuevoFin,
+			Long nuevoProfesionalId,
+			Long nuevoEspacioId,
+			Instant occurredAt) {
+
+		exigirEstadoTransitable("ya esta " + estado.name().toLowerCase());
+		if (!inicio.isAfter(occurredAt)) {
+			throw new TransicionDeTurnoNoPermitidaException(id, "ya empezo y no se puede mover");
+		}
+		if (!nuevoInicio.isAfter(occurredAt)) {
+			throw new TransicionDeTurnoNoPermitidaException(id, "el horario nuevo esta en el pasado");
+		}
+		if (!nuevoFin.isAfter(nuevoInicio)) {
+			throw new IllegalArgumentException(
+					"Un turno termina despues de empezar: " + nuevoInicio + " -> " + nuevoFin);
+		}
+		this.inicio = nuevoInicio;
+		this.fin = nuevoFin;
+		this.profesionalMembershipId = nuevoProfesionalId;
+		this.espacioId = nuevoEspacioId;
+		this.estado = EstadoTurno.RESERVADO;
+		this.confirmadoEn = null;
+		this.reprogramadoEn = occurredAt;
+	}
+
+	private void exigirEstadoTransitable(String motivo) {
+		if (!estado.admiteTransicion()) {
+			throw new TransicionDeTurnoNoPermitidaException(id, motivo);
+		}
+	}
+
+	/** Un turno vivo ocupa lugar. Un cancelado no: su baja logica es lo que libera el hueco. */
 	public boolean estaVivo() {
 		return deletedAt == null;
 	}
@@ -218,6 +333,26 @@ public class Turno {
 
 	public Instant getConfirmadoEn() {
 		return confirmadoEn;
+	}
+
+	public String getMotivoCancelacion() {
+		return motivoCancelacion;
+	}
+
+	public Instant getCanceladoEn() {
+		return canceladoEn;
+	}
+
+	public Long getCanceladoPorCuentaId() {
+		return canceladoPorCuentaId;
+	}
+
+	public Instant getAusenteEn() {
+		return ausenteEn;
+	}
+
+	public Instant getReprogramadoEn() {
+		return reprogramadoEn;
 	}
 
 	public Instant getDeletedAt() {
