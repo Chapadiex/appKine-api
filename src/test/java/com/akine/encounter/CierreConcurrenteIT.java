@@ -231,10 +231,10 @@ class CierreConcurrenteIT {
 		long ofertaId = insertar("""
 				INSERT INTO oferta_servicio_consultorio
 				       (organization_id, consultorio_id, servicio_id, nombre_comercial, modalidad,
-				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
-				        genera_registro_clinico, requiere_profesional, requiere_espacio,
-				        vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 0, 0, 0, 1, 0,
+				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
+				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
+				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 0, 0, 0, 1, 0,
 				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", """
 				SELECT id FROM oferta_servicio_consultorio
@@ -266,5 +266,64 @@ class CierreConcurrenteIT {
 	private long insertar(String insert, String select, Object[] insertArgs, Object[] selectArgs) {
 		jdbc.update(insert, insertArgs);
 		return jdbc.queryForObject(select, Long.class, selectArgs);
+	}
+
+	@Test
+	@DisplayName("cerrar una atencion devenga su deuda, con el precio de la oferta congelado")
+	void el_cierre_devenga_la_deuda() {
+		// Prueba la cadena entera contra la base: `encounter` cierra, `billing` reacciona por el
+		// SPI y la fila queda. Es lo unico que verifica que el cableado entre los dos modulos
+		// funciona de verdad; un test con mocks solo probaria que se llamo al observador.
+		Fixture fixture = crearFixture();
+
+		cerrar(fixture, fixture.sesionA());
+
+		var deuda = jdbc.queryForMap("""
+				SELECT importe_original, saldo, moneda, estado, responsable, snapshot_precio
+				  FROM obligacion WHERE sesion_id = ?
+				""", fixture.sesionA());
+
+		assertThat(deuda.get("importe_original")).hasToString("8500.00");
+		assertThat(deuda.get("saldo")).hasToString("8500.00");
+		assertThat(deuda.get("moneda")).isEqualTo("ARS");
+		assertThat(deuda.get("estado")).isEqualTo("PENDIENTE");
+		assertThat(deuda.get("responsable")).isEqualTo("PACIENTE");
+		assertThat(deuda.get("snapshot_precio"))
+				.as("el precio se congela al devengar: editar la oferta manana no puede reescribir esto")
+				.hasToString("8500.00");
+	}
+
+	@Test
+	@DisplayName("cerrar dos veces no devenga dos deudas")
+	void el_devengo_es_idempotente() {
+		// El cierre es idempotente por RN-M14-005, asi que el devengo tiene que serlo tambien. Sin
+		// la consulta previa del observador, el segundo cierre chocaria contra el unique de V36 y
+		// haria fallar un cierre que deberia no hacer nada.
+		Fixture fixture = crearFixture();
+
+		cerrar(fixture, fixture.sesionA());
+		cerrar(fixture, fixture.sesionA());
+
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM obligacion WHERE sesion_id = ?", Long.class, fixture.sesionA()))
+				.isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("una sesion cerrada con el paciente AUSENTE no devenga deuda")
+	void el_ausente_no_devenga() {
+		// M18 devenga "al concretar la prestacion", y una ausencia no es una prestacion. Cobrar un
+		// no-show es una politica de centro que necesita su propia configuracion —cuanto, con
+		// cuanto aviso— y no existe: cobrarlo por defecto seria decidirlo por el usuario.
+		Fixture fixture = crearFixture();
+
+		SesionView actual = sesionService.ver(fixture.actor(), fixture.consultorioId(), fixture.sesionA());
+		sesionService.cerrar(fixture.actor(), fixture.consultorioId(), fixture.sesionA(),
+				new CierreDeSesion(Asistencia.AUSENTE, null, null, null, null, null),
+				actual.version());
+
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM obligacion WHERE sesion_id = ?", Long.class, fixture.sesionA()))
+				.isZero();
 	}
 }

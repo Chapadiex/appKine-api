@@ -246,6 +246,17 @@ public enum ProblemType {
 	 * porque lo segundo es historia clinica reescrita en silencio.
 	 */
 	SESION_CERRADA("sesion-cerrada"),
+
+	// --- Deuda (M18) -----------------------------------------------------------------------
+	/** La obligacion ya estaba anulada. Anular dos veces no es idempotente: es un error. */
+	OBLIGACION_ALREADY_ANULADA("obligacion-already-anulada"),
+	/**
+	 * Se intenta anular una deuda que ya tiene cobros imputados. Lleva {@code yaCobrado}.
+	 *
+	 * <p>Anular lo que ya se cobro dejaria plata en la caja sin ninguna deuda que la justifique y
+	 * el arqueo del dia no cerraria. Lo que corresponde es una devolucion, que es M19.
+	 */
+	OBLIGACION_CON_COBROS("obligacion-con-cobros"),
 	CONSULTORIO_NO_OPERABLE("consultorio-no-operable"),
 
 	// --- Personas y perfiles de paciente (M07, AKINE-03.01) ---------------------------------

@@ -182,7 +182,12 @@ public final class RolePermissions {
 				PermissionCode.AUDITORIA_READ, PermissionScope.ORGANIZACION,
 				PermissionCode.PACIENTE_MANAGE, PermissionScope.ORGANIZACION,
 				PermissionCode.TURNO_READ, PermissionScope.ORGANIZACION,
-				PermissionCode.TURNO_MANAGE, PermissionScope.ORGANIZACION));
+				PermissionCode.TURNO_MANAGE, PermissionScope.ORGANIZACION,
+				// `cobro:register` entra con asignacion base en AKINE-07.01, la etapa que crea la
+				// deuda. La matriz §2 le dice "Si" al ORG_ADMIN, al CONSULTORIO_ADMIN y al
+				// ADMINISTRATIVO en la fila Registrar Cobro; al PROFESIONAL "No por defecto" y al
+				// PLATFORM_ADMIN "No" —soporte mira, no opera—.
+				PermissionCode.COBRO_REGISTER, PermissionScope.ORGANIZACION));
 
 		// CONSULTORIO_ADMIN — todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
 		tabla.put(RoleCode.CONSULTORIO_ADMIN, Map.of(
@@ -193,7 +198,8 @@ public final class RolePermissions {
 				PermissionCode.AUDITORIA_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO,
 				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO));
+				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO,
+				PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO));
 
 		// PROFESIONAL y ADMINISTRATIVO — ven la lista de colaboradores de su sede y, desde la
 		// aprobacion del 25/08/2026, el catalogo fisico de esa misma sede: sin `espacio:read` un
@@ -237,7 +243,8 @@ public final class RolePermissions {
 				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO,
 				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO));
+				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO,
+				PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO));
 
 		// PACIENTE — ninguna fila de la matriz §6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.

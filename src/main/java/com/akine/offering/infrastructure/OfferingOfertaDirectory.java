@@ -5,6 +5,7 @@ import com.akine.offering.domain.OfertaServicioConsultorio;
 import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
+import com.akine.offering.spi.PrecioDeOferta;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -48,6 +49,14 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 		return ofertas
 				.findByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
 				.map(OfferingOfertaDirectory::proyectar);
+	}
+
+	@Override
+	public Optional<PrecioDeOferta> precioDe(long organizationId, long consultorioId, long ofertaId) {
+		return ofertas
+				.findByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
+				.map(oferta -> new PrecioDeOferta(
+						oferta.getId(), oferta.getPrecioBase(), oferta.getMoneda()));
 	}
 
 	@Override

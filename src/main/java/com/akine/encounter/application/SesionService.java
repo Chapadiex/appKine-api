@@ -1,6 +1,11 @@
 package com.akine.encounter.application;
 
 import com.akine.clinical.spi.HistoriaClinicaDirectory;
+import com.akine.offering.spi.OfertaDirectory;
+import com.akine.offering.spi.PrecioDeOferta;
+import com.akine.encounter.domain.Asistencia;
+import com.akine.encounter.spi.CierreDeSesionObserver;
+import com.akine.encounter.spi.SesionCerrada;
 import com.akine.clinical.spi.HistoriaClinicaSnapshot;
 import com.akine.encounter.domain.CierreDeSesion;
 import com.akine.encounter.domain.EvaluacionBase;
@@ -26,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Inicio de la atencion y autosave del borrador (M14, RF-M14-001, RF-M14-002 y RF-M14-009).
@@ -72,6 +78,8 @@ public class SesionService {
 	private final PermissionGuard permissionGuard;
 	private final SesionNumeradorPort numerador;
 	private final NumeradorIniciador numeradorIniciador;
+	private final OfertaDirectory ofertas;
+	private final List<CierreDeSesionObserver> observadores;
 
 	public SesionService(
 			SesionRepositoryPort sesiones,
@@ -81,7 +89,9 @@ public class SesionService {
 			ConsultorioMembershipDirectory memberships,
 			PermissionGuard permissionGuard,
 			SesionNumeradorPort numerador,
-			NumeradorIniciador numeradorIniciador) {
+			NumeradorIniciador numeradorIniciador,
+			OfertaDirectory ofertas,
+			List<CierreDeSesionObserver> observadores) {
 
 		this.sesiones = sesiones;
 		this.turnos = turnos;
@@ -91,6 +101,8 @@ public class SesionService {
 		this.permissionGuard = permissionGuard;
 		this.numerador = numerador;
 		this.numeradorIniciador = numeradorIniciador;
+		this.ofertas = ofertas;
+		this.observadores = List.copyOf(observadores);
 	}
 
 	/**
@@ -265,7 +277,13 @@ public class SesionService {
 		numerador.incrementar(organizationId, sesion.getHistoriaClinicaId());
 		int numero = numerador.leerUltimo(organizationId, sesion.getHistoriaClinicaId());
 
-		sesion.cerrar(cierre, numero, Instant.now(), actor.accountId());
+		Instant ahora = Instant.now();
+		sesion.cerrar(cierre, numero, ahora, actor.accountId());
+
+		// Dentro de la transaccion, a proposito: una prestacion sin deuda NO se nota —nadie
+		// reclama una factura que nunca existio— y el centro descubre el agujero cuando cuadra
+		// la caja del mes. La contrapartida esta asumida en CierreDeSesionObserver.
+		notificarCierre(sesion, cierre, numero, ahora, organizationId);
 
 		log.info("Sesion cerrada: sesionId={} numero={} historiaClinicaId={} asistencia={}",
 				sesionId, numero, sesion.getHistoriaClinicaId(), cierre.asistencia());
@@ -281,6 +299,48 @@ public class SesionService {
 	 * tenia 7" al lado del campo de dolor es lo que hace que el profesional cargue una evolucion
 	 * real en vez de la que recuerda.
 	 */
+	/**
+	 * Avisa del cierre a quien tenga que reaccionar.
+	 *
+	 * <p>El precio se lee de la Oferta ACA y no en el observador: quien reacciona no tiene por que
+	 * conocer M27, y si cada observador lo leyera por su cuenta, dos de ellos podrian devengar
+	 * contra precios distintos si alguien edita la oferta en el medio.
+	 *
+	 * <p>La lista puede estar vacia y eso es legitimo: { encounter} no sabe quien lo escucha.
+	 */
+	private void notificarCierre(
+			Sesion sesion, CierreDeSesion cierre, int numero, Instant ahora, long organizationId) {
+
+		var precio = ofertas.precioDe(organizationId, sesion.getConsultorioId(), sesion.getOfertaId());
+		var aviso = new SesionCerrada(
+				sesion.getId(),
+				organizationId,
+				sesion.getConsultorioId(),
+				personaDe(sesion, organizationId),
+				sesion.getOfertaId(),
+				numero,
+				cierre.asistencia() == Asistencia.PRESENTE,
+				ahora,
+				precio.map(PrecioDeOferta::precioBase).orElse(null),
+				precio.map(PrecioDeOferta::moneda).orElse(null));
+
+		observadores.forEach(observador -> observador.alCerrar(aviso));
+	}
+
+	/**
+	 * La persona de la sesion, via su Historia Clinica.
+	 *
+	 * <p>La sesion no guarda { persona_id}: cuelga de la HC, y la HC es de quien es. Duplicar
+	 * la persona en la sesion habilitaria que las dos discrepen, y no hay ninguna consulta que lo
+	 * justifique.
+	 */
+	private long personaDe(Sesion sesion, long organizationId) {
+		return historias.findPorId(organizationId, sesion.getHistoriaClinicaId())
+				.map(HistoriaClinicaSnapshot::personaId)
+				.orElseThrow(() -> new IllegalStateException(
+						"La sesion " + sesion.getId() + " apunta a una historia clinica que no existe"));
+	}
+
 	private SesionView conPrevia(Sesion sesion, long organizationId) {
 		return SesionView.de(sesion, sesiones
 				.findPreviaEvaluada(organizationId, sesion.getHistoriaClinicaId(), sesion.getIniciadaEn())

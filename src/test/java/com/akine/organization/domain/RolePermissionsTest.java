@@ -147,7 +147,7 @@ class RolePermissionsTest {
 	@ParameterizedTest
 	@EnumSource(value = PermissionCode.class, names = {
 			"CASO_CREATE",
-			"CONVENIO_MANAGE", "COBRO_REGISTER", "CAJA_OPERATE", "REPORTE_READ"})
+			"CONVENIO_MANAGE", "CAJA_OPERATE", "REPORTE_READ"})
 	@DisplayName("Los permisos de fases futuras estan declarados y no los tiene NINGUN rol")
 	void los_permisos_de_fases_futuras_deniegan_para_todos(PermissionCode permiso) {
 		// Estan en el catalogo para que agregar una fase sea sumar filas y no rehacer el modelo.

@@ -16,6 +16,7 @@ import com.akine.encounter.domain.exception.SesionCerradaException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
 import com.akine.encounter.domain.port.SesionNumeradorPort;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
+import com.akine.offering.spi.OfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
@@ -76,6 +77,7 @@ class SesionServiceTest {
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private SesionNumeradorPort numerador;
 	@Mock private NumeradorIniciador numeradorIniciador;
+	@Mock private OfertaDirectory ofertas;
 
 	private SesionService service;
 
@@ -86,7 +88,7 @@ class SesionServiceTest {
 	void setUp() {
 		service = new SesionService(
 				sesiones, turnos, historias, consultorios, memberships, permissionGuard,
-				numerador, numeradorIniciador);
+				numerador, numeradorIniciador, ofertas, List.of());
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -95,6 +97,8 @@ class SesionServiceTest {
 						CONSULTORIO_ID, "PROFESIONAL", "ACTIVA", Instant.EPOCH, null, true, true)));
 		given(historias.asegurar(anyLong(), anyLong(), anyLong())).willReturn(
 				new HistoriaClinicaSnapshot(HISTORIA_ID, ORG_ID, PERSONA_ID, Instant.EPOCH, true, 0));
+		given(historias.findPorId(anyLong(), anyLong())).willReturn(Optional.of(
+				new HistoriaClinicaSnapshot(HISTORIA_ID, ORG_ID, PERSONA_ID, Instant.EPOCH, true, 0)));
 		// JPA asigna el id al persistir; el doble tiene que hacer lo mismo o el fixture
 		// representaria una sesion guardada sin id, que en produccion no ocurre.
 		given(sesiones.save(any())).willAnswer(invocacion -> {

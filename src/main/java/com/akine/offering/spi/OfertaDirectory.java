@@ -22,6 +22,11 @@ public interface OfertaDirectory {
 	Optional<OfertaSnapshot> find(long organizationId, long consultorioId, long ofertaId);
 
 	/**
+	 * Lo que cuesta la oferta. Ver {@link PrecioDeOferta}: viaja aparte del snapshot general.
+	 */
+	Optional<PrecioDeOferta> precioDe(long organizationId, long consultorioId, long ofertaId);
+
+	/**
 	 * Memberships de profesionales habilitados para la oferta, con su vigencia.
 	 *
 	 * <p>Devuelve la habilitacion aunque su vigencia no toque la ventana: filtrar por fecha es

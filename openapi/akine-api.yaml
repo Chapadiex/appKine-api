@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.18.0
+  version: 0.19.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -37,6 +37,8 @@ tags:
   name: Personas
 - description: "Contrato tecnico: salud y versionado"
   name: Platform
+- description: Deuda derivada de prestaciones. No es el cobro ni la caja (M18)
+  name: Obligaciones
 - description: "Bloqueo, desbloqueo y baja logica de cuentas de la propia organizacion"
   name: Administracion de cuentas
 - description: Cierres y aperturas puntuales de una sede o de un profesional
@@ -1843,6 +1845,168 @@ paths:
       summary: Baja logica de una excepcion de disponibilidad
       tags:
       - Excepciones de disponibilidad
+  /api/v1/consultorios/{consultorioId}/obligaciones:
+    get:
+      description: |-
+        La deuda de un paciente en **toda la organizacion**, de la mas reciente a la mas vieja.
+
+        El alcance es la organizacion y no la sede, aunque el permiso se evalue con la sede del contexto: la deuda de un paciente es una sola aunque se haya generado en dos sedes del mismo centro, y mostrarla partida obligaria al administrativo a sumar de memoria.
+      operationId: deLaPersona
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Obligacion"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Obligacion"
+          description: Cuenta corriente
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `cobro:register` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Cuenta corriente de un paciente
+      tags:
+      - Obligaciones
+  /api/v1/consultorios/{consultorioId}/obligaciones/{obligacionId}:
+    delete:
+      description: |-
+        Anula la deuda con **motivo obligatorio**. No la borra: una deuda que desaparece de la base es una cuenta corriente que no cuadra y que nadie puede auditar despues.
+
+        **Una obligacion con cobros imputados no se anula.** Anular lo que ya se cobro dejaria plata en la caja sin ninguna deuda que la justifique, y el arqueo del dia no cerraria. Lo que corresponde en ese caso es una devolucion, que es M19 y tiene su propio registro.
+
+        Devuelve la obligacion anulada y no un 204, porque el cuerpo trae el estado y la version nueva que la pantalla necesita para seguir operando.
+      operationId: anular
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: obligacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnularObligacion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Obligacion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Obligacion"
+          description: Obligacion anulada
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La obligacion o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ya estaba anulada, tiene cobros imputados, o la version quedo\
+            \ vieja"
+      summary: Anular una obligacion
+      tags:
+      - Obligaciones
+    get:
+      operationId: ver_1
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: obligacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Obligacion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Obligacion"
+          description: Obligacion
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La obligacion o la sede no existen, o son de otro tenant"
+      summary: Ver una obligacion
+      tags:
+      - Obligaciones
   /api/v1/consultorios/{consultorioId}/ofertas:
     get:
       description: |-
@@ -6463,6 +6627,29 @@ components:
             Viaja para que la pantalla pueda rotularla y para que un error de huso
             se vea en la respuesta en vez de deducirse de horarios corridos.
           example: America/Argentina/Cordoba
+    AnularObligacion:
+      type: object
+      description: Anulacion de deuda con motivo obligatorio
+      properties:
+        motivo:
+          type: string
+          description: "**Obligatorio.** A diferencia de otras bajas del sistema,\
+            \ aca el motivo no se puede omitir: una deuda que se borra sin explicacion\
+            \ es exactamente lo que una auditoria busca, porque alguien anulo un cargo\
+            \ y no hay forma de saber si fue un error de carga, una cortesia u otra\
+            \ cosa."
+          example: "Cargada por error: la sesion se cerro con la oferta equivocada"
+          maxLength: 280
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: Version que el cliente leyo
+          example: 0
+          minimum: 0
+      required:
+      - motivo
+      - version
     AssignGrantRequest:
       type: object
       description: Permiso adicional a otorgar sobre un vinculo
@@ -9020,6 +9207,86 @@ components:
         detalle:
           type: string
           description: "Texto para mostrar, que nombra el recurso concreto"
+    Obligacion:
+      type: object
+      description: "Deuda derivada de una prestacion. **No es el cobro ni la caja**:\
+        \ son tres cosas distintas (M18, M19, M20)."
+      properties:
+        anuladaEn:
+          type: string
+          format: date-time
+          description: Ausente si la deuda sigue vigente
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        devengadaEn:
+          type: string
+          format: date-time
+          example: 2026-09-15T12:48:00Z
+        estado:
+          type: string
+          description: Los tres primeros se derivan del saldo; `ANULADA` es una decision.
+          enum:
+          - PENDIENTE
+          - PARCIAL
+          - PAGADA
+          - ANULADA
+          example: PENDIENTE
+        id:
+          type: integer
+          format: int64
+          example: 9001
+        importeOriginal:
+          type: number
+          description: Lo devengado. No cambia nunca.
+          example: 8500.0
+        moneda:
+          type: string
+          example: ARS
+        motivoAnulacion:
+          type: string
+          description: "Obligatorio al anular: una deuda que se borra sin explicacion\
+            \ es lo que una auditoria busca"
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+        responsable:
+          type: string
+          description: "Quien debe. Hoy siempre `PACIENTE`: el Paquete B fija cobertura\
+            \ particular. `FINANCIADOR` llega con AKINE-03.03 y 03.05."
+          enum:
+          - PACIENTE
+          - FINANCIADOR
+          example: PACIENTE
+        saldo:
+          type: number
+          description: Lo que falta pagar
+          example: 8500.0
+        sesionId:
+          type: integer
+          format: int64
+          description: Atencion que la genero. Es lo que la hace trazable.
+          example: 501
+        snapshotNombre:
+          type: string
+          description: "Que se presto, al momento de devengar"
+          example: Sesion 8
+        snapshotPrecio:
+          type: number
+          description: "Precio de la oferta **al momento de devengar**. Editar la\
+            \ oferta manana no cambia esto: seria reescribir una cuenta corriente."
+          example: 8500.0
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista
+          example: 0
     OfertaResponse:
       type: object
       description: Oferta de un servicio en una sede concreta
@@ -9534,6 +9801,8 @@ components:
       - https://akine.app/problems/turno-no-atendible
       - https://akine.app/problems/sesion-ajena
       - https://akine.app/problems/sesion-cerrada
+      - https://akine.app/problems/obligacion-already-anulada
+      - https://akine.app/problems/obligacion-con-cobros
       - https://akine.app/problems/consultorio-no-operable
       - https://akine.app/problems/persona-documento-taken
       - https://akine.app/problems/persona-posible-duplicado

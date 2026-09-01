@@ -42,6 +42,13 @@ public class ClinicalHistoriaClinicaDirectory implements HistoriaClinicaDirector
 	}
 
 	@Override
+	@Transactional(readOnly = true)
+	public Optional<HistoriaClinicaSnapshot> findPorId(long organizationId, long historiaClinicaId) {
+		return historias.findByIdAndOrganizationId(historiaClinicaId, organizationId)
+				.map(ClinicalHistoriaClinicaDirectory::instantanea);
+	}
+
+	@Override
 	@Transactional
 	public HistoriaClinicaSnapshot asegurar(
 			long organizationId, long personaId, long actorAccountId) {

@@ -31,6 +31,15 @@ public interface HistoriaClinicaDirectory {
 	Optional<HistoriaClinicaSnapshot> find(long organizationId, long personaId);
 
 	/**
+	 * La historia clinica por su propio id.
+	 *
+	 * <p>Existe porque hay agregados que cuelgan de la HC y guardan su id, no el de la persona —la
+	 * Sesion de M14 es el primero—. Duplicar { persona_id} en esas tablas habilitaria que las
+	 * dos discrepen, y ninguna consulta lo justifica.
+	 */
+	Optional<HistoriaClinicaSnapshot> findPorId(long organizationId, long historiaClinicaId);
+
+	/**
 	 * La historia vigente de esa persona, abriendola si todavia no existe.
 	 *
 	 * <p>Es idempotente y lo garantiza el unique de la base, no un {@code SELECT} previo: dos

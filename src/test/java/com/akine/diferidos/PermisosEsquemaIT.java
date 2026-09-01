@@ -223,7 +223,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				tenant.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
 				.containsExactlyInAnyOrder("tenant:read", "consultorio:manage", "espacio:read",
 						"colaborador:manage", "colaborador:read", "auditoria:read",
-						"paciente:manage", "turno:read", "turno:manage");
+						"paciente:manage", "turno:read", "turno:manage", "cobro:register");
 	}
 
 	@Test
