@@ -316,7 +316,7 @@ Reglas que esta etapa dejó fijadas y que las siguientes heredan:
 | `identity` orquesta hacia `organization` por el `spi`, nunca al revés | Cierra el ciclo que la regla de 01.01 ya prohibía en la otra dirección |
 | Los tokens sensibles **nunca en texto plano ni en logs** | RN-M02-003, restricción dura de la especificación |
 
-### AKINE-01.03 a AKINE-02.05 — completadas
+### AKINE-01.03 a AKINE-07.01 — completadas
 
 Los registros de cierre completos de cada una viven en `../docs/AKINE_IMPLEMENTATION_PLAN.md`,
 sección final. Resumen de qué entregó cada una y qué regla dejó fijada:
@@ -330,37 +330,63 @@ sección final. Resumen de qué entregó cada una y qué regla dejó fijada:
 | **02.03** | Ciclo de vida de colaboradores: invitación por email | `MAX_MIEMBROS_ACTIVOS` ahora **sí** se aplica: cualquier alta de membership puede recibir 409 por tope de plan |
 | **02.04** | Disponibilidad semanal, excepciones y feriados (M05) | Disponibilidad ≠ turno; la efectiva se calcula al leer y no se materializa; el lock de escritura es la fila de `consultorio_calendario` de la sede y se toma **antes** de leer nada |
 | **02.06** | Servicio global y oferta por sede (M27) | La baja de un servicio **no cascadea**: las ofertas que ya lo prestaban siguen operando y sólo se impide crear ofertas nuevas. Un catálogo global va exceptuado de `TenantContextFilter`; las ofertas no pueden estarlo. Cada módulo necesita su `ApiActor` **con nombre propio** o Spring no arranca |
+| **02.07** | Habilitación de profesionales y espacios por oferta (M27) | Un `@Version` sobre el padre **no protege** escrituras que sólo tocan tablas hijas: hace falta `OPTIMISTIC_FORCE_INCREMENT` (`b8bbc67`). La pantalla tiene que repedir la oferta después de guardar |
+| **03.01** | Persona, PerfilPaciente, búsqueda y deduplicación (M07) | Una `Persona` **no es** un `Paciente`: dos tablas, ninguna columna `es_paciente`, y una sola clase inserta en `perfil_paciente` (RF-M07-010). La persona es de la **organización**, no de la sede |
+| **04.01** | Historia Clínica organizacional reducida (M09) | La HC es de la organización (DP-03). Todo acceso clínico exige **justificación declarada** hasta que `RelacionAsistencialProbe` tenga implementación real, y toda lectura se audita |
+| **05.01** | Motor de slots explicables (M12) | El slot se calcula al leer y **no se persiste**; un día sin slots nunca viaja sin su `MotivoSinSlots` |
+| **05.02** | Reserva atómica de Turno (M04/M12) | Ningún unique expresa solapamiento de intervalos: la regla la hace cumplir el lock de `agenda_sede`, y **con `REPEATABLE READ` el lock no alcanza** — las mutaciones que serializan van en `READ_COMMITTED` |
+| **06.01** | Agregado Sesión, inicio y autosave (M14) | Sesión ≠ Turno (DP-05). La **propiedad no es un permiso**: escribir en la atención ajena es 409, no 403. El control optimista **es** el autosave |
+| **06.02** | Evaluación base y modo Sesión rápida (M14) | Todo lo clínico es nullable —"seguimiento no exige examen completo"—; se valida lo que sería FALSO, no lo que falta, y con 400 |
+| **06.05** | Resultado y cierre idempotente (M14) | El correlativo se asigna con `UPDATE ... ultimo_numero + 1`, no con `MAX+1`, y la idempotencia se evalúa **antes** de pedir número. Cerrar no cobra (DP-06) |
+| **07.01** | Obligaciones económicas (M18) | Deuda, cobro y caja son tres cosas. La deuda se devenga **dentro** de la transacción del cierre (`billing → encounter`), con snapshot congelado y saldo materializado. `DECIMAL`, nunca `float` |
 
 > **02.05 se ejecutó antes que 02.03 y 02.04.** No es un salto arbitrario: §14 del plan declara
 > que depende únicamente de 01.03.
 
-### Estado vigente (27/08/2026)
+### Estado vigente (01/09/2026, medido — no copiado)
 
-Rama `akine-01.02-identidad`, **57 commits**, último `b578b15`. Migraciones **V1–V25**.
-Contrato **0.12.0** con 89 operaciones, propietario del `openapi/akine-api.yaml`, sin drift; el
-cliente del frontend está regenerado y fijado en la misma versión.
+Rama `akine-01.02-identidad`, **78 commits**, último `c9a3b68`, **ninguno pusheado**.
+Migraciones **V1–V25, V27, V28, V30, V32, V33, V34, V35 y V36**; **`V26`, `V29` y `V31` quedaron
+vacías** —V26 por la colisión de 02.07/03.01, V29 y V31 reservadas por DP-10 y no usadas—.
+Contrato **0.19.0 con 109 operaciones**, propietario del `openapi/akine-api.yaml`, sin drift; el
+**cliente del frontend está en `0.17.0`**, dos versiones menores atrás, porque 06.05 y 07.01 no
+tienen pantalla.
 
-Módulos: `platform`, `organization`, `identity`, `notification`, `resource`, `offering`.
+Módulos, **once**: `platform`, `organization`, `identity`, `notification`, `resource`, `offering`,
+`person`, `scheduling`, `clinical`, `encounter`, `billing`.
 **23 ADRs** en `docs/adr/`, matriz de permisos en `docs/seguridad/`, diseños de etapa en
 `docs/diseno/`.
 
-`./mvnw verify` **VERDE**: **1291 unitarias + 135 de integración** contra MySQL 8.4 real vía
-Testcontainers, 1 diferida.
+`./mvnw -o verify` **VERDE, medido el 01/09/2026 sobre `c9a3b68`** (14:34 min): **1701 unitarias
++ 174 de integración** contra MySQL 8.4 real, **0 fallos, 0 errores, 1 diferida**
+—`IdempotenciaYUniquesIT`, escenario 7b—. `jacoco:check`: *All coverage checks have been met*.
 
-> **La cobertura de rama está en 76,36 %, no en el 80 que este archivo daba por sentado.**
-> `pom.xml` gatea `LINE` (87,73 %) e `INSTRUCTION` (86,94 %) sobre el BUNDLE y **no gatea
-> `BRANCH`**, así que el build pasa legítimamente. El cierre de 01.02 declaraba 87,42 % de rama:
-> cayó nueve puntos entre 02.01 y 02.04, y 02.06 le sacó otro punto y medio al sumar dos
-> controllers sin tests propios. Ningún gate lo detectó en ninguna de las dos caídas. Agregar la
-> regla hoy rompe el build, así que primero hay que subir la cobertura. **Es una decisión
-> pendiente del usuario.**
+> **La cobertura sigue cayendo y ahora está a 2,35 puntos de romper el build.** Medido sobre
+> `target/site/jacoco/jacoco.csv`: **instrucción 82,35 % · línea 83,48 % · rama 72,56 % ·
+> método 72,79 % · clase 83,12 %**. `pom.xml` gatea `LINE` e `INSTRUCTION` al **0,80** sobre el
+> BUNDLE y **no gatea `BRANCH`**.
+>
+> Este archivo declaraba el 27/08 **87,73 % de línea y 86,94 % de instrucción**: las dos cayeron
+> más de **cuatro puntos** en las nueve etapas siguientes, y **ningún gate avisó** porque el piso
+> es 80 y todavía no lo tocan. La rama viene de 87,42 % en 01.02 y 76,36 % el 27/08: **hoy 72,56 %,
+> quince puntos abajo del arranque.** Agregar el gate de `BRANCH` hoy rompe el build.
 >
 > El frontend sí gatea `BRANCH`, y por eso **02.06 le rompió el build ahí y hubo que escribir
 > tests antes de poder cerrar**. Es la diferencia práctica entre tener el gate y no tenerlo.
 
-> **El QA manual del §6 no se corrió para 02.02, 02.03, 02.04 ni 02.05**, y tampoco los E2E de
-> esas etapas. §6 lo declara bloqueante para deploy: esas cuatro etapas están cerradas con esa
-> deuda escrita, no saldada.
+> **El QA manual del §6 no se corrió para ninguna etapa desde 02.02** —02.02 a 02.05, 02.07, y
+> las siete del Paquete B (05.01, 05.02, 04.01, 06.01, 06.02, 06.05, 07.01)—, y tampoco hay E2E
+> de la vertical clínica ni de la económica. §6 lo declara bloqueante para deploy: están cerradas
+> con esa deuda **escrita, no saldada**.
+>
+> **Docker ya no es la excusa.** Este archivo y el del workspace decían que el motor "no arranca
+> sin elevación"; al 01/09/2026 `akine-mysql` (MySQL 8.4) y `akine-mailpit` llevan 27 horas arriba
+> y sanos, y los 174 tests de integración corren contra esa base. Lo que falta es correr el QA.
+>
+> **Lo único que se ejerció contra la base concurrentemente son tres suites**, y vale la pena
+> saber cuáles: `TurnoConcurrenteIT` (una sola reserva gana), `DisponibilidadIT` (las dos primeras
+> altas de la sede no pasan las dos) y `CierreConcurrenteIT` (correlativo sin repetir ni huecos,
+> y el devengo de la deuda con precio congelado).
 
 > **Los contratos publicados de 02.02 y 02.05 prometen `concurrent-modification` y su código
 > devuelve `conflict`.** `resource`, `espacio` y `catalogo` lanzan el
@@ -372,7 +398,13 @@ Testcontainers, 1 diferida.
 > **El OpenAPI no declara ningún `securityScheme`**, en ningún módulo. Preexistente. El frontend
 > funciona porque agrega la autenticación por interceptor; un cliente generado no lo sabría.
 
-### Próximo paso — AKINE-02.07
+### Próximo paso — lo que queda del Paquete B: **05.03 y 07.02**
+
+DP-10 declara nueve etapas y hay **siete cerradas**. Faltan **05.03** (ciclo e historial de Turno,
+`V31` reservada y sin usar — hoy **un turno reservado no se puede cancelar ni reprogramar desde
+ninguna pantalla**) y **07.02** (cobros e imputaciones, la que cierra la vertical: la obligación
+de 07.01 ya expone saldo materializado con su `CHECK`, así que imputar es un `UPDATE` condicional
+bajo lock).
 
 Pendientes que arrastra el backend:
 
