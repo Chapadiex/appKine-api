@@ -398,13 +398,24 @@ Módulos, **once**: `platform`, `organization`, `identity`, `notification`, `res
 > **El OpenAPI no declara ningún `securityScheme`**, en ningún módulo. Preexistente. El frontend
 > funciona porque agrega la autenticación por interceptor; un cliente generado no lo sabría.
 
-### Próximo paso — lo que queda del Paquete B: **05.03 y 07.02**
+### Próximo paso — el Paquete B cerró en el backend; **falta la mitad de pantalla**
 
-DP-10 declara nueve etapas y hay **siete cerradas**. Faltan **05.03** (ciclo e historial de Turno,
-`V31` reservada y sin usar — hoy **un turno reservado no se puede cancelar ni reprogramar desde
-ninguna pantalla**) y **07.02** (cobros e imputaciones, la que cierra la vertical: la obligación
-de 07.01 ya expone saldo materializado con su `CHECK`, así que imputar es un `UPDATE` condicional
-bajo lock).
+DP-10 declara nueve etapas y **las nueve están en el backend**. **07.02** entregó cobros e
+imputaciones —imputar es un `UPDATE ... WHERE saldo >= :importe`, no un lock: es una resta que no
+puede pasar de cero, y eso una condición lo expresa—. **05.03** entregó cancelación,
+reprogramación, ausencia e historial (`V38`, no la `V31` reservada, que quedó sin usar), con
+`turno_evento` append-only y backfill.
+
+**Lo que falta es el consumidor.** El cliente TypeScript ya está alineado en `0.21.0`, pero
+**ninguna pantalla llama a esas operaciones**: hoy un turno reservado no se puede cancelar ni
+reprogramar desde la app, y `cuenta-corriente` muestra la deuda sin poder cobrarla. Las dos
+pantallas se están construyendo en `appKine-web`, en las ramas `akine-05.03-front` y
+`akine-07.02-front`.
+
+**Deuda de verificación que 05.03 dejó abierta:** el arreglo de `ReservaProbeSobreTurnos` —que la
+agenda descuente los turnos ya vendidos— **nunca se ejerció contra el stack real**. El QA manual
+del 01/09 corrió *antes* de que esa sonda existiera, así que el caso "slot vendido" está cubierto
+por tests y por nada más.
 
 Pendientes que arrastra el backend:
 
