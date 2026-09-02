@@ -504,3 +504,57 @@ padrón entero de su organización. §4 le asigna "Propio" a esa celda. Aprobar 
 **no lo resolvería**: el problema no es el código de permiso sino el alcance `OWN`, que no existe.
 Queda como hueco conocido con etapa destino en el autoservicio, y no se tapa con un permiso que no
 cambiaría ningún comportamiento.
+
+---
+
+## 13. Enmiendas — AKINE-03.03 (Financiadores y planes de cobertura, M15)
+
+### 13.1 La fila "Administrar Convenios" de §2, cableada parcialmente
+
+`convenio:manage` estaba en el catálogo de §5 desde AKINE-01.03, declarado para **F3**, y **no lo
+tenía ningún rol**: denegaba siempre porque no existía módulo que lo evaluara. Con `contracting`
+(M15) ya existe, y la asignación base pasa a ser:
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `convenio:manage` | — (ver 13.2) | Org | Consultorio | — | — | — |
+
+Es la fila "Administrar Convenios" de §2 leída literalmente: "Sí" al `ORG_ADMIN` y al
+`CONSULTORIO_ADMIN`, "No" a los otros tres. **No se agrega ningún código nuevo**: una etapa no
+amplía el catálogo de §5, mismo criterio que 02.04, 02.05, 02.06 y 03.01.
+
+### 13.2 El `PLATFORM_ADMIN` NO lo recibe, y eso es la decisión más importante de esta enmienda
+
+Su celda dice **"Catálogo global"**, que §3 define como *"solo sobre el catálogo de plataforma
+(financiadores/planes globales), nunca sobre convenios de un tenant"*.
+
+**Ese catálogo global no existe.** AKINE-03.03 modela el financiador como dato de la
+**organización** (`financiador.organization_id NOT NULL`, V41). Darle `convenio:manage` hoy no
+cumpliría su celda: la **violaría**, porque lo dejaría administrar los financiadores de un tenant
+—exactamente lo que su celda excluye—.
+
+Queda **sin cumplirse**, declarado, hasta que exista la población global. El camino de migración
+está escrito en la cabecera de V41: `organization_id` pasa a nullable y aparece el centinela
+`owner_key`, que es el patrón de `especialidad` y `practica` (ADR-0021). El bloqueo práctico para
+construirlo es el mismo que arrastra RF-M06-005 desde 02.05: **ningún endpoint le dice al frontend
+si quien mira tiene rol de plataforma**, así que la consola de plataforma no se puede construir.
+
+### 13.3 El permiso se evalúa CON la sede del contexto, aunque el financiador sea de la organización
+
+Idéntico a 12.2 y por el mismo motivo mecánico: `PermissionEvaluatorService.alcanceCubre` concede
+un alcance de sede **solo cuando la consulta nombra una sede**. Evaluando con `consultorioId =
+null` pasarían `ORG_ADMIN` y plataforma y quedaría afuera el `CONSULTORIO_ADMIN`, a quien §2 le
+dice "Sí".
+
+Consecuencia: **sin contexto de sede no se muta el catálogo** (403). El financiador no queda atado
+a esa sede — sigue siendo de la organización.
+
+### 13.4 Las lecturas se autorizan por pertenencia, y eso concede de más
+
+**No existe `convenio:read`** y esta etapa no lo crea. Leer el catálogo de financiadores y planes
+exige solo tener contexto de organización activo.
+
+**El hueco, dicho de frente:** con pertenencia sola, una membership con rol `PACIENTE` lee el
+catálogo entero de financiadores de su organización. Es el mismo hueco que 12.3 dejó abierto en el
+padrón y tiene la misma causa de fondo — el alcance `OWN` no existe— así que se declara igual y no
+se tapa con un permiso que no cambiaría ningún comportamiento.

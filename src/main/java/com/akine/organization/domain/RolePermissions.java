@@ -173,21 +173,34 @@ public final class RolePermissions {
 		// ORG_ADMIN — "tenant:manage" NO esta: la matriz §4 acota su "Limitado" a editar su
 		// organizacion y ver su suscripcion, y deja el cambio de plan y la suspension para
 		// PLATFORM_ADMIN. auditoria:read-clinica tampoco: es "No por defecto (grant)".
-		tabla.put(RoleCode.ORG_ADMIN, Map.of(
-				PermissionCode.TENANT_READ, PermissionScope.ORGANIZACION,
-				PermissionCode.CONSULTORIO_MANAGE, PermissionScope.ORGANIZACION,
-				PermissionCode.ESPACIO_READ, PermissionScope.ORGANIZACION,
-				PermissionCode.COLABORADOR_MANAGE, PermissionScope.ORGANIZACION,
-				PermissionCode.COLABORADOR_READ, PermissionScope.ORGANIZACION,
-				PermissionCode.AUDITORIA_READ, PermissionScope.ORGANIZACION,
-				PermissionCode.PACIENTE_MANAGE, PermissionScope.ORGANIZACION,
-				PermissionCode.TURNO_READ, PermissionScope.ORGANIZACION,
-				PermissionCode.TURNO_MANAGE, PermissionScope.ORGANIZACION,
+		tabla.put(RoleCode.ORG_ADMIN, Map.ofEntries(
+				Map.entry(PermissionCode.TENANT_READ, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.CONSULTORIO_MANAGE, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.ESPACIO_READ, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.COLABORADOR_MANAGE, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.COLABORADOR_READ, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.AUDITORIA_READ, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.PACIENTE_MANAGE, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.TURNO_READ, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.ORGANIZACION),
 				// `cobro:register` entra con asignacion base en AKINE-07.01, la etapa que crea la
 				// deuda. La matriz §2 le dice "Si" al ORG_ADMIN, al CONSULTORIO_ADMIN y al
 				// ADMINISTRATIVO en la fila Registrar Cobro; al PROFESIONAL "No por defecto" y al
 				// PLATFORM_ADMIN "No" —soporte mira, no opera—.
-				PermissionCode.COBRO_REGISTER, PermissionScope.ORGANIZACION));
+				Map.entry(PermissionCode.COBRO_REGISTER, PermissionScope.ORGANIZACION),
+				// `convenio:manage` entra con asignacion base en AKINE-03.03, la etapa que crea el
+				// catalogo de financiadores y planes (M15). La matriz §2 le dice "Si" al ORG_ADMIN
+				// y al CONSULTORIO_ADMIN en la fila Administrar Convenios, y "No" al PROFESIONAL,
+				// al ADMINISTRATIVO y al PACIENTE. La enmienda esta en la matriz §13.
+				//
+				// AL PLATFORM_ADMIN NO SE LE DA, Y ESO ES UNA DECISION. Su celda dice "Catalogo
+				// global", que la §3 define como "solo sobre el catalogo de plataforma
+				// (financiadores/planes globales), nunca sobre convenios de un tenant". Ese
+				// catalogo global NO EXISTE: 03.03 modela el financiador como dato de la
+				// organizacion (V41). Darselo hoy no cumpliria su celda, la violaria — lo dejaria
+				// administrar los financiadores de un tenant, que es precisamente lo que su celda
+				// excluye. Queda sin cumplirse hasta que exista la poblacion global.
+				Map.entry(PermissionCode.CONVENIO_MANAGE, PermissionScope.ORGANIZACION)));
 
 		// CONSULTORIO_ADMIN — todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
 		tabla.put(RoleCode.CONSULTORIO_ADMIN, Map.of(
@@ -199,7 +212,13 @@ public final class RolePermissions {
 				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO,
 				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO,
-				PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO));
+				PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO,
+				// AKINE-03.03. La matriz §2 le dice "Si" en Administrar Convenios, igual que al
+				// ORG_ADMIN. El alcance es su sede, que es el de su membership: que el financiador
+				// sea de la ORGANIZACION no lo convierte en un permiso de organizacion — el
+				// alcance sigue siendo el de la membership con la que se decide, mismo criterio
+				// que `paciente:manage` sobre una Persona que tambien es de la organizacion.
+				PermissionCode.CONVENIO_MANAGE, PermissionScope.CONSULTORIO));
 
 		// PROFESIONAL y ADMINISTRATIVO — ven la lista de colaboradores de su sede y, desde la
 		// aprobacion del 25/08/2026, el catalogo fisico de esa misma sede: sin `espacio:read` un

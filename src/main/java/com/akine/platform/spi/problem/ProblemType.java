@@ -316,7 +316,38 @@ public enum ProblemType {
 	 */
 	PERSONA_POSIBLE_DUPLICADO("persona-posible-duplicado"),
 	/** La persona esta dada de baja y la operacion exige una vigente. Se sigue leyendo con 200. */
-	PERSONA_INACTIVA("persona-inactiva");
+	PERSONA_INACTIVA("persona-inactiva"),
+
+	// --- Financiadores y planes de cobertura (M15, AKINE-03.03) -----------------------------
+	/** Ya existe un financiador VIGENTE con ese codigo en la organizacion. */
+	FINANCIADOR_CODIGO_TAKEN("financiador-codigo-taken"),
+	/** Ya existe un financiador VIGENTE con ese nombre en la organizacion. */
+	FINANCIADOR_NOMBRE_TAKEN("financiador-nombre-taken"),
+	/**
+	 * Ya existe un financiador VIGENTE con ese CUIT en la organizacion.
+	 *
+	 * <p>Es un {@code type} propio y no una variante del de codigo: quien lo recibe tiene que
+	 * entender que la obra social ya esta cargada con OTRO codigo, no que eligio mal el suyo.
+	 */
+	FINANCIADOR_CUIT_TAKEN("financiador-cuit-taken"),
+	/**
+	 * El financiador esta dado de baja y la operacion exige uno vigente.
+	 *
+	 * <p>Es el 409 que hace visible que la baja de un financiador NO cascadea: sus planes y las
+	 * coberturas ya firmadas siguen resolviendo, y lo que se impide es crear planes NUEVOS bajo
+	 * el. Mismo par, y mismo razonamiento, que {@link #SERVICIO_INACTIVO} en M27.
+	 */
+	FINANCIADOR_INACTIVO("financiador-inactivo"),
+	/** El financiador ya estaba dado de baja. No existe la reactivacion. */
+	FINANCIADOR_ALREADY_INACTIVE("financiador-already-inactive"),
+	/** Ya existe un plan VIGENTE con ese codigo en ESE financiador. El alcance es el financiador. */
+	PLAN_COBERTURA_CODIGO_TAKEN("plan-cobertura-codigo-taken"),
+	/** Ya existe un plan VIGENTE con ese nombre en ese financiador. */
+	PLAN_COBERTURA_NOMBRE_TAKEN("plan-cobertura-nombre-taken"),
+	/** El plan esta dado de baja: no admite ediciones. Sus coberturas historicas resuelven. */
+	PLAN_COBERTURA_INACTIVO("plan-cobertura-inactivo"),
+	/** El plan ya estaba dado de baja. */
+	PLAN_COBERTURA_ALREADY_INACTIVE("plan-cobertura-already-inactive");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

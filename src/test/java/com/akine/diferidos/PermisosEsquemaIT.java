@@ -223,7 +223,10 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				tenant.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
 				.containsExactlyInAnyOrder("tenant:read", "consultorio:manage", "espacio:read",
 						"colaborador:manage", "colaborador:read", "auditoria:read",
-						"paciente:manage", "turno:read", "turno:manage", "cobro:register");
+						"paciente:manage", "turno:read", "turno:manage", "cobro:register",
+						// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`.
+						// Matriz §2 y enmienda §13.
+						"convenio:manage");
 	}
 
 	@Test
