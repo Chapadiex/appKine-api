@@ -152,7 +152,7 @@ public class CicloDeTurnoService {
 		EstadoTurno anterior = turno.getEstado();
 		Instant ahora = Instant.now();
 		turno.cancelar(motivo, actor.accountId(), ahora);
-		Turno cancelado = turnos.save(turno);
+		Turno cancelado = turnos.saveAndFlush(turno);
 
 		eventos.registrar(TurnoEvento.de(
 				cancelado, TipoEventoTurno.CANCELACION, anterior,
@@ -197,7 +197,7 @@ public class CicloDeTurnoService {
 		EstadoTurno anterior = turno.getEstado();
 		Instant ahora = Instant.now();
 		turno.marcarAusente(ahora);
-		Turno ausente = turnos.save(turno);
+		Turno ausente = turnos.saveAndFlush(turno);
 
 		eventos.registrar(TurnoEvento.de(
 				ausente, TipoEventoTurno.AUSENCIA, anterior, normalizar(motivo),
@@ -266,7 +266,7 @@ public class CicloDeTurnoService {
 
 		turno.reprogramar(nuevoInicio, nuevoFin,
 				asignacion.profesionalId(), asignacion.espacioId(), ahora);
-		Turno movido = turnos.save(turno);
+		Turno movido = turnos.saveAndFlush(turno);
 
 		eventos.registrar(TurnoEvento.reprogramacion(
 				movido, anterior, inicioAnterior, finAnterior,

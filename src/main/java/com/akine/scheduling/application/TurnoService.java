@@ -217,7 +217,7 @@ public class TurnoService {
 		EstadoTurno anterior = turno.getEstado();
 		Instant ahora = Instant.now();
 		turno.confirmar(ahora);
-		Turno confirmado = turnos.save(turno);
+		Turno confirmado = turnos.saveAndFlush(turno);
 
 		// Solo si hubo transicion: confirmar es idempotente, y registrar un evento por cada doble
 		// click llenaria el historial de filas que no cuentan ningun hecho nuevo.

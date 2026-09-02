@@ -51,6 +51,21 @@ public final class SchedulingRepositoryPorts {
 
 		Turno save(Turno turno);
 
+		/**
+		 * Guarda y <b>vacia la sesion en el acto</b>, para que la respuesta lleve la version nueva.
+		 *
+		 * <p>Con {@code save} a secas, el {@code @Version} lo incrementa Hibernate al vaciar la
+		 * sesion, que ocurre al commitear la transaccion: la vista se arma <b>antes</b> y sale con
+		 * la version vieja. La base queda en 1 y el cliente se lleva un 0.
+		 *
+		 * <p>Se comprobo contra MySQL real y no es cosmetico. Reprogramar un turno devolvia 200 con
+		 * la version vieja; reprogramar de nuevo usando <b>la version que la propia API acababa de
+		 * devolver</b> daba 409 "el recurso fue modificado por otra operacion" sin que nadie lo
+		 * hubiera tocado. En los hechos, un turno se podia mover una sola vez sin recargar, y el
+		 * mensaje culpaba a un operador inexistente.
+		 */
+		Turno saveAndFlush(Turno turno);
+
 		Optional<Turno> findByIdInScope(long organizationId, long consultorioId, long turnoId);
 
 		/**

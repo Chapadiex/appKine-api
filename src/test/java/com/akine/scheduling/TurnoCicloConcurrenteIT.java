@@ -118,6 +118,40 @@ class TurnoCicloConcurrenteIT {
 		assertThat(turnosVivosQueEmpiezanEn(fixture, hora(11))).isEqualTo(1);
 	}
 
+	/**
+	 * La version que devuelve una transicion tiene que ser la que quedo en la base.
+	 *
+	 * <p>Con {@code save} a secas no lo era: Hibernate incrementa el {@code @Version} al vaciar la
+	 * sesion —al commitear— y la vista se arma antes, asi que la base quedaba en 1 y el cliente se
+	 * llevaba un 0. Nada fallaba en el momento: el 200 era correcto y la fila tambien.
+	 *
+	 * <p>El sintoma aparecia en la <b>segunda</b> operacion. Reprogramar de nuevo usando la version
+	 * que la propia API acababa de devolver daba 409 "el recurso fue modificado por otra operacion"
+	 * sin que nadie lo hubiera tocado: en los hechos un turno se podia mover una sola vez sin
+	 * recargar, y el mensaje culpaba a un operador inexistente. Se encontro contra MySQL real.
+	 *
+	 * <p>El test hace justo eso —dos transiciones seguidas encadenando la version devuelta— porque
+	 * es lo que hace una pantalla: nadie relee entre dos clicks.
+	 */
+	@Test
+	@DisplayName("la version devuelta sirve para la operacion siguiente, sin releer")
+	void la_version_devuelta_es_la_que_quedo_en_la_base() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView reservado = reservar(fixture, fixture.personaA(), hora(9));
+
+		TurnoView movido = reprogramar(fixture, reservado, hora(11));
+
+		Map<String, Object> fila = jdbc.queryForMap(
+				"SELECT version FROM turno WHERE id = ?", reservado.id());
+		assertThat(((Number) fila.get("version")).longValue())
+				.as("la version de la respuesta tiene que ser la que quedo guardada")
+				.isEqualTo(movido.version());
+
+		// La prueba que importa: encadenar sin releer, como hace una pantalla entre dos clicks.
+		TurnoView movidoDeNuevo = reprogramar(fixture, movido, hora(12));
+		assertThat(movidoDeNuevo.inicio()).isEqualTo(hora(12));
+	}
+
 	@Test
 	@DisplayName("cancelar libera el lugar, y la fila cancelada queda con su motivo")
 	void cancelar_libera_el_lugar_sin_borrar() {
