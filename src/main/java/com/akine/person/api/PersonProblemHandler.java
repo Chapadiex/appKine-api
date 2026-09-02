@@ -1,6 +1,12 @@
 package com.akine.person.api;
 
+import com.akine.person.domain.exception.CoberturaInactivaException;
+import com.akine.person.domain.exception.CoberturaNotAccessibleException;
+import com.akine.person.domain.exception.CoberturaPrincipalSuperpuestaException;
+import com.akine.person.domain.exception.CoberturaSuperpuestaException;
 import com.akine.person.domain.exception.PersonaDocumentoTakenException;
+import com.akine.person.domain.exception.PersonaSinPerfilPacienteException;
+import com.akine.person.domain.exception.PlanNoSeleccionableException;
 import com.akine.person.domain.exception.PersonaInactivaException;
 import com.akine.person.domain.exception.PersonaNotAccessibleException;
 import com.akine.person.domain.exception.PersonaPosibleDuplicadoException;
@@ -50,6 +56,15 @@ public class PersonProblemHandler {
 	private static final URI PERSONA_POSIBLE_DUPLICADO =
 			ProblemType.PERSONA_POSIBLE_DUPLICADO.uri();
 	private static final URI PERSONA_INACTIVA = ProblemType.PERSONA_INACTIVA.uri();
+	private static final URI PERSONA_SIN_PERFIL_PACIENTE =
+			ProblemType.PERSONA_SIN_PERFIL_PACIENTE.uri();
+	private static final URI PLAN_NO_SELECCIONABLE = ProblemType.PLAN_NO_SELECCIONABLE.uri();
+	private static final URI COBERTURA_SUPERPUESTA = ProblemType.COBERTURA_SUPERPUESTA.uri();
+	private static final URI COBERTURA_PRINCIPAL_SUPERPUESTA =
+			ProblemType.COBERTURA_PRINCIPAL_SUPERPUESTA.uri();
+	private static final URI COBERTURA_INACTIVA = ProblemType.COBERTURA_INACTIVA.uri();
+	private static final URI COBERTURA_ALREADY_INACTIVE =
+			ProblemType.COBERTURA_ALREADY_INACTIVE.uri();
 
 	@ExceptionHandler(PersonaNotAccessibleException.class)
 	public ProblemDetail handlePersonaNoAccesible(PersonaNotAccessibleException exception) {
@@ -131,6 +146,88 @@ public class PersonProblemHandler {
 						+ ". Su ficha sigue siendo consultable.",
 				"Persona dada de baja",
 				PERSONA_INACTIVA);
+	}
+
+	// =================================================================================
+	// Coberturas del paciente (M08, AKINE-03.04)
+	// =================================================================================
+
+	@ExceptionHandler(CoberturaNotAccessibleException.class)
+	public ProblemDetail handleCoberturaNoAccesible(CoberturaNotAccessibleException exception) {
+		// Los tres casos —no existe, es de otro tenant, es de otro paciente— responden lo MISMO.
+		// Distinguirlos confirmaria que ese id existe.
+		log.debug("Cobertura no accesible: coberturaId={}", exception.getCoberturaId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.NOT_FOUND, "La cobertura no existe.");
+		problem.setTitle("No encontrada");
+		problem.setType(NOT_FOUND);
+		return problem;
+	}
+
+	@ExceptionHandler(PersonaSinPerfilPacienteException.class)
+	public ProblemDetail handleSinPerfilPaciente(PersonaSinPerfilPacienteException exception) {
+		log.debug("Cobertura rechazada: persona sin perfil de paciente. personaId={}",
+				exception.getPersonaId());
+		return conflicto(
+				"La persona no es paciente todavia. Una cobertura es del paciente: activa su "
+						+ "perfil antes de cargarla.",
+				"No es paciente",
+				PERSONA_SIN_PERFIL_PACIENTE);
+	}
+
+	@ExceptionHandler(PlanNoSeleccionableException.class)
+	public ProblemDetail handlePlanNoSeleccionable(PlanNoSeleccionableException exception) {
+		log.debug("Cobertura rechazada: plan no seleccionable. planId={}", exception.getPlanId());
+		return conflicto(
+				"Ese plan no se puede elegir para la fecha de inicio de la cobertura. Puede estar "
+						+ "dado de baja, tener el financiador dado de baja, o estar fuera de "
+						+ "vigencia.",
+				"Plan no seleccionable",
+				PLAN_NO_SELECCIONABLE);
+	}
+
+	@ExceptionHandler(CoberturaSuperpuestaException.class)
+	public ProblemDetail handleCoberturaSuperpuesta(CoberturaSuperpuestaException exception) {
+		log.debug("Cobertura rechazada por solapamiento");
+		ProblemDetail problem = conflicto(
+				"El paciente ya tiene una cobertura de ese plan vigente en ese periodo. Dos "
+						+ "coberturas del mismo plan que se pisan son un duplicado; dos de "
+						+ "financiadores distintos si pueden convivir.",
+				"Cobertura superpuesta",
+				COBERTURA_SUPERPUESTA);
+		problem.setProperty("coberturaExistenteId", exception.getCoberturaExistenteId());
+		return problem;
+	}
+
+	@ExceptionHandler(CoberturaPrincipalSuperpuestaException.class)
+	public ProblemDetail handlePrincipalSuperpuesta(
+			CoberturaPrincipalSuperpuestaException exception) {
+
+		log.debug("Principal rechazada por solapamiento");
+		ProblemDetail problem = conflicto(
+				"El paciente ya tiene una cobertura principal vigente en ese periodo. Finalizala "
+						+ "o desmarcala antes de elegir otra: no se cambia en silencio.",
+				"Ya hay una cobertura principal",
+				COBERTURA_PRINCIPAL_SUPERPUESTA);
+		problem.setProperty("coberturaPrincipalId", exception.getCoberturaPrincipalId());
+		return problem;
+	}
+
+	@ExceptionHandler(CoberturaInactivaException.class)
+	public ProblemDetail handleCoberturaInactiva(CoberturaInactivaException exception) {
+		// Dos type distintos sobre la misma excepcion: "esto ya estaba dado de baja" y "esto no se
+		// puede editar porque esta de baja" son dos acciones distintas para quien las recibe.
+		log.debug("Operacion sobre cobertura inactiva: coberturaId={} operacion={}",
+				exception.getCoberturaId(), exception.getOperacion());
+
+		boolean esUnaSegundaBaja = "dar de baja".equals(exception.getOperacion());
+		return conflicto(
+				esUnaSegundaBaja
+						? "La cobertura ya estaba dada de baja."
+						: "La cobertura esta dada de baja y no admite " + exception.getOperacion()
+								+ ". Sigue siendo consultable.",
+				"Cobertura dada de baja",
+				esUnaSegundaBaja ? COBERTURA_ALREADY_INACTIVE : COBERTURA_INACTIVA);
 	}
 
 	private static ProblemDetail conflicto(String detalle, String titulo, URI type) {

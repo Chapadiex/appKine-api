@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.24.0
+  version: 0.26.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -60,6 +60,8 @@ tags:
   name: Agenda
 - description: "Dinero recibido, sus medios y sus imputaciones (M19)"
   name: Cobros
+- description: Coberturas particulares y financiadas de un paciente (M08)
+  name: Coberturas del paciente
 - description: Consulta del registro de hechos de la organizacion
   name: Auditoria
 - description: Alta y administracion de tenants y sus sedes
@@ -6837,6 +6839,395 @@ paths:
       summary: Editar los datos administrativos de una persona
       tags:
       - Personas
+  /api/v1/personas/{personaId}/coberturas:
+    get:
+      description: |-
+        Devuelve TODAS las coberturas del paciente, mas nuevas primero, incluidas las dadas de baja y las de vigencia vencida. Es deliberado: RN-M08-003 y la regla maestra 10 exigen que se pueda explicar con que cobertura se atendio al paciente el mes pasado.
+
+        estado filtra el CICLO DE VIDA y por defecto trae todas. NO filtra por vigencia: una cobertura ACTIVA con la vigencia cerrada es el caso normal de un paciente que cambio de obra social, y se devuelve con vigente = false.
+
+        fecha es el dia contra el que se calculan vigente y credencialVencida. Si se omite, hoy.
+
+        El texto del financiador y del plan es la COPIA congelada al firmar, no una lectura del catalogo de hoy.
+      operationId: listCoberturasDePaciente
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Filtro por ciclo de vida. Si se omite, TODAS"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVA
+          - INACTIVA
+          - TODAS
+      - description: "Dia contra el que se calcula vigente. Si se omite, hoy"
+        example: 2026-09-02
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CoberturaResponse"
+          description: "Historial de coberturas, mas nuevas primero"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona no existe o es de otra organizacion
+      summary: Historial de coberturas de un paciente
+      tags:
+      - Coberturas del paciente
+    post:
+      description: |-
+        Exige paciente:manage sobre la sede del contexto.
+
+        LA PERSONA TIENE QUE SER PACIENTE. Una Persona no es un Paciente (RF-M07-010): si no tiene perfil de paciente vigente responde 409 persona-sin-perfil-paciente. Cargarle la obra social a un contacto administrativo no significa nada.
+
+        EL PLAN SE CONGELA, no se referencia. El backend copia a la cobertura el codigo, el nombre, el copago y las exigencias que el plan tenia el dia vigenciaDesde, y no los vuelve a leer nunca. Renombrar el plan manana no cambia esta cobertura.
+
+        Se congela contra vigenciaDesde y no contra hoy: la pregunta es si ese plan se podia elegir el dia en que la cobertura empieza a valer.
+
+        Un plan que no se puede elegir responde 409 plan-no-seleccionable, y las cinco causas —no existe, es ajeno, esta dado de baja, su financiador esta dado de baja, o la fecha cae fuera de su vigencia— responden IGUAL, para no convertir el endpoint en un oraculo del catalogo de otro centro.
+
+        PARTICULAR no lleva plan ni credencial: es la ausencia de plan financiado y siempre esta disponible (RN-M08-001).
+
+        Dos coberturas activas del MISMO plan con vigencias solapadas son un duplicado: 409 cobertura-superpuesta. Dos de financiadores DISTINTOS solapadas son legitimas y no se rechazan.
+      operationId: createCoberturaDePaciente
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCoberturaRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoberturaResponse"
+          description: Cobertura creada. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, vigencia invertida, tipo desconocido, o\
+            \ falta el numero de afiliado que el plan exige"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona no existe o es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona no es paciente (persona-sin-perfil-paciente), esta\
+            \ dada de baja (persona-inactiva), el plan no se puede elegir (plan-no-seleccionable),\
+            \ ya hay una cobertura del mismo plan solapada (cobertura-superpuesta)\
+            \ o ya hay otra principal vigente (cobertura-principal-superpuesta)"
+      summary: Agregar una cobertura al paciente
+      tags:
+      - Coberturas del paciente
+  /api/v1/personas/{personaId}/coberturas/seleccion:
+    get:
+      description: |-
+        Resuelve la seleccion de RF-M08-004 y RF-M08-005: la cobertura principal vigente ese dia, todas las vigentes, y PARTICULAR, que siempre esta disponible.
+
+        particularSiempreDisponible es SIEMPRE true, y no es un campo inutil: es RN-M08-001 dicho en el contrato. Un paciente con obra social puede pagar particular, que es exactamente RF-M08-005, y si Particular no viajara aca cada pantalla tendria que acordarse de agregarlo.
+
+        La principal es determinista: no puede haber dos, y eso lo hace cumplir un lock y no un desempate arbitrario.
+
+        ESTO NO PERSISTE NADA y no afirma que la prestacion sea facturable a esa cobertura. RN-M08-004: la cobertura del paciente no implica que el consultorio tenga convenio con ese financiador. Resolver la elegibilidad por oferta y convenio es RF-M08-006 y necesita M16 y M17, que no existen.
+      operationId: resolverCoberturaParaAtencion
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Dia de la atencion. Si se omite, hoy"
+        example: 2026-09-02
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeleccionDeCoberturaResponse"
+          description: Coberturas elegibles ese dia. La lista vacia es un estado normal
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona no existe o es de otra organizacion
+      summary: Que coberturas se pueden elegir para atender ese dia
+      tags:
+      - Coberturas del paciente
+  /api/v1/personas/{personaId}/coberturas/{coberturaId}:
+    delete:
+      description: |-
+        Baja LOGICA con motivo obligatorio. Exige paciente:manage sobre la sede del contexto.
+
+        NO ES LO MISMO QUE FINALIZAR LA VIGENCIA. Finalizar es "el paciente cambio de obra social" y se hace con el PUT: la cobertura queda ACTIVA y sigue explicando el pasado. Dar de baja es "esta cobertura nunca debio cargarse".
+
+        No borra nada y no toca ningun hecho ya registrado: RN-M08-003 y regla maestra 10. La cobertura sigue siendo legible con estado INACTIVA.
+
+        La baja tambien desmarca la principal: dejar como preferida una cobertura dada de baja haria que la seleccion del dia siguiente apunte a algo que ya no existe operativamente.
+
+        No hay reactivacion. Una cobertura que vuelve es un alta nueva.
+      operationId: deactivateCoberturaDePaciente
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la cobertura
+        example: 412
+        in: path
+        name: coberturaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateCoberturaRequest"
+        required: true
+      responses:
+        "204":
+          description: Cobertura dada de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La cobertura no existe, es de otra organizacion o de otro\
+            \ paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cobertura ya estaba dada de baja (cobertura-already-inactive)
+      summary: Dar de baja una cobertura
+      tags:
+      - Coberturas del paciente
+    put:
+      description: |-
+        Exige paciente:manage sobre la sede del contexto. Edicion parcial: lo que no viaja no se toca.
+
+        EL PLAN NO SE PUEDE CAMBIAR, y por eso no esta en el cuerpo. Cambiar de plan es OTRA cobertura: se finaliza la vigente y se agrega la nueva. Editarla en el lugar reescribiria con que cobertura se atendio al paciente el mes pasado (RN-M08-003).
+
+        MANDAR vigenciaHasta ES FINALIZAR LA VIGENCIA (RF-M08-003). La cobertura queda ACTIVA y consultable, y deja de aplicar despues de esa fecha. NO es dar de baja, que es el DELETE y significa otra cosa.
+
+        Una cobertura dada de baja no se edita: 409 cobertura-inactiva. Reabrir la ficha de algo dado de baja reescribiria el historico.
+
+        expectedVersion es obligatorio: una version vieja responde 409 en vez de pisar el cambio ajeno en silencio.
+      operationId: updateCoberturaDePaciente
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la cobertura
+        example: 412
+        in: path
+        name: coberturaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCoberturaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoberturaResponse"
+          description: Cobertura actualizada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos o vigencia invertida
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La cobertura no existe, es de otra organizacion o de otro\
+            \ paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Cobertura dada de baja (cobertura-inactiva), version desactualizada\
+            \ (conflict) o la edicion crea un solapamiento (cobertura-superpuesta)"
+      summary: "Editar una cobertura, o finalizar su vigencia"
+      tags:
+      - Coberturas del paciente
+  /api/v1/personas/{personaId}/coberturas/{coberturaId}/principal:
+    post:
+      description: |-
+        RF-M08-004. Exige paciente:manage sobre la sede del contexto.
+
+        Operacion propia y no un campo del PUT porque es un invariante ENTRE filas y no un dato de esta. Meterlo en la edicion obligaria a que el cliente mande la version de una fila para modificar el estado de otra.
+
+        NO DESMARCA A LA ANTERIOR EN SILENCIO. Si ya hay una principal activa con la vigencia solapada responde 409 cobertura-principal-superpuesta con su id, para que la pantalla ofrezca finalizarla. Un click que cambia dos coberturas deja una que despues nadie puede explicar.
+
+        principal = false desmarca, y es una operacion legitima: un paciente puede tener coberturas sin ninguna preferida.
+      operationId: marcarCoberturaPrincipal
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la cobertura
+        example: 412
+        in: path
+        name: coberturaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarcarCoberturaPrincipalRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoberturaResponse"
+          description: Cobertura actualizada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta declarar el valor de principal
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La cobertura no existe, es de otra organizacion o de otro\
+            \ paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya hay otra cobertura principal vigente en ese periodo (cobertura-principal-superpuesta)
+            o la cobertura esta dada de baja (cobertura-inactiva)
+      summary: Elegir o quitar la cobertura principal del paciente
+      tags:
+      - Coberturas del paciente
   /api/v1/personas/{personaId}/perfil-paciente:
     post:
       description: |-
@@ -8243,6 +8634,123 @@ components:
           format: int32
           description: Sesiones vivas que se revocaron
           example: 3
+    CoberturaResponse:
+      type: object
+      description: "Cobertura de un paciente, con la referencia al plan congelada\
+        \ al firmar"
+      properties:
+        copago:
+          type: number
+          description: COPIA del copago de referencia al firmar
+          example: 1500.0
+        credencialVencida:
+          type: boolean
+          description: "La credencial esta vencida a la fecha consultada. ALERTA,\
+            \ no invalidez: la cobertura sigue aplicando"
+        credencialVigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia de validez de la credencial, INCLUSIVE"
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante de la baja logica. Null mientras este activa
+        estado:
+          type: string
+          description: "Ciclo de vida: ACTIVA o INACTIVA"
+          example: ACTIVA
+        financiadorCodigo:
+          type: string
+          description: COPIA del codigo del financiador al firmar
+          example: OSDE
+        financiadorId:
+          type: integer
+          format: int64
+          description: Financiador congelado. Null en PARTICULAR
+          example: 31
+        financiadorNombre:
+          type: string
+          description: "COPIA del nombre al firmar. Puede diferir del nombre actual\
+            \ del financiador, y eso es correcto"
+          example: OSDE Binario
+        financiadorTipo:
+          type: string
+          description: COPIA de la clasificacion al firmar
+          example: PREPAGA
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la cobertura
+          example: 412
+        moneda:
+          type: string
+          description: ISO 4217 del copago congelado
+          example: ARS
+        numeroAfiliado:
+          type: string
+          description: Credencial del paciente ante el financiador
+          example: "62000123456"
+        observaciones:
+          type: string
+          description: Notas administrativas
+        personaId:
+          type: integer
+          format: int64
+          description: Paciente al que pertenece
+          example: 1204
+        planCodigo:
+          type: string
+          description: COPIA del codigo del plan al firmar
+          example: "210"
+        planId:
+          type: integer
+          format: int64
+          description: Plan congelado. Null en PARTICULAR
+          example: 88
+        planNombre:
+          type: string
+          description: COPIA del nombre del plan al firmar
+          example: Plan 210
+        principal:
+          type: boolean
+          description: Cobertura preferida del paciente
+        referenciaCapturadaEl:
+          type: string
+          format: date-time
+          description: Instante UTC en que se congelo la referencia. Es lo que explica
+            por que esta copia puede decir algo distinto del plan de hoy
+        requeriaAutorizacion:
+          type: boolean
+          description: Si el plan exigia autorizacion previa ESE DIA. Lo interpreta
+            M17
+        requeriaCredencial:
+          type: boolean
+          description: Si el plan exigia credencial ESE DIA
+        tipo:
+          type: string
+          description: PARTICULAR o FINANCIADA
+          example: FINANCIADA
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que la cobertura aplica
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia en que aplica, INCLUSIVE. Null = sin fin previsto"
+        vigente:
+          type: boolean
+          description: "Si la fecha consultada cae dentro de la vigencia. DISTINTO\
+            \ de estado: una cobertura ACTIVA con la vigencia cerrada devuelve false"
     Cobro:
       type: object
       description: Dinero recibido. No es la deuda (M18) ni la caja (M20).
@@ -8521,6 +9029,65 @@ components:
       - justificacion
       - nombrePropuesto
       - tipo
+    CreateCoberturaRequest:
+      type: object
+      description: Datos para agregar una cobertura a un paciente
+      properties:
+        credencialVigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia de validez de la credencial, INCLUSIVE. Es METADATA:\
+            \ una credencial vencida NO invalida la cobertura, se informa como alerta"
+          example: 2027-12-31
+        numeroAfiliado:
+          type: string
+          description: Numero de credencial del paciente ante el financiador. Obligatorio
+            si el plan congelado exigia credencial
+          example: "62000123456"
+          maxLength: 64
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. NUNCA contenido clinico
+          maxLength: 500
+          minLength: 0
+        planId:
+          type: integer
+          format: int64
+          description: "Plan de cobertura a congelar. Obligatorio si tipo es FINANCIADA\
+            \ y prohibido si es PARTICULAR. Un plan dado de baja, de un financiador\
+            \ dado de baja, ajeno, inexistente, o fuera de vigencia el dia vigenciaDesde\
+            \ responde 409 plan-no-seleccionable: los cinco casos igual, para no convertir\
+            \ este endpoint en un oraculo del catalogo ajeno"
+          example: 88
+        principal:
+          type: boolean
+          description: "Cobertura preferida del paciente. Ausente = false. Como maximo\
+            \ una activa con vigencias solapadas: si ya hay otra, 409"
+        tipo:
+          type: string
+          description: "PARTICULAR o FINANCIADA. PARTICULAR es la ausencia de plan\
+            \ y no necesita ningun dato de financiador: siempre esta disponible (RN-M08-001)"
+          enum:
+          - PARTICULAR
+          - FINANCIADA
+          example: FINANCIADA
+          pattern: PARTICULAR|FINANCIADA
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que la cobertura aplica. Es tambien el dia contra
+            el que se evalua si el plan se puede elegir
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia en que aplica, INCLUSIVE. Null = sin fin previsto.\
+            \ Puede coincidir con vigenciaDesde"
+          example: 2027-08-31
+      required:
+      - tipo
+      - vigenciaDesde
     CreateConsultorioRequest:
       type: object
       description: Datos para dar de alta una sede adicional
@@ -9216,6 +9783,18 @@ components:
           type: string
           description: Por que se da de baja. Queda en la fila y en la auditoria
           example: Reemplazada por la practica del nomenclador 2026
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
+    DeactivateCoberturaRequest:
+      type: object
+      description: Motivo de la baja logica de la cobertura
+      properties:
+        reason:
+          type: string
+          description: Por que se da de baja. Queda en la fila y en la auditoria
+          example: Se cargo con el plan equivocado
           maxLength: 280
           minLength: 0
       required:
@@ -10342,6 +10921,18 @@ components:
       required:
       - email
       - password
+    MarcarCoberturaPrincipalRequest:
+      type: object
+      description: Nueva marca principal de la cobertura
+      properties:
+        principal:
+          type: boolean
+          description: "true la marca como principal, false la desmarca. Marcarla\
+            \ cuando ya hay otra principal vigente en ese periodo responde 409: no\
+            \ se desmarca a la otra en silencio"
+          example: true
+      required:
+      - principal
     MedioDeCobro:
       type: object
       properties:
@@ -11246,6 +11837,11 @@ components:
       - https://akine.app/problems/plan-cobertura-nombre-taken
       - https://akine.app/problems/plan-cobertura-inactivo
       - https://akine.app/problems/plan-cobertura-already-inactive
+      - https://akine.app/problems/plan-no-seleccionable
+      - https://akine.app/problems/cobertura-superpuesta
+      - https://akine.app/problems/cobertura-principal-superpuesta
+      - https://akine.app/problems/cobertura-inactiva
+      - https://akine.app/problems/cobertura-already-inactive
     ProfesionalHabilitado:
       type: object
       description: Profesional habilitado para prestar la oferta
@@ -11559,6 +12155,31 @@ components:
       - estado
       - nota
       - version
+    SeleccionDeCoberturaResponse:
+      type: object
+      description: "Coberturas elegibles del paciente para una fecha, con Particular\
+        \ siempre disponible"
+      properties:
+        fecha:
+          type: string
+          format: date
+          description: Dia contra el que se resolvio
+          example: 2026-09-02
+        particularSiempreDisponible:
+          type: boolean
+          description: Siempre true (RN-M08-001). Atender como particular no depende
+            de ningun dato y se puede elegir aunque el paciente tenga cobertura
+          example: true
+        principal:
+          $ref: "#/components/schemas/CoberturaResponse"
+          description: "La cobertura marcada principal y vigente ese dia, o null.\
+            \ Es la seleccion por defecto y es determinista: no puede haber dos"
+        vigentes:
+          type: array
+          description: "Todas las coberturas que aplican ese dia, incluida la principal.\
+            \ Vacia es un estado normal: un paciente sin cobertura se atiende particular"
+          items:
+            $ref: "#/components/schemas/CoberturaResponse"
     SelectContextRequest:
       type: object
       description: Par Organizacion + Consultorio sobre el que se quiere trabajar
@@ -12187,6 +12808,44 @@ components:
           example: 0
       required:
       - version
+    UpdateCoberturaRequest:
+      type: object
+      description: Datos editables de una cobertura. Lo copiado del plan no se puede
+        cambiar
+      properties:
+        credencialVigenciaHasta:
+          type: string
+          format: date
+          description: "Nuevo ultimo dia de validez de la credencial, INCLUSIVE"
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version leida por el cliente. Una version vieja responde 409
+            en vez de pisar el cambio ajeno en silencio
+          example: 0
+        numeroAfiliado:
+          type: string
+          description: Nuevo numero de credencial
+          maxLength: 64
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. NUNCA contenido clinico
+          maxLength: 500
+          minLength: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Correccion del primer dia de vigencia
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia en que la cobertura aplica, INCLUSIVE. Mandarlo\
+            \ es FINALIZAR LA VIGENCIA (RF-M08-003): la cobertura queda ACTIVA y consultable,\
+            \ y deja de aplicar despues de esa fecha. NO es dar de baja"
+          example: 2026-12-31
+      required:
+      - expectedVersion
     UpdateConsultorioRequest:
       type: object
       description: Cambios a aplicar sobre una sede. Los campos omitidos no se tocan
