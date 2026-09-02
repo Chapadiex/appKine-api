@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.24.0
+  version: 0.27.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -22,6 +22,9 @@ tags:
 - description: "Consulta, aceptacion y rechazo de una invitacion, con el token como\
     \ unica autoridad (M05)"
   name: Invitaciones recibidas
+- description: "Convenios de la sede con planes de financiadores, y sus aranceles\
+    \ (M16)"
+  name: Convenios y aranceles
 - description: Politica de feriados de una sede y feriados del periodo consultado
   name: Calendario de sede
 - description: Reserva de slots con revalidacion atomica e idempotencia (M12)
@@ -1495,6 +1498,82 @@ paths:
       summary: Baja logica de un concepto del catalogo
       tags:
       - Catalogo clinico
+  /api/v1/consultorios/{consultorioId}/aranceles/efectivo:
+    get:
+      description: |-
+        RF-M16-006 y RF-M16-010. Devuelve UN resultado, explicable y estable en el tiempo.
+
+        RESPONDE 200 AUNQUE NO HAYA ARANCEL, con resuelto = false y el motivo. No encontrar convenio es el desenlace mas frecuente —la mayoria de los pacientes se atienden como particulares— y un 404 obligaria a la pantalla a tratar el caso normal como una excepcion. Los dos motivos son distintos y hacen falta los dos: SIN_CONVENIO_VIGENTE manda a cobrar como particular (RN-M16-005), SIN_ARANCEL_VIGENTE manda a cargar el precio de esa practica.
+
+        El resultado es unico porque no puede haber dos candidatas, no porque haya una regla de prioridad que las desempate: dos convenios del mismo alcance no se pueden solapar, y dos aranceles de la misma practica en el mismo convenio tampoco.
+
+        Cuando se resuelve, viaja tambien la DERIVACION: el convenio, su codigo y las dos vigencias que intervinieron. Sin eso, un numero inesperado no se puede explicar.
+
+        fecha es el dia de la PRESTACION, no el de hoy. Consultar una fecha pasada devuelve el arancel que regia entonces, que es lo que hace que una atencion retroactiva se cobre bien.
+      operationId: resolveArancelEfectivo
+      parameters:
+      - description: Identificador de la sede
+        example: 20
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Financiador de la cobertura del paciente
+        example: 31
+        in: query
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Plan de cobertura del paciente
+        example: 88
+        in: query
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Practica que se va a prestar
+        example: 412
+        in: query
+        name: practicaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Dia de la PRESTACION. Si se omite, hoy"
+        example: 2026-03-15
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArancelEfectivoResponse"
+          description: "El arancel efectivo, o el motivo por el que no hay"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otra organizacion
+      summary: Resolver el arancel efectivo de una practica para una fecha
+      tags:
+      - Convenios y aranceles
   /api/v1/consultorios/{consultorioId}/calendario:
     get:
       description: |-
@@ -1776,6 +1855,625 @@ paths:
       summary: Recuperar un comprobante
       tags:
       - Cobros
+  /api/v1/consultorios/{consultorioId}/convenios:
+    get:
+      description: |-
+        Devuelve los convenios de la sede, ordenados por nombre.
+
+        estado filtra el CICLO DE VIDA y por defecto trae solo los ACTIVOS. NO filtra por vigencia: un convenio activo con la vigencia vencida sigue siendo ACTIVO y se devuelve, con vigente = false. Son dos cosas distintas y la grilla necesita las dos para explicar por que un convenio no resuelve.
+
+        fecha es el dia contra el que se calcula vigente. Si se omite, hoy.
+      operationId: listConvenios
+      parameters:
+      - description: Identificador de la sede
+        example: 20
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Filtro por ciclo de vida. Si se omite, ACTIVO"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      - description: "Dia contra el que se calcula vigente. Si se omite, hoy"
+        example: 2026-09-02
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConvenioResponse"
+          description: Convenios de la sede
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otra organizacion
+      summary: Listar los convenios de una sede
+      tags:
+      - Convenios y aranceles
+    post:
+      description: |-
+        Exige convenio:manage sobre LA SEDE DE LA RUTA.
+
+        DOS CONVENIOS DE LA MISMA SEDE CON EL MISMO FINANCIADOR Y EL MISMO PLAN NO PUEDEN SOLAPARSE EN EL TIEMPO (RN-M16-002): 409 convenio-solapado, con el id y el periodo del que choca en el cuerpo del problema. Si lo que se quiere es renovar, primero se cierra la vigencia del que esta.
+
+        El plan es obligatorio y tiene que ser del financiador declarado. Es lo que hace que la resolucion del arancel tenga como mucho una candidata para una fecha, sin necesidad de ninguna regla de prioridad.
+
+        Un financiador o un plan dados de baja no admiten convenios nuevos: 409.
+
+        vigenciaHasta es el ULTIMO dia INCLUSIVE y puede coincidir con vigenciaDesde. Null significa sin fin previsto.
+
+        El codigo es unico entre los convenios VIGENTES de esa sede y no se puede cambiar despues.
+      operationId: createConvenio
+      parameters:
+      - description: Identificador de la sede
+        example: 20
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConvenioRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvenioResponse"
+          description: Convenio creado. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, vigencia invertida o tope mensual en cero"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage en esa
+            sede
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el financiador o el plan no existen o son de otro\
+            \ tenant. Un plan que no pertenece al financiador declarado tambien es\
+            \ 404"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Periodo solapado (convenio-solapado), codigo repetido (convenio-codigo-taken),\
+            \ financiador dado de baja (financiador-inactivo) o plan dado de baja\
+            \ (plan-cobertura-inactivo)"
+      summary: Dar de alta un convenio
+      tags:
+      - Convenios y aranceles
+  /api/v1/consultorios/{consultorioId}/convenios/{convenioId}:
+    delete:
+      description: |-
+        Baja LOGICA con motivo obligatorio. Exige convenio:manage sobre la sede de la ruta.
+
+        LO YA LIQUIDADO BAJO ESTE CONVENIO NO SE TOCA. Sigue explicandose con la copia congelada que guardo al devengar: RN-M16-003 prohibe recalcular historicos.
+
+        NO CASCADEA a los aranceles y no se bloquea por tenerlos: dejan de resolver porque su convenio dejo de resolver. El numero de aranceles activos queda en la auditoria.
+
+        Libera el codigo Y EL PERIODO para un convenio nuevo de la misma sede: el no-solapamiento solo mira los activos.
+
+        Si lo que se quiere es que el convenio deje de aplicarse a partir de una fecha pero siga siendo un convenio vigente hasta entonces, la operacion NO es esta: es cerrar la vigencia con el PUT.
+
+        No hay reactivacion.
+      operationId: deactivateConvenio
+      parameters:
+      - description: Identificador de la sede
+        example: 20
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del convenio
+        example: 140
+        in: path
+        name: convenioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateContractingRequest"
+        required: true
+      responses:
+        "204":
+          description: Convenio dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage en esa
+            sede
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El convenio no existe, es de otra organizacion, o es de otra\
+            \ sede"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El convenio ya estaba dado de baja (convenio-already-inactive)
+      summary: Dar de baja un convenio
+      tags:
+      - Convenios y aranceles
+    get:
+      description: |-
+        Un convenio INACTIVO se lee con 200 y no con 404: lo que ya se liquido bajo el tiene que seguir siendo explicable (§38).
+
+        fecha es el dia contra el que se calcula vigente. Si se omite, hoy.
+      operationId: getConvenio
+      parameters:
+      - description: Identificador de la sede
+        example: 20
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del convenio
+        example: 140
+        in: path
+        name: convenioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Dia contra el que se calcula vigente. Si se omite, hoy"
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvenioResponse"
+          description: El convenio
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El convenio no existe, es de otra organizacion, o es de otra\
+            \ sede"
+      summary: Ver un convenio
+      tags:
+      - Convenios y aranceles
+    put:
+      description: |-
+        Exige convenio:manage sobre la sede de la ruta.
+
+        CERRAR LA VIGENCIA ES ESTA OPERACION, mandando vigenciaHasta (RF-M16-003). Cerrar la vigencia NO es dar de baja: el convenio queda ACTIVO y consultable, y lo unico que cambia es que deja de aplicarse despues de esa fecha.
+
+        MOVER LA VIGENCIA PUEDE PRODUCIR 409 convenio-solapado, igual que el alta: estirar el fin de un convenio hasta pisar al siguiente es exactamente lo que RN-M16-002 prohibe.
+
+        Ni el codigo, ni la sede, ni el financiador, ni el plan se pueden cambiar y por eso no estan en el cuerpo: son la identidad del convenio, y lo que ya se liquido bajo el los referencia.
+
+        Los campos que llegan en null NO se tocan. La vigencia se valida como par aunque llegue de a una.
+
+        Un convenio dado de baja no admite ediciones: 409 convenio-inactivo. Uno cuyo financiador o plan estan dados de baja SI se puede editar: dejar de trabajar con una obra social no puede tener como efecto que su convenio quede congelado con un error de tipeo.
+      operationId: updateConvenio
+      parameters:
+      - description: Identificador de la sede
+        example: 20
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del convenio
+        example: 140
+        in: path
+        name: convenioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConvenioRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvenioResponse"
+          description: Convenio actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos o vigencia invertida
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage en esa
+            sede
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El convenio no existe, es de otra organizacion, o es de otra\
+            \ sede"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Periodo solapado (convenio-solapado), convenio dado de baja\
+            \ (convenio-inactivo) o version desactualizada (conflict)"
+      summary: "Editar un convenio, o cerrar su vigencia"
+      tags:
+      - Convenios y aranceles
+  /api/v1/consultorios/{consultorioId}/convenios/{convenioId}/aranceles:
+    get:
+      description: |-
+        La grilla de vigencias. Devuelve los aranceles del convenio del mas nuevo al mas viejo.
+
+        estado filtra el CICLO DE VIDA y por defecto trae solo los ACTIVOS. NO filtra por vigencia: un arancel activo cuya ventana ya paso se devuelve con vigente = false, y es justamente lo que hace falta para explicar por que una prestacion de marzo se cobro distinto que una de octubre.
+
+        fecha es el dia contra el que se calcula vigente. Si se omite, hoy.
+      operationId: listAranceles
+      parameters:
+      - description: Identificador de la sede
+        example: 20
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del convenio
+        example: 140
+        in: path
+        name: convenioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Filtro por ciclo de vida. Si se omite, ACTIVO"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      - description: "Dia contra el que se calcula vigente. Si se omite, hoy"
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArancelResponse"
+          description: Aranceles del convenio
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede o el convenio no son accesibles
+      summary: Listar los aranceles de un convenio
+      tags:
+      - Convenios y aranceles
+    post:
+      description: |-
+        Exige convenio:manage sobre la sede de la ruta.
+
+        DOS ARANCELES DE LA MISMA PRACTICA EN EL MISMO CONVENIO NO PUEDEN SOLAPARSE: 409 arancel-solapado, con el id y el periodo del que choca en el cuerpo del problema. Dos aranceles de la misma practica SI conviven —el de 2026 y el de 2027— y esa convivencia es el caso normal.
+
+        LOS TRES IMPORTES TIENEN QUE CUADRAR: importeFinanciador + coseguro = importeTotal, exactamente. No hay porcentaje de cobertura a proposito: un porcentaje obliga a redondear, y el redondeo de un arancel es la diferencia de un centavo que aparece seis meses despues en una presentacion rechazada.
+
+        La moneda NO viaja en el cuerpo: la hereda del convenio.
+
+        La vigencia del arancel tiene que estar CONTENIDA en la del convenio. Fuera de ella nunca podria resolver, porque la resolucion exige primero un convenio aplicable.
+
+        La practica puede ser global de plataforma o propia de la organizacion; una de otro tenant responde 404.
+      operationId: createArancel
+      parameters:
+      - description: Identificador de la sede
+        example: 20
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del convenio
+        example: 140
+        in: path
+        name: convenioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateArancelRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArancelResponse"
+          description: Arancel creado. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Importes que no cuadran, importe negativo, vigencia invertida\
+            \ o vigencia fuera de la del convenio"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage en esa
+            sede
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el convenio o la practica no son accesibles"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Periodo solapado (arancel-solapado) o convenio dado de baja
+            (convenio-inactivo)
+      summary: Definir el arancel de una practica bajo un convenio
+      tags:
+      - Convenios y aranceles
+  /api/v1/consultorios/{consultorioId}/convenios/{convenioId}/aranceles/{arancelId}:
+    delete:
+      description: |-
+        Baja LOGICA con motivo obligatorio. Exige convenio:manage sobre la sede de la ruta.
+
+        Libera el PERIODO: el no-solapamiento solo mira los activos, asi que se puede volver a cargar un arancel de esa practica para las mismas fechas.
+
+        Lo ya liquidado con este arancel guarda su propio snapshot congelado y no se toca (RN-M16-003).
+
+        No hay reactivacion.
+      operationId: deactivateArancel
+      parameters:
+      - description: Identificador de la sede
+        example: 20
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del convenio
+        example: 140
+        in: path
+        name: convenioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del arancel
+        example: 901
+        in: path
+        name: arancelId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateContractingRequest"
+        required: true
+      responses:
+        "204":
+          description: Arancel dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage en esa
+            sede
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el convenio o el arancel no son accesibles"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El arancel ya estaba dado de baja (arancel-already-inactive)
+      summary: Dar de baja un arancel
+      tags:
+      - Convenios y aranceles
+    put:
+      description: |-
+        Exige convenio:manage sobre la sede de la ruta.
+
+        LA FORMA CORRECTA DE SUBIR UN PRECIO NO ES ESTA OPERACION: es cerrar la vigencia del arancel actual y crear otro. Editar el importe de una ventana ya transcurrida se admite —a veces hay que corregir una carga— y NO reescribe nada de lo ya liquidado, porque eso guardo su propio snapshot congelado (RN-M16-003).
+
+        Los importes se validan como TERNA aunque llegue uno solo: subir el total sin tocar las partes rompe la invariante de que sumen, y se rechaza con 400.
+
+        Mover la vigencia puede producir 409 arancel-solapado.
+
+        Ni la practica ni el convenio se pueden cambiar: no seria editar este arancel, seria inventar otro.
+      operationId: updateArancel
+      parameters:
+      - description: Identificador de la sede
+        example: 20
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del convenio
+        example: 140
+        in: path
+        name: convenioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del arancel
+        example: 901
+        in: path
+        name: arancelId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateArancelRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArancelResponse"
+          description: Arancel actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Importes que no cuadran, vigencia invertida o fuera de la\
+            \ del convenio"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage en esa
+            sede
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el convenio o el arancel no son accesibles"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Periodo solapado (arancel-solapado), arancel dado de baja\
+            \ (arancel-inactivo) o version desactualizada (conflict)"
+      summary: Editar un arancel
+      tags:
+      - Convenios y aranceles
   /api/v1/consultorios/{consultorioId}/excepciones:
     get:
       description: |-
@@ -7612,6 +8310,166 @@ components:
       required:
       - motivo
       - version
+    ArancelEfectivoResponse:
+      type: object
+      description: "Arancel efectivo para una fecha, con la explicacion de la regla\
+        \ aplicada"
+      properties:
+        arancelId:
+          type: integer
+          format: int64
+          description: Arancel aplicado
+          example: 901
+        arancelVigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia de vigencia de ESTE importe
+          example: 2026-01-01
+        arancelVigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia de vigencia de ESTE importe, INCLUSIVE"
+        convenioCodigo:
+          type: string
+          description: Codigo del convenio aplicado
+          example: OSDE-210-2026
+        convenioId:
+          type: integer
+          format: int64
+          description: Convenio aplicado. Null si no se resolvio
+          example: 140
+        convenioNombre:
+          type: string
+          description: Nombre del convenio aplicado
+          example: OSDE 210 - 2026
+        convenioVigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia de vigencia del CONVENIO
+          example: 2026-01-01
+        convenioVigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia de vigencia del CONVENIO, INCLUSIVE"
+        coseguro:
+          type: number
+          description: La parte que paga el paciente
+          example: 2400.0
+        fecha:
+          type: string
+          format: date
+          description: Dia contra el que se resolvio
+          example: 2026-03-15
+        importeFinanciador:
+          type: number
+          description: La parte que paga el financiador
+          example: 9600.0
+        importeTotal:
+          type: number
+          description: Lo que vale la practica bajo ese convenio
+          example: 12000.0
+        limiteSesionesMensual:
+          type: integer
+          format: int32
+          description: Tope de sesiones por mes pactado. Null = sin tope
+          example: 20
+        modalidad:
+          type: string
+          description: Modalidad pactada
+          example: POR_PRESTACION
+        moneda:
+          type: string
+          description: ISO 4217
+          example: ARS
+        motivo:
+          type: string
+          description: Por que no hay arancel. Null cuando resuelto = true. SIN_CONVENIO_VIGENTE
+            significa que la prestacion no tiene cobertura pactada y se cobra como
+            particular; SIN_ARANCEL_VIGENTE significa que el convenio existe pero
+            esa practica no esta tarifada para esa fecha
+          enum:
+          - SIN_CONVENIO_VIGENTE
+          - SIN_ARANCEL_VIGENTE
+          example: SIN_CONVENIO_VIGENTE
+        requiereAutorizacion:
+          type: boolean
+          description: Si exige autorizacion previa del financiador
+        requiereCredencial:
+          type: boolean
+          description: Si exige numero de credencial del paciente
+        requiereOrden:
+          type: boolean
+          description: Si la prestacion exige orden medica bajo ese convenio
+        resuelto:
+          type: boolean
+          description: Si se pudo resolver un arancel para esa fecha y ese contexto
+    ArancelResponse:
+      type: object
+      description: Arancel de una practica bajo un convenio
+      properties:
+        convenioId:
+          type: integer
+          format: int64
+          description: Convenio al que pertenece. No cambia
+          example: 140
+        coseguro:
+          type: number
+          description: La parte que paga el paciente
+          example: 2400.0
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja. Null mientras este vigente
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja logica. Null mientras este vigente
+        estado:
+          type: string
+          description: Ciclo de vida
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        id:
+          type: integer
+          format: int64
+          description: Identificador del arancel
+          example: 901
+        importeFinanciador:
+          type: number
+          description: La parte que paga el financiador
+          example: 9600.0
+        importeTotal:
+          type: number
+          description: Lo que vale la practica bajo este convenio
+          example: 12000.0
+        moneda:
+          type: string
+          description: "ISO 4217, heredada del convenio"
+          example: ARS
+        practicaId:
+          type: integer
+          format: int64
+          description: Practica arancelada. No cambia
+          example: 412
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para editar
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que este importe se aplica
+          example: 2026-01-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia en que se aplica, INCLUSIVE. Null = sin fin previsto"
+        vigente:
+          type: boolean
+          description: Si la fecha consultada cae dentro de la vigencia. DISTINTO
+            de estado
     AssignGrantRequest:
       type: object
       description: Permiso adicional a otorgar sobre un vinculo
@@ -8389,6 +9247,149 @@ components:
           description: "Version para el control de concurrencia optimista. Hay que\
             \ reenviarla al editar: sin ella dos ediciones simultaneas se pisan"
           example: 0
+    ConvenioResponse:
+      type: object
+      description: Convenio de una sede con un plan de un financiador
+      properties:
+        codigo:
+          type: string
+          description: Clave estable dentro de la sede. No cambia
+          example: OSDE-210-2026
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede a la que pertenece. No cambia nunca
+          example: 20
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja. Null mientras este vigente
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja logica. Null mientras este vigente
+        documentacionRequerida:
+          type: string
+          description: Documentacion administrativa que el financiador exige
+        estado:
+          type: string
+          description: Ciclo de vida. Un convenio INACTIVO se sigue leyendo con 200
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        financiadorId:
+          type: integer
+          format: int64
+          description: Financiador con el que se negocio. No cambia
+          example: 31
+        id:
+          type: integer
+          format: int64
+          description: Identificador del convenio
+          example: 140
+        limiteSesionesMensual:
+          type: integer
+          format: int32
+          description: Tope de sesiones por mes. Null = sin tope pactado
+          example: 20
+        modalidad:
+          type: string
+          description: Como se pacto la prestacion
+          enum:
+          - POR_PRESTACION
+          - POR_SESION
+          - MODULO
+          - CAPITA
+          example: POR_PRESTACION
+        moneda:
+          type: string
+          description: ISO 4217 de sus aranceles
+          example: ARS
+        nombre:
+          type: string
+          description: Nombre visible
+          example: OSDE 210 - 2026
+        observaciones:
+          type: string
+          description: Notas administrativas
+        planId:
+          type: integer
+          format: int64
+          description: Plan de cobertura. No cambia
+          example: 88
+        requiereAutorizacion:
+          type: boolean
+          description: Si exige autorizacion previa del financiador
+        requiereCredencial:
+          type: boolean
+          description: Si exige numero de credencial del paciente
+        requiereOrden:
+          type: boolean
+          description: Si la prestacion exige orden medica
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para editar
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que se aplica
+          example: 2026-01-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia en que se aplica, INCLUSIVE. Null = sin fin previsto"
+        vigente:
+          type: boolean
+          description: Si la fecha consultada cae dentro de la vigencia. DISTINTO
+            de estado
+    CreateArancelRequest:
+      type: object
+      description: Datos para definir el arancel de una practica bajo un convenio
+      properties:
+        coseguro:
+          type: number
+          description: La parte que paga el paciente. Cero es valido y significa cobertura
+            total
+          example: 2400.0
+          minimum: 0.00
+        importeFinanciador:
+          type: number
+          description: "La parte que paga el financiador. Junto con el coseguro tiene\
+            \ que sumar EXACTAMENTE el importe total, o la peticion se rechaza con\
+            \ 400"
+          example: 9600.0
+          minimum: 0.00
+        importeTotal:
+          type: number
+          description: Lo que vale la practica bajo este convenio. Cero es valido
+            y significa una practica sin cargo
+          example: 12000.0
+          minimum: 0.00
+        practicaId:
+          type: integer
+          format: int64
+          description: Practica del catalogo clinico que se arancela
+          example: 412
+          minimum: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que este importe se aplica
+          example: 2026-01-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia en que se aplica, INCLUSIVE. Null significa sin\
+            \ fin previsto. Tiene que estar contenido en la vigencia del convenio"
+          example: 2026-06-30
+      required:
+      - coseguro
+      - importeFinanciador
+      - importeTotal
+      - practicaId
+      - vigenciaDesde
     CreateBloqueRequest:
       type: object
       description: Datos para dar de alta un bloque recurrente de disponibilidad
@@ -8576,6 +9577,105 @@ components:
           minLength: 0
       required:
       - name
+    CreateConvenioRequest:
+      type: object
+      description: Datos para dar de alta un convenio de la sede con un plan de un
+        financiador
+      properties:
+        codigo:
+          type: string
+          description: "Clave estable del convenio DENTRO de la sede. NO se puede\
+            \ cambiar: es lo que un snapshot economico guarda para explicarse seis\
+            \ meses despues. Otra sede si puede usar el mismo codigo"
+          example: OSDE-210-2026
+          maxLength: 64
+          minLength: 0
+        documentacionRequerida:
+          type: string
+          description: Documentacion administrativa que el financiador exige. Nunca
+            contenido clinico
+          maxLength: 500
+          minLength: 0
+        financiadorId:
+          type: integer
+          format: int64
+          description: Financiador con el que se negocia
+          example: 31
+          minimum: 0
+        limiteSesionesMensual:
+          type: integer
+          format: int32
+          description: Tope de sesiones por mes pactado. Omitir significa SIN tope;
+            cero no es un valor valido
+          example: 20
+          minimum: 1
+        modalidad:
+          type: string
+          description: "Como se pacto la prestacion. CLASIFICA, no habilita: ninguna\
+            \ decision del sistema depende de este valor"
+          enum:
+          - POR_PRESTACION
+          - POR_SESION
+          - MODULO
+          - CAPITA
+          example: POR_PRESTACION
+        moneda:
+          type: string
+          description: "ISO 4217 de los aranceles de este convenio. Obligatoria: todos\
+            \ sus aranceles la heredan, y un arancel en otra moneda que su convenio\
+            \ seria un dato roto"
+          example: ARS
+          maxLength: 3
+          minLength: 3
+        nombre:
+          type: string
+          description: Nombre visible del convenio
+          example: OSDE 210 - 2026
+          maxLength: 160
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. Nunca contenido clinico
+          maxLength: 500
+          minLength: 0
+        planId:
+          type: integer
+          format: int64
+          description: "Plan de cobertura del financiador. Obligatorio: es lo que\
+            \ hace que la resolucion del arancel tenga como mucho una candidata"
+          example: 88
+          minimum: 0
+        requiereAutorizacion:
+          type: boolean
+          description: Si exige autorizacion previa del financiador. Ausente = false
+        requiereCredencial:
+          type: boolean
+          description: "Si exige numero de credencial del paciente. Ausente = TRUE,\
+            \ al reves que los otros dos: pedir la credencial es lo normal en una\
+            \ prestacion financiada"
+        requiereOrden:
+          type: boolean
+          description: Si la prestacion exige orden medica. Se declara; lo interpreta
+            M17. Ausente = false
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que el convenio se aplica
+          example: 2026-01-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia en que se aplica, INCLUSIVE. Null significa sin\
+            \ fin previsto. Puede coincidir con vigenciaDesde"
+          example: 2026-12-31
+      required:
+      - codigo
+      - financiadorId
+      - modalidad
+      - moneda
+      - nombre
+      - planId
+      - vigenciaDesde
     CreateEspacioRequest:
       type: object
       description: Datos para dar de alta un espacio en la sede
@@ -11246,6 +12346,13 @@ components:
       - https://akine.app/problems/plan-cobertura-nombre-taken
       - https://akine.app/problems/plan-cobertura-inactivo
       - https://akine.app/problems/plan-cobertura-already-inactive
+      - https://akine.app/problems/convenio-codigo-taken
+      - https://akine.app/problems/convenio-solapado
+      - https://akine.app/problems/convenio-inactivo
+      - https://akine.app/problems/convenio-already-inactive
+      - https://akine.app/problems/arancel-solapado
+      - https://akine.app/problems/arancel-inactivo
+      - https://akine.app/problems/arancel-already-inactive
     ProfesionalHabilitado:
       type: object
       description: Profesional habilitado para prestar la oferta
@@ -12077,6 +13184,43 @@ components:
           description: "Version para el control optimista. Se envia al cancelar, mover\
             \ o marcar ausencia."
           example: 0
+    UpdateArancelRequest:
+      type: object
+      description: Cambios a aplicar sobre un arancel. Los campos nulos no se tocan
+      properties:
+        coseguro:
+          type: number
+          description: La parte que paga el paciente
+          example: 2600.0
+          minimum: 0.00
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version leida del arancel
+          example: 0
+          minimum: 0
+        importeFinanciador:
+          type: number
+          description: La parte que paga el financiador
+          example: 10400.0
+          minimum: 0.00
+        importeTotal:
+          type: number
+          description: Lo que vale la practica bajo este convenio
+          example: 13000.0
+          minimum: 0.00
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que este importe se aplica
+          example: 2026-01-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia en que se aplica, INCLUSIVE"
+          example: 2026-06-30
+      required:
+      - expectedVersion
     UpdateBloqueRequest:
       type: object
       description: Cambios a aplicar sobre un bloque de disponibilidad vigente
@@ -12243,6 +13387,71 @@ components:
           minimum: 0
       required:
       - version
+    UpdateConvenioRequest:
+      type: object
+      description: Cambios a aplicar sobre un convenio. Los campos nulos no se tocan
+      properties:
+        documentacionRequerida:
+          type: string
+          description: Documentacion administrativa que el financiador exige
+          maxLength: 500
+          minLength: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version leida del convenio. Una version vieja produce 409 en
+            vez de pisar el cambio ajeno en silencio
+          example: 0
+          minimum: 0
+        limiteSesionesMensual:
+          type: integer
+          format: int32
+          description: Tope de sesiones por mes. Cero no es un valor valido
+          example: 20
+          minimum: 1
+        modalidad:
+          type: string
+          description: Como se pacto la prestacion
+          enum:
+          - POR_PRESTACION
+          - POR_SESION
+          - MODULO
+          - CAPITA
+          example: POR_PRESTACION
+        nombre:
+          type: string
+          description: Nombre visible del convenio
+          example: OSDE 210 - 2026
+          maxLength: 160
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. Nunca contenido clinico
+          maxLength: 500
+          minLength: 0
+        requiereAutorizacion:
+          type: boolean
+          description: Si exige autorizacion previa del financiador
+        requiereCredencial:
+          type: boolean
+          description: Si exige numero de credencial del paciente
+        requiereOrden:
+          type: boolean
+          description: Si la prestacion exige orden medica
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que el convenio se aplica
+          example: 2026-01-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia en que se aplica, INCLUSIVE. CERRAR LA VIGENCIA\
+            \ ES ESTO: el convenio queda ACTIVO y consultable, y solo deja de aplicarse\
+            \ despues de esa fecha. Dar de baja es otra operacion"
+          example: 2026-12-31
+      required:
+      - expectedVersion
     UpdateEspacioRequest:
       type: object
       description: Cambios a aplicar sobre un espacio. Los campos omitidos no se modifican

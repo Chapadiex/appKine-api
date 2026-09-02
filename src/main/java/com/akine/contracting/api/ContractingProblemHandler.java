@@ -1,5 +1,12 @@
 package com.akine.contracting.api;
 
+import com.akine.contracting.domain.exception.ArancelNotAccessibleException;
+import com.akine.contracting.domain.exception.ArancelSolapadoException;
+import com.akine.contracting.domain.exception.ArancelYaInactivoException;
+import com.akine.contracting.domain.exception.ConvenioCodigoTakenException;
+import com.akine.contracting.domain.exception.ConvenioNotAccessibleException;
+import com.akine.contracting.domain.exception.ConvenioSolapadoException;
+import com.akine.contracting.domain.exception.ConvenioYaInactivoException;
 import com.akine.contracting.domain.exception.FinanciadorCodigoTakenException;
 import com.akine.contracting.domain.exception.FinanciadorCuitTakenException;
 import com.akine.contracting.domain.exception.FinanciadorInactivoException;
@@ -10,6 +17,8 @@ import com.akine.contracting.domain.exception.PlanCodigoTakenException;
 import com.akine.contracting.domain.exception.PlanNombreTakenException;
 import com.akine.contracting.domain.exception.PlanNotAccessibleException;
 import com.akine.contracting.domain.exception.PlanYaInactivoException;
+import com.akine.contracting.domain.exception.PracticaNoAccesibleException;
+import com.akine.contracting.domain.exception.SedeNoAccesibleException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,6 +71,14 @@ public class ContractingProblemHandler {
 	private static final URI PLAN_INACTIVO = ProblemType.PLAN_COBERTURA_INACTIVO.uri();
 	private static final URI PLAN_ALREADY_INACTIVE =
 			ProblemType.PLAN_COBERTURA_ALREADY_INACTIVE.uri();
+	private static final URI CONVENIO_CODIGO_TAKEN = ProblemType.CONVENIO_CODIGO_TAKEN.uri();
+	private static final URI CONVENIO_SOLAPADO = ProblemType.CONVENIO_SOLAPADO.uri();
+	private static final URI CONVENIO_INACTIVO = ProblemType.CONVENIO_INACTIVO.uri();
+	private static final URI CONVENIO_ALREADY_INACTIVE =
+			ProblemType.CONVENIO_ALREADY_INACTIVE.uri();
+	private static final URI ARANCEL_SOLAPADO = ProblemType.ARANCEL_SOLAPADO.uri();
+	private static final URI ARANCEL_INACTIVO = ProblemType.ARANCEL_INACTIVO.uri();
+	private static final URI ARANCEL_ALREADY_INACTIVE = ProblemType.ARANCEL_ALREADY_INACTIVE.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -196,6 +213,137 @@ public class ContractingProblemHandler {
 								+ "bajo el siguen resolviendo.",
 						"Plan dado de baja",
 						PLAN_INACTIVO);
+	}
+
+	// =================================================================================
+	// No accesibles de M16 — 404
+	// =================================================================================
+
+	@ExceptionHandler(SedeNoAccesibleException.class)
+	public ProblemDetail handleSedeNoAccesible(SedeNoAccesibleException exception) {
+		log.debug("Sede no accesible: consultorioId={}", exception.getConsultorioId());
+		return noEncontrado("La sede no existe.");
+	}
+
+	/**
+	 * El convenio no existe, es de otra organizacion, o es de otra sede que la de la ruta.
+	 *
+	 * <p>Los tres responden 404 y con el mismo texto. El tercero puede sorprender —el convenio
+	 * existe y es del mismo tenant— y es deliberado: la ruta declara a que sede pertenece
+	 * (RN-M16-001) y resolverlo bajo otra seria una respuesta que miente.
+	 */
+	@ExceptionHandler(ConvenioNotAccessibleException.class)
+	public ProblemDetail handleConvenioNoAccesible(ConvenioNotAccessibleException exception) {
+		log.debug("Convenio no accesible: convenioId={}", exception.getConvenioId());
+		return noEncontrado("El convenio no existe.");
+	}
+
+	@ExceptionHandler(ArancelNotAccessibleException.class)
+	public ProblemDetail handleArancelNoAccesible(ArancelNotAccessibleException exception) {
+		log.debug("Arancel no accesible: arancelId={}", exception.getArancelId());
+		return noEncontrado("El arancel no existe.");
+	}
+
+	/**
+	 * La practica del catalogo clinico no existe o no la ve este tenant.
+	 *
+	 * <p>404 y no 400: una practica de otra organizacion no es un dato mal formado, es un recurso
+	 * que para quien pregunta no existe. Misma regla que cualquier otro cross-tenant.
+	 */
+	@ExceptionHandler(PracticaNoAccesibleException.class)
+	public ProblemDetail handlePracticaNoAccesible(PracticaNoAccesibleException exception) {
+		log.debug("Practica no accesible: practicaId={}", exception.getPracticaId());
+		return noEncontrado("La practica no existe.");
+	}
+
+	// =================================================================================
+	// Invariantes de M16 — 409
+	// =================================================================================
+
+	@ExceptionHandler(ConvenioCodigoTakenException.class)
+	public ProblemDetail handleConvenioCodigoTaken(ConvenioCodigoTakenException exception) {
+		log.debug("Codigo de convenio en uso: codigo={}", exception.getCodigo());
+		return conflicto(
+				"Ya existe un convenio vigente con ese codigo en esta sede. Otra sede si puede "
+						+ "tener un convenio con el mismo codigo, y el de uno dado de baja se puede "
+						+ "reusar.",
+				"Codigo de convenio en uso",
+				CONVENIO_CODIGO_TAKEN);
+	}
+
+	/**
+	 * El 409 que define AKINE-03.05 (RN-M16-002).
+	 *
+	 * <p>Lleva el id y el periodo del convenio con el que choca, en {@code properties}: un 409 que
+	 * solo dice "se solapa" obliga al administrador a buscar a mano cual de los suyos es, y la
+	 * grilla de vigencias tiene esa fila a un click de distancia si sabe cual.
+	 */
+	@ExceptionHandler(ConvenioSolapadoException.class)
+	public ProblemDetail handleConvenioSolapado(ConvenioSolapadoException exception) {
+		log.debug("Convenio solapado con convenioId={}", exception.getConvenioExistenteId());
+
+		ProblemDetail problem = conflicto(
+				"Ya hay un convenio con ese financiador y ese plan en esta sede cuyo periodo se "
+						+ "pisa con el que se pide (" + exception.getPeriodoExistente() + "). Cerra "
+						+ "la vigencia del que esta antes de abrir el nuevo.",
+				"Convenio solapado",
+				CONVENIO_SOLAPADO);
+
+		problem.setProperty("convenioExistenteId", exception.getConvenioExistenteId());
+		problem.setProperty("periodoExistente", exception.getPeriodoExistente());
+		return problem;
+	}
+
+	@ExceptionHandler(ArancelSolapadoException.class)
+	public ProblemDetail handleArancelSolapado(ArancelSolapadoException exception) {
+		log.debug("Arancel solapado con arancelId={}", exception.getArancelExistenteId());
+
+		ProblemDetail problem = conflicto(
+				"Ya hay un arancel de esa practica en este convenio cuyo periodo se pisa con el que "
+						+ "se pide (" + exception.getPeriodoExistente() + "). Dos aranceles de la "
+						+ "misma practica pueden convivir, pero no pisarse: cerra la vigencia del "
+						+ "que esta.",
+				"Arancel solapado",
+				ARANCEL_SOLAPADO);
+
+		problem.setProperty("arancelExistenteId", exception.getArancelExistenteId());
+		problem.setProperty("periodoExistente", exception.getPeriodoExistente());
+		return problem;
+	}
+
+	@ExceptionHandler(ConvenioYaInactivoException.class)
+	public ProblemDetail handleConvenioYaInactivo(ConvenioYaInactivoException exception) {
+		log.debug("Operacion sobre convenio ya inactivo: convenioId={} operacion={}",
+				exception.getConvenioId(), exception.getOperacion());
+
+		return "dar de baja".equals(exception.getOperacion())
+				? conflicto(
+						"El convenio ya estaba dado de baja.",
+						"Convenio ya dado de baja",
+						CONVENIO_ALREADY_INACTIVE)
+				: conflicto(
+						"El convenio esta dado de baja: no admite ediciones ni aranceles nuevos. Lo "
+								+ "que ya se liquido bajo el sigue explicandose con su propio "
+								+ "snapshot.",
+						"Convenio dado de baja",
+						CONVENIO_INACTIVO);
+	}
+
+	@ExceptionHandler(ArancelYaInactivoException.class)
+	public ProblemDetail handleArancelYaInactivo(ArancelYaInactivoException exception) {
+		log.debug("Operacion sobre arancel ya inactivo: arancelId={} operacion={}",
+				exception.getArancelId(), exception.getOperacion());
+
+		return "dar de baja".equals(exception.getOperacion())
+				? conflicto(
+						"El arancel ya estaba dado de baja.",
+						"Arancel ya dado de baja",
+						ARANCEL_ALREADY_INACTIVE)
+				: conflicto(
+						"El arancel esta dado de baja: no admite ediciones. Para volver a tarifar "
+								+ "esa practica se carga uno nuevo.",
+						"Arancel dado de baja",
+						ARANCEL_INACTIVO);
 	}
 
 	// =================================================================================

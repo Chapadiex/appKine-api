@@ -347,7 +347,34 @@ public enum ProblemType {
 	/** El plan esta dado de baja: no admite ediciones. Sus coberturas historicas resuelven. */
 	PLAN_COBERTURA_INACTIVO("plan-cobertura-inactivo"),
 	/** El plan ya estaba dado de baja. */
-	PLAN_COBERTURA_ALREADY_INACTIVE("plan-cobertura-already-inactive");
+	PLAN_COBERTURA_ALREADY_INACTIVE("plan-cobertura-already-inactive"),
+
+	// =================================================================================
+	// M16 — convenios y aranceles (AKINE-03.05)
+	// =================================================================================
+
+	/** Ya existe un convenio VIGENTE con ese codigo en esa sede. El alcance es la sede. */
+	CONVENIO_CODIGO_TAKEN("convenio-codigo-taken"),
+	/**
+	 * Ya existe un convenio de esa (sede, financiador, plan) cuyo periodo se pisa con el pedido
+	 * (RN-M16-002).
+	 *
+	 * <p><b>Es el {@code type} que define AKINE-03.05.</b> No lo produce ningun unique y no podria:
+	 * dos periodos que se cruzan no comparten ningun valor de columna. Lo produce el servicio
+	 * despues de tomar el lock de {@code convenio_lock}, que es lo unico que garantiza que dos
+	 * escrituras concurrentes no lo esquiven las dos.
+	 */
+	CONVENIO_SOLAPADO("convenio-solapado"),
+	/** El convenio esta dado de baja: no admite ediciones ni aranceles nuevos. */
+	CONVENIO_INACTIVO("convenio-inactivo"),
+	/** El convenio ya estaba dado de baja. No existe la reactivacion. */
+	CONVENIO_ALREADY_INACTIVE("convenio-already-inactive"),
+	/** Ya existe un arancel de esa practica en ese convenio cuyo periodo se pisa con el pedido. */
+	ARANCEL_SOLAPADO("arancel-solapado"),
+	/** El arancel esta dado de baja: no admite ediciones. */
+	ARANCEL_INACTIVO("arancel-inactivo"),
+	/** El arancel ya estaba dado de baja. */
+	ARANCEL_ALREADY_INACTIVE("arancel-already-inactive");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
