@@ -48,6 +48,50 @@ final class AuditEvents {
 
 	static final String ENTITY_PLAN = "PlanCobertura";
 
+	// =================================================================================
+	// M16 — convenios y aranceles (AKINE-03.05)
+	// =================================================================================
+
+	/** Alta de un convenio de una sede (RF-M16-001). */
+	static final String CONVENIO_CREATED = "CONVENIO_CREATED";
+
+	/**
+	 * Edicion de un convenio, incluido el cierre de vigencia (RF-M16-002, RF-M16-003).
+	 *
+	 * <p>El detalle lleva el cambio de vigencia cuando lo hay, y eso es lo que hace auditable
+	 * RF-M16-003: sin esa linea nadie podria responder desde cuando un convenio dejo de aplicarse,
+	 * que es la pregunta que aparece cuando una presentacion vuelve rechazada.
+	 */
+	static final String CONVENIO_UPDATED = "CONVENIO_UPDATED";
+
+	/**
+	 * Baja logica de un convenio (RF-M16-003). Motivo obligatorio.
+	 *
+	 * <p>El detalle lleva {@code arancelesActivos}: la baja no cascadea ni se bloquea por tenerlos,
+	 * pero el numero queda registrado para que seis meses despues se sepa cuanto arrastraba. Mismo
+	 * criterio que la baja de un financiador en 03.03.
+	 */
+	static final String CONVENIO_DEACTIVATED = "CONVENIO_DEACTIVATED";
+
+	static final String ENTITY_CONVENIO = "Convenio";
+
+	/**
+	 * Alta de un arancel bajo un convenio (RF-M16-004).
+	 *
+	 * <p>Los importes van en el detalle. §37 pide auditoria reforzada de importes y vigencias, y
+	 * esta es la unica forma de reconstruir despues por que una prestacion se cobro lo que se
+	 * cobro cuando el arancel de hoy dice otra cosa.
+	 */
+	static final String ARANCEL_CREATED = "ARANCEL_CREATED";
+
+	/** Edicion de un arancel: importes o vigencia. El detalle lleva el antes y el despues. */
+	static final String ARANCEL_UPDATED = "ARANCEL_UPDATED";
+
+	/** Baja logica de un arancel. Motivo obligatorio. */
+	static final String ARANCEL_DEACTIVATED = "ARANCEL_DEACTIVATED";
+
+	static final String ENTITY_ARANCEL = "ConvenioArancel";
+
 	private static final String MDC_TRACE_ID = "traceId";
 
 	private AuditEvents() {

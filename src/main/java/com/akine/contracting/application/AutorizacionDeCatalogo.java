@@ -81,4 +81,44 @@ final class AutorizacionDeCatalogo {
 				null,
 				Instant.now()));
 	}
+
+	/**
+	 * Exige contexto de organizacion y evalua {@code convenio:manage} sobre <b>la sede de la
+	 * ruta</b>. Es el control de las mutaciones de M16 (AKINE-03.05).
+	 *
+	 * <p><b>Por que la sede sale de la ruta y no del contexto, a diferencia de M15.</b> Un convenio
+	 * es contextual al consultorio (RN-M16-001): la sede no es un detalle del request, es parte de
+	 * la identidad del recurso que se administra. Evaluar el permiso sobre la sede del contexto
+	 * mientras se escribe sobre la de la ruta dejaria pasar a alguien con permiso en la sede A a
+	 * modificar los convenios de la B — y la ruta seguiria diciendo la verdad, que es lo que hace
+	 * que el defecto sea dificil de ver.
+	 *
+	 * <p>Sigue exigiendo contexto de organizacion: la organizacion nunca viaja por la ruta, sale de
+	 * lo que {@code TenantContextFilter} revalido contra la base en este request. Que la sede de la
+	 * ruta pertenezca a esa organizacion lo comprueba el llamador con {@code ConsultorioDirectory},
+	 * y una sede ajena responde 404 antes de llegar a esta evaluacion.
+	 *
+	 * <p>Un {@code ORG_ADMIN} pasa para cualquier sede de su organizacion, porque su alcance es
+	 * ORGANIZACION. Un {@code CONSULTORIO_ADMIN} pasa solo para la suya, que es exactamente lo que
+	 * la matriz §2 le concede.
+	 */
+	static PermissionDecision exigirGestionDeLaSede(
+			PermissionGuard permissionGuard,
+			OperatingActor actor,
+			long consultorioId,
+			String operacion) {
+
+		if (actor.contextOrganizationId() == null) {
+			log.info("{} sin contexto validado: accountId={}", operacion, actor.accountId());
+			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
+		}
+
+		return permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.CONVENIO_MANAGE,
+				actor.contextOrganizationId(),
+				consultorioId,
+				null,
+				Instant.now()));
+	}
 }
