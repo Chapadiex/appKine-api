@@ -2,6 +2,7 @@ package com.akine.scheduling;
 
 import com.akine.TestcontainersConfiguration;
 import com.akine.scheduling.AgendaFixtures.Fixture;
+import com.akine.scheduling.application.AgendaDelDiaView;
 import com.akine.scheduling.application.CicloDeTurnoService;
 import com.akine.scheduling.application.EventoDeTurnoView;
 import com.akine.scheduling.application.RecepcionService;
@@ -195,8 +196,15 @@ class RecepcionIT {
 				"El profesional se enfermo", deLasDiez.version());
 		cicloService.registrarLlegada(fixture.actor(), fixture.consultorioId(), deLasNueve.id());
 
-		List<TurnoDelDiaView> agenda = recepcionService.delDia(
+		AgendaDelDiaView delDia = recepcionService.delDia(
 				fixture.actor(), fixture.consultorioId(), LUNES);
+		List<TurnoDelDiaView> agenda = delDia.turnos();
+
+		assertThat(delDia.timezone())
+				.as("la zona viaja en la respuesta: sin ella la pantalla usa la del navegador y "
+						+ "corre la agenda entera sin fallar")
+				.isEqualTo(AgendaFixtures.ZONA);
+		assertThat(delDia.fecha()).isEqualTo(LUNES);
 
 		assertThat(agenda)
 				.as("los dos turnos del dia, el cancelado incluido")
@@ -221,9 +229,12 @@ class RecepcionIT {
 				.isEqualTo("El profesional se enfermo");
 
 		// Un dia sin turnos no es un error, es una lista vacia.
-		assertThat(recepcionService.delDia(
-				fixture.actor(), fixture.consultorioId(), LUNES.plusDays(1)))
-				.isEmpty();
+		AgendaDelDiaView vacio = recepcionService.delDia(
+				fixture.actor(), fixture.consultorioId(), LUNES.plusDays(1));
+		assertThat(vacio.turnos()).isEmpty();
+		assertThat(vacio.timezone())
+				.as("tambien en un dia vacio: es un dato de la sede, no de los turnos")
+				.isEqualTo(AgendaFixtures.ZONA);
 	}
 
 	/**

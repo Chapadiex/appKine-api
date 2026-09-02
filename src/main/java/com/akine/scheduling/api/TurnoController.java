@@ -1,5 +1,6 @@
 package com.akine.scheduling.api;
 
+import com.akine.scheduling.api.dto.AgendaDelDiaResponse;
 import com.akine.scheduling.api.dto.CancelarTurnoRequest;
 import com.akine.scheduling.api.dto.EventoDeTurnoResponse;
 import com.akine.scheduling.api.dto.RegistrarAusenciaRequest;
@@ -402,17 +403,18 @@ public class TurnoController {
 					responseCode = "404",
 					description = "La sede no existe o es de otro tenant",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
-	public ResponseEntity<List<TurnoDelDiaResponse>> delDia(
+	public ResponseEntity<AgendaDelDiaResponse> delDia(
 			@PathVariable long consultorioId,
 			@RequestParam
 			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
 			@Parameter(description = "Dia a listar, en la zona de la sede", example = "2026-09-15")
 			LocalDate fecha) {
 
-		return ResponseEntity.ok(
-				recepcionService.delDia(apiActor.current(), consultorioId, fecha).stream()
-						.map(TurnoDelDiaResponse::de)
-						.toList());
+		var vista = recepcionService.delDia(apiActor.current(), consultorioId, fecha);
+		return ResponseEntity.ok(new AgendaDelDiaResponse(
+				vista.fecha(),
+				vista.timezone(),
+				vista.turnos().stream().map(TurnoDelDiaResponse::de).toList()));
 	}
 
 	/**
@@ -447,7 +449,7 @@ public class TurnoController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "El turno esta cancelado o ya marcado ausente",
+					description = "El turno esta cancelado o ya marcado ausente. `problemType`: `turno-transicion-no-permitida`",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<TurnoResponse> registrarLlegada(
 			@PathVariable long consultorioId,
@@ -482,7 +484,7 @@ public class TurnoController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "El turno no esta en espera",
+					description = "El turno no esta en espera. `problemType`: `turno-transicion-no-permitida`",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<TurnoResponse> deshacerLlegada(
 			@PathVariable long consultorioId,

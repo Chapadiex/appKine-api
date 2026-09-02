@@ -92,7 +92,7 @@ public class RecepcionService {
 	 * @throws ConsultorioNoAccesibleException la sede no existe o es de otro tenant (404)
 	 */
 	@Transactional(readOnly = true)
-	public List<TurnoDelDiaView> delDia(OperatingActor actor, long consultorioId, LocalDate fecha) {
+	public AgendaDelDiaView delDia(OperatingActor actor, long consultorioId, LocalDate fecha) {
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSede(organizationId, consultorioId);
 		permissionGuard.requirePermission(new PermissionQuery(
@@ -105,10 +105,14 @@ public class RecepcionService {
 
 		List<Turno> delDia = turnos.findDeLaSedeEnVentana(
 				organizationId, consultorioId, desde, hasta);
-		if (delDia.isEmpty()) {
-			return List.of();
-		}
-		return componer(organizationId, consultorioId, delDia);
+
+		// La zona viaja SIEMPRE, tambien en un dia vacio. Es un dato de la sede y no de los
+		// turnos: si solo se enviara cuando hay alguno, la pantalla tendria que deducirla de
+		// otro lado justo el dia en que no hay nada de donde deducirla.
+		return new AgendaDelDiaView(
+				fecha,
+				sede.timezone(),
+				delDia.isEmpty() ? List.of() : componer(organizationId, consultorioId, delDia));
 	}
 
 	/**
