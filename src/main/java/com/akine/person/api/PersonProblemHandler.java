@@ -1,5 +1,9 @@
 package com.akine.person.api;
 
+import com.akine.person.domain.exception.AdjuntoInactivoException;
+import com.akine.person.domain.exception.AdjuntoNoDisponibleException;
+import com.akine.person.domain.exception.AdjuntoNotAccessibleException;
+import com.akine.person.domain.exception.ArchivoNoAceptadoException;
 import com.akine.person.domain.exception.PersonaDocumentoTakenException;
 import com.akine.person.domain.exception.PersonaInactivaException;
 import com.akine.person.domain.exception.PersonaNotAccessibleException;
@@ -50,6 +54,9 @@ public class PersonProblemHandler {
 	private static final URI PERSONA_POSIBLE_DUPLICADO =
 			ProblemType.PERSONA_POSIBLE_DUPLICADO.uri();
 	private static final URI PERSONA_INACTIVA = ProblemType.PERSONA_INACTIVA.uri();
+	private static final URI ARCHIVO_NO_ACEPTADO = ProblemType.ARCHIVO_NO_ACEPTADO.uri();
+	private static final URI ADJUNTO_NO_DISPONIBLE = ProblemType.ADJUNTO_NO_DISPONIBLE.uri();
+	private static final URI ADJUNTO_INACTIVO = ProblemType.ADJUNTO_INACTIVO.uri();
 
 	@ExceptionHandler(PersonaNotAccessibleException.class)
 	public ProblemDetail handlePersonaNoAccesible(PersonaNotAccessibleException exception) {
@@ -131,6 +138,65 @@ public class PersonProblemHandler {
 						+ ". Su ficha sigue siendo consultable.",
 				"Persona dada de baja",
 				PERSONA_INACTIVA);
+	}
+
+	/**
+	 * El adjunto no existe, es de otra organizacion o es de otra persona (404).
+	 *
+	 * <p>Los tres casos colapsan en el mismo error, igual que con la persona: distinguirlos
+	 * confirmaria que ese id existe en algun lado.
+	 */
+	@ExceptionHandler(AdjuntoNotAccessibleException.class)
+	public ProblemDetail handleAdjuntoNoAccesible(AdjuntoNotAccessibleException exception) {
+		log.debug("Adjunto no accesible: adjuntoId={}", exception.getAdjuntoId());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.NOT_FOUND, "El adjunto no existe.");
+		problem.setTitle("No encontrado");
+		problem.setType(NOT_FOUND);
+		return problem;
+	}
+
+	/**
+	 * El archivo no pasa la validacion de tipo o de tamano (400).
+	 *
+	 * <p>Lleva {@code motivo} para que la pantalla distinga "no es un tipo permitido" de "pesa
+	 * demasiado" sin leer prosa en castellano: las dos llevan al mismo desenlace —elegir otro
+	 * archivo— pero a mensajes distintos.
+	 */
+	@ExceptionHandler(ArchivoNoAceptadoException.class)
+	public ProblemDetail handleArchivoNoAceptado(ArchivoNoAceptadoException exception) {
+		log.debug("Archivo rechazado: motivo={}", exception.getMotivo());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setTitle("Archivo no aceptado");
+		problem.setType(ARCHIVO_NO_ACEPTADO);
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	/** El almacenamiento no tiene el contenido del adjunto (409, no 404). */
+	@ExceptionHandler(AdjuntoNoDisponibleException.class)
+	public ProblemDetail handleAdjuntoNoDisponible(AdjuntoNoDisponibleException exception) {
+		log.warn("Contenido de adjunto no disponible: adjuntoId={}", exception.getAdjuntoId());
+
+		return conflicto(
+				"El contenido de este adjunto no esta disponible. Su ficha sigue siendo "
+						+ "consultable.",
+				"Contenido no disponible",
+				ADJUNTO_NO_DISPONIBLE);
+	}
+
+	/** El adjunto ya estaba dado de baja (409). Se sigue descargando; no se reclasifica. */
+	@ExceptionHandler(AdjuntoInactivoException.class)
+	public ProblemDetail handleAdjuntoInactivo(AdjuntoInactivoException exception) {
+		log.debug("Operacion sobre adjunto de baja: adjuntoId={}", exception.getAdjuntoId());
+
+		return conflicto(
+				"El adjunto ya estaba dado de baja. Su contenido se sigue pudiendo descargar.",
+				"Adjunto dado de baja",
+				ADJUNTO_INACTIVO);
 	}
 
 	private static ProblemDetail conflicto(String detalle, String titulo, URI type) {

@@ -41,6 +41,19 @@ spring:
     baseline-on-migrate: false
     validate-on-migrate: true
 
+  servlet:
+    multipart:
+      # Adjuntos administrativos (M25, AKINE-03.02).
+      #
+      # ESTOS TOPES SON DEL CONTENEDOR Y TIENEN QUE QUEDAR POR ENCIMA del tope de la aplicacion
+      # (akine.person.adjuntos.max-bytes, 10 MB por defecto). Si el mas chico fuera el de aca, el
+      # rechazo llegaria como MaxUploadSizeExceededException —un error de plataforma— y el
+      # operador recibiria un 500 generico en vez del 400 archivo-no-aceptado que le explica que
+      # su archivo pesa demasiado. El margen tambien cubre el overhead del propio multipart:
+      # cabeceras de parte y los campos de categoria y titulo.
+      max-file-size: 15MB
+      max-request-size: 16MB
+
   jackson:
     default-property-inclusion: non_null
     datatype:
@@ -90,7 +103,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.22.0
+    version: 0.23.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials

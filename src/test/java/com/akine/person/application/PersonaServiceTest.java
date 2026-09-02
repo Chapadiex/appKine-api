@@ -364,6 +364,80 @@ class PersonaServiceTest {
 	}
 
 	// =================================================================================
+	// Baja logica (RF-M07-005, AKINE-03.02)
+	// =================================================================================
+
+	@Test
+	@DisplayName("la baja es logica, exige motivo y lo deja en la auditoria")
+	void la_baja_es_logica_y_con_motivo() {
+		given(personas.findByIdAndOrganizationId(PERSONA_ID, ORG_ID))
+				.willReturn(Optional.of(personaConId(PERSONA_ID)));
+		given(perfiles.buscarVigente(ORG_ID, PERSONA_ID)).willReturn(Optional.empty());
+
+		PersonaView vista = service.darDeBaja(
+				delMostrador, PERSONA_ID, "Ficha duplicada; se unifico con la 118", 0L);
+
+		assertThat(vista.estado()).isEqualTo("INACTIVO");
+		assertThat(vista.deletedAt()).isNotNull();
+		assertThat(vista.deactivationReason()).isEqualTo("Ficha duplicada; se unifico con la 118");
+
+		ArgumentCaptor<AuditEntry> entrada = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(entrada.capture());
+		assertThat(entrada.getValue().eventType()).isEqualTo("PERSONA_DEACTIVATED");
+		assertThat(entrada.getValue().previousState()).isEqualTo("ACTIVO");
+		assertThat(entrada.getValue().newState()).isEqualTo("INACTIVO");
+	}
+
+	@Test
+	@DisplayName("la baja arrastra el perfil de paciente vigente, en la misma transaccion")
+	void la_baja_arrastra_el_perfil() {
+		PerfilPaciente perfil = new PerfilPaciente(ORG_ID, PERSONA_ID, Instant.now(), ACCOUNT_ID, null);
+		ReflectionTestUtils.setField(perfil, "id", 900L);
+		given(personas.findByIdAndOrganizationId(PERSONA_ID, ORG_ID))
+				.willReturn(Optional.of(personaConId(PERSONA_ID)));
+		given(perfiles.buscarVigente(ORG_ID, PERSONA_ID)).willReturn(Optional.of(perfil));
+
+		service.darDeBaja(delMostrador, PERSONA_ID, "se fue del centro", 0L);
+
+		// Dejar el perfil vigente produciria una ficha que los modulos clinicos siguen viendo
+		// como paciente mientras el padron la considera cerrada.
+		assertThat(perfil.isVigente()).isFalse();
+		verify(perfiles).save(perfil);
+	}
+
+	@Test
+	@DisplayName("una persona ya dada de baja no se vuelve a dar de baja")
+	void la_baja_no_se_repite() {
+		Persona deBaja = personaConId(PERSONA_ID);
+		deBaja.deactivate(Instant.now(), "ya estaba");
+		given(personas.findByIdAndOrganizationId(PERSONA_ID, ORG_ID)).willReturn(Optional.of(deBaja));
+
+		assertThatThrownBy(() -> service.darDeBaja(delMostrador, PERSONA_ID, "otra vez", 0L))
+				.isInstanceOf(PersonaInactivaException.class);
+	}
+
+	@Test
+	@DisplayName("una version desactualizada rechaza la baja en vez de pisar el cambio ajeno")
+	void la_baja_respeta_la_version() {
+		given(personas.findByIdAndOrganizationId(PERSONA_ID, ORG_ID))
+				.willReturn(Optional.of(personaConId(PERSONA_ID)));
+
+		assertThatThrownBy(() -> service.darDeBaja(delMostrador, PERSONA_ID, "motivo", 7L))
+				.isInstanceOf(OptimisticLockingFailureException.class);
+
+		verify(personas, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("sin paciente:manage sobre la sede no se da de baja a nadie")
+	void la_baja_exige_permiso() {
+		assertThatThrownBy(() -> service.darDeBaja(sinContexto, PERSONA_ID, "motivo", 0L))
+				.isInstanceOf(AccessDeniedException.class);
+
+		verifyNoInteractions(personas);
+	}
+
+	// =================================================================================
 	// Fixtures
 	// =================================================================================
 

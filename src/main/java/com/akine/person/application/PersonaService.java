@@ -239,6 +239,69 @@ public class PersonaService {
 				guardada, perfiles.buscarVigente(organizationId, personaId).orElse(null));
 	}
 
+	/**
+	 * Da de baja logica a una persona del padron (RF-M07-005).
+	 *
+	 * <h2>Lo que la baja hace, y lo que no</h2>
+	 *
+	 * <p><b>No borra nada.</b> RN-M07-004 lo prohibe expresamente y la etapa lo repite: "baja no
+	 * borra historial". La ficha se sigue leyendo con 200, sus turnos siguen existiendo, sus
+	 * obligaciones siguen debiendose y sus adjuntos se siguen descargando. Lo que deja de admitir
+	 * son operaciones NUEVAS: editarla, activarle un perfil, adjuntarle documentos.
+	 *
+	 * <p><b>Da de baja tambien el perfil de paciente vigente, en la misma transaccion.</b> No es
+	 * una comodidad: dejar vivo el perfil de una persona dada de baja produciria una ficha que
+	 * {@code PacienteDirectory} sigue reportando como paciente vigente, y los modulos rio abajo
+	 * —que preguntan por {@code esPacienteVigente}— dejarian reservar turnos a alguien que el
+	 * padron considera cerrado. El caso inverso —dar de baja el perfil sin dar de baja a la
+	 * persona— si es una operacion propia, y vive en {@code PerfilPacienteService.desactivar}.
+	 *
+	 * <p><b>Libera el documento.</b> El unique de {@code V27} lleva {@code deleted_key}, asi que en
+	 * cuanto la ficha se da de baja su documento vuelve a estar disponible para un alta nueva. Es
+	 * intencional y es lo que permite corregir una ficha creada mal sin borrarla.
+	 *
+	 * <p><b>El motivo lo exige el dominio</b>, no un {@code @NotBlank} del DTO: una validacion que
+	 * solo vive en la capa web no protege a los llamadores que no son la capa web.
+	 *
+	 * <p><b>Lo que esta baja NO valida, y hay que saberlo:</b> no comprueba si la persona tiene
+	 * turnos futuros ni deuda abierta. Es deliberado y es la diferencia con la baja de un
+	 * consultorio o de un espacio, que si tienen sonda de referencias activas: dar de baja a una
+	 * persona con deuda es un caso legitimo y frecuente —se fue del centro y sigue debiendo— y
+	 * bloquearlo obligaria a condonar para poder cerrar la ficha. Un aviso previo en la pantalla es
+	 * la respuesta correcta a eso, no un 409.
+	 */
+	@Transactional
+	public PersonaView darDeBaja(
+			OperatingActor actor, long personaId, String motivo, long expectedVersion) {
+
+		PermissionDecision decision = AutorizacionDePadron.exigirGestionDelPadron(
+				permissionGuard, actor, "Dar de baja una persona");
+		long organizationId = actor.contextOrganizationId();
+
+		Persona persona = cargar(organizationId, personaId);
+		exigirOperable(persona, "una nueva baja");
+		exigirVersion(persona, expectedVersion);
+
+		Instant ahora = Instant.now();
+		persona.deactivate(ahora, motivo);
+		Persona guardada = personas.saveAndFlush(persona);
+
+		Map<String, String> detalles = new LinkedHashMap<>();
+		perfiles.buscarVigente(organizationId, personaId).ifPresent(perfil -> {
+			perfil.deactivate(ahora, motivo);
+			perfiles.save(perfil);
+			detalles.put("perfilPacienteDadoDeBaja", String.valueOf(perfil.getId()));
+		});
+
+		auditar(AuditEvents.PERSONA_DEACTIVATED, guardada, actor,
+				"ACTIVO", "INACTIVO", motivo, detalles, ahora);
+		registrarSoporte(decision, actor, guardada, ahora, "Dar de baja una persona");
+
+		log.info("Persona dada de baja: personaId={} organizationId={} perfilTambien={}",
+				personaId, organizationId, !detalles.isEmpty());
+		return PersonaView.de(guardada);
+	}
+
 	// =================================================================================
 	// Invariantes
 	// =================================================================================

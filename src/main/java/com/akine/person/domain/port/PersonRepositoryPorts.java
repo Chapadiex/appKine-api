@@ -1,5 +1,6 @@
 package com.akine.person.domain.port;
 
+import com.akine.person.domain.AdjuntoAdministrativo;
 import com.akine.person.domain.PerfilPaciente;
 import com.akine.person.domain.Persona;
 import com.akine.person.domain.TipoDocumento;
@@ -150,5 +151,65 @@ public final class PersonRepositoryPorts {
 		 * preguntar.
 		 */
 		List<PerfilPaciente> buscarVigentesDePersonas(Long organizationId, List<Long> personaIds);
+	}
+
+	/**
+	 * Metadata de los adjuntos administrativos de una persona (AKINE-03.02, M25).
+	 *
+	 * <p><b>Toda firma empieza por {@code organizationId} y ninguna resuelve por id pelado.</b>
+	 * Es la misma regla que los otros dos puertos: un {@code findById} sobre esta tabla seria la
+	 * forma mas corta de leer el documento de identidad de un paciente de otro centro.
+	 *
+	 * <p>El {@code personaId} tambien viaja en las consultas de un adjunto suelto, y no es
+	 * redundante: sin el, un adjunto de la persona A se podria descargar desde la ruta de la
+	 * persona B de la misma organizacion, y la auditoria registraria la ficha equivocada.
+	 */
+	public interface AdjuntoRepositoryPort {
+
+		AdjuntoAdministrativo save(AdjuntoAdministrativo adjunto);
+
+		/**
+		 * Persiste y sincroniza en el acto.
+		 *
+		 * <p>Mismo motivo que en los otros dos puertos: el choque del unique de checksum tiene que
+		 * manifestarse aca, donde se lo sabe traducir a la respuesta idempotente que hace que
+		 * reintentar una subida no deje dos filas.
+		 */
+		AdjuntoAdministrativo saveAndFlush(AdjuntoAdministrativo adjunto);
+
+		Optional<AdjuntoAdministrativo> buscarDeLaPersona(
+				Long organizationId, Long personaId, Long adjuntoId);
+
+		/** El adjunto VIGENTE con ese contenido, si esa persona ya lo tiene. Idempotencia. */
+		Optional<AdjuntoAdministrativo> buscarVigentePorChecksum(
+				Long organizationId, Long personaId, String checksumSha256);
+
+		/**
+		 * Los adjuntos de una persona, mas nuevos primero.
+		 *
+		 * @param categoria     filtro por clasificacion, o {@code null} para no filtrar
+		 * @param activoFiltro  {@code 1} solo vigentes, {@code 0} solo de baja, {@code -1} todos.
+		 *                      Mismo codigo de tres estados que la busqueda del padron, por
+		 *                      coherencia y porque un {@code Boolean} nullable en una query
+		 *                      nativa se lee peor
+		 */
+		List<AdjuntoAdministrativo> listar(
+				Long organizationId,
+				Long personaId,
+				String categoria,
+				int activoFiltro,
+				int offset,
+				int limite);
+
+		long contar(Long organizationId, Long personaId, String categoria, int activoFiltro);
+
+		/**
+		 * Cuantos adjuntos VIGENTES tiene la persona, agrupados por categoria.
+		 *
+		 * <p>Lo consume el Paciente 360, que muestra el conteo por categoria sin traerse la lista.
+		 * Devuelve pares {@code [categoria, cantidad]} y no un tipo propio porque una proyeccion
+		 * de dos columnas no justifica una interfaz de Spring Data mas.
+		 */
+		List<Object[]> contarVigentesPorCategoria(Long organizationId, Long personaId);
 	}
 }

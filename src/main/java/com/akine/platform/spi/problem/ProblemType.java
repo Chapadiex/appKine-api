@@ -316,7 +316,30 @@ public enum ProblemType {
 	 */
 	PERSONA_POSIBLE_DUPLICADO("persona-posible-duplicado"),
 	/** La persona esta dada de baja y la operacion exige una vigente. Se sigue leyendo con 200. */
-	PERSONA_INACTIVA("persona-inactiva");
+	PERSONA_INACTIVA("persona-inactiva"),
+
+	// --- Adjuntos administrativos (M25, AKINE-03.02) -----------------------------------------
+	/**
+	 * El archivo no pasa la validacion de tipo o de tamano (400).
+	 *
+	 * <p><b>Un solo tipo para las dos familias</b>, con {@code motivo} —{@code TIPO_NO_PERMITIDO} o
+	 * {@code DEMASIADO_GRANDE}— como propiedad extra. Para la pantalla el desenlace es el mismo:
+	 * decir por que ese archivo no entra y pedir otro. Mismo criterio que
+	 * {@link #TURNO_TRANSICION_NO_PERMITIDA}.
+	 *
+	 * <p>400 y no 415: el tipo declarado del request es correcto —es {@code multipart/form-data}—
+	 * y lo que se rechaza es el CONTENIDO de una de sus partes.
+	 */
+	ARCHIVO_NO_ACEPTADO("archivo-no-aceptado"),
+	/**
+	 * La metadata del adjunto existe pero el almacenamiento no tiene su contenido (409, no 404).
+	 *
+	 * <p>La fila esta y se sigue listando. Un 404 le diria al operador que el documento no existe y
+	 * lo empujaria a volver a subirlo bajo una ficha que todavia afirma tenerlo.
+	 */
+	ADJUNTO_NO_DISPONIBLE("adjunto-no-disponible"),
+	/** El adjunto ya estaba dado de baja. Se sigue descargando; no se reclasifica. */
+	ADJUNTO_INACTIVO("adjunto-inactivo");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
