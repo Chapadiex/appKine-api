@@ -140,4 +140,21 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("ofertaId") long ofertaId,
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta);
+
+	/**
+	 * Nativa y no JPQL por el {@code LIMIT}: JPQL no lo tiene y la alternativa —{@code Pageable}—
+	 * obligaria a que el puerto del dominio conociera un tipo de Spring Data.
+	 */
+	@Override
+	@Query(value = """
+			SELECT * FROM turno t
+			 WHERE t.organization_id = :organizationId
+			   AND t.persona_id = :personaId
+			 ORDER BY t.inicio DESC, t.id DESC
+			 LIMIT :limite
+			""", nativeQuery = true)
+	List<Turno> findDeLaPersona(
+			@Param("organizationId") long organizationId,
+			@Param("personaId") long personaId,
+			@Param("limite") int limite);
 }

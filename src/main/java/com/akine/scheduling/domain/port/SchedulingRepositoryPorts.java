@@ -121,6 +121,23 @@ public final class SchedulingRepositoryPorts {
 		 */
 		List<Turno> findVivosDeLaOfertaEnVentana(
 				long organizationId, long ofertaId, Instant desde, Instant hasta);
+
+		/**
+		 * Los turnos de una persona en la organizacion, mas nuevos primero (AKINE-03.02).
+		 *
+		 * <p>Lo consume el Paciente 360 a traves de {@code TurnosEnElResumenDePersona}.
+		 *
+		 * <p><b>Alcance ORGANIZACION y no sede.</b> La Persona pertenece a la organizacion, y el
+		 * mostrador que abre su ficha necesita saber que tiene turno el jueves en la otra sede del
+		 * mismo centro. Filtrar por la sede del contexto haria que la misma ficha se viera distinta
+		 * segun donde este parado el operador, que es la clase de inconsistencia que produce
+		 * sobreturnos.
+		 *
+		 * <p><b>Incluye los cancelados.</b> Un turno cancelado es informacion de la ficha —"vino
+		 * tres veces y cancelo dos"— y esconderlo dejaria al 360 contando una historia incompleta.
+		 * Separarlos por estado es trabajo del contribuyente, no de la consulta.
+		 */
+		List<Turno> findDeLaPersona(long organizationId, long personaId, int limite);
 	}
 
 	/**

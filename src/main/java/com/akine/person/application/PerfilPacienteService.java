@@ -139,12 +139,69 @@ public class PerfilPacienteService {
 		}
 
 		auditar(persona, guardado, actor, motivo, ahora);
-		registrarSoporte(decision, actor, persona, ahora);
+		registrarSoporte(decision, actor, persona, ahora, "Activar perfil de paciente");
 
 		log.info("Perfil de paciente activado: personaId={} perfilId={} organizationId={}",
 				personaId, guardado.getId(), organizationId);
 
 		return PersonaView.de(persona, guardado);
+	}
+
+	/**
+	 * Da de baja el perfil clinico de una persona, dejandola en el padron (RF-M07-005).
+	 *
+	 * <p>Es la operacion inversa de {@link #activar}, y <b>no es lo mismo que dar de baja a la
+	 * persona</b>: aca la ficha administrativa sigue vigente y sigue operando —puede tener turnos
+	 * de una clase, puede pagar—, y lo unico que deja de ser es paciente. Es exactamente el estado
+	 * que RN-M07-006 describe: una persona que consume servicios no clinicos sin perfil clinico.
+	 *
+	 * <p><b>Es idempotente y responde 200</b>, igual que la activacion y por el mismo motivo. Dar
+	 * de baja un perfil que ya no esta vigente no es un error del operador: es el boton tocado dos
+	 * veces, y la respuesta correcta es la ficha como quedo.
+	 *
+	 * <p><b>No toca la Historia Clinica.</b> Igual que activar no la crea, desactivar no la borra:
+	 * la HC es de M09, pertenece a la organizacion (DP-03) y su existencia no depende de que este
+	 * perfil siga vigente. Reactivar el perfil despues vuelve a encontrar la historia que ya habia,
+	 * que es lo que RN-M07-007 pide al exigir que se reutilice la identidad.
+	 */
+	@Transactional
+	public PersonaView desactivar(OperatingActor actor, long personaId, String motivo) {
+		PermissionDecision decision = AutorizacionDePadron.exigirGestionDelPadron(
+				permissionGuard, actor, "Dar de baja el perfil de paciente");
+		long organizationId = actor.contextOrganizationId();
+
+		Persona persona = personas.findByIdAndOrganizationId(personaId, organizationId)
+				.orElseThrow(() -> new PersonaNotAccessibleException(personaId));
+
+		Optional<PerfilPaciente> vigente = perfiles.buscarVigente(organizationId, personaId);
+		if (vigente.isEmpty()) {
+			log.debug("Baja idempotente de perfil de paciente: personaId={}", personaId);
+			return PersonaView.de(persona);
+		}
+
+		Instant ahora = Instant.now();
+		PerfilPaciente perfil = vigente.get();
+		perfil.deactivate(ahora, motivo);
+		PerfilPaciente guardado = perfiles.save(perfil);
+
+		auditTrail.record(new AuditEntry(
+				organizationId,
+				null,
+				actor.accountId(),
+				AuditEvents.PERFIL_PACIENTE_DEACTIVATED,
+				AuditEvents.ENTITY_PERSONA,
+				persona.getId(),
+				"PACIENTE",
+				"SIN_PERFIL",
+				Map.of("perfilPacienteId", String.valueOf(guardado.getId())),
+				motivo,
+				AuditEvents.correlationId(),
+				ahora));
+		registrarSoporte(decision, actor, persona, ahora, "Dar de baja el perfil de paciente");
+
+		log.info("Perfil de paciente dado de baja: personaId={} perfilId={} organizationId={}",
+				personaId, guardado.getId(), organizationId);
+		return PersonaView.de(persona);
 	}
 
 	private void auditar(
@@ -173,7 +230,11 @@ public class PerfilPacienteService {
 
 	/** Ver {@code PersonaService.registrarSoporte}: el mismo invariante, el mismo motivo. */
 	private void registrarSoporte(
-			PermissionDecision decision, OperatingActor actor, Persona persona, Instant ahora) {
+			PermissionDecision decision,
+			OperatingActor actor,
+			Persona persona,
+			Instant ahora,
+			String operacion) {
 
 		if (!decision.viaSupportAccess()) {
 			return;
@@ -187,7 +248,7 @@ public class PerfilPacienteService {
 				persona.getId(),
 				null,
 				null,
-				Map.of("operacion", "Activar perfil de paciente"),
+				Map.of("operacion", operacion),
 				null,
 				AuditEvents.correlationId(),
 				ahora));

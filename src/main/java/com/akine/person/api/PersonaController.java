@@ -1,9 +1,12 @@
 package com.akine.person.api;
 
 import com.akine.person.api.dto.ActivarPerfilPacienteRequest;
+import com.akine.person.api.dto.BajaDePerfilPacienteRequest;
+import com.akine.person.api.dto.BajaDePersonaRequest;
 import com.akine.person.api.dto.CreatePersonaRequest;
 import com.akine.person.api.dto.PersonaPageResponse;
 import com.akine.person.api.dto.PersonaResponse;
+import com.akine.person.api.dto.ResumenDePersonaResponse;
 import com.akine.person.api.dto.UpdatePersonaRequest;
 import com.akine.person.application.OperatingActor;
 import com.akine.person.application.PerfilFiltro;
@@ -15,6 +18,7 @@ import com.akine.person.application.PersonaEstadoFiltro;
 import com.akine.person.application.PersonaPagina;
 import com.akine.person.application.PersonaService;
 import com.akine.person.application.PersonaView;
+import com.akine.person.application.ResumenDePersonaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -28,6 +32,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -82,17 +87,27 @@ import java.net.URI;
  *       no {@code concurrent-modification}.</li>
  * </ul>
  *
- * <h2>Lo que esta etapa deliberadamente NO trae</h2>
+ * <h2>Lo que AKINE-03.02 agrego, y lo que sigue sin traer</h2>
+ *
+ * <p>03.02 sumo la <b>baja logica</b> de la persona y de su perfil (RF-M07-005) y la <b>ficha
+ * 360</b> (RF-M07-004). Los adjuntos administrativos viven en {@link AdjuntoController}, bajo esta
+ * misma ruta.
  *
  * <ul>
- *   <li><b>La baja logica de la persona</b> (RF-M07-005). Es 03.02, junto con Paciente 360 y los
- *       adjuntos administrativos. Las columnas ya existen; el endpoint no.</li>
- *   <li><b>Coberturas, deuda, turnos, historia</b>: son M08, M18, M12 y M09, y ninguno existe.
- *       Esta ficha es administrativa y nada mas.</li>
+ *   <li><b>Coberturas</b>: son M08/M15, etapas 03.03 y 03.04. Cuando existan, aparecen en el 360
+ *       solas: implementan {@code ResumenDePersonaContributor} y no tocan este modulo.</li>
+ *   <li><b>Contenido clinico en el 360</b>: no falta, se decidio no ponerlo. AKINE-04.01 exige
+ *       justificacion declarada para todo acceso clinico, y mostrarlo al abrir una ficha de
+ *       mostrador convertiria ese control en un formalismo.</li>
  *   <li><b>La busqueda por numero de afiliado</b> que RF-M07-001 menciona: el afiliado es un dato
  *       de la cobertura (M08, etapa 03.04) y todavia no hay ninguna contra la que buscar.</li>
  *   <li><b>El vinculo entre una persona y una cuenta del portal.</b> RN-M07-002 los separa, y
  *       resolver el autoservicio es una etapa propia.</li>
+ *   <li><b>La fusion de fichas duplicadas.</b> El caso borde "paciente fusionado" de la etapa no
+ *       se implementa: fusionar exige reapuntar turnos, sesiones, obligaciones y adjuntos en
+ *       cuatro modulos, y eso es una etapa con su propio diseño. Lo que hay hoy es la deteccion de
+ *       posibles duplicados en el alta (03.01) y la baja logica de la ficha sobrante, que resuelve
+ *       el caso practico sin prometer una fusion que no existe.</li>
  * </ul>
  */
 @RestController
@@ -108,15 +123,18 @@ public class PersonaController {
 
 	private final PersonaService personaService;
 	private final PerfilPacienteService perfilPacienteService;
+	private final ResumenDePersonaService resumenDePersonaService;
 	private final PersonApiActor apiActor;
 
 	public PersonaController(
 			PersonaService personaService,
 			PerfilPacienteService perfilPacienteService,
+			ResumenDePersonaService resumenDePersonaService,
 			PersonApiActor apiActor) {
 
 		this.personaService = personaService;
 		this.perfilPacienteService = perfilPacienteService;
+		this.resumenDePersonaService = resumenDePersonaService;
 		this.apiActor = apiActor;
 	}
 
@@ -347,5 +365,135 @@ public class PersonaController {
 
 		return PersonaResponse.from(
 				perfilPacienteService.activar(apiActor.current(), personaId, request.motivo()));
+	}
+
+	@GetMapping("/{personaId}/resumen")
+	@Operation(
+			operationId = "verResumenDePersona",
+			summary = "Ver la ficha 360 de una persona",
+			description = """
+					Consolida la identidad, los adjuntos y lo que aporta cada modulo: turnos y \
+					situacion economica hoy; coberturas cuando existan (03.03/03.04).
+
+					RECORTA POR PERMISOS Y NO RECHAZA. Una seccion cuyo permiso el actor no tiene \
+					no viene, y aparece en seccionesOmitidas con el codigo que falta. Devolver 403 \
+					sobre la ficha entera por no poder ver la deuda dejaria al profesional sin \
+					poder abrir a ningun paciente; omitir en silencio seria peor, porque la \
+					pantalla leeria "sin turnos" donde en realidad dice "no podes ver los turnos".
+
+					NO TRAE NADA CLINICO, y no es que falte: AKINE-04.01 fijo que todo acceso \
+					clinico exige justificacion declarada y queda auditado. Una ficha de mostrador \
+					que muestre casos al abrirla convertiria ese control en un formalismo. El dato \
+					clinico se pide por M09, con permiso y justificacion.
+
+					Una persona INACTIVA responde 200: el 360 de una ficha dada de baja es \
+					justamente donde se consulta su historico.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "La ficha consolidada",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = ResumenDePersonaResponse.class))),
+			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "No existe, o es de otra organizacion",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResumenDePersonaResponse verResumen(@PathVariable long personaId) {
+		return ResumenDePersonaResponse.from(
+				resumenDePersonaService.ver(apiActor.current(), personaId));
+	}
+
+	@DeleteMapping(path = "/{personaId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "darDeBajaPersona",
+			summary = "Dar de baja logica a una persona del padron",
+			description = """
+					Baja LOGICA con motivo obligatorio (RF-M07-005). NO BORRA NADA: la ficha se \
+					sigue leyendo con 200, sus turnos siguen existiendo, sus obligaciones siguen \
+					debiendose y sus adjuntos se siguen descargando. Lo que deja de admitir son \
+					operaciones nuevas: editarla, activarle un perfil, adjuntarle documentos.
+
+					DA DE BAJA TAMBIEN EL PERFIL DE PACIENTE vigente, en la misma transaccion. \
+					Dejarlo vivo produciria una ficha que los modulos clinicos siguen viendo como \
+					paciente vigente mientras el padron la considera cerrada.
+
+					LIBERA EL DOCUMENTO: el mismo documento se puede volver a usar en un alta \
+					nueva. Es intencional y es lo que permite corregir una ficha creada mal sin \
+					borrarla.
+
+					Devuelve la ficha como quedo, con su version nueva, en vez de un 204: la \
+					pantalla la necesita para refrescar sin pedir otro GET.
+
+					No valida si la persona tiene turnos futuros o deuda: dar de baja a alguien \
+					que se fue debiendo es un caso legitimo, y bloquearlo obligaria a condonar \
+					para poder cerrar la ficha.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Persona dada de baja",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = PersonaResponse.class))),
+			@ApiResponse(responseCode = "400", description = "Falta el motivo de la baja",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403",
+					description = "Sin contexto de trabajo activo, o sin paciente:manage",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "No existe, o es de otra organizacion",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409",
+					description = "Ya estaba dada de baja, o la version esta desactualizada",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public PersonaResponse darDeBaja(
+			@PathVariable long personaId, @Valid @RequestBody BajaDePersonaRequest request) {
+
+		log.info("Baja de persona solicitada: personaId={}", personaId);
+		return PersonaResponse.from(personaService.darDeBaja(
+				apiActor.current(), personaId, request.motivo(), request.expectedVersion()));
+	}
+
+	@DeleteMapping(path = "/{personaId}/perfil-paciente",
+			consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "darDeBajaPerfilPaciente",
+			summary = "Dar de baja el perfil clinico de una persona",
+			description = """
+					La persona SIGUE VIGENTE en el padron y lo unico que deja de ser es paciente. \
+					Es exactamente el estado que RN-M07-006 describe: alguien que consume \
+					servicios no clinicos sin perfil clinico.
+
+					ES IDEMPOTENTE Y RESPONDE 200. Dar de baja un perfil que ya no esta vigente no \
+					es un error del operador: es el boton tocado dos veces.
+
+					NO BORRA LA HISTORIA CLINICA. Igual que activar no la crea, esto no la borra: \
+					la HC es de M09 y su existencia no depende de que el perfil siga vigente. \
+					Reactivar el perfil despues vuelve a encontrar la historia que ya habia.
+
+					El motivo es obligatorio, a diferencia de la activacion: la operacion que \
+					restringe es la que alguien va a tener que justificar despues.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Perfil dado de baja, o ya no vigente",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = PersonaResponse.class))),
+			@ApiResponse(responseCode = "400", description = "Falta el motivo de la baja",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403",
+					description = "Sin contexto de trabajo activo, o sin paciente:manage",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "No existe, o es de otra organizacion",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public PersonaResponse darDeBajaPerfil(
+			@PathVariable long personaId,
+			@Valid @RequestBody BajaDePerfilPacienteRequest request) {
+
+		return PersonaResponse.from(perfilPacienteService.desactivar(
+				apiActor.current(), personaId, request.motivo()));
 	}
 }

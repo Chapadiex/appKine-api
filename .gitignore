@@ -58,3 +58,8 @@ desktop.ini
 *.log
 logs/
 tmp/
+
+# --- Adjuntos administrativos (M25, AKINE-03.02) ---
+# Almacenamiento local por defecto de akine.person.adjuntos.base-dir. Son binarios de
+# desarrollo -y, en una maquina de QA, documentos de personas sinteticas-: no se versionan.
+var/

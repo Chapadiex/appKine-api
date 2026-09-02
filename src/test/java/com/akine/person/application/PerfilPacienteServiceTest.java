@@ -172,6 +172,53 @@ class PerfilPacienteServiceTest {
 		verifyNoInteractions(personas, perfiles, auditTrail);
 	}
 
+	// =================================================================================
+	// Baja del perfil (RF-M07-005, AKINE-03.02)
+	// =================================================================================
+
+	@Test
+	@DisplayName("la baja del perfil deja a la persona VIGENTE en el padron")
+	void la_baja_del_perfil_no_da_de_baja_a_la_persona() {
+		PerfilPaciente perfil = conId(new PerfilPaciente(
+				ORG_ID, PERSONA_ID, Instant.now(), ACCOUNT_ID, null));
+		given(perfiles.buscarVigente(ORG_ID, PERSONA_ID)).willReturn(Optional.of(perfil));
+		given(perfiles.save(any())).willAnswer(i -> i.getArgument(0));
+
+		PersonaView vista = service.desactivar(
+				delMostrador, PERSONA_ID, "Viene solo a clases grupales");
+
+		assertThat(vista.estado()).isEqualTo("ACTIVO");
+		assertThat(vista.esPaciente()).isFalse();
+		assertThat(perfil.isVigente()).isFalse();
+
+		ArgumentCaptor<AuditEntry> entrada = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(entrada.capture());
+		assertThat(entrada.getValue().eventType()).isEqualTo("PERFIL_PACIENTE_DEACTIVATED");
+		assertThat(entrada.getValue().previousState()).isEqualTo("PACIENTE");
+		assertThat(entrada.getValue().newState()).isEqualTo("SIN_PERFIL");
+	}
+
+	@Test
+	@DisplayName("dar de baja un perfil que ya no esta vigente es idempotente y no audita")
+	void la_baja_del_perfil_es_idempotente() {
+		given(perfiles.buscarVigente(ORG_ID, PERSONA_ID)).willReturn(Optional.empty());
+
+		PersonaView vista = service.desactivar(delMostrador, PERSONA_ID, "otra vez");
+
+		assertThat(vista.esPaciente()).isFalse();
+		verifyNoInteractions(auditTrail);
+		verify(perfiles, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("sin contexto de sede la baja del perfil es 403 y no lee nada")
+	void la_baja_del_perfil_exige_permiso() {
+		assertThatThrownBy(() -> service.desactivar(sinSede, PERSONA_ID, "motivo"))
+				.isInstanceOf(AccessDeniedException.class);
+
+		verifyNoInteractions(personas, perfiles, auditTrail);
+	}
+
 	private static Persona personaVigente() {
 		Persona persona = new Persona(
 				ORG_ID, TipoDocumento.DNI, "12345678", "Perez", "Ana", null, null, null, null);

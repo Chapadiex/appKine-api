@@ -43,7 +43,40 @@ final class AuditEvents {
 	 */
 	static final String PERFIL_PACIENTE_ACTIVATED = "PERFIL_PACIENTE_ACTIVATED";
 
+	/**
+	 * Baja logica de una Persona (RF-M07-005).
+	 *
+	 * <p>Tipo propio y no un {@code PERSONA_UPDATED}: la pregunta "quien dio de baja esta ficha y
+	 * por que" tiene que responderse filtrando por tipo, no leyendo los detalles de todas las
+	 * ediciones. Es ademas el unico evento de este modulo cuyo <b>motivo es obligatorio</b>.
+	 */
+	static final String PERSONA_DEACTIVATED = "PERSONA_DEACTIVATED";
+
+	/** Baja logica del perfil clinico. La persona sigue existiendo y deja de ser paciente. */
+	static final String PERFIL_PACIENTE_DEACTIVATED = "PERFIL_PACIENTE_DEACTIVATED";
+
+	/** Carga de un documento administrativo (RF-M25-001). */
+	static final String ADJUNTO_UPLOADED = "ADJUNTO_UPLOADED";
+
+	/**
+	 * Descarga del contenido de un adjunto (RF-M25-002).
+	 *
+	 * <p><b>Es el unico evento de LECTURA que emite este modulo</b>, y la asimetria es deliberada:
+	 * el listado no entrega ningun contenido y auditarlo llenaria la tabla de ruido, mientras que
+	 * una descarga es el instante en que un documento personal sale del sistema. La pregunta "quien
+	 * se llevo el DNI de este paciente" no tiene otra forma de responderse.
+	 */
+	static final String ADJUNTO_DOWNLOADED = "ADJUNTO_DOWNLOADED";
+
+	/** Reclasificacion de un adjunto: categoria o titulo (RF-M25-003). */
+	static final String ADJUNTO_RECLASSIFIED = "ADJUNTO_RECLASSIFIED";
+
+	/** Baja logica de un adjunto (RF-M25-004). El binario NO se borra. */
+	static final String ADJUNTO_DEACTIVATED = "ADJUNTO_DEACTIVATED";
+
 	static final String ENTITY_PERSONA = "Persona";
+
+	static final String ENTITY_ADJUNTO = "AdjuntoAdministrativo";
 
 	private static final String MDC_TRACE_ID = "traceId";
 
