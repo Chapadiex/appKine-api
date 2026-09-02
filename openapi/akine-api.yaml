@@ -9343,6 +9343,8 @@ components:
           - CANCELACION
           - REPROGRAMACION
           - AUSENCIA
+          - LLEGADA
+          - LLEGADA_DESHECHA
           example: CANCELACION
     ExcepcionResponse:
       type: object

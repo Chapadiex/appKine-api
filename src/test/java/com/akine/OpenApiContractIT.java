@@ -203,6 +203,50 @@ class OpenApiContractIT {
 	}
 
 	/**
+	 * Los enums que el contrato publica no pueden quedarse cortos respecto del dominio.
+	 *
+	 * <p>Springdoc no deriva los valores de un enum de dominio cuando el DTO expone el campo como
+	 * {@code String}: los toma de {@code allowableValues}, que es <b>una lista escrita a mano</b>.
+	 * El gate de drift no la protege —compara el YAML contra lo que las anotaciones generan, asi
+	 * que una lista incompleta produce un YAML perfectamente coherente con una anotacion
+	 * equivocada— y el build pasa.
+	 *
+	 * <p><b>Ya paso, y este test nace de eso.</b> AKINE-05.04 agrego {@code LLEGADA} y
+	 * {@code LLEGADA_DESHECHA} a {@code TipoEventoTurno} y {@code EN_ESPERA} a
+	 * {@code EstadoTurno}; el backend empezo a emitir valores que el contrato declaraba
+	 * imposibles. Rio abajo el cliente generado no los tiene, y una pantalla que rotula por
+	 * exhaustividad muestra el evento en blanco: no falla, miente.
+	 *
+	 * <p>Se comprueban los enums que viajan como texto libre en una respuesta. La direccion es
+	 * "todo lo del dominio esta en el contrato" y no la inversa: el contrato puede declarar un
+	 * valor que todavia no se emite —seria aditivo y no rompe a nadie—, pero emitir uno que no
+	 * declara rompe al consumidor.
+	 */
+	@Test
+	@DisplayName("El contrato declara todos los valores de los enums de dominio que publica")
+	void los_enums_publicados_no_se_quedan_cortos() {
+		String contrato = normalizar(descargarContrato());
+
+		verificarEnumCompleto(contrato, com.akine.scheduling.domain.TipoEventoTurno.class);
+		verificarEnumCompleto(contrato, com.akine.scheduling.domain.EstadoTurno.class);
+	}
+
+	private static void verificarEnumCompleto(String contrato, Class<? extends Enum<?>> tipo) {
+		for (Enum<?> valor : tipo.getEnumConstants()) {
+			assertThat(contrato)
+					.as("""
+							El contrato no declara %s.%s.
+
+							Springdoc no deriva los valores cuando el DTO expone el campo como \
+							String: los toma de allowableValues, que se escribe a mano y que el \
+							gate de drift no verifica. Agregar el valor al @Schema del DTO y \
+							regenerar:
+							    %s""".formatted(tipo.getSimpleName(), valor.name(), COMANDO_ACTUALIZAR))
+					.contains("- " + valor.name());
+		}
+	}
+
+	/**
 	 * {@code info.version} del contrato generado.
 	 *
 	 * <p>Se busca dentro del bloque {@code info:} y no con un {@code contains} del numero: el

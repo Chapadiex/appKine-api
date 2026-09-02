@@ -20,10 +20,19 @@ public record EventoDeTurnoResponse(
 		@Schema(example = "9001")
 		long id,
 
+		// CUIDADO: esta lista se escribe a mano y NO la verifica ningun gate. El drift del
+		// contrato compara el YAML contra lo que las anotaciones generan, asi que una lista
+		// incompleta produce un YAML coherente con una anotacion equivocada y el build pasa.
+		// Ya paso: 05.04 agrego LLEGADA y LLEGADA_DESHECHA al enum del dominio y esta lista
+		// quedo vieja; el backend emitia dos tipos que el contrato declaraba imposibles, asi que
+		// el cliente generado no los tenia y el historial los mostraba sin rotulo.
+		// Al agregar un valor a TipoEventoTurno hay que agregarlo TAMBIEN aca.
 		@Schema(
 				description = "RESERVA y REPROGRAMACION terminan las dos en RESERVADO; el tipo es lo "
 						+ "que las distingue.",
-				allowableValues = {"RESERVA", "CONFIRMACION", "CANCELACION", "REPROGRAMACION", "AUSENCIA"},
+				allowableValues = {
+						"RESERVA", "CONFIRMACION", "CANCELACION", "REPROGRAMACION", "AUSENCIA",
+						"LLEGADA", "LLEGADA_DESHECHA"},
 				example = "CANCELACION")
 		String tipo,
 
