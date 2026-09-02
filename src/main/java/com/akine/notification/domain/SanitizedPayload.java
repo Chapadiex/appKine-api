@@ -179,12 +179,21 @@ public final class SanitizedPayload {
 			return vacio();
 		}
 		Map<String, String> datos = new LinkedHashMap<>();
-		for (String par : dividirEnPares(cuerpo)) {
+		for (String parCrudo : dividirEnPares(cuerpo)) {
+			// El par se recorta UNA vez y todos los indices se calculan sobre el recortado.
+			// Calcular el separador sobre el crudo y aplicarlo sobre el recortado corre la
+			// ventana tantos caracteres como espacios haya adelante, y la clave se lleva
+			// puesta la comilla de cierre: `organizacionNombre"` en vez de
+			// `organizacionNombre`. Como el primer par nunca tiene espacio adelante, un
+			// payload de UNA sola clave se leia bien y el defecto solo aparecia a partir de
+			// la segunda —que es exactamente por que los correos de activacion salian y los
+			// de invitacion no—.
+			String par = parCrudo.trim();
 			int separador = par.indexOf("\":");
-			if (!par.trim().startsWith("\"") || separador < 0) {
+			if (!par.startsWith("\"") || separador < 0) {
 				throw new IllegalArgumentException("El payload del outbox no es un objeto JSON plano");
 			}
-			String clave = par.trim().substring(1, separador);
+			String clave = par.substring(1, separador);
 			String valor = par.substring(separador + 2).trim();
 			if (valor.length() < 2 || valor.charAt(0) != '"' || valor.charAt(valor.length() - 1) != '"') {
 				throw new IllegalArgumentException("El payload del outbox solo admite valores de texto");

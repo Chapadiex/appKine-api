@@ -231,6 +231,33 @@ class SanitizedPayloadTest {
 				.isInstanceOf(UnsupportedOperationException.class);
 	}
 
+	/**
+	 * El defecto que dejo el outbox entero clavado, y por que ningun test lo veia.
+	 *
+	 * <p>La columna {@code payload_sanitizado} es de tipo {@code json} en MySQL, y MySQL
+	 * <b>normaliza</b> lo que guarda: lo que entra como {@code {"a":"b","c":"d"}} vuelve como
+	 * {@code {"a": "b", "c": "d"}}, con un espacio despues de cada dos puntos y de cada coma.
+	 *
+	 * <p>El parser calculaba la posicion del separador sobre el par sin recortar y la aplicaba
+	 * sobre el par recortado, asi que el espacio de adelante corria la ventana un caracter y la
+	 * clave se llevaba puesta su comilla de cierre. El primer par no tiene espacio adelante —la
+	 * llave abierta ya se saco— y por eso <b>un payload de una sola clave se leia bien</b>: los
+	 * correos de activacion salian y los de invitacion, que llevan dos, no.
+	 *
+	 * <p>Los tests que habia releian {@code toJson()}, que escribe sin espacios. Nunca vieron el
+	 * formato que devuelve la base, que es el unico que el worker lee de verdad.
+	 */
+	@Test
+	@DisplayName("Relee el JSON tal como lo devuelve MySQL, con espacios entre los pares")
+	void relee_el_formato_normalizado_por_mysql() {
+		SanitizedPayload releido = SanitizedPayload.fromJson(
+				"{\"invitadoPor\": \"Ana\", \"organizacionNombre\": \"Centro Kinesico\"}");
+
+		assertThat(releido.asMap())
+				.containsEntry("invitadoPor", "Ana")
+				.containsEntry("organizacionNombre", "Centro Kinesico");
+	}
+
 	@Test
 	@DisplayName("toString muestra las claves y jamas los valores")
 	void to_string_no_muestra_valores() {

@@ -98,6 +98,42 @@ class OutboxDispatchServiceTest {
 		assertThat(pendiente.payload().asMap()).isEmpty();
 	}
 
+	/**
+	 * Una fila con el payload ilegible no puede llevarse puesto el lote.
+	 *
+	 * <p>Este es el escenario que dejo <b>el outbox entero clavado</b> contra el stack real. La
+	 * excepcion de relectura se propagaba fuera de {@code reclamarLote}, volteaba el tick, la
+	 * fila quedaba PENDIENTE y el ciclo siguiente la reclamaba otra vez para volver a voltearlo.
+	 * No se perdia una notificacion: dejaban de salir <b>todas</b>, activaciones y recuperaciones
+	 * de contrasena incluidas, y bastaba una sola invitacion para provocarlo.
+	 *
+	 * <p>Se marca FALLIDA y no REINTENTABLE porque un payload que no parsea hoy tampoco va a
+	 * parsear dentro de un minuto: reintentar solo sirve para volver a bloquear a los demas.
+	 */
+	@Test
+	@DisplayName("una fila con payload ilegible se descarta y las demas del lote se entregan")
+	void una_fila_ilegible_no_tumba_el_lote() {
+		NotificationOutboxEntry envenenada = org.mockito.Mockito.mock(NotificationOutboxEntry.class);
+		given(envenenada.getId()).willReturn(999L);
+		given(envenenada.payload())
+				.willThrow(new IllegalArgumentException("El payload del outbox no es un objeto JSON plano"));
+		NotificationOutboxEntry sana = NotificationFixtures.en(OutboxStatus.PENDIENTE);
+
+		given(clock.now()).willReturn(AHORA);
+		given(repository.reclamarLote(AHORA, settings.tamanoLote()))
+				.willReturn(List.of(envenenada, sana));
+
+		List<PendingDelivery> lote = service().reclamarLote();
+
+		// La sana viaja igual: es la mitad que importa. Antes del arreglo no viajaba ninguna.
+		assertThat(lote).hasSize(1);
+		assertThat(lote.get(0).id()).isEqualTo(ENTRY_ID);
+
+		// Y la envenenada queda resuelta para siempre, no devuelta a la cola.
+		verify(envenenada).registrarFalloPermanente(any());
+		verify(repository).save(envenenada);
+	}
+
 	@Test
 	@DisplayName("un tick sin nada que hacer no escribe ni devuelve nada")
 	void un_tick_vacio_no_escribe() {

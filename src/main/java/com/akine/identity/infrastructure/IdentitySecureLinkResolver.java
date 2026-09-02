@@ -51,8 +51,29 @@ public class IdentitySecureLinkResolver implements SecureLinkResolver {
 	@Override
 	@Transactional(readOnly = true)
 	public Optional<String> resolveLink(NotificationType tipo, String referenciaTokenId) {
+		if (referenciaTokenId == null) {
+			return Optional.empty();
+		}
+
+		// La invitacion es el unico enlace seguro cuyo token NO vive en token_verificacion: esa
+		// tabla exige cuenta_id NOT NULL y una invitacion se emite antes de que la cuenta exista
+		// —lo dice TipoTokenVerificacion.INVITACION—. Su hash vive en colaborador_invitacion.
+		//
+		// Hasta que esto se corrigio, este metodo devolvia vacio para las invitaciones y el
+		// correo NUNCA salia: el worker lo marcaba como "token muerto" sin haberlo buscado en
+		// ningun lado. Se comprobo contra el stack real.
+		//
+		// Se lee el vault directo y no se revalida la invitacion contra la base: el enlace esta
+		// en memoria porque el encolado acaba de ocurrir, y el vault tiene su propio
+		// vencimiento. Queda una ventana chica —cancelar la invitacion entre el encolado y el
+		// envio manda un enlace que ya no abre nada—, y se acepta porque aceptar la invitacion
+		// revalida contra colaborador_invitacion de todas formas.
+		if (tipo == NotificationType.INVITACION_COLABORADOR) {
+			return secureLinkVault.leer(referenciaTokenId, Instant.now());
+		}
+
 		Optional<TipoTokenVerificacion> esperado = tipoDeTokenDe(tipo);
-		if (esperado.isEmpty() || referenciaTokenId == null) {
+		if (esperado.isEmpty()) {
 			return Optional.empty();
 		}
 
@@ -84,17 +105,21 @@ public class IdentitySecureLinkResolver implements SecureLinkResolver {
 	 */
 	@Override
 	public void consumeLink(NotificationType tipo, String referenciaTokenId) {
-		if (tipoDeTokenDe(tipo).isEmpty()) {
+		// Se pregunta si el TIPO lleva enlace, no si tiene fila en token_verificacion. Con la
+		// pregunta vieja la invitacion se colaba por el return temprano y su copia en claro
+		// quedaba en el vault hasta vencer, aunque el correo ya hubiera salido.
+		if (tipo == null || !tipo.requiereEnlaceSeguro()) {
 			return;
 		}
 		secureLinkVault.consumir(referenciaTokenId);
 	}
 
 	/**
-	 * Que tipo de token de identidad corresponde a cada correo.
+	 * Que tipo de token de {@code token_verificacion} corresponde a cada correo.
 	 *
-	 * <p>{@code CUENTA_YA_REGISTRADA} no lleva enlace y {@code INVITACION_COLABORADOR} es de
-	 * 01.03: los dos devuelven vacio en vez de buscar un token que no existe.
+	 * <p>{@code CUENTA_YA_REGISTRADA} no lleva enlace, y {@code INVITACION_COLABORADOR} no tiene
+	 * fila en esa tabla: lo resuelve {@code resolveLink} antes de llegar aca, leyendo el vault.
+	 * Los dos devuelven vacio en vez de buscar un token que no existe.
 	 */
 	private static Optional<TipoTokenVerificacion> tipoDeTokenDe(NotificationType tipo) {
 		if (tipo == null) {

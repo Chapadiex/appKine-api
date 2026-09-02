@@ -3,6 +3,7 @@ package com.akine.notification.application;
 import com.akine.notification.domain.ErrorSanitizer;
 import com.akine.notification.domain.NotificationOutboxEntry;
 import com.akine.notification.domain.OutboxStatus;
+import com.akine.notification.domain.SanitizedPayload;
 import com.akine.notification.domain.OutboxWorkerSettings;
 import com.akine.notification.domain.port.JitterSource;
 import com.akine.notification.domain.port.NotificationClock;
@@ -63,6 +64,20 @@ public class OutboxDispatchService {
 	 * <p>El bloqueo lo hace el repositorio con {@code FOR UPDATE SKIP LOCKED}: dos instancias
 	 * del backend —o dos ticks solapados— se llevan lotes distintos en vez de pisarse o de
 	 * quedar una esperando a la otra.
+	 *
+	 * <h2>Una fila ilegible no puede tumbar el lote</h2>
+	 *
+	 * <p>Releer el payload puede fallar, y hasta que esto se blindo <b>esa excepcion se
+	 * propagaba y volteaba el tick entero</b>. La fila quedaba PENDIENTE, la volvia a reclamar
+	 * el ciclo siguiente y volvia a volterlo: no era una notificacion perdida sino <b>el outbox
+	 * entero clavado para siempre</b>, activaciones y recuperaciones de contrasena incluidas.
+	 * Se comprobo contra el stack real —una invitacion basto para que ninguna cuenta nueva
+	 * pudiera activarse—.
+	 *
+	 * <p>Ahora cada fila se convierte por separado y la que no se puede leer se marca FALLIDA
+	 * en el acto. Es lo mismo que ya hace {@code OutboxDispatcher} con un template mal formado,
+	 * y por el mismo motivo: un payload que no parsea hoy no va a parsear en el proximo intento,
+	 * asi que reintentar solo sirve para bloquear a los demas.
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public List<PendingDelivery> reclamarLote() {
@@ -71,13 +86,24 @@ public class OutboxDispatchService {
 				repository.reclamarLote(ahora, settings.tamanoLote());
 		List<PendingDelivery> pendientes = new ArrayList<>(reclamadas.size());
 		for (NotificationOutboxEntry entry : reclamadas) {
+			SanitizedPayload payload;
+			try {
+				payload = entry.payload();
+			} catch (RuntimeException e) {
+				log.warn("Payload ilegible en la notificacion id={}: se descarta sin reintentar",
+						entry.getId());
+				entry.marcarEnProceso(ahora);
+				entry.registrarFalloPermanente(ErrorSanitizer.sanitize(e));
+				repository.save(entry);
+				continue;
+			}
 			entry.marcarEnProceso(ahora);
 			repository.save(entry);
 			pendientes.add(new PendingDelivery(
 					entry.getId(),
 					entry.getTipo(),
 					entry.getDestinatario(),
-					entry.payload(),
+					payload,
 					entry.getReferenciaTokenId(),
 					entry.getIntentos()));
 		}
