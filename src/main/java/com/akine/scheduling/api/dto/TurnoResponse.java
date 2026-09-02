@@ -47,7 +47,7 @@ public record TurnoResponse(
 				description = "Estado de la RESERVA. Nunca dice que la atencion ocurrio: eso lo dice "
 						+ "la Sesion. `CANCELADO` libera el lugar; `AUSENTE` **no**, porque la hora "
 						+ "se consumio igual.",
-				allowableValues = {"RESERVADO", "CONFIRMADO", "CANCELADO", "AUSENTE"},
+				allowableValues = {"RESERVADO", "CONFIRMADO", "EN_ESPERA", "CANCELADO", "AUSENTE"},
 				example = "RESERVADO")
 		String estado,
 
@@ -69,6 +69,13 @@ public record TurnoResponse(
 		@Schema(description = "Ultima vez que el turno se movio de horario. El detalle completo esta en el historial.", example = "2026-09-12T09:00:00Z")
 		Instant reprogramadoEn,
 
+		@Schema(
+				description = "Hora REAL de llegada del paciente al centro, puesta por el servidor "
+						+ "(M13). Ausente mientras no llego, y se vacia si se deshace el check-in: un "
+						+ "check-in deshecho no dejo una llegada, dejo un error corregido.",
+				example = "2026-09-15T11:52:00Z")
+		Instant llegadaEn,
+
 		@Schema(description = "Version para el control optimista. Se envia al cancelar, mover o marcar ausencia.", example = "0")
 		long version) {
 
@@ -78,6 +85,6 @@ public record TurnoResponse(
 				vista.profesionalId(), vista.espacioId(), vista.inicio(), vista.fin(),
 				vista.estado(), vista.reservadoEn(), vista.confirmadoEn(),
 				vista.motivoCancelacion(), vista.canceladoEn(), vista.ausenteEn(),
-				vista.reprogramadoEn(), vista.version());
+				vista.reprogramadoEn(), vista.llegadaEn(), vista.version());
 	}
 }

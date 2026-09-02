@@ -9,7 +9,12 @@ import com.akine.person.spi.PacienteSnapshot;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Implementacion de {@link PacienteDirectory}: el borde por donde {@code person} responde a los
@@ -40,6 +45,31 @@ public class PersonPacienteDirectory implements PacienteDirectory {
 		return personas.findByIdAndOrganizationId(personaId, organizationId)
 				.map(persona -> instantanea(
 						persona, perfiles.buscarVigente(organizationId, personaId).orElse(null)));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Map<Long, PacienteSnapshot> findAll(
+			long organizationId, Collection<Long> personaIds) {
+
+		if (personaIds == null || personaIds.isEmpty()) {
+			return Map.of();
+		}
+		// Se deduplica antes de consultar: la recepcion de un dia puede traer varios turnos del
+		// mismo paciente, y pedirlo N veces a la base para armar un mapa que lo va a tener una
+		// sola vez es trabajo que no le sirve a nadie.
+		List<Long> ids = personaIds.stream().filter(Objects::nonNull).distinct().toList();
+
+		// Dos consultas y no una por persona: la de perfiles ya existia en batch desde 03.01.
+		Map<Long, PerfilPaciente> perfilesPorPersona =
+				perfiles.buscarVigentesDePersonas(organizationId, ids).stream()
+						.collect(Collectors.toMap(PerfilPaciente::getPersonaId, perfil -> perfil,
+								(primero, segundo) -> primero));
+
+		return personas.findAllByIdInAndOrganizationId(ids, organizationId).stream()
+				.collect(Collectors.toMap(
+						Persona::getId,
+						persona -> instantanea(persona, perfilesPorPersona.get(persona.getId()))));
 	}
 
 	private PacienteSnapshot instantanea(Persona persona, PerfilPaciente perfil) {

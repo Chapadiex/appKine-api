@@ -504,3 +504,36 @@ padrón entero de su organización. §4 le asigna "Propio" a esa celda. Aprobar 
 **no lo resolvería**: el problema no es el código de permiso sino el alcance `OWN`, que no existe.
 Queda como hueco conocido con etapa destino en el autoservicio, y no se tapa con un permiso que no
 cambiaría ningún comportamiento.
+
+## 13. Enmiendas — AKINE-05.04 reducida (Recepción y check-in)
+
+### 13.1 La recepción no estrena ningún permiso, y eso es la decisión
+
+El check-in y la agenda del día se autorizan con los permisos que **ya existían** para turnos:
+`turno:read` para leer la agenda del día y un turno suelto, `turno:manage` para registrar la
+llegada y deshacerla.
+
+**No se creó `recepcion:*` a propósito.** Un permiso nuevo por pantalla es la forma más rápida de
+volver la matriz inauditable: quien administra un centro tendría que entender qué es "recepción"
+como concepto separado de "turnos" para decidir a quién dárselo, cuando en los hechos es el mismo
+trabajo sobre las mismas filas. El check-in **es una transición del Turno**, y quien puede
+cancelar un turno con más razón puede decir que el paciente llegó.
+
+Consecuencia práctica, que conviene tener presente: **el `PROFESIONAL` no tiene `turno:manage`
+por asignación base**, así que no puede marcar llegadas salvo que se le otorgue por grant. Es
+coherente con M13 —recepción es trabajo administrativo— pero deja sin resolver el centro de un
+solo kinesiólogo que atiende y recibe. Se resuelve con un grant, que es exactamente para lo que
+existe.
+
+### 13.2 Lo que 05.04 NO habilita — dicho para que nadie lo asuma
+
+- **No valida cobertura, órdenes ni autorizaciones.** Es recableo de DP-10 y no un olvido: 03.06 y
+  04.05 quedaron fuera de alcance y con cobertura PARTICULAR única no hay nada que validar. El día
+  que existan, la validación es de esta misma transacción y **puede exigir permisos nuevos** —leer
+  una autorización no es leer un turno—.
+- **No expone ningún dato clínico.** La respuesta de recepción lleva nombre, documento y nombre
+  comercial de la oferta. Quien atiende el mostrador no necesita saber por qué viene el paciente,
+  y `TurnoDelDiaResponse` es un tipo aparte justamente para que nadie le agregue un campo clínico
+  "de paso".
+- **No hay estado de atendido.** Un turno que pasó por recepción queda `EN_ESPERA` hasta que se
+  cancele o se deshaga el check-in; que la prestación ocurrió lo dice la Sesión y sólo ella.

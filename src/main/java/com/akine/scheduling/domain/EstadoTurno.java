@@ -57,10 +57,60 @@ public enum EstadoTurno {
 	 * <p>DP-04: la ausencia se registra y <b>nunca</b> elimina nada, ni el turno ni —cuando exista
 	 * el modelo de serie— los turnos siguientes.
 	 */
-	AUSENTE;
+	AUSENTE,
 
-	/** {@code true} si desde este estado todavia se puede cancelar, reprogramar o marcar ausencia. */
+	/**
+	 * El paciente llego al centro y espera ser atendido (M13, AKINE-05.04).
+	 *
+	 * <p><b>Es un estado de la RESERVA y no de la atencion.</b> DP-05 separa Turno, Recepcion y
+	 * Sesion: la recepcionista marca la llegada sin abrir ninguna atencion, y el profesional abre
+	 * la atencion sin depender de que alguien la haya marcado. Que un turno no pase por aca no
+	 * impide atenderlo — impide saber a que hora llego el paciente, que es otra cosa.
+	 *
+	 * <p>Tampoco es "atendido": la prestacion la registra la Sesion, y su cierre es el que decide
+	 * si hubo asistencia. Un paciente puede estar EN_ESPERA y irse antes de que lo llamen.
+	 */
+	EN_ESPERA;
+
+	/** {@code true} si desde este estado todavia se puede reprogramar o marcar ausencia. */
 	public boolean admiteTransicion() {
 		return this == RESERVADO || this == CONFIRMADO;
+	}
+
+	/**
+	 * {@code true} si desde este estado todavia se puede cancelar.
+	 *
+	 * <p>Es mas amplio que {@link #admiteTransicion()} por un caso concreto: <b>el paciente llego y
+	 * el profesional no lo pudo atender</b>. Ese turno hay que poder cancelarlo, y obligar a
+	 * deshacer antes el check-in seria peor que permitirlo — borraria la evidencia de que la
+	 * persona vino, que es justamente lo que la recepcion existe para registrar.
+	 *
+	 * <p>Reprogramar y marcar ausencia siguen fuera desde {@code EN_ESPERA}: mover un turno cuya
+	 * hora ya llego no tiene sentido, y afirmar que no vino alguien que esta en la sala es
+	 * directamente falso.
+	 */
+	public boolean admiteCancelacion() {
+		return this == RESERVADO || this == CONFIRMADO || this == EN_ESPERA;
+	}
+
+	/**
+	 * {@code true} si desde este estado se puede registrar la llegada del paciente.
+	 *
+	 * <p>Un turno cancelado no admite llegada —no hay a que llegar— y uno ya marcado ausente
+	 * tampoco: la ausencia afirma que <b>no</b> vino, y aceptar el check-in encima dejaria la fila
+	 * diciendo las dos cosas. Si el ausente fue un error, primero se corrige la ausencia.
+	 */
+	public boolean admiteLlegada() {
+		return this == RESERVADO || this == CONFIRMADO;
+	}
+
+	/**
+	 * {@code true} si el turno cerro su ciclo y ya no admite ningun cambio.
+	 *
+	 * <p>{@code EN_ESPERA} <b>no</b> es terminal: el paciente que llego todavia puede irse, y de
+	 * ahi se sale deshaciendo el check-in o cancelando.
+	 */
+	public boolean esTerminal() {
+		return this == CANCELADO || this == AUSENTE;
 	}
 }

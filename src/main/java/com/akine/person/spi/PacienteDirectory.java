@@ -34,4 +34,20 @@ public interface PacienteDirectory {
 	 * baja", que es un conflicto y no un 404.
 	 */
 	Optional<PacienteSnapshot> find(long organizationId, long personaId);
+
+	/**
+	 * Las personas de esos ids, indexadas por id. Los que no existan en el tenant no aparecen.
+	 *
+	 * <p><b>Existe para que una pantalla de lista no haga N consultas.</b> El primer consumidor es
+	 * la recepcion de M13: la agenda del dia son decenas de turnos y cada uno necesita el nombre
+	 * y el documento de su paciente. Resolverlos de a uno con {@link #find} convierte una pantalla
+	 * en tantas consultas como turnos haya, y el numero crece con lo lleno que este el dia — que
+	 * es exactamente el dia en que la recepcion mas la necesita.
+	 *
+	 * <p>Se devuelve un mapa y no una lista para que el llamador no tenga que reindexar, y sobre
+	 * todo para que <b>no pueda asumir que el orden o la cantidad coinciden</b> con lo que pidio:
+	 * un id de otro tenant simplemente no vuelve.
+	 */
+	java.util.Map<Long, PacienteSnapshot> findAll(
+			long organizationId, java.util.Collection<Long> personaIds);
 }

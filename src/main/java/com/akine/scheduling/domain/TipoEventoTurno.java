@@ -22,5 +22,17 @@ public enum TipoEventoTurno {
 	REPROGRAMACION,
 
 	/** El paciente no vino. No libera el lugar. */
-	AUSENCIA
+	AUSENCIA,
+
+	/** El paciente llego al centro y quedo en espera (M13). */
+	LLEGADA,
+
+	/**
+	 * Se deshizo un check-in.
+	 *
+	 * <p>Tiene tipo propio en vez de reusar {@code LLEGADA} con otro estado destino porque es lo
+	 * unico que queda del error: la fila del turno se limpia —vuelve a no tener hora de llegada—
+	 * y sin este evento no habria forma de saber que alguien marco por equivocacion y lo corrigio.
+	 */
+	LLEGADA_DESHECHA
 }

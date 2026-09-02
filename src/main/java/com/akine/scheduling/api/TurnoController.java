@@ -5,30 +5,37 @@ import com.akine.scheduling.api.dto.EventoDeTurnoResponse;
 import com.akine.scheduling.api.dto.RegistrarAusenciaRequest;
 import com.akine.scheduling.api.dto.ReprogramarTurnoRequest;
 import com.akine.scheduling.api.dto.ReservarTurnoRequest;
+import com.akine.scheduling.api.dto.TurnoDelDiaResponse;
 import com.akine.scheduling.api.dto.TurnoResponse;
 import com.akine.scheduling.application.CicloDeTurnoService;
 import com.akine.scheduling.application.ReprogramacionCommand;
+import com.akine.scheduling.application.RecepcionService;
 import com.akine.scheduling.application.ReservaCommand;
 import com.akine.scheduling.application.TurnoService;
 import com.akine.scheduling.application.TurnoView;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -47,15 +54,18 @@ public class TurnoController {
 
 	private final TurnoService turnoService;
 	private final CicloDeTurnoService cicloService;
+	private final RecepcionService recepcionService;
 	private final SchedulingApiActor apiActor;
 
 	public TurnoController(
 			TurnoService turnoService,
 			CicloDeTurnoService cicloService,
+			RecepcionService recepcionService,
 			SchedulingApiActor apiActor) {
 
 		this.turnoService = turnoService;
 		this.cicloService = cicloService;
+		this.recepcionService = recepcionService;
 		this.apiActor = apiActor;
 	}
 
@@ -323,5 +333,162 @@ public class TurnoController {
 				cicloService.historial(apiActor.current(), consultorioId, turnoId).stream()
 						.map(EventoDeTurnoResponse::de)
 						.toList());
+	}
+
+	// =================================================================================
+	// Recepcion — M13, AKINE-05.04
+	// =================================================================================
+
+	/**
+	 * <p><b>Es la unica lectura de un turno que existe</b>, y por eso nace con la recepcion: hasta
+	 * ahora el contrato solo publicaba slots libres y el historial de transiciones, asi que una
+	 * pantalla que llegara por un enlace directo tenia que deducir el estado desde los eventos.
+	 */
+	@GetMapping("/{turnoId}")
+	@Operation(
+			summary = "Ver un turno",
+			description = """
+					El turno con el paciente y la oferta ya resueltos, que es lo que necesita \
+					cualquier pantalla que llegue por un enlace directo.
+
+					Exige `turno:read`. **No lleva ningun dato clinico**: la atencion es otra \
+					cosa y otra pantalla (DP-05).""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "El turno"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:read` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El turno o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TurnoDelDiaResponse> verTurno(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId) {
+
+		return ResponseEntity.ok(TurnoDelDiaResponse.de(
+				recepcionService.ver(apiActor.current(), consultorioId, turnoId)));
+	}
+
+	/**
+	 * <p>El dia se resuelve en la <b>zona de la sede</b>. Un turno es un instante UTC pero "el 7 de
+	 * septiembre" es una fecha local: convertir con la zona del servidor haria que la agenda
+	 * empiece y termine en horas distintas segun donde este desplegado.
+	 */
+	@GetMapping
+	@Operation(
+			summary = "Agenda del dia de la sede",
+			description = """
+					Los turnos de la sede en un dia, del mas temprano al mas tarde. Es la pantalla \
+					de recepcion: quien viene hoy, quien ya llego y quien falta.
+
+					**Incluye los cancelados, con su motivo.** No es un descuido: alguien puede \
+					presentarse al mostrador con un turno que se cancelo, y una lista que los \
+					esconda deja a la recepcionista sin nada que decirle.
+
+					El dia se interpreta en la zona horaria de la sede. Exige `turno:read`.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Turnos del dia"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "`fecha` ausente o mal formada",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:read` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede no existe o es de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<List<TurnoDelDiaResponse>> delDia(
+			@PathVariable long consultorioId,
+			@RequestParam
+			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+			@Parameter(description = "Dia a listar, en la zona de la sede", example = "2026-09-15")
+			LocalDate fecha) {
+
+		return ResponseEntity.ok(
+				recepcionService.delDia(apiActor.current(), consultorioId, fecha).stream()
+						.map(TurnoDelDiaResponse::de)
+						.toList());
+	}
+
+	/**
+	 * <p><b>La hora la pone el servidor y el cuerpo va vacio.</b> No hay ningun campo que mandar:
+	 * aceptar una hora del cliente significaria que el reloj del mostrador decide a que hora llego
+	 * un paciente, y la hora de llegada es evidencia administrativa.
+	 */
+	@PostMapping("/{turnoId}/llegada")
+	@Operation(
+			summary = "Registrar la llegada del paciente",
+			description = """
+					Marca que el paciente llego al centro y lo deja **en espera** (RF-M13-002). La \
+					hora la pone el servidor: no se envia ningun cuerpo.
+
+					**Es idempotente**: marcar dos veces devuelve 200 sin mover la hora ni \
+					registrar un segundo evento. El doble click en el mostrador es el caso normal.
+
+					La llegada es un estado de la RESERVA, no de la atencion (DP-05). Que un turno \
+					no pase por aca no impide atenderlo; impide saber a que hora llego el paciente.
+
+					**No valida cobertura ni autorizaciones**: con cobertura PARTICULAR unica no \
+					hay condicion administrativa que validar (recableo DP-10).""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Paciente en espera"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:manage` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El turno o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "El turno esta cancelado o ya marcado ausente",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TurnoResponse> registrarLlegada(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId) {
+
+		return ResponseEntity.ok(TurnoResponse.de(
+				cicloService.registrarLlegada(apiActor.current(), consultorioId, turnoId)));
+	}
+
+	@DeleteMapping("/{turnoId}/llegada")
+	@Operation(
+			summary = "Deshacer un check-in",
+			description = """
+					Revierte una llegada marcada sobre el turno equivocado. El turno vuelve al \
+					estado del que vino —RESERVADO o CONFIRMADO— y **se limpia la hora de \
+					llegada**: un check-in deshecho no dejo una llegada, dejo un error corregido.
+
+					El rastro de que ocurrio queda en el historial, que es append-only.
+
+                    **No es idempotente**: deshacer lo ya deshecho responde 409. A diferencia del \
+                    check-in, aca el segundo click no es un doble click sino una operacion sobre \
+                    un turno que entre medio pudo haber cambiado de estado.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Check-in revertido"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:manage` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El turno o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "El turno no esta en espera",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TurnoResponse> deshacerLlegada(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId) {
+
+		return ResponseEntity.ok(TurnoResponse.de(
+				cicloService.deshacerLlegada(apiActor.current(), consultorioId, turnoId)));
 	}
 }

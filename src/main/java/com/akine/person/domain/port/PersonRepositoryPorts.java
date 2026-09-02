@@ -52,6 +52,15 @@ public final class PersonRepositoryPorts {
 		Optional<Persona> findByIdAndOrganizationId(Long id, Long organizationId);
 
 		/**
+		 * Varias personas del tenant de una sola consulta, activas o no.
+		 *
+		 * <p>Es lo que evita el N+1 de las pantallas que muestran una lista de hechos sobre
+		 * pacientes —la recepcion del dia, primero—. Los ids de otro tenant no vuelven: el filtro
+		 * por organizacion va en la consulta y no despues.
+		 */
+		List<Persona> findAllByIdInAndOrganizationId(List<Long> ids, Long organizationId);
+
+		/**
 		 * Busqueda del padron (RF-M07-001), paginada en la BASE.
 		 *
 		 * <p><b>Paginada de verdad, no recortada en memoria</b>, a diferencia de los listados de

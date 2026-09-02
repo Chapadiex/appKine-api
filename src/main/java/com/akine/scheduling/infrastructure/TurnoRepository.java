@@ -33,6 +33,25 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("consultorioId") long consultorioId,
 			@Param("turnoId") long turnoId);
 
+	/**
+	 * <p>Sin filtro de baja logica, y a proposito: los turnos cancelados del dia forman parte de
+	 * lo que la recepcion necesita ver. Es la unica consulta de esta clase que los incluye.
+	 */
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.inicio >= :desde
+			   AND t.inicio < :hasta
+			 ORDER BY t.inicio ASC, t.id ASC
+			""")
+	List<Turno> findDeLaSedeEnVentana(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
 	@Override
 	@Query("""
 			SELECT t FROM Turno t

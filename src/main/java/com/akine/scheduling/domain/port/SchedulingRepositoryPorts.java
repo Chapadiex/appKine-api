@@ -69,6 +69,22 @@ public final class SchedulingRepositoryPorts {
 		Optional<Turno> findByIdInScope(long organizationId, long consultorioId, long turnoId);
 
 		/**
+		 * Los turnos de una sede que empiezan dentro de {@code [desde, hasta)}, del mas temprano
+		 * al mas tarde. Es la agenda del dia de la recepcion (M13).
+		 *
+		 * <p><b>Trae tambien los cancelados.</b> A diferencia de las consultas de solapamiento,
+		 * que filtran por {@code deletedAt IS NULL} porque preguntan por ocupacion, esta pregunta
+		 * por <b>que paso hoy</b>: alguien puede presentarse al mostrador con un turno que se
+		 * cancelo, y esconderlo deja a la recepcionista sin nada que decirle.
+		 *
+		 * <p>Se filtra por {@code inicio} y no por solapamiento porque la recepcion piensa en
+		 * "los turnos de hoy", que son los que empiezan hoy. Un turno que arranco ayer 23:30 y
+		 * termina hoy 00:30 pertenece a la agenda de ayer, que es donde su paciente lo busca.
+		 */
+		List<Turno> findDeLaSedeEnVentana(
+				long organizationId, long consultorioId, Instant desde, Instant hasta);
+
+		/**
 		 * El turno creado con esa clave de idempotencia, si existe.
 		 *
 		 * <p>El alcance es la ORGANIZACION y no la sede, igual que el unique de V30: una clave
