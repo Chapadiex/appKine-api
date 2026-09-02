@@ -66,6 +66,9 @@ tags:
   name: Auditoria
 - description: Alta y administracion de tenants y sus sedes
   name: Organizaciones
+- description: Catalogo de financiadores y planes de cobertura de la organizacion
+    (M15)
+  name: Financiadores y planes
 - description: "Atencion real: inicio idempotente y guardado de borrador (M14)"
   name: Sesiones
 - description: "Catalogo comercial: que incluye cada plan"
@@ -4128,6 +4131,533 @@ paths:
       summary: Mover un turno a otro horario
       tags:
       - Turnos
+  /api/v1/financiadores:
+    get:
+      description: |-
+        Devuelve los financiadores de la organizacion del contexto, ordenados por nombre.
+
+        q busca por nombre, por codigo y por CUIT. Los comodines que el usuario escriba se escapan: un % tecleado busca un % literal y no todo el catalogo.
+
+        estado filtra por ciclo de vida y por defecto trae solo los ACTIVOS. Con el default, un selector nunca ofrece un financiador dado de baja.
+
+        tipo acota la clasificacion. Ausente trae todos.
+
+        Exige contexto de organizacion activo: sin el, 403.
+      operationId: listFinanciadores
+      parameters:
+      - description: "Texto a buscar en nombre, codigo y CUIT. Vacio trae todo"
+        example: osde
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Filtro por ciclo de vida. Si se omite, ACTIVO"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      - description: "Filtro por clasificacion. Si se omite, todos"
+        in: query
+        name: tipo
+        required: false
+        schema:
+          type: string
+          enum:
+          - OBRA_SOCIAL
+          - PREPAGA
+          - ART
+          - MUTUAL
+          - ORGANISMO_PUBLICO
+          - OTRO
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FinanciadorResponse"
+          description: "Financiadores de la organizacion, ordenados por nombre"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin sesion o sin contexto de trabajo activo
+      summary: Buscar financiadores de la organizacion
+      tags:
+      - Financiadores y planes
+    post:
+      description: |-
+        Exige convenio:manage sobre la sede del contexto. El financiador queda en la organizacion, no en esa sede.
+
+        El codigo es unico entre los financiadores VIGENTES de la organizacion y no se puede cambiar despues: es lo que las coberturas y los convenios guardan. El codigo de uno dado de baja SI se puede reusar. El nombre tambien es unico entre los vigentes.
+
+        El CUIT se normaliza a 11 digitos: los guiones y los puntos se descartan antes de guardar y de comparar. Es unico entre los vigentes cuando esta presente, y varios financiadores SIN CUIT conviven sin chocar.
+
+        No lleva Idempotency-Key y es deliberado: un financiador no consume cupo de ningun plan, asi que lo unico que un reintento podria producir es una fila duplicada, y contra eso el unique de codigo es una garantia mas fuerte que una clave que depende de que el cliente la mande bien.
+      operationId: createFinanciador
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFinanciadorRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanciadorResponse"
+          description: Financiador creado. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos o faltantes, o un CUIT que no queda en 11\
+            \ digitos"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Codigo (financiador-codigo-taken), nombre (financiador-nombre-taken)\
+            \ o CUIT (financiador-cuit-taken) repetido entre los financiadores vigentes\
+            \ de la organizacion"
+      summary: Dar de alta un financiador
+      tags:
+      - Financiadores y planes
+  /api/v1/financiadores/{financiadorId}:
+    delete:
+      description: |-
+        Baja LOGICA con motivo obligatorio. Exige convenio:manage sobre la sede del contexto.
+
+        LA BAJA NO CASCADEA, y esto es lo mas importante de la operacion. Los planes del financiador conservan sus filas y las coberturas y convenios ya firmados SIGUEN RESOLVIENDO: RN-M15-003 prohibe eliminar historicos. Lo unico que la baja impide es CREAR planes nuevos bajo el —409 financiador-inactivo— y que sus planes se ofrezcan para selecciones nuevas.
+
+        Tener planes activos NO bloquea la baja: obligar a darlos de baja uno por uno para poder dejar de trabajar con una obra social es trabajo burocratico sin ninguna garantia a cambio. Lo que si se hace es contarlos y dejar el numero en la auditoria.
+
+        El motivo es obligatorio: sin el, la auditoria no responde por que seis meses despues.
+
+        No hay reactivacion. Un financiador que vuelve es un alta nueva, no una baja deshecha.
+      operationId: deactivateFinanciador
+      parameters:
+      - description: Identificador del financiador
+        example: 31
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateContractingRequest"
+        required: true
+      responses:
+        "204":
+          description: Financiador dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El financiador no existe o es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El financiador ya estaba dado de baja (financiador-already-inactive)
+      summary: Dar de baja un financiador
+      tags:
+      - Financiadores y planes
+    get:
+      description: |-
+        Devuelve el financiador con 200 aunque este dado de baja: RN-M15-003 exige que los historicos que lo referencian sigan resolviendo, y responder "no existe" seria borrar historia por la puerta de atras.
+
+        Un id de otra organizacion responde 404 igual que uno inexistente. Los dos casos son indistinguibles a proposito.
+      operationId: getFinanciador
+      parameters:
+      - description: Identificador del financiador
+        example: 31
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanciadorResponse"
+          description: "El financiador, activo o dado de baja"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El financiador no existe o es de otra organizacion
+      summary: Ver un financiador
+      tags:
+      - Financiadores y planes
+    put:
+      description: |-
+        Exige convenio:manage sobre la sede del contexto.
+
+        El codigo NO se puede cambiar y por eso no esta en el cuerpo: es la clave con la que las coberturas y los convenios ya firmados lo referencian, y cambiarlo reescribiria el significado de filas que no participan de esta llamada. Renombrar es cambiar nombre.
+
+        Los campos que llegan en null NO se tocan. Es edicion parcial declarada: obligar a mandar el recurso entero forzaria a la pantalla a releerlo antes de cada guardado para no pisar lo que otro cambio en el medio, y expectedVersion ya resuelve ese problema mejor.
+
+        Un financiador dado de baja no admite ediciones: 409 financiador-inactivo. Sus datos historicos siguen siendo consultables.
+      operationId: updateFinanciador
+      parameters:
+      - description: Identificador del financiador
+        example: 31
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFinanciadorRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanciadorResponse"
+          description: Financiador actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El financiador no existe o es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Nombre o CUIT repetido, financiador dado de baja (financiador-inactivo),\
+            \ o version desactualizada (conflict)"
+      summary: Editar un financiador
+      tags:
+      - Financiadores y planes
+  /api/v1/financiadores/{financiadorId}/planes:
+    get:
+      description: |-
+        Devuelve los planes del financiador, ordenados por nombre.
+
+        estado filtra el CICLO DE VIDA y por defecto trae solo los ACTIVOS. NO filtra por vigencia: un plan activo con la vigencia vencida sigue siendo ACTIVO y se devuelve, con vigente = false. Son dos cosas distintas y la pantalla necesita las dos para explicar por que un plan no se ofrece.
+
+        fecha es el dia contra el que se calcula vigente. Si se omite, hoy.
+      operationId: listPlanesDeCobertura
+      parameters:
+      - description: Identificador del financiador
+        example: 31
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Filtro por ciclo de vida. Si se omite, ACTIVO"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      - description: "Dia contra el que se calcula vigente. Si se omite, hoy"
+        example: 2026-09-02
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlanCoberturaResponse"
+          description: "Planes del financiador, ordenados por nombre"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El financiador no existe o es de otra organizacion
+      summary: Listar los planes de un financiador
+      tags:
+      - Financiadores y planes
+    post:
+      description: |-
+        Exige convenio:manage sobre la sede del contexto.
+
+        UN FINANCIADOR DADO DE BAJA NO ADMITE PLANES NUEVOS: 409 financiador-inactivo. Es la contracara de que la baja no cascadee — lo que se impide es lo nuevo, no lo que ya existe.
+
+        El codigo es unico entre los planes VIGENTES de ESE financiador y no se puede cambiar despues. El alcance es el financiador y no la organizacion: dos financiadores distintos pueden tener los dos un plan 210, y obligar a que no se repita entre ellos forzaria a inventar codigos que el financiador real no usa.
+
+        vigenciaHasta es el ULTIMO dia INCLUSIVE y puede coincidir con vigenciaDesde: un plan que vale un solo dia es un estado real. Null significa sin fin previsto.
+
+        copago y moneda viajan juntos o no viajan: un importe sin moneda no es un importe. Copago null significa "sin copago declarado", que NO es lo mismo que cero.
+
+        No lleva Idempotency-Key, con el mismo criterio que el alta de financiador.
+      operationId: createPlanDeCobertura
+      parameters:
+      - description: Identificador del financiador
+        example: 31
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanCoberturaRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanCoberturaResponse"
+          description: Plan creado. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, vigencia invertida, o copago sin moneda"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El financiador no existe o es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Codigo (plan-cobertura-codigo-taken) o nombre (plan-cobertura-nombre-taken)\
+            \ repetido entre los planes vigentes de ese financiador, o financiador\
+            \ dado de baja (financiador-inactivo)"
+      summary: Dar de alta un plan bajo un financiador
+      tags:
+      - Financiadores y planes
+  /api/v1/financiadores/{financiadorId}/planes/{planId}:
+    delete:
+      description: |-
+        Baja LOGICA con motivo obligatorio. Exige convenio:manage sobre la sede del contexto.
+
+        LAS COBERTURAS YA FIRMADAS BAJO ESTE PLAN NO SE TOCAN. Siguen resolviendo con la copia congelada que guardaron al firmarse: RN-M15-003 prohibe eliminar historicos. Lo unico que la baja impide es que el plan se ofrezca para selecciones nuevas (RN-M15-002).
+
+        Libera el codigo y el nombre para un plan nuevo del mismo financiador.
+
+        Si lo que se quiere es que el plan deje de ofrecerse a partir de una fecha pero siga siendo un plan vigente hasta entonces, la operacion NO es esta: es cerrar la vigencia con el PUT.
+
+        No hay reactivacion.
+      operationId: deactivatePlanDeCobertura
+      parameters:
+      - description: Identificador del financiador
+        example: 31
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del plan
+        example: 88
+        in: path
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateContractingRequest"
+        required: true
+      responses:
+        "204":
+          description: Plan dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El plan no existe, es de otra organizacion, o es de otro financiador\
+            \ que el de la ruta"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El plan ya estaba dado de baja (plan-cobertura-already-inactive)
+      summary: Dar de baja un plan de cobertura
+      tags:
+      - Financiadores y planes
+    put:
+      description: |-
+        Exige convenio:manage sobre la sede del contexto.
+
+        CERRAR LA VIGENCIA ES ESTA OPERACION, mandando vigenciaHasta. RF-M15-005 dice "actualizar o cerrar vigencia" y son la misma escritura. Cerrar la vigencia NO es dar de baja: el plan queda ACTIVO y consultable, y lo unico que cambia es que deja de ofrecerse para selecciones posteriores a esa fecha.
+
+        Ni el codigo ni el financiador se pueden cambiar y por eso no estan en el cuerpo: son la identidad del plan, y las coberturas ya firmadas la referencian.
+
+        Los campos que llegan en null NO se tocan. La vigencia se valida como par aunque llegue de a una: mandar solo vigenciaHasta se compara contra el vigenciaDesde guardado.
+
+        Un plan dado de baja no admite ediciones: 409 plan-cobertura-inactivo. Un plan de un financiador dado de baja SI se puede editar: dejar de trabajar con una obra social no puede tener como efecto que sus planes queden congelados con un error de tipeo.
+      operationId: updatePlanDeCobertura
+      parameters:
+      - description: Identificador del financiador
+        example: 31
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del plan
+        example: 88
+        in: path
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlanCoberturaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanCoberturaResponse"
+          description: Plan actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, vigencia invertida, o copago sin moneda"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El plan no existe, es de otra organizacion, o es de otro financiador\
+            \ que el de la ruta"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Nombre repetido (plan-cobertura-nombre-taken), plan dado de\
+            \ baja (plan-cobertura-inactivo), o version desactualizada (conflict)"
+      summary: "Editar un plan, o cerrar su vigencia"
+      tags:
+      - Financiadores y planes
   /api/v1/me/contexts:
     get:
       description: |-
@@ -9107,6 +9637,68 @@ components:
       - fechaHasta
       - motivo
       - tipo
+    CreateFinanciadorRequest:
+      type: object
+      description: Datos para dar de alta un financiador
+      properties:
+        codigo:
+          type: string
+          description: "Clave estable con la que las coberturas y convenios lo referencian.\
+            \ NO se puede cambiar despues. Unico entre los financiadores VIGENTES\
+            \ de la organizacion: el codigo de uno dado de baja si se puede reusar"
+          example: OSDE
+          maxLength: 64
+          minLength: 0
+        cuit:
+          type: string
+          description: "CUIT. Se normaliza a 11 digitos: los guiones y los puntos\
+            \ se descartan antes de guardar y de comparar, asi que 30-71234567-8 y\
+            \ 30712345678 son el mismo. Unico entre los vigentes cuando esta presente;\
+            \ varios financiadores SIN CUIT conviven sin chocar"
+          example: "30712345678"
+          maxLength: 20
+          minLength: 0
+        emailContacto:
+          type: string
+          format: email
+          description: Contacto administrativo del financiador. Nunca de un paciente
+          maxLength: 254
+          minLength: 0
+        nombre:
+          type: string
+          description: "Razon social o nombre visible. Unico entre los vigentes de\
+            \ la organizacion. SI se puede cambiar: renombrar es esto"
+          example: OSDE Binario
+          maxLength: 160
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. NUNCA contenido clinico ni datos de
+            pacientes
+          maxLength: 500
+          minLength: 0
+        telefonoContacto:
+          type: string
+          description: Telefono administrativo del financiador
+          maxLength: 40
+          minLength: 0
+        tipo:
+          type: string
+          description: "Que clase de financiador es. CLASIFICA y no habilita: ninguna\
+            \ regla del sistema ramifica por este valor. PARTICULAR no esta en la\
+            \ lista a proposito, es una modalidad y no un financiador (RN-M15-004)"
+          enum:
+          - OBRA_SOCIAL
+          - PREPAGA
+          - ART
+          - MUTUAL
+          - ORGANISMO_PUBLICO
+          - OTRO
+          example: PREPAGA
+      required:
+      - codigo
+      - nombre
+      - tipo
     CreateInvitacionRequest:
       type: object
       description: Datos de la invitacion a emitir
@@ -9366,6 +9958,67 @@ components:
       required:
       - apellido
       - nombre
+    CreatePlanCoberturaRequest:
+      type: object
+      description: Datos para dar de alta un plan de cobertura
+      properties:
+        codigo:
+          type: string
+          description: "Clave estable del plan DENTRO del financiador. NO se puede\
+            \ cambiar. Unico entre los planes vigentes de ese financiador: dos financiadores\
+            \ distintos si pueden tener los dos un plan 210"
+          example: "210"
+          maxLength: 64
+          minLength: 0
+        copago:
+          type: number
+          description: "Copago de referencia. Null = sin copago declarado, que NO\
+            \ es lo mismo que cero. Viaja siempre con moneda: los dos o ninguno"
+          example: 1500.0
+          minimum: 0.00
+        descripcion:
+          type: string
+          description: Descripcion administrativa. Nunca contenido clinico
+          maxLength: 500
+          minLength: 0
+        moneda:
+          type: string
+          description: ISO 4217 del copago
+          example: ARS
+          maxLength: 3
+          minLength: 3
+        nombre:
+          type: string
+          description: Nombre visible del plan
+          example: Plan 210
+          maxLength: 160
+          minLength: 0
+        requiereAutorizacion:
+          type: boolean
+          description: "Si las prestaciones bajo este plan exigen autorizacion previa.\
+            \ Se declara y todavia nadie lo interpreta: eso es M17. Ausente = false"
+        requiereCredencial:
+          type: boolean
+          description: "Si la cobertura del paciente bajo este plan exige numero de\
+            \ credencial. Ausente = TRUE, al reves que el anterior: pedir la credencial\
+            \ es lo normal en una cobertura financiada"
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que el plan se puede elegir para una cobertura
+            nueva
+          example: 2026-01-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia en que se puede elegir, INCLUSIVE. Null significa\
+            \ sin fin previsto. Puede coincidir con vigenciaDesde: un plan que vale\
+            \ un solo dia es un estado real"
+          example: 2026-12-31
+      required:
+      - codigo
+      - nombre
+      - vigenciaDesde
     CreateServicioRequest:
       type: object
       description: Datos para dar de alta un servicio del catalogo global
@@ -9516,6 +10169,18 @@ components:
           description: Por que se da de baja la sede. Queda en la auditoria y en la
             propia fila
           example: Cierre definitivo de la sucursal
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
+    DeactivateContractingRequest:
+      type: object
+      description: Motivo de la baja logica
+      properties:
+        reason:
+          type: string
+          description: Por que se da de baja. Queda en la fila y en la auditoria
+          example: El centro dejo de trabajar con este financiador
           maxLength: 280
           minLength: 0
       required:
@@ -10158,6 +10823,68 @@ components:
             \ la fija el CHECK de la migracion y esta version del contrato no ramifica\
             \ comportamiento por tipo, solo lo muestra"
           example: INAMOVIBLE
+    FinanciadorResponse:
+      type: object
+      description: Financiador del catalogo de la organizacion
+      properties:
+        codigo:
+          type: string
+          description: "Clave estable con la que las coberturas lo referencian. No\
+            \ cambia nunca: renombrar es cambiar nombre, no codigo"
+          example: OSDE
+        cuit:
+          type: string
+          description: "CUIT normalizado a 11 digitos, o null"
+          example: "30712345678"
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja. Null mientras este vigente
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja logica. Null mientras este vigente
+        emailContacto:
+          type: string
+          description: Contacto administrativo del financiador
+        estado:
+          type: string
+          description: "Ciclo de vida. Un financiador INACTIVO se sigue leyendo con\
+            \ 200: los historicos que lo referencian tienen que seguir resolviendo"
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        id:
+          type: integer
+          format: int64
+          description: Identificador del financiador
+          example: 31
+        nombre:
+          type: string
+          description: Nombre visible
+          example: OSDE Binario
+        observaciones:
+          type: string
+          description: Notas administrativas. Nunca contenido clinico
+        telefonoContacto:
+          type: string
+          description: Telefono administrativo del financiador
+        tipo:
+          type: string
+          description: "Que clase de financiador es. Clasifica, no habilita"
+          enum:
+          - OBRA_SOCIAL
+          - PREPAGA
+          - ART
+          - MUTUAL
+          - ORGANISMO_PUBLICO
+          - OTRO
+          example: PREPAGA
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para editar
+          example: 0
     FranjaResueltaResponse:
       type: object
       description: "Una franja de atencion resuelta, con la regla que la produjo"
@@ -11245,6 +11972,78 @@ components:
             \ que los superen"
           items:
             $ref: "#/components/schemas/LimitUsageResponse"
+    PlanCoberturaResponse:
+      type: object
+      description: Plan de cobertura de un financiador
+      properties:
+        codigo:
+          type: string
+          description: Clave estable dentro del financiador. No cambia
+          example: "210"
+        copago:
+          type: number
+          description: "Copago de referencia. Null = sin copago declarado, distinto\
+            \ de cero"
+          example: 1500.0
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja. Null mientras este vigente
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja logica. Null mientras este vigente
+        descripcion:
+          type: string
+          description: Descripcion administrativa
+        estado:
+          type: string
+          description: Ciclo de vida. Un plan INACTIVO se sigue leyendo con 200
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        financiadorId:
+          type: integer
+          format: int64
+          description: Financiador al que pertenece. No cambia nunca
+          example: 31
+        id:
+          type: integer
+          format: int64
+          description: Identificador del plan
+          example: 88
+        moneda:
+          type: string
+          description: ISO 4217 del copago. Null si y solo si copago es null
+          example: ARS
+        nombre:
+          type: string
+          description: Nombre visible del plan
+          example: Plan 210
+        requiereAutorizacion:
+          type: boolean
+          description: Si las prestaciones exigen autorizacion previa del financiador
+        requiereCredencial:
+          type: boolean
+          description: Si la cobertura del paciente exige numero de credencial
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para editar
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que se puede elegir
+          example: 2026-01-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia en que se puede elegir, INCLUSIVE. Null = sin fin"
+        vigente:
+          type: boolean
+          description: "Si la fecha consultada cae dentro de la vigencia. DISTINTO\
+            \ de estado: un plan ACTIVO con la vigencia cerrada devuelve false"
     PlanLimitResponse:
       type: object
       description: Limite cuantitativo incluido en un plan
@@ -11437,6 +12236,15 @@ components:
       - https://akine.app/problems/archivo-no-aceptado
       - https://akine.app/problems/adjunto-no-disponible
       - https://akine.app/problems/adjunto-inactivo
+      - https://akine.app/problems/financiador-codigo-taken
+      - https://akine.app/problems/financiador-nombre-taken
+      - https://akine.app/problems/financiador-cuit-taken
+      - https://akine.app/problems/financiador-inactivo
+      - https://akine.app/problems/financiador-already-inactive
+      - https://akine.app/problems/plan-cobertura-codigo-taken
+      - https://akine.app/problems/plan-cobertura-nombre-taken
+      - https://akine.app/problems/plan-cobertura-inactivo
+      - https://akine.app/problems/plan-cobertura-already-inactive
     ProfesionalHabilitado:
       type: object
       description: Profesional habilitado para prestar la oferta
@@ -12640,6 +13448,51 @@ components:
           example: 0
       required:
       - version
+    UpdateFinanciadorRequest:
+      type: object
+      description: Campos editables de un financiador. Los ausentes no se tocan
+      properties:
+        cuit:
+          type: string
+          description: "Nuevo CUIT, normalizado a 11 digitos antes de guardar"
+          maxLength: 20
+          minLength: 0
+        emailContacto:
+          type: string
+          format: email
+          maxLength: 254
+          minLength: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version leida. Si no coincide con la vigente la edicion se
+            rechaza con 409 conflict en vez de pisar el cambio de otro
+          example: 0
+        nombre:
+          type: string
+          description: Nuevo nombre. Unico entre los vigentes de la organizacion
+          maxLength: 160
+          minLength: 0
+        observaciones:
+          type: string
+          maxLength: 500
+          minLength: 0
+        telefonoContacto:
+          type: string
+          maxLength: 40
+          minLength: 0
+        tipo:
+          type: string
+          description: Nueva clasificacion
+          enum:
+          - OBRA_SOCIAL
+          - PREPAGA
+          - ART
+          - MUTUAL
+          - ORGANISMO_PUBLICO
+          - OTRO
+      required:
+      - expectedVersion
     UpdateOfertaRequest:
       type: object
       description: Campos a modificar de una oferta
@@ -12822,6 +13675,47 @@ components:
           - PASAPORTE
           - OTRO
           example: DNI
+      required:
+      - expectedVersion
+    UpdatePlanCoberturaRequest:
+      type: object
+      description: Campos editables de un plan. Los ausentes no se tocan
+      properties:
+        copago:
+          type: number
+          description: Nuevo copago. Viaja siempre con moneda
+          minimum: 0.00
+        descripcion:
+          type: string
+          maxLength: 500
+          minLength: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version leida. Si no coincide con la vigente la edicion se
+            rechaza con 409 conflict en vez de pisar el cambio de otro
+          example: 0
+        moneda:
+          type: string
+          maxLength: 3
+          minLength: 3
+        nombre:
+          type: string
+          description: Nuevo nombre. Unico entre los vigentes de ese financiador
+          maxLength: 160
+          minLength: 0
+        requiereAutorizacion:
+          type: boolean
+        requiereCredencial:
+          type: boolean
+        vigenciaDesde:
+          type: string
+          format: date
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia INCLUSIVE. Mandarlo es CERRAR LA VIGENCIA: el plan\
+            \ sigue ACTIVO y deja de ofrecerse despues de esa fecha"
       required:
       - expectedVersion
     UpdateServicioRequest:

@@ -6,6 +6,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -147,7 +148,7 @@ class RolePermissionsTest {
 	@ParameterizedTest
 	@EnumSource(value = PermissionCode.class, names = {
 			"CASO_CREATE",
-			"CONVENIO_MANAGE", "CAJA_OPERATE", "REPORTE_READ"})
+			"CAJA_OPERATE", "REPORTE_READ"})
 	@DisplayName("Los permisos de fases futuras estan declarados y no los tiene NINGUN rol")
 	void los_permisos_de_fases_futuras_deniegan_para_todos(PermissionCode permiso) {
 		// Estan en el catalogo para que agregar una fase sea sumar filas y no rehacer el modelo.
@@ -233,6 +234,33 @@ class RolePermissionsTest {
 		assertThat(RolePermissions.baseScope(RoleCode.PACIENTE, PermissionCode.PACIENTE_MANAGE))
 				.as("su celda es 'Propio', y el alcance OWN no existe todavia en el evaluador")
 				.isEmpty();
+	}
+
+	@Test
+	@DisplayName("convenio:manage tiene la asignacion base que la matriz seccion 2 le da")
+	void convenio_manage_quedo_cableado_en_03_03() {
+		// Hasta AKINE-03.03 este codigo existia y no lo tenia nadie: no habia modulo que lo
+		// evaluara. Ahora existe `contracting` (M15) y estas celdas son la fila "Administrar
+		// Convenios" de la matriz §2 leida literalmente.
+		assertThat(RolePermissions.baseScope(RoleCode.ORG_ADMIN, PermissionCode.CONVENIO_MANAGE))
+				.contains(PermissionScope.ORGANIZACION);
+		assertThat(RolePermissions.baseScope(
+						RoleCode.CONSULTORIO_ADMIN, PermissionCode.CONVENIO_MANAGE))
+				.contains(PermissionScope.CONSULTORIO);
+
+		// PLATFORM_ADMIN NO lo tiene, y esa ausencia es el punto del test. Su celda dice "Catalogo
+		// global", que la §3 acota a "financiadores/planes GLOBALES, nunca convenios de un
+		// tenant". Ese catalogo global no existe en 03.03: darselo lo dejaria administrar los
+		// financiadores de un tenant, que es exactamente lo que su celda excluye.
+		assertThat(RolePermissions.baseScope(RoleCode.PLATFORM_ADMIN, PermissionCode.CONVENIO_MANAGE))
+				.as("su celda es 'Catalogo global' y ese catalogo todavia no existe")
+				.isEmpty();
+
+		for (RoleCode rol : List.of(RoleCode.PROFESIONAL, RoleCode.ADMINISTRATIVO, RoleCode.PACIENTE)) {
+			assertThat(RolePermissions.baseScope(rol, PermissionCode.CONVENIO_MANAGE))
+					.as("la matriz le dice 'No' a %s en Administrar Convenios", rol)
+					.isEmpty();
+		}
 	}
 
 	// =================================================================================

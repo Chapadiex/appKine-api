@@ -514,7 +514,11 @@ class PermissionEvaluatorServiceTest {
 					.containsExactlyInAnyOrder(
 							"tenant:read", "consultorio:manage", "espacio:read",
 							"colaborador:manage", "colaborador:read", "auditoria:read",
-							"paciente:manage", "turno:read", "turno:manage", "cobro:register");
+							"paciente:manage", "turno:read", "turno:manage", "cobro:register",
+							// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`,
+							// el modulo que lo evalua. La matriz §2 se lo da al ORG_ADMIN en la fila
+							// Administrar Convenios y la enmienda esta en la matriz §13.
+							"convenio:manage");
 		}
 
 		@Test
