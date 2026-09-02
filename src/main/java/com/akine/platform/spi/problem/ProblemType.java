@@ -369,7 +369,41 @@ public enum ProblemType {
 	/** El plan esta dado de baja: no admite ediciones. Sus coberturas historicas resuelven. */
 	PLAN_COBERTURA_INACTIVO("plan-cobertura-inactivo"),
 	/** El plan ya estaba dado de baja. */
-	PLAN_COBERTURA_ALREADY_INACTIVE("plan-cobertura-already-inactive");
+	PLAN_COBERTURA_ALREADY_INACTIVE("plan-cobertura-already-inactive"),
+
+	// --- Coberturas del paciente (M08, AKINE-03.04) -----------------------------------------
+	// El "no es paciente" reusa PERSONA_SIN_PERFIL_PACIENTE, que 05.02 ya declaro para la reserva
+	// de turnos: es la MISMA condicion —RF-M07-010, una Persona no es un Paciente— y darle un
+	// type propio obligaria al frontend a manejar dos codigos para la misma accion.
+	/**
+	 * El plan no se puede elegir para esa fecha (RN-M08-002, RN-M15-002).
+	 *
+	 * <p>Junta CINCO causas a proposito —el plan no existe, es de otro tenant, esta dado de baja,
+	 * su financiador esta dado de baja, o la fecha cae fuera de su vigencia— y las responde igual.
+	 * Distinguirlas volveria el alta de cobertura un oraculo del catalogo ajeno: bastaria recorrer
+	 * ids para saber que planes tiene cargados otro centro del SaaS.
+	 */
+	PLAN_NO_SELECCIONABLE("plan-no-seleccionable"),
+	/**
+	 * El paciente ya tiene una cobertura activa del MISMO plan con la vigencia solapada.
+	 *
+	 * <p>Es un duplicado, no una segunda cobertura. Lleva {@code coberturaExistenteId}. <b>Dos
+	 * coberturas de financiadores distintos solapadas NO producen este error</b>: obra social y
+	 * prepaga a la vez es el caso normal.
+	 */
+	COBERTURA_SUPERPUESTA("cobertura-superpuesta"),
+	/**
+	 * Ya hay otra cobertura principal activa con la vigencia solapada. Lleva
+	 * {@code coberturaPrincipalId}.
+	 *
+	 * <p>Con dos principales el mismo dia la seleccion vigente deja de ser determinista, y el
+	 * desempate que habria que inventar no se podria explicar en el mostrador.
+	 */
+	COBERTURA_PRINCIPAL_SUPERPUESTA("cobertura-principal-superpuesta"),
+	/** La cobertura esta dada de baja: no admite ediciones. Se sigue leyendo con 200. */
+	COBERTURA_INACTIVA("cobertura-inactiva"),
+	/** La cobertura ya estaba dada de baja. No existe la reactivacion. */
+	COBERTURA_ALREADY_INACTIVE("cobertura-already-inactive");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

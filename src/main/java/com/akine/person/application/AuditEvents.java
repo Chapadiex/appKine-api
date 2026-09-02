@@ -77,6 +77,29 @@ final class AuditEvents {
 	static final String ENTITY_PERSONA = "Persona";
 
 	static final String ENTITY_ADJUNTO = "AdjuntoAdministrativo";
+	/** Alta de una cobertura del paciente (RF-M08-001, AKINE-03.04). */
+	static final String COBERTURA_CREATED = "COBERTURA_CREATED";
+
+	/** Edicion de los datos no historicos de una cobertura (RF-M08-002). */
+	static final String COBERTURA_UPDATED = "COBERTURA_UPDATED";
+
+	/**
+	 * Cierre de la vigencia de una cobertura (RF-M08-003). Tipo propio y no un UPDATED.
+	 *
+	 * <p>"Desde cuando el paciente dejo de tener esa obra social" es una pregunta que se responde
+	 * filtrando por tipo de evento; enterrarla en los detalles de una edicion la volveria una
+	 * busqueda de texto sobre el detalle de todas las ediciones del padron.
+	 */
+	static final String COBERTURA_VIGENCIA_FINALIZADA = "COBERTURA_VIGENCIA_FINALIZADA";
+
+	/** Cambio de la cobertura principal del paciente (RF-M08-004). */
+	static final String COBERTURA_PRINCIPAL_CHANGED = "COBERTURA_PRINCIPAL_CHANGED";
+
+	/** Baja logica de una cobertura. No borra: la cobertura sigue siendo legible (RN-M08-003). */
+	static final String COBERTURA_DEACTIVATED = "COBERTURA_DEACTIVATED";
+
+
+	static final String ENTITY_COBERTURA = "CoberturaPaciente";
 
 	private static final String MDC_TRACE_ID = "traceId";
 

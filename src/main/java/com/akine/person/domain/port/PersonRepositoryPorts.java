@@ -1,6 +1,8 @@
 package com.akine.person.domain.port;
 
 import com.akine.person.domain.AdjuntoAdministrativo;
+import com.akine.person.domain.CoberturaPaciente;
+import com.akine.person.domain.CoberturaPersonaLock;
 import com.akine.person.domain.PerfilPaciente;
 import com.akine.person.domain.Persona;
 import com.akine.person.domain.TipoDocumento;
@@ -220,5 +222,60 @@ public final class PersonRepositoryPorts {
 		 * de dos columnas no justifica una interfaz de Spring Data mas.
 		 */
 		List<Object[]> contarVigentesPorCategoria(Long organizationId, Long personaId);
+	}
+
+	/** Acceso a las coberturas de un paciente (M08, AKINE-03.04). */
+	public interface CoberturaPacienteRepositoryPort {
+
+		CoberturaPaciente save(CoberturaPaciente cobertura);
+
+		/**
+		 * Guarda y FUERZA el flush, para que el choque de
+		 * {@code uk_cobertura_afiliado_vigente} se manifieste dentro del bloque que lo sabe
+		 * traducir a un 409 y no al cerrar la transaccion, donde ya no hay a quien avisarle.
+		 *
+		 * <p>Vale la misma trampa que documenta {@code PersonaRepositoryPort#saveAndFlush}:
+		 * <b>despues de un flush fallido no se vuelve a tocar la sesion JPA</b>.
+		 */
+		CoberturaPaciente saveAndFlush(CoberturaPaciente cobertura);
+
+		/** Una cobertura de ESA persona y ESE tenant, activa o no. */
+		Optional<CoberturaPaciente> findByIdAndOrganizationIdAndPersonaId(
+				Long id, Long organizationId, Long personaId);
+
+		/**
+		 * El historial completo de coberturas de un paciente, mas nuevas primero.
+		 *
+		 * <p>Devuelve tambien las dadas de baja y las vencidas (RN-M08-003 y regla maestra 10): la
+		 * pantalla necesita mostrarlas para que se entienda con que se atendio al paciente el mes
+		 * pasado. El filtro por estado lo aplica el servicio, no la consulta, porque la lista de
+		 * coberturas de una persona son unidades y no miles — a diferencia del padron, que si se
+		 * pagina en la base.
+		 */
+		List<CoberturaPaciente> historial(Long organizationId, Long personaId);
+
+		/**
+		 * Las coberturas ACTIVAS de un paciente. Es lo que se recorre bajo el lock.
+		 *
+		 * <p>No filtra por vigencia en la consulta a proposito: el solapamiento se evalua sobre
+		 * intervalos completos y no sobre un dia, asi que recortar por fecha aca dejaria afuera
+		 * justamente las filas contra las que hay que comparar.
+		 */
+		List<CoberturaPaciente> activasDe(Long organizationId, Long personaId);
+	}
+
+	/**
+	 * La fila-lock por persona. <b>No guarda estado</b>: ver {@code CoberturaPersonaLock}.
+	 *
+	 * <p>Las dos operaciones tienen que usarse en este orden y en transacciones distintas:
+	 * {@code crearSiFalta} en una propia, {@code lockByScope} dentro de la que escribe.
+	 */
+	public interface CoberturaPersonaLockRepositoryPort {
+
+		/** Lock exclusivo sobre la fila de esa persona. Serializa sus escrituras de cobertura. */
+		Optional<CoberturaPersonaLock> lockByScope(long organizationId, long personaId);
+
+		/** Crea la fila si falta, sin lanzar nunca. Ver el javadoc de la implementacion. */
+		void crearSiFalta(long organizationId, long personaId);
 	}
 }

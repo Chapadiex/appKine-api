@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.28.0
+  version: 0.26.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -51,8 +51,6 @@ tags:
   name: Disponibilidad profesional
 - description: "Especialidades, practicas, nomencladores y sus vigencias (M06)"
   name: Catalogo clinico
-- description: Documentos administrativos de una persona (M07/M25)
-  name: Adjuntos
 - description: Catalogo global de servicios y como cada sede los presta (M27)
   name: Servicios y ofertas
 - description: "Alta, edicion y baja de las sedes de una organizacion"
@@ -62,6 +60,8 @@ tags:
   name: Agenda
 - description: "Dinero recibido, sus medios y sus imputaciones (M19)"
   name: Cobros
+- description: Coberturas particulares y financiadas de un paciente (M08)
+  name: Coberturas del paciente
 - description: Consulta del registro de hechos de la organizacion
   name: Auditoria
 - description: Alta y administracion de tenants y sus sedes
@@ -3486,70 +3486,6 @@ paths:
       summary: Guardar la evaluacion base
       tags:
       - Sesiones
-  /api/v1/consultorios/{consultorioId}/turnos:
-    get:
-      description: |-
-        Los turnos de la sede en un dia, del mas temprano al mas tarde. Es la pantalla de recepcion: quien viene hoy, quien ya llego y quien falta.
-
-        **Incluye los cancelados, con su motivo.** No es un descuido: alguien puede presentarse al mostrador con un turno que se cancelo, y una lista que los esconda deja a la recepcionista sin nada que decirle.
-
-        El dia se interpreta en la zona horaria de la sede. Exige `turno:read`.
-      operationId: delDia
-      parameters:
-      - in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: "Dia a listar, en la zona de la sede"
-        example: 2026-09-15
-        in: query
-        name: fecha
-        required: true
-        schema:
-          type: string
-          format: date
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AgendaDelDia"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/AgendaDelDia"
-          description: Turnos del dia
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: '`fecha` ausente o mal formada'
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Sin `turno:read` en esa sede
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: La sede no existe o es de otro tenant
-      summary: Agenda del dia de la sede
-      tags:
-      - Turnos
   /api/v1/consultorios/{consultorioId}/turnos/ofertas/{ofertaId}:
     post:
       description: |-
@@ -3632,57 +3568,6 @@ paths:
             \ la persona no es paciente, o la clave de idempotencia se reuso con otro\
             \ pedido"
       summary: Reservar un turno
-      tags:
-      - Turnos
-  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}:
-    get:
-      description: |-
-        El turno con el paciente y la oferta ya resueltos, que es lo que necesita cualquier pantalla que llegue por un enlace directo.
-
-        Exige `turno:read`. **No lleva ningun dato clinico**: la atencion es otra cosa y otra pantalla (DP-05).
-      operationId: verTurno
-      parameters:
-      - in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - in: path
-        name: turnoId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TurnoDelDia"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/TurnoDelDia"
-          description: El turno
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Sin `turno:read` en esa sede
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "El turno o la sede no existen, o son de otro tenant"
-      summary: Ver un turno
       tags:
       - Turnos
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/ausencia:
@@ -3933,132 +3818,6 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "El turno o la sede no existen, o son de otro tenant"
       summary: Historial de estados de un turno
-      tags:
-      - Turnos
-  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/llegada:
-    delete:
-      description: |-
-        Revierte una llegada marcada sobre el turno equivocado. El turno vuelve al estado del que vino —RESERVADO o CONFIRMADO— y **se limpia la hora de llegada**: un check-in deshecho no dejo una llegada, dejo un error corregido.
-
-        El rastro de que ocurrio queda en el historial, que es append-only.
-
-                       **No es idempotente**: deshacer lo ya deshecho responde 409. A diferencia del                check-in, aca el segundo click no es un doble click sino una operacion sobre                un turno que entre medio pudo haber cambiado de estado.
-      operationId: deshacerLlegada
-      parameters:
-      - in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - in: path
-        name: turnoId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Turno"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Turno"
-          description: Check-in revertido
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Sin `turno:manage` en esa sede
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "El turno o la sede no existen, o son de otro tenant"
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "El turno no esta en espera. `problemType`: `turno-transicion-no-permitida`"
-      summary: Deshacer un check-in
-      tags:
-      - Turnos
-    post:
-      description: |-
-        Marca que el paciente llego al centro y lo deja **en espera** (RF-M13-002). La hora la pone el servidor: no se envia ningun cuerpo.
-
-        **Es idempotente**: marcar dos veces devuelve 200 sin mover la hora ni registrar un segundo evento. El doble click en el mostrador es el caso normal.
-
-        La llegada es un estado de la RESERVA, no de la atencion (DP-05). Que un turno no pase por aca no impide atenderlo; impide saber a que hora llego el paciente.
-
-        **No valida cobertura ni autorizaciones**: con cobertura PARTICULAR unica no hay condicion administrativa que validar (recableo DP-10).
-      operationId: registrarLlegada
-      parameters:
-      - in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - in: path
-        name: turnoId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Turno"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Turno"
-          description: Paciente en espera
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Sin `turno:manage` en esa sede
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "El turno o la sede no existen, o son de otro tenant"
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "El turno esta cancelado o ya marcado ausente. `problemType`:\
-            \ `turno-transicion-no-permitida`"
-      summary: Registrar la llegada del paciente
       tags:
       - Turnos
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/reprogramacion:
@@ -6990,65 +6749,6 @@ paths:
       tags:
       - Personas
   /api/v1/personas/{personaId}:
-    delete:
-      description: |-
-        Baja LOGICA con motivo obligatorio (RF-M07-005). NO BORRA NADA: la ficha se sigue leyendo con 200, sus turnos siguen existiendo, sus obligaciones siguen debiendose y sus adjuntos se siguen descargando. Lo que deja de admitir son operaciones nuevas: editarla, activarle un perfil, adjuntarle documentos.
-
-        DA DE BAJA TAMBIEN EL PERFIL DE PACIENTE vigente, en la misma transaccion. Dejarlo vivo produciria una ficha que los modulos clinicos siguen viendo como paciente vigente mientras el padron la considera cerrada.
-
-        LIBERA EL DOCUMENTO: el mismo documento se puede volver a usar en un alta nueva. Es intencional y es lo que permite corregir una ficha creada mal sin borrarla.
-
-        Devuelve la ficha como quedo, con su version nueva, en vez de un 204: la pantalla la necesita para refrescar sin pedir otro GET.
-
-        No valida si la persona tiene turnos futuros o deuda: dar de baja a alguien que se fue debiendo es un caso legitimo, y bloquearlo obligaria a condonar para poder cerrar la ficha.
-      operationId: darDeBajaPersona
-      parameters:
-      - in: path
-        name: personaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BajaDePersonaRequest"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PersonaResponse"
-          description: Persona dada de baja
-        "400":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Falta el motivo de la baja
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo activo, o sin paciente:manage"
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "No existe, o es de otra organizacion"
-        "409":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Ya estaba dada de baja, o la version esta desactualizada"
-      summary: Dar de baja logica a una persona del padron
-      tags:
-      - Personas
     get:
       description: |-
         Devuelve la ficha administrativa. Una persona INACTIVA responde 200: sus historicos tienen que seguir resolviendo (RN-M07-004).
@@ -7139,67 +6839,53 @@ paths:
       summary: Editar los datos administrativos de una persona
       tags:
       - Personas
-  /api/v1/personas/{personaId}/adjuntos:
+  /api/v1/personas/{personaId}/coberturas:
     get:
       description: |-
-        RF-M25-005. Devuelve la METADATA, nunca el contenido: para descargar hay un endpoint propio que autoriza cada llamada.
+        Devuelve TODAS las coberturas del paciente, mas nuevas primero, incluidas las dadas de baja y las de vigencia vencida. Es deliberado: RN-M08-003 y la regla maestra 10 exigen que se pueda explicar con que cobertura se atendio al paciente el mes pasado.
 
-        Por defecto trae solo los VIGENTES. Los dados de baja se piden con incluirDadosDeBaja y siguen resolviendo, que es RN-M07-004 aplicada al documento en vez de a la persona.
+        estado filtra el CICLO DE VIDA y por defecto trae todas. NO filtra por vigencia: una cobertura ACTIVA con la vigencia cerrada es el caso normal de un paciente que cambio de obra social, y se devuelve con vigente = false.
 
-        Una persona INACTIVA lista igual: sus documentos siguen siendo consultables.
-      operationId: listarAdjuntosDePersona
+        fecha es el dia contra el que se calculan vigente y credencialVencida. Si se omite, hoy.
+
+        El texto del financiador y del plan es la COPIA congelada al firmar, no una lectura del catalogo de hoy.
+      operationId: listCoberturasDePaciente
       parameters:
-      - description: Persona duenia de los adjuntos
-        example: 42
+      - description: Identificador de la persona
+        example: 1204
         in: path
         name: personaId
         required: true
         schema:
           type: integer
           format: int64
-      - description: "Filtro por clasificacion. Sin el, todas las categorias"
+      - description: "Filtro por ciclo de vida. Si se omite, TODAS"
         in: query
-        name: categoria
+        name: estado
         required: false
         schema:
           type: string
           enum:
-          - DOCUMENTO_IDENTIDAD
-          - CREDENCIAL_COBERTURA
-          - CONSENTIMIENTO
-          - AUTORIZACION
-          - COMPROBANTE
-          - OTRO
-      - description: Incluir tambien los dados de baja
+          - ACTIVA
+          - INACTIVA
+          - TODAS
+      - description: "Dia contra el que se calcula vigente. Si se omite, hoy"
+        example: 2026-09-02
         in: query
-        name: incluirDadosDeBaja
+        name: fecha
         required: false
         schema:
-          type: boolean
-          default: false
-      - description: "Pagina, base cero"
-        in: query
-        name: page
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 0
-      - description: "Tamano de pagina, acotado a 100"
-        in: query
-        name: size
-        required: false
-        schema:
-          type: integer
-          format: int32
-          default: 20
+          type: string
+          format: date
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdjuntoPageResponse"
-          description: Pagina de adjuntos
+                type: array
+                items:
+                  $ref: "#/components/schemas/CoberturaResponse"
+          description: "Historial de coberturas, mas nuevas primero"
         "403":
           content:
             application/problem+json:
@@ -7211,256 +6897,114 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "La persona no existe, o es de otra organizacion"
-      summary: Listar los adjuntos de una persona
+          description: La persona no existe o es de otra organizacion
+      summary: Historial de coberturas de un paciente
       tags:
-      - Adjuntos
+      - Coberturas del paciente
     post:
       description: |-
-        RF-M25-001. El tipo se decide POR LOS BYTES y el Content-Type declarado se descarta: lo elige quien sube, asi que no valida nada. Se aceptan PDF, PNG y JPEG; todo lo demas es 400 archivo-no-aceptado con motivo TIPO_NO_PERMITIDO. El tope de tamano da el mismo type con motivo DEMASIADO_GRANDE.
+        Exige paciente:manage sobre la sede del contexto.
 
-        ES IDEMPOTENTE. Subir dos veces el mismo archivo a la misma persona devuelve 200 con el adjunto que ya existe, no 201 y no 409. Una subida es la operacion mas expuesta a reintentos del producto —mostrador, varios MB, timeouts— y un reintento no deberia dejar dos filas que despues alguien desempata a ojo.
+        LA PERSONA TIENE QUE SER PACIENTE. Una Persona no es un Paciente (RF-M07-010): si no tiene perfil de paciente vigente responde 409 persona-sin-perfil-paciente. Cargarle la obra social a un contacto administrativo no significa nada.
 
-        UN ADJUNTO NO REEMPLAZA UN DATO ESTRUCTURADO (RN-M25-004): cargar la foto de una credencial no carga la cobertura, y cargar el DNI escaneado no completa el documento de la ficha.
+        EL PLAN SE CONGELA, no se referencia. El backend copia a la cobertura el codigo, el nombre, el copago y las exigencias que el plan tenia el dia vigenciaDesde, y no los vuelve a leer nunca. Renombrar el plan manana no cambia esta cobertura.
 
-        NO ES UN CONTENEDOR CLINICO (RN-M25-005). Las categorias son todas administrativas y no hay ninguna clinica, a proposito: un estudio o un informe vive en M09 con sus propios controles.
+        Se congela contra vigenciaDesde y no contra hoy: la pregunta es si ese plan se podia elegir el dia en que la cobertura empieza a valer.
 
-        Una persona dada de baja no admite documentos nuevos: 409 persona-inactiva. Los que ya tiene se siguen descargando.
-      operationId: subirAdjuntoDePersona
+        Un plan que no se puede elegir responde 409 plan-no-seleccionable, y las cinco causas —no existe, es ajeno, esta dado de baja, su financiador esta dado de baja, o la fecha cae fuera de su vigencia— responden IGUAL, para no convertir el endpoint en un oraculo del catalogo de otro centro.
+
+        PARTICULAR no lleva plan ni credencial: es la ausencia de plan financiado y siempre esta disponible (RN-M08-001).
+
+        Dos coberturas activas del MISMO plan con vigencias solapadas son un duplicado: 409 cobertura-superpuesta. Dos de financiadores DISTINTOS solapadas son legitimas y no se rechazan.
+      operationId: createCoberturaDePaciente
       parameters:
-      - description: Persona a la que se vincula el documento
-        example: 42
+      - description: Identificador de la persona
+        example: 1204
         in: path
         name: personaId
         required: true
         schema:
           type: integer
           format: int64
-      - description: Clasificacion administrativa del documento
-        in: query
-        name: categoria
-        required: true
-        schema:
-          type: string
-          enum:
-          - DOCUMENTO_IDENTIDAD
-          - CREDENCIAL_COBERTURA
-          - CONSENTIMIENTO
-          - AUTORIZACION
-          - COMPROBANTE
-          - OTRO
-      - description: Titulo con el que describirlo. Opcional
-        in: query
-        name: titulo
-        required: false
-        schema:
-          type: string
       requestBody:
         content:
-          multipart/form-data:
+          application/json:
             schema:
-              type: object
-              properties:
-                archivo:
-                  type: string
-                  format: binary
-                  description: "El archivo. PDF, PNG o JPEG"
-              required:
-              - archivo
+              $ref: "#/components/schemas/CreateCoberturaRequest"
+        required: true
       responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdjuntoResponse"
-          description: "El mismo archivo ya estaba cargado: se devuelve el existente"
         "201":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdjuntoResponse"
-          description: Adjunto creado
+                $ref: "#/components/schemas/CoberturaResponse"
+          description: Cobertura creada. La cabecera Location apunta al recurso
         "400":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Tipo no permitido o archivo demasiado grande
+          description: "Campos invalidos, vigencia invertida, tipo desconocido, o\
+            \ falta el numero de afiliado que el plan exige"
         "403":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo activo, o sin paciente:manage"
+          description: Sin contexto de trabajo activo o sin paciente:manage
         "404":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "La persona no existe, o es de otra organizacion"
+          description: La persona no existe o es de otra organizacion
         "409":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: La persona esta dada de baja
-      summary: Subir un documento administrativo
+          description: "La persona no es paciente (persona-sin-perfil-paciente), esta\
+            \ dada de baja (persona-inactiva), el plan no se puede elegir (plan-no-seleccionable),\
+            \ ya hay una cobertura del mismo plan solapada (cobertura-superpuesta)\
+            \ o ya hay otra principal vigente (cobertura-principal-superpuesta)"
+      summary: Agregar una cobertura al paciente
       tags:
-      - Adjuntos
-  /api/v1/personas/{personaId}/adjuntos/{adjuntoId}:
-    delete:
-      description: |-
-        RF-M25-004. Baja LOGICA con motivo obligatorio.
-
-        EL BINARIO NO SE BORRA. Es lo que hace que la baja sea reversible en los hechos y lo que permite que el historico siga resolviendo: el contenido se sigue pudiendo descargar. Un job de limpieza sobre contenidos realmente huerfanos es otra cosa y otra etapa.
-
-        Un adjunto ya dado de baja responde 409.
-      operationId: darDeBajaAdjuntoDePersona
-      parameters:
-      - in: path
-        name: personaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - in: path
-        name: adjuntoId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BajaDeAdjuntoRequest"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdjuntoResponse"
-          description: Adjunto dado de baja
-        "400":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Falta el motivo de la baja
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo activo, o sin paciente:manage"
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "La persona o el adjunto no existen, o son de otra organizacion"
-        "409":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: El adjunto ya estaba dado de baja
-      summary: Dar de baja un adjunto
-      tags:
-      - Adjuntos
-    patch:
-      description: |-
-        RF-M25-003. Edicion parcial: lo que no viene, no se toca.
-
-        LO UNICO EDITABLE ES COMO ESTA DESCRIPTO. El contenido, su nombre y su tipo son inmutables: reemplazar el archivo de una fila reescribiria un hecho. Para reemplazar un documento se da de baja el viejo y se sube el nuevo, que deja las dos versiones consultables.
-
-        Un adjunto dado de baja responde 409: se sigue descargando, no se reclasifica.
-      operationId: clasificarAdjuntoDePersona
-      parameters:
-      - in: path
-        name: personaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - in: path
-        name: adjuntoId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ClasificarAdjuntoRequest"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdjuntoResponse"
-          description: Adjunto reclasificado
-        "400":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Datos invalidos
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo activo, o sin paciente:manage"
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "La persona o el adjunto no existen, o son de otra organizacion"
-        "409":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: El adjunto esta dado de baja
-      summary: Reclasificar un adjunto
-      tags:
-      - Adjuntos
-  /api/v1/personas/{personaId}/adjuntos/{adjuntoId}/contenido:
+      - Coberturas del paciente
+  /api/v1/personas/{personaId}/coberturas/seleccion:
     get:
       description: |-
-        RF-M25-002. Entrega los bytes con el tipo DETECTADO al subir y el nombre original en Content-Disposition.
+        Resuelve la seleccion de RF-M08-004 y RF-M08-005: la cobertura principal vigente ese dia, todas las vigentes, y PARTICULAR, que siempre esta disponible.
 
-        NO DEVUELVE NINGUNA RUTA INTERNA ni redirige a una URL firmada (RN-M25-002): la autorizacion se evalua en cada llamada. El por que no hay URLs temporales                esta en el javadoc de esta clase.
+        particularSiempreDisponible es SIEMPRE true, y no es un campo inutil: es RN-M08-001 dicho en el contrato. Un paciente con obra social puede pagar particular, que es exactamente RF-M08-005, y si Particular no viajara aca cada pantalla tendria que acordarse de agregarlo.
 
-        SE DESCARGA AUNQUE EL ADJUNTO O LA PERSONA ESTEN DADOS DE BAJA. Es el caso borde "descarga tras baja" y la respuesta correcta es permitirla: una baja logica dice "esto ya no corresponde para operar", no "esto nunca existio".
+        La principal es determinista: no puede haber dos, y eso lo hace cumplir un lock y no un desempate arbitrario.
 
-        Si el almacenamiento perdio el binario, es 409 adjunto-no-disponible y no 404: la metadata existe y quien pregunta la esta viendo en la lista.
-
-        Cada descarga se AUDITA. Es el unico evento de lectura que este modulo registra: un listado no entrega contenido, una descarga si.
-      operationId: descargarAdjuntoDePersona
+        ESTO NO PERSISTE NADA y no afirma que la prestacion sea facturable a esa cobertura. RN-M08-004: la cobertura del paciente no implica que el consultorio tenga convenio con ese financiador. Resolver la elegibilidad por oferta y convenio es RF-M08-006 y necesita M16 y M17, que no existen.
+      operationId: resolverCoberturaParaAtencion
       parameters:
-      - in: path
+      - description: Identificador de la persona
+        example: 1204
+        in: path
         name: personaId
         required: true
         schema:
           type: integer
           format: int64
-      - in: path
-        name: adjuntoId
-        required: true
+      - description: "Dia de la atencion. Si se omite, hoy"
+        example: 2026-09-02
+        in: query
+        name: fecha
+        required: false
         schema:
-          type: integer
-          format: int64
+          type: string
+          format: date
       responses:
         "200":
           content:
-            application/octet-stream: {}
-          description: El contenido del archivo
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeleccionDeCoberturaResponse"
+          description: Coberturas elegibles ese dia. La lista vacia es un estado normal
         "403":
           content:
             application/problem+json:
@@ -7472,30 +7016,36 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "La persona o el adjunto no existen, o son de otra organizacion"
-        "409":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: El almacenamiento no tiene el contenido
-      summary: Descargar el contenido de un adjunto
+          description: La persona no existe o es de otra organizacion
+      summary: Que coberturas se pueden elegir para atender ese dia
       tags:
-      - Adjuntos
-  /api/v1/personas/{personaId}/perfil-paciente:
+      - Coberturas del paciente
+  /api/v1/personas/{personaId}/coberturas/{coberturaId}:
     delete:
       description: |-
-        La persona SIGUE VIGENTE en el padron y lo unico que deja de ser es paciente. Es exactamente el estado que RN-M07-006 describe: alguien que consume servicios no clinicos sin perfil clinico.
+        Baja LOGICA con motivo obligatorio. Exige paciente:manage sobre la sede del contexto.
 
-        ES IDEMPOTENTE Y RESPONDE 200. Dar de baja un perfil que ya no esta vigente no es un error del operador: es el boton tocado dos veces.
+        NO ES LO MISMO QUE FINALIZAR LA VIGENCIA. Finalizar es "el paciente cambio de obra social" y se hace con el PUT: la cobertura queda ACTIVA y sigue explicando el pasado. Dar de baja es "esta cobertura nunca debio cargarse".
 
-        NO BORRA LA HISTORIA CLINICA. Igual que activar no la crea, esto no la borra: la HC es de M09 y su existencia no depende de que el perfil siga vigente. Reactivar el perfil despues vuelve a encontrar la historia que ya habia.
+        No borra nada y no toca ningun hecho ya registrado: RN-M08-003 y regla maestra 10. La cobertura sigue siendo legible con estado INACTIVA.
 
-        El motivo es obligatorio, a diferencia de la activacion: la operacion que restringe es la que alguien va a tener que justificar despues.
-      operationId: darDeBajaPerfilPaciente
+        La baja tambien desmarca la principal: dejar como preferida una cobertura dada de baja haria que la seleccion del dia siguiente apunte a algo que ya no existe operativamente.
+
+        No hay reactivacion. Una cobertura que vuelve es un alta nueva.
+      operationId: deactivateCoberturaDePaciente
       parameters:
-      - in: path
+      - description: Identificador de la persona
+        example: 1204
+        in: path
         name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la cobertura
+        example: 412
+        in: path
+        name: coberturaId
         required: true
         schema:
           type: integer
@@ -7504,15 +7054,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BajaDePerfilPacienteRequest"
+              $ref: "#/components/schemas/DeactivateCoberturaRequest"
         required: true
       responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PersonaResponse"
-          description: "Perfil dado de baja, o ya no vigente"
+        "204":
+          description: Cobertura dada de baja
         "400":
           content:
             application/problem+json:
@@ -7524,16 +7070,165 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo activo, o sin paciente:manage"
+          description: Sin contexto de trabajo activo o sin paciente:manage
         "404":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "No existe, o es de otra organizacion"
-      summary: Dar de baja el perfil clinico de una persona
+          description: "La cobertura no existe, es de otra organizacion o de otro\
+            \ paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cobertura ya estaba dada de baja (cobertura-already-inactive)
+      summary: Dar de baja una cobertura
       tags:
-      - Personas
+      - Coberturas del paciente
+    put:
+      description: |-
+        Exige paciente:manage sobre la sede del contexto. Edicion parcial: lo que no viaja no se toca.
+
+        EL PLAN NO SE PUEDE CAMBIAR, y por eso no esta en el cuerpo. Cambiar de plan es OTRA cobertura: se finaliza la vigente y se agrega la nueva. Editarla en el lugar reescribiria con que cobertura se atendio al paciente el mes pasado (RN-M08-003).
+
+        MANDAR vigenciaHasta ES FINALIZAR LA VIGENCIA (RF-M08-003). La cobertura queda ACTIVA y consultable, y deja de aplicar despues de esa fecha. NO es dar de baja, que es el DELETE y significa otra cosa.
+
+        Una cobertura dada de baja no se edita: 409 cobertura-inactiva. Reabrir la ficha de algo dado de baja reescribiria el historico.
+
+        expectedVersion es obligatorio: una version vieja responde 409 en vez de pisar el cambio ajeno en silencio.
+      operationId: updateCoberturaDePaciente
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la cobertura
+        example: 412
+        in: path
+        name: coberturaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCoberturaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoberturaResponse"
+          description: Cobertura actualizada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos o vigencia invertida
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La cobertura no existe, es de otra organizacion o de otro\
+            \ paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Cobertura dada de baja (cobertura-inactiva), version desactualizada\
+            \ (conflict) o la edicion crea un solapamiento (cobertura-superpuesta)"
+      summary: "Editar una cobertura, o finalizar su vigencia"
+      tags:
+      - Coberturas del paciente
+  /api/v1/personas/{personaId}/coberturas/{coberturaId}/principal:
+    post:
+      description: |-
+        RF-M08-004. Exige paciente:manage sobre la sede del contexto.
+
+        Operacion propia y no un campo del PUT porque es un invariante ENTRE filas y no un dato de esta. Meterlo en la edicion obligaria a que el cliente mande la version de una fila para modificar el estado de otra.
+
+        NO DESMARCA A LA ANTERIOR EN SILENCIO. Si ya hay una principal activa con la vigencia solapada responde 409 cobertura-principal-superpuesta con su id, para que la pantalla ofrezca finalizarla. Un click que cambia dos coberturas deja una que despues nadie puede explicar.
+
+        principal = false desmarca, y es una operacion legitima: un paciente puede tener coberturas sin ninguna preferida.
+      operationId: marcarCoberturaPrincipal
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la cobertura
+        example: 412
+        in: path
+        name: coberturaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarcarCoberturaPrincipalRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoberturaResponse"
+          description: Cobertura actualizada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta declarar el valor de principal
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La cobertura no existe, es de otra organizacion o de otro\
+            \ paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya hay otra cobertura principal vigente en ese periodo (cobertura-principal-superpuesta)
+            o la cobertura esta dada de baja (cobertura-inactiva)
+      summary: Elegir o quitar la cobertura principal del paciente
+      tags:
+      - Coberturas del paciente
+  /api/v1/personas/{personaId}/perfil-paciente:
     post:
       description: |-
         Convierte funcionalmente a la persona en paciente, reutilizando su identidad (RF-M07-008, RN-M07-007). No recibe ningun dato personal: si lo recibiera, existiria la forma de que la ficha clinica y la administrativa se separaran.
@@ -7583,46 +7278,6 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: La persona esta dada de baja
       summary: Activar el perfil clinico de una persona
-      tags:
-      - Personas
-  /api/v1/personas/{personaId}/resumen:
-    get:
-      description: |-
-        Consolida la identidad, los adjuntos y lo que aporta cada modulo: turnos y situacion economica hoy; coberturas cuando existan (03.03/03.04).
-
-        RECORTA POR PERMISOS Y NO RECHAZA. Una seccion cuyo permiso el actor no tiene no viene, y aparece en seccionesOmitidas con el codigo que falta. Devolver 403 sobre la ficha entera por no poder ver la deuda dejaria al profesional sin poder abrir a ningun paciente; omitir en silencio seria peor, porque la pantalla leeria "sin turnos" donde en realidad dice "no podes ver los turnos".
-
-        NO TRAE NADA CLINICO, y no es que falte: AKINE-04.01 fijo que todo acceso clinico exige justificacion declarada y queda auditado. Una ficha de mostrador que muestre casos al abrirla convertiria ese control en un formalismo. El dato clinico se pide por M09, con permiso y justificacion.
-
-        Una persona INACTIVA responde 200: el 360 de una ficha dada de baja es justamente donde se consulta su historico.
-      operationId: verResumenDePersona
-      parameters:
-      - in: path
-        name: personaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ResumenDePersonaResponse"
-          description: La ficha consolidada
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Sin contexto de trabajo activo
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "No existe, o es de otra organizacion"
-      summary: Ver la ficha 360 de una persona
       tags:
       - Personas
   /api/v1/plans:
@@ -8289,123 +7944,6 @@ components:
           minLength: 0
       required:
       - token
-    AdjuntoPageResponse:
-      type: object
-      description: Pagina de adjuntos administrativos de una persona
-      properties:
-        content:
-          type: array
-          description: "Adjuntos de esta pagina, mas nuevos primero"
-          items:
-            $ref: "#/components/schemas/AdjuntoResponse"
-        page:
-          type: integer
-          format: int32
-          description: "Numero de pagina devuelta, base cero"
-          example: 0
-        size:
-          type: integer
-          format: int32
-          description: Cantidad de elementos por pagina
-          example: 20
-        totalElements:
-          type: integer
-          format: int64
-          description: Cantidad total de adjuntos que cumplen el filtro
-          example: 4
-        totalPages:
-          type: integer
-          format: int32
-          description: Cantidad total de paginas disponibles
-          example: 1
-    AdjuntoResponse:
-      type: object
-      description: Documento administrativo vinculado a una persona. No es un dato
-        clinico
-      properties:
-        categoria:
-          type: string
-          description: Clasificacion administrativa
-          enum:
-          - DOCUMENTO_IDENTIDAD
-          - CREDENCIAL_COBERTURA
-          - CONSENTIMIENTO
-          - AUTORIZACION
-          - COMPROBANTE
-          - OTRO
-          example: CREDENCIAL_COBERTURA
-        checksumSha256:
-          type: string
-          description: "SHA-256 del contenido, en hexadecimal. Subir el mismo archivo\
-            \ dos veces devuelve este mismo adjunto con 200"
-        consultorioId:
-          type: integer
-          format: int64
-          description: "Sede desde la que se cargo. Dato de auditoria, no de propiedad:\
-            \ el adjunto se ve y se descarga desde cualquier sede de la organizacion"
-          example: 3
-        contentType:
-          type: string
-          description: "Tipo DETECTADO por los bytes, no el declarado al subir"
-          example: application/pdf
-        deactivationReason:
-          type: string
-          description: "Motivo declarado de la baja, o null"
-        deletedAt:
-          type: string
-          format: date-time
-          description: "Instante UTC de la baja logica, o null"
-        estado:
-          type: string
-          description: Si el contenido se puede descargar hoy
-          enum:
-          - DISPONIBLE
-          - NO_DISPONIBLE
-          example: DISPONIBLE
-        estadoCicloDeVida:
-          type: string
-          description: "Ciclo de vida del adjunto. Un adjunto INACTIVO se sigue descargando:\
-            \ la baja es logica"
-          enum:
-          - ACTIVO
-          - INACTIVO
-          example: ACTIVO
-        id:
-          type: integer
-          format: int64
-          description: Identificador del adjunto
-          example: 17
-        nombreArchivo:
-          type: string
-          description: Nombre original del archivo
-          example: credencial.pdf
-        personaId:
-          type: integer
-          format: int64
-          description: Persona a la que pertenece
-          example: 42
-        subidoEn:
-          type: string
-          format: date-time
-          description: Instante UTC de la carga
-        subidoPor:
-          type: integer
-          format: int64
-          description: Cuenta que subio el archivo
-          example: 8
-        tamanoBytes:
-          type: integer
-          format: int64
-          description: Tamano en bytes
-          example: 184320
-        titulo:
-          type: string
-          description: "Titulo con el que se describio el documento, o null"
-        version:
-          type: integer
-          format: int64
-          description: Version para el bloqueo optimista
-          example: 0
     Agenda:
       type: object
       description: "Turnos disponibles de una oferta en una ventana de fechas. Los\
@@ -8442,28 +7980,6 @@ components:
             Viaja para que la pantalla pueda rotularla y para que un error de huso
             se vea en la respuesta en vez de deducirse de horarios corridos.
           example: America/Argentina/Cordoba
-    AgendaDelDia:
-      type: object
-      description: "Los turnos de una sede en un dia, con la zona horaria con la que\
-        \ hay que mostrarlos. PHI minima: ningun dato clinico."
-      properties:
-        fecha:
-          type: string
-          format: date
-          description: "El dia pedido, interpretado en la zona de la sede"
-          example: 2026-09-15
-        timezone:
-          type: string
-          description: "Zona horaria de la sede. Viaja para que la pantalla pueda\
-            \ convertir los instantes y rotularla, en vez de usar la del navegador\
-            \ de quien mira."
-          example: America/Argentina/Cordoba
-        turnos:
-          type: array
-          description: "Turnos del dia, del mas temprano al mas tarde. Incluye los\
-            \ cancelados."
-          items:
-            $ref: "#/components/schemas/TurnoDelDia"
     AnularObligacion:
       type: object
       description: Anulacion de deuda con motivo obligatorio
@@ -8625,50 +8141,6 @@ components:
           type: string
           description: Nombre de la organizacion
           example: Centro Kinesico Belgrano
-    BajaDeAdjuntoRequest:
-      type: object
-      description: Baja logica de un adjunto. El contenido se sigue pudiendo descargar
-      properties:
-        motivo:
-          type: string
-          description: Motivo declarado de la baja. Obligatorio
-          example: Credencial vencida; se cargo la nueva
-          maxLength: 280
-          minLength: 0
-      required:
-      - motivo
-    BajaDePerfilPacienteRequest:
-      type: object
-      description: Baja del perfil clinico. La persona sigue vigente en el padron
-      properties:
-        motivo:
-          type: string
-          description: Motivo declarado de la baja. Obligatorio
-          example: "Se cargo por error: viene solo a clases grupales"
-          maxLength: 280
-          minLength: 0
-      required:
-      - motivo
-    BajaDePersonaRequest:
-      type: object
-      description: "Baja logica de una persona. No borra nada: la ficha se sigue leyendo"
-      properties:
-        expectedVersion:
-          type: integer
-          format: int64
-          description: "Version que el cliente leyo. Si no coincide, la operacion\
-            \ se rechaza con 409 en vez de pisar el cambio ajeno"
-          example: 0
-          minimum: 0
-        motivo:
-          type: string
-          description: Motivo declarado de la baja. Obligatorio
-          example: Ficha duplicada; se unifico con la 118
-          maxLength: 280
-          minLength: 0
-      required:
-      - expectedVersion
-      - motivo
     BloqueResponse:
       type: object
       description: Bloque recurrente de disponibilidad de un profesional en una sede
@@ -9153,27 +8625,6 @@ components:
           - BUENA
           - REGULAR
           - MALA
-    ClasificarAdjuntoRequest:
-      type: object
-      description: Reclasificacion de un adjunto. El contenido no se puede cambiar
-      properties:
-        categoria:
-          type: string
-          description: "Nueva clasificacion, o null para no cambiarla"
-          enum:
-          - DOCUMENTO_IDENTIDAD
-          - CREDENCIAL_COBERTURA
-          - CONSENTIMIENTO
-          - AUTORIZACION
-          - COMPROBANTE
-          - OTRO
-          example: CREDENCIAL_COBERTURA
-        titulo:
-          type: string
-          description: "Nuevo titulo, o null para no cambiarlo. Cadena vacia lo borra"
-          example: Credencial 2026
-          maxLength: 160
-          minLength: 0
     ClosedSessionsResponse:
       type: object
       description: Resultado del cierre masivo de sesiones de la propia cuenta
@@ -9183,6 +8634,123 @@ components:
           format: int32
           description: Sesiones vivas que se revocaron
           example: 3
+    CoberturaResponse:
+      type: object
+      description: "Cobertura de un paciente, con la referencia al plan congelada\
+        \ al firmar"
+      properties:
+        copago:
+          type: number
+          description: COPIA del copago de referencia al firmar
+          example: 1500.0
+        credencialVencida:
+          type: boolean
+          description: "La credencial esta vencida a la fecha consultada. ALERTA,\
+            \ no invalidez: la cobertura sigue aplicando"
+        credencialVigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia de validez de la credencial, INCLUSIVE"
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante de la baja logica. Null mientras este activa
+        estado:
+          type: string
+          description: "Ciclo de vida: ACTIVA o INACTIVA"
+          example: ACTIVA
+        financiadorCodigo:
+          type: string
+          description: COPIA del codigo del financiador al firmar
+          example: OSDE
+        financiadorId:
+          type: integer
+          format: int64
+          description: Financiador congelado. Null en PARTICULAR
+          example: 31
+        financiadorNombre:
+          type: string
+          description: "COPIA del nombre al firmar. Puede diferir del nombre actual\
+            \ del financiador, y eso es correcto"
+          example: OSDE Binario
+        financiadorTipo:
+          type: string
+          description: COPIA de la clasificacion al firmar
+          example: PREPAGA
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la cobertura
+          example: 412
+        moneda:
+          type: string
+          description: ISO 4217 del copago congelado
+          example: ARS
+        numeroAfiliado:
+          type: string
+          description: Credencial del paciente ante el financiador
+          example: "62000123456"
+        observaciones:
+          type: string
+          description: Notas administrativas
+        personaId:
+          type: integer
+          format: int64
+          description: Paciente al que pertenece
+          example: 1204
+        planCodigo:
+          type: string
+          description: COPIA del codigo del plan al firmar
+          example: "210"
+        planId:
+          type: integer
+          format: int64
+          description: Plan congelado. Null en PARTICULAR
+          example: 88
+        planNombre:
+          type: string
+          description: COPIA del nombre del plan al firmar
+          example: Plan 210
+        principal:
+          type: boolean
+          description: Cobertura preferida del paciente
+        referenciaCapturadaEl:
+          type: string
+          format: date-time
+          description: Instante UTC en que se congelo la referencia. Es lo que explica
+            por que esta copia puede decir algo distinto del plan de hoy
+        requeriaAutorizacion:
+          type: boolean
+          description: Si el plan exigia autorizacion previa ESE DIA. Lo interpreta
+            M17
+        requeriaCredencial:
+          type: boolean
+          description: Si el plan exigia credencial ESE DIA
+        tipo:
+          type: string
+          description: PARTICULAR o FINANCIADA
+          example: FINANCIADA
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que la cobertura aplica
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia en que aplica, INCLUSIVE. Null = sin fin previsto"
+        vigente:
+          type: boolean
+          description: "Si la fecha consultada cae dentro de la vigencia. DISTINTO\
+            \ de estado: una cobertura ACTIVA con la vigencia cerrada devuelve false"
     Cobro:
       type: object
       description: Dinero recibido. No es la deuda (M18) ni la caja (M20).
@@ -9461,6 +9029,65 @@ components:
       - justificacion
       - nombrePropuesto
       - tipo
+    CreateCoberturaRequest:
+      type: object
+      description: Datos para agregar una cobertura a un paciente
+      properties:
+        credencialVigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia de validez de la credencial, INCLUSIVE. Es METADATA:\
+            \ una credencial vencida NO invalida la cobertura, se informa como alerta"
+          example: 2027-12-31
+        numeroAfiliado:
+          type: string
+          description: Numero de credencial del paciente ante el financiador. Obligatorio
+            si el plan congelado exigia credencial
+          example: "62000123456"
+          maxLength: 64
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. NUNCA contenido clinico
+          maxLength: 500
+          minLength: 0
+        planId:
+          type: integer
+          format: int64
+          description: "Plan de cobertura a congelar. Obligatorio si tipo es FINANCIADA\
+            \ y prohibido si es PARTICULAR. Un plan dado de baja, de un financiador\
+            \ dado de baja, ajeno, inexistente, o fuera de vigencia el dia vigenciaDesde\
+            \ responde 409 plan-no-seleccionable: los cinco casos igual, para no convertir\
+            \ este endpoint en un oraculo del catalogo ajeno"
+          example: 88
+        principal:
+          type: boolean
+          description: "Cobertura preferida del paciente. Ausente = false. Como maximo\
+            \ una activa con vigencias solapadas: si ya hay otra, 409"
+        tipo:
+          type: string
+          description: "PARTICULAR o FINANCIADA. PARTICULAR es la ausencia de plan\
+            \ y no necesita ningun dato de financiador: siempre esta disponible (RN-M08-001)"
+          enum:
+          - PARTICULAR
+          - FINANCIADA
+          example: FINANCIADA
+          pattern: PARTICULAR|FINANCIADA
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que la cobertura aplica. Es tambien el dia contra
+            el que se evalua si el plan se puede elegir
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia en que aplica, INCLUSIVE. Null = sin fin previsto.\
+            \ Puede coincidir con vigenciaDesde"
+          example: 2027-08-31
+      required:
+      - tipo
+      - vigenciaDesde
     CreateConsultorioRequest:
       type: object
       description: Datos para dar de alta una sede adicional
@@ -10160,6 +9787,18 @@ components:
           minLength: 0
       required:
       - reason
+    DeactivateCoberturaRequest:
+      type: object
+      description: Motivo de la baja logica de la cobertura
+      properties:
+        reason:
+          type: string
+          description: Por que se da de baja. Queda en la fila y en la auditoria
+          example: Se cargo con el plan equivocado
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
     DeactivateConsultorioRequest:
       type: object
       description: Motivo declarado de la baja de una sede
@@ -10704,8 +10343,6 @@ components:
           - CANCELACION
           - REPROGRAMACION
           - AUSENCIA
-          - LLEGADA
-          - LLEGADA_DESHECHA
           example: CANCELACION
     ExcepcionResponse:
       type: object
@@ -11118,35 +10755,6 @@ components:
           description: "Si la oferta esta restringida a una lista de profesionales.\
             \ false significa que cualquier profesional con vinculo vigente puede\
             \ prestarla, NO que no pueda ninguno"
-    HitoResponse:
-      type: object
-      description: Un hecho datado del resumen
-      properties:
-        estado:
-          type: string
-          description: Estado en que quedo
-          example: RESERVADO
-        ocurrioEn:
-          type: string
-          format: date-time
-          description: Instante UTC en que ocurrio
-        origen:
-          type: string
-          description: Modulo que produjo el hecho
-          example: turnos
-        referencia:
-          type: integer
-          format: int64
-          description: "Id de la entidad de origen, para pedir el detalle"
-          example: 9
-        tipo:
-          type: string
-          description: Tipo de hecho
-          example: TURNO
-        titulo:
-          type: string
-          description: Titulo corto
-          example: Turno
     ImputacionAplicada:
       type: object
       properties:
@@ -11172,31 +10780,6 @@ components:
       required:
       - importe
       - obligacionId
-    IndicadorResponse:
-      type: object
-      description: Un indicador del resumen
-      properties:
-        cantidad:
-          type: integer
-          format: int64
-          description: "Cantidad, cuando el indicador cuenta cosas"
-          example: 2
-        clave:
-          type: string
-          description: Identificador estable
-          example: turnos-futuros
-        etiqueta:
-          type: string
-          description: Texto legible
-          example: Turnos futuros
-        importe:
-          type: number
-          description: "Importe, cuando el indicador suma plata. Decimal exacto"
-          example: 4500.0
-        moneda:
-          type: string
-          description: "Moneda ISO 4217, presente solo cuando hay importe"
-          example: ARS
     InvitacionPreviewResponse:
       type: object
       description: Lo que el invitado necesita saber para decidir
@@ -11338,6 +10921,18 @@ components:
       required:
       - email
       - password
+    MarcarCoberturaPrincipalRequest:
+      type: object
+      description: Nueva marca principal de la cobertura
+      properties:
+        principal:
+          type: boolean
+          description: "true la marca como principal, false la desmarca. Marcarla\
+            \ cuando ya hay otra principal vigente en ese periodo responde 409: no\
+            \ se desmarca a la otra en silencio"
+          example: true
+      required:
+      - principal
     MedioDeCobro:
       type: object
       properties:
@@ -12233,9 +11828,6 @@ components:
       - https://akine.app/problems/persona-documento-taken
       - https://akine.app/problems/persona-posible-duplicado
       - https://akine.app/problems/persona-inactiva
-      - https://akine.app/problems/archivo-no-aceptado
-      - https://akine.app/problems/adjunto-no-disponible
-      - https://akine.app/problems/adjunto-inactivo
       - https://akine.app/problems/financiador-codigo-taken
       - https://akine.app/problems/financiador-nombre-taken
       - https://akine.app/problems/financiador-cuit-taken
@@ -12245,6 +11837,11 @@ components:
       - https://akine.app/problems/plan-cobertura-nombre-taken
       - https://akine.app/problems/plan-cobertura-inactivo
       - https://akine.app/problems/plan-cobertura-already-inactive
+      - https://akine.app/problems/plan-no-seleccionable
+      - https://akine.app/problems/cobertura-superpuesta
+      - https://akine.app/problems/cobertura-principal-superpuesta
+      - https://akine.app/problems/cobertura-inactiva
+      - https://akine.app/problems/cobertura-already-inactive
     ProfesionalHabilitado:
       type: object
       description: Profesional habilitado para prestar la oferta
@@ -12558,69 +12155,31 @@ components:
       - estado
       - nota
       - version
-    ResumenDePersonaResponse:
+    SeleccionDeCoberturaResponse:
       type: object
-      description: "Ficha administrativa consolidada de una persona, recortada por\
-        \ permisos"
+      description: "Coberturas elegibles del paciente para una fecha, con Particular\
+        \ siempre disponible"
       properties:
-        adjuntosPorCategoria:
-          type: object
-          additionalProperties:
-            type: integer
-            format: int64
-          description: Adjuntos vigentes por categoria. Las categorias sin adjuntos
-            no aparecen
-        adjuntosTotal:
-          type: integer
-          format: int64
-          description: Cantidad de adjuntos VIGENTES
-          example: 3
-        persona:
-          $ref: "#/components/schemas/PersonaResponse"
-          description: La ficha administrativa completa
-        secciones:
-          type: array
-          description: "Lo que aportaron los demas modulos, segun los permisos del\
-            \ actor"
-          items:
-            $ref: "#/components/schemas/SeccionResponse"
-        seccionesOmitidas:
-          type: array
-          description: Secciones que NO se devolvieron por falta de permiso. Viajan
-            explicitas para que la pantalla no las confunda con ausencia de datos
-          items:
-            $ref: "#/components/schemas/SeccionOmitidaResponse"
-    SeccionOmitidaResponse:
-      type: object
-      description: Seccion no devuelta por falta de permiso
-      properties:
-        permisoRequerido:
+        fecha:
           type: string
-          description: Codigo de permiso que falta
-          example: cobro:register
-        seccion:
-          type: string
-          description: Nombre de la seccion omitida
-          example: economia
-    SeccionResponse:
-      type: object
-      description: Bloque del resumen aportado por un modulo
-      properties:
-        hitos:
+          format: date
+          description: Dia contra el que se resolvio
+          example: 2026-09-02
+        particularSiempreDisponible:
+          type: boolean
+          description: Siempre true (RN-M08-001). Atender como particular no depende
+            de ningun dato y se puede elegir aunque el paciente tenga cobertura
+          example: true
+        principal:
+          $ref: "#/components/schemas/CoberturaResponse"
+          description: "La cobertura marcada principal y vigente ese dia, o null.\
+            \ Es la seleccion por defecto y es determinista: no puede haber dos"
+        vigentes:
           type: array
-          description: "Hechos datados, mas nuevos primero. Es un indice, no un visor:\
-            \ el detalle se pide al modulo que lo posee, con su propio permiso"
+          description: "Todas las coberturas que aplican ese dia, incluida la principal.\
+            \ Vacia es un estado normal: un paciente sin cobertura se atiende particular"
           items:
-            $ref: "#/components/schemas/HitoResponse"
-        indicadores:
-          type: array
-          description: Los numeros de la seccion
-          items:
-            $ref: "#/components/schemas/IndicadorResponse"
-        seccion:
-          type: string
-          description: Nombre estable de la seccion
-          example: turnos
+            $ref: "#/components/schemas/CoberturaResponse"
     SelectContextRequest:
       type: object
       description: Par Organizacion + Consultorio sobre el que se quiere trabajar
@@ -13086,7 +12645,6 @@ components:
           enum:
           - RESERVADO
           - CONFIRMADO
-          - EN_ESPERA
           - CANCELADO
           - AUSENTE
           example: RESERVADO
@@ -13105,14 +12663,6 @@ components:
           format: date-time
           description: "Inicio, UTC"
           example: 2026-09-15T12:00:00Z
-        llegadaEn:
-          type: string
-          format: date-time
-          description: "Hora REAL de llegada del paciente al centro, puesta por el\
-            \ servidor (M13). Ausente mientras no llego, y se vacia si se deshace\
-            \ el check-in: un check-in deshecho no dejo una llegada, dejo un error\
-            \ corregido."
-          example: 2026-09-15T11:52:00Z
         motivoCancelacion:
           type: string
           description: "Por que se cancelo. Obligatorio al cancelar (DP-04), ausente\
@@ -13147,83 +12697,6 @@ components:
           format: int64
           description: "Version para el control optimista. Se envia al cancelar, mover\
             \ o marcar ausencia."
-          example: 0
-    TurnoDelDia:
-      type: object
-      description: "Turno de la agenda del dia de una sede, con el paciente resuelto.\
-        \ PHI minima: no lleva ningun dato clinico."
-      properties:
-        documento:
-          type: string
-          description: "Tipo y numero, para desambiguar homonimos. Ausente si la ficha\
-            \ no lo tiene."
-          example: DNI 30111222
-        espacioId:
-          type: integer
-          format: int64
-          description: "Box asignado, si la oferta requiere espacio"
-          example: 55
-        estado:
-          type: string
-          description: "`EN_ESPERA` significa que el paciente llego y aguarda. No\
-            \ significa que lo esten atendiendo: la prestacion la registra la Sesion."
-          enum:
-          - RESERVADO
-          - CONFIRMADO
-          - EN_ESPERA
-          - CANCELADO
-          - AUSENTE
-          example: CONFIRMADO
-        fin:
-          type: string
-          format: date-time
-          description: "Fin, UTC y EXCLUSIVO"
-          example: 2026-09-15T12:45:00Z
-        id:
-          type: integer
-          format: int64
-          example: 301
-        inicio:
-          type: string
-          format: date-time
-          description: "Inicio, UTC. La pantalla lo muestra en la zona de la sede."
-          example: 2026-09-15T12:00:00Z
-        llegadaEn:
-          type: string
-          format: date-time
-          description: "Hora REAL de llegada, puesta por el servidor. Ausente si no\
-            \ llego."
-          example: 2026-09-15T11:52:00Z
-        motivoCancelacion:
-          type: string
-          description: "Por que se cancelo. **Los cancelados se devuelven igual**:\
-            \ alguien puede presentarse al mostrador con un turno que se cancelo,\
-            \ y esconderlo deja a la recepcion sin nada que decirle."
-          example: El profesional se enfermo
-        ofertaId:
-          type: integer
-          format: int64
-          example: 42
-        ofertaNombre:
-          type: string
-          example: Kinesiologia - sesion individual
-        personaId:
-          type: integer
-          format: int64
-          example: 128
-        personaNombre:
-          type: string
-          description: "Apellido y nombre, ya compuestos"
-          example: "Perez, Ana"
-        profesionalId:
-          type: integer
-          format: int64
-          description: Membership del profesional. Ausente si la oferta no lo requiere.
-          example: 31
-        version:
-          type: integer
-          format: int64
-          description: Version para el control optimista de las transiciones
           example: 0
     UpdateBloqueRequest:
       type: object
@@ -13335,6 +12808,44 @@ components:
           example: 0
       required:
       - version
+    UpdateCoberturaRequest:
+      type: object
+      description: Datos editables de una cobertura. Lo copiado del plan no se puede
+        cambiar
+      properties:
+        credencialVigenciaHasta:
+          type: string
+          format: date
+          description: "Nuevo ultimo dia de validez de la credencial, INCLUSIVE"
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version leida por el cliente. Una version vieja responde 409
+            en vez de pisar el cambio ajeno en silencio
+          example: 0
+        numeroAfiliado:
+          type: string
+          description: Nuevo numero de credencial
+          maxLength: 64
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. NUNCA contenido clinico
+          maxLength: 500
+          minLength: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Correccion del primer dia de vigencia
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia en que la cobertura aplica, INCLUSIVE. Mandarlo\
+            \ es FINALIZAR LA VIGENCIA (RF-M08-003): la cobertura queda ACTIVA y consultable,\
+            \ y deja de aplicar despues de esa fecha. NO es dar de baja"
+          example: 2026-12-31
+      required:
+      - expectedVersion
     UpdateConsultorioRequest:
       type: object
       description: Cambios a aplicar sobre una sede. Los campos omitidos no se tocan
