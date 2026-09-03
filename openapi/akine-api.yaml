@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.28.0
+  version: 0.29.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -17,6 +17,9 @@ tags:
   name: Suscripciones
 - description: Restablecimiento de contrasena por enlace de un solo uso
   name: Recuperacion
+- description: Autorizaciones de financiador para un paciente (M17). Registran y habilitan;
+    el consumo clinico es una integracion posterior
+  name: Autorizaciones
 - description: "Login, renovacion, seleccion de contexto y cierre de sesion"
   name: Sesion
 - description: "Consulta, aceptacion y rechazo de una invitacion, con el token como\
@@ -29,6 +32,9 @@ tags:
   name: Calendario de sede
 - description: Reserva de slots con revalidacion atomica e idempotencia (M12)
   name: Turnos
+- description: "Ordenes medicas presentadas por un paciente (M17). Documentacion ADMINISTRATIVA:\
+    \ no reemplaza el registro clinico (RN-M17-004)"
+  name: Ordenes medicas
 - description: Contextos de trabajo habilitados para la cuenta autenticada
   name: Mi cuenta
 - description: "Emision, listado, reenvio y cancelacion de invitaciones a colaborar\
@@ -67,6 +73,9 @@ tags:
   name: Cobros
 - description: Coberturas particulares y financiadas de un paciente (M08)
   name: Coberturas del paciente
+- description: "Que documentacion exige el convenio y si el paciente la tiene (M17).\
+    \ Consulta preliminar: no persiste ni consume nada"
+  name: Elegibilidad administrativa
 - description: Consulta del registro de hechos de la organizacion
   name: Auditoria
 - description: Alta y administracion de tenants y sus sedes
@@ -8182,6 +8191,468 @@ paths:
       summary: Descargar el contenido de un adjunto
       tags:
       - Adjuntos
+  /api/v1/personas/{personaId}/autorizaciones:
+    get:
+      description: |-
+        RF-M17-003 y RF-M17-006. Devuelve TODAS, mas nuevas primero, incluidas las vencidas, las agotadas, las rechazadas y las dadas de baja.
+
+        Cada fila trae saldo, vencida, agotada, habilita y diasParaVencer CALCULADOS contra la fecha que se pregunta. Es lo que le permite al panel administrativo mostrar los vencimientos sin que exista ningun job que mueva estados: materializarlos dejaria autorizaciones vencidas que el sistema cree vigentes el dia que el job no corra.
+
+        estado filtra el CICLO DE VIDA (ACTIVA/INACTIVA), no el estado de la autorizacion ni su vigencia. Por defecto trae todas.
+
+        cantidadConsumida vale SIEMPRE 0 en esta version: el consumo clinico es una integracion posterior (RF-M17-004).
+      operationId: listAutorizacionesDePaciente
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Filtro por ciclo de vida. Si se omite, TODAS"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVA
+          - INACTIVA
+          - TODAS
+      - description: "Dia contra el que se calcula todo. Si se omite, hoy"
+        example: 2026-09-03
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AutorizacionResponse"
+          description: "Historial de autorizaciones, mas nuevas primero"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona no existe o es de otra organizacion
+      summary: Historial de autorizaciones de un paciente
+      tags:
+      - Autorizaciones
+    post:
+      description: |-
+        RF-M17-001. Exige paciente:manage sobre la sede del contexto.
+
+        EL CONVENIO SE CONGELA, no se referencia. El backend copia a la autorizacion el codigo, el nombre y las TRES exigencias que el convenio tenia el dia vigenciaDesde, y no las vuelve a leer nunca: cambiar el convenio manana no reescribe con que reglas se autorizo al paciente el mes pasado.
+
+        LA COPIA ES OPCIONAL, y esa es la diferencia con la cobertura. Si no hay convenio vigente de esta sede con ese plan, o lo hay pero la practica no tiene arancel cargado, el alta ENTRA IGUAL sin snapshot. El mostrador no se puede quedar sin cargar un numero de autorizacion real porque la grilla de aranceles este incompleta.
+
+        estadoInicial admite PENDIENTE (default) o APROBADA. OBSERVADA y RECHAZADA no: son la respuesta a un pedido y se aplican con POST /{id}/estado.
+
+        SOLO SI NACE APROBADA se valida el solapamiento: dos autorizaciones aprobadas de la misma cobertura y practica con vigencias que se pisan contarian el saldo dos veces (409 autorizacion-superpuesta). Dos CONSECUTIVAS —renovar— si conviven, y dos de practicas distintas tambien.
+
+        cantidadConsumida nace en 0 y esta version no la mueve.
+      operationId: createAutorizacion
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAutorizacionRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutorizacionResponse"
+          description: Autorizacion registrada. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, vigencia invertida, o estado inicial no\
+            \ cargable"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona, la cobertura o la orden no existen, o son de otra\
+            \ organizacion"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona no es paciente (persona-sin-perfil-paciente), la\
+            \ cobertura o la orden estan dadas de baja (cobertura-inactiva, orden-inactiva),\
+            \ el numero ya existe (documento-numero-taken), o la aprobada se solapa\
+            \ con otra (autorizacion-superpuesta)"
+      summary: Registrar una autorizacion
+      tags:
+      - Autorizaciones
+  /api/v1/personas/{personaId}/autorizaciones/{autorizacionId}:
+    delete:
+      description: |-
+        Baja LOGICA con motivo obligatorio. Exige paciente:manage sobre la sede del contexto.
+
+        DAR DE BAJA NO ES RECHAZAR, Y NO ES VENCER. Rechazar es la respuesta del financiador y se hace con POST /{id}/estado: la autorizacion queda viva y explica por que no se pudo atender. Vencer es que paso la fecha, y se calcula al leer. Dar de baja significa "esta autorizacion nunca debio cargarse".
+
+        No borra nada (regla maestra 10). La autorizacion sigue siendo legible con estado INACTIVA, y su numero se puede volver a usar.
+
+        La baja NO toma el lock de solapamiento: quitar una fila del conjunto activo nunca puede crear un solapamiento.
+
+        No hay reactivacion. Una autorizacion que vuelve es un alta nueva.
+      operationId: deactivateAutorizacion
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la autorizacion
+        example: 77
+        in: path
+        name: autorizacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateDocumentoRequest"
+        required: true
+      responses:
+        "204":
+          description: Autorizacion dada de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La autorizacion no existe, es de otra organizacion o de otro\
+            \ paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya estaba dada de baja (autorizacion-already-inactive)
+      summary: Dar de baja una autorizacion
+      tags:
+      - Autorizaciones
+    get:
+      description: |-
+        RF-M17-003: devuelve autorizadas, consumidas y restantes.
+
+        cantidadConsumida vale SIEMPRE 0 y por lo tanto saldo vale siempre lo autorizado. No es un bug: RN-M17-001 separa autorizado de consumido, y quien mueve la resta es la sesion clinica en una integracion posterior. Los tres numeros viajan igual para que el contrato no cambie ese dia.
+
+        habilita es el veredicto completo —activa, APROBADA, vigente y con saldo— y consultarlo NO consume nada.
+      operationId: getAutorizacion
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la autorizacion
+        example: 77
+        in: path
+        name: autorizacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Dia contra el que se calcula todo. Si se omite, hoy"
+        example: 2026-09-03
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutorizacionResponse"
+          description: Autorizacion con su saldo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La autorizacion no existe, es de otra organizacion o de otro\
+            \ paciente"
+      summary: Saldo y estado de una autorizacion
+      tags:
+      - Autorizaciones
+    put:
+      description: |-
+        Exige paciente:manage sobre la sede del contexto. Edicion parcial: lo que no viaja no se toca.
+
+        LA COBERTURA, LA PRACTICA Y EL ESTADO NO ESTAN EN EL CUERPO, y ninguno es un olvido. Las dos primeras son inmutables: cambiarlas es OTRA autorizacion, porque reescribirian contra que se autorizo. El estado se mueve con POST /{id}/estado, que recibe una ACCION.
+
+        Tampoco esta el snapshot del convenio: es una copia congelada, y una copia que se puede editar no es una copia.
+
+        Si la autorizacion ya esta APROBADA, mover sus fechas revalida el solapamiento bajo el mismo lock que la aprobacion: estirar una vigencia hasta pisar a la siguiente es exactamente el mismo riesgo.
+
+        expectedVersion es obligatorio.
+      operationId: updateAutorizacion
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la autorizacion
+        example: 77
+        in: path
+        name: autorizacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAutorizacionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutorizacionResponse"
+          description: Autorizacion actualizada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, vigencia invertida, o cantidad por debajo\
+            \ de lo ya consumido"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La autorizacion o la orden no existen, o son de otro paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Autorizacion dada de baja (autorizacion-inactiva), version\
+            \ desactualizada (conflict), numero en uso (documento-numero-taken) o\
+            \ la edicion crea un solapamiento (autorizacion-superpuesta)"
+      summary: Corregir una autorizacion
+      tags:
+      - Autorizaciones
+  /api/v1/personas/{personaId}/autorizaciones/{autorizacionId}/documento:
+    post:
+      description: |-
+        RF-M17-002 y RF-M25-006. Exige paciente:manage sobre la sede del contexto.
+
+        ACA NO SE SUBE NADA. El archivo lo sube POST /personas/{personaId}/adjuntos, que ya valida tipo y tamano, genera una clave de almacenamiento opaca que nunca sale del backend (RN-M25-002) y autoriza cada descarga.
+
+        EL ADJUNTO TIENE QUE SER DE ESTA PERSONA: vincular el de otro paciente lo volveria descargable desde esta ruta y evadiria el control de acceso que el adjunto hereda de su persona (RN-M25-003).
+
+        adjuntoId null desvincula.
+      operationId: vincularDocumentoDeAutorizacion
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la autorizacion
+        example: 77
+        in: path
+        name: autorizacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VincularDocumentoRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutorizacionResponse"
+          description: Vinculo actualizado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La autorizacion o el adjunto no existen, o son de otro paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La autorizacion o el adjunto estan dados de baja
+      summary: Vincular el comprobante de la autorizacion
+      tags:
+      - Autorizaciones
+  /api/v1/personas/{personaId}/autorizaciones/{autorizacionId}/estado:
+    post:
+      description: |-
+        RF-M17-001. Exige paciente:manage sobre la sede del contexto.
+
+        RECIBE UNA ACCION, NO UN ESTADO DESTINO. Con un estado destino, pedir APROBADA sobre una autorizacion RECHAZADA seria una peticion valida que el servidor tiene que rechazar por semantica, y el cliente podria construir cualquier transicion imaginable. Con una accion, la unica forma de llegar a APROBADA es APROBAR, y el conjunto de transiciones posibles queda del lado del backend.
+
+        Transiciones: PENDIENTE y OBSERVADA admiten las tres acciones. APROBADA y RECHAZADA son TERMINALES y responden 409 autorizacion-transicion-no-permitida. Corregir una decision tomada es dar de baja la autorizacion y cargar otra: si una aprobada pudiera volver a PENDIENTE, el saldo que ya se conto para atender a alguien desapareceria retroactivamente.
+
+        APROBACION CONCURRENTE: es el mismo mecanismo. El segundo en llegar encuentra la autorizacion ya resuelta y recibe 409, no un 200 que aprueba dos veces.
+
+        AUTORIZACION PARCIAL: al APROBAR, cantidadAutorizada y las vigencias pisan a las declaradas al cargar. El financiador puede otorgar seis sesiones donde se pidieron veinte, o una ventana mas corta: lo que vale es lo que concedio.
+
+        motivo es OBLIGATORIO al OBSERVAR y al RECHAZAR. Sin el, el mostrador no sabe que corregir.
+      operationId: resolverAutorizacion
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la autorizacion
+        example: 77
+        in: path
+        name: autorizacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolverAutorizacionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutorizacionResponse"
+          description: Autorizacion resuelta
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Accion desconocida, o falta el motivo al observar o rechazar"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La autorizacion no existe, es de otra organizacion o de otro\
+            \ paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Estado terminal (autorizacion-transicion-no-permitida), autorizacion\
+            \ dada de baja (autorizacion-inactiva), version desactualizada (conflict)\
+            \ o la aprobacion se solapa con otra (autorizacion-superpuesta)"
+      summary: Aplicar la respuesta del financiador
+      tags:
+      - Autorizaciones
   /api/v1/personas/{personaId}/coberturas:
     get:
       description: |-
@@ -8571,6 +9042,400 @@ paths:
       summary: Elegir o quitar la cobertura principal del paciente
       tags:
       - Coberturas del paciente
+  /api/v1/personas/{personaId}/elegibilidad:
+    get:
+      description: |-
+        RF-M17-007. Confronta lo que el CONVENIO exige con lo que el paciente tiene, para una cobertura, una practica y un dia.
+
+        LEE EL CONVENIO VIVO, no la copia congelada de ninguna autorizacion. Decidir que se puede hacer hoy se hace con la regla de hoy; la copia congelada existe para explicar el pasado, y usarla aca aplicaria reglas derogadas a una atencion actual.
+
+        LA LISTA VACIA CON elegible = true ES EL CASO NORMAL, no un error. Pasa en cuatro situaciones y las cuatro son frecuentes: cobertura PARTICULAR (no hay financiador), sin convenio vigente de esta sede con ese plan (el paciente se atiende como particular), con convenio pero sin arancel para esa practica (hueco de configuracion del centro, no motivo para negar la atencion), y convenio que no exige nada. RN-M17-005 y RN-M17-006: una actividad no cubierta no debe pedir orden ni autorizacion artificialmente.
+
+        UN REQUISITO FALTANTE NO ES UN ERROR: responde 200 con elegible = false y el detalle de que falta. Un 409 obligaria a la pantalla a tratar el caso mas frecuente —al paciente le falta la orden— como una excepcion.
+
+        ESTO NO CONSUME NADA (RN-M17-001) y no persiste nada. Es idempotente.
+
+        NO AFIRMA QUE LA PRESTACION SEA FACTURABLE (RN-M08-004): dice si la documentacion administrativa esta presente, que es otra cosa.
+
+        limiteSesionesMensual viaja INFORMATIVO y sin veredicto: verificarlo exige contar sesiones ya atendidas, o sea el consumo que esta version no cablea.
+
+        Exige consultorio en el contexto: el convenio que fija los requisitos es de la SEDE (RN-M16-001), asi que la misma cobertura del mismo paciente puede exigir cosas distintas en dos sedes de la misma organizacion.
+      operationId: consultarElegibilidadAdministrativa
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Cobertura con la que se atenderia
+        example: 412
+        in: query
+        name: coberturaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Practica que se atenderia
+        example: 33
+        in: query
+        name: practicaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Dia de la atencion. Si se omite, hoy"
+        example: 2026-09-03
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElegibilidadResponse"
+          description: Requisitos y veredicto. La lista vacia es un estado normal
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo activo, o sin consultorio en el contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona o la cobertura no existen, o son de otra organizacion"
+      summary: Que le falta al paciente para que le atiendan esa practica
+      tags:
+      - Elegibilidad administrativa
+  /api/v1/personas/{personaId}/ordenes:
+    get:
+      description: |-
+        Devuelve TODAS las ordenes del paciente, mas nuevas primero, incluidas las vencidas y las dadas de baja. Es deliberado: "un documento vencido no desaparece" es requisito de M17, y sin el historial no se puede explicar con que papel se atendio al paciente el mes pasado.
+
+        estado filtra el CICLO DE VIDA y por defecto trae todas. NO filtra por vigencia: una orden ACTIVA vencida es el caso normal.
+
+        fecha es el dia contra el que se calculan vigente, vencida y diasParaVencer. Si se omite, hoy. diasParaVencer es la alerta de RF-M17-006 y se calcula al leer: no existe ningun job que mueva estados.
+      operationId: listOrdenesDePaciente
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Filtro por ciclo de vida. Si se omite, TODAS"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVA
+          - INACTIVA
+          - TODAS
+      - description: "Dia contra el que se calcula la vigencia. Si se omite, hoy"
+        example: 2026-09-03
+        in: query
+        name: fecha
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrdenResponse"
+          description: "Historial de ordenes, mas nuevas primero"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona no existe o es de otra organizacion
+      summary: Historial de ordenes medicas de un paciente
+      tags:
+      - Ordenes medicas
+    post:
+      description: |-
+        RF-M17-001. Exige paciente:manage sobre la sede del contexto.
+
+        LA PERSONA TIENE QUE SER PACIENTE. Una Persona no es un Paciente (RF-M07-010): si no tiene perfil vigente responde 409 persona-sin-perfil-paciente.
+
+        EL EMISOR ES TEXTO LIBRE. El medico que firma es externo al centro y no esta en ningun catalogo del tenant: exigir que exista como fila dejaria al mostrador sin poder cargar la orden que el paciente trajo hoy. La matricula es opcional, y eso resuelve el caso borde del documento ilegible sin rechazar la carga.
+
+        LA COBERTURA ES OPCIONAL. Una prescripcion la firma un medico, no un financiador: sin coberturaId la orden vale para cualquiera, y la elegibilidad la acepta para todas.
+
+        vigenciaDesde omitido = la fecha de emision. Nunca puede ser anterior a ella: una orden no puede valer antes de haberse escrito, y eso lo exige tambien la base.
+
+        indicacion es la TRANSCRIPCION administrativa de lo que dice el papel. NO es registro clinico (RN-M17-004) y no reemplaza nada de la historia clinica.
+      operationId: createOrdenMedica
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrdenRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrdenResponse"
+          description: Orden registrada. La cabecera Location apunta al recurso
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, vigencia invertida, o vigencia anterior\
+            \ a la fecha de emision"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona o la cobertura no existen, o son de otra organizacion"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona no es paciente (persona-sin-perfil-paciente), esta\
+            \ dada de baja (persona-inactiva), o ya hay una orden vigente con ese\
+            \ numero (documento-numero-taken)"
+      summary: Registrar una orden medica
+      tags:
+      - Ordenes medicas
+  /api/v1/personas/{personaId}/ordenes/{ordenId}:
+    delete:
+      description: |-
+        Baja LOGICA con motivo obligatorio. Exige paciente:manage sobre la sede del contexto.
+
+        NO ES LO MISMO QUE VENCER. Una orden vencida sigue activa, se sigue listando y se sigue pudiendo corregir: "un documento vencido no desaparece". Dar de baja significa "esta orden nunca debio cargarse".
+
+        No borra nada y no toca ningun hecho ya registrado (regla maestra 10). La orden sigue siendo legible con estado INACTIVA, y las autorizaciones que la referencian quedan intactas.
+
+        No hay reactivacion. Una orden que vuelve es un alta nueva.
+      operationId: deactivateOrdenMedica
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la orden
+        example: 51
+        in: path
+        name: ordenId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateDocumentoRequest"
+        required: true
+      responses:
+        "204":
+          description: Orden dada de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La orden no existe, es de otra organizacion o de otro paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La orden ya estaba dada de baja (orden-already-inactive)
+      summary: Dar de baja una orden medica
+      tags:
+      - Ordenes medicas
+    put:
+      description: |-
+        Exige paciente:manage sobre la sede del contexto. Edicion parcial: lo que no viaja no se toca.
+
+        LA PERSONA Y LA COBERTURA NO SE PUEDEN CAMBIAR, y por eso no estan en el cuerpo. Mudar una orden de paciente reescribiria quien presento que papel.
+
+        UNA ORDEN VENCIDA SI SE EDITA. Corregir la fecha de vigencia mal tipeada es el caso normal, y bloquearlo obligaria a dar de baja y recargar. Una orden dada de baja no se edita: 409 orden-inactiva.
+
+        expectedVersion es obligatorio: una version vieja responde 409 en vez de pisar el cambio ajeno en silencio.
+      operationId: updateOrdenMedica
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la orden
+        example: 51
+        in: path
+        name: ordenId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrdenRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrdenResponse"
+          description: Orden actualizada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, vigencia invertida o anterior a la emision"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La orden no existe, es de otra organizacion o de otro paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Orden dada de baja (orden-inactiva), version desactualizada\
+            \ (conflict) o numero en uso (documento-numero-taken)"
+      summary: Corregir una orden medica
+      tags:
+      - Ordenes medicas
+  /api/v1/personas/{personaId}/ordenes/{ordenId}/documento:
+    post:
+      description: |-
+        RF-M17-002 y RF-M25-006. Exige paciente:manage sobre la sede del contexto.
+
+        ACA NO SE SUBE NADA. El archivo lo sube POST /personas/{personaId}/adjuntos, que ya valida tipo y tamano, genera una clave de almacenamiento opaca que nunca sale del backend (RN-M25-002) y autoriza cada descarga. Este endpoint solo guarda el vinculo: un segundo mecanismo de carga significaria una segunda validacion, una segunda ruta de descarga y una segunda superficie de path traversal.
+
+        EL ADJUNTO TIENE QUE SER DE ESTA PERSONA. Vincular el de otro paciente lo volveria descargable desde esta ruta y evadiria el control de acceso que el adjunto hereda de su persona (RN-M25-003).
+
+        adjuntoId null DESVINCULA, y es legitimo: el operador subio el escaneo equivocado y lo saca sin dar de baja la orden entera.
+      operationId: vincularDocumentoDeOrden
+      parameters:
+      - description: Identificador de la persona
+        example: 1204
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la orden
+        example: 51
+        in: path
+        name: ordenId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VincularDocumentoRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrdenResponse"
+          description: Vinculo actualizado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin paciente:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La orden o el adjunto no existen, o son de otro paciente"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La orden o el adjunto estan dados de baja
+      summary: Vincular el escaneo de la orden
+      tags:
+      - Ordenes medicas
   /api/v1/personas/{personaId}/perfil-paciente:
     delete:
       description: |-
@@ -9874,6 +10739,162 @@ components:
           type: string
           description: Nombre de la organizacion
           example: Centro Kinesico Belgrano
+    AutorizacionResponse:
+      type: object
+      description: Autorizacion de un financiador para un paciente
+      properties:
+        adjuntoId:
+          type: integer
+          format: int64
+          description: Adjunto vinculado con el comprobante
+          example: 908
+        agotada:
+          type: boolean
+          description: Sin saldo. Una autorizacion sin tope declarado nunca esta agotada
+        cantidadAutorizada:
+          type: integer
+          format: int32
+          description: Sesiones otorgadas. Null = sin tope declarado
+          example: 10
+        cantidadConsumida:
+          type: integer
+          format: int32
+          description: "Sesiones ya consumidas. HOY SIEMPRE 0: el consumo clinico\
+            \ es una integracion posterior (RF-M17-004)"
+          example: 0
+        coberturaId:
+          type: integer
+          format: int64
+          description: Cobertura contra la que el financiador autorizo
+          example: 412
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede que la gestiono. El convenio que la respalda es de la
+            sede
+          example: 7
+        convenioCodigo:
+          type: string
+          description: COPIA del codigo del convenio al registrar
+          example: CONV-OSDE
+        convenioId:
+          type: integer
+          format: int64
+          description: "COPIA: convenio congelado al registrar. Null si no habia ninguno\
+            \ resoluble ese dia"
+          example: 12
+        convenioNombre:
+          type: string
+          description: "COPIA del nombre al registrar. Puede diferir del vivo, y ese\
+            \ es el punto"
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante de la baja logica
+        diasParaVencer:
+          type: integer
+          format: int64
+          description: "Dias que faltan para el vencimiento. Negativo si ya vencio,\
+            \ null si no vence. Es la alerta de RF-M17-006"
+          example: 90
+        estado:
+          type: string
+          description: "Ciclo de vida: ACTIVA o INACTIVA. NO es el estado de la autorizacion\
+            \ ni su vigencia"
+          enum:
+          - ACTIVA
+          - INACTIVA
+          example: ACTIVA
+        estadoAutorizacion:
+          type: string
+          description: "PENDIENTE, APROBADA, OBSERVADA o RECHAZADA. Los cuatro que\
+            \ decide una persona. VENCIDA y AGOTADA NO estan aca: son los campos calculados\
+            \ vencida y agotada"
+          enum:
+          - PENDIENTE
+          - APROBADA
+          - OBSERVADA
+          - RECHAZADA
+          example: APROBADA
+        habilita:
+          type: boolean
+          description: "Habilita a atender ese dia: activa, APROBADA, vigente y con\
+            \ saldo. Es el veredicto que consulta la elegibilidad, y consultarlo NO\
+            \ consume nada"
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la autorizacion
+          example: 77
+        motivo:
+          type: string
+          description: Por que se observo o se rechazo
+        numero:
+          type: string
+          description: Numero que devolvio el financiador
+          example: AUT-99120034
+        observaciones:
+          type: string
+          description: Notas administrativas
+        ordenMedicaId:
+          type: integer
+          format: int64
+          description: "Orden medica que la respalda, si hay"
+          example: 51
+        personaId:
+          type: integer
+          format: int64
+          description: Paciente autorizado
+          example: 1204
+        practicaId:
+          type: integer
+          format: int64
+          description: Practica autorizada
+          example: 33
+        referenciaCapturadaEl:
+          type: string
+          format: date-time
+          description: Instante del congelamiento. Explica por que esta copia puede
+            decir algo distinto del convenio de hoy
+        requeriaAutorizacion:
+          type: boolean
+          description: COPIA de convenio.requiere_autorizacion al registrar
+        requeriaCredencial:
+          type: boolean
+          description: COPIA de convenio.requiere_credencial al registrar
+        requeriaOrden:
+          type: boolean
+          description: "COPIA de convenio.requiere_orden al registrar. En pasado:\
+            \ dice lo que el convenio pedia ESE dia"
+        saldo:
+          type: integer
+          format: int32
+          description: Autorizadas menos consumidas. Null si no hay tope. RF-M17-003
+          example: 10
+        vencida:
+          type: boolean
+          description: Ya paso su fin de vigencia. Vencida NO es dada de baja
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que habilita
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia, INCLUSIVE. Null = sin vencimiento"
+          example: 2026-12-31
+        vigente:
+          type: boolean
+          description: La fecha consultada cae dentro de la vigencia
     BajaDeAdjuntoRequest:
       type: object
       description: Baja logica de un adjunto. El contenido se sigue pudiendo descargar
@@ -10838,6 +11859,77 @@ components:
       - importeTotal
       - practicaId
       - vigenciaDesde
+    CreateAutorizacionRequest:
+      type: object
+      description: Datos de la autorizacion que otorgo el financiador
+      properties:
+        cantidadAutorizada:
+          type: integer
+          format: int32
+          description: "Sesiones otorgadas. Null = sin tope declarado, que es distinto\
+            \ de cero"
+          example: 10
+          minimum: 0
+        coberturaId:
+          type: integer
+          format: int64
+          description: "Cobertura contra la que el financiador autorizo. Obligatoria:\
+            \ una autorizacion sin cobertura no significa nada, porque no hay financiador\
+            \ que la haya dado. Tiene que estar activa"
+          example: 412
+        estadoInicial:
+          type: string
+          description: "Estado con el que se carga. PENDIENTE (default) si se pidio\
+            \ y falta respuesta, APROBADA si el financiador ya la otorgo. OBSERVADA\
+            \ y RECHAZADA NO se pueden cargar de entrada: son la respuesta a un pedido\
+            \ y se aplican con POST /{id}/estado"
+          enum:
+          - PENDIENTE
+          - APROBADA
+          example: PENDIENTE
+          pattern: PENDIENTE|APROBADA
+        numero:
+          type: string
+          description: "Numero que devolvio el financiador. Obligatorio: es el dato\
+            \ con el que se presenta la liquidacion. Unico por cobertura mientras\
+            \ este vigente; el de una dada de baja si se puede reusar"
+          example: AUT-99120034
+          maxLength: 64
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. NUNCA contenido clinico
+          maxLength: 500
+          minLength: 0
+        ordenMedicaId:
+          type: integer
+          format: int64
+          description: "Orden medica que respalda el pedido, si el convenio la exigia.\
+            \ Tiene que ser de esta persona y estar activa. Null es legitimo: hay\
+            \ convenios que autorizan sin orden"
+          example: 51
+        practicaId:
+          type: integer
+          format: int64
+          description: "Practica del catalogo clinico autorizada. Es el eje sobre\
+            \ el que se pacta con un financiador, el mismo que usa el arancel del\
+            \ convenio"
+          example: 33
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que la autorizacion habilita
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia, INCLUSIVE. Null = sin vencimiento declarado"
+          example: 2026-12-31
+      required:
+      - coberturaId
+      - numero
+      - practicaId
+      - vigenciaDesde
     CreateBloqueRequest:
       type: object
       description: Datos para dar de alta un bloque recurrente de disponibilidad
@@ -11519,6 +12611,78 @@ components:
       - duracionMinutos
       - nombreComercial
       - servicioId
+    CreateOrdenRequest:
+      type: object
+      description: Datos de la orden medica que el paciente presento
+      properties:
+        coberturaId:
+          type: integer
+          format: int64
+          description: "Cobertura para la que se presenta. Omitir = vale para cualquiera.\
+            \ Una prescripcion la firma un medico, no un financiador, asi que atarla\
+            \ a una cobertura obligaria a recargarla cuando el paciente cambia de\
+            \ obra social"
+          example: 412
+        fechaEmision:
+          type: string
+          format: date
+          description: Fecha que la orden declara. Es lo que el financiador mira para
+            aceptar o rechazar la presentacion
+          example: 2026-09-01
+        indicacion:
+          type: string
+          description: "Transcripcion administrativa de lo indicado. NO es registro\
+            \ clinico (RN-M17-004): la documentacion administrativa no reemplaza la\
+            \ historia clinica"
+          example: "Kinesiologia motora, 10 sesiones"
+          maxLength: 280
+          minLength: 0
+        matriculaEmisor:
+          type: string
+          description: "Matricula del emisor, cuando esta legible"
+          example: MP 12345
+          maxLength: 64
+          minLength: 0
+        numero:
+          type: string
+          description: Numero impreso en la orden. Muchas ordenes en papel no lo traen
+            y exigirlo dejaria al mostrador sin poder cargarlas
+          example: OM-2026-004512
+          maxLength: 64
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. NUNCA contenido clinico
+          maxLength: 500
+          minLength: 0
+        profesionalEmisor:
+          type: string
+          description: "Profesional que firma la orden, tal como figura en el papel"
+          example: Dra. Sintetica Prueba
+          maxLength: 160
+          minLength: 0
+        sesionesPrescriptas:
+          type: integer
+          format: int32
+          description: "Sesiones que la orden indica. INFORMATIVA: quien limita lo\
+            \ que se puede atender es la autorizacion del financiador, no la prescripcion"
+          example: 10
+          minimum: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que la orden se puede presentar. Omitir = la
+            fecha de emision. Nunca puede ser anterior a ella
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia, INCLUSIVE. Null = sin vencimiento declarado. Una\
+            \ orden vencida NO desaparece: se sigue listando con vencida = true"
+          example: 2026-12-31
+      required:
+      - fechaEmision
+      - profesionalEmisor
     CreateOrganizationRequest:
       type: object
       description: Datos para dar de alta una organizacion y su primer consultorio
@@ -11864,6 +13028,18 @@ components:
           minLength: 0
       required:
       - reason
+    DeactivateDocumentoRequest:
+      type: object
+      description: Motivo de la baja logica del registro
+      properties:
+        reason:
+          type: string
+          description: Por que se da de baja. Queda en la fila y en la auditoria
+          example: Se cargo sobre el paciente equivocado
+          maxLength: 280
+          minLength: 0
+      required:
+      - reason
     DeactivateEspacioRequest:
       type: object
       description: Motivo de la baja logica del espacio
@@ -12060,6 +13236,52 @@ components:
           - colaborador:read
           items:
             type: string
+    ElegibilidadResponse:
+      type: object
+      description: Requisitos administrativos que el convenio exige y su veredicto
+      properties:
+        convenioId:
+          type: integer
+          format: int64
+          description: Convenio VIVO que se aplico. Null si no hay ninguno
+          example: 12
+        convenioNombre:
+          type: string
+          description: Nombre del convenio aplicado
+        elegible:
+          type: boolean
+          description: "Ningun requisito exigido quedo sin cumplir. Con la lista vacia\
+            \ es true, y eso es correcto: no hay nada que exigir"
+        fecha:
+          type: string
+          format: date
+          description: Dia contra el que se evaluo todo
+          example: 2026-09-03
+        limiteSesionesMensual:
+          type: integer
+          format: int32
+          description: "Tope mensual de sesiones pactado. INFORMATIVO y sin veredicto:\
+            \ verificarlo exige contar sesiones ya atendidas, o sea el consumo que\
+            \ esta version no cablea"
+          example: 20
+        motivo:
+          type: string
+          description: "Por que no hay requisitos que evaluar, o null si los hay.\
+            \ COBERTURA_PARTICULAR = no hay financiador. SIN_CONVENIO_VIGENTE = la\
+            \ sede no tiene convenio con ese plan; el paciente se atiende como particular.\
+            \ SIN_ARANCEL_VIGENTE = hay convenio pero la practica no tiene arancel\
+            \ cargado, que es un hueco de configuracion del centro y no un motivo\
+            \ para negarle la atencion al paciente"
+          enum:
+          - COBERTURA_PARTICULAR
+          - SIN_CONVENIO_VIGENTE
+          - SIN_ARANCEL_VIGENTE
+          example: SIN_CONVENIO_VIGENTE
+        requisitos:
+          type: array
+          description: "Lo que el convenio exige, uno por uno, con su veredicto"
+          items:
+            $ref: "#/components/schemas/RequisitoResponse"
     EspacioAvailabilityResponse:
       type: object
       description: Disponibilidad de un espacio para la ventana consultada
@@ -13441,6 +14663,105 @@ components:
           type: boolean
           description: "Si HOY cae dentro de la ventana de vigencia, en la zona horaria\
             \ de la sede. Distinto de estado: ver la descripcion del esquema"
+    OrdenResponse:
+      type: object
+      description: Orden medica de un paciente
+      properties:
+        adjuntoId:
+          type: integer
+          format: int64
+          description: "Adjunto vinculado con el escaneo, si se cargo"
+          example: 907
+        coberturaId:
+          type: integer
+          format: int64
+          description: Cobertura para la que se presento. Null = vale para cualquiera
+          example: 412
+        consultorioId:
+          type: integer
+          format: int64
+          description: "Sede desde la que se cargo. Dato de auditoria, no de propiedad"
+          example: 7
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante de la baja logica
+        diasParaVencer:
+          type: integer
+          format: int64
+          description: "Dias que faltan para el vencimiento. Negativo si ya vencio,\
+            \ null si no vence. Es la alerta de RF-M17-006, calculada al leer"
+          example: 45
+        estado:
+          type: string
+          description: "Ciclo de vida: ACTIVA o INACTIVA. NO es la vigencia"
+          enum:
+          - ACTIVA
+          - INACTIVA
+          example: ACTIVA
+        fechaEmision:
+          type: string
+          format: date
+          description: Fecha que la orden declara
+          example: 2026-09-01
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la orden
+          example: 51
+        indicacion:
+          type: string
+          description: Transcripcion administrativa. NO es registro clinico
+        matriculaEmisor:
+          type: string
+          description: Matricula del emisor
+          example: MP 12345
+        numero:
+          type: string
+          description: Numero impreso en la orden
+          example: OM-2026-004512
+        observaciones:
+          type: string
+          description: Notas administrativas
+        personaId:
+          type: integer
+          format: int64
+          description: Paciente al que se le prescribio
+          example: 1204
+        profesionalEmisor:
+          type: string
+          description: Profesional que firma
+          example: Dra. Sintetica Prueba
+        sesionesPrescriptas:
+          type: integer
+          format: int32
+          description: Sesiones indicadas. Informativa
+          example: 10
+        vencida:
+          type: boolean
+          description: "Ya paso su fin de vigencia. Vencida NO es dada de baja: la\
+            \ orden sigue siendo consultable y editable"
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que se puede presentar
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia, INCLUSIVE. Null = sin vencimiento"
+          example: 2026-12-31
+        vigente:
+          type: boolean
+          description: Se puede presentar la fecha consultada
     OrganizationResponse:
       type: object
       description: Organizacion (tenant) con su estado operativo efectivo
@@ -13948,6 +15269,13 @@ components:
       - https://akine.app/problems/arancel-solapado
       - https://akine.app/problems/arancel-inactivo
       - https://akine.app/problems/arancel-already-inactive
+      - https://akine.app/problems/orden-inactiva
+      - https://akine.app/problems/orden-already-inactive
+      - https://akine.app/problems/autorizacion-inactiva
+      - https://akine.app/problems/autorizacion-already-inactive
+      - https://akine.app/problems/autorizacion-superpuesta
+      - https://akine.app/problems/autorizacion-transicion-no-permitida
+      - https://akine.app/problems/documento-numero-taken
     ProfesionalHabilitado:
       type: object
       description: Profesional habilitado para prestar la oferta
@@ -14187,6 +15515,37 @@ components:
       - expectedVersion
       - inicio
       - motivo
+    RequisitoResponse:
+      type: object
+      description: Un requisito del convenio y su veredicto
+      properties:
+        cumplido:
+          type: boolean
+          description: Si hoy esta satisfecho
+        detalle:
+          type: string
+          description: "Por que esta o no cumplido, en lenguaje del mostrador"
+        referenciaId:
+          type: integer
+          format: int64
+          description: "Orden o autorizacion que lo satisface, o la cobertura para\
+            \ la credencial. Null si falta"
+          example: 51
+        saldo:
+          type: integer
+          format: int32
+          description: Sesiones restantes cuando el requisito es AUTORIZACION y hay
+            tope declarado
+          example: 6
+        tipo:
+          type: string
+          description: Que exige el convenio. Son exactamente las tres banderas que
+            declara desde M16
+          enum:
+          - ORDEN
+          - AUTORIZACION
+          - CREDENCIAL
+          example: ORDEN
     ResendActivationRequest:
       type: object
       description: Direccion a la que reenviar el enlace de activacion
@@ -14261,6 +15620,53 @@ components:
       - estado
       - nota
       - version
+    ResolverAutorizacionRequest:
+      type: object
+      description: Respuesta del financiador sobre una autorizacion
+      properties:
+        accion:
+          type: string
+          description: Que hizo el financiador. APROBAR habilita; OBSERVAR pide corregir
+            y deja la autorizacion viva; RECHAZAR la deniega y es terminal
+          enum:
+          - APROBAR
+          - OBSERVAR
+          - RECHAZAR
+          example: APROBAR
+          pattern: APROBAR|OBSERVAR|RECHAZAR
+        cantidadAutorizada:
+          type: integer
+          format: int32
+          description: "Sesiones que el financiador realmente otorgo. Puede ser MENOR\
+            \ que la pedida: eso es la autorizacion parcial. Solo se aplica al APROBAR"
+          example: 6
+          minimum: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          description: "Version que el cliente leyo. Es tambien lo que hace segura\
+            \ la aprobacion concurrente: el segundo en llegar recibe 409"
+          example: 0
+        motivo:
+          type: string
+          description: "Por que se observo o se rechazo. OBLIGATORIO en esas dos acciones:\
+            \ sin motivo, el mostrador no sabe que corregir. Ignorado al aprobar"
+          example: Falta la orden medica firmada
+          maxLength: 280
+          minLength: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Inicio de vigencia concedido. Solo se aplica al APROBAR
+          example: 2026-09-15
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Fin de vigencia concedido, INCLUSIVE. Solo se aplica al APROBAR"
+          example: 2026-11-30
+      required:
+      - accion
+      - expectedVersion
     ResumenDePersonaResponse:
       type: object
       description: "Ficha administrativa consolidada de una persona, recortada por\
@@ -14990,6 +16396,50 @@ components:
           example: 2026-06-30
       required:
       - expectedVersion
+    UpdateAutorizacionRequest:
+      type: object
+      description: Cambios sobre una autorizacion
+      properties:
+        cantidadAutorizada:
+          type: integer
+          format: int32
+          description: Sesiones otorgadas. No puede quedar por debajo de lo ya consumido
+          example: 10
+          minimum: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version que el cliente leyo. Una version vieja responde 409
+            en vez de pisar el cambio ajeno en silencio
+          example: 0
+        numero:
+          type: string
+          description: Numero que devolvio el financiador
+          example: AUT-99120034
+          maxLength: 64
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. NUNCA contenido clinico
+          maxLength: 500
+          minLength: 0
+        ordenMedicaId:
+          type: integer
+          format: int64
+          description: Orden medica que la respalda. Tiene que ser de esta persona
+          example: 51
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que habilita
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia, INCLUSIVE"
+          example: 2026-12-31
+      required:
+      - expectedVersion
     UpdateBloqueRequest:
       type: object
       description: Cambios a aplicar sobre un bloque de disponibilidad vigente
@@ -15450,6 +16900,65 @@ components:
             \ dejarla sin fin previsto, limpiarVigenciaHasta"
       required:
       - expectedVersion
+    UpdateOrdenRequest:
+      type: object
+      description: Cambios sobre una orden medica
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version que el cliente leyo. Una version vieja responde 409
+            en vez de pisar el cambio ajeno en silencio
+          example: 0
+        fechaEmision:
+          type: string
+          format: date
+          description: Fecha que la orden declara
+          example: 2026-09-01
+        indicacion:
+          type: string
+          description: Transcripcion administrativa. NO es registro clinico
+          maxLength: 280
+          minLength: 0
+        matriculaEmisor:
+          type: string
+          description: Matricula del emisor
+          example: MP 12345
+          maxLength: 64
+          minLength: 0
+        numero:
+          type: string
+          description: Numero impreso en la orden
+          example: OM-2026-004512
+          maxLength: 64
+          minLength: 0
+        observaciones:
+          type: string
+          description: Notas administrativas. NUNCA contenido clinico
+          maxLength: 500
+          minLength: 0
+        profesionalEmisor:
+          type: string
+          description: Profesional que firma
+          example: Dra. Sintetica Prueba
+          maxLength: 160
+          minLength: 0
+        sesionesPrescriptas:
+          type: integer
+          format: int32
+          description: Sesiones indicadas. Informativa
+          example: 10
+          minimum: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia de vigencia. Nunca anterior a la emision
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia de vigencia, INCLUSIVE"
+      required:
+      - expectedVersion
     UpdateOrganizationRequest:
       type: object
       description: "Campos editables de la organizacion, con la version para bloqueo\
@@ -15679,3 +17188,14 @@ components:
           type: string
           description: Version de la aplicacion
           example: 0.0.1-SNAPSHOT
+    VincularDocumentoRequest:
+      type: object
+      description: Adjunto a vincular como documento del registro
+      properties:
+        adjuntoId:
+          type: integer
+          format: int64
+          description: "Adjunto administrativo de ESTA persona, ya subido y no dado\
+            \ de baja. Null desvincula, que es una operacion legitima: el operador\
+            \ subio el escaneo equivocado y lo saca sin dar de baja el registro entero"
+          example: 907
