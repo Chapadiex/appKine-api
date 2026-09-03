@@ -101,6 +101,21 @@ final class AuditEvents {
 
 	static final String ENTITY_COBERTURA = "CoberturaPaciente";
 
+	// --- Ordenes, autorizaciones y documentacion administrativa (M17, AKINE-03.06) ---
+
+	static final String ORDEN_CREATED = "ORDEN_MEDICA_CREATED";
+	static final String ORDEN_UPDATED = "ORDEN_MEDICA_UPDATED";
+	static final String ORDEN_DOCUMENTO_LINKED = "ORDEN_MEDICA_DOCUMENTO_LINKED";
+	static final String ORDEN_DEACTIVATED = "ORDEN_MEDICA_DEACTIVATED";
+	static final String ENTITY_ORDEN = "OrdenMedica";
+
+	static final String AUTORIZACION_CREATED = "AUTORIZACION_CREATED";
+	static final String AUTORIZACION_UPDATED = "AUTORIZACION_UPDATED";
+	static final String AUTORIZACION_RESUELTA = "AUTORIZACION_RESUELTA";
+	static final String AUTORIZACION_DOCUMENTO_LINKED = "AUTORIZACION_DOCUMENTO_LINKED";
+	static final String AUTORIZACION_DEACTIVATED = "AUTORIZACION_DEACTIVATED";
+	static final String ENTITY_AUTORIZACION = "Autorizacion";
+
 	private static final String MDC_TRACE_ID = "traceId";
 
 	private AuditEvents() {

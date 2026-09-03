@@ -429,7 +429,17 @@ public enum ProblemType {
 	/** El arancel esta dado de baja: no admite ediciones. */
 	ARANCEL_INACTIVO("arancel-inactivo"),
 	/** El arancel ya estaba dado de baja. */
-	ARANCEL_ALREADY_INACTIVE("arancel-already-inactive");
+	ARANCEL_ALREADY_INACTIVE("arancel-already-inactive"),
+
+	// --- Ordenes, autorizaciones y documentacion administrativa (M17, AKINE-03.06) ---
+
+	ORDEN_INACTIVA("orden-inactiva"),
+	ORDEN_ALREADY_INACTIVE("orden-already-inactive"),
+	AUTORIZACION_INACTIVA("autorizacion-inactiva"),
+	AUTORIZACION_ALREADY_INACTIVE("autorizacion-already-inactive"),
+	AUTORIZACION_SUPERPUESTA("autorizacion-superpuesta"),
+	AUTORIZACION_TRANSICION_NO_PERMITIDA("autorizacion-transicion-no-permitida"),
+	DOCUMENTO_NUMERO_TAKEN("documento-numero-taken");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

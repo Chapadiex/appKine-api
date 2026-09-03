@@ -1,8 +1,11 @@
 package com.akine.person.domain.port;
 
 import com.akine.person.domain.AdjuntoAdministrativo;
+import com.akine.person.domain.Autorizacion;
+import com.akine.person.domain.AutorizacionPersonaLock;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.CoberturaPersonaLock;
+import com.akine.person.domain.OrdenMedica;
 import com.akine.person.domain.PerfilPaciente;
 import com.akine.person.domain.Persona;
 import com.akine.person.domain.TipoDocumento;
@@ -274,6 +277,63 @@ public final class PersonRepositoryPorts {
 
 		/** Lock exclusivo sobre la fila de esa persona. Serializa sus escrituras de cobertura. */
 		Optional<CoberturaPersonaLock> lockByScope(long organizationId, long personaId);
+
+		/** Crea la fila si falta, sin lanzar nunca. Ver el javadoc de la implementacion. */
+		void crearSiFalta(long organizationId, long personaId);
+	}
+
+	/** Ordenes medicas de un paciente (M17, AKINE-03.06). */
+	public interface OrdenMedicaRepositoryPort {
+
+		OrdenMedica save(OrdenMedica orden);
+
+		OrdenMedica saveAndFlush(OrdenMedica orden);
+
+		Optional<OrdenMedica> findByIdAndOrganizationIdAndPersonaId(
+				Long id, Long organizationId, Long personaId);
+
+		/** Todas las ordenes del paciente, mas nuevas primero. Incluye las dadas de baja. */
+		List<OrdenMedica> historial(Long organizationId, Long personaId);
+
+		/** Solo las activas. Es el conjunto que resuelve el requisito de orden del convenio. */
+		List<OrdenMedica> activasDe(Long organizationId, Long personaId);
+	}
+
+	/** Autorizaciones de un paciente (M17, AKINE-03.06). */
+	public interface AutorizacionRepositoryPort {
+
+		Autorizacion save(Autorizacion autorizacion);
+
+		Autorizacion saveAndFlush(Autorizacion autorizacion);
+
+		Optional<Autorizacion> findByIdAndOrganizationIdAndPersonaId(
+				Long id, Long organizationId, Long personaId);
+
+		/** Todas, mas nuevas primero. Incluye vencidas, rechazadas y dadas de baja. */
+		List<Autorizacion> historial(Long organizationId, Long personaId);
+
+		/**
+		 * Las APROBADAS y activas de una cobertura y una practica.
+		 *
+		 * <p>Es el conjunto contra el que se valida el solapamiento y el que resuelve la
+		 * elegibilidad. Filtra por estado en la base y no en memoria porque una PENDIENTE no
+		 * participa de ninguna de las dos preguntas, y traerlas para descartarlas seria leer
+		 * bajo el lock mas filas de las que la regla mira.
+		 */
+		List<Autorizacion> aprobadasDe(Long organizationId, Long coberturaId, Long practicaId);
+	}
+
+	/**
+	 * La fila-lock por persona que serializa las APROBACIONES. <b>No guarda estado.</b>
+	 *
+	 * <p>Separada de {@code CoberturaPersonaLockRepositoryPort} aunque tenga la misma forma:
+	 * protegen invariantes distintas, y compartir la fila ataria dos reglas independientes al
+	 * mismo punto de contencion.
+	 */
+	public interface AutorizacionPersonaLockRepositoryPort {
+
+		/** Lock exclusivo sobre la fila de esa persona. */
+		Optional<AutorizacionPersonaLock> lockByScope(long organizationId, long personaId);
 
 		/** Crea la fila si falta, sin lanzar nunca. Ver el javadoc de la implementacion. */
 		void crearSiFalta(long organizationId, long personaId);

@@ -4,10 +4,17 @@ import com.akine.person.domain.exception.AdjuntoInactivoException;
 import com.akine.person.domain.exception.AdjuntoNoDisponibleException;
 import com.akine.person.domain.exception.AdjuntoNotAccessibleException;
 import com.akine.person.domain.exception.ArchivoNoAceptadoException;
+import com.akine.person.domain.exception.AutorizacionInactivaException;
+import com.akine.person.domain.exception.AutorizacionNotAccessibleException;
+import com.akine.person.domain.exception.AutorizacionSuperpuestaException;
+import com.akine.person.domain.exception.AutorizacionTransicionNoPermitidaException;
 import com.akine.person.domain.exception.CoberturaInactivaException;
 import com.akine.person.domain.exception.CoberturaNotAccessibleException;
 import com.akine.person.domain.exception.CoberturaPrincipalSuperpuestaException;
 import com.akine.person.domain.exception.CoberturaSuperpuestaException;
+import com.akine.person.domain.exception.NumeroDeDocumentoTakenException;
+import com.akine.person.domain.exception.OrdenInactivaException;
+import com.akine.person.domain.exception.OrdenNotAccessibleException;
 import com.akine.person.domain.exception.PersonaDocumentoTakenException;
 import com.akine.person.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.person.domain.exception.PlanNoSeleccionableException;
@@ -72,6 +79,15 @@ public class PersonProblemHandler {
 	private static final URI COBERTURA_INACTIVA = ProblemType.COBERTURA_INACTIVA.uri();
 	private static final URI COBERTURA_ALREADY_INACTIVE =
 			ProblemType.COBERTURA_ALREADY_INACTIVE.uri();
+	private static final URI ORDEN_INACTIVA = ProblemType.ORDEN_INACTIVA.uri();
+	private static final URI ORDEN_ALREADY_INACTIVE = ProblemType.ORDEN_ALREADY_INACTIVE.uri();
+	private static final URI AUTORIZACION_INACTIVA = ProblemType.AUTORIZACION_INACTIVA.uri();
+	private static final URI AUTORIZACION_ALREADY_INACTIVE =
+			ProblemType.AUTORIZACION_ALREADY_INACTIVE.uri();
+	private static final URI AUTORIZACION_SUPERPUESTA = ProblemType.AUTORIZACION_SUPERPUESTA.uri();
+	private static final URI AUTORIZACION_TRANSICION_NO_PERMITIDA =
+			ProblemType.AUTORIZACION_TRANSICION_NO_PERMITIDA.uri();
+	private static final URI DOCUMENTO_NUMERO_TAKEN = ProblemType.DOCUMENTO_NUMERO_TAKEN.uri();
 
 	@ExceptionHandler(PersonaNotAccessibleException.class)
 	public ProblemDetail handlePersonaNoAccesible(PersonaNotAccessibleException exception) {
@@ -294,6 +310,114 @@ public class PersonProblemHandler {
 								+ ". Sigue siendo consultable.",
 				"Cobertura dada de baja",
 				esUnaSegundaBaja ? COBERTURA_ALREADY_INACTIVE : COBERTURA_INACTIVA);
+	}
+
+
+	// =================================================================================
+	// Ordenes, autorizaciones y documentacion administrativa (M17, AKINE-03.06)
+	// =================================================================================
+
+	@ExceptionHandler(OrdenNotAccessibleException.class)
+	public ProblemDetail handleOrdenNoAccesible(OrdenNotAccessibleException exception) {
+		// Los tres casos —no existe, es de otro tenant, es de otro paciente— responden lo MISMO.
+		// Distinguirlos confirmaria que ese id existe.
+		log.debug("Orden medica no accesible: ordenId={}", exception.getOrdenId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.NOT_FOUND, "La orden medica no existe.");
+		problem.setTitle("No encontrada");
+		problem.setType(NOT_FOUND);
+		return problem;
+	}
+
+	@ExceptionHandler(AutorizacionNotAccessibleException.class)
+	public ProblemDetail handleAutorizacionNoAccesible(
+			AutorizacionNotAccessibleException exception) {
+
+		log.debug("Autorizacion no accesible: autorizacionId={}", exception.getAutorizacionId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.NOT_FOUND, "La autorizacion no existe.");
+		problem.setTitle("No encontrada");
+		problem.setType(NOT_FOUND);
+		return problem;
+	}
+
+	@ExceptionHandler(OrdenInactivaException.class)
+	public ProblemDetail handleOrdenInactiva(OrdenInactivaException exception) {
+		// Dos type distintos sobre la misma excepcion, igual que en cobertura: "ya estaba dada de
+		// baja" y "no se puede editar porque esta de baja" son dos acciones distintas para quien
+		// las recibe.
+		log.debug("Operacion sobre orden inactiva: ordenId={} operacion={}",
+				exception.getOrdenId(), exception.getOperacion());
+		boolean esUnaSegundaBaja = "dar de baja".equals(exception.getOperacion());
+		return conflicto(
+				esUnaSegundaBaja
+						? "La orden medica ya estaba dada de baja."
+						: "La orden medica esta dada de baja y no admite "
+								+ exception.getOperacion() + ". Sigue siendo consultable.",
+				"Orden dada de baja",
+				esUnaSegundaBaja ? ORDEN_ALREADY_INACTIVE : ORDEN_INACTIVA);
+	}
+
+	@ExceptionHandler(AutorizacionInactivaException.class)
+	public ProblemDetail handleAutorizacionInactiva(AutorizacionInactivaException exception) {
+		log.debug("Operacion sobre autorizacion inactiva: autorizacionId={} operacion={}",
+				exception.getAutorizacionId(), exception.getOperacion());
+		boolean esUnaSegundaBaja = "dar de baja".equals(exception.getOperacion());
+		return conflicto(
+				esUnaSegundaBaja
+						? "La autorizacion ya estaba dada de baja."
+						: "La autorizacion esta dada de baja y no admite "
+								+ exception.getOperacion() + ". Sigue siendo consultable.",
+				"Autorizacion dada de baja",
+				esUnaSegundaBaja ? AUTORIZACION_ALREADY_INACTIVE : AUTORIZACION_INACTIVA);
+	}
+
+	@ExceptionHandler(AutorizacionSuperpuestaException.class)
+	public ProblemDetail handleAutorizacionSuperpuesta(
+			AutorizacionSuperpuestaException exception) {
+
+		log.debug("Autorizacion rechazada por solapamiento");
+		ProblemDetail problem = conflicto(
+				"El paciente ya tiene una autorizacion aprobada de esa practica vigente en ese "
+						+ "periodo. Dos que se pisan contarian el saldo dos veces; dos "
+						+ "consecutivas —renovar— si conviven.",
+				"Autorizacion superpuesta",
+				AUTORIZACION_SUPERPUESTA);
+		problem.setProperty("autorizacionExistenteId", exception.getAutorizacionExistenteId());
+		return problem;
+	}
+
+	@ExceptionHandler(AutorizacionTransicionNoPermitidaException.class)
+	public ProblemDetail handleTransicionNoPermitida(
+			AutorizacionTransicionNoPermitidaException exception) {
+
+		log.debug("Transicion de autorizacion rechazada: autorizacionId={} estado={} accion={}",
+				exception.getAutorizacionId(), exception.getEstadoActual(), exception.getAccion());
+		ProblemDetail problem = conflicto(
+				"Una autorizacion " + exception.getEstadoActual() + " no admite la accion "
+						+ exception.getAccion() + ". APROBADA y RECHAZADA son terminales: "
+						+ "corregir una decision tomada es dar de baja la autorizacion y cargar "
+						+ "otra.",
+				"Transicion no permitida",
+				AUTORIZACION_TRANSICION_NO_PERMITIDA);
+		problem.setProperty("estadoActual", exception.getEstadoActual());
+		problem.setProperty("accion", exception.getAccion());
+		return problem;
+	}
+
+	@ExceptionHandler(NumeroDeDocumentoTakenException.class)
+	public ProblemDetail handleNumeroTaken(NumeroDeDocumentoTakenException exception) {
+		log.debug("Numero de {} en uso", exception.getDocumento());
+		ProblemDetail problem = conflicto(
+				"Ya hay una " + exception.getDocumento() + " vigente con ese numero. El numero de "
+						+ "una dada de baja si se puede reusar.",
+				"Numero en uso",
+				DOCUMENTO_NUMERO_TAKEN);
+		problem.setProperty("documento", exception.getDocumento());
+		if (exception.getNumero() != null) {
+			problem.setProperty("numero", exception.getNumero());
+		}
+		return problem;
 	}
 
 	private static ProblemDetail conflicto(String detalle, String titulo, URI type) {
