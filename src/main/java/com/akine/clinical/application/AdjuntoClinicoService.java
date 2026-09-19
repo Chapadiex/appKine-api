@@ -83,10 +83,13 @@ import java.util.UUID;
  * <h2>Fila primero, blob despues</h2>
  *
  * <p>La fila se escribe con {@code saveAndFlush} para que el unique decida <b>antes</b> de tocar
- * el disco, y el binario se escribe despues, dentro de la misma transaccion de negocio. Si el blob
- * falla, la transaccion revierte y no queda fila apuntando a nada; si la transaccion revierte
- * despues, queda un archivo huerfano que nadie referencia. El orden inverso produciria el unico de
- * los dos errores que el usuario ve. Ver la cabecera de {@code V46}.
+ * el disco, y el binario se escribe despues. El orden inverso produciria filas apuntando a nada,
+ * que es el unico de los dos errores que el usuario ve. Ver la cabecera de {@code V46}.
+ *
+ * <p><b>El INSERT corre en su propia transaccion</b>, via
+ * {@link AdjuntoClinicoEscrituraAparte}, y no en la del servicio: un choque contra el unique
+ * marca {@code rollbackOnly} la transaccion en la que ocurre, y atraparlo no la des-marca. Esa
+ * clase explica por que, y cual es la consecuencia asumida.
  */
 @Service
 public class AdjuntoClinicoService {
@@ -104,6 +107,7 @@ public class AdjuntoClinicoService {
 	private final RelacionAsistencialProbe relaciones;
 	private final AuditTrail auditTrail;
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
+	private final AdjuntoClinicoEscrituraAparte escrituraAparte;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public AdjuntoClinicoService(
@@ -114,7 +118,8 @@ public class AdjuntoClinicoService {
 			PermissionGuard permissionGuard,
 			RelacionAsistencialProbe relaciones,
 			AuditTrail auditTrail,
-			ClinicalSupportAccessAuditor supportAccessAuditor) {
+			ClinicalSupportAccessAuditor supportAccessAuditor,
+			AdjuntoClinicoEscrituraAparte escrituraAparte) {
 
 		this.historias = historias;
 		this.entradas = entradas;
@@ -124,6 +129,7 @@ public class AdjuntoClinicoService {
 		this.relaciones = relaciones;
 		this.auditTrail = auditTrail;
 		this.supportAccessAuditor = supportAccessAuditor;
+		this.escrituraAparte = escrituraAparte;
 	}
 
 	// =================================================================================
@@ -205,14 +211,22 @@ public class AdjuntoClinicoService {
 				"Descargar adjunto clinico");
 
 		AdjuntoClinico adjunto = cargar(organizationId, historia.getId(), adjuntoId);
-		byte[] bytes = contenidoDe(adjunto, adjuntoId);
+		byte[] bytes = contenidoDe(organizationId, historia.getId(), adjunto, adjuntoId);
 
 		Instant ahora = Instant.now();
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("historiaClinicaId", String.valueOf(historia.getId()));
 		detalles.put("personaId", String.valueOf(historia.getPersonaId()));
 		detalles.put("categoria", adjunto.getCategoria().name());
-		detalles.put("nombreArchivo", adjunto.getNombreArchivo());
+		// EL NOMBRE DEL ARCHIVO NO VA. Es el mismo argumento con el que reclasificar no copia el
+		// titulo, 140 lineas mas abajo, y el que el javadoc de AdjuntoClinicoContributor promete:
+		// `audit_event` se consulta con `auditoria:read`, que NO es un permiso clinico, y un
+		// nombre como "rmn-rodilla-rotura-menisco.pdf" es el diagnostico. Copiarlo convertiria la
+		// auditoria en una via de lectura clinica sin permiso clinico. El equivalente
+		// administrativo, person.AdjuntoService, pasa directamente Map.of().
+		//
+		// El checksum SI se queda: es un hash, no dice nada del contenido, y es lo que permite
+		// identificar despues QUE archivo salio del sistema sin tener que nombrarlo.
 		detalles.put("checksumSha256", adjunto.getChecksumSha256());
 
 		// El evento que justifica la etapa entera desde el lado de seguridad: es el momento en
@@ -285,10 +299,16 @@ public class AdjuntoClinicoService {
 
 		AdjuntoClinico guardado;
 		try {
-			// Fila primero, con flush, para que el unique decida antes de tocar el disco. Si otro
-			// request gano la carrera, esto lanza y la subida se resuelve como idempotente.
-			guardado = adjuntos.saveAndFlush(adjunto);
+			// Fila primero, con flush, para que el unique decida antes de tocar el disco. Y en una
+			// TRANSACCION PROPIA: si el flush choca contra el unique, Hibernate marca rollbackOnly
+			// antes de que la excepcion salga, y atraparla no des-marca nada. Con el INSERT adentro
+			// de esta transaccion, el catch de abajo correria sobre una sesion inutilizable y el
+			// commit terminaria en UnexpectedRollbackException: un 500 en vez de la idempotencia
+			// que el @Operation promete en mayusculas. Es la regla 2 del Paquete B.
+			guardado = escrituraAparte.insertar(adjunto);
 		} catch (DataIntegrityViolationException choque) {
+			// La que murio fue la transaccion del INSERT, no esta: la consulta de abajo corre sobre
+			// una sesion sana.
 			log.info("Subida clinica concurrente del mismo contenido resuelta como idempotente: "
 					+ "historiaClinicaId={}", historia.getId());
 			return adjuntos.buscarVigentePorChecksum(organizationId, historia.getId(), checksum)
@@ -299,7 +319,17 @@ public class AdjuntoClinicoService {
 
 		// Blob despues. Ver la cabecera de la clase y la de V46: el orden inverso produciria filas
 		// apuntando a nada, que es el unico de los dos errores que el usuario ve.
-		storage.guardar(storageKey, contenido);
+		//
+		// Como la fila ya esta commiteada, un fallo del blob NO se revierte solo: la fila queda, y
+		// si se la dejara DISPONIBLE el listado afirmaria tener un estudio que no se puede
+		// descargar. Se la marca NO_DISPONIBLE, que es la verdad, y se propaga el fallo.
+		try {
+			storage.guardar(storageKey, contenido);
+		} catch (RuntimeException falla) {
+			escrituraAparte.marcarNoDisponible(
+					organizationId, historia.getId(), guardado.getId());
+			throw falla;
+		}
 
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("historiaClinicaId", String.valueOf(historia.getId()));
@@ -363,7 +393,12 @@ public class AdjuntoClinicoService {
 		}
 
 		adjunto.reclasificar(categoria, titulo);
-		AdjuntoClinico guardado = adjuntos.save(adjunto);
+
+		// saveAndFlush y no save, por la regla 5 del repositorio: `save` es un merge y el UPDATE
+		// que sube la `version` recien sale al cierre de la transaccion, DESPUES de que esta vista
+		// leyo getVersion(). El cliente se llevaria la version vieja y su proxima operacion sobre
+		// este adjunto moriria en un 409 que no le echa la culpa a nadie.
+		AdjuntoClinico guardado = adjuntos.saveAndFlush(adjunto);
 
 		Instant ahora = Instant.now();
 		auditar(AuditEvents.ADJUNTO_CLINICO_RECLASSIFIED, guardado.getId(),
@@ -408,12 +443,20 @@ public class AdjuntoClinicoService {
 
 		Instant ahora = Instant.now();
 		adjunto.deactivate(ahora, motivo);
-		AdjuntoClinico guardado = adjuntos.save(adjunto);
+
+		// Mismo motivo que en reclasificar: la vista devuelve la version YA avanzada.
+		AdjuntoClinico guardado = adjuntos.saveAndFlush(adjunto);
 
 		auditar(AuditEvents.ADJUNTO_CLINICO_DEACTIVATED, guardado.getId(),
 				actor, acceso, "VIGENTE", "DADO_DE_BAJA",
-				Map.of("historiaClinicaId", String.valueOf(historia.getId()),
-						"motivoDeBaja", guardado.getDeactivationReason()),
+				// EL MOTIVO DE LA BAJA NO VA, mismo criterio que EntradaClinicaService: es texto
+				// libre que escribe un profesional sobre un estudio clinico. "Se da de baja el
+				// informe de la biopsia" ya dice de que esta enfermo el paciente, y `audit_event` se
+				// consulta con `auditoria:read`, que no es un permiso clinico. El motivo queda en
+				// `adjunto_clinico.deactivation_reason`, detras del permiso que corresponde, y el
+				// evento registra QUE se dio de baja y QUIEN, que es lo que la auditoria tiene que
+				// poder responder.
+				Map.of("historiaClinicaId", String.valueOf(historia.getId())),
 				ahora);
 		registrarSoporte(acceso, actor, guardado, "Dar de baja un adjunto clinico", ahora);
 
@@ -457,10 +500,19 @@ public class AdjuntoClinicoService {
 	 * Los bytes del adjunto, marcando la fila si el almacenamiento perdio el binario.
 	 *
 	 * <p>La marca importa: sin ella el problema solo se ve cuando alguien intenta descargar, y el
-	 * listado sigue afirmando que el estudio esta. Se escribe en la transaccion de la descarga, que
-	 * ya esta abierta.
+	 * listado sigue afirmando que el estudio esta.
+	 *
+	 * <p><b>Y no se escribe en la transaccion de la descarga</b>, aunque este abierta. La linea
+	 * siguiente lanza {@code AdjuntoClinicoNoDisponibleException} dentro de un metodo
+	 * {@code @Transactional}: Spring revierte, y el rollback se lleva la marca con el. La columna
+	 * se quedaria en {@code DISPONIBLE} para siempre y el listado seguiria afirmando que el
+	 * estudio esta, contra lo que prometen el {@code @Operation} del controller y la cabecera de
+	 * {@code V46}. Por eso va por {@link AdjuntoClinicoEscrituraAparte}, en una transaccion
+	 * propia que commitea sola.
 	 */
-	private byte[] contenidoDe(AdjuntoClinico adjunto, long adjuntoId) {
+	private byte[] contenidoDe(
+			long organizationId, long historiaClinicaId, AdjuntoClinico adjunto, long adjuntoId) {
+
 		if (!adjunto.isDescargable()) {
 			throw new AdjuntoClinicoNoDisponibleException(adjuntoId);
 		}
@@ -468,8 +520,7 @@ public class AdjuntoClinicoService {
 		if (bytes.isEmpty()) {
 			log.error("El almacenamiento clinico no tiene el contenido de un adjunto que la base "
 					+ "referencia: adjuntoId={}", adjuntoId);
-			adjunto.marcarNoDisponible();
-			adjuntos.save(adjunto);
+			escrituraAparte.marcarNoDisponible(organizationId, historiaClinicaId, adjuntoId);
 			throw new AdjuntoClinicoNoDisponibleException(adjuntoId);
 		}
 		return bytes.get();

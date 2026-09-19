@@ -153,7 +153,8 @@ class EntradaClinicaServiceTest {
 		assertThat(vista.enmendada()).isTrue();
 		// El contador vive en la cabecera: es lo que numera, no un MAX sobre las versiones.
 		assertThat(entrada.getUltimoNumeroVersion()).isEqualTo(2);
-		verify(entradas).save(entrada);
+		// saveAndFlush y no save: ver enmendar_devuelve_la_version_fresca.
+		verify(entradas).saveAndFlush(entrada);
 	}
 
 	@Test
@@ -211,6 +212,7 @@ class EntradaClinicaServiceTest {
 		assertThat(vista.vigente()).isFalse();
 		assertThat(vista.deactivationReason()).isEqualTo("Motivo original");
 		verify(entradas, never()).save(any());
+		verify(entradas, never()).saveAndFlush(any());
 	}
 
 	@Test
@@ -273,6 +275,53 @@ class EntradaClinicaServiceTest {
 		verify(versiones, never()).buscarDeEntrada(anyLong(), anyLong());
 	}
 
+	@Test
+	@DisplayName("enmendar devuelve la version YA avanzada de la cabecera, no la que leyo")
+	void enmendar_devuelve_la_version_fresca() {
+		// El defecto que esto fija: `save` es un merge, no un flush. Con
+		// OPTIMISTIC_FORCE_INCREMENT la @Version avanza en el flush, que ocurre al commit,
+		// DESPUES de que esta vista ya leyo getVersion(). El cliente se llevaba la version vieja,
+		// la mandaba como expectedVersion en la enmienda siguiente y comia un 409 del que no podia
+		// salir salvo releyendo la entrada.
+		EntradaClinica entrada = entradaVigente();
+		given(entradas.findWithLockByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
+				.willReturn(Optional.of(entrada));
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 3L))
+				.given(entradas).save(any());
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 4L))
+				.given(entradas).saveAndFlush(any());
+
+		EntradaClinicaView vista = service.enmendar(profesional, ENTRADA_ID,
+				"Mejora la flexion", "Se aclara el rango", 0L, null);
+
+		verify(entradas).saveAndFlush(entrada);
+		verify(entradas, never()).save(any());
+		assertThat(vista.version()).isEqualTo(4L);
+	}
+
+	@Test
+	@DisplayName("la baja tambien devuelve la version ya avanzada")
+	void la_baja_devuelve_la_version_fresca() {
+		// Este camino se salvaba POR ACCIDENTE: vigenteDe es una consulta JPQL y una consulta
+		// dispara el flush AUTO, que emitia el UPDATE justo antes de que se leyera la version.
+		// Depender de eso es depender de que nadie reordene dos lineas.
+		EntradaClinica entrada = entradaVigente();
+		given(entradas.findByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
+				.willReturn(Optional.of(entrada));
+		given(versiones.buscarDeEntrada(ORG_ID, ENTRADA_ID)).willReturn(List.of(version(1, null)));
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 3L))
+				.given(entradas).save(any());
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 4L))
+				.given(entradas).saveAndFlush(any());
+
+		EntradaClinicaView vista =
+				service.darDeBaja(profesional, ENTRADA_ID, "Cargada por error", 0L, null);
+
+		verify(entradas).saveAndFlush(entrada);
+		verify(entradas, never()).save(any());
+		assertThat(vista.version()).isEqualTo(4L);
+	}
+
 	// =================================================================================
 
 	private HistoriaClinica historia() {
@@ -292,6 +341,11 @@ class EntradaClinicaServiceTest {
 	private EntradaClinicaVersion version(int numero, String motivo) {
 		return new EntradaClinicaVersion(
 				ORG_ID, ENTRADA_ID, numero, "Cuerpo " + numero, motivo, Instant.now(), ACCOUNT_ID);
+	}
+
+	private static EntradaClinica conVersion(EntradaClinica entrada, long version) {
+		ReflectionTestUtils.setField(entrada, "version", version);
+		return entrada;
 	}
 
 	private static EntradaClinica conId(EntradaClinica entrada, long id) {

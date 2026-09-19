@@ -172,6 +172,23 @@ public class EntradaClinicaService {
 	 * enmiendas concurrentes que pasen las dos este control no pueden commitear las dos: la
 	 * segunda muere al cierre de la transaccion y reintenta con el numero siguiente.
 	 *
+	 * <p><b>Lo que la vista devuelve es la version que escribio el flush</b>, y por eso el guardado
+	 * es {@code saveAndFlush} y no {@code save}: con {@code save} el UPDATE salia al
+	 * commit, despues de que la vista ya habia leido {@code getVersion()}, el cliente se
+	 * llevaba la version vieja y su enmienda siguiente moria en un 409 del que no podia salir.
+	 *
+	 * <p><b>Queda una cosa que ningun unitario puede decidir y que hay que medir contra MySQL.</b>
+	 * La cabecera esta sucia âcambio {@code ultimo_numero_version}â, asi que el flush ya emite
+	 * un UPDATE versionado; encima, {@code OPTIMISTIC_FORCE_INCREMENT} registra en Hibernate un
+	 * {@code EntityIncrementVersionProcess} que corre <b>antes del commit</b> y podria sumar un
+	 * segundo incremento, dejando en la base {@code leida + 2} mientras la vista devuelve
+	 * {@code leida + 1}. Si un test de integracion lo confirma, el arreglo <b>no</b> es
+	 * perseguir la version desde aca: es sacar el force-increment de esta lectura, que aca es
+	 * redundante. La leccion de 02.07 âun {@code @Version} del padre no protege escrituras
+	 * que solo tocan tablas hijasâ no aplica a este caso: el contador que se serializa vive en la
+	 * fila del padre, asi que el control optimista comun ya impide que dos enmiendas concurrentes
+	 * commiteen las dos.
+	 *
 	 * @throws EntradaClinicaInactivaException si la entrada esta dada de baja. Es 409: la entrada
 	 *                                         existe y se puede leer, pero no admite contenido
 	 *                                         nuevo — dejar constancia es registrar una entrada
@@ -210,7 +227,14 @@ public class EntradaClinicaService {
 		// dos MAX(numero_version)+1 simultaneos devuelven el mismo numero. El save de la cabecera
 		// y el insert de la version van en esta misma transaccion.
 		int numero = entrada.siguienteNumeroDeVersion();
-		EntradaClinica cabecera = entradas.save(entrada);
+
+		// saveAndFlush y NO save. `save` es un merge: deja la escritura pendiente y el UPDATE que
+		// sube la `version` de la cabecera recien sale al cierre de la transaccion, DESPUES de que
+		// esta vista ya leyo getVersion(). El cliente se llevaria la version vieja, la mandaria
+		// como expectedVersion en la enmienda siguiente y comeria un 409 del que no puede salir
+		// salvo releyendo la entrada. Es la regla 5 del repositorio âsave() antes del flush
+		// devuelve la version viejaâ y ya se pago en 02.07.
+		EntradaClinica cabecera = entradas.saveAndFlush(entrada);
 
 		// El motivo lo exige la propia version: un camino que no pase por este servicio falla
 		// igual, con EnmiendaSinMotivoException, que la capa HTTP mapea a 400 y no a 409.
@@ -270,7 +294,17 @@ public class EntradaClinicaService {
 
 		Instant ahora = Instant.now();
 		entrada.deactivate(ahora, motivo);
-		EntradaClinica guardada = entradas.save(entrada);
+
+		// Mismo motivo que en enmendar: la vista tiene que devolver la version YA avanzada, porque
+		// es la que el cliente va a mandar como expectedVersion en su proxima operacion.
+		//
+		// Ojo con el diagnostico facil: este camino "funcionaba" por accidente. El vigenteDe de
+		// la linea de abajo es una consulta JPQL, y una consulta dispara el flush AUTO de la
+		// sesion, que a su vez emitia el UPDATE y subia la version justo antes de que se leyera.
+		// Depender de eso es depender de que nadie reordene dos lineas, de que nadie toque el
+		// FlushModeType y de que la version vigente se siga resolviendo con una consulta y no con
+		// una cache. El flush explicito pide lo que el codigo necesita en vez de heredarlo.
+		EntradaClinica guardada = entradas.saveAndFlush(entrada);
 
 		auditar(AuditEvents.ENTRADA_CLINICA_DEACTIVATED, AuditEvents.ENTITY_ENTRADA_CLINICA,
 				guardada.getId(), actor, acceso, "VIGENTE", "DADA_DE_BAJA",

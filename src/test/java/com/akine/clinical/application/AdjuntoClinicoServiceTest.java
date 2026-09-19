@@ -29,6 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -94,6 +95,9 @@ class AdjuntoClinicoServiceTest {
 	@Mock
 	private ClinicalSupportAccessAuditor supportAccessAuditor;
 
+	@Mock
+	private AdjuntoClinicoEscrituraAparte escrituraAparte;
+
 	private AdjuntoClinicoService service;
 
 	private final OperatingActor profesional =
@@ -102,7 +106,7 @@ class AdjuntoClinicoServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AdjuntoClinicoService(historias, entradas, adjuntos, storage,
-				permissionGuard, relaciones, auditTrail, supportAccessAuditor);
+				permissionGuard, relaciones, auditTrail, supportAccessAuditor, escrituraAparte);
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
@@ -115,6 +119,10 @@ class AdjuntoClinicoServiceTest {
 				.willReturn(Optional.empty());
 		given(adjuntos.saveAndFlush(any())).willAnswer(i -> conId(i.getArgument(0)));
 		given(adjuntos.save(any())).willAnswer(i -> i.getArgument(0));
+		// El INSERT ya no lo hace el servicio: lo hace el colaborador que corre en su propia
+		// transaccion, porque un choque contra el unique marca rollbackOnly la transaccion en la
+		// que ocurre y atraparlo ahi no la des-marca.
+		given(escrituraAparte.insertar(any())).willAnswer(i -> conId(i.getArgument(0)));
 	}
 
 	// =================================================================================
@@ -132,8 +140,8 @@ class AdjuntoClinicoServiceTest {
 		assertThat(alta.adjunto().contentType()).isEqualTo("application/pdf");
 		assertThat(alta.adjunto().historiaClinicaId()).isEqualTo(HC_ID);
 
-		var orden = org.mockito.Mockito.inOrder(adjuntos, storage);
-		orden.verify(adjuntos).saveAndFlush(any());
+		var orden = org.mockito.Mockito.inOrder(escrituraAparte, storage);
+		orden.verify(escrituraAparte).insertar(any());
 		orden.verify(storage).guardar(anyString(), any());
 	}
 
@@ -148,7 +156,7 @@ class AdjuntoClinicoServiceTest {
 
 		assertThat(alta.creado()).isFalse();
 		assertThat(alta.adjunto().id()).isEqualTo(ADJUNTO_ID);
-		verify(adjuntos, never()).saveAndFlush(any());
+		verify(escrituraAparte, never()).insertar(any());
 		verify(storage, never()).guardar(anyString(), any());
 	}
 
@@ -176,7 +184,7 @@ class AdjuntoClinicoServiceTest {
 				.isInstanceOf(ArchivoClinicoNoAceptadoException.class)
 				.hasMessageContaining("4");
 
-		verify(adjuntos, never()).saveAndFlush(any());
+		verify(escrituraAparte, never()).insertar(any());
 	}
 
 	@Test
@@ -189,7 +197,7 @@ class AdjuntoClinicoServiceTest {
 				profesional, HC_ID, comando(ENTRADA_ID, "application/pdf"), null))
 				.isInstanceOf(AdjuntoClinicoNotAccessibleException.class);
 
-		verify(adjuntos, never()).saveAndFlush(any());
+		verify(escrituraAparte, never()).insertar(any());
 		verify(storage, never()).guardar(anyString(), any());
 	}
 
@@ -254,8 +262,11 @@ class AdjuntoClinicoServiceTest {
 		assertThatThrownBy(() -> service.contenido(profesional, HC_ID, ADJUNTO_ID, null))
 				.isInstanceOf(AdjuntoClinicoNoDisponibleException.class);
 
-		assertThat(sinBinario.isDescargable()).isFalse();
-		verify(adjuntos).save(sinBinario);
+		// La marca NO se escribe en la transaccion de la descarga: la excepcion de arriba la
+		// revierte y se la llevaria puesta, dejando la columna en DISPONIBLE para siempre. Va por
+		// el colaborador con REQUIRES_NEW, que commitea aparte.
+		verify(escrituraAparte).marcarNoDisponible(ORG_ID, HC_ID, ADJUNTO_ID);
+		verify(adjuntos, never()).save(any());
 	}
 
 	@Test
@@ -337,6 +348,7 @@ class AdjuntoClinicoServiceTest {
 
 		assertThat(vista.deactivationReason()).isEqualTo("Cargado en la historia equivocada");
 		verify(adjuntos, never()).save(any());
+		verify(adjuntos, never()).saveAndFlush(any());
 	}
 
 	@Test
@@ -351,6 +363,140 @@ class AdjuntoClinicoServiceTest {
 		assertThat(vista.estadoCicloDeVida()).isEqualTo("INACTIVO");
 		assertThat(vista.deactivationReason()).isEqualTo("Duplicado del informe");
 		// El puerto de almacenamiento no tiene forma de borrar, y nadie se la pide.
+		verify(storage, never()).guardar(anyString(), any());
+	}
+
+	// =================================================================================
+	// Los defectos que la revision adversarial encontro
+	// =================================================================================
+
+	@Test
+	@DisplayName("la auditoria de la descarga NO copia el nombre del archivo")
+	void la_descarga_no_copia_el_nombre_del_archivo() {
+		// `audit_event` se consulta con `auditoria:read`, que no es un permiso clinico, y un
+		// nombre como "rmn-rodilla-rotura-menisco.pdf" es el diagnostico.
+		given(adjuntos.buscarDeLaHistoria(ORG_ID, HC_ID, ADJUNTO_ID))
+				.willReturn(Optional.of(conId(adjunto(null))));
+		given(storage.leer(anyString())).willReturn(Optional.of(PDF));
+
+		service.contenido(profesional, HC_ID, ADJUNTO_ID, null);
+
+		ArgumentCaptor<AuditEntry> captor = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(captor.capture());
+		assertThat(captor.getValue().details())
+				.doesNotContainKey("nombreArchivo")
+				// El checksum si se queda: es un hash, no dice nada clinico, y es lo que permite
+				// identificar despues QUE archivo salio sin tener que nombrarlo.
+				.containsEntry("checksumSha256", "abc123");
+		assertThat(captor.getValue().details().values())
+				.doesNotContain("estudio.pdf");
+	}
+
+	@Test
+	@DisplayName("la auditoria de la baja NO copia el motivo, que es texto clinico libre")
+	void la_baja_no_copia_el_motivo() {
+		given(adjuntos.buscarDeLaHistoria(ORG_ID, HC_ID, ADJUNTO_ID))
+				.willReturn(Optional.of(conId(adjunto(null))));
+
+		service.darDeBaja(profesional, HC_ID, ADJUNTO_ID,
+				"Se da de baja el informe de la biopsia", null);
+
+		ArgumentCaptor<AuditEntry> captor = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(captor.capture());
+		assertThat(captor.getValue().details()).doesNotContainKey("motivoDeBaja");
+		assertThat(captor.getValue().details().values())
+				.doesNotContain("Se da de baja el informe de la biopsia");
+	}
+
+	@Test
+	@DisplayName("reclasificar devuelve la version YA avanzada, no la que leyo")
+	void reclasificar_devuelve_la_version_fresca() {
+		// El defecto: `save` es un merge y el UPDATE que sube la version sale al commit, despues
+		// de que la vista leyo getVersion(). El cliente mandaria esa version vieja en su proxima
+		// operacion y comeria un 409 del que no puede salir salvo releyendo.
+		AdjuntoClinico leido = conId(adjunto(null));
+		given(adjuntos.buscarDeLaHistoria(ORG_ID, HC_ID, ADJUNTO_ID))
+				.willReturn(Optional.of(leido));
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 7L))
+				.given(adjuntos).save(any());
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 8L))
+				.given(adjuntos).saveAndFlush(any());
+
+		AdjuntoClinicoView vista = service.reclasificar(profesional, HC_ID, ADJUNTO_ID,
+				CategoriaAdjuntoClinico.INFORME, null, null);
+
+		verify(adjuntos).saveAndFlush(leido);
+		verify(adjuntos, never()).save(any());
+		assertThat(vista.version()).isEqualTo(8L);
+	}
+
+	@Test
+	@DisplayName("la baja tambien devuelve la version ya avanzada")
+	void la_baja_devuelve_la_version_fresca() {
+		AdjuntoClinico leido = conId(adjunto(null));
+		given(adjuntos.buscarDeLaHistoria(ORG_ID, HC_ID, ADJUNTO_ID))
+				.willReturn(Optional.of(leido));
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 7L))
+				.given(adjuntos).save(any());
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 8L))
+				.given(adjuntos).saveAndFlush(any());
+
+		AdjuntoClinicoView vista =
+				service.darDeBaja(profesional, HC_ID, ADJUNTO_ID, "Duplicado", null);
+
+		verify(adjuntos).saveAndFlush(leido);
+		assertThat(vista.version()).isEqualTo(8L);
+	}
+
+	@Test
+	@DisplayName("un choque de unique en el INSERT se resuelve como idempotente, no como 500")
+	void el_choque_concurrente_no_mata_la_transaccion_del_servicio() {
+		// El INSERT corre en su propia transaccion; la del servicio sobrevive y puede consultar.
+		AdjuntoClinico ganador = conId(adjunto(null));
+		org.mockito.BDDMockito.willThrow(new DataIntegrityViolationException(
+						"uk_adjunto_clinico_contenido_vigente"))
+				.given(escrituraAparte).insertar(any());
+		given(adjuntos.buscarVigentePorChecksum(anyLong(), anyLong(), anyString()))
+				.willReturn(Optional.empty(), Optional.of(ganador));
+
+		AdjuntoClinicoService.AdjuntoClinicoAlta alta =
+				service.subir(profesional, HC_ID, comando(null, "application/pdf"), null);
+
+		assertThat(alta.creado()).isFalse();
+		assertThat(alta.adjunto().id()).isEqualTo(ADJUNTO_ID);
+		// Y no se escribio el binario: el que gano ya lo escribio.
+		verify(storage, never()).guardar(anyString(), any());
+	}
+
+	@Test
+	@DisplayName("si el blob falla, la fila ya commiteada queda marcada NO_DISPONIBLE")
+	void un_blob_que_falla_deja_la_fila_diciendo_la_verdad() {
+		org.mockito.BDDMockito.willThrow(new IllegalStateException("disco lleno"))
+				.given(storage).guardar(anyString(), any());
+
+		assertThatThrownBy(() -> service.subir(
+				profesional, HC_ID, comando(null, "application/pdf"), null))
+				.isInstanceOf(IllegalStateException.class);
+
+		verify(escrituraAparte).marcarNoDisponible(ORG_ID, HC_ID, ADJUNTO_ID);
+	}
+
+	@Test
+	@DisplayName("un titulo mas largo que la columna es 400 y NO llega a escribir el binario")
+	void titulo_demasiado_largo() {
+		// La subida entra por multipart: el titulo es un @RequestParam suelto, sin @Valid que lo
+		// mire. Si la regla no viviera en el dominio, el INSERT moriria con data truncation, el
+		// handler global lo devolveria como 409 y el binario ya estaria escrito en disco.
+		String largo = "x".repeat(AdjuntoClinico.TITULO_MAXIMO + 1);
+
+		assertThatThrownBy(() -> service.subir(profesional, HC_ID,
+				new AdjuntoClinicoAltaCommand(CategoriaAdjuntoClinico.ESTUDIO, null, largo,
+						"estudio.pdf", "application/pdf", PDF),
+				null))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("160");
+
+		verify(escrituraAparte, never()).insertar(any());
 		verify(storage, never()).guardar(anyString(), any());
 	}
 
@@ -403,6 +549,11 @@ class AdjuntoClinicoServiceTest {
 				CategoriaAdjuntoClinico.ESTUDIO, "Resonancia lumbar", "estudio.pdf",
 				"application/pdf", PDF.length, "abc123",
 				"0123456789abcdef0123456789abcdef", ACCOUNT_ID, Instant.now());
+	}
+
+	private static AdjuntoClinico conVersion(AdjuntoClinico adjunto, long version) {
+		ReflectionTestUtils.setField(adjunto, "version", version);
+		return adjunto;
 	}
 
 	private static AdjuntoClinico conId(AdjuntoClinico adjunto) {
