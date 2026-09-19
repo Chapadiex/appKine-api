@@ -27,7 +27,12 @@ public record RegistrarEntradaClinicaRequest(
 		@Schema(description = "Texto clinico de la entrada",
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		@NotBlank(message = "El cuerpo de la entrada es obligatorio")
-		@Size(max = 20000, message = "El cuerpo no puede superar los 20000 caracteres")
+		// 8000 y no 20000: es el largo de entrada_clinica_version.cuerpo en V45. Un tope mas alto
+		// que la columna no valida nada, solo cambia donde explota: el INSERT muere con data
+		// truncation, el handler global mapea DataIntegrityViolationException a 409 "choca con un
+		// dato ya existente" (un mensaje sin sentido para lo que es un 400) y el profesional
+		// pierde el texto clinico que acaba de escribir.
+		@Size(max = 8000, message = "El cuerpo no puede superar los 8000 caracteres")
 		String cuerpo,
 
 		@Schema(description = "Instante UTC del hecho clinico. Si no viene, se usa ahora. PUEDE "

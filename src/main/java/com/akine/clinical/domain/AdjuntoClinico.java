@@ -83,6 +83,17 @@ public class AdjuntoClinico extends MarcaTemporal {
 	@Column(name = "categoria", nullable = false, length = 32)
 	private CategoriaAdjuntoClinico categoria;
 
+	/**
+	 * El tope real del titulo, y el mismo que {@code V46} le puso a la columna.
+	 *
+	 * <p>La regla vive aca y no solo en el DTO de reclasificacion porque la subida entra por
+	 * <b>multipart</b>: ahi el titulo es un {@code @RequestParam} suelto, sin
+	 * {@code @Valid} que lo mire. Validarlo en el constructor lo cubre por los dos
+	 * caminos, y lo cubre <b>antes</b> de que la subida escriba el binario: un rechazo mas tarde
+	 * dejaria el archivo en disco sin fila que lo referencie.
+	 */
+	public static final int TITULO_MAXIMO = 160;
+
 	@Column(name = "titulo", length = 160)
 	private String titulo;
 
@@ -151,7 +162,7 @@ public class AdjuntoClinico extends MarcaTemporal {
 		this.entradaClinicaId = entradaClinicaId;
 		this.consultorioId = consultorioId;
 		this.categoria = exigirNoNulo(categoria, "El adjunto clinico se clasifica siempre");
-		this.titulo = vacioEsNulo(titulo);
+		this.titulo = tituloAceptable(titulo);
 		this.nombreArchivo = exigirTexto(nombreArchivo, "El nombre del archivo es obligatorio");
 		this.contentType = exigirTexto(contentType, "El tipo de contenido es obligatorio");
 		if (tamanoBytes <= 0) {
@@ -180,7 +191,7 @@ public class AdjuntoClinico extends MarcaTemporal {
 			this.categoria = categoria;
 		}
 		if (titulo != null) {
-			this.titulo = vacioEsNulo(titulo);
+			this.titulo = tituloAceptable(titulo);
 		}
 	}
 
@@ -230,6 +241,16 @@ public class AdjuntoClinico extends MarcaTemporal {
 
 	private static String vacioEsNulo(String valor) {
 		return valor == null || valor.isBlank() ? null : valor.strip();
+	}
+
+	/** El titulo saneado, o {@code null}, rechazando lo que no entraria en la columna. */
+	private static String tituloAceptable(String valor) {
+		String limpio = vacioEsNulo(valor);
+		if (limpio != null && limpio.length() > TITULO_MAXIMO) {
+			throw new IllegalArgumentException(
+					"El titulo del adjunto no puede superar los " + TITULO_MAXIMO + " caracteres");
+		}
+		return limpio;
 	}
 
 	public Long getId() {

@@ -2,9 +2,7 @@ package com.akine.clinical.infrastructure;
 
 import com.akine.clinical.domain.EntradaClinica;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.EntradaClinicaRepositoryPort;
-import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -32,20 +30,6 @@ public interface EntradaClinicaRepository
 
 	@Override
 	Optional<EntradaClinica> findByIdAndOrganizationId(Long id, Long organizationId);
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>Es la MISMA consulta derivada que la de arriba y lo unico que la distingue es el
-	 * {@code OPTIMISTIC_FORCE_INCREMENT}. El nombre es derivable a proposito y no lleva
-	 * {@code @Query}: Spring Data ignora el texto entre {@code find} y {@code By}, asi que
-	 * {@code WithLock} documenta el metodo sin cambiar la consulta y sigue validandose contra el
-	 * esquema real. Mismo patron que {@code offering.infrastructure.OfertaRepository}, que es
-	 * donde esta leccion se pago.
-	 */
-	@Override
-	@Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
-	Optional<EntradaClinica> findWithLockByIdAndOrganizationId(Long id, Long organizationId);
 
 	@Override
 	@Query("""

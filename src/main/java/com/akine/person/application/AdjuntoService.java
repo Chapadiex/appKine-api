@@ -69,6 +69,10 @@ import java.util.UUID;
  * llegado no deberia dejar dos filas que despues alguien desempata a ojo. El invariante lo hace
  * cumplir el unique de {@code V40}, no un pre-chequeo: el pre-chequeo esta igual porque ahorra
  * escribir el binario, pero <b>no es el que garantiza nada</b>.
+ *
+ * <p>Y el INSERT que puede chocar contra ese unique corre en una <b>transaccion propia</b>
+ * ({@link AdjuntoEscrituraAparte}): atrapar el choque dentro de la transaccion de negocio no la
+ * des-marca, y la idempotencia prometida terminaba siendo un 500. Es la regla 2 del Paquete B.
  */
 @Service
 public class AdjuntoService {
@@ -84,6 +88,7 @@ public class AdjuntoService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final PersonSupportAccessAuditor supportAccessAuditor;
+	private final AdjuntoEscrituraAparte escrituraAparte;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public AdjuntoService(
@@ -92,7 +97,8 @@ public class AdjuntoService {
 			AdjuntoStoragePort storage,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
-			PersonSupportAccessAuditor supportAccessAuditor) {
+			PersonSupportAccessAuditor supportAccessAuditor,
+			AdjuntoEscrituraAparte escrituraAparte) {
 
 		this.personas = personas;
 		this.adjuntos = adjuntos;
@@ -100,6 +106,7 @@ public class AdjuntoService {
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 		this.supportAccessAuditor = supportAccessAuditor;
+		this.escrituraAparte = escrituraAparte;
 	}
 
 	// =================================================================================
@@ -234,10 +241,17 @@ public class AdjuntoService {
 
 		AdjuntoAdministrativo guardado;
 		try {
-			// Fila primero, con flush, para que el unique decida antes de tocar el disco. Si otro
-			// request gano la carrera, esto lanza y la subida se resuelve como idempotente.
-			guardado = adjuntos.saveAndFlush(adjunto);
+			// Fila primero, con flush, para que el unique decida antes de tocar el disco. Y en una
+			// TRANSACCION PROPIA: si el flush choca contra el unique, Hibernate marca rollbackOnly
+			// antes de que la excepcion salga, y atraparla no des-marca nada. Con el INSERT adentro
+			// de esta transaccion, el catch de abajo correria sobre una sesion inutilizable y el
+			// commit terminaria en UnexpectedRollbackException: un 500 en vez de la idempotencia
+			// que el @Operation promete en mayusculas. Es la regla 2 del Paquete B, y el mismo
+			// arreglo que ya lleva AdjuntoClinicoService.
+			guardado = escrituraAparte.insertar(adjunto);
 		} catch (DataIntegrityViolationException choque) {
+			// La que murio fue la transaccion del INSERT, no esta: la consulta de abajo corre sobre
+			// una sesion sana.
 			log.info("Subida concurrente del mismo contenido resuelta como idempotente: "
 					+ "personaId={}", personaId);
 			return adjuntos.buscarVigentePorChecksum(organizationId, personaId, checksum)
@@ -245,10 +259,18 @@ public class AdjuntoService {
 					.orElseThrow(() -> choque);
 		}
 
-		// Blob despues. Si esto falla, la transaccion revierte y no queda fila apuntando a nada;
-		// si la transaccion falla mas adelante, queda un archivo huerfano que nadie referencia.
-		// El orden inverso produciria el unico de los dos errores que el usuario ve. Ver V40.
-		storage.guardar(storageKey, contenido);
+		// Blob despues. El orden inverso produciria filas apuntando a nada, que es el unico de los
+		// dos errores que el usuario ve. Ver V40.
+		//
+		// Como la fila ya esta commiteada, un fallo del blob NO se revierte solo: la fila queda, y
+		// si se la dejara DISPONIBLE el listado afirmaria tener un documento que no se puede
+		// descargar. Se la marca NO_DISPONIBLE, que es la verdad, y se propaga el fallo.
+		try {
+			storage.guardar(storageKey, contenido);
+		} catch (RuntimeException falla) {
+			escrituraAparte.marcarNoDisponible(organizationId, personaId, guardado.getId());
+			throw falla;
+		}
 
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("categoria", guardado.getCategoria().name());

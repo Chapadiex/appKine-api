@@ -142,7 +142,7 @@ class EntradaClinicaServiceTest {
 	@DisplayName("enmendar agrega la version siguiente y deja intacta la anterior")
 	void enmendar_agrega_version() {
 		EntradaClinica entrada = entradaVigente();
-		given(entradas.findWithLockByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
+		given(entradas.findByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
 				.willReturn(Optional.of(entrada));
 
 		EntradaClinicaView vista = service.enmendar(profesional, ENTRADA_ID,
@@ -153,13 +153,14 @@ class EntradaClinicaServiceTest {
 		assertThat(vista.enmendada()).isTrue();
 		// El contador vive en la cabecera: es lo que numera, no un MAX sobre las versiones.
 		assertThat(entrada.getUltimoNumeroVersion()).isEqualTo(2);
-		verify(entradas).save(entrada);
+		// saveAndFlush y no save: ver enmendar_devuelve_la_version_fresca.
+		verify(entradas).saveAndFlush(entrada);
 	}
 
 	@Test
 	@DisplayName("la enmienda sin motivo se rechaza y no escribe ninguna version")
 	void enmendar_sin_motivo_se_rechaza() {
-		given(entradas.findWithLockByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
+		given(entradas.findByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
 				.willReturn(Optional.of(entradaVigente()));
 
 		assertThatThrownBy(() -> service.enmendar(profesional, ENTRADA_ID, "Texto", "  ", 0L, null))
@@ -173,7 +174,7 @@ class EntradaClinicaServiceTest {
 	void enmendar_con_version_vieja_es_conflicto() {
 		EntradaClinica entrada = entradaVigente();
 		ReflectionTestUtils.setField(entrada, "version", 3L);
-		given(entradas.findWithLockByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
+		given(entradas.findByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
 				.willReturn(Optional.of(entrada));
 
 		assertThatThrownBy(() -> service.enmendar(profesional, ENTRADA_ID, "Texto", "Motivo", 1L, null))
@@ -187,7 +188,7 @@ class EntradaClinicaServiceTest {
 	void enmendar_entrada_de_baja_es_conflicto() {
 		EntradaClinica entrada = entradaVigente();
 		entrada.deactivate(Instant.now(), "Cargada en la historia equivocada");
-		given(entradas.findWithLockByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
+		given(entradas.findByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
 				.willReturn(Optional.of(entrada));
 
 		assertThatThrownBy(() -> service.enmendar(profesional, ENTRADA_ID, "Texto", "Motivo", 0L, null))
@@ -211,6 +212,7 @@ class EntradaClinicaServiceTest {
 		assertThat(vista.vigente()).isFalse();
 		assertThat(vista.deactivationReason()).isEqualTo("Motivo original");
 		verify(entradas, never()).save(any());
+		verify(entradas, never()).saveAndFlush(any());
 	}
 
 	@Test
@@ -273,6 +275,72 @@ class EntradaClinicaServiceTest {
 		verify(versiones, never()).buscarDeEntrada(anyLong(), anyLong());
 	}
 
+	@Test
+	@DisplayName("enmendar devuelve la version YA avanzada de la cabecera, no la que leyo")
+	void enmendar_devuelve_la_version_fresca() {
+		// El defecto que esto fija: `save` es un merge, no un flush. La @Version avanza en el
+		// flush, y con `save` ese flush ocurre al commit, DESPUES de que esta vista ya leyo
+		// getVersion(). El cliente se llevaba la version vieja, la mandaba como expectedVersion
+		// en la enmienda siguiente y comia un 409 del que no podia salir salvo releyendo.
+		EntradaClinica entrada = entradaVigente();
+		given(entradas.findByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
+				.willReturn(Optional.of(entrada));
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 3L))
+				.given(entradas).save(any());
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 4L))
+				.given(entradas).saveAndFlush(any());
+
+		EntradaClinicaView vista = service.enmendar(profesional, ENTRADA_ID,
+				"Mejora la flexion", "Se aclara el rango", 0L, null);
+
+		verify(entradas).saveAndFlush(entrada);
+		verify(entradas, never()).save(any());
+		assertThat(vista.version()).isEqualTo(4L);
+	}
+
+	@Test
+	@DisplayName("enmendar ensucia la cabecera: es eso lo que serializa, no un force-increment")
+	void enmendar_ensucia_la_cabecera() {
+		// Por que importa: la lectura de la cabecera dejo de usar OPTIMISTIC_FORCE_INCREMENT.
+		// La unica razon por la que eso no debilita nada es que enmendar CAMBIA una columna de la
+		// cabecera —el contador—, asi que JPA emite igual un UPDATE ... WHERE version = N y la
+		// segunda enmienda concurrente muere ahi. Si alguien algun dia saca el contador de esta
+		// fila, este test se cae y avisa que hay que volver a serializar de otra forma.
+		EntradaClinica entrada = entradaVigente();
+		int contadorLeido = entrada.getUltimoNumeroVersion();
+		given(entradas.findByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
+				.willReturn(Optional.of(entrada));
+
+		service.enmendar(profesional, ENTRADA_ID, "Texto", "Motivo", 0L, null);
+
+		ArgumentCaptor<EntradaClinica> cabecera = ArgumentCaptor.forClass(EntradaClinica.class);
+		verify(entradas).saveAndFlush(cabecera.capture());
+		assertThat(cabecera.getValue().getUltimoNumeroVersion()).isEqualTo(contadorLeido + 1);
+	}
+
+	@Test
+	@DisplayName("la baja tambien devuelve la version ya avanzada")
+	void la_baja_devuelve_la_version_fresca() {
+		// Este camino se salvaba POR ACCIDENTE: vigenteDe es una consulta JPQL y una consulta
+		// dispara el flush AUTO, que emitia el UPDATE justo antes de que se leyera la version.
+		// Depender de eso es depender de que nadie reordene dos lineas.
+		EntradaClinica entrada = entradaVigente();
+		given(entradas.findByIdAndOrganizationId(ENTRADA_ID, ORG_ID))
+				.willReturn(Optional.of(entrada));
+		given(versiones.buscarDeEntrada(ORG_ID, ENTRADA_ID)).willReturn(List.of(version(1, null)));
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 3L))
+				.given(entradas).save(any());
+		org.mockito.BDDMockito.willAnswer(i -> conVersion(i.getArgument(0), 4L))
+				.given(entradas).saveAndFlush(any());
+
+		EntradaClinicaView vista =
+				service.darDeBaja(profesional, ENTRADA_ID, "Cargada por error", 0L, null);
+
+		verify(entradas).saveAndFlush(entrada);
+		verify(entradas, never()).save(any());
+		assertThat(vista.version()).isEqualTo(4L);
+	}
+
 	// =================================================================================
 
 	private HistoriaClinica historia() {
@@ -292,6 +360,11 @@ class EntradaClinicaServiceTest {
 	private EntradaClinicaVersion version(int numero, String motivo) {
 		return new EntradaClinicaVersion(
 				ORG_ID, ENTRADA_ID, numero, "Cuerpo " + numero, motivo, Instant.now(), ACCOUNT_ID);
+	}
+
+	private static EntradaClinica conVersion(EntradaClinica entrada, long version) {
+		ReflectionTestUtils.setField(entrada, "version", version);
+		return entrada;
 	}
 
 	private static EntradaClinica conId(EntradaClinica entrada, long id) {

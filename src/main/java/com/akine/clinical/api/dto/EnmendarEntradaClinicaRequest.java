@@ -24,7 +24,8 @@ public record EnmendarEntradaClinicaRequest(
 		@Schema(description = "Texto clinico corregido, completo. No es un parche",
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		@NotBlank(message = "El cuerpo de la enmienda es obligatorio")
-		@Size(max = 20000, message = "El cuerpo no puede superar los 20000 caracteres")
+		// 8000, el largo de entrada_clinica_version.cuerpo en V45. Ver RegistrarEntradaClinicaRequest.
+		@Size(max = 8000, message = "El cuerpo no puede superar los 8000 caracteres")
 		String cuerpo,
 
 		@Schema(description = "Por que se enmienda. Obligatorio",
