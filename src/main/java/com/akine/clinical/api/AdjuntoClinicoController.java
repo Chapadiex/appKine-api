@@ -88,7 +88,16 @@ public class AdjuntoClinicoController {
 
 	private static final String POR_HISTORIA =
 			"/api/v1/historias-clinicas/{historiaClinicaId}/adjuntos";
-	private static final String POR_ADJUNTO = "/api/v1/adjuntos-clinicos/{adjuntoId}";
+	/**
+	 * Las tres operaciones sobre un adjunto puntual cuelgan de su historia, no de una ruta plana.
+	 *
+	 * <p>El servicio exige {@code historiaClinicaId} porque la autorizacion clinica se evalua sobre
+	 * la persona de esa historia (RN-M25-003), no sobre el archivo. Una ruta plana
+	 * {@code /adjuntos-clinicos/...} obligaria a pedirlo como query param <b>obligatorio</b>, que es
+	 * la misma jerarquia escrita de una forma que el cliente se puede olvidar y que el contrato
+	 * tiene que documentar aparte. Anidarla la hace explicita y no cuesta nada.
+	 */
+	private static final String POR_ADJUNTO = POR_HISTORIA + "/{adjuntoId}";
 
 	private static final String PAGINA_POR_DEFECTO = "0";
 	private static final String TAMANO_POR_DEFECTO = "20";
@@ -325,7 +334,7 @@ public class AdjuntoClinicoController {
 			@PathVariable long adjuntoId,
 
 			@Parameter(description = HISTORIA_DOC, example = "88")
-			@RequestParam long historiaClinicaId,
+			@PathVariable long historiaClinicaId,
 
 			@Parameter(description = AccesoClinicoHeaders.JUSTIFICACION_DOC)
 			@RequestHeader(name = AccesoClinicoHeaders.JUSTIFICACION, required = false)
@@ -397,7 +406,7 @@ public class AdjuntoClinicoController {
 			@PathVariable long adjuntoId,
 
 			@Parameter(description = HISTORIA_DOC, example = "88")
-			@RequestParam long historiaClinicaId,
+			@PathVariable long historiaClinicaId,
 
 			@Valid @RequestBody ReclasificarAdjuntoClinicoRequest request,
 
@@ -456,7 +465,7 @@ public class AdjuntoClinicoController {
 			@PathVariable long adjuntoId,
 
 			@Parameter(description = HISTORIA_DOC, example = "88")
-			@RequestParam long historiaClinicaId,
+			@PathVariable long historiaClinicaId,
 
 			@Valid @RequestBody BajaDeAdjuntoClinicoRequest request,
 

@@ -175,7 +175,7 @@ evento no hay forma de revisarla después.
 
 ---
 
-## 6. API — contrato `0.30.0`, once operaciones nuevas
+## 6. API — contrato `0.30.0`, doce operaciones nuevas
 
 Aditivo puro, ninguna operación existente cambia de forma → **versión menor**, no mayor.
 
@@ -187,12 +187,20 @@ GET    /api/v1/entradas-clinicas/{id}
 GET    /api/v1/entradas-clinicas/{id}/versiones
 POST   /api/v1/entradas-clinicas/{id}/enmiendas
 DELETE /api/v1/entradas-clinicas/{id}
-POST   /api/v1/historias-clinicas/{id}/adjuntos          (multipart)
+POST   /api/v1/historias-clinicas/{id}/adjuntos                        (multipart)
 GET    /api/v1/historias-clinicas/{id}/adjuntos
-GET    /api/v1/adjuntos-clinicos/{id}/contenido
-PATCH  /api/v1/adjuntos-clinicos/{id}
-DELETE /api/v1/adjuntos-clinicos/{id}
+GET    /api/v1/historias-clinicas/{id}/adjuntos/{adjuntoId}/contenido
+PATCH  /api/v1/historias-clinicas/{id}/adjuntos/{adjuntoId}
+DELETE /api/v1/historias-clinicas/{id}/adjuntos/{adjuntoId}
 ```
+
+> **Corrección sobre el borrador de este diseño.** Las tres últimas estaban escritas planas
+> (`/adjuntos-clinicos/{id}`) y se anidaron al implementarlas. El servicio exige
+> `historiaClinicaId` —la autorización clínica se evalúa sobre la persona de esa historia, no
+> sobre el archivo (RN-M25-003)— así que la ruta plana obligaba a pedirlo como query param
+> **obligatorio**: la misma jerarquía, escrita de una forma que el cliente se puede olvidar. Las
+> entradas clínicas **sí** quedan planas (`/entradas-clinicas/{id}`) y no es una inconsistencia:
+> su servicio resuelve entrada → historia → persona por sí solo.
 
 La justificación de acceso viaja donde ya viaja en el resto del módulo, **no en query string**:
 un motivo clínico en la URL termina en los logs de acceso de cualquier proxy.
