@@ -36,6 +36,21 @@ public final class CasoRepositoryPorts {
 		Optional<CasoClinico> findByIdAndOrganizationId(Long id, Long organizationId);
 
 		/**
+		 * La misma consulta, pero forzando el avance de la version del caso al commitear.
+		 *
+		 * <p><b>Es lo que protege el cambio de equipo</b>, y es la leccion de 02.07 traida hasta
+		 * aca: un {@code @Version} sobre el padre <b>no protege una escritura que solo toca tablas
+		 * hijas</b>. Cambiar el equipo escribe en {@code caso_profesional} y no toca ni una columna
+		 * de {@code caso_clinico}, asi que sin {@code OPTIMISTIC_FORCE_INCREMENT} dos cambios
+		 * concurrentes commitean los dos, cada uno creyendo que partio del equipo que leyo, y el
+		 * resultado no es ninguno de los dos.
+		 *
+		 * <p>Se usa <b>solo</b> para el equipo. La edicion, el cierre y la reapertura modifican
+		 * columnas de la propia fila y JPA les sube la version sola.
+		 */
+		Optional<CasoClinico> findWithLockByIdAndOrganizationId(Long id, Long organizationId);
+
+		/**
 		 * Los casos de una historia, mas recientes primero.
 		 *
 		 * @param soloActivos {@code true} deja afuera los cerrados; {@code false} los incluye, que

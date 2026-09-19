@@ -45,7 +45,24 @@ final class AuditEvents {
 	 */
 	static final String TIMELINE_ACCESSED = "TIMELINE_ACCESSED";
 
+	static final String CASO_CLINICO_OPENED = "CASO_CLINICO_OPENED";
+	static final String CASO_CLINICO_UPDATED = "CASO_CLINICO_UPDATED";
+	static final String CASO_CLINICO_CLOSED = "CASO_CLINICO_CLOSED";
+	static final String CASO_CLINICO_REOPENED = "CASO_CLINICO_REOPENED";
+	static final String CASO_EQUIPO_CHANGED = "CASO_EQUIPO_CHANGED";
+
+	/**
+	 * La lectura de un caso, de la lista de casos o de su historial.
+	 *
+	 * <p>Se audita por lo mismo que la lectura del timeline: la lista de casos de un paciente dice
+	 * <b>que problemas tiene</b> —el diagnostico presuntivo es contenido clinico y viaja en la
+	 * ficha—, y DP-03 no distingue entre leer y escribir en una historia clinica. El alcance
+	 * concreto viaja en los detalles.
+	 */
+	static final String CASO_CLINICO_ACCESSED = "CASO_CLINICO_ACCESSED";
+
 	static final String ENTITY_HISTORIA_CLINICA = "HistoriaClinica";
+	static final String ENTITY_CASO_CLINICO = "CasoClinico";
 	static final String ENTITY_ANTECEDENTE = "AntecedenteClinico";
 	static final String ENTITY_ENTRADA_CLINICA = "EntradaClinica";
 	static final String ENTITY_ADJUNTO_CLINICO = "AdjuntoClinico";
