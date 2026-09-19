@@ -439,7 +439,77 @@ public enum ProblemType {
 	AUTORIZACION_ALREADY_INACTIVE("autorizacion-already-inactive"),
 	AUTORIZACION_SUPERPUESTA("autorizacion-superpuesta"),
 	AUTORIZACION_TRANSICION_NO_PERMITIDA("autorizacion-transicion-no-permitida"),
-	DOCUMENTO_NUMERO_TAKEN("documento-numero-taken");
+	DOCUMENTO_NUMERO_TAKEN("documento-numero-taken"),
+
+	// --- Timeline, entradas clinicas y adjuntos clinicos (M09/M25, AKINE-04.02) -------------
+	/**
+	 * La entrada clinica no existe, es de otro tenant, o es de otra historia (404).
+	 *
+	 * <p>Las tres causas colapsan en un solo {@code type} <b>y en un solo status</b>, que es la
+	 * regla de 01.01 llevada al modulo donde mas pesa: un 403 confirmaria que la fila existe, y
+	 * probar ids consecutivos alcanzaria para censar cuantas entradas clinicas tiene otro centro.
+	 * Deja de ser aislamiento y pasa a ser privacidad.
+	 *
+	 * <p>Es un {@code type} propio y no {@link #NOT_FOUND} porque la pantalla que lo recibe tiene
+	 * una accion distinta segun QUE falto: si falto la historia, vuelve al padron; si falto la
+	 * entrada, refresca el listado que la mostraba hace un segundo.
+	 */
+	ENTRADA_CLINICA_NO_ACCESIBLE("entrada-clinica-no-accesible"),
+	/**
+	 * La entrada clinica esta dada de baja y no admite contenido nuevo (409, no 404).
+	 *
+	 * <p>La entrada sigue siendo consultable por su id —eso es lo que distingue "no lo muestres"
+	 * de "no existio"—, lo que no admite es una enmienda: produciria una version que nadie va a
+	 * leer, porque la entrada ya salio del timeline. Para dejar constancia se registra una entrada
+	 * nueva, que es otra operacion.
+	 */
+	ENTRADA_CLINICA_INACTIVA("entrada-clinica-inactiva"),
+	/**
+	 * Se intento enmendar sin declarar por que (400, no 409).
+	 *
+	 * <p>No hay conflicto de estado: la entrada esta vigente y el actor tiene permiso. Falta un
+	 * dato del pedido, y un 409 mandaria al profesional a reintentar el mismo cuerpo, que falla
+	 * exactamente igual. Sin motivo, una enmienda es indistinguible de una correccion de tipeo y
+	 * el historial deja de servir para lo unico que sirve (RF-M09-006, RN-M09-004).
+	 */
+	ENMIENDA_SIN_MOTIVO("enmienda-sin-motivo"),
+	/**
+	 * El adjunto clinico no existe, es de otro tenant, o es de otra historia (404).
+	 *
+	 * <p>Mismo criterio y mismo motivo que {@link #ENTRADA_CLINICA_NO_ACCESIBLE}. Tambien lo
+	 * emite el alta que apunta a una entrada que no es de esta historia: podria ser un 400 —el
+	 * dato es incoherente— y es 404 deliberadamente, porque un 400 distinguiria "esa entrada no
+	 * existe" de "existe pero es de otro paciente".
+	 */
+	ADJUNTO_CLINICO_NO_ACCESIBLE("adjunto-clinico-no-accesible"),
+	/**
+	 * El adjunto clinico esta dado de baja y la operacion exige uno vigente (409).
+	 *
+	 * <p><b>Se sigue descargando.</b> Negar la descarga convertiria la baja logica en un borrado
+	 * con otro nombre, que es lo que la regla maestra 10 prohibe. Lo unico que un adjunto de baja
+	 * no admite es reclasificarse.
+	 */
+	ADJUNTO_CLINICO_INACTIVO("adjunto-clinico-inactivo"),
+	/**
+	 * La metadata del adjunto clinico existe pero el almacenamiento no tiene su contenido (409).
+	 *
+	 * <p>409 y no 404: la fila esta y quien pregunta la esta viendo en la lista. Un 404 le diria
+	 * al profesional que el estudio no existe y lo empujaria a pedirselo de nuevo al paciente bajo
+	 * una historia que todavia afirma tenerlo. Par exacto de {@link #ADJUNTO_NO_DISPONIBLE} en el
+	 * lado administrativo; son {@code type} distintos porque son modulos, permisos y auditorias
+	 * distintas.
+	 */
+	ADJUNTO_CLINICO_NO_DISPONIBLE("adjunto-clinico-no-disponible"),
+	/**
+	 * El cursor de paginacion del timeline no se pudo decodificar (400).
+	 *
+	 * <p>El cursor es opaco y la unica forma legitima de obtener uno es haber leido la pagina
+	 * anterior, asi que uno que no parsea o lo construyo un cliente a mano o lo trunco por el
+	 * camino. <b>No se reinterpreta como "primera pagina"</b>: contestar la primera pagina ante un
+	 * cursor roto haria que un cliente con un bug de paginacion recorriera la misma pagina para
+	 * siempre sin que nadie lo note.
+	 */
+	CURSOR_INVALIDO("cursor-invalido");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
