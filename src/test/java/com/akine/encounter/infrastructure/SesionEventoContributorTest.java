@@ -40,16 +40,16 @@ class SesionEventoContributorTest {
 	@Test
 	@DisplayName("data el evento por el cierre y no arrastra contenido clinico")
 	void sesion_cerrada() {
-		Sesion sesion = new Sesion(ORG_ID, 20L, HC_ID, 300L, 400L, 500L,
+		Sesion sesion = new Sesion(ORG_ID, 20L, HC_ID, null, 300L, 400L, 500L,
 				CIERRE.minusSeconds(3600), 40L);
 		ReflectionTestUtils.setField(sesion, "id", 1100L);
 		ReflectionTestUtils.setField(sesion, "cerradaEn", CIERRE);
 		ReflectionTestUtils.setField(sesion, "notaDeCierre", "Dolor lumbar en remision");
-		given(sesiones.buscarCerradasParaTimeline(ORG_ID, HC_ID, CIERRE, 5))
+		given(sesiones.buscarCerradasParaTimeline(ORG_ID, HC_ID, CIERRE, 5, null))
 				.willReturn(List.of(sesion));
 
 		List<EventoClinico> eventos =
-				new SesionEventoContributor(sesiones).eventosDe(ORG_ID, HC_ID, CIERRE, 5);
+				new SesionEventoContributor(sesiones).eventosDe(ORG_ID, HC_ID, CIERRE, 5, null);
 
 		assertThat(eventos).singleElement().satisfies(evento -> {
 			assertThat(evento.ocurrioEn()).isEqualTo(CIERRE);

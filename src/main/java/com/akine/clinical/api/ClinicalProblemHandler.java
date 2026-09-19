@@ -6,11 +6,16 @@ import com.akine.clinical.domain.exception.AdjuntoClinicoNoDisponibleException;
 import com.akine.clinical.domain.exception.AdjuntoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.AntecedenteNotAccessibleException;
 import com.akine.clinical.domain.exception.ArchivoClinicoNoAceptadoException;
+import com.akine.clinical.domain.exception.CasoClinicoCerradoException;
+import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
+import com.akine.clinical.domain.exception.CasoClinicoPosibleDuplicadoException;
+import com.akine.clinical.domain.exception.CierreDeCasoSinMotivoException;
 import com.akine.clinical.domain.exception.CursorInvalidoException;
 import com.akine.clinical.domain.exception.EnmiendaSinMotivoException;
 import com.akine.clinical.domain.exception.EntradaClinicaInactivaException;
 import com.akine.clinical.domain.exception.EntradaClinicaNotAccessibleException;
 import com.akine.clinical.domain.exception.HistoriaClinicaNotAccessibleException;
+import com.akine.clinical.domain.exception.OfertaNoVigenteException;
 import com.akine.clinical.domain.exception.PacienteSinPerfilVigenteException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
@@ -72,6 +77,12 @@ public class ClinicalProblemHandler {
 	private static final URI CURSOR_INVALIDO = ProblemType.CURSOR_INVALIDO.uri();
 	private static final URI ARCHIVO_NO_ACEPTADO = ProblemType.ARCHIVO_NO_ACEPTADO.uri();
 	private static final URI PERSONA_SIN_PERFIL = ProblemType.PERSONA_SIN_PERFIL_PACIENTE.uri();
+	private static final URI CASO_NO_ACCESIBLE = ProblemType.CASO_CLINICO_NO_ACCESIBLE.uri();
+	private static final URI CASO_CERRADO = ProblemType.CASO_CLINICO_CERRADO.uri();
+	private static final URI CASO_POSIBLE_DUPLICADO =
+			ProblemType.CASO_CLINICO_POSIBLE_DUPLICADO.uri();
+	private static final URI CASO_SIN_MOTIVO = ProblemType.CASO_SIN_MOTIVO_DE_CIERRE.uri();
+	private static final URI OFERTA_NO_VIGENTE = ProblemType.OFERTA_NO_VIGENTE.uri();
 
 	// =================================================================================
 	// 404 — fuera del alcance del actor
@@ -267,6 +278,101 @@ public class ClinicalProblemHandler {
 		problem.setType(ARCHIVO_NO_ACEPTADO);
 		problem.setTitle("El archivo no se puede cargar");
 		problem.setProperty("motivo", ex.getMotivo());
+		return problem;
+	}
+
+	// =================================================================================
+	// Caso Clinico (M10, AKINE-04.03)
+	// =================================================================================
+
+	/**
+	 * <b>404.</b> Mismo criterio que la entrada clinica, y en el caso pesa igual: "no existe", "es
+	 * de otro tenant" y "su historia no es accesible" son indistinguibles a proposito. Un 403
+	 * confirmaria que la fila existe, y probar ids consecutivos alcanzaria para censar cuantos
+	 * casos clinicos tiene otro centro del SaaS.
+	 *
+	 * <p>Tambien lo emite el filtro por caso del timeline cuando el caso no es de esa historia: una
+	 * pagina vacia diria "este caso no tiene hechos" sobre un caso que no es del paciente, y son
+	 * dos situaciones distintas que llevan a acciones distintas.
+	 */
+	@ExceptionHandler(CasoClinicoNotAccessibleException.class)
+	public ProblemDetail handleCasoNoAccesible(CasoClinicoNotAccessibleException ex) {
+		log.debug("Caso clinico no accesible: casoClinicoId={}", ex.getCasoClinicoId());
+		return noEncontrado(CASO_NO_ACCESIBLE, "Caso clinico no encontrado",
+				"El caso clinico no existe.");
+	}
+
+	/**
+	 * <b>409, y no 404 ni 403.</b> El caso existe y se sigue leyendo entero con todo su historial
+	 * —eso distingue "termino" de "no existio"— y quien opera si tiene {@code hc:write}: lo que no
+	 * admite cambios es el estado.
+	 *
+	 * <p>La accion que la pantalla tiene que ofrecer es <b>reabrir con motivo</b>, que queda en el
+	 * historial (RF-M10-006). Editar en silencio un caso terminado es historia clinica reescrita, y
+	 * ADR-0011 lo prohibe.
+	 */
+	@ExceptionHandler(CasoClinicoCerradoException.class)
+	public ProblemDetail handleCasoCerrado(CasoClinicoCerradoException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(CASO_CERRADO);
+		problem.setTitle("El caso clinico esta cerrado");
+		problem.setProperty("casoClinicoId", ex.getCasoClinicoId());
+		return problem;
+	}
+
+	/**
+	 * <b>409 con los candidatos.</b> Es la advertencia de RN-M10-002, no un invariante.
+	 *
+	 * <p>Lleva {@code candidatos} —los ids de los casos activos que coinciden— porque sin ellos el
+	 * 409 seria un callejon: el profesional sabe que "ya hay algo parecido" y no puede verlo. Con la
+	 * lista, la pantalla muestra los casos y el profesional elige entre abrir uno o reenviar el alta
+	 * con {@code confirmaPosibleDuplicado}. Mismo mecanismo, y misma pantalla, que el alta de
+	 * Persona de 03.01.
+	 *
+	 * <p>Los ids no filtran nada: quien recibe esto ya tiene {@code hc:write} sobre esa historia.
+	 */
+	@ExceptionHandler(CasoClinicoPosibleDuplicadoException.class)
+	public ProblemDetail handleCasoPosibleDuplicado(CasoClinicoPosibleDuplicadoException ex) {
+		log.debug("Alta de caso detenida por posible duplicado: candidatos={}",
+				ex.getCandidatos().size());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+				"Ya hay un caso activo de esa oferta en esta historia. Revisalo antes de abrir "
+						+ "otro; si es un problema distinto, reenvia el alta confirmando el "
+						+ "posible duplicado.");
+		problem.setType(CASO_POSIBLE_DUPLICADO);
+		problem.setTitle("Posible caso duplicado");
+		problem.setProperty("candidatos", ex.getCandidatos());
+		return problem;
+	}
+
+	/**
+	 * <b>400 y no 409.</b> No hay conflicto de estado: el caso esta como tiene que estar y el actor
+	 * tiene permiso. Falta un dato del pedido, y un 409 mandaria al profesional a reintentar el
+	 * mismo cuerpo, que va a fallar exactamente igual. Mismo reparto que la enmienda sin motivo.
+	 */
+	@ExceptionHandler(CierreDeCasoSinMotivoException.class)
+	public ProblemDetail handleCierreSinMotivo(CierreDeCasoSinMotivoException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, ex.getMessage());
+		problem.setType(CASO_SIN_MOTIVO);
+		problem.setTitle("El cierre de un caso exige un motivo");
+		return problem;
+	}
+
+	/**
+	 * <b>409 y no 404.</b> La oferta existe y quien la eligio la esta viendo en una lista; un 404
+	 * mandaria a la pantalla a decir "no encontrada" sobre algo que el usuario tiene delante. Lo
+	 * que corresponde ofrecerle es reactivarla o elegir otra. Mismo criterio que
+	 * {@code oferta-no-agendable} en M12.
+	 */
+	@ExceptionHandler(OfertaNoVigenteException.class)
+	public ProblemDetail handleOfertaNoVigente(OfertaNoVigenteException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(OFERTA_NO_VIGENTE);
+		problem.setTitle("La oferta no esta vigente");
+		problem.setProperty("ofertaId", ex.getOfertaId());
 		return problem;
 	}
 

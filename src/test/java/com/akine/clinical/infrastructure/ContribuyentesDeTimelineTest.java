@@ -59,7 +59,7 @@ class ContribuyentesDeTimelineTest {
 		given(entradas.buscarParaTimeline(ORG_ID, HC_ID, T, LIMITE)).willReturn(List.of(entrada));
 
 		List<EventoClinico> eventos =
-				new EntradaClinicaContributor(entradas).eventosDe(ORG_ID, HC_ID, T, LIMITE);
+				new EntradaClinicaContributor(entradas).eventosDe(ORG_ID, HC_ID, T, LIMITE, null);
 
 		assertThat(eventos).singleElement().satisfies(evento -> {
 			assertThat(evento.ocurrioEn()).isEqualTo(T);
@@ -80,7 +80,7 @@ class ContribuyentesDeTimelineTest {
 		given(adjuntos.buscarParaTimeline(ORG_ID, HC_ID, T, LIMITE)).willReturn(List.of(adjunto));
 
 		List<EventoClinico> eventos =
-				new AdjuntoClinicoContributor(adjuntos).eventosDe(ORG_ID, HC_ID, T, LIMITE);
+				new AdjuntoClinicoContributor(adjuntos).eventosDe(ORG_ID, HC_ID, T, LIMITE, null);
 
 		assertThat(eventos).singleElement().satisfies(evento -> {
 			assertThat(evento.ocurrioEn()).isEqualTo(T);
@@ -101,7 +101,7 @@ class ContribuyentesDeTimelineTest {
 				.willReturn(List.of(antecedente));
 
 		List<EventoClinico> eventos = new AntecedenteClinicoContributor(antecedentes)
-				.eventosDe(ORG_ID, HC_ID, T, LIMITE);
+				.eventosDe(ORG_ID, HC_ID, T, LIMITE, null);
 
 		assertThat(eventos).singleElement().satisfies(evento -> {
 			assertThat(evento.ocurrioEn()).isEqualTo(T);

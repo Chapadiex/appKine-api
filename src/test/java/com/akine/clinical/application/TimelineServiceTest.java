@@ -4,6 +4,7 @@ import com.akine.clinical.domain.HistoriaClinica;
 import com.akine.clinical.domain.exception.AccesoClinicoNoJustificadoException;
 import com.akine.clinical.domain.exception.CursorInvalidoException;
 import com.akine.clinical.domain.exception.HistoriaClinicaNotAccessibleException;
+import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRepositoryPort;
 import com.akine.clinical.spi.EventoClinico;
 import com.akine.clinical.spi.EventoClinicoContributor;
@@ -59,6 +60,10 @@ class TimelineServiceTest {
 	@Mock
 	private HistoriaClinicaRepositoryPort historias;
 
+	/** 04.03: solo se consulta cuando se filtra por caso. Los tests de aca no filtran. */
+	@Mock
+	private CasoClinicoRepositoryPort casos;
+
 	@Mock
 	private PermissionGuard permissionGuard;
 
@@ -95,7 +100,7 @@ class TimelineServiceTest {
 				fija(evento(T.minusSeconds(120), "SESION", 1L)),
 				fija(evento(T, "ADJUNTO_CLINICO", 5L), evento(T.minusSeconds(60), "ENTRADA", 3L)));
 
-		TimelinePagina pagina = service.ver(profesional, HC_ID, null, null, null);
+		TimelinePagina pagina = service.ver(profesional, HC_ID, null, null, null, null);
 
 		assertThat(pagina.eventos())
 				.extracting(EventoClinico::origen)
@@ -106,7 +111,7 @@ class TimelineServiceTest {
 	@Test
 	@DisplayName("sin contribuyentes devuelve una pagina vacia, no un error")
 	void sin_fuentes() {
-		TimelinePagina pagina = conFuentes().ver(profesional, HC_ID, null, null, null);
+		TimelinePagina pagina = conFuentes().ver(profesional, HC_ID, null, null, null, null);
 
 		assertThat(pagina.eventos()).isEmpty();
 		assertThat(pagina.proximoCursor()).isNull();
@@ -124,7 +129,7 @@ class TimelineServiceTest {
 				evento(T.minusSeconds(60), "SESION", 2L),
 				evento(T.minusSeconds(120), "SESION", 1L)));
 
-		TimelinePagina pagina = service.ver(profesional, HC_ID, null, 2, null);
+		TimelinePagina pagina = service.ver(profesional, HC_ID, null, 2, null, null);
 
 		assertThat(pagina.eventos()).extracting(EventoClinico::referencia).containsExactly(3L, 2L);
 		assertThat(pagina.proximoCursor()).isNotNull();
@@ -144,7 +149,7 @@ class TimelineServiceTest {
 				evento(T.minusSeconds(120), "SESION", 1L)));
 		String cursor = TimelineCursor.de(ultimoDeLaPrimera).codificar();
 
-		TimelinePagina pagina = service.ver(profesional, HC_ID, cursor, 2, null);
+		TimelinePagina pagina = service.ver(profesional, HC_ID, cursor, 2, null, null);
 
 		assertThat(pagina.eventos()).extracting(EventoClinico::referencia).containsExactly(1L);
 		assertThat(pagina.proximoCursor()).isNull();
@@ -157,7 +162,7 @@ class TimelineServiceTest {
 		FuenteEspia espia = new FuenteEspia(evento(T, "SESION", 7L));
 
 		TimelinePagina pagina = conFuentes(espia)
-				.ver(profesional, HC_ID, TimelineCursor.de(ancla).codificar(), 10, null);
+				.ver(profesional, HC_ID, TimelineCursor.de(ancla).codificar(), 10, null, null);
 
 		assertThat(espia.hasta).isEqualTo(T);
 		// El desempate del mismo instante llega desde la fuente y lo filtra el agregador: el 7 es
@@ -170,7 +175,7 @@ class TimelineServiceTest {
 	void sobre_lectura() {
 		FuenteEspia espia = new FuenteEspia();
 
-		conFuentes(espia).ver(profesional, HC_ID, null, 5, null);
+		conFuentes(espia).ver(profesional, HC_ID, null, 5, null, null);
 
 		assertThat(espia.limite).isEqualTo(6);
 	}
@@ -179,18 +184,18 @@ class TimelineServiceTest {
 	@DisplayName("un limite fuera de rango se recorta al default o al tope, sin fallar")
 	void limite_acotado() {
 		FuenteEspia sinLimite = new FuenteEspia();
-		conFuentes(sinLimite).ver(profesional, HC_ID, null, null, null);
+		conFuentes(sinLimite).ver(profesional, HC_ID, null, null, null, null);
 		assertThat(sinLimite.limite).isEqualTo(TimelineService.LIMITE_POR_DEFECTO + 1);
 
 		FuenteEspia desmedida = new FuenteEspia();
-		conFuentes(desmedida).ver(profesional, HC_ID, null, 100_000, null);
+		conFuentes(desmedida).ver(profesional, HC_ID, null, 100_000, null, null);
 		assertThat(desmedida.limite).isEqualTo(TimelineService.LIMITE_MAXIMO + 1);
 	}
 
 	@Test
 	@DisplayName("un cursor ilegible es 400 y no la primera pagina")
 	void cursor_roto() {
-		assertThatThrownBy(() -> conFuentes().ver(profesional, HC_ID, "%%%", null, null))
+		assertThatThrownBy(() -> conFuentes().ver(profesional, HC_ID, "%%%", null, null, null))
 				.isInstanceOf(CursorInvalidoException.class);
 	}
 
@@ -203,7 +208,7 @@ class TimelineServiceTest {
 	void audita_la_lectura() {
 		TimelineService service = conFuentes(fija(evento(T, "SESION", 3L)));
 
-		service.ver(profesional, HC_ID, null, null, null);
+		service.ver(profesional, HC_ID, null, null, null, null);
 
 		ArgumentCaptor<AuditEntry> captor = ArgumentCaptor.forClass(AuditEntry.class);
 		verify(auditTrail).record(captor.capture());
@@ -223,7 +228,7 @@ class TimelineServiceTest {
 		given(relaciones.tieneRelacionAsistencial(anyLong(), anyLong(), anyLong(), anyLong()))
 				.willReturn(false);
 
-		assertThatThrownBy(() -> conFuentes().ver(profesional, HC_ID, null, null, null))
+		assertThatThrownBy(() -> conFuentes().ver(profesional, HC_ID, null, null, null, null))
 				.isInstanceOf(AccesoClinicoNoJustificadoException.class);
 		verify(auditTrail, never()).record(any());
 	}
@@ -233,7 +238,7 @@ class TimelineServiceTest {
 	void sin_contexto() {
 		OperatingActor sinSede = new OperatingActor(ACCOUNT_ID, false, ORG_ID, null);
 
-		assertThatThrownBy(() -> conFuentes().ver(sinSede, HC_ID, null, null, null))
+		assertThatThrownBy(() -> conFuentes().ver(sinSede, HC_ID, null, null, null, null))
 				.isInstanceOf(AccessDeniedException.class);
 		verify(historias, never()).findByIdAndOrganizationId(anyLong(), anyLong());
 	}
@@ -243,7 +248,7 @@ class TimelineServiceTest {
 	void otro_tenant() {
 		given(historias.findByIdAndOrganizationId(HC_ID, ORG_ID)).willReturn(Optional.empty());
 
-		assertThatThrownBy(() -> conFuentes().ver(profesional, HC_ID, null, null, null))
+		assertThatThrownBy(() -> conFuentes().ver(profesional, HC_ID, null, null, null, null))
 				.isInstanceOf(HistoriaClinicaNotAccessibleException.class);
 	}
 
@@ -252,13 +257,13 @@ class TimelineServiceTest {
 	// =================================================================================
 
 	private TimelineService conFuentes(EventoClinicoContributor... fuentes) {
-		return new TimelineService(historias, List.of(fuentes), permissionGuard, relaciones,
+		return new TimelineService(historias, casos, List.of(fuentes), permissionGuard, relaciones,
 				auditTrail, supportAccessAuditor);
 	}
 
 	/** Una fuente que siempre devuelve los mismos eventos, sin mirar el tope ni el limite. */
 	private static EventoClinicoContributor fija(EventoClinico... eventos) {
-		return (organizationId, historiaClinicaId, hasta, limite) -> List.of(eventos);
+		return (organizationId, historiaClinicaId, hasta, limite, casoId) -> List.of(eventos);
 	}
 
 	/** Una fuente que ademas recuerda con que argumentos la llamaron. */
@@ -274,7 +279,7 @@ class TimelineServiceTest {
 
 		@Override
 		public List<EventoClinico> eventosDe(
-				long organizationId, long historiaClinicaId, Instant hasta, int limite) {
+				long organizationId, long historiaClinicaId, Instant hasta, int limite, Long casoId) {
 
 			this.hasta = hasta;
 			this.limite = limite;

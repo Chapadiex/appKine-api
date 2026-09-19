@@ -1,5 +1,6 @@
 package com.akine.encounter.application;
 
+import com.akine.clinical.spi.CasoDirectory;
 import com.akine.clinical.spi.HistoriaClinicaDirectory;
 import com.akine.clinical.spi.HistoriaClinicaSnapshot;
 import com.akine.encounter.domain.Asistencia;
@@ -79,6 +80,9 @@ class SesionServiceTest {
 	@Mock private NumeradorIniciador numeradorIniciador;
 	@Mock private OfertaDirectory ofertas;
 
+	/** 04.03: solo se consulta cuando la sesion declara un caso. Estos tests no declaran. */
+	@Mock private CasoDirectory casos;
+
 	private SesionService service;
 
 	private final OperatingActor actor =
@@ -87,7 +91,7 @@ class SesionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new SesionService(
-				sesiones, turnos, historias, consultorios, memberships, permissionGuard,
+				sesiones, turnos, historias, casos, consultorios, memberships, permissionGuard,
 				numerador, numeradorIniciador, ofertas, List.of());
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
@@ -124,7 +128,7 @@ class SesionServiceTest {
 	 * estado que en produccion no existe: una sesion guardada sin id.
 	 */
 	private static Sesion sesionExistente(long profesionalMembershipId) {
-		Sesion sesion = new Sesion(ORG_ID, CONSULTORIO_ID, HISTORIA_ID, TURNO_ID, OFERTA_ID,
+		Sesion sesion = new Sesion(ORG_ID, CONSULTORIO_ID, HISTORIA_ID, null, TURNO_ID, OFERTA_ID,
 				profesionalMembershipId, Instant.EPOCH, CUENTA_PROPIA);
 		ReflectionTestUtils.setField(sesion, "id", 1L);
 		return sesion;
@@ -139,7 +143,7 @@ class SesionServiceTest {
 		given(sesiones.findVivaPorTurno(ORG_ID, TURNO_ID))
 				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
 
-		SesionView vista = service.iniciar(actor, CONSULTORIO_ID, TURNO_ID);
+		SesionView vista = service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, null);
 
 		assertThat(vista.turnoId()).isEqualTo(TURNO_ID);
 		verify(sesiones, never()).save(any());
@@ -158,7 +162,7 @@ class SesionServiceTest {
 		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID))
 				.willReturn(Optional.of(turno(MEMBERSHIP_AJENA, true)));
 
-		assertThatThrownBy(() -> service.iniciar(actor, CONSULTORIO_ID, TURNO_ID))
+		assertThatThrownBy(() -> service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, null))
 				.isInstanceOf(TurnoNoAtendibleException.class);
 	}
 
@@ -171,7 +175,7 @@ class SesionServiceTest {
 		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID))
 				.willReturn(Optional.of(turno(null, true)));
 
-		assertThat(service.iniciar(actor, CONSULTORIO_ID, TURNO_ID).profesionalId())
+		assertThat(service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, null).profesionalId())
 				.isEqualTo(MEMBERSHIP_PROPIA);
 	}
 
@@ -182,7 +186,7 @@ class SesionServiceTest {
 		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID))
 				.willReturn(Optional.of(turno(MEMBERSHIP_PROPIA, false)));
 
-		assertThatThrownBy(() -> service.iniciar(actor, CONSULTORIO_ID, TURNO_ID))
+		assertThatThrownBy(() -> service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, null))
 				.isInstanceOf(TurnoNoAtendibleException.class);
 	}
 
@@ -373,7 +377,7 @@ class SesionServiceTest {
 		// correlativo que nadie usa y la numeracion del paciente quedaria con huecos que parecen
 		// sesiones borradas.
 		Sesion yaCerrada = sesionExistente(MEMBERSHIP_PROPIA);
-		yaCerrada.cerrar(cierre(Asistencia.PRESENTE, "Terapia manual"), 3, Instant.EPOCH, CUENTA_PROPIA);
+		yaCerrada.cerrar(cierre(Asistencia.PRESENTE, "Terapia manual"), 3, null, Instant.EPOCH, CUENTA_PROPIA);
 		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(yaCerrada));
 
 		SesionView vista = service.cerrar(
@@ -392,7 +396,7 @@ class SesionServiceTest {
 		// Fail-closed hasta que exista la enmienda de 06.06: es preferible no poder corregir a
 		// corregir sin dejar rastro, que es historia clinica reescrita en silencio.
 		Sesion yaCerrada = sesionExistente(MEMBERSHIP_PROPIA);
-		yaCerrada.cerrar(cierre(Asistencia.PRESENTE, "Terapia manual"), 1, Instant.EPOCH, CUENTA_PROPIA);
+		yaCerrada.cerrar(cierre(Asistencia.PRESENTE, "Terapia manual"), 1, null, Instant.EPOCH, CUENTA_PROPIA);
 		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(yaCerrada));
 
 		assertThatThrownBy(() -> service.guardarBorrador(actor, CONSULTORIO_ID, 1L, "{}", 0L))
