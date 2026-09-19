@@ -509,7 +509,59 @@ public enum ProblemType {
 	 * cursor roto haria que un cliente con un bug de paginacion recorriera la misma pagina para
 	 * siempre sin que nadie lo note.
 	 */
-	CURSOR_INVALIDO("cursor-invalido");
+	CURSOR_INVALIDO("cursor-invalido"),
+
+	// --- Caso Clinico (M10, AKINE-04.03) ----------------------------------------------------
+	/**
+	 * El caso clinico no existe, es de otro tenant, o es de otra historia (404).
+	 *
+	 * <p>Mismo criterio y mismo motivo que {@link #ENTRADA_CLINICA_NO_ACCESIBLE}: las tres causas
+	 * colapsan en un solo {@code type} y en un solo status. Un 403 confirmaria que la fila existe,
+	 * y probar ids consecutivos alcanzaria para censar cuantos casos clinicos tiene otro centro
+	 * del SaaS — que deja de ser aislamiento y pasa a ser privacidad.
+	 */
+	CASO_CLINICO_NO_ACCESIBLE("caso-clinico-no-accesible"),
+	/**
+	 * El caso esta cerrado y la operacion exige uno activo (409, no 404 y no 403).
+	 *
+	 * <p>El caso existe y se sigue leyendo entero con todo su historial —eso distingue "termino"
+	 * de "no existio"— y quien opera SI tiene {@code hc:write}: lo que no admite la operacion es el
+	 * estado. La accion que la pantalla tiene que ofrecer es <b>reabrir con motivo</b>, que queda
+	 * en el historial (RF-M10-006). Editar en silencio un caso terminado es historia clinica
+	 * reescrita, y ADR-0011 lo prohibe.
+	 */
+	CASO_CLINICO_CERRADO("caso-clinico-cerrado"),
+	/**
+	 * El alta coincide con un caso ACTIVO de la misma historia y la misma oferta (409).
+	 *
+	 * <p>Es una <b>advertencia</b>, no un invariante: RN-M10-002 admite varios casos activos, y
+	 * reenviar el alta con {@code confirmaPosibleDuplicado} la acepta. Lleva {@code candidatos} con
+	 * los ids que coinciden, sin los cuales el 409 seria un callejon. Mismo mecanismo, y misma
+	 * pantalla, que {@link #PERSONA_POSIBLE_DUPLICADO} en el alta de Persona.
+	 *
+	 * <p><b>Es un tipo distinto de {@link #CONCURRENT_MODIFICATION} y tiene que serlo:</b> este se
+	 * resuelve confirmando y aquel releyendo. Un solo tipo para los dos obligaria al cliente a
+	 * adivinar cual de las dos acciones corresponde leyendo prosa en castellano.
+	 */
+	CASO_CLINICO_POSIBLE_DUPLICADO("caso-clinico-posible-duplicado"),
+	/**
+	 * Se intento cerrar o reabrir un caso sin declarar por que (400, no 409).
+	 *
+	 * <p>No hay conflicto de estado: falta un dato del pedido, y un 409 mandaria al profesional a
+	 * reintentar el mismo cuerpo, que falla igual. Sin motivo, un cierre es indistinguible de un
+	 * abandono y el historial deja de servir para lo unico que sirve. Mismo reparto que
+	 * {@link #ENMIENDA_SIN_MOTIVO}.
+	 */
+	CASO_SIN_MOTIVO_DE_CIERRE("caso-sin-motivo-de-cierre"),
+	/**
+	 * La oferta que motiva el caso no existe en la sede o no esta vigente (409, no 404).
+	 *
+	 * <p>RN-M10-006: la necesidad de Caso la determina la Oferta efectiva, asi que un caso que
+	 * apunta a una oferta que no puede prestarse no tiene sobre que apoyarse. Mismo criterio que
+	 * {@link #OFERTA_NO_AGENDABLE}: la oferta existe y quien la eligio la esta viendo en una lista,
+	 * asi que lo que corresponde es ofrecerle reactivarla o elegir otra, no decir "no encontrada".
+	 */
+	OFERTA_NO_VIGENTE("oferta-no-vigente");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
