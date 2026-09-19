@@ -241,12 +241,11 @@ class AdjuntoClinicoIT {
 				.as("409 y no 404: la metadata existe y quien pregunta la esta viendo en la lista")
 				.isInstanceOf(AdjuntoClinicoNoDisponibleException.class);
 
-		// ATENCION a quien corra esto por primera vez: esta afirmacion es la que el javadoc de
-		// `AdjuntoClinicoService` promete, y hay una razon concreta para sospechar que NO se
-		// cumple. `contenidoDe` marca la fila y acto seguido lanza una RuntimeException dentro de
-		// un metodo `@Transactional` sin `noRollbackFor`: Spring revierte la transaccion y se
-		// lleva la marca. Si este assert falla, el defecto es de produccion —AdjuntoClinicoService
-		// lineas 471-473— y NO del test. Esta escrito contra la conducta especificada a proposito.
+		// Esta afirmacion es la que el javadoc de `AdjuntoClinicoService` promete, y pende de un
+		// detalle que ya se arreglo: la marca NO se escribe en la transaccion de la descarga, que
+		// esta por revertirse cuando la RuntimeException salga, sino en una propia
+		// (`AdjuntoClinicoEscrituraAparte.marcarNoDisponible`, con REQUIRES_NEW). Si este assert
+		// falla, mirar ahi: quiere decir que alguien volvio a meter la marca adentro.
 		assertThat(jdbc.queryForObject(
 				"SELECT estado FROM adjunto_clinico WHERE id = ?", String.class,
 				alta.adjunto().id()))

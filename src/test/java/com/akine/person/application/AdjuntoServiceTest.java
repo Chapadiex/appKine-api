@@ -26,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -92,6 +93,9 @@ class AdjuntoServiceTest {
 	@Mock
 	private PersonSupportAccessAuditor supportAccessAuditor;
 
+	@Mock
+	private AdjuntoEscrituraAparte escrituraAparte;
+
 	private AdjuntoService service;
 
 	private final OperatingActor delMostrador =
@@ -100,7 +104,7 @@ class AdjuntoServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AdjuntoService(personas, adjuntos, storage, permissionGuard,
-				auditTrail, supportAccessAuditor);
+				auditTrail, supportAccessAuditor, escrituraAparte);
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("ORGANIZACION", false));
@@ -109,7 +113,10 @@ class AdjuntoServiceTest {
 		given(storage.tamanoMaximo()).willReturn(10L * 1024 * 1024);
 		given(adjuntos.buscarVigentePorChecksum(any(), any(), anyString()))
 				.willReturn(Optional.empty());
-		given(adjuntos.saveAndFlush(any())).willAnswer(i -> conId(i.getArgument(0)));
+		// El INSERT ya no lo hace el servicio: corre en su propia transaccion, porque un choque
+		// contra el unique marca rollbackOnly la transaccion en la que ocurre y atraparlo ahi no
+		// la des-marca.
+		given(escrituraAparte.insertar(any())).willAnswer(i -> conId(i.getArgument(0)));
 		given(adjuntos.save(any())).willAnswer(i -> i.getArgument(0));
 	}
 
@@ -153,7 +160,7 @@ class AdjuntoServiceTest {
 				.extracting(e -> ((ArchivoNoAceptadoException) e).getMotivo())
 				.isEqualTo("DEMASIADO_GRANDE");
 
-		verify(adjuntos, never()).saveAndFlush(any());
+		verify(escrituraAparte, never()).insertar(any());
 	}
 
 	@Test
@@ -167,12 +174,12 @@ class AdjuntoServiceTest {
 
 		assertThat(alta.creado()).isFalse();
 		assertThat(alta.adjunto().id()).isEqualTo(ADJUNTO_ID);
-		verify(adjuntos, never()).saveAndFlush(any());
+		verify(escrituraAparte, never()).insertar(any());
 		verify(storage, never()).guardar(anyString(), any());
 	}
 
 	@Test
-	@DisplayName("si el almacenamiento falla, la excepcion sube y no queda nada confirmado")
+	@DisplayName("si el almacenamiento falla, la fila queda NO_DISPONIBLE y la excepcion sube")
 	void el_fallo_de_almacenamiento_propaga() {
 		willThrow(new UncheckedIOException(new IOException("disco lleno")))
 				.given(storage).guardar(anyString(), any());
@@ -181,9 +188,34 @@ class AdjuntoServiceTest {
 				new AdjuntoAltaCommand(CategoriaAdjunto.OTRO, null, "x.pdf", null, UN_PDF)))
 				.isInstanceOf(UncheckedIOException.class);
 
+		// La fila ya esta commiteada —el INSERT corre en su propia transaccion— asi que el
+		// rollback de esta no se la lleva. Dejarla DISPONIBLE seria que el listado afirme tener un
+		// documento que no se puede descargar: se la marca NO_DISPONIBLE, que es la verdad.
+		verify(escrituraAparte).marcarNoDisponible(ORG_ID, PERSONA_ID, ADJUNTO_ID);
 		// La auditoria se escribe DESPUES del blob: si el blob falla, no hay rastro de una carga
 		// que no ocurrio. Es la contrapartida de auditar dentro de la transaccion del negocio.
 		verifyNoInteractions(auditTrail);
+	}
+
+	@Test
+	@DisplayName("dos subidas simultaneas del mismo contenido: la perdedora responde idempotente")
+	void la_carrera_del_unique_no_es_un_500() {
+		// El defecto que esto fija: con el INSERT dentro de la transaccion de negocio, el choque
+		// contra uk_adjunto_contenido_vigente la marcaba rollbackOnly, el catch corria sobre una
+		// sesion inutilizable y el commit terminaba en UnexpectedRollbackException. O sea 500,
+		// justo donde el contrato promete idempotencia. El INSERT va en transaccion propia.
+		willThrow(new DataIntegrityViolationException("uk_adjunto_contenido_vigente"))
+				.given(escrituraAparte).insertar(any());
+		given(adjuntos.buscarVigentePorChecksum(any(), any(), anyString()))
+				.willReturn(Optional.empty())
+				.willReturn(Optional.of(unAdjunto()));
+
+		AdjuntoService.AdjuntoAlta alta = service.subir(delMostrador, PERSONA_ID,
+				new AdjuntoAltaCommand(CategoriaAdjunto.OTRO, null, "x.pdf", null, UN_PDF));
+
+		assertThat(alta.creado()).isFalse();
+		assertThat(alta.adjunto().id()).isEqualTo(ADJUNTO_ID);
+		verify(storage, never()).guardar(anyString(), any());
 	}
 
 	@Test

@@ -72,7 +72,9 @@ public class HistoriaClinicaService {
 	private final List<EventoClinicoContributor> contribuyentes;
 	private final AuditTrail auditTrail;
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
+	private final HistoriaClinicaEscrituraAparte escrituraAparte;
 
+	@SuppressWarnings("checkstyle:ParameterNumber")
 	public HistoriaClinicaService(
 			HistoriaClinicaRepositoryPort historias,
 			AntecedenteClinicoRepositoryPort antecedentes,
@@ -81,7 +83,8 @@ public class HistoriaClinicaService {
 			RelacionAsistencialProbe relaciones,
 			List<EventoClinicoContributor> contribuyentes,
 			AuditTrail auditTrail,
-			ClinicalSupportAccessAuditor supportAccessAuditor) {
+			ClinicalSupportAccessAuditor supportAccessAuditor,
+			HistoriaClinicaEscrituraAparte escrituraAparte) {
 
 		this.historias = historias;
 		this.antecedentes = antecedentes;
@@ -91,6 +94,7 @@ public class HistoriaClinicaService {
 		this.contribuyentes = List.copyOf(contribuyentes);
 		this.auditTrail = auditTrail;
 		this.supportAccessAuditor = supportAccessAuditor;
+		this.escrituraAparte = escrituraAparte;
 	}
 
 	// =================================================================================
@@ -178,6 +182,14 @@ public class HistoriaClinicaService {
 	 * {@code uk_historia_clinica_persona_vigente}: dos aperturas simultaneas no producen dos
 	 * historias, la segunda choca y se responde con la que gano. El pre-chequeo esta para ahorrar
 	 * el viaje en el caso comun, no como la proteccion.
+	 *
+	 * <p><b>El INSERT corre en una transaccion propia</b>, y no es un detalle: si viviera en esta,
+	 * el choque contra el unique la marcaria {@code rollbackOnly} antes de que el {@code catch}
+	 * corriera, y la relectura de abajo pasaria sobre una sesion inutilizable —
+	 * {@code UnexpectedRollbackException} o {@code AssertionFailure} al commitear, o sea un
+	 * <b>500 en la apertura concurrente de una historia clinica</b>, que es la ruta critica del
+	 * modulo. Ver {@link HistoriaClinicaEscrituraAparte}, que ademas explica por que la fila
+	 * commiteada de mas esta acotada.
 	 */
 	private Apertura abrirIdempotente(long organizationId, long personaId, long actorAccountId) {
 		var yaExistente = historias.buscarVigentePorPersona(organizationId, personaId);
@@ -189,14 +201,15 @@ public class HistoriaClinicaService {
 		HistoriaClinica historia =
 				new HistoriaClinica(organizationId, personaId, Instant.now(), actorAccountId);
 		try {
-			HistoriaClinica guardada = historias.saveAndFlush(historia);
+			HistoriaClinica guardada = escrituraAparte.insertar(historia);
 			log.info("Historia clinica abierta: id={} personaId={} organizationId={}",
 					guardada.getId(), personaId, organizationId);
 			return new Apertura(guardada, true);
 		}
 		catch (DataIntegrityViolationException choque) {
 			// Otro request gano la carrera contra el unique. No es un error del usuario: es el
-			// mismo pedido resuelto por el otro camino.
+			// mismo pedido resuelto por el otro camino. La que murio fue la transaccion del
+			// INSERT, no esta: la relectura corre sobre una sesion sana.
 			log.info("Apertura concurrente de historia clinica resuelta como idempotente: "
 					+ "personaId={}", personaId);
 			HistoriaClinica ganadora = historias.buscarVigentePorPersona(organizationId, personaId)

@@ -80,6 +80,9 @@ class HistoriaClinicaServiceTest {
 	@Mock
 	private ClinicalSupportAccessAuditor supportAccessAuditor;
 
+	@Mock
+	private HistoriaClinicaEscrituraAparte escrituraAparte;
+
 	private HistoriaClinicaService service;
 
 	private final OperatingActor profesional = new OperatingActor(ACCOUNT_ID, false, ORG_ID, SEDE_ID);
@@ -87,7 +90,7 @@ class HistoriaClinicaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new HistoriaClinicaService(historias, antecedentes, pacientes, permissionGuard,
-				relaciones, List.of(), auditTrail, supportAccessAuditor);
+				relaciones, List.of(), auditTrail, supportAccessAuditor, escrituraAparte);
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
@@ -95,7 +98,10 @@ class HistoriaClinicaServiceTest {
 				.willReturn(true);
 		given(pacientes.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(paciente(true, true)));
 		given(historias.buscarVigentePorPersona(ORG_ID, PERSONA_ID)).willReturn(Optional.empty());
-		given(historias.saveAndFlush(any())).willAnswer(i -> conId(i.getArgument(0)));
+		// El INSERT ya no lo hace el servicio: lo hace el colaborador que corre en su propia
+		// transaccion, porque un choque contra el unique marca rollbackOnly la transaccion en la
+		// que ocurre y atraparlo ahi no la des-marca.
+		given(escrituraAparte.insertar(any())).willAnswer(i -> conId(i.getArgument(0)));
 		given(historias.save(any())).willAnswer(i -> i.getArgument(0));
 		given(antecedentes.buscarDeHistoria(anyLong(), anyLong(), any(), anyBoolean()))
 				.willReturn(List.of());
@@ -131,7 +137,7 @@ class HistoriaClinicaServiceTest {
 		HistoriaClinicaView vista = service.abrirOObtener(profesional, PERSONA_ID, null);
 
 		assertThat(vista.id()).isEqualTo(HC_ID);
-		verify(historias, never()).saveAndFlush(any());
+		verify(escrituraAparte, never()).insertar(any());
 		verify(auditTrail, never()).record(any());
 	}
 
@@ -144,12 +150,17 @@ class HistoriaClinicaServiceTest {
 				.willReturn(Optional.empty())
 				.willReturn(Optional.of(historiaExistente()));
 		willThrow(new DataIntegrityViolationException("uk_historia_clinica_persona_vigente"))
-				.given(historias).saveAndFlush(any());
+				.given(escrituraAparte).insertar(any());
 
 		HistoriaClinicaView vista = service.abrirOObtener(profesional, PERSONA_ID, null);
 
 		assertThat(vista.id()).isEqualTo(HC_ID);
 		verify(auditTrail, never()).record(any());
+		// Y el INSERT NO sale de la transaccion de negocio: si saliera de ahi, el choque contra el
+		// unique la marcaria rollbackOnly y la relectura de la ganadora correria sobre una sesion
+		// muerta — 500 en vez de idempotencia. Ver HistoriaClinicaEscrituraAparte.
+		verify(escrituraAparte).insertar(any());
+		verify(historias, never()).saveAndFlush(any());
 	}
 
 	// =================================================================================
@@ -166,7 +177,7 @@ class HistoriaClinicaServiceTest {
 		assertThatThrownBy(() -> service.abrirOObtener(profesional, PERSONA_ID, null))
 				.isInstanceOf(PacienteSinPerfilVigenteException.class);
 
-		verify(historias, never()).saveAndFlush(any());
+		verify(escrituraAparte, never()).insertar(any());
 	}
 
 	@Test
