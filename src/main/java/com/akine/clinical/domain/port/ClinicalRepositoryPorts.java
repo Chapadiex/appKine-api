@@ -7,6 +7,7 @@ import com.akine.clinical.domain.EntradaClinicaVersion;
 import com.akine.clinical.domain.HistoriaClinica;
 import com.akine.clinical.domain.TipoAntecedente;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -64,6 +65,17 @@ public final class ClinicalRepositoryPorts {
 		 */
 		List<AntecedenteClinico> buscarDeHistoria(
 				Long organizationId, Long historiaClinicaId, TipoAntecedente tipo, boolean soloVigentes);
+
+		/**
+		 * Los antecedentes vigentes para una pagina de timeline: los {@code limite} mas recientes
+		 * con {@code registradoEn <= hasta}.
+		 *
+		 * <p>Es una consulta propia y no un filtro mas sobre {@link #buscarDeHistoria}: aquella no
+		 * tiene tope ni corte temporal, y el timeline necesita las dos cosas para no traerse la
+		 * anamnesis entera de un paciente cronico en cada pagina.
+		 */
+		List<AntecedenteClinico> buscarParaTimeline(
+				Long organizationId, Long historiaClinicaId, Instant hasta, int limite);
 	}
 
 	public interface EntradaClinicaRepositoryPort {
@@ -105,6 +117,17 @@ public final class ClinicalRepositoryPorts {
 		 */
 		List<EntradaClinica> buscarDeHistoria(
 				Long organizationId, Long historiaClinicaId, boolean soloVigentes);
+
+		/**
+		 * Las entradas vigentes para una pagina de timeline: las {@code limite} mas recientes con
+		 * {@code ocurrioEn <= hasta}.
+		 *
+		 * <p>Solo vigentes, sin parametro que lo negocie: una entrada dada de baja <b>sale del
+		 * timeline</b> y sigue siendo consultable por su id, que es lo que distingue "no lo
+		 * muestres" de "no existio". Un flag aca dejaria que un llamador la volviera a indexar.
+		 */
+		List<EntradaClinica> buscarParaTimeline(
+				Long organizationId, Long historiaClinicaId, Instant hasta, int limite);
 	}
 
 	public interface EntradaClinicaVersionRepositoryPort {
@@ -183,6 +206,17 @@ public final class ClinicalRepositoryPorts {
 				int activoFiltro,
 				int offset,
 				int limite);
+
+		/**
+		 * Los adjuntos vigentes para una pagina de timeline: los {@code limite} mas recientes con
+		 * {@code subidoEn <= hasta}.
+		 *
+		 * <p>Lo que el timeline indexa es el <b>alta</b> del adjunto y por eso ordena por
+		 * {@code subidoEn}. Un adjunto reclasificado o dado de baja despues no cambia de lugar en
+		 * la linea de tiempo: el hecho datado es que ese dia entro un documento a la historia.
+		 */
+		List<AdjuntoClinico> buscarParaTimeline(
+				Long organizationId, Long historiaClinicaId, Instant hasta, int limite);
 
 		/** El total del mismo filtro, para que la pagina sepa cuantas hay. */
 		long contar(

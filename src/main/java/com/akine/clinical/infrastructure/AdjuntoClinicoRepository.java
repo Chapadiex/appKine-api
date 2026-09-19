@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -75,6 +76,29 @@ public interface AdjuntoClinicoRepository
 			@Param("entradaId") Long entradaId,
 			@Param("activoFiltro") int activoFiltro,
 			@Param("offset") int offset,
+			@Param("limite") int limite);
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Ordena por {@code subido_en} porque lo que el timeline indexa es el <b>alta</b> del
+	 * documento. Filtra {@code active = 1} sin parametro que lo negocie: un adjunto dado de baja
+	 * sale del timeline y sigue siendo consultable por su id.
+	 */
+	@Override
+	@Query(value = """
+			SELECT * FROM adjunto_clinico a
+			 WHERE a.organization_id = :organizationId
+			   AND a.historia_clinica_id = :historiaClinicaId
+			   AND a.active = 1
+			   AND a.subido_en <= :hasta
+			 ORDER BY a.subido_en DESC, a.id DESC
+			 LIMIT :limite
+			""", nativeQuery = true)
+	List<AdjuntoClinico> buscarParaTimeline(
+			@Param("organizationId") Long organizationId,
+			@Param("historiaClinicaId") Long historiaClinicaId,
+			@Param("hasta") Instant hasta,
 			@Param("limite") int limite);
 
 	@Override

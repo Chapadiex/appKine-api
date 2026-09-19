@@ -58,9 +58,9 @@ public class HistoriaClinicaService {
 	/**
 	 * Tope de eventos que se le pide a cada contribuyente del timeline.
 	 *
-	 * <p>Hoy no hay ninguno, asi que no acota nada. Esta puesto desde ahora porque el dia que
-	 * 04.02 registre el primero, un timeline sin tope trae la historia entera de un paciente
-	 * cronico en cada lectura del resumen.
+	 * <p>Desde 04.02 hay cuatro, asi que acota de verdad: sin tope, cada lectura del resumen
+	 * traeria la historia entera de un paciente cronico por cuatro fuentes. Es el asomo del
+	 * timeline, no el timeline — la linea de tiempo paginada la sirve {@link TimelineService}.
 	 */
 	private static final int EVENTOS_POR_CONTRIBUYENTE = 50;
 
@@ -322,15 +322,21 @@ public class HistoriaClinicaService {
 	/**
 	 * El timeline, mezclando lo que aporta cada modulo contribuyente.
 	 *
-	 * <p><b>Hoy devuelve siempre vacio</b> porque no hay ningun {@code EventoClinicoContributor}
-	 * registrado: el timeline es 04.02 y esta cortada. La mezcla esta escrita igual para que el
-	 * dia que aparezca el primer contribuyente no haya que decidir en ese momento como se ordenan
-	 * eventos de dos modulos distintos.
+	 * <p>Es el <b>asomo</b> del timeline dentro de la ficha, no el timeline: trae los mas recientes
+	 * y no pagina. La linea de tiempo completa, con su cursor, la sirve {@code TimelineService}.
+	 *
+	 * <p>El tope temporal que 04.02 agrego a la firma del contribuyente se pasa como
+	 * {@code Instant.now()}, que es lo que este resumen siempre quiso decir: los ultimos hechos
+	 * <b>hasta ahora</b>. Ningun evento puede estar datado en el futuro —una entrada que declara
+	 * haber ocurrido mañana se rechaza al registrarse— asi que el comportamiento del resumen no
+	 * cambia.
 	 */
 	private List<EventoClinico> timelineDe(HistoriaClinica historia) {
+		Instant hasta = Instant.now();
 		return contribuyentes.stream()
 				.flatMap(c -> c.eventosDe(
-						historia.getOrganizationId(), historia.getId(), EVENTOS_POR_CONTRIBUYENTE)
+						historia.getOrganizationId(), historia.getId(), hasta,
+						EVENTOS_POR_CONTRIBUYENTE)
 						.stream())
 				.sorted(Comparator.comparing(EventoClinico::ocurrioEn).reversed())
 				.limit(EVENTOS_POR_CONTRIBUYENTE)

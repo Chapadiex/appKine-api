@@ -36,4 +36,20 @@ public interface SesionRepositoryPort {
 	 */
 	Optional<Sesion> findPreviaEvaluada(
 			long organizationId, long historiaClinicaId, java.time.Instant antesDe);
+
+	/**
+	 * Las sesiones <b>cerradas</b> de una historia para una pagina de timeline: las
+	 * {@code limite} mas recientes con {@code cerradaEn <= hasta}.
+	 *
+	 * <p><b>Solo cerradas, y no es un filtro negociable.</b> Una sesion en borrador es eso, un
+	 * borrador: indexarla pondria en el timeline de un paciente una fila cuyo contenido cambia
+	 * mientras alguien la mira. La sesion cerrada si es un hecho clinico ocurrido, que es lo que
+	 * DP-05 distingue de cualquier transicion administrativa.
+	 *
+	 * <p>El instante del hecho es {@code cerrada_en} y no {@code iniciada_en}: es el momento en
+	 * que la atencion quedo asentada. El indice {@code ix_sesion_cerradas} de V35 sostiene
+	 * exactamente esta consulta.
+	 */
+	java.util.List<Sesion> buscarCerradasParaTimeline(
+			long organizationId, long historiaClinicaId, java.time.Instant hasta, int limite);
 }

@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -58,4 +59,33 @@ public interface EntradaClinicaRepository
 			@Param("organizationId") Long organizationId,
 			@Param("historiaClinicaId") Long historiaClinicaId,
 			@Param("soloVigentes") boolean soloVigentes);
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Nativa y con {@code LIMIT :limite}, mismo criterio que
+	 * {@link AdjuntoClinicoRepository#listar}: la pagina del timeline se recorta <b>en la base</b>.
+	 * Un paciente cronico acumula cientos de entradas y traerlas todas para descartarlas en
+	 * memoria es exactamente el percentil 95 que la etapa quiere evitar.
+	 *
+	 * <p>El orden y el filtro calzan con {@code ix_entrada_clinica_historia}
+	 * {@code (organization_id, historia_clinica_id, active, ocurrio_en)}, y el desempate por
+	 * {@code id DESC} no es cosmetico: sin el, dos entradas del mismo microsegundo se ordenarian
+	 * distinto entre una pagina y la siguiente, y el cursor saltearia una.
+	 */
+	@Override
+	@Query(value = """
+			SELECT * FROM entrada_clinica e
+			 WHERE e.organization_id = :organizationId
+			   AND e.historia_clinica_id = :historiaClinicaId
+			   AND e.active = 1
+			   AND e.ocurrio_en <= :hasta
+			 ORDER BY e.ocurrio_en DESC, e.id DESC
+			 LIMIT :limite
+			""", nativeQuery = true)
+	List<EntradaClinica> buscarParaTimeline(
+			@Param("organizationId") Long organizationId,
+			@Param("historiaClinicaId") Long historiaClinicaId,
+			@Param("hasta") Instant hasta,
+			@Param("limite") int limite);
 }
