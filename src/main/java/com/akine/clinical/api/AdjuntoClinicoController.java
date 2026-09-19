@@ -52,18 +52,23 @@ import java.nio.charset.StandardCharsets;
  * la persona, el permiso es clinico y con acceso justificado, y la descarga se audita como acceso
  * clinico y no solo como descarga.
  *
- * <h2>La historia clinica viaja SIEMPRE, incluso en las rutas planas</h2>
+ * <h2>La historia clinica viaja SIEMPRE: toda ruta cuelga de ella</h2>
  *
- * <p>Tres operaciones tienen ruta plana —{@code /adjuntos-clinicos/&#123;id&#125;}— y en las tres
- * la historia viaja como parametro obligatorio. <b>No es redundancia.</b> RN-M25-003 dice que el
- * acceso hereda los permisos de la entidad asociada, y la entidad asociada de un adjunto clinico
- * es la historia: es la ficha sobre la que se evalua {@code hc:read}/{@code hc:write}, la relacion
- * asistencial y la justificacion. Sin ella no hay nada contra que autorizar, asi que el parametro
- * es {@code required} y no tiene default.
+ * <p><b>No hay ninguna ruta plana.</b> Las cinco operaciones cuelgan de
+ * {@code /api/v1/historias-clinicas/&#123;historiaClinicaId&#125;/adjuntos}, y las tres que
+ * apuntan a un adjunto puntual le agregan {@code /&#123;adjuntoId&#125;}. RN-M25-003 dice que
+ * el acceso hereda los permisos de la entidad asociada, y la entidad asociada de un adjunto
+ * clinico es la historia: es la ficha sobre la que se evalua {@code hc:read}/
+ * {@code hc:write}, la relacion asistencial y la justificacion. Sin ella no hay nada contra
+ * que autorizar, asi que anidar la ruta escribe esa jerarquia en la URL en vez de dejarla en un
+ * query param obligatorio que el cliente se puede olvidar.
+ *
+ * <p><b>El {@code Location} del 201 apunta a esa misma ruta anidada.</b> Una URL que el
+ * servidor publica y que responde 404 al seguirla es peor que no publicarla.
  *
  * <p>Un adjunto que se pide con la historia equivocada responde <b>404</b>, no 400: un 400
- * distinguiria "ese adjunto no existe" de "existe pero es de otro paciente", que es justamente lo
- * que no se puede confirmar.
+ * distinguiria "ese adjunto no existe" de "existe pero es de otro paciente", que es justamente
+ * lo que no se puede confirmar.
  *
  * <h2>La descarga, y las dos cabeceras que la protegen</h2>
  *
@@ -96,6 +101,10 @@ public class AdjuntoClinicoController {
 	 * {@code /adjuntos-clinicos/...} obligaria a pedirlo como query param <b>obligatorio</b>, que es
 	 * la misma jerarquia escrita de una forma que el cliente se puede olvidar y que el contrato
 	 * tiene que documentar aparte. Anidarla la hace explicita y no cuesta nada.
+	 *
+	 * <p><b>Es tambien la ruta del {@code Location} del 201.</b> No queda ni un mapping plano
+	 * en {@code src/main}: publicar {@code /api/v1/adjuntos-clinicos/&#123;id&#125;} daria
+	 * 404 a cualquier cliente que siguiera la cabecera.
 	 */
 	private static final String POR_ADJUNTO = POR_HISTORIA + "/{adjuntoId}";
 
@@ -186,7 +195,14 @@ public class AdjuntoClinicoController {
 			@Parameter(description = "Entrada clinica que el documento respalda. Opcional")
 			@RequestParam(required = false) Long entradaClinicaId,
 
-			@Parameter(description = "Titulo con el que describirlo. Opcional")
+			// El tope de largo del titulo NO se valida aca con @Size: sobre un @RequestParam
+			// solo corre si la clase lleva @Validated, y esa anotacion cambia como se reportan
+			// los errores de TODOS los parametros del controller. Ademas dejaria la regla en una
+			// sola puerta: quien llame al servicio desde otro lado se la saltea. Vive en el
+			// constructor de AdjuntoClinico, que corre antes del INSERT y antes de escribir el
+			// binario, asi que un titulo demasiado largo es 400 y no deja archivo huerfano.
+			@Parameter(
+					description = "Titulo con el que describirlo. Opcional, hasta 160 caracteres")
 			@RequestParam(required = false) String titulo,
 
 			@Parameter(description = AccesoClinicoHeaders.JUSTIFICACION_DOC)
@@ -212,8 +228,11 @@ public class AdjuntoClinicoController {
 		}
 
 		log.debug("Adjunto clinico creado por API: adjuntoId={}", cuerpo.id());
+		// La ruta anidada, la unica que existe: no hay mapping plano de /adjuntos-clinicos en todo
+		// src/main, y un Location que responde 404 al seguirlo es peor que no mandarlo.
 		return ResponseEntity
-				.created(URI.create("/api/v1/adjuntos-clinicos/" + cuerpo.id()))
+				.created(URI.create("/api/v1/historias-clinicas/" + historiaClinicaId
+						+ "/adjuntos/" + cuerpo.id()))
 				.body(cuerpo);
 	}
 

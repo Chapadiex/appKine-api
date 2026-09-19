@@ -24,6 +24,9 @@ public record ReclasificarAdjuntoClinicoRequest(
 		CategoriaAdjuntoClinico categoria,
 
 		@Schema(description = "Titulo nuevo. Si no viene, no se toca")
-		@Size(max = 200, message = "El titulo no puede superar los 200 caracteres")
+		// 160, el largo de adjunto_clinico.titulo en V46. Validar 200 sobre una columna de 160 no
+		// rechaza nada: deja que el UPDATE muera con data truncation y que el handler global lo
+		// devuelva como 409, cuando es un 400.
+		@Size(max = 160, message = "El titulo no puede superar los 160 caracteres")
 		String titulo) {
 }

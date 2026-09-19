@@ -231,8 +231,12 @@ class ClinicalApiTest {
 			ResponseEntity<AdjuntoClinicoResponse> segunda = subir("rmn.pdf");
 
 			assertThat(primera.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+			// La ruta ANIDADA, que es la unica que existe desde que 2fe5689 anido los adjuntos bajo
+			// su historia. No queda ni un mapping plano en src/main: un Location que responde 404 al
+			// seguirlo es peor que no mandarlo.
 			assertThat(primera.getHeaders().getLocation())
-					.hasToString("/api/v1/adjuntos-clinicos/" + ADJUNTO_ID);
+					.hasToString("/api/v1/historias-clinicas/" + HISTORIA_ID + "/adjuntos/"
+							+ ADJUNTO_ID);
 			assertThat(segunda.getStatusCode()).isEqualTo(HttpStatus.OK);
 			assertThat(segunda.getHeaders().getLocation()).isNull();
 		}

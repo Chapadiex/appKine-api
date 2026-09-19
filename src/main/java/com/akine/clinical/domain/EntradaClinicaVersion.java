@@ -64,6 +64,17 @@ public class EntradaClinicaVersion extends MarcaTemporal {
 	@Column(name = "numero_version", nullable = false, updatable = false)
 	private int numeroVersion;
 
+	/**
+	 * El tope real del contenido clinico, y el mismo que {@code V45} le puso a la columna.
+	 *
+	 * <p>Vive aca y no solo en el DTO a proposito. Un {@code @Size} en la capa HTTP cubre
+	 * una puerta; esta clase la cierra para cualquier llamador. Y lo que hay del otro lado no es
+	 * un error de validacion prolijo: {@code VARCHAR(8000)} truncado es
+	 * {@code DataIntegrityViolationException}, que el handler global devuelve como <b>409</b>
+	 * "choca con un dato ya existente" sobre texto clinico recien escrito que ademas se pierde.
+	 */
+	public static final int CUERPO_MAXIMO = 8000;
+
 	@Column(name = "cuerpo", nullable = false, length = 8000, updatable = false)
 	private String cuerpo;
 
@@ -137,7 +148,13 @@ public class EntradaClinicaVersion extends MarcaTemporal {
 		if (valor == null || valor.isBlank()) {
 			throw new IllegalArgumentException("Una entrada clinica sin cuerpo no registra nada");
 		}
-		return valor.strip();
+		String limpio = valor.strip();
+		if (limpio.length() > CUERPO_MAXIMO) {
+			throw new IllegalArgumentException(
+					"El cuerpo de una entrada clinica no puede superar los " + CUERPO_MAXIMO
+							+ " caracteres");
+		}
+		return limpio;
 	}
 
 	public Long getId() {
