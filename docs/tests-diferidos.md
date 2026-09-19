@@ -159,3 +159,40 @@ administrador **no estaba desactualizada**: un reemplazo de habilitaciones no to
 de `oferta`, así que JPA no movía su `@Version` y el control no serializaba nada. Es la misma
 familia que las trampas de concurrencia ya documentadas: el test miraba el código de respuesta, no
 el escenario.
+
+---
+
+## AKINE-04.02 — cuatro clases de integración **escritas y nunca ejecutadas**
+
+Esta sección es distinta de todas las anteriores. Los escenarios de abajo **tienen test escrito y
+commiteado**; lo que falta no es decidirlos ni redactarlos, es **correrlos**. En esta máquina el
+servicio `com.docker.service` está detenido y arrancarlo pide una elevación que la sesión no
+tiene, así que Testcontainers no levanta MySQL y ningún `*IT` se ejecuta.
+
+**Ninguna de estas cuatro clases se ejecutó jamás.** Cada una lo declara en su javadoc con la
+frase *"escrito el 19/09/2026 y NUNCA EJECUTADO: Docker no estaba disponible"*. Lo único
+verificado es que **compilan** (`./mvnw -o -q test-compile`, en verde) y que las **2.165
+unitarias siguen en verde** (`./mvnw -o test -DskipITs`, 0 fallos). Un test que compila y no
+corre no cubre nada: puede fallar por un fixture mal sembrado, por un CHECK que no está donde se
+cree, o por el defecto real que fue a buscar.
+
+**Destino de las cinco filas: la primera sesión con Docker disponible.** Es la misma que tiene
+que correr `./mvnw verify -Dakine.contract.update=true` para regenerar el contrato `0.30.0`, que
+hoy está en drift.
+
+| # | Escenario | Test escrito | Motivo y etapa destino |
+|---|---|---|---|
+| 21 | **Dos enmiendas concurrentes sobre la misma entrada clínica.** Las dos leen la misma versión de la cabecera, las dos pasan el control explícito de `expectedVersion`, y solo una puede commitear: que el `@Version` de la cabecera **efectivamente avance** cuando la escritura solo agrega una fila hija lo decide Hibernate contra una base real. Incluye la ráfaga secuencial (numeración 1..7 sin huecos) y el **control negativo** —dos enmiendas sobre entradas distintas entran las dos— que es justamente lo que al escenario 20 de 02.07 le faltaba. Origen: AKINE-04.02, challenge §8 punto 3 | `clinical/EntradaClinicaConcurrenteIT` — 5 tests | **No corrido.** Exige MySQL real por Testcontainers. Destino: **primera sesión con Docker disponible** |
+| 22 | **Idempotencia de la subida de adjunto clínico.** Subir dos veces el mismo contenido a la misma historia devuelve el adjunto existente y deja **una** fila; dos subidas simultáneas —donde el pre-chequeo por checksum de las dos da vacío— también. Más: la baja lógica no borra el binario, un adjunto dado de baja se puede volver a subir (el centinela de `deleted_key`), y un binario que el almacenamiento perdió da **409 y no 404** con la fila marcada `NO_DISPONIBLE`. Origen: AKINE-04.02, diseño §4 | `clinical/AdjuntoClinicoIT` — 12 tests | **No corrido.** El invariante lo garantiza el unique de `V46`, no el servicio: con dobles el repositorio devuelve lo que se le dijo. Destino: **primera sesión con Docker disponible** |
+| 23 | **Las cinco consultas nativas del timeline.** Son `SELECT *` con `LIMIT :limite`: ni el mapeo de columnas, ni el binding de `Instant` a `DATETIME(6)`, ni el `LIMIT` parametrizado los valida Hibernate al arrancar, así que **hoy un error ahí no lo agarra nada**. Se verifica que cada contribuyente aporte lo suyo, que el orden total `(ocurrioEn DESC, origen ASC, referencia DESC)` se respete al mezclar, que la paginación por cursor no repita ni saltee entre páginas, que una entrada o un adjunto dados de baja **salgan** del timeline, y que solo se indexen **sesiones cerradas**. Origen: AKINE-04.02, diseño §2 | `clinical/TimelineIT` — 9 tests | **No corrido.** Una fuente que devuelve vacío por un error de mapeo nativo es invisible: el endpoint responde 200 con menos hechos. Destino: **primera sesión con Docker disponible** |
+| 24 | **Los CHECK y los uniques de `V45` y `V46` contra el motor.** El par `origen`↔`referencia_origen`, el motivo obligatorio desde la versión 2, la coherencia del cuarteto de baja lógica en las dos tablas, las listas cerradas de tipo y categoría —ninguna categoría administrativa entra—, `uk_entrada_version_numero`, `uk_adjunto_clinico_contenido_vigente` y que las columnas generadas `deleted_key` existan, sean `STORED` y valgan el centinela. Origen: AKINE-04.02, `V45`/`V46` | `clinical/infrastructure/EntradaYAdjuntoClinicoMigrationIT` — 21 tests | **No corrido.** Es la clase de test que en 03.06 destapó un MySQL 3819, que solo aparece al ejecutar. Destino: **primera sesión con Docker disponible** |
+| 25 | **Aislamiento de tenant de los tres servicios nuevos.** Un actor del tenant B no ve ni toca entrada, adjunto ni timeline del tenant A, y el resultado es **404, nunca 403** — un 403 confirmaría que esa fila existe. Está repartido en las tres clases de servicio, una prueba por clase. Origen: `AGENT.md` §6, que lo exige en **cada** test de integración | `EntradaClinicaConcurrenteIT`, `AdjuntoClinicoIT`, `TimelineIT` | **No corrido.** Mismo bloqueo. Destino: **primera sesión con Docker disponible** |
+
+### Lo que estas clases deliberadamente NO cubren
+
+| Escenario | Por qué no se escribió |
+|---|---|
+| **El borde del cursor con más de `limite` eventos de UNA fuente en el instante exacto del cursor** | El diseño §2.1 lo declara **abierto y no resuelto**, con su precio escrito. Un test que lo ejerciera fallaría por diseño y no por defecto, y un `@Disabled` con esa explicación no agrega nada sobre el documento que ya la tiene |
+| **La auditoría de cada operación** (`TIMELINE_ACCESSED`, `ADJUNTO_CLINICO_DOWNLOADED` y los seis restantes) | `audit_event` es append-only por los triggers de `V14` y ya tiene su propia cobertura unitaria por servicio. Verificar el contenido de cada evento desde un IT duplicaría esa prueba sin agregar nada que dependa del motor |
+| **La capa REST de las doce operaciones** | Un IT de `api` exigiría el contrato regenerado, que está en drift hasta que alguien corra `verify -Dakine.contract.update=true`. Escribirlo contra el contrato viejo sería escribir contra una forma que va a cambiar |
+| **El contenido real en disco del `LocalFileSystemContenidoClinicoStorage`** | Ya tiene `LocalFileSystemContenidoClinicoStorageTest`, que es unitario y no necesita base. El IT del binario perdido apunta la fila a una clave inexistente en vez de borrar el archivo, para no depender de dónde montó su raíz la máquina que corre |
