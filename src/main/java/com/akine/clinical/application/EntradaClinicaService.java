@@ -51,11 +51,13 @@ import java.util.stream.Collectors;
  *
  * <p>Dos profesionales enmendando la misma entrada a la vez <b>no se pisan</b>: cada enmienda es
  * una fila nueva, que es la ventaja de versionar en filas sobre versionar en columnas. Lo que si
- * hay que serializar es el <b>numero</b>, y se serializa leyendo la cabecera con
- * {@code OPTIMISTIC_FORCE_INCREMENT} y numerando con su contador, nunca con
- * {@code MAX(numero_version) + 1}. El {@code INSERT} de la version y el {@code UPDATE} de la
- * cabecera van en la <b>misma transaccion</b>, y la numeracion se resuelve antes de escribir
- * contenido: es el patron de 06.05 y la regla 2 del Paquete B. El perdedor recibe 409 y reintenta.
+ * hay que serializar es el <b>numero</b>, y sale del contador de la cabecera, nunca de un
+ * {@code MAX(numero_version) + 1}. Enmendar ensucia esa cabecera, asi que el {@code UPDATE}
+ * versionado de JPA alcanza para que dos enmiendas concurrentes no commiteen las dos: no hace
+ * falta {@code OPTIMISTIC_FORCE_INCREMENT} y ponerlo seria contraproducente — ver el javadoc de
+ * {@link #enmendar}. El {@code INSERT} de la version y el {@code UPDATE} de la cabecera van en la
+ * <b>misma transaccion</b>, y la numeracion se resuelve antes de escribir contenido: es el patron
+ * de 06.05 y la regla 2 del Paquete B. El perdedor recibe 409 y reintenta.
  *
  * <h2>Todo acceso se audita, incluida la lectura</h2>
  *
@@ -168,26 +170,24 @@ public class EntradaClinicaService {
 	 * de baja la entrada en el medio, esto falla con conflicto en vez de apilar una version sobre
 	 * un texto que el autor nunca vio.
 	 *
-	 * <p>La lectura de la cabecera es con {@code OPTIMISTIC_FORCE_INCREMENT}, asi que dos
-	 * enmiendas concurrentes que pasen las dos este control no pueden commitear las dos: la
-	 * segunda muere al cierre de la transaccion y reintenta con el numero siguiente.
+	 * <p><b>La lectura de la cabecera NO lleva {@code OPTIMISTIC_FORCE_INCREMENT}, y sacarlo fue
+	 * deliberado.</b> Enmendar ensucia la cabecera: {@code ultimo_numero_version} cambia, asi que
+	 * el flush ya emite un {@code UPDATE ... WHERE version = N} versionado. Dos enmiendas
+	 * concurrentes leen la misma version, las dos ensucian la fila, las dos emiten ese UPDATE:
+	 * una gana y la otra recibe {@code OptimisticLockException}. <b>La garantia ya esta</b>, y el
+	 * incremento forzado no agregaba ninguna: agregaba un segundo incremento. Hibernate registra
+	 * un {@code EntityIncrementVersionProcess} que corre antes del commit y se suma al UPDATE de
+	 * la entidad sucia, dejando en la base {@code leida + 2} mientras esta vista devuelve
+	 * {@code leida + 1} — o sea el mismo 409 espurio que el {@code saveAndFlush} de abajo vino a
+	 * arreglar, entrando por otra puerta.
 	 *
-	 * <p><b>Lo que la vista devuelve es la version que escribio el flush</b>, y por eso el guardado
-	 * es {@code saveAndFlush} y no {@code save}: con {@code save} el UPDATE salia al
-	 * commit, despues de que la vista ya habia leido {@code getVersion()}, el cliente se
-	 * llevaba la version vieja y su enmienda siguiente moria en un 409 del que no podia salir.
-	 *
-	 * <p><b>Queda una cosa que ningun unitario puede decidir y que hay que medir contra MySQL.</b>
-	 * La cabecera esta sucia âcambio {@code ultimo_numero_version}â, asi que el flush ya emite
-	 * un UPDATE versionado; encima, {@code OPTIMISTIC_FORCE_INCREMENT} registra en Hibernate un
-	 * {@code EntityIncrementVersionProcess} que corre <b>antes del commit</b> y podria sumar un
-	 * segundo incremento, dejando en la base {@code leida + 2} mientras la vista devuelve
-	 * {@code leida + 1}. Si un test de integracion lo confirma, el arreglo <b>no</b> es
-	 * perseguir la version desde aca: es sacar el force-increment de esta lectura, que aca es
-	 * redundante. La leccion de 02.07 âun {@code @Version} del padre no protege escrituras
-	 * que solo tocan tablas hijasâ no aplica a este caso: el contador que se serializa vive en la
-	 * fila del padre, asi que el control optimista comun ya impide que dos enmiendas concurrentes
-	 * commiteen las dos.
+	 * <p><b>Por que esto no contradice la leccion de 02.07</b>, que es lo que va a tentar al
+	 * proximo que lea esto: alla —{@code OfertaHabilitacionService}— el reemplazo de
+	 * habilitaciones solo tocaba tablas hijas, la fila padre no cambiaba ninguna columna, ningun
+	 * UPDATE versionado salia y la comparacion de versiones nunca detectaba nada; el
+	 * force-increment era la unica forma de hacer avanzar al padre. Aca el padre <b>si</b> se
+	 * toca, porque el contador de versiones vive en el. La regla que queda: <b>force-increment
+	 * solo donde la escritura no toca ninguna columna del padre.</b>
 	 *
 	 * @throws EntradaClinicaInactivaException si la entrada esta dada de baja. Es 409: la entrada
 	 *                                         existe y se puede leer, pero no admite contenido
@@ -204,7 +204,7 @@ public class EntradaClinicaService {
 
 		long organizationId = organizacionDe(actor);
 		EntradaClinica entrada = entradas
-				.findWithLockByIdAndOrganizationId(entradaClinicaId, organizationId)
+				.findByIdAndOrganizationId(entradaClinicaId, organizationId)
 				.orElseThrow(() -> new EntradaClinicaNotAccessibleException(entradaClinicaId));
 		HistoriaClinica historia = exigirHistoria(organizationId, entrada.getHistoriaClinicaId());
 

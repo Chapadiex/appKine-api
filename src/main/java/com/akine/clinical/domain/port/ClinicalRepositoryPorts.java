@@ -91,22 +91,24 @@ public final class ClinicalRepositoryPorts {
 		 */
 		EntradaClinica saveAndFlush(EntradaClinica entrada);
 
-		Optional<EntradaClinica> findByIdAndOrganizationId(Long id, Long organizationId);
-
 		/**
-		 * La misma consulta, pero forzando el avance de la version de la cabecera al commitear.
+		 * La cabecera de la entrada, en el tenant que la pide.
 		 *
-		 * <p><b>Es lo que serializa la numeracion de las enmiendas</b>, y es la leccion de 02.07
-		 * traida hasta aca. Alla el {@code @Version} del padre no protegia nada porque la
-		 * escritura solo tocaba tablas hijas; aca la escritura toca al padre —el contador de
-		 * versiones es suyo— y el {@code OPTIMISTIC_FORCE_INCREMENT} garantiza que dos enmiendas
-		 * concurrentes no puedan las dos creer que leyeron la ultima version. El perdedor recibe
-		 * {@code OptimisticLockingFailureException} y reintenta.
+		 * <p><b>No hay variante con {@code OPTIMISTIC_FORCE_INCREMENT}, y la ausencia es
+		 * deliberada.</b> Existio una —{@code findWithLockByIdAndOrganizationId}— y se saco:
+		 * enmendar modifica {@code ultimo_numero_version}, o sea una columna de esta misma fila,
+		 * asi que el {@code UPDATE} versionado que JPA emite al flushear ya serializa dos
+		 * enmiendas concurrentes. Sumarle el incremento forzado dejaba la version en
+		 * {@code leida + 2} contra el {@code leida + 1} que devuelve la vista, y el cliente comia
+		 * un 409 del que no podia salir.
 		 *
-		 * <p>Se usa <b>solo</b> para enmendar. La baja logica no lo necesita: modifica columnas de
-		 * la propia fila y JPA le sube la version sola.
+		 * <p>La leccion de 02.07 —un {@code @Version} del padre no protege escrituras que solo
+		 * tocan tablas hijas— no aplica aca justamente porque el padre si se toca. <b>El
+		 * force-increment va solo donde la escritura no toca ninguna columna del padre</b>, como
+		 * en {@code offering.infrastructure.OfertaRepository}. Ver
+		 * {@code EntradaClinicaService#enmendar}.
 		 */
-		Optional<EntradaClinica> findWithLockByIdAndOrganizationId(Long id, Long organizationId);
+		Optional<EntradaClinica> findByIdAndOrganizationId(Long id, Long organizationId);
 
 		/**
 		 * Las entradas de una historia, mas recientes primero por {@code ocurrioEn}.

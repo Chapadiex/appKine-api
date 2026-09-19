@@ -36,10 +36,13 @@ import java.time.Instant;
  * contador de esta fila, que se incrementa en la misma transaccion que inserta la version —el
  * patron de 06.05 y la regla 2 del Paquete B—.
  *
- * <p>La leccion de 02.07 aplica y esta contemplada: un {@code @Version} sobre el padre no protege
- * una escritura que solo toca tablas hijas. Aca la escritura <b>si</b> toca al padre, porque el
- * contador es suyo, y ademas la aplicacion lo lee con {@code OPTIMISTIC_FORCE_INCREMENT}. El
- * perdedor de la carrera recibe conflicto y reintenta con el numero siguiente.
+ * <p>La leccion de 02.07 aplica y esta contemplada, pero <b>al reves de como se la suele citar</b>:
+ * un {@code @Version} sobre el padre no protege una escritura que solo toca tablas hijas — y aca
+ * la escritura <b>si</b> toca al padre, porque el contador es suyo. Ese {@code UPDATE ... WHERE
+ * version = N} ya es toda la proteccion: el perdedor de la carrera recibe conflicto y reintenta
+ * con el numero siguiente. Por eso la lectura de la cabecera <b>no</b> usa
+ * {@code OPTIMISTIC_FORCE_INCREMENT}: sumarlo dejaria la version en {@code leida + 2} y el 409
+ * seria espurio. Ver {@code EntradaClinicaService#enmendar}.
  *
  * <h2>La baja no borra, y no toca las versiones</h2>
  *
@@ -152,9 +155,9 @@ public class EntradaClinica extends MarcaTemporal {
 	 * Reserva el numero de la proxima version y lo devuelve.
 	 *
 	 * <p>Es el unico camino para numerar una enmienda. Lo que serializa dos enmiendas
-	 * concurrentes no es este metodo —que corre en memoria— sino la combinacion de leer esta fila
-	 * con {@code OPTIMISTIC_FORCE_INCREMENT} y el unique
-	 * {@code uk_entrada_version_numero} debajo: el perdedor recibe conflicto en el commit.
+	 * concurrentes no es este metodo —que corre en memoria— sino que el {@code UPDATE} versionado
+	 * de esta fila, que queda sucia al mover el contador, mata al perdedor en el commit; y por
+	 * debajo, el unique {@code uk_entrada_version_numero} como red.
 	 */
 	public int siguienteNumeroDeVersion() {
 		this.ultimoNumeroVersion += 1;
