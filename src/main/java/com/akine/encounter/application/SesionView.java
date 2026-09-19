@@ -12,11 +12,17 @@ import java.time.Instant;
  * @param borrador contenido opaco tal como se guardo. Ver la cabecera de {@code Sesion}
  * @param version  la que el cliente tiene que devolver al guardar. <b>Es el autosave</b>: sin ella
  *                 dos pestanas del mismo profesional se pisan en silencio
+ * @param casoId   Caso Clinico de la atencion, o {@code null}. RF-M14-002 admite atencion sin caso
+ * @param numeroEnCaso correlativo <b>dentro del caso</b> (04.03), o {@code null}. <b>No es
+ *                     {@code numeroSesion}</b>, que es el correlativo por Historia Clinica: desde
+ *                     esta etapa "la sesion 8" es ambigua si no se dice de que, y ninguna pantalla
+ *                     puede mostrar uno solo sin decir cual es
  */
 public record SesionView(
 		long id,
 		long consultorioId,
 		long historiaClinicaId,
+		Long casoId,
 		Long turnoId,
 		long ofertaId,
 		long profesionalId,
@@ -28,6 +34,7 @@ public record SesionView(
 		Instant evaluadaEn,
 		EvaluacionPrevia previa,
 		Integer numeroSesion,
+		Integer numeroEnCaso,
 		CierreDeSesion cierre,
 		Instant cerradaEn,
 		long version) {
@@ -54,6 +61,7 @@ public record SesionView(
 				sesion.getId(),
 				sesion.getConsultorioId(),
 				sesion.getHistoriaClinicaId(),
+				sesion.getCasoId(),
 				sesion.getTurnoId(),
 				sesion.getOfertaId(),
 				sesion.getProfesionalMembershipId(),
@@ -73,6 +81,7 @@ public record SesionView(
 				sesion.getEvaluadaEn(),
 				previa,
 				sesion.getNumeroSesion(),
+				sesion.getNumeroEnCaso(),
 				new CierreDeSesion(
 						sesion.getAsistencia(),
 						sesion.getNotaDeCierre(),

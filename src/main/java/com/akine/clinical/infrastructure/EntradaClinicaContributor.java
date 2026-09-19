@@ -43,8 +43,15 @@ public class EntradaClinicaContributor implements EventoClinicoContributor {
 	 */
 	@Override
 	public List<EventoClinico> eventosDe(
-			long organizationId, long historiaClinicaId, Instant hasta, int limite) {
+			long organizationId, long historiaClinicaId, Instant hasta, int limite, Long casoId) {
 
+		// 04.03: la entrada clinica cuelga de la HISTORIA y no del caso —V45 rechazo a proposito
+		// el caso_id nullable, porque un "caso por defecto" es un Caso mal hecho—. Con filtro por
+		// caso esta fuente no puede atribuir nada, y devolver los de la historia entera haria que
+		// la pantalla rotule "caso 2" hechos que no son de ese caso.
+		if (casoId != null) {
+			return List.of();
+		}
 		return entradas.buscarParaTimeline(organizationId, historiaClinicaId, hasta, limite)
 				.stream()
 				.map(entrada -> new EventoClinico(

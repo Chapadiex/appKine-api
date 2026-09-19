@@ -330,13 +330,18 @@ public class HistoriaClinicaService {
 	 * <b>hasta ahora</b>. Ningun evento puede estar datado en el futuro —una entrada que declara
 	 * haber ocurrido mañana se rechaza al registrarse— asi que el comportamiento del resumen no
 	 * cambia.
+	 *
+	 * <p>El filtro por caso que 04.03 agrego a la firma se pasa en {@code null}: este resumen es
+	 * el de la <b>ficha del paciente</b>, que es la historia entera y no un caso. Filtrarlo aca
+	 * obligaria a elegir un caso por el paciente, y el paciente puede tener varios activos a la vez
+	 * (RN-M10-002). El filtro por caso vive en el timeline completo, donde quien mira lo elige.
 	 */
 	private List<EventoClinico> timelineDe(HistoriaClinica historia) {
 		Instant hasta = Instant.now();
 		return contribuyentes.stream()
 				.flatMap(c -> c.eventosDe(
 						historia.getOrganizationId(), historia.getId(), hasta,
-						EVENTOS_POR_CONTRIBUYENTE)
+						EVENTOS_POR_CONTRIBUYENTE, null)
 						.stream())
 				.sorted(Comparator.comparing(EventoClinico::ocurrioEn).reversed())
 				.limit(EVENTOS_POR_CONTRIBUYENTE)

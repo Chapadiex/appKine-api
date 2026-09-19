@@ -52,6 +52,20 @@ public class Sesion {
 	@Column(name = "historia_clinica_id", nullable = false, updatable = false)
 	private Long historiaClinicaId;
 
+	/**
+	 * Caso Clinico al que pertenece la atencion (04.03). {@code null} es legitimo.
+	 *
+	 * <p>RF-M14-002 admite atencion sin turno y sin caso, y <b>todas</b> las sesiones anteriores a
+	 * 04.03 no tienen caso: el caso no existia cuando se cerraron y no hay dato que permita
+	 * inventarles uno. Exigirlo es RF-M10-007, que es una etapa propia con su ventana de migracion.
+	 *
+	 * <p>Es un {@code Long} y no una relacion JPA: {@code caso_clinico} es de {@code clinical} y una
+	 * relacion hacia su entity seria justamente el acceso directo que AGENT.md seccion 4 regla 1
+	 * prohibe. Lo que este modulo puede hacer con un caso lo dice {@code clinical.spi.CasoDirectory}.
+	 */
+	@Column(name = "caso_id", updatable = false)
+	private Long casoId;
+
 	@Column(name = "turno_id", updatable = false)
 	private Long turnoId;
 
@@ -110,6 +124,23 @@ public class Sesion {
 	@Column(name = "numero_sesion")
 	private Integer numeroSesion;
 
+	/**
+	 * Correlativo de la sesion <b>dentro del caso</b> (regla maestra 3, 04.03).
+	 *
+	 * <p>Convive con {@link #numeroSesion}, que es el correlativo por Historia Clinica que 06.05
+	 * asigna y que <b>no se renumera ni se retira</b>: esta impreso en informes y es el unico que
+	 * existe para una sesion sin caso.
+	 *
+	 * <p><b>Consecuencia que hay que saber leer:</b> "la sesion 8" es ambigua si no se dice de que.
+	 * Los DTO devuelven los dos con nombres distintos y ninguna pantalla puede mostrar uno solo sin
+	 * decir cual es.
+	 *
+	 * <p>El numero no se calcula aca: se lo pide a {@code clinical} por el spi, dentro de la
+	 * transaccion del cierre. El {@code CHECK} de V48 impide que exista sin {@link #casoId}.
+	 */
+	@Column(name = "numero_en_caso")
+	private Integer numeroEnCaso;
+
 	@Column(name = "respuesta_tratamiento", length = 500)
 	private String respuestaTratamiento;
 
@@ -158,6 +189,7 @@ public class Sesion {
 			long organizationId,
 			long consultorioId,
 			long historiaClinicaId,
+			Long casoId,
 			Long turnoId,
 			long ofertaId,
 			long profesionalMembershipId,
@@ -167,6 +199,7 @@ public class Sesion {
 		this.organizationId = organizationId;
 		this.consultorioId = consultorioId;
 		this.historiaClinicaId = historiaClinicaId;
+		this.casoId = casoId;
 		this.turnoId = turnoId;
 		this.ofertaId = ofertaId;
 		this.profesionalMembershipId = profesionalMembershipId;
@@ -244,10 +277,28 @@ public class Sesion {
 	 * <p>El llamador tiene que consultar {@link #estaCerrada()} ANTES de pedir un numero al
 	 * numerador: si no, cada reintento consume un correlativo que despues nadie usa, y la
 	 * numeracion del paciente queda con huecos que parecen sesiones borradas.
+	 *
+	 * @param numero      correlativo por Historia Clinica. Siempre presente
+	 * @param numeroEnCaso correlativo dentro del Caso (04.03). {@code null} cuando la sesion no
+	 *                     tiene caso, que es lo que son todas las anteriores a esa etapa. Se
+	 *                     ignora si viene sin {@link #casoId}: el CHECK de V48 lo rechazaria, y
+	 *                     fallar aca con un mensaje que nombra la situacion es mejor que fallar al
+	 *                     commitear con uno que no
 	 */
-	public void cerrar(CierreDeSesion cierre, int numero, Instant occurredAt, long cerradaPorCuentaId) {
+	public void cerrar(
+			CierreDeSesion cierre,
+			int numero,
+			Integer numeroEnCaso,
+			Instant occurredAt,
+			long cerradaPorCuentaId) {
+
 		if (estaCerrada()) {
 			return;
+		}
+		if (numeroEnCaso != null && casoId == null) {
+			throw new IllegalArgumentException(
+					"Una sesion sin caso no puede recibir un numero de caso: el correlativo "
+							+ "numeraria dentro de nada");
 		}
 		cierre.exigirMinimos();
 
@@ -259,6 +310,7 @@ public class Sesion {
 		this.proximaConducta = cierre.proximaConducta();
 
 		this.numeroSesion = numero;
+		this.numeroEnCaso = numeroEnCaso;
 		this.estado = EstadoSesion.CERRADA;
 		this.cerradaEn = occurredAt;
 		this.cerradaPorCuentaId = cerradaPorCuentaId;
@@ -308,6 +360,16 @@ public class Sesion {
 
 	public Long getHistoriaClinicaId() {
 		return historiaClinicaId;
+	}
+
+	/** El Caso al que pertenece la atencion, o {@code null} si no tiene. Ver el campo. */
+	public Long getCasoId() {
+		return casoId;
+	}
+
+	/** El correlativo dentro del caso, o {@code null}. <b>No es {@link #getNumeroSesion()}.</b> */
+	public Integer getNumeroEnCaso() {
+		return numeroEnCaso;
 	}
 
 	public Long getTurnoId() {

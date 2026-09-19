@@ -2,7 +2,9 @@ package com.akine.clinical.application;
 
 import com.akine.clinical.domain.HistoriaClinica;
 import com.akine.clinical.domain.PermissionCodes;
+import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.HistoriaClinicaNotAccessibleException;
+import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRepositoryPort;
 import com.akine.clinical.spi.EventoClinico;
 import com.akine.clinical.spi.EventoClinicoContributor;
@@ -72,6 +74,7 @@ public class TimelineService {
 	static final int LIMITE_MAXIMO = 100;
 
 	private final HistoriaClinicaRepositoryPort historias;
+	private final CasoClinicoRepositoryPort casos;
 	private final List<EventoClinicoContributor> contribuyentes;
 	private final PermissionGuard permissionGuard;
 	private final RelacionAsistencialProbe relaciones;
@@ -80,6 +83,7 @@ public class TimelineService {
 
 	public TimelineService(
 			HistoriaClinicaRepositoryPort historias,
+			CasoClinicoRepositoryPort casos,
 			List<EventoClinicoContributor> contribuyentes,
 			PermissionGuard permissionGuard,
 			RelacionAsistencialProbe relaciones,
@@ -87,6 +91,7 @@ public class TimelineService {
 			ClinicalSupportAccessAuditor supportAccessAuditor) {
 
 		this.historias = historias;
+		this.casos = casos;
 		this.contribuyentes = List.copyOf(contribuyentes);
 		this.permissionGuard = permissionGuard;
 		this.relaciones = relaciones;
@@ -125,6 +130,14 @@ public class TimelineService {
 	 *                    primera. Uno que no decodifique es 400, nunca "primera pagina"
 	 * @param limite      tamano de pagina pedido. {@code null} o menor a 1 usa el default; mayor
 	 *                    al tope se recorta
+	 * @param casoId      filtro opcional por Caso Clinico (04.03). {@code null} no filtra. <b>Es un
+	 *                    parametro mas para los contribuyentes, no una consulta nueva</b>: agregar
+	 *                    una tabla o una proyeccion por caso seria la segunda copia de la verdad
+	 *                    que esta etapa y la anterior se negaron a crear. El caso se valida contra
+	 *                    la historia antes de filtrar: uno que no es de esa historia responde 404 y
+	 *                    no una pagina vacia, que es lo que distingue "no hay hechos" de "ese caso
+	 *                    no es de este paciente"
+	 * @throws CasoClinicoNotAccessibleException si se filtra por un caso que no es de esa historia
 	 */
 	@Transactional
 	public TimelinePagina ver(
@@ -132,6 +145,7 @@ public class TimelineService {
 			long historiaClinicaId,
 			String cursorCrudo,
 			Integer limite,
+			Long casoId,
 			String justificacion) {
 
 		long organizationId = organizacionDe(actor);
@@ -144,6 +158,10 @@ public class TimelineService {
 				PermissionCodes.HC_READ, historia.getPersonaId(), justificacion,
 				"Ver timeline clinico");
 
+		// Igual que el cursor: el caso se valida DESPUES de autorizar, o un 404 sobre un id de caso
+		// ajeno seria un oraculo de que casos existen en este tenant.
+		exigirCasoDeLaHistoria(organizationId, historia.getId(), casoId);
+
 		// El cursor se decodifica DESPUES de autorizar: un 400 por cursor roto antes de evaluar el
 		// permiso le confirmaria a cualquiera que esa historia existe en este tenant.
 		TimelineCursor cursor = TimelineCursor.decodificar(cursorCrudo);
@@ -153,7 +171,7 @@ public class TimelineService {
 		List<EventoClinico> mezcla = new ArrayList<>();
 		for (EventoClinicoContributor contribuyente : contribuyentes) {
 			for (EventoClinico evento : contribuyente.eventosDe(
-					organizationId, historia.getId(), hasta, tamano + 1)) {
+					organizationId, historia.getId(), hasta, tamano + 1, casoId)) {
 
 				if (cursor == null || cursor.precedeA(evento)) {
 					mezcla.add(evento);
@@ -194,6 +212,25 @@ public class TimelineService {
 			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
 		}
 		return actor.contextOrganizationId();
+	}
+
+	/**
+	 * Exige que el caso por el que se filtra sea de esa historia.
+	 *
+	 * <p>Sin esta validacion, filtrar por un caso ajeno devolveria una pagina vacia y la pantalla
+	 * mostraria "este caso no tiene hechos" sobre un caso que ni siquiera es del paciente. Son dos
+	 * situaciones distintas y llevan a acciones distintas.
+	 *
+	 * <p>Se resuelve por el mismo puerto que usa {@code CasoClinicoService} y <b>no</b> por el spi:
+	 * es el propio modulo leyendo su propia tabla.
+	 */
+	private void exigirCasoDeLaHistoria(long organizationId, long historiaClinicaId, Long casoId) {
+		if (casoId == null) {
+			return;
+		}
+		casos.findByIdAndOrganizationId(casoId, organizationId)
+				.filter(caso -> caso.perteneceAHistoria(historiaClinicaId))
+				.orElseThrow(() -> new CasoClinicoNotAccessibleException(casoId));
 	}
 
 	private static int tamanoDePagina(Integer limite) {

@@ -51,7 +51,15 @@ public interface EventoClinicoContributor {
 	 *               el orden total, y un tope exclusivo saltearia los del instante del cursor
 	 * @param limite tope de eventos a devolver. Cada contribuyente lo respeta por su cuenta: el
 	 *               consumidor mezcla y vuelve a recortar
+	 * @param casoId filtro OPCIONAL por Caso Clinico, agregado en 04.03. {@code null} no filtra, y
+	 *               es el comportamiento de siempre. Con un caso, el contribuyente devuelve
+	 *               <b>solo</b> los hechos que puede atribuirle, y <b>lista vacia si no puede
+	 *               atribuirle ninguno</b> — que hoy es el caso de las tres fuentes de
+	 *               {@code clinical}: la entrada, el adjunto y el antecedente cuelgan de la
+	 *               historia y no del caso. Devolver los de la historia entera seria peor que no
+	 *               devolver nada: la pantalla diria "el caso 2" sobre hechos que no son de ese
+	 *               caso
 	 */
 	List<EventoClinico> eventosDe(
-			long organizationId, long historiaClinicaId, Instant hasta, int limite);
+			long organizationId, long historiaClinicaId, Instant hasta, int limite, Long casoId);
 }

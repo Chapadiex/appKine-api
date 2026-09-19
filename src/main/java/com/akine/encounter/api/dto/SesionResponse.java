@@ -21,6 +21,13 @@ public record SesionResponse(
 				example = "88")
 		long historiaClinicaId,
 
+		@Schema(
+				description = "Caso Clinico al que pertenece la atencion (04.03). **Ausente es "
+						+ "legitimo**: RF-M14-002 admite atencion sin caso, y ninguna sesion "
+						+ "anterior a 04.03 lo tiene. Exigirlo es RF-M10-007 y todavia no rige.",
+				example = "17")
+		Long casoId,
+
 		@Schema(description = "Turno que origino la atencion. Ausente en una atencion sin turno.", example = "301")
 		Long turnoId,
 
@@ -65,6 +72,15 @@ public record SesionResponse(
 				example = "8")
 		Integer numeroSesion,
 
+		@Schema(
+				description = "Correlativo **dentro del Caso Clinico** (regla maestra 3, 04.03). "
+						+ "Ausente si la sesion no tiene caso o sigue abierta. **No es "
+						+ "numeroSesion**: aquel cuenta dentro de la historia y este dentro del "
+						+ "caso. Desde 04.03 \"la sesion 8\" es ambigua si no se dice de que, y "
+						+ "ninguna pantalla puede mostrar uno solo sin decir cual es.",
+				example = "3")
+		Integer numeroEnCaso,
+
 		@Schema(description = "Cierre clinico. Ausente si la sesion sigue abierta.")
 		CierreResponse cierre,
 
@@ -100,7 +116,8 @@ public record SesionResponse(
 	public static SesionResponse de(SesionView vista) {
 		var evaluacion = vista.evaluacion();
 		return new SesionResponse(
-				vista.id(), vista.consultorioId(), vista.historiaClinicaId(), vista.turnoId(),
+				vista.id(), vista.consultorioId(), vista.historiaClinicaId(), vista.casoId(),
+				vista.turnoId(),
 				vista.ofertaId(), vista.profesionalId(), vista.estado(), vista.iniciadaEn(),
 				vista.borrador(), vista.borradorGuardadoEn(), vista.version(),
 				new EvaluacionResponse(
@@ -118,6 +135,7 @@ public record SesionResponse(
 						vista.previa().dolorEva(),
 						vista.previa().evolucion()),
 				vista.numeroSesion(),
+				vista.numeroEnCaso(),
 				vista.numeroSesion() == null ? null : new CierreResponse(
 						nombre(vista.cierre().asistencia()),
 						vista.cierre().notaDeCierre(),

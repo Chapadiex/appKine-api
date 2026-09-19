@@ -35,8 +35,14 @@ public class AdjuntoClinicoContributor implements EventoClinicoContributor {
 
 	@Override
 	public List<EventoClinico> eventosDe(
-			long organizationId, long historiaClinicaId, Instant hasta, int limite) {
+			long organizationId, long historiaClinicaId, Instant hasta, int limite, Long casoId) {
 
+		// 04.03: el adjunto cuelga de la historia, y a lo sumo de una entrada clinica. Ninguna de
+		// las dos sabe de que caso es, asi que con filtro por caso esta fuente no aporta nada en
+		// vez de aportar de mas.
+		if (casoId != null) {
+			return List.of();
+		}
 		return adjuntos.buscarParaTimeline(organizationId, historiaClinicaId, hasta, limite)
 				.stream()
 				.map(adjunto -> new EventoClinico(

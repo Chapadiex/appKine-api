@@ -49,7 +49,17 @@ public interface SesionRepositoryPort {
 	 * <p>El instante del hecho es {@code cerrada_en} y no {@code iniciada_en}: es el momento en
 	 * que la atencion quedo asentada. El indice {@code ix_sesion_cerradas} de V35 sostiene
 	 * exactamente esta consulta.
+	 *
+	 * @param casoId filtro opcional por Caso Clinico (04.03). {@code null} no filtra. <b>Esta es la
+	 *               unica fuente del timeline que puede atribuir un hecho a un caso</b>, porque es
+	 *               la unica tabla que guarda {@code caso_id}: la entrada clinica, el adjunto y el
+	 *               antecedente cuelgan de la historia. Con caso, la consulta pasa a calzar con
+	 *               {@code ix_sesion_caso} en vez de con {@code ix_sesion_cerradas}
 	 */
 	java.util.List<Sesion> buscarCerradasParaTimeline(
-			long organizationId, long historiaClinicaId, java.time.Instant hasta, int limite);
+			long organizationId,
+			long historiaClinicaId,
+			java.time.Instant hasta,
+			int limite,
+			Long casoId);
 }

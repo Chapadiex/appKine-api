@@ -1,5 +1,6 @@
 package com.akine.encounter.application;
 
+import com.akine.clinical.spi.CasoDirectory;
 import com.akine.clinical.spi.HistoriaClinicaDirectory;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.PrecioDeOferta;
@@ -11,6 +12,7 @@ import com.akine.encounter.domain.CierreDeSesion;
 import com.akine.encounter.domain.EvaluacionBase;
 import com.akine.encounter.domain.PermissionCodes;
 import com.akine.encounter.domain.Sesion;
+import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
@@ -73,6 +75,7 @@ public class SesionService {
 	private final SesionRepositoryPort sesiones;
 	private final TurnoDirectory turnos;
 	private final HistoriaClinicaDirectory historias;
+	private final CasoDirectory casos;
 	private final ConsultorioDirectory consultorios;
 	private final ConsultorioMembershipDirectory memberships;
 	private final PermissionGuard permissionGuard;
@@ -85,6 +88,7 @@ public class SesionService {
 			SesionRepositoryPort sesiones,
 			TurnoDirectory turnos,
 			HistoriaClinicaDirectory historias,
+			CasoDirectory casos,
 			ConsultorioDirectory consultorios,
 			ConsultorioMembershipDirectory memberships,
 			PermissionGuard permissionGuard,
@@ -96,6 +100,7 @@ public class SesionService {
 		this.sesiones = sesiones;
 		this.turnos = turnos;
 		this.historias = historias;
+		this.casos = casos;
 		this.consultorios = consultorios;
 		this.memberships = memberships;
 		this.permissionGuard = permissionGuard;
@@ -110,10 +115,29 @@ public class SesionService {
 	 *
 	 * @throws ConsultorioNoAccesibleException si la sede no existe o es de otro tenant (404)
 	 * @throws TurnoNoAtendibleException       si el turno esta de baja o no es de quien atiende (409)
+	 * <h2>El caso es opcional, y eso es 04.03 entrando sin romper nada</h2>
+	 *
+	 * <p>{@code casoId} puede venir en {@code null} y es lo que hace hoy toda pantalla existente:
+	 * RF-M14-002 admite atencion sin caso, y <b>todas</b> las sesiones anteriores a 04.03 no lo
+	 * tienen. Exigirlo es RF-M10-007, que toca tambien {@code scheduling} y que necesita su propia
+	 * ventana de migracion — encenderlo hoy romperia la vertical que funciona.
+	 *
+	 * <p>Cuando viene, se valida contra {@code clinical.spi.CasoDirectory}: tiene que existir en el
+	 * tenant, colgar de <b>la misma historia</b> que la sesion y estar activo. Un caso de otro
+	 * paciente es 404 —indistinguible de "no existe", para no poder censar casos ajenos por id— y
+	 * uno cerrado es 409, porque lleva a otra accion: reabrirlo.
+	 *
+	 * <p><b>La idempotencia manda sobre el caso.</b> Si la sesion del turno ya existe se devuelve
+	 * tal cual, con el caso que tenga, aunque esta llamada traiga otro: reasignar el caso de una
+	 * atencion ya empezada no es "iniciar", y por eso {@code caso_id} es {@code updatable = false}.
+	 *
 	 * @throws AccessDeniedException           sin {@code sesion:register} o sin contexto (403)
+	 * @throws CasoNoAsignableException        si el caso no existe, es de otra historia o esta
+	 *                                         cerrado
 	 */
 	@Transactional
-	public SesionView iniciar(OperatingActor actor, long consultorioId, long turnoId) {
+	public SesionView iniciar(
+			OperatingActor actor, long consultorioId, long turnoId, Long casoId) {
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirRegistro(actor, organizationId, consultorioId);
@@ -141,18 +165,24 @@ public class SesionService {
 		HistoriaClinicaSnapshot historia =
 				historias.asegurar(organizationId, turno.personaId(), actor.accountId());
 
+		// El caso se valida DESPUES de asegurar la historia: la pertenencia se comprueba contra
+		// esa historia, y sin ella no hay contra que comprobar.
+		exigirCasoAsignable(organizationId, historia.id(), casoId);
+
 		Sesion sesion = sesiones.save(new Sesion(
 				organizationId,
 				consultorioId,
 				historia.id(),
+				casoId,
 				turnoId,
 				turno.ofertaId(),
 				profesionalMembershipId,
 				Instant.now(),
 				actor.accountId()));
 
-		log.info("Sesion iniciada: sesionId={} turnoId={} historiaClinicaId={} profesional={}",
-				sesion.getId(), turnoId, historia.id(), profesionalMembershipId);
+		log.info("Sesion iniciada: sesionId={} turnoId={} historiaClinicaId={} casoId={} "
+						+ "profesional={}",
+				sesion.getId(), turnoId, historia.id(), casoId, profesionalMembershipId);
 
 		return conPrevia(sesion, organizationId);
 	}
@@ -231,8 +261,34 @@ public class SesionService {
 	 *   3. minimos del cierre
 	 *   4. asegurar el numerador  &lt;- en su PROPIA transaccion
 	 *   5. incrementar y leer     &lt;- toma el lock de fila y serializa
+	 *   5b. numero DENTRO DEL CASO, si la sesion tiene caso  &lt;- SIEMPRE despues del 5
 	 *   6. cerrar
 	 * </pre>
+	 *
+	 * <h2>Los dos numeradores van en este orden y nunca en el otro</h2>
+	 *
+	 * <p>Desde 04.03 esta transaccion puede tomar <b>dos</b> numeradores: el de la Historia Clinica
+	 * (paso 5, {@code sesion_numerador} de V35) y el del Caso (paso 5b,
+	 * {@code caso_sesion_numerador} de V47, pedido por {@code clinical.spi.CasoDirectory}).
+	 * <b>Es la primera transaccion de este sistema que toma dos</b>, y eso introduce un riesgo que
+	 * ninguna etapa anterior tuvo.
+	 *
+	 * <p>Cada numerador es un lock exclusivo de fila. Si dos cierres concurrentes los tomaran en
+	 * orden distinto —uno historia&rarr;caso y el otro caso&rarr;historia— cada uno esperaria el
+	 * lock que el otro ya tiene y <b>se bloquearian mutuamente</b>. Pasa apenas dos pacientes
+	 * comparten caso, o un paciente tiene dos casos y se cierran dos sesiones a la vez: no hace
+	 * falta nada exotico.
+	 *
+	 * <p>La regla es <b>historia primero, caso despues</b>, siempre, aunque la sesion no tenga
+	 * caso y aunque el numero del caso parezca "el importante". Un orden total fijo sobre los
+	 * recursos es lo unico que evita el ciclo de espera; no hay reintento que lo arregle sin
+	 * devolverle un 409 al profesional. <b>Si alguna vez hay un tercer numerador, entra al final
+	 * de esta lista, no en el medio.</b>
+	 *
+	 * <p>El caso ya fue validado al <b>iniciar</b> la sesion y {@code caso_id} no se puede cambiar
+	 * despues, asi que el cierre no lo vuelve a validar: un caso que se cerro mientras la atencion
+	 * transcurria <b>no</b> impide cerrarla. La atencion ocurrio, y negarle el cierre obligaria a
+	 * elegir entre perder el registro clinico o reabrir el caso para poder guardarlo.
 	 *
 	 * <p><b>El paso 1 va primero</b>: si no, cada reintento consume un correlativo que despues nadie
 	 * usa, y la numeracion del paciente queda con huecos que parecen sesiones borradas. Una sesion ya
@@ -277,16 +333,22 @@ public class SesionService {
 		numerador.incrementar(organizationId, sesion.getHistoriaClinicaId());
 		int numero = numerador.leerUltimo(organizationId, sesion.getHistoriaClinicaId());
 
+		// PASO 5b. SIEMPRE despues del 5: ver "Los dos numeradores" en la cabecera del metodo.
+		Integer numeroEnCaso = sesion.getCasoId() == null
+				? null
+				: casos.siguienteNumeroDeSesion(organizationId, sesion.getCasoId());
+
 		Instant ahora = Instant.now();
-		sesion.cerrar(cierre, numero, ahora, actor.accountId());
+		sesion.cerrar(cierre, numero, numeroEnCaso, ahora, actor.accountId());
 
 		// Dentro de la transaccion, a proposito: una prestacion sin deuda NO se nota —nadie
 		// reclama una factura que nunca existio— y el centro descubre el agujero cuando cuadra
 		// la caja del mes. La contrapartida esta asumida en CierreDeSesionObserver.
 		notificarCierre(sesion, cierre, numero, ahora, organizationId);
 
-		log.info("Sesion cerrada: sesionId={} numero={} historiaClinicaId={} asistencia={}",
-				sesionId, numero, sesion.getHistoriaClinicaId(), cierre.asistencia());
+		log.info("Sesion cerrada: sesionId={} numero={} numeroEnCaso={} historiaClinicaId={} "
+						+ "asistencia={}",
+				sesionId, numero, numeroEnCaso, sesion.getHistoriaClinicaId(), cierre.asistencia());
 
 		return conPrevia(sesiones.save(sesion), organizationId);
 	}
@@ -412,6 +474,33 @@ public class SesionService {
 	 * profesional en un centro y administrativa en otro. Es la misma decision que V23 tomo para la
 	 * disponibilidad y V28 para las habilitaciones.
 	 */
+	/**
+	 * El caso tiene que existir, ser de esta historia y estar activo (04.03).
+	 *
+	 * <p>Se resuelve por {@code clinical.spi.CasoDirectory} y no leyendo {@code caso_clinico}: esa
+	 * tabla es de {@code clinical} y la regla 1 de AGENT.md seccion 4 no admite que otro modulo la
+	 * toque. El spi responde existencia, pertenencia y vigencia, y <b>no contenido clinico</b>.
+	 *
+	 * <p>El rechazo lo produce este modulo, no aquel: el spi no autoriza nada. Es la misma division
+	 * que {@code HistoriaClinicaDirectory} ya tenia.
+	 */
+	private void exigirCasoAsignable(long organizationId, long historiaClinicaId, Long casoId) {
+		if (casoId == null) {
+			return;
+		}
+		var caso = casos.find(organizationId, casoId)
+				.orElseThrow(() -> new CasoNoAsignableException(
+						casoId, CasoNoAsignableException.Motivo.NO_ACCESIBLE));
+
+		if (!caso.perteneceAHistoria(historiaClinicaId)) {
+			throw new CasoNoAsignableException(
+					casoId, CasoNoAsignableException.Motivo.DE_OTRA_HISTORIA);
+		}
+		if (!caso.activo()) {
+			throw new CasoNoAsignableException(casoId, CasoNoAsignableException.Motivo.CERRADO);
+		}
+	}
+
 	private long membershipDe(OperatingActor actor, long organizationId, long consultorioId) {
 		return memberships.findByAccount(organizationId, actor.accountId()).stream()
 				.filter(ConsultorioMembershipSnapshot::active)

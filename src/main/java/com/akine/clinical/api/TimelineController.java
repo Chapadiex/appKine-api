@@ -113,11 +113,19 @@ public class TimelineController {
 					+ "cliente que pide de mas igual reciba una pagina valida")
 			@RequestParam(required = false) Integer limite,
 
+			@Parameter(description = "Filtro OPCIONAL por Caso Clinico (04.03). Sin el, el "
+					+ "timeline es el de la historia entera. Con el, quedan solo los hechos que "
+					+ "cada fuente puede atribuirle a ese caso — hoy las sesiones cerradas, "
+					+ "porque la entrada clinica, el adjunto y el antecedente cuelgan de la "
+					+ "historia y no del caso. Un caso que no es de esa historia responde 404 y "
+					+ "no una pagina vacia: son dos situaciones distintas", example = "17")
+			@RequestParam(required = false) Long casoId,
+
 			@Parameter(description = AccesoClinicoHeaders.JUSTIFICACION_DOC)
 			@RequestHeader(name = AccesoClinicoHeaders.JUSTIFICACION, required = false)
 			String justificacion) {
 
 		return TimelineResponse.from(timelineService.ver(
-				apiActor.current(), historiaClinicaId, cursor, limite, justificacion));
+				apiActor.current(), historiaClinicaId, cursor, limite, casoId, justificacion));
 	}
 }

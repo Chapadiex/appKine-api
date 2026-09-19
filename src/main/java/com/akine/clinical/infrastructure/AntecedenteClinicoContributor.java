@@ -37,8 +37,13 @@ public class AntecedenteClinicoContributor implements EventoClinicoContributor {
 
 	@Override
 	public List<EventoClinico> eventosDe(
-			long organizationId, long historiaClinicaId, Instant hasta, int limite) {
+			long organizationId, long historiaClinicaId, Instant hasta, int limite, Long casoId) {
 
+		// 04.03: un antecedente es de la PERSONA y precede a cualquier caso —una alergia no es de
+		// la rodilla—, asi que atribuirlo a uno seria inventar. Con filtro por caso, nada.
+		if (casoId != null) {
+			return List.of();
+		}
 		return antecedentes.buscarParaTimeline(organizationId, historiaClinicaId, hasta, limite)
 				.stream()
 				.map(antecedente -> new EventoClinico(

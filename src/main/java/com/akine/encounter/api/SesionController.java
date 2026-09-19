@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
@@ -64,7 +65,19 @@ public class SesionController {
 
                     Quien atiende es el profesional del turno. Si el turno tiene uno asignado y \
 					no es quien inicia, es 409: dejar que otro abra la sesion de un turno ajeno \
-					rompe la propiedad antes de que la sesion exista.""")
+					rompe la propiedad antes de que la sesion exista.
+
+					EL CASO CLINICO ES OPCIONAL (04.03). Sin casoId la atencion se registra \
+					igual: RF-M14-002 admite atencion sin caso y ninguna sesion anterior a 04.03 \
+					lo tiene. Exigirlo es RF-M10-007, que necesita su propia ventana de \
+					migracion. Cuando viene, tiene que ser un caso ACTIVO de la MISMA historia \
+					clinica: uno de otro paciente responde 404 —indistinguible de "no existe", \
+					para no poder censar casos ajenos probando ids— y uno cerrado responde 409, \
+					porque lleva a otra accion, que es reabrirlo.
+
+					LA IDEMPOTENCIA MANDA SOBRE EL CASO: si la sesion del turno ya existe se \
+					devuelve tal cual, con el caso que tenga, aunque esta llamada traiga otro. \
+					Reasignar el caso de una atencion ya empezada no es "iniciar".""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201", description = "Atencion iniciada"),
 			@ApiResponse(
@@ -81,9 +94,11 @@ public class SesionController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<SesionResponse> iniciar(
 			@PathVariable long consultorioId,
-			@PathVariable long turnoId) {
+			@PathVariable long turnoId,
+			@RequestParam(required = false) Long casoId) {
 
-		SesionView vista = sesionService.iniciar(apiActor.current(), consultorioId, turnoId);
+		SesionView vista =
+				sesionService.iniciar(apiActor.current(), consultorioId, turnoId, casoId);
 		return ResponseEntity
 				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/sesiones/" + vista.id()))
 				.body(SesionResponse.de(vista));

@@ -1,5 +1,6 @@
 package com.akine.encounter.api;
 
+import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.CierreIncompletoException;
 import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
@@ -37,6 +38,45 @@ public class EncounterProblemHandler {
 	private static final URI SESION_AJENA = ProblemType.SESION_AJENA.uri();
 	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 	private static final URI SESION_CERRADA = ProblemType.SESION_CERRADA.uri();
+	private static final URI CASO_NO_ACCESIBLE = ProblemType.CASO_CLINICO_NO_ACCESIBLE.uri();
+	private static final URI CASO_CERRADO = ProblemType.CASO_CLINICO_CERRADO.uri();
+
+	/**
+	 * El caso no habilita esta atencion (04.03). <b>404 o 409 segun el motivo.</b>
+	 *
+	 * <p>"No existe" y "es de otra historia" son <b>404 e indistinguibles a proposito</b>:
+	 * distinguirlas permitiria censar por ids los casos de otro paciente o de otro centro, que en
+	 * un modulo clinico deja de ser aislamiento y pasa a ser privacidad.
+	 *
+	 * <p>"Esta cerrado" es <b>409</b> y tiene que ser otra cosa porque lleva a otra accion: el caso
+	 * existe, es del paciente, y lo que corresponde es reabrirlo con motivo — no buscar otro.
+	 *
+	 * <p>El {@code type} sale del catalogo de {@code platform.spi.problem}, que es unico para toda
+	 * la API: el cliente recibe el mismo {@code caso-clinico-cerrado} lo emita este modulo o
+	 * {@code clinical}, y maneja una sola respuesta por situacion. La <b>excepcion</b>, en cambio,
+	 * es de {@code encounter}, porque quien rechaza es este modulo: el spi de {@code clinical}
+	 * responde y no autoriza.
+	 */
+	@ExceptionHandler(CasoNoAsignableException.class)
+	public ProblemDetail handleCasoNoAsignable(CasoNoAsignableException exception) {
+		log.debug("Caso clinico no asignable a la atencion: motivo={}", exception.getMotivo());
+
+		if (exception.getMotivo() == CasoNoAsignableException.Motivo.CERRADO) {
+			ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+					"El caso clinico esta cerrado y no admite sesiones nuevas. Reabrilo con un "
+							+ "motivo si la atencion corresponde a ese caso.");
+			problem.setType(CASO_CERRADO);
+			problem.setTitle("El caso clinico esta cerrado");
+			problem.setProperty("casoId", exception.getCasoId());
+			return problem;
+		}
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND,
+				"El caso clinico no existe.");
+		problem.setType(CASO_NO_ACCESIBLE);
+		problem.setTitle("Caso clinico no encontrado");
+		return problem;
+	}
 
 	@ExceptionHandler(ConsultorioNoAccesibleException.class)
 	public ProblemDetail handleConsultorioNoAccesible(ConsultorioNoAccesibleException exception) {

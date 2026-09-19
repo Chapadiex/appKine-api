@@ -86,6 +86,7 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			   AND s.cerrada_en IS NOT NULL
 			   AND s.cerrada_en <= :hasta
 			   AND s.deleted_at IS NULL
+			   AND (:casoId IS NULL OR s.caso_id = :casoId)
 			 ORDER BY s.cerrada_en DESC, s.id DESC
 			 LIMIT :limite
 			""", nativeQuery = true)
@@ -93,5 +94,6 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("organizationId") long organizationId,
 			@Param("historiaClinicaId") long historiaClinicaId,
 			@Param("hasta") Instant hasta,
-			@Param("limite") int limite);
+			@Param("limite") int limite,
+			@Param("casoId") Long casoId);
 }

@@ -56,11 +56,22 @@ public class SesionEventoContributor implements EventoClinicoContributor {
 		this.sesiones = sesiones;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p><b>Esta es la unica fuente del timeline que puede filtrar por caso</b>, y no por
+	 * casualidad: {@code sesion} es la unica tabla del sistema que guarda {@code caso_id}. La
+	 * entrada clinica, el adjunto y el antecedente cuelgan de la historia, asi que con filtro por
+	 * caso devuelven vacio en vez de devolver de mas. El filtro se aplica <b>en la base</b>, no
+	 * despues: recortar en memoria sobre un {@code LIMIT} ya aplicado devolveria menos eventos de
+	 * los que el caso tiene.
+	 */
 	@Override
 	public List<EventoClinico> eventosDe(
-			long organizationId, long historiaClinicaId, Instant hasta, int limite) {
+			long organizationId, long historiaClinicaId, Instant hasta, int limite, Long casoId) {
 
-		return sesiones.buscarCerradasParaTimeline(organizationId, historiaClinicaId, hasta, limite)
+		return sesiones
+				.buscarCerradasParaTimeline(organizationId, historiaClinicaId, hasta, limite, casoId)
 				.stream()
 				.map(sesion -> new EventoClinico(
 						sesion.getCerradaEn(),
