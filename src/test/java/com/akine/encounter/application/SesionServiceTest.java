@@ -1,6 +1,7 @@
 package com.akine.encounter.application;
 
 import com.akine.clinical.spi.CasoDirectory;
+import com.akine.clinical.spi.CasoSnapshot;
 import com.akine.clinical.spi.HistoriaClinicaDirectory;
 import com.akine.clinical.spi.HistoriaClinicaSnapshot;
 import com.akine.encounter.domain.Asistencia;
@@ -10,6 +11,7 @@ import com.akine.encounter.domain.Evolucion;
 import com.akine.encounter.domain.Lateralidad;
 import com.akine.encounter.domain.ModoSesion;
 import com.akine.encounter.domain.Sesion;
+import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.CierreIncompletoException;
 import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
@@ -29,6 +31,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -45,6 +48,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -63,6 +67,7 @@ class SesionServiceTest {
 	private static final long CONSULTORIO_ID = 7L;
 	private static final long TURNO_ID = 301L;
 	private static final long OFERTA_ID = 42L;
+	private static final long CASO_ID = 55L;
 	private static final long PERSONA_ID = 128L;
 	private static final long HISTORIA_ID = 88L;
 
@@ -401,5 +406,87 @@ class SesionServiceTest {
 
 		assertThatThrownBy(() -> service.guardarBorrador(actor, CONSULTORIO_ID, 1L, "{}", 0L))
 				.isInstanceOf(SesionCerradaException.class);
+	}
+
+	// =================================================================================
+	// El Caso Clinico (AKINE-04.03)
+	// =================================================================================
+
+	@Test
+	@DisplayName("Un caso cerrado no admite sesiones nuevas: 409, no 404")
+	void caso_cerrado_no_admite_sesion() {
+		// El caso existe y es del paciente; lo que no admite es su estado. La accion correcta es
+		// reabrirlo con motivo, no buscar otro caso.
+		given(sesiones.findVivaPorTurno(ORG_ID, TURNO_ID)).willReturn(Optional.empty());
+		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID))
+				.willReturn(Optional.of(turno(MEMBERSHIP_PROPIA, true)));
+		given(casos.find(ORG_ID, CASO_ID))
+				.willReturn(Optional.of(new CasoSnapshot(CASO_ID, ORG_ID, HISTORIA_ID, 2, false)));
+
+		assertThatThrownBy(() -> service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, CASO_ID))
+				.isInstanceOf(CasoNoAsignableException.class)
+				.extracting(e -> ((CasoNoAsignableException) e).getMotivo())
+				.isEqualTo(CasoNoAsignableException.Motivo.CERRADO);
+	}
+
+	@Test
+	@DisplayName("Un caso de otra historia clinica no se puede colgar de esta atencion")
+	void caso_de_otra_historia() {
+		// Indistinguible de "no existe" desde afuera, a proposito: distinguirlos permitiria censar
+		// por ids los casos de otro paciente.
+		given(sesiones.findVivaPorTurno(ORG_ID, TURNO_ID)).willReturn(Optional.empty());
+		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID))
+				.willReturn(Optional.of(turno(MEMBERSHIP_PROPIA, true)));
+		given(casos.find(ORG_ID, CASO_ID)).willReturn(Optional.of(
+				new CasoSnapshot(CASO_ID, ORG_ID, HISTORIA_ID + 1, 2, true)));
+
+		assertThatThrownBy(() -> service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, CASO_ID))
+				.isInstanceOf(CasoNoAsignableException.class)
+				.extracting(e -> ((CasoNoAsignableException) e).getMotivo())
+				.isEqualTo(CasoNoAsignableException.Motivo.DE_OTRA_HISTORIA);
+	}
+
+	@Test
+	@DisplayName("El cierre toma los dos numeradores, y SIEMPRE la historia antes que el caso")
+	void el_cierre_toma_los_dos_numeradores_en_orden() {
+		// Es la primera transaccion de este sistema que toma dos numeradores. Cada uno es un lock
+		// exclusivo de fila: si dos cierres concurrentes los tomaran en orden distinto, cada uno
+		// esperaria el lock que el otro ya tiene. Un orden total fijo es lo unico que lo evita.
+		Sesion conCaso = sesionConCaso();
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(conCaso));
+		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(8);
+		given(casos.siguienteNumeroDeSesion(ORG_ID, CASO_ID)).willReturn(3);
+
+		SesionView vista = service.cerrar(
+				actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Terapia manual"), 0L);
+
+		InOrder orden = inOrder(numerador, casos);
+		orden.verify(numerador).incrementar(ORG_ID, HISTORIA_ID);
+		orden.verify(casos).siguienteNumeroDeSesion(ORG_ID, CASO_ID);
+
+		assertThat(vista.numeroSesion()).as("el correlativo por historia no cambia").isEqualTo(8);
+		assertThat(vista.numeroEnCaso()).as("y el del caso se agrega al lado").isEqualTo(3);
+	}
+
+	@Test
+	@DisplayName("Una sesion sin caso no pide el segundo numero: no hay caso dentro del cual contar")
+	void sin_caso_no_hay_segundo_numerador() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(8);
+
+		SesionView vista = service.cerrar(
+				actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Terapia manual"), 0L);
+
+		assertThat(vista.numeroEnCaso()).isNull();
+		verify(casos, never()).siguienteNumeroDeSesion(anyLong(), anyLong());
+	}
+
+	/** Una sesion ya persistida que pertenece a un caso. */
+	private static Sesion sesionConCaso() {
+		Sesion sesion = new Sesion(ORG_ID, CONSULTORIO_ID, HISTORIA_ID, CASO_ID, TURNO_ID,
+				OFERTA_ID, MEMBERSHIP_PROPIA, Instant.EPOCH, CUENTA_PROPIA);
+		ReflectionTestUtils.setField(sesion, "id", 1L);
+		return sesion;
 	}
 }
