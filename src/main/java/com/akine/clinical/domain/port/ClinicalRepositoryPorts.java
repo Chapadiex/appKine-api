@@ -1,5 +1,6 @@
 package com.akine.clinical.domain.port;
 
+import com.akine.clinical.domain.AdjuntoClinico;
 import com.akine.clinical.domain.AntecedenteClinico;
 import com.akine.clinical.domain.EntradaClinica;
 import com.akine.clinical.domain.EntradaClinicaVersion;
@@ -124,5 +125,71 @@ public final class ClinicalRepositoryPorts {
 		 */
 		List<EntradaClinicaVersion> buscarVigentesDe(
 				Long organizationId, Collection<Long> entradaIds);
+	}
+
+	/**
+	 * Metadata de los adjuntos clinicos. El binario vive detras de
+	 * {@link ContenidoClinicoStoragePort}.
+	 *
+	 * <p>Toda firma acota por {@code organizationId} <b>y</b> por {@code historiaClinicaId}. Lo
+	 * segundo no es redundante con lo primero: un adjunto resuelto solo por tenant e id dejaria
+	 * que un pedido sobre la historia A entregue el estudio de la historia B del mismo centro,
+	 * saltandose la autorizacion que ya se evaluo contra A.
+	 */
+	public interface AdjuntoClinicoRepositoryPort {
+
+		AdjuntoClinico save(AdjuntoClinico adjunto);
+
+		/**
+		 * Persiste y sincroniza con la base en el acto.
+		 *
+		 * <p>Hace falta para que el choque contra {@code uk_adjunto_clinico_contenido_vigente}
+		 * llegue <b>dentro</b> del try del servicio y no al cierre de la transaccion, que es donde
+		 * ya no se puede convertir en una respuesta idempotente. Y para que el unique decida
+		 * <b>antes</b> de que se escriba el binario en disco.
+		 */
+		AdjuntoClinico saveAndFlush(AdjuntoClinico adjunto);
+
+		/** Un adjunto de esa historia. Devuelve vacio si es de otra, aunque el id exista. */
+		Optional<AdjuntoClinico> buscarDeLaHistoria(
+				Long organizationId, Long historiaClinicaId, Long adjuntoId);
+
+		/**
+		 * El adjunto VIGENTE con ese contenido en esa historia, si ya lo hay.
+		 *
+		 * <p>Es el pre-chequeo que hace idempotente al reintento de una subida. <b>No es el que
+		 * garantiza el invariante</b> —eso lo hace el unique de {@code V46}—: esta para ahorrar
+		 * escribir el binario en el camino feliz.
+		 */
+		Optional<AdjuntoClinico> buscarVigentePorChecksum(
+				Long organizationId, Long historiaClinicaId, String checksumSha256);
+
+		/**
+		 * Los adjuntos de una historia, paginados en la base.
+		 *
+		 * @param categoria     filtro opcional; {@code null} los trae todos
+		 * @param entradaId     filtro opcional por la entrada que respaldan; {@code null} no filtra
+		 * @param activoFiltro  {@code 1} solo vigentes, {@code 0} solo dados de baja, {@code -1}
+		 *                      todos. Es un {@code int} y no un {@code Boolean} nullable porque
+		 *                      son tres estados y no dos con ausencia, mismo criterio que el
+		 *                      listado del padron
+		 */
+		@SuppressWarnings("checkstyle:ParameterNumber")
+		List<AdjuntoClinico> listar(
+				Long organizationId,
+				Long historiaClinicaId,
+				String categoria,
+				Long entradaId,
+				int activoFiltro,
+				int offset,
+				int limite);
+
+		/** El total del mismo filtro, para que la pagina sepa cuantas hay. */
+		long contar(
+				Long organizationId,
+				Long historiaClinicaId,
+				String categoria,
+				Long entradaId,
+				int activoFiltro);
 	}
 }

@@ -180,6 +180,25 @@ akine:
       # la extiende: una sesion robada no se vuelve eterna por usarla.
       refresh-ttl: 12h
 
+  clinical:
+    adjuntos:
+      # Raiz del almacenamiento de BINARIOS CLINICOS (M09/M25, AKINE-04.02).
+      #
+      # ES OTRA RAIZ, Y ESA ES LA DECISION. Los adjuntos administrativos viven bajo
+      # akine.person.adjuntos.base-dir y estos no comparten su directorio: separar los binarios
+      # clinicos en el sistema de archivos habilita otro volumen, otro cifrado en reposo, otra
+      # politica de backup y otra de retencion, sin tocar una linea de codigo. Es un control
+      # real y no una consecuencia. Son directorios HERMANOS y no uno dentro del otro a
+      # proposito: un subdirectorio se lleva puesta la separacion en cuanto alguien monta un
+      # volumen sobre el padre.
+      base-dir: ${AKINE_CLINICAL_ADJUNTOS_DIR:./var/adjuntos-clinicos}
+      # Tope de un archivo clinico. TIENE que quedar por debajo de
+      # spring.servlet.multipart.max-file-size (15MB, mas arriba): si el tope del contenedor
+      # fuera el mas chico, el rechazo llegaria como error de plataforma y el profesional
+      # recibiria un 500 generico en vez del 400 que explica que su archivo pesa demasiado.
+      # Subir de aca exige subir primero el del contenedor, que afecta tambien a M07/M25.
+      max-bytes: ${AKINE_CLINICAL_ADJUNTOS_MAX_BYTES:10485760}
+
 logging:
   level:
     root: INFO
