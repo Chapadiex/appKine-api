@@ -55,6 +55,9 @@ class AuditQueryServiceTest {
 	private PermissionGuard permissionGuard;
 
 	@Mock
+	private com.akine.organization.spi.PermissionEvaluator permissionEvaluator;
+
+	@Mock
 	private AuditQuery auditQuery;
 
 	@InjectMocks
@@ -65,6 +68,9 @@ class AuditQueryServiceTest {
 	private void concedidoCon(PermissionScope alcance) {
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida(alcance.name(), false));
+		// Default deliberado: auditoria:read NO trae auditoria:read-clinica. Es el caso del
+		// ORG_ADMIN, que tiene el primero por asignacion base y el segundo solo por grant.
+		clinicoConcedido(false);
 	}
 
 	private void devuelveVacio() {
@@ -275,5 +281,89 @@ class AuditQueryServiceTest {
 		// fijarlos sea cambiar dos constantes y no auditar la aplicacion entera.
 		assertThat(AuditQueryService.RANGO_MAXIMO).isEqualTo(Duration.ofDays(90));
 		assertThat(AuditQueryService.TAMANIO_MAXIMO_DE_PAGINA).isEqualTo(100);
+	}
+
+	// =================================================================================
+	// AKINE-07.07 — la justificacion clinica exige auditoria:read-clinica
+	// =================================================================================
+
+	private AuditEventSummary fila(String eventType, String motivo) {
+		return new AuditEventSummary(
+				1L, ORG_ID, CONSULTORIO_ID, ACCOUNT_ID, eventType, "HistoriaClinica", 9L,
+				null, null, java.util.Map.of("viaDeAcceso", "RELACION_ASISTENCIAL"),
+				motivo, "corr-1", AHORA);
+	}
+
+	private void devuelve(AuditEventSummary... filas) {
+		given(auditQuery.porPeriodo(any(), any()))
+				.willReturn(new PageImpl<>(List.of(filas)));
+	}
+
+	private void clinicoConcedido(boolean concedido) {
+		given(permissionEvaluator.evaluate(any())).willReturn(concedido
+				? PermissionDecision.concedida(PermissionScope.ORGANIZACION.name(), false)
+				: PermissionDecision.rechazada(com.akine.organization.spi.DenialKind.NO_PERMISSION));
+	}
+
+	@Test
+	@DisplayName("Sin auditoria:read-clinica, el motivo del evento clinico se tapa y los detalles se vacian")
+	void sin_permiso_clinico_se_redacta() {
+		// El motivo es texto libre que escribe un profesional: "el paciente llamo por el
+		// resultado del estudio de rodilla" es contenido clinico. Un ORG_ADMIN tiene
+		// auditoria:read por asignacion base y NO tiene hc:read; sin esta redaccion leia la
+		// justificacion de cada acceso a la historia de cada paciente de su organizacion.
+		concedidoCon(PermissionScope.ORGANIZACION);
+		clinicoConcedido(false);
+		devuelve(fila("HISTORIA_CLINICA_ACCESSED", "llamo por el estudio de rodilla"));
+
+		AuditEventSummary leida = service
+				.porPeriodo(actor, ORG_ID, AHORA.minus(1, ChronoUnit.DAYS), AHORA,
+						PageRequest.of(0, 10))
+				.getContent()
+				.getFirst();
+
+		assertThat(leida.reason()).isEqualTo(AuditQueryService.MOTIVO_REDACTADO);
+		assertThat(leida.details()).isEmpty();
+		// El rastro de acceso NO se tapa: quien, cuando y sobre que es lo que la matriz §6 le
+		// concede a auditoria:read, y es lo que sirve para detectar un acceso indebido.
+		assertThat(leida.eventType()).isEqualTo("HISTORIA_CLINICA_ACCESSED");
+		assertThat(leida.actorAccountId()).isEqualTo(ACCOUNT_ID);
+		assertThat(leida.entityId()).isEqualTo(9L);
+	}
+
+	@Test
+	@DisplayName("Con auditoria:read-clinica, la fila clinica llega entera")
+	void con_permiso_clinico_no_se_redacta() {
+		concedidoCon(PermissionScope.ORGANIZACION);
+		clinicoConcedido(true);
+		devuelve(fila("HISTORIA_CLINICA_ACCESSED", "llamo por el estudio de rodilla"));
+
+		AuditEventSummary leida = service
+				.porPeriodo(actor, ORG_ID, AHORA.minus(1, ChronoUnit.DAYS), AHORA,
+						PageRequest.of(0, 10))
+				.getContent()
+				.getFirst();
+
+		assertThat(leida.reason()).isEqualTo("llamo por el estudio de rodilla");
+		assertThat(leida.details()).containsEntry("viaDeAcceso", "RELACION_ASISTENCIAL");
+	}
+
+	@Test
+	@DisplayName("Un evento que no es clinico llega entero aunque falte el permiso clinico")
+	void lo_no_clinico_no_se_toca() {
+		// Redactar de mas volveria inutil la pantalla de auditoria para lo que si le compete a
+		// un administrador: memberships, suscripcion, colaboradores.
+		concedidoCon(PermissionScope.ORGANIZACION);
+		clinicoConcedido(false);
+		devuelve(fila("MEMBERSHIP_REVOKED", "dejo el equipo"));
+
+		AuditEventSummary leida = service
+				.porPeriodo(actor, ORG_ID, AHORA.minus(1, ChronoUnit.DAYS), AHORA,
+						PageRequest.of(0, 10))
+				.getContent()
+				.getFirst();
+
+		assertThat(leida.reason()).isEqualTo("dejo el equipo");
+		assertThat(leida.details()).isNotEmpty();
 	}
 }
