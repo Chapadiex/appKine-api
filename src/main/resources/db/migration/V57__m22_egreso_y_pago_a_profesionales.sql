@@ -402,8 +402,22 @@ CREATE INDEX ix_pago_egreso_egreso
 -- -------------------------------------------------------------------------------------
 -- El UNICO cambio sobre el esquema de 07.03.
 --
--- `movimiento_caja` acepta un origen nuevo: PAGO_EGRESO. Es ADITIVO —ningun valor existente
--- deja de ser valido— y es sobre una tabla DEL MISMO MODULO, `billing`.
+-- `movimiento_caja` acepta un origen nuevo: PAGO_EGRESO, sobre una tabla DEL MISMO MODULO.
+--
+-- UN `ALTER` QUE REEMPLAZA UN `CHECK` NO ES ADITIVO, AUNQUE AGREGUE UN VALOR. Esta migracion
+-- decia "es ADITIVO, ningun valor existente deja de ser valido" y era FALSO: `DROP CHECK` mas
+-- `ADD CONSTRAINT` reescribe la lista ENTERA, asi que lo que no se vuelve a nombrar
+-- desaparece. La version original de este archivo listaba COBRO, MANUAL, REVERSION y
+-- PAGO_EGRESO, reconstruyendo la lista desde el estado ANTERIOR a V56 y borrando el
+-- PAGO_FINANCIADOR que V56 acababa de agregar. V57 corre despues: el estado final de la base
+-- RECHAZABA el pago de financiador de 07.04.
+--
+-- No lo agarro ningun gate. Las dos migraciones son de ramas distintas, tocan archivos
+-- distintos y git no vio conflicto: es el merge limpio que no compila, version esquema. Y
+-- ninguna migracion de F7 corrio jamas contra un motor, asi que tampoco iba a fallar sola.
+--
+-- LA REGLA QUE ESTO DEJA: si dos etapas en vuelo tocan el MISMO constraint, la segunda tiene
+-- que leer lo que la primera dejo, no lo que el estado base decia cuando ella empezo.
 --
 -- Con esto, `uk_movimiento_caja_origen (organization_id, tipo, tipo_origen,
 -- referencia_origen, medio)` garantiza gratis que UN PAGO PRODUZCA A LO SUMO UN MOVIMIENTO,
@@ -414,4 +428,4 @@ ALTER TABLE movimiento_caja
 
 ALTER TABLE movimiento_caja
     ADD CONSTRAINT ck_movimiento_caja_tipo_origen
-        CHECK (tipo_origen IN ('COBRO', 'MANUAL', 'REVERSION', 'PAGO_EGRESO'));
+        CHECK (tipo_origen IN ('COBRO', 'MANUAL', 'REVERSION', 'PAGO_FINANCIADOR', 'PAGO_EGRESO'));
