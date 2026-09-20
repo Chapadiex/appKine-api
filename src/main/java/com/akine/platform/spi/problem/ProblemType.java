@@ -652,7 +652,37 @@ public enum ProblemType {
 	 * dato del pedido. Confundirlos haria que la pantalla ofrezca "reintentar" donde lo que
 	 * corresponde es "completa el motivo".
 	 */
-	REVERSION_SIN_MOTIVO("reversion-sin-motivo");
+	REVERSION_SIN_MOTIVO("reversion-sin-motivo"),
+
+	// --- Clases programadas (M28, AKINE-08.01) ----------------------------------------------
+	/**
+	 * La oferta elegida no puede sostener una clase: no es GRUPAL, esta de baja o su vigencia no
+	 * cubre la fecha pedida (409).
+	 *
+	 * <p>RN-M28-001. <b>409 y no 404 a proposito</b>, igual que {@link #OFERTA_NO_AGENDABLE}: la
+	 * oferta existe y quien programa la esta viendo en la lista. Lleva {@code motivo}, porque "no
+	 * es grupal" manda a elegir otra oferta y "no esta vigente" manda a mover la fecha.
+	 */
+	CLASE_NO_PROGRAMABLE("clase-no-programable"),
+	/**
+	 * La transicion pedida no existe en la maquina de estados de la clase, o su ventana no la
+	 * admite (409). Lleva {@code motivo}.
+	 *
+	 * <p>Gemelo de {@link #TURNO_TRANSICION_NO_PERMITIDA} y por el mismo criterio: un solo tipo
+	 * para "ya esta cancelada" y "ya empezo", porque para la pantalla el desenlace es el mismo.
+	 * <b>No se reusa el del turno</b>: una clase no es un turno, y un cliente que mapee el tipo a
+	 * una pantalla terminaria refrescando el turno equivocado.
+	 */
+	CLASE_TRANSICION_NO_PERMITIDA("clase-transicion-no-permitida"),
+	/**
+	 * La capacidad pedida no es sostenible: supera la de la oferta o la del espacio, o queda por
+	 * debajo de los participantes ya confirmados (409). RN-M28-002 y RF-M12-012.
+	 *
+	 * <p>Lleva {@code capacidadMaxima} y {@code motivo} para que la pantalla pueda corregir el
+	 * numero sola en vez de solo mostrar el error. Es la misma idea que {@code maxDays} en
+	 * {@link #VENTANA_DEMASIADO_AMPLIA}.
+	 */
+	CLASE_CAPACIDAD_NO_ADMITIDA("clase-capacidad-no-admitida");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

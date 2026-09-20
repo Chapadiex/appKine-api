@@ -668,13 +668,13 @@ class PlanTratamientoServiceTest {
 	}
 
 	private static OfertaSnapshot oferta(boolean vigente) {
-		return new OfertaSnapshot(OFERTA_ID, ORG_ID, SEDE_ID, 1L, "Kinesiologia", 45, 1,
+		return new OfertaSnapshot(OFERTA_ID, ORG_ID, SEDE_ID, 1L, "Kinesiologia", 45, 1, false,
 				true, false, LocalDate.of(2020, 1, 1),
 				vigente ? null : LocalDate.of(2021, 1, 1), true);
 	}
 
 	private static OfertaSnapshot otraOferta() {
-		return new OfertaSnapshot(OTRA_OFERTA_ID, ORG_ID, SEDE_ID, 2L, "Fisioterapia", 30, 1,
+		return new OfertaSnapshot(OTRA_OFERTA_ID, ORG_ID, SEDE_ID, 2L, "Fisioterapia", 30, 1, false,
 				true, false, LocalDate.of(2020, 1, 1), null, true);
 	}
 

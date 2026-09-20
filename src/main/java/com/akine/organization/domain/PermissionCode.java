@@ -137,7 +137,36 @@ public enum PermissionCode {
 	CAJA_OPERATE("caja:operate"),
 
 	/** Ver Reportes. F8. Sin asignacion base todavia: deniega. */
-	REPORTE_READ("reporte:read");
+	REPORTE_READ("reporte:read"),
+
+	/**
+	 * Ver clases programadas y su historial. F9, M28.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-08.01</b>, la etapa que crea la clase. Mismo reparto
+	 * que {@link #TURNO_READ}, incluido {@code PLATFORM_ADMIN} con alcance SOPORTE: soporte mira.
+	 *
+	 * <p>Es un codigo propio y no se reusa {@code turno:read}, aunque hoy los reparta igual: una
+	 * clase y un turno son entidades distintas con reglas distintas, y 08.02 va a colgar de esta
+	 * lectura la lista de participantes — que es exactamente el dato que alguien podria querer
+	 * cerrar sin cerrar la agenda de turnos. Fusionar los dos codigos hoy hace imposible separarlos
+	 * despues sin un cambio incompatible.
+	 */
+	CLASE_READ("clase:read"),
+
+	/**
+	 * Programar, reprogramar y cancelar clases. F9, M28.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-08.01.</b> Mismo reparto que {@link #TURNO_MANAGE}:
+	 * {@code ORG_ADMIN} con alcance de organizacion, y con alcance de sede el
+	 * {@code CONSULTORIO_ADMIN}, el {@code ADMINISTRATIVO} —armar la grilla es su trabajo— y el
+	 * {@code PROFESIONAL}, que programa las clases que el mismo dicta. Los actores de M28 §2 son
+	 * exactamente esos.
+	 *
+	 * <p><b>{@code PLATFORM_ADMIN} NO lo recibe</b>, igual que con {@code turno:manage}: programar
+	 * una clase compromete un recurso del centro y la matriz §32 le dice "No" a todas las filas
+	 * operativas. Soporte mira, no opera.
+	 */
+	CLASE_MANAGE("clase:manage");
 
 	private final String code;
 

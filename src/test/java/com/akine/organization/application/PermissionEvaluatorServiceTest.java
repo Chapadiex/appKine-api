@@ -518,7 +518,11 @@ class PermissionEvaluatorServiceTest {
 							// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`,
 							// el modulo que lo evalua. La matriz §2 se lo da al ORG_ADMIN en la fila
 							// Administrar Convenios y la enmienda esta en la matriz §13.
-							"convenio:manage");
+							"convenio:manage",
+							// `clase:read` y `clase:manage` se suman en AKINE-08.01, la etapa
+							// que crea la clase. Mismo reparto que los turnos: M28 §2 nombra al
+							// administrador entre los actores de una clase.
+							"clase:read", "clase:manage");
 		}
 
 		@Test
@@ -588,7 +592,10 @@ class PermissionEvaluatorServiceTest {
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 					.containsExactlyInAnyOrder(
 							"colaborador:read", "espacio:read", "turno:read", "turno:manage", "sesion:register",
-							"hc:read", "hc:write");
+							"hc:read", "hc:write",
+							// `clase:read` y `clase:manage` entran en AKINE-08.01: M28 §2 lo nombra
+							// como "Profesional / Instructor", y es quien dicta la clase.
+							"clase:read", "clase:manage");
 		}
 	}
 

@@ -12,6 +12,7 @@ import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.SlotCompletoException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
+import com.akine.scheduling.spi.OcupacionExternaProbe;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -46,17 +47,20 @@ class RevalidadorDeSlot {
 	private final OfertaDirectory ofertas;
 	private final DisponibilidadDirectory disponibilidad;
 	private final EspacioDirectory espacios;
+	private final OcupacionExternaProbe ocupacionExterna;
 
 	RevalidadorDeSlot(
 			TurnoRepositoryPort turnos,
 			OfertaDirectory ofertas,
 			DisponibilidadDirectory disponibilidad,
-			EspacioDirectory espacios) {
+			EspacioDirectory espacios,
+			OcupacionExternaProbe ocupacionExterna) {
 
 		this.turnos = turnos;
 		this.ofertas = ofertas;
 		this.disponibilidad = disponibilidad;
 		this.espacios = espacios;
+		this.ocupacionExterna = ocupacionExterna;
 	}
 
 	/**
@@ -99,6 +103,19 @@ class RevalidadorDeSlot {
 		}
 
 		if (profesionalId != null && hayConflictoRealDeProfesional(pedido, profesionalId)) {
+			throw new RecursoOcupadoException("profesional");
+		}
+
+		// AKINE-08.01. Una CLASE ocupa al profesional exactamente igual que un turno, y sin este
+		// control se reserva un turno encima de una clase sin que nada falle: ningun unique puede
+		// expresar un solapamiento de intervalos. Corre aca, BAJO EL LOCK de agenda_sede —el mismo
+		// que toma la clase al programarse— y por eso las dos escrituras se serializan entre si.
+		//
+		// El error es el recurso-ocupado que esta operacion ya publica, y no uno nuevo: para la
+		// pantalla el desenlace es identico —ese profesional esta tomado en ese horario— y que el
+		// evento conflictivo sea una clase no cambia lo que el usuario puede hacer.
+		if (profesionalId != null && ocupacionExterna.profesionalOcupado(
+				pedido.organizationId(), profesionalId, pedido.inicio(), pedido.fin())) {
 			throw new RecursoOcupadoException("profesional");
 		}
 
@@ -218,6 +235,9 @@ class RevalidadorDeSlot {
 					.map(EspacioSnapshot::id)
 					.filter(espacioId -> turnos.findVivosDeEspacioQueCruzan(
 							pedido.organizationId(), espacioId, pedido.inicio(), pedido.fin()).isEmpty())
+					// AKINE-08.01: un box tomado por una clase no es un box libre. Ver
+					// espacioLibreDeEventosExternos.
+					.filter(espacioId -> espacioLibreDeEventosExternos(pedido, espacioId))
 					.findFirst()
 					.orElseThrow(() -> new RecursoOcupadoException("espacio"));
 		}
@@ -241,13 +261,31 @@ class RevalidadorDeSlot {
 							pedido.inicio(), pedido.fin())
 					.stream()
 					.allMatch(otro -> esElExcluido(otro, pedido));
-			if (libre) {
+			if (libre && espacioLibreDeEventosExternos(pedido, habilitacion.recursoId())) {
 				return habilitacion.recursoId();
 			}
 		}
 		// Se distingue de SlotNoDisponible: el hueco existe y el profesional atiende; lo que falta
 		// es un box. La pantalla puede ofrecer otro horario en vez de mandar a recargar la agenda.
 		throw new RecursoOcupadoException("espacio");
+	}
+
+	/**
+	 * {@code true} si ningun evento de otro modulo —hoy, una clase de M28— ocupa ese box en el
+	 * intervalo. AKINE-08.01.
+	 *
+	 * <p>Un box tomado por una clase <b>no es un box libre</b>, y sin este filtro la reserva
+	 * elegiria el primero que ningun turno esta usando y lo venderia dos veces. El caso no lo
+	 * puede atrapar ningun unique —dos intervalos que se cruzan no comparten un valor de columna—
+	 * y lo que lo hace confiable es que esta consulta corre <b>bajo el lock de {@code agenda_sede}</b>,
+	 * la misma fila que la clase se disputa al programarse.
+	 *
+	 * <p><b>No hay nada que excluir aca.</b> El {@code turnoExcluidoId} de una reprogramacion es un
+	 * turno, y un turno nunca aparece en esta respuesta: la sonda contesta por lo que NO es turno.
+	 */
+	private boolean espacioLibreDeEventosExternos(Pedido pedido, long espacioId) {
+		return !ocupacionExterna.espacioOcupado(
+				pedido.organizationId(), espacioId, pedido.inicio(), pedido.fin());
 	}
 
 	private static boolean esElExcluido(Turno turno, Pedido pedido) {

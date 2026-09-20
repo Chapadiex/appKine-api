@@ -12,6 +12,12 @@ import java.time.LocalDate;
  * @param duracionMinutos duracion de UN turno de esta oferta. Es lo que determina el tamano del
  *                        slot
  * @param capacidad       cuantos pacientes admite un turno. 1 individual, mas grupal
+ * @param grupal          la modalidad de la oferta es {@code GRUPAL}. <b>No es derivable de
+ *                        {@link #capacidad}</b>: {@code V24} obliga a que una GRUPAL tenga
+ *                        capacidad mayor a 1, pero no la reciproca — una oferta INDIVIDUAL en un
+ *                        box de dos camillas puede tener capacidad 2 y sigue siendo individual.
+ *                        RN-M28-001 exige que una clase cuelgue de una oferta GRUPAL, y deducirlo
+ *                        del cupo dejaria programar clases sobre ofertas individuales
  * @param vigenciaHasta   {@code null} = sin vencimiento
  */
 public record OfertaSnapshot(
@@ -22,6 +28,7 @@ public record OfertaSnapshot(
 		String nombreComercial,
 		int duracionMinutos,
 		int capacidad,
+		boolean grupal,
 		boolean requiereProfesional,
 		boolean requiereEspacio,
 		LocalDate vigenciaDesde,
