@@ -215,11 +215,13 @@ public class ElegibilidadAdministrativaService {
 				.filter(orden -> orden.vigenteEl(dia))
 				.filter(orden -> orden.sirveParaCobertura(coberturaId))
 				.findFirst()
-				.map(orden -> RequisitoAdministrativo.cumplido(
+				.map(orden -> RequisitoAdministrativo.cumplidoConVigencia(
 						TipoRequisito.ORDEN,
 						orden.getId(),
 						detalleDeOrden(orden, dia),
-						null))
+						null,
+						orden.getVigenciaHasta(),
+						orden.diasParaVencer(dia)))
 				.orElseGet(() -> RequisitoAdministrativo.faltante(
 						TipoRequisito.ORDEN,
 						"El convenio exige orden medica y el paciente no tiene ninguna vigente el "
@@ -247,11 +249,13 @@ public class ElegibilidadAdministrativaService {
 
 		return candidatas.stream()
 				.min(ElegibilidadAdministrativaService::porVencimientoMasProximo)
-				.map(autorizacion -> RequisitoAdministrativo.cumplido(
+				.map(autorizacion -> RequisitoAdministrativo.cumplidoConVigencia(
 						TipoRequisito.AUTORIZACION,
 						autorizacion.getId(),
 						detalleDeAutorizacion(autorizacion, dia),
-						autorizacion.saldo()))
+						autorizacion.saldo(),
+						autorizacion.getVigenciaHasta(),
+						autorizacion.diasParaVencer(dia)))
 				.orElseGet(() -> RequisitoAdministrativo.faltante(
 						TipoRequisito.AUTORIZACION,
 						"El convenio exige autorizacion previa y no hay ninguna aprobada, vigente "

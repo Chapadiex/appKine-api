@@ -114,6 +114,29 @@ final class AuditEvents {
 	static final String AUTORIZACION_RESUELTA = "AUTORIZACION_RESUELTA";
 	static final String AUTORIZACION_DOCUMENTO_LINKED = "AUTORIZACION_DOCUMENTO_LINKED";
 	static final String AUTORIZACION_DEACTIVATED = "AUTORIZACION_DEACTIVATED";
+
+	/**
+	 * Se descontaron unidades al cerrar una sesion (RF-M17-004, AKINE-04.05).
+	 *
+	 * <p>Tipo propio y no un {@code AUTORIZACION_UPDATED}: la pregunta "que gasto las unidades de
+	 * esta autorizacion" tiene que responderse filtrando por tipo de evento, no leyendo los
+	 * detalles de todas las ediciones. Y es el unico evento de este modulo cuyo actor <b>puede</b>
+	 * venir nulo, porque lo produce un hecho clinico y no un formulario.
+	 *
+	 * <p><b>Un consumo IDEMPOTENTE no lo emite</b>: si el movimiento ya existia, no ocurrio ningun
+	 * hecho nuevo. Mismo criterio que la activacion de perfil de paciente.
+	 */
+	static final String AUTORIZACION_CONSUMIDA = "AUTORIZACION_CONSUMIDA";
+
+	/**
+	 * Se compenso un consumo con una reversion (RF-M17-005).
+	 *
+	 * <p>Es el evento con <b>motivo obligatorio</b> de esta etapa. Devolver saldo cambia lo que el
+	 * centro le va a presentar al financiador, y sin motivo quien audita no puede distinguir un
+	 * error de carga de un fraude.
+	 */
+	static final String AUTORIZACION_CONSUMO_REVERTIDO = "AUTORIZACION_CONSUMO_REVERTIDO";
+
 	static final String ENTITY_AUTORIZACION = "Autorizacion";
 
 	private static final String MDC_TRACE_ID = "traceId";

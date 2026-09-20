@@ -84,8 +84,23 @@ public record ElegibilidadResponse(
 			String detalle,
 
 			@Schema(description = "Sesiones restantes cuando el requisito es AUTORIZACION y hay "
-					+ "tope declarado", example = "6")
-			Integer saldo) {
+					+ "tope declarado. AKINE-04.05: ahora BAJA al atender, porque el consumo "
+					+ "existe", example = "6")
+			Integer saldo,
+
+			@Schema(
+					description = "ULTIMO dia inclusive del documento que lo satisface. Null si "
+							+ "no vence o si el requisito esta faltante. La CREDENCIAL no lo "
+							+ "publica: su vencimiento vive en la cobertura",
+					example = "2026-12-31")
+			LocalDate vigenciaHasta,
+
+			@Schema(
+					description = "Dias que faltan para ese vencimiento, contra la fecha "
+							+ "consultada. PUEDE SER CERO: vence hoy, y hoy todavia sirve, "
+							+ "porque la vigencia es inclusiva. Null si no vence",
+					example = "12")
+			Long diasParaVencer) {
 	}
 
 	public static ElegibilidadResponse de(ElegibilidadAdministrativa veredicto) {
@@ -99,7 +114,9 @@ public record ElegibilidadResponse(
 								requisito.cumplido(),
 								requisito.referenciaId(),
 								requisito.detalle(),
-								requisito.saldo()))
+								requisito.saldo(),
+								requisito.vigenciaHasta(),
+								requisito.diasParaVencer()))
 						.toList(),
 				veredicto.convenioId(),
 				veredicto.convenioNombre(),
