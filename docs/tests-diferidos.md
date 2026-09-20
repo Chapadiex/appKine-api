@@ -251,3 +251,28 @@ el valor nuevo aun bajo `REPEATABLE READ`. Pero es una desviación no declarada 
 05.02 dejó fijada, y **04.03 acaba de convertir ese método en el que toma dos numeradores**. Queda
 como pregunta para la primera sesión con Docker: correr el escenario 28 y, si pasa, decidir si la
 anotación se unifica igual por coherencia.
+
+---
+
+## AKINE-07.03 — Caja diaria (M20)
+
+La etapa cerró con **un solo archivo de tests unitarios** —`billing/application/ReglasDeCajaTest`,
+seis casos— por decisión explícita de alcance: cubrir las reglas que si se rompen rompen el
+negocio y no una más. Lo que quedó afuera se anota acá en vez de simularse.
+
+### Lo que sólo se puede probar contra MySQL real
+
+| # | Escenario | Motivo y etapa destino |
+|---|---|---|
+| 33 | **El `UPDATE` condicional del saldo bajo concurrencia real.** Dos egresos simultáneos peleándose por el último peso: el primero se lo lleva y el segundo tiene que afectar **cero filas** y terminar en `caja-saldo-insuficiente`, con el `CHECK (saldo_arqueo >= 0)` de `V54` como respaldo. Hoy el caso unitario prueba lo que el servicio hace **cuando el mock devuelve cero filas**; que la base devuelva cero filas en esa carrera es precisamente lo que no está probado — y es la mitad que importa. Mismo hueco que 04.05 dejó en la última unidad de una autorización | **No escrito.** Es un IT: dos transacciones peleándose no se simulan con Mockito. Destino: **primera sesión con Docker disponible** |
+| 34 | **`saldoTeoricoEsperado`: el cobro en efectivo que entra entre el conteo y el cierre.** Es el caso que rompe el diseño (challenge §8) y toda su protección vive en un `AND saldo_arqueo = :esperado` dentro del `UPDATE` que cierra. Cubre también el cierre concurrente —dos cierres simultáneos, el segundo afecta cero filas porque `estado` ya no es `ABIERTA` → `caja-cerrada`— | **No escrito.** Igual que el 33: la condición la evalúa el motor, y un mock que devuelve cero filas prueba el `if` del servicio, no la regla. Destino: **primera sesión con Docker disponible** |
+| 35 | **`V54` contra el motor.** Que la migración siquiera ejecute, y que hagan lo que sus comentarios dicen: la columna generada `abierta_marca` y el `UNIQUE (organization_id, consultorio_id, abierta_marca)` —**a lo sumo una jornada abierta por sede**, con varios NULL que no colisionan—; la generada `afecta_arqueo = (medio = 'EFECTIVO')`; `CHECK (medio <> 'EFECTIVO' OR jornada_caja_id IS NOT NULL)`; el CHECK de motivo obligatorio sólo con diferencia distinta de cero **y prohibido con diferencia cero**; `CHECK (importe > 0)` y los de reversión; y el unique que impide revertir dos veces el mismo movimiento | **No escrito, y `V54` no se aplicó jamás contra un motor.** MySQL 8.4 falla con un **3819** sobre una expresión mal escrita en una columna generada sólo al ejecutar. Destino: **primera sesión con Docker disponible** |
+
+### Lo que se decidió no cubrir, y por qué
+
+| Escenario | Por qué no |
+|---|---|
+| **La capa REST y el mapeo de cada excepción a su `ProblemType`** | El contrato `0.36.0` declara la versión y **no regeneró sus `paths`**: Docker no arranca. Escribir contra la forma vieja sería escribir contra algo que va a cambiar. El mismo motivo que 04.02 y 04.03 dieron |
+| **La reversión que cae en la jornada abierta HOY** y no en la del original (RN-M20-003) | Regla real y no cubierta. Se comprueba mejor de punta a punta —con una jornada cerrada y otra abierta en la base— que con mocks, y el valor unitario sería casi todo verificación de argumentos. Destino: el IT de la primera sesión con Docker |
+| **Que la jornada de otra sede o de otro tenant dé 404 y nunca 403** | La regla está implementada en un único punto —`findByIdInScope` más `CajaAcceso.exigirSedeDelTenant`— y su prueba contra mocks sería la prueba de un `orElseThrow`. `AGENT.md` §6 la exige en **cada** IT, y ahí es donde se va a hacer cumplir |
+| **`DECIMAL` y nunca `float`, y los `@Valid` de los DTOs** | Estructural: lo dicen los tipos declarados en la entity y las anotaciones del request. Un test que los afirme prueba que el compilador funciona |
