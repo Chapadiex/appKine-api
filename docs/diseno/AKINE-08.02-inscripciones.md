@@ -347,7 +347,9 @@ autorizar sin abrir "inscribir a cualquiera". Staff únicamente.
 
 ## 6. Contrato
 
-**Aditivo.** `0.40.0` → **`0.42.0`** (`0.41` está tomada por una etapa en vuelo). Cinco
+**Aditivo.** `0.40.0` → **`0.42.0`**. El número lo fija la etapa y el salto no es un error de
+cuenta: `0.41` queda reservada, igual que 08.01 saltó de `0.33` a `0.40` porque otras etapas en
+vuelo tienen las del medio. Cinco
 operaciones nuevas; ninguna existente cambia de forma. Lo único que cambia de **valor** es
 `ClaseResponse.ocupados`, que deja de ser siempre `0` — el campo ya existía y ya estaba declarado.
 
