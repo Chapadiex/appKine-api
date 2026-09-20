@@ -561,7 +561,57 @@ public enum ProblemType {
 	 * {@link #OFERTA_NO_AGENDABLE}: la oferta existe y quien la eligio la esta viendo en una lista,
 	 * asi que lo que corresponde es ofrecerle reactivarla o elegir otra, no decir "no encontrada".
 	 */
-	OFERTA_NO_VIGENTE("oferta-no-vigente");
+	OFERTA_NO_VIGENTE("oferta-no-vigente"),
+
+	// --- Plan de Tratamiento (M11, AKINE-04.04) ---------------------------------------------
+	/**
+	 * El plan pedido no existe dentro del alcance del actor (404).
+	 *
+	 * <p>Junta "no existe", "es de otro tenant" y "su caso o su historia no resuelven", y es
+	 * deliberado: un 403 confirmaria que la fila existe, y probar ids consecutivos alcanzaria para
+	 * censar cuantos tratamientos tiene en curso otro centro del SaaS. Mismo criterio que
+	 * {@link #CASO_CLINICO_NO_ACCESIBLE}.
+	 */
+	PLAN_NO_ACCESIBLE("plan-no-accesible"),
+	/**
+	 * Se intento cambiar el contenido de un plan FINALIZADO (409, no 404 y no 403).
+	 *
+	 * <p>El plan existe y se sigue leyendo entero, con todas sus versiones —eso distingue "termino"
+	 * de "no existio"— y quien opera si tiene {@code hc:write}: lo que no admite cambios es el
+	 * estado. La accion que la pantalla tiene que ofrecer es <b>crear un plan nuevo</b>, porque un
+	 * plan finalizado no se reabre.
+	 */
+	PLAN_NO_EDITABLE("plan-no-editable"),
+	/**
+	 * La transicion pedida no sale del estado en que esta el plan (409).
+	 *
+	 * <p>Activar un finalizado, reanudar uno que no esta suspendido, suspender un borrador. Lleva
+	 * {@code estadoActual} para que la pantalla diga cual era en vez de un mensaje generico.
+	 *
+	 * <p><b>No</b> cubre los reintentos: suspender lo suspendido o activar lo activo son el mismo
+	 * pedido y se responden 200 con el plan tal como quedo.
+	 */
+	PLAN_TRANSICION_INVALIDA("plan-transicion-invalida"),
+	/**
+	 * Se intento crear o activar un plan sobre un Caso que ya no esta ACTIVO (409).
+	 *
+	 * <p>Es un tipo distinto de {@link #CASO_CLINICO_CERRADO} porque lleva a otra accion: aquel lo
+	 * emite el Caso cuando alguien quiere editarlo, este lo emite el Plan cuando el Caso que lo
+	 * tendria que sostener esta cerrado. Lo que corresponde ofrecer es reabrir el caso con motivo
+	 * antes de planificar nada.
+	 */
+	CASO_NO_ACTIVO("caso-no-activo"),
+	/**
+	 * Una oferta que se quiso planificar no existe en la sede o no esta habilitada hoy (409).
+	 *
+	 * <p>Distinto de {@link #OFERTA_NO_VIGENTE}, que es del alta de Caso: aquella pantalla elige
+	 * <b>una</b> oferta y esta carga <b>varias</b> de una vez, asi que lleva {@code ofertaId} para
+	 * poder señalar cual de todas es la que no entra en vez de rechazar el formulario entero.
+	 *
+	 * <p>Que la oferta se de de baja <b>despues</b> de planificar no invalida el plan: la baja de un
+	 * servicio no cascadea, solo impide crear nuevos.
+	 */
+	OFERTA_NO_HABILITADA("oferta-no-habilitada");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

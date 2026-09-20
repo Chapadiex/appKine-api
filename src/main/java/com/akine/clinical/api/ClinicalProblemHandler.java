@@ -9,14 +9,19 @@ import com.akine.clinical.domain.exception.ArchivoClinicoNoAceptadoException;
 import com.akine.clinical.domain.exception.CasoClinicoCerradoException;
 import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.CasoClinicoPosibleDuplicadoException;
+import com.akine.clinical.domain.exception.CasoNoActivoException;
 import com.akine.clinical.domain.exception.CierreDeCasoSinMotivoException;
 import com.akine.clinical.domain.exception.CursorInvalidoException;
 import com.akine.clinical.domain.exception.EnmiendaSinMotivoException;
 import com.akine.clinical.domain.exception.EntradaClinicaInactivaException;
 import com.akine.clinical.domain.exception.EntradaClinicaNotAccessibleException;
 import com.akine.clinical.domain.exception.HistoriaClinicaNotAccessibleException;
+import com.akine.clinical.domain.exception.OfertaNoHabilitadaException;
 import com.akine.clinical.domain.exception.OfertaNoVigenteException;
 import com.akine.clinical.domain.exception.PacienteSinPerfilVigenteException;
+import com.akine.clinical.domain.exception.PlanNoEditableException;
+import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
+import com.akine.clinical.domain.exception.TransicionDePlanInvalidaException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,6 +88,12 @@ public class ClinicalProblemHandler {
 			ProblemType.CASO_CLINICO_POSIBLE_DUPLICADO.uri();
 	private static final URI CASO_SIN_MOTIVO = ProblemType.CASO_SIN_MOTIVO_DE_CIERRE.uri();
 	private static final URI OFERTA_NO_VIGENTE = ProblemType.OFERTA_NO_VIGENTE.uri();
+	private static final URI PLAN_NO_ACCESIBLE = ProblemType.PLAN_NO_ACCESIBLE.uri();
+	private static final URI PLAN_NO_EDITABLE = ProblemType.PLAN_NO_EDITABLE.uri();
+	private static final URI PLAN_TRANSICION_INVALIDA =
+			ProblemType.PLAN_TRANSICION_INVALIDA.uri();
+	private static final URI CASO_NO_ACTIVO = ProblemType.CASO_NO_ACTIVO.uri();
+	private static final URI OFERTA_NO_HABILITADA = ProblemType.OFERTA_NO_HABILITADA.uri();
 
 	// =================================================================================
 	// 404 — fuera del alcance del actor
@@ -372,6 +383,97 @@ public class ClinicalProblemHandler {
 				HttpStatus.CONFLICT, ex.getMessage());
 		problem.setType(OFERTA_NO_VIGENTE);
 		problem.setTitle("La oferta no esta vigente");
+		problem.setProperty("ofertaId", ex.getOfertaId());
+		return problem;
+	}
+
+	// =================================================================================
+	// Plan de Tratamiento (M11, AKINE-04.04)
+	// =================================================================================
+
+	/**
+	 * <b>404.</b> Mismo criterio que el caso clinico: "no existe", "es de otro tenant" y "su caso o
+	 * su historia no resuelven" son indistinguibles a proposito. Probar ids consecutivos no puede
+	 * servir para censar cuantos tratamientos tiene en curso otro centro del SaaS.
+	 */
+	@ExceptionHandler(PlanTratamientoNotAccessibleException.class)
+	public ProblemDetail handlePlanNoAccesible(PlanTratamientoNotAccessibleException ex) {
+		log.debug("Plan de tratamiento no accesible: planId={}", ex.getPlanId());
+		return noEncontrado(PLAN_NO_ACCESIBLE, "Plan de tratamiento no encontrado",
+				"El plan de tratamiento no existe.");
+	}
+
+	/**
+	 * <b>409, y no 404 ni 403.</b> El plan existe y se sigue leyendo entero con todas sus versiones
+	 * —eso distingue "termino" de "no existio"— y quien opera si tiene {@code hc:write}: lo que no
+	 * admite cambios es el estado.
+	 *
+	 * <p>La accion que la pantalla tiene que ofrecer es <b>crear un plan nuevo</b>: un plan
+	 * finalizado no se reabre. Modificar en silencio un tratamiento terminado es historia clinica
+	 * reescrita, y ADR-0011 lo prohibe.
+	 */
+	@ExceptionHandler(PlanNoEditableException.class)
+	public ProblemDetail handlePlanNoEditable(PlanNoEditableException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(PLAN_NO_EDITABLE);
+		problem.setTitle("El plan de tratamiento no admite cambios");
+		problem.setProperty("planId", ex.getPlanId());
+		problem.setProperty("estado", ex.getEstado());
+		return problem;
+	}
+
+	/**
+	 * <b>409 y no 400.</b> El cuerpo del pedido esta bien formado; lo que no encaja es el estado, y
+	 * la accion que corresponde es releer el plan —puede haber cambiado desde que se dibujo la
+	 * pantalla— y no corregir un campo.
+	 *
+	 * <p>Lleva {@code estadoActual} porque sin el la pantalla no puede decidir que ofrecer: desde
+	 * BORRADOR se activa, desde SUSPENDIDO se reanuda, y desde FINALIZADO no se hace nada salvo
+	 * crear un plan nuevo.
+	 */
+	@ExceptionHandler(TransicionDePlanInvalidaException.class)
+	public ProblemDetail handleTransicionInvalida(TransicionDePlanInvalidaException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(PLAN_TRANSICION_INVALIDA);
+		problem.setTitle("Transicion de plan no permitida");
+		problem.setProperty("planId", ex.getPlanId());
+		problem.setProperty("estadoActual", ex.getEstadoActual());
+		return problem;
+	}
+
+	/**
+	 * <b>409.</b> El caso existe y se lee entero; lo que no admite es un plan de tratamiento nuevo o
+	 * uno que pase a vigente. Un tratamiento para un problema que el centro dio por terminado es un
+	 * tratamiento sin problema que tratar.
+	 *
+	 * <p>Es un {@code type} propio y no {@code caso-clinico-cerrado} porque lleva a otra accion: la
+	 * pantalla tiene que ofrecer <b>reabrir el caso con motivo</b> antes de planificar.
+	 */
+	@ExceptionHandler(CasoNoActivoException.class)
+	public ProblemDetail handleCasoNoActivo(CasoNoActivoException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(CASO_NO_ACTIVO);
+		problem.setTitle("El caso clinico no esta activo");
+		problem.setProperty("casoClinicoId", ex.getCasoClinicoId());
+		return problem;
+	}
+
+	/**
+	 * <b>409 y no 404</b>, mismo criterio que la oferta no vigente del alta de caso.
+	 *
+	 * <p>Lleva {@code ofertaId} y eso es lo que lo distingue de aquel: quien arma un plan carga
+	 * varias practicas de una vez, asi que la pantalla tiene que poder señalar cual de todas es la
+	 * que no entra en vez de rechazar el formulario entero sin decir por que.
+	 */
+	@ExceptionHandler(OfertaNoHabilitadaException.class)
+	public ProblemDetail handleOfertaNoHabilitada(OfertaNoHabilitadaException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(OFERTA_NO_HABILITADA);
+		problem.setTitle("La oferta no esta habilitada");
 		problem.setProperty("ofertaId", ex.getOfertaId());
 		return problem;
 	}
