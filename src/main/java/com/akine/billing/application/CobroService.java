@@ -13,6 +13,7 @@ import com.akine.billing.domain.port.CobroRepositoryPort;
 import com.akine.billing.domain.port.ComprobanteNumeradorPort;
 import com.akine.billing.domain.port.ObligacionRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import org.slf4j.Logger;
@@ -57,13 +58,25 @@ import java.util.Optional;
  * nadie usa: la numeracion fiscal con huecos es peor que un cobro repetido, porque nadie puede
  * explicarla despues.
  *
+ * <h2>El cobro asienta su propio movimiento de caja (AKINE-07.03)</h2>
+ *
+ * <p>Un cobro es un hecho comercial; un movimiento de caja es un hecho monetario. <b>No son lo
+ * mismo y la relacion no es uno a uno</b>: un cobro con efectivo y tarjeta produce dos movimientos
+ * y solo uno afecta el arqueo. El asiento va <b>dentro de esta misma transaccion</b>, por
+ * {@link CajaDeCobro}: si se hiciera despues, la caja y los cobros divergirian sin que falle nada.
+ *
+ * <p><b>Consecuencia que cambia el comportamiento de esta operacion:</b> un cobro que incluye
+ * efectivo ahora exige una jornada de caja abierta en la sede, y sin ella devuelve <b>409
+ * {@code caja-no-abierta}</b>. La plata entra al cajon exista o no la jornada, y si el sistema no
+ * sabe a que jornada pertenece, el arqueo de ese dia no cuadra contra nada. Los medios que no son
+ * efectivo no lo exigen: esa plata nunca toco el cajon.
+ *
  * <h2>Lo que esta etapa NO hace</h2>
  *
- * <p>No registra anticipos ni anula cobros. DP-06 dice que un anticipo se registra "mediante un
- * ledger trazable y MOVIMIENTO REAL DE CAJA", y la Caja es AKINE-07.03, fuera del Paquete B: un
- * anticipo sin caja es plata que entro y que ningun arqueo puede encontrar. Un reintegro, del otro
- * lado, saca dinero de una caja que no existe. Los dos son medias funcionalidades sin M20 y se
- * difieren enteros en vez de a medias.
+ * <p>No registra anticipos ni anula cobros. Los dos quedaron afuera en 07.02 <b>porque no habia
+ * caja</b>; ahora la hay y el primitivo de movimiento y de reversion existe, pero los dos exigen
+ * tocar este agregado —un cobro sin obligacion imputada, y una anulacion que devuelva saldo a la
+ * deuda— y eso es alcance de M19, no de M20.
  */
 @Service
 public class CobroService {
@@ -76,6 +89,7 @@ public class CobroService {
 	private final ComprobanteIniciador iniciador;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
+	private final CajaDeCobro caja;
 
 	public CobroService(
 			CobroRepositoryPort cobros,
@@ -83,7 +97,8 @@ public class CobroService {
 			ComprobanteNumeradorPort numerador,
 			ComprobanteIniciador iniciador,
 			ConsultorioDirectory consultorios,
-			PermissionGuard permissionGuard) {
+			PermissionGuard permissionGuard,
+			CajaDeCobro caja) {
 
 		this.cobros = cobros;
 		this.obligaciones = obligaciones;
@@ -91,6 +106,7 @@ public class CobroService {
 		this.iniciador = iniciador;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
+		this.caja = caja;
 	}
 
 	/**
@@ -106,7 +122,7 @@ public class CobroService {
 			OperatingActor actor, long consultorioId, CobroCommand command) {
 
 		long organizationId = exigirContexto(actor);
-		exigirSedeDelTenant(organizationId, consultorioId);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
 
 		// PASO 1. Antes del numerador: un reintento no puede consumir un numero de comprobante.
@@ -151,21 +167,31 @@ public class CobroService {
 				.map(medio -> new CobroMedio(organizationId, medio.medio(), medio.importe(), medio.referencia()))
 				.toList();
 
+		Instant cobradoEn = Instant.now();
+
 		// El constructor verifica las dos sumas de RN-M19. Se hace ahi y no aca porque son
 		// invariantes del cobro y no del caso de uso: un Cobro que no las cumple no puede existir.
 		Cobro cobro = cobros.save(new Cobro(
 				organizationId, consultorioId, command.personaId(),
 				command.total(), moneda, comprobante,
-				Instant.now(), actor.accountId(),
+				cobradoEn, actor.accountId(),
 				command.idempotencyKey(),
 				command.idempotencyKey() == null ? null : command.huella(consultorioId),
 				medios, imputaciones));
 
+		// PASO 7. Caja (AKINE-07.03). Va DESPUES del save porque necesita el id del cobro como
+		// referencia de origen —es lo que hace idempotente el reintento— y DENTRO de esta misma
+		// transaccion porque un asiento posterior puede no ocurrir: si falla, el cobro no se
+		// confirma. Con efectivo y sin jornada abierta, esto lanza y el cobro entero se rechaza.
+		CobroView vista = CobroView.de(cobro);
+		caja.registrarIngresos(
+				organizationId, sede, cobro.getId(), moneda, medios, cobradoEn, actor.accountId());
+
 		log.info("Cobro registrado: cobroId={} comprobante={} personaId={} total={} {} imputaciones={}",
-				cobro.getId(), comprobante, command.personaId(), command.total(), moneda,
+				vista.id(), comprobante, command.personaId(), command.total(), moneda,
 				imputaciones.size());
 
-		return CobroView.de(cobro);
+		return vista;
 	}
 
 	/**
@@ -250,8 +276,13 @@ public class CobroService {
 		return actor.contextOrganizationId();
 	}
 
-	private void exigirSedeDelTenant(long organizationId, long consultorioId) {
-		consultorios.find(organizationId, consultorioId)
+	/**
+	 * La sede, acotada al tenant. <b>Devuelve el snapshot</b> porque el asiento de caja necesita su
+	 * zona IANA para calcular la fecha de negocio: buscarla de nuevo seria una segunda consulta por
+	 * un dato que ya esta en la mano.
+	 */
+	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {
+		return consultorios.find(organizationId, consultorioId)
 				.orElseThrow(() -> new ConsultorioNoAccesibleException(consultorioId));
 	}
 

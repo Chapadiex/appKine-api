@@ -188,6 +188,19 @@ public final class RolePermissions {
 				// ADMINISTRATIVO en la fila Registrar Cobro; al PROFESIONAL "No por defecto" y al
 				// PLATFORM_ADMIN "No" —soporte mira, no opera—.
 				Map.entry(PermissionCode.COBRO_REGISTER, PermissionScope.ORGANIZACION),
+				// `caja:operate` entra con asignacion base en AKINE-07.03, la etapa que crea la
+				// caja. La matriz §2 le dice "Si" al ORG_ADMIN, al CONSULTORIO_ADMIN y al
+				// ADMINISTRATIVO en la fila Operar Caja, y "No" al PROFESIONAL, al PACIENTE y al
+				// PLATFORM_ADMIN — soporte mira, no opera, igual que con cobro:register.
+				//
+				// ES UN PERMISO DISTINTO DE `cobro:register` Y NO UN SINONIMO. Cobrar es un acto
+				// comercial; abrir, arquear y cerrar una caja es responsabilidad sobre dinero
+				// fisico. Colapsarlos haria que cualquiera que pueda cobrar pudiera tambien
+				// declarar un arqueo, que es justo el control que M20 existe para tener. Por la
+				// razon simetrica, EL COBRO NO EXIGE `caja:operate`: el movimiento que genera es
+				// una consecuencia del cobro, y exigirlo haria que poder cobrar dependiera del
+				// medio de pago elegido.
+				Map.entry(PermissionCode.CAJA_OPERATE, PermissionScope.ORGANIZACION),
 				// `convenio:manage` entra con asignacion base en AKINE-03.03, la etapa que crea el
 				// catalogo de financiadores y planes (M15). La matriz §2 le dice "Si" al ORG_ADMIN
 				// y al CONSULTORIO_ADMIN en la fila Administrar Convenios, y "No" al PROFESIONAL,
@@ -203,22 +216,26 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.CONVENIO_MANAGE, PermissionScope.ORGANIZACION)));
 
 		// CONSULTORIO_ADMIN — todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
-		tabla.put(RoleCode.CONSULTORIO_ADMIN, Map.of(
-				PermissionCode.CONSULTORIO_MANAGE, PermissionScope.CONSULTORIO,
-				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.COLABORADOR_MANAGE, PermissionScope.CONSULTORIO,
-				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.AUDITORIA_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO,
-				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO,
-				PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO,
+		// `Map.ofEntries` y no `Map.of`: AKINE-07.03 sumo `caja:operate` y este mapa llego a once
+		// pares. `Map.of` acepta como mucho diez, y la undecima linea no compila.
+		tabla.put(RoleCode.CONSULTORIO_ADMIN, Map.ofEntries(
+				Map.entry(PermissionCode.CONSULTORIO_MANAGE, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.COLABORADOR_MANAGE, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.AUDITORIA_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO),
+				// AKINE-07.03. Su sede, que es el alcance de su membership.
+				Map.entry(PermissionCode.CAJA_OPERATE, PermissionScope.CONSULTORIO),
 				// AKINE-03.03. La matriz §2 le dice "Si" en Administrar Convenios, igual que al
 				// ORG_ADMIN. El alcance es su sede, que es el de su membership: que el financiador
 				// sea de la ORGANIZACION no lo convierte en un permiso de organizacion — el
 				// alcance sigue siendo el de la membership con la que se decide, mismo criterio
 				// que `paciente:manage` sobre una Persona que tambien es de la organizacion.
-				PermissionCode.CONVENIO_MANAGE, PermissionScope.CONSULTORIO));
+				Map.entry(PermissionCode.CONVENIO_MANAGE, PermissionScope.CONSULTORIO)));
 
 		// PROFESIONAL y ADMINISTRATIVO — ven la lista de colaboradores de su sede y, desde la
 		// aprobacion del 25/08/2026, el catalogo fisico de esa misma sede: sin `espacio:read` un
@@ -263,7 +280,12 @@ public final class RolePermissions {
 				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO,
 				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
 				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO,
-				PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO));
+				PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO,
+				// AKINE-07.03. La matriz §2 le dice "Si" al ADMINISTRATIVO en Operar Caja, y es
+				// coherente: quien esta en el mostrador es quien abre la caja a la manana y la
+				// arquea a la noche. El PROFESIONAL no lo tiene —su celda dice "No"—, a diferencia
+				// de lo que pasa con turnos, donde si agenda a sus propios pacientes.
+				PermissionCode.CAJA_OPERATE, PermissionScope.CONSULTORIO));
 
 		// PACIENTE — ninguna fila de la matriz §6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.

@@ -145,10 +145,36 @@ class RolePermissionsTest {
 		}
 	}
 
+	@Test
+	@DisplayName("`caja:operate` lo tienen los tres roles administrativos, y el PROFESIONAL no")
+	void caja_operate_los_tres_administrativos() {
+		// Salio de la lista de "fases futuras" en AKINE-07.03, la etapa que crea la caja. La
+		// matriz §2, fila Operar Caja, dice `No | Si | Si | No | Si | No`: ORG_ADMIN sobre su
+		// ORGANIZACION, CONSULTORIO_ADMIN y ADMINISTRATIVO sobre SU sede.
+		//
+		// El PROFESIONAL queda afuera a proposito, y es la celda que mas se presta a confundir con
+		// `cobro:register`: cobrar es un acto comercial; abrir, arquear y cerrar una caja es
+		// responsabilidad sobre dinero fisico. Colapsarlos haria que cualquiera que pueda cobrar
+		// pudiera declarar un arqueo, que es justo el control que M20 existe para tener. El
+		// PLATFORM_ADMIN tampoco lo tiene: soporte mira, no opera.
+		assertThat(RolePermissions.baseScope(RoleCode.ORG_ADMIN, PermissionCode.CAJA_OPERATE))
+				.contains(PermissionScope.ORGANIZACION);
+		assertThat(RolePermissions.baseScope(RoleCode.CONSULTORIO_ADMIN,
+				PermissionCode.CAJA_OPERATE)).contains(PermissionScope.CONSULTORIO);
+		assertThat(RolePermissions.baseScope(RoleCode.ADMINISTRATIVO, PermissionCode.CAJA_OPERATE))
+				.contains(PermissionScope.CONSULTORIO);
+
+		for (RoleCode rol : new RoleCode[] {RoleCode.PROFESIONAL, RoleCode.PACIENTE,
+				RoleCode.PLATFORM_ADMIN}) {
+			assertThat(RolePermissions.baseScope(rol, PermissionCode.CAJA_OPERATE))
+					.as("%s no opera la caja: la matriz §2 le dice No en esa fila", rol)
+					.isEmpty();
+		}
+	}
+
 	@ParameterizedTest
 	@EnumSource(value = PermissionCode.class, names = {
-			"CASO_CREATE",
-			"CAJA_OPERATE", "REPORTE_READ"})
+			"CASO_CREATE", "REPORTE_READ"})
 	@DisplayName("Los permisos de fases futuras estan declarados y no los tiene NINGUN rol")
 	void los_permisos_de_fases_futuras_deniegan_para_todos(PermissionCode permiso) {
 		// Estan en el catalogo para que agregar una fase sea sumar filas y no rehacer el modelo.

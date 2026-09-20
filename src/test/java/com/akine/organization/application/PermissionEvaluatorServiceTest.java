@@ -518,7 +518,13 @@ class PermissionEvaluatorServiceTest {
 							// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`,
 							// el modulo que lo evalua. La matriz §2 se lo da al ORG_ADMIN en la fila
 							// Administrar Convenios y la enmienda esta en la matriz §13.
-							"convenio:manage");
+							"convenio:manage",
+							// `caja:operate` se sumo en AKINE-07.03, la etapa que crea la caja. La
+							// matriz §2 se lo da al ORG_ADMIN en la fila Operar Caja, con alcance
+							// ORGANIZACION. Es un permiso DISTINTO de `cobro:register` y no un
+							// sinonimo: cobrar es un acto comercial, arquear y cerrar una caja es
+							// responsabilidad sobre dinero fisico. Por eso aparecen los dos.
+							"caja:operate");
 		}
 
 		@Test

@@ -1,7 +1,17 @@
 package com.akine.billing.api;
 
 import com.akine.billing.application.IdempotencyKeyConflictException;
+import com.akine.billing.domain.exception.CajaCerradaException;
+import com.akine.billing.domain.exception.CajaDiferenciaSinMotivoException;
+import com.akine.billing.domain.exception.CajaMonedaDistintaException;
+import com.akine.billing.domain.exception.CajaNoAbiertaException;
+import com.akine.billing.domain.exception.CajaSaldoCambioException;
+import com.akine.billing.domain.exception.CajaSaldoInsuficienteException;
+import com.akine.billing.domain.exception.CajaYaAbiertaException;
 import com.akine.billing.domain.exception.CobroNotAccessibleException;
+import com.akine.billing.domain.exception.JornadaCajaNotAccessibleException;
+import com.akine.billing.domain.exception.MovimientoCajaNotAccessibleException;
+import com.akine.billing.domain.exception.MovimientoNoReversibleException;
 import com.akine.billing.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.billing.domain.exception.ImputacionesNoSumanException;
 import com.akine.billing.domain.exception.MediosNoSumanException;
@@ -36,6 +46,14 @@ public class BillingProblemHandler {
 	private static final URI SALDO_INSUFICIENTE = ProblemType.SALDO_INSUFICIENTE.uri();
 	private static final URI OBLIGACION_NO_COBRABLE = ProblemType.OBLIGACION_NO_COBRABLE.uri();
 	private static final URI IDEMPOTENCY_KEY_CONFLICT = ProblemType.IDEMPOTENCY_KEY_CONFLICT.uri();
+	private static final URI CAJA_NO_ABIERTA = ProblemType.CAJA_NO_ABIERTA.uri();
+	private static final URI CAJA_YA_ABIERTA = ProblemType.CAJA_YA_ABIERTA.uri();
+	private static final URI CAJA_CERRADA = ProblemType.CAJA_CERRADA.uri();
+	private static final URI CAJA_SALDO_CAMBIO = ProblemType.CAJA_SALDO_CAMBIO.uri();
+	private static final URI CAJA_SALDO_INSUFICIENTE = ProblemType.CAJA_SALDO_INSUFICIENTE.uri();
+	private static final URI CAJA_MONEDA_DISTINTA = ProblemType.CAJA_MONEDA_DISTINTA.uri();
+	private static final URI MOVIMIENTO_NO_REVERSIBLE = ProblemType.MOVIMIENTO_NO_REVERSIBLE.uri();
+	private static final URI CAJA_DIFERENCIA_SIN_MOTIVO = ProblemType.CAJA_DIFERENCIA_SIN_MOTIVO.uri();
 
 	@ExceptionHandler(ConsultorioNoAccesibleException.class)
 	public ProblemDetail handleConsultorioNoAccesible(ConsultorioNoAccesibleException exception) {
@@ -143,6 +161,129 @@ public class BillingProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(IDEMPOTENCY_KEY_CONFLICT);
 		problem.setTitle("La clave de idempotencia se reuso con otro pedido");
+		return problem;
+	}
+
+	// =================================================================================
+	// Caja diaria — M20
+	// =================================================================================
+
+	@ExceptionHandler(JornadaCajaNotAccessibleException.class)
+	public ProblemDetail handleJornadaNoAccesible(JornadaCajaNotAccessibleException exception) {
+		log.debug("Jornada de caja no accesible: jornadaId={}", exception.getJornadaId());
+		return noEncontrado("La jornada de caja no existe.");
+	}
+
+	@ExceptionHandler(MovimientoCajaNotAccessibleException.class)
+	public ProblemDetail handleMovimientoNoAccesible(MovimientoCajaNotAccessibleException exception) {
+		log.debug("Movimiento de caja no accesible: movimientoId={}", exception.getMovimientoId());
+		return noEncontrado("El movimiento de caja no existe.");
+	}
+
+	/**
+	 * <b>409.</b> No hay caja abierta.
+	 *
+	 * <p>Puede llegar desde el registro de un cobro y no solo desde la caja, y por eso el detalle
+	 * nombra la sede: la pantalla tiene que poder ofrecer "abrir caja" en vez de decir "no se
+	 * puede", que dejaria al administrativo trabado sin entender por que.
+	 */
+	@ExceptionHandler(CajaNoAbiertaException.class)
+	public ProblemDetail handleCajaNoAbierta(CajaNoAbiertaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(CAJA_NO_ABIERTA);
+		problem.setTitle("No hay una caja abierta en esta sede");
+		problem.setProperty("consultorioId", exception.getConsultorioId());
+		return problem;
+	}
+
+	/** <b>409.</b> Lleva el id de la que ya esta abierta, para poder llevar al operador ahi. */
+	@ExceptionHandler(CajaYaAbiertaException.class)
+	public ProblemDetail handleCajaYaAbierta(CajaYaAbiertaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(CAJA_YA_ABIERTA);
+		problem.setTitle("La sede ya tiene una caja abierta");
+		problem.setProperty("jornadaAbiertaId", exception.getJornadaAbiertaId());
+		return problem;
+	}
+
+	@ExceptionHandler(CajaCerradaException.class)
+	public ProblemDetail handleCajaCerrada(CajaCerradaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(CAJA_CERRADA);
+		problem.setTitle("La jornada de caja ya esta cerrada");
+		problem.setProperty("jornadaId", exception.getJornadaId());
+		return problem;
+	}
+
+	/**
+	 * <b>409.</b> Entraron movimientos mientras el operador contaba.
+	 *
+	 * <p>Lleva el teorico actual porque sin el la pantalla solo puede decir "volve a intentar", y el
+	 * operador reintentaria exactamente lo mismo. Con el, puede decir cuanto entro y ofrecer
+	 * confirmar contra el numero nuevo.
+	 */
+	@ExceptionHandler(CajaSaldoCambioException.class)
+	public ProblemDetail handleCajaSaldoCambio(CajaSaldoCambioException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(CAJA_SALDO_CAMBIO);
+		problem.setTitle("El saldo teorico cambio mientras se contaba");
+		problem.setProperty("jornadaId", exception.getJornadaId());
+		problem.setProperty("saldoTeoricoEsperado", exception.getSaldoTeoricoEsperado());
+		problem.setProperty("saldoTeoricoActual", exception.getSaldoTeoricoActual());
+		return problem;
+	}
+
+	@ExceptionHandler(CajaSaldoInsuficienteException.class)
+	public ProblemDetail handleCajaSaldoInsuficiente(CajaSaldoInsuficienteException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(CAJA_SALDO_INSUFICIENTE);
+		problem.setTitle("La caja no tiene ese saldo");
+		problem.setProperty("jornadaId", exception.getJornadaId());
+		problem.setProperty("importeIntentado", exception.getImporteIntentado());
+		problem.setProperty("saldoDisponible", exception.getSaldoDisponible());
+		return problem;
+	}
+
+	@ExceptionHandler(CajaMonedaDistintaException.class)
+	public ProblemDetail handleCajaMonedaDistinta(CajaMonedaDistintaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(CAJA_MONEDA_DISTINTA);
+		problem.setTitle("La caja opera en otra moneda");
+		problem.setProperty("monedaDeLaCaja", exception.getMonedaDeLaCaja());
+		problem.setProperty("monedaDelMovimiento", exception.getMonedaDelMovimiento());
+		return problem;
+	}
+
+	@ExceptionHandler(MovimientoNoReversibleException.class)
+	public ProblemDetail handleMovimientoNoReversible(MovimientoNoReversibleException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(MOVIMIENTO_NO_REVERSIBLE);
+		problem.setTitle("El movimiento de caja no admite reversion");
+		problem.setProperty("movimientoId", exception.getMovimientoId());
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	/**
+	 * <b>400 y no 409.</b> El estado del servidor esta perfecto; falta un campo del cuerpo.
+	 *
+	 * <p>Lleva la diferencia calculada para que la pantalla pueda decir cuanto falta o cuanto sobra
+	 * mientras pide el motivo.
+	 */
+	@ExceptionHandler(CajaDiferenciaSinMotivoException.class)
+	public ProblemDetail handleDiferenciaSinMotivo(CajaDiferenciaSinMotivoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(CAJA_DIFERENCIA_SIN_MOTIVO);
+		problem.setTitle("El arqueo no cuadra y no declara motivo");
+		problem.setProperty("diferencia", exception.getDiferencia());
 		return problem;
 	}
 

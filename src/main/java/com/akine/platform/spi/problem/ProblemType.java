@@ -652,7 +652,79 @@ public enum ProblemType {
 	 * dato del pedido. Confundirlos haria que la pantalla ofrezca "reintentar" donde lo que
 	 * corresponde es "completa el motivo".
 	 */
-	REVERSION_SIN_MOTIVO("reversion-sin-motivo");
+	REVERSION_SIN_MOTIVO("reversion-sin-motivo"),
+
+	// --- Caja diaria (M20, AKINE-07.03) ------------------------------------------------------
+	/**
+	 * La sede no tiene una jornada de caja abierta y la operacion exige una (409).
+	 *
+	 * <p><b>Es el que puede aparecer al registrar un cobro</b>, y no solo en las operaciones de
+	 * caja: un cobro que incluye efectivo lo exige. La plata entra al cajon exista o no la jornada,
+	 * y si el sistema no sabe a cual pertenece, el arqueo de ese dia no cuadra contra nada. Los
+	 * medios que no son efectivo no lo producen: esa plata nunca toco el cajon.
+	 *
+	 * <p>La pantalla tiene que ofrecer abrir la caja ante este error; si solo dice "no se puede", el
+	 * administrativo queda trabado sin entender por que.
+	 */
+	CAJA_NO_ABIERTA("caja-no-abierta"),
+	/**
+	 * Ya hay una jornada abierta en esa sede (409). Lleva {@code jornadaAbiertaId}.
+	 *
+	 * <p>A lo sumo una por sede: dos cajas abiertas sobre el mismo cajon fisico hacen que ningun
+	 * arqueo se pueda atribuir. El id viaja para que la pantalla lleve al operador a la jornada que
+	 * ya existe en vez de dejarlo sin salida.
+	 */
+	CAJA_YA_ABIERTA("caja-ya-abierta"),
+	/**
+	 * La jornada ya estaba cerrada (409). RN-M20-003: una caja cerrada no se edita en silencio.
+	 *
+	 * <p>Es tambien el desenlace del <b>cierre concurrente</b>: dos cierres simultaneos, el segundo
+	 * afecta cero filas. No existe la reapertura — un error se compensa con movimientos en la
+	 * jornada abierta hoy.
+	 */
+	CAJA_CERRADA("caja-cerrada"),
+	/**
+	 * El saldo teorico cambio entre que el operador empezo a contar y confirmo el cierre (409).
+	 * Lleva {@code saldoTeoricoActual}.
+	 *
+	 * <p><b>Es el control que impide registrar un faltante que nunca existio.</b> Si un cobro en
+	 * efectivo entra mientras se cuenta, un cierre ingenuo lo registraria como diferencia y
+	 * RN-M20-004 obligaria a justificar por escrito un desvio inventado. La accion correcta es
+	 * sumar los billetes que entraron y confirmar contra el numero nuevo.
+	 */
+	CAJA_SALDO_CAMBIO("caja-saldo-cambio"),
+	/**
+	 * El egreso dejaria la caja en negativo (409). Lleva {@code saldoDisponible}.
+	 *
+	 * <p>No es una regla de negocio configurable: un cajon no puede tener menos de cero pesos. Lo
+	 * decide una condicion del motor —{@code WHERE saldo_arqueo >= :importe}— y no un {@code if},
+	 * asi que dos egresos concurrentes no pueden colarse los dos.
+	 */
+	CAJA_SALDO_INSUFICIENTE("caja-saldo-insuficiente"),
+	/**
+	 * El movimiento viene en una moneda distinta de la de la jornada (409).
+	 *
+	 * <p>Un arqueo que suma pesos con dolares no se puede contar, y convertir exigiria una
+	 * cotizacion que es una decision de negocio que nadie tomo.
+	 */
+	CAJA_MONEDA_DISTINTA("caja-moneda-distinta"),
+	/**
+	 * Ese movimiento de caja no admite reversion (409). Lleva {@code motivo}.
+	 *
+	 * <p>Dos causas bajo un solo tipo, porque para la pantalla el desenlace es el mismo: ya fue
+	 * revertido, o es una reversion —y una reversion no se revierte, se asienta un movimiento
+	 * nuevo—. Es un tipo distinto de {@link #MOVIMIENTO_YA_REVERTIDO}, que es del ledger de
+	 * autorizaciones (M17) y no del de caja.
+	 */
+	MOVIMIENTO_NO_REVERSIBLE("movimiento-no-reversible"),
+	/**
+	 * El arqueo no cuadra y el cierre no trae motivo (400). RN-M20-004.
+	 *
+	 * <p><b>400 y no 409</b>: el estado del servidor esta perfecto y lo que falta es un campo del
+	 * cuerpo. La diferencia no se rechaza —eso dejaria al centro sin poder cerrar el dia en que
+	 * realmente falta plata— y no se ajusta; lo unico que se exige es que alguien escriba por que.
+	 */
+	CAJA_DIFERENCIA_SIN_MOTIVO("caja-diferencia-sin-motivo");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
