@@ -60,6 +60,26 @@ public class Obligacion {
 	@Column(name = "responsable", nullable = false, length = 16, updatable = false)
 	private Responsable responsable;
 
+	/**
+	 * Quien es el financiador cuando {@link #responsable} es {@link Responsable#FINANCIADOR}.
+	 *
+	 * <p>Agregada por AKINE-07.04 (V56) y <b>obligatoria en los dos sentidos por CHECK</b>: una
+	 * deuda de financiador sin financiador no se puede reclamar, y una deuda de paciente con un
+	 * financiador colgado aparece en una bandeja que no le corresponde.
+	 *
+	 * <p>Sin ella no hay por donde agrupar: RF-M21-001 pide listar las obligaciones de un
+	 * financiador por periodo. Se descarto deducirla navegando
+	 * {@code snapshot_convenio_id -> convenio -> financiador}, que obligaria a {@code billing} a
+	 * recorrer el agregado de {@code contracting} y que ademas dejaria sin financiador a las deudas
+	 * historicas de un convenio dado de baja.
+	 *
+	 * <p><b>Hoy no la escribe nadie.</b> {@code ObligacionDevengador} devenga una sola obligacion, a
+	 * nombre del paciente: es lo que DP-10 recorto y el enchufe que 03.05 dejo reservado en V36 y
+	 * nunca volvio a conectar.
+	 */
+	@Column(name = "financiador_id", updatable = false)
+	private Long financiadorId;
+
 	@Column(name = "importe_original", nullable = false, precision = 12, scale = 2, updatable = false)
 	private BigDecimal importeOriginal;
 
@@ -125,6 +145,45 @@ public class Obligacion {
 			String snapshotNombre,
 			Instant devengadaEn) {
 
+		this(organizationId, consultorioId, sesionId, personaId, responsable, null, importe,
+				moneda, ofertaId, snapshotNombre, devengadaEn);
+	}
+
+	/**
+	 * La deuda que le corresponde a un financiador (AKINE-07.04).
+	 *
+	 * <p>Exige el {@code financiadorId} en la firma y no lo deja opcional: es lo que hace que la
+	 * deuda se pueda reclamar. El {@code CHECK} de V56 lo respalda del lado de la base.
+	 *
+	 * <p><b>Hoy no la invoca nadie</b>, y esa es la reserva declarada del design challenge: el
+	 * devengado sigue produciendo una sola obligacion a nombre del paciente.
+	 */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public Obligacion(
+			long organizationId,
+			long consultorioId,
+			long sesionId,
+			long personaId,
+			Responsable responsable,
+			Long financiadorId,
+			BigDecimal importe,
+			String moneda,
+			long ofertaId,
+			String snapshotNombre,
+			Instant devengadaEn) {
+
+		if (responsable == Responsable.FINANCIADOR && financiadorId == null) {
+			// El CHECK de V56 lo impide igual. Aca se atrapa antes para poder decir cual es el
+			// problema, en vez de dejar reventar una constraint que ademas dejaria la transaccion
+			// marcada para rollback.
+			throw new IllegalArgumentException(
+					"Una obligacion a cargo del financiador necesita saber de que financiador es");
+		}
+		if (responsable != Responsable.FINANCIADOR && financiadorId != null) {
+			throw new IllegalArgumentException(
+					"Una obligacion del paciente no lleva financiador: " + financiadorId);
+		}
+
 		if (importe == null || importe.signum() <= 0) {
 			// "No cobrar saldo cero" es regla de la etapa. Una deuda de cero solo ensucia la
 			// cuenta corriente con filas que nadie va a pagar, y una negativa es un credito
@@ -137,6 +196,7 @@ public class Obligacion {
 		this.sesionId = sesionId;
 		this.personaId = personaId;
 		this.responsable = responsable;
+		this.financiadorId = financiadorId;
 		this.importeOriginal = importe;
 		this.saldo = importe;
 		this.moneda = moneda;
@@ -199,6 +259,10 @@ public class Obligacion {
 
 	public Responsable getResponsable() {
 		return responsable;
+	}
+
+	public Long getFinanciadorId() {
+		return financiadorId;
 	}
 
 	public BigDecimal getImporteOriginal() {
