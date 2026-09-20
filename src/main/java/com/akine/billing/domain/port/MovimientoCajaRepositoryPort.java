@@ -29,6 +29,22 @@ public interface MovimientoCajaRepositoryPort {
 	boolean existeReversionDe(long organizationId, long movimientoOrigenId);
 
 	/**
+	 * El movimiento que asento un hecho de otro agregado — hoy, el pago de un egreso (M22).
+	 *
+	 * <p>Existe porque <b>es el movimiento el que apunta al pago, no al reves</b>: {@code pago_egreso}
+	 * no tiene {@code movimiento_caja_id}, igual que {@code cobro} no tiene {@code jornada_caja_id}.
+	 * Para revertir un pago hay que encontrar su movimiento, y este es el camino.
+	 *
+	 * <p>A lo sumo uno: lo garantiza
+	 * {@code uk_movimiento_caja_origen (organization_id, tipo, tipo_origen, referencia_origen, medio)}
+	 * mas el hecho de que un pago tiene un solo medio.
+	 *
+	 * @param tipoOrigen nombre del {@link com.akine.billing.domain.OrigenMovimiento}
+	 */
+	Optional<MovimientoCaja> findPorOrigen(
+			long organizationId, String tipoOrigen, long referenciaOrigen);
+
+	/**
 	 * La operatoria, filtrada (RF-M20-004).
 	 *
 	 * <p>Por jornada, o por fecha de negocio de la sede — que es lo que permite ver tambien los

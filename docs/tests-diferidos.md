@@ -308,3 +308,31 @@ elegibles devuelve lista vacía.
 **No es deuda de verificación: es un cimiento que falta**, y su destino no es "la primera sesión con
 Docker" sino una etapa propia —recablear el devengado, con migración y cambio de contrato—. Está en
 §2 y §7 del design challenge de AKINE-07.04, y es una **decisión pendiente del usuario**.
+## AKINE-07.05 — Egresos y pagos a profesionales (M22)
+
+**No se escribió ni un `*IT.java`.** Docker no arranca, y la etapa entregó **un solo archivo de
+test unitario con cinco casos**, por decisión explícita del usuario: cubrir lo que la etapa exige y
+avanzar. Lo que sigue no es una lista de tests escritos y no corridos —como la de 04.02 y 04.03—
+sino de **escenarios que sólo se pueden probar contra MySQL real y que todavía no tienen clase**.
+
+Es una deuda más grande que la de aquellas etapas, y conviene que se lea como lo que es: las tres
+primeras filas son las que deciden si el dinero cuadra.
+
+| # | Escenario | Por qué sólo se puede probar contra el motor | Etapa destino |
+|---|---|---|---|
+| 41 | **Dos pagos concurrentes en efectivo contra un cajón que no alcanza para los dos.** Es *el caso que rompe el diseño* (challenge §8): 80.000 en la caja, dos administrativos pagan 50.000 cada uno. Tiene que entrar **uno solo**, y el otro recibir 409 `caja-saldo-insuficiente`. Hoy las dos condiciones —`saldo_pendiente >= :importe` en `egreso` y `saldo_arqueo >= :importe` en `jornada_caja`— están **razonadas y no probadas bajo concurrencia** | Una condición del `WHERE` sólo se puede observar con dos transacciones peleándose. Un mock que devuelve cero filas prueba la rama del `if`, no que el motor serialice — es exactamente lo que 04.05 dejó anotado sobre la última unidad de una autorización | **Primera sesión con Docker** |
+| 42 | **Dos pagos concurrentes contra el mismo egreso.** La segunda condición, la del compromiso: pagar 100.000 dos veces contra una liquidación de 100.000 tiene que dejar `saldo_pendiente` en cero y no en −100.000, y el segundo recibir `egreso-saldo-insuficiente` | Igual que 33 | **Primera sesión con Docker** |
+| 43 | **La suma de los pagos vigentes contra `saldo_pendiente`.** `PagoEgresoRepositoryPort.totalPagadoVigente` existe para esto y **hoy no lo usa nadie**: si la columna y las filas divergen, nada lo detecta. Es el mismo hueco que 04.05 dejó entre el ledger de autorizaciones y `cantidad_consumida` | La divergencia aparece después de una secuencia de pagos y anulaciones reales, con los `UPDATE` nativos y el `clearAutomatically` de por medio | **Primera sesión con Docker** |
+| 44 | **`V57` contra el motor.** Los diez `CHECK` de `egreso` —en particular `ck_egreso_borrador_sin_pagos`, `ck_egreso_beneficiario_coherente` y `ck_egreso_periodo_coherente`, cada uno en sus dos direcciones—, la columna generada **`anulado_key`** (que exista, sea `STORED` y valga el centinela `'1970-01-01'`), el unique del comprobante **con y sin** anulación de por medio, los cuatro `CHECK` de `pago_egreso`, y el `ALTER` que agrega `PAGO_EGRESO` al `CHECK` de `movimiento_caja` —**incluido que los tres valores viejos sigan siendo válidos**— | MySQL ignoró en silencio toda la sintaxis `CHECK` hasta 8.0.16, y en 8.4 una expresión mal escrita sobre una columna generada falla con un **3819** que sólo aparece al ejecutar. Es lo que esta clase de test ya destapó en 03.06. **Ninguna migración de esta etapa se aplicó jamás contra un motor** | **Primera sesión con Docker** |
+| 45 | **El ciclo completo: borrador → confirmar → pagar parcial → anular pago → pagar total → anular egreso rechazado.** Con `movimiento_caja` acumulando `EGRESO` y `REVERSION_DE_EGRESO` en orden, el saldo de la jornada volviendo a su valor, y el 409 `egreso-con-pagos` cuando queda un pago vigente | Tres agregados y dos `UPDATE` nativos con `clearAutomatically`: es exactamente donde la copia en memoria de JPA y la fila real se separan, y es la trampa que este repositorio ya pagó | **Primera sesión con Docker** |
+| 46 | **La compensación cae en la jornada abierta HOY.** Pagar en la jornada A, cerrarla, abrir la jornada B y anular el pago: la reversión tiene que asentarse en **B**, y el `saldo_teorico_cierre` de A tiene que quedar **intacto** | Exige dos jornadas reales, un cierre real y releer una fila que la transacción anterior ya escribió | **Primera sesión con Docker** |
+| 47 | **El arreglo de `revertir` sin caja abierta.** Anular un pago hecho **por transferencia** cuando la sede no tiene jornada abierta tiene que funcionar —es el defecto heredado de 07.03 que esta etapa corrige— y anular uno **en efectivo** en la misma situación tiene que seguir rechazándose con `caja-no-abierta` | El movimiento sin jornada sólo existe contra la base: el `CHECK (medio <> 'EFECTIVO' OR jornada_caja_id IS NOT NULL)` es quien lo sostiene | **Primera sesión con Docker** |
+| 48 | **Aislamiento de tenant de lo que 07.05 agrega.** Un actor del tenant B no lista, ve, edita, confirma, anula ni paga un egreso del tenant A, y no anula un pago de A. Resultado **404, nunca 403** | `AGENT.md` §6 lo exige en **cada** test de integración | **Primera sesión con Docker** |
+
+### Lo que esta etapa deliberadamente NO cubre, ni ahora ni después
+
+| Escenario | Por qué |
+|---|---|
+| **La capa REST de las ocho operaciones nuevas** | Mismo motivo que en 04.02 y 04.03: un IT de `api` exigiría el contrato regenerado, y `0.39.0` está en drift. Escribir contra el contrato viejo sería escribir contra una forma que va a cambiar |
+| **El adjunto binario del comprobante (RF-M22-003)** | No está implementado. La etapa entrega la **referencia** documental —tipo, número y fecha— y no el archivo, porque sería el **tercer consumidor** del storage duplicado y la condición de salida escrita desde 04.02 es extraerlo a `platform.spi`. Eso refactoriza dos módulos cerrados y es una etapa propia. **Decisión pendiente del usuario** |
+| **El cálculo de la liquidación desde las sesiones** | Fuera de alcance por el plan: *"sin inventar regla remunerativa"*. RF-M22-006 y RF-M22-007 son de la segunda entrega |

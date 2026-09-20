@@ -35,9 +35,24 @@ final class AuditEvents {
 	static final String PRESENTACION_CONCILIADA = "PRESENTACION_CONCILIADA";
 	static final String PRESENTACION_ANULADA = "PRESENTACION_ANULADA";
 
+	/**
+	 * Egresos y pagos a profesionales (M22).
+	 *
+	 * <p>Se auditan las cinco mutaciones y <b>no la consulta</b>: no es acceso clinico —donde toda
+	 * lectura se audita por DP-03— y el volumen de un listado la volveria ruido que tapa lo que
+	 * importa.
+	 */
+	static final String EGRESO_REGISTRADO = "EGRESO_REGISTRADO";
+	static final String EGRESO_CONFIRMADO = "EGRESO_CONFIRMADO";
+	static final String EGRESO_ANULADO = "EGRESO_ANULADO";
+	static final String EGRESO_PAGADO = "EGRESO_PAGADO";
+	static final String EGRESO_PAGO_ANULADO = "EGRESO_PAGO_ANULADO";
+
 	static final String ENTITY_JORNADA_CAJA = "JornadaCaja";
 	static final String ENTITY_MOVIMIENTO_CAJA = "MovimientoCaja";
 	static final String ENTITY_PRESENTACION = "Presentacion";
+	static final String ENTITY_EGRESO = "Egreso";
+	static final String ENTITY_PAGO_EGRESO = "PagoEgreso";
 
 	private static final String MDC_TRACE_ID = "traceId";
 

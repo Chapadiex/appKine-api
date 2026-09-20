@@ -804,7 +804,74 @@ public enum ProblemType {
 	 * numera, lo registra, y lo unico que puede hacer es impedir que el mismo numero quede asociado
 	 * a dos lotes.
 	 */
-	FACTURA_DUPLICADA("factura-duplicada");
+	FACTURA_DUPLICADA("factura-duplicada"),
+
+	// =================================================================================
+	// Egresos y pagos a profesionales — M22 (AKINE-07.05)
+	//
+	// Del lado del egreso tambien son tres cosas: el compromiso (`egreso`), el acto de
+	// saldarlo (`pago_egreso`) y el hecho monetario (`movimiento_caja`, reusado de M20).
+	// Estos tipos son los del compromiso y del pago; los de la caja se reusan tal cual.
+	// =================================================================================
+
+	/**
+	 * Se intenta editar un egreso que ya no es borrador (409).
+	 *
+	 * <p>Confirmar congela beneficiario, importe y comprobante. Un importe que cambiara debajo de
+	 * pagos ya asentados haria que el saldo dejara de reconciliar con el ledger de caja
+	 * <b>sin que nada fallara</b>.
+	 */
+	EGRESO_NO_EDITABLE("egreso-no-editable"),
+	/** Se intenta confirmar algo que ya no es un borrador (409). */
+	EGRESO_NO_CONFIRMABLE("egreso-no-confirmable"),
+	/**
+	 * Se confirma un egreso sin tipo ni numero de comprobante (<b>400</b>).
+	 *
+	 * <p>400 y no 409: el estado del servidor esta perfecto y lo que falta es un campo del cuerpo,
+	 * mismo criterio que {@link #CAJA_DIFERENCIA_SIN_MOTIVO}. En borrador el comprobante es
+	 * opcional a proposito: la liquidacion se arma antes de tener la factura en la mano.
+	 */
+	EGRESO_SIN_COMPROBANTE("egreso-sin-comprobante"),
+	/** El egreso ya estaba anulado (409). Anular no borra: la fila sigue ahi con su motivo. */
+	EGRESO_YA_ANULADO("egreso-ya-anulado"),
+	/**
+	 * Se anula un egreso que todavia tiene pagos vigentes (409).
+	 *
+	 * <p>Lleva {@code yaPagado}: sin ese numero la pantalla solo puede decir "no se puede", y con
+	 * el puede nombrar la accion correcta — anular primero los pagos, que es lo que devuelve la
+	 * plata al cajon.
+	 */
+	EGRESO_CON_PAGOS("egreso-con-pagos"),
+	/**
+	 * El egreso no admite el pago por su estado (409).
+	 *
+	 * <p>Un borrador no se paga, un anulado tampoco, y uno saldado no debe nada. <b>Solo un egreso
+	 * confirmado puede mover la caja</b>: es como esta etapa lee RN-M22-001.
+	 */
+	EGRESO_NO_PAGABLE("egreso-no-pagable"),
+	/**
+	 * El pago excede lo que todavia se debe (409).
+	 *
+	 * <p>409 y no 400: el importe era valido cuando se compuso y lo que cambio es el estado del
+	 * servidor, porque otro pago se llevo el saldo primero.
+	 */
+	EGRESO_SALDO_INSUFICIENTE("egreso-saldo-insuficiente"),
+	/**
+	 * Ese comprobante de ese beneficiario ya esta cargado y vigente (409).
+	 *
+	 * <p>Es el caso borde "factura externa duplicada". La clave del beneficiario entra en la
+	 * unicidad porque dos proveedores distintos emiten legitimamente su propia factura numero uno.
+	 */
+	EGRESO_COMPROBANTE_DUPLICADO("egreso-comprobante-duplicado"),
+	/** El pago ya estaba anulado (409). Revertir dos veces sacaria plata del cajon dos veces. */
+	PAGO_EGRESO_YA_ANULADO("pago-egreso-ya-anulado"),
+	/**
+	 * Se crea un egreso contra una membership que no esta vigente (409).
+	 *
+	 * <p><b>Solo al crear.</b> Confirmar y pagar un egreso cuyo beneficiario ya se desvinculo tiene
+	 * que funcionar: lo contrario convertiria una desvinculacion en una forma de no pagar.
+	 */
+	BENEFICIARIO_NO_VINCULADO("beneficiario-no-vinculado");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
