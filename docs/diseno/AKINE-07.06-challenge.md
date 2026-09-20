@@ -209,7 +209,7 @@ se compensa, no se edita.** Excluir una reversión rompería el arqueo, que es s
 **Aditivo puro.** Tres paths nuevos bajo `/api/v1/consultorios/{id}/reportes`, ninguno existente
 modificado, ningún schema existente tocado, ningún `operationId` renombrado.
 
-`0.40.0 → 0.41.0`, minor. Se declara en `pom.xml`, `application.yml` y el `info.version` del YAML.
+`0.41.0`, minor. La rama parte de `0.39.0`; **`0.40.0` queda reservada por una etapa en vuelo**, igual que `V58`. Se declara en `pom.xml`, `application.yml` y el `info.version` del YAML.
 
 > **Los `paths` del YAML no se editan a mano**: se regeneran con
 > `./mvnw verify -Dakine.contract.update=true`, que es un test de integración y **necesita Docker**.

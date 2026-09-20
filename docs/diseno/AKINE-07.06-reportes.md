@@ -269,7 +269,7 @@ Permiso: `cobro:register`. Indicadores `prestado`, `presentado`, `facturado`, `d
 Parámetros: `desde` y `hasta` (`LocalDate`, obligatorios, inclusivos, en la zona de la sede).
 
 **Cambio de contrato: puramente aditivo.** Tres paths nuevos, ningún path existente tocado, ningún
-schema existente modificado. Minor: **0.40.0 → 0.41.0**.
+schema existente modificado. Minor: **0.41.0**, desde el `0.39.0` que esta rama declara. `0.40.0` queda reservada por una etapa en vuelo.
 
 ### La respuesta declara lo que no muestra
 
