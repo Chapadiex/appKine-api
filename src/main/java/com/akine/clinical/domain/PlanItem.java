@@ -95,15 +95,21 @@ public class PlanItem extends MarcaTemporal {
 	@Column(name = "cantidad_planificada", nullable = false, updatable = false)
 	private Integer cantidadPlanificada;
 
-	/** Lo que la cobertura otorgo. {@code null} = sin tope declarado, que no es cero. */
-	@Column(name = "cantidad_autorizada", updatable = false)
+	/**
+	 * Lo que la cobertura otorgo. {@code null} = sin tope declarado, que no es cero.
+	 *
+	 * <p><b>Editable desde 04.05 y solo por {@link #vincularAutorizacion}</b>, que es lo unico que
+	 * puede cambiarla sin crear una version: atar la autorizacion real reemplaza el numero
+	 * declarado por el que el financiador otorgo, y son el mismo dato con mejor fuente.
+	 */
+	@Column(name = "cantidad_autorizada")
 	private Integer cantidadAutorizada;
 
 	@Enumerated(EnumType.STRING)
-	@Column(name = "origen_autorizacion", nullable = false, updatable = false, length = 16)
+	@Column(name = "origen_autorizacion", nullable = false, length = 16)
 	private OrigenCantidadAutorizada origenAutorizacion;
 
-	@Column(name = "autorizacion_id", updatable = false)
+	@Column(name = "autorizacion_id")
 	private Long autorizacionId;
 
 	protected PlanItem() {
@@ -153,6 +159,49 @@ public class PlanItem extends MarcaTemporal {
 		// ck_plan_item_origen_trazable lo verifica del lado del motor.
 		this.origenAutorizacion = OrigenCantidadAutorizada.DECLARADA;
 		this.autorizacionId = null;
+	}
+
+	/**
+	 * Ata este item a una {@code Autorizacion} real de M17 (RF-M11-007).
+	 *
+	 * <p>Es lo que convierte la cantidad <b>declarada</b> de 04.04 —la que escribio a mano quien
+	 * planifico, mirando el papel del financiador— en una referencia verificable. El origen pasa a
+	 * {@link OrigenCantidadAutorizada#AUTORIZACION}, que es el valor que 04.04 dejo declarado en el
+	 * enum y que hasta ahora nadie escribia.
+	 *
+	 * <h2>Esto NO crea una version del plan, y es deliberado</h2>
+	 *
+	 * <p>04.04 fijo que modificar un plan activo escribe una version nueva, porque cambiar lo
+	 * <b>planificado</b> reescribiria el avance de hace dos meses contra un plan que entonces no
+	 * existia (RN-M11-003). Atar la autorizacion no cambia nada de lo planificado: cambia la
+	 * FUENTE del mismo numero. Versionarlo llenaria el historial clinico de versiones cuya unica
+	 * diferencia es administrativa, y dejaria las versiones anteriores del plan apuntando a una
+	 * autorizacion que tambien es suya.
+	 *
+	 * <p>Lo que si queda asentado es un {@code plan_evento}: el hecho ocurrio y el historial lo
+	 * dice, sin duplicar el contenido.
+	 *
+	 * <p>{@code cantidadAutorizada} pasa a ser la que el financiador otorgo. Puede ser <b>menor</b>
+	 * que la declarada —eso es la autorizacion parcial— y puede quedar por debajo de
+	 * {@link #cantidadPlanificada}: es informacion clinica valiosa, no un error. Planificar mas de
+	 * lo que la cobertura cubre es una situacion real que el centro resuelve cobrandole al
+	 * paciente la diferencia, y rechazarla aca le impediria al profesional registrar lo que
+	 * corresponde clinicamente.
+	 *
+	 * <p><b>No comprueba que la autorizacion exista, sirva o sea del paciente.</b> Eso no lo puede
+	 * decidir una instancia de {@code clinical}: la autorizacion vive en {@code person} y se
+	 * consulta por su {@code spi}. Esta clase asume que ya se verifico, igual que el resto del
+	 * dominio del modulo.
+	 */
+	public void vincularAutorizacion(long autorizacionId, Integer cantidadAutorizada) {
+		if (cantidadAutorizada != null
+				&& (cantidadAutorizada < 0 || cantidadAutorizada > CANTIDAD_MAXIMA)) {
+			throw new IllegalArgumentException(
+					"La cantidad autorizada tiene que estar entre 0 y " + CANTIDAD_MAXIMA);
+		}
+		this.autorizacionId = autorizacionId;
+		this.origenAutorizacion = OrigenCantidadAutorizada.AUTORIZACION;
+		this.cantidadAutorizada = cantidadAutorizada;
 	}
 
 	private static <T> T exigirNoNulo(T valor, String mensaje) {

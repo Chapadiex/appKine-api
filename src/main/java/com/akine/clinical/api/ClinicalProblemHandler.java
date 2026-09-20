@@ -9,6 +9,7 @@ import com.akine.clinical.domain.exception.ArchivoClinicoNoAceptadoException;
 import com.akine.clinical.domain.exception.CasoClinicoCerradoException;
 import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.CasoClinicoPosibleDuplicadoException;
+import com.akine.clinical.domain.exception.AutorizacionNoVinculableException;
 import com.akine.clinical.domain.exception.CasoNoActivoException;
 import com.akine.clinical.domain.exception.CierreDeCasoSinMotivoException;
 import com.akine.clinical.domain.exception.CursorInvalidoException;
@@ -21,6 +22,7 @@ import com.akine.clinical.domain.exception.OfertaNoVigenteException;
 import com.akine.clinical.domain.exception.PacienteSinPerfilVigenteException;
 import com.akine.clinical.domain.exception.PlanNoEditableException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
+import com.akine.clinical.domain.exception.ReferenciaDelPlanNotAccessibleException;
 import com.akine.clinical.domain.exception.TransicionDePlanInvalidaException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
@@ -93,6 +95,8 @@ public class ClinicalProblemHandler {
 	private static final URI PLAN_TRANSICION_INVALIDA =
 			ProblemType.PLAN_TRANSICION_INVALIDA.uri();
 	private static final URI CASO_NO_ACTIVO = ProblemType.CASO_NO_ACTIVO.uri();
+	private static final URI AUTORIZACION_SIN_SALDO = ProblemType.AUTORIZACION_SIN_SALDO.uri();
+	private static final URI AUTORIZACION_VENCIDA = ProblemType.AUTORIZACION_VENCIDA.uri();
 	private static final URI OFERTA_NO_HABILITADA = ProblemType.OFERTA_NO_HABILITADA.uri();
 
 	// =================================================================================
@@ -475,6 +479,51 @@ public class ClinicalProblemHandler {
 		problem.setType(OFERTA_NO_HABILITADA);
 		problem.setTitle("La oferta no esta habilitada");
 		problem.setProperty("ofertaId", ex.getOfertaId());
+		return problem;
+	}
+
+	// =================================================================================
+	// Vinculo con las autorizaciones de M17 (RF-M11-007, AKINE-04.05)
+	// =================================================================================
+
+	/**
+	 * El item o la autorizacion que el pedido nombro no son alcanzables (404).
+	 *
+	 * <p>Cinco casos en una sola respuesta: el item no es de la version vigente, y la autorizacion
+	 * no existe, es de otro tenant, es de <b>otro paciente</b> o esta dada de baja. Distinguirlos
+	 * confirmaria que ese id existe, y el caso "es de otro paciente" es ademas el que publicaria en
+	 * esta ficha un numero de autorizacion ajeno.
+	 */
+	@ExceptionHandler(ReferenciaDelPlanNotAccessibleException.class)
+	public ProblemDetail handleReferenciaNoAccesible(ReferenciaDelPlanNotAccessibleException ex) {
+		return noEncontrado(NOT_FOUND, "No encontrado", ex.getMessage() + ".");
+	}
+
+	/**
+	 * La autorizacion existe y no habilita hoy (409).
+	 *
+	 * <p><b>Emite el mismo {@code type} que {@code person}</b> aunque la excepcion sea de este
+	 * modulo: los {@code ProblemType} viven en {@code platform.spi} y se comparten, mientras que
+	 * las excepciones no cruzan el borde del modulo (regla de 01.01). El cliente ve
+	 * {@code autorizacion-vencida} o {@code autorizacion-sin-saldo} venga de donde venga.
+	 *
+	 * <p>El reparto: falta de saldo va a {@code autorizacion-sin-saldo} porque la accion correctiva
+	 * es pedir una ampliacion; todo lo demas —vencida, aun no vigente, no aprobada— va a
+	 * {@code autorizacion-vencida}, donde la accion es renovar o esperar la respuesta del
+	 * financiador. {@code motivo} viaja con el vocabulario cerrado que ya publica el listado de
+	 * elegibles, para que la pantalla diga exactamente cual de los cuatro es.
+	 */
+	@ExceptionHandler(AutorizacionNoVinculableException.class)
+	public ProblemDetail handleAutorizacionNoVinculable(AutorizacionNoVinculableException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT,
+				"La autorizacion no habilita hoy y no se puede vincular al plan: "
+						+ ex.getMotivo() + ". Vencida y agotada no son estados guardados: se "
+						+ "calculan contra el dia en que se pregunta.");
+		problem.setType(ex.esFaltaDeSaldo() ? AUTORIZACION_SIN_SALDO : AUTORIZACION_VENCIDA);
+		problem.setTitle("Autorizacion no vinculable");
+		problem.setProperty("autorizacionId", ex.getAutorizacionId());
+		problem.setProperty("motivo", ex.getMotivo());
 		return problem;
 	}
 

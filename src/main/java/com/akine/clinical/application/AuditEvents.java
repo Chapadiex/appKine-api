@@ -70,6 +70,21 @@ final class AuditEvents {
 	static final String PLAN_TRATAMIENTO_FINALIZED = "PLAN_TRATAMIENTO_FINALIZED";
 
 	/**
+	 * Un item del plan quedo atado a una Autorizacion real de M17 (RF-M11-007, AKINE-04.05).
+	 *
+	 * <p>Tipo propio y no un {@code PLAN_TRATAMIENTO_UPDATED}: la pregunta "quien ato este plan a
+	 * esa autorizacion" se responde filtrando por tipo de evento.
+	 *
+	 * <p><b>Este hecho NO deja {@code plan_evento}, y por eso este evento importa mas de lo
+	 * habitual.</b> {@code plan_evento} registra estados del plan y su vocabulario esta cerrado por
+	 * el CHECK de {@code V49}; atar una autorizacion no es una transicion de estado y meterlo
+	 * dentro de {@code EDICION} haria que el historial afirme que alguien edito el contenido
+	 * clinico, que es falso. La trazabilidad vive aca, en el {@code autorizacion_id} del item, y en
+	 * el ledger de M17.
+	 */
+	static final String PLAN_ITEM_AUTORIZACION_LINKED = "PLAN_ITEM_AUTORIZACION_LINKED";
+
+	/**
 	 * La lectura de un plan, de la lista de planes, de su historico de versiones o de su avance.
 	 *
 	 * <p>Se audita por lo mismo que la lectura de un caso: el plan dice <b>que se le esta haciendo

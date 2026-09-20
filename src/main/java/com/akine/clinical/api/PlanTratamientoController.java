@@ -9,9 +9,11 @@ import com.akine.clinical.api.dto.PlanTratamientoResponse;
 import com.akine.clinical.api.dto.PlanVersionResponse;
 import com.akine.clinical.api.dto.SuspenderPlanTratamientoRequest;
 import com.akine.clinical.api.dto.TransicionDePlanRequest;
+import com.akine.clinical.api.dto.VincularAutorizacionRequest;
 import com.akine.clinical.application.ContenidoDelPlan;
 import com.akine.clinical.application.PlanItemPlanificado;
 import com.akine.clinical.application.PlanTratamientoService;
+import com.akine.clinical.application.VincularAutorizacionCommand;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -402,6 +404,87 @@ public class PlanTratamientoController {
 		log.info("Activacion de plan de tratamiento solicitada: planId={}", planId);
 		return PlanTratamientoResponse.from(planService.activar(
 				apiActor.current(), planId, request.expectedVersion(), justificacion));
+	}
+
+	@PostMapping(path = POR_PLAN + "/autorizacion",
+			consumes = MediaType.APPLICATION_JSON_VALUE,
+			produces = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "vincularAutorizacionAlPlan",
+			summary = "Atar un item del plan a una autorizacion real de M17",
+			description = """
+					RF-M11-007, AKINE-04.05. Reemplaza la cantidad autorizada DECLARADA —la que \
+					escribio a mano quien planifico, mirando el carnet— por la de una Autorizacion \
+					real. El origen del item pasa de DECLARADA a AUTORIZACION, que es el valor que \
+					04.04 dejo en el modelo y que hasta ahora nadie escribia.
+
+					NO CREA UNA VERSION DEL PLAN. Modificar un plan vigente versiona porque cambia \
+					lo PLANIFICADO y eso reescribiria el avance de hace dos meses contra un plan \
+					que entonces no existia (RN-M11-003). Esto no cambia nada de lo planificado: \
+					cambia la FUENTE del mismo numero. Versionarlo llenaria el historial clinico \
+					de versiones cuya unica diferencia es administrativa.
+
+					TAMPOCO DEJA plan_evento, y tambien es deliberado: ese historial registra \
+					ESTADOS del plan, y atar una autorizacion no es una transicion de estado. \
+					Queda en la auditoria, que es donde vive lo que hay que poder revisar despues.
+
+					LA CANTIDAD NO SE ENVIA: sale de la autorizacion. Aceptarla del cliente \
+					permitiria declarar diez donde el financiador otorgo seis, que es el dato sin \
+					fuente que este vinculo existe para reemplazar.
+
+					LA AUTORIZACION TIENE QUE SER DEL MISMO PACIENTE Y HABILITAR HOY —aprobada, \
+					vigente y con saldo—. Si no existe, es de otro tenant, es de OTRO PACIENTE o \
+					esta dada de baja, responde 404: los cuatro colapsan porque distinguirlos \
+					confirmaria que ese id existe, y el tercero publicaria en esta ficha un numero \
+					de autorizacion ajeno. Si existe y no habilita, responde 409 con el motivo \
+					exacto —VENCIDA, AGOTADA, AUN_NO_VIGENTE o NO_APROBADA—.
+
+					NO SE VALIDA QUE LA PRACTICA COINCIDA CON LA OFERTA del item, y no es un \
+					olvido: son dos granularidades y no existe ninguna tabla puente entre Oferta y \
+					Practica. Compararlas hoy seria inventar una equivalencia. Unificarlas es \
+					06.04; mientras tanto elige quien conoce el caso.
+
+					TAMPOCO SE EXIGE que la cantidad autorizada alcance la planificada. Planificar \
+					mas de lo que la cobertura cubre es una situacion real —el centro le cobra al \
+					paciente la diferencia— y rechazarla impediria registrar lo que corresponde \
+					clinicamente.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Plan con el item ya vinculado",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = PlanTratamientoResponse.class))),
+			@ApiResponse(responseCode = "400", description = "Faltan datos del pedido",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "Sin contexto, sin hc:write, o sin "
+					+ "relacion asistencial ni motivo declarado",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404",
+					description = "El plan, el item o la autorizacion no son accesibles",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409",
+					description = "La autorizacion no habilita hoy, o la version quedo vieja",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public PlanTratamientoResponse vincularAutorizacion(
+
+			@Parameter(description = "Plan cuyo item se vincula", example = "77")
+			@PathVariable long planId,
+
+			@Valid @RequestBody VincularAutorizacionRequest request,
+
+			@Parameter(description = AccesoClinicoHeaders.JUSTIFICACION_DOC)
+			@RequestHeader(name = AccesoClinicoHeaders.JUSTIFICACION, required = false)
+			String justificacion) {
+
+		return PlanTratamientoResponse.from(planService.vincularAutorizacion(
+				apiActor.current(),
+				planId,
+				new VincularAutorizacionCommand(
+						request.planItemId(), request.autorizacionId(),
+						request.expectedVersion()),
+				justificacion));
 	}
 
 	@PostMapping(path = POR_PLAN + "/suspension",

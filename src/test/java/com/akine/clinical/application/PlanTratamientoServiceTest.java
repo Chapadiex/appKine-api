@@ -27,6 +27,7 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.person.spi.AutorizacionDirectory;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -112,6 +113,10 @@ class PlanTratamientoServiceTest {
 	@Mock
 	private RealizadoEnElCasoProbe realizado;
 
+	/** AKINE-04.05: el servicio gano RF-M11-007 y con el la lectura de autorizaciones de M17. */
+	@Mock
+	private AutorizacionDirectory autorizaciones;
+
 	@Mock
 	private PermissionGuard permissionGuard;
 
@@ -132,8 +137,8 @@ class PlanTratamientoServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new PlanTratamientoService(historias, casos, planes, versiones, items, eventos,
-				numerador, numeradorIniciador, ofertas, realizado, permissionGuard, relaciones,
-				auditTrail, supportAccessAuditor);
+				numerador, numeradorIniciador, ofertas, realizado, autorizaciones,
+				permissionGuard, relaciones, auditTrail, supportAccessAuditor);
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));

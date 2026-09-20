@@ -10,9 +10,11 @@ import com.akine.clinical.domain.PlanTratamiento;
 import com.akine.clinical.domain.PlanTratamientoVersion;
 import com.akine.clinical.domain.TipoEventoPlan;
 import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
+import com.akine.clinical.domain.exception.AutorizacionNoVinculableException;
 import com.akine.clinical.domain.exception.CasoNoActivoException;
 import com.akine.clinical.domain.exception.OfertaNoHabilitadaException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
+import com.akine.clinical.domain.exception.ReferenciaDelPlanNotAccessibleException;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRepositoryPort;
 import com.akine.clinical.domain.port.PlanRepositoryPorts.PlanEventoRepositoryPort;
@@ -26,6 +28,8 @@ import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.person.spi.AutorizacionDirectory;
+import com.akine.person.spi.AutorizacionSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
@@ -113,6 +117,7 @@ public class PlanTratamientoService {
 	private final PlanNumeradorIniciador numeradorIniciador;
 	private final OfertaDirectory ofertas;
 	private final RealizadoEnElCasoProbe realizado;
+	private final AutorizacionDirectory autorizaciones;
 	private final PermissionGuard permissionGuard;
 	private final RelacionAsistencialProbe relaciones;
 	private final AuditTrail auditTrail;
@@ -130,6 +135,7 @@ public class PlanTratamientoService {
 			PlanNumeradorIniciador numeradorIniciador,
 			OfertaDirectory ofertas,
 			RealizadoEnElCasoProbe realizado,
+			AutorizacionDirectory autorizaciones,
 			PermissionGuard permissionGuard,
 			RelacionAsistencialProbe relaciones,
 			AuditTrail auditTrail,
@@ -145,6 +151,7 @@ public class PlanTratamientoService {
 		this.numeradorIniciador = numeradorIniciador;
 		this.ofertas = ofertas;
 		this.realizado = realizado;
+		this.autorizaciones = autorizaciones;
 		this.permissionGuard = permissionGuard;
 		this.relaciones = relaciones;
 		this.auditTrail = auditTrail;
@@ -489,6 +496,129 @@ public class PlanTratamientoService {
 				"Finalizar plan de tratamiento", TipoEventoPlan.FINALIZACION,
 				AuditEvents.PLAN_TRATAMIENTO_FINALIZED, motivo,
 				(plan, ahora) -> plan.finalizar(motivo, ahora, actor.accountId()));
+	}
+
+	// =================================================================================
+	// RF-M11-007 — atar el item a una autorizacion real de M17 (AKINE-04.05)
+	// =================================================================================
+
+	/**
+	 * Reemplaza la cantidad DECLARADA de un item por la de una {@code Autorizacion} real.
+	 *
+	 * <h2>Es la costura que 04.04 dejo escrita y no cableo</h2>
+	 *
+	 * <p>{@code OrigenCantidadAutorizada.AUTORIZACION} existe en el enum desde 04.04 y <b>nadie lo
+	 * escribia</b>: el registro de esa etapa lo dice con todas las letras —"la costura real es
+	 * 04.05"—. Esto lo escribe. La cantidad pasa a salir de M17 y no de lo que alguien tecleo
+	 * mirando un carnet.
+	 *
+	 * <h2>1. NO crea una version del plan, y es deliberado</h2>
+	 *
+	 * <p>04.04 fijo que modificar un plan vigente escribe una version nueva, porque cambiar lo
+	 * <b>planificado</b> reescribiria el avance de hace dos meses contra un plan que entonces no
+	 * existia (RN-M11-003). Atar la autorizacion no cambia nada de lo planificado: cambia la
+	 * <b>fuente</b> del mismo numero. Versionarlo llenaria el historial clinico de versiones cuya
+	 * unica diferencia es administrativa.
+	 *
+	 * <h2>2. Tampoco deja {@code plan_evento}, y tambien es deliberado</h2>
+	 *
+	 * <p>{@code plan_evento} registra <b>estados del plan</b> y lo lee el profesional que abre la
+	 * ficha; su vocabulario —{@code TipoEventoPlan}— esta cerrado por el CHECK de {@code V49}.
+	 * Esto no es una transicion de estado del plan: es un dato administrativo que cambio de
+	 * fuente. Meterlo dentro de {@code EDICION} —el unico valor que entraria sin migrar el CHECK—
+	 * haria que el historial afirme que alguien edito el contenido del plan, que es falso.
+	 *
+	 * <p>Queda en {@code audit_event}, que es donde vive lo que hay que poder auditar y que no
+	 * tiene vocabulario cerrado. <b>La trazabilidad no se pierde</b>: ademas, el item mismo guarda
+	 * el {@code autorizacionId} y M17 guarda su propio ledger.
+	 *
+	 * <h2>3. Que se valida, y que NO</h2>
+	 *
+	 * <p>La autorizacion tiene que existir, ser de <b>ese</b> paciente, estar activa y
+	 * <b>habilitar hoy</b> —aprobada, vigente y con saldo—. Se pregunta por
+	 * {@code person.spi.AutorizacionDirectory}, que es la unica forma en que {@code clinical} puede
+	 * mirar una autorizacion sin importar {@code person.domain}.
+	 *
+	 * <p><b>No se valida que la practica de la autorizacion coincida con la oferta del item</b>, y
+	 * no es un olvido: son dos granularidades distintas y no existe ninguna tabla puente entre
+	 * Oferta y Practica —V24 la dejo afuera a proposito—. Compararlas hoy seria inventar una
+	 * equivalencia. Unificarlas es 06.04. Mientras tanto, elige quien conoce el caso.
+	 *
+	 * <p><b>Tampoco se exige que la cantidad autorizada alcance la planificada.</b> Planificar mas
+	 * de lo que la cobertura cubre es una situacion real —el centro le cobra al paciente la
+	 * diferencia— y rechazarla aca le impediria al profesional registrar lo que corresponde
+	 * clinicamente.
+	 *
+	 * <p>Exige {@code hc:write} y acceso clinico, como toda escritura sobre un plan: el numero de
+	 * autorizacion queda publicado en la ficha del paciente.
+	 */
+	@Transactional
+	public PlanTratamientoView vincularAutorizacion(
+			OperatingActor actor,
+			long planId,
+			VincularAutorizacionCommand command,
+			String justificacion) {
+
+		long organizationId = organizacionDe(actor);
+		PlanTratamiento plan = exigirPlan(organizationId, planId);
+
+		AccesoClinico acceso = autorizarSobrePlan(actor, plan, PermissionCodes.HC_WRITE,
+				justificacion, "Vincular autorizacion al plan de tratamiento");
+		registrarSoporte(acceso, actor, plan, "Vincular autorizacion al plan de tratamiento",
+				Instant.now());
+		exigirVersion(plan, command.expectedVersion());
+
+		PlanTratamientoVersion vigente = exigirVersionVigente(plan);
+		PlanItem item = items.buscarDeVersion(organizationId, vigente.getId()).stream()
+				.filter(candidato -> candidato.getId() == command.planItemId())
+				.findFirst()
+				.orElseThrow(() -> new ReferenciaDelPlanNotAccessibleException("item del plan", command.planItemId()));
+
+		long personaId = personaDelPlan(plan);
+		LocalDate hoy = LocalDate.now();
+
+		AutorizacionSnapshot autorizacion = autorizaciones
+				.find(organizationId, personaId, command.autorizacionId(), hoy)
+				// No existe, es de otro tenant, es de OTRO PACIENTE o esta dada de baja: los
+				// cuatro colapsan en 404. Distinguirlos confirmaria que ese id existe, y el caso
+				// "es de otro paciente" es ademas el que publicaria en esta ficha un numero de
+				// autorizacion que no es suyo.
+				.orElseThrow(() -> new ReferenciaDelPlanNotAccessibleException(
+						"autorizacion", command.autorizacionId()));
+
+		if (!autorizacion.habilita()) {
+			throw new AutorizacionNoVinculableException(
+					autorizacion.id(), autorizacion.motivoNoElegible());
+		}
+
+		item.vincularAutorizacion(autorizacion.id(), autorizacion.cantidadAutorizada());
+		items.saveAll(List.of(item));
+
+		auditar(AuditEvents.PLAN_ITEM_AUTORIZACION_LINKED, plan.getId(), actor, acceso, null, null,
+				Map.of("planItemId", String.valueOf(item.getId()),
+						"autorizacionId", String.valueOf(autorizacion.id()),
+						"cantidadAutorizada", String.valueOf(autorizacion.cantidadAutorizada())),
+				Instant.now());
+
+		log.info("Autorizacion vinculada al plan: planId={} planItemId={} autorizacionId={}",
+				planId, item.getId(), autorizacion.id());
+
+		return vistaCompletaDe(plan);
+	}
+
+	/**
+	 * El paciente del plan, por plan -&gt; caso -&gt; historia.
+	 *
+	 * <p>Se resuelve aca y no se guarda en el plan por lo mismo que la sesion no guarda
+	 * {@code persona_id}: duplicarlo habilitaria que los dos discrepen, y no hay ninguna consulta
+	 * que lo justifique.
+	 */
+	private long personaDelPlan(PlanTratamiento plan) {
+		return casos.findByIdAndOrganizationId(plan.getCasoClinicoId(), plan.getOrganizationId())
+				.flatMap(caso -> historias.findByIdAndOrganizationId(
+						caso.getHistoriaClinicaId(), caso.getOrganizationId()))
+				.map(HistoriaClinica::getPersonaId)
+				.orElseThrow(() -> new PlanTratamientoNotAccessibleException(plan.getId()));
 	}
 
 	// =================================================================================
