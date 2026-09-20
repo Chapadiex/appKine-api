@@ -1,6 +1,7 @@
 package com.akine.person.spi;
 
 import java.time.LocalDate;
+import java.util.Set;
 
 /**
  * El pedido de consumir unidades autorizadas a raiz de una atencion realizada (RF-M17-004).
@@ -18,6 +19,9 @@ import java.time.LocalDate;
  *                       prestacion que vale dos sesiones es una configuracion de oferta que ya se
  *                       discute en M27, y cambiarlo despues seria cambiar el contrato
  * @param actorCuentaId  quien cerro la sesion, para que el movimiento diga quien lo produjo
+ * @param practicasRealizadas ids de las practicas de M06 efectivamente aplicadas (AKINE-06.04).
+ *                       <b>Acota contra que autorizaciones se puede imputar.</b> Vacio significa
+ *                       "no se sabe", NO "ninguna": ver abajo
  */
 public record ConsumoPorSesion(
 		long organizationId,
@@ -26,5 +30,29 @@ public record ConsumoPorSesion(
 		long sesionId,
 		LocalDate fecha,
 		int cantidad,
-		Long actorCuentaId) {
+		Long actorCuentaId,
+		Set<Long> practicasRealizadas) {
+
+	/**
+	 * <b>AKINE-06.04 agrega {@code practicasRealizadas} y con eso cierra el defecto que 04.05 dejo
+	 * declarado por escrito.</b>
+	 *
+	 * <p>La autorizacion de M17 se otorga por {@code practica_id}, y hasta 06.04 este consumo
+	 * elegia "la que vence antes" sin mirarla, porque no habia forma de saber que se aplico en la
+	 * sesion. Podia gastar una unidad de fonoaudiologia por una sesion de kinesiologia: le come al
+	 * paciente unidades que si iba a necesitar, deja intacta la autorizacion que correspondia, y
+	 * frente al financiador es una declaracion falsa.
+	 *
+	 * <p><b>Vacio significa "no se sabe", no "ninguna".</b> Son vacias todas las sesiones
+	 * anteriores a 06.04 y las de ofertas que no registran practicas. Ante el vacio se conserva el
+	 * comportamiento anterior; filtrar igual apagaria el consumo de autorizaciones en todo el
+	 * sistema.
+	 *
+	 * <p>Sigue sin viajar <b>nada clinico</b>: un id de practica dice que prestacion se facturo,
+	 * no que le duele al paciente. Es el mismo criterio con el que este record se nego a llevar el
+	 * motivo y la evaluacion.
+	 */
+	public ConsumoPorSesion {
+		practicasRealizadas = practicasRealizadas == null ? Set.of() : Set.copyOf(practicasRealizadas);
+	}
 }

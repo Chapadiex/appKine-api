@@ -85,6 +85,13 @@ class SesionServiceTest {
 	@Mock private NumeradorIniciador numeradorIniciador;
 	@Mock private OfertaDirectory ofertas;
 
+	/**
+	 * 06.04: solo se consulta al notificar el cierre, para saber que practicas se aplicaron. Por
+	 * defecto devuelve vacio, que es el comportamiento de toda sesion anterior a esa etapa.
+	 */
+	@Mock private com.akine.encounter.domain.port.TratamientoRepositoryPorts
+			.TratamientoRepositoryPort tratamientos;
+
 	/** 04.03: solo se consulta cuando la sesion declara un caso. Estos tests no declaran. */
 	@Mock private CasoDirectory casos;
 
@@ -97,7 +104,7 @@ class SesionServiceTest {
 	void setUp() {
 		service = new SesionService(
 				sesiones, turnos, historias, casos, consultorios, memberships, permissionGuard,
-				numerador, numeradorIniciador, ofertas, List.of());
+				numerador, numeradorIniciador, ofertas, tratamientos, List.of());
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));

@@ -18,6 +18,7 @@ import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
 import com.akine.encounter.domain.port.SesionNumeradorPort;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
+import com.akine.encounter.domain.port.TratamientoRepositoryPorts.TratamientoRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
@@ -83,8 +84,17 @@ public class SesionService {
 	private final SesionNumeradorPort numerador;
 	private final NumeradorIniciador numeradorIniciador;
 	private final OfertaDirectory ofertas;
+
+	/**
+	 * Solo para leer que practicas se realizaron al notificar el cierre (AKINE-06.04).
+	 *
+	 * <p>Este servicio <b>no escribe</b> tratamientos: eso es {@code TratamientoService}.
+	 */
+	private final TratamientoRepositoryPort tratamientos;
+
 	private final List<CierreDeSesionObserver> observadores;
 
+	@SuppressWarnings("java:S107")
 	public SesionService(
 			SesionRepositoryPort sesiones,
 			TurnoDirectory turnos,
@@ -96,6 +106,7 @@ public class SesionService {
 			SesionNumeradorPort numerador,
 			NumeradorIniciador numeradorIniciador,
 			OfertaDirectory ofertas,
+			TratamientoRepositoryPort tratamientos,
 			List<CierreDeSesionObserver> observadores) {
 
 		this.sesiones = sesiones;
@@ -108,6 +119,7 @@ public class SesionService {
 		this.numerador = numerador;
 		this.numeradorIniciador = numeradorIniciador;
 		this.ofertas = ofertas;
+		this.tratamientos = tratamientos;
 		this.observadores = List.copyOf(observadores);
 	}
 
@@ -396,6 +408,19 @@ public class SesionService {
 			long organizationId) {
 
 		var precio = ofertas.precioDe(organizationId, sesion.getConsultorioId(), sesion.getOfertaId());
+
+		// AKINE-06.04. Que practicas se aplicaron REALMENTE, para que el consumo de autorizaciones
+		// deje de poder imputarse a la autorizacion equivocada. Se lee ACA por el mismo motivo por
+		// el que se lee el precio: quien reacciona no tiene por que conocer el modelo de la
+		// sesion, y si cada observador lo leyera por su cuenta dos de ellos podrian ver conjuntos
+		// distintos si alguien edita en el medio.
+		//
+		// VACIO NO SIGNIFICA "NINGUNA" sino "no se sabe": son todas las sesiones anteriores a
+		// 06.04 y las de ofertas que no registran practicas. El consumidor conserva ahi el
+		// comportamiento anterior.
+		var practicas = java.util.Set.copyOf(
+				tratamientos.practicasVigentesDe(organizationId, sesion.getId()));
+
 		var aviso = new SesionCerrada(
 				sesion.getId(),
 				organizationId,
@@ -407,7 +432,8 @@ public class SesionService {
 				ahora,
 				cerradaPorCuentaId,
 				precio.map(PrecioDeOferta::precioBase).orElse(null),
-				precio.map(PrecioDeOferta::moneda).orElse(null));
+				precio.map(PrecioDeOferta::moneda).orElse(null),
+				practicas);
 
 		observadores.forEach(observador -> observador.alCerrar(aviso));
 	}

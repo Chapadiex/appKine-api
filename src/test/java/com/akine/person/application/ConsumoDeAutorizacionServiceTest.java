@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -182,6 +183,127 @@ class ConsumoDeAutorizacionServiceTest {
 	// La reversion
 	// =================================================================================
 
+	/**
+	 * AKINE-06.04 — la imputacion por practica.
+	 *
+	 * <p>Hasta 06.04 el consumo elegia "la que vence antes" sin mirar la practica, porque no habia
+	 * forma de saber que se habia aplicado. <b>Podia gastar la autorizacion equivocada</b>: una
+	 * unidad de fonoaudiologia por una sesion de kinesiologia, comiendole al paciente unidades que
+	 * si iba a necesitar y declarandole al financiador algo que no se presto. Era el limite que
+	 * 04.05 dejo escrito y delego en esta etapa.
+	 *
+	 * <p>Los dos casos que cuestan caro si alguien los "simplifica":
+	 *
+	 * <ul>
+	 *   <li><b>Sin autorizacion de la practica realizada NO se consume.</b> Caer de nuevo a
+	 *       "cualquiera que habilite" es comodo y es el defecto.</li>
+	 *   <li><b>El conjunto vacio conserva el comportamiento anterior.</b> Vacio significa "no se
+	 *       sabe", no "ninguna": son todas las sesiones anteriores a 06.04. Filtrar igual apagaria
+	 *       el consumo de autorizaciones en todo el sistema, que es peor que el defecto.</li>
+	 * </ul>
+	 */
+	@Nested
+	@DisplayName("Imputacion por practica realizada (AKINE-06.04)")
+	class DeLaImputacionPorPractica {
+
+		private static final long OTRA_PRACTICA = 77L;
+		private static final long OTRA_AUTORIZACION = 4242L;
+
+		@Test
+		@DisplayName("elige la autorizacion de la practica realizada, no la que vence antes")
+		void elige_por_practica_y_no_por_vencimiento() {
+			// La de OTRA_PRACTICA vence ANTES, asi que el desempate de 04.05 la elegiria. Pero la
+			// practica que se realizo es la otra: gastarla seria declararle al financiador una
+			// prestacion que no ocurrio.
+			Autorizacion venceAntesPeroOtraPractica =
+					autorizacionDe(OTRA_AUTORIZACION, OTRA_PRACTICA, HOY.plusDays(3));
+			Autorizacion laQueCorresponde = autorizacion(10, HOY.plusMonths(2));
+
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA))
+					.willReturn(List.of(venceAntesPeroOtraPractica, laQueCorresponde));
+			given(movimientos.buscarPorOrigen(any(), any(), any(), any(), any()))
+					.willReturn(Optional.empty());
+			given(autorizaciones.descontarSaldo(ORG, AUTORIZACION, 1)).willReturn(1);
+			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9001L));
+
+			ResultadoDeConsumo resultado = service.consumirPorSesion(cierreCon(Set.of(PRACTICA)));
+
+			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.CONSUMIDA);
+			assertThat(resultado.autorizacionId()).isEqualTo(AUTORIZACION);
+			// Lo que importa: la que vencia antes NO se toco.
+			verify(autorizaciones, never()).descontarSaldo(ORG, OTRA_AUTORIZACION, 1);
+		}
+
+		@Test
+		@DisplayName("con saldo vigente pero de otra practica NO consume, y no lanza")
+		void sin_autorizacion_para_la_practica_no_consume() {
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA))
+					.willReturn(List.of(autorizacionDe(
+							OTRA_AUTORIZACION, OTRA_PRACTICA, HOY.plusMonths(2))));
+
+			ResultadoDeConsumo resultado = service.consumirPorSesion(cierreCon(Set.of(PRACTICA)));
+
+			assertThat(resultado.desenlace())
+					.isEqualTo(ResultadoDeConsumo.SIN_AUTORIZACION_PARA_LA_PRACTICA);
+			// NO se descuenta nada: consumir la equivocada le come al paciente unidades que si
+			// necesita. Y NO se lanza: DP-06 prohibe bloquear el cierre clinico por esto.
+			verify(autorizaciones, never()).descontarSaldo(anyLong(), anyLong(), anyInt());
+			verify(movimientos, never()).save(any());
+		}
+
+		@Test
+		@DisplayName("sin practicas registradas conserva el comportamiento anterior a 06.04")
+		void conjunto_vacio_no_filtra() {
+			// Es TODA sesion anterior a 06.04, y tambien las de ofertas que no registran
+			// practicas. Vacio es "no se sabe", no "ninguna".
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA))
+					.willReturn(List.of(autorizacionDe(
+							OTRA_AUTORIZACION, OTRA_PRACTICA, HOY.plusMonths(2))));
+			given(movimientos.buscarPorOrigen(any(), any(), any(), any(), any()))
+					.willReturn(Optional.empty());
+			given(autorizaciones.descontarSaldo(ORG, OTRA_AUTORIZACION, 1)).willReturn(1);
+			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9002L));
+
+			ResultadoDeConsumo resultado = service.consumirPorSesion(cierreCon(Set.of()));
+
+			// Consume igual, aunque la practica no coincida con nada: no hay con que filtrar.
+			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.CONSUMIDA);
+			assertThat(resultado.autorizacionId()).isEqualTo(OTRA_AUTORIZACION);
+		}
+
+		@Test
+		@DisplayName("varias practicas realizadas: alcanza con que una coincida")
+		void alcanza_con_que_una_coincida() {
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA))
+					.willReturn(List.of(autorizacion(10, HOY.plusMonths(2))));
+			given(movimientos.buscarPorOrigen(any(), any(), any(), any(), any()))
+					.willReturn(Optional.empty());
+			given(autorizaciones.descontarSaldo(ORG, AUTORIZACION, 1)).willReturn(1);
+			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9003L));
+
+			ResultadoDeConsumo resultado =
+					service.consumirPorSesion(cierreCon(Set.of(OTRA_PRACTICA, PRACTICA)));
+
+			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.CONSUMIDA);
+			// Y sigue siendo UNA unidad por sesion aunque se hayan aplicado dos practicas:
+			// cobrar por practica es una decision economica que esta etapa NO toma.
+			verify(autorizaciones).descontarSaldo(ORG, AUTORIZACION, 1);
+		}
+
+		@Test
+		@DisplayName("sin ninguna autorizacion vigente sigue siendo SIN_AUTORIZACION_ELEGIBLE")
+		void sin_ninguna_vigente_no_cambia_de_desenlace() {
+			// El filtro por practica no puede tapar el caso mas frecuente de todos —el paciente
+			// particular—: los dos desenlaces llevan a acciones distintas en el mostrador.
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA)).willReturn(List.of());
+
+			ResultadoDeConsumo resultado = service.consumirPorSesion(cierreCon(Set.of(PRACTICA)));
+
+			assertThat(resultado.desenlace())
+					.isEqualTo(ResultadoDeConsumo.SIN_AUTORIZACION_ELEGIBLE);
+		}
+	}
+
 	@Nested
 	@DisplayName("Reversion de un consumo")
 	class DeLaReversion {
@@ -322,7 +444,21 @@ class ConsumoDeAutorizacionServiceTest {
 	// =================================================================================
 
 	private static ConsumoPorSesion cierre() {
-		return new ConsumoPorSesion(ORG, PERSONA, SEDE, SESION, HOY, 1, 42L);
+		return new ConsumoPorSesion(ORG, PERSONA, SEDE, SESION, HOY, 1, 42L, Set.of());
+	}
+
+	/** El mismo cierre, declarando que practicas se aplicaron (AKINE-06.04). */
+	private static ConsumoPorSesion cierreCon(Set<Long> practicas) {
+		return new ConsumoPorSesion(ORG, PERSONA, SEDE, SESION, HOY, 1, 42L, practicas);
+	}
+
+	/** Una autorizacion de una practica concreta, para probar la imputacion de 06.04. */
+	private static Autorizacion autorizacionDe(long id, long practicaId, LocalDate hasta) {
+		Autorizacion autorizacion = new Autorizacion(
+				ORG, PERSONA, SEDE, COBERTURA, null, practicaId, "AUT-" + id,
+				EstadoAutorizacion.APROBADA, 10, LocalDate.of(2027, 1, 1), hasta, null, null);
+		ReflectionTestUtils.setField(autorizacion, "id", id);
+		return autorizacion;
 	}
 
 	private static Autorizacion autorizacion(Integer cantidad, LocalDate hasta) {

@@ -477,7 +477,8 @@ class ConsumoConcurrenteIT {
 				sesionId,
 				DIA_DE_LA_ATENCION,
 				1,
-				fixture.accountId()));
+				fixture.accountId(),
+				java.util.Set.of()));
 	}
 
 	private long autorizar(Fixture fixture, String numero, int cantidad) {

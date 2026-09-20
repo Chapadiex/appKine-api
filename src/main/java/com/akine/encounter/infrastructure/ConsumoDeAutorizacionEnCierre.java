@@ -94,6 +94,22 @@ import java.time.ZoneOffset;
  * <p>La cantidad es <b>una unidad por sesion</b>. Una prestacion que valga dos es una
  * configuracion de oferta que M27 todavia no tiene, y inventarla aca seria decidirla por el
  * usuario.
+ *
+ * <h2>4. AKINE-06.04: cual autorizacion se consume dejo de ser una loteria</h2>
+ *
+ * <p>Hasta 06.04 esta clase pedia consumir sin decir <b>que</b> se habia prestado, porque no
+ * existia el dato: el registro de tratamientos realizados no existia. {@code person} elegia
+ * entonces "la que vence antes" entre las vigentes del paciente, y eso podia gastar <b>la
+ * autorizacion equivocada</b> —una unidad de fonoaudiologia por una sesion de kinesiologia—. Era
+ * el limite que 04.05 declaro por escrito y delego en esta etapa.
+ *
+ * <p>Ahora {@code SesionCerrada.practicasRealizadas()} viaja con el hecho y acota la eleccion.
+ * <b>La cantidad NO cambia</b>: sigue siendo una unidad por sesion aunque se hayan aplicado cinco
+ * practicas. Cobrar una unidad por practica es una decision economica sin RF que la respalde, y
+ * cambiarla de callado seria peor que el defecto que esta etapa corrige.
+ *
+ * <p><b>Y una sesion sin practicas registradas se comporta exactamente como antes.</b> Son todas
+ * las anteriores a 06.04. Ver {@code person.spi.ConsumoPorSesion}.
  */
 @Component
 public class ConsumoDeAutorizacionEnCierre implements CierreDeSesionObserver {
@@ -141,7 +157,10 @@ public class ConsumoDeAutorizacionEnCierre implements CierreDeSesionObserver {
 				cierre.sesionId(),
 				diaLocalDeLaSede(cierre),
 				UNIDADES_POR_SESION,
-				cierre.cerradaPorCuentaId()));
+				cierre.cerradaPorCuentaId(),
+				// AKINE-06.04: acota contra que autorizaciones se puede imputar. Vacio conserva
+				// el comportamiento anterior — ver ConsumoPorSesion.
+				cierre.practicasRealizadas()));
 
 		if (resultado.descontoEfectivo()) {
 			log.info("Autorizacion consumida al cerrar: sesionId={} autorizacionId={} "

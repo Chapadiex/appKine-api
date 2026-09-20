@@ -464,7 +464,8 @@ class LedgerCoherenteIT {
 				sesionId,
 				DIA_DE_LA_ATENCION,
 				1,
-				fixture.accountId()));
+				fixture.accountId(),
+				java.util.Set.of()));
 	}
 
 	private MovimientoView revertir(

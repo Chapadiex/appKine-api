@@ -2,6 +2,7 @@ package com.akine.encounter.spi;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Set;
 
 /**
  * El hecho de que una atencion se cerro, para quien tenga que reaccionar.
@@ -21,6 +22,9 @@ import java.time.Instant;
  * @param asistio            {@code false} si el paciente no vino. Decide si hubo prestacion
  * @param cerradaPorCuentaId cuenta que cerro la atencion. Es dato de AUTORIA del hecho, no
  *                           clinico: dice quien apreto el boton, no que escribio
+ * @param practicasRealizadas ids de las practicas de M06 efectivamente aplicadas en la atencion
+ *                           (AKINE-06.04). <b>Vacio significa "no se sabe", NO "ninguna"</b>: ver
+ *                           abajo
  */
 public record SesionCerrada(
 		long sesionId,
@@ -33,5 +37,30 @@ public record SesionCerrada(
 		Instant cerradaEn,
 		Long cerradaPorCuentaId,
 		BigDecimal precioDeLaOferta,
-		String moneda) {
+		String moneda,
+		Set<Long> practicasRealizadas) {
+
+	/**
+	 * <b>AKINE-06.04 agrega {@code practicasRealizadas}, y es lo que cierra el defecto que 04.05
+	 * dejo declarado.</b>
+	 *
+	 * <p>Hasta 06.04 el consumo de autorizaciones elegia "la que vence antes" sin mirar la
+	 * practica, porque no habia forma de saber que se aplico: <b>podia gastar la autorizacion
+	 * equivocada</b> —una unidad de fonoaudiologia por una sesion de kinesiologia—, comiendole al
+	 * paciente unidades que iba a necesitar y presentandole al financiador algo que no ocurrio.
+	 *
+	 * <p><b>No es dato clinico</b> y por eso puede viajar por aca: un id de practica dice que
+	 * prestacion se facturo, no que le duele al paciente. Es el mismo criterio con el que
+	 * {@link #ofertaId} ya viajaba.
+	 *
+	 * <p><b>Vacio significa "no se sabe", no "ninguna", y la diferencia es la etapa entera.</b>
+	 * Son vacias <b>todas</b> las sesiones anteriores a 06.04 y tambien las de ofertas que no
+	 * registran practicas —una consulta, una evaluacion inicial—. Un consumidor que tratara el
+	 * vacio como "ninguna practica" dejaria de consumir autorizaciones en todo el sistema, que es
+	 * peor que el defecto que esta etapa corrige. Ante el vacio se conserva el comportamiento
+	 * anterior.
+	 */
+	public SesionCerrada {
+		practicasRealizadas = practicasRealizadas == null ? Set.of() : Set.copyOf(practicasRealizadas);
+	}
 }
