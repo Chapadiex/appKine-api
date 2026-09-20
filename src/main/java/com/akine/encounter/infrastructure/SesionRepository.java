@@ -1,5 +1,6 @@
 package com.akine.encounter.infrastructure;
 
+import com.akine.encounter.domain.ConteoDeSesionesPorOferta;
 import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -96,4 +97,37 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("hasta") Instant hasta,
 			@Param("limite") int limite,
 			@Param("casoId") Long casoId);
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>JPQL con expresion de constructor y no nativa, al reves que la consulta del timeline. La
+	 * diferencia es lo que devuelve cada una: aquella trae filas enteras y se recorta con
+	 * {@code LIMIT}, esto trae una agregacion de tres columnas que Hibernate valida contra el
+	 * modelo al arrancar la aplicacion. Con una nativa, un alias mal escrito aparece recien en
+	 * runtime — y esta etapa no puede correr tests de integracion.
+	 *
+	 * <p>Calza con {@code ix_sesion_caso} {@code (organization_id, caso_id, cerrada_en)}. Se filtra
+	 * por {@code estado} y por {@code deletedAt} y <b>no</b> por historia: el caso ya acota a un
+	 * paciente, y agregar la historia obligaria al llamador a resolverla para preguntar algo que no
+	 * la necesita.
+	 */
+	@Override
+	@Query("""
+			SELECT new com.akine.encounter.domain.ConteoDeSesionesPorOferta(
+			           s.ofertaId,
+			           SUM(CASE WHEN s.asistencia = com.akine.encounter.domain.Asistencia.PRESENTE
+			                    THEN 1L ELSE 0L END),
+			           SUM(CASE WHEN s.asistencia = com.akine.encounter.domain.Asistencia.AUSENTE
+			                    THEN 1L ELSE 0L END))
+			  FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.casoId = :casoId
+			   AND s.estado = com.akine.encounter.domain.EstadoSesion.CERRADA
+			   AND s.deletedAt IS NULL
+			 GROUP BY s.ofertaId
+			""")
+	List<ConteoDeSesionesPorOferta> contarCerradasPorOferta(
+			@Param("organizationId") long organizationId,
+			@Param("casoId") long casoId);
 }

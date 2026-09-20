@@ -62,4 +62,28 @@ public interface SesionRepositoryPort {
 			java.time.Instant hasta,
 			int limite,
 			Long casoId);
+
+	/**
+	 * Cuantas sesiones <b>cerradas</b> hay en ese Caso, agrupadas por oferta y repartidas por
+	 * asistencia.
+	 *
+	 * <p>Es lo que sostiene el avance del Plan de Tratamiento (M11), que se <b>deriva al leer</b>
+	 * porque {@code plan_item} no tiene columna de realizadas — si la tuviera, la mantendria
+	 * correcta este modulo y la guardaria otro, que es como se desincroniza un contador. La
+	 * consulta la consume {@code clinical} por {@code clinical.spi.RealizadoEnElCasoProbe}: este
+	 * modulo no conoce al Plan y no tiene por que.
+	 *
+	 * <p><b>Solo cerradas, y no es negociable</b>: una sesion en borrador es eso, un borrador, y
+	 * contarla haria que el avance de un plan se moviera mientras alguien tipea. Solo la sesion
+	 * cerrada es un hecho clinico ocurrido (DP-05).
+	 *
+	 * <p>El reparto lo hace la asistencia, que {@code CierreDeSesion} exige al cerrar: presente es
+	 * una realizacion, ausente no lo es. No hay tercer grupo — una sesion cerrada sin asistencia no
+	 * la puede producir el dominio.
+	 *
+	 * @return una entrada por oferta con al menos una sesion cerrada. Las ofertas sin sesiones no
+	 *         aparecen: el llamador las resuelve como cero
+	 */
+	java.util.List<com.akine.encounter.domain.ConteoDeSesionesPorOferta> contarCerradasPorOferta(
+			long organizationId, long casoId);
 }
