@@ -1,0 +1,72 @@
+package com.akine.encounter.application;
+
+import org.slf4j.MDC;
+
+/**
+ * Catalogo de los tipos de evento de auditoria que emite {@code encounter} (M14).
+ *
+ * <p>Catalogo por MODULO, misma convencion que {@code person}, {@code organization},
+ * {@code resource} y {@code offering}: {@code ENTIDAD_VERBO_EN_PASADO}, mayusculas, sin acentos, y
+ * {@code audit_event.event_type} es un {@code VARCHAR(64)} sin lista cerrada para que cada modulo
+ * agregue los suyos sin migracion.
+ *
+ * <h2>Por que esta clase aparece recien en 06.04</h2>
+ *
+ * <p>{@code encounter} no auditaba nada: 06.01, 06.02 y 06.05 registran hechos clinicos cuyo
+ * rastro queda en la propia fila —{@code iniciada_por_cuenta_id}, {@code cerrada_por_cuenta_id}—
+ * y en el timeline. Esta etapa es la primera que necesita catalogo propio porque introduce una
+ * <b>lectura</b> de contenido clinico que DP-03 obliga a auditar, y porque la baja de un
+ * tratamiento lleva motivo y el motivo tiene que quedar en algun lado que no sea la fila borrada.
+ *
+ * <p><b>Toda operacion se audita DENTRO de la transaccion del negocio.</b> Es la regla que 01.01
+ * dejo fijada: un listener posterior al commit que falla deja la mutacion sin rastro. El corolario
+ * incomodo es que una excepcion de negocio hace rollback de la auditoria escrita antes de
+ * lanzarla, asi que <b>ningun rechazo se audita desde aca</b> — el permiso denegado lo escribe el
+ * evaluador de {@code organization} en su propia transaccion.
+ *
+ * <p><b>Ningun detalle lleva contenido clinico.</b> Se auditan ids —sesion, practica, espacio— y
+ * nunca la zona tratada, la tecnica ni la observacion. La auditoria se consulta con
+ * {@code auditoria:read}, que no es un permiso clinico: una fila que reprodujera la zona tratada
+ * entregaria historia clinica a quien no tiene {@code hc:read}. Lo que se audita es QUE cambio, no
+ * A QUE valor.
+ */
+final class AuditEvents {
+
+	/** Entidad sobre la que recaen los eventos de esta etapa. */
+	static final String ENTITY_TRATAMIENTO = "TRATAMIENTO_REALIZADO";
+
+	/** Se asento una intervencion aplicada en la sesion (RF-M14-005). */
+	static final String TRATAMIENTO_REGISTRADO = "TRATAMIENTO_REGISTRADO";
+
+	/** Se reemplazo una intervencion, con sus parametros (RF-M14-005). */
+	static final String TRATAMIENTO_MODIFICADO = "TRATAMIENTO_MODIFICADO";
+
+    /**
+	 * Baja logica de una intervencion, con motivo.
+	 *
+	 * <p>Tiene tipo propio y no es un {@code MODIFICADO} con un detalle: la pregunta "quien borro
+	 * un tratamiento de esta sesion y por que" tiene que responderse filtrando por un tipo de
+	 * evento, no leyendo los detalles de todas las ediciones.
+	 */
+	static final String TRATAMIENTO_DADO_DE_BAJA = "TRATAMIENTO_DADO_DE_BAJA";
+
+	/**
+	 * Alguien <b>leyo</b> los tratamientos de una sesion.
+	 *
+	 * <p>DP-03 no distingue entre leer y escribir en una historia clinica, y en lo clinico el
+	 * riesgo esta mas del lado de quien lee sin motivo. Es la misma decision que 04.01 y 04.02
+	 * tomaron para la HC y la entrada clinica.
+	 */
+	static final String TRATAMIENTO_CONSULTADO = "TRATAMIENTO_CONSULTADO";
+
+	/** Clave del trace id en el MDC, puesta por el filtro de correlacion de {@code platform}. */
+	private static final String MDC_TRACE_ID = "traceId";
+
+	private AuditEvents() {
+	}
+
+	/** El id de correlacion del request, o {@code null} fuera de uno. */
+	static String correlationId() {
+		return MDC.get(MDC_TRACE_ID);
+	}
+}

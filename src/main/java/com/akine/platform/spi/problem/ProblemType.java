@@ -652,7 +652,70 @@ public enum ProblemType {
 	 * dato del pedido. Confundirlos haria que la pantalla ofrezca "reintentar" donde lo que
 	 * corresponde es "completa el motivo".
 	 */
-	REVERSION_SIN_MOTIVO("reversion-sin-motivo");
+	REVERSION_SIN_MOTIVO("reversion-sin-motivo"),
+
+	// =================================================================================
+	// AKINE-06.04 — Tratamientos realizados y espacios usados (M14/M04/M06)
+	// =================================================================================
+
+	/**
+	 * El tratamiento no existe, o no es de esa sesion, de ese tenant o de esa sede (404).
+	 *
+	 * <p>Cross-tenant es 404 y nunca 403: un 403 confirmaria que el id existe y bastaria probar
+	 * ids consecutivos para censar las intervenciones de otro centro. En un modulo clinico eso
+	 * deja de ser aislamiento de tenant y pasa a ser privacidad.
+	 */
+	TRATAMIENTO_NO_ACCESIBLE("tratamiento-no-accesible"),
+
+	/**
+	 * La practica del catalogo existe pero no se puede elegir hoy (409). RF-M14-005.
+	 *
+	 * <p><b>409 y no 404</b> porque lleva a otra accion: la practica existe y es visible, fue dada
+	 * de baja o esta fuera de su ventana, y lo que corresponde es elegir otra — no buscar el id.
+	 * Una practica inexistente o de otro tenant responde {@link #NOT_FOUND}, indistinguibles a
+	 * proposito.
+	 *
+	 * <p>Solo aplica al <b>registrar</b>. Lo ya guardado sigue resolviendo aunque la practica se
+	 * de de baja despues (RN-M06-001): para eso el tratamiento guarda el codigo y el nombre
+	 * congelados.
+	 */
+	PRACTICA_NO_UTILIZABLE("practica-no-utilizable"),
+
+	/**
+	 * El espacio declarado no estaba operable cuando ocurrio la atencion (409). RF-M04-005.
+	 *
+	 * <p><b>La vigencia se evalua en el instante de la ATENCION, no en el de la carga.</b>
+	 * Evaluarla "ahora" haria que registrar el viernes una atencion del lunes fallara porque el
+	 * box se dio de baja el miercoles, y eso es negar un hecho que ocurrio.
+	 *
+	 * <p><b>No expresa ocupacion ni capacidad</b>, y es deliberado: un tratamiento realizado es un
+	 * hecho consumado, y rechazarlo por ocupacion no impide la sobreocupacion —ya paso— sino que
+	 * impide documentarla. La ocupacion es regla de RESERVA y su lugar es 05.02.
+	 */
+	ESPACIO_NO_OPERABLE("espacio-no-operable"),
+
+	/**
+	 * El profesional declarado como co-atendiente no tiene membership vigente en esa sede (409).
+	 *
+	 * <p><b>409 y no 403</b>: quien opera si tiene permiso —es el dueño de la sesion y ya paso el
+	 * control—. Lo que no sirve es el dato que declaro. Un 403 mandaria a la pantalla a decir "no
+	 * tenes permiso", que es falso y ademas manda al usuario a pedir un permiso que ya tiene.
+	 */
+	PROFESIONAL_NO_ASIGNABLE("profesional-no-asignable"),
+
+	/**
+	 * Un parametro de tratamiento esta mal tipado (400). {@code plan_sesiones.txt} 10.4.
+	 *
+	 * <p>Es el caso borde que el plan de implementacion nombra: <i>"parametro legado sin
+	 * tipo/unidad que debe rechazarse o normalizarse explicitamente"</i>. Se elige <b>rechazar</b>:
+	 * normalizar adivinando el tipo es como se cuela un valor de dosificacion clinica interpretado
+	 * al reves.
+	 *
+	 * <p><b>400 y no 409</b>: no hay ningun estado del sistema que impida la operacion, falta o
+	 * sobra un dato del pedido. Viaja con la clave del parametro, porque un 400 que no dice cual
+	 * de los seis esta mal obliga al usuario a probar de a uno.
+	 */
+	PARAMETRO_INVALIDO("parametro-invalido");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
