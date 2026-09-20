@@ -198,3 +198,56 @@ hoy está en drift.
 | **La auditoría de cada operación** (`TIMELINE_ACCESSED`, `ADJUNTO_CLINICO_DOWNLOADED` y los seis restantes) | `audit_event` es append-only por los triggers de `V14` y ya tiene su propia cobertura unitaria por servicio. Verificar el contenido de cada evento desde un IT duplicaría esa prueba sin agregar nada que dependa del motor |
 | **La capa REST de las doce operaciones** | Un IT de `api` exigiría el contrato regenerado, que está en drift hasta que alguien corra `verify -Dakine.contract.update=true`. Escribirlo contra el contrato viejo sería escribir contra una forma que va a cambiar |
 | **El contenido real en disco del `LocalFileSystemContenidoClinicoStorage`** | Ya tiene `LocalFileSystemContenidoClinicoStorageTest`, que es unitario y no necesita base. El IT del binario perdido apunta la fila a una clave inexistente en vez de borrar el archivo, para no depender de dónde montó su raíz la máquina que corre |
+
+---
+
+## AKINE-04.03 — cuatro clases de integración más, **escritas y nunca ejecutadas**
+
+Misma situación que la sección anterior y por la misma causa: el servicio `com.docker.service` sigue
+detenido y arrancarlo pide una elevación que la sesión no tiene, así que Testcontainers no levanta
+MySQL y ningún `*IT` se ejecuta. **Ninguna de estas cuatro clases se ejecutó jamás**, y cada una lo
+declara en su javadoc con la frase *"escrito el 19/09/2026 y NUNCA EJECUTADO: Docker no estaba
+disponible"*.
+
+Lo único verificado es que **compilan** (`./mvnw -o -q test-compile`, en verde) y que las **2.196
+unitarias siguen en verde** (`./mvnw -o test -DskipITs`: `Tests run: 2196, Failures: 0, Errors: 0,
+Skipped: 0`). Un test que compila y no corre no cubre nada: puede fallar por un fixture mal
+sembrado, por un CHECK que no está donde se cree, o por el defecto real que fue a buscar.
+
+**Agravante propio de esta etapa: `V47` y `V48` no se aplicaron nunca contra un motor.** No hay
+evidencia de que siquiera *ejecuten*, mucho menos de que sus CHECK hagan lo que sus comentarios
+dicen. El escenario 30 es lo primero que hay que correr.
+
+**Destino de las cinco filas: la primera sesión con Docker disponible.** Es la misma que tiene que
+correr `./mvnw verify -Dakine.contract.update=true` para regenerar el contrato —que ahora arrastra
+el drift de `0.30.0` **y** el de `0.31.0`— desde la rama que tenga las dos tandas.
+
+| # | Escenario | Test escrito | Motivo y etapa destino |
+|---|---|---|---|
+| 28 | **El cierre de sesión toma DOS numeradores en la misma transacción.** Es la primera transacción de este sistema que lo hace: el de la Historia Clínica (`sesion_numerador`, `V35`) y el del Caso (`caso_sesion_numerador`, `V47`), pedido por `clinical.spi.CasoDirectory`. El orden tiene que ser **siempre historia primero**, o dos cierres concurrentes de sesiones de casos cruzados se bloquean mutuamente. Cubre: dos cierres del mismo caso, el **cruzado** —sesión del caso 1 y sesión del caso 2 a la vez—, la ráfaga de cinco sobre un caso **sin fila de numerador** (el deadlock del lazy-create, ya pagado cuatro veces), la ráfaga secuencial mezclada que prueba que **las dos numeraciones avanzan independientes**, la sesión **sin caso** que cierra con `numero_en_caso` en NULL, y la idempotencia que no consume correlativo en ninguna de las dos dimensiones. Origen: AKINE-04.03, challenge §8.4 —"la más fácil de olvidar y la más cara" | `encounter/CierreConDosNumeradoresIT` — 8 tests | **No corrido.** Hoy el orden fijo está **razonado y no probado**. Con datos válidos el ciclo de espera no se puede construir —un caso pertenece a una sola historia, así que dos sesiones que comparten caso ya se serializan en el primer numerador—, y **eso es la consecuencia del orden fijo, no una debilidad del test**: deja de ser cierto si alguien invierte los pasos 5 y 5b o mete un tercer numerador en el medio. Destino: **primera sesión con Docker disponible** |
+| 29 | **La numeración del Caso y el duplicado razonable bajo concurrencia.** "Dos administrativos abren un caso para el mismo paciente y la misma oferta, al mismo tiempo, desde dos sedes" (challenge §8). Cubre: dos altas concurrentes que **entran las dos** con `numero_caso` 1 y 2 —RN-M10-002 admite varios casos activos y un unique acá sería un bug disfrazado de protección—, la ráfaga de cinco sobre una historia **sin fila de numerador**, la ráfaga secuencial 1..6 sin huecos, el 409 de duplicado **con la lista de candidatos** y sin consumir correlativo, el reenvío confirmado que entra, y el **control negativo**: dos altas sobre historias distintas entran las dos sin esperarse. Origen: AKINE-04.03, challenge §8 puntos 1 y 2 | `clinical/CasoClinicoConcurrenteIT` — 8 tests | **No corrido.** El control negativo es lo que a 02.07 le faltó: un lock demasiado grueso —por organización en vez de por historia— pasaría inadvertido con el resto en verde, porque todos los demás escenarios usan una sola historia. Destino: **primera sesión con Docker disponible** |
+| 30 | **`V47` y `V48` contra el motor.** Las cinco tablas con `organization_id NOT NULL` y todo índice declarado empezando por él; `ck_caso_clinico_estado` y `ck_caso_clinico_cierre_coherente` en sus dos direcciones —un CERRADO incompleto y un ACTIVO que arrastra datos de cierre—; `uk_caso_numero` y su control negativo por historia y por tenant; que **no haya** baja lógica de caso ni contador de sesiones cacheado; `ck_caso_profesional_rol` y `ck_caso_profesional_vigencia`; la columna generada **`hasta_key`**, que exista, sea `STORED` y valga el centinela; que `caso_evento` **no** tenga `version`, `updated_at` ni baja; los tres CHECK del historial —tipo, motivo obligatorio sólo en CIERRE y REAPERTURA, y la APERTURA como único evento sin estado anterior—; la unicidad de los dos numeradores; y de `V48` el `ck_sesion_numero_en_caso` —**en particular que no pueda haber `numero_en_caso` sin `caso_id`**—, `uk_sesion_numero_en_caso` y que las sesiones sin caso no se estorben entre sí. Origen: AKINE-04.03, `V47`/`V48` | `clinical/infrastructure/CasoClinicoMigrationIT` — 33 tests | **No corrido, y ninguna de las dos migraciones se aplicó jamás.** MySQL ignoró en silencio toda la sintaxis `CHECK` hasta 8.0.16, y en 8.4 una expresión mal escrita sobre una columna generada falla con un **3819** que sólo aparece al ejecutar — que es lo que esta clase de test destapó en 03.06. Destino: **primera sesión con Docker disponible** |
+| 31 | **El ciclo de vida del Caso contra base real.** Abrir → editar con `expectedVersion` → cerrar con motivo → reabrir → cerrar de nuevo, con `caso_evento` acumulando los cinco eventos en orden y **cada cierre conservando su propio motivo**; que reabrir **limpie** las tres columnas del cierre; que un caso cerrado no admita editar contenido ni cambiar equipo (**409, no 403**) ni **sesiones nuevas** —verificado por el camino real, `SesionService#iniciar` a través del `spi`—; que **reabrir NO reinicie `caso_sesion_numerador`** (la sesión siguiente es la 4, no la 1); que el profesional desvinculado **siga figurando** con `hasta` puesto; que el cambio de equipo **haga avanzar la `version` del caso** aunque no toque ninguna de sus columnas; y el filtro por caso del timeline, incluido que un caso de otra historia responda **404 y no página vacía**. Origen: AKINE-04.03, RF-M10-001..006 y la quinta condición del challenge | `clinical/CasoClinicoCicloIT` — 12 tests | **No corrido.** Dos afirmaciones sólo se pueden hacer acá: que el numerador del caso no vuelva atrás —vive en una fila que sólo existe en la base— y que el `OPTIMISTIC_FORCE_INCREMENT` de `cambiarEquipo` **efectivamente** suba la versión cuando la escritura sólo toca tablas hijas, que es comportamiento de Hibernate contra un motor real y es exactamente la lección de 02.07. Destino: **primera sesión con Docker disponible** |
+| 32 | **Aislamiento de tenant de lo que 04.03 agrega.** Un actor del tenant B no abre, ve, edita, cierra ni cambia el equipo de un caso del tenant A; no lista ni abre casos sobre una historia de A; no cierra una sesión de A; y no puede **filtrar su propio timeline por un caso de A**. El resultado es **404, nunca 403** — un 403 confirmaría que ese caso existe y dejaría censar casos ajenos por id. Está repartido en las tres clases de servicio, una prueba por clase. Origen: `AGENT.md` §6, que lo exige en **cada** test de integración | `CasoClinicoConcurrenteIT`, `CasoClinicoCicloIT`, `CierreConDosNumeradoresIT` | **No corrido.** Mismo bloqueo. Destino: **primera sesión con Docker disponible** |
+
+### Lo que estas clases deliberadamente NO cubren
+
+| Escenario | Por qué no se escribió |
+|---|---|
+| **El ciclo de espera real entre los dos numeradores** —dos transacciones tomándolos en orden inverso— | **No se puede construir con datos válidos.** Un caso pertenece a exactamente una historia, así que dos sesiones que comparten caso comparten historia y quedan serializadas en el primer numerador, y dos de historias distintas no comparten ninguno. Forzarlo exigiría sembrar una sesión de la historia B con un caso de la historia A —dato que `SesionService#iniciar` rechaza— y el test estaría probando el comportamiento del motor ante datos que el sistema no puede producir. Lo que sí se prueba es lo observable: que las combinaciones con solapamiento máximo **terminen las dos** |
+| **La capa REST de las ocho operaciones nuevas** | Mismo motivo que en 04.02: un IT de `api` exigiría el contrato regenerado, y `0.31.0` está en drift junto con `0.30.0`. Escribirlo contra el contrato viejo sería escribir contra una forma que va a cambiar |
+| **La auditoría de cada operación del caso** (`CASO_CLINICO_OPENED`, `CASO_CLINICO_ACCESSED` y las cinco restantes) | `audit_event` es append-only por los triggers de `V14` y cada servicio ya tiene su cobertura unitaria. Verificar el contenido de cada evento desde un IT duplicaría esa prueba sin agregar nada que dependa del motor |
+| **Que `abrir` corra efectivamente en `READ_COMMITTED`** | El nivel de aislamiento no es observable desde el resultado de la operación: lo que se puede observar es el efecto —que dos altas concurrentes no numeren igual— y eso ya lo cubre el escenario 29. Un test que leyera `@@transaction_isolation` probaría la anotación, no la regla |
+
+### Una observación de producción que estas clases NO pueden saldar
+
+`SesionService#cerrar` es hoy la **única** mutación del sistema que toma un numerador y **no**
+declara `Isolation.READ_COMMITTED` (`encounter/application/SesionService.java:308`). Las otras diez
+que serializan sí lo hacen —`TurnoService:136`, `CicloDeTurnoService:230`, `CoberturaPacienteService`,
+`AutorizacionService`, `ConvenioService`, `ArancelService`, `MembershipService`, y el propio
+`CasoClinicoService#abrir:153` de esta etapa—. No está probado que sea un defecto: una transacción
+lee siempre sus propias escrituras, así que el `leerUltimo` posterior al `incrementar` debería ver
+el valor nuevo aun bajo `REPEATABLE READ`. Pero es una desviación no declarada de la regla que
+05.02 dejó fijada, y **04.03 acaba de convertir ese método en el que toma dos numeradores**. Queda
+como pregunta para la primera sesión con Docker: correr el escenario 28 y, si pasa, decidir si la
+anotación se unifica igual por coherencia.

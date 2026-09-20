@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -304,8 +305,22 @@ public class SesionService {
 	 * <p>DP-06 y la regla de la etapa: "cierre clinico != cobro". Este metodo no crea ninguna
 	 * obligacion economica; la deriva despues AKINE-07.01 leyendo las sesiones cerradas. Atarlas
 	 * haria que un problema de facturacion bloquee una historia clinica.
+	 *
+	 * <h2>READ_COMMITTED, como toda mutacion que toma un numerador</h2>
+	 *
+	 * <p>Es la regla que 05.02 dejo fijada: con {@code REPEATABLE READ} InnoDB fija la foto en la
+	 * primera lectura consistente, que ocurre <b>antes</b> del lock, asi que las mutaciones que
+	 * serializan van en {@code READ_COMMITTED}. Este metodo era la <b>unica</b> de las once que
+	 * toman un numerador que no lo declaraba — se detecto al escribir los tests de integracion de
+	 * AKINE-04.03, comparandolo contra las otras diez.
+	 *
+	 * <p>Que el descuido no se notara tiene una explicacion y no sirve como defensa: una
+	 * transaccion lee siempre sus propias escrituras, asi que leer el numerador <b>despues</b> de
+	 * incrementarlo devuelve el valor nuevo aun bajo {@code REPEATABLE READ}. Depender de eso es
+	 * depender del orden de dos lineas dentro del metodo, no de una garantia declarada — y
+	 * AKINE-04.03 acaba de convertir este metodo en el que toma <b>dos</b> numeradores.
 	 */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public SesionView cerrar(
 			OperatingActor actor, long consultorioId, long sesionId,
 			CierreDeSesion cierre, long expectedVersion) {
