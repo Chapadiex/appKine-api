@@ -3,6 +3,7 @@ package com.akine.activity.application;
 import com.akine.activity.domain.ClaseEvento;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.EstadoClase;
+import com.akine.activity.domain.InscripcionClase;
 import com.akine.activity.domain.PermissionCodes;
 import com.akine.activity.domain.TipoEventoClase;
 import com.akine.activity.domain.exception.CapacidadNoAdmitidaException;
@@ -14,6 +15,7 @@ import com.akine.activity.domain.exception.OfertaNotAccessibleException;
 import com.akine.activity.domain.exception.RecursoOcupadoException;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseEventoRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseProgramadaRepositoryPort;
+import com.akine.activity.domain.port.ActivityRepositoryPorts.InscripcionClaseRepositoryPort;
 import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
@@ -101,6 +103,8 @@ public class ClaseService {
 
 	private final ClaseProgramadaRepositoryPort clases;
 	private final ClaseEventoRepositoryPort eventos;
+	private final InscripcionClaseRepositoryPort inscripciones;
+	private final AvisosDeClase avisos;
 	private final AgendaDeSede agenda;
 	private final OfertaDirectory ofertas;
 	private final DisponibilidadDirectory disponibilidad;
@@ -112,6 +116,8 @@ public class ClaseService {
 	public ClaseService(
 			ClaseProgramadaRepositoryPort clases,
 			ClaseEventoRepositoryPort eventos,
+			InscripcionClaseRepositoryPort inscripciones,
+			AvisosDeClase avisos,
 			AgendaDeSede agenda,
 			OfertaDirectory ofertas,
 			DisponibilidadDirectory disponibilidad,
@@ -122,6 +128,8 @@ public class ClaseService {
 
 		this.clases = clases;
 		this.eventos = eventos;
+		this.inscripciones = inscripciones;
+		this.avisos = avisos;
 		this.agenda = agenda;
 		this.ofertas = ofertas;
 		this.disponibilidad = disponibilidad;
@@ -242,7 +250,13 @@ public class ClaseService {
 		agenda.asegurar(organizationId, consultorioId);
 		agenda.bloquear(organizationId, consultorioId);
 
-		ClaseProgramada clase = clases.findByIdInScope(organizationId, consultorioId, claseId)
+		// FOR UPDATE, y no un SELECT plano (AKINE-08.02). Es lo unico que cierra la carrera entre
+		// bajar la capacidad y una inscripcion simultanea: sin el, se lee la ocupacion, otra
+		// transaccion toma el ultimo lugar y esta escribe una capacidad menor, dejando
+		// cupo_ocupado > capacidad. Con la fila bloqueada, ese tomarCupo espera y despues evalua su
+		// LEAST contra la capacidad NUEVA. El lock de agenda_sede no sirve para esto: una
+		// inscripcion no lo toma, y no debe tomarlo — seria una inversion de orden.
+		ClaseProgramada clase = clases.lockByIdInScope(organizationId, consultorioId, claseId)
 				.orElseThrow(() -> new ClaseNotAccessibleException(claseId));
 		exigirVersion(clase, command.version());
 
@@ -285,6 +299,15 @@ public class ClaseService {
 				movida, inicioAnterior, finAnterior, capacidadAnterior, actor.accountId(), ahora));
 		auditar(actor, movida, "CLASE_REPROGRAMADA", movida.getEstado(), null, ahora);
 
+		// RF-M26-006 (AKINE-08.02). Solo si el horario efectivamente se movio: avisar de una
+		// reprogramacion que no cambio la hora es ruido, y el ruido hace que se dejen de leer los
+		// avisos que si importan.
+		if (!inicioAnterior.equals(command.inicio()) || !finAnterior.equals(command.fin())) {
+			avisos.avisarCambioDeClase(
+					movida, sede.name(), sede.timezone(),
+					inscripciones.findVivasDeLaClase(organizationId, claseId), ahora);
+		}
+
 		log.info("Clase reprogramada: claseId={} consultorioId={} inicio={} -> {}",
 				claseId, consultorioId, inicioAnterior, command.inicio());
 
@@ -314,10 +337,14 @@ public class ClaseService {
 			OperatingActor actor, long consultorioId, long claseId, String motivo) {
 
 		long organizationId = exigirContexto(actor);
-		exigirSedeDelTenant(organizationId, consultorioId);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
 
-		ClaseProgramada clase = clases.findByIdInScope(organizationId, consultorioId, claseId)
+		// FOR UPDATE por lo mismo que reprogramar (AKINE-08.02): esta operacion pone el contador de
+		// cupo en cero, y hacerlo mientras alguien toma el ultimo lugar dejaria un recibo sin
+		// contador. Con la fila bloqueada, esa inscripcion espera y despues falla contra
+		// estado = 'CANCELADA'.
+		ClaseProgramada clase = clases.lockByIdInScope(organizationId, consultorioId, claseId)
 				.orElseThrow(() -> new ClaseNotAccessibleException(claseId));
 
 		EstadoClase anterior = clase.getEstado();
@@ -327,16 +354,59 @@ public class ClaseService {
 
 		// Solo si hubo transicion. Un evento por cada reintento llenaria el historial de filas que
 		// no cuentan ningun hecho nuevo, y haria que una auditoria mostrara dos cancelaciones de
-		// algo que se cancelo una vez.
+		// algo que se cancelo una vez. Y desde 08.02 hace ademas que una segunda ejecucion no
+		// vuelva a notificar a todos los participantes de algo que ya les avisamos.
 		if (cancelo) {
 			eventos.registrar(ClaseEvento.de(
 					cancelada, TipoEventoClase.CANCELACION, anterior, motivo,
 					actor.accountId(), ahora));
 			auditar(actor, cancelada, "CLASE_CANCELADA", anterior, motivo, ahora);
+			resolverInscripcionesDeClaseCancelada(
+					actor, sede, cancelada, claseId, motivo, ahora);
 			log.info("Clase cancelada: claseId={} consultorioId={}", claseId, consultorioId);
 		}
 
-		return proyectar(organizationId, consultorioId, cancelada);
+		return proyectarReleyendo(organizationId, consultorioId, cancelada);
+	}
+
+	/**
+	 * Resuelve las inscripciones de una clase que se acaba de cancelar (RF-M28-006 paso 6, que
+	 * 08.01 difirio a esta etapa).
+	 *
+	 * <p>Cancela a todos —los que tenian lugar y los que esperaban—, pone el contador en cero para
+	 * que el invariante siga cerrando, y avisa a cada uno por separado (RF-M26-006).
+	 *
+	 * <p><b>No promueve a nadie</b>: no hay clase a la que promover. Y <b>no devuelve creditos ni
+	 * plata</b> —paso 7 de RF-M28-006—: eso es 08.07, y lo que esta etapa le deja es una operacion
+	 * idempotente de la que colgarlo sin devolver dos veces.
+	 *
+	 * <p>La lista de afectados se lee ANTES del {@code UPDATE} masivo, que es lo unico que permite
+	 * saber a quien avisarle: despues ya estan todos en {@code CANCELADA} y son indistinguibles de
+	 * los que se habian dado de baja por su cuenta.
+	 */
+	private void resolverInscripcionesDeClaseCancelada(
+			OperatingActor actor,
+			ConsultorioSnapshot sede,
+			ClaseProgramada cancelada,
+			long claseId,
+			String motivo,
+			Instant ahora) {
+
+		long organizationId = sede.organizationId();
+		List<InscripcionClase> afectadas = inscripciones.findVivasDeLaClase(organizationId, claseId);
+		if (afectadas.isEmpty()) {
+			return;
+		}
+		// El aviso se encola ANTES del UPDATE masivo porque ese UPDATE limpia el contexto de
+		// persistencia, y las entidades que la notificacion necesita quedarian detachadas.
+		avisos.avisarCambioDeClase(cancelada, sede.name(), sede.timezone(), afectadas, ahora);
+
+		int canceladas = inscripciones.cancelarTodasPorClaseCancelada(
+				organizationId, claseId, "Clase cancelada: " + motivo, actor.accountId(), ahora);
+		clases.vaciarCupo(organizationId, claseId);
+
+		log.info("Inscripciones resueltas por cancelacion de clase: claseId={} canceladas={}",
+				claseId, canceladas);
 	}
 
 	// =================================================================================
@@ -623,17 +693,19 @@ public class ClaseService {
 	}
 
 	/**
-	 * Cuantos lugares consumen inscripciones. <b>Siempre 0 hasta 08.02</b>, que es la etapa que
-	 * crea {@code InscripcionClase}.
+	 * Cuantos lugares consumen inscripciones.
 	 *
-	 * <p>Es un metodo y no un literal esparcido por el servicio para que 08.02 tenga <b>un solo
-	 * lugar</b> que cambiar. Y no se declara una costura entre modulos para esto: 08.02 vive en
-	 * {@code activity}, el mismo modulo, y una interfaz provisoria hacia adentro solo agregaria una
-	 * indireccion que nadie va a recordar reemplazar — como paso con {@code ReservaProbeSinTurnos},
-	 * que sobrevivio dos etapas devolviendo vacio.
+	 * <p><b>Devolvia 0 en 08.01 y ahora devuelve el numero real</b>, y el cambio es de una linea
+	 * porque 08.01 lo dejo en un unico lugar a proposito. Con el, la regla de RF-M12-012 —no bajar
+	 * la capacidad por debajo de la ocupacion confirmada— <b>se enciende sin escribir nada
+	 * nuevo</b>.
+	 *
+	 * <p>Sale de la columna y no de un {@code COUNT} sobre las inscripciones: esa columna es quien
+	 * OTORGA el lugar, no un resumen de quienes lo tienen. Ver el punto 2 de la cabecera de
+	 * {@code V60}.
 	 */
 	private int contarOcupacion(ClaseProgramada clase) {
-		return 0;
+		return clase.getCupoOcupado();
 	}
 
 	private ClaseView proyectar(long organizationId, long consultorioId, ClaseProgramada clase) {
@@ -642,6 +714,23 @@ public class ClaseService {
 						clase.getInicio(), clase.getCapacidad()))
 				.orElse(clase.getCapacidad());
 		return ClaseView.de(clase, efectiva, contarOcupacion(clase));
+	}
+
+	/**
+	 * Relee la clase para proyectarla despues de una escritura nativa sobre su fila.
+	 *
+	 * <p>{@code vaciarCupo} y {@code cancelarTodasPorClaseCancelada} son {@code UPDATE} nativos con
+	 * {@code clearAutomatically}: la entidad que quedo en memoria tiene el {@code cupo_ocupado}
+	 * viejo, y devolver ese numero le mostraria al mostrador participantes en una clase que acaba de
+	 * cancelar. El {@code orElse} cubre el caso en que no hubo escritura nativa.
+	 */
+	private ClaseView proyectarReleyendo(
+			long organizationId, long consultorioId, ClaseProgramada enMemoria) {
+
+		ClaseProgramada fresca = clases
+				.findByIdInScope(organizationId, consultorioId, enMemoria.getId())
+				.orElse(enMemoria);
+		return proyectar(organizationId, consultorioId, fresca);
 	}
 
 	// =================================================================================

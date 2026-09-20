@@ -522,7 +522,11 @@ class PermissionEvaluatorServiceTest {
 							// `clase:read` y `clase:manage` se suman en AKINE-08.01, la etapa
 							// que crea la clase. Mismo reparto que los turnos: M28 §2 nombra al
 							// administrador entre los actores de una clase.
-							"clase:read", "clase:manage");
+							"clase:read", "clase:manage",
+							// `inscripcion:read` e `inscripcion:manage` se suman en AKINE-08.02.
+							// Mismo alcance que la clase: quien puede programarla puede anotar
+							// gente en ella.
+							"inscripcion:read", "inscripcion:manage");
 		}
 
 		@Test
@@ -595,7 +599,10 @@ class PermissionEvaluatorServiceTest {
 							"hc:read", "hc:write",
 							// `clase:read` y `clase:manage` entran en AKINE-08.01: M28 §2 lo nombra
 							// como "Profesional / Instructor", y es quien dicta la clase.
-							"clase:read", "clase:manage");
+							"clase:read", "clase:manage",
+							// AKINE-08.02: el instructor necesita saber a quien tiene enfrente y
+							// dar de baja a quien avisa que no viene.
+							"inscripcion:read", "inscripcion:manage");
 		}
 	}
 

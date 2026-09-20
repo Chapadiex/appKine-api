@@ -29,7 +29,11 @@ class SanitizedPayloadTest {
 		// Escrita a mano: agregar una clave tiene que ser una decision visible en el diff de
 		// este test, no un descuido que pase inadvertido.
 		assertThat(SanitizedPayload.CLAVES_PERMITIDAS)
-				.containsExactlyInAnyOrder("nombre", "organizacionNombre", "invitadoPor");
+				.containsExactlyInAnyOrder("nombre", "organizacionNombre", "invitadoPor",
+						// AKINE-08.02: lo minimo para que un aviso de clase diga de que clase
+						// habla. Que agregarlas obligue a tocar este test es exactamente lo que el
+						// test existe para conseguir.
+						"claseTitulo", "claseInicio", "consultorioNombre");
 	}
 
 	@ParameterizedTest(name = "clave fuera de la lista blanca: {0}")

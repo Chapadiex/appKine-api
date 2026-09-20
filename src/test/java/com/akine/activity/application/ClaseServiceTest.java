@@ -3,6 +3,7 @@ package com.akine.activity.application;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseEventoRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseProgramadaRepositoryPort;
+import com.akine.activity.domain.port.ActivityRepositoryPorts.InscripcionClaseRepositoryPort;
 import com.akine.activity.domain.exception.CapacidadNoAdmitidaException;
 import com.akine.activity.domain.exception.ClaseNoProgramableException;
 import com.akine.activity.domain.exception.RecursoOcupadoException;
@@ -70,6 +71,8 @@ class ClaseServiceTest {
 
 	@Mock private ClaseProgramadaRepositoryPort clases;
 	@Mock private ClaseEventoRepositoryPort eventos;
+	@Mock private InscripcionClaseRepositoryPort inscripciones;
+	@Mock private AvisosDeClase avisos;
 	@Mock private AgendaDeSede agenda;
 	@Mock private OfertaDirectory ofertas;
 	@Mock private DisponibilidadDirectory disponibilidad;
@@ -82,7 +85,7 @@ class ClaseServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new ClaseService(clases, eventos, agenda, ofertas, disponibilidad, espacios,
+		service = new ClaseService(clases, eventos, inscripciones, avisos, agenda, ofertas, disponibilidad, espacios,
 				consultorios, permissionGuard, auditTrail);
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
@@ -199,6 +202,9 @@ class ClaseServiceTest {
 	@DisplayName("Cancelar dos veces no registra un segundo evento de historial")
 	void cancelar_es_idempotente() {
 		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		// lockByIdInScope desde AKINE-08.02: cancelar pone el contador de cupo en cero y por eso
+		// bloquea la fila. findByIdInScope sigue haciendo falta porque la proyeccion la relee.
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
 		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
 		given(clases.saveAndFlush(any())).willAnswer(invocacion -> invocacion.getArgument(0));
 

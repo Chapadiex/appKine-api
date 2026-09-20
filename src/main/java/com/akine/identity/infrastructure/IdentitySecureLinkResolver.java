@@ -120,6 +120,11 @@ public class IdentitySecureLinkResolver implements SecureLinkResolver {
 	 * <p>{@code CUENTA_YA_REGISTRADA} no lleva enlace, y {@code INVITACION_COLABORADOR} no tiene
 	 * fila en esa tabla: lo resuelve {@code resolveLink} antes de llegar aca, leyendo el vault.
 	 * Los dos devuelven vacio en vez de buscar un token que no existe.
+	 *
+	 * <p><b>El switch se deja exhaustivo, sin {@code default}</b>, y eso es lo que hizo que agregar
+	 * los dos tipos de M28 en AKINE-08.02 rompiera la compilacion aca en vez de fallar callado en
+	 * runtime. Es la propiedad que se quiere: cada tipo nuevo obliga a decidir explicitamente si
+	 * lleva token de {@code identity} o no. Los avisos de clase no llevan ninguno.
 	 */
 	private static Optional<TipoTokenVerificacion> tipoDeTokenDe(NotificationType tipo) {
 		if (tipo == null) {
@@ -128,7 +133,8 @@ public class IdentitySecureLinkResolver implements SecureLinkResolver {
 		return switch (tipo) {
 			case ACTIVACION_CUENTA -> Optional.of(TipoTokenVerificacion.ACTIVACION);
 			case RECUPERACION_PASSWORD -> Optional.of(TipoTokenVerificacion.RESET);
-			case INVITACION_COLABORADOR, CUENTA_YA_REGISTRADA -> Optional.empty();
+			case INVITACION_COLABORADOR, CUENTA_YA_REGISTRADA,
+					CLASE_MODIFICADA, CUPO_LIBERADO -> Optional.empty();
 		};
 	}
 
