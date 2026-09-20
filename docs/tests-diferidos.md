@@ -251,3 +251,38 @@ el valor nuevo aun bajo `REPEATABLE READ`. Pero es una desviación no declarada 
 05.02 dejó fijada, y **04.03 acaba de convertir ese método en el que toma dos numeradores**. Queda
 como pregunta para la primera sesión con Docker: correr el escenario 28 y, si pasa, decidir si la
 anotación se unifica igual por coherencia.
+
+---
+
+## AKINE-07.04 — Presentaciones y cuenta corriente de financiadores (M21)
+
+**Cinco escenarios, y ninguno se escribió.** A diferencia de 04.02 y 04.03 —que dejaron 108
+escenarios escritos y nunca ejecutados— esta etapa no escribió tests de integración: escribir un IT
+que no se puede correr deja un artefacto que parece verificación y no lo es, y la sesión que lo
+herede tiene que revisarlo entero antes de confiar en él. Lo que sí queda es la lista de lo que hay
+que escribir, con el motivo de cada uno.
+
+Lo verificado: **2.249 unitarias en verde** (`./mvnw -o -B test -DskipITs`), ArchUnit 5/5 con la
+arista nueva `billing → contracting.spi` en el grafo, y el diseño completo. Un test unitario con
+mocks no prueba una columna generada, un `CHECK` ni dos transacciones peleándose por el mismo saldo.
+
+| # | Escenario | Motivo y etapa destino |
+|---|---|---|
+| 33 | **`V56` contra el motor.** Que los dos `ALTER` ejecuten —en particular `DROP CHECK ck_movimiento_caja_tipo_origen` seguido del `ADD`, que es la primera vez que este repositorio reemplaza un `CHECK` desde una migración posterior—; que `ck_obligacion_financiador_presente` y su recíproca funcionen en las dos direcciones; que la columna generada **`ocupa_marca`** exista, sea `STORED` y valga NULL para `DEBITADO` y `ANULADO`; que `ck_presentacion_saldo_cuadra` rechace una fila donde los cuatro importes no cierren; que `ck_presentacion_confirmacion_completa` rechace un `BORRADOR` con número y un `PRESENTADA` sin él; y que `uk_presentacion_factura` admita varios NULL. | **No escrito.** MySQL ignoró en silencio toda la sintaxis `CHECK` hasta 8.0.16, y en 8.4 una expresión mal escrita sobre una columna generada falla con un **3819** que sólo aparece al ejecutar — es lo que esta clase de test destapó en 03.06. Destino: **primera sesión con Docker disponible** |
+| 34 | **RN-M21-003 bajo concurrencia real.** Dos administrativos agregan la **misma** obligación a **dos lotes distintos** al mismo tiempo. Sólo uno entra; el otro choca contra `uk_presentacion_item_ocupa` y recibe 409 `obligacion-ya-presentada`. Y el control negativo que 02.07 dejó como lección: dos obligaciones **distintas** al mismo lote entran las dos sin esperarse. | **No escrito, y hoy la regla está probada sólo por la consulta previa** —`findVivoDeLaObligacion`—, que tiene una ventana entre leer y escribir. El mecanismo real es el unique sobre la columna generada, y eso no existe fuera del motor. Destino: **primera sesión con Docker disponible** |
+| 35 | **El caso que rompe el diseño, con dos transacciones de verdad.** El aviso de débito por 15.000 y la transferencia por 100.000 sobre el mismo lote de 100.000, a la vez. Uno gana, el otro afecta **cero filas** y recibe 409 con el saldo actual; el saldo nunca queda negativo y `ck_presentacion_saldo` no se dispara. | **No escrito. Es el escenario más importante de la etapa** y el único que puede confirmar que el `UPDATE ... WHERE saldo >= :importe` sirve para lo que se lo eligió. El test unitario que existe simula cero filas con un mock: prueba la traducción a 409, **no** que el motor serialice. Destino: **primera sesión con Docker disponible** |
+| 36 | **El correlativo del lote sin huecos ni repeticiones.** Ráfaga de cinco confirmaciones concurrentes del mismo financiador sobre una sede **sin fila de numerador** —el deadlock del lazy-create, ya pagado cuatro veces—; la secuencia 1..6 sin huecos; que un lote que falla la validación **no consuma** un número; y que dos financiadores distintos numeren independientes. | **No escrito.** `PresentacionNumeradorIniciador` replica un patrón probado en otras tres etapas, pero "replica un patrón" no es evidencia. Destino: **primera sesión con Docker disponible** |
+| 37 | **El pago que genera caja, y el que no la toca.** Que un pago por `TRANSFERENCIA` asiente un movimiento con `jornada_caja_id` NULL, `afecta_arqueo = 0` y **sin exigir jornada abierta**; que uno en `EFECTIVO` sin jornada abierta devuelva 409 `caja-no-abierta` **y no registre el pago ni mueva el saldo del lote**; que el reintento con la misma `idempotency_key` no duplique ni el pago ni el movimiento; y el **aislamiento de tenant**: un actor del tenant B no ve, no paga y no concilia un lote de A —404, nunca 403—. | **No escrito.** La atomicidad del conjunto pago + saldo + movimiento sólo se observa cuando algo falla en el medio, y eso exige una transacción real. Destino: **primera sesión con Docker disponible** |
+
+### Lo que esta etapa NO puede validar, y no es un test que falte
+
+**RF-M21-003 no comprueba orden, autorización ni credencial.** Los tres requisitos documentales del
+convenio viven en `contracting.spi.ArancelCongelado` —`requeriaOrden`, `requeriaAutorizacion`,
+`requeriaCredencial`— y el consumidor que tenía que copiarlos a `obligacion` es
+`ObligacionDevengador`, que **nunca se recableó contra convenios**. Es la misma causa raíz por la
+que no existe ninguna obligación con `responsable = FINANCIADOR` y por la que la bandeja de
+elegibles devuelve lista vacía.
+
+**No es deuda de verificación: es un cimiento que falta**, y su destino no es "la primera sesión con
+Docker" sino una etapa propia —recablear el devengado, con migración y cambio de contrato—. Está en
+§2 y §7 del design challenge de AKINE-07.04, y es una **decisión pendiente del usuario**.
