@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -165,4 +166,58 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 	void actualizarEstadoPorSaldo(
 			@Param("organizationId") long organizationId,
 			@Param("egresoId") long egresoId);
+
+	// =================================================================================
+	// M23 — agregaciones de reporte (AKINE-07.06)
+	// =================================================================================
+	//
+	// Las dos suman EGRESO (M22), el quinto concepto economico. NO es un movimiento de
+	// caja: un egreso confirmado que todavia no se pago no movio un peso de ningun cajon,
+	// y un egreso pagado por transferencia salio del centro sin tocar el arqueo.
+	//
+	// Por eso tampoco existe ningun total que reste egresos de ingresos: seria un
+	// resultado economico, que es RF-M23-009 y no tiene cimiento —`egreso` no se liga a
+	// una oferta ni a un servicio, asi que no hay modelo de costeo que lo sostenga—.
+
+	/**
+	 * Egresos confirmados en el periodo.
+	 *
+	 * <p>Incluye {@code PAGADO}: un egreso pagado sigue siendo un egreso confirmado del periodo, y
+	 * dejarlo afuera haria que el total <b>bajara a medida que se van pagando</b>, que es el peor
+	 * comportamiento posible para un indicador de costos.
+	 *
+	 * <p>Excluye {@code BORRADOR} —todavia no es un compromiso— y {@code ANULADO}.
+	 */
+	@Query("""
+			SELECT SUM(e.importeTotal) FROM Egreso e
+			 WHERE e.organizationId = :organizationId
+			   AND e.consultorioId = :consultorioId
+			   AND e.estado IN (com.akine.billing.domain.EstadoEgreso.CONFIRMADO,
+			                    com.akine.billing.domain.EstadoEgreso.PAGADO)
+			   AND e.registradoEn >= :desde
+			   AND e.registradoEn < :hasta
+			""")
+	BigDecimal sumarConfirmadosEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/**
+	 * Lo que el centro debe y todavia no pago, <b>hoy</b>.
+	 *
+	 * <p>No recibe el periodo, por la misma razon que {@code sumarSaldoVigenteEnElReporte} en
+	 * obligaciones: {@code saldo_pendiente} es un derivado materializado del estado actual, y
+	 * reconstruirlo a una fecha pasada seria una segunda formula de la misma cosa. Va declarado en
+	 * el {@code criterioDeFecha} del indicador.
+	 */
+	@Query("""
+			SELECT SUM(e.saldoPendiente) FROM Egreso e
+			 WHERE e.organizationId = :organizationId
+			   AND e.consultorioId = :consultorioId
+			   AND e.estado = com.akine.billing.domain.EstadoEgreso.CONFIRMADO
+			""")
+	BigDecimal sumarSaldoPendienteEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId);
 }

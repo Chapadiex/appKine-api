@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -88,4 +89,58 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 			""", nativeQuery = true)
 	@Override
 	void actualizarEstadoPorSaldo(@Param("obligacionId") long obligacionId);
+
+	// =================================================================================
+	// M23 — agregaciones de reporte (AKINE-07.06)
+	// =================================================================================
+	//
+	// Las dos suman COBRO (M19), que no es la deuda (M18) ni la caja (M20). El reporte
+	// las muestra con su fuente declarada y no publica ningun total que las junte con las
+	// otras: sumar lo cobrado con los ingresos de caja cuenta dos veces cada cobro en
+	// efectivo, porque el movimiento de caja de origen COBRO ES ese cobro visto desde el
+	// cajon.
+
+	/** Lo cobrado en el periodo, por cualquier medio. */
+	@Query("""
+			SELECT SUM(c.total) FROM Cobro c
+			 WHERE c.organizationId = :organizationId
+			   AND c.consultorioId = :consultorioId
+			   AND c.deletedAt IS NULL
+			   AND c.cobradoEn >= :desde
+			   AND c.cobradoEn < :hasta
+			""")
+	BigDecimal sumarCobradoEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/**
+	 * Lo cobrado por un medio concreto. Es la <b>mitad izquierda de la reconciliacion</b>.
+	 *
+	 * <p>Con {@code EFECTIVO} da lo que, segun M19, deberia haber entrado a algun cajon. La otra
+	 * mitad la da {@code MovimientoCajaRepository.sumarEfectivoDeCobrosEnElReporte} desde M20, y el
+	 * reporte muestra <b>la resta de las dos, que deberia ser cero</b>. No es una suma: es una
+	 * comparacion entre dos fuentes que describen el mismo hecho desde dos lados.
+	 *
+	 * <p>Nativa porque {@code cobro_medio} es una coleccion mapeada con {@code JoinColumn} y no
+	 * tiene entidad propia navegable desde JPQL para agregarla.
+	 */
+	@Query(value = """
+			SELECT SUM(m.importe)
+			  FROM cobro_medio m
+			  JOIN cobro c ON c.id = m.cobro_id
+			 WHERE c.organization_id = :organizationId
+			   AND c.consultorio_id = :consultorioId
+			   AND c.deleted_at IS NULL
+			   AND c.cobrado_en >= :desde
+			   AND c.cobrado_en < :hasta
+			   AND m.medio = :medio
+			""", nativeQuery = true)
+	BigDecimal sumarCobradoPorMedioEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("medio") String medio);
 }

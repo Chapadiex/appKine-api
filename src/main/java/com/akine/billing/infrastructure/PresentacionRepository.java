@@ -125,4 +125,60 @@ public interface PresentacionRepository
 			@Param("organizationId") long organizationId,
 			@Param("presentacionId") long presentacionId,
 			@Param("importe") BigDecimal importe);
+
+	// =================================================================================
+	// M23 — agregaciones de reporte (AKINE-07.06)
+	// =================================================================================
+
+	/**
+	 * Presentado, facturado, debitado y pendiente por financiador (RF-M23-005).
+	 *
+	 * <h3>Hoy devuelve lista vacia en cualquier despliegue real</h3>
+	 *
+	 * <p>Y no es un defecto de esta consulta. Una presentacion solo puede contener items
+	 * provenientes de obligaciones con {@code responsable = FINANCIADOR}, y <b>no existe ninguna:
+	 * nada las produce</b>. {@code ObligacionDevengador} devenga una sola obligacion a nombre del
+	 * paciente y el enchufe que V36 reservo y V56 completo nunca se conecto. Es la decision
+	 * pendiente del usuario que AKINE-07.04 ya habia declarado, y la cadena entera se apaga con
+	 * ella.
+	 *
+	 * <p>El reporte lo dice con una advertencia en vez de mostrar un cero mudo: un tablero que en
+	 * produccion muestra ceros sin explicar por que es peor que uno ausente.
+	 *
+	 * <h3>El recorte del periodo es por SOLAPAMIENTO</h3>
+	 *
+	 * <p>{@code periodo_desde <= :hasta AND periodo_hasta >= :desde}: una presentacion del 15/8 al
+	 * 15/9 <b>tiene que aparecer</b> en el reporte de septiembre. Recortar por contencion la
+	 * dejaria afuera de los dos meses que toca, y el centro no veria el lote mas grande que armo.
+	 *
+	 * <h3>Los estados</h3>
+	 *
+	 * <p>Excluye {@code BORRADOR} —no existe para el financiador: no tiene numero y nadie la vio—
+	 * y {@code ANULADA}. {@code facturado} suma solo lo que llego a tener factura.
+	 */
+	@Query(value = """
+			SELECT p.financiador_id                                                AS financiador,
+			       SUM(p.total_presentado)                                         AS presentado,
+			       SUM(CASE WHEN p.estado IN ('FACTURADA', 'CONCILIADA')
+			                THEN p.total_presentado ELSE 0 END)                     AS facturado,
+			       SUM(p.total_debitado)                                            AS debitado,
+			       SUM(p.total_cobrado)                                             AS cobrado,
+			       SUM(p.saldo)                                                     AS pendiente
+			  FROM presentacion p
+			 WHERE p.organization_id = :organizationId
+			   AND p.consultorio_id = :consultorioId
+			   AND p.estado IN ('PRESENTADA', 'FACTURADA', 'CONCILIADA')
+			   AND p.deleted_at IS NULL
+			   AND p.periodo_desde <= :hasta
+			   AND p.periodo_hasta >= :desde
+			 GROUP BY p.financiador_id
+			 ORDER BY presentado DESC, financiador
+			 LIMIT :limite
+			""", nativeQuery = true)
+	List<Object[]> resumirPorFinanciadorEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") LocalDate desde,
+			@Param("hasta") LocalDate hasta,
+			@Param("limite") int limite);
 }

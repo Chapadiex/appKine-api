@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -90,4 +92,108 @@ public interface ObligacionRepository
 			@Param("hasta") LocalDate hasta,
 			@Param("limite") int limite,
 			@Param("desplazamiento") int desplazamiento);
+
+	// =================================================================================
+	// M23 — agregaciones de reporte (AKINE-07.06)
+	// =================================================================================
+	//
+	// Se calculan al leer. NO hay ninguna tabla de resumen economico, y la razon es la
+	// misma que sostiene el resto del repositorio: una segunda copia se desincroniza el
+	// dia que alguien escribe por otro camino. Aca ese dia esta anunciado —el devengado
+	// de financiador se va a recablear— y con un agregado materializado el tablero no se
+	// romperia: mentiria.
+	//
+	// Las tres suman DEUDA (M18). La deuda no es el cobro (M19) ni la caja (M20), y el
+	// reporte no publica ningun total que las junte.
+
+	/**
+	 * Producido del periodo: lo que se devengo y sigue valiendo.
+	 *
+	 * <p>Excluye {@code ANULADA} y la baja logica. Lo anulado no desaparece del reporte —seria
+	 * inauditable— sino que va en su propio indicador: ver {@link #sumarAnuladoEnElReporte}.
+	 */
+	@Query("""
+			SELECT SUM(o.importeOriginal) FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.consultorioId = :consultorioId
+			   AND o.estado <> com.akine.billing.domain.EstadoObligacion.ANULADA
+			   AND o.deletedAt IS NULL
+			   AND o.devengadaEn >= :desde
+			   AND o.devengadaEn < :hasta
+			""")
+	BigDecimal sumarDevengadoEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/**
+	 * Lo devengado y despues anulado, aparte.
+	 *
+	 * <p>Ni suma al producido ni desaparece. Es lo que responde el caso de QA "correcciones
+	 * posteriores": alguien que ve el mes pasado con tres anulaciones entiende por que el total
+	 * bajo, en vez de sospechar del reporte.
+	 */
+	@Query("""
+			SELECT SUM(o.importeOriginal) FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.consultorioId = :consultorioId
+			   AND o.estado = com.akine.billing.domain.EstadoObligacion.ANULADA
+			   AND o.devengadaEn >= :desde
+			   AND o.devengadaEn < :hasta
+			""")
+	BigDecimal sumarAnuladoEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/**
+	 * Deuda viva <b>hoy</b>, no a la fecha de corte del reporte.
+	 *
+	 * <p>Y por eso no recibe el periodo. {@code saldo} es un derivado materializado que refleja el
+	 * estado actual; reconstruirlo a una fecha pasada exigiria restar las imputaciones posteriores,
+	 * que es una segunda formula de la misma cosa. Va declarado en el {@code criterioDeFecha} del
+	 * indicador: <b>un numero honesto y explicado vale mas que uno exacto y silencioso.</b>
+	 */
+	@Query("""
+			SELECT SUM(o.saldo) FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.consultorioId = :consultorioId
+			   AND o.estado IN (com.akine.billing.domain.EstadoObligacion.PENDIENTE,
+			                    com.akine.billing.domain.EstadoObligacion.PARCIAL)
+			   AND o.deletedAt IS NULL
+			""")
+	BigDecimal sumarSaldoVigenteEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId);
+
+	/**
+	 * Lo prestado a un financiador en el periodo (RF-M23-005), por financiador.
+	 *
+	 * <p><b>Hoy devuelve lista vacia en cualquier despliegue real</b>, y no es un defecto de la
+	 * consulta: no existe ninguna obligacion con {@code responsable = FINANCIADOR} porque el
+	 * devengado nunca se recableo contra convenios. Es la misma reserva declarada en el design
+	 * challenge de AKINE-07.04, y el reporte la emite como advertencia en vez de mostrar un cero
+	 * mudo.
+	 */
+	@Query(value = """
+			SELECT o.financiador_id AS financiador, SUM(o.importe_original) AS total
+			  FROM obligacion o
+			 WHERE o.organization_id = :organizationId
+			   AND o.consultorio_id = :consultorioId
+			   AND o.responsable = 'FINANCIADOR'
+			   AND o.estado <> 'ANULADA'
+			   AND o.deleted_at IS NULL
+			   AND o.devengada_en >= :desde
+			   AND o.devengada_en < :hasta
+			 GROUP BY o.financiador_id
+			 LIMIT :limite
+			""", nativeQuery = true)
+	List<Object[]> sumarPrestadoPorFinanciadorEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("limite") int limite);
 }

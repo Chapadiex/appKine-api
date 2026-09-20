@@ -78,4 +78,65 @@ public interface CasoClinicoRepository
 			@Param("organizationId") Long organizationId,
 			@Param("historiaClinicaId") Long historiaClinicaId,
 			@Param("ofertaId") Long ofertaId);
+
+	// =================================================================================
+	// M23 — agregaciones de reporte (AKINE-07.06)
+	// =================================================================================
+	//
+	// Tres conteos, calculados al leer. La sede es `ofertaConsultorioId` y no una columna
+	// `consultorioId`, que no existe: el Caso cuelga de la Historia Clinica, que es de la
+	// ORGANIZACION (DP-03), asi que su sede es la de la oferta que lo origino. Es la
+	// columna que indexa `ix_caso_clinico_sede_apertura` (V59), el primer indice no-unico
+	// que esta tabla tiene.
+
+	/** Casos abiertos en el periodo. */
+	@Query("""
+			SELECT COUNT(c) FROM CasoClinico c
+			 WHERE c.organizationId = :organizationId
+			   AND c.ofertaConsultorioId = :consultorioId
+			   AND c.abiertoEn >= :desde
+			   AND c.abiertoEn < :hasta
+			""")
+	long contarAbiertosEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") java.time.Instant desde,
+			@Param("hasta") java.time.Instant hasta);
+
+	/**
+	 * Casos cerrados en el periodo.
+	 *
+	 * <p>No es el complemento del anterior: un caso abierto en marzo y cerrado en septiembre
+	 * cuenta en los dos reportes, en el indicador que corresponde a cada uno.
+	 */
+	@Query("""
+			SELECT COUNT(c) FROM CasoClinico c
+			 WHERE c.organizationId = :organizationId
+			   AND c.ofertaConsultorioId = :consultorioId
+			   AND c.cerradoEn >= :desde
+			   AND c.cerradoEn < :hasta
+			""")
+	long contarCerradosEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") java.time.Instant desde,
+			@Param("hasta") java.time.Instant hasta);
+
+	/**
+	 * Casos activos <b>hoy</b>, no al dia de corte del reporte.
+	 *
+	 * <p>Y por eso no recibe el periodo. Reconstruir el estado a una fecha pasada exigiria
+	 * recorrer {@code caso_evento} hacia atras, que es una segunda formula de la misma cosa: el
+	 * dia que las dos divergieran nadie sabria cual creer. Va declarado en el
+	 * {@code criterioDeFecha} del indicador.
+	 */
+	@Query("""
+			SELECT COUNT(c) FROM CasoClinico c
+			 WHERE c.organizationId = :organizationId
+			   AND c.ofertaConsultorioId = :consultorioId
+			   AND c.estado = com.akine.clinical.domain.EstadoCaso.ACTIVO
+			""")
+	long contarActivosEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId);
 }
