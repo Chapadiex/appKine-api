@@ -5,6 +5,8 @@ import com.akine.clinical.domain.exception.AdjuntoClinicoInactivoException;
 import com.akine.clinical.domain.exception.AdjuntoClinicoNoDisponibleException;
 import com.akine.clinical.domain.exception.AdjuntoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.AntecedenteNotAccessibleException;
+import com.akine.clinical.domain.exception.AutorizacionNoElegibleException;
+import com.akine.clinical.domain.exception.DerivacionNotAccessibleException;
 import com.akine.clinical.domain.exception.ArchivoClinicoNoAceptadoException;
 import com.akine.clinical.domain.exception.CasoClinicoCerradoException;
 import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
@@ -98,6 +100,8 @@ public class ClinicalProblemHandler {
 	private static final URI AUTORIZACION_SIN_SALDO = ProblemType.AUTORIZACION_SIN_SALDO.uri();
 	private static final URI AUTORIZACION_VENCIDA = ProblemType.AUTORIZACION_VENCIDA.uri();
 	private static final URI OFERTA_NO_HABILITADA = ProblemType.OFERTA_NO_HABILITADA.uri();
+	private static final URI AUTORIZACION_NO_ELEGIBLE = ProblemType.AUTORIZACION_NO_ELEGIBLE.uri();
+	private static final URI DERIVACION_NO_ACCESIBLE = ProblemType.DERIVACION_NO_ACCESIBLE.uri();
 
 	// =================================================================================
 	// 404 — fuera del alcance del actor
@@ -522,6 +526,41 @@ public class ClinicalProblemHandler {
 						+ "calculan contra el dia en que se pregunta.");
 		problem.setType(ex.esFaltaDeSaldo() ? AUTORIZACION_SIN_SALDO : AUTORIZACION_VENCIDA);
 		problem.setTitle("Autorizacion no vinculable");
+		problem.setProperty("autorizacionId", ex.getAutorizacionId());
+		problem.setProperty("motivo", ex.getMotivo());
+		return problem;
+	}
+
+	// =================================================================================
+	// Derivacion de participante al circuito clinico (RF-M28-008, AKINE-08.04)
+	// =================================================================================
+
+	/**
+	 * La derivacion no existe o es de otro tenant (404).
+	 *
+	 * <p>Los dos casos colapsan a proposito: un 403 confirmaria que existe, y con ids consecutivos
+	 * se enumeran las derivaciones del sistema. Cross-tenant es 404, nunca 403.
+	 */
+	@ExceptionHandler(DerivacionNotAccessibleException.class)
+	public ProblemDetail handleDerivacionNoAccesible(DerivacionNotAccessibleException ex) {
+		return noEncontrado(DERIVACION_NO_ACCESIBLE, "Derivacion no encontrada",
+				"La derivacion no existe o no es accesible.");
+	}
+
+	/**
+	 * La autorizacion declarada no habilita ese dia (409).
+	 *
+	 * <p><b>409 y no 404</b>: existe, es de ese paciente y es de ese tenant —los cuatro casos en
+	 * que no lo es ya colapsaron a vacio dentro de {@code AutorizacionDirectory}—. Lo que pasa es
+	 * que no sirve, y el operador tiene dos salidas: pedir otra autorizacion, o derivar sin
+	 * declararla. {@code motivo} viaja calculado por {@code person}, no recalculado aca.
+	 */
+	@ExceptionHandler(AutorizacionNoElegibleException.class)
+	public ProblemDetail handleAutorizacionNoElegible(AutorizacionNoElegibleException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(AUTORIZACION_NO_ELEGIBLE);
+		problem.setTitle("La autorizacion no habilita");
 		problem.setProperty("autorizacionId", ex.getAutorizacionId());
 		problem.setProperty("motivo", ex.getMotivo());
 		return problem;

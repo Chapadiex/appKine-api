@@ -251,7 +251,7 @@ class ClaseServiceTest {
 
 	private static OfertaSnapshot oferta(int capacidad, boolean grupal) {
 		return new OfertaSnapshot(OFERTA_ID, ORG_ID, SEDE_ID, 3L, "Pilates", 60, capacidad,
-				grupal, true, true, LocalDate.of(2020, 1, 1), null, true);
+				grupal, true, true, false, false, LocalDate.of(2020, 1, 1), null, true);
 	}
 
 	private static EspacioSnapshot espacio(int capacidad) {

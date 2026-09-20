@@ -95,6 +95,8 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 				oferta.getModalidad() == Modalidad.GRUPAL,
 				oferta.isRequiereProfesional(),
 				oferta.isRequiereEspacio(),
+				oferta.isRequiereCasoClinico(),
+				oferta.isGeneraRegistroClinico(),
 				oferta.getVigenciaDesde(),
 				oferta.getVigenciaHasta(),
 				oferta.isActive());

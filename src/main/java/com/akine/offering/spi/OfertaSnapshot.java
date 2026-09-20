@@ -18,6 +18,19 @@ import java.time.LocalDate;
  *                        box de dos camillas puede tener capacidad 2 y sigue siendo individual.
  *                        RN-M28-001 exige que una clase cuelgue de una oferta GRUPAL, y deducirlo
  *                        del cupo dejaria programar clases sobre ofertas individuales
+ * @param requiereCasoClinico   si la atencion de esta oferta abre o exige un Caso Clinico
+ *                              (RF-M10-007). <b>No decide si se puede derivar</b> —derivar ES
+ *                              elegir el Caso, y siempre lo exige—: decide si 08.05 va a exigir
+ *                              Caso al atender. Viaja porque AKINE-08.04 lo congela en la fila de
+ *                              la derivacion, para que 08.05 no tenga que volver a la oferta, que
+ *                              para entonces puede haber cambiado
+ * @param generaRegistroClinico si la atencion genera registro clinico. Es el <b>gate duro</b> de
+ *                              RF-M09-007, que lo dice en una linea: en {@code false} impide crear
+ *                              evolucion clinica. Una participacion a una oferta asi no toca la
+ *                              Historia Clinica, no abre historia y no escribe una fila —
+ *                              CA-M09-007-06 pide exactamente eso, que una asistencia a Yoga quede
+ *                              fuera del timeline clinico. La Oferta manda sobre el default del
+ *                              Servicio (V24)
  * @param vigenciaHasta   {@code null} = sin vencimiento
  */
 public record OfertaSnapshot(
@@ -31,6 +44,8 @@ public record OfertaSnapshot(
 		boolean grupal,
 		boolean requiereProfesional,
 		boolean requiereEspacio,
+		boolean requiereCasoClinico,
+		boolean generaRegistroClinico,
 		LocalDate vigenciaDesde,
 		LocalDate vigenciaHasta,
 		boolean active) {

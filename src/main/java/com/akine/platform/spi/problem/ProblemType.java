@@ -708,7 +708,58 @@ public enum ProblemType {
 	 * viejo es una fila de la lista de participantes. Mismo criterio con el que 08.01 se nego a
 	 * reusar el del turno.
 	 */
-	INSCRIPCION_TRANSICION_NO_PERMITIDA("inscripcion-transicion-no-permitida");
+	INSCRIPCION_TRANSICION_NO_PERMITIDA("inscripcion-transicion-no-permitida"),
+
+	// --- Derivacion al circuito clinico (M28/M09/M10/M11, AKINE-08.04) ----------------------
+
+	/**
+	 * La oferta de la clase <b>no genera registro clinico</b>, asi que la participacion no se
+	 * deriva (409). RF-M09-007 y CA-M09-007-06.
+	 *
+	 * <p>Es el <b>gate duro</b> de la etapa y el primero que se evalua: una clase de Yoga, de
+	 * Pilates preventivo o de gimnasia no toca la Historia Clinica, no abre historia y no escribe
+	 * una fila. Se decide antes de resolver la persona, justamente para que no quede rastro clinico
+	 * de una actividad que no lo es.
+	 *
+	 * <p><b>409 y no 403</b>: no es un problema de permisos. La configuracion de la oferta es la
+	 * que no admite la operacion, y quien opera puede verla y cambiarla en M27.
+	 */
+	OFERTA_NO_CLINICA("oferta-no-clinica"),
+
+	/**
+	 * La participacion no tiene asistencia registrada, o la tiene con la persona <b>ausente</b>
+	 * (409). AKINE-08.04.
+	 *
+	 * <p><b>No se deriva a quien no vino.</b> La inscripcion es una reserva; derivarla abriria un
+	 * contexto clinico para alguien que quizas nunca aparecio. Si el mostrador marco ausente por
+	 * error, el camino es <b>corregir la asistencia</b> —08.03 dejo la correccion con motivo y
+	 * evento—, no forzar la derivacion. Lleva {@code resultado} cuando hay asistencia, para que la
+	 * pantalla pueda ofrecer la correccion en vez de un mensaje ciego.
+	 */
+	PARTICIPACION_SIN_ASISTENCIA("participacion-sin-asistencia"),
+
+	/**
+	 * La autorizacion declarada al derivar no habilita ese dia (409). RF-M11-008.
+	 *
+	 * <p><b>409 y no 404</b>: la autorizacion existe, es de ese paciente y es de ese tenant — los
+	 * cuatro casos en que no lo es ya colapsaron a {@code not-found} en {@code AutorizacionDirectory},
+	 * a proposito. Lo que pasa es que no sirve, y el operador puede hacer algo: pedir otra, o
+	 * derivar sin declararla. Lleva {@code motivo} —{@code VENCIDA}, {@code AGOTADA},
+	 * {@code AUN_NO_VIGENTE}, {@code NO_APROBADA}— calculado por {@code person} y no reinterpretado.
+	 *
+	 * <p><b>No se reusa {@link #AUTORIZACION_SIN_SALDO}</b>: aquel es el desenlace de un consumo
+	 * que se intento, y derivar <b>no consume nada</b>. Mezclarlos haria que una pantalla creyera
+	 * que se descontaron unidades.
+	 */
+	AUTORIZACION_NO_ELEGIBLE("autorizacion-no-elegible"),
+
+	/**
+	 * La derivacion no existe o es de otra organizacion (404).
+	 *
+	 * <p>Los dos casos colapsan: distinguirlos confirmaria que ese id existe. Cross-tenant es 404,
+	 * nunca 403.
+	 */
+	DERIVACION_NO_ACCESIBLE("derivacion-no-accesible");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
