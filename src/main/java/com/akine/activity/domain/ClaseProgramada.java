@@ -32,10 +32,16 @@ import java.time.Instant;
  *
  * <h2>Lo que NO tiene, y es deliberado</h2>
  *
- * <p><b>Ni {@code active} ni {@code cupoOcupado}.</b> {@code active} seria una segunda fuente de
- * verdad sobre lo mismo que dice {@link #estado}; la ocupacion se cuenta al leer desde las
- * inscripciones de 08.02, porque materializarla es una segunda copia de la verdad —la misma
- * decision que el timeline clinico de 04.02 y la disponibilidad efectiva de 02.04—.
+ * <p><b>No tiene {@code active}</b>, y eso sigue igual: seria una segunda fuente de verdad sobre lo
+ * mismo que dice {@link #estado}.
+ *
+ * <p><b>Si tiene {@code cupoOcupado}, y 08.01 habia escrito que no lo tendria.</b> La decision se
+ * revirtio en AKINE-08.02 con motivo escrito: sin una columna, "quedan vacantes" no se puede
+ * expresar en la base —no es un valor, es un conteo contra un tope— y un {@code if} del servicio
+ * deja una ventana entre leer y escribir que es exactamente el bug. La columna <b>no es una cache
+ * de las inscripciones</b>: es quien OTORGA el lugar, y la fila de {@code InscripcionClase} es el
+ * recibo. Misma forma que {@code autorizacion.cantidad_consumida} y su ledger (04.05). Ver el punto
+ * 2 de la cabecera de {@code V60} y la pregunta 4 del challenge de 08.02.
  */
 @Entity
 @Table(name = "clase_programada")
@@ -99,6 +105,26 @@ public class ClaseProgramada {
 
 	@Column(name = "cancelado_por_cuenta_id")
 	private Long canceladoPorCuentaId;
+
+	/**
+	 * Lugares OTORGADOS (AKINE-08.02). <b>Solo lectura desde JPA, y eso es la mitad del diseno.</b>
+	 *
+	 * <p>{@code insertable = false, updatable = false} no es una optimizacion: es lo que garantiza
+	 * que el unico camino para mover este numero sea el {@code UPDATE} condicional
+	 * {@code cupo_ocupado < LEAST(capacidad, :efectiva)}. Si JPA pudiera escribirlo, cualquier
+	 * {@code save()} de esta entidad lo pisaria con el valor que tenia en memoria —que puede ser de
+	 * hace medio segundo— y la sobreventa volveria por la puerta de atras.
+	 *
+	 * <p>Y por eso tampoco hace avanzar el {@code @Version}: si cada inscripcion invalidara la
+	 * version de la clase, el formulario de reprogramacion que un administrativo tiene abierto
+	 * comeria un 409 cada vez que alguien se anota.
+	 */
+	@Column(name = "cupo_ocupado", nullable = false, insertable = false, updatable = false)
+	private int cupoOcupado;
+
+	/** Correlativo de la lista de espera (AKINE-08.02). Solo lectura por lo mismo de arriba. */
+	@Column(name = "ultima_posicion_espera", nullable = false, insertable = false, updatable = false)
+	private int ultimaPosicionEspera;
 
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
@@ -333,6 +359,15 @@ public class ClaseProgramada {
 
 	public Instant getDeletedAt() {
 		return deletedAt;
+	}
+
+	/** Lugares otorgados. Ver el campo: esta entidad lo LEE, nunca lo escribe. */
+	public int getCupoOcupado() {
+		return cupoOcupado;
+	}
+
+	public int getUltimaPosicionEspera() {
+		return ultimaPosicionEspera;
 	}
 
 	public long getVersion() {

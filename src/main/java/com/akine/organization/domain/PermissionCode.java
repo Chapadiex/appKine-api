@@ -166,7 +166,37 @@ public enum PermissionCode {
 	 * una clase compromete un recurso del centro y la matriz §32 le dice "No" a todas las filas
 	 * operativas. Soporte mira, no opera.
 	 */
-	CLASE_MANAGE("clase:manage");
+	CLASE_MANAGE("clase:manage"),
+
+	/**
+	 * Ver la lista de participantes de una clase. F9, M28.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-08.02</b>, y es un codigo propio y no {@code clase:read}
+	 * justamente por lo que aquel javadoc anticipaba: 08.01 decidio que ninguna respuesta de clase
+	 * lleva participantes, y la lista vive en su propio endpoint. Si el mismo permiso abriera la
+	 * grilla y la lista, esa decision seria decorativa — quien puede ver que hay una clase de
+	 * Pilates a las 9 no necesita saber quien esta anotado.
+	 *
+	 * <p>{@code PLATFORM_ADMIN} lo recibe con alcance SOPORTE, igual que {@code clase:read}: es el
+	 * dato de persona que §7 de la matriz protege.
+	 */
+	INSCRIPCION_READ("inscripcion:read"),
+
+	/**
+	 * Inscribir, confirmar y cancelar inscripciones. F9, M28.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-08.02.</b> Mismo reparto que {@link #CLASE_MANAGE}: los
+	 * actores que M28 §2 nombra son el administrativo, el profesional/instructor y el administrador
+	 * de consultorio. {@code PLATFORM_ADMIN} no lo recibe: anotar a alguien en una clase es
+	 * operacion del centro y la matriz §32 le dice "No" a todas las filas operativas.
+	 *
+	 * <p><b>El autoservicio del paciente queda afuera, y no por olvido.</b> M28 §2 lo nombra como
+	 * actor "cuando exista autoservicio", y no existe: no hay vinculo entre {@code cuenta} y
+	 * {@code persona} en ningun lado del sistema —es el mismo hueco por el que el alcance
+	 * {@code OWN} no esta implementado—. Sin ese vinculo, "inscribirme a mi mismo" no se puede
+	 * autorizar sin abrir "inscribir a cualquiera".
+	 */
+	INSCRIPCION_MANAGE("inscripcion:manage");
 
 	private final String code;
 

@@ -172,7 +172,10 @@ public final class RolePermissions {
 				// `clase:read` con SOPORTE y no GLOBAL en AKINE-08.01, por el mismo motivo que
 				// `turno:read`: hoy la clase no devuelve un solo dato de persona, pero 08.02 le
 				// cuelga la lista de participantes, y eso es lo que §7 protege.
-				Map.entry(PermissionCode.CLASE_READ, PermissionScope.SOPORTE)));
+				Map.entry(PermissionCode.CLASE_READ, PermissionScope.SOPORTE),
+				// `inscripcion:read` con SOPORTE en AKINE-08.02, y aca la razon deja de ser
+				// preventiva: esta lectura SI devuelve nombres y documentos de personas.
+				Map.entry(PermissionCode.INSCRIPCION_READ, PermissionScope.SOPORTE)));
 
 		// ORG_ADMIN — "tenant:manage" NO esta: la matriz §4 acota su "Limitado" a editar su
 		// organizacion y ver su suscripcion, y deja el cambio de plan y la suspension para
@@ -208,7 +211,11 @@ public final class RolePermissions {
 				// AKINE-08.01. M28 §2 lo nombra entre los actores de una clase, y el alcance es el
 				// mismo que el de sus turnos.
 				Map.entry(PermissionCode.CLASE_READ, PermissionScope.ORGANIZACION),
-				Map.entry(PermissionCode.CLASE_MANAGE, PermissionScope.ORGANIZACION)));
+				Map.entry(PermissionCode.CLASE_MANAGE, PermissionScope.ORGANIZACION),
+				// AKINE-08.02. Mismo alcance que la clase: quien puede programarla puede anotar
+				// gente en ella.
+				Map.entry(PermissionCode.INSCRIPCION_READ, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.INSCRIPCION_MANAGE, PermissionScope.ORGANIZACION)));
 
 		// CONSULTORIO_ADMIN — todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
 		//
@@ -228,6 +235,9 @@ public final class RolePermissions {
 				// AKINE-08.01. Ver el comentario del ORG_ADMIN.
 				Map.entry(PermissionCode.CLASE_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.CLASE_MANAGE, PermissionScope.CONSULTORIO),
+				// AKINE-08.02. Ver el comentario del ORG_ADMIN.
+				Map.entry(PermissionCode.INSCRIPCION_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.INSCRIPCION_MANAGE, PermissionScope.CONSULTORIO),
 				// AKINE-03.03. La matriz §2 le dice "Si" en Administrar Convenios, igual que al
 				// ORG_ADMIN. El alcance es su sede, que es el de su membership: que el financiador
 				// sea de la ORGANIZACION no lo convierte en un permiso de organizacion — el
@@ -271,22 +281,32 @@ public final class RolePermissions {
 				// "Profesional / Instructor".
 				Map.entry(PermissionCode.CLASE_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.CLASE_MANAGE, PermissionScope.CONSULTORIO),
+				// AKINE-08.02: el instructor necesita saber a quien tiene enfrente y dar de baja a
+				// quien avisa que no viene.
+				Map.entry(PermissionCode.INSCRIPCION_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.INSCRIPCION_MANAGE, PermissionScope.CONSULTORIO),
 				// `sesion:register` entra con asignacion base en AKINE-06.01, la etapa que crea la
 				// atencion. La matriz §2 le dice "Si" al PROFESIONAL en la fila Registrar Sesion, y
 				// "Segun rol clinico" al CONSULTORIO_ADMIN —o sea NO por defecto—. A los demas les
 				// dice "No". Quien no atiende no registra atenciones.
 				Map.entry(PermissionCode.SESION_REGISTER, PermissionScope.CONSULTORIO)));
-		tabla.put(RoleCode.ADMINISTRATIVO, Map.of(
-				PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO,
-				PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO,
-				PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO,
+		// Map.ofEntries y no Map.of desde AKINE-08.02: el segundo tiene un tope de diez pares y
+		// esta fila lo alcanzo. Mismo cambio que hizo 08.01 con el CONSULTORIO_ADMIN, y por el
+		// mismo motivo: no es semantica, es el unico constructor que admite el par once.
+		tabla.put(RoleCode.ADMINISTRATIVO, Map.ofEntries(
+				Map.entry(PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO),
 				// AKINE-08.01: armar la grilla del centro es literalmente su trabajo, igual que
 				// dar turnos.
-				PermissionCode.CLASE_READ, PermissionScope.CONSULTORIO,
-				PermissionCode.CLASE_MANAGE, PermissionScope.CONSULTORIO));
+				Map.entry(PermissionCode.CLASE_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.CLASE_MANAGE, PermissionScope.CONSULTORIO),
+				// AKINE-08.02: el mostrador es quien anota, cobra y da de baja.
+				Map.entry(PermissionCode.INSCRIPCION_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.INSCRIPCION_MANAGE, PermissionScope.CONSULTORIO)));
 
 		// PACIENTE — ninguna fila de la matriz §6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.

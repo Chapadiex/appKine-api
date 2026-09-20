@@ -16,6 +16,19 @@ public final class PermissionCodes {
 	/** Programar, reprogramar y cancelar clases. */
 	public static final String CLASE_MANAGE = "clase:manage";
 
+	/**
+	 * Ver la lista de participantes de una clase.
+	 *
+	 * <p><b>Separado de {@link #CLASE_READ} a proposito.</b> 08.01 decidio que ninguna respuesta de
+	 * clase lleva participantes, y esta etapa no lo deshace: quien mira la grilla del dia no
+	 * necesita saber quien esta anotado, y darle los dos permisos juntos convertiria esa decision
+	 * en decorativa.
+	 */
+	public static final String INSCRIPCION_READ = "inscripcion:read";
+
+	/** Inscribir, confirmar y cancelar inscripciones. */
+	public static final String INSCRIPCION_MANAGE = "inscripcion:manage";
+
 	private PermissionCodes() {
 	}
 }
