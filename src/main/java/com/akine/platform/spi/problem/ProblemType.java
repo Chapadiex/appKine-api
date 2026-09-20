@@ -724,7 +724,87 @@ public enum ProblemType {
 	 * cuerpo. La diferencia no se rechaza —eso dejaria al centro sin poder cerrar el dia en que
 	 * realmente falta plata— y no se ajusta; lo unico que se exige es que alguien escriba por que.
 	 */
-	CAJA_DIFERENCIA_SIN_MOTIVO("caja-diferencia-sin-motivo");
+	CAJA_DIFERENCIA_SIN_MOTIVO("caja-diferencia-sin-motivo"),
+
+	// =================================================================================
+	// Presentaciones a financiadores — M21 (AKINE-07.04)
+	// =================================================================================
+
+	/**
+	 * El lote ya salio del centro: no se le agregan ni se le quitan prestaciones (409).
+	 *
+	 * <p>Una presentacion confirmada existe del otro lado del mostrador. Lo que corresponde es un
+	 * <b>debito</b>, que deja motivo, actor e instante.
+	 */
+	PRESENTACION_NO_EDITABLE("presentacion-no-editable"),
+	/**
+	 * La transicion no sale de ese estado (409). Lleva {@code estadoActual} y {@code esperado}.
+	 *
+	 * <p>Un solo tipo para toda la maquina de estados de M21: para la pantalla el desenlace es
+	 * siempre el mismo —refrescar el lote y mirar en que quedo—.
+	 */
+	PRESENTACION_ESTADO_INVALIDO("presentacion-estado-invalido"),
+	/**
+	 * Se intento confirmar un lote sin prestaciones (400).
+	 *
+	 * <p><b>400 y no 409</b>: no hay nada del estado del servidor que haya cambiado; lo que falta
+	 * es contenido. Un reclamo por cero pesos ademas consumiria un numero de la serie para no decir
+	 * nada.
+	 */
+	PRESENTACION_VACIA("presentacion-vacia"),
+	/**
+	 * El lote tiene prestaciones que no se pueden reclamar (409). Lleva {@code hallazgos}.
+	 *
+	 * <p>La lista entera y no el primero: el administrativo tiene que poder arreglar todo de una
+	 * vez, y devolver el primero lo obligaria a reintentar tantas veces como items rotos haya.
+	 */
+	PRESENTACION_CON_HALLAZGOS("presentacion-con-hallazgos"),
+	/**
+	 * Esa prestacion ya esta viva en otro lote (409). RN-M21-003. Lleva {@code presentacionId}.
+	 *
+	 * <p>No lo decide un {@code if} sino el unique sobre la columna generada {@code ocupa_marca}: un
+	 * item debitado o anulado <b>libera</b> la obligacion, asi que re-presentar lo rechazado es un
+	 * camino normal.
+	 */
+	OBLIGACION_YA_PRESENTADA("obligacion-ya-presentada"),
+	/**
+	 * Esa deuda no se le puede reclamar a este financiador, en este lote (409). Lleva
+	 * {@code motivo}.
+	 *
+	 * <p>Anulada, sin saldo, de otro financiador, de otra sede, fuera del periodo o en otra moneda.
+	 */
+	OBLIGACION_NO_PRESENTABLE("obligacion-no-presentable"),
+	/**
+	 * El pago o el debito es mayor que lo que queda por explicar del lote (409).
+	 *
+	 * <p>Lo decide una condicion del motor —{@code WHERE saldo >= :importe}— y no un {@code if}, asi
+	 * que un aviso de debito y una transferencia cargados a la vez no pueden colarse los dos y
+	 * dejar el saldo en negativo. Lleva {@code saldoDisponible}, que es lo que permite al operador
+	 * entender que hubo un debito en vez de reintentar a ciegas.
+	 */
+	PRESENTACION_SALDO_INSUFICIENTE("presentacion-saldo-insuficiente"),
+	/**
+	 * Queda plata reclamada sin explicar (409). Lleva {@code residual}.
+	 *
+	 * <p>Conciliar exige saldo cero. No hay cierre con diferencia: el sistema nombra el residual y
+	 * se niega a fingir, y el administrativo registra el debito o el pago que falta.
+	 */
+	PRESENTACION_NO_CONCILIA("presentacion-no-concilia"),
+	/**
+	 * Ese item ya no admite un debito (409): ya fue debitado, aceptado o anulado.
+	 *
+	 * <p>Un segundo debito sobre la misma fila restaria dos veces del saldo del lote por una sola
+	 * prestacion rechazada.
+	 */
+	ITEM_NO_DEBITABLE("item-no-debitable"),
+	/**
+	 * Ese numero de factura ya esta en otro lote del mismo financiador (409).
+	 *
+	 * <p>El comprobante es del centro y se emite fuera de AKINE: el sistema no lo genera ni lo
+	 * numera, lo registra, y lo unico que puede hacer es impedir que el mismo numero quede asociado
+	 * a dos lotes.
+	 */
+	FACTURA_DUPLICADA("factura-duplicada");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

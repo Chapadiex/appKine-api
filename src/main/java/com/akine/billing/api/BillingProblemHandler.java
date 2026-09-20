@@ -9,6 +9,19 @@ import com.akine.billing.domain.exception.CajaSaldoCambioException;
 import com.akine.billing.domain.exception.CajaSaldoInsuficienteException;
 import com.akine.billing.domain.exception.CajaYaAbiertaException;
 import com.akine.billing.domain.exception.CobroNotAccessibleException;
+import com.akine.billing.domain.exception.FacturaDuplicadaException;
+import com.akine.billing.domain.exception.FinanciadorNoAccesibleException;
+import com.akine.billing.domain.exception.ItemNoDebitableException;
+import com.akine.billing.domain.exception.ObligacionNoPresentableException;
+import com.akine.billing.domain.exception.ObligacionYaPresentadaException;
+import com.akine.billing.domain.exception.PresentacionConHallazgosException;
+import com.akine.billing.domain.exception.PresentacionEstadoInvalidoException;
+import com.akine.billing.domain.exception.PresentacionItemNotAccessibleException;
+import com.akine.billing.domain.exception.PresentacionNoConciliaException;
+import com.akine.billing.domain.exception.PresentacionNoEditableException;
+import com.akine.billing.domain.exception.PresentacionNotAccessibleException;
+import com.akine.billing.domain.exception.PresentacionSaldoInsuficienteException;
+import com.akine.billing.domain.exception.PresentacionVaciaException;
 import com.akine.billing.domain.exception.JornadaCajaNotAccessibleException;
 import com.akine.billing.domain.exception.MovimientoCajaNotAccessibleException;
 import com.akine.billing.domain.exception.MovimientoNoReversibleException;
@@ -54,6 +67,17 @@ public class BillingProblemHandler {
 	private static final URI CAJA_MONEDA_DISTINTA = ProblemType.CAJA_MONEDA_DISTINTA.uri();
 	private static final URI MOVIMIENTO_NO_REVERSIBLE = ProblemType.MOVIMIENTO_NO_REVERSIBLE.uri();
 	private static final URI CAJA_DIFERENCIA_SIN_MOTIVO = ProblemType.CAJA_DIFERENCIA_SIN_MOTIVO.uri();
+	private static final URI PRESENTACION_NO_EDITABLE = ProblemType.PRESENTACION_NO_EDITABLE.uri();
+	private static final URI PRESENTACION_ESTADO_INVALIDO = ProblemType.PRESENTACION_ESTADO_INVALIDO.uri();
+	private static final URI PRESENTACION_VACIA = ProblemType.PRESENTACION_VACIA.uri();
+	private static final URI PRESENTACION_CON_HALLAZGOS = ProblemType.PRESENTACION_CON_HALLAZGOS.uri();
+	private static final URI OBLIGACION_YA_PRESENTADA = ProblemType.OBLIGACION_YA_PRESENTADA.uri();
+	private static final URI OBLIGACION_NO_PRESENTABLE = ProblemType.OBLIGACION_NO_PRESENTABLE.uri();
+	private static final URI PRESENTACION_SALDO_INSUFICIENTE =
+			ProblemType.PRESENTACION_SALDO_INSUFICIENTE.uri();
+	private static final URI PRESENTACION_NO_CONCILIA = ProblemType.PRESENTACION_NO_CONCILIA.uri();
+	private static final URI ITEM_NO_DEBITABLE = ProblemType.ITEM_NO_DEBITABLE.uri();
+	private static final URI FACTURA_DUPLICADA = ProblemType.FACTURA_DUPLICADA.uri();
 
 	@ExceptionHandler(ConsultorioNoAccesibleException.class)
 	public ProblemDetail handleConsultorioNoAccesible(ConsultorioNoAccesibleException exception) {
@@ -284,6 +308,153 @@ public class BillingProblemHandler {
 		problem.setType(CAJA_DIFERENCIA_SIN_MOTIVO);
 		problem.setTitle("El arqueo no cuadra y no declara motivo");
 		problem.setProperty("diferencia", exception.getDiferencia());
+		return problem;
+	}
+
+	// =================================================================================
+	// Presentaciones a financiadores — M21
+	// =================================================================================
+
+	@ExceptionHandler(PresentacionNotAccessibleException.class)
+	public ProblemDetail handlePresentacionNoAccesible(PresentacionNotAccessibleException exception) {
+		log.debug("Presentacion no accesible: presentacionId={}", exception.getPresentacionId());
+		return noEncontrado("La presentacion no existe.");
+	}
+
+	@ExceptionHandler(PresentacionItemNotAccessibleException.class)
+	public ProblemDetail handleItemNoAccesible(PresentacionItemNotAccessibleException exception) {
+		log.debug("Item de presentacion no accesible: itemId={}", exception.getItemId());
+		return noEncontrado("La prestacion no forma parte de esta presentacion.");
+	}
+
+	/** <b>404 y no 403.</b> Un financiador de otro tenant no existe para quien pregunta. */
+	@ExceptionHandler(FinanciadorNoAccesibleException.class)
+	public ProblemDetail handleFinanciadorNoAccesible(FinanciadorNoAccesibleException exception) {
+		log.debug("Financiador no accesible desde M21: financiadorId={}",
+				exception.getFinanciadorId());
+		return noEncontrado("El financiador no existe o no esta operativo.");
+	}
+
+	/**
+	 * <b>409.</b> El lote ya salio del centro.
+	 *
+	 * <p>Lleva el estado para que la pantalla pueda ofrecer la salida correcta —debitar— en vez de
+	 * decir "no se puede", que dejaria al administrativo trabado sin entender por que.
+	 */
+	@ExceptionHandler(PresentacionNoEditableException.class)
+	public ProblemDetail handlePresentacionNoEditable(PresentacionNoEditableException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(PRESENTACION_NO_EDITABLE);
+		problem.setTitle("La presentacion ya no es un borrador");
+		problem.setProperty("estado", exception.getEstado());
+		return problem;
+	}
+
+	@ExceptionHandler(PresentacionEstadoInvalidoException.class)
+	public ProblemDetail handleEstadoInvalido(PresentacionEstadoInvalidoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(PRESENTACION_ESTADO_INVALIDO);
+		problem.setTitle("La presentacion no admite esta operacion en su estado actual");
+		problem.setProperty("estadoActual", exception.getEstadoActual());
+		problem.setProperty("esperado", exception.getEsperado());
+		return problem;
+	}
+
+	/** <b>400 y no 409.</b> No cambio nada del servidor: falta contenido. */
+	@ExceptionHandler(PresentacionVaciaException.class)
+	public ProblemDetail handlePresentacionVacia(PresentacionVaciaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(PRESENTACION_VACIA);
+		problem.setTitle("La presentacion no tiene prestaciones");
+		return problem;
+	}
+
+	/** <b>409.</b> Lleva la lista entera: el administrativo arregla todo de una vez. */
+	@ExceptionHandler(PresentacionConHallazgosException.class)
+	public ProblemDetail handleConHallazgos(PresentacionConHallazgosException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(PRESENTACION_CON_HALLAZGOS);
+		problem.setTitle("La presentacion tiene prestaciones que no se pueden reclamar");
+		problem.setProperty("hallazgos", exception.getHallazgos());
+		return problem;
+	}
+
+	/**
+	 * <b>409.</b> RN-M21-003.
+	 *
+	 * <p>Lleva el lote que la tiene, que es lo que permite que el administrativo vaya a mirarlo en
+	 * vez de buscarla a mano entre todas las presentaciones abiertas.
+	 */
+	@ExceptionHandler(ObligacionYaPresentadaException.class)
+	public ProblemDetail handleYaPresentada(ObligacionYaPresentadaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(OBLIGACION_YA_PRESENTADA);
+		problem.setTitle("La prestacion ya esta en otra presentacion");
+		problem.setProperty("obligacionId", exception.getObligacionId());
+		problem.setProperty("presentacionId", exception.getPresentacionId());
+		return problem;
+	}
+
+	@ExceptionHandler(ObligacionNoPresentableException.class)
+	public ProblemDetail handleNoPresentable(ObligacionNoPresentableException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(OBLIGACION_NO_PRESENTABLE);
+		problem.setTitle("La deuda no se puede reclamar en esta presentacion");
+		problem.setProperty("obligacionId", exception.getObligacionId());
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	/**
+	 * <b>409 y no 400.</b> El importe era valido cuando se compuso; lo que cambio es el estado del
+	 * servidor, probablemente porque entro un debito mientras se cargaba la transferencia.
+	 */
+	@ExceptionHandler(PresentacionSaldoInsuficienteException.class)
+	public ProblemDetail handlePresentacionSaldo(PresentacionSaldoInsuficienteException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(PRESENTACION_SALDO_INSUFICIENTE);
+		problem.setTitle("La presentacion no tiene ese saldo por explicar");
+		problem.setProperty("presentacionId", exception.getPresentacionId());
+		problem.setProperty("importeIntentado", exception.getImporteIntentado());
+		problem.setProperty("saldoDisponible", exception.getSaldoDisponible());
+		return problem;
+	}
+
+	/** <b>409.</b> Lleva el residual: es el numero que el administrativo tiene que explicar. */
+	@ExceptionHandler(PresentacionNoConciliaException.class)
+	public ProblemDetail handleNoConcilia(PresentacionNoConciliaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(PRESENTACION_NO_CONCILIA);
+		problem.setTitle("Queda plata reclamada sin explicar");
+		problem.setProperty("residual", exception.getResidual());
+		return problem;
+	}
+
+	@ExceptionHandler(ItemNoDebitableException.class)
+	public ProblemDetail handleItemNoDebitable(ItemNoDebitableException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(ITEM_NO_DEBITABLE);
+		problem.setTitle("La prestacion no admite un debito");
+		problem.setProperty("estado", exception.getEstado());
+		return problem;
+	}
+
+	@ExceptionHandler(FacturaDuplicadaException.class)
+	public ProblemDetail handleFacturaDuplicada(FacturaDuplicadaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(FACTURA_DUPLICADA);
+		problem.setTitle("El numero de factura ya esta registrado");
+		problem.setProperty("facturaNumero", exception.getFacturaNumero());
 		return problem;
 	}
 
