@@ -336,3 +336,35 @@ primeras filas son las que deciden si el dinero cuadra.
 | **La capa REST de las ocho operaciones nuevas** | Mismo motivo que en 04.02 y 04.03: un IT de `api` exigiría el contrato regenerado, y `0.39.0` está en drift. Escribir contra el contrato viejo sería escribir contra una forma que va a cambiar |
 | **El adjunto binario del comprobante (RF-M22-003)** | No está implementado. La etapa entrega la **referencia** documental —tipo, número y fecha— y no el archivo, porque sería el **tercer consumidor** del storage duplicado y la condición de salida escrita desde 04.02 es extraerlo a `platform.spi`. Eso refactoriza dos módulos cerrados y es una etapa propia. **Decisión pendiente del usuario** |
 | **El cálculo de la liquidación desde las sesiones** | Fuera de alcance por el plan: *"sin inventar regla remunerativa"*. RF-M22-006 y RF-M22-007 son de la segunda entrega |
+
+## AKINE-07.06 — Reportes y tableros del MVP (M23)
+
+**Un solo archivo de test unitario con cinco casos**, por decisión explícita del usuario, y **ni un
+`*IT.java`**: Docker no arranca.
+
+Los cinco casos que sí se escribieron protegen el **gate, el recorte por permiso, el aislamiento de
+tenant, la validación del rango y la auditoría clínica** — todo lo que decide si el reporte es
+seguro y honesto. **Ninguno prueba una fórmula**, y es deliberado: un test que mockea el
+repositorio y después comprueba que la suma da lo que el mock devolvió no prueba nada. Es el mismo
+error que este repositorio ya documentó cuando despachaba el evento que el template escuchaba.
+
+Así que lo que falta acá **es todo lo que hace que los números sean los números**, y conviene
+leerlo como lo que es: sin estos escenarios, el reporte está verificado como mecanismo y **no como
+contador**.
+
+| # | Escenario | Por qué sólo se puede probar contra el motor | Etapa destino |
+|---|---|---|---|
+| 49 | **Aislamiento de tenant de las quince agregaciones.** Dos organizaciones con datos en el mismo rango de fechas: los totales del tenant A no pueden incluir una sola fila de B, en ninguno de los cinco reportes. Y la sede de otro tenant tiene que dar **404, nunca 403** | Es **la peor falla posible de un producto multi-tenant y la más silenciosa**: una agregación que se olvida del filtro no falla, devuelve un número más grande, y no hay forma de notarlo sin datos de dos tenants en la misma base. Un mock nunca lo va a mostrar. `AGENT.md` §6 lo exige en cada IT | **Primera sesión con Docker** |
+| 50 | **La reconciliación cierra.** Un cobro en efectivo produce su movimiento de caja, y `conciliacion-diferencia` tiene que dar **exactamente cero**. Después: un cobro con dos medios (efectivo + tarjeta) tiene que sumar sólo la parte en efectivo, y uno íntegramente con tarjeta tiene que dejar la diferencia en cero igual | Es **el indicador que detecta plata cobrada que no entró a ninguna caja**, y hoy no lo probó nadie. La relación cobro↔movimiento no es uno a uno y sólo se observa con los dos agregados escribiendo de verdad | **Primera sesión con Docker** |
+| 51 | **`CONVERT_TZ` y el turno de las 21:30.** Un turno a las 21:30 hora de Ushuaia tiene que caer en la fila **de ese día** y no en la del siguiente, y el mismo dato con la sede en Córdoba tiene que agrupar distinto. Incluye el caso degradado: **qué pasa si la base no tiene cargadas las tablas de zonas horarias** y `CONVERT_TZ` devuelve `NULL` — el `IFNULL` tiene que degradar al instante UTC y **no perder la fila** | `CONVERT_TZ` depende de `mysql.time_zone_name`, que puede estar vacía. Es una condición del motor, no del código, y el modo de falla es el peor posible: la fila desaparece del conteo en vez de dar error | **Primera sesión con Docker** |
+| 52 | **`V59` contra el motor**, y que los dos índices **se usen**: `EXPLAIN` de las cinco agregaciones principales no puede mostrar un `ALL` sobre `sesion` ni sobre `caso_clinico` | Un índice que el optimizador ignora es un índice que no existe, y sólo `EXPLAIN` contra datos reales lo dice. **Ninguna migración de F7 se aplicó jamás contra un motor** | **Primera sesión con Docker** |
+| 53 | **Los bordes del rango, inclusive de los dos lados.** Un hecho exactamente a las 00:00:00.000000 del día `desde` entra; uno a las 23:59:59.999999 del día `hasta` **también**; uno a las 00:00:00 del día siguiente **no**. Para las dos clases de columna: instantes (`cobrado_en`) y fechas de negocio (`fecha_negocio`) | La precisión `DATETIME(6)` y el límite exclusivo `< hastaInstante` sólo se verifican contra el motor. Un test unitario comprobaría la aritmética de `java.time`, que no es lo que está en duda | **Primera sesión con Docker** |
+
+### Lo que esta etapa deliberadamente NO cubre, ni ahora ni después
+
+| Escenario | Por qué |
+|---|---|
+| **La capa REST de las tres operaciones nuevas** | Mismo motivo que en 04.02, 04.03 y 07.05: un IT de `api` exigiría el contrato regenerado, y `0.41.0` está en drift. Escribir contra el contrato viejo sería escribir contra una forma que va a cambiar |
+| **El export asíncrono con progreso** | No está implementado, y no por olvido. El plan lo pide *"cuando excedan el tiempo interactivo"*, y **sin una medición contra MySQL real no hay forma de saber cuándo eso pasa**. Lo que la etapa entrega en su lugar es un tope duro —366 días de ventana, 500 filas por sección— que es lo único honesto mientras tanto. Su etapa destino es la que tome esa medición |
+| **Que `prestado` y `presentado` den un número distinto de cero** | **No se puede.** No existe ninguna obligación con `responsable = FINANCIADOR` y nada la produce. No es deuda de verificación: es un cimiento que falta, el mismo que 07.04 declaró, y su destino es una etapa propia que recablee el devengado. **Decisión pendiente del usuario** |
+| **El recorte "Limitado" por rol** —que un `PROFESIONAL` vea sólo su propia actividad— | Es el alcance **`OWN`**, que **no está implementado en ninguna parte del repositorio** y cuya causa raíz es que no hay vínculo entre cuenta y persona. La matriz de permisos lo declara como hueco abierto con etapa destino **F8**. Inventar acá una versión del recorte sería fijar la respuesta equivocada |
