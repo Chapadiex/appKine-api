@@ -17,6 +17,32 @@ public interface SesionRepositoryPort {
 	Optional<Sesion> findByIdInScope(long organizationId, long consultorioId, long sesionId);
 
 	/**
+	 * La misma consulta, pero forzando el avance de la version de la sesion al commitear.
+	 *
+	 * <p><b>Es lo que protege las escrituras de tratamientos (06.04)</b>, y es la leccion de 02.07
+	 * ({@code b8bbc67}) traida hasta aca: un {@code @Version} sobre el padre <b>no protege una
+	 * escritura que solo toca tablas hijas</b>. Registrar, editar o dar de baja un tratamiento
+	 * escribe en {@code tratamiento_realizado} y no toca ni una columna de {@code sesion}, asi que
+	 * sin {@code OPTIMISTIC_FORCE_INCREMENT} dos pestañas del mismo profesional agregarian las dos
+	 * su intervencion con el mismo {@code orden} y chocarian contra el unique — o peor, con
+	 * ordenes distintos, dejando la secuencia cronologica inventada.
+	 *
+	 * <p><b>Y la reciproca se respeta</b>, que es la otra mitad de la regla y la que 04.02 pago:
+	 * estas escrituras <b>no ensucian</b> la sesion por ningun otro camino, asi que la version
+	 * avanza <b>una</b> sola vez y la respuesta devuelve {@code leida+1}. Si alguna vez se agregara
+	 * a {@code sesion} una columna de resumen —cuantos tratamientos, minutos totales— habria que
+	 * <b>sacar</b> este force-increment, porque entonces la version avanzaria dos veces y el
+	 * cliente comeria un 409 del que no puede salir. Ese resumen no debe existir: se deriva al
+	 * leer, como el timeline de 04.02 y el avance de 04.04.
+	 *
+	 * <p>Las operaciones que SI ensucian la sesion —borrador, evaluacion, cierre— usan
+	 * {@link #findByIdInScope} y no esta: el {@code UPDATE ... WHERE version = N} que JPA ya emite
+	 * les alcanza.
+	 */
+	Optional<Sesion> findWithLockByIdInScope(
+			long organizationId, long consultorioId, long sesionId);
+
+	/**
 	 * La sesion viva de ese turno, si ya se inicio.
 	 *
 	 * <p>Es lo que hace idempotente el doble inicio: RN-M14-001 dice que un turno produce como
