@@ -61,7 +61,27 @@ final class AuditEvents {
 	 */
 	static final String CASO_CLINICO_ACCESSED = "CASO_CLINICO_ACCESSED";
 
+	static final String PLAN_TRATAMIENTO_CREATED = "PLAN_TRATAMIENTO_CREATED";
+	static final String PLAN_TRATAMIENTO_UPDATED = "PLAN_TRATAMIENTO_UPDATED";
+	static final String PLAN_TRATAMIENTO_ACTIVATED = "PLAN_TRATAMIENTO_ACTIVATED";
+	static final String PLAN_TRATAMIENTO_AMENDED = "PLAN_TRATAMIENTO_AMENDED";
+	static final String PLAN_TRATAMIENTO_SUSPENDED = "PLAN_TRATAMIENTO_SUSPENDED";
+	static final String PLAN_TRATAMIENTO_RESUMED = "PLAN_TRATAMIENTO_RESUMED";
+	static final String PLAN_TRATAMIENTO_FINALIZED = "PLAN_TRATAMIENTO_FINALIZED";
+
+	/**
+	 * La lectura de un plan, de la lista de planes, de su historico de versiones o de su avance.
+	 *
+	 * <p>Se audita por lo mismo que la lectura de un caso: el plan dice <b>que se le esta haciendo
+	 * al paciente y por cuanto tiempo</b>, y sus objetivos son contenido clinico. DP-03 no distingue
+	 * entre leer y escribir en una historia clinica. El alcance concreto —PLAN, PLANES, VERSIONES o
+	 * AVANCE— viaja en los detalles, para que quien audite despues pueda separar quien abrio la
+	 * ficha de quien recorrio el historico.
+	 */
+	static final String PLAN_TRATAMIENTO_ACCESSED = "PLAN_TRATAMIENTO_ACCESSED";
+
 	static final String ENTITY_HISTORIA_CLINICA = "HistoriaClinica";
+	static final String ENTITY_PLAN_TRATAMIENTO = "PlanTratamiento";
 	static final String ENTITY_CASO_CLINICO = "CasoClinico";
 	static final String ENTITY_ANTECEDENTE = "AntecedenteClinico";
 	static final String ENTITY_ENTRADA_CLINICA = "EntradaClinica";
