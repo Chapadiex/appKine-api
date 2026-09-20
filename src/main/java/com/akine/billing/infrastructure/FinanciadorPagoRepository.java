@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,4 +42,32 @@ public interface FinanciadorPagoRepository
 	BigDecimal totalPagadoPorFinanciador(
 			@Param("organizationId") long organizationId,
 			@Param("financiadorId") long financiadorId);
+
+	// =================================================================================
+	// M23 — agregaciones de reporte (AKINE-07.06)
+	// =================================================================================
+
+	/**
+	 * Lo que los financiadores efectivamente pagaron en el periodo (RF-M23-005).
+	 *
+	 * <p>Corta por {@code fecha_pago} —cuando pago el financiador— y no por {@code registrado_en}
+	 * —cuando el administrativo lo cargo—. Los dos instantes se separan legitimamente por dias, y
+	 * usar el segundo le atribuiria a septiembre un pago de agosto que se cargo tarde.
+	 *
+	 * <p><b>No se suma con el {@code cobrado} del reporte economico.</b> Un pago de financiador es
+	 * dinero del financiador; lo que el paciente paga en el mostrador es otra cosa y sale de M19.
+	 * Son dos de los cinco conceptos, y este reporte no publica ningun total que los junte.
+	 */
+	@Query("""
+			SELECT SUM(p.importe) FROM FinanciadorPago p
+			 WHERE p.organizationId = :organizationId
+			   AND p.consultorioId = :consultorioId
+			   AND p.fechaPago >= :desde
+			   AND p.fechaPago <= :hasta
+			""")
+	BigDecimal sumarPagadoEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") LocalDate desde,
+			@Param("hasta") LocalDate hasta);
 }

@@ -130,4 +130,128 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 	List<ConteoDeSesionesPorOferta> contarCerradasPorOferta(
 			@Param("organizationId") long organizationId,
 			@Param("casoId") long casoId);
+
+	// =================================================================================
+	// M23 — agregaciones de reporte (AKINE-07.06)
+	// =================================================================================
+	//
+	// Las cinco se calculan al leer. No hay ninguna tabla de resumen de sesiones, por la
+	// misma razon por la que no hay tabla de timeline clinico (04.02): una tabla de
+	// resumen es una segunda copia de la verdad.
+	//
+	// Todas cortan por `cerrada_en` salvo la ultima, y todas excluyen la baja logica. El
+	// indice que las sostiene es `ix_sesion_sede_cierre`, creado por V59: `sesion` tenia
+	// indices por historia, por profesional y por caso, y ninguno por sede.
+
+	/** Atenciones realmente realizadas en la sede durante el periodo (RF-M23-003). */
+	@Query("""
+			SELECT COUNT(s) FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.consultorioId = :consultorioId
+			   AND s.cerradaEn >= :desde
+			   AND s.cerradaEn < :hasta
+			   AND s.deletedAt IS NULL
+			""")
+	long contarCerradasEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/**
+	 * Las que pertenecen a un Caso Clinico.
+	 *
+	 * <p>RN-M23-004 pide que las sesiones de casos distintos no se mezclen en conteos
+	 * contextuales. Contar aparte las que tienen caso y las que no es la forma minima de
+	 * cumplirlo: la diferencia entre este numero y el total es exactamente la atencion
+	 * suelta, que hoy existe porque el gate de RF-M10-007 esta deliberadamente apagado.
+	 */
+	@Query("""
+			SELECT COUNT(s) FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.consultorioId = :consultorioId
+			   AND s.casoId IS NOT NULL
+			   AND s.cerradaEn >= :desde
+			   AND s.cerradaEn < :hasta
+			   AND s.deletedAt IS NULL
+			""")
+	long contarCerradasConCasoEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/**
+	 * Presentes o ausentes.
+	 *
+	 * <p>La asistencia viaja como texto y se compara contra el nombre del enum, en vez de recibir
+	 * el tipo: el puerto no puede exponer {@code encounter.domain.Asistencia} a un llamador de
+	 * otra capa sin convertirlo en parte del contrato del modulo.
+	 */
+	@Query("""
+			SELECT COUNT(s) FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.consultorioId = :consultorioId
+			   AND s.cerradaEn >= :desde
+			   AND s.cerradaEn < :hasta
+			   AND s.deletedAt IS NULL
+			   AND CAST(s.asistencia AS string) = :asistencia
+			""")
+	long contarCerradasPorAsistenciaEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("asistencia") String asistencia);
+
+	/**
+	 * Las abiertas y todavia sin cerrar.
+	 *
+	 * <p><b>Corta por {@code iniciada_en} y no por {@code cerrada_en}</b>, que es nula justamente
+	 * en estas: cortar por el cierre las dejaria siempre en cero y el indicador diria que no hay
+	 * sesiones colgadas cuando las hay.
+	 */
+	@Query("""
+			SELECT COUNT(s) FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.consultorioId = :consultorioId
+			   AND s.estado = com.akine.encounter.domain.EstadoSesion.BORRADOR
+			   AND s.iniciadaEn >= :desde
+			   AND s.iniciadaEn < :hasta
+			   AND s.deletedAt IS NULL
+			""")
+	long contarEnBorradorEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/**
+	 * El detalle, agrupado por Caso.
+	 *
+	 * <p><b>Por caso y nunca por persona.</b> Una fila por paciente convertiria el reporte en un
+	 * listado de quien se atendio cuantas veces, que es contenido clinico que esta seccion no
+	 * puede entregar: quien lo necesita entra por M10 con su permiso y su justificacion, y ese
+	 * acceso queda registrado como lo que es.
+	 *
+	 * <p>Nativa por el {@code LIMIT}, igual que en {@code TurnoRepository}.
+	 */
+	@Query(value = """
+			SELECT s.caso_id AS caso, COUNT(*) AS cantidad
+			  FROM sesion s
+			 WHERE s.organization_id = :organizationId
+			   AND s.consultorio_id = :consultorioId
+			   AND s.cerrada_en >= :desde
+			   AND s.cerrada_en < :hasta
+			   AND s.deleted_at IS NULL
+			 GROUP BY s.caso_id
+			 ORDER BY cantidad DESC, caso
+			 LIMIT :limite
+			""", nativeQuery = true)
+	List<Object[]> contarCerradasPorCasoEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("limite") int limite);
 }

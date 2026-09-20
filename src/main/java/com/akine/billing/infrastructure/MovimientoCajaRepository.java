@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -149,4 +150,71 @@ public interface MovimientoCajaRepository
 	BigDecimal reconstruirSaldoArqueable(
 			@Param("organizationId") long organizationId,
 			@Param("jornadaCajaId") long jornadaCajaId);
+
+	// =================================================================================
+	// M23 — agregaciones de reporte (AKINE-07.06)
+	// =================================================================================
+	//
+	// Las dos suman CAJA (M20): plata que entro o salio de un cajon concreto. NO es lo
+	// cobrado (M19) ni la deuda (M18), y el reporte no publica ningun total que las junte.
+	//
+	// Cortan por `fecha_negocio`, que ya es una fecha LOCAL de la sede, y por eso reciben
+	// LocalDate y no instantes. Convertir aca seria imputar el movimiento al dia
+	// equivocado: el mismo descuido que `CajaAcceso.fechaDeNegocio` evita desde 07.03, y
+	// que hace que un arqueo no cierre por una razon invisible.
+	//
+	// Las dos filtran por `afecta_arqueo = 1`, que es la columna GENERADA de V54: sumar
+	// tambien lo que se cobro con tarjeta daria un "ingreso de caja" que nunca estuvo en
+	// ningun cajon.
+	//
+	// NO excluyen las reversiones, y es deliberado: `movimiento_caja` es un ledger
+	// append-only que se compensa, no se edita. Una reversion es un movimiento de su
+	// propio tipo y se cuenta como tal; sacarla del conteo rompería el arqueo, que es su
+	// razon de ser.
+
+	/** Efectivo movido en el periodo, por tipo de movimiento ({@code INGRESO}, {@code EGRESO}). */
+	@Query(value = """
+			SELECT SUM(m.importe)
+			  FROM movimiento_caja m
+			 WHERE m.organization_id = :organizationId
+			   AND m.consultorio_id = :consultorioId
+			   AND m.fecha_negocio >= :desde
+			   AND m.fecha_negocio <= :hasta
+			   AND m.afecta_arqueo = 1
+			   AND m.tipo = :tipo
+			""", nativeQuery = true)
+	BigDecimal sumarEfectivoPorTipoEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") LocalDate desde,
+			@Param("hasta") LocalDate hasta,
+			@Param("tipo") String tipo);
+
+	/**
+	 * Efectivo que entro al cajon <b>por un cobro</b>. Es la mitad derecha de la reconciliacion.
+	 *
+	 * <p>La izquierda la da {@code CobroRepository.sumarCobradoPorMedioEnElReporte} desde M19, y el
+	 * reporte muestra la resta: <b>deberia dar cero</b>. Si no da cero, hay plata cobrada en
+	 * efectivo que no entro a ninguna caja, o un ingreso de caja atribuido a un cobro que no
+	 * existe.
+	 *
+	 * <p>Esta consulta es la unica del reporte que existe <b>para ser comparada con otra</b>, no
+	 * para sumarse a ninguna.
+	 */
+	@Query(value = """
+			SELECT SUM(m.importe)
+			  FROM movimiento_caja m
+			 WHERE m.organization_id = :organizationId
+			   AND m.consultorio_id = :consultorioId
+			   AND m.fecha_negocio >= :desde
+			   AND m.fecha_negocio <= :hasta
+			   AND m.afecta_arqueo = 1
+			   AND m.tipo = 'INGRESO'
+			   AND m.tipo_origen = 'COBRO'
+			""", nativeQuery = true)
+	BigDecimal sumarEfectivoDeCobrosEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") LocalDate desde,
+			@Param("hasta") LocalDate hasta);
 }

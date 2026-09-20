@@ -871,7 +871,21 @@ public enum ProblemType {
 	 * <p><b>Solo al crear.</b> Confirmar y pagar un egreso cuyo beneficiario ya se desvinculo tiene
 	 * que funcionar: lo contrario convertiria una desvinculacion en una forma de no pagar.
 	 */
-	BENEFICIARIO_NO_VINCULADO("beneficiario-no-vinculado");
+	BENEFICIARIO_NO_VINCULADO("beneficiario-no-vinculado"),
+
+	// --- M23 reportes (AKINE-07.06) -------------------------------------------------
+
+	/**
+	 * El periodo pedido no sirve para reportar (400).
+	 *
+	 * <p>Cubre el rango invertido y la ventana demasiado ancha. Es un tipo propio y no un
+	 * {@code validation-error} generico porque la pantalla tiene algo concreto que hacer con el:
+	 * acotar el periodo y reintentar. Un {@code validation-error} la obligaria a leer el texto.
+	 *
+	 * <p>El detalle lleva {@code maximoDias} para que el cliente no tenga que hardcodear la
+	 * ventana ni descubrirla probando.
+	 */
+	RANGO_DE_REPORTE_INVALIDO("rango-de-reporte-invalido");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

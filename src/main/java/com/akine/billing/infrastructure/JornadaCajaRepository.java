@@ -154,4 +154,35 @@ public interface JornadaCajaRepository
 			@Param("motivoDiferencia") String motivoDiferencia,
 			@Param("cerradaEn") Instant cerradaEn,
 			@Param("cerradaPorCuentaId") long cerradaPorCuentaId);
+
+	// =================================================================================
+	// M23 — agregaciones de reporte (AKINE-07.06)
+	// =================================================================================
+
+	/**
+	 * Suma de las diferencias de arqueo del periodo (RF-M23-004).
+	 *
+	 * <p>Positiva sobra, negativa falta. Es el unico indicador economico del reporte que puede ser
+	 * <b>negativo</b>, y tiene que poder serlo: reportar el valor absoluto haria que un mes con mil
+	 * de sobra y mil de faltante se leyera igual que uno sin ninguna diferencia, que es justo el
+	 * mes que hay que mirar.
+	 *
+	 * <p>Solo jornadas {@code CERRADA}: una abierta todavia no arqueo y su {@code diferencia} es
+	 * nula por el check de V54.
+	 *
+	 * <p>Corta por {@code fecha_negocio}, que ya es la fecha local de la sede.
+	 */
+	@Query("""
+			SELECT SUM(j.diferencia) FROM JornadaCaja j
+			 WHERE j.organizationId = :organizationId
+			   AND j.consultorioId = :consultorioId
+			   AND j.estado = com.akine.billing.domain.EstadoJornada.CERRADA
+			   AND j.fechaNegocio >= :desde
+			   AND j.fechaNegocio <= :hasta
+			""")
+	BigDecimal sumarDiferenciasEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") LocalDate desde,
+			@Param("hasta") LocalDate hasta);
 }
