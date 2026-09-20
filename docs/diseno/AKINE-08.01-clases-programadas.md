@@ -272,10 +272,14 @@ Un `ActivityProblemHandler` propio mapea las excepciones del módulo. **Nunca en
 `GlobalExceptionHandler`**: eso obligaría a `platform.api` a importar `activity.domain` y cerraría
 un ciclo.
 
-Tipos de problema nuevos: `clase-no-programable` (oferta no grupal / no vigente), y
-`clase-transicion-no-permitida`. Se **reusan** `not-found`, `recurso-ocupado`, `slot-no-disponible`
-e `idempotency-key-conflict`: son la misma situación y publicar un segundo código para cada una
-obligaría al cliente a manejar dos.
+Tipos de problema nuevos, **tres**: `clase-no-programable` (oferta no grupal, de baja o fuera de
+vigencia), `clase-transicion-no-permitida` y `clase-capacidad-no-admitida` —esta última lleva
+`capacidadMaxima`, para que la pantalla corrija el número sola en vez de sólo mostrar el error—.
+Se **reusan** `not-found`, `recurso-ocupado`, `slot-no-disponible` e `idempotency-key-conflict`: son
+la misma situación y publicar un segundo código para cada una obligaría al cliente a manejar dos.
+
+`clase-transicion-no-permitida` **no reusa** `turno-transicion-no-permitida` aunque sean gemelos:
+un cliente que mapea el tipo a una pantalla terminaría refrescando el turno equivocado.
 
 ---
 
