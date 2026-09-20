@@ -13,6 +13,9 @@ import java.time.Instant;
  * centavos que no cuadran y que nadie puede explicar seis meses despues.
  *
  * @param importeOriginal lo que se devengo. No cambia nunca
+ * @param financiadorId   quien debe cuando el responsable es el financiador; {@code null} cuando
+ *                        debe el paciente. Lo agrego AKINE-07.04: sin el, la bandeja de M21 no
+ *                        tiene por donde agrupar
  * @param saldo           lo que falta pagar
  * @param snapshotPrecio  el precio de la oferta AL MOMENTO de devengar. Editar la oferta manana no
  *                        cambia esto: seria reescribir una cuenta corriente
@@ -23,6 +26,7 @@ public record ObligacionView(
 		long sesionId,
 		long personaId,
 		String responsable,
+		Long financiadorId,
 		BigDecimal importeOriginal,
 		BigDecimal saldo,
 		String moneda,
@@ -42,6 +46,7 @@ public record ObligacionView(
 				obligacion.getSesionId(),
 				obligacion.getPersonaId(),
 				obligacion.getResponsable().name(),
+				obligacion.getFinanciadorId(),
 				obligacion.getImporteOriginal(),
 				obligacion.getSaldo(),
 				obligacion.getMoneda(),

@@ -27,8 +27,11 @@ import java.time.LocalDate;
  * <h2>Este es el unico punto donde M21 toca la caja</h2>
  *
  * <p>RN-M21-002: <b>el pago del financiador genera caja solo cuando se recibe.</b> El movimiento se
- * asienta en la <b>misma transaccion</b> y {@code movimientoCajaId} apunta a el. La direccion
- * importa: el movimiento existe porque entro plata, y la plata entro porque el financiador pago.
+ * asienta en la <b>misma transaccion</b>, y el vinculo lo guarda el movimiento —{@code tipo_origen}
+ * {@code PAGO_FINANCIADOR} y {@code referencia_origen} igual a este id—, exactamente como
+ * {@code cobro} y {@code MovimientoCaja} se relacionan desde 07.03. Una columna aca seria la
+ * segunda copia del mismo vinculo, y ademas dejaria sin efecto el unique que hace idempotente el
+ * reintento.
  *
  * <p>Si el asiento se dejara para despues, nada obligaria a que alguien lo hiciera, nada
  * verificaria el importe, y la caja y la cuenta corriente divergirian <b>sin que falle nada</b>.
@@ -77,9 +80,6 @@ public class FinanciadorPago {
 	@Column(name = "referencia", length = 80, updatable = false)
 	private String referencia;
 
-	@Column(name = "movimiento_caja_id", nullable = false, updatable = false)
-	private Long movimientoCajaId;
-
 	@Column(name = "registrado_en", nullable = false, updatable = false)
 	private Instant registradoEn;
 
@@ -107,7 +107,6 @@ public class FinanciadorPago {
 			MedioDePago medio,
 			LocalDate fechaPago,
 			String referencia,
-			long movimientoCajaId,
 			Instant registradoEn,
 			long registradoPorCuentaId,
 			String idempotencyKey,
@@ -126,7 +125,6 @@ public class FinanciadorPago {
 		this.medio = medio;
 		this.fechaPago = fechaPago;
 		this.referencia = referencia;
-		this.movimientoCajaId = movimientoCajaId;
 		this.registradoEn = registradoEn;
 		this.registradoPorCuentaId = registradoPorCuentaId;
 		this.idempotencyKey = idempotencyKey;
@@ -171,10 +169,6 @@ public class FinanciadorPago {
 
 	public String getReferencia() {
 		return referencia;
-	}
-
-	public Long getMovimientoCajaId() {
-		return movimientoCajaId;
 	}
 
 	public Instant getRegistradoEn() {

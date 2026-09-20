@@ -387,10 +387,14 @@ CREATE TABLE financiador_pago
     fecha_pago             DATE           NOT NULL COMMENT 'Cuando pago el financiador, que puede no ser cuando se cargo.',
     referencia             VARCHAR(80)    NULL COMMENT 'Numero de transferencia o de recibo del financiador.',
 
-    -- RN-M21-002: el pago genera caja. El movimiento se asienta en la MISMA transaccion y
-    -- esta columna apunta a el. La direccion importa: el movimiento existe porque entro
-    -- plata, y la plata entro porque el financiador pago — no al reves.
-    movimiento_caja_id     BIGINT         NOT NULL,
+    -- RN-M21-002: el pago genera caja, y el movimiento se asienta en la MISMA transaccion.
+    --
+    -- El VINCULO NO VIVE ACA, y es deliberado: el movimiento apunta al pago con
+    -- tipo_origen = 'PAGO_FINANCIADOR' y referencia_origen = financiador_pago.id, que es
+    -- exactamente como `cobro` y `movimiento_caja` ya se relacionan desde V54. Una columna
+    -- aca seria la segunda copia del mismo vinculo —y una FK circular entre las dos tablas—,
+    -- y ademas haria que el unique de V54 dejara de servir: es el que garantiza que el
+    -- reintento no duplique el movimiento.
 
     registrado_en          DATETIME(6)    NOT NULL,
     registrado_por_cuenta_id BIGINT       NOT NULL,
@@ -422,9 +426,6 @@ CREATE TABLE financiador_pago
 
     CONSTRAINT fk_financiador_pago_presentacion
         FOREIGN KEY (presentacion_id) REFERENCES presentacion (id),
-
-    CONSTRAINT fk_financiador_pago_movimiento
-        FOREIGN KEY (movimiento_caja_id) REFERENCES movimiento_caja (id),
 
     CONSTRAINT ck_financiador_pago_importe_positivo
         CHECK (importe > 0),

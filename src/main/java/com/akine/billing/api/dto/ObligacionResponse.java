@@ -37,6 +37,15 @@ public record ObligacionResponse(
 				example = "PACIENTE")
 		String responsable,
 
+		@Schema(
+				description = "Quien es el financiador cuando `responsable` es `FINANCIADOR`; "
+						+ "ausente cuando debe el paciente. **Hoy siempre ausente**: el devengado "
+						+ "todavia no se recableo contra convenios, asi que no existe ninguna "
+						+ "obligacion de financiador. Sin este campo, M21 no tiene por donde "
+						+ "agrupar un lote.",
+				example = "31")
+		Long financiadorId,
+
 		@Schema(description = "Lo devengado. No cambia nunca.", example = "8500.00")
 		BigDecimal importeOriginal,
 
@@ -79,7 +88,8 @@ public record ObligacionResponse(
 	public static ObligacionResponse de(ObligacionView vista) {
 		return new ObligacionResponse(
 				vista.id(), vista.consultorioId(), vista.sesionId(), vista.personaId(),
-				vista.responsable(), vista.importeOriginal(), vista.saldo(), vista.moneda(),
+				vista.responsable(), vista.financiadorId(), vista.importeOriginal(), vista.saldo(),
+				vista.moneda(),
 				vista.estado(), vista.ofertaId(), vista.snapshotNombre(), vista.snapshotPrecio(),
 				vista.devengadaEn(), vista.anuladaEn(), vista.motivoAnulacion(), vista.version());
 	}
