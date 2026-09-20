@@ -17,6 +17,13 @@ import java.time.Instant;
  *                     {@code numeroSesion}</b>, que es el correlativo por Historia Clinica: desde
  *                     esta etapa "la sesion 8" es ambigua si no se dice de que, y ninguna pantalla
  *                     puede mostrar uno solo sin decir cual es
+ * @param ultimoNumeroVersion numero de la ultima version de contenido (06.06). {@code 0} mientras
+ *                     la sesion esta abierta, {@code 1} desde el cierre, y uno mas por cada
+ *                     enmienda. <b>No es {@code version}</b>, que es el control optimista
+ * @param fueEnmendada {@code true} si la sesion se corrigio al menos una vez. Viaja calculado y no
+ *                     como comparacion que la pantalla tenga que hacer: que un registro clinico
+ *                     este corregido es un hecho que quien lo lee tiene derecho a ver sin pedir
+ *                     el historial
  */
 public record SesionView(
 		long id,
@@ -37,7 +44,9 @@ public record SesionView(
 		Integer numeroEnCaso,
 		CierreDeSesion cierre,
 		Instant cerradaEn,
-		long version) {
+		long version,
+		int ultimoNumeroVersion,
+		boolean fueEnmendada) {
 
 	/**
 	 * La evaluacion de la sesion ANTERIOR del mismo paciente, para poder comparar.
@@ -90,6 +99,8 @@ public record SesionView(
 						sesion.getIndicaciones(),
 						sesion.getProximaConducta()),
 				sesion.getCerradaEn(),
-				sesion.getVersion());
+				sesion.getVersion(),
+				sesion.getUltimoNumeroVersion(),
+				sesion.fueEnmendada());
 	}
 }

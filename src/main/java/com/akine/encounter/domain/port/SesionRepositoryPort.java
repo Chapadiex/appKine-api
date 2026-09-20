@@ -14,6 +14,23 @@ public interface SesionRepositoryPort {
 
 	Sesion save(Sesion sesion);
 
+	/**
+	 * Guarda y <b>vacia la sesion de persistencia</b>, para que la fila quede escrita ya.
+	 *
+	 * <p>Hace falta en todo camino cuya respuesta lleve la {@code version} de la sesion, que son
+	 * los cuatro de escritura. {@code save} sobre una entidad ya gestionada es un merge: deja el
+	 * {@code UPDATE} pendiente y Hibernate incrementa {@code @Version} recien en el flush, al
+	 * cerrar la transaccion — o sea <b>despues</b> de que la vista ya leyo {@code getVersion()}.
+	 * El cliente se lleva la version vieja, la manda en su operacion siguiente y come un 409 del
+	 * que no puede salir salvo releyendo la sesion entera.
+	 *
+	 * <p>Es la regla 5 del repositorio —"{@code save()} antes del flush devuelve la version
+	 * vieja"— que 02.07 ya pago y que 04.02 volvio a encontrar por otra puerta. Se aplica aca en
+	 * 06.06 porque la enmienda es la primera operacion que <b>consume</b> la version que devuelve
+	 * el cierre: hasta que existio, el sintoma no tenia por donde manifestarse.
+	 */
+	Sesion saveAndFlush(Sesion sesion);
+
 	Optional<Sesion> findByIdInScope(long organizationId, long consultorioId, long sesionId);
 
 	/**

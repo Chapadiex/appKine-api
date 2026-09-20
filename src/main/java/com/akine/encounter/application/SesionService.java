@@ -16,8 +16,14 @@ import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
+import com.akine.encounter.domain.ContenidoDeSesion;
+import com.akine.encounter.domain.SesionVersion;
+import com.akine.encounter.domain.exception.SesionNoCerradaException;
 import com.akine.encounter.domain.port.SesionNumeradorPort;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
+import com.akine.encounter.domain.port.SesionVersionRepositoryPort;
+import com.akine.platform.spi.audit.AuditEntry;
+import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
@@ -35,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Inicio de la atencion y autosave del borrador (M14, RF-M14-001, RF-M14-002 y RF-M14-009).
@@ -74,6 +81,8 @@ public class SesionService {
 	private static final Logger log = LoggerFactory.getLogger(SesionService.class);
 
 	private final SesionRepositoryPort sesiones;
+	private final SesionVersionRepositoryPort versiones;
+	private final AuditTrail auditTrail;
 	private final TurnoDirectory turnos;
 	private final HistoriaClinicaDirectory historias;
 	private final CasoDirectory casos;
@@ -85,8 +94,11 @@ public class SesionService {
 	private final OfertaDirectory ofertas;
 	private final List<CierreDeSesionObserver> observadores;
 
+	@SuppressWarnings("java:S107")
 	public SesionService(
 			SesionRepositoryPort sesiones,
+			SesionVersionRepositoryPort versiones,
+			AuditTrail auditTrail,
 			TurnoDirectory turnos,
 			HistoriaClinicaDirectory historias,
 			CasoDirectory casos,
@@ -99,6 +111,8 @@ public class SesionService {
 			List<CierreDeSesionObserver> observadores) {
 
 		this.sesiones = sesiones;
+		this.versiones = versiones;
+		this.auditTrail = auditTrail;
 		this.turnos = turnos;
 		this.historias = historias;
 		this.casos = casos;
@@ -217,7 +231,7 @@ public class SesionService {
 		exigirVersion(sesion, expectedVersion);
 
 		sesion.guardarBorrador(contenido, Instant.now());
-		return conPrevia(sesiones.save(sesion), organizationId);
+		return conPrevia(sesiones.saveAndFlush(sesion), organizationId);
 	}
 
 
@@ -248,7 +262,7 @@ public class SesionService {
 		exigirVersion(sesion, expectedVersion);
 
 		sesion.evaluar(evaluacion, Instant.now());
-		return conPrevia(sesiones.save(sesion), organizationId);
+		return conPrevia(sesiones.saveAndFlush(sesion), organizationId);
 	}
 
 	/**
@@ -357,6 +371,22 @@ public class SesionService {
 		long cerradaPor = actor.accountId();
 		sesion.cerrar(cierre, numero, numeroEnCaso, ahora, cerradaPor);
 
+		// PASO 6b. El cierre inaugura el historial de contenido (06.06). La version 1 es lo que se
+		// acaba de asentar, con el instante y el autor DEL CIERRE.
+		//
+		// Se escribe aca y no perezosamente en la primera enmienda, que es la alternativa obvia:
+		// asi TODA sesion cerrada tiene historial completo y consultarlo es una sola consulta. Con
+		// escritura perezosa, una sesion nunca enmendada no tendria filas y el endpoint de
+		// historial tendria que sintetizar la version 1 leyendo la cabecera — un segundo camino de
+		// lectura que puede divergir del primero justo en la fila que mas importa, el original.
+		// Las sesiones cerradas antes de V53 la reciben por el backfill de esa migracion.
+		//
+		// Va ANTES de notificar a los observadores a proposito: el registro clinico se asienta
+		// primero, y recien despues se deriva lo economico. Si un observador hace fallar el cierre
+		// —lo puede hacer, y es intencional— cae todo junto, asi que el orden no cambia el
+		// resultado; cambia que lea el codigo.
+		versiones.save(SesionVersion.original(sesion));
+
 		// Dentro de la transaccion, a proposito: una prestacion sin deuda NO se nota —nadie
 		// reclama una factura que nunca existio— y el centro descubre el agujero cuando cuadra
 		// la caja del mes. La contrapartida esta asumida en CierreDeSesionObserver.
@@ -366,7 +396,163 @@ public class SesionService {
 						+ "asistencia={}",
 				sesionId, numero, numeroEnCaso, sesion.getHistoriaClinicaId(), cierre.asistencia());
 
-		return conPrevia(sesiones.save(sesion), organizationId);
+		return conPrevia(sesiones.saveAndFlush(sesion), organizationId);
+	}
+
+	// =================================================================================
+	// AKINE-06.06 — enmendar una sesion cerrada
+	// =================================================================================
+
+	/**
+	 * Enmienda una sesion cerrada: escribe una version nueva y deja intacta la anterior
+	 * (RF-M14-010).
+	 *
+	 * <h2>Esto es lo que 06.05 dejo fail-closed, y ahora tiene puerta</h2>
+	 *
+	 * <p>Escribir sobre una sesion cerrada sigue siendo 409 por los caminos normales —borrador,
+	 * evaluacion, segundo cierre—. Este es el unico camino por el que el contenido de una atencion
+	 * cerrada cambia, y cambia <b>dejando rastro</b>: version numerada, motivo obligatorio, autor
+	 * propio y evento de auditoria. RN-M14-006 no prohibe corregir; prohibe corregir en silencio.
+	 *
+	 * <h2>LO QUE ESTA OPERACION NO PUEDE CORREGIR, y conviene saberlo antes de intentarlo</h2>
+	 *
+	 * <p><b>La asistencia.</b> Una sesion cerrada con {@code AUSENTE} cuando el paciente vino —o al
+	 * reves— no se arregla enmendando, y es el caso adverso declarado de la etapa. Cambiarla es un
+	 * acto <b>economico</b>: obliga a devengar una obligacion que no existe o a anular una que si
+	 * (M18), y a consumir o revertir una unidad de autorizacion (M17). Son compensaciones
+	 * explicitas con dueño en otros modulos. Lo que si se puede hacer es enmendar la nota de cierre
+	 * dejando escrito lo que paso, con ese motivo: el relato clinico queda correcto y trazado, y el
+	 * hecho administrativo queda pendiente de quien tenga permiso economico.
+	 *
+	 * <h2>LOS OBSERVADORES DEL CIERRE NO SE VUELVEN A DISPARAR. NUNCA</h2>
+	 *
+	 * <p>Ni {@code billing.ObligacionDevengador} ni {@code ConsumoDeAutorizacionEnCierre}. Y el
+	 * motivo <b>no</b> es que re-dispararlos duplicaria la deuda: se verifico contra el codigo que
+	 * los dos son idempotentes por el hecho de origen. Los motivos reales son dos y mas finos:
+	 *
+	 * <ol>
+	 *   <li><b>Es asimetrico.</b> Re-disparar solo puede AGREGAR efectos economicos, nunca
+	 *       sacarlos: no existe ningun observador de "des-cierre", asi que una sesion que pasara a
+	 *       ausente se quedaria con la deuda devengada y la unidad consumida.</li>
+	 *   <li><b>La idempotencia del consumo es por AUTORIZACION, no por sesion.</b> Si entre el
+	 *       cierre y la enmienda cambio cual es la autorizacion elegible, el origen es el mismo
+	 *       pero el {@code autorizacion_id} es otro, {@code uk_autorizacion_movimiento_origen} no
+	 *       choca y se consume una segunda unidad.</li>
+	 * </ol>
+	 *
+	 * <p>Y ademas no hace falta: los dos observadores leen {@code asistio}, {@code ofertaId} y el
+	 * precio de la oferta, y <b>ninguno de los tres es enmendable</b>. Por eso el criterio de
+	 * aceptacion "no hay cambios economicos implicitos" es una propiedad del modelo y no una
+	 * promesa de este metodo.
+	 *
+	 * <h2>Concurrencia: sin force-increment y con flush</h2>
+	 *
+	 * <p>Enmendar <b>ensucia la cabecera</b> —{@code ultimo_numero_version} cambia— asi que el
+	 * flush ya emite un {@code UPDATE ... WHERE version = N} versionado. Dos enmiendas concurrentes
+	 * leen la misma version, las dos ensucian la fila, una gana y la otra recibe 409. <b>La
+	 * garantia ya esta</b>, y {@code OPTIMISTIC_FORCE_INCREMENT} no agregaria ninguna: agregaria un
+	 * segundo incremento, dejando la base en {@code leida + 2} mientras la vista devuelve
+	 * {@code leida + 1}. La regla es <b>force-increment solo donde la escritura NO toca ninguna
+	 * columna del padre</b>, y aca la toca. 04.02 lo pago.
+	 *
+	 * <p>{@code saveAndFlush} y no {@code save}, por lo mismo que esta escrito en el puerto: la
+	 * respuesta lleva la version de la cabecera y el cliente la va a mandar en su proxima enmienda.
+	 *
+	 * <p><b>{@code @Transactional} normal, no {@code READ_COMMITTED}</b>, al reves que
+	 * {@link #cerrar}: aca no se toma el lock de fila de ningun numerador. El control es optimista
+	 * de punta a punta, igual que en {@code EntradaClinicaService#enmendar}. La regla de 05.02 es
+	 * para las mutaciones que <b>serializan con un lock</b>, y esta no es una.
+	 *
+	 * @throws SesionNoCerradaException si la sesion sigue abierta (409): eso se guarda, no se
+	 *                                  enmienda
+	 */
+	@Transactional
+	public SesionView enmendar(
+			OperatingActor actor, long consultorioId, long sesionId,
+			ContenidoDeSesion contenido, String motivo, long expectedVersion) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirRegistro(actor, organizationId, consultorioId);
+
+		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
+				.filter(Sesion::estaViva)
+				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
+
+		// Propiedad, no permiso: escribir en la atencion ajena es 409 y no 403, y enmendar es
+		// escribir. El reemplazo autorizado —un supervisor que corrige— necesita el registro de
+		// quien reemplaza a quien que 06.01 declaro inexistente; hasta que exista, fail-closed.
+		sesion.exigirPropiedadDe(membershipDe(actor, organizationId, consultorioId));
+
+		exigirVersion(sesion, expectedVersion);
+
+		int anterior = sesion.getUltimoNumeroVersion();
+		// Aplica el contenido y reserva el numero. Valida coherencia clinica y minimos del cierre
+		// reusando EvaluacionBase y CierreDeSesion: una enmienda no puede guardar lo que el camino
+		// normal habria rechazado.
+		int numero = sesion.enmendar(contenido, sesion.getAsistencia());
+
+		Instant ahora = Instant.now();
+		Sesion cabecera = sesiones.saveAndFlush(sesion);
+
+		// SesionVersion.enmienda COPIA el contenido de la sesion ya modificada: por eso va despues
+		// del enmendar y no antes. El motivo lo exige la propia version —EnmiendaSinMotivoException,
+		// que la capa HTTP mapea a 400 y no a 409— asi que ningun camino futuro que esquive este
+		// servicio puede escribir una enmienda sin decir por que.
+		versiones.save(SesionVersion.enmienda(cabecera, motivo, ahora, actor.accountId()));
+
+		// El MOTIVO no va a la auditoria, y es la misma decision que tomo 04.02 con el cuerpo de la
+		// entrada clinica: es prosa que el profesional escribe sobre un paciente, y `audit_event`
+		// se consulta con `auditoria:read`, que no es un permiso clinico. Va la transicion, que es
+		// lo que permite reconstruir el historial y llevar a quien investiga a la fila que tiene el
+		// detalle.
+		auditTrail.record(new AuditEntry(
+				organizationId,
+				consultorioId,
+				actor.accountId(),
+				AuditEvents.SESION_AMENDED,
+				AuditEvents.ENTITY_SESION,
+				cabecera.getId(),
+				"VERSION_" + anterior,
+				"VERSION_" + numero,
+				Map.of("historiaClinicaId", String.valueOf(cabecera.getHistoriaClinicaId()),
+						"numeroSesion", String.valueOf(cabecera.getNumeroSesion())),
+				null,
+				AuditEvents.correlationId(),
+				ahora));
+
+		log.info("Sesion enmendada: sesionId={} numeroVersion={} historiaClinicaId={}",
+				sesionId, numero, cabecera.getHistoriaClinicaId());
+
+		return conPrevia(cabecera, organizationId);
+	}
+
+	/**
+	 * El historial completo de versiones de una sesion, de la 1 a la ultima (RF-M24-005).
+	 *
+	 * <p>Exige {@code sesion:register} en la sede, igual que leer la sesion: el historial es el
+	 * mismo contenido clinico contado en el tiempo, y protegerlo con menos que el original seria
+	 * una puerta lateral a lo mismo.
+	 *
+	 * <p><b>Una sesion abierta devuelve lista vacia y no un error.</b> Todavia no tiene contenido
+	 * versionado —la v1 se escribe al cerrar— y para la pantalla "no hay nada que comparar" no es
+	 * una condicion excepcional: es el estado normal de la atencion que esta ocurriendo.
+	 */
+	@Transactional(readOnly = true)
+	public List<SesionVersionView> versiones(
+			OperatingActor actor, long consultorioId, long sesionId) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirRegistro(actor, organizationId, consultorioId);
+
+		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
+				.filter(Sesion::estaViva)
+				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
+
+		return versiones.buscarPorSesion(organizationId, sesion.getId()).stream()
+				.map(SesionVersionView::de)
+				.toList();
 	}
 
 	/**

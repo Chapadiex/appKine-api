@@ -3,9 +3,11 @@ package com.akine.encounter.api;
 import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.CierreIncompletoException;
+import com.akine.encounter.domain.exception.EnmiendaSinMotivoException;
 import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
 import com.akine.encounter.domain.exception.SesionCerradaException;
+import com.akine.encounter.domain.exception.SesionNoCerradaException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
 import com.akine.platform.spi.problem.ProblemType;
@@ -38,6 +40,8 @@ public class EncounterProblemHandler {
 	private static final URI SESION_AJENA = ProblemType.SESION_AJENA.uri();
 	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 	private static final URI SESION_CERRADA = ProblemType.SESION_CERRADA.uri();
+	private static final URI SESION_NO_CERRADA = ProblemType.SESION_NO_CERRADA.uri();
+	private static final URI ENMIENDA_SIN_MOTIVO = ProblemType.ENMIENDA_SIN_MOTIVO.uri();
 	private static final URI CASO_NO_ACCESIBLE = ProblemType.CASO_CLINICO_NO_ACCESIBLE.uri();
 	private static final URI CASO_CERRADO = ProblemType.CASO_CLINICO_CERRADO.uri();
 
@@ -131,9 +135,11 @@ public class EncounterProblemHandler {
 	}
 
 	/**
-	 * <b>409.</b> Corregir una sesion cerrada es una enmienda, no un segundo guardado. 06.06 no
-	 * existe todavia, asi que esto es fail-closed: es preferible no poder corregir a corregir sin
-	 * dejar rastro.
+	 * <b>409.</b> Corregir una sesion cerrada es una enmienda, no un segundo guardado.
+	 *
+	 * <p>Desde 06.06 la enmienda existe, asi que este error dejo de significar "no se puede
+	 * corregir" y pasa a significar <b>"por ahi no"</b>: lo que corresponde ofrecer es
+	 * {@code POST .../enmiendas}, que exige motivo y deja una version en el historial.
 	 */
 	@ExceptionHandler(SesionCerradaException.class)
 	public ProblemDetail handleSesionCerrada(SesionCerradaException exception) {
@@ -141,6 +147,41 @@ public class EncounterProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(SESION_CERRADA);
 		problem.setTitle("La atencion ya esta cerrada");
+		return problem;
+	}
+
+	/**
+	 * <b>409, y con tipo propio.</b> Se intento enmendar una sesion que sigue abierta.
+	 *
+	 * <p>Es el espejo de {@link #handleSesionCerrada} y tiene su propio {@code type} porque lleva
+	 * a <b>otra accion</b>: aca lo que corresponde ofrecer es guardar normalmente —evaluacion o
+	 * borrador—, que ni exige motivo ni deja una version en el historial. Un unico
+	 * {@code conflict} para las dos situaciones obligaria a la pantalla a adivinar cual de los dos
+	 * botones mostrar.
+	 */
+	@ExceptionHandler(SesionNoCerradaException.class)
+	public ProblemDetail handleSesionNoCerrada(SesionNoCerradaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(SESION_NO_CERRADA);
+		problem.setTitle("La atencion todavia esta abierta");
+		return problem;
+	}
+
+	/**
+	 * <b>400 y no 409.</b> Se pidio enmendar sin declarar por que.
+	 *
+	 * <p>No hay conflicto de estado: la sesion esta cerrada, quien opera es su dueño y la version
+	 * que mando es la vigente. Falta un dato del pedido. Un 409 mandaria a la pantalla a ofrecer
+	 * "reintentar" donde lo que corresponde es "completa el motivo", y reintentar sin motivo
+	 * vuelve a fallar exactamente igual.
+	 */
+	@ExceptionHandler(EnmiendaSinMotivoException.class)
+	public ProblemDetail handleEnmiendaSinMotivo(EnmiendaSinMotivoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(ENMIENDA_SIN_MOTIVO);
+		problem.setTitle("La enmienda exige un motivo");
 		return problem;
 	}
 

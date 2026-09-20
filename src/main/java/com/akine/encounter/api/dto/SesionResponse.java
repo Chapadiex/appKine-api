@@ -85,7 +85,22 @@ public record SesionResponse(
 		CierreResponse cierre,
 
 		@Schema(example = "2026-09-15T12:48:00Z")
-		Instant cerradaEn) {
+		Instant cerradaEn,
+
+		@Schema(
+				description = "Numero de la ultima version de contenido (AKINE-06.06). `0` mientras "
+						+ "la sesion esta abierta, `1` desde el cierre, y uno mas por cada enmienda. "
+						+ "**No es `version`**, que es el control optimista del autosave.",
+				example = "2")
+		int ultimoNumeroVersion,
+
+		@Schema(
+				description = "`true` si la sesion se corrigio al menos una vez. Viaja calculado y "
+						+ "no como comparacion que la pantalla tenga que hacer: que un registro "
+						+ "clinico este corregido es un hecho que quien lo lee tiene derecho a ver "
+						+ "sin pedir el historial.",
+				example = "true")
+		boolean fueEnmendada) {
 
 	@Schema(name = "CierreDeSesion", description = "Resultado y proxima conducta")
 	public record CierreResponse(
@@ -143,7 +158,9 @@ public record SesionResponse(
 						nombre(vista.cierre().tolerancia()),
 						vista.cierre().indicaciones(),
 						nombre(vista.cierre().proximaConducta())),
-				vista.cerradaEn());
+				vista.cerradaEn(),
+				vista.ultimoNumeroVersion(),
+				vista.fueEnmendada());
 	}
 
 	/** Los enums viajan como texto para que el cliente no dependa del enum de este modulo. */

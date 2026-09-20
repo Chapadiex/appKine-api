@@ -260,11 +260,24 @@ public enum ProblemType {
 	/**
 	 * Se intenta editar una atencion ya cerrada.
 	 *
-	 * <p>Corregirla es una ENMIENDA con su actor y su motivo —AKINE-06.06, fuera del Paquete B—.
-	 * Hasta que exista es fail-closed: es preferible no poder corregir a corregir sin dejar rastro,
-	 * porque lo segundo es historia clinica reescrita en silencio.
+	 * <p>Corregirla es una ENMIENDA con su actor y su motivo, y desde AKINE-06.06 la enmienda
+	 * existe: lo que este tipo dice es que <b>el camino elegido no es el correcto</b>, no que la
+	 * correccion sea imposible. Lo que corresponde ofrecer es enmendar, que exige motivo y deja
+	 * una version en el historial.
 	 */
 	SESION_CERRADA("sesion-cerrada"),
+	/**
+	 * Se intenta enmendar una sesion que todavia esta abierta (409). AKINE-06.06.
+	 *
+	 * <p>Es el espejo de {@link #SESION_CERRADA} y tiene tipo propio porque lleva a <b>otra
+	 * accion</b>: aca lo que corresponde es guardar normalmente —evaluacion o borrador—, que ni
+	 * exige motivo ni deja una version. Un unico {@code conflict} para las dos situaciones
+	 * obligaria a la pantalla a adivinar cual de los dos botones ofrecer.
+	 *
+	 * <p>Enmendar una sesion abierta ademas produciria una version de algo que todavia esta
+	 * cambiando, y el historial clinico pasaria a registrar tipeos en vez de correcciones.
+	 */
+	SESION_NO_CERRADA("sesion-no-cerrada"),
 
 	// --- Deuda (M18) -----------------------------------------------------------------------
 	/** La obligacion ya estaba anulada. Anular dos veces no es idempotente: es un error. */

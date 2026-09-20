@@ -19,6 +19,8 @@ import com.akine.encounter.domain.exception.SesionCerradaException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
 import com.akine.encounter.domain.port.SesionNumeradorPort;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
+import com.akine.encounter.domain.port.SesionVersionRepositoryPort;
+import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
@@ -76,6 +78,8 @@ class SesionServiceTest {
 	private static final long MEMBERSHIP_AJENA = 32L;
 
 	@Mock private SesionRepositoryPort sesiones;
+	@Mock private SesionVersionRepositoryPort versiones;
+	@Mock private AuditTrail auditTrail;
 	@Mock private TurnoDirectory turnos;
 	@Mock private HistoriaClinicaDirectory historias;
 	@Mock private ConsultorioDirectory consultorios;
@@ -96,8 +100,8 @@ class SesionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new SesionService(
-				sesiones, turnos, historias, casos, consultorios, memberships, permissionGuard,
-				numerador, numeradorIniciador, ofertas, List.of());
+				sesiones, versiones, auditTrail, turnos, historias, casos, consultorios,
+				memberships, permissionGuard, numerador, numeradorIniciador, ofertas, List.of());
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -110,13 +114,20 @@ class SesionServiceTest {
 				new HistoriaClinicaSnapshot(HISTORIA_ID, ORG_ID, PERSONA_ID, Instant.EPOCH, true, 0)));
 		// JPA asigna el id al persistir; el doble tiene que hacer lo mismo o el fixture
 		// representaria una sesion guardada sin id, que en produccion no ocurre.
-		given(sesiones.save(any())).willAnswer(invocacion -> {
-			Sesion guardada = invocacion.getArgument(0);
-			if (guardada.getId() == null) {
-				ReflectionTestUtils.setField(guardada, "id", 1L);
-			}
-			return guardada;
-		});
+		given(sesiones.save(any())).willAnswer(SesionServiceTest::conIdComoJpa);
+		// `saveAndFlush` se comporta igual que `save` en el doble: lo que agrega en produccion es
+		// el flush, que existe para que la respuesta lleve la version YA avanzada. Eso no se puede
+		// simular con un mock —la version la mueve Hibernate— y queda declarado como no verificado.
+		given(sesiones.saveAndFlush(any())).willAnswer(SesionServiceTest::conIdComoJpa);
+	}
+
+	/** JPA asigna el id al persistir; el doble tiene que hacer lo mismo o el fixture mentiria. */
+	private static Sesion conIdComoJpa(org.mockito.invocation.InvocationOnMock invocacion) {
+		Sesion guardada = invocacion.getArgument(0);
+		if (guardada.getId() == null) {
+			ReflectionTestUtils.setField(guardada, "id", 1L);
+		}
+		return guardada;
 	}
 
 	private static TurnoSnapshot turno(Long profesionalId, boolean vivo) {
