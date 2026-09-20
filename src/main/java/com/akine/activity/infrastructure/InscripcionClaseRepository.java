@@ -202,4 +202,84 @@ public interface InscripcionClaseRepository
 			@Param("motivo") String motivo,
 			@Param("cuentaId") long cuentaId,
 			@Param("ahora") Instant ahora);
+
+	// =================================================================================
+	// AKINE-08.03 — asistencia
+	// =================================================================================
+
+	/**
+	 * Las que tienen lugar y todavia no tienen hecho registrado. Es lo que el cierre resuelve.
+	 *
+	 * <p><b>El {@code NOT EXISTS} va en la base y no en el servicio, y de ahi sale la idempotencia
+	 * del cierre</b>: un segundo cierre no encuentra pendientes porque el primero les creo la fila,
+	 * y {@code uk_asistencia_clase_persona} hace imposible una segunda. Traer todas y filtrar en
+	 * memoria daria lo mismo hoy y creceria con lo exitosa que sea la clase.
+	 *
+	 * <p>{@code LISTA_ESPERA} queda afuera: nunca tuvo lugar, asi que no puede haber asistido. El
+	 * cierre la resuelve por otro camino — {@link #cancelarEsperaPorClaseCerrada}.
+	 */
+	@Override
+	@Query("""
+			SELECT i FROM InscripcionClase i
+			 WHERE i.organizationId = :organizationId
+			   AND i.claseId = :claseId
+			   AND i.deletedAt IS NULL
+			   AND i.estado IN (
+			       com.akine.activity.domain.EstadoInscripcion.RESERVADA,
+			       com.akine.activity.domain.EstadoInscripcion.CONFIRMADA)
+			   AND NOT EXISTS (
+			       SELECT 1 FROM AsistenciaActividad a
+			        WHERE a.organizationId = i.organizationId
+			          AND a.inscripcionId = i.id)
+			 ORDER BY i.id ASC
+			""")
+	List<InscripcionClase> findConLugarSinAsistencia(
+			@Param("organizationId") long organizationId, @Param("claseId") long claseId);
+
+	/**
+	 * Cancela la cola cuando la clase ya se realizo.
+	 *
+	 * <p><b>No libera cupo</b>: quien espera nunca lo tuvo (RN-M28-005). <b>No devuelve creditos ni
+	 * plata</b>: eso es 08.07.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query(value = """
+			UPDATE inscripcion_clase
+			   SET estado = 'CANCELADA',
+			       motivo_cancelacion = :motivo,
+			       cancelada_en = :ahora,
+			       cancelada_por_cuenta_id = :cuentaId,
+			       deleted_at = :ahora,
+			       version = version + 1
+			 WHERE clase_id = :claseId
+			   AND organization_id = :organizationId
+			   AND deleted_at IS NULL
+			   AND estado = 'LISTA_ESPERA'
+			""", nativeQuery = true)
+	@Override
+	int cancelarEsperaPorClaseCerrada(
+			@Param("organizationId") long organizationId,
+			@Param("claseId") long claseId,
+			@Param("motivo") String motivo,
+			@Param("cuentaId") long cuentaId,
+			@Param("ahora") Instant ahora);
+
+	/**
+	 * Las inscripciones de un lote, en un solo viaje.
+	 *
+	 * <p><b>{@code claseId} esta en el {@code WHERE} y no se confia en que los ids pertenezcan a la
+	 * clase de la ruta.</b> Sin ese predicado, un lote seria un enumerador cross-tenant con
+	 * resultados parciales explicando cual id existe y cual no.
+	 */
+	@Override
+	@Query("""
+			SELECT i FROM InscripcionClase i
+			 WHERE i.organizationId = :organizationId
+			   AND i.claseId = :claseId
+			   AND i.id IN :inscripcionIds
+			""")
+	List<InscripcionClase> findDeLaClasePorIds(
+			@Param("organizationId") long organizationId,
+			@Param("claseId") long claseId,
+			@Param("inscripcionIds") List<Long> inscripcionIds);
 }

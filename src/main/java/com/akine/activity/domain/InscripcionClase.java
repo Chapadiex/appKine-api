@@ -228,6 +228,46 @@ public class InscripcionClase {
 		return true;
 	}
 
+	/**
+	 * Proyecta el resultado de la asistencia sobre el estado administrativo de la reserva
+	 * (AKINE-08.03).
+	 *
+	 * <p><b>No toca el cupo y no puede tocarlo.</b> {@code RESERVADA}, {@code CONFIRMADA},
+	 * {@code ASISTIO} y {@code AUSENTE} consumen lugar los cuatro (08.02), asi que la transicion va
+	 * de un estado que consume a otro que consume: {@code cupo_ocupado} se queda donde estaba.
+	 *
+	 * <p><b>Esta fila es la reserva; el hecho es {@code AsistenciaActividad}.</b> Este metodo no
+	 * afirma que alguien vino: lo afirma la otra fila, y esta se limita a decir como quedo resuelta
+	 * la reserva. Las dos se escriben en la misma transaccion.
+	 *
+	 * @param nuevo el estado que {@code ResultadoAsistencia.estadoDeInscripcion()} determino
+	 * @return {@code true} si esta llamada cambio el estado
+	 * @throws TransicionDeInscripcionNoPermitidaException si la inscripcion no tenia lugar
+	 */
+	public boolean marcarAsistencia(EstadoInscripcion nuevo, Instant occurredAt) {
+		if (!nuevo.consumeCupo() || nuevo == EstadoInscripcion.RESERVADA
+				|| nuevo == EstadoInscripcion.CONFIRMADA) {
+			throw new IllegalArgumentException(
+					"Un resultado de asistencia solo deja ASISTIO o AUSENTE: " + nuevo);
+		}
+		if (estado == EstadoInscripcion.CANCELADA) {
+			throw new TransicionDeInscripcionNoPermitidaException(
+					id, "esta cancelada: se dio de baja antes de la clase y no ocupo lugar");
+		}
+		// Quien espera NUNCA tuvo lugar (RN-M28-005), asi que no puede haber asistido a algo que no
+		// tenia reservado. El camino es promoverla —una baja la promueve— o registrarla como
+		// ingreso sin inscripcion si la clase ya empezo.
+		if (estado == EstadoInscripcion.LISTA_ESPERA) {
+			throw new TransicionDeInscripcionNoPermitidaException(
+					id, "esta en lista de espera y nunca tuvo lugar en la clase");
+		}
+		if (estado == nuevo) {
+			return false;
+		}
+		this.estado = nuevo;
+		return true;
+	}
+
 	/** {@code true} si esta fila ocupa uno de los lugares de la clase. */
 	public boolean consumeCupo() {
 		return estado.consumeCupo();

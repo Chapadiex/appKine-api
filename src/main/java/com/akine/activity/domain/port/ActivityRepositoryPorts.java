@@ -1,5 +1,7 @@
 package com.akine.activity.domain.port;
 
+import com.akine.activity.domain.AsistenciaActividad;
+import com.akine.activity.domain.AsistenciaEvento;
 import com.akine.activity.domain.ClaseEvento;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.InscripcionClase;
@@ -235,6 +237,91 @@ public final class ActivityRepositoryPorts {
 		 */
 		int cancelarTodasPorClaseCancelada(
 				long organizationId, long claseId, String motivo, long cuentaId, Instant ahora);
+
+		/**
+		 * Las inscripciones con lugar que <b>todavia no tienen asistencia registrada</b>
+		 * (AKINE-08.03). Es lo que el cierre operativo resuelve como ausentes.
+		 *
+		 * <p><b>El filtro va en la consulta y no en el servicio</b>, y de ahi sale la idempotencia
+		 * del cierre: un segundo cierre no encuentra pendientes porque el primero les creo la fila,
+		 * y {@code uk_asistencia_clase_persona} hace imposible una segunda. Traer todas y filtrar
+		 * en memoria funcionaria igual hoy y se romperia el dia que la clase tenga doscientos
+		 * participantes.
+		 */
+		List<InscripcionClase> findConLugarSinAsistencia(long organizationId, long claseId);
+
+		/**
+		 * Cancela las que quedaron en la cola cuando la clase ya se realizo (AKINE-08.03).
+		 *
+		 * <p>Dejarlas esperando una clase que ya ocurrio es un estado que no se resuelve nunca.
+		 * <b>No libera cupo</b> —quien espera nunca lo tuvo, RN-M28-005— y <b>no devuelve creditos
+		 * ni plata</b>: eso es 08.07.
+		 *
+		 * @return cuantas se cancelaron
+		 */
+		int cancelarEsperaPorClaseCerrada(
+				long organizationId, long claseId, String motivo, long cuentaId, Instant ahora);
+
+		/** Las inscripciones de una clase por sus ids, en un solo viaje. La usa el lote. */
+		List<InscripcionClase> findDeLaClasePorIds(
+				long organizationId, long claseId, List<Long> inscripcionIds);
+	}
+
+	/**
+	 * Asistencias de una clase (AKINE-08.03, RF-M28-007).
+	 *
+	 * <p><b>Ninguna firma borra.</b> Una asistencia no se da de baja: se corrige, y la correccion
+	 * apendea en {@link AsistenciaEventoRepositoryPort}. Si existiera un {@code delete}, el unique
+	 * {@code (organization_id, clase_id, persona_id)} —la referencia economica unica— dejaria de
+	 * significar "a lo sumo un hecho por participante".
+	 */
+	public interface AsistenciaActividadRepositoryPort {
+
+		/** Ver {@link ClaseProgramadaRepositoryPort#saveAndFlush}: la respuesta lleva la version nueva. */
+		AsistenciaActividad saveAndFlush(AsistenciaActividad asistencia);
+
+		/** Guarda varias de una, para el cierre operativo. */
+		List<AsistenciaActividad> saveAll(List<AsistenciaActividad> asistencias);
+
+		Optional<AsistenciaActividad> findByIdInScope(
+				long organizationId, long claseId, long asistenciaId);
+
+		/**
+		 * La asistencia de una inscripcion, si ya se registro.
+		 *
+		 * <p><b>Es el control de idempotencia entero de la etapa</b>, y por eso no hay
+		 * {@code Idempotency-Key}: la clave natural del hecho ya esta en un unique. Si vuelve
+		 * vacia se registra; si vuelve con el mismo resultado se devuelve sin escribir; si vuelve
+		 * con otro, es una correccion y exige motivo.
+		 */
+		Optional<AsistenciaActividad> findDeInscripcion(long organizationId, long inscripcionId);
+
+		/** Todas las de una clase, en orden de id. Alimenta el detalle operativo. */
+		List<AsistenciaActividad> findDeLaClase(long organizationId, long claseId);
+
+		/** Cuantas de la clase tienen un resultado que dice que la persona estuvo. */
+		int contarPresentes(long organizationId, long claseId);
+
+		/** Cuantas de la clase estan marcadas como ausentes. */
+		int contarAusentes(long organizationId, long claseId);
+	}
+
+	/**
+	 * Historial de una asistencia (RN-M28-009). <b>Solo escribe e itera: no actualiza ni borra.</b>
+	 *
+	 * <p>La ausencia de {@code update} y de {@code delete} en este contrato no es un olvido: es la
+	 * unica garantia real de que el historial sea inmutable. Misma decision que
+	 * {@link ClaseEventoRepositoryPort}.
+	 */
+	public interface AsistenciaEventoRepositoryPort {
+
+		AsistenciaEvento registrar(AsistenciaEvento evento);
+
+		/** Varios de una, para el cierre operativo. */
+		List<AsistenciaEvento> registrarTodos(List<AsistenciaEvento> eventos);
+
+		/** Los eventos de una asistencia, del mas viejo al mas nuevo. */
+		List<AsistenciaEvento> historial(long organizationId, long asistenciaId);
 	}
 
 	/**

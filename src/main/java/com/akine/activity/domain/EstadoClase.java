@@ -8,13 +8,36 @@ package com.akine.activity.domain;
  * estado, y eso es 08.02. Mezclar las dos maquinas aqui haria que cancelar una clase y cancelar
  * una inscripcion compartan enum, que es el primer paso para que compartan reglas.
  *
- * <p>Los estados operativos —en curso, realizada— llegan en 08.03, cuando exista asistencia que
- * los justifique. Agregar valores a este enum es aditivo y no rompe ningun cliente.
+ * <p><b>AKINE-08.03 los agrego.</b> Lo que aquel javadoc anunciaba —en curso, realizada— existe
+ * desde que hay asistencia que lo justifique. Agregar valores es aditivo: el tipo no cambia y
+ * ningun cliente se rompe; lo unico que se queda corto es un {@code switch} exhaustivo sobre el
+ * enum generado, y eso se resuelve al regenerar.
  */
 public enum EstadoClase {
 
 	/** Programada y disponible para inscripciones. Ocupa el recurso. */
 	PROGRAMADA,
+
+	/**
+	 * La clase abrio y se puede tomar lista (RF-M13-007).
+	 *
+	 * <p><b>Sigue ocupando el recurso</b> y sigue siendo una clase viva: no se puede reprogramar
+	 * —eso exige {@code PROGRAMADA}— pero se puede cancelar, y se puede recibir a alguien que llega
+	 * sin estar inscripto.
+	 */
+	EN_CURSO,
+
+	/**
+	 * La clase termino y su operacion esta cerrada.
+	 *
+	 * <p>Cerrar <b>no cobra</b> y no devenga nada: es la misma regla que DP-06 le fijo al cierre de
+	 * Sesion, y el motivo concreto esta en la §6 del diseno de 08.03 — la politica de devengo por
+	 * clase no existe todavia en ninguna tabla.
+	 *
+	 * <p>Una clase realizada <b>todavia admite correcciones de asistencia</b>, porque es justo
+	 * cuando se descubren. Lo que no admite es reprogramarse ni cancelarse: lo que paso, paso.
+	 */
+	REALIZADA,
 
 	/**
 	 * Cancelada. <b>Libera el recurso en el acto</b> y conserva la fila.
@@ -25,8 +48,25 @@ public enum EstadoClase {
 	 */
 	CANCELADA;
 
-	/** {@code true} si la clase todavia admite que la muevan o la cancelen. */
+	/** {@code true} si la clase todavia admite que la muevan. Reprogramar exige no haber empezado. */
 	public boolean admiteTransicion() {
 		return this == PROGRAMADA;
+	}
+
+	/**
+	 * {@code true} si se puede registrar o corregir asistencia.
+	 *
+	 * <p>Que haya que iniciar la clase antes de tomar lista es lo que hace que {@link #EN_CURSO}
+	 * sirva para algo: sin esa condicion seria un valor decorativo. Y {@link #REALIZADA} entra
+	 * porque <b>las correcciones llegan despues de que la clase termino</b>, que es cuando se
+	 * descubren.
+	 */
+	public boolean admiteAsistencia() {
+		return this == EN_CURSO || this == REALIZADA;
+	}
+
+	/** {@code true} si la clase ya cerro su operacion. */
+	public boolean estaCerrada() {
+		return this == REALIZADA;
 	}
 }

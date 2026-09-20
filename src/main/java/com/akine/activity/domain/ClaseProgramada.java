@@ -106,6 +106,20 @@ public class ClaseProgramada {
 	@Column(name = "cancelado_por_cuenta_id")
 	private Long canceladoPorCuentaId;
 
+	/** Instante en que la clase abrio y se pudo empezar a tomar lista (AKINE-08.03, RF-M13-007). */
+	@Column(name = "iniciada_en")
+	private Instant iniciadaEn;
+
+	@Column(name = "iniciada_por_cuenta_id")
+	private Long iniciadaPorCuentaId;
+
+	/** Instante del cierre operativo. <b>No devenga nada</b>: ver {@link EstadoClase#REALIZADA}. */
+	@Column(name = "cerrada_en")
+	private Instant cerradaEn;
+
+	@Column(name = "cerrada_por_cuenta_id")
+	private Long cerradaPorCuentaId;
+
 	/**
 	 * Lugares OTORGADOS (AKINE-08.02). <b>Solo lectura desde JPA, y eso es la mitad del diseno.</b>
 	 *
@@ -253,6 +267,12 @@ public class ClaseProgramada {
 		if (estado == EstadoClase.CANCELADA) {
 			return false;
 		}
+		// AKINE-08.03: una clase cerrada no se cancela. Lo que paso, paso — y cancelarla pondria
+		// deleted_at sobre un hecho consumado, borrandola de la grilla historica.
+		if (estado.estaCerrada()) {
+			throw new TransicionDeClaseNoPermitidaException(
+					id, "ya esta realizada y no se cancela: lo que ocurrio no se deshace");
+		}
 		if (motivo == null || motivo.isBlank()) {
 			throw new IllegalArgumentException("El motivo de cancelacion es obligatorio (RN-M28-009)");
 		}
@@ -261,6 +281,66 @@ public class ClaseProgramada {
 		this.canceladoEn = occurredAt;
 		this.canceladoPorCuentaId = cuentaId;
 		this.deletedAt = occurredAt;
+		return true;
+	}
+
+	/**
+	 * {@code PROGRAMADA} -&gt; {@code EN_CURSO} (AKINE-08.03, RF-M13-007).
+	 *
+	 * <p><b>No exige que el reloj haya llegado al horario</b>, y es deliberado: una clase que
+	 * arranca cinco minutos antes es normal y el sistema no tiene por que discutirlo.
+	 *
+	 * <p><b>Idempotente</b>: iniciar una que ya esta en curso devuelve {@code false} y no cambia
+	 * nada, ni el instante ni el actor. El primero que la abrio es el que queda registrado.
+	 *
+	 * @return {@code true} si esta llamada fue la que la inicio
+	 * @throws TransicionDeClaseNoPermitidaException si esta cancelada o ya se realizo
+	 */
+	public boolean iniciar(long cuentaId, Instant occurredAt) {
+		if (estado == EstadoClase.EN_CURSO) {
+			return false;
+		}
+		if (estado != EstadoClase.PROGRAMADA) {
+			throw new TransicionDeClaseNoPermitidaException(
+					id, "esta " + estado.name().toLowerCase() + " y solo se inicia una programada");
+		}
+		this.estado = EstadoClase.EN_CURSO;
+		this.iniciadaEn = occurredAt;
+		this.iniciadaPorCuentaId = cuentaId;
+		return true;
+	}
+
+	/**
+	 * {@code PROGRAMADA} o {@code EN_CURSO} -&gt; {@code REALIZADA}: el cierre operativo.
+	 *
+	 * <p><b>Cerrar no cobra y no devenga nada</b> (misma regla que DP-06 para la Sesion). Quien
+	 * resuelve a los participantes sin marcar es el servicio, y lo hace <b>en esta misma
+	 * transaccion</b>.
+	 *
+	 * <p><b>Idempotente, y sin una bandera</b>: cerrar una realizada devuelve {@code false}. La
+	 * idempotencia del cierre entero no descansa en este {@code boolean} sino en el unique
+	 * {@code (organization_id, clase_id, persona_id)} de {@code asistencia_actividad}, que hace
+	 * imposible una segunda fila por participante. Un flag {@code ya_cerrada} habria sido una
+	 * segunda fuente de verdad sobre lo mismo que dice {@code estado}.
+	 *
+	 * <p>Se admite cerrar una {@code PROGRAMADA} que nunca se inicio: una clase que ocurrio sin que
+	 * nadie apretara "iniciar" igual tiene que poder cerrarse, y obligar a iniciarla primero solo
+	 * agregaria un paso ceremonial.
+	 *
+	 * @return {@code true} si esta llamada fue la que cerro
+	 * @throws TransicionDeClaseNoPermitidaException si esta cancelada
+	 */
+	public boolean cerrar(long cuentaId, Instant occurredAt) {
+		if (estado == EstadoClase.REALIZADA) {
+			return false;
+		}
+		if (estado == EstadoClase.CANCELADA) {
+			throw new TransicionDeClaseNoPermitidaException(
+					id, "esta cancelada y no tiene operacion que cerrar");
+		}
+		this.estado = EstadoClase.REALIZADA;
+		this.cerradaEn = occurredAt;
+		this.cerradaPorCuentaId = cuentaId;
 		return true;
 	}
 
@@ -362,6 +442,22 @@ public class ClaseProgramada {
 	}
 
 	/** Lugares otorgados. Ver el campo: esta entidad lo LEE, nunca lo escribe. */
+	public Instant getIniciadaEn() {
+		return iniciadaEn;
+	}
+
+	public Long getIniciadaPorCuentaId() {
+		return iniciadaPorCuentaId;
+	}
+
+	public Instant getCerradaEn() {
+		return cerradaEn;
+	}
+
+	public Long getCerradaPorCuentaId() {
+		return cerradaPorCuentaId;
+	}
+
 	public int getCupoOcupado() {
 		return cupoOcupado;
 	}

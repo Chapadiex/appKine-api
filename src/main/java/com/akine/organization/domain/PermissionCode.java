@@ -196,7 +196,22 @@ public enum PermissionCode {
 	 * {@code OWN} no esta implementado—. Sin ese vinculo, "inscribirme a mi mismo" no se puede
 	 * autorizar sin abrir "inscribir a cualquiera".
 	 */
-	INSCRIPCION_MANAGE("inscripcion:manage");
+	INSCRIPCION_MANAGE("inscripcion:manage"),
+
+	/**
+	 * Registrar, corregir y cerrar asistencia de una clase. F9, M28.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-08.03</b>, con el mismo reparto que
+	 * {@link #INSCRIPCION_MANAGE}. Es un codigo propio y no el de inscripciones porque anotar a
+	 * alguien y decir que vino son decisiones distintas: en un centro con instructores, el que da
+	 * la clase marca asistencia y no deberia poder inscribir ni cancelar inscripciones ajenas. Un
+	 * permiso que no se puede separar convierte esa politica en imposible, y separarlo despues es
+	 * un cambio incompatible.
+	 *
+	 * <p>{@code PLATFORM_ADMIN} no lo recibe: tomar lista es operacion del centro, y la matriz §32
+	 * le dice "No" a todas las filas operativas.
+	 */
+	ASISTENCIA_MANAGE("asistencia:manage");
 
 	private final String code;
 

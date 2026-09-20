@@ -29,6 +29,21 @@ public final class PermissionCodes {
 	/** Inscribir, confirmar y cancelar inscripciones. */
 	public static final String INSCRIPCION_MANAGE = "inscripcion:manage";
 
+	/**
+	 * Registrar, corregir y cerrar asistencia de una clase (AKINE-08.03).
+	 *
+	 * <p><b>Separado de {@link #INSCRIPCION_MANAGE} a proposito.</b> Anotar a alguien y decir que
+	 * vino son decisiones distintas: en un centro chico las toma la misma persona, pero en uno con
+	 * instructores el que da la clase marca asistencia y <b>no</b> deberia poder inscribir ni
+	 * cancelar inscripciones ajenas. Un permiso que no se puede separar convierte esa politica en
+	 * imposible, y separarlo despues es un cambio incompatible.
+	 *
+	 * <p><b>No existe {@code asistencia:read}</b>: el detalle operativo y el historial usan
+	 * {@link #INSCRIPCION_READ}, que ya protege el mismo dato —quien esta en esta clase— y partirlo
+	 * en dos obligaria a darlos siempre juntos, que es la definicion de un permiso decorativo.
+	 */
+	public static final String ASISTENCIA_MANAGE = "asistencia:manage";
+
 	private PermissionCodes() {
 	}
 }
