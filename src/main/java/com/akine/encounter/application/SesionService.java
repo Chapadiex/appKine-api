@@ -23,6 +23,8 @@ import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.platform.spi.audit.AuditEntry;
+import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.scheduling.spi.TurnoDirectory;
 import com.akine.scheduling.spi.TurnoSnapshot;
 import org.slf4j.Logger;
@@ -35,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Inicio de la atencion y autosave del borrador (M14, RF-M14-001, RF-M14-002 y RF-M14-009).
@@ -84,6 +87,7 @@ public class SesionService {
 	private final NumeradorIniciador numeradorIniciador;
 	private final OfertaDirectory ofertas;
 	private final List<CierreDeSesionObserver> observadores;
+	private final AuditTrail auditTrail;
 
 	public SesionService(
 			SesionRepositoryPort sesiones,
@@ -96,7 +100,8 @@ public class SesionService {
 			SesionNumeradorPort numerador,
 			NumeradorIniciador numeradorIniciador,
 			OfertaDirectory ofertas,
-			List<CierreDeSesionObserver> observadores) {
+			List<CierreDeSesionObserver> observadores,
+			AuditTrail auditTrail) {
 
 		this.sesiones = sesiones;
 		this.turnos = turnos;
@@ -109,6 +114,7 @@ public class SesionService {
 		this.numeradorIniciador = numeradorIniciador;
 		this.ofertas = ofertas;
 		this.observadores = List.copyOf(observadores);
+		this.auditTrail = auditTrail;
 	}
 
 	/**
@@ -180,6 +186,12 @@ public class SesionService {
 				profesionalMembershipId,
 				Instant.now(),
 				actor.accountId()));
+
+		auditar(actor, AuditEvents.SESION_INICIADA, sesion.getId(), null, "ABIERTA",
+				Map.of("historiaClinicaId", String.valueOf(historia.id()),
+						"turnoId", String.valueOf(turnoId),
+						"casoId", String.valueOf(casoId)),
+				sesion.getIniciadaEn());
 
 		log.info("Sesion iniciada: sesionId={} turnoId={} historiaClinicaId={} casoId={} "
 						+ "profesional={}",
@@ -362,6 +374,13 @@ public class SesionService {
 		// la caja del mes. La contrapartida esta asumida en CierreDeSesionObserver.
 		notificarCierre(sesion, cierre, numero, ahora, cerradaPor, organizationId);
 
+		auditar(actor, AuditEvents.SESION_CERRADA, sesion.getId(), "ABIERTA", "CERRADA",
+				Map.of("historiaClinicaId", String.valueOf(sesion.getHistoriaClinicaId()),
+						"numero", String.valueOf(numero),
+						"numeroEnCaso", String.valueOf(numeroEnCaso),
+						"asistencia", String.valueOf(cierre.asistencia())),
+				ahora);
+
 		log.info("Sesion cerrada: sesionId={} numero={} numeroEnCaso={} historiaClinicaId={} "
 						+ "asistencia={}",
 				sesionId, numero, numeroEnCaso, sesion.getHistoriaClinicaId(), cierre.asistencia());
@@ -451,17 +470,74 @@ public class SesionService {
 		}
 	}
 
-	/** Lectura de una sesion. Exige {@code sesion:register} igual que la escritura. */
-	@Transactional(readOnly = true)
+	/**
+	 * Lectura de una sesion. Exige {@code sesion:register} igual que la escritura.
+	 *
+	 * <h2>Se audita, y por eso ya no es {@code readOnly}</h2>
+	 *
+	 * <p>AKINE-04.01 fijo que <b>toda lectura clinica se audita</b> y no solo las mutaciones:
+	 * "en una historia clinica el riesgo esta mas en quien la lee sin motivo que en quien la
+	 * modifica". Esta operacion devuelve la evolucion entera de una atencion —dolor, objetivo,
+	 * limitacion funcional, nota de cierre— y hasta AKINE-07.07 no dejaba rastro de nada.
+	 *
+	 * <p>La transaccion deja de ser {@code readOnly} por la misma razon por la que las trece
+	 * lecturas de {@code clinical} tampoco lo son: con {@code readOnly} el flush de Hibernate
+	 * queda en MANUAL y la fila de auditoria no llegaria nunca a la base. Es el precedente del
+	 * modulo que ya resolvio este problema, no una invencion de esta etapa.
+	 */
+	@Transactional
 	public SesionView ver(OperatingActor actor, long consultorioId, long sesionId) {
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirRegistro(actor, organizationId, consultorioId);
 
-		return sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
+		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
 				.filter(Sesion::estaViva)
-				.map(sesion -> conPrevia(sesion, organizationId))
 				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
+
+		// Despues de resolver: auditar un id que no existe o que es de otro tenant construiria
+		// dentro de audit_event el mismo padron de existencia que el 404 uniforme existe para no
+		// entregar. Es el mismo criterio que PermissionGuard aplica al rechazo por alcance.
+		auditar(actor, AuditEvents.SESION_ACCEDIDA, sesion.getId(), null, null,
+				Map.of("historiaClinicaId", String.valueOf(sesion.getHistoriaClinicaId()),
+						"casoId", String.valueOf(sesion.getCasoId()),
+						"cerrada", String.valueOf(sesion.estaCerrada())),
+				Instant.now());
+
+		return conPrevia(sesion, organizationId);
+	}
+
+	/**
+	 * Una fila de auditoria de este modulo.
+	 *
+	 * <p><b>El {@code reason} va nulo</b>, y es una carencia declarada, no un olvido:
+	 * {@code encounter} no pide justificacion de acceso. {@code clinical} la exige por el header
+	 * {@code X-Justificacion-Acceso} y la guarda ahi; sumarla aca es un header obligatorio nuevo
+	 * en cinco operaciones que el frontend ya consume, o sea un cambio de contrato, y queda
+	 * elevado como decision.
+	 *
+	 * <p>Los detalles llevan ids y banderas, nunca contenido: ni la evolucion, ni el objetivo, ni
+	 * la nota de cierre. {@code AuditEntry} lo prohibe y la tabla se consulta con
+	 * {@code auditoria:read}, que no es un permiso clinico.
+	 */
+	private void auditar(
+			OperatingActor actor, String eventType, Long sesionId,
+			String estadoAnterior, String estadoNuevo,
+			Map<String, String> detalles, Instant ahora) {
+
+		auditTrail.record(new AuditEntry(
+				actor.contextOrganizationId(),
+				actor.consultorioId(),
+				actor.accountId(),
+				eventType,
+				AuditEvents.ENTITY_SESION,
+				sesionId,
+				estadoAnterior,
+				estadoNuevo,
+				detalles,
+				null,
+				AuditEvents.correlationId(),
+				ahora));
 	}
 
 	// =================================================================================

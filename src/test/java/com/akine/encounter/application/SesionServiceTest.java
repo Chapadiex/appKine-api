@@ -51,6 +51,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * Las cuatro reglas de la atencion, y nada mas.
@@ -88,6 +89,9 @@ class SesionServiceTest {
 	/** 04.03: solo se consulta cuando la sesion declara un caso. Estos tests no declaran. */
 	@Mock private CasoDirectory casos;
 
+	/** 07.07: el modulo no auditaba nada. Ahora deja rastro de inicio, lectura y cierre. */
+	@Mock private com.akine.platform.spi.audit.AuditTrail auditTrail;
+
 	private SesionService service;
 
 	private final OperatingActor actor =
@@ -97,7 +101,7 @@ class SesionServiceTest {
 	void setUp() {
 		service = new SesionService(
 				sesiones, turnos, historias, casos, consultorios, memberships, permissionGuard,
-				numerador, numeradorIniciador, ofertas, List.of());
+				numerador, numeradorIniciador, ofertas, List.of(), auditTrail);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -314,6 +318,43 @@ class SesionServiceTest {
 
 		assertThat(vista.previa()).isNotNull();
 		assertThat(vista.previa().dolorEva()).isEqualTo(7);
+	}
+
+	@Test
+	@DisplayName("Leer una sesion deja rastro: 04.01 audita toda lectura clinica, no solo las mutaciones")
+	void leer_una_sesion_se_audita() {
+		// El modulo no auditaba NADA hasta 07.07, y es el unico que escribe evolucion clinica y
+		// la devuelve entera por GET. En una historia clinica el riesgo esta mas en quien la lee
+		// sin motivo que en quien la modifica.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		service.ver(actor, CONSULTORIO_ID, 1L);
+
+		var entrada = org.mockito.ArgumentCaptor
+				.forClass(com.akine.platform.spi.audit.AuditEntry.class);
+		verify(auditTrail).record(entrada.capture());
+		assertThat(entrada.getValue().eventType()).isEqualTo("SESION_ACCEDIDA");
+		assertThat(entrada.getValue().actorAccountId()).isEqualTo(CUENTA_PROPIA);
+		assertThat(entrada.getValue().organizationId()).isEqualTo(ORG_ID);
+		// Ids y banderas, nunca contenido: la tabla se consulta con auditoria:read, que no es un
+		// permiso clinico.
+		assertThat(entrada.getValue().details()).containsKey("historiaClinicaId");
+	}
+
+	@Test
+	@DisplayName("Una sesion inalcanzable no deja rastro: auditarla seria confirmar que existe")
+	void la_sesion_inalcanzable_no_se_audita() {
+		// Auditar un id que no existe o que es de otro tenant construiria dentro de audit_event
+		// el mismo padron de existencia que el 404 uniforme existe para no entregar.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 404L))
+				.willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.ver(actor, CONSULTORIO_ID, 404L))
+				.isInstanceOf(
+						com.akine.encounter.domain.exception.SesionNotAccessibleException.class);
+
+		verifyNoInteractions(auditTrail);
 	}
 
 	@Test
