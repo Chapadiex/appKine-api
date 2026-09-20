@@ -309,3 +309,38 @@ especificada**, así que **fallan hoy** — es el mismo criterio con el que 04.0
 | **La capa REST de las quince operaciones de 04.04 y 04.05** | Mismo motivo que en 04.02 y 04.03: un IT de `api` exigiría el contrato regenerado, y `0.33.0` está en drift junto con las tres tandas anteriores. Escribirlo contra el contrato viejo sería escribir contra una forma que va a cambiar |
 | **La auditoría de cada operación** (`AUTORIZACION_CONSUMIDA`, `PLAN_TRATAMIENTO_ACTIVATED` y el resto) | `audit_event` es append-only por los triggers de `V14` y cada servicio ya tiene su cobertura unitaria. Verificar el contenido de cada evento desde un IT duplicaría esa prueba sin agregar nada que dependa del motor |
 | **Que el observador del cierre arme bien el `ConsumoPorSesion`** —zona horaria de la sede, la ausencia que no consume— | Ya lo cubre `ConsumoDeAutorizacionEnCierreTest`, que es unitario y no necesita base. Entrar por `SesionService#cerrar` en los escenarios de concurrencia agregaría el numerador de sesiones, el devengamiento de la obligación y el `@Version` de `Sesion` como fuentes de fallo ajenas a lo que se mide |
+
+---
+
+## AKINE-08.01 — Clases programadas y agenda unificada (M28/M12)
+
+**Esta etapa no escribió ningún test de integración, y la razón es la misma:** Docker no arranca.
+Pero hay un agravante propio, y conviene decirlo sin rodeos: **lo único que esta etapa necesita
+probar de verdad es exactamente lo que un test unitario no puede contestar.**
+
+La etapa decide que una clase y un turno se excluyan mutuamente porque **se disputan la misma fila
+de `agenda_sede`**. Esa afirmación no la verifica ningún mock: un doble que devuelve cero filas no
+reproduce el gestor de locks de InnoDB, y un test con mocks alrededor de esa carrera daría una
+sensación de cobertura sobre el único punto que no cubre. Por eso se dejó **un solo archivo de test
+con cinco casos** —el orden del lock, el turno que bloquea la clase, la oferta no grupal, el límite
+del espacio y la idempotencia de la cancelación— y **el resto queda acá, anotado, no simulado**.
+
+**Destino de las cuatro filas: la primera sesión con Docker disponible.** La misma que tiene que
+regenerar el contrato, que ya arrastra el drift de `0.30.0` a `0.33.0` y ahora también el de
+`0.40.0`.
+
+| # | Escenario | Motivo y etapa destino |
+|---|---|---|
+| 39 | **La exclusión concurrente entre una clase y un turno, con dos transacciones de verdad.** Es **el** escenario de la etapa. Cubre: una reserva de turno y una programación de clase que salen a la vez por el mismo box y el mismo horario —**una entra y la otra recibe `recurso-ocupado`**, en las dos direcciones, porque el orden de llegada no puede cambiar el resultado—; dos clases concurrentes sobre el mismo profesional; el **control negativo** de dos sedes distintas, que entran las dos y es lo que destaparía un lock demasiado grueso; y la ráfaga de N escrituras que son **las primeras de una sede**, que es donde la fila-lock todavía no existe y donde el patrón de creación perezosa produce deadlock en vez de una derrota limpia | **No corrido.** La afirmación central —que las dos escrituras se serializan contra la misma fila— sólo la puede contestar InnoDB. **Verificación por mutación pendiente para la primera corrida:** sacarle a `ClaseService` la llamada a `agenda.bloquear(...)`; los dos primeros escenarios tienen que empezar a vender el box dos veces. Si siguen pasando, el test no está probando lo que dice. Destino: **primera sesión con Docker disponible** |
+| 40 | **`V58` contra el motor.** Que las dos tablas tengan `organization_id NOT NULL` y que todo índice empiece por él; que **`deleted_key` exista, sea `STORED`** —una `VIRTUAL` no puede participar de un índice— y valga el centinela `'1970-01-01'` mientras `deleted_at` sea nulo; `uk_clase_idempotencia` con su control negativo —otra organización con la misma clave entra—; los cuatro CHECK **en sus dos direcciones**, incluido `ck_clase_capacidad` con el caso 1, que es el que impide rotular un turno individual como clase, y `ck_clase_cancelacion_completa`, que impide una cancelación sin motivo; que `clase_evento` **no tenga `version`, `updated_at` ni baja lógica**; y que las cuatro FK apunten donde dicen | **No corrido, y `V58` no se aplicó jamás contra un motor.** Es la clase de test que en 03.06 destapó un MySQL 3819, que sólo aparece al ejecutar. Y hay un modo de falla peor que un error de sintaxis: si `deleted_key` compilara pero calculara mal, la tabla se crea, los cinco tests unitarios pasan y **las consultas de solapamiento dejan de ver clases vivas** — o sea, la exclusión entera se apaga en silencio. Destino: **primera sesión con Docker disponible** |
+| 41 | **Aislamiento de tenant de las siete operaciones nuevas.** Un actor del tenant B no ve, no reprograma y no cancela una clase del tenant A, y su agenda unificada no muestra ni un evento de A. El resultado es **404, nunca 403** — un 403 confirmaría que esa clase existe y dejaría censar la grilla de la competencia por id. Con el **control positivo**: el dueño sí la ve | **No corrido.** Mismo bloqueo. `AGENT.md` §6 lo exige en **cada** test de integración. Destino: **primera sesión con Docker disponible** |
+| 42 | **La capa REST de las siete operaciones.** Mismo motivo que en 04.02 a 04.05: un IT de `api` exigiría el contrato regenerado, y `0.40.0` está en drift junto con las cuatro tandas anteriores. Escribirlo contra el contrato viejo sería escribir contra una forma que va a cambiar | **No escrito, deliberadamente.** Destino: la sesión que regenere el contrato |
+
+### Lo que esta etapa deliberadamente NO cubre
+
+| Escenario | Por qué no se escribió |
+|---|---|
+| **La ocupación real de una clase** —cuántos inscriptos consumen cupo— | No existe: `InscripcionClase` es de **08.02**. `ClaseService#contarOcupacion` devuelve `0` desde un único lugar y con la etapa destino escrita al lado. La regla que la usa —no bajar la capacidad por debajo de los confirmados, RF-M12-012— **sí está implementada** y hoy lee cero: 08.02 la enciende sin escribir una línea nueva |
+| **Notificar a los inscriptos al reprogramar o cancelar** (RF-M28-005 paso 7, RF-M28-006 paso 8) | Avisar no tiene sentido antes de que existan inscriptos. Es **08.02**, junto con la lista de espera |
+| **Créditos y reversas económicas al cancelar** (RF-M28-006 paso 7) | No hay créditos todavía: es **08.07**. Lo que sí se fijó ahora es la **idempotencia de la cancelación**, que es la regla que va a impedir devolver plata dos veces cuando esa etapa cuelgue de acá |
+| **Que una clase cancelada libere el box para un turno inmediatamente** | Se deriva del mismo predicado `deletedAt IS NULL` que el escenario 40 verifica contra el motor. Probarlo aparte sería probar dos veces la misma columna |
