@@ -64,6 +64,34 @@ final class AuditEvents {
 
 	static final String ENTITY_CATALOGO_SOLICITUD = "CatalogoSolicitud";
 
+	// --- Catalogo de mediciones (M06, AKINE-06.03) --------------------------------------
+
+	static final String MEDICION_DEFINICION_CREATED = "MEDICION_DEFINICION_CREATED";
+
+	/**
+	 * Edicion de una definicion de medida.
+	 *
+	 * <p>Se audita con el cambio de {@code unidad} en los detalles cuando lo hubo, y ese detalle
+	 * es el que mas importa de todo este catalogo: es el unico campo cuyo cambio alteraria el
+	 * significado de las mediciones ya tomadas <b>si no estuviera congelado en cada fila</b>.
+	 * Estandolo, la auditoria explica por que el examen de marzo dice "cm" y el de septiembre
+	 * dice "mm" sin que ninguno de los dos este mal.
+	 */
+	static final String MEDICION_DEFINICION_UPDATED = "MEDICION_DEFINICION_UPDATED";
+
+	/** Baja logica de una definicion. Motivo obligatorio. <b>No cascadea.</b> */
+	static final String MEDICION_DEFINICION_DEACTIVATED = "MEDICION_DEFINICION_DEACTIVATED";
+
+	/**
+	 * {@code entityType} propio y no {@link #ENTITY_CATALOGO}.
+	 *
+	 * <p>Aquel agrupa los cuatro conceptos de 02.05 porque comparten pantalla y pregunta —"que
+	 * paso con el catalogo clinico"—. Una definicion de medida se administra en otro lugar y la
+	 * pregunta que se le hace es otra: "por que esta medicion dice lo que dice". Mezclarlas
+	 * obligaria a filtrar por un detalle para responder cualquiera de las dos.
+	 */
+	static final String ENTITY_MEDICION_DEFINICION = "MedicionDefinicion";
+
 	// --- Disponibilidad profesional (M05, AKINE-02.04) ----------------------------------
 
 	/** Alta de un bloque recurrente de disponibilidad (RF-M05-003). */
