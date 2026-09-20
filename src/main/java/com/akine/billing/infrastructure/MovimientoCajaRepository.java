@@ -58,6 +58,29 @@ public interface MovimientoCajaRepository
 			@Param("movimientoOrigenId") long movimientoOrigenId);
 
 	/**
+	 * El movimiento que asento un hecho de otro agregado — hoy, el pago de un egreso (M22).
+	 *
+	 * <p>A lo sumo uno, y lo garantiza el unique de V54 mas el hecho de que un pago tiene un solo
+	 * medio. Ver el puerto.
+	 *
+	 * <p>Nativa y no JPQL porque el origen llega como texto: convertirlo al enum para armar el
+	 * predicado obligaria a un {@code valueOf} que convierte un valor desconocido en un 500 en vez
+	 * de en un resultado vacio.
+	 */
+	@Override
+	@Query(value = """
+			SELECT * FROM movimiento_caja
+			 WHERE organization_id = :organizationId
+			   AND tipo_origen = :tipoOrigen
+			   AND referencia_origen = :referenciaOrigen
+			 LIMIT 1
+			""", nativeQuery = true)
+	Optional<MovimientoCaja> findPorOrigen(
+			@Param("organizationId") long organizationId,
+			@Param("tipoOrigen") String tipoOrigen,
+			@Param("referenciaOrigen") long referenciaOrigen);
+
+	/**
 	 * RF-M20-004. Nativo por los filtros opcionales y el {@code LIMIT/OFFSET}.
 	 *
 	 * <p>El filtro por {@code fecha_negocio} y no por la jornada es lo que hace visibles los

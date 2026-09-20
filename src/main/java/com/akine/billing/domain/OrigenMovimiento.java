@@ -28,6 +28,19 @@ public enum OrigenMovimiento {
 	MANUAL,
 
 	/**
+	 * Lo genero el pago de un egreso (M22), en su misma transaccion.
+	 *
+	 * <p>{@code referencia_origen} es el id del {@code pago_egreso}. <b>Un pago tiene un solo
+	 * medio</b> —pagarle a un profesional mitad en efectivo y mitad por transferencia son dos
+	 * hechos distintos, con dos comprobantes—, asi que el unique de V54 garantiza gratis que un
+	 * pago produzca a lo sumo un movimiento y que el reintento no duplique la salida de plata.
+	 *
+	 * <p>Es la razon por la que {@code pago_egreso} <b>no tiene</b> {@code movimiento_caja_id}: es
+	 * el movimiento el que apunta al pago, igual que apunta al cobro.
+	 */
+	PAGO_EGRESO,
+
+	/**
 	 * Compensa un movimiento anterior. {@code referencia_origen} es el id del movimiento original.
 	 *
 	 * <p>Con {@code tipo} dentro de la clave unica, un movimiento se revierte <b>una sola vez</b> y
