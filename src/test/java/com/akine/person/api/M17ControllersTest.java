@@ -2,6 +2,7 @@ package com.akine.person.api;
 
 import com.akine.person.application.AutorizacionService;
 import com.akine.person.application.AutorizacionView;
+import com.akine.person.application.ConsumoDeAutorizacionService;
 import com.akine.person.application.ElegibilidadAdministrativa;
 import com.akine.person.application.ElegibilidadAdministrativaService;
 import com.akine.person.application.OperatingActor;
@@ -87,6 +88,14 @@ class M17ControllersTest {
 
 	@MockitoBean
 	private ElegibilidadAdministrativaService elegibilidadService;
+
+	/**
+	 * AKINE-04.05: {@code AutorizacionController} gano la consulta de elegibles y con ella esta
+	 * dependencia. Sin el doble, el slice no levanta y fallan las veinticuatro pruebas de esta
+	 * clase, no solo las nuevas.
+	 */
+	@MockitoBean
+	private ConsumoDeAutorizacionService consumoService;
 
 	@MockitoBean
 	private PersonApiActor apiActor;

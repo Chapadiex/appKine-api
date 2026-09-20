@@ -6,7 +6,12 @@ import com.akine.person.domain.exception.AdjuntoNotAccessibleException;
 import com.akine.person.domain.exception.ArchivoNoAceptadoException;
 import com.akine.person.domain.exception.AutorizacionInactivaException;
 import com.akine.person.domain.exception.AutorizacionNotAccessibleException;
+import com.akine.person.domain.exception.AutorizacionSinSaldoException;
 import com.akine.person.domain.exception.AutorizacionSuperpuestaException;
+import com.akine.person.domain.exception.AutorizacionVencidaException;
+import com.akine.person.domain.exception.MovimientoNotAccessibleException;
+import com.akine.person.domain.exception.MovimientoYaRevertidoException;
+import com.akine.person.domain.exception.ReversionSinMotivoException;
 import com.akine.person.domain.exception.AutorizacionTransicionNoPermitidaException;
 import com.akine.person.domain.exception.CoberturaInactivaException;
 import com.akine.person.domain.exception.CoberturaNotAccessibleException;
@@ -88,6 +93,10 @@ public class PersonProblemHandler {
 	private static final URI AUTORIZACION_TRANSICION_NO_PERMITIDA =
 			ProblemType.AUTORIZACION_TRANSICION_NO_PERMITIDA.uri();
 	private static final URI DOCUMENTO_NUMERO_TAKEN = ProblemType.DOCUMENTO_NUMERO_TAKEN.uri();
+	private static final URI AUTORIZACION_SIN_SALDO = ProblemType.AUTORIZACION_SIN_SALDO.uri();
+	private static final URI AUTORIZACION_VENCIDA = ProblemType.AUTORIZACION_VENCIDA.uri();
+	private static final URI MOVIMIENTO_YA_REVERTIDO = ProblemType.MOVIMIENTO_YA_REVERTIDO.uri();
+	private static final URI REVERSION_SIN_MOTIVO = ProblemType.REVERSION_SIN_MOTIVO.uri();
 
 	@ExceptionHandler(PersonaNotAccessibleException.class)
 	public ProblemDetail handlePersonaNoAccesible(PersonaNotAccessibleException exception) {
@@ -402,6 +411,98 @@ public class PersonProblemHandler {
 				AUTORIZACION_TRANSICION_NO_PERMITIDA);
 		problem.setProperty("estadoActual", exception.getEstadoActual());
 		problem.setProperty("accion", exception.getAccion());
+		return problem;
+	}
+
+	// =================================================================================
+	// Consumo de autorizaciones (M17, AKINE-04.05)
+	// =================================================================================
+
+	/**
+	 * El movimiento no existe, es de otra organizacion, es de otra autorizacion, o no es
+	 * revertible (404).
+	 *
+	 * <p>Los cuatro casos colapsan en la misma respuesta. Los tres primeros por el criterio de
+	 * siempre —distinguirlos confirmaria que ese id existe—, y el cuarto porque el pedido nombra
+	 * algo que no es una operacion: revertir una reversion seria volver a consumir, y eso lo hace
+	 * una atencion, no un boton.
+	 */
+	@ExceptionHandler(MovimientoNotAccessibleException.class)
+	public ProblemDetail handleMovimientoNoAccesible(MovimientoNotAccessibleException exception) {
+		log.debug("Movimiento no accesible: movimientoId={}", exception.getMovimientoId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.NOT_FOUND, "El movimiento no existe o no se puede revertir.");
+		problem.setTitle("No encontrado");
+		problem.setType(NOT_FOUND);
+		return problem;
+	}
+
+	/**
+	 * No hay saldo para el movimiento pedido (409).
+	 *
+	 * <p><b>El cierre de una sesion nunca llega aca</b>: alla el saldo insuficiente es un
+	 * desenlace registrado y no una excepcion, porque la atencion ocurrio y DP-06 prohibe
+	 * bloquear el cierre clinico por un dato administrativo. Este 409 sale de la reversion, que
+	 * si tiene a alguien a quien avisarle.
+	 */
+	@ExceptionHandler(AutorizacionSinSaldoException.class)
+	public ProblemDetail handleSinSaldo(AutorizacionSinSaldoException exception) {
+		log.info("Movimiento rechazado por saldo: autorizacionId={} cantidad={}",
+				exception.getAutorizacionId(), exception.getCantidadPedida());
+		ProblemDetail problem = conflicto(
+				"La autorizacion no tiene saldo para ese movimiento. Si se trata de una reversion, "
+						+ "el ledger y el saldo materializado no coinciden: consultalo en "
+						+ "GET /api/v1/autorizaciones/" + exception.getAutorizacionId() + "/saldo.",
+				"Sin saldo autorizado",
+				AUTORIZACION_SIN_SALDO);
+		problem.setProperty("cantidadPedida", exception.getCantidadPedida());
+		return problem;
+	}
+
+	/** La autorizacion no habilita ese dia. Lleva la fecha porque "vencida" depende de cuando. */
+	@ExceptionHandler(AutorizacionVencidaException.class)
+	public ProblemDetail handleAutorizacionVencida(AutorizacionVencidaException exception) {
+		log.debug("Autorizacion no habilitante: autorizacionId={} fecha={}",
+				exception.getAutorizacionId(), exception.getFecha());
+		ProblemDetail problem = conflicto(
+				"La autorizacion no habilita el " + exception.getFecha() + ". Vencida y agotada no "
+						+ "son estados guardados: se calculan contra la fecha que se pregunta.",
+				"Autorizacion no vigente",
+				AUTORIZACION_VENCIDA);
+		problem.setProperty("fecha", String.valueOf(exception.getFecha()));
+		return problem;
+	}
+
+	/** Ese consumo ya tiene su reversion (409). Lo hace cumplir el unique del ledger. */
+	@ExceptionHandler(MovimientoYaRevertidoException.class)
+	public ProblemDetail handleYaRevertido(MovimientoYaRevertidoException exception) {
+		log.debug("Reversion rechazada por duplicado: movimientoId={}",
+				exception.getMovimientoId());
+		ProblemDetail problem = conflicto(
+				"Ese consumo ya fue revertido. Un consumo se compensa una sola vez: revertirlo dos "
+						+ "veces devolveria una unidad que nadie gasto.",
+				"Consumo ya revertido",
+				MOVIMIENTO_YA_REVERTIDO);
+		problem.setProperty("reversionExistenteId", exception.getReversionExistenteId());
+		return problem;
+	}
+
+	/**
+	 * Revertir sin motivo (400, no 409).
+	 *
+	 * <p>No hay ningun estado del sistema que impida la operacion: falta un dato del pedido.
+	 * Confundirlo con un 409 haria que la pantalla ofrezca "reintentar" donde lo que corresponde
+	 * es "completa el motivo".
+	 */
+	@ExceptionHandler(ReversionSinMotivoException.class)
+	public ProblemDetail handleReversionSinMotivo(ReversionSinMotivoException exception) {
+		log.debug("Reversion rechazada: sin motivo declarado");
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage()
+						+ ": sin el, quien audite no puede distinguir un error de carga de un "
+						+ "fraude.");
+		problem.setTitle("Falta el motivo");
+		problem.setType(REVERSION_SIN_MOTIVO);
 		return problem;
 	}
 

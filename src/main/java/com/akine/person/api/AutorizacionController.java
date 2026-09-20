@@ -1,5 +1,6 @@
 package com.akine.person.api;
 
+import com.akine.person.api.dto.AutorizacionElegibleResponse;
 import com.akine.person.api.dto.AutorizacionResponse;
 import com.akine.person.api.dto.CreateAutorizacionRequest;
 import com.akine.person.api.dto.DeactivateDocumentoRequest;
@@ -10,6 +11,7 @@ import com.akine.person.application.AutorizacionAltaCommand;
 import com.akine.person.application.AutorizacionEdicionCommand;
 import com.akine.person.application.AutorizacionService;
 import com.akine.person.application.AutorizacionView;
+import com.akine.person.application.ConsumoDeAutorizacionService;
 import com.akine.person.application.DocumentoEstadoFiltro;
 import com.akine.person.application.ResolucionDeAutorizacionCommand;
 import com.akine.person.domain.AccionSobreAutorizacion;
@@ -50,8 +52,10 @@ import java.util.Locale;
  * <h2>Autorizado no es consumido (RN-M17-001)</h2>
  *
  * <p>Estos endpoints REGISTRAN lo que el financiador otorgo y devuelven el saldo. <b>Ninguno
- * consume nada.</b> Descontar una sesion es RF-M17-004 y llega con la integracion clinica; hasta
- * entonces {@code cantidadConsumida} vale cero y el saldo que se devuelve es el inicial.
+ * consume nada</b>, y eso sigue siendo cierto despues de AKINE-04.05: lo que cambio es que
+ * {@code cantidadConsumida} <b>ya no vale siempre cero</b>. Quien la mueve es el cierre de una
+ * sesion, por {@code person.spi.ConsumoDeAutorizaciones}, y el ledger que lo explica se lee en
+ * {@code GET /api/v1/autorizaciones/&#123;id&#125;/movimientos}.
  *
  * <h2>El estado se mueve con una ACCION, nunca por asignacion</h2>
  *
@@ -85,12 +89,16 @@ public class AutorizacionController {
 	private static final Logger log = LoggerFactory.getLogger(AutorizacionController.class);
 
 	private final AutorizacionService autorizacionService;
+	private final ConsumoDeAutorizacionService consumoService;
 	private final PersonApiActor apiActor;
 
 	public AutorizacionController(
-			AutorizacionService autorizacionService, PersonApiActor apiActor) {
+			AutorizacionService autorizacionService,
+			ConsumoDeAutorizacionService consumoService,
+			PersonApiActor apiActor) {
 
 		this.autorizacionService = autorizacionService;
+		this.consumoService = consumoService;
 		this.apiActor = apiActor;
 	}
 
@@ -111,8 +119,9 @@ public class AutorizacionController {
 					estado filtra el CICLO DE VIDA (ACTIVA/INACTIVA), no el estado de la \
 					autorizacion ni su vigencia. Por defecto trae todas.
 
-					cantidadConsumida vale SIEMPRE 0 en esta version: el consumo clinico es una \
-					integracion posterior (RF-M17-004).""")
+					cantidadConsumida YA SE MUEVE desde AKINE-04.05: la descuenta el cierre de una \
+					sesion (RF-M17-004). El ledger que explica cada movimiento se lee en \
+					GET /api/v1/autorizaciones/{autorizacionId}/movimientos.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -161,10 +170,11 @@ public class AutorizacionController {
 			description = """
 					RF-M17-003: devuelve autorizadas, consumidas y restantes.
 
-					cantidadConsumida vale SIEMPRE 0 y por lo tanto saldo vale siempre lo \
-					autorizado. No es un bug: RN-M17-001 separa autorizado de consumido, y quien \
-					mueve la resta es la sesion clinica en una integracion posterior. Los tres \
-					numeros viajan igual para que el contrato no cambie ese dia.
+					cantidadConsumida YA NO vale siempre cero: desde AKINE-04.05 la descuenta el \
+					cierre de una sesion (RF-M17-004). RN-M17-001 sigue separando autorizado de \
+					consumido, y consultar este endpoint no descuenta nada. Para ver QUE gasto \
+					cada unidad esta el ledger en \
+					GET /api/v1/autorizaciones/{autorizacionId}/movimientos.
 
 					habilita es el veredicto completo —activa, APROBADA, vigente y con saldo— y \
 					consultarlo NO consume nada.""")
@@ -203,6 +213,69 @@ public class AutorizacionController {
 
 		return ResponseEntity.ok(AutorizacionResponse.de(
 				autorizacionService.ver(apiActor.current(), personaId, autorizacionId, fecha)));
+	}
+
+	@GetMapping("/elegibles")
+	@Operation(
+			operationId = "listAutorizacionesElegibles",
+			summary = "Que autorizaciones sirven hoy, y por que las otras no",
+			description = """
+					RF-M17-007, AKINE-04.05. Es el selector EXPLICABLE: devuelve TODAS las \
+					autorizaciones activas del paciente con su veredicto, no solo las que sirven.
+
+					POR QUE TODAS: decirle al mostrador "no hay ninguna" sin decirle que una \
+					vencio anteayer y otra se agoto lo deja sin nada que hacer. Cada fila trae \
+					motivoNoElegible —VENCIDA, AGOTADA, AUN_NO_VIGENTE o NO_APROBADA— que es null \
+					exactamente cuando la autorizacion sirve.
+
+					ORDEN: primero las que habilitan y, dentro de cada grupo, la que vence antes. \
+					Es el orden en que hay que gastarlas, porque la que vence antes es la que se \
+					pierde antes, y es el mismo criterio con el que el cierre de sesion elige a \
+					cual descontarle.
+
+					NO FILTRA POR PRACTICA, y hay que saberlo: una sesion declara su OFERTA y una \
+					autorizacion es por PRACTICA. No existe ninguna tabla puente entre las dos —la \
+					migracion de M27 la dejo afuera a proposito—, asi que comparar las dos cosas \
+					seria comparar granularidades distintas. Cada fila trae su practicaId a la \
+					vista para que quien conoce el caso pueda elegir. Unificarlas es 06.04.
+
+					ESTO NO CONSUME NADA (RN-M17-001) y no persiste nada. Es idempotente.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "200",
+					description = "Autorizaciones candidatas con su veredicto",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							array = @ArraySchema(schema = @Schema(
+									implementation = AutorizacionElegibleResponse.class)))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin contexto de trabajo activo",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La persona no existe o es de otra organizacion",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<List<AutorizacionElegibleResponse>> elegibles(
+
+			@Parameter(description = "Identificador de la persona", example = "1204")
+			@PathVariable long personaId,
+
+			@Parameter(description = "Dia contra el que se evalua todo. Si se omite, hoy",
+					example = "2026-09-19")
+			@RequestParam(required = false)
+			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
+
+		List<AutorizacionElegibleResponse> elegibles =
+				consumoService.elegibles(apiActor.current(), personaId, fecha).stream()
+						.map(AutorizacionElegibleResponse::de)
+						.toList();
+
+		return ResponseEntity.ok(elegibles);
 	}
 
 	@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)

@@ -611,7 +611,48 @@ public enum ProblemType {
 	 * <p>Que la oferta se de de baja <b>despues</b> de planificar no invalida el plan: la baja de un
 	 * servicio no cascadea, solo impide crear nuevos.
 	 */
-	OFERTA_NO_HABILITADA("oferta-no-habilitada");
+	OFERTA_NO_HABILITADA("oferta-no-habilitada"),
+	/**
+	 * No queda saldo en la autorizacion para el movimiento pedido (409). AKINE-04.05.
+	 *
+	 * <p>Lo decide la BASE con un {@code UPDATE} condicional —cero filas afectadas—, no un
+	 * {@code if} sobre un saldo leido: entre leer el saldo y escribirlo hay una ventana en la que
+	 * otra sesion se lleva la ultima unidad.
+	 *
+	 * <p><b>El cierre de una sesion NUNCA lo emite.</b> La atencion ocurrio, y bloquear el cierre
+	 * de una historia clinica porque el financiador se quedo sin cupo es lo que DP-06 prohibe: ahi
+	 * el saldo insuficiente es un desenlace registrado, no un error. Este tipo sale por los
+	 * caminos que si tienen a alguien a quien avisarle.
+	 */
+	AUTORIZACION_SIN_SALDO("autorizacion-sin-saldo"),
+	/**
+	 * La autorizacion no habilita ese dia: vencida, aun no vigente, o no APROBADA (409).
+	 *
+	 * <p>Vencida <b>no es un estado persistido</b>: se calcula al leer contra la fecha que se
+	 * pregunta, porque materializarla exigiria un job y un job que no corre deja autorizaciones
+	 * vencidas que el sistema cree vigentes. Lleva {@code fecha} porque "vencida" depende de
+	 * cuando se pregunta.
+	 */
+	AUTORIZACION_VENCIDA("autorizacion-vencida"),
+	/**
+	 * Ese consumo ya tiene su reversion (409). AKINE-04.05.
+	 *
+	 * <p>Lo garantiza el unique del ledger: la reversion apunta al <b>mismo</b> origen que el
+	 * consumo que compensa, asi que la segunda choca. Eso es lo que hace a la reversion
+	 * idempotente en vez de meramente segura.
+	 *
+	 * <p>Lleva {@code reversionExistenteId} para que la pantalla pueda mostrarla —con su motivo y
+	 * su autor— en vez de dejar al operador preguntandose quien lo revirtio.
+	 */
+	MOVIMIENTO_YA_REVERTIDO("movimiento-ya-revertido"),
+	/**
+	 * Se pidio revertir un consumo sin declarar por que (400). RF-M17-005.
+	 *
+	 * <p><b>400 y no 409</b>: no hay ningun estado del sistema que impida la operacion, falta un
+	 * dato del pedido. Confundirlos haria que la pantalla ofrezca "reintentar" donde lo que
+	 * corresponde es "completa el motivo".
+	 */
+	REVERSION_SIN_MOTIVO("reversion-sin-motivo");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
