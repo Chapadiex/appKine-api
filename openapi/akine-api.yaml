@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.36.0
+  version: 0.38.0
 servers:
 - description: Servidor que sirve este contrato
   url: /

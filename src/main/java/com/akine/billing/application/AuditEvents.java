@@ -20,8 +20,24 @@ final class AuditEvents {
 	static final String CAJA_MOVIMIENTO_MANUAL = "CAJA_MOVIMIENTO_MANUAL";
 	static final String CAJA_MOVIMIENTO_REVERTIDO = "CAJA_MOVIMIENTO_REVERTIDO";
 
+	/**
+	 * Los siete hechos de M21 que cambian lo que el centro le reclama a un financiador.
+	 *
+	 * <p><b>Agregar y quitar items de un borrador no se audita</b>: el borrador todavia no es un
+	 * hecho —no tiene numero, nadie lo vio, no existio para el financiador— y auditar cada clic del
+	 * armado enterraria los siete eventos que si importan bajo cientos que no dicen nada.
+	 */
+	static final String PRESENTACION_CREADA = "PRESENTACION_CREADA";
+	static final String PRESENTACION_CONFIRMADA = "PRESENTACION_CONFIRMADA";
+	static final String PRESENTACION_FACTURADA = "PRESENTACION_FACTURADA";
+	static final String PRESENTACION_ITEM_DEBITADO = "PRESENTACION_ITEM_DEBITADO";
+	static final String PRESENTACION_PAGO_REGISTRADO = "PRESENTACION_PAGO_REGISTRADO";
+	static final String PRESENTACION_CONCILIADA = "PRESENTACION_CONCILIADA";
+	static final String PRESENTACION_ANULADA = "PRESENTACION_ANULADA";
+
 	static final String ENTITY_JORNADA_CAJA = "JornadaCaja";
 	static final String ENTITY_MOVIMIENTO_CAJA = "MovimientoCaja";
+	static final String ENTITY_PRESENTACION = "Presentacion";
 
 	private static final String MDC_TRACE_ID = "traceId";
 

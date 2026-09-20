@@ -33,5 +33,22 @@ public enum OrigenMovimiento {
 	 * <p>Con {@code tipo} dentro de la clave unica, un movimiento se revierte <b>una sola vez</b> y
 	 * la reversion puede convivir con el movimiento que compensa. Mismo mecanismo que V50.
 	 */
-	REVERSION
+	REVERSION,
+
+	/**
+	 * Lo genero un pago de financiador (M21), en su misma transaccion. AKINE-07.04.
+	 *
+	 * <p>{@code referencia_origen} es el id del {@code FinanciadorPago}. <b>No se reuso
+	 * {@link #COBRO}</b> por dos motivos: el unique
+	 * {@code (organization_id, tipo, tipo_origen, referencia_origen, medio)} colisionaria entre un
+	 * cobro y un pago que casualmente compartan id, y un ledger que no distingue <b>quien</b> pago
+	 * no sirve para explicar de donde salio la plata — que es lo unico que un ledger tiene que
+	 * poder hacer.
+	 *
+	 * <p>Un pago por transferencia asienta su movimiento con {@code jornada_caja_id} NULL y
+	 * {@code afecta_arqueo = 0}: esa plata fue a un banco, no al cajon. Es la regla de 07.03
+	 * aplicada sin excepcion. Si el financiador paga en efectivo —raro pero legitimo— rige la otra
+	 * mitad de esa regla y hace falta jornada abierta.
+	 */
+	PAGO_FINANCIADOR
 }
