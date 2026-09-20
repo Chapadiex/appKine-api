@@ -354,12 +354,13 @@ public class SesionService {
 				: casos.siguienteNumeroDeSesion(organizationId, sesion.getCasoId());
 
 		Instant ahora = Instant.now();
-		sesion.cerrar(cierre, numero, numeroEnCaso, ahora, actor.accountId());
+		long cerradaPor = actor.accountId();
+		sesion.cerrar(cierre, numero, numeroEnCaso, ahora, cerradaPor);
 
 		// Dentro de la transaccion, a proposito: una prestacion sin deuda NO se nota —nadie
 		// reclama una factura que nunca existio— y el centro descubre el agujero cuando cuadra
 		// la caja del mes. La contrapartida esta asumida en CierreDeSesionObserver.
-		notificarCierre(sesion, cierre, numero, ahora, organizationId);
+		notificarCierre(sesion, cierre, numero, ahora, cerradaPor, organizationId);
 
 		log.info("Sesion cerrada: sesionId={} numero={} numeroEnCaso={} historiaClinicaId={} "
 						+ "asistencia={}",
@@ -385,8 +386,14 @@ public class SesionService {
 	 *
 	 * <p>La lista puede estar vacia y eso es legitimo: { encounter} no sabe quien lo escucha.
 	 */
+	@SuppressWarnings("java:S107")
 	private void notificarCierre(
-			Sesion sesion, CierreDeSesion cierre, int numero, Instant ahora, long organizationId) {
+			Sesion sesion,
+			CierreDeSesion cierre,
+			int numero,
+			Instant ahora,
+			long cerradaPorCuentaId,
+			long organizationId) {
 
 		var precio = ofertas.precioDe(organizationId, sesion.getConsultorioId(), sesion.getOfertaId());
 		var aviso = new SesionCerrada(
@@ -398,6 +405,7 @@ public class SesionService {
 				numero,
 				cierre.asistencia() == Asistencia.PRESENTE,
 				ahora,
+				cerradaPorCuentaId,
 				precio.map(PrecioDeOferta::precioBase).orElse(null),
 				precio.map(PrecioDeOferta::moneda).orElse(null));
 
