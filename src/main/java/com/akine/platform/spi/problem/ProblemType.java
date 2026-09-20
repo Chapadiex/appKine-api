@@ -682,7 +682,33 @@ public enum ProblemType {
 	 * numero sola en vez de solo mostrar el error. Es la misma idea que {@code maxDays} en
 	 * {@link #VENTANA_DEMASIADO_AMPLIA}.
 	 */
-	CLASE_CAPACIDAD_NO_ADMITIDA("clase-capacidad-no-admitida");
+	CLASE_CAPACIDAD_NO_ADMITIDA("clase-capacidad-no-admitida"),
+
+	// --- Inscripciones a clases (M28, AKINE-08.02) ------------------------------------------
+	/**
+	 * No queda lugar en la clase y quien inscribe no acepto la lista de espera (409). RF-M28-002.
+	 *
+	 * <p>Lo pide el plan explicitamente —"error especifico de clase completa"— y tiene tipo propio
+	 * porque el desenlace en pantalla no se parece a ningun otro 409: no hay nada que corregir en
+	 * el formulario, lo que hay es una alternativa que ofrecer. Por eso lleva
+	 * {@code capacidadEfectiva} y {@code ocupados}: con esos dos numeros la pantalla puede ofrecer
+	 * la cola sin otra vuelta al servidor.
+	 *
+	 * <p><b>No se reusa {@link #CLASE_CAPACIDAD_NO_ADMITIDA}</b>, que dice algo distinto: aquel es
+	 * "la capacidad que configuraste no es admisible" y este es "la capacidad configurada esta
+	 * llena".
+	 */
+	CLASE_COMPLETA("clase-completa"),
+	/**
+	 * La transicion pedida no existe en la maquina de estados de la inscripcion, o la persona no
+	 * esta en condiciones de ser inscripta (409). RN-M28-004. Lleva {@code motivo}.
+	 *
+	 * <p><b>No se reusa {@link #CLASE_TRANSICION_NO_PERMITIDA}</b> aunque sean gemelos: un cliente
+	 * que mapea el tipo a una pantalla terminaria refrescando la clase entera cuando lo que quedo
+	 * viejo es una fila de la lista de participantes. Mismo criterio con el que 08.01 se nego a
+	 * reusar el del turno.
+	 */
+	INSCRIPCION_TRANSICION_NO_PERMITIDA("inscripcion-transicion-no-permitida");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

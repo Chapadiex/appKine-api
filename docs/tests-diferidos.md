@@ -344,3 +344,40 @@ regenerar el contrato, que ya arrastra el drift de `0.30.0` a `0.33.0` y ahora t
 | **Notificar a los inscriptos al reprogramar o cancelar** (RF-M28-005 paso 7, RF-M28-006 paso 8) | Avisar no tiene sentido antes de que existan inscriptos. Es **08.02**, junto con la lista de espera |
 | **Créditos y reversas económicas al cancelar** (RF-M28-006 paso 7) | No hay créditos todavía: es **08.07**. Lo que sí se fijó ahora es la **idempotencia de la cancelación**, que es la regla que va a impedir devolver plata dos veces cuando esa etapa cuelgue de acá |
 | **Que una clase cancelada libere el box para un turno inmediatamente** | Se deriva del mismo predicado `deletedAt IS NULL` que el escenario 40 verifica contra el motor. Probarlo aparte sería probar dos veces la misma columna |
+
+---
+
+## AKINE-08.02 — Inscripciones, cupos y lista de espera (M28/M12/M26)
+
+**Tampoco escribió ningún test de integración, por Docker, y con el mismo agravante que 08.01 pero
+más filoso:** la etapa entera existe para resolver **una carrera**, y una carrera es justo lo que un
+mock no puede contestar. Un repositorio falso que devuelve `0` filas no reproduce ni el gestor de
+locks de InnoDB ni la semántica de *current read* del `UPDATE`. Un test que "probara" la última
+vacante con mocks probaría que el mock devuelve lo que se le dijo, y después alguien lo leería como
+evidencia.
+
+Por eso se dejó **un solo archivo con cinco casos** —el lugar que se otorga, la cola, el
+`clase-completa`, el **orden** liberar→leer-cola y la promoción perdida que devuelve el lugar— y
+**todo lo demás queda acá, anotado, no simulado**.
+
+**Destino de las seis filas: la primera sesión con Docker disponible.** La misma que tiene que
+regenerar el contrato, que ahora arrastra el drift de `0.30.0` hasta `0.42.0`.
+
+| # | Escenario | Motivo y etapa destino |
+|---|---|---|
+| 43 | **La última vacante disputada, con N transacciones de verdad.** Es **el** escenario de la etapa. Cubre: N inscripciones simultáneas sobre una clase con un solo lugar libre —**exactamente una queda `RESERVADA`** y el resto va a la cola o recibe `clase-completa` (CA-M28-002-06)—; que `cupo_ocupado` termine **igual** a la capacidad efectiva y **nunca** por encima; el **control negativo** de dos clases distintas, que entran las dos y es lo que destaparía un lock demasiado grueso; y la ráfaga sobre una clase con cero lugares, donde todas tienen que perder | **No corrido.** La afirmación central —que el `WHERE cupo_ocupado < LEAST(...)` serializa— sólo la contesta InnoDB. **Verificación por mutación pendiente para la primera corrida:** reemplazar `tomarCupo` por un `SELECT` del contador seguido de un `UPDATE` sin condición; el primer escenario tiene que empezar a sobrevender. Si sigue pasando, el test no prueba lo que dice. Destino: **primera sesión con Docker disponible** |
+| 44 | **La promoción doble desde la lista de espera.** Dos cancelaciones simultáneas de dos inscripciones distintas de la **misma clase**, con **una sola** persona en la cola: una promueve y la otra no, y la que no promueve **devuelve el lugar** —`cupo_ocupado` tiene que quedar en `inicial - 1`, no en `inicial - 2`—. Y el caso complementario: dos en la cola, dos bajas, **dos promociones distintas y en orden de posición**, nunca la misma persona dos veces (CA-M28-004-06, CA-M26-007-06) | **No corrido.** El mock cubre la rama del cero, no que el lock la haga imposible. Destino: **primera sesión con Docker disponible** |
+| 45 | **El invariante `cupo_ocupado == COUNT(inscripciones que consumen cupo)`**, después de una ráfaga mezclada de altas, bajas y promociones concurrentes sobre la misma clase | **No corrido, y es el gemelo exacto de la deuda que 04.05 dejó con el ledger de autorizaciones.** El contador es el asignador y las inscripciones son los recibos: si divergen, **hoy no lo detecta nada**. `InscripcionClaseRepository#contarQueConsumenCupo` existe para poder escribir este test. Destino: **primera sesión con Docker disponible** |
+| 46 | **Bajar la capacidad mientras alguien se inscribe.** Una reprogramación que baja el cupo a la ocupación actual y una inscripción que sale a la vez: la inscripción tiene que **perder** contra la capacidad nueva, y `ck_clase_cupo_ocupado` no tiene que dispararse nunca. Con el control negativo: si la reprogramación no baja la capacidad, la inscripción entra | **No corrido.** Es lo que el `lockByIdInScope` —`SELECT ... FOR UPDATE`— agregado a `ClaseService` existe para cerrar, y sin dos transacciones reales no se puede ni observar. **Verificación por mutación:** volver a `findByIdInScope`; el escenario tiene que empezar a dejar `cupo_ocupado > capacidad`. Destino: **primera sesión con Docker disponible** |
+| 47 | **`V60` contra el motor.** Que `inscripcion_clase` tenga `organization_id NOT NULL` y que todo índice empiece por él; que **`deleted_key` sea `STORED`** y valga el centinela; `uk_inscripcion_clase_persona` en sus dos direcciones —la misma persona dos veces viva **choca**, y después de cancelar **entra de nuevo**, que es el punto entero del `deleted_key`—; `uk_inscripcion_idempotencia` con su control negativo de otra organización; los tres CHECK en sus dos direcciones; y el `ALTER` de `clase_programada` con `ck_clase_cupo_ocupado` rechazando tanto el negativo como el que pasa la capacidad | **No corrido, y ni `V58` ni `V60` se aplicaron jamás contra un motor.** El modo de falla peor no es el error de sintaxis: si `deleted_key` compilara y calculara mal, el unique dejaría de proteger lo vigente y **la misma persona podría anotarse dos veces sin que nada falle**. Destino: **primera sesión con Docker disponible** |
+| 48 | **Aislamiento de tenant y capa REST de las cinco operaciones nuevas.** Un actor del tenant B no inscribe, no cancela y no lista participantes de una clase del tenant A: **404, nunca 403**. Y que `GET .../inscripciones` exija `inscripcion:read` y no alcance con `clase:read`, que es la decisión de seguridad de la etapa | **No escrito.** Un IT de `api` exigiría el contrato regenerado, y `0.42.0` está en drift junto con las cinco tandas anteriores. Destino: la sesión que regenere el contrato |
+
+### Lo que esta etapa deliberadamente NO cubre
+
+| Escenario | Por qué no se escribió |
+|---|---|
+| **La ventana de aceptación de una vacante ofrecida** (RF-M28-004 paso 7) | **No está implementada, y es una decisión del usuario pendiente.** Exigiría un séptimo estado `OFRECIDA` que RN-M28-004 no lista, una columna de vencimiento y un job que expire lo no respondido. La etapa implementa la **política automática**, que satisface CA-M28-004-06 y CA-M26-007-06. Ver la pregunta 7 del challenge |
+| **Que el correo de `CLASE_MODIFICADA` y `CUPO_LIBERADO` realmente salga** | El outbox ya tiene su propia cobertura desde 01.02 y el worker no cambió. Lo propio de esta etapa —que se encole **dentro** de la transacción y **uno por destinatario**— lo garantiza la propagación `MANDATORY` de `NotificationOutbox`, que ya está probada |
+| **Que una persona sin correo no rompa la cancelación de una clase** | Es una rama de dos líneas en `AvisosDeClase` y no depende del motor. Quedó sin test unitario por la regla de la etapa —un archivo, cinco casos— y es candidata de la primera tanda que amplíe cobertura |
+| **Asistencia (`ASISTIO` / `AUSENTE`)** | Los dos valores existen en el enum y **los dos consumen cupo**, decisión tomada acá con motivo escrito. Escribirlos es **08.03** |
+| **Créditos, reversas y devolución al cancelar** | Es **08.07**. Lo que esta etapa deja es la idempotencia de la cancelación, que es la precondición para colgárselo sin devolver dos veces |

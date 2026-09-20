@@ -36,9 +36,10 @@ public record ClaseResponse(
 		int capacidadEfectiva,
 
 		@Schema(
-				description = "Lugares tomados por inscripciones. **Siempre 0 hasta AKINE-08.02**, "
-						+ "que es la etapa que crea las inscripciones.",
-				example = "0")
+				description = "Lugares tomados por inscripciones. Desde AKINE-08.02 es el numero "
+						+ "real: sale de la columna que **otorga** el lugar, no de un conteo sobre "
+						+ "las inscripciones.",
+				example = "6")
 		int ocupados,
 
 		@Schema(example = "El instructor se reporto enfermo") String motivoCancelacion,

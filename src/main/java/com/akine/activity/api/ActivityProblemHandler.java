@@ -2,13 +2,18 @@ package com.akine.activity.api;
 
 import com.akine.activity.application.IdempotencyKeyConflictException;
 import com.akine.activity.domain.exception.CapacidadNoAdmitidaException;
+import com.akine.activity.domain.exception.ClaseCompletaException;
 import com.akine.activity.domain.exception.ClaseNoProgramableException;
 import com.akine.activity.domain.exception.ClaseNotAccessibleException;
 import com.akine.activity.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.activity.domain.exception.HorarioNoDisponibleException;
+import com.akine.activity.domain.exception.InscripcionDuplicadaException;
+import com.akine.activity.domain.exception.InscripcionNotAccessibleException;
 import com.akine.activity.domain.exception.OfertaNotAccessibleException;
+import com.akine.activity.domain.exception.PersonaNoAccesibleException;
 import com.akine.activity.domain.exception.RecursoOcupadoException;
 import com.akine.activity.domain.exception.TransicionDeClaseNoPermitidaException;
+import com.akine.activity.domain.exception.TransicionDeInscripcionNoPermitidaException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +33,12 @@ import java.net.URI;
  * {@code GlobalExceptionHandler}: hacerlo alli obligaria a {@code platform.api} a importar
  * {@code activity.domain}, que cierra un ciclo entre modulos. Es la regla que 01.01 dejo fijada.
  *
- * <p><b>Tres tipos nuevos y cuatro reusados.</b> Lo propio de M28 —que la oferta no sostenga una
+ * <p>AKINE-08.02 suma dos tipos propios —{@code clase-completa} y
+ * {@code inscripcion-transicion-no-permitida}— y reusa {@code conflict} para el duplicado: "ya esta
+ * anotada" es un desenlace que el cliente ya sabe manejar, y publicar un codigo para cada matiz
+ * termina en un cliente con un switch de treinta ramas.
+ *
+ * <p><b>Tres tipos nuevos y cuatro reusados en 08.01.</b> Lo propio de M28 —que la oferta no sostenga una
  * clase, que la transicion no exista, que la capacidad no sea sostenible— tiene tipo propio porque
  * lleva a la pantalla a acciones distintas. Lo que no es propio de M28 —no encontrado, recurso
  * ocupado, horario no disponible, clave de idempotencia reusada— reusa el tipo que ya existe: son
@@ -48,6 +58,10 @@ public class ActivityProblemHandler {
 	private static final URI RECURSO_OCUPADO = ProblemType.RECURSO_OCUPADO.uri();
 	private static final URI SLOT_NO_DISPONIBLE = ProblemType.SLOT_NO_DISPONIBLE.uri();
 	private static final URI IDEMPOTENCY_KEY_CONFLICT = ProblemType.IDEMPOTENCY_KEY_CONFLICT.uri();
+	private static final URI CLASE_COMPLETA = ProblemType.CLASE_COMPLETA.uri();
+	private static final URI INSCRIPCION_TRANSICION =
+			ProblemType.INSCRIPCION_TRANSICION_NO_PERMITIDA.uri();
+	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -141,6 +155,61 @@ public class ActivityProblemHandler {
 	public ProblemDetail handleHorarioNoDisponible(HorarioNoDisponibleException exception) {
 		ProblemDetail problem = conflicto(exception.getMessage(), SLOT_NO_DISPONIBLE);
 		problem.setTitle("El horario elegido no esta disponible");
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	// =================================================================================
+	// Inscripciones (AKINE-08.02)
+	// =================================================================================
+
+	@ExceptionHandler(InscripcionNotAccessibleException.class)
+	public ProblemDetail handleInscripcionNoAccesible(InscripcionNotAccessibleException exception) {
+		log.debug("Inscripcion no accesible: inscripcionId={}", exception.getInscripcionId());
+		return noEncontrado("La inscripcion no existe.");
+	}
+
+	@ExceptionHandler(PersonaNoAccesibleException.class)
+	public ProblemDetail handlePersonaNoAccesible(PersonaNoAccesibleException exception) {
+		log.debug("Persona no accesible desde inscripciones: personaId={}", exception.getPersonaId());
+		return noEncontrado("La persona no existe en el padron.");
+	}
+
+	/**
+	 * Lleva {@code capacidadEfectiva} y {@code ocupados} para que la pantalla pueda ofrecer la
+	 * lista de espera sin otra vuelta al servidor. Misma idea que {@code capacidadMaxima}: la
+	 * diferencia entre un mensaje y una accion.
+	 */
+	@ExceptionHandler(ClaseCompletaException.class)
+	public ProblemDetail handleClaseCompleta(ClaseCompletaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), CLASE_COMPLETA);
+		problem.setTitle("La clase no tiene lugares disponibles");
+		problem.setProperty("capacidadEfectiva", exception.getCapacidadEfectiva());
+		problem.setProperty("ocupados", exception.getOcupados());
+		return problem;
+	}
+
+	/**
+	 * <b>Reusa {@code conflict}</b> y no publica un tipo propio: para la pantalla el desenlace es
+	 * "ya esta anotada", y un codigo nuevo obligaria al cliente a manejar dos para el mismo caso.
+	 * Lo que si viaja es el id de la inscripcion existente, para que pueda mostrarla.
+	 */
+	@ExceptionHandler(InscripcionDuplicadaException.class)
+	public ProblemDetail handleInscripcionDuplicada(InscripcionDuplicadaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), CONFLICT);
+		problem.setTitle("La persona ya esta inscripta en esta clase");
+		problem.setProperty("inscripcionExistenteId", exception.getInscripcionExistenteId());
+		return problem;
+	}
+
+	@ExceptionHandler(TransicionDeInscripcionNoPermitidaException.class)
+	public ProblemDetail handleTransicionDeInscripcion(
+			TransicionDeInscripcionNoPermitidaException exception) {
+
+		log.debug("Transicion de inscripcion rechazada: inscripcionId={} motivo={}",
+				exception.getInscripcionId(), exception.getMotivo());
+		ProblemDetail problem = conflicto(exception.getMessage(), INSCRIPCION_TRANSICION);
+		problem.setTitle("La inscripcion no admite esa operacion");
 		problem.setProperty("motivo", exception.getMotivo());
 		return problem;
 	}
