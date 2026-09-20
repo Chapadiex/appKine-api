@@ -526,7 +526,11 @@ class PermissionEvaluatorServiceTest {
 							// `inscripcion:read` e `inscripcion:manage` se suman en AKINE-08.02.
 							// Mismo alcance que la clase: quien puede programarla puede anotar
 							// gente en ella.
-							"inscripcion:read", "inscripcion:manage");
+							"inscripcion:read", "inscripcion:manage",
+							// `asistencia:manage` se suma en AKINE-08.03, con codigo propio:
+							// anotar a alguien y decir que vino son decisiones distintas, y un
+							// instructor podria marcarla sin poder inscribir ni dar de baja.
+							"asistencia:manage");
 		}
 
 		@Test
@@ -602,7 +606,9 @@ class PermissionEvaluatorServiceTest {
 							"clase:read", "clase:manage",
 							// AKINE-08.02: el instructor necesita saber a quien tiene enfrente y
 							// dar de baja a quien avisa que no viene.
-							"inscripcion:read", "inscripcion:manage");
+							"inscripcion:read", "inscripcion:manage",
+							// AKINE-08.03: es quien toma lista.
+							"asistencia:manage");
 		}
 	}
 

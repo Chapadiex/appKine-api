@@ -381,3 +381,43 @@ regenerar el contrato, que ahora arrastra el drift de `0.30.0` hasta `0.42.0`.
 | **Que una persona sin correo no rompa la cancelación de una clase** | Es una rama de dos líneas en `AvisosDeClase` y no depende del motor. Quedó sin test unitario por la regla de la etapa —un archivo, cinco casos— y es candidata de la primera tanda que amplíe cobertura |
 | **Asistencia (`ASISTIO` / `AUSENTE`)** | Los dos valores existen en el enum y **los dos consumen cupo**, decisión tomada acá con motivo escrito. Escribirlos es **08.03** |
 | **Créditos, reversas y devolución al cancelar** | Es **08.07**. Lo que esta etapa deja es la idempotencia de la cancelación, que es la precondición para colgárselo sin devolver dos veces |
+
+---
+
+## AKINE-08.03 — Asistencia y operación de clases (M28/M13)
+
+**Tampoco escribió ningún test de integración, por Docker.** La etapa entera se apoya en **un
+unique** —`uk_asistencia_clase_persona`— para dos cosas distintas: la idempotencia de marcar y la
+promesa de que cerrar dos veces no duplique obligaciones. **Un mock no puede contestar ninguna de
+las dos**: un repositorio falso devuelve lo que se le dijo, no lo que InnoDB haría con dos
+inserciones que compiten por la misma clave.
+
+Por eso se dejó **un solo archivo con siete casos** —el cupo que no se mueve, el reintento que no
+escribe, la corrección que exige motivo y apendea, la lista de espera que no asiste, el ingreso sin
+lugar que no entra, el cierre que ausenta y cancela la cola, y la clase sin iniciar— y **todo lo
+demás queda acá, anotado, no simulado**.
+
+La numeración **empieza en 54** y no en 49: 07.06 tomó 49–53 en otra rama, y dos etapas con el mismo
+número de escenario es la misma clase de colisión que dejó `V26` vacía para siempre.
+
+**Destino de las seis filas: la primera sesión con Docker disponible.** La misma que tiene que
+regenerar el contrato, que ahora arrastra el drift de `0.30.0` hasta `0.43.0`.
+
+| # | Escenario | Motivo y etapa destino |
+|---|---|---|
+| 54 | **`uk_asistencia_clase_persona` contra el motor, en sus dos direcciones.** Que dos asistencias para la misma persona en la misma clase **choquen**; que la misma persona en **otra** clase entre; y —el control que importa— que **cancelar la inscripción y volver a inscribirse NO habilite una segunda asistencia**, porque el unique es sobre `(clase, persona)` y **no lleva `deleted_key`**. Más `uk_asistencia_inscripcion` y los dos CHECK en sus dos direcciones | **No corrido, y es el cimiento de la etapa entera.** De este unique dependen la idempotencia de marcar, el "cerrar dos veces no duplica" y la referencia económica única que 08.06 y 08.07 van a usar. Si no protegiera, **nada fallaría hoy** y la duplicación aparecería recién cuando exista el devengo. Destino: **primera sesión con Docker disponible** |
+| 55 | **El cierre concurrente.** Dos cierres simultáneos de la misma clase con N participantes sin marcar: **exactamente una** fila de asistencia por persona, todas con `origen = CIERRE`, y la clase en `REALIZADA` una sola vez. Con el control negativo de un cierre sobre una clase sin pendientes, que no tiene que escribir nada | **No corrido.** El unitario prueba que la consulta de pendientes decide; lo que no puede probar es que dos transacciones no vean la misma lista de pendientes y la resuelvan las dos. Destino: **primera sesión con Docker disponible** |
+| 56 | **El ingreso sin inscripción sobre la última vacante.** N ingresos simultáneos sobre una clase en curso con un solo lugar libre: **exactamente uno** entra y el resto recibe `clase-completa`; `cupo_ocupado` termina igual a la capacidad efectiva y **nunca** por encima. Y que ese ingreso **no** pase por `agenda_sede`, que es la inversión de orden de locks que 08.02 prohibió | **No corrido.** Es el gemelo del escenario 43 por otro camino: la operación es nueva y toma cupo, así que hereda el riesgo entero. **Verificación por mutación pendiente:** reemplazar `tomarCupo` por un `SELECT` del contador seguido de un `UPDATE` sin condición; el escenario tiene que empezar a sobrevender. Destino: **primera sesión con Docker disponible** |
+| 57 | **El lote con transacciones de verdad independientes.** Un lote donde el ítem k falla —inscripción cancelada, o de otra clase— y los k-1 anteriores **quedan commiteados**. Con el control negativo que importa: anotar `@Transactional` en `registrarLote` tiene que **hacer fallar** este test | **No corrido, y con mocks sólo se verifica el ruteo, no la propagación.** El modo de falla es silencioso y conocido: atrapar una excepción de persistencia **no des-marca la transacción**, y Spring lanza `UnexpectedRollbackException` al commitear — el lote reportaría "6 ok, 1 error" y después revertiría los 6. Este repositorio ya pagó esa trampa cuatro veces. Destino: **primera sesión con Docker disponible** |
+| 58 | **`V61` contra el motor.** Que `asistencia_actividad` y `asistencia_evento` tengan `organization_id NOT NULL` y que todo índice empiece por él; que el `ALTER` de `clase_programada` no haya roto nada de `V58`/`V60`; que `estado` acepte los **cuatro** valores —`PROGRAMADA`, `EN_CURSO`, `REALIZADA`, `CANCELADA`— porque no hay `CHECK` que reconstruir y conviene comprobar que sigue sin haberlo; y `ck_asistencia_evento_correccion` rechazando una corrección sin motivo y una que no cambia el resultado | **No corrido, y ninguna migración de F9 —`V58`, `V60` ni `V61`— se aplicó jamás contra un motor.** Destino: **primera sesión con Docker disponible** |
+| 59 | **Aislamiento de tenant y capa REST de las siete operaciones nuevas.** Un actor del tenant B no inicia, no cierra, no marca, no ingresa y no lee el detalle operativo de una clase del tenant A: **404, nunca 403**. Y que el **lote** no sea un enumerador: un ítem con una `inscripcionId` de otro tenant tiene que contestar `not-found`, no "no es tuyo". Más que el detalle operativo exija `inscripcion:read` y marcar exija `asistencia:manage`, que son las dos decisiones de seguridad de la etapa | **No escrito.** Un IT de `api` exigiría el contrato regenerado, y `0.43.0` está en drift junto con las seis tandas anteriores. Destino: la sesión que regenere el contrato |
+
+### Lo que esta etapa deliberadamente NO cubre
+
+| Escenario | Por qué no se escribió |
+|---|---|
+| **La obligación por clase asistida** (RF-M18-008) y **su cobro** (RF-M19-009) | **No están implementados, y el motivo está escrito en la §6 del diseño.** RF-M18-008 condiciona la deuda a que la Oferta use esquema `POR_CLASE` y a que "la política" lo defina: `V24` declara `esquema_cobro` como dato "declarado, no resuelto" sin lista cerrada, y la política no existe en ninguna tabla. Es **08.06/08.07/08.09**, y **es una decisión del usuario** si el cargo se devenga con la asistencia, con la inscripción o con la venta de un pack |
+| **La derivación al circuito clínico** y **la Sesión por participante** | Son **08.04** y **08.05**. RN-M28-007 prohíbe que una asistencia no clínica cree Sesión, y esta etapa no importa `clinical` ni `encounter` |
+| **Que el consumo de crédito se dispare con la asistencia** | Es **08.07**. Lo que esta etapa le deja es un hecho idempotente con `origen`, que es lo que va a permitir distinguir un no-show declarado de uno puesto por el cierre cuando eso cueste plata |
+| **Que `PRESENTE_TARDE` tenga consecuencia distinta de `PRESENTE`** | Hoy no la tiene: los dos dejan la inscripción en `ASISTIO`. El dato queda en la fila por si **08.07** lo necesita, y decidirlo es de allá |
+| **Que un participante sin ficha en el padrón no rompa el detalle operativo** | Es la misma rama de dos líneas que 08.02 ya tiene en la lista de participantes, y no depende del motor. Candidata de la primera tanda que amplíe cobertura |

@@ -1,6 +1,7 @@
 package com.akine.activity.api;
 
 import com.akine.activity.application.IdempotencyKeyConflictException;
+import com.akine.activity.domain.exception.AsistenciaNotAccessibleException;
 import com.akine.activity.domain.exception.CapacidadNoAdmitidaException;
 import com.akine.activity.domain.exception.ClaseCompletaException;
 import com.akine.activity.domain.exception.ClaseNoProgramableException;
@@ -212,6 +213,21 @@ public class ActivityProblemHandler {
 		problem.setTitle("La inscripcion no admite esa operacion");
 		problem.setProperty("motivo", exception.getMotivo());
 		return problem;
+	}
+
+	// =================================================================================
+	// Asistencia (AKINE-08.03)
+	//
+	// CERO TIPOS NUEVOS, y es deliberado. `clase-transicion-no-permitida` con su `motivo` ya cubre
+	// "esta clase no admite asistencia", e `inscripcion-transicion-no-permitida` cubre "esa reserva
+	// no tenia lugar". Publicar un codigo propio obligaria al cliente a manejar dos para el mismo
+	// desenlace, que es el criterio con el que 08.02 reuso `conflict` para el duplicado.
+	// =================================================================================
+
+	@ExceptionHandler(AsistenciaNotAccessibleException.class)
+	public ProblemDetail handleAsistenciaNoAccesible(AsistenciaNotAccessibleException exception) {
+		log.debug("Asistencia no accesible: asistenciaId={}", exception.getAsistenciaId());
+		return noEncontrado("La asistencia no existe.");
 	}
 
 	@ExceptionHandler(IdempotencyKeyConflictException.class)
