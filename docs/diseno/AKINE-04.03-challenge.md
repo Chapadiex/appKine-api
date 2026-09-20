@@ -157,3 +157,32 @@ Cuatro cosas quedan declaradas como límite, no como resuelto:
 4. **"Administrativos sin contenido clínico salvo permiso explícito"** se cumple hoy de rebote
    —el administrativo no tiene `hc:read`—, no por una decisión de la matriz. **Pregunta abierta
    para el usuario**, no resuelta acá.
+
+---
+
+## Addendum del 19/09/2026 — el deadlock de §8.4 es estructuralmente imposible
+
+Escribir los tests de integración de la etapa obligó a construir el ciclo de espera, y **no se
+puede construir con datos válidos.**
+
+Un Caso pertenece a **exactamente una** Historia Clínica. Entonces:
+
+- Dos sesiones que comparten Caso **comparten Historia**, así que ya quedan serializadas en el
+  primer numerador y nunca llegan a pelear por el segundo.
+- Dos sesiones de Historias distintas **no comparten ninguno** de los dos numeradores.
+
+No hay par de transacciones que pueda tomar los dos locks en orden inverso. **El ciclo requeriría
+una sesión de la Historia B con un Caso de la Historia A, dato que `iniciar` rechaza.**
+
+**Esto no deroga la condición vinculante, la reclasifica.** El orden fijo (historia primero, caso
+después) sigue siendo obligatorio, pero deja de ser *lo que evita un deadlock posible* y pasa a ser
+*lo que mantiene imposible un deadlock que hoy lo es por la forma del modelo*. La diferencia importa
+para quien venga después: **el día que un tercer numerador entre en esa transacción, o que algo
+permita que un Caso cuelgue de más de una Historia, la garantía se cae y el orden fijo vuelve a ser
+lo único que queda.**
+
+Lo que los tests sí ejercen es lo observable —que las combinaciones de máximo solapamiento terminen
+las dos, sin deadlock y con correlativos coherentes en las dos dimensiones— más el escenario que sí
+puede fallar de verdad: **cinco cierres simultáneos sobre un caso sin fila de
+`caso_sesion_numerador`**, o sea el deadlock del lazy-create que este repositorio ya pagó cuatro
+veces.
