@@ -14,6 +14,7 @@ import com.akine.billing.domain.exception.MovimientoCajaNotAccessibleException;
 import com.akine.billing.domain.exception.MovimientoNoReversibleException;
 import com.akine.billing.domain.port.JornadaCajaRepositoryPort;
 import com.akine.billing.domain.port.MovimientoCajaRepositoryPort;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
@@ -143,7 +144,7 @@ public class MovimientoCajaService {
 			OperatingActor actor, long consultorioId, long movimientoId, String motivo) {
 
 		long organizationId = CajaAcceso.exigirContexto(actor);
-		acceso.exigirSedeDelTenant(organizationId, consultorioId);
+		ConsultorioSnapshot sede = acceso.exigirSedeDelTenant(organizationId, consultorioId);
 		acceso.exigirOperarCaja(actor, organizationId, consultorioId);
 
 		MovimientoCaja original = movimientos
@@ -160,11 +161,26 @@ public class MovimientoCajaService {
 			throw new MovimientoNoReversibleException(movimientoId, "ya fue revertido");
 		}
 
-		JornadaCaja jornada = jornadaAbierta(organizationId, consultorioId);
+		// La jornada se exige SOLO si el movimiento original era en efectivo, que es lo que el
+		// diseno de 07.03 §7 dice —"si no hay jornada abierta y el movimiento a revertir era en
+		// efectivo, la reversion se rechaza"— y lo que su codigo NO hacia: la exigia siempre,
+		// incluida la reversion de una transferencia, plata que nunca toco el cajon.
+		//
+		// No se noto en 07.03 porque alli las reversiones nacian de movimientos manuales, que ya
+		// exigen caja abierta. Se nota en 07.05: anular un pago hecho por transferencia no puede
+		// depender de que alguien haya abierto el cajon. El cambio AMPLIA lo aceptado y nunca lo
+		// rechazado, asi que ningun caso que hoy funciona deja de funcionar.
+		JornadaCaja jornada = original.afectaArqueo()
+				? jornadaAbierta(organizationId, consultorioId)
+				: jornadas.findAbierta(organizationId, consultorioId).orElse(null);
+
 		Instant ahora = Instant.now();
+		LocalDate fechaNegocio = jornada != null
+				? jornada.getFechaNegocio()
+				: CajaAcceso.fechaDeNegocio(sede, ahora);
 
 		MovimientoCaja reversion = asentar(
-				organizationId, consultorioId, jornada, jornada.getFechaNegocio(),
+				organizationId, consultorioId, jornada, fechaNegocio,
 				original.getTipo().reversion(), original.getMedio(), original.getImporte(),
 				original.getMoneda(),
 				"Reversion del movimiento " + movimientoId, motivo,
