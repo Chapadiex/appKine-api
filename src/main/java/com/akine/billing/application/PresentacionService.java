@@ -405,8 +405,9 @@ public class PresentacionService {
 			// El mismo UPDATE condicional que 07.02 usa para imputar. Cero filas significa que la
 			// deuda ya se salde por otra via —un cobro al paciente, por ejemplo—; no es un error y
 			// no puede hacer fallar el cierre del lote, que ya esta explicado por completo.
-			if (cobros.descontarSaldo(item.getObligacionId(), item.getImportePresentado()) > 0) {
-				cobros.actualizarEstadoPorSaldo(item.getObligacionId());
+			if (cobros.descontarSaldo(
+					organizationId, item.getObligacionId(), item.getImportePresentado()) > 0) {
+				cobros.actualizarEstadoPorSaldo(organizationId, item.getObligacionId());
 			} else {
 				log.warn("La obligacion {} ya no tenia el saldo presentado al conciliar la "
 						+ "presentacion {}: se acepta el item y no se descuenta nada",
