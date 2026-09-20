@@ -2,7 +2,10 @@ package com.akine.person.domain.port;
 
 import com.akine.person.domain.AdjuntoAdministrativo;
 import com.akine.person.domain.Autorizacion;
+import com.akine.person.domain.AutorizacionMovimiento;
 import com.akine.person.domain.AutorizacionPersonaLock;
+import com.akine.person.domain.TipoMovimientoAutorizacion;
+import com.akine.person.domain.TipoOrigenMovimiento;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.CoberturaPersonaLock;
 import com.akine.person.domain.OrdenMedica;
@@ -309,8 +312,33 @@ public final class PersonRepositoryPorts {
 		Optional<Autorizacion> findByIdAndOrganizationIdAndPersonaId(
 				Long id, Long organizationId, Long personaId);
 
+		/**
+		 * Una autorizacion del tenant por id, sin exigir la persona.
+		 *
+		 * <p>Es la excepcion a la forma de las demas y esta verificada individualmente, como el
+		 * encabezado de este archivo obliga: <b>lleva {@code organizationId}</b>, que es lo que
+		 * impide leer la autorizacion de otro centro. El {@code personaId} no viaja porque las
+		 * rutas del consumo —{@code /autorizaciones/{id}/saldo}, {@code /movimientos},
+		 * {@code /reversiones}— no lo tienen: son operaciones sobre la autorizacion, no sobre la
+		 * ficha, y agregarlo a la ruta solo para repetirlo aca haria que dos ids tuvieran que
+		 * coincidir sin que eso proteja nada nuevo.
+		 */
+		Optional<Autorizacion> findByIdAndOrganizationId(Long id, Long organizationId);
+
 		/** Todas, mas nuevas primero. Incluye vencidas, rechazadas y dadas de baja. */
 		List<Autorizacion> historial(Long organizationId, Long personaId);
+
+		/**
+		 * Las APROBADAS y activas de un PACIENTE, sin filtrar por cobertura ni practica.
+		 *
+		 * <p>Es lo que resuelve {@code GET /personas/{id}/autorizaciones/elegibles} y lo que el
+		 * observador del cierre recorre para elegir a cual descontarle. <b>No filtra por practica
+		 * porque no puede</b>: una sesion declara su <b>oferta</b> y la autorizacion es por
+		 * <b>practica</b>, y no existe ninguna tabla puente entre las dos —V24 la dejo afuera a
+		 * proposito—. La eleccion la hace el servicio con la vigencia y el saldo. El limite esta
+		 * declarado en el diseño de la etapa y se unifica en 06.04.
+		 */
+		List<Autorizacion> aprobadasDePersona(Long organizationId, Long personaId);
 
 		/**
 		 * Las APROBADAS y activas de una cobertura y una practica.
@@ -321,6 +349,84 @@ public final class PersonRepositoryPorts {
 		 * bajo el lock mas filas de las que la regla mira.
 		 */
 		List<Autorizacion> aprobadasDe(Long organizationId, Long coberturaId, Long practicaId);
+
+		/**
+		 * Descuenta {@code cantidad} del saldo, <b>si alcanza</b> (RF-M17-004, RN-M17-002).
+		 *
+		 * <p><b>Es un UPDATE condicional y no un lock, y esa es toda la idea:</b>
+		 * {@code SET cantidad_consumida = cantidad_consumida + :cantidad WHERE cantidad_autorizada
+		 * - cantidad_consumida >= :cantidad}. Es atomico, no necesita leer antes —que es donde se
+		 * cuela la ventana entre lectura y escritura— y no puede dejar el saldo en negativo aunque
+		 * dos cierres lleguen juntos. Sin lock, y por lo tanto sin deadlock posible.
+		 *
+		 * <p>Es exactamente lo que 07.02 hizo para imputar un cobro, y resuelve el caso borde que
+		 * el plan nombra: <b>ultima unidad concurrente</b>. Dos sesiones peleando por la ultima
+		 * unidad: una gana, la otra ve cero filas.
+		 *
+		 * <p>Una autorizacion <b>sin tope declarado</b> ({@code cantidad_autorizada IS NULL}) se
+		 * descuenta siempre: no hay nada que agotar. El contador sube igual, porque la pregunta
+		 * "cuantas sesiones se atendieron contra esta autorizacion" tiene respuesta aunque no haya
+		 * limite.
+		 *
+		 * @return filas afectadas. <b>Cero significa que no hay saldo</b>, y es un desenlace
+		 *         legitimo que el llamador traduce segun quien pregunte: 409 para un acto humano,
+		 *         un simple registro para el cierre de sesion, que no puede fallar por esto
+		 */
+		int descontarSaldo(long organizationId, long autorizacionId, int cantidad);
+
+		/**
+		 * Devuelve {@code cantidad} al saldo. Es el {@code UPDATE} inverso de la reversion.
+		 *
+		 * <p>Tambien condicional —{@code WHERE cantidad_consumida >= :cantidad}—: un consumo
+		 * negativo es tan imposible como un saldo negativo, y por el mismo motivo se lo impide la
+		 * base y no un {@code if}. Cero filas significa que el ledger y la columna divergieron, y
+		 * el llamador lo trata como el error de coherencia que es.
+		 */
+		int devolverSaldo(long organizationId, long autorizacionId, int cantidad);
+	}
+
+	/**
+	 * El ledger de movimientos de saldo (M17, AKINE-04.05).
+	 *
+	 * <p><b>Append-only: este puerto NO declara {@code update} ni {@code delete}, y la ausencia es
+	 * el contrato.</b> Un ledger que se puede editar no es un ledger. Mismo diseño que
+	 * {@code turno_evento}, {@code caso_evento} y {@code plan_evento}, y la misma regla maestra 10.
+	 * Corregir un consumo se hace con una fila de compensacion, no borrando la original.
+	 */
+	public interface AutorizacionMovimientoRepositoryPort {
+
+		AutorizacionMovimiento save(AutorizacionMovimiento movimiento);
+
+		/**
+		 * El movimiento que ya existe para ese hecho, si existe. <b>Es la idempotencia.</b>
+		 *
+		 * <p>Los cinco parametros son exactamente el unique
+		 * {@code uk_autorizacion_movimiento_origen}. Se consulta ANTES de insertar para poder
+		 * responder con la fila que ya esta en vez de chocar: un reintento del mismo cierre tiene
+		 * que ser inocuo, no un 409.
+		 *
+		 * <p><b>El pre-chequeo achica la ventana, no la cierra</b>, y por eso el unique sigue
+		 * siendo quien hace cumplir la regla.
+		 */
+		Optional<AutorizacionMovimiento> buscarPorOrigen(
+				Long organizationId,
+				Long autorizacionId,
+				TipoMovimientoAutorizacion tipo,
+				TipoOrigenMovimiento tipoOrigen,
+				Long referenciaOrigen);
+
+		/** Un movimiento de ESA autorizacion y ESE tenant. Nunca por id pelado. */
+		Optional<AutorizacionMovimiento> buscarDeLaAutorizacion(
+				Long organizationId, Long autorizacionId, Long movimientoId);
+
+		/**
+		 * El ledger de una autorizacion, del mas viejo al mas nuevo.
+		 *
+		 * <p>En ese orden porque esto no es una bandeja sino una linea de tiempo, y una linea de
+		 * tiempo se lee en el orden en que ocurrio. Mismo criterio que {@code plan_evento}.
+		 */
+		List<AutorizacionMovimiento> listarDeAutorizacion(
+				Long organizationId, Long autorizacionId);
 	}
 
 	/**
