@@ -151,19 +151,37 @@ public class ConsumoDeAutorizacionService {
 	public ResultadoDeConsumo consumirPorSesion(ConsumoPorSesion hecho) {
 		LocalDate fecha = hecho.fecha() == null ? LocalDate.now() : hecho.fecha();
 
-		// Se elige la que vence antes: es la que hay que gastar primero, porque es la que se
-		// pierde antes. La consulta ya viene en ese orden.
-		Optional<Autorizacion> elegida = autorizaciones
+		List<Autorizacion> habilitadas = autorizaciones
 				.aprobadasDePersona(hecho.organizationId(), hecho.personaId()).stream()
 				.filter(autorizacion -> autorizacion.habilitaEl(fecha))
-				.findFirst();
+				.toList();
 
-		if (elegida.isEmpty()) {
+		if (habilitadas.isEmpty()) {
 			// El caso MAS frecuente, no una anomalia: un paciente particular, o uno cuya obra
 			// social no exige autorizacion previa, cierra todas sus sesiones asi.
 			log.debug("Cierre sin autorizacion elegible: sesionId={} personaId={}",
 					hecho.sesionId(), hecho.personaId());
 			return ResultadoDeConsumo.sinAutorizacionElegible();
+		}
+
+		// AKINE-06.04. Se elige la que vence antes DENTRO de las que cubren una practica que
+		// realmente se aplico: es la que hay que gastar primero, porque es la que se pierde
+		// antes. La consulta ya viene en ese orden.
+		Optional<Autorizacion> elegida = habilitadas.stream()
+				.filter(autorizacion -> cubreAlgunaPracticaRealizada(autorizacion, hecho))
+				.findFirst();
+
+		if (elegida.isEmpty()) {
+			// Hay saldo vigente y NINGUNA autorizacion es de una practica que se aplico. NO se
+			// consume: ver ResultadoDeConsumo.SIN_AUTORIZACION_PARA_LA_PRACTICA. El cierre
+			// clinico sigue sin bloquearse.
+			log.info("Cierre sin autorizacion para las practicas realizadas: sesionId={} "
+							+ "personaId={} practicas={} vigentes={}. NO se consume: gastar otra "
+							+ "practica le come al paciente unidades que si necesita y le declara "
+							+ "al financiador algo que no se presto",
+					hecho.sesionId(), hecho.personaId(), hecho.practicasRealizadas(),
+					habilitadas.size());
+			return ResultadoDeConsumo.sinAutorizacionParaLaPractica();
 		}
 
 		Autorizacion autorizacion = elegida.get();
@@ -422,6 +440,33 @@ public class ConsumoDeAutorizacionService {
 		}
 		int porFecha = finUna.compareTo(finOtra);
 		return porFecha != 0 ? porFecha : Long.compare(una.id(), otra.id());
+	}
+
+	/**
+	 * Si la autorizacion sirve para alguna practica que realmente se aplico (AKINE-06.04).
+	 *
+	 * <h2>El conjunto vacio devuelve {@code true}, y es la decision que hace viable la etapa</h2>
+	 *
+	 * <p>Vacio significa <b>"no se sabe que practicas fueron"</b>, no "ninguna". Son vacias
+	 * <b>todas</b> las sesiones anteriores a 06.04 —el registro de tratamientos no existia— y
+	 * tambien las de ofertas que no registran practicas, como una consulta o una evaluacion
+	 * inicial.
+	 *
+	 * <p>Si el filtro se aplicara igual, esas sesiones no matchearian con nada y el sistema
+	 * <b>dejaria de consumir autorizaciones por completo</b>. Una etapa que "arregla la
+	 * imputacion" y apaga el consumo entero es peor que el defecto que corrige.
+	 *
+	 * <p>Ante la ignorancia se conserva exactamente el comportamiento anterior: se elige la que
+	 * vence antes. El filtro se aplica <b>solo cuando hay dato con el cual filtrar</b>.
+	 */
+	private static boolean cubreAlgunaPracticaRealizada(
+			Autorizacion autorizacion, ConsumoPorSesion hecho) {
+
+		if (hecho.practicasRealizadas().isEmpty()) {
+			return true;
+		}
+		return autorizacion.getPracticaId() != null
+				&& hecho.practicasRealizadas().contains(autorizacion.getPracticaId());
 	}
 
 	private Autorizacion cargar(long organizationId, long autorizacionId) {

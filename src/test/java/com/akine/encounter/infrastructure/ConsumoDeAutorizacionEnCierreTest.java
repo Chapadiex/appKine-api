@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -85,7 +86,7 @@ class ConsumoDeAutorizacionEnCierreTest {
 		// el dia y una autorizacion que vence el 15 rechazaria esta sesion.
 		observador.alCerrar(new SesionCerrada(
 				SESION, ORG, SEDE, PERSONA, 500L, 4, true,
-				Instant.parse("2027-03-16T01:30:00Z"), 42L, BigDecimal.TEN, "ARS"));
+				Instant.parse("2027-03-16T01:30:00Z"), 42L, BigDecimal.TEN, "ARS", Set.of()));
 
 		ArgumentCaptor<ConsumoPorSesion> pedido = ArgumentCaptor.forClass(ConsumoPorSesion.class);
 		verify(consumo).consumirPorSesion(pedido.capture());
@@ -104,7 +105,7 @@ class ConsumoDeAutorizacionEnCierreTest {
 
 		observador.alCerrar(new SesionCerrada(
 				SESION, ORG, SEDE, PERSONA, 500L, 4, true,
-				Instant.parse("2027-03-16T01:30:00Z"), 42L, BigDecimal.TEN, "ARS"));
+				Instant.parse("2027-03-16T01:30:00Z"), 42L, BigDecimal.TEN, "ARS", Set.of()));
 
 		ArgumentCaptor<ConsumoPorSesion> pedido = ArgumentCaptor.forClass(ConsumoPorSesion.class);
 		verify(consumo).consumirPorSesion(pedido.capture());
@@ -119,6 +120,6 @@ class ConsumoDeAutorizacionEnCierreTest {
 	private static SesionCerrada cierre(boolean asistio) {
 		return new SesionCerrada(
 				SESION, ORG, SEDE, PERSONA, 500L, 4, asistio,
-				Instant.parse("2027-03-15T14:00:00Z"), 42L, BigDecimal.TEN, "ARS");
+				Instant.parse("2027-03-15T14:00:00Z"), 42L, BigDecimal.TEN, "ARS", Set.of());
 	}
 }

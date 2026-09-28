@@ -3,7 +3,9 @@ package com.akine.encounter.infrastructure;
 import com.akine.encounter.domain.ConteoDeSesionesPorOferta;
 import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -21,6 +23,27 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			   AND s.id = :sesionId
 			""")
 	Optional<Sesion> findByIdInScope(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("sesionId") long sesionId);
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Es la MISMA consulta que la de arriba y lo unico que la distingue es el
+	 * {@code OPTIMISTIC_FORCE_INCREMENT}. El nombre lleva {@code WithLock} para documentarlo:
+	 * Spring Data ignora el texto entre {@code find} y {@code By}, asi que no cambia nada de la
+	 * consulta. Mismo patron que {@code CasoClinicoRepository} y {@code EntradaClinicaRepository}.
+	 */
+	@Override
+	@Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
+	@Query("""
+			SELECT s FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.consultorioId = :consultorioId
+			   AND s.id = :sesionId
+			""")
+	Optional<Sesion> findWithLockByIdInScope(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("sesionId") long sesionId);

@@ -61,8 +61,42 @@ public record ResultadoDeConsumo(
 		return new ResultadoDeConsumo(YA_CONSUMIDA, autorizacionId, movimientoId, saldoRestante);
 	}
 
+	/**
+	 * Habia autorizaciones vigentes, y <b>ninguna es de una practica que realmente se aplico</b>
+	 * (AKINE-06.04).
+	 *
+	 * <h2>Es el desenlace que corrige el defecto declarado de 04.05</h2>
+	 *
+	 * <p>Antes de 06.04 este caso <b>no existia</b>: el consumo elegia "la que vence antes" sin
+	 * mirar la practica y descontaba igual. Eso significaba gastar, por ejemplo, una unidad de
+	 * <b>fonoaudiologia</b> para pagar una sesion de <b>kinesiologia</b>.
+	 *
+	 * <p><b>Por que no consumir es mejor que consumir la equivocada</b>, que es la objecion
+	 * obvia:
+	 *
+	 * <ul>
+	 *   <li>Le <b>come al paciente</b> unidades que si iba a necesitar, y deja intacta la
+	 *       autorizacion que correspondia.</li>
+	 *   <li>Frente al financiador es una <b>declaracion falsa</b>: el centro presenta a cobro una
+	 *       practica que no presto.</li>
+	 *   <li>Y es silencioso. Hoy nadie lo detecta porque no hay con que compararlo.</li>
+	 * </ul>
+	 *
+	 * <p><b>No consumir ya era un desenlace benigno y previsto</b>: el observador no lanza, el
+	 * cierre clinico no se bloquea (DP-06) y el circuito administrativo lo resuelve despues con
+	 * otra autorizacion o facturandole al paciente. Este desenlace no cambia ninguna de esas
+	 * garantias — cambia "consumio mal y nadie se entera" por "no consumio y queda dicho".
+	 */
+	public static final String SIN_AUTORIZACION_PARA_LA_PRACTICA =
+			"SIN_AUTORIZACION_PARA_LA_PRACTICA";
+
 	public static ResultadoDeConsumo sinAutorizacionElegible() {
 		return new ResultadoDeConsumo(SIN_AUTORIZACION_ELEGIBLE, null, null, null);
+	}
+
+	/** Ver {@link #SIN_AUTORIZACION_PARA_LA_PRACTICA}. */
+	public static ResultadoDeConsumo sinAutorizacionParaLaPractica() {
+		return new ResultadoDeConsumo(SIN_AUTORIZACION_PARA_LA_PRACTICA, null, null, null);
 	}
 
 	public static ResultadoDeConsumo sinSaldo(long autorizacionId) {
