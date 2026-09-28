@@ -63,7 +63,7 @@ import java.util.Map;
  *   6. habilitaciones         -&gt; profesionales y espacios de 02.07
  *   7. disponibilidad         -&gt; una llamada por profesional habilitado, ventana entera
  *   8. corte en slots         -&gt; puro, por dia y por profesional
- *   9. descuento de reservas  -&gt; ReservaProbe; hoy no descuenta nada
+ *   9. descuento de reservas  -&gt; ReservaProbe, contra los turnos vivos de la ventana
  * </pre>
  *
  * <p><b>El paso 3 despues del 2</b>, igual que en M05: un 400 antes del permiso le confirma a
@@ -350,9 +350,6 @@ public class AgendaService {
 		return zoned.toLocalDate().isAfter(fecha) ? TramoLocal.FIN_DE_DIA : zoned.toLocalTime();
 	}
 
-	/**
-	 * Descuenta de cada slot las reservas que ya lo tomaron.
-	 *
 	/**
 	 * Descuenta de cada slot las reservas que ya lo tomaron.
 	 *
