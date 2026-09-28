@@ -4,6 +4,11 @@ import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.CierreIncompletoException;
 import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
+import com.akine.encounter.domain.exception.MedicionDefinicionInactivaException;
+import com.akine.encounter.domain.exception.MedicionDefinicionNoAccesibleException;
+import com.akine.encounter.domain.exception.MedicionFueraDeRangoException;
+import com.akine.encounter.domain.exception.MedicionNoAccesibleException;
+import com.akine.encounter.domain.exception.MedicionTipoIncompatibleException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
 import com.akine.encounter.domain.exception.SesionCerradaException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
@@ -40,6 +45,13 @@ public class EncounterProblemHandler {
 	private static final URI SESION_CERRADA = ProblemType.SESION_CERRADA.uri();
 	private static final URI CASO_NO_ACCESIBLE = ProblemType.CASO_CLINICO_NO_ACCESIBLE.uri();
 	private static final URI CASO_CERRADO = ProblemType.CASO_CLINICO_CERRADO.uri();
+	private static final URI MEDICION_DEFINICION_NO_ACCESIBLE =
+			ProblemType.MEDICION_DEFINICION_NO_ACCESIBLE.uri();
+	private static final URI MEDICION_DEFINICION_INACTIVA =
+			ProblemType.MEDICION_DEFINICION_INACTIVA.uri();
+	private static final URI MEDICION_FUERA_DE_RANGO = ProblemType.MEDICION_FUERA_DE_RANGO.uri();
+	private static final URI MEDICION_TIPO_INCOMPATIBLE =
+			ProblemType.MEDICION_TIPO_INCOMPATIBLE.uri();
 
 	/**
 	 * El caso no habilita esta atencion (04.03). <b>404 o 409 segun el motivo.</b>
@@ -152,6 +164,106 @@ public class EncounterProblemHandler {
 		problem.setType(VALIDATION_ERROR);
 		problem.setTitle("Falta un dato para poder cerrar la atencion");
 		return problem;
+	}
+
+	/**
+	 * La definicion de medicion no existe o es de otro tenant (404).
+	 *
+	 * <p>El {@code type} es el mismo que emite {@code resource} desde la administracion del
+	 * catalogo, porque para el cliente la situacion es la misma. La <b>excepcion</b>, en cambio,
+	 * es de este modulo: {@code resource.spi.MedicionDirectory} responde y no autoriza, igual que
+	 * {@code CasoDirectory}.
+	 */
+	@ExceptionHandler(MedicionDefinicionNoAccesibleException.class)
+	public ProblemDetail handleMedicionDefinicionNoAccesible(
+			MedicionDefinicionNoAccesibleException exception) {
+
+		log.debug("Definicion de medicion no accesible desde la atencion: definicionId={}",
+				exception.getDefinicionId());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND,
+				"La definicion de medicion no existe.");
+		problem.setType(MEDICION_DEFINICION_NO_ACCESIBLE);
+		problem.setTitle("Definicion de medicion no encontrada");
+		return problem;
+	}
+
+	/**
+	 * <b>409.</b> La baja de una definicion <b>no cascadea</b>: las mediciones que ya la usaban
+	 * siguen legibles y siguen entrando en la comparacion, y lo unico que se impide es registrar
+	 * nuevas. La accion que corresponde ofrecer es elegir otro test.
+	 */
+	@ExceptionHandler(MedicionDefinicionInactivaException.class)
+	public ProblemDetail handleMedicionDefinicionInactiva(
+			MedicionDefinicionInactivaException exception) {
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+				"Esa medida esta dada de baja y no admite mediciones nuevas. Las ya registradas "
+						+ "siguen siendo legibles y comparables.");
+		problem.setType(MEDICION_DEFINICION_INACTIVA);
+		problem.setTitle("La medida esta dada de baja");
+		problem.setProperty("definicionId", exception.getDefinicionId());
+		return problem;
+	}
+
+	/**
+	 * <b>400 y no 409.</b> Un EVA de 12 en una escala de 0 a 10 es un problema del cuerpo enviado:
+	 * reintentarlo falla igual. Mismo reparto que {@link #handleEvaluacionIncoherente}.
+	 *
+	 * <p>El rango viaja en el cuerpo porque un "fuera de rango" sin numeros es inaccionable: la
+	 * pantalla tiene que poder decir entre que y que.
+	 *
+	 * <p><b>Solo lo emite el registro.</b> El rango nunca se revalida al leer: una medicion vieja
+	 * no se vuelve invalida porque el catalogo se estreche despues.
+	 */
+	@ExceptionHandler(MedicionFueraDeRangoException.class)
+	public ProblemDetail handleMedicionFueraDeRango(MedicionFueraDeRangoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(MEDICION_FUERA_DE_RANGO);
+		problem.setTitle("El valor esta fuera del rango de la medida");
+		problem.setProperty("codigo", exception.getCodigo());
+		problem.setProperty("valor", exception.getValor());
+		if (exception.getMinimo() != null) {
+			problem.setProperty("minimo", exception.getMinimo());
+		}
+		if (exception.getMaximo() != null) {
+			problem.setProperty("maximo", exception.getMaximo());
+		}
+		return problem;
+	}
+
+	/**
+	 * <b>400.</b> Cubre las dos mitades de la misma invariante —falta el valor que corresponde, o
+	 * sobra otro— con {@code motivo} para distinguirlas. Para la pantalla el desenlace es el mismo:
+	 * decir que valor se espera.
+	 */
+	@ExceptionHandler(MedicionTipoIncompatibleException.class)
+	public ProblemDetail handleMedicionTipoIncompatible(
+			MedicionTipoIncompatibleException exception) {
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(MEDICION_TIPO_INCOMPATIBLE);
+		problem.setTitle("El valor no corresponde al tipo de la medida");
+		problem.setProperty("codigo", exception.getCodigo());
+		problem.setProperty("tipoEsperado", exception.getTipoEsperado());
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	/**
+	 * <b>404.</b> No hay una medicion de esa medida y ese lado en esa sesion.
+	 *
+	 * <p>Un {@code DELETE} que respondiera 204 sobre una fila inexistente le ocultaria a la
+	 * pantalla que estaba mirando datos viejos, y el profesional se quedaria creyendo que borro
+	 * una medicion que en realidad sigue ahi bajo el otro lado.
+	 */
+	@ExceptionHandler(MedicionNoAccesibleException.class)
+	public ProblemDetail handleMedicionNoAccesible(MedicionNoAccesibleException exception) {
+		log.debug("Medicion no accesible: definicionId={} lateralidad={}",
+				exception.getDefinicionId(), exception.getLateralidad());
+		return noEncontrado("No hay una medicion de esa medida y ese lado en esta sesion.");
 	}
 
 	private static ProblemDetail noEncontrado(String detalle) {

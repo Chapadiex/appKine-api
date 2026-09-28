@@ -885,7 +885,63 @@ public enum ProblemType {
 	 * <p>El detalle lleva {@code maximoDias} para que el cliente no tenga que hardcodear la
 	 * ventana ni descubrirla probando.
 	 */
-	RANGO_DE_REPORTE_INVALIDO("rango-de-reporte-invalido");
+	RANGO_DE_REPORTE_INVALIDO("rango-de-reporte-invalido"),
+	// --- Examen fisico y mediciones (M14/M06, AKINE-06.03) ----------------------------------
+	/**
+	 * La definicion de medicion no existe, o es contextual de otro tenant (404).
+	 *
+	 * <p>Las dos causas colapsan en un solo {@code type} y en un solo status, igual que
+	 * {@link #CATALOGO_INACTIVE} y compañia: un 403 confirmaria que ese id existe, y bastaria
+	 * recorrer numeros para censar que tests propios tiene cargados cada centro del SaaS.
+	 *
+	 * <p><b>Una definicion dada de baja NO lo produce</b>: se sigue leyendo con 200, porque las
+	 * mediciones que ya la usaron tienen que seguir siendo legibles (RN-M06-001, RN-M06-002).
+	 *
+	 * <p>Lo emiten <b>dos</b> modulos: {@code resource} desde la administracion del catalogo y
+	 * {@code encounter} desde el registro de una medicion. Un solo {@code type} para los dos,
+	 * porque para el cliente la situacion es la misma. Mismo reparto que
+	 * {@link #CASO_CLINICO_CERRADO}.
+	 */
+	MEDICION_DEFINICION_NO_ACCESIBLE("medicion-definicion-no-accesible"),
+	/**
+	 * La definicion de medicion esta dada de baja y la operacion exige una vigente (409).
+	 *
+	 * <p>Es el 409 que hace visible que <b>la baja de una definicion NO cascadea</b>: las
+	 * mediciones existentes siguen legibles y siguen entrando en la comparacion, y lo unico que se
+	 * impide es registrar nuevas. Mismo par, y mismo razonamiento, que {@link #SERVICIO_INACTIVO}
+	 * en M27 y {@link #FINANCIADOR_INACTIVO} en M15.
+	 *
+	 * <p>409 y no 404: la definicion existe y quien la eligio la esta viendo; lo que corresponde
+	 * ofrecer es otro test, no recargar una lista que no cambio.
+	 */
+	MEDICION_DEFINICION_INACTIVA("medicion-definicion-inactiva"),
+	/**
+	 * El valor cae fuera del rango que la definicion declara (400). Lleva {@code minimo},
+	 * {@code maximo} y {@code valor}.
+	 *
+	 * <p><b>400 y no 409.</b> Un EVA de 12 en una escala de 0 a 10 es un problema del cuerpo
+	 * enviado: no depende de nada que pueda cambiar entre dos peticiones, asi que un 409 —que
+	 * sugiere reintentar— mandaria al cliente a repetir algo que va a fallar igual. Mismo reparto
+	 * que {@link #ENMIENDA_SIN_MOTIVO}.
+	 *
+	 * <p><b>Solo se emite AL REGISTRAR.</b> El rango nunca se revalida al leer: una medicion vieja
+	 * no se vuelve invalida porque el catalogo estreche el rango despues — fue valida cuando se
+	 * tomo, y la version contra la que se valido queda copiada en su fila.
+	 */
+	MEDICION_FUERA_DE_RANGO("medicion-fuera-de-rango"),
+	/**
+	 * El valor enviado no es el que admite el tipo de la medida (400). Lleva {@code tipoEsperado}
+	 * y {@code motivo}.
+	 *
+	 * <p>Un solo {@code type} para las dos familias —falta el valor que corresponde, o sobra otro—
+	 * con el {@code motivo} como propiedad extra: para la pantalla el desenlace es el mismo, decir
+	 * que valor se espera, y publicar dos codigos obligaria al cliente a manejar dos respuestas
+	 * para una sola correccion. Mismo criterio que {@link #ARCHIVO_NO_ACEPTADO}.
+	 *
+	 * <p>Las dos mitades importan: que falte deja una medicion que no mide nada, y que sobre es el
+	 * principio de una medicion que despues nadie puede comparar.
+	 */
+	MEDICION_TIPO_INCOMPATIBLE("medicion-tipo-incompatible");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
