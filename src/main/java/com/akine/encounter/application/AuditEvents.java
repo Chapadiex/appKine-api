@@ -45,13 +45,30 @@ public final class AuditEvents {
 	/** Clave del trace id en el MDC, puesta por el filtro de correlacion de {@code platform}. */
 	private static final String MDC_TRACE_ID = "traceId";
 
-	// --- Sesion (AKINE-06.06) --------------------------------------------------------------
+	// --- Sesion (AKINE-06.06 y 07.07) ------------------------------------------------------
+
+	/**
+	 * Tipo de entidad de los eventos de sesion de este modulo.
+	 *
+	 * <p><b>El nombre de la clase del agregado, en PascalCase</b>, que es la convencion que siguen
+	 * los otros catalogos —{@code "Persona"}, {@code "CasoClinico"}, {@code "JornadaCaja"}—. 06.06
+	 * lo habia escrito {@code "SESION"} y 07.07 {@code "Sesion"}: la integracion unifica en el
+	 * segundo. Dos valores para la misma entidad parten el filtro de la auditoria en dos sin que
+	 * nada falle, que es la peor forma de romperlo.
+	 */
+	public static final String ENTITY_SESION = "Sesion";
+
+	/** Se inicio la atencion de un turno (RF-M14-001). */
+	static final String SESION_INICIADA = "SESION_INICIADA";
+
+	/** Alguien <b>leyo</b> una sesion: DP-03 no distingue entre leer y escribir en lo clinico. */
+	static final String SESION_ACCEDIDA = "SESION_ACCEDIDA";
+
+	/** Se cerro la atencion, con su numero de sesion (RF-M14-009). */
+	static final String SESION_CERRADA = "SESION_CERRADA";
 
 	/** Se escribio una version nueva de una sesion cerrada (RF-M14-010). */
 	public static final String SESION_AMENDED = "SESION_AMENDED";
-
-	/** Tipo de entidad de los eventos de sesion de este modulo. */
-	public static final String ENTITY_SESION = "SESION";
 
 	// --- Tratamientos realizados (AKINE-06.04) ---------------------------------------------
 

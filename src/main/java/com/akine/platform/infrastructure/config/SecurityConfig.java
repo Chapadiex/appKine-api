@@ -104,8 +104,14 @@ public class SecurityConfig {
 	 * {@code POST /api/v1/auth/context} y {@code DELETE /api/v1/auth/sessions} exigen
 	 * autenticacion. Operan sobre una identidad ya establecida, asi que caen en el
 	 * {@code anyRequest().authenticated()} de abajo sin necesidad de una regla propia.
+	 *
+	 * <p><b>Visible para {@link OpenApiConfig}</b> (mismo paquete, no publica). El contrato
+	 * declara que estas operaciones NO requieren token, y tiene que decirlo a partir de la misma
+	 * lista que la cadena aplica: dos listas escritas por separado divergen en la primera ruta
+	 * que alguien agregue de un solo lado, y el sintoma seria un cliente generado que manda token
+	 * al login o que no lo manda a un endpoint protegido.
 	 */
-	private static final String[] RUTAS_PUBLICAS_DE_IDENTIDAD = {
+	static final String[] RUTAS_PUBLICAS_DE_IDENTIDAD = {
 			// Sesion.
 			"/api/v1/auth/login",
 			"/api/v1/auth/refresh",
@@ -134,7 +140,7 @@ public class SecurityConfig {
 	 * {@link OriginCsrfFilter}. El resto de la API se autentica con {@code Authorization:
 	 * Bearer}, un header que un sitio hostil no puede hacer que el navegador envie.
 	 */
-	private static final List<String> RUTAS_CON_COOKIE_DE_REFRESH = List.of(
+	static final List<String> RUTAS_CON_COOKIE_DE_REFRESH = List.of(
 			"/api/v1/auth/refresh",
 			"/api/v1/auth/logout");
 

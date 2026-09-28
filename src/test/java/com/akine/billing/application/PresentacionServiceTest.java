@@ -111,7 +111,7 @@ class PresentacionServiceTest {
 
 		// Y lo que importa tanto como el rechazo: no salda NADA. Un cierre con diferencia dejaria
 		// obligaciones marcadas como pagadas por plata que nunca entro.
-		verify(cobros, never()).descontarSaldo(anyLong(), any());
+		verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
 		assertThat(lote.getEstado()).isEqualTo(EstadoPresentacion.FACTURADA);
 	}
 
@@ -126,7 +126,7 @@ class PresentacionServiceTest {
 		PresentacionItem debitado = item(55011L, 9002L, new BigDecimal("15000.00"));
 		debitado.debitar(new BigDecimal("15000.00"), "Falta autorizacion", Instant.now(), ACCOUNT_ID);
 		given(items.findDeLaPresentacion(PRESENTACION_ID)).willReturn(List.of(vivo, debitado));
-		given(cobros.descontarSaldo(9001L, new BigDecimal("85000.00"))).willReturn(1);
+		given(cobros.descontarSaldo(ORG_ID, 9001L, new BigDecimal("85000.00"))).willReturn(1);
 
 		service.conciliar(actor, SEDE_ID, PRESENTACION_ID);
 
@@ -135,9 +135,9 @@ class PresentacionServiceTest {
 		assertThat(lote.getEstado()).isEqualTo(EstadoPresentacion.CONCILIADA);
 
 		// RN-M21-004: rechazar una prestacion no perdona la deuda. La debitada NO se salda.
-		verify(cobros).descontarSaldo(9001L, new BigDecimal("85000.00"));
-		verify(cobros).actualizarEstadoPorSaldo(9001L);
-		verify(cobros, never()).descontarSaldo(9002L, new BigDecimal("15000.00"));
+		verify(cobros).descontarSaldo(ORG_ID, 9001L, new BigDecimal("85000.00"));
+		verify(cobros).actualizarEstadoPorSaldo(ORG_ID, 9001L);
+		verify(cobros, never()).descontarSaldo(ORG_ID, 9002L, new BigDecimal("15000.00"));
 	}
 
 	@Test
@@ -205,7 +205,7 @@ class PresentacionServiceTest {
 		verify(numerador).incrementar(ORG_ID, SEDE_ID, FINANCIADOR_ID);
 
 		// RN-M21-001: presentado no es cobrado. Confirmar no mueve un peso.
-		verify(cobros, never()).descontarSaldo(anyLong(), any());
+		verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
 	}
 
 	// =================================================================================

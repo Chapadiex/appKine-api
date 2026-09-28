@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
+import com.akine.platform.infrastructure.security.RequestPaths;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -281,16 +282,31 @@ public class TenantContextFilter extends OncePerRequestFilter {
 	}
 
 	/**
-	 * Ruta del request sin el context path, para que las excepciones no dependan de donde se
-	 * despliegue la aplicacion.
+	 * Ruta del request <b>en la misma forma en que la ve el enrutamiento</b>.
+	 *
+	 * <p>Hasta AKINE-07.07 esto comparaba {@code getRequestURI()}, o sea la URI cruda: sin
+	 * decodificar y con el contenido de los parametros de path adentro. Era el ultimo
+	 * {@code getRequestURI()} de {@code src/main/java}; los otros tres —{@code ProblemResponses},
+	 * {@code RateLimitFilter} y el filtro de {@code Origin}— ya habian migrado a
+	 * {@link RequestPaths}, y el javadoc de esa clase documenta el bug medido que costo la
+	 * migracion: {@code POST /api/v1/auth/%6cogin} se enruta al login y se saltea cualquier
+	 * filtro que compare la cadena cruda.
+	 *
+	 * <p><b>Aca la direccion de fallo era la segura</b> —una ruta codificada no matchea
+	 * {@code PREFIJOS_EXCEPTUADOS}, asi que el filtro se aplicaba de mas y nunca de menos—, y por
+	 * eso no era una fuga. Se unifica igual por dos razones: la garantia dependia de
+	 * {@code StrictHttpFirewall} y no de este filtro, y cuatro copias del mismo calculo divergen
+	 * en la primera correccion que alguien haga en una sola de ellas — que es exactamente como
+	 * nacio el bug de {@code %6c}.
+	 *
+	 * <p>Arregla ademas un 500 latente: {@code responderProblema} hace
+	 * {@code URI.create(rutaDe(request))}, y una URI cruda con un caracter ilegal lanzaba
+	 * {@code IllegalArgumentException} <b>dentro del filtro</b>, fuera del alcance del advice,
+	 * convirtiendo un 403 o un 404 en un 500. {@code getPathWithinApplication} devuelve la ruta
+	 * ya decodificada y normalizada, y de paso resuelve sola el context path.
 	 */
 	private String rutaDe(HttpServletRequest request) {
-		String uri = request.getRequestURI();
-		String contextPath = request.getContextPath();
-		if (contextPath != null && !contextPath.isEmpty() && uri.startsWith(contextPath)) {
-			uri = uri.substring(contextPath.length());
-		}
-		return uri.isEmpty() ? "/" : uri;
+		return RequestPaths.de(request);
 	}
 
 	private boolean esRutaExceptuada(String ruta) {

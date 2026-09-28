@@ -65,11 +65,13 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 			UPDATE obligacion
 			   SET saldo = saldo - :importe
 			 WHERE id = :obligacionId
+			   AND organization_id = :organizationId
 			   AND saldo >= :importe
 			   AND estado IN ('PENDIENTE', 'PARCIAL')
 			""", nativeQuery = true)
 	@Override
 	int descontarSaldo(
+			@Param("organizationId") long organizationId,
 			@Param("obligacionId") long obligacionId,
 			@Param("importe") BigDecimal importe);
 
@@ -85,10 +87,13 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 			UPDATE obligacion
 			   SET estado = CASE WHEN saldo = 0 THEN 'PAGADA' ELSE 'PARCIAL' END
 			 WHERE id = :obligacionId
+			   AND organization_id = :organizationId
 			   AND estado IN ('PENDIENTE', 'PARCIAL')
 			""", nativeQuery = true)
 	@Override
-	void actualizarEstadoPorSaldo(@Param("obligacionId") long obligacionId);
+	void actualizarEstadoPorSaldo(
+			@Param("organizationId") long organizationId,
+			@Param("obligacionId") long obligacionId);
 
 	// =================================================================================
 	// M23 — agregaciones de reporte (AKINE-07.06)

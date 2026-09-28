@@ -150,10 +150,10 @@ public class CobroService {
 			exigirCobrable(obligacion, command.personaId());
 			moneda = exigirMonedaUnica(moneda, obligacion);
 
-			if (cobros.descontarSaldo(obligacion.getId(), pedido.importe()) == 0) {
+			if (cobros.descontarSaldo(organizationId, obligacion.getId(), pedido.importe()) == 0) {
 				throw new SaldoInsuficienteException(obligacion.getId(), pedido.importe());
 			}
-			cobros.actualizarEstadoPorSaldo(obligacion.getId());
+			cobros.actualizarEstadoPorSaldo(organizationId, obligacion.getId());
 
 			imputaciones.add(new CobroImputacion(organizationId, obligacion.getId(), pedido.importe()));
 		}

@@ -3,11 +3,14 @@ package com.akine.organization.application;
 import com.akine.organization.domain.PermissionCode;
 import com.akine.organization.domain.PermissionScope;
 import com.akine.organization.spi.PermissionDecision;
+import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEventFilter;
 import com.akine.platform.spi.audit.AuditEventSummary;
 import com.akine.platform.spi.audit.AuditQuery;
+import com.akine.platform.spi.audit.VocabularioClinicoDeAuditoria;
+import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -66,15 +69,27 @@ public class AuditQueryService {
 	/** Tamaño maximo de pagina. Default provisorio (D-8 abierta). */
 	public static final int TAMANIO_MAXIMO_DE_PAGINA = 100;
 
+	/**
+	 * Lo que reemplaza a la justificacion de un evento clinico para quien no puede leerla.
+	 *
+	 * <p>Se redacta con un texto y no con {@code null}: la diferencia entre "esta fila no tenia
+	 * motivo" y "no podes ver este motivo" es informacion que el lector necesita para saber que
+	 * le esta faltando permiso y no que la operacion no lo exigia.
+	 */
+	public static final String MOTIVO_REDACTADO = "[redactado: exige auditoria:read-clinica]";
+
 	private final PermissionGuard permissionGuard;
+	private final PermissionEvaluator permissionEvaluator;
 	private final AuditQuery auditQuery;
 	private final SupportAccessReadAuditor supportAccessReadAuditor;
 
 	public AuditQueryService(
 			PermissionGuard permissionGuard,
+			PermissionEvaluator permissionEvaluator,
 			AuditQuery auditQuery,
 			SupportAccessReadAuditor supportAccessReadAuditor) {
 		this.permissionGuard = permissionGuard;
+		this.permissionEvaluator = permissionEvaluator;
 		this.auditQuery = auditQuery;
 		this.supportAccessReadAuditor = supportAccessReadAuditor;
 	}
@@ -95,10 +110,11 @@ public class AuditQueryService {
 			long entityId,
 			Pageable pageable) {
 
-		Long sede = alcanceDeLectura(actor, organizationId);
-		return auditQuery.porEntidad(
-				new AuditEventFilter(organizationId, sede, entityType, entityId, null, null, null),
-				acotar(pageable));
+		Alcance alcance = alcanceDeLectura(actor, organizationId);
+		return redactar(auditQuery.porEntidad(
+				new AuditEventFilter(
+						organizationId, alcance.sede(), entityType, entityId, null, null, null),
+				acotar(pageable)), alcance);
 	}
 
 	/** Actividad de un actor dentro del tenant (RF-M24-003). */
@@ -106,10 +122,11 @@ public class AuditQueryService {
 	public Page<AuditEventSummary> porActor(
 			OperatingActor actor, long organizationId, long actorAccountId, Pageable pageable) {
 
-		Long sede = alcanceDeLectura(actor, organizationId);
-		return auditQuery.porActor(
-				new AuditEventFilter(organizationId, sede, null, null, actorAccountId, null, null),
-				acotar(pageable));
+		Alcance alcance = alcanceDeLectura(actor, organizationId);
+		return redactar(auditQuery.porActor(
+				new AuditEventFilter(
+						organizationId, alcance.sede(), null, null, actorAccountId, null, null),
+				acotar(pageable)), alcance);
 	}
 
 	/**
@@ -126,10 +143,11 @@ public class AuditQueryService {
 			Pageable pageable) {
 
 		validarRango(desde, hasta);
-		Long sede = alcanceDeLectura(actor, organizationId);
-		return auditQuery.porPeriodo(
-				new AuditEventFilter(organizationId, sede, null, null, null, desde, hasta),
-				acotar(pageable));
+		Alcance alcance = alcanceDeLectura(actor, organizationId);
+		return redactar(auditQuery.porPeriodo(
+				new AuditEventFilter(
+						organizationId, alcance.sede(), null, null, null, desde, hasta),
+				acotar(pageable)), alcance);
 	}
 
 	/**
@@ -158,7 +176,7 @@ public class AuditQueryService {
 	 * puertas al mismo dato con el mismo permiso, y ponerlo en cada una es la forma de que la
 	 * cuarta se olvide.
 	 */
-	private Long alcanceDeLectura(OperatingActor actor, long organizationId) {
+	private Alcance alcanceDeLectura(OperatingActor actor, long organizationId) {
 		Instant ahora = Instant.now();
 		PermissionDecision decision = permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(),
@@ -175,7 +193,85 @@ public class AuditQueryService {
 		}
 
 		boolean deSede = PermissionScope.CONSULTORIO.name().equals(decision.grantedByScope());
-		return deSede ? actor.consultorioId() : null;
+		return new Alcance(deSede ? actor.consultorioId() : null,
+				puedeLeerLoClinico(actor, organizationId, ahora));
+	}
+
+	/**
+	 * Que tan lejos llega esta lectura: hasta que sede, y si ve o no el contenido clinico.
+	 *
+	 * @param sede            {@code null} = toda la organizacion
+	 * @param verLoClinico    {@code true} si el actor tiene {@code auditoria:read-clinica}
+	 */
+	private record Alcance(Long sede, boolean verLoClinico) {
+	}
+
+	/**
+	 * Segunda pregunta de permiso, esta vez <b>sin cortar el flujo</b>.
+	 *
+	 * <p>Va por {@link PermissionEvaluator} y no por {@link PermissionGuard} porque no tenerlo no
+	 * es un rechazo: es leer la auditoria con el motivo tapado. Negar la pantalla entera a quien
+	 * tiene {@code auditoria:read} seria quitarle una capacidad que la matriz §6 le da.
+	 *
+	 * <p>Tampoco registra {@code SUPPORT_ACCESS_USED}: si la decision viene por soporte, la
+	 * lectura ya dejo su fila en {@link #alcanceDeLectura}, y duplicarla por la segunda pregunta
+	 * del mismo request ensucia el rastro sin agregar un hecho nuevo.
+	 */
+	private boolean puedeLeerLoClinico(OperatingActor actor, long organizationId, Instant ahora) {
+		return permissionEvaluator.evaluate(new PermissionQuery(
+				actor.accountId(),
+				PermissionCode.AUDITORIA_READ_CLINICA.code(),
+				organizationId,
+				actor.consultorioId(),
+				null,
+				ahora)).granted();
+	}
+
+	/**
+	 * Tapa el motivo y los detalles de los eventos clinicos para quien no puede leerlos.
+	 *
+	 * <h2>Que se tapa y que no</h2>
+	 *
+	 * <p>Se tapan {@code reason} y {@code details}. <b>No</b> se tapa el resto de la fila —quien,
+	 * cuando, que tipo de evento, sobre que entidad—: eso es el rastro de acceso, es lo que la
+	 * matriz §6 le concede a {@code auditoria:read} y es justamente lo que un administrador
+	 * necesita para detectar un acceso indebido. Lo que no necesita es <i>leer</i> el motivo
+	 * clinico que el profesional declaro.
+	 *
+	 * <h2>Por que se redacta al leer y no al escribir</h2>
+	 *
+	 * <p>Porque la justificacion <b>tiene</b> que persistirse: DP-03 la exige y es la prueba de
+	 * que el acceso estuvo motivado. Lo que se controla es quien la ve, no si se guarda.
+	 *
+	 * <p>Se mapea en memoria sobre la pagina ya acotada a 100 filas, no en la consulta: el filtro
+	 * SQL no puede distinguir por permiso sin arrastrar la matriz a {@code platform}, que es
+	 * exactamente el ciclo que esta clase existe para evitar.
+	 */
+	private static Page<AuditEventSummary> redactar(
+			Page<AuditEventSummary> pagina, Alcance alcance) {
+
+		if (alcance.verLoClinico()) {
+			return pagina;
+		}
+		return pagina.map(fila -> {
+			if (!VocabularioClinicoDeAuditoria.esClinico(fila.eventType())) {
+				return fila;
+			}
+			return new AuditEventSummary(
+					fila.id(),
+					fila.organizationId(),
+					fila.consultorioId(),
+					fila.actorAccountId(),
+					fila.eventType(),
+					fila.entityType(),
+					fila.entityId(),
+					fila.previousState(),
+					fila.newState(),
+					Map.of(),
+					fila.reason() == null ? null : MOTIVO_REDACTADO,
+					fila.correlationId(),
+					fila.occurredAt());
+		});
 	}
 
 	private static void validarRango(Instant desde, Instant hasta) {
