@@ -95,12 +95,27 @@ final class AuditEvents {
 	 */
 	static final String PLAN_TRATAMIENTO_ACCESSED = "PLAN_TRATAMIENTO_ACCESSED";
 
+	/** AKINE-08.04. Una participacion grupal quedo vinculada a un Caso Clinico. */
+	static final String DERIVACION_CLINICA_CREATED = "DERIVACION_CLINICA_CREATED";
+
+	/** AKINE-08.04. El vinculo se deshizo, con motivo. La fila queda. */
+	static final String DERIVACION_CLINICA_REVERTED = "DERIVACION_CLINICA_REVERTED";
+
+	/**
+	 * AKINE-08.04. Alguien consulto a que Casos fue derivada una participacion.
+	 *
+	 * <p>Es una LECTURA y se audita igual: 04.01 fijo que toda lectura clinica deja rastro, y esta
+	 * dice quien tiene historia abierta — dato del que despues hay que poder responder.
+	 */
+	static final String DERIVACION_CLINICA_ACCESSED = "DERIVACION_CLINICA_ACCESSED";
+
 	static final String ENTITY_HISTORIA_CLINICA = "HistoriaClinica";
 	static final String ENTITY_PLAN_TRATAMIENTO = "PlanTratamiento";
 	static final String ENTITY_CASO_CLINICO = "CasoClinico";
 	static final String ENTITY_ANTECEDENTE = "AntecedenteClinico";
 	static final String ENTITY_ENTRADA_CLINICA = "EntradaClinica";
 	static final String ENTITY_ADJUNTO_CLINICO = "AdjuntoClinico";
+	static final String ENTITY_DERIVACION_CLINICA = "DerivacionClinica";
 
 	private static final String MDC_TRACE_ID = "traceId";
 

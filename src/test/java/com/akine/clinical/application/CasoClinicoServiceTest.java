@@ -368,8 +368,8 @@ class CasoClinicoServiceTest {
 	}
 
 	private static OfertaSnapshot oferta(boolean vigente) {
-		return new OfertaSnapshot(OFERTA_ID, ORG_ID, SEDE_ID, 1L, "Kinesiologia", 45, 1,
-				true, false, LocalDate.of(2020, 1, 1),
+		return new OfertaSnapshot(OFERTA_ID, ORG_ID, SEDE_ID, 1L, "Kinesiologia", 45, 1, false,
+				true, false, true, true, LocalDate.of(2020, 1, 1),
 				vigente ? null : LocalDate.of(2021, 1, 1), true);
 	}
 }

@@ -1,0 +1,472 @@
+package com.akine.activity.domain;
+
+import com.akine.activity.domain.exception.TransicionDeClaseNoPermitidaException;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+/**
+ * Un evento grupal unico de agenda (M28, RF-M28-001).
+ *
+ * <h2>Una clase NO es N turnos</h2>
+ *
+ * <p>CA-M28-001-06: la clase existe <b>una sola vez</b> cualquiera sea el numero de participantes.
+ * Ninguna fila de {@code turno} la representa, y 08.02 no va a crear un turno por inscripto:
+ * cada participante va a tener su {@code InscripcionClase}, que cuelga de esta fila. Lo unico que
+ * clase y turno comparten es el lock de {@code agenda_sede}.
+ *
+ * <h2>Ocupa recursos exactamente igual que un turno</h2>
+ *
+ * <p>Un profesional y un espacio, durante un intervalo. Por eso la exclusion tiene que ser la
+ * misma: si una clase se serializara contra un punto propio, una reserva de turno y una clase no
+ * se verian y las dos ganarian el mismo box, <b>sin que nada falle</b>. Ver la cabecera de
+ * {@code V58} y {@code ClaseService}.
+ *
+ * <h2>Lo que NO tiene, y es deliberado</h2>
+ *
+ * <p><b>No tiene {@code active}</b>, y eso sigue igual: seria una segunda fuente de verdad sobre lo
+ * mismo que dice {@link #estado}.
+ *
+ * <p><b>Si tiene {@code cupoOcupado}, y 08.01 habia escrito que no lo tendria.</b> La decision se
+ * revirtio en AKINE-08.02 con motivo escrito: sin una columna, "quedan vacantes" no se puede
+ * expresar en la base —no es un valor, es un conteo contra un tope— y un {@code if} del servicio
+ * deja una ventana entre leer y escribir que es exactamente el bug. La columna <b>no es una cache
+ * de las inscripciones</b>: es quien OTORGA el lugar, y la fila de {@code InscripcionClase} es el
+ * recibo. Misma forma que {@code autorizacion.cantidad_consumida} y su ledger (04.05). Ver el punto
+ * 2 de la cabecera de {@code V60} y la pregunta 4 del challenge de 08.02.
+ */
+@Entity
+@Table(name = "clase_programada")
+public class ClaseProgramada {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
+
+	@Column(name = "organization_id", nullable = false, updatable = false)
+	private Long organizationId;
+
+	@Column(name = "consultorio_id", nullable = false, updatable = false)
+	private Long consultorioId;
+
+	@Column(name = "oferta_id", nullable = false, updatable = false)
+	private Long ofertaId;
+
+	@Column(name = "profesional_membership_id")
+	private Long profesionalMembershipId;
+
+	@Column(name = "espacio_id")
+	private Long espacioId;
+
+	@Column(name = "titulo", length = 120)
+	private String titulo;
+
+	@Column(name = "inicio", nullable = false)
+	private Instant inicio;
+
+	@Column(name = "fin", nullable = false)
+	private Instant fin;
+
+	@Column(name = "capacidad", nullable = false)
+	private int capacidad;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "estado", nullable = false, length = 16)
+	private EstadoClase estado;
+
+	@Column(name = "idempotency_key", length = 80, updatable = false)
+	private String idempotencyKey;
+
+	@Column(name = "request_hash", length = 64, updatable = false)
+	private String requestHash;
+
+	@Column(name = "programado_por_cuenta_id", nullable = false, updatable = false)
+	private Long programadoPorCuentaId;
+
+	@Column(name = "programado_en", nullable = false, updatable = false)
+	private Instant programadoEn;
+
+	@Column(name = "reprogramado_en")
+	private Instant reprogramadoEn;
+
+	@Column(name = "motivo_cancelacion", length = 300)
+	private String motivoCancelacion;
+
+	@Column(name = "cancelado_en")
+	private Instant canceladoEn;
+
+	@Column(name = "cancelado_por_cuenta_id")
+	private Long canceladoPorCuentaId;
+
+	/** Instante en que la clase abrio y se pudo empezar a tomar lista (AKINE-08.03, RF-M13-007). */
+	@Column(name = "iniciada_en")
+	private Instant iniciadaEn;
+
+	@Column(name = "iniciada_por_cuenta_id")
+	private Long iniciadaPorCuentaId;
+
+	/** Instante del cierre operativo. <b>No devenga nada</b>: ver {@link EstadoClase#REALIZADA}. */
+	@Column(name = "cerrada_en")
+	private Instant cerradaEn;
+
+	@Column(name = "cerrada_por_cuenta_id")
+	private Long cerradaPorCuentaId;
+
+	/**
+	 * Lugares OTORGADOS (AKINE-08.02). <b>Solo lectura desde JPA, y eso es la mitad del diseno.</b>
+	 *
+	 * <p>{@code insertable = false, updatable = false} no es una optimizacion: es lo que garantiza
+	 * que el unico camino para mover este numero sea el {@code UPDATE} condicional
+	 * {@code cupo_ocupado < LEAST(capacidad, :efectiva)}. Si JPA pudiera escribirlo, cualquier
+	 * {@code save()} de esta entidad lo pisaria con el valor que tenia en memoria —que puede ser de
+	 * hace medio segundo— y la sobreventa volveria por la puerta de atras.
+	 *
+	 * <p>Y por eso tampoco hace avanzar el {@code @Version}: si cada inscripcion invalidara la
+	 * version de la clase, el formulario de reprogramacion que un administrativo tiene abierto
+	 * comeria un 409 cada vez que alguien se anota.
+	 */
+	@Column(name = "cupo_ocupado", nullable = false, insertable = false, updatable = false)
+	private int cupoOcupado;
+
+	/** Correlativo de la lista de espera (AKINE-08.02). Solo lectura por lo mismo de arriba. */
+	@Column(name = "ultima_posicion_espera", nullable = false, insertable = false, updatable = false)
+	private int ultimaPosicionEspera;
+
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
+
+	@Version
+	@Column(name = "version", nullable = false)
+	private long version;
+
+	protected ClaseProgramada() {
+		// Requerido por JPA.
+	}
+
+	public ClaseProgramada(
+			long organizationId,
+			long consultorioId,
+			long ofertaId,
+			Long profesionalMembershipId,
+			Long espacioId,
+			String titulo,
+			Instant inicio,
+			Instant fin,
+			int capacidad,
+			long programadoPorCuentaId,
+			Instant programadoEn,
+			String idempotencyKey,
+			String requestHash) {
+
+		if (!fin.isAfter(inicio)) {
+			throw new IllegalArgumentException(
+					"Una clase termina despues de empezar: " + inicio + " -> " + fin);
+		}
+		// Los CHECK de V58 dicen lo mismo del lado de la base. Se valida en las dos puntas a
+		// proposito: la base impide la fila corrupta aunque alguien inserte por fuera de JPA, y
+		// esta validacion da un mensaje que nombra el problema en vez de un error de constraint.
+		if (capacidad <= 1) {
+			throw new IllegalArgumentException(
+					"Una clase de capacidad " + capacidad + " es un turno individual mal rotulado");
+		}
+		if ((idempotencyKey == null) != (requestHash == null)) {
+			throw new IllegalArgumentException(
+					"La clave de idempotencia y el hash del pedido viajan juntos o no viajan");
+		}
+
+		this.organizationId = organizationId;
+		this.consultorioId = consultorioId;
+		this.ofertaId = ofertaId;
+		this.profesionalMembershipId = profesionalMembershipId;
+		this.espacioId = espacioId;
+		this.titulo = titulo == null || titulo.isBlank() ? null : titulo.strip();
+		this.inicio = inicio;
+		this.fin = fin;
+		this.capacidad = capacidad;
+		this.estado = EstadoClase.PROGRAMADA;
+		this.programadoPorCuentaId = programadoPorCuentaId;
+		this.programadoEn = programadoEn;
+		this.idempotencyKey = idempotencyKey;
+		this.requestHash = requestHash;
+	}
+
+	/**
+	 * Mueve la clase a otro intervalo, profesional, espacio o capacidad. <b>Es la misma clase.</b>
+	 *
+	 * <p>RF-M28-005 y CA-M28-005-06: conserva id, historial y —cuando 08.02 las cree— sus
+	 * inscripciones, que cuelgan de este id. Un reemplazo por par cancelada/nueva cortaria esa
+	 * cadena y perderia a todos los participantes, que es exactamente lo que el criterio de
+	 * aceptacion prohibe.
+	 *
+	 * <p><b>No vuelve a ningun estado anterior</b>, a diferencia de {@code Turno#reprogramar}, que
+	 * se des-confirma: una clase no tiene confirmacion propia. Lo que si cambia de estado son las
+	 * inscripciones afectadas, y eso es de 08.02.
+	 *
+	 * <p>La trazabilidad la da {@link ClaseEvento}, que guarda el intervalo y la capacidad
+	 * anteriores.
+	 *
+	 * @throws TransicionDeClaseNoPermitidaException si la clase ya cerro su ciclo o ya empezo
+	 */
+	public void reprogramar(
+			Instant nuevoInicio,
+			Instant nuevoFin,
+			Long nuevoProfesionalId,
+			Long nuevoEspacioId,
+			int nuevaCapacidad,
+			Instant occurredAt) {
+
+		exigirTransitable();
+		if (!inicio.isAfter(occurredAt)) {
+			throw new TransicionDeClaseNoPermitidaException(id, "ya empezo y no se puede mover");
+		}
+		if (!nuevoInicio.isAfter(occurredAt)) {
+			throw new TransicionDeClaseNoPermitidaException(
+					id, "el horario nuevo esta en el pasado");
+		}
+		if (!nuevoFin.isAfter(nuevoInicio)) {
+			throw new IllegalArgumentException(
+					"Una clase termina despues de empezar: " + nuevoInicio + " -> " + nuevoFin);
+		}
+		if (nuevaCapacidad <= 1) {
+			throw new IllegalArgumentException(
+					"Una clase de capacidad " + nuevaCapacidad + " es un turno individual mal rotulado");
+		}
+		this.inicio = nuevoInicio;
+		this.fin = nuevoFin;
+		this.profesionalMembershipId = nuevoProfesionalId;
+		this.espacioId = nuevoEspacioId;
+		this.capacidad = nuevaCapacidad;
+		this.reprogramadoEn = occurredAt;
+	}
+
+	/**
+	 * Cancela la clase con motivo declarado. <b>Libera el recurso y conserva la fila.</b>
+	 *
+	 * <p>RN-M28-009 y la regla maestra 10: cancelar no elimina fisicamente, exige motivo y queda
+	 * auditado. La baja logica es lo que libera el horario —las consultas de solapamiento filtran
+	 * por {@code deletedAt IS NULL}— asi que el box vuelve a estar disponible para un turno sin
+	 * borrar nada.
+	 *
+	 * <p><b>Es idempotente</b>, a diferencia de {@code Turno#cancelar}. CA-M28-006-06 lo exige
+	 * literalmente —"una segunda ejecucion no devuelve creditos ni dinero dos veces"— y cuando 08.02
+	 * y 08.07 cuelguen reversas de credito de esta operacion, la idempotencia deja de ser una
+	 * comodidad de pantalla y pasa a ser lo que impide devolver plata dos veces. Se decide aca y no
+	 * alli: la regla tiene que existir antes que el dinero que protege.
+	 *
+	 * @return {@code true} si esta llamada fue la que cancelo; {@code false} si ya estaba cancelada
+	 */
+	public boolean cancelar(String motivo, long cuentaId, Instant occurredAt) {
+		if (estado == EstadoClase.CANCELADA) {
+			return false;
+		}
+		// AKINE-08.03: una clase cerrada no se cancela. Lo que paso, paso — y cancelarla pondria
+		// deleted_at sobre un hecho consumado, borrandola de la grilla historica.
+		if (estado.estaCerrada()) {
+			throw new TransicionDeClaseNoPermitidaException(
+					id, "ya esta realizada y no se cancela: lo que ocurrio no se deshace");
+		}
+		if (motivo == null || motivo.isBlank()) {
+			throw new IllegalArgumentException("El motivo de cancelacion es obligatorio (RN-M28-009)");
+		}
+		this.estado = EstadoClase.CANCELADA;
+		this.motivoCancelacion = motivo.strip();
+		this.canceladoEn = occurredAt;
+		this.canceladoPorCuentaId = cuentaId;
+		this.deletedAt = occurredAt;
+		return true;
+	}
+
+	/**
+	 * {@code PROGRAMADA} -&gt; {@code EN_CURSO} (AKINE-08.03, RF-M13-007).
+	 *
+	 * <p><b>No exige que el reloj haya llegado al horario</b>, y es deliberado: una clase que
+	 * arranca cinco minutos antes es normal y el sistema no tiene por que discutirlo.
+	 *
+	 * <p><b>Idempotente</b>: iniciar una que ya esta en curso devuelve {@code false} y no cambia
+	 * nada, ni el instante ni el actor. El primero que la abrio es el que queda registrado.
+	 *
+	 * @return {@code true} si esta llamada fue la que la inicio
+	 * @throws TransicionDeClaseNoPermitidaException si esta cancelada o ya se realizo
+	 */
+	public boolean iniciar(long cuentaId, Instant occurredAt) {
+		if (estado == EstadoClase.EN_CURSO) {
+			return false;
+		}
+		if (estado != EstadoClase.PROGRAMADA) {
+			throw new TransicionDeClaseNoPermitidaException(
+					id, "esta " + estado.name().toLowerCase() + " y solo se inicia una programada");
+		}
+		this.estado = EstadoClase.EN_CURSO;
+		this.iniciadaEn = occurredAt;
+		this.iniciadaPorCuentaId = cuentaId;
+		return true;
+	}
+
+	/**
+	 * {@code PROGRAMADA} o {@code EN_CURSO} -&gt; {@code REALIZADA}: el cierre operativo.
+	 *
+	 * <p><b>Cerrar no cobra y no devenga nada</b> (misma regla que DP-06 para la Sesion). Quien
+	 * resuelve a los participantes sin marcar es el servicio, y lo hace <b>en esta misma
+	 * transaccion</b>.
+	 *
+	 * <p><b>Idempotente, y sin una bandera</b>: cerrar una realizada devuelve {@code false}. La
+	 * idempotencia del cierre entero no descansa en este {@code boolean} sino en el unique
+	 * {@code (organization_id, clase_id, persona_id)} de {@code asistencia_actividad}, que hace
+	 * imposible una segunda fila por participante. Un flag {@code ya_cerrada} habria sido una
+	 * segunda fuente de verdad sobre lo mismo que dice {@code estado}.
+	 *
+	 * <p>Se admite cerrar una {@code PROGRAMADA} que nunca se inicio: una clase que ocurrio sin que
+	 * nadie apretara "iniciar" igual tiene que poder cerrarse, y obligar a iniciarla primero solo
+	 * agregaria un paso ceremonial.
+	 *
+	 * @return {@code true} si esta llamada fue la que cerro
+	 * @throws TransicionDeClaseNoPermitidaException si esta cancelada
+	 */
+	public boolean cerrar(long cuentaId, Instant occurredAt) {
+		if (estado == EstadoClase.REALIZADA) {
+			return false;
+		}
+		if (estado == EstadoClase.CANCELADA) {
+			throw new TransicionDeClaseNoPermitidaException(
+					id, "esta cancelada y no tiene operacion que cerrar");
+		}
+		this.estado = EstadoClase.REALIZADA;
+		this.cerradaEn = occurredAt;
+		this.cerradaPorCuentaId = cuentaId;
+		return true;
+	}
+
+	private void exigirTransitable() {
+		if (!estado.admiteTransicion()) {
+			throw new TransicionDeClaseNoPermitidaException(
+					id, "ya esta " + estado.name().toLowerCase());
+		}
+	}
+
+	/** Una clase viva ocupa recursos. Una cancelada no: su baja logica es lo que los libera. */
+	public boolean estaViva() {
+		return deletedAt == null;
+	}
+
+	/** {@code true} si esta clase se cruza con {@code [desde, hasta)}. Extremos superiores exclusivos. */
+	public boolean seCruzaCon(Instant desde, Instant hasta) {
+		return inicio.isBefore(hasta) && desde.isBefore(fin);
+	}
+
+	public Long getId() {
+		return id;
+	}
+
+	public Long getOrganizationId() {
+		return organizationId;
+	}
+
+	public Long getConsultorioId() {
+		return consultorioId;
+	}
+
+	public Long getOfertaId() {
+		return ofertaId;
+	}
+
+	public Long getProfesionalMembershipId() {
+		return profesionalMembershipId;
+	}
+
+	public Long getEspacioId() {
+		return espacioId;
+	}
+
+	public String getTitulo() {
+		return titulo;
+	}
+
+	public Instant getInicio() {
+		return inicio;
+	}
+
+	public Instant getFin() {
+		return fin;
+	}
+
+	public int getCapacidad() {
+		return capacidad;
+	}
+
+	public EstadoClase getEstado() {
+		return estado;
+	}
+
+	public String getIdempotencyKey() {
+		return idempotencyKey;
+	}
+
+	public String getRequestHash() {
+		return requestHash;
+	}
+
+	public Long getProgramadoPorCuentaId() {
+		return programadoPorCuentaId;
+	}
+
+	public Instant getProgramadoEn() {
+		return programadoEn;
+	}
+
+	public Instant getReprogramadoEn() {
+		return reprogramadoEn;
+	}
+
+	public String getMotivoCancelacion() {
+		return motivoCancelacion;
+	}
+
+	public Instant getCanceladoEn() {
+		return canceladoEn;
+	}
+
+	public Long getCanceladoPorCuentaId() {
+		return canceladoPorCuentaId;
+	}
+
+	public Instant getDeletedAt() {
+		return deletedAt;
+	}
+
+	/** Lugares otorgados. Ver el campo: esta entidad lo LEE, nunca lo escribe. */
+	public Instant getIniciadaEn() {
+		return iniciadaEn;
+	}
+
+	public Long getIniciadaPorCuentaId() {
+		return iniciadaPorCuentaId;
+	}
+
+	public Instant getCerradaEn() {
+		return cerradaEn;
+	}
+
+	public Long getCerradaPorCuentaId() {
+		return cerradaPorCuentaId;
+	}
+
+	public int getCupoOcupado() {
+		return cupoOcupado;
+	}
+
+	public int getUltimaPosicionEspera() {
+		return ultimaPosicionEspera;
+	}
+
+	public long getVersion() {
+		return version;
+	}
+}

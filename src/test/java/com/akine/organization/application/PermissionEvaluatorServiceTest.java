@@ -524,7 +524,19 @@ class PermissionEvaluatorServiceTest {
 							// ORGANIZACION. Es un permiso DISTINTO de `cobro:register` y no un
 							// sinonimo: cobrar es un acto comercial, arquear y cerrar una caja es
 							// responsabilidad sobre dinero fisico. Por eso aparecen los dos.
-							"caja:operate");
+							"caja:operate",
+							// `clase:read` y `clase:manage` se suman en AKINE-08.01, la etapa
+							// que crea la clase. Mismo reparto que los turnos: M28 §2 nombra al
+							// administrador entre los actores de una clase.
+							"clase:read", "clase:manage",
+							// `inscripcion:read` e `inscripcion:manage` se suman en AKINE-08.02.
+							// Mismo alcance que la clase: quien puede programarla puede anotar
+							// gente en ella.
+							"inscripcion:read", "inscripcion:manage",
+							// `asistencia:manage` se suma en AKINE-08.03, con codigo propio:
+							// anotar a alguien y decir que vino son decisiones distintas, y un
+							// instructor podria marcarla sin poder inscribir ni dar de baja.
+							"asistencia:manage");
 		}
 
 		@Test
@@ -594,7 +606,15 @@ class PermissionEvaluatorServiceTest {
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 					.containsExactlyInAnyOrder(
 							"colaborador:read", "espacio:read", "turno:read", "turno:manage", "sesion:register",
-							"hc:read", "hc:write");
+							"hc:read", "hc:write",
+							// `clase:read` y `clase:manage` entran en AKINE-08.01: M28 §2 lo nombra
+							// como "Profesional / Instructor", y es quien dicta la clase.
+							"clase:read", "clase:manage",
+							// AKINE-08.02: el instructor necesita saber a quien tiene enfrente y
+							// dar de baja a quien avisa que no viene.
+							"inscripcion:read", "inscripcion:manage",
+							// AKINE-08.03: es quien toma lista.
+							"asistencia:manage");
 		}
 	}
 

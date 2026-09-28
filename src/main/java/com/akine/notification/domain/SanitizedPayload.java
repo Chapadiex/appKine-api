@@ -39,7 +39,12 @@ public final class SanitizedPayload {
 	public static final Set<String> CLAVES_PERMITIDAS = Set.of(
 			"nombre",
 			"organizacionNombre",
-			"invitadoPor");
+			"invitadoPor",
+			// AKINE-08.02: lo minimo para que un aviso de clase diga de que clase habla. Ningun
+			// dato de otro participante, ningun dato clinico y ningun identificador interno.
+			"claseTitulo",
+			"claseInicio",
+			"consultorioNombre");
 
 	/** Un nombre propio no llega ni cerca de este limite; un secreto pegado, si. */
 	private static final int LARGO_MAXIMO_VALOR = 200;

@@ -137,7 +137,81 @@ public enum PermissionCode {
 	CAJA_OPERATE("caja:operate"),
 
 	/** Ver Reportes. F8. Sin asignacion base todavia: deniega. */
-	REPORTE_READ("reporte:read");
+	REPORTE_READ("reporte:read"),
+
+	/**
+	 * Ver clases programadas y su historial. F9, M28.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-08.01</b>, la etapa que crea la clase. Mismo reparto
+	 * que {@link #TURNO_READ}, incluido {@code PLATFORM_ADMIN} con alcance SOPORTE: soporte mira.
+	 *
+	 * <p>Es un codigo propio y no se reusa {@code turno:read}, aunque hoy los reparta igual: una
+	 * clase y un turno son entidades distintas con reglas distintas, y 08.02 va a colgar de esta
+	 * lectura la lista de participantes — que es exactamente el dato que alguien podria querer
+	 * cerrar sin cerrar la agenda de turnos. Fusionar los dos codigos hoy hace imposible separarlos
+	 * despues sin un cambio incompatible.
+	 */
+	CLASE_READ("clase:read"),
+
+	/**
+	 * Programar, reprogramar y cancelar clases. F9, M28.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-08.01.</b> Mismo reparto que {@link #TURNO_MANAGE}:
+	 * {@code ORG_ADMIN} con alcance de organizacion, y con alcance de sede el
+	 * {@code CONSULTORIO_ADMIN}, el {@code ADMINISTRATIVO} —armar la grilla es su trabajo— y el
+	 * {@code PROFESIONAL}, que programa las clases que el mismo dicta. Los actores de M28 §2 son
+	 * exactamente esos.
+	 *
+	 * <p><b>{@code PLATFORM_ADMIN} NO lo recibe</b>, igual que con {@code turno:manage}: programar
+	 * una clase compromete un recurso del centro y la matriz §32 le dice "No" a todas las filas
+	 * operativas. Soporte mira, no opera.
+	 */
+	CLASE_MANAGE("clase:manage"),
+
+	/**
+	 * Ver la lista de participantes de una clase. F9, M28.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-08.02</b>, y es un codigo propio y no {@code clase:read}
+	 * justamente por lo que aquel javadoc anticipaba: 08.01 decidio que ninguna respuesta de clase
+	 * lleva participantes, y la lista vive en su propio endpoint. Si el mismo permiso abriera la
+	 * grilla y la lista, esa decision seria decorativa — quien puede ver que hay una clase de
+	 * Pilates a las 9 no necesita saber quien esta anotado.
+	 *
+	 * <p>{@code PLATFORM_ADMIN} lo recibe con alcance SOPORTE, igual que {@code clase:read}: es el
+	 * dato de persona que §7 de la matriz protege.
+	 */
+	INSCRIPCION_READ("inscripcion:read"),
+
+	/**
+	 * Inscribir, confirmar y cancelar inscripciones. F9, M28.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-08.02.</b> Mismo reparto que {@link #CLASE_MANAGE}: los
+	 * actores que M28 §2 nombra son el administrativo, el profesional/instructor y el administrador
+	 * de consultorio. {@code PLATFORM_ADMIN} no lo recibe: anotar a alguien en una clase es
+	 * operacion del centro y la matriz §32 le dice "No" a todas las filas operativas.
+	 *
+	 * <p><b>El autoservicio del paciente queda afuera, y no por olvido.</b> M28 §2 lo nombra como
+	 * actor "cuando exista autoservicio", y no existe: no hay vinculo entre {@code cuenta} y
+	 * {@code persona} en ningun lado del sistema —es el mismo hueco por el que el alcance
+	 * {@code OWN} no esta implementado—. Sin ese vinculo, "inscribirme a mi mismo" no se puede
+	 * autorizar sin abrir "inscribir a cualquiera".
+	 */
+	INSCRIPCION_MANAGE("inscripcion:manage"),
+
+	/**
+	 * Registrar, corregir y cerrar asistencia de una clase. F9, M28.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-08.03</b>, con el mismo reparto que
+	 * {@link #INSCRIPCION_MANAGE}. Es un codigo propio y no el de inscripciones porque anotar a
+	 * alguien y decir que vino son decisiones distintas: en un centro con instructores, el que da
+	 * la clase marca asistencia y no deberia poder inscribir ni cancelar inscripciones ajenas. Un
+	 * permiso que no se puede separar convierte esa politica en imposible, y separarlo despues es
+	 * un cambio incompatible.
+	 *
+	 * <p>{@code PLATFORM_ADMIN} no lo recibe: tomar lista es operacion del centro, y la matriz §32
+	 * le dice "No" a todas las filas operativas.
+	 */
+	ASISTENCIA_MANAGE("asistencia:manage");
 
 	private final String code;
 

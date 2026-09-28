@@ -101,7 +101,7 @@ class AgendaServiceTest {
 			LocalDate vigenciaDesde, LocalDate vigenciaHasta, boolean active) {
 
 		return new OfertaSnapshot(OFERTA_ID, ORG_ID, CONSULTORIO_ID, 3L, "Kinesiologia",
-				duracionMinutos, 1, requiereProfesional, requiereEspacio,
+				duracionMinutos, 1, false, requiereProfesional, requiereEspacio, false, false,
 				vigenciaDesde, vigenciaHasta, active);
 	}
 

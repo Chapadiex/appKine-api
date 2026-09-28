@@ -1,6 +1,7 @@
 package com.akine.offering.infrastructure;
 
 import com.akine.offering.domain.Habilitacion;
+import com.akine.offering.domain.Modalidad;
 import com.akine.offering.domain.OfertaServicioConsultorio;
 import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
@@ -91,8 +92,11 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 				oferta.getNombreComercial(),
 				oferta.getDuracionMinutos(),
 				oferta.getCapacidad(),
+				oferta.getModalidad() == Modalidad.GRUPAL,
 				oferta.isRequiereProfesional(),
 				oferta.isRequiereEspacio(),
+				oferta.isRequiereCasoClinico(),
+				oferta.isGeneraRegistroClinico(),
 				oferta.getVigenciaDesde(),
 				oferta.getVigenciaHasta(),
 				oferta.isActive());
