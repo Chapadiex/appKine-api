@@ -1,9 +1,11 @@
 package com.akine.encounter.api;
 
 import com.akine.encounter.api.dto.CerrarSesionRequest;
+import com.akine.encounter.api.dto.EnmendarSesionRequest;
 import com.akine.encounter.api.dto.GuardarBorradorRequest;
 import com.akine.encounter.api.dto.GuardarEvaluacionRequest;
 import com.akine.encounter.api.dto.SesionResponse;
+import com.akine.encounter.api.dto.SesionVersionResponse;
 import com.akine.encounter.application.SesionService;
 import com.akine.encounter.application.SesionView;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.List;
 
 /**
  * Inicio de la atencion y autosave del borrador (M14).
@@ -225,9 +228,9 @@ public class SesionController {
 					ninguna obligacion economica. La obligacion se deriva despues, en \
 					AKINE-07.01, leyendo las sesiones cerradas.
 
-					**Una sesion cerrada no se edita.** Corregirla es una enmienda con su actor y \
-					su motivo, y eso es AKINE-06.06, fuera de alcance. Hasta entonces esto es \
-					fail-closed: es preferible no poder corregir a corregir sin dejar rastro.""")
+					**Una sesion cerrada no se edita: se enmienda.** Corregirla exige motivo y \
+					deja una version en el historial (`POST .../enmiendas`). El cierre ademas \
+					**inaugura ese historial**: la version 1 es lo que se acaba de asentar.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Atencion cerrada, o ya lo estaba"),
 			@ApiResponse(
@@ -250,5 +253,107 @@ public class SesionController {
 		return ResponseEntity.ok(SesionResponse.de(sesionService.cerrar(
 				apiActor.current(), consultorioId, sesionId,
 				request.aDominio(), request.version())));
+	}
+
+	@PostMapping("/{sesionId}/enmiendas")
+	@Operation(
+			summary = "Enmendar una sesion cerrada",
+			description = """
+					Corrige el contenido clinico de una atencion **ya cerrada**, escribiendo una \
+					**version nueva** que deja la anterior intacta y consultable (RF-M14-010).
+
+					**Enmendar no es editar.** RN-M14-006 no prohibe corregir una sesion cerrada: \
+					prohibe corregirla *silenciosamente*. Por eso el motivo es obligatorio, la \
+					version queda numerada con su autor y su instante, y la operacion deja \
+					evento de auditoria.
+
+					**LO QUE ESTA OPERACION NO PUEDE CORREGIR, y conviene saberlo antes de \
+					intentarlo:** la **asistencia**, los dos correlativos (`numeroSesion` y \
+					`numeroEnCaso`), la oferta, el turno, el profesional y las fechas de la \
+					atencion. No estan en el cuerpo del pedido, asi que no hay forma de \
+					mandarlos.
+
+					El caso que esto deja afuera es real y esta asumido: una sesion cerrada con \
+					`AUSENTE` cuando el paciente vino **no se arregla enmendando**. Cambiar la \
+					asistencia es un acto economico —obliga a devengar o anular una obligacion \
+					(M18) y a consumir o revertir una unidad de autorizacion (M17)— y esas \
+					compensaciones son explicitas y de otros modulos. Lo que si corresponde es \
+					enmendar la nota de cierre dejando escrito lo que paso, con ese motivo.
+
+					**La enmienda no vuelve a disparar nada economico.** No se devenga deuda ni \
+					se consume autorizacion: ninguno de los campos enmendables los afecta.
+
+					**Es un reemplazo completo, no un parche.** Un campo ausente significa "queda \
+					vacio", no "dejalo como estaba": la pantalla manda el formulario entero.
+
+					**Solo el profesional de la sesion puede enmendar.** No es cuestion de \
+					permiso —dos profesionales de la misma sede tienen el mismo \
+					`sesion:register`— sino de propiedad de esa atencion, y por eso el rechazo \
+					es 409 y no 403.
+
+					**No hay ventana temporal**: se puede enmendar una sesion de hace dos años. \
+					El error clinico que mas necesita correccion es el que se descubre tarde, y \
+					la enmienda no puede ocultar nada — el original queda, con su fecha y su \
+					autor.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Enmendada. Devuelve la sesion vigente"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Falta el motivo, el dolor esta fuera de la escala, la "
+							+ "lateralidad no tiene zona, o se vacio la nota de cierre de una "
+							+ "sesion con el paciente presente",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sesion o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "La sesion todavia esta abierta (`sesion-no-cerrada`: se guarda, "
+							+ "no se enmienda), la atiende otro profesional, o la version quedo vieja",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<SesionResponse> enmendar(
+			@PathVariable long consultorioId,
+			@PathVariable long sesionId,
+			@RequestBody @Valid EnmendarSesionRequest request) {
+
+		return ResponseEntity.ok(SesionResponse.de(sesionService.enmendar(
+				apiActor.current(), consultorioId, sesionId,
+				request.aDominio(), request.motivo(), request.version())));
+	}
+
+	@GetMapping("/{sesionId}/versiones")
+	@Operation(
+			summary = "Historial de versiones de una sesion",
+			description = """
+					Todas las versiones del contenido, **de la 1 a la ultima** (RF-M24-005). La \
+					version 1 es lo que se asento al cerrar; cada enmienda agrego la siguiente \
+					con su motivo, su autor y su instante.
+
+					Cada version trae el contenido **completo**, no un diff: lo que hay que poder \
+					leer es que decia el registro en ese momento. La comparacion la arma la \
+					pantalla, que recibe las dos versiones enteras.
+
+					Lo que las versiones **no** repiten —asistencia, correlativos, fechas de la \
+					atencion— es lo que no es enmendable: vale lo mismo en todas y se lee de la \
+					sesion.
+
+					**Una sesion abierta devuelve una lista vacia**, no un error: todavia no \
+					tiene contenido versionado, y para la pantalla eso no es una condicion \
+					excepcional sino el estado normal de la atencion que esta ocurriendo.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Versiones, de la 1 a la ultima"),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sesion o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<List<SesionVersionResponse>> versiones(
+			@PathVariable long consultorioId,
+			@PathVariable long sesionId) {
+
+		return ResponseEntity.ok(
+				sesionService.versiones(apiActor.current(), consultorioId, sesionId).stream()
+						.map(SesionVersionResponse::de)
+						.toList());
 	}
 }

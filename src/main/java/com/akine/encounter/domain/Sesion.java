@@ -1,6 +1,7 @@
 package com.akine.encounter.domain;
 
 import com.akine.encounter.domain.exception.SesionAjenaException;
+import com.akine.encounter.domain.exception.SesionNoCerradaException;
 import com.akine.encounter.domain.exception.SesionCerradaException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -172,6 +173,28 @@ public class Sesion {
 	private Instant deletedAt;
 
 	/**
+	 * Numero de la ultima version de contenido escrita (06.06). <b>Es el numerador de enmiendas.</b>
+	 *
+	 * <p>Vale {@code 0} mientras la sesion esta abierta —no hay contenido versionado hasta el
+	 * cierre— y {@code 1} desde que se cierra. Cada enmienda lo sube en uno.
+	 *
+	 * <p><b>No hay ningun {@code MAX(numero_version) + 1}</b>: dos enmiendas concurrentes
+	 * calculando ese MAX devuelven el mismo numero y dejan dos "version 3" sin criterio para
+	 * desempatarlas. El numero sale de este contador, que vive en la fila que la enmienda va a
+	 * ensuciar de todos modos.
+	 *
+	 * <p>Y por eso la enmienda <b>no</b> usa {@code OPTIMISTIC_FORCE_INCREMENT}: mover este
+	 * contador ensucia la fila, asi que el flush ya emite un {@code UPDATE ... WHERE version = N}
+	 * versionado y esa es toda la garantia. Forzar el incremento encima dejaria la base en
+	 * {@code leida + 2} devolviendo {@code leida + 1}, y el cliente comeria un 409 del que no puede
+	 * salir. La regla que queda: <b>force-increment solo donde la escritura NO toca ninguna columna
+	 * del padre</b> — 04.02 la pago y {@code offering.OfertaHabilitacionService} es hoy su unica
+	 * ocurrencia legitima.
+	 */
+	@Column(name = "ultimo_numero_version", nullable = false)
+	private int ultimoNumeroVersion;
+
+	/**
 	 * El control optimista <b>es</b> el autosave, no un adorno.
 	 *
 	 * <p>Dos pestanas del mismo profesional sobre la misma sesion son el caso normal. Sin esto la
@@ -314,6 +337,78 @@ public class Sesion {
 		this.estado = EstadoSesion.CERRADA;
 		this.cerradaEn = occurredAt;
 		this.cerradaPorCuentaId = cerradaPorCuentaId;
+
+		// 06.06: el cierre inaugura el historial de contenido. La version 1 es lo que se acaba de
+		// asentar, y el llamador la persiste en la MISMA transaccion. Escribirla aca y no
+		// perezosamente en la primera enmienda es lo que hace que toda sesion cerrada tenga
+		// historial completo y que consultarlo sea una sola consulta — ver SesionVersion.
+		this.ultimoNumeroVersion = 1;
+	}
+
+	/**
+	 * Aplica una enmienda al contenido clinico y reserva el numero de la version nueva
+	 * (RF-M14-010).
+	 *
+	 * <h2>Enmendar no es un UPDATE, aunque esta fila se actualice</h2>
+	 *
+	 * <p>Lo que hace este metodo es mover el contenido <b>vigente</b>. El original no se pierde:
+	 * vive en la {@code SesionVersion} numero 1, que el cierre ya escribio, y la version que este
+	 * metodo numera se escribe al lado. RN-M14-006 no prohibe corregir una sesion cerrada: prohibe
+	 * corregirla <b>silenciosamente</b>.
+	 *
+	 * <h2>Las dos validaciones se REUSAN, y no es pereza</h2>
+	 *
+	 * <p>La coherencia de la evaluacion y los minimos del cierre salen de {@link EvaluacionBase} y
+	 * {@link CierreDeSesion}, los mismos tipos que valida el camino normal. Una enmienda no puede
+	 * guardar un EVA de 12 que la evaluacion original habria rechazado, ni <b>vaciar la nota de
+	 * cierre de una sesion con el paciente presente</b> —eso dejaria una prestacion que ocurrio sin
+	 * nada que diga que se hizo—. Escribir validaciones propias aca garantizaria que en algun
+	 * momento las dos listas divergen.
+	 *
+	 * <p>La asistencia y el modo los pone <b>esta sesion</b>, no el pedido: no son enmendables.
+	 * Ver {@link ContenidoDeSesion}.
+	 *
+	 * <h2>Lo que deliberadamente NO cambia</h2>
+	 *
+	 * <p>Ni {@link #numeroSesion} ni {@link #numeroEnCaso} —renumerar una sesion cerrada es
+	 * reescribir historia clinica, y 04.03 lo rechazo explicitamente—, ni {@link #cerradaEn}, ni
+	 * {@link #cerradaPorCuentaId}, ni {@link #evaluadaEn}. Los tres ultimos dicen <b>cuando paso</b>
+	 * y quien lo asento; el instante y el autor de la enmienda son de la version, no de la sesion.
+	 *
+	 * @return el numero de la version que esta enmienda produce
+	 * @throws SesionNoCerradaException si la sesion sigue abierta: eso se guarda, no se enmienda
+	 */
+	public int enmendar(ContenidoDeSesion contenido, Asistencia asistencia) {
+		if (!estaCerrada()) {
+			throw new SesionNoCerradaException(id);
+		}
+		EvaluacionBase evaluacion = contenido.evaluacionCon(modo);
+		evaluacion.exigirCoherente();
+
+		CierreDeSesion cierre = contenido.cierreCon(asistencia);
+		cierre.exigirMinimos();
+
+		this.motivoClinico = evaluacion.motivoClinico();
+		this.dolorEva = evaluacion.dolorEva();
+		this.dolorZona = evaluacion.dolorZona();
+		this.dolorLateralidad = evaluacion.dolorLateralidad();
+		this.evolucion = evaluacion.evolucion();
+		this.objetivoSesion = evaluacion.objetivoSesion();
+		this.limitacionFuncional = evaluacion.limitacionFuncional();
+
+		this.notaDeCierre = cierre.notaDeCierre();
+		this.respuestaTratamiento = cierre.respuestaTratamiento();
+		this.tolerancia = cierre.tolerancia();
+		this.indicaciones = cierre.indicaciones();
+		this.proximaConducta = cierre.proximaConducta();
+
+		this.ultimoNumeroVersion += 1;
+		return this.ultimoNumeroVersion;
+	}
+
+	/** {@code true} si la sesion fue enmendada al menos una vez. */
+	public boolean fueEnmendada() {
+		return ultimoNumeroVersion > 1;
 	}
 
 	/**
@@ -477,5 +572,10 @@ public class Sesion {
 	}
 	public long getVersion() {
 		return version;
+	}
+
+	/** Numero de la ultima version de contenido. {@code 0} mientras la sesion esta abierta. */
+	public int getUltimoNumeroVersion() {
+		return ultimoNumeroVersion;
 	}
 }

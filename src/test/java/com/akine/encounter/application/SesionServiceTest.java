@@ -6,19 +6,26 @@ import com.akine.clinical.spi.HistoriaClinicaDirectory;
 import com.akine.clinical.spi.HistoriaClinicaSnapshot;
 import com.akine.encounter.domain.Asistencia;
 import com.akine.encounter.domain.CierreDeSesion;
+import com.akine.encounter.domain.ContenidoDeSesion;
 import com.akine.encounter.domain.EvaluacionBase;
 import com.akine.encounter.domain.Evolucion;
 import com.akine.encounter.domain.Lateralidad;
 import com.akine.encounter.domain.ModoSesion;
 import com.akine.encounter.domain.Sesion;
+import com.akine.encounter.domain.SesionVersion;
 import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.CierreIncompletoException;
+import com.akine.encounter.domain.exception.EnmiendaSinMotivoException;
 import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
 import com.akine.encounter.domain.exception.SesionCerradaException;
+import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
 import com.akine.encounter.domain.port.SesionNumeradorPort;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
+import com.akine.encounter.domain.port.SesionVersionRepositoryPort;
+import com.akine.encounter.spi.CierreDeSesionObserver;
+import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
@@ -31,6 +38,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -76,6 +84,8 @@ class SesionServiceTest {
 	private static final long MEMBERSHIP_AJENA = 32L;
 
 	@Mock private SesionRepositoryPort sesiones;
+	@Mock private SesionVersionRepositoryPort versiones;
+	@Mock private AuditTrail auditTrail;
 	@Mock private TurnoDirectory turnos;
 	@Mock private HistoriaClinicaDirectory historias;
 	@Mock private ConsultorioDirectory consultorios;
@@ -88,6 +98,14 @@ class SesionServiceTest {
 	/** 04.03: solo se consulta cuando la sesion declara un caso. Estos tests no declaran. */
 	@Mock private CasoDirectory casos;
 
+	/**
+	 * 06.06: existe para poder probar que la ENMIENDA no lo llama.
+	 *
+	 * <p>Con la lista vacia ese test no probaria nada: un observador que no esta no se dispara
+	 * igual, y el test pasaria aunque el servicio volviera a notificar el cierre.
+	 */
+	@Mock private CierreDeSesionObserver observador;
+
 	private SesionService service;
 
 	private final OperatingActor actor =
@@ -96,8 +114,9 @@ class SesionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new SesionService(
-				sesiones, turnos, historias, casos, consultorios, memberships, permissionGuard,
-				numerador, numeradorIniciador, ofertas, List.of());
+				sesiones, versiones, auditTrail, turnos, historias, casos, consultorios,
+				memberships, permissionGuard, numerador, numeradorIniciador, ofertas,
+				List.of(observador));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -110,13 +129,20 @@ class SesionServiceTest {
 				new HistoriaClinicaSnapshot(HISTORIA_ID, ORG_ID, PERSONA_ID, Instant.EPOCH, true, 0)));
 		// JPA asigna el id al persistir; el doble tiene que hacer lo mismo o el fixture
 		// representaria una sesion guardada sin id, que en produccion no ocurre.
-		given(sesiones.save(any())).willAnswer(invocacion -> {
-			Sesion guardada = invocacion.getArgument(0);
-			if (guardada.getId() == null) {
-				ReflectionTestUtils.setField(guardada, "id", 1L);
-			}
-			return guardada;
-		});
+		given(sesiones.save(any())).willAnswer(SesionServiceTest::conIdComoJpa);
+		// `saveAndFlush` se comporta igual que `save` en el doble: lo que agrega en produccion es
+		// el flush, que existe para que la respuesta lleve la version YA avanzada. Eso no se puede
+		// simular con un mock —la version la mueve Hibernate— y queda declarado como no verificado.
+		given(sesiones.saveAndFlush(any())).willAnswer(SesionServiceTest::conIdComoJpa);
+	}
+
+	/** JPA asigna el id al persistir; el doble tiene que hacer lo mismo o el fixture mentiria. */
+	private static Sesion conIdComoJpa(org.mockito.invocation.InvocationOnMock invocacion) {
+		Sesion guardada = invocacion.getArgument(0);
+		if (guardada.getId() == null) {
+			ReflectionTestUtils.setField(guardada, "id", 1L);
+		}
+		return guardada;
 	}
 
 	private static TurnoSnapshot turno(Long profesionalId, boolean vivo) {
@@ -488,5 +514,95 @@ class SesionServiceTest {
 				OFERTA_ID, MEMBERSHIP_PROPIA, Instant.EPOCH, CUENTA_PROPIA);
 		ReflectionTestUtils.setField(sesion, "id", 1L);
 		return sesion;
+	}
+
+
+	// =================================================================================
+	// Enmienda de una sesion cerrada (AKINE-06.06)
+	// =================================================================================
+	//
+	// Tres reglas y nada mas: que la correccion se VERSIONE en vez de pisar el original, que exija
+	// motivo, y que una sesion de otro tenant sea 404. Lo demas de la etapa —el mapeo HTTP de cada
+	// excepcion, el permiso, la auditoria, el largo del motivo— queda deliberadamente sin test.
+
+	private static final String MOTIVO = "Se corrigio la lateralidad: el dolor era del lado derecho";
+
+	/** Una sesion cerrada con contenido, que es lo unico que se puede enmendar. */
+	private static Sesion sesionCerrada() {
+		Sesion sesion = sesionExistente(MEMBERSHIP_PROPIA);
+		sesion.cerrar(cierre(Asistencia.PRESENTE, "Terapia manual"), 8, null,
+				Instant.EPOCH.plusSeconds(3600), CUENTA_PROPIA);
+		return sesion;
+	}
+
+	private static ContenidoDeSesion contenido(String notaDeCierre) {
+		return new ContenidoDeSesion("dolor lumbar", 4, "Lumbar", Lateralidad.DERECHA,
+				Evolucion.MEJOR, null, null, notaDeCierre, null, null, null, null);
+	}
+
+	@Test
+	@DisplayName("Enmendar escribe la version siguiente en vez de pisar el original")
+	void enmendar_agrega_version() {
+		// Es toda la etapa: una sesion cerrada es historia clinica y ADR-0011 prohibe reescribirla.
+		// Enmendar no es un UPDATE aunque la cabecera se actualice —el original vive en la version
+		// 1 que escribio el cierre— y la fila nueva va al lado, con su motivo.
+		//
+		// Y no vuelve a disparar lo economico: re-disparar los observadores solo puede AGREGAR
+		// deuda o consumo de autorizacion y nunca sacarlos, y ninguno de los campos enmendables los
+		// afecta. Por eso se verifica aca mismo y no en un test aparte.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionCerrada()));
+
+		SesionView vista = service.enmendar(
+				actor, CONSULTORIO_ID, 1L, contenido("Nota corregida"), MOTIVO, 0L);
+
+		ArgumentCaptor<SesionVersion> escrita = ArgumentCaptor.forClass(SesionVersion.class);
+		verify(versiones).save(escrita.capture());
+		assertThat(escrita.getValue().getNumeroVersion()).isEqualTo(2);
+		assertThat(escrita.getValue().getMotivoEnmienda()).isEqualTo(MOTIVO);
+		assertThat(escrita.getValue().getNotaDeCierre())
+				.as("la version copia el contenido YA enmendado: al reves seria un historial que miente")
+				.isEqualTo("Nota corregida");
+
+		assertThat(vista.ultimoNumeroVersion()).isEqualTo(2);
+		assertThat(vista.fueEnmendada()).isTrue();
+		verify(observador, never()).alCerrar(any());
+	}
+
+	@Test
+	@DisplayName("La enmienda sin motivo se rechaza y no escribe ninguna version")
+	void enmendar_sin_motivo_se_rechaza() {
+		// RN-M14-006 no prohibe corregir una sesion cerrada: prohibe corregirla SILENCIOSAMENTE.
+		// Sin motivo una enmienda es indistinguible de una correccion de tipeo y el historial deja
+		// de servir para lo unico que sirve. Lo hace cumplir la entidad y no el DTO, asi que un
+		// camino futuro que no pase por el controller falla igual.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionCerrada()));
+
+		assertThatThrownBy(() ->
+				service.enmendar(actor, CONSULTORIO_ID, 1L, contenido("Nota"), "   ", 0L))
+				.isInstanceOf(EnmiendaSinMotivoException.class);
+
+		verify(versiones, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("Una sesion de otro tenant es 404 al enmendar y al leer el historial, nunca 403")
+	void la_sesion_de_otro_tenant_no_existe() {
+		// Indistinguible de "no existe" a proposito: un 403 confirmaria que ese id existe en otra
+		// organizacion, que es censar el padron ajeno de a un id por vez. Es la regla desde 01.01, y
+		// vale igual para el historial: protegerlo con menos que el original seria una puerta
+		// lateral a lo mismo.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() ->
+				service.enmendar(actor, CONSULTORIO_ID, 1L, contenido("Nota"), MOTIVO, 0L))
+				.isInstanceOf(SesionNotAccessibleException.class);
+
+		assertThatThrownBy(() -> service.versiones(actor, CONSULTORIO_ID, 1L))
+				.isInstanceOf(SesionNotAccessibleException.class);
+
+		verify(versiones, never()).save(any());
+		verify(versiones, never()).buscarPorSesion(anyLong(), anyLong());
 	}
 }
