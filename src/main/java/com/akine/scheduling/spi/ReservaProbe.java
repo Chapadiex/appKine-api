@@ -11,10 +11,10 @@ import java.util.Map;
  *
  * <p>DP-10 fija la regla del recorte: <b>se corta alcance, no modelo</b>. El motor de slots sin
  * descuento de reservas ofrece huecos ya vendidos, asi que la resta no es opcional: lo que se
- * difiere es QUIEN la contesta, no el hecho de preguntarla. Hoy responde
- * {@link com.akine.scheduling.infrastructure.ReservaProbeSinTurnos} con un mapa vacio, y cuando
- * 05.02 cree la tabla {@code turno} la implementacion real la reemplaza sin tocar una linea del
- * motor.
+ * difiere es QUIEN la contesta, no el hecho de preguntarla. Durante 05.01 respondio una
+ * implementacion provisoria con el mapa vacio; hoy contesta
+ * {@link com.akine.scheduling.infrastructure.ReservaProbeSobreTurnos} contando los turnos vivos
+ * de la ventana, sin que el motor haya cambiado una linea.
  *
  * <p>Es exactamente la misma forma que {@code resource.spi.DisponibilidadImpactProbe}, que 02.04
  * dejo cableada devolviendo cero por el mismo motivo.
