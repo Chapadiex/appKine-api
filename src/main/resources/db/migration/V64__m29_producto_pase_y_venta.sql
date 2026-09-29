@@ -302,17 +302,20 @@ CREATE TABLE movimiento_pase
     CONSTRAINT fk_movimiento_pase
         FOREIGN KEY (pase_id) REFERENCES pase_servicio (id),
 
-    CONSTRAINT ck_movimiento_tipo
+    -- Igual que la foreign key de arriba: en MySQL 8 el nombre de un CHECK tambien es unico
+    -- por ESQUEMA. `autorizacion_movimiento` ya tiene su `ck_movimiento_tipo` desde V50, asi
+    -- que los cuatro de esta tabla llevan `movimiento_pase` en el nombre.
+    CONSTRAINT ck_movimiento_pase_tipo
         CHECK (tipo IN ('COMPRA', 'CONSUMO', 'AJUSTE', 'DEVOLUCION', 'VENCIMIENTO')),
 
-    CONSTRAINT ck_movimiento_origen_tipo
+    CONSTRAINT ck_movimiento_pase_origen_tipo
         CHECK (origen_tipo IN ('VENTA', 'ASISTENCIA', 'CANCELACION', 'AJUSTE_MANUAL', 'VENCIMIENTO')),
 
     -- Un movimiento de cero no cambia nada y ensucia el ledger con filas que no explican.
-    CONSTRAINT ck_movimiento_cantidad_no_cero
+    CONSTRAINT ck_movimiento_pase_cantidad_no_cero
         CHECK (cantidad <> 0),
 
-    CONSTRAINT ck_movimiento_saldo_no_negativo
+    CONSTRAINT ck_movimiento_pase_saldo_no_negativo
         CHECK (saldo_resultante >= 0)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
