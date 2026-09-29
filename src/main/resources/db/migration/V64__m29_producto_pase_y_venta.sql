@@ -293,7 +293,11 @@ CREATE TABLE movimiento_pase
     CONSTRAINT uk_movimiento_origen
         UNIQUE (organization_id, pase_id, origen_tipo, origen_id),
 
-    CONSTRAINT fk_movimiento_organization
+    -- El nombre lleva la tabla adelante y no es cosmetico: InnoDB exige que el nombre de una
+    -- foreign key sea unico en TODO el esquema, no por tabla, y `fk_movimiento_organization`
+    -- ya lo usa `autorizacion_movimiento` desde V50. Con el nombre corto esta migracion falla
+    -- con "Duplicate foreign key constraint name" recien al ejecutarse contra el motor.
+    CONSTRAINT fk_movimiento_pase_organization
         FOREIGN KEY (organization_id) REFERENCES organization (id),
     CONSTRAINT fk_movimiento_pase
         FOREIGN KEY (pase_id) REFERENCES pase_servicio (id),
