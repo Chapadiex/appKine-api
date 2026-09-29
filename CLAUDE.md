@@ -212,7 +212,7 @@ Reglas innegociables del QA:
 > Reescrito el **19/09/2026**. La versión anterior se había congelado el 01/09 y daba mal el
 > contrato, los commits, los módulos, las migraciones y la fase: mandaba a reconstruir cosas que
 > ya existen. Los detalles de cierre de cada etapa **no se repiten acá** — viven íntegros en los
-> registros de cierre al final de `../docs/AKINE_IMPLEMENTATION_PLAN.md`, que son **21** más un
+> registros de cierre al final de `docs/producto/AKINE_IMPLEMENTATION_PLAN.md`, que son **21** más un
 > "Registro de avance — AKINE-04.02".
 
 Remote: `https://github.com/Chapadiex/appKine-api.git`

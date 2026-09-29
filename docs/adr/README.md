@@ -78,7 +78,7 @@ de commits, o directamente se revierte una decisión correcta por desconocer su 
 > [0008](0008-onboarding-compuesto-transaccional.md)–[0016](0016-versiones-tecnicas-y-slo.md)
 > (etapa **AKINE-00.03**). La fuente original, con el análisis completo de contradicciones
 > entre fuentes históricas y especificación, es la sección 7 del plan de implementación
-> (`../../../docs/AKINE_IMPLEMENTATION_PLAN.md`).
+> (`../producto/AKINE_IMPLEMENTATION_PLAN.md`).
 
 ## Plantilla
 

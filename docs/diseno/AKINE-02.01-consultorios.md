@@ -2,7 +2,7 @@
 
 - **Estado:** diseño propuesto, no implementado. D-7 y D-11 cerradas por el usuario el 23/08/2026
 - **Fecha:** 2026-08-23 · **Última revisión:** 2026-08-23 (cierre de D-7 y D-11)
-- **Etapa del plan:** AKINE-02.01 (`../docs/AKINE_IMPLEMENTATION_PLAN.md`, líneas 1008–1089)
+- **Etapa del plan:** AKINE-02.01 (`../producto/AKINE_IMPLEMENTATION_PLAN.md`, líneas 1008–1089)
 - **Fuente funcional:** M03 (`AKINE_Requerimientos_Integrados.md`, líneas 907–1313) — RF-M03-001..005, RN-M03-001..004, RNF-M03-001..008
 - **Depende de:** AKINE-01.03 (`AKINE-01.03-permisos.md`). Sin el evaluador de permisos de esa etapa, 02.01 no tiene con qué autorizar
 - **Vinculante:** ADR-0008 (onboarding compuesto), ADR-0009 (contexto), ADR-0004 (persistencia multi-tenant), ADR-0007 (expandir–migrar–contraer), `docs/seguridad/matriz-permisos-minima.md`

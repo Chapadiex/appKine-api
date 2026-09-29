@@ -16,11 +16,11 @@ acá. El frontend nunca puede elevar privilegios ni saltear una validación.
 
 ## 2. Documentación canónica
 
-Vive en el workspace padre (`../docs/`), no en este repo:
+Vive en el workspace padre (`docs/producto/`), no en este repo:
 
-- `../docs/AKINE_Requerimientos_Integrados.md` — **fuente de verdad funcional** M01–M29 + §30–45.
-- `../docs/AKINE_IMPLEMENTATION_PLAN.md` — **fuente de verdad de arquitectura y roadmap**, DP-01…DP-09.
-- `../docs/arquitectura-java-angular21.md` — referencia de layout Spring Boot.
+- `docs/producto/AKINE_Requerimientos_Integrados.md` — **fuente de verdad funcional** M01–M29 + §30–45.
+- `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` — **fuente de verdad de arquitectura y roadmap**, DP-01…DP-09.
+- `docs/producto/arquitectura-java-angular21.md` — referencia de layout Spring Boot.
 - Documentos históricos (`AKINE_info.txt`, `AkinePN.docx`, UML 2019): **antecedente de negocio únicamente.**
 
 Convenciones de identificadores en la especificación:

@@ -129,7 +129,7 @@ mkdir -p ~/.claude/templates && cp ../templates/*.md ~/.claude/templates/
 | `docs/ai-setup.md` | Esta guía. |
 | `.claude/qa-config.md` | Config local de QA. **Gitignored.** Sin él no hay QA manual ni deploy. |
 | `../CLAUDE.md` | Índice del workspace y regla de coordinación entre repos. |
-| `../docs/` | Especificación funcional canónica y plan de implementación. |
+| `producto/` | Especificación funcional canónica y plan de implementación. |
 
 Verificación rápida:
 
@@ -150,7 +150,7 @@ mem_search("appKine-api CLAUDE.md workflow")
 ```
 
 Si no hay memorias: leer `AGENT.md` completo, luego `CLAUDE.md`, luego
-`../docs/AKINE_IMPLEMENTATION_PLAN.md`. Esos son la fuente de verdad.
+`producto/AKINE_IMPLEMENTATION_PLAN.md`. Esos son la fuente de verdad.
 
 ---
 
@@ -292,7 +292,7 @@ contract tests + E2E. Nunca asumir commit atómico entre repos.
 - [ ] Skills instaladas: engram-sdd-flow, debugging-code, playwright-skill
 - [ ] `AGENT.md` leído
 - [ ] `CLAUDE.md` leído
-- [ ] `../docs/AKINE_IMPLEMENTATION_PLAN.md` consultado para la etapa en curso
+- [ ] `producto/AKINE_IMPLEMENTATION_PLAN.md` consultado para la etapa en curso
 - [ ] Contexto Engram cargado (o archivos leídos como fallback)
 - [ ] Tests corriendo en verde — *N/A hasta AKINE-00.01*
 - [ ] `.claude/qa-config.md` creado (local, gitignored)

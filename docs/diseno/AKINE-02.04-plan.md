@@ -1573,7 +1573,7 @@ git commit -m "feat: modo lectura de disponibilidad para el rol PROFESIONAL (AKI
 
 **Files:**
 - Create: `e2e/disponibilidad.spec.ts`
-- Modify: `../docs/AKINE_IMPLEMENTATION_PLAN.md` (registro de cierre)
+- Modify: `../producto/AKINE_IMPLEMENTATION_PLAN.md` (registro de cierre)
 - Modify: `../CLAUDE.md` (estado del workspace)
 - Modify: `CLAUDE.md` §7 del backend — **hoy dice que el próximo paso es 01.03, y está mal**
 
