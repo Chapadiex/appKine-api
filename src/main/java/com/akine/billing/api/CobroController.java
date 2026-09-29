@@ -48,6 +48,7 @@ public class CobroController {
 
 	@PostMapping
 	@Operation(
+			operationId = "registrarCobro",
 			summary = "Registrar un cobro",
 			description = """
 					Recibe dinero por uno o varios medios y lo imputa a las deudas indicadas, \

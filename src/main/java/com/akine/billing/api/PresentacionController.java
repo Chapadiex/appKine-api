@@ -293,6 +293,7 @@ public class PresentacionController {
 
 	@PostMapping("/presentaciones/{presentacionId}/confirmacion")
 	@Operation(
+			operationId = "confirmarPresentacion",
 			summary = "Confirmar el envio del lote",
 			description = """
 					Asigna numero, congela el total y saca el lote del borrador (RF-M21-004).
@@ -531,6 +532,7 @@ public class PresentacionController {
 
 	@PostMapping("/presentaciones/{presentacionId}/anulacion")
 	@Operation(
+			operationId = "anularPresentacion",
 			summary = "Descartar un borrador",
 			description = """
 					Marca el borrador como anulado, con motivo, y libera sus prestaciones.
@@ -573,6 +575,7 @@ public class PresentacionController {
 
 	@GetMapping("/presentaciones")
 	@Operation(
+			operationId = "buscarPresentacion",
 			summary = "Bandejas por estado",
 			description = """
 					Lista los lotes de la sede, filtrados y paginados.

@@ -181,7 +181,12 @@ class LedgerCoherenteIT {
 
 		ResultadoDeConsumo sinSaldo = consumirSesion(fixture, siguienteSesion());
 
-		assertThat(sinSaldo.desenlace()).isEqualTo("SIN_SALDO");
+		// SIN_AUTORIZACION_ELEGIBLE y no SIN_SALDO, y la diferencia esta documentada en el spi:
+		// SIN_SALDO es la transaccion que PERDIO la ultima unidad —habia autorizacion elegible y
+		// el UPDATE afecto cero filas—, mientras una autorizacion ya agotada no es elegible y la
+		// consulta de seleccion no la devuelve. Lo que el test mide igual, y es lo que importa: no
+		// se mueve la columna, no se escribe fila y la cuenta sigue cuadrando.
+		assertThat(sinSaldo.desenlace()).isEqualTo("SIN_AUTORIZACION_ELEGIBLE");
 		assertThat(sinSaldo.movimientoId())
 				.as("no hay movimiento que devolver porque no se escribio ninguno")
 				.isNull();
@@ -207,8 +212,8 @@ class LedgerCoherenteIT {
 				.as("la REVERSION guarda 1, no -1")
 				.isEqualTo(1);
 		assertThat(reversion.efectoSobreElSaldo())
-				.as("y el efecto derivado si es negativo: se calcula, no se guarda")
-				.isEqualTo(-1);
+				.as("y el efecto derivado es POSITIVO: una reversion DEVUELVE la unidad al saldo")
+				.isEqualTo(1);
 
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM autorizacion_movimiento

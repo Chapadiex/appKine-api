@@ -53,6 +53,7 @@ public class SesionController {
 
 	@PostMapping("/turnos/{turnoId}")
 	@Operation(
+			operationId = "iniciarSesion",
 			summary = "Iniciar la atencion de un turno",
 			description = """
 					Abre la atencion, o **devuelve la que ya estaba abierta**.
@@ -212,6 +213,7 @@ public class SesionController {
 
 	@PostMapping("/{sesionId}/cierre")
 	@Operation(
+			operationId = "cerrarSesion",
 			summary = "Cerrar la atencion",
 			description = """
 					Cierra la sesion y le asigna su **correlativo por historia clinica** — "la \

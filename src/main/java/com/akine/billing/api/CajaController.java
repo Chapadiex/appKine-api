@@ -115,6 +115,7 @@ public class CajaController {
 
 	@PostMapping("/jornadas/{jornadaId}/cierre")
 	@Operation(
+			operationId = "cerrarCaja",
 			summary = "Cerrar la caja",
 			description = """
 					Arquea y cierra el turno (RF-M20-006).

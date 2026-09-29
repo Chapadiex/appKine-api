@@ -141,6 +141,7 @@ public class TurnoController {
 	 */
 	@PostMapping("/{turnoId}/confirmacion")
 	@Operation(
+			operationId = "confirmarTurno",
 			summary = "Confirmar un turno reservado",
 			description = """
 					Marca la reserva como confirmada. **Es idempotente**: confirmar dos veces \
@@ -179,6 +180,7 @@ public class TurnoController {
 	 */
 	@PostMapping("/{turnoId}/cancelacion")
 	@Operation(
+			operationId = "cancelarTurno",
 			summary = "Cancelar un turno futuro",
 			description = """
 					**Cancelar no borra** (RN-M12-002): la fila queda con su motivo, su actor y su \
@@ -221,6 +223,7 @@ public class TurnoController {
 
 	@PostMapping("/{turnoId}/reprogramacion")
 	@Operation(
+			operationId = "reprogramarTurno",
 			summary = "Mover un turno a otro horario",
 			description = """
 					**Es el mismo turno**: conserva id, paciente e historial (DP-04). No se cancela \
@@ -304,6 +307,7 @@ public class TurnoController {
 
 	@GetMapping("/{turnoId}/historial")
 	@Operation(
+			operationId = "historialTurno",
 			summary = "Historial de estados de un turno",
 			description = """
 					Todas las transiciones del turno, de la mas vieja a la mas nueva, con actor, \
@@ -379,6 +383,7 @@ public class TurnoController {
 	 */
 	@GetMapping
 	@Operation(
+			operationId = "delDiaTurno",
 			summary = "Agenda del dia de la sede",
 			description = """
 					Los turnos de la sede en un dia, del mas temprano al mas tarde. Es la pantalla \

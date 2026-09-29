@@ -401,8 +401,9 @@ class TimelineIT {
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, numero_sesion, iniciada_en,
 				                    iniciada_por_cuenta_id, asistencia, cerrada_en,
-				                    cerrada_por_cuenta_id, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				                    cerrada_por_cuenta_id, ultimo_numero_version, version,
+				                    created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""",
 				fixture.organizationId(), fixture.consultorioId(), fixture.historiaClinicaId(),
 				fixture.ofertaId(), fixture.membershipId(), estado, numeroSesion,
@@ -410,7 +411,11 @@ class TimelineIT {
 				fixture.cuentaId(),
 				cerradaEn == null ? null : "PRESENTE",
 				cerradaEn == null ? null : Timestamp.from(cerradaEn),
-				cerradaEn == null ? null : fixture.cuentaId());
+				cerradaEn == null ? null : fixture.cuentaId(),
+				// `ck_sesion_ultimo_numero_version`, que agrego V53 con la enmienda: una sesion
+				// numerada tiene al menos la version 1 y una sin numerar tiene cero. El fixture
+				// se escribio antes de esa migracion y por eso no lo sabia.
+				numeroSesion == null ? 0 : 1);
 	}
 
 	// =================================================================================

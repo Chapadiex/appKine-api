@@ -66,6 +66,7 @@ public class TratamientoController {
 
 	@PostMapping
 	@Operation(
+			operationId = "registrarTratamiento",
 			summary = "Registrar una intervencion aplicada",
 			description = """
 					Asienta **que se hizo realmente** en esta atencion (RF-M14-005).
@@ -131,6 +132,7 @@ public class TratamientoController {
 
 	@GetMapping
 	@Operation(
+			operationId = "listarTratamiento",
 			summary = "Listar las intervenciones de la atencion",
 			description = """
 					Devuelve las intervenciones **vigentes**, en orden cronologico, con sus \

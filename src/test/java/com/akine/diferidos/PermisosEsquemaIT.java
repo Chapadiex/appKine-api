@@ -226,7 +226,16 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						"paciente:manage", "turno:read", "turno:manage", "cobro:register",
 						// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`.
 						// Matriz §2 y enmienda §13.
-						"convenio:manage");
+						"convenio:manage",
+						// `caja:operate` lo sumo AKINE-07.03: la matriz se lo da al ORG_ADMIN en la fila
+						// Operar Caja, y es distinto de `cobro:register` —cobrar es un acto comercial,
+						// arquear y cerrar una caja es responsabilidad sobre dinero fisico—.
+						"caja:operate",
+						// La segunda entrega: 08.01 clases, 08.02 inscripciones, 08.03 asistencia. M28
+						// nombra al administrador entre los actores de una clase.
+						"clase:read", "clase:manage",
+						"inscripcion:read", "inscripcion:manage",
+						"asistencia:manage");
 	}
 
 	@Test
@@ -246,7 +255,12 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				companiero.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
 				.containsExactlyInAnyOrder(
 						"colaborador:read", "espacio:read", "turno:read", "turno:manage", "sesion:register",
-						"hc:read", "hc:write");
+						"hc:read", "hc:write",
+						// 08.01 a 08.03: el profesional ES quien dicta la clase, necesita saber a quien
+						// tiene enfrente y marcar quien vino. `caja:operate` NO esta: su celda dice No.
+						"clase:read", "clase:manage",
+						"inscripcion:read", "inscripcion:manage",
+						"asistencia:manage");
 
 		membershipService.revoke(actorDe(tenant), tenant.organizationId(), membership, MOTIVO);
 

@@ -78,6 +78,7 @@ public class AsistenciaController {
 
 	@PostMapping("/inicio")
 	@Operation(
+			operationId = "iniciarAsistencia",
 			summary = "Abrir la clase para tomar lista",
 			description = """
 					`PROGRAMADA` -> `EN_CURSO` (RF-M13-007). **Idempotente**: iniciar una que ya \
@@ -107,6 +108,7 @@ public class AsistenciaController {
 
 	@PostMapping("/cierre")
 	@Operation(
+			operationId = "cerrarAsistencia",
 			summary = "Cerrar la operacion de la clase",
 			description = """
 					Marca como **ausentes** a los que tenian lugar y nadie resolvio, cancela a los \
@@ -146,6 +148,7 @@ public class AsistenciaController {
 
 	@PostMapping("/asistencias")
 	@Operation(
+			operationId = "registrarAsistencia",
 			summary = "Marcar a un participante",
 			description = """
 					Registra el hecho de que la persona estuvo —o no— (RF-M28-007). **No crea una \
@@ -332,6 +335,7 @@ public class AsistenciaController {
 
 	@GetMapping("/asistencias/{asistenciaId}/historial")
 	@Operation(
+			operationId = "historialAsistencia",
 			summary = "Historial de una asistencia",
 			description = """
 					Los registros y correcciones, del mas viejo al mas nuevo (RN-M28-009). Es lo \

@@ -60,6 +60,7 @@ public class AgendaController {
 	 */
 	@GetMapping
 	@Operation(
+			operationId = "buscarAgenda",
 			summary = "Buscar turnos disponibles",
 			description = """
 					Devuelve los slots libres de una oferta entre dos fechas, dia por dia.

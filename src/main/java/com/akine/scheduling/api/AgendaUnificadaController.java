@@ -52,6 +52,7 @@ public class AgendaUnificadaController {
 
 	@GetMapping
 	@Operation(
+			operationId = "delDiaAgendaUnificada",
 			summary = "Ver la agenda del dia con turnos y clases",
 			description = """
 					Devuelve todo lo que empieza ese dia local en la sede, ordenado por hora.

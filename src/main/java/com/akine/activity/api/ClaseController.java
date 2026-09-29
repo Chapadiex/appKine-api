@@ -128,6 +128,7 @@ public class ClaseController {
 
 	@PostMapping("/{claseId}/reprogramacion")
 	@Operation(
+			operationId = "reprogramarClase",
 			summary = "Reprogramar una clase",
 			description = """
 					Mueve horario, profesional, espacio o capacidad. **Conserva la clase y sus \
@@ -171,6 +172,7 @@ public class ClaseController {
 
 	@PostMapping("/{claseId}/cancelacion")
 	@Operation(
+			operationId = "cancelarClase",
 			summary = "Cancelar una clase",
 			description = """
 					Cancela el evento con motivo obligatorio. **No borra nada**: la fila queda, con \
@@ -204,6 +206,7 @@ public class ClaseController {
 
 	@GetMapping("/{claseId}")
 	@Operation(
+			operationId = "verClase",
 			summary = "Ver una clase",
 			description = """
 					Detalle de una clase. **No incluye la lista de participantes**: la vista de la \
@@ -229,6 +232,7 @@ public class ClaseController {
 
 	@GetMapping
 	@Operation(
+			operationId = "listarClase",
 			summary = "Listar las clases de una sede en una ventana",
 			description = """
 					**Incluye las canceladas.** Alguien puede presentarse a una clase que se \
@@ -259,6 +263,7 @@ public class ClaseController {
 
 	@GetMapping("/{claseId}/historial")
 	@Operation(
+			operationId = "historialClase",
 			summary = "Historial de una clase",
 			description = """
 					Las transiciones registradas, de la mas vieja a la mas nueva (RN-M28-009). \

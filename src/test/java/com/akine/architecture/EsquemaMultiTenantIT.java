@@ -117,6 +117,10 @@ class EsquemaMultiTenantIT {
 				"Dos poblaciones en la misma tabla, igual que especialidad (ADR-0021)"));
 		EXCEPCIONES.put("nomenclador_item", new Excepcion(Forma.NULLABLE,
 				"Dos poblaciones en la misma tabla; el duenio se replica del nomenclador padre (ADR-0021)"));
+		EXCEPCIONES.put("medicion_definicion", new Excepcion(Forma.NULLABLE,
+				"Dos poblaciones en la misma tabla, igual que especialidad: NULL = test de "
+						+ "plataforma, valor = test propio del centro. El unique va sobre owner_key y la "
+						+ "decision de usarlo vive en la sesion, que lleva organization_id (ADR-0021, 06.03)"));
 
 		// --- ADR-0022 (superseded by 0023) — feriados -----------------------------------------
 		EXCEPCIONES.put("feriado", new Excepcion(Forma.SIN_COLUMNA,

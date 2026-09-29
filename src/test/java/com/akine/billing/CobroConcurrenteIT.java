@@ -268,6 +268,26 @@ class CobroConcurrenteIT {
 				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioId, cuentaId);
 
+		// LA CAJA ABIERTA, que este test no necesitaba cuando se escribio.
+		//
+		// 07.02 cobraba en efectivo sin mas; 07.03 hizo que el efectivo exija una jornada abierta,
+		// porque la plata entra al cajon exista o no la jornada y sin ella el arqueo del dia no
+		// cuadra contra nada. Sin esta fila los tres casos concurrentes fallan con
+		// CajaNoAbiertaException ANTES de tocar el saldo, y lo que el test mide —que dos
+		// transacciones no resten la misma plata— no llega a ejercerse.
+		//
+		// `findAbierta` busca por sede y estado, no por fecha, asi que la fecha de negocio se
+		// calcula en la zona de la sede solo para que la fila sea coherente.
+		jdbc.update("""
+				INSERT INTO jornada_caja (organization_id, consultorio_id, fecha_negocio, moneda,
+				                          estado, saldo_inicial, saldo_arqueo, abierta_en,
+				                          abierta_por_cuenta_id, created_at, updated_at)
+				VALUES (?, ?, ?, 'ARS', 'ABIERTA', 0.00, 0.00, UTC_TIMESTAMP(6), ?,
+				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", organizationId, consultorioId,
+				java.sql.Date.valueOf(java.time.LocalDate.now(java.time.ZoneId.of(ZONA))), cuentaId);
+
+
 		String apellido = "Paciente" + sufijo;
 		long personaId = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,

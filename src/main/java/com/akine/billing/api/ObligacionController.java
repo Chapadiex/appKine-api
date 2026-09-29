@@ -94,6 +94,7 @@ public class ObligacionController {
 
 	@DeleteMapping("/{obligacionId}")
 	@Operation(
+			operationId = "anularObligacion",
 			summary = "Anular una obligacion",
 			description = """
 					Anula la deuda con **motivo obligatorio**. No la borra: una deuda que \

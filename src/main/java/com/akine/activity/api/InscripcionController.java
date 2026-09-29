@@ -128,6 +128,7 @@ public class InscripcionController {
 
 	@PostMapping("/inscripciones/{inscripcionId}/confirmacion")
 	@Operation(
+			operationId = "confirmarInscripcion",
 			summary = "Confirmar una inscripcion",
 			description = """
 					`RESERVADA` -> `CONFIRMADA`. **No toca el cupo**: los dos estados lo consumen, \
@@ -162,6 +163,7 @@ public class InscripcionController {
 
 	@PostMapping("/inscripciones/{inscripcionId}/cancelacion")
 	@Operation(
+			operationId = "cancelarInscripcion",
 			summary = "Cancelar una inscripcion",
 			description = """
 					Libera el cupo y **conserva el historial individual** (RF-M28-003): la fila \

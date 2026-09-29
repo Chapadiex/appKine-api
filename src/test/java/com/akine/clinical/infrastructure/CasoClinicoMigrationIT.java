@@ -740,12 +740,19 @@ class CasoClinicoMigrationIT {
 			long organizationId, long historiaId, Long casoId,
 			Integer numeroSesion, Integer numeroEnCaso) {
 
+		// Se inserta CERRADA y no en BORRADOR, y no es un detalle del fixture: una sesion con
+		// numero tiene que llevar tambien instante y actor de cierre —`ck_sesion_cierre_completo`
+		// de V35, los tres o ninguno— y, desde `ck_sesion_ultimo_numero_version` de V53, un
+		// `ultimo_numero_version` de al menos 1. Un BORRADOR numerado es un estado que el esquema
+		// no admite, asi que el fixture viejo no medía el unique: no llegaba a insertar la fila.
 		jdbc().update("""
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, caso_id,
 				                    oferta_id, profesional_membership_id, estado, numero_sesion,
-				                    numero_en_caso, iniciada_en, iniciada_por_cuenta_id, version,
+				                    numero_en_caso, iniciada_en, iniciada_por_cuenta_id,
+				                    cerrada_en, cerrada_por_cuenta_id, ultimo_numero_version, version,
 				                    created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, 'BORRADOR', ?, ?, UTC_TIMESTAMP(6), 1, 0,
+				 VALUES (?, ?, ?, ?, ?, ?, 'CERRADA', ?, ?, UTC_TIMESTAMP(6), 1,
+				         UTC_TIMESTAMP(6), 1, 1, 0,
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioEnA, historiaId, casoId, ofertaEnA, membershipEnA,
 				numeroSesion, numeroEnCaso);

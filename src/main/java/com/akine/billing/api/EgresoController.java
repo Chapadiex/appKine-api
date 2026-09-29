@@ -74,6 +74,7 @@ public class EgresoController {
 
 	@PostMapping
 	@Operation(
+			operationId = "registrarEgreso",
 			summary = "Registrar un egreso",
 			description = """
 					Carga un compromiso de pago. **Nace en `BORRADOR` y no afecta nada** \
@@ -159,6 +160,7 @@ public class EgresoController {
 
 	@PostMapping("/{egresoId}/confirmacion")
 	@Operation(
+			operationId = "confirmarEgreso",
 			summary = "Confirmar el egreso",
 			description = """
 					Punto de no retorno: el egreso deja de editarse y **recien ahora admite pagos** \
@@ -197,6 +199,7 @@ public class EgresoController {
 
 	@PostMapping("/{egresoId}/anulacion")
 	@Operation(
+			operationId = "anularEgreso",
 			summary = "Anular el egreso",
 			description = """
 					Anula el compromiso con motivo obligatorio (RF-M22-005).
@@ -232,6 +235,7 @@ public class EgresoController {
 
 	@GetMapping("/{egresoId}")
 	@Operation(
+			operationId = "verEgreso",
 			summary = "Ver un egreso",
 			description = "El detalle con **todos** sus pagos, incluidos los anulados (RF-M22-004). "
 					+ "Ocultar un pago anulado haria que el egreso pareciera no haberse pagado "
@@ -253,6 +257,7 @@ public class EgresoController {
 
 	@GetMapping
 	@Operation(
+			operationId = "buscarEgreso",
 			summary = "Consultar egresos",
 			description = """
 					Lista y filtra por fecha, categoria, beneficiario y estado (RF-M22-004).
