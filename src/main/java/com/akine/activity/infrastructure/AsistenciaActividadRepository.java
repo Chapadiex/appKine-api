@@ -25,6 +25,22 @@ import java.util.Optional;
 public interface AsistenciaActividadRepository
 		extends JpaRepository<AsistenciaActividad, Long>, AsistenciaActividadRepositoryPort {
 
+	/**
+	 * Puente entre el {@code saveAll(List)} del puerto y el {@code saveAll(Iterable)} de Spring
+	 * Data. <b>Sin este metodo la aplicacion no arranca.</b>
+	 *
+	 * <p>El puerto declara {@code List} y {@code JpaRepository} declara {@code Iterable}: para
+	 * Java no son el mismo metodo, asi que el del puerto queda sin implementacion y Spring Data lo
+	 * toma por un metodo de consulta derivado. El resultado es
+	 * {@code No property 'saveAll' found for type AsistenciaActividad} al crear el bean —no un error de
+	 * compilacion—, y por eso no se vio hasta la primera corrida con base real.
+	 */
+	@Override
+	default List<AsistenciaActividad> saveAll(List<AsistenciaActividad> asistencias) {
+		return saveAll((Iterable<AsistenciaActividad>) asistencias);
+	}
+
+
 	@Override
 	@Query("""
 			SELECT a FROM AsistenciaActividad a

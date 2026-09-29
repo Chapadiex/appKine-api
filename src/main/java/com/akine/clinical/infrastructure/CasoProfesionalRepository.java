@@ -21,6 +21,22 @@ import java.util.List;
 public interface CasoProfesionalRepository
 		extends JpaRepository<CasoProfesional, Long>, CasoProfesionalRepositoryPort {
 
+	/**
+	 * Puente entre el {@code saveAll(List)} del puerto y el {@code saveAll(Iterable)} de Spring
+	 * Data. <b>Sin este metodo la aplicacion no arranca.</b>
+	 *
+	 * <p>El puerto declara {@code List} y {@code JpaRepository} declara {@code Iterable}: para
+	 * Java no son el mismo metodo, asi que el del puerto queda sin implementacion y Spring Data lo
+	 * toma por un metodo de consulta derivado. El resultado es
+	 * {@code No property 'saveAll' found for type CasoProfesional} al crear el bean —no un error de
+	 * compilacion—, y por eso no se vio hasta la primera corrida con base real.
+	 */
+	@Override
+	default List<CasoProfesional> saveAll(List<CasoProfesional> participaciones) {
+		return saveAll((Iterable<CasoProfesional>) participaciones);
+	}
+
+
 	@Override
 	@Query("""
 			SELECT p FROM CasoProfesional p
