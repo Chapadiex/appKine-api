@@ -1,0 +1,1297 @@
+Sesión de Evaluación en AKINE
+1. Contexto
+
+AKINE ya define la sesión como parte del flujo central de atención: recepción, asistencia, validación de primera consulta, cobertura, inicio por parte del profesional, registro de espacios, tratamiento aplicado, evolución y cierre con actualización automática de la historia clínica. También define la historia clínica digital del paciente con afecciones, consultas, tratamientos y evolución. 
+
+
+
+ 
+
+
+
+A nivel clínico, una evaluación kinésica/fisioterapéutica formal no se limita a “qué tratamiento se hizo”. Debe contemplar historia clínica, examen físico, tests y medidas, diagnóstico, pronóstico/plan, intervención, respuesta al tratamiento y re-evaluación sucesiva.
+
+2. Problema a resolver
+
+La sesión actual de AKINE está bien orientada al flujo operativo, pero se queda corta como registro clínico completo. Si la pantalla se llena de administrativos, cobertura, datos redundantes y campos abiertos sin jerarquía, el profesional pierde foco, tarda más y documenta peor.
+
+El objetivo no es agregar una sábana eterna de campos. El objetivo es diseñar una sesión que permita:
+
+registrar rápido un seguimiento común;
+
+registrar bien una primera evaluación o re-evaluación;
+
+mantener valor clínico real;
+
+no duplicar datos que ya existen en paciente, caso, cobertura o turno;
+
+actualizar la historia clínica de forma útil y consistente. 
+
+AKINE_info
+
+ 
+
+AKN_Estudio_inicial
+
+3. Objetivo del rediseño
+
+Diseñar la pantalla y el flujo de Sesión de Evaluación para AKINE en dos modos:
+
+Sesión rápida: seguimiento normal.
+
+Evaluación completa: primera sesión o re-evaluación.
+
+La solución debe priorizar:
+
+velocidad de uso;
+
+claridad clínica;
+
+jerarquía visual;
+
+reutilización de datos existentes;
+
+comparabilidad con sesiones anteriores;
+
+cierre clínico consistente;
+
+mínimo ruido administrativo visible.
+
+Esto se alinea con el flujo de sesiones ya definido en AKINE y con el enfoque profesional de evaluación + plan + tratamiento + re-evaluación. 
+
+
+
+4. Principios de diseño obligatorios
+4.1 No duplicar datos
+
+No volver a pedir en cada sesión información que ya existe en:
+
+paciente;
+
+caso/afección;
+
+cobertura;
+
+turno;
+
+profesional;
+
+consultorio o espacio.
+
+4.2 Priorizar la clínica, no la burocracia
+
+La pantalla debe comenzar por:
+
+cómo llega el paciente;
+
+qué se evalúa;
+
+qué se hizo;
+
+cómo respondió;
+
+qué sigue.
+
+No debe comenzar por:
+
+carnet;
+
+DNI;
+
+cobertura extendida;
+
+órdenes;
+
+autorizaciones;
+
+campos administrativos secundarios.
+
+4.3 Captura progresiva
+
+Mostrar primero lo esencial y desplegar lo avanzado solo si aplica:
+
+primera evaluación;
+
+re-evaluación;
+
+bandera clínica;
+
+tratamiento que requiere parámetros;
+
+falta documental;
+
+cambio importante en el estado del paciente.
+
+4.4 Comparación clínica
+
+Siempre que exista información previa, mostrar comparación con la sesión anterior:
+
+dolor anterior vs actual;
+
+función anterior vs actual;
+
+último tratamiento;
+
+última evolución;
+
+cambio percibido.
+
+4.5 Cierre obligatorio con valor
+
+No permitir cerrar una sesión sin dejar una conclusión clínica mínima:
+
+respuesta;
+
+evolución;
+
+conducta siguiente.
+
+5. Alcance funcional del rediseño
+
+Este rediseño abarca exclusivamente el flujo de Atención / Sesión y su impacto sobre historia clínica. No reemplaza módulos de:
+
+agenda;
+
+caja;
+
+obras sociales;
+
+pacientes;
+
+consultorios;
+
+reportes.
+
+Sí debe integrarse con ellos, porque en AKINE la atención depende de turnos, pacientes, cobertura, espacios y profesionales, y a la vez actualiza historia clínica y puede impactar en cobro o facturación. 
+
+
+
+ 
+
+
+
+6. Estructura general propuesta para la sesión
+
+La sesión debe quedar dividida en seis bloques funcionales:
+
+A. Contexto de la sesión
+
+Resumen superior, compacto y casi autocompletado.
+
+B. Evaluación clínica base
+
+Estado actual del paciente y foco de la visita.
+
+C. Examen físico
+
+Hallazgos objetivos. Completo en primera evaluación o re-evaluación; resumido en seguimiento.
+
+D. Tratamiento aplicado
+
+Qué hizo el profesional en la sesión.
+
+E. Resultado de la sesión
+
+Cómo respondió el paciente y qué sigue.
+
+F. Administrativo mínimo
+
+Solo lo indispensable para operar y facturar, sin robar protagonismo.
+
+7. Bloque A: Contexto de la sesión
+7.1 Objetivo
+
+Dar al profesional contexto rápido sin hacerlo navegar otra pantalla.
+
+7.2 Campos a mostrar
+
+paciente;
+
+edad;
+
+cobertura;
+
+caso/afección activa;
+
+profesional actuante;
+
+fecha y hora;
+
+sesión N de N;
+
+tipo de sesión:
+
+primera evaluación;
+
+seguimiento;
+
+re-evaluación;
+
+estado documental:
+
+pedido médico;
+
+orden/autorización;
+
+cobertura validada;
+
+espacio asignado o disponible.
+
+7.3 Reglas
+
+Debe venir casi todo autocompletado desde turno, paciente, caso, profesional y cobertura.
+
+Si es primera consulta, mostrar badge visible: Primera evaluación.
+
+Si hay falta documental, mostrar alerta compacta, no modal invasivo.
+
+No permitir editar masivamente datos de paciente desde aquí; solo acceso rápido a vista completa.
+
+7.4 Comportamiento UX
+
+Header sticky.
+
+Información en una sola línea o dos líneas compactas.
+
+Acciones rápidas:
+
+ver paciente 360;
+
+ver historia clínica;
+
+ver adjuntos;
+
+cambiar espacio;
+
+iniciar sesión.
+
+Esto está alineado con el proceso de atención y la actualización de historia clínica definidos en AKINE. 
+
+
+
+ 
+
+
+
+8. Bloque B: Evaluación clínica base
+8.1 Objetivo
+
+Capturar la esencia clínica de la visita sin abrir todavía el examen completo.
+
+8.2 Campos obligatorios base
+
+motivo actual / diagnóstico médico;
+
+dolor actual;
+
+evolución desde la sesión anterior;
+
+objetivo de la sesión;
+
+limitación funcional actual.
+
+8.3 Detalle de cada campo
+8.3.1 Motivo actual / diagnóstico médico
+
+Debe permitir:
+
+traer diagnóstico/caso existente;
+
+editar nota clínica del motivo actual;
+
+distinguir entre:
+
+diagnóstico médico recibido;
+
+motivo funcional de la sesión.
+
+8.3.2 Dolor actual
+
+Debe contemplar:
+
+intensidad 0 a 10;
+
+zona;
+
+lateralidad;
+
+tipo si aplica:
+
+punzante;
+
+quemante;
+
+difuso;
+
+mecánico;
+
+otro;
+
+comportamiento opcional:
+
+mejora;
+
+empeora;
+
+constante;
+
+intermitente.
+
+8.3.3 Evolución desde la sesión anterior
+
+Opciones rápidas:
+
+mejor;
+
+igual;
+
+peor.
+
+Más campo breve:
+
+observación libre corta.
+
+8.3.4 Objetivo de la sesión
+
+Debe poder registrarse como:
+
+texto libre corto;
+
+o seleccionar de objetivos frecuentes:
+
+disminuir dolor;
+
+mejorar movilidad;
+
+mejorar fuerza;
+
+mejorar marcha;
+
+mejorar funcionalidad;
+
+sostener plan;
+
+re-evaluar evolución.
+
+8.3.5 Limitación funcional actual
+
+Debe enfocarse en:
+
+qué no puede hacer;
+
+qué le cuesta;
+
+qué actividad limita.
+
+Ejemplos:
+
+caminar;
+
+subir escaleras;
+
+levantar brazo;
+
+girar cuello;
+
+sentarse/pararse;
+
+tareas laborales;
+
+deporte;
+
+sueño.
+
+8.4 UX recomendado
+
+dolor con escala visual;
+
+zona con body map simple;
+
+evolución con chips;
+
+objetivo con select + opción libre;
+
+limitación funcional con sugerencias frecuentes y posibilidad de nota.
+
+8.5 Justificación clínica
+
+Las guías profesionales describen la evaluación inicial como historia, examen físico, tests y medidas, diagnóstico, pronóstico/plan y plan de cuidado; además resaltan registrar síntomas, función y cambios en el estado del paciente.
+
+9. Bloque C: Examen físico
+9.1 Objetivo
+
+Registrar hallazgos objetivos del estado físico y funcional.
+
+9.2 Regla general
+
+No siempre debe verse completo.
+
+Mostrar completo cuando:
+
+es primera evaluación;
+
+es re-evaluación;
+
+el profesional activa “hacer examen físico”;
+
+hay empeoramiento;
+
+hay bandera clínica;
+
+cambia el plan;
+
+se requiere medición objetiva.
+
+Mostrar resumido cuando:
+
+es seguimiento habitual;
+
+no hay cambios clínicos relevantes.
+
+9.3 Subbloques del examen
+9.3.1 Rango de movimiento
+
+activo;
+
+pasivo;
+
+doloroso sí/no;
+
+limitado sí/no;
+
+observación breve;
+
+medición si aplica.
+
+9.3.2 Fuerza
+
+grupo muscular o región;
+
+escala o nivel;
+
+lado afectado;
+
+comparación con contralateral si corresponde.
+
+9.3.3 Funcionalidad
+
+capacidad para actividad clave;
+
+independencia / dificultad / imposibilidad;
+
+desempeño funcional relevante.
+
+9.3.4 Balance / marcha / transferencias
+
+Solo si aplica por tipo de caso:
+
+equilibrio;
+
+marcha;
+
+sentarse/pararse;
+
+subir/bajar;
+
+transferencias.
+
+9.3.5 Signos relevantes
+
+edema;
+
+rigidez;
+
+inflamación;
+
+espasmo;
+
+cicatriz;
+
+sensibilidad alterada;
+
+otros.
+
+9.3.6 Observaciones neuro / respiratorias
+
+Solo si aplica:
+
+parestesias;
+
+irradiación;
+
+compromiso sensitivo;
+
+coordinación;
+
+patrón respiratorio;
+
+tolerancia al esfuerzo.
+
+9.3.7 Tests y medidas específicas
+
+Diseño flexible:
+
+catálogo configurable;
+
+carga de resultado;
+
+valor anterior;
+
+valor actual;
+
+interpretación breve.
+
+9.4 UX recomendado
+
+cada subbloque plegable;
+
+resumen visual de lo completado;
+
+botón “copiar datos previos y ajustar”;
+
+comparación automática con la última medición;
+
+no exigir completitud total en seguimientos comunes.
+
+9.5 Justificación clínica
+
+Tanto APTA como World Physiotherapy incluyen examen físico, tests y medidas, evaluación, diagnóstico y re-examinación como parte formal del proceso clínico. La documentación también debe reflejar respuesta al tratamiento y cambios en el estado del paciente.
+
+10. Bloque D: Tratamiento aplicado
+10.1 Objetivo
+
+Registrar qué hizo realmente el profesional durante la sesión.
+
+10.2 Campos base
+
+práctica / tratamiento;
+
+técnica utilizada;
+
+zona tratada;
+
+parámetros;
+
+espacio utilizado.
+
+10.3 Comportamiento esperado
+
+El registro debe salir de un catálogo o nomenclador, no de texto libre puro.
+
+10.4 Reglas por tipo de práctica
+
+Al elegir una práctica, deben aparecer solo los campos necesarios.
+
+Ejemplo
+
+Si la práctica es electroterapia:
+
+intensidad;
+
+frecuencia;
+
+tiempo;
+
+zona.
+
+Si la práctica es terapia manual:
+
+maniobra/técnica;
+
+región;
+
+tiempo;
+
+respuesta.
+
+Si la práctica es ejercicio terapéutico:
+
+ejercicio;
+
+series;
+
+repeticiones;
+
+carga;
+
+asistencia o supervisión.
+
+10.5 Múltiples tratamientos
+
+La sesión debe permitir múltiples intervenciones en una misma visita.
+
+Cada tratamiento debe tener:
+
+orden;
+
+duración;
+
+profesional si hubiera co-atención;
+
+observación breve.
+
+10.6 Espacio utilizado
+
+Debe integrarse con la lógica de AKINE:
+
+box;
+
+gimnasio;
+
+gabinete;
+
+espacio especial.
+
+AKINE ya define explícitamente el registro del espacio utilizado, del tratamiento aplicado y de la evolución de la sesión. 
+
+AKINE_info
+
+ 
+
+
+
+11. Bloque E: Resultado de la sesión
+11.1 Objetivo
+
+Cerrar clínicamente la visita.
+
+11.2 Campos obligatorios al cerrar
+
+respuesta del paciente;
+
+tolerancia;
+
+evolución clínica breve;
+
+indicaciones domiciliarias;
+
+próxima conducta.
+
+11.3 Detalle
+11.3.1 Respuesta del paciente
+
+Opciones rápidas:
+
+favorable;
+
+sin cambios;
+
+regular;
+
+empeora;
+
+parcial.
+
+11.3.2 Tolerancia
+
+buena;
+
+regular;
+
+mala.
+
+11.3.3 Evolución clínica breve
+
+Campo corto obligatorio:
+
+síntesis de la sesión;
+
+hallazgo relevante;
+
+cambio observado.
+
+11.3.4 Indicaciones domiciliarias
+
+Debe contemplar:
+
+ejercicios;
+
+cuidados;
+
+reposo relativo;
+
+frío/calor;
+
+recomendaciones funcionales;
+
+alerta si no se indicó nada.
+
+11.3.5 Próxima conducta
+
+Opciones:
+
+continuar igual;
+
+ajustar plan;
+
+re-evaluar;
+
+alta;
+
+derivar;
+
+solicitar estudio;
+
+suspender.
+
+11.4 Justificación clínica
+
+La documentación fisioterapéutica debe incluir intervención, respuesta a la intervención, cambios del estado del paciente, re-examinación y continuidad o cierre del plan.
+
+12. Bloque F: Administrativo mínimo
+12.1 Objetivo
+
+Mantener trazabilidad operativa y facturable sin contaminar la experiencia clínica.
+
+12.2 Campos
+
+asistencia;
+
+primera consulta sí/no;
+
+pedido médico sí/no;
+
+orden/autorización si aplica;
+
+profesional actuante;
+
+duración real de la sesión;
+
+tipo de cobertura:
+
+particular;
+
+obra social;
+
+sesión facturable sí/no;
+
+observación administrativa breve si es imprescindible.
+
+12.3 Regla UX
+
+Este bloque no debe abrir la pantalla.
+Debe estar:
+
+en lateral;
+
+o al final;
+
+o en modo compacto.
+
+AKINE exige asistencia, validación de primera consulta, cobertura, orden de trabajo para OS cuando aplica, registro de sesión y cierre con actualización de historia clínica. 
+
+
+
+ 
+
+
+
+13. Modos de uso de la sesión
+13.1 Modo 1: Sesión rápida
+
+Pensado para seguimiento común.
+
+Debe mostrar:
+
+contexto;
+
+dolor actual;
+
+evolución desde la anterior;
+
+limitación funcional actual;
+
+tratamiento aplicado;
+
+resultado de la sesión;
+
+administrativo mínimo.
+
+No debe exigir de base:
+
+examen físico completo;
+
+tests detallados;
+
+validaciones largas;
+
+gran cantidad de texto libre.
+
+13.2 Modo 2: Evaluación completa
+
+Pensado para:
+
+primera consulta;
+
+re-evaluación;
+
+empeoramiento;
+
+cambio de fase;
+
+cambio de plan;
+
+necesidad de registro más profundo.
+
+Debe agregar:
+
+examen físico completo;
+
+tests y medidas;
+
+antecedentes verificados;
+
+objetivo terapéutico inicial;
+
+plan inicial;
+
+cantidad estimada de sesiones;
+
+documentación requerida por cobertura si aplica.
+
+13.3 Modo 3: Cierre express
+
+Para sesión ya completada casi en tiempo real.
+
+Debe permitir:
+
+revisar resumen;
+
+completar campos pendientes mínimos;
+
+cerrar sesión;
+
+actualizar HC;
+
+dejar registro de conducta siguiente.
+
+14. Qué es obligatorio en una primera evaluación
+
+En la primera evaluación debe ser obligatorio:
+
+motivo / diagnóstico;
+
+dolor actual;
+
+antecedentes relevantes cargados o verificados;
+
+objetivo terapéutico;
+
+examen físico base;
+
+tests/medidas iniciales si aplican;
+
+plan inicial;
+
+cantidad estimada de sesiones;
+
+cobertura / pedido médico / orden si aplica.
+
+Esto es coherente con AKINE, que en primera consulta prevé validar datos del paciente, pedido médico, datos de obra social y la atención asociada a una afección o consulta; y con la práctica clínica formal, que exige evaluación completa antes del plan de intervención. 
+
+
+
+ 
+
+AKN_Estudio_inicial
+
+15. Qué es obligatorio en un seguimiento normal
+
+En seguimiento normal debe ser obligatorio solo:
+
+dolor actual;
+
+evolución desde la anterior;
+
+función actual;
+
+tratamiento aplicado;
+
+respuesta al tratamiento;
+
+próxima conducta.
+
+No tiene sentido exigir examen completo en cada visita. La re-evaluación debe activarse cuando realmente haga falta. Las guías distinguen claramente entre evaluación inicial, intervención, re-examinación y cambios de estado.
+
+16. Reglas de interacción UX/UI
+16.1 Layout general
+
+header sticky con resumen clínico y administrativo mínimo;
+
+columna principal para clínica;
+
+lateral para contexto, alertas y comparativa.
+
+16.2 Componentes sugeridos
+
+escala de dolor visual;
+
+chips para evolución;
+
+body map para zona;
+
+selects con búsqueda para diagnóstico, práctica y objetivos;
+
+accordions solo para examen ampliado;
+
+timeline de sesión anterior visible;
+
+bloques con resumen “anterior vs actual”.
+
+16.3 Reglas visuales
+
+máximo 5 a 7 elementos visibles por bloque antes de expandir;
+
+no usar cards gigantes una debajo de otra sin jerarquía;
+
+priorizar lectura vertical rápida;
+
+mostrar campos avanzados solo cuando el contexto lo pide.
+
+16.4 Ayudas inteligentes
+
+autocompletar desde caso y sesión anterior;
+
+plantillas por tipo de práctica;
+
+copiar última evolución como base editable;
+
+sugerir conducta próxima según historial;
+
+alertar faltantes documentales sin romper el flujo clínico.
+
+17. Reglas funcionales de negocio
+17.1 Autocompletado
+
+La sesión debe reutilizar:
+
+paciente;
+
+cobertura;
+
+plan;
+
+caso/afección;
+
+profesional;
+
+sesión previa;
+
+espacios disponibles o ya asignados.
+
+17.2 Actualización de historia clínica
+
+Al cerrar:
+
+guardar resumen clínico;
+
+persistir tratamientos;
+
+persistir evolución;
+
+asociar la sesión al caso/afección;
+
+actualizar timeline de HC;
+
+dejar disponible para listados OS y trazabilidad.
+
+AKINE ya establece que la sesión finalizada actualiza automáticamente la historia clínica y participa del circuito de cobro/facturación. 
+
+
+
+ 
+
+
+
+17.3 Estados de sesión
+
+Debe contemplar:
+
+pendiente;
+
+check-in realizado;
+
+en ejecución;
+
+pausada si aplica;
+
+finalizada;
+
+ausente;
+
+cancelada;
+
+reprogramada.
+
+17.4 Validaciones mínimas para cierre
+
+No cerrar si faltan:
+
+tratamiento o nota equivalente;
+
+resultado clínico mínimo;
+
+profesional actuante;
+
+duración;
+
+asistencia validada.
+
+18. Reglas de datos y persistencia
+18.1 Separar lo clínico de lo administrativo
+
+No mezclar en una sola entidad plana:
+
+dolor;
+
+examen;
+
+tratamiento;
+
+cobertura;
+
+orden;
+
+cobro.
+
+Separar por secciones lógicas.
+
+18.2 Guardado progresivo
+
+La sesión debe permitir guardado parcial o autosave para evitar pérdida de datos.
+
+18.3 Versionado clínico
+
+Si se corrige una evolución cerrada, registrar:
+
+fecha;
+
+usuario;
+
+cambio;
+
+versión.
+
+18.4 Comparativa histórica
+
+Guardar valores estructurados cuando exista medición para poder comparar:
+
+dolor;
+
+función;
+
+rango;
+
+fuerza;
+
+tests.
+
+19. Casos especiales que el diseño debe contemplar
+19.1 Primera sesión sin cobertura válida
+
+permitir marcar como particular;
+
+no bloquear la atención clínica;
+
+dejar trazabilidad administrativa.
+
+19.2 Seguimiento sin cambios
+
+carga rápida con pocos campos;
+
+copiar datos previos y ajustar.
+
+19.3 Empeoramiento
+
+mostrar recomendación de ampliar evaluación;
+
+forzar re-evaluación si el profesional lo confirma.
+
+19.4 Sesión con múltiples tratamientos
+
+varias filas de intervención;
+
+parámetros por técnica;
+
+resumen final consolidado.
+
+19.5 Falta de documentación OS
+
+mostrar alerta visible;
+
+no mezclarla en medio del bloque clínico;
+
+permitir seguir la atención si la política del consultorio lo permite.
+
+20. Entregables esperados de Gemini CLI
+
+Gemini CLI debe devolver:
+
+20.1 Análisis funcional
+
+propuesta final del flujo;
+
+justificación de qué queda visible y qué no;
+
+diferencias entre sesión rápida y evaluación completa.
+
+20.2 Propuesta UX/UI
+
+estructura final de pantalla;
+
+layout desktop y tablet;
+
+jerarquía de bloques;
+
+componentes recomendados;
+
+interacción entre secciones;
+
+estados vacíos y alertas.
+
+20.3 Definición de campos
+
+listado completo de campos;
+
+tipo de dato;
+
+obligatorio / opcional / solo si aplica;
+
+origen del dato:
+
+autocompletado;
+
+editable;
+
+calculado;
+
+heredado.
+
+20.4 Reglas funcionales
+
+validaciones;
+
+disparadores;
+
+reglas por modo;
+
+comportamiento al cierre;
+
+actualización de historia clínica.
+
+20.5 Propuesta técnica
+
+entidades sugeridas;
+
+separación entre sesión, evaluación, tratamiento, resultado y administrativo;
+
+eventos de negocio;
+
+persistencia mínima necesaria;
+
+estrategia incremental para implementar sin romper lo actual.
+
+20.6 Criterios de aceptación
+
+checklist funcional;
+
+checklist UX;
+
+checklist clínico;
+
+casos borde.
+
+21. Criterios de aceptación
+
+Se considerará aprobado el rediseño si cumple todo esto:
+
+Funcional
+
+permite registrar una primera evaluación completa;
+
+permite registrar un seguimiento rápido;
+
+actualiza historia clínica al cierre;
+
+soporta múltiples tratamientos;
+
+diferencia lo clínico de lo administrativo;
+
+reutiliza datos ya existentes.
+
+UX/UI
+
+no presenta una pantalla kilométrica;
+
+tiene jerarquía clara;
+
+permite carga rápida;
+
+muestra contexto sin saturar;
+
+activa profundidad solo cuando corresponde.
+
+Clínico
+
+registra síntomas;
+
+registra función;
+
+registra examen cuando aplica;
+
+registra tratamiento;
+
+registra respuesta;
+
+registra conducta siguiente;
+
+soporta re-evaluación.
+
+Operativo
+
+conserva asistencia;
+
+conserva cobertura;
+
+conserva orden/autorización si aplica;
+
+conserva duración y profesional actuante;
+
+soporta trazabilidad para facturación/listados.
+
+22. Qué NO hacer
+
+no convertir la sesión en una ficha médica interminable;
+
+no duplicar paciente/cobertura/caso en cada atención;
+
+no esconder lo clínico detrás de lo administrativo;
+
+no exigir examen completo en todos los seguimientos;
+
+no usar textarea libre para todo;
+
+no mezclar tratamiento, resultado y observaciones en un único campo.
+
+23. Recomendación final
+
+La implementación correcta para AKINE no es “más campos”, sino un modelo de captura clínica por capas:
+
+Contexto automático
+
+Evaluación clínica base obligatoria
+
+Examen ampliado solo si corresponde
+
+Tratamiento estructurado
+
+Resultado clínico obligatorio al cierre
+
+Administrativo mínimo separado
+
+Esto respeta el flujo operativo que ya está definido en AKINE y lo eleva a una sesión con valor clínico real, comparable y usable. 
+
+
+
+ 
+

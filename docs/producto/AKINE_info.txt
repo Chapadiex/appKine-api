@@ -1,0 +1,164 @@
+AKINE es una plataforma online que apunta a satisfacer las necesidades de pacientes y profesionales de la salud, permitiendo el registro y seguimiento de turnos y consultas médicas. AKINE nace en el marco de proyecto de Tesis final de la carrera Ingeniería en Sistemas de información de la UTN FRC, donde se aplican e integran todos los conocimientos adquiridos a lo largo del cursado de la carrera.
+
+AKINE - Consultas médicas con profesionales de la salud
+AKINE es una plataforma online que apunta a satisfacer las necesidades de pacientes y profesionales de la salud, permitiendo el registro y seguimiento de atenciones médicas.
+
+AKINE permite a sus usuarios solicitar turnos para consultas médicas de diversa índole, registrando su elección en base a las especialidades y los servicios que brindan los profesionales y consultorios médicos registrados.
+AKINE también brinda a sus usuarios el acceso al registro histórico de sus consultas médicas, que han sido efectuadas en los consultorios registrados.
+
+A su vez, AKINE brinda servicios a profesionales de diversas ramas la salud, permitiendo asociar sus consultorios médicos a la plataforma, con el objetivo de otorgar turnos para consultas médicas a potenciales pacientes. Con un acceso simple, centralizado y confiable a su información, los profesionales pueden registrar en AKINE la gestión de los procesos de negocio de sus consultorios, tales como el seguimiento de la atención a pacientes, el registro de profesionales asociados, asignación de turnos por especialidades, diferenciación de atenciones por obras sociales y llevar el control de pagos y la caja de consultorio.
+
+Características generales
+- Plataforma online disponible 24 horas
+- Registro de cuentas de usuarios pacientes y profesionales
+- Notificaciones por correo electrónico
+- Confidencialidad e integridad de la información registrada
+- Compatible con laptops, dispositivos móviles y tabletas
+- Características para pacientes
+- Registro y consulta de turnos online por especialidad, profesional o consultorio
+- Historia clínica digital
+- Seguimiento de tu familia
+- Características para profesionales de la salud
+- Asociación del consultorio online a la plataforma
+- Registro y seguimiento de pacientes
+- Agenda de turnos online para profesionales registrados
+- Incorporación de profesionales colaboradores y personal administrativo
+- Configuración de disponibilidad horaria para profesionales
+- Generación automática de sesiones para el tratamiento de afecciones
+- Asignación de obras sociales al consultorio
+- Exportación de listados de atenciones por profesionales, especialidades y obras sociales
+- Presentación de estadísticas generales del consultorio
+- Administración de caja del consultorio
+
+Módulos de la plataforma
+En la presente sección se describen las funcionalidades brindadas por la plataforma online AKINE. Para facilitar su comprensión, se presentan los módulos componentes de la plataforma, los cuales fueron conformados a través de actividades de análisis funcional, diseño visual y técnico, desarrollo de software y pruebas de integración, junto a las actividades asociadas a la implementación y despliegue de cada uno de ellos.
+
+- Módulo Usuarios:
+Comprende el registro y la autenticación de usuarios en la plataforma. Incluye la asignación y configuración de roles para cada usuario del sistema, junto a permisos y funcionalidades correspondientes a su rol asignado.
+	- Registro de usuarios: Para interactuar con la plataforma, ya sean pacientes o profesionales médicos, los usuarios deben dar de alta su cuenta usuario, la cual estará vinculada directamente a su cuenta de correo electrónico.
+	- Registro de usuarios Profesionales: Por parte de los usuarios Profesionales médicos, el registro de sus cuentas está asociado a la generación de su consultorio virtual en AKINE. El registro de usuarios Profesionales en la plataforma consta de un formulario donde se solicitan los datos personales, datos de la cuenta de usuario y datos del consultorio a registrar. Con el registro de la cuenta, se envía un correo electrónico al Profesional para que confirme el registro.
+	-Registro de usuarios Pacientes: Respecto a los usuarios Pacientes, el registro de su cuenta se realiza a través de un formulario donde se solicitan los datos personales y de la cuenta de usuario. Aquí también, con el registro de la cuenta se envía un correo electrónico al Paciente para que confirme el registro. 
+	- Confirmación de cuenta de usuario: Desde el correo electrónico enviado al usuario, sean usuarios Pacientes o Profesionales, podrán confirmar el registro realizado. En caso de confirmar el registro, el usuario será redirigido nuevamente a la plataforma AKINE informando que su cuenta se ha registrado exitosamente. El detalle de esta funcionalidad se encuentra en la historias de usuario 288 Como Profesional quiero confirmar el registro de mi cuenta
+	- Autenticación de usuario: El proceso de autenticación de usuario también es diferido para los usuarios Pacientes y Profesionales. Para ello se presenta una pantalla donde el usuario debe seleccionar su rol para realizar la autenticación.
+	- Login de usuarios Profesionales: Una vez seleccionado el rol Profesional, el usuario será redireccionado a la pantalla de Login donde se presenta un formulario que solicita la cuenta de correo electrónico del profesional y su contraseña. Confirmada la autenticación, el usuario profesional ingresa a la pantalla principal de la plataforma en el marco de los consultorios a los que está asociado.
+	- Login del paciente
+	- Activación de cuenta de usuario: En el ámbito de un consultorio particular, un Profesional administrador puede invitar a nuevos colaboradores a trabajar en el consultorio. Esta invitación se realiza vía correo electrónico, presentando opciones para la confirmación y rechazo de la misma.
+	- Los Profesionales o Administrativos invitados que confirmen esta invitación y no dispongan de una cuenta de usuario registrada en AKINE deberán activar su cuenta. Para ello, se presenta la pantalla que solicita el ingreso de una contraseña y su confirmación para registrar la activación.
+	- Restablecimiento de contraseña: Para todos los usuarios de AKINE está disponible la funcionalidad de restablecimiento de su contraseña.
+	Para comenzar el proceso de restablecimiento de contraseña, se presenta la pantalla que solicita ingreso de la cuenta de correo electrónico del usuario. Una vez ingresada la dirección de correo electrónico y confirmado el restablecimiento de la contraseña, se valida la existencia del usuario en la Plataforma y se envía un correo electrónico con un enlace a la página de restablecimiento, donde el usuario podrá ingresar su nueva contraseña.
+	- Perfil de usuario: La funcionalidad del perfil del usuario consta de la administración de sus datos personales. Esta administración se realiza a través de un formulario que presenta los datos del usuario y es accesible desde el menú contextual de la plataforma.
+
+- Módulo Consultorios : Comprende la gestión de consultorios en la plataforma, contemplando su registro, seguimiento y la administración de información asociada a especialidades, prácticas, espacios asociados.
+	- Registro de consultorios: El registro del primer consultorio de un usuario Profesional se realiza en conjunto al registro del usuario, descrito en la sección Registro de usuarios Profesionales del Módulo Usuarios.
+	Para el caso que un Profesional ya cuente con un consultorio activo, la funcionalidad para registrar un nuevo consultorio también estará disponible, permitiendo al Profesional disponer de más de un consultorio.
+	- Administración de consultorios: La administración de consultorios consta de la edición y seguimiento de los datos asociados a los consultorios del profesional autenticado. 
+	- Eliminación de consultorio: La eliminación de un consultorio contempla la funcionalidad de dar de baja un consultorio activo, bloqueando cualquier actividad asociada al mismo. El consultorio se marca como inactivo, restringiendo la edición de los datos asociados, los cuales quedan accesibles solo para usuarios Administradores.
+	- Espacios de un consultorio: En el marco de un consultorio particular, se permite la administración de espacios, tales como boxes de atención, gimnasios, oficinas, etc. El detalle de esta funcionalidad se describen en las historias de usuari
+
+	Especialidades y prácticas: Los servicios que brindan los consultorios registrados en AKINE están directamente relacionados a especialidades médicas o ramas de la salud particulares, por ejemplo: Kinesiología.
+	- Administración de especialidades: Las especialidades soportadas por AKINE estarán regidas por los usuarios Administradores. En caso que los Profesionales administradores no encuentren una especialidad acorde a sus necesidades, se dispondrá de una funcionalidad que permitirá solicitar el registro de nuevas especialidades. CRUD
+	- Administración de prácticas: Los Profesionales administradores de los consultorios tendrán la posibilidad de registrar las prácticas que llevan a cabo sobre pacientes para el tratamiento de una afección. Estas prácticas particulares de cada consultorio están vinculadas a las especialidades soportadas por AKINE.CRUD
+
+
+- Módulo Colaboradores: Comprende las funcionalidades administración de profesionales y personal administrativo de consultorios, contemplando la gestión de sus datos personales y laborales. También contempla la administración de especialidades asociadas a los consultorios y las prácticas que ejercen los profesionales registrados.
+	- Registro de colaboradores: El registro de profesionales y administrativos está directamente relacionado a la generación de usuarios de la plataforma. Todos los colaboradores asociados a un consultorio, sean administradores o invitados, deben contar con una cuenta de usuario en la plataforma.
+	- Invitación a colaboradores: Los profesionales administradores de consultorios tienen disponible la funcionalidad de invitar a otros usuarios profesionales o administrativos para colaborar en el consultorio. Tanto sea para profesionales como administrativos, el proceso de invitación valida si el usuario a invitar ya está registrado en la plataforma o no. Para usuarios que no están registrados, se solicita previamente la activación de la cuenta de usuario.
+	La invitación a participar de un consultorio activo consta de un correo electrónico, donde el profesional o administrativo invitado dispone de dos botones que disparan las funcionalidades de confirmación y rechazo respectivamente.
+	- Confirmación de la invitación: En caso de que el profesional o administrativo invitado confirme la invitación, se registrará el vínculo al consultorio asociado. Como se describió anteriormente, si el profesional o administrativo invitado no cuenta con un usuario activo en la plataforma, previo a la confirmación se solicitará la activación de la cuenta de usuario.
+	- Rechazo de invitación: En caso de que el profesional o administrativo invitado rechace la invitación, se registrará el rechazo en la plataforma.
+
+- Módulo Obras sociales y Convenios :Comprende el registro y administración de convenios del consultorio ya sean particulares o con las obras sociales asociadas, contemplando el detalle de las prestaciones brindadas por cada una.
+	- Registro de obras sociales: Las obras sociales soportadas por AKINE estarán regidas por los usuarios Administradores. En caso que los Profesionales administradores no dispongan de la obra social solicitada, se dispondrá de una funcionalidad que permitirá solicitar el registro de nuevas obras sociales. El detalle de esta funcionalidad se presenta en la historia de usuario 588 Como Profesional administrador quiero solicitar el registro de una nueva obra social
+	El registro de obras sociales se detalla en la historia de usuario 117 Como Administrador quiero registrar obras sociales en la plataforma
+	La administración de obras sociales registradas se detalla en la historia de usuario 575 Como Administrador quiero gestionar las obras sociales de la plataforma
+	La edición de obras sociales registradas se detalla en la historia de usuario 576 Como Administrador quiero editar datos de obras sociales registradas
+	- Registro de planes: Las obras sociales brindan sus servicios a través de planes bien definidos, asignando a sus afiliados a un plan particular. El registro de planes también estará regido por los usuarios Administradores de AKINE. En caso que los Profesionales administradores no dispongan del plan asociado a la obra social seleccionada, se dispondrá de una funcionalidad que permitirá solicitar el registro de nuevos planes para una obra social. El detalle de esta funcionalidad se presenta en la historia de usuario 589 Como Profesional administrador quiero solicitar el registro de un nuevo plan 
+	El registro de obras sociales se detalla en la historia de usuario 577 Como Administrador quiero registrar planes para obras sociales existentes
+	La administración de obras sociales registradas se detalla en la historia de usuario 578 Como Administrador quiero gestionar planes de obras sociales registradas
+	La edición de obras sociales registradas se detalla en la historia de usuario 579 Como Administrador quiero editar planes de obras sociales registradas
+
+
+	Convenios con obras sociales y particulares: Los consultorios registrados en AKINE podrán establecer convenios, ya sean particulares o con obras sociales, definiendo puntualmente con que planes trabajan y las particularidades pertinentes a la atención de pacientes con obra social.
+	- Registro de convenios con obras sociales: El convenio representa la asociación y registro de una obra social con un consultorio particular. Los usuarios Profesionales administradores podrán registrar nuevos convenios, detallando especificaciones de cobertura de plan, valores de aranceles y descuentos aplicados para cada uno, junto a la vigencia correspondiente. El detalle de esta funcionalidad se describe en la historia de usuario 581 Como Profesional administrador quiero registrar convenios con obras sociales 
+	- Registro de convenios particulares: El convenio particular contempla las definiciones tomadas por los consultorios para las atenciones particulares de pacientes que no poseen una obra social. En este caso, los usuarios Profesionales administradores pueden registrar los convenios que crean necesarios, definiendo formas de pago, aranceles, vigencia, entre otros.
+	El detalle de esta funcionalidad se describe en la historia de usuario 660 Como Profesional administrador quiero registrar convenios particulares
+	Cabe destacar que, la administración de convenios solo estará disponible para Profesionales administradores. El detalle de esta funcionalidad se presenta en la historia de usuario 580 Como Profesional administrador quiero gestionar convenios 
+	La edición de convenios registrados también estará disponible solo para Profesionales administradores.
+
+Módulo Consultas y Afecciones
+Comprende el registro y modificación de afecciones y consultas asociadas a un paciente, las cuales conformarán el detalle de su historia clínica en el centro.
+
+Módulo Pacientes
+Comprende el registro y modificación de datos personales y médicos de pacientes, incluyendo la incorporación de datos de obras sociales asociadas en caso de corresponder.
+
+Módulo Turnos
+Comprende la calendarización de las consultas registradas en el centro, permitiendo la incorporación de nuevas consultas en base a disponibilidad de espacios, profesionales y especialidades existentes.
+
+Módulo Gestión de caja
+Comprende la administración de los ingresos y egresos de la caja del centro, detallando cobros a pacientes y obras sociales, y pagos a profesionales asociados.
+
+Módulo Usuarios y seguridad
+Comprende la asignación y configuración de roles y permisos para cada usuario del sistema, permitiendo disponibilizar las funcionalidades correspondientes a su rol asignado.
+
+
+Procesos de negocio
+En esta sección se presentan los procesos de negocio de consultorios que, a nivel general, han sido identificados en base a relevamientos realizados en consultorios de diversa índole. Por ello, se pudieron identificar y describir los procesos de negocio involucrados, detallando los responsables asignados, accionables de cada uno y los resultados obtenidos por cada proceso.
+
+- Asignación de turnos : Desde la solicitud de turno de un paciente hasta la asignación del turno a un profesional en una fecha y hora definida.
+- Administración de colaboradores : Desde la invitación a profesionales y administrativos a trabajar en el consultorio hasta la configuración de su disponibilidad horaria de atención.
+- Atención de pacientes : Desde la asistencia de un paciente a un turno reservado hasta la actualización de su historia clínica con el detalle de la atención realizada.
+- Cobro a obras sociales : Desde la generación del listado de atenciones realizadas por Obra social para un período de tiempo puntual hasta el registro del ingreso del pago de la Obra social en la caja.
+
++Roles intervinientes
+En la presente sección se describen los roles intervinientes en la plataforma AKINE. Cada uno de ellos tiene asociado un conjunto de funcionalidades específicas, basadas en permisos bien definidos que les permiten interactuar con la plataforma. A continuación se presentan los roles ordenados por el nivel de privilegios que tienen asociados:
+- Administrador: El rol Administrador tiene asociadas las funcionalidades de configuración de la plataforma. Es responsable de la información de soporte de la plataforma, necesaria para la operatoria general. También tiene asociada la responsabilidad de administración de cuentas de usuario, asociando roles y permisos al momento de su creación.
+- Profesional administrador: El rol Profesional administrador es asignado a quien registra un consultorio en la plataforma. Es responsable de la configuración de sus consultorios, teniendo a disposición la administración de profesionales asociados, colaboradores, espacios disponibles, etc. Un usuario con este rol puede invitar a nuevos profesionales a ser parte del consultorio, marcándolos como profesionales administradores, invitados o colaboradores.
+- Profesional: El rol Profesional tiene asignadas las funcionalidades generales de la plataforma tales como la generación de nuevos pacientes, registro y seguimiento de sesiones y afecciones, etc. Está asociado a los profesionales que fueron invitados por un Profesional administrador a formar parte de uno o más consultorios.
+- Administrativo: El rol Administrativo está asociado a los usuarios que realizan actividades de gestión administrativa en los consultorios, tales como el registro de turnos y movimientos de caja, y solo tienen acceso a dichas funcionalidades.
+- Paciente: El rol Paciente es asignado automáticamente a los usuarios que se registran en la plataforma AKINE para acceder a los servicios que brindan los diferentes consultorios. Como funcionalidades principales, estos usuarios pueden solicitar turnos de atención en los consultorios registrados, basándose en la disponibilidad de especialidades y profesionales del mismo, y consultar su historial clínico de atención en los consultorios a los que asistió.
+
++Asignación de turnos
+El proceso de asignación de turnos a pacientes inicia con la solicitud de atención de un paciente, ya sea de forma presencial ,telefónica, o de forma online a través de la plataforma AKINE.
+- Turno online: Los usuarios de la plataforma tendrán disponible la posibilidad de buscar y solicitar turnos de forma online. Los usuarios proceden a buscar turnos en base a la disponibilidad que presenten los profesionales de los consultorios registrados para una especialidad puntual.
+Para disponer de esta funcionalidad, los usuarios deberán estar registrados en la plataforma AKINE, teniendo que haber acreditado su identidad al menos en la primera asistencia a su consulta.
+Cuando los usuarios hayan encontrado y seleccionado el turno con el horario, especialidad, profesional y consultorio deseado, deberán confirmar la asignación del turno. Una vez registrada la confirmación, se asigna el turno al profesional seleccionado en el ámbito del consultorio donde está registrado, detallando fecha y hora de atención.
+- Turno presencial y telefónico: Una vez que el paciente se presenta al consultorio o se comunica por vía telefónica para solicitar un turno, se solicita el número de documento o el apellido y nombre para validar si el mismo ya está registrado en AKINE. En caso de no estar registrado, se procede a registrar el nuevo paciente.
+- Registro de un nuevo paciente: Para registrar un nuevo paciente, se solicitan sus datos personales, incluyendo DNI, nombre completo, mail, fecha de nacimiento, sexo, nacionalidad, domicilio, teléfono, estado civil y profesión.
+También si el paciente dispone de alguna obra social, se registra la misma junto al plan y el número de afiliado.
+- Asignación de turno: Para registrar un nuevo turno, se procede a buscar el paciente, sea por DNI o nombre, para validar su registro en la plataforma.
+Ya asignado el paciente, se solicita el ingreso del nombre del profesional con el que se desea atender (o la especialidad con la que debe contar el profesional para la atención), el tipo de consulta asociada y el lapso temporal en el cual se va registrar el turno.
+Una vez ingresados los datos solicitados, se presentarán todos los turnos disponibles para el profesional o especialidad en el período seleccionado. Confirmada la elección de uno de los horarios disponibles, se procede a asignar el turno al paciente, asociando el mismo al profesional o especialidad seleccionado junto al motivo por el cual se solicita el turno.
+
++Administración de colaboradores
+El proceso de administración de colaboradores inicia con la invitación que pueden realizar los administradores de consultorios registrados a profesionales médicos como a colaboradores administrativos.
+- Invitación a colaboradores: El alta de un profesional médico o un colaborador administrativo inicia con la invitación que realizan los administradores de consultorios registrados, en la cual se especifica la cuenta de correo electrónico del usuario a invitar junto al rol que este usuario tendrá asignado en el consultorio. Este rol puede ser:
+	- Profesional administrador: Con potestad total de acceso a todos los módulos y funciones de la plataforma asociadas al consultorio.
+	- Profesional: Con potestad parcial de acceso a los módulos y funciones de la plataforma asociadas al consultorio.
+	- Colaborador administrativo: Con potestad parcial de acceso a los módulos y funciones de la plataforma asociadas al consultorio.
+El detalle de las funciones asociadas a cada rol de la plataforma está disponible en la sección Roles y funciones por rol.
+Confirmada la invitación, se envía al correo electrónico especificado con el detalle del consultorio, datos del profesional administrador emisor y el rol asociado al invitado. Junto a los detalles mencionados, también se presentan opciones para la confirmación y rechazo de la invitación. Aquí el usuario invitado podrá aceptar la invitación, registrándose como nuevo profesional del consultorio en cuestión. Por el contrario, el usuario invitado también podrá rechazar la invitación para asociarse al consultorio, lo cual quedará registrado en la plataforma a fin de no permitir la invitación recurrente al mismo profesional.
+- Datos personales de usuarios: Todos los usuarios de la plataforma dispondrán de una sección para administrar sus datos personales, denominada Perfil de usuario. Aquí se podrá dar de alta y actualizar la información personal y de interés de cada usuario, como foto de perfil, habilidades e intereses.
+- Configuración de disponibilidad horaria: La definición de disponibilidad horaria de los profesionales médicos como de los colaboradores administrativos siempre será en el marco de cada consultorio registrado. Esto significa que, por ejemplo, un profesional médico podrá estar asociado a más de un consultorio y tener disponibilidad horaria por la mañana en un consultorio y por la tarde en otro distinto.
+La definición de la disponibilidad horaria consta de la elección de días y rango de horarios para cada día seleccionado por colaborador. Está función solo podrá ser accedida por los profesionales administradores del consultorio.
+- Desvinculación de un colaborador:La desvinculación de un profesional médico o un colaborador administrativo también se registra en la plataforma. Esto impide que el usuario desvinculado deje de tener acceso a la información del consultorio y, para el caso de profesionales médicos, no se le asignen más turnos ni atenciones a partir de la fecha de su desvinculación. Cabe destacar que la información registrada para el usuario desvinculado es persistente en la plataforma. Esto contempla que, si el usuario desvinculado es un profesional médico y tenía turnos asignados en una fecha superior a la de su desvinculación, dichos turno serán marcados como Pendientes de definición, presentados adecuadamente para su procesamiento.
+
++Atención de pacientes
+El proceso de atención de pacientes inicia cuando un paciente asiste al consultorio para su atención.
+
+- Recepción: En ese momento, el paciente es recepcionado por un colaborador administrativo, quien le solicita el nombre completo o número de documento para buscar el turno reservado en el sistema. Cuando el colaborador administrativo encuentra el turno agendado, procede a registrar la asistencia del paciente.
+-Primera consulta: Para el caso que sea la primera consulta para el paciente, se le solicita el pedido médico de atención. Si los datos del paciente no están registrados en el sistema, el colaborador administrativo le solicita dichos datos, por ejemplo, datos personales paciente o de la obra social con la que cuenta.
+- Confirmación y cobro: Ya disponibles los datos del paciente, se procede a completar los datos de la consulta, definiendo los detalles de la afección, la cantidad de sesiones, días y hora de atención, y la duración de las mismas en bases a las prácticas recomendadas para la afección que presenta el paciente. Aquí el colaborador administrativo valida si el paciente dispone de alguna obra social registrada.
+Para el caso de que el paciente disponga de una obra social con la que trabaje el consultorio, se procede a imprimir la orden de trabajo para la sesión de ese día, se le solicita la firma al paciente y se envía el paciente a la cola de espera de atención.
+Si el paciente no cuenta con obra social, o dispone de una obra social con la que el consultorio no trabaje, la sesión se marca como particular, se procede a realizar el cobro correspondiente al paciente y se envía el paciente a la cola de espera de atención.
+El paciente permanecerá en espera hasta que un profesional médico inicie la atención de la sesión, debiendo informar al paciente a que proceda hacia un espacio (box, gimnasio, etc.) puntual.
+- Consulta en ejecución: La sesión inicia con la confirmación del profesional médico para que el próximo paciente en la cola de espera se dirija a un espacio puntual.
+El profesional médico procede a registrar los espacios a utilizar para la atención de paciente, junto a una descripción del tratamiento a aplicar en la sesión. Durante el transcurso de la sesión, el profesional médico puede ir completando los detalles de la atención, tanto para los tratamientos aplicados como para descripciones de la evolución del paciente para la afección en cuestión.
+Culminada la atención del paciente, con el registro de tratamientos aplicados y el detalle de la evolución del paciente, el profesional médico marca la sesión como finalizada. Con esta acción, se procede a confirmar los datos ingresados, calcular la duración de la sesión y a actualizar la historia clínica del paciente.
+- Cancelación y reprogramación: Cuando un paciente no asiste al turno agendado el mismo se marca como ausente. En caso de no asistir a la primera sesión programada, se eliminan todos los turnos agendados para esa consulta.
+Los pacientes disponen de la posibilidad de cancelar y reprogramar turnos agendados (o ausentes). En caso de ser cancelado, se procede a eliminar el turno, actualizando la disponibilidad de profesionales y espacios involucrados. En caso de ser reprogramado, realiza nuevamente la validación de disponibilidad de los profesionales y recursos asignados.
+
++Cobro a obras sociales
+El proceso de cobro a obras sociales inicia con la generación del listado de consultas realizadas correspondientes a cada obra social para un período puntual, generalmente un mes calendario.
+- Listado de consultas: La generación de las facturas correspondientes a cada obra social se realiza manualmente, en base a la información que genera el sistema sobre las atenciones realizadas, junto al detalle de profesionales y obras sociales involucradas en cada atención.
+Dicha información es presentada en forma de listado con todas las atenciones realizadas en un período de tiempo establecido por el usuario, teniendo la posibilidad de aplicar filtros por profesionales médicos y obras sociales participantes.
+Una vez vez generado el listado deseado, el sistema presenta opciones de exportación de la información obtenida para que el usuario pueda disponer de la misma en el formato que requiera. En base a esta información, los administradores generan las facturas correspondientes a cada obra social, quedando a la espera del registro del ingreso del dinero a la caja.
