@@ -606,6 +606,16 @@ public enum ProblemType {
 	 */
 	PLAN_TRANSICION_INVALIDA("plan-transicion-invalida"),
 	/**
+	 * El caso tiene un plan SUSPENDIDO que sigue ocupando el lugar del vigente (409). Lleva
+	 * {@code planQueOcupaId} y {@code numeroDelPlanQueOcupa}.
+	 *
+	 * <p>Activar un plan cuando el que ocupa el lugar esta ACTIVO lo finaliza solo, y eso no
+	 * produce este tipo. Un suspendido si: alguien freno ese tratamiento para volver a el, y
+	 * finalizarlo en silencio convertiria "el paciente viaja dos meses" en "el tratamiento
+	 * termino". La pantalla tiene que ofrecer ir a ese plan y finalizarlo, y para eso viaja su id.
+	 */
+	PLAN_VIVO_EN_EL_CASO("plan-vivo-en-el-caso"),
+	/**
 	 * Se intento crear o activar un plan sobre un Caso que ya no esta ACTIVO (409).
 	 *
 	 * <p>Es un tipo distinto de {@link #CASO_CLINICO_CERRADO} porque lleva a otra accion: aquel lo

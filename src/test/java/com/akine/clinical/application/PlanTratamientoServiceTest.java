@@ -173,7 +173,7 @@ class PlanTratamientoServiceTest {
 		});
 		given(items.buscarDeVersion(anyLong(), anyLong())).willReturn(List.of());
 		given(eventos.save(any())).willAnswer(i -> i.getArgument(0));
-		given(planes.buscarActivoDelCaso(ORG_ID, CASO_ID)).willReturn(Optional.empty());
+		given(planes.buscarQueOcupaElLugarDelCaso(ORG_ID, CASO_ID)).willReturn(Optional.empty());
 		given(realizado.contarPorOfertaEnElCaso(anyLong(), anyLong())).willReturn(List.of());
 	}
 
@@ -386,7 +386,8 @@ class PlanTratamientoServiceTest {
 			PlanTratamiento nuevo = plan(EstadoPlan.BORRADOR);
 			PlanTratamiento anterior = otroPlanActivo();
 			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(nuevo));
-			given(planes.buscarActivoDelCaso(ORG_ID, CASO_ID)).willReturn(Optional.of(anterior));
+			given(planes.buscarQueOcupaElLugarDelCaso(ORG_ID, CASO_ID))
+					.willReturn(Optional.of(anterior));
 
 			service.activar(profesional, PLAN_ID, 0L, null);
 

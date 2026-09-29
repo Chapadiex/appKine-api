@@ -24,6 +24,7 @@ import com.akine.clinical.domain.exception.OfertaNoVigenteException;
 import com.akine.clinical.domain.exception.PacienteSinPerfilVigenteException;
 import com.akine.clinical.domain.exception.PlanNoEditableException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
+import com.akine.clinical.domain.exception.PlanVivoEnElCasoException;
 import com.akine.clinical.domain.exception.ReferenciaDelPlanNotAccessibleException;
 import com.akine.clinical.domain.exception.TransicionDePlanInvalidaException;
 import com.akine.platform.spi.problem.ProblemType;
@@ -96,6 +97,7 @@ public class ClinicalProblemHandler {
 	private static final URI PLAN_NO_EDITABLE = ProblemType.PLAN_NO_EDITABLE.uri();
 	private static final URI PLAN_TRANSICION_INVALIDA =
 			ProblemType.PLAN_TRANSICION_INVALIDA.uri();
+	private static final URI PLAN_VIVO_EN_EL_CASO = ProblemType.PLAN_VIVO_EN_EL_CASO.uri();
 	private static final URI CASO_NO_ACTIVO = ProblemType.CASO_NO_ACTIVO.uri();
 	private static final URI AUTORIZACION_SIN_SALDO = ProblemType.AUTORIZACION_SIN_SALDO.uri();
 	private static final URI AUTORIZACION_VENCIDA = ProblemType.AUTORIZACION_VENCIDA.uri();
@@ -428,6 +430,26 @@ public class ClinicalProblemHandler {
 		problem.setTitle("El plan de tratamiento no admite cambios");
 		problem.setProperty("planId", ex.getPlanId());
 		problem.setProperty("estado", ex.getEstado());
+		return problem;
+	}
+
+	/**
+	 * <b>409.</b> El caso tiene un plan suspendido que todavia ocupa el lugar del vigente.
+	 *
+	 * <p>No es un {@code plan-transicion-invalida}: el plan que se quiere activar esta en un
+	 * estado que admite la transicion perfectamente, y lo que la frena es OTRO plan. Publicarlo
+	 * como transicion invalida mandaria a la pantalla a hablar del plan equivocado.
+	 */
+	@ExceptionHandler(PlanVivoEnElCasoException.class)
+	public ProblemDetail handlePlanVivoEnElCaso(PlanVivoEnElCasoException exception) {
+		log.debug("Plan vivo en el caso: planQueOcupaId={}", exception.getPlanQueOcupaId());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(PLAN_VIVO_EN_EL_CASO);
+		problem.setTitle("El caso ya tiene un plan vivo");
+		problem.setProperty("planQueOcupaId", exception.getPlanQueOcupaId());
+		problem.setProperty("numeroDelPlanQueOcupa", exception.getNumeroDelPlanQueOcupa());
 		return problem;
 	}
 

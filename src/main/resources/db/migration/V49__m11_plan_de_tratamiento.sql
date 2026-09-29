@@ -230,8 +230,8 @@ CREATE TABLE plan_tratamiento
 
     ultimo_numero_version INT          NOT NULL DEFAULT 1 COMMENT 'Numero de la ultima version escrita. La modificacion numera con este contador +1 y NUNCA con MAX(numero_version): dos MAX simultaneos dan el mismo numero (punto 4)',
 
-    activo_key            INT AS (IF(estado = 'ACTIVO', 0, numero_plan)) STORED NOT NULL
-        COMMENT 'Discriminador de "un solo plan activo por caso". El ACTIVO vale 0 y los demas su propio numero_plan, que ya es unico en el caso. No puede ser el id: MySQL prohibe que una columna generada referencie un AUTO_INCREMENT. Ver el punto 3',
+    activo_key            INT AS (IF(estado IN ('ACTIVO', 'SUSPENDIDO'), 0, numero_plan)) STORED NOT NULL
+        COMMENT 'Discriminador de "un solo plan activo por caso". El plan VIVO —ACTIVO o SUSPENDIDO— vale 0 y los demas su propio numero_plan. SUSPENDIDO ocupa el lugar a proposito: suspender es frenar el tratamiento que hay, no abrir la puerta a otro (EstadoPlan#SUSPENDIDO), que ya es unico en el caso. No puede ser el id: MySQL prohibe que una columna generada referencie un AUTO_INCREMENT. Ver el punto 3',
 
     creado_en             DATETIME(6)  NOT NULL COMMENT 'Instante UTC de la creacion del plan, en BORRADOR',
     creado_por            BIGINT       NOT NULL COMMENT 'accountId de quien lo creo. Sin FK a cuenta, mismo motivo que en V47',

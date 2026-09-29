@@ -60,6 +60,24 @@ import java.time.LocalDate;
  */
 @Entity
 @Table(name = "autorizacion")
+// @DynamicUpdate, Y SIN ESTO UNA EDICION CONCURRENTE PISA EL CONSUMO EN SILENCIO.
+//
+// `cantidad_consumida` la mueve `AutorizacionRepository#descontarSaldo`, que es un UPDATE NATIVO:
+// suma sobre el valor de la base sin pasar por la sesion de JPA y sin tocar `@Version` —es lo que
+// hace que dos consumos concurrentes no puedan gastar la misma unidad—. Sin esta anotacion, el
+// flush de CUALQUIER edicion de la autorizacion emite un UPDATE con TODAS las columnas, incluida
+// `cantidad_consumida` con el valor que la entidad leyo ANTES del consumo, y el `WHERE version = N`
+// pasa igual porque el consumo no movio la version. La columna vuelve atras, el movimiento del
+// ledger queda, y el ledger pasa a afirmar una unidad que la columna ya no tiene.
+//
+// Nada lo detectaba: es "la quinta cosa, la que va a doler" que el challenge de 04.05 declaro, y la
+// encontro `LedgerCoherenteIT#la_edicion_concurrente_no_reescribe_el_consumo` en la primera corrida
+// real. Con el UPDATE dinamico la edicion escribe solo lo que cambio, asi que el consumo sobrevive
+// y la edicion tampoco falla: no hay conflicto real entre las dos escrituras.
+//
+// SECUENCIALMENTE NO SE NOTA. Hace falta que la edicion lea antes del consumo y flushee despues,
+// asi que una corrida en verde sin la anotacion no prueba nada.
+@org.hibernate.annotations.DynamicUpdate
 public class Autorizacion extends MarcaTemporal {
 
 	@Id

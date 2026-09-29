@@ -171,13 +171,18 @@ class TimelineServiceTest {
 	}
 
 	@Test
-	@DisplayName("pide un evento de mas por fuente: es lo que permite saber si hay pagina siguiente")
+	@DisplayName("pide DOS eventos de mas por fuente: uno es el lookahead y el otro la fila del cursor")
 	void sobre_lectura() {
+		// Fueron `limite + 1` hasta la primera corrida con base real, y con eso la paginacion
+		// PERDIA eventos: la fuente a la que apunta el cursor devuelve tambien el evento del cursor
+		// —el filtro es `ocurrio_en <= hasta`—, el agregador lo descarta, y el uno de mas se lo come
+		// esa fila. La mezcla quedaba en `limite` exacto, "hay siguiente" daba falso y el recorrido
+		// terminaba antes de tiempo. Ver TimelineIT#el_cursor_no_repite_ni_saltea.
 		FuenteEspia espia = new FuenteEspia();
 
 		conFuentes(espia).ver(profesional, HC_ID, null, 5, null, null);
 
-		assertThat(espia.limite).isEqualTo(6);
+		assertThat(espia.limite).isEqualTo(7);
 	}
 
 	@Test
@@ -185,11 +190,11 @@ class TimelineServiceTest {
 	void limite_acotado() {
 		FuenteEspia sinLimite = new FuenteEspia();
 		conFuentes(sinLimite).ver(profesional, HC_ID, null, null, null, null);
-		assertThat(sinLimite.limite).isEqualTo(TimelineService.LIMITE_POR_DEFECTO + 1);
+		assertThat(sinLimite.limite).isEqualTo(TimelineService.LIMITE_POR_DEFECTO + 2);
 
 		FuenteEspia desmedida = new FuenteEspia();
 		conFuentes(desmedida).ver(profesional, HC_ID, null, 100_000, null, null);
-		assertThat(desmedida.limite).isEqualTo(TimelineService.LIMITE_MAXIMO + 1);
+		assertThat(desmedida.limite).isEqualTo(TimelineService.LIMITE_MAXIMO + 2);
 	}
 
 	@Test

@@ -14,6 +14,7 @@ import com.akine.clinical.domain.exception.AutorizacionNoVinculableException;
 import com.akine.clinical.domain.exception.CasoNoActivoException;
 import com.akine.clinical.domain.exception.OfertaNoHabilitadaException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
+import com.akine.clinical.domain.exception.PlanVivoEnElCasoException;
 import com.akine.clinical.domain.exception.ReferenciaDelPlanNotAccessibleException;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRepositoryPort;
@@ -839,12 +840,26 @@ public class PlanTratamientoService {
 			AccesoClinico acceso) {
 
 		Optional<PlanTratamiento> vigente =
-				planes.buscarActivoDelCaso(organizationId, nuevo.getCasoClinicoId());
+				planes.buscarQueOcupaElLugarDelCaso(organizationId, nuevo.getCasoClinicoId());
 		if (vigente.isEmpty() || vigente.get().getId().equals(nuevo.getId())) {
 			return;
 		}
 
 		PlanTratamiento anterior = vigente.get();
+
+		// UN SUSPENDIDO NO SE FINALIZA SOLO. Ocupa el lugar del vigente a proposito —suspender es
+		// frenar el tratamiento que hay— y darlo por terminado en silencio convertiria "el paciente
+		// viaja dos meses" en "el tratamiento termino", que es la distincion que EstadoPlan
+		// SUSPENDIDO existe para conservar. Quien quiera empezar otro finaliza este a mano.
+		//
+		// Sin este control la activacion entraba: el unique de V49 liberaba el lugar en cuanto el
+		// plan dejaba de estar ACTIVO y esta consulta no miraba los suspendidos, asi que el caso
+		// quedaba con DOS planes vivos y reanudar el frenado chocaba despues contra el unique con un
+		// 409 generico: el tratamiento que el paciente freno quedaba irrecuperable.
+		if (anterior.getEstado() == EstadoPlan.SUSPENDIDO) {
+			throw new PlanVivoEnElCasoException(anterior.getId(), anterior.getNumeroPlan());
+		}
+
 		anterior.finalizar(
 				"Finalizado automaticamente al activar el plan " + nuevo.getNumeroPlan()
 						+ " del caso",

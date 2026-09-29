@@ -168,10 +168,24 @@ public class TimelineService {
 		int tamano = tamanoDePagina(limite);
 		Instant hasta = cursor == null ? Instant.now() : cursor.ocurrioEn();
 
+		// tamano + 2 Y NO tamano + 1, Y SIN ESE UNO DE MAS LA PAGINACION PIERDE EVENTOS.
+		//
+		// Cada fuente filtra por `ocurrio_en <= hasta`, y cuando hay cursor ese `hasta` es el
+		// instante del ULTIMO evento devuelto, asi que la fuente a la que el cursor apunta trae ese
+		// mismo evento otra vez y el `precedeA` de abajo lo descarta. Con `tamano + 1`, el uno de mas
+		// —el que existe para saber si hay pagina siguiente— se lo come justamente esa fila: la
+		// mezcla queda en `tamano` exacto, `hayMas` da falso y el recorrido termina ahi, dejando
+		// afuera todo lo mas viejo. El endpoint responde 200 y el cliente no tiene forma de notarlo.
+		//
+		// Lo encontro `TimelineIT#el_cursor_no_repite_ni_saltea` en la primera corrida real: seis
+		// hechos recorridos de dos en dos devolvian cuatro. Es el mismo defecto para cualquier
+		// historia con mas de `limite` hechos, o sea cualquier paciente cronico.
+		int conLookahead = tamano + 2;
+
 		List<EventoClinico> mezcla = new ArrayList<>();
 		for (EventoClinicoContributor contribuyente : contribuyentes) {
 			for (EventoClinico evento : contribuyente.eventosDe(
-					organizationId, historia.getId(), hasta, tamano + 1, casoId)) {
+					organizationId, historia.getId(), hasta, conLookahead, casoId)) {
 
 				if (cursor == null || cursor.precedeA(evento)) {
 					mezcla.add(evento);

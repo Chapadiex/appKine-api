@@ -25,6 +25,8 @@ import org.springframework.test.context.ActiveProfiles;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -367,12 +369,31 @@ class TimelineIT {
 						marca + ".pdf", "application/pdf", pdf(marca)),
 				JUSTIFICACION);
 		jdbc.update("UPDATE adjunto_clinico SET subido_en = ? WHERE id = ?",
-				Timestamp.from(subidoEn), alta.adjunto().id());
+				utc(subidoEn), alta.adjunto().id());
 		return alta;
 	}
 
 	private static byte[] pdf(String marca) {
 		return ("%PDF-1.7\n% " + marca + "\n").getBytes(StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * El instante como {@code Timestamp} en hora de pared <b>UTC</b>.
+	 *
+	 * <p><b>Sin esto el escenario de orden queda armado con instantes corridos.</b> La aplicacion
+	 * configura {@code hibernate.jdbc.time_zone: UTC}, asi que JPA escribe y lee estas columnas
+	 * {@code DATETIME} en UTC; un {@code Timestamp.from(instante)} pasado por {@code JdbcTemplate}
+	 * se convierte con la zona por defecto de la JVM —America/Argentina, tres horas atras— y guarda
+	 * una hora de pared que Hibernate despues interpreta como UTC. El resultado son tres horas de
+	 * corrimiento SOLO en las filas que el fixture escribe por SQL, que es exactamente lo que
+	 * desordena un test cuyos eventos estan a una hora de distancia entre si.
+	 *
+	 * <p>Se noto recien en la primera corrida real: la entrada clinica la crea el servicio —UTC
+	 * correcto— y las otras tres fuentes las escribe este fixture, asi que el timeline devolvia la
+	 * entrada como la mas nueva cuando era la mas vieja.
+	 */
+	private static Timestamp utc(Instant instante) {
+		return Timestamp.valueOf(LocalDateTime.ofInstant(instante, ZoneOffset.UTC));
 	}
 
 	private void insertarAntecedente(Fixture fixture, Instant registradoEn) {
@@ -383,7 +404,7 @@ class TimelineIT {
 				VALUES (?, ?, 'ALERGIA', 'penicilina', ?, ?, 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", fixture.organizationId(), fixture.historiaClinicaId(),
-				Timestamp.from(registradoEn), fixture.cuentaId());
+				utc(registradoEn), fixture.cuentaId());
 	}
 
 	/**
@@ -407,10 +428,10 @@ class TimelineIT {
 				""",
 				fixture.organizationId(), fixture.consultorioId(), fixture.historiaClinicaId(),
 				fixture.ofertaId(), fixture.membershipId(), estado, numeroSesion,
-				Timestamp.from(cerradaEn == null ? ANCLA.minus(5, ChronoUnit.HOURS) : cerradaEn),
+				utc(cerradaEn == null ? ANCLA.minus(5, ChronoUnit.HOURS) : cerradaEn),
 				fixture.cuentaId(),
 				cerradaEn == null ? null : "PRESENTE",
-				cerradaEn == null ? null : Timestamp.from(cerradaEn),
+				cerradaEn == null ? null : utc(cerradaEn),
 				cerradaEn == null ? null : fixture.cuentaId(),
 				// `ck_sesion_ultimo_numero_version`, que agrego V53 con la enmienda: una sesion
 				// numerada tiene al menos la version 1 y una sin numerar tiene cero. El fixture

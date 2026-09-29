@@ -2285,7 +2285,7 @@ paths:
         **Las clases no exponen participantes.** De un turno viaja la persona, que es lo que la recepcion necesita para llamar a alguien; de una clase, ninguna.
 
         La fecha se interpreta en la zona de la **sede**, que viaja en la respuesta: resolverla con la del navegador correria la grilla entera sin fallar.
-      operationId: delDia_1
+      operationId: delDiaAgendaUnificada
       parameters:
       - in: path
         name: consultorioId
@@ -2596,7 +2596,7 @@ paths:
         **`saldoTeoricoEsperado` es el control optimista del cierre.** Si entraron movimientos entre que el operador empezo a contar y confirmo —por ejemplo un cobro en efectivo en la otra computadora— la respuesta es 409 `caja-saldo-cambio` con el teorico actual, en vez de registrar un faltante que nunca existio y obligar a justificarlo por escrito.
 
         **Un cierre no se revierte y una caja cerrada no se reabre.** Un error se compensa con movimientos en la jornada que este abierta hoy.
-      operationId: cerrar_2
+      operationId: cerrarCaja
       parameters:
       - in: path
         name: consultorioId
@@ -3004,7 +3004,7 @@ paths:
         **Incluye las canceladas.** Alguien puede presentarse a una clase que se cancelo, y esconderla deja al mostrador sin nada que decirle.
 
         Filtra por instante de inicio, no por solapamiento: la recepcion piensa en "lo de hoy", que es lo que empieza hoy.
-      operationId: listar_1
+      operationId: listarClase
       parameters:
       - in: path
         name: consultorioId
@@ -3149,7 +3149,7 @@ paths:
         Detalle de una clase. **No incluye la lista de participantes**: la vista de la grilla no expone quien esta inscripto.
 
         Exige `clase:read` y no `clase:manage`: mirar la grilla no es programar.
-      operationId: ver_1
+      operationId: verClase
       parameters:
       - in: path
         name: consultorioId
@@ -3202,7 +3202,7 @@ paths:
         **La idempotencia sale del hecho, no de una clave**: repetir el mismo resultado devuelve 200 sin escribir nada; mandar otro resultado es una **correccion**, que exige `motivo` y **apendea** el valor anterior en el historial en vez de borrarlo.
 
         **El cupo no se mueve**: los cuatro estados involucrados consumen lugar.
-      operationId: registrar_3
+      operationId: registrarAsistencia
       parameters:
       - in: path
         name: consultorioId
@@ -3353,7 +3353,7 @@ paths:
       description: "Los registros y correcciones, del mas viejo al mas nuevo (RN-M28-009).\
         \ Es lo que hace auditable la correccion: **el resultado anterior no se pierde\
         \ al pisarse**, queda aca con su motivo, su actor y su instante."
-      operationId: historial_2
+      operationId: historialAsistencia
       parameters:
       - in: path
         name: consultorioId
@@ -3416,7 +3416,7 @@ paths:
         Libera el horario en el acto: desde la cancelacion, un turno puede tomar ese box y ese profesional.
 
         **Es idempotente** (CA-M28-006-06). Una segunda ejecucion devuelve la misma clase con el motivo original y no registra un segundo evento. Cuando AKINE-08.02 y AKINE-08.07 cuelguen de aca la devolucion de creditos, esa idempotencia es lo que impide devolver plata dos veces.
-      operationId: cancelar_2
+      operationId: cancelarClase
       parameters:
       - in: path
         name: consultorioId
@@ -3475,7 +3475,7 @@ paths:
         **Idempotente sin bandera**: un segundo cierre no encuentra pendientes porque el unique `(clase, persona)` hace imposible una segunda asistencia. Por eso "cerrar dos veces no duplica obligaciones" va a seguir siendo cierto cuando 08.06 cuelgue el devengo.
 
         **Cerrar no cobra y no devenga nada**, igual que el cierre de Sesion (DP-06).
-      operationId: cerrar_1
+      operationId: cerrarAsistencia
       parameters:
       - in: path
         name: consultorioId
@@ -3655,7 +3655,7 @@ paths:
         Las transiciones registradas, de la mas vieja a la mas nueva (RN-M28-009). **Append-only**: ninguna operacion del sistema las modifica ni las borra.
 
         Una reprogramacion guarda el intervalo y la capacidad anteriores, que es lo que la hace trazable sin recrear la clase.
-      operationId: historial_1
+      operationId: historialClase
       parameters:
       - in: path
         name: consultorioId
@@ -3780,7 +3780,7 @@ paths:
         `PROGRAMADA` -> `EN_CURSO` (RF-M13-007). **Idempotente**: iniciar una que ya esta en curso devuelve la misma clase y conserva al actor que la abrio primero.
 
         **No exige que el reloj haya llegado al horario**: una clase que arranca cinco minutos antes es normal y el sistema no tiene por que discutirlo.
-      operationId: iniciar_1
+      operationId: iniciarAsistencia
       parameters:
       - in: path
         name: consultorioId
@@ -3978,7 +3978,7 @@ paths:
         **Cancelar una inscripcion no cancela la clase ni a los demas** (CA-M28-003-06).
 
         **Es idempotente**: una segunda ejecucion no libera un segundo lugar ni promueve a nadie. Cuando AKINE-08.07 cuelgue de aca la devolucion de creditos, eso es lo que impide devolver dos veces.
-      operationId: cancelar_1
+      operationId: cancelarInscripcion
       parameters:
       - in: path
         name: consultorioId
@@ -4052,7 +4052,7 @@ paths:
         Confirmar **no** afirma que la persona haya venido. Eso es `ASISTIO`, y lo registra AKINE-08.03.
 
         Es idempotente: confirmar una confirmada devuelve la misma fila.
-      operationId: confirmar_3
+      operationId: confirmarInscripcion
       parameters:
       - in: path
         name: consultorioId
@@ -4120,7 +4120,7 @@ paths:
         Revalida lo mismo que programar, excluyendose a si misma del control de solapamiento — una clase que se corre media hora chocaria contra si misma.
 
         **No permite bajar la capacidad por debajo de los participantes confirmados** (RF-M12-012).
-      operationId: reprogramar_1
+      operationId: reprogramarClase
       parameters:
       - in: path
         name: consultorioId
@@ -4236,7 +4236,7 @@ paths:
         **Manda `idempotencyKey`.** Un reintento devuelve el mismo cobro con el mismo comprobante; sin ella, un doble click cobra dos veces. La idempotencia se evalua antes de tocar el numerador, para que un reintento no consuma un numero de comprobante que despues nadie usa: la numeracion fiscal con huecos es peor que un cobro repetido.
 
         **No hay anticipos ni anulacion todavia.** Los dos exigen la Caja (AKINE-07.03): un anticipo sin caja es plata que entro y que ningun arqueo puede encontrar, y un reintegro saca dinero de una caja que no existe.
-      operationId: registrar_2
+      operationId: registrarCobro
       parameters:
       - in: path
         name: consultorioId
@@ -4969,7 +4969,7 @@ paths:
         **Sin los pagos de cada fila**: traerlos seria el N+1 del primer listado que lo use. El detalle los tiene.
 
         **Los periodos superpuestos no se impiden, se muestran.** Dos liquidaciones del mismo profesional para el mismo mes son legitimas —una correccion, un segundo concepto—, y un unique sobre el periodo convertiria un caso normal en un error. Filtrar por beneficiario las pone una al lado de la otra, que es la unica respuesta honesta.
-      operationId: buscar_1
+      operationId: buscarEgreso
       parameters:
       - in: path
         name: consultorioId
@@ -5056,7 +5056,7 @@ paths:
         **La vigencia del vinculo se valida solo aca.** Si el profesional se desvinculo el 30 de septiembre, el centro le sigue debiendo septiembre: confirmar y pagar un egreso viejo tiene que funcionar, porque lo contrario convertiria una desvinculacion en una forma de no pagar.
 
         **Esta etapa no calcula liquidaciones.** El importe lo declara una persona.
-      operationId: registrar_1
+      operationId: registrarEgreso
       parameters:
       - in: path
         name: consultorioId
@@ -5118,7 +5118,7 @@ paths:
         \ Ocultar un pago anulado haria que el egreso pareciera no haberse pagado\
         \ nunca, y el historial de \"se pago el 10 y se anulo el 12\" es exactamente\
         \ lo que una auditoria busca."
-      operationId: ver
+      operationId: verEgreso
       parameters:
       - in: path
         name: consultorioId
@@ -5222,7 +5222,7 @@ paths:
         **Se rechaza si quedan pagos vigentes** (409 `egreso-con-pagos`, con `yaPagado` en el cuerpo). Anular el compromiso dejaria plata fuera del cajon sin nada que la justifique. El orden correcto es anular primero los pagos —que es lo que la devuelve— y despues el compromiso.
 
         **Anular no significa borrar** (RN-M22-002): la fila queda con su motivo, su actor y su fecha.
-      operationId: anular_1
+      operationId: anularEgreso
       parameters:
       - in: path
         name: consultorioId
@@ -5281,7 +5281,7 @@ paths:
         **Confirmar NO mueve la caja.** Lo que mueve la caja es el pago. Es como esta etapa lee RN-M22-001 —"solo un egreso confirmado puede mover la caja"— porque la letra estricta volveria contradictorias otras dos cosas del mismo documento: un egreso debido y no pagado no podria existir, y el pago parcial seria irrepresentable, porque no se puede sacar media vez la plata de un cajon.
 
         **Exige comprobante** (tipo y numero). Un egreso confirmado sin respaldo documental es plata que salio sin papel. En borrador es opcional a proposito: la liquidacion se arma antes de tener la factura en la mano.
-      operationId: confirmar_2
+      operationId: confirmarEgreso
       parameters:
       - in: path
         name: consultorioId
@@ -5831,7 +5831,7 @@ paths:
         **Una obligacion con cobros imputados no se anula.** Anular lo que ya se cobro dejaria plata en la caja sin ninguna deuda que la justifique, y el arqueo del dia no cerraria. Lo que corresponde en ese caso es una devolucion, que es M19 y tiene su propio registro.
 
         Devuelve la obligacion anulada y no un 204, porque el cuerpo trae el estado y la version nueva que la pantalla necesita para seguir operando.
-      operationId: anular_2
+      operationId: anularObligacion
       parameters:
       - in: path
         name: consultorioId
@@ -6193,7 +6193,7 @@ paths:
         **Ningun dia de la ventana se omite.** El dia sin turnos viaja con el motivo que lo explica, porque un dia en blanco sin explicacion es indistinguible de un error.
 
         El extremo `hasta` es **exclusivo**, y la ventana no puede superar los 62 dias.
-      operationId: buscar_2
+      operationId: buscarAgenda
       parameters:
       - in: path
         name: consultorioId
@@ -6549,7 +6549,7 @@ paths:
         Lista los lotes de la sede, filtrados y paginados.
 
         Es la pantalla principal de M21: una bandeja por estado deja ver de un vistazo que falta presentar, que espera respuesta y que quedo sin conciliar.
-      operationId: buscar
+      operationId: buscarPresentacion
       parameters:
       - in: path
         name: consultorioId
@@ -6756,7 +6756,7 @@ paths:
         Marca el borrador como anulado, con motivo, y libera sus prestaciones.
 
         **No borra nada y solo funciona sobre un borrador.** Una presentacion enviada no se anula: ya existe del otro lado del mostrador, y si el financiador la rechaza entera eso son **debitos sobre todos sus items**, que es lo que efectivamente paso. Hacer desaparecer el lote borraria la unica evidencia de que se reclamo.
-      operationId: anular
+      operationId: anularPresentacion
       parameters:
       - in: path
         name: consultorioId
@@ -6897,7 +6897,7 @@ paths:
         **Confirmar no cobra.** No toca el saldo de ninguna obligacion y no genera ningun movimiento de caja: presentado y cobrado son dos estados distintos (RN-M21-001).
 
         El numero se pide **despues** de validar: un lote que no se puede confirmar no puede consumir un numero de la serie, porque el hueco despues no se puede explicar. El correlativo es por sede y financiador, y se asigna con un `UPDATE` atomico, nunca con `MAX + 1`.
-      operationId: confirmar_1
+      operationId: confirmarPresentacion
       parameters:
       - in: path
         name: consultorioId
@@ -8119,7 +8119,7 @@ paths:
         EL CASO CLINICO ES OPCIONAL (04.03). Sin casoId la atencion se registra igual: RF-M14-002 admite atencion sin caso y ninguna sesion anterior a 04.03 lo tiene. Exigirlo es RF-M10-007, que necesita su propia ventana de migracion. Cuando viene, tiene que ser un caso ACTIVO de la MISMA historia clinica: uno de otro paciente responde 404 —indistinguible de "no existe", para no poder censar casos ajenos probando ids— y uno cerrado responde 409, porque lleva a otra accion, que es reabrirlo.
 
         LA IDEMPOTENCIA MANDA SOBRE EL CASO: si la sesion del turno ya existe se devuelve tal cual, con el caso que tenga, aunque esta llamada traiga otro. Reasignar el caso de una atencion ya empezada no es "iniciar".
-      operationId: iniciar
+      operationId: iniciarSesion
       parameters:
       - in: path
         name: consultorioId
@@ -8292,7 +8292,7 @@ paths:
         **Cerrar no cobra.** DP-06: el cierre clinico no depende del pago y no crea ninguna obligacion economica. La obligacion se deriva despues, en AKINE-07.01, leyendo las sesiones cerradas.
 
         **Una sesion cerrada no se edita: se enmienda.** Corregirla exige motivo y deja una version en el historial (`POST .../enmiendas`). El cierre ademas **inaugura ese historial**: la version 1 es lo que se acaba de asentar.
-      operationId: cerrar
+      operationId: cerrarSesion
       parameters:
       - in: path
         name: consultorioId
@@ -8791,7 +8791,7 @@ paths:
         **La lectura queda auditada.** DP-03 no distingue entre leer y escribir en una historia clinica, y un tratamiento realizado es contenido clinico: dice que se le hizo al paciente y en que zona.
 
         No exige ser el profesional de la atencion: leer lo que se le hizo al paciente es lo que necesita quien continua su tratamiento.
-      operationId: listar
+      operationId: listarTratamiento
       parameters:
       - in: path
         name: consultorioId
@@ -8846,7 +8846,7 @@ paths:
         CO-ATENCION: `profesionalMembershipId` declara que **otro** profesional aplico esta intervencion. **No le da permiso de escritura**: quien escribe sigue siendo el dueño de la atencion.
 
         EL ESPACIO ES EL REALMENTE UTILIZADO (RF-M04-005) y puede diferir del reservado en el turno. **No se valida ocupacion ni capacidad**: esto registra un hecho consumado, no una reserva. Su vigencia se evalua en el instante de la **atencion**, no en el de la carga.
-      operationId: registrar
+      operationId: registrarTratamiento
       parameters:
       - in: path
         name: consultorioId
@@ -9119,7 +9119,7 @@ paths:
         **Incluye los cancelados, con su motivo.** No es un descuido: alguien puede presentarse al mostrador con un turno que se cancelo, y una lista que los esconda deja a la recepcionista sin nada que decirle.
 
         El dia se interpreta en la zona horaria de la sede. Exige `turno:read`.
-      operationId: delDia
+      operationId: delDiaTurno
       parameters:
       - in: path
         name: consultorioId
@@ -9391,7 +9391,7 @@ paths:
         **Solo turnos futuros.** Un turno que ya empezo es inalterable; lo que se registra sobre el es una ausencia.
 
         **No es idempotente**, a diferencia de confirmar: entre dos cancelaciones el lugar pudo haber sido tomado por otro paciente, y contestar 200 en silencio le haria creer al operador que su motivo quedo registrado.
-      operationId: cancelar
+      operationId: cancelarTurno
       parameters:
       - in: path
         name: consultorioId
@@ -9458,7 +9458,7 @@ paths:
         Marca la reserva como confirmada. **Es idempotente**: confirmar dos veces devuelve 200 sin cambiar nada.
 
         Confirmar es un estado de la RESERVA y no del cobro ni de la llegada del paciente: DP-06 deja el prepago como politica configurable y nunca como condicion del dominio clinico.
-      operationId: confirmar
+      operationId: confirmarTurno
       parameters:
       - in: path
         name: consultorioId
@@ -9511,7 +9511,7 @@ paths:
         Exige `turno:read` y no `turno:manage`: leer quien cancelo y por que es parte de mirar la agenda, no de operarla.
 
         Los turnos anteriores a la migracion `V38` tienen su evento de reserva reconstruido desde la propia fila; en esos, el actor de la confirmacion viaja vacio porque nunca se habia guardado.
-      operationId: historial
+      operationId: historialTurno
       parameters:
       - in: path
         name: consultorioId
@@ -9694,7 +9694,7 @@ paths:
         El servidor **revalida el destino entero** —vigencia de la oferta, habilitacion y horario del profesional, cupo y solapamiento— bajo el mismo lock de sede que usa una reserva, asi que dos reprogramaciones al mismo hueco no pasan las dos.
 
         Un turno confirmado **vuelve a `RESERVADO`**: lo que el paciente confirmo era otro horario.
-      operationId: reprogramar
+      operationId: reprogramarTurno
       parameters:
       - in: path
         name: consultorioId
@@ -25245,6 +25245,7 @@ components:
       - https://akine.app/problems/plan-no-accesible
       - https://akine.app/problems/plan-no-editable
       - https://akine.app/problems/plan-transicion-invalida
+      - https://akine.app/problems/plan-vivo-en-el-caso
       - https://akine.app/problems/caso-no-activo
       - https://akine.app/problems/oferta-no-habilitada
       - https://akine.app/problems/autorizacion-sin-saldo

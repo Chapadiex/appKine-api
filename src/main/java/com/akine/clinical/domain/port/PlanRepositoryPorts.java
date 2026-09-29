@@ -80,7 +80,7 @@ public final class PlanRepositoryPorts {
 		 * pueden leer {@code empty} o el mismo plan: la que pierda choca contra el unique y recibe
 		 * 409, que es el desenlace correcto — no hay ventana en la que queden dos vivos.
 		 */
-		Optional<PlanTratamiento> buscarActivoDelCaso(Long organizationId, Long casoClinicoId);
+		Optional<PlanTratamiento> buscarQueOcupaElLugarDelCaso(Long organizationId, Long casoClinicoId);
 	}
 
 	/**

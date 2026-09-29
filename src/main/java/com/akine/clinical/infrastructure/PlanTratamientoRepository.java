@@ -60,11 +60,12 @@ public interface PlanTratamientoRepository
 			SELECT p FROM PlanTratamiento p
 			 WHERE p.organizationId = :organizationId
 			   AND p.casoClinicoId = :casoClinicoId
-			   AND p.estado = com.akine.clinical.domain.EstadoPlan.ACTIVO
+			   AND p.estado IN (com.akine.clinical.domain.EstadoPlan.ACTIVO,
+			                    com.akine.clinical.domain.EstadoPlan.SUSPENDIDO)
 			 ORDER BY p.id DESC
 			 LIMIT 1
 			""")
-	Optional<PlanTratamiento> buscarActivoDelCaso(
+	Optional<PlanTratamiento> buscarQueOcupaElLugarDelCaso(
 			@Param("organizationId") Long organizationId,
 			@Param("casoClinicoId") Long casoClinicoId);
 }

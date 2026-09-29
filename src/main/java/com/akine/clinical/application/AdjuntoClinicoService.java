@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
@@ -248,9 +249,21 @@ public class AdjuntoClinicoService {
 	/**
 	 * Sube un documento clinico (RF-M25-001).
 	 *
+	 * <p><b>{@code READ_COMMITTED}, y sin eso la idempotencia de la subida concurrente NO funciona.</b>
+	 * El INSERT corre en una transaccion propia y el perdedor de la carrera resuelve el choque
+	 * releyendo por checksum la fila que gano. Con {@code REPEATABLE READ} —el default de MySQL— esa
+	 * relectura no la encuentra: InnoDB fija la foto en la primera lectura consistente, que ocurrio
+	 * antes de que el ganador commiteara, asi que el {@code orElseThrow} vuelve a lanzar el choque y
+	 * lo que el {@code @Operation} promete como reintento idempotente termina en un 500.
+	 *
+	 * <p>Es la misma regla que 05.02 dejo fijada para la reserva de turnos: lo que serializa va en
+	 * {@code READ_COMMITTED}, porque el lock —o el unique— no alcanza si la transaccion mira una foto
+	 * anterior. Lo destapo {@code AdjuntoClinicoIT#la_subida_concurrente_se_resuelve_como_idempotente}
+	 * en la primera corrida real: el test existia desde 04.02 y nunca se habia ejecutado.
+	 *
 	 * @return el adjunto creado, o el que ya existia si el contenido es identico (idempotencia)
 	 */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public AdjuntoClinicoAlta subir(
 			OperatingActor actor,
 			long historiaClinicaId,

@@ -305,9 +305,16 @@ class CasoClinicoCicloIT {
 				caso.version(), JUSTIFICACION);
 		assertThat(conSuplente.equipo()).hasSize(2);
 
+		// SE REPIDE EL CASO ANTES DEL SEGUNDO CAMBIO, y no es ceremonia del test: la vista que
+		// devuelve `cambiarEquipo` trae la version que se LEYO, porque el force-increment la hace
+		// avanzar al commitear, despues de armarla. Encadenar dos cambios con la version de la
+		// respuesta anterior da 409. Es la misma conducta que 02.07 declaro para las habilitaciones
+		// de una oferta, y esta bien que el test la ejerza como la ejerce una pantalla.
+		long versionVigente = casos.ver(fixture.actorClinico(), caso.id(), JUSTIFICACION).version();
+
 		CasoClinicoView sinSuplente = casos.cambiarEquipo(fixture.actorClinico(), caso.id(),
 				List.of(new IntegranteDelEquipo(fixture.membershipId(), RolEnCaso.RESPONSABLE)),
-				conSuplente.version(), JUSTIFICACION);
+				versionVigente, JUSTIFICACION);
 
 		assertThat(sinSuplente.equipo())
 				.as("el equipo VIGENTE queda con uno")
@@ -340,7 +347,21 @@ class CasoClinicoCicloIT {
 				List.of(new IntegranteDelEquipo(fixture.membershipId(), RolEnCaso.TRATANTE)),
 				caso.version(), JUSTIFICACION);
 
-		assertThat(despues.version()).isGreaterThan(caso.version());
+		// LA RESPUESTA DEVUELVE LA VERSION LEIDA, NO LA NUEVA, y es la consecuencia asumida del
+		// force-increment: Hibernate hace avanzar la version al COMMITEAR, despues de que el
+		// servicio ya armo la vista, asi que dentro de la misma transaccion no hay forma de
+		// conocerla. Es lo mismo que 02.07 dejo escrito para las habilitaciones de una oferta —"la
+		// pantalla tiene que repedir la oferta despues de guardar"— y la alternativa es peor:
+		// ensuciar tambien una columna del padre haria avanzar la version DOS veces y el cliente
+		// quedaria en un 409 del que no puede salir.
+		assertThat(despues.version())
+				.as("la vista se arma antes del commit, asi que trae la version que se leyo")
+				.isEqualTo(caso.version());
+		assertThat(jdbc.queryForObject(
+				"SELECT version FROM caso_clinico WHERE id = ?", Long.class, caso.id()))
+				.as("y la fila SI avanzo: es el force-increment de la lectura, que es lo que impide "
+						+ "que dos cambios de equipo concurrentes commiteen los dos")
+				.isGreaterThan(caso.version());
 		assertThatThrownBy(() -> casos.cambiarEquipo(fixture.actorClinico(), caso.id(),
 				List.of(new IntegranteDelEquipo(fixture.membershipId(), RolEnCaso.RESPONSABLE)),
 				caso.version(), JUSTIFICACION))
