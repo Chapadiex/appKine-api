@@ -240,7 +240,7 @@ locales**: el barrido de contención no dejó ninguna afuera. F0 a F7 completas 
 |---|---|
 | Rama | `main` = `akine-integracion-total`, **218 commits**, último `343ad43`. **Los dos commits de documentación están sin pushear** |
 | Contrato | `openapi/akine-api.yaml` **0.44.0**, **267 operaciones**, sin drift y **sin un solo `operationId` desambiguado**. El cliente del frontend sigue en **0.29.0**: no hay pantallas de F4 en adelante |
-| Módulos | **13**: los doce anteriores más **`activity`** (M28/M29, F9) |
+| Módulos | **14**: los doce anteriores más **`reporting`** (M23, 07.06) y **`activity`** (M28/M29, F9) |
 | Migraciones | **V1–V64**, menos `V26`, `V29`, `V31` y `V62`, que quedaron vacías. `V45`–`V64` se aplicaron **contra un motor por primera vez** el 29/09 |
 | Tests | **2.349 unitarias + 437 de integración**, 0 fallos, 1 diferida (7b). `./mvnw verify` en **13:03 min** |
 | Cobertura | instrucción **71,15 %** · línea **73,03 %** · rama **63,46 %**. El gate bajó de `0.80` a **`0.73` línea / `0.71` instrucción** — ver abajo |
