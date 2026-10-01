@@ -64,11 +64,20 @@ public record OfertaResponse(
 		String moneda,
 
 		@Schema(
-				description = "Esquema de cobro DECLARADO, texto libre acotado. No lo resuelve "
-						+ "nadie todavia: los modulos de facturacion y cobros no existen "
-						+ "(RN-M27-006). Se guarda para no perder el dato, no para ramificar",
-				example = "SESION_SUELTA")
+				description = "Esquema de cobro (RN-M27-006). Vocabulario cerrado desde "
+						+ "AKINE-08.06; null si el centro no lo declaro",
+				example = "POR_PACK",
+				allowableValues = {"POR_SESION", "POR_CLASE", "POR_PACK", "POR_ABONO"})
 		String esquemaCobro,
+
+		@Schema(
+				description = "Cuando nace la deuda. Null si y solo si `esquemaCobro` es null",
+				example = "VENTA",
+				allowableValues = {"ASISTENCIA", "INSCRIPCION", "VENTA"})
+		String momentoDevengo,
+
+		@Schema(description = "Si una ausencia devenga igual. Solo aplica con `ASISTENCIA`")
+		boolean devengaNoShow,
 
 		@Schema(description = "Si la oferta se puede presentar a un financiador")
 		boolean admiteObraSocial,
@@ -128,6 +137,8 @@ public record OfertaResponse(
 				view.precioBase(),
 				view.moneda(),
 				view.esquemaCobro(),
+				view.momentoDevengo(),
+				view.devengaNoShow(),
 				view.admiteObraSocial(),
 				view.requiereCasoClinico(),
 				view.generaRegistroClinico(),

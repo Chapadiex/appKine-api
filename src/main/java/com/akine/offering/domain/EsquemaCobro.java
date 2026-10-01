@@ -1,39 +1,85 @@
 package com.akine.offering.domain;
 
+import java.util.Set;
+
 /**
  * Esquema economico declarado por el centro para una {@link OfertaServicioConsultorio}
  * (RN-M27-006).
  *
- * <h2>Por que NO es un enum</h2>
+ * <h2>Por que ahora SI es un enum, cuando 02.06 decidio que no</h2>
  *
- * <p>Todos los demas clasificadores de este modulo ({@link Naturaleza}, {@link Modalidad}) son
- * enums porque replican un {@code CHECK ... IN (...)} de la migracion V24. Este NO tiene CHECK:
- * la columna {@code esquema_cobro} es {@code VARCHAR(32) NULL} <b>sin lista cerrada</b>, y la
- * cabecera de V24 dice por que — "es un dato DECLARADO, NO RESUELTO... fijar el enum ahora seria
- * adivinar el vocabulario de un modulo que nadie escribio". Los modulos que definirian ese
- * vocabulario (M15 convenios, M16 aranceles, M18 facturacion) no existen todavia. Convertir esto
- * en un enum hoy seria inventar una lista cerrada que V24 evito a proposito, y el dia que
- * M16/M18 aparezcan con su propio vocabulario, esta lista quedaria mal y migrar un enum ya usado
- * en produccion es mas caro que no haberlo cerrado nunca.
+ * <p>02.06 lo modelo como un {@code record} de texto libre y dejo escrito el motivo: la columna
+ * {@code esquema_cobro} de {@code V24} es {@code VARCHAR(32)} <b>sin lista cerrada</b> porque
+ * <i>"fijar el enum ahora seria adivinar el vocabulario de un modulo que nadie escribio... los
+ * modulos que definirian ese vocabulario (M15 convenios, M16 aranceles, M18 facturacion) no
+ * existen todavia"</i>.
  *
- * <p><b>No se interpreta.</b> Ningun codigo de este modulo ni de ningun otro lee este valor para
- * decidir nada: se guarda y se muestra tal cual. El unico contrato es sintactico —cabe en 32
- * caracteres, columna de la migracion V24— y por eso esta clase valida largo y nada mas.
+ * <p><b>Ya existen.</b> M18 entro en AKINE-07.01 y M29 es AKINE-08.06, que es la etapa que fija
+ * este vocabulario y la {@link PoliticaDeDevengo} que lo acompana. {@code V64} cierra la columna
+ * con un {@code CHECK} y esta clase lo replica, que es la forma del repositorio para todo
+ * clasificador con lista cerrada ({@link Naturaleza}, {@link Modalidad}).
+ *
+ * <p>Sigue siendo <b>opcional</b>: una oferta puede no declarar esquema, y eso no es un valor
+ * faltante sino un estado real —un centro que todavia no decidio como cobra esa prestacion—.
+ *
+ * <h2>Y ahora SI se interpreta</h2>
+ *
+ * <p>02.06 escribio que "ningun codigo lee este valor para decidir nada". Eso dejo de ser cierto:
+ * el esquema determina {@link #momentosAdmitidos()}, o sea <b>cuando nace la deuda</b>, que es la
+ * pregunta que AKINE-08.03 delego explicitamente a esta etapa.
  */
-public record EsquemaCobro(String valor) {
+public enum EsquemaCobro {
 
-	/** Replica el {@code VARCHAR(32)} de {@code oferta_servicio_consultorio.esquema_cobro}. */
-	public static final int LARGO_MAXIMO = 32;
+	/**
+	 * Se cobra cada atencion individual. Es lo que {@code billing} ya hace desde 07.01: la sesion
+	 * cerrada con asistencia devenga su obligacion.
+	 */
+	POR_SESION(MomentoDevengo.ASISTENCIA),
 
-	public EsquemaCobro {
-		if (valor == null || valor.isBlank()) {
-			throw new IllegalArgumentException("El esquema de cobro declarado no puede ser vacio");
-		}
-		valor = valor.strip();
-		if (valor.length() > LARGO_MAXIMO) {
-			throw new IllegalArgumentException(
-					"El esquema de cobro declarado no puede superar los " + LARGO_MAXIMO
-							+ " caracteres");
-		}
+	/**
+	 * Se cobra cada clase grupal.
+	 *
+	 * <p><b>Es el unico esquema con dos momentos posibles, y esa es la decision del usuario.</b>
+	 * {@code ASISTENCIA} cobra a quien fue; {@code INSCRIPCION} cobra a quien reservo el lugar.
+	 * Las consecuencias de cada una estan en {@code docs/diseno/AKINE-08.06-challenge.md} §7.
+	 */
+	POR_CLASE(MomentoDevengo.ASISTENCIA, MomentoDevengo.INSCRIPCION),
+
+	/**
+	 * Se cobra por adelantado un pack de creditos. La deuda nace <b>al comprar</b> y la clase
+	 * consume credito sin devengar nada: cobrar las dos cosas seria cobrar dos veces.
+	 */
+	POR_PACK(MomentoDevengo.VENTA),
+
+	/**
+	 * Se cobra un abono por periodo. RN-M29-007: el abono cubre un periodo y <b>no genera deuda por
+	 * cada asistencia incluida</b>. AKINE-08.08.
+	 */
+	POR_ABONO(MomentoDevengo.VENTA);
+
+	private final Set<MomentoDevengo> momentosAdmitidos;
+
+	EsquemaCobro(MomentoDevengo... momentos) {
+		this.momentosAdmitidos = Set.of(momentos);
+	}
+
+	/** Cuando puede nacer la deuda bajo este esquema. */
+	public Set<MomentoDevengo> momentosAdmitidos() {
+		return momentosAdmitidos;
+	}
+
+	/**
+	 * El unico momento posible, cuando hay uno solo.
+	 *
+	 * <p>Devuelve {@code null} para {@link #POR_CLASE}, que admite dos: pedirle a este metodo que
+	 * elija seria decidir por el usuario la pregunta que la etapa eleva.
+	 */
+	public MomentoDevengo momentoUnico() {
+		return momentosAdmitidos.size() == 1 ? momentosAdmitidos.iterator().next() : null;
+	}
+
+	/** El esquema admite ese momento. {@code null} nunca es admitido: la politica seria incompleta. */
+	public boolean admite(MomentoDevengo momento) {
+		return momento != null && momentosAdmitidos.contains(momento);
 	}
 }

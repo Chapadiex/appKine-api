@@ -67,14 +67,28 @@ public record UpdateOfertaRequest(
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		Boolean limpiarPrecio,
 
-		@Schema(description = "Esquema de cobro nuevo. Null deja el actual",
+		@Schema(
+				description = "Esquema de cobro nuevo: `POR_SESION`, `POR_CLASE`, `POR_PACK` o "
+						+ "`POR_ABONO`. Null deja la politica actual",
+				allowableValues = {"POR_SESION", "POR_CLASE", "POR_PACK", "POR_ABONO"},
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		@Size(max = 32, message = "El esquema de cobro no puede superar los 32 caracteres")
 		String esquemaCobro,
 
-		@Schema(description = "Dejar la oferta SIN esquema de cobro declarado. Si se omite, false",
+		@Schema(
+				description = "Momento de devengo nuevo: `ASISTENCIA`, `INSCRIPCION` o `VENTA`. "
+						+ "Viaja con `esquemaCobro`: los tres valores de la politica se reemplazan "
+						+ "de una o no se tocan",
+				allowableValues = {"ASISTENCIA", "INSCRIPCION", "VENTA"},
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		Boolean limpiarEsquemaCobro,
+		String momentoDevengo,
+
+		@Schema(description = "Si una ausencia devenga igual. Viaja con `esquemaCobro`",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean devengaNoShow,
+
+		@Schema(description = "Dejar la oferta SIN politica de devengo declarada. Si se omite, false",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean limpiarPolitica,
 
 		@Schema(description = "Null deja el actual", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		Boolean admiteObraSocial,

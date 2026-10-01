@@ -50,8 +50,20 @@ public class Obligacion {
 	@Column(name = "consultorio_id", nullable = false, updatable = false)
 	private Long consultorioId;
 
-	@Column(name = "sesion_id", nullable = false, updatable = false)
+	/**
+	 * La prestacion que origino la deuda. <b>{@code null} cuando el origen no es
+	 * {@link OrigenObligacion#SESION}</b>: una compra de pack no tiene sesion (AKINE-08.06).
+	 */
+	@Column(name = "sesion_id", updatable = false)
 	private Long sesionId;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "origen", nullable = false, length = 16, updatable = false)
+	private OrigenObligacion origen;
+
+	/** El pase comprado que origino la deuda. {@code null} para el origen {@code SESION}. */
+	@Column(name = "pase_id", updatable = false)
+	private Long paseId;
 
 	@Column(name = "persona_id", nullable = false, updatable = false)
 	private Long personaId;
@@ -113,10 +125,65 @@ public class Obligacion {
 		// Requerido por JPA.
 	}
 
+	/**
+	 * La deuda que devenga una <b>prestacion concretada</b> (RF-M18-001).
+	 *
+	 * <p>Es el constructor que existe desde 07.01 y no cambio de forma: su origen es
+	 * {@link OrigenObligacion#SESION} y no se pasa, porque un constructor que recibe una sesion no
+	 * puede ser de otra cosa.
+	 */
 	public Obligacion(
 			long organizationId,
 			long consultorioId,
 			long sesionId,
+			long personaId,
+			Responsable responsable,
+			BigDecimal importe,
+			String moneda,
+			long ofertaId,
+			String snapshotNombre,
+			Instant devengadaEn) {
+
+		this(organizationId, consultorioId, OrigenObligacion.SESION, sesionId, null, personaId,
+				responsable, importe, moneda, ofertaId, snapshotNombre, devengadaEn);
+	}
+
+	/**
+	 * La deuda que devenga la <b>compra de un pack de creditos</b> (RF-M18-009, RF-M29-002).
+	 *
+	 * <p>Sin {@code sesionId}: no hubo prestacion todavia, y ponerle una seria afirmar que la hubo.
+	 * La deuda nace de la venta y el consumo de esos creditos <b>no devenga nada mas</b> — cobrar
+	 * el pack y ademas cada clase es cobrar dos veces lo mismo.
+	 *
+	 * <p>El {@code ofertaId} es el de la oferta cuyos creditos se vendieron, congelado en la venta:
+	 * sirve para que la cuenta corriente pueda explicar de que era el pack aunque el producto se
+	 * haya editado despues.
+	 */
+	public static Obligacion porVentaDePase(
+			long organizationId,
+			long consultorioId,
+			long paseId,
+			long personaId,
+			BigDecimal importe,
+			String moneda,
+			long ofertaId,
+			String snapshotNombre,
+			Instant devengadaEn) {
+
+		return new Obligacion(
+				organizationId, consultorioId, OrigenObligacion.VENTA_PASE, null, paseId, personaId,
+				// El responsable de un pack es SIEMPRE el paciente: no existe financiador que
+				// pague creditos anticipados, y admitir otro valor abriria un estado que ningun
+				// circuito de presentacion sabe resolver.
+				Responsable.PACIENTE, importe, moneda, ofertaId, snapshotNombre, devengadaEn);
+	}
+
+	private Obligacion(
+			long organizationId,
+			long consultorioId,
+			OrigenObligacion origen,
+			Long sesionId,
+			Long paseId,
 			long personaId,
 			Responsable responsable,
 			BigDecimal importe,
@@ -132,9 +199,20 @@ public class Obligacion {
 			throw new IllegalArgumentException("Una obligacion se devenga por un importe positivo: " + importe);
 		}
 
+		// Exactamente un origen, y el origen concuerda con la columna que lo materializa. Es el
+		// mismo invariante que ck_obligacion_origen hace cumplir en la base; las dos cosas hacen
+		// falta, porque el motor garantiza que ninguna fila imposible exista y esto da el error
+		// antes de llegar al motor.
+		if ((sesionId == null) == (paseId == null)) {
+			throw new IllegalArgumentException(
+					"Una obligacion nace de exactamente un hecho: o una sesion o una venta");
+		}
+
 		this.organizationId = organizationId;
 		this.consultorioId = consultorioId;
+		this.origen = origen;
 		this.sesionId = sesionId;
+		this.paseId = paseId;
 		this.personaId = personaId;
 		this.responsable = responsable;
 		this.importeOriginal = importe;
@@ -191,6 +269,14 @@ public class Obligacion {
 
 	public Long getSesionId() {
 		return sesionId;
+	}
+
+	public OrigenObligacion getOrigen() {
+		return origen;
+	}
+
+	public Long getPaseId() {
+		return paseId;
 	}
 
 	public Long getPersonaId() {

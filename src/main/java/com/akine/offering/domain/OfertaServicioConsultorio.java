@@ -114,8 +114,31 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 	@Column(name = "moneda", length = 3)
 	private String moneda;
 
-	@Column(name = "esquema_cobro", length = EsquemaCobro.LARGO_MAXIMO)
-	private String esquemaCobro;
+	/**
+	 * Como cobra esta oferta. Cerrado a un vocabulario desde AKINE-08.06 y {@code V64}; ver
+	 * {@link EsquemaCobro}. {@code null} = el centro todavia no lo declaro.
+	 */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "esquema_cobro", length = 32)
+	private EsquemaCobro esquemaCobro;
+
+	/**
+	 * Cuando nace la deuda. {@code null} si y solo si {@link #esquemaCobro} es {@code null}; la
+	 * coherencia entre los dos la hace cumplir {@link PoliticaDeDevengo} y, en la base,
+	 * {@code ck_oferta_politica_devengo}.
+	 */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "momento_devengo", length = 16)
+	private MomentoDevengo momentoDevengo;
+
+	/**
+	 * Si una ausencia devenga igual. Solo lo lee la rama {@link MomentoDevengo#ASISTENCIA}.
+	 *
+	 * <p>Nace en {@code false} porque cobrar un no-show es una politica de centro y aplicarla por
+	 * defecto seria decidirla por el usuario — es textual del devengador de 07.01.
+	 */
+	@Column(name = "devenga_no_show", nullable = false)
+	private boolean devengaNoShow;
 
 	@Column(name = "admite_obra_social", nullable = false)
 	private boolean admiteObraSocial;
@@ -167,7 +190,7 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 			int capacidad,
 			BigDecimal precioBase,
 			String moneda,
-			EsquemaCobro esquemaCobro,
+			PoliticaDeDevengo politicaDeDevengo,
 			boolean admiteObraSocial,
 			boolean requiereCasoClinico,
 			boolean generaRegistroClinico,
@@ -188,7 +211,9 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 		this.capacidad = capacidad;
 		this.precioBase = precioBase;
 		this.moneda = moneda;
-		this.esquemaCobro = esquemaCobro == null ? null : esquemaCobro.valor();
+		aplicarPolitica(politicaDeDevengo == null
+				? PoliticaDeDevengo.SIN_DECLARAR
+				: politicaDeDevengo);
 		this.admiteObraSocial = admiteObraSocial;
 		this.requiereCasoClinico = requiereCasoClinico;
 		this.generaRegistroClinico = generaRegistroClinico;
@@ -220,8 +245,10 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 	 * juntos: limpiar uno sin el otro dejaria el estado "precio sin moneda", que
 	 * {@link #exigirPrecioConMoneda} rechaza.
 	 *
-	 * <p>{@code limpiarEsquemaCobro} idem, para el campo que no se interpreta (ver
-	 * {@link EsquemaCobro}).
+	 * <p>{@code limpiarPolitica} idem, para la {@link PoliticaDeDevengo}: los tres valores viajan
+	 * juntos porque no son independientes —ver esa clase—, asi que se reemplazan de una o no se
+	 * tocan. Limpiar el esquema sin limpiar el momento dejaria el estado "momento sin esquema",
+	 * que el record rechaza y que {@code ck_oferta_politica_devengo} tambien.
 	 */
 	public void updateDatos(
 			String nombreComercial,
@@ -232,8 +259,8 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 			BigDecimal precioBase,
 			String moneda,
 			boolean limpiarPrecio,
-			EsquemaCobro esquemaCobro,
-			boolean limpiarEsquemaCobro,
+			PoliticaDeDevengo politicaDeDevengo,
+			boolean limpiarPolitica,
 			Boolean admiteObraSocial,
 			Boolean requiereCasoClinico,
 			Boolean generaRegistroClinico,
@@ -266,10 +293,10 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 			this.precioBase = precioBase;
 			this.moneda = moneda;
 		}
-		if (limpiarEsquemaCobro) {
-			this.esquemaCobro = null;
-		} else if (esquemaCobro != null) {
-			this.esquemaCobro = esquemaCobro.valor();
+		if (limpiarPolitica) {
+			aplicarPolitica(PoliticaDeDevengo.SIN_DECLARAR);
+		} else if (politicaDeDevengo != null) {
+			aplicarPolitica(politicaDeDevengo);
 		}
 		if (admiteObraSocial != null) {
 			this.admiteObraSocial = admiteObraSocial;
@@ -454,7 +481,31 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 	}
 
 	public EsquemaCobro getEsquemaCobro() {
-		return esquemaCobro == null ? null : new EsquemaCobro(esquemaCobro);
+		return esquemaCobro;
+	}
+
+	public MomentoDevengo getMomentoDevengo() {
+		return momentoDevengo;
+	}
+
+	public boolean isDevengaNoShow() {
+		return devengaNoShow;
+	}
+
+	/** Como y cuando cobra esta oferta. Nunca {@code null}: sin declarar es un valor, no un hueco. */
+	public PoliticaDeDevengo getPoliticaDeDevengo() {
+		return new PoliticaDeDevengo(esquemaCobro, momentoDevengo, devengaNoShow);
+	}
+
+	/**
+	 * Escribe los tres campos de una. <b>Unico camino de escritura</b>: el record ya valido la
+	 * coherencia en su constructor, asi que no hay forma de dejar la entidad en un estado que la
+	 * base rechazaria.
+	 */
+	private void aplicarPolitica(PoliticaDeDevengo politica) {
+		this.esquemaCobro = politica.esquemaCobro();
+		this.momentoDevengo = politica.momentoDevengo();
+		this.devengaNoShow = politica.devengaNoShow();
 	}
 
 	public boolean isAdmiteObraSocial() {

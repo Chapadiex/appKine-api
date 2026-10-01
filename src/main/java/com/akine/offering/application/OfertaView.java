@@ -41,6 +41,10 @@ public record OfertaView(
 		BigDecimal precioBase,
 		String moneda,
 		String esquemaCobro,
+		/** Cuando nace la deuda. {@code null} si y solo si {@code esquemaCobro} lo es. */
+		String momentoDevengo,
+		/** Si una ausencia devenga igual. Solo lo lee la rama {@code ASISTENCIA}. */
+		boolean devengaNoShow,
 		boolean admiteObraSocial,
 		boolean requiereCasoClinico,
 		boolean generaRegistroClinico,
@@ -67,8 +71,11 @@ public record OfertaView(
 				oferta.getCapacidad(),
 				oferta.getPrecioBase(),
 				oferta.getMoneda(),
-				// Se muestra tal cual se declaro: nadie lo interpreta (RN-M27-006, EsquemaCobro).
-				oferta.getEsquemaCobro() == null ? null : oferta.getEsquemaCobro().valor(),
+				// Vocabulario cerrado desde AKINE-08.06 (RN-M27-006, V64). Los tres salen juntos
+				// porque juntos significan algo: ver PoliticaDeDevengo.
+				oferta.getEsquemaCobro() == null ? null : oferta.getEsquemaCobro().name(),
+				oferta.getMomentoDevengo() == null ? null : oferta.getMomentoDevengo().name(),
+				oferta.isDevengaNoShow(),
 				oferta.isAdmiteObraSocial(),
 				oferta.isRequiereCasoClinico(),
 				oferta.isGeneraRegistroClinico(),

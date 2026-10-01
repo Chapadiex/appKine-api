@@ -6,6 +6,7 @@ import com.akine.offering.domain.OfertaServicioConsultorio;
 import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
+import com.akine.offering.spi.PoliticaDeDevengoDeOferta;
 import com.akine.offering.spi.PrecioDeOferta;
 import org.springframework.stereotype.Component;
 
@@ -58,6 +59,20 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 				.findByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
 				.map(oferta -> new PrecioDeOferta(
 						oferta.getId(), oferta.getPrecioBase(), oferta.getMoneda()));
+	}
+
+	@Override
+	public Optional<PoliticaDeDevengoDeOferta> politicaDeDevengoDe(
+			long organizationId, long consultorioId, long ofertaId) {
+
+		return ofertas
+				.findByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
+				.map(oferta -> new PoliticaDeDevengoDeOferta(
+						oferta.getId(),
+						// El enum se traduce a texto en el borde: el spi no expone el dominio.
+						oferta.getEsquemaCobro() == null ? null : oferta.getEsquemaCobro().name(),
+						oferta.getMomentoDevengo() == null ? null : oferta.getMomentoDevengo().name(),
+						oferta.isDevengaNoShow()));
 	}
 
 	@Override

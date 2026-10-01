@@ -11,6 +11,9 @@ import com.akine.offering.application.OfertaService;
 import com.akine.offering.application.OfertaView;
 import com.akine.offering.application.OperatingActor;
 import com.akine.offering.domain.EsquemaCobro;
+import com.akine.offering.domain.MomentoDevengo;
+import com.akine.offering.domain.PoliticaDeDevengo;
+import com.akine.offering.domain.exception.PoliticaDeDevengoIncoherenteException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -37,7 +40,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Ofertas de servicio de una sede: como ESTE centro presta un servicio global (M27).
@@ -263,7 +268,10 @@ public class OfertaController {
 						request.capacidad(),
 						request.precioBase(),
 						request.moneda(),
-						esquemaCobro(request.esquemaCobro()),
+						politica(
+								request.esquemaCobro(),
+								request.momentoDevengo(),
+								request.devengaNoShow()),
 						request.admiteObraSocial(),
 						request.requiereCasoClinico(),
 						request.generaRegistroClinico(),
@@ -360,8 +368,11 @@ public class OfertaController {
 						request.precioBase(),
 						request.moneda(),
 						Boolean.TRUE.equals(request.limpiarPrecio()),
-						esquemaCobro(request.esquemaCobro()),
-						Boolean.TRUE.equals(request.limpiarEsquemaCobro()),
+						politica(
+								request.esquemaCobro(),
+								request.momentoDevengo(),
+								request.devengaNoShow()),
+						Boolean.TRUE.equals(request.limpiarPolitica()),
 						request.admiteObraSocial(),
 						request.requiereCasoClinico(),
 						request.generaRegistroClinico(),
@@ -467,14 +478,44 @@ public class OfertaController {
 	}
 
 	/**
-	 * El esquema de cobro declarado, o {@code null} si no vino.
+	 * La politica de devengo declarada, o {@code null} si no vino nada.
 	 *
-	 * <p>Se construye aca y no en el record de request porque {@link EsquemaCobro} valida en su
-	 * constructor compacto: dejarlo entrar como tipo del DTO haria que un valor demasiado largo
-	 * reviente en la deserializacion de Jackson —un 400 sin campo ni mensaje util— en vez de en
-	 * la validacion, que si sabe decir cual campo y por que.
+	 * <p>Se arma aca y no en el record de request porque los tres campos entran como texto y
+	 * {@code boolean}: dejarlos entrar tipados haria que un valor fuera del vocabulario reviente
+	 * en la deserializacion de Jackson —un 400 sin campo ni mensaje util— en vez de en esta
+	 * traduccion, que sabe decir cual campo y por que.
+	 *
+	 * <p><b>El momento se deduce cuando el esquema admite uno solo.</b> Para
+	 * {@link EsquemaCobro#POR_CLASE}, que admite dos, omitirlo es un 422: elegir por el centro es
+	 * justamente lo que esta etapa no hace.
 	 */
-	private static EsquemaCobro esquemaCobro(String valor) {
-		return valor == null || valor.isBlank() ? null : new EsquemaCobro(valor);
+	private static PoliticaDeDevengo politica(
+			String esquema, String momento, Boolean devengaNoShow) {
+
+		if (esquema == null || esquema.isBlank()) {
+			if (momento != null && !momento.isBlank()) {
+				throw new PoliticaDeDevengoIncoherenteException(
+						"se declaro un momento de devengo sin esquema de cobro");
+			}
+			return null;
+		}
+		EsquemaCobro esquemaCobro = valorDe(EsquemaCobro.class, esquema, "esquemaCobro");
+		boolean noShow = Boolean.TRUE.equals(devengaNoShow);
+		if (momento == null || momento.isBlank()) {
+			return PoliticaDeDevengo.paraEsquema(esquemaCobro, noShow);
+		}
+		return new PoliticaDeDevengo(
+				esquemaCobro, valorDe(MomentoDevengo.class, momento, "momentoDevengo"), noShow);
+	}
+
+	/** Traduce texto a enum con un mensaje que nombra el campo, en vez del {@code valueOf} pelado. */
+	private static <E extends Enum<E>> E valorDe(Class<E> tipo, String valor, String campo) {
+		try {
+			return Enum.valueOf(tipo, valor.strip().toUpperCase(Locale.ROOT));
+		} catch (IllegalArgumentException e) {
+			throw new PoliticaDeDevengoIncoherenteException(
+					campo + " no admite el valor '" + valor + "'; admite "
+							+ Arrays.toString(tipo.getEnumConstants()));
+		}
 	}
 }

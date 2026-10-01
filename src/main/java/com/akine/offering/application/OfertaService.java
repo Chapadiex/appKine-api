@@ -328,7 +328,7 @@ public class OfertaService {
 				exigirCapacidad(command.capacidad()),
 				command.precioBase(),
 				normalizarMoneda(command.moneda()),
-				command.esquemaCobro(),
+				command.politicaDeDevengo(),
 				Boolean.TRUE.equals(command.admiteObraSocial()),
 				command.requiereCasoClinico() == null
 						? servicio.isRequiereCasoClinicoDefault()
@@ -427,8 +427,8 @@ public class OfertaService {
 				command.precioBase(),
 				normalizarMoneda(command.moneda()),
 				command.limpiarPrecio(),
-				command.esquemaCobro(),
-				command.limpiarEsquemaCobro(),
+				command.politicaDeDevengo(),
+				command.limpiarPolitica(),
 				command.admiteObraSocial(),
 				command.requiereCasoClinico(),
 				command.generaRegistroClinico(),

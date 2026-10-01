@@ -1,6 +1,6 @@
 package com.akine.offering.application;
 
-import com.akine.offering.domain.EsquemaCobro;
+import com.akine.offering.domain.PoliticaDeDevengo;
 import com.akine.offering.domain.Modalidad;
 
 import java.math.BigDecimal;
@@ -52,10 +52,14 @@ public record OfertaEdicionCommand(
 		/** Deja la oferta sin precio: limpia {@code precioBase} Y {@code moneda}. */
 		boolean limpiarPrecio,
 
-		EsquemaCobro esquemaCobro,
+		/**
+		 * Los tres valores de la politica viajan juntos porque no son independientes: ver
+		 * {@link PoliticaDeDevengo}. Se reemplazan de una o no se tocan.
+		 */
+		PoliticaDeDevengo politicaDeDevengo,
 
-		/** Deja la oferta sin esquema de cobro declarado. */
-		boolean limpiarEsquemaCobro,
+		/** Deja la oferta sin politica de devengo declarada. */
+		boolean limpiarPolitica,
 
 		Boolean admiteObraSocial,
 

@@ -1,6 +1,6 @@
 package com.akine.offering.application;
 
-import com.akine.offering.domain.EsquemaCobro;
+import com.akine.offering.domain.PoliticaDeDevengo;
 import com.akine.offering.domain.Modalidad;
 
 import java.math.BigDecimal;
@@ -73,11 +73,14 @@ public record OfertaAltaCommand(
 		String moneda,
 
 		/**
-		 * Se guarda y se muestra, <b>nadie lo interpreta</b>. Los modulos que definirian su
-		 * vocabulario —M15 convenios, M16 aranceles, M18 facturacion— no existen. Ver
-		 * {@link EsquemaCobro}.
+		 * Como y cuando cobra la oferta (RN-M27-006). {@code null} = el centro no lo declara.
+		 *
+		 * <p>02.06 escribio aca que "se guarda y se muestra, nadie lo interpreta", porque los
+		 * modulos que definirian su vocabulario no existian. Desde AKINE-08.06 <b>si se
+		 * interpreta</b>: es lo que decide cuando nace la deuda de esta oferta. Ver
+		 * {@link PoliticaDeDevengo}.
 		 */
-		EsquemaCobro esquemaCobro,
+		PoliticaDeDevengo politicaDeDevengo,
 
 		/** Ausente se toma como {@code false}. */
 		Boolean admiteObraSocial,

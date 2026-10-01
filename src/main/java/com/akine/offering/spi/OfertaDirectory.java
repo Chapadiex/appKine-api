@@ -27,6 +27,13 @@ public interface OfertaDirectory {
 	Optional<PrecioDeOferta> precioDe(long organizationId, long consultorioId, long ofertaId);
 
 	/**
+	 * Como y cuando cobra la oferta (AKINE-08.06). Ver {@link PoliticaDeDevengoDeOferta}: viaja
+	 * aparte del precio porque responde otra pregunta y la pide otro consumidor.
+	 */
+	Optional<PoliticaDeDevengoDeOferta> politicaDeDevengoDe(
+			long organizationId, long consultorioId, long ofertaId);
+
+	/**
 	 * Memberships de profesionales habilitados para la oferta, con su vigencia.
 	 *
 	 * <p>Devuelve la habilitacion aunque su vigencia no toque la ventana: filtrar por fecha es

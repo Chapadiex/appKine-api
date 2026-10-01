@@ -90,12 +90,32 @@ public record CreateOfertaRequest(
 		String moneda,
 
 		@Schema(
-				description = "Esquema de cobro declarado, texto libre acotado. Se guarda sin "
-						+ "resolverse: los modulos que lo interpretarian no existen todavia",
-				example = "SESION_SUELTA",
+				description = "Esquema de cobro. Vocabulario CERRADO desde AKINE-08.06: "
+						+ "`POR_SESION`, `POR_CLASE`, `POR_PACK` o `POR_ABONO` (RN-M27-006). "
+						+ "Hasta 08.06 era texto libre porque los modulos que lo interpretarian "
+						+ "no existian; M18 y M29 ya existen y este valor decide CUANDO nace la "
+						+ "deuda de la oferta",
+				example = "POR_PACK",
+				allowableValues = {"POR_SESION", "POR_CLASE", "POR_PACK", "POR_ABONO"},
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		@Size(max = 32, message = "El esquema de cobro no puede superar los 32 caracteres")
 		String esquemaCobro,
+
+		@Schema(
+				description = "Cuando nace la deuda: `ASISTENCIA`, `INSCRIPCION` o `VENTA`. "
+						+ "Cada esquema admite solo algunos, y para los que admiten uno solo se "
+						+ "deduce si se omite. **`POR_CLASE` admite `ASISTENCIA` e `INSCRIPCION` "
+						+ "y hay que elegir: el sistema no decide por el centro**",
+				example = "VENTA",
+				allowableValues = {"ASISTENCIA", "INSCRIPCION", "VENTA"},
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		String momentoDevengo,
+
+		@Schema(
+				description = "Si una ausencia devenga igual. Solo aplica con "
+						+ "`momentoDevengo = ASISTENCIA`. Si se omite, false: cobrar un no-show "
+						+ "es una politica de centro y aplicarla por defecto seria decidirla por el",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean devengaNoShow,
 
 		@Schema(description = "Si se puede presentar a un financiador. Si se omite, false",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)

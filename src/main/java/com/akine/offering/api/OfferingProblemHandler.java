@@ -6,6 +6,7 @@ import com.akine.offering.domain.exception.HabilitacionNoAccesibleException;
 import com.akine.offering.domain.exception.OfertaInactivaException;
 import com.akine.offering.domain.exception.OfertaNombreComercialTakenException;
 import com.akine.offering.domain.exception.OfertaNotAccessibleException;
+import com.akine.offering.domain.exception.PoliticaDeDevengoIncoherenteException;
 import com.akine.offering.domain.exception.ServicioCodigoTakenException;
 import com.akine.offering.domain.exception.ServicioInactivoException;
 import com.akine.offering.domain.exception.ServicioNombreTakenException;
@@ -51,6 +52,7 @@ public class OfferingProblemHandler {
 	private static final Logger log = LoggerFactory.getLogger(OfferingProblemHandler.class);
 
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
+	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 	private static final URI SERVICIO_CODIGO_TAKEN = ProblemType.SERVICIO_CODIGO_TAKEN.uri();
 	private static final URI SERVICIO_NOMBRE_TAKEN = ProblemType.SERVICIO_NOMBRE_TAKEN.uri();
 	private static final URI SERVICIO_INACTIVO = ProblemType.SERVICIO_INACTIVO.uri();
@@ -208,6 +210,26 @@ public class OfferingProblemHandler {
 				"La sede no esta en un estado que admita operar sobre sus ofertas.",
 				"Sede no operable",
 				CONSULTORIO_NO_OPERABLE);
+	}
+
+	/**
+	 * Politica de devengo incoherente: <b>422 y no 409</b>.
+	 *
+	 * <p>No es un estado del mundo que impide la operacion —eso es un conflicto—, es un pedido que
+	 * no tiene sentido: un momento sin esquema, un esquema que no admite ese momento, o
+	 * {@code POR_CLASE} sin elegir entre sus dos momentos posibles. Un 409 le diria al mostrador
+	 * "volve a intentar", y volver a intentar lo mismo va a fallar igual.
+	 */
+	@ExceptionHandler(PoliticaDeDevengoIncoherenteException.class)
+	public ProblemDetail handlePoliticaIncoherente(
+			PoliticaDeDevengoIncoherenteException exception) {
+
+		log.debug("Politica de devengo rechazada: {}", exception.getMessage());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
+		problem.setTitle("Politica de devengo incoherente");
+		problem.setType(VALIDATION_ERROR);
+		return problem;
 	}
 
 	// =================================================================================
