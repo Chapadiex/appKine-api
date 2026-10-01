@@ -238,7 +238,7 @@ locales**: el barrido de contención no dejó ninguna afuera. F0 a F7 completas 
 
 | | Valor medido |
 |---|---|
-| Rama | `main` = `akine-integracion-total`, **218 commits**, último `343ad43`. **Los dos commits de documentación están sin pushear** |
+| Rama | `main` = `akine-integracion-total`, **222 commits**, último `47912db`, **pusheado a GitHub el 01/10/2026** |
 | Contrato | `openapi/akine-api.yaml` **0.44.0**, **267 operaciones**, sin drift y **sin un solo `operationId` desambiguado**. El cliente del frontend sigue en **0.29.0**: no hay pantallas de F4 en adelante |
 | Módulos | **14**: los doce anteriores más **`reporting`** (M23, 07.06) y **`activity`** (M28/M29, F9) |
 | Migraciones | **V1–V64**, menos `V26`, `V29`, `V31` y `V62`, que quedaron vacías. `V45`–`V64` se aplicaron **contra un motor por primera vez** el 29/09 |
@@ -410,12 +410,11 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
 
 ### Próximo paso concreto
 
-1. **`git push origin main akine-integracion-total`** desde el worktree de integración. Es lo único
-   que falta para que `main` esté en GitHub: son los dos commits que meten la especificación al
-   repo y arreglan las rutas.
-2. **Regenerar el cliente TypeScript** desde el contrato `0.44.0`. El frontend sigue en `0.29.0`,
-   así que **no hay una sola pantalla de F4 en adelante**: ni timeline clínico, ni caso, ni plan de
-   tratamiento, ni caja, ni presentaciones, ni clases. Es el cuello de botella más grande que queda.
+1. **Las pantallas de F4 en adelante.** El cliente TypeScript ya se regenero contra `0.44.0` el
+   01/10, asi que el frontend puede llamar al backend; lo que falta es la UI: timeline clinico,
+   caso, plan de tratamiento, examen, caja, presentaciones, reportes y segunda entrega.
+2. **El QA manual del parrafo 6**, sin correr desde 02.02 y declarado bloqueante para deploy.
+   Docker funciona y el contrato esta al dia.
 3. **La etapa de tests de `billing`, `encounter` y `activity`**, que es lo que devuelve el gate de
    cobertura a 0,80.
 4. **El QA manual del §6**, sin correr desde 02.02 y declarado bloqueante para deploy. Ahora que

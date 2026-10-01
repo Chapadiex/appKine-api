@@ -118,8 +118,8 @@ presentaciones, egresos, reportes y toda la segunda entrega.
 **Ninguno, en ninguno de los dos repos** (`git status --short` vacío, `git ls-files --others
 --exclude-standard` en 0).
 
-Lo que sí falta es **pushear**: `main` del backend tiene **tres commits locales** que el remoto no
-tiene (`e04d9d6..1dd5740`). El del frontend está en sync.
+**Todo pusheado al 01/10/2026**: `main` del backend en `47912db` y el del frontend en `4c6ae8b`,
+los dos iguales a su remoto.
 
 ---
 
@@ -158,13 +158,10 @@ de `BRANCH` en JaCoCo y el escenario diferido 7b.
 
 ## 9. Próximo paso recomendado
 
-1. **Pushear el backend.** Es lo único que separa a `main` de estar en GitHub.
-   ```
-   cd "C:/Users/santo/Desktop/AKINE/appKine-api/.claude/worktrees/goofy-goodall-8e6772"
-   git push origin main akine-integracion-total
-   ```
-2. **Pasar el checkout principal a `main`** y regenerar el cliente TypeScript desde `0.44.0`. Ojo:
-   **31 operaciones cambiaron de nombre** al recibir `operationId` explícito, así que la
-   regeneración toca los servicios que ya las consumen.
-3. **La etapa de tests de `billing`, `encounter` y `activity`**, que es lo que devuelve el gate de
-   cobertura a `0.80`.
+1. **La etapa de tests de `billing` (35,1 %), `encounter` (40,8 %) y `activity` (45,2 %)**, que es
+   lo que devuelve el gate de cobertura a `0.80`. Hoy esta en `0.73`/`0.71` como deuda declarada.
+2. **Las pantallas de F4 en adelante.** El cliente TypeScript ya se regenero contra `0.44.0`, asi
+   que el frontend por fin PUEDE llamar al backend; lo que no existe es la UI de timeline clinico,
+   caso, plan de tratamiento, caja, presentaciones, reportes y segunda entrega.
+3. **El QA manual del paragrafo 6**, sin correr desde 02.02 y declarado bloqueante para deploy.
+   Docker funciona y el contrato esta al dia: ya no hay excusa tecnica.
