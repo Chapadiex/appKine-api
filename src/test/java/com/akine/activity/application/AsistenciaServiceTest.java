@@ -35,6 +35,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
+import com.akine.activity.domain.exception.ClaseNotAccessibleException;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -258,6 +260,85 @@ class AsistenciaServiceTest {
 				ResultadoAsistencia.PRESENTE, null)))
 				.isInstanceOf(TransicionDeClaseNoPermitidaException.class)
 				.hasMessageContaining("no se inicio");
+	}
+
+	// =================================================================================
+	// Fixtures
+	// =================================================================================
+
+	// =================================================================================
+	// El lote
+	// =================================================================================
+
+	/**
+	 * <b>Un lote no es una transaccion.</b>
+	 *
+	 * <p>El mostrador marca treinta personas de una vez y una de ellas ya estaba dada de baja. Si
+	 * el lote entero fallara, el operador tendria que repetir las veintinueve que si entraron y
+	 * adivinar cual fue el problema. Cada item lleva su propio desenlace y el error viaja con el
+	 * {@code problemType} que le corresponde.
+	 */
+	@Test
+	@DisplayName("Un item que falla no voltea el lote: cada uno trae su propio desenlace")
+	void el_lote_no_es_todo_o_nada() {
+		given(inscripciones.findByIdInScope(ORG_ID, CLASE_ID, 999L)).willReturn(Optional.empty());
+
+		ResultadoDeLote resultado = service.registrarLote(actor(), SEDE_ID, CLASE_ID, List.of(
+				comando(ResultadoAsistencia.PRESENTE, null),
+				new RegistrarAsistenciaCommand(999L, ResultadoAsistencia.PRESENTE,
+						OrigenAsistencia.MOSTRADOR, null, null)));
+
+		assertThat(resultado.items()).hasSize(2);
+		assertThat(resultado.items().get(0).resultado()).isNotNull();
+		assertThat(resultado.items().get(1).problemType())
+				.as("el que falla dice POR QUE, con el tipo que la pantalla sabe traducir")
+				.isNotNull();
+	}
+
+	@Test
+	@DisplayName("Un lote mas grande que el tope se rechaza entero, antes de tocar nada")
+	void el_lote_tiene_tope() {
+		// Doscientos uno no es un caso de uso: es un cliente roto o un intento de agotar la
+		// transaccion. Rechazarlo antes de empezar evita dejar la mitad del lote aplicada.
+		List<RegistrarAsistenciaCommand> demasiados = java.util.stream.IntStream
+				.rangeClosed(0, AsistenciaService.MAX_ITEMS_LOTE)
+				.mapToObj(i -> new RegistrarAsistenciaCommand((long) i,
+						ResultadoAsistencia.PRESENTE, OrigenAsistencia.MOSTRADOR, null, null))
+				.toList();
+
+		assertThatThrownBy(() -> service.registrarLote(actor(), SEDE_ID, CLASE_ID, demasiados))
+				.isInstanceOf(IllegalArgumentException.class);
+
+		org.mockito.Mockito.verify(asistencias, org.mockito.Mockito.never()).saveAndFlush(any());
+	}
+
+	// =================================================================================
+	// Lecturas
+	// =================================================================================
+
+	@Test
+	@DisplayName("El detalle operativo pagina la lista y resuelve los nombres de esa pagina")
+	void el_detalle_pagina() {
+		// Los nombres se piden SOLO para la pagina: una clase de cien personas no justifica traer
+		// cien fichas de paciente para mostrar diez.
+		given(inscripciones.findDeLaClase(ORG_ID, CLASE_ID))
+				.willReturn(List.of(reservada(INSCRIPCION_ID)));
+		given(asistencias.findDeLaClase(ORG_ID, CLASE_ID)).willReturn(List.of());
+		given(personas.findAll(anyLong(), any())).willReturn(java.util.Map.of());
+
+		var detalle = service.detalleOperativo(actor(), SEDE_ID, CLASE_ID, 0, 10);
+
+		assertThat(detalle).isNotNull();
+		org.mockito.Mockito.verify(personas).findAll(anyLong(), any());
+	}
+
+	@Test
+	@DisplayName("El historial de una clase de otra sede da 404")
+	void historial_de_otra_sede() {
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, CLASE_ID)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.historial(actor(), SEDE_ID, CLASE_ID, 981L))
+				.isInstanceOf(ClaseNotAccessibleException.class);
 	}
 
 	// =================================================================================
