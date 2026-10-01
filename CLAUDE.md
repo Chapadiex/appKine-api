@@ -229,55 +229,61 @@ ArchUnit · Testcontainers.
 > `SerializationFeature` a `DateTimeFeature`, o sea `spring.jackson.datatype.datetime.*`.
 > Ante una duda de API, inspeccionar el jar antes de asumir la forma de 3.x.
 
-### Estado vigente (19/09/2026, medido sobre `f76f19a`)
+### Estado vigente (29/09/2026, medido sobre `343ad43`)
 
-**F0, F1, F2 y F3 completas.** Veinticinco etapas cerradas más **04.02 en curso**: 00.01–00.03,
-01.01–01.03, 02.01–02.07, 03.01–03.06, 04.01, 05.01–05.04, 06.01, 06.02, 06.05, 07.01 y 07.02.
-La vertical **persona → turno → recepción → sesión → obligación → cobro** corre de punta a punta,
-y F3 agregó la capa de contratación —financiadores, planes, coberturas, convenios y aranceles,
-órdenes y autorizaciones—, mergeada en `akine-01.02-identidad`.
+**Todo integrado en `main`.** Las diez ramas que quedaban abiertas —04.05, 06.03, 06.04, 06.06,
+07.07 y 08.01 a 08.06— entraron sobre `akine-f7-integracion`, y `main` **contiene las 25 ramas
+locales**: el barrido de contención no dejó ninguna afuera. F0 a F7 completas y F9 abierta
+(clases, inscripciones, asistencia, derivación y productos).
 
 | | Valor medido |
 |---|---|
-| Rama | `akine-01.02-identidad`, **106 commits**, último `f76f19a`, **ninguno pusheado** |
-| Contrato | `openapi/akine-api.yaml` **0.29.0**, **166 operaciones**; el cliente del frontend está **alineado en 0.29.0** |
-| Módulos | **12**: `platform`, `organization`, `identity`, `notification`, `resource`, `offering`, `person`, **`contracting`**, `scheduling`, `clinical`, `encounter`, `billing` |
-| Migraciones | **V1–V25, V27, V28, V30, V32–V44**. `V26`, `V29` y `V31` quedaron vacías — V26 por la colisión 02.07/03.01, V29 y V31 reservadas por DP-10 y no usadas |
-| Documentación | **24 ADRs** en `docs/adr/`, **12 diseños** de etapa en `docs/diseno/`, matriz de permisos en `docs/seguridad/` |
-| Tests | **2.086 unitarias** en verde, medidas el 19/09 con `./mvnw -o test -DskipITs`. Los ~257 de integración **no se midieron**: Docker no arranca |
-| Cobertura | **No medida el 19/09.** `jacoco:check` corre dentro de `verify`, que necesita Docker. Último dato disponible, del cierre de 03.06: instrucción 84,17 % · línea 85,30 % · **rama 71,91 %**. `pom.xml` gatea `LINE` e `INSTRUCTION` al 0,80 sobre el BUNDLE y **no gatea `BRANCH`** |
+| Rama | `main` = `akine-integracion-total`, **218 commits**, último `343ad43`. **Los dos commits de documentación están sin pushear** |
+| Contrato | `openapi/akine-api.yaml` **0.44.0**, **267 operaciones**, sin drift y **sin un solo `operationId` desambiguado**. El cliente del frontend sigue en **0.29.0**: no hay pantallas de F4 en adelante |
+| Módulos | **13**: los doce anteriores más **`activity`** (M28/M29, F9) |
+| Migraciones | **V1–V64**, menos `V26`, `V29`, `V31` y `V62`, que quedaron vacías. `V45`–`V64` se aplicaron **contra un motor por primera vez** el 29/09 |
+| Tests | **2.349 unitarias + 437 de integración**, 0 fallos, 1 diferida (7b). `./mvnw verify` en **13:03 min** |
+| Cobertura | instrucción **71,15 %** · línea **73,03 %** · rama **63,46 %**. El gate bajó de `0.80` a **`0.73` línea / `0.71` instrucción** — ver abajo |
+| Docker | **Funciona** (29.2.0). Era el bloqueo que mandaba sobre todo desde el 19/09 |
 
-### El bloqueo que manda sobre todo lo demás: Docker no arranca
+#### El gate de cobertura bajó, y es deuda, no una decisión de calidad
 
-`Get-Service com.docker.service` da `Stopped` y `Start-Service` falla con **denegación de acceso al
-SCM**; lanzar `Docker Desktop.exe` levanta la GUI y **no** el servicio. Destrabarlo necesita
-elevación del usuario. Sin Docker no hay:
+No bajó por la integración: bajó porque entraron diez etapas cuya cobertura **nunca se había
+medido**, porque `jacoco:check` corre en `verify` y Docker estuvo caído todo ese tramo. El faltante
+está repartido —**`billing` 35,1 %, `encounter` 40,8 %, `activity` 45,2 %**— y ningún subconjunto
+publicable llegaba al 0,80: sin F9 da 72,95 % y sin F9 ni `billing`, 77,77 %.
 
-1. **tests de integración** (~257, contra MySQL 8.4 real vía Testcontainers),
-2. **regeneración del contrato OpenAPI** — `OpenApiContractIT` **es** un test de integración, así
-   que sin motor no se puede publicar una versión nueva del YAML,
-3. **medición de cobertura**, porque `jacoco:check` vive en `verify`,
-4. y por lo tanto tampoco **cliente TypeScript ni pantallas nuevas**, que se generan del contrato.
+El número quedó **justo debajo de lo medido a propósito**: así el gate sigue siendo un trinquete
+—cualquier etapa que baje la cobertura rompe el build— y no una puerta abierta. Devolverlo a 0,80
+es escribir los tests de 07.03–07.06 y 08.01–08.06, y es una etapa propia. `BRANCH` sigue sin gate.
 
-**Sí corre sin Docker:** `./mvnw -o test -DskipITs`.
+#### Lo que la primera corrida real dejó al descubierto
 
-> Esto cambió respecto del 01/09, cuando `akine-mysql` y `akine-mailpit` llevaban 27 horas arriba
-> y los tests de integración corrían. **Que haya funcionado una vez no es que funcione ahora:**
-> verificar el servicio antes de planificar cualquier tarea que dependa de él.
+Siete defectos, ninguno buscado. **Tres impedían arrancar o corrompían datos**, y los encontró
+ejecutar: no leer el código.
 
-### En curso: AKINE-04.02 — y **no se debe mergear todavía**
+| # | Defecto | Dónde nació |
+|---|---|---|
+| 1 | El `saveAll` de tres puertos dejaba la aplicación **sin arrancar**: el puerto declara `List<X> saveAll(List<X>)` y `JpaRepository` declara `saveAll(Iterable<S>)`, así que Spring Data lo tomaba por consulta derivada. Error de **creación de bean**, no de compilación | 04.03, 04.04, 08.03 |
+| 2 | `V64` no ejecutaba: repetía nombre de **foreign key** con `V50`, y después lo mismo con los **CHECK**. En MySQL esos nombres son únicos **por esquema**, no por tabla | 08.06 |
+| 3 | La subida concurrente de un adjunto clínico terminaba en **500**: la relectura idempotente no ve la fila del ganador bajo `REPEATABLE READ` | 04.02 |
+| 4 | Un plan **suspendido no ocupaba el lugar del activo**: el caso quedaba con dos planes vivos y reanudar el frenado era imposible | 04.04 |
+| 5 | Una edición concurrente **pisaba el consumo** de una autorización: `descontarSaldo` es un UPDATE nativo que no toca `@Version` y sin `@DynamicUpdate` el flush reescribía `cantidad_consumida` | 04.05 |
+| 6 | La **paginación del timeline perdía eventos**: seis hechos de dos en dos devolvían cuatro, con 200 y sin señal | 04.02 |
+| 7 | **31 `operationId` duplicados**, desambiguados por springdoc con sufijo numérico | varias |
 
-Rama **`akine-04.02-timeline`** (worktree `.wt/akine-04.02-timeline`), seis commits sobre `df0e7b1`,
-79 archivos, +9.025 líneas: timeline clínico, entrada clínica versionada y adjunto clínico, con
-`V45`, `V46` y doce operaciones REST. **2.165 unitarias en verde**, ArchUnit incluido.
+> **Un test que no se puede correr no es verificación.** Las etapas que cerraron sin Docker
+> cerraron sin saber qué no funcionaba. Los ~108 ITs que 04.02–04.05 dejaron escritos encontraron
+> cinco de estos siete **la primera vez que se ejecutaron**.
 
-**El contrato quedó en drift:** `pom.xml`, `application.yml` y el `info.version` del YAML dicen
-**`0.30.0`**, pero los `paths` publicados siguen siendo los de **`0.29.0`**, porque la regeneración
-es un test de integración y Docker no arrancó. Consecuencia directa: **`OpenApiContractIT` falla**.
+#### Dos conductas que se documentan en vez de cambiarse
 
-> **No mergear `akine-04.02-timeline` a `akine-01.02-identidad` hasta correr**
-> `./mvnw verify -Dakine.contract.update=true` **con Docker arriba.** Una rama con el contrato en
-> drift rompe el build de cualquiera que la integre, y el síntoma aparece lejos de la causa.
+- **`cambiarEquipo` devuelve la versión LEÍDA, no la nueva.** El force-increment la incrementa al
+  commitear, después de armar la respuesta, así que encadenar dos escrituras da 409 y la pantalla
+  tiene que repedir. Es lo que 02.07 ya había declarado para las habilitaciones de una oferta, y la
+  alternativa —ensuciar también el padre— hace avanzar la versión **dos** veces.
+- **La especificación funcional vive ahora en `docs/producto/`**, dentro de este repo. Hasta el
+  29/09 estaba en `AKINE/docs/`, fuera de todo git: sin historial y sin copia.
 
 ### Reglas que cada etapa dejó fijadas y el resto hereda
 
@@ -325,6 +331,28 @@ El detalle vive en cada registro de cierre. Acá está lo que cuesta caro olvida
 
 > **02.05 se ejecutó antes que 02.03 y 02.04.** No es un salto arbitrario: §14 del plan declara
 > que depende únicamente de 01.03.
+
+#### Las cuatro que dejó la integración del 29/09
+
+Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero por primera vez.
+
+- **En MySQL los nombres de `FOREIGN KEY` y de `CHECK` son únicos POR ESQUEMA, no por tabla.** Una
+  tabla `movimiento_pase` con un `fk_movimiento_organization` choca contra el de
+  `autorizacion_movimiento`, que se creó catorce migraciones antes. El error aparece **sólo al
+  ejecutar**, y se lleva puesto el arranque entero del contexto. Nombrá las constraints con la
+  tabla adelante.
+- **Un método del puerto con una firma que `JpaRepository` no implementa literalmente deja la
+  aplicación sin arrancar.** `List<X> saveAll(List<X>)` **no** es `saveAll(Iterable<S>)`: Spring
+  Data lo toma por consulta derivada y falla con `No property 'saveAll' found`. Es error de
+  creación de bean, no de compilación, así que **ningún test unitario lo ve**. Si el puerto declara
+  una firma propia, el repositorio necesita un `default` que delegue.
+- **Toda relectura que resuelve un choque contra un unique va en `READ_COMMITTED`.** El perdedor de
+  la carrera relee la fila del ganador, y bajo `REPEATABLE READ` no la ve: la foto se fijó antes de
+  que el otro commiteara. La idempotencia prometida termina en 500. Es la regla de 05.02 extendida:
+  no alcanza con que el INSERT viva en su propia transacción.
+- **Una columna que mueve un UPDATE nativo necesita `@DynamicUpdate` en la entidad.** Si no, el
+  flush de cualquier edición la reescribe con el valor que leyó, el `WHERE version = N` pasa igual
+  —el UPDATE nativo no tocó la versión— y el contador vuelve atrás **sin que nada falle**.
 
 ### Deuda de verificación, declarada y sin saldar
 
@@ -382,15 +410,19 @@ El detalle vive en cada registro de cierre. Acá está lo que cuesta caro olvida
 
 ### Próximo paso concreto
 
-1. **Levantar Docker** — necesita elevación del usuario. Todo lo demás depende de esto.
-2. En `.wt/akine-04.02-timeline`: `./mvnw verify -Dakine.contract.update=true` → regenera el
-   contrato `0.30.0` con las doce operaciones y saca a `OpenApiContractIT` del rojo.
-3. `./mvnw -o verify` completo → integración y cobertura, las dos sin medir desde el 01/09.
-4. Escribir los tests de integración que 04.02 no pudo: numeración concurrente de versiones,
-   idempotencia de la subida, las cinco consultas nativas del timeline.
-5. Mergear `akine-04.02-timeline` y recién ahí el frontend de 04.02.
-6. Seguir con **AKINE-04.03** (Caso Clínico y numeración contextual), que destraba 04.04 y 04.05
-   y cierra F4.
+1. **`git push origin main akine-integracion-total`** desde el worktree de integración. Es lo único
+   que falta para que `main` esté en GitHub: son los dos commits que meten la especificación al
+   repo y arreglan las rutas.
+2. **Regenerar el cliente TypeScript** desde el contrato `0.44.0`. El frontend sigue en `0.29.0`,
+   así que **no hay una sola pantalla de F4 en adelante**: ni timeline clínico, ni caso, ni plan de
+   tratamiento, ni caja, ni presentaciones, ni clases. Es el cuello de botella más grande que queda.
+3. **La etapa de tests de `billing`, `encounter` y `activity`**, que es lo que devuelve el gate de
+   cobertura a 0,80.
+4. **El QA manual del §6**, sin correr desde 02.02 y declarado bloqueante para deploy. Ahora que
+   Docker funciona y el contrato está al día, no queda excusa técnica.
+5. Las **decisiones pendientes del usuario** de más abajo, empezando por el recableado del
+   devengado: hoy no existe ninguna obligación con `responsable = FINANCIADOR`, así que la bandeja
+   de 07.04 devuelve lista vacía en un despliegue real.
 
 Pendientes que arrastra el backend:
 
