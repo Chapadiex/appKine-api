@@ -14,6 +14,7 @@ contra el código antes de actuar**.
 | Archivo | Para qué |
 |---|---|
 | [`00-orden-recomendado.md`](00-orden-recomendado.md) | En qué orden se encaran las fases y por qué. **Empezar acá.** |
+| [`01-trabajo-en-paralelo.md`](01-trabajo-en-paralelo.md) | Cómo repartir lo que falta entre varias personas: carriles, paquetes, olas, migraciones reservadas. Diagrama: [`.excalidraw`](01-trabajo-en-paralelo.excalidraw) · [`.png`](01-trabajo-en-paralelo.png) |
 | [`F0-F1-fundacion-y-plataforma.md`](F0-F1-fundacion-y-plataforma.md) | Arquitectura, CI, identidad, tenancy, permisos |
 | [`F2-operacion-del-consultorio.md`](F2-operacion-del-consultorio.md) | Consultorios, espacios, colaboradores, disponibilidad, catálogos, ofertas |
 | [`F3-personas-y-cobertura.md`](F3-personas-y-cobertura.md) | Persona, paciente 360, financiadores, coberturas, convenios, autorizaciones |
