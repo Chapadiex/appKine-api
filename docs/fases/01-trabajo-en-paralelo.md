@@ -1,7 +1,7 @@
 # Trabajo en paralelo — cómo repartir lo que falta entre varias personas
 
 > Escrito el **02/10/2026** sobre `main` = `2cdf28f` (backend) y `344a8d6` (frontend).
-> Diagrama del **reparto para 3 personas** (§9), pensado para marcar el avance:
+> Diagrama de los **grupos de trabajo** (§9), pensado para repartir y marcar el avance:
 > [`01-trabajo-en-paralelo.excalidraw`](01-trabajo-en-paralelo.excalidraw) (se abre en
 > <https://excalidraw.com> o con la extensión de VS Code) y su render
 > [`01-trabajo-en-paralelo.png`](01-trabajo-en-paralelo.png).
@@ -236,59 +236,70 @@ Sin F-4, la bandeja de presentaciones devuelve lista vacía y el reporte de fina
 **es el hueco funcional más grave del MVP**. Por eso DU-1 va en la ola 0 aunque A-9 se implemente en
 la ola 2, y B-2 arranca el primer día.
 
-## 9. Cómo repartirlo según cuánta gente haya
+## 9. Grupos de trabajo: cómo repartirlo según cuánta gente haya
 
-| Personas | Reparto sugerido |
-|---|---|
-| **2** | P1: backend — C, luego B-2 → A-9 → F-4 (la ruta crítica). P2: frontend — D, luego F-6/F-7. Los dos se turnan G. |
-| **3** | **Ver §9.1** — es el reparto vigente y el que dibuja el diagrama. |
-| **4–5** | Un carril cada uno: C, D, E, F, y A+B juntos. G lo toma quien termine primero su ola 1; L lo lleva quien decide producto. |
-| **6+** | Un carril por persona, D partido en dos (F4: D-a/b/c/e/f · F6: D-d/g), y G con dueño propio desde el día 1 (Docker y observabilidad no dependen de nadie). |
+Los paquetes del §7 se juntan en **nueve grupos**. Cada grupo tiene sus módulos, sus migraciones
+y un orden interno, así que **lo toma una sola persona a la vez**: partirlo entre dos haría que dos
+personas toquen los mismos módulos y las mismas migraciones. Con más gente se toman más grupos en
+paralelo; con menos, una persona toma varios. El diagrama dibuja una fila por grupo.
 
-Sea cual sea el reparto: **la persona de la ruta crítica no toma trabajo de otros carriles** hasta
-que F-4 esté en `main`.
+Carga ≈ días-persona con S ≈ 2, M ≈ 4 y L ≈ 8. Es un orden de magnitud para combinar grupos, no un
+compromiso.
 
-### 9.1 Reparto vigente: 3 personas en máquinas distintas
+| Grupo | Qué cubre | Repo · migraciones | Tramo 1 | Tramo 2 | Tramo 3 | Carga |
+|---|---|---|---|---|---|---|
+| **G1 · Cobertura + ruta crítica** | person, contracting, devengo | api · V66 V68 V72 | B-1 · **B-2** | **C-4** (espera DU-4, DU-7) · **A-9** (espera DU-1) · B-4 (espera DU-8) | **F-4** (espera A-9, C-4) · B-3 | ≈ 34 |
+| **G2 · Clínico backend** | clinical, encounter | api · V65 V67 V71 | C-1 · C-2 (**mergear rápido**: lo espera G3) · C-3 · C-5 · C-7 · A-2 | C-6 | C-8 (espera DU-11) · C-9 (espera D-b, E-3) | ≈ 38 |
+| **G3 · Historia clínica en pantalla** | web clínico (F4) | web | D-a · D-b · D-c | D-e (espera C-2) | D-f (espera C-4) | ≈ 32 |
+| **G4 · Atención y caja en pantalla** | web clínico (F6) y billing | web | F-6 · F-7 | D-d (espera C-1) | D-g (espera C-6) | ≈ 24 |
+| **G5 · Agenda y recepción** | scheduling + sondas de F2 | api + web · V70 | E-1 · E-2 | E-4 (espera B-2, DU-9) · E-3 · E-5 | E-6 (espera E-4, F-3) | ≈ 28 |
+| **G6 · Economía backend** | billing | api · V69 | F-1 · F-2 · F-3 | F-8 | F-5 (espera DU-10) | ≈ 22 |
+| **G7 · Plataforma y operación** | identity, organization, resource | api + web | A-3 · A-5 · B-5 | A-8 | A-4 (espera DU-2) · A-7 · A-10 (espera E-1) | ≈ 24 |
+| **G8 · CI, release y reportes** | reporting, platform, CI, Docker | api + web | G-1 (espera DU-3) · G-2 · G-3 · G-6 | G-4 · G-9 (espera G-3) | — | ≈ 22 |
+| **G9 · E2E, a11y y dashboards** | web transversal | web | A-6 · B-6 | G-7 · G-8 (espera G-1) | — | ≈ 16 |
 
-Cada persona tiene **una fila** en el diagrama y la recorre de izquierda a derecha. Dentro de un
-tramo el orden es libre; "espera X" significa que no arranca hasta que X esté en `main`. Cada caja
-tiene una casilla: se pinta cuando el PR del paquete se mergea.
-
-| | Persona 1 — Backend clínico + ruta crítica | Persona 2 — Frontend | Persona 3 — Agenda, economía y release |
-|---|---|---|---|
-| **Repo** | `appKine-api` | `appKine-web` | los dos |
-| **Migraciones** | `V65` `V66` `V67` `V71` `V72` | ninguna | `V69` `V70` |
-| **Día 1** | Setup: clon, Docker, `verify` en verde | Setup: clon, `npm ci`, cliente 0.44.0 | Setup: los dos clones, Docker |
-| **Tramo 1** | C-1 · C-2 (**mergear rápido**: lo espera P2) · **B-2** · C-3 · C-5 · C-7 · A-2 | D-a · D-b · D-c · F-6 · F-7 · A-6 · B-6 | G-1 · G-2 · F-1 · E-1 · F-3 · F-2 · E-2 · G-3 |
-| **Tramo 2** | **C-4** (espera DU-4, DU-7) · C-6 · **A-9** (espera DU-1) · B-4 (espera DU-8) · A-5 | D-d (espera C-1) · D-e (espera C-2) · G-8 (espera G-1) · G-7 | E-4 (espera B-2, DU-9) · E-3 · E-5 · F-8 · G-9 (espera G-3) · A-3 · B-1 · B-5 · G-6 |
-| **Tramo 3** | **F-4** (espera A-9, C-4) · B-3 · C-8 (espera DU-11) · C-9 (espera D-b, E-3) | D-f (espera C-4) · D-g (espera C-6) · A-10 (espera E-1) | A-4 (espera DU-2) · A-7 · F-5 (espera DU-10) · E-6 · A-8 |
-| **Paquetes** | 16 + setup | 14 + setup | 22 + setup (muchos S) |
-
-**Cierre del MVP, los tres juntos**, cuando cada uno terminó su tramo 3: G-4 observabilidad,
-G-5 hallazgos altos (espera DU-5, DU-6), G-10 carga, G-11 cobertura 0,80, **G-12 QA manual**,
-G-13 backup/rollback y G-14 aprobación y deploy → **gate del MVP** → DU-12 (¿abrir F9?).
+**Cierre del MVP, todos juntos**, cuando los grupos terminaron su tramo 3: G-5 hallazgos altos
+(espera DU-5, DU-6), G-10 carga (espera G-4), G-11 cobertura 0,80, **G-12 QA manual**, G-13
+backup/rollback y G-14 aprobación y deploy → **gate del MVP** → DU-12 (¿abrir F9?).
 
 **Decisiones:** las toma una sola persona, la que decide producto. **DU-1, DU-2 y DU-3 el día 1**,
-junto con L-0 (rama por defecto a `main`). El resto, antes del tramo que las necesita.
+junto con L-0 (rama por defecto a `main`). DU-4, DU-7, DU-8 y DU-9 durante el tramo 1, porque las
+necesita el tramo 2. El resto, antes del tramo que las necesita.
 
-**Balanceo:** la persona 3 tiene más paquetes, pero son los más chicos. Si alguien termina su fila
-antes, toma lo pendiente de la persona más cargada **en el mismo tramo**, nunca de un tramo
-posterior.
+### 9.1 Cómo combinar los grupos
+
+| Personas | Grupos por persona |
+|---|---|
+| **9** | Uno cada uno: G1 … G9 |
+| **6** | G1 · G2 · G3 · G4+G9 · G5+G7 · G6+G8 |
+| **5** | G1+G8 · G2 · G3+G9 · G4+G6 · G5+G7 |
+| **4** | G1+G8 · G2+G7 · G3+G4+G9 · G5+G6 |
+| **3** | G1+G2 · G3+G4+G9 · G5+G6+G7+G8 |
+| **10+** | Sumar gente a G2 y G3 (los más largos), partiéndolos por paquete con acuerdo explícito de quién toca qué módulo, o al cierre |
+
+Reglas del reparto:
+
+- **G1 es la ruta crítica.** Quien lo tenga no suma otro grupo pesado hasta que F-4 esté en `main`
+  (G8, que es liviano y arranca con arreglos rápidos, sí entra en sus huecos del tramo 1).
+- **Al combinar, juntar grupos del mismo repo:** menos cambio de contexto y menos setup.
+- **Quien termina su grupo toma un grupo entero libre**, o ayuda en el cierre. No se adelanta a un
+  tramo posterior de otro grupo.
+- **Cada grupo anota su dueño** en el diagrama y pinta la casilla de cada paquete al mergear.
 
 ## 10. Prompt para abrir el chat de un paquete
 
 ```text
-Vamos a trabajar el paquete <ID> de AKINE (carril <X>). Leé AGENT.md, CLAUDE.md,
-docs/fases/01-trabajo-en-paralelo.md (reglas §3, tu carril §4, tu paquete §7) y la ficha
+Vamos a trabajar el paquete <ID> de AKINE (grupo <Gn>). Leé AGENT.md, CLAUDE.md,
+docs/fases/01-trabajo-en-paralelo.md (reglas §3, tu paquete §7, tu grupo §9) y la ficha
 docs/fases/<ficha>.md. Verificá contra el código que el faltante siga vigente y que sus
 dependencias estén en main. Estoy en el worktree <ruta>, rama akine-<ID>-<slug>; la migración
 reservada es <Vnn | ninguna>. Antes de proponer código, decime qué módulos vas a tocar y si
-alguno es de otro carril.
+alguno es de otro grupo.
 ```
 
 ## 11. Mantener esto vivo
 
-- Quien toma un paquete pone su nombre en la tabla del §7 (columna extra o comentario en el PR).
+- Quien toma un grupo pone su nombre como dueño en el diagrama (y en el PR de cada paquete).
 - Quien lo cierra lo tacha acá **y** en la ficha de la fase, en el mismo PR.
 - Si aparece trabajo nuevo, se agrega como paquete con su dependencia; no se mete "de paso" en otro.
 - El diagrama se actualiza cuando cambia una ola o la ruta crítica, no por cada paquete cerrado.
