@@ -16,7 +16,7 @@ acá. El frontend nunca puede elevar privilegios ni saltear una validación.
 
 ## 2. Documentación canónica
 
-Vive en el workspace padre (`docs/producto/`), no en este repo:
+Vive en este repo, en `docs/producto/` (hasta el 29/09/2026 estaba fuera de todo git, en el workspace padre):
 
 - `docs/producto/AKINE_Requerimientos_Integrados.md` — **fuente de verdad funcional** M01–M29 + §30–45.
 - `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` — **fuente de verdad de arquitectura y roadmap**, DP-01…DP-09.
@@ -42,6 +42,20 @@ Un ADR aceptado no se edita: se supersede con uno nuevo. La spec es deliberadame
 en varios puntos (estados de suscripción y membership, TTLs, lockout, política de contraseñas,
 outbox): lo que no está en la spec se resuelve como **decisión documentada** (§44 del
 documento de requerimientos), nunca se inventa en silencio.
+
+### Retomar el trabajo: `docs/fases/`
+
+**Antes de tocar una etapa, leé la ficha de su fase en `docs/fases/`.** Esa carpeta sale de la
+auditoría plan-vs-código del 01/10/2026 y dice, por fase, qué se cumplió, qué falta, qué se desvió
+del plan (documentado o en silencio), qué defectos siguen vivos y qué decisiones del usuario la
+bloquean. Está pensada para alinear a un agente en un chat nuevo sin depender de sesiones previas.
+
+1. `docs/fases/README.md` — cómo se usa y un prompt para abrir el chat.
+2. `docs/fases/00-orden-recomendado.md` — orden de las fases, arreglos rápidos y handoff del trabajo en curso.
+3. `docs/fases/FX-*.md` — la ficha de la fase que vas a trabajar.
+
+Las fichas son una foto: **verificá cada faltante contra el código antes de actuar**, y tachá en
+la ficha lo que cerrás, en el mismo commit.
 
 ## 3. Stack
 
@@ -309,7 +323,9 @@ servidor, el puerto aleatorio de los tests haría fallar el gate en cada corrida
 
 ## 13. Estado actual
 
-**AKINE-00.01 completada y verificada.** 28 tests en verde (19 unitarios/arquitectura +
-9 de integración). Sin commits todavía: el árbol está listo para el commit inicial.
+> Esta sección decía "AKINE-00.01 completada, próxima etapa 00.02" desde agosto. El estado vivo
+> ya no se mantiene acá.
 
-Próxima etapa: **AKINE-00.02** — baseline ejecutable y arquitectura comprobada.
+**El estado por fase vive en `docs/fases/`** (auditoría del 01/10/2026: ~54 % del plan, ~65 % del
+MVP F0–F8). El orden para retomar está en `docs/fases/00-orden-recomendado.md`. Las métricas de
+build, contrato y cobertura están en el §7 de `CLAUDE.md`.
