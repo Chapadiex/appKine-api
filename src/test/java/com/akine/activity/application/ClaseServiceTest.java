@@ -34,6 +34,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import com.akine.activity.domain.exception.ClaseNotAccessibleException;
+import org.springframework.dao.OptimisticLockingFailureException;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -215,6 +218,139 @@ class ClaseServiceTest {
 		assertThat(segunda.estado()).isEqualTo("CANCELADA");
 		// El motivo es el de la PRIMERA cancelacion: la segunda no reescribio la historia.
 		assertThat(segunda.motivoCancelacion()).isEqualTo("El instructor se reporto enfermo");
+	}
+
+	// =================================================================================
+	// Reprogramacion
+	// =================================================================================
+
+	/**
+	 * <b>Reprogramar avisa; cambiar la capacidad no.</b>
+	 *
+	 * <p>El aviso existe para que nadie se presente a un horario que ya no es. Mandarlo tambien
+	 * cuando lo unico que cambio es el cupo entrenaria a los inscriptos a ignorar los avisos de la
+	 * clase, que es la unica forma de que el aviso que importa pase desapercibido.
+	 */
+	@Test
+	@DisplayName("Mover el horario avisa a los inscriptos")
+	void reprogramar_avisa() {
+		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.saveAndFlush(any())).willAnswer(invocacion -> invocacion.getArgument(0));
+		Instant nuevoInicio = INICIO.plusSeconds(86_400);
+		Instant nuevoFin = FIN.plusSeconds(86_400);
+		given(disponibilidad.efectiva(anyLong(), any(), anyLong(), any(), any()))
+				.willReturn(List.of(diaConFranjaDe(nuevoInicio, nuevoFin)));
+		given(espacios.find(ORG_ID, ESPACIO_ID, nuevoInicio)).willReturn(Optional.of(espacio(20)));
+
+		service.reprogramar(actor(), SEDE_ID, 77L, new ReprogramarClaseCommand(
+				nuevoInicio, nuevoFin, PROFESIONAL_ID, 8, 0L));
+
+		org.mockito.Mockito.verify(avisos).avisarCambioDeClase(any(), any(), any(), any(), any());
+		org.mockito.Mockito.verify(eventos).registrar(any());
+	}
+
+	@Test
+	@DisplayName("Cambiar SOLO la capacidad no dispara el aviso")
+	void cambiar_capacidad_no_avisa() {
+		// Avisar por un cambio que el inscripto no vive entrenaria a ignorar los avisos de la clase.
+		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.saveAndFlush(any())).willAnswer(invocacion -> invocacion.getArgument(0));
+
+		// Se BAJA la capacidad, no se sube: subirla chocaria contra el tope de la oferta, que es
+		// otro caso y ya tiene su propio test.
+		service.reprogramar(actor(), SEDE_ID, 77L, new ReprogramarClaseCommand(
+				INICIO, FIN, PROFESIONAL_ID, 6, 0L));
+
+		org.mockito.Mockito.verify(avisos, org.mockito.Mockito.never())
+				.avisarCambioDeClase(any(), any(), any(), any(), any());
+	}
+
+	@Test
+	@DisplayName("Una version vieja no reprograma: 409 antes de mover nada")
+	void reprogramar_con_version_vieja() {
+		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+
+		assertThatThrownBy(() -> service.reprogramar(actor(), SEDE_ID, 77L,
+				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 8, 7L)))
+				.isInstanceOf(OptimisticLockingFailureException.class);
+
+		org.mockito.Mockito.verify(clases, org.mockito.Mockito.never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("Una clase de otra sede da 404 y no 403")
+	void clase_de_otra_sede() {
+		// Un 403 confirmaria que ese id existe, y en M28 eso filtra que clases dicta otro centro.
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.reprogramar(actor(), SEDE_ID, 77L,
+				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 8, 0L)))
+				.isInstanceOf(ClaseNotAccessibleException.class);
+	}
+
+	// =================================================================================
+	// Cancelacion con gente anotada
+	// =================================================================================
+
+	/**
+	 * <b>Cancelar una clase con inscriptos no es solo cambiar un estado.</b>
+	 *
+	 * <p>Hay que avisarles, darles de baja y <b>vaciar el cupo</b>. Si el contador quedara con los
+	 * ocupados de una clase que ya no existe, la proxima consulta de disponibilidad del mismo
+	 * espacio leeria un cupo tomado por nadie.
+	 */
+	@Test
+	@DisplayName("Cancelar con inscriptos avisa, los da de baja y vacia el cupo")
+	void cancelar_con_inscriptos() {
+		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.saveAndFlush(any())).willAnswer(invocacion -> invocacion.getArgument(0));
+		given(inscripciones.findVivasDeLaClase(ORG_ID, 77L))
+				.willReturn(List.of(org.mockito.Mockito.mock(
+						com.akine.activity.domain.InscripcionClase.class)));
+
+		service.cancelar(actor(), SEDE_ID, 77L, "El instructor se reporto enfermo");
+
+		org.mockito.Mockito.verify(avisos).avisarCambioDeClase(any(), any(), any(), any(), any());
+		org.mockito.Mockito.verify(inscripciones)
+				.cancelarTodasPorClaseCancelada(anyLong(), anyLong(), any(), anyLong(), any());
+		org.mockito.Mockito.verify(clases).vaciarCupo(ORG_ID, 77L);
+	}
+
+	@Test
+	@DisplayName("Sin inscriptos no se manda ningun aviso ni se toca el cupo")
+	void cancelar_sin_inscriptos() {
+		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.saveAndFlush(any())).willAnswer(invocacion -> invocacion.getArgument(0));
+		given(inscripciones.findVivasDeLaClase(ORG_ID, 77L)).willReturn(List.of());
+
+		service.cancelar(actor(), SEDE_ID, 77L, "Nadie se anoto");
+
+		org.mockito.Mockito.verify(avisos, org.mockito.Mockito.never())
+				.avisarCambioDeClase(any(), any(), any(), any(), any());
+		org.mockito.Mockito.verify(clases, org.mockito.Mockito.never())
+				.vaciarCupo(anyLong(), anyLong());
+	}
+
+	// =================================================================================
+	// Lecturas
+	// =================================================================================
+
+	@Test
+	@DisplayName("Ver una clase que no es de esa sede da 404")
+	void ver_clase_de_otra_sede() {
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.ver(actor(), SEDE_ID, 77L))
+				.isInstanceOf(ClaseNotAccessibleException.class);
 	}
 
 	// =================================================================================
