@@ -23,6 +23,13 @@ public class SchedulingTurnoDirectory implements TurnoDirectory {
 				.map(SchedulingTurnoDirectory::proyectar);
 	}
 
+	@Override
+	public boolean existeTurnoVivoDeProfesionalConPersona(
+			long organizationId, long consultorioId, long profesionalMembershipId, long personaId) {
+		return turnos.existeTurnoVivoDeProfesionalConPersona(
+				organizationId, consultorioId, profesionalMembershipId, personaId);
+	}
+
 	private static TurnoSnapshot proyectar(Turno turno) {
 		return new TurnoSnapshot(
 				turno.getId(),
