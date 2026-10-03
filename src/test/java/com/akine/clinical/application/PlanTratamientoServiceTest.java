@@ -11,6 +11,7 @@ import com.akine.clinical.domain.TipoEventoPlan;
 import com.akine.clinical.domain.exception.CasoNoActivoException;
 import com.akine.clinical.domain.exception.OfertaNoHabilitadaException;
 import com.akine.clinical.domain.exception.PlanNoEditableException;
+import com.akine.clinical.domain.exception.PlanSinItemsException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
 import com.akine.clinical.domain.exception.TransicionDePlanInvalidaException;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
@@ -228,6 +229,16 @@ class PlanTratamientoServiceTest {
 		}
 
 		@Test
+		@DisplayName("un plan sin items se puede crear: solo se bloquea la activacion")
+		void crear_sin_items() {
+			// AC-1
+			ContenidoDelPlan vacio = new ContenidoDelPlan("Objetivos", null, 3, 8, List.of());
+
+			assertThat(service.crear(profesional, CASO_ID, vacio, null).estado())
+					.isEqualTo("BORRADOR");
+		}
+
+		@Test
 		@DisplayName("un caso cerrado no admite planes nuevos")
 		void caso_cerrado_no_admite_planes() {
 			given(casos.findByIdAndOrganizationId(CASO_ID, ORG_ID))
@@ -344,6 +355,20 @@ class PlanTratamientoServiceTest {
 		}
 
 		@Test
+		@DisplayName("un BORRADOR se edita hasta dejarlo sin items")
+		void borrador_editable_sin_items() {
+			// AC-1
+			PlanTratamiento plan = plan(EstadoPlan.BORRADOR);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
+			given(versiones.buscarVigente(ORG_ID, PLAN_ID))
+					.willReturn(Optional.of(version(plan, 1, null)));
+			ContenidoDelPlan vacio = new ContenidoDelPlan("Objetivos", null, 3, 8, List.of());
+
+			assertThat(service.modificar(profesional, PLAN_ID, vacio, null, 0L, null).estado())
+					.isEqualTo("BORRADOR");
+		}
+
+		@Test
 		@DisplayName("un plan FINALIZADO no admite cambios: 409 y no 404")
 		void finalizado_no_editable() {
 			PlanTratamiento plan = plan(EstadoPlan.FINALIZADO);
@@ -388,6 +413,7 @@ class PlanTratamientoServiceTest {
 			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(nuevo));
 			given(planes.buscarQueOcupaElLugarDelCaso(ORG_ID, CASO_ID))
 					.willReturn(Optional.of(anterior));
+			conUnItem(nuevo);
 
 			service.activar(profesional, PLAN_ID, 0L, null);
 
@@ -406,8 +432,67 @@ class PlanTratamientoServiceTest {
 		}
 
 		@Test
+		@DisplayName("activar un BORRADOR con items lo deja ACTIVO y asienta la activacion")
+		void activar_con_items() {
+			// AC-1: el chequeo de items no cambia el camino feliz.
+			PlanTratamiento plan = plan(EstadoPlan.BORRADOR);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
+			conUnItem(plan);
+
+			assertThat(service.activar(profesional, PLAN_ID, 0L, null).estado()).isEqualTo("ACTIVO");
+
+			ArgumentCaptor<PlanEvento> evento = ArgumentCaptor.forClass(PlanEvento.class);
+			verify(eventos).save(evento.capture());
+			assertThat(evento.getValue().getTipo()).isEqualTo(TipoEventoPlan.ACTIVACION);
+		}
+
+		@Test
+		@DisplayName("un BORRADOR sin items no se activa: queda BORRADOR y no deja evento ni auditoria")
+		void activar_sin_items_se_rechaza() {
+			// AC-1: un plan vacio vigente seria un tratamiento sin nada que hacer.
+			PlanTratamiento plan = plan(EstadoPlan.BORRADOR);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
+			given(versiones.buscarVigente(ORG_ID, PLAN_ID))
+					.willReturn(Optional.of(version(plan, 1, null)));
+			given(items.buscarDeVersion(ORG_ID, VERSION_ID)).willReturn(List.of());
+
+			assertThatThrownBy(() -> service.activar(profesional, PLAN_ID, 0L, null))
+					.isInstanceOf(PlanSinItemsException.class)
+					.extracting(e -> ((PlanSinItemsException) e).getPlanId())
+					.isEqualTo(PLAN_ID);
+
+			assertThat(plan.getEstado()).isEqualTo(EstadoPlan.BORRADOR);
+			verify(planes, never()).saveAndFlush(any());
+			verify(eventos, never()).save(any());
+			verify(auditTrail, never()).record(any());
+		}
+
+		@Test
+		@DisplayName("un plan vacio no se lleva puesto al vigente del caso")
+		void activar_sin_items_no_finaliza_al_vigente() {
+			// AC-1: finalizar al anterior es el efecto que no se deshace; el rechazo llega antes.
+			PlanTratamiento vacio = plan(EstadoPlan.BORRADOR);
+			PlanTratamiento anterior = otroPlanActivo();
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(vacio));
+			given(planes.buscarQueOcupaElLugarDelCaso(ORG_ID, CASO_ID))
+					.willReturn(Optional.of(anterior));
+			given(versiones.buscarVigente(ORG_ID, PLAN_ID))
+					.willReturn(Optional.of(version(vacio, 1, null)));
+			given(items.buscarDeVersion(ORG_ID, VERSION_ID)).willReturn(List.of());
+
+			assertThatThrownBy(() -> service.activar(profesional, PLAN_ID, 0L, null))
+					.isInstanceOf(PlanSinItemsException.class);
+
+			assertThat(anterior.getEstado()).isEqualTo(EstadoPlan.ACTIVO);
+			assertThat(anterior.getMotivoFinalizacion()).isNull();
+			verify(planes, never()).saveAndFlush(any());
+		}
+
+		@Test
 		@DisplayName("activar lo ya activo es el mismo pedido, no un conflicto")
 		void activar_lo_activo_es_idempotente() {
+			// AC-1: la idempotencia se evalua antes del chequeo de items; la version de este plan
+			// no tiene items (default del setUp) y aun asi responde ACTIVO.
 			PlanTratamiento plan = plan(EstadoPlan.ACTIVO);
 			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
 
@@ -423,6 +508,7 @@ class PlanTratamientoServiceTest {
 		void finalizado_no_se_reabre() {
 			PlanTratamiento plan = plan(EstadoPlan.FINALIZADO);
 			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
+			conUnItem(plan);
 
 			assertThatThrownBy(() -> service.activar(profesional, PLAN_ID, 0L, null))
 					.isInstanceOf(TransicionDePlanInvalidaException.class)
@@ -469,6 +555,18 @@ class PlanTratamientoServiceTest {
 
 			assertThatThrownBy(() -> service.reanudar(profesional, PLAN_ID, 0L, null))
 					.isInstanceOf(TransicionDePlanInvalidaException.class);
+		}
+
+		@Test
+		@DisplayName("un BORRADOR sin items se puede finalizar")
+		void finalizar_borrador_sin_items() {
+			// AC-1
+			PlanTratamiento plan = plan(EstadoPlan.BORRADOR);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
+
+			service.finalizar(profesional, PLAN_ID, "Descartado", 0L, null);
+
+			assertThat(plan.getEstado()).isEqualTo(EstadoPlan.FINALIZADO);
 		}
 
 		@Test
@@ -603,6 +701,13 @@ class PlanTratamientoServiceTest {
 		PlanTratamiento plan = plan(EstadoPlan.ACTIVO);
 		given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
 		given(versiones.buscarVigente(ORG_ID, PLAN_ID)).willReturn(Optional.of(version));
+		given(items.buscarDeVersion(ORG_ID, VERSION_ID)).willReturn(List.of(item()));
+	}
+
+	/** La version vigente del plan, con un item: lo que exige activarlo. */
+	private void conUnItem(PlanTratamiento plan) {
+		given(versiones.buscarVigente(ORG_ID, PLAN_ID))
+				.willReturn(Optional.of(version(plan, 1, null)));
 		given(items.buscarDeVersion(ORG_ID, VERSION_ID)).willReturn(List.of(item()));
 	}
 

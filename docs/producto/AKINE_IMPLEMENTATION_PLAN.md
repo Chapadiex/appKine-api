@@ -10172,3 +10172,205 @@ Los ITs de tratamientos a través del servicio (escenarios 39–43 de `docs/test
 ## 10. Contexto para la etapa siguiente
 
 C-7 puede registrar tratamientos con `NO_APLICA` desde el servicio y depende de `V65`. `V67` queda vacía por decisión de C-5; la siguiente migración reservada del grupo es `V71`.
+
+---
+
+# Registro de cierre — G2·C-5 (04.04: un plan de tratamiento no se activa sin ítems)
+
+Registro conforme a §10.5. Paquete C-5 de la obra `akine-g2`, recortado por decisión del usuario: el
+"unique de caso activo" **no se hace**.
+
+## 1. Resumen del incremento y comportamiento observable
+
+Activar un plan en `BORRADOR` cuya versión vigente tiene **0 ítems** responde **409** con `type`
+`PLAN_TRANSICION_INVALIDA`, título "El plan de tratamiento no se puede activar sin items" y la
+propiedad `planId`. Activar un plan ya `ACTIVO` sigue siendo 200 (la idempotencia se evalúa antes).
+El rechazo ocurre **antes de finalizar el plan vigente** del caso: un plan vacío no se lleva puesto
+el de otro.
+
+## 2. Archivos creados
+
+- `clinical/domain/exception/PlanSinItemsException.java` (`RuntimeException`, ctor `(Long planId)`, `getPlanId()`).
+
+## 3. Archivos modificados
+
+- `clinical/application/PlanTratamientoService.java` (`activar`).
+- `clinical/api/ClinicalProblemHandler.java` (mapeo 409).
+- `docs/fases/F4-dominio-clinico.md` (tres líneas: dos ítems y la fila de desvíos).
+- Este plan.
+
+## 4. Migraciones, backfills o cambios de datos
+
+**Ninguno.** `V67` (reservada al paquete) **queda vacía**: no existe `V67__*.sql`.
+
+## 5. Endpoints, contratos, eventos o integraciones
+
+Ninguno nuevo. El 409 de activar ya estaba en el contrato OpenAPI; no cambia
+`akine.contract.version`.
+
+## 6. Pruebas
+
+Este nodo no escribe tests (los hace A4.T1, que depende de `PlanSinItemsException`). Criterios del
+nodo corridos: compilación, `ModuleArchitectureTest`, `CodingConventionsTest` y los chequeos
+documentales (04.04 y 04.03 tachados, ausencia de `V67__*`).
+
+## 7. Decisiones técnicas y alternativas descartadas
+
+- **Sin unique de caso activo:** RN-M10-002 dice que *puede haber más de un caso activo si
+  clínicamente corresponde*; el duplicado razonable se resuelve con 409 + candidatos y lo cubre
+  `CasoClinicoConcurrenteIT`. Ver V47 y `docs/diseno/AKINE-04.03-challenge.md`.
+- **Sin otro estado de `EstadoCaso`:** M10 solo menciona casos activos y cerrados (RF-M10-002) y el
+  estado CERRADO (RF-M10-005). No se inventó ninguno.
+- **Chequeo en el servicio y no en la entidad:** `PlanTratamiento.activar` no conoce los ítems (viven
+  en otra tabla); pasarlos por parámetro obligaba a tocar a todos los llamadores sin ganar nada.
+- **`ProblemType` existente** `PLAN_TRANSICION_INVALIDA`: mismo conflicto, misma acción del cliente.
+  Uno nuevo habría tocado `platform/spi/problem`.
+
+## 8. Problemas, riesgos o bloqueos
+
+Ninguno bloqueante.
+
+## 9. Deuda técnica diferida
+
+- Los tests existentes que activan planes sin ítems fallarán hasta que A4.T1 los corrija.
+- Este nodo no corrió ITs.
+
+## 10. Contexto para la etapa siguiente
+
+A4.T1 escribe los tests contra `PlanSinItemsException(Long planId)`; esa firma no cambia. Queda
+pendiente para el usuario marcar `V67` como "vacía" en la tabla §6 de `01-trabajo-en-paralelo.md`
+(rama `docs/trabajo-en-paralelo`).
+
+---
+
+# Registro de cierre — G2 · C-2 (API de la historia clínica) · backend
+
+1. **Incremento.** La historia clínica tiene puerta REST. `HistoriaClinicaController` expone, bajo `/api/v1/historias-clinicas/por-persona/{personaId}`, obtener-o-abrir idempotente, lectura, actualización del resumen y antecedentes (registrar, listar, baja). No se tocó la lógica de dominio: `HistoriaClinicaService` y `AntecedenteClinicoService` ya la tenían y eran código muerto para la API.
+2. **Archivos creados.** `clinical/api/HistoriaClinicaController.java`; DTOs en `clinical/api/dto`: `HistoriaClinicaResponse`, `AntecedenteResponse`, `ActualizarResumenRequest`, `RegistrarAntecedenteRequest`, `BajaDeAntecedenteRequest`.
+3. **Archivos modificados.** `pom.xml` y `application.yml` (`akine.contract.version` 0.44.0 → 0.45.0), `openapi/akine-api.yaml` (regenerado, no editado a mano), `docs/fases/F4-dominio-clinico.md` (ítem tachado).
+4. **Migraciones / datos.** Ninguno.
+5. **Endpoints.** `PUT /por-persona/{personaId}` (200, idempotente), `GET /por-persona/{personaId}` (200 / 404), `PUT .../resumen` (`{texto, expectedVersion}`), `GET .../antecedentes?tipo=&soloVigentes=`, `POST .../antecedentes` (201), `POST .../antecedentes/{antecedenteId}/baja`. Cabecera opcional `AccesoClinicoHeaders.JUSTIFICACION`. Contrato 0.45.0. Errores mapeados por `ClinicalProblemHandler` sin cambios.
+6. **Pruebas.** Escritas por A2.T1 (nodo tester, sin ver la implementacion): `HistoriaClinicaControllerTest` (slice, 10 tests) y `HistoriaClinicaApiIT` (Testcontainers, 7 tests, incluye 8 PUT concurrentes sobre la misma persona). `HistoriaClinicaServiceTest` actualizado (12 tests). Comando: `.\mvnw.cmd -q -Djacoco.skip=true -Dtest=HistoriaClinicaControllerTest,HistoriaClinicaServiceTest,ModuleArchitectureTest,CodingConventionsTest -Dit.test=HistoriaClinicaApiIT,OpenApiContractIT verify` -> exit 0. El IT concurrente encontro un bug real: la relectura de la ganadora corria en la transaccion de negocio y, con REPEATABLE READ, no veia la fila ya commiteada, asi que la apertura concurrente salia como 409; se corrigio con `HistoriaClinicaEscrituraAparte.releerVigente` en `REQUIRES_NEW` (afecta tambien a `asegurar`, que usan otros modulos).
+7. **Decisiones.** Se direcciona por `personaId` (no por `historiaClinicaId`) porque los servicios ya trabajan por persona y no choca con `/{historiaClinicaId}/...`. `PUT` para obtener-o-abrir por ser idempotente. `ActualizarResumenRequest.texto` limitado a 2000 = largo de la columna.
+8. **Problemas.** `OpenApiContractIT` exige que `application.yml` y `pom.xml` coincidan en la versión del contrato; `application.yml` estaba fuera del territorio y D lo habilitó (sólo esa línea).
+9. **Deuda diferida.** Lectura limitada para `ADMINISTRATIVO` (ítem aparte de F4); relación asistencial real (C-3); consumo desde el frontend (Paciente 360).
+10. **Para la etapa siguiente.** El front (G3) puede consumir las rutas `/por-persona/{personaId}` desde el contrato 0.45.0. Otros paquetes que suban la versión del contrato van a chocar en `pom.xml`/`application.yml`/YAML: resolver al integrar.
+
+---
+
+# Registro de cierre — G2 · C-3 (`RelacionAsistencialProbe` real) · backend
+
+Cerrado el **2026-10-03** en la rama `symphony/akine-g2/A3`. Registro conforme a §10.5.
+
+## 1. Resumen del incremento y comportamiento observable
+
+El stub `RelacionAsistencialSinAgenda` (siempre `false`: **toda** lectura clínica exigía justificación) se reemplazó por `EncounterRelacionAsistencialProbe`. Ahora hay relación asistencial si el actor, con alguno de sus **vínculos habilitados** que cubra la sede, tiene una sesión no borrada de esa persona en esa sede (la atendió la membership o la inició la cuenta) o un turno vivo con ella (`RESERVADO`, `CONFIRMADO`, `EN_ESPERA`; `CANCELADO` y `AUSENTE` no cuentan). Queda **un solo bean** de `RelacionAsistencialProbe`. Efecto visible: un profesional con atención o agenda con la persona lee su historia sin declarar justificación; el resto sigue exigiéndola.
+
+## 2. Archivos creados
+
+- `src/main/java/com/akine/encounter/infrastructure/EncounterRelacionAsistencialProbe.java`
+- `src/test/java/com/akine/encounter/infrastructure/EncounterRelacionAsistencialProbeTest.java`
+- `src/test/java/com/akine/encounter/RelacionAsistencialIT.java`
+
+## 3. Archivos modificados
+
+- `scheduling/spi/TurnoDirectory.java`: método nuevo y aditivo `existeTurnoVivoDeProfesionalConPersona(organizationId, consultorioId, profesionalMembershipId, personaId)`.
+- `scheduling/infrastructure/SchedulingTurnoDirectory.java` y `TurnoRepository.java`: su implementación y la query (filtra por organización, sede, profesional, persona, `deletedAt IS NULL` y estados vivos).
+- `encounter/domain/port/SesionRepositoryPort.java` y `encounter/infrastructure/SesionRepository.java`: `existeSesionDelActor(organizationId, consultorioId, historiaClinicaId, profesionalMembershipId, actorAccountId)`.
+- `docs/fases/F4-dominio-clinico.md`: ítem «`RelacionAsistencialProbe` real» tachado (sólo esa línea).
+- **Borrado:** `clinical/infrastructure/RelacionAsistencialSinAgenda.java`.
+
+## 4. Migraciones, backfills o cambios de datos
+
+Ninguno. Las queries usan columnas e índices existentes; no se agregó migración.
+
+## 5. Endpoints, contratos, eventos o integraciones
+
+Ningún endpoint ni evento. `clinical/spi/RelacionAsistencialProbe` **no cambió**. Único cambio de contrato entre módulos: el método nuevo en `scheduling.spi.TurnoDirectory` (aditivo; `scheduling` es del grupo G5, no se tocó ninguna firma existente). `encounter` ahora consume además `organization.spi.ConsultorioMembershipDirectory` y `clinical.spi.HistoriaClinicaDirectory`, ya permitidos por `ModuleArchitectureTest`.
+
+## 6. Pruebas y resultados
+
+- `EncounterRelacionAsistencialProbeTest`: 17 unitarios (Mockito sobre los puertos, con `ConsultorioMembershipSnapshot` reales). Cubre vínculos que no cuentan, historia ausente, sesión/turno, alcance de sede y de organización, y el cortocircuito.
+- `RelacionAsistencialIT`: 22 casos contra base real (Testcontainers): bean único; los cinco estados de turno; otro profesional, otra sede, otra organización; sesión por cuenta o por membership, de otro actor, de otra sede, borrada; profesional de **una sola sede**, de alcance organización, y membership suspendida, revocada, vencida o dada de baja.
+- Criterios de A3, todos en 0 el 2026-10-03 con `sym check A3`: AC-1 (`.\mvnw.cmd -q -Djacoco.skip=true -Dtest=*RelacionAsistencial*Test,ModuleArchitectureTest,CodingConventionsTest -Dit.test=RelacionAsistencialIT,TimelineIT verify`), AC-2 (F4 tachado), AC-3 (stub borrado).
+- Verificación adversaria: sacar el filtro `validAt` del probe hace fallar 5 de los 17 unitarios (suspendido, revocado, vencido, futuro, baja lógica).
+- **No se corrió la suite completa** (la corre el director). `TimelineIT` pasa con el comportamiento nuevo.
+
+## 7. Decisiones técnicas y alternativas descartadas
+
+- **Actor por vínculos, no por `AccountContextDirectory.membership`.** Ese método devuelve a propósito sólo la membership de alcance organización (evita escalar permisos): un profesional con membership de una sola sede nunca habría tenido relación. Se usa `ConsultorioMembershipDirectory.findByAccount` + `validAt` + `cubreConsultorio`.
+- **Sólo cuenta un vínculo habilitado** (decisión del usuario): suspendido, revocado, vencido o dado de baja no da relación, ni siquiera por sesiones ya atendidas. Se prefirió exigir justificación antes que abrir una historia a quien ya no es profesional activo.
+- **`@Lazy` sobre `HistoriaClinicaDirectory`** en el constructor, para cortar el ciclo `probe → HistoriaClinicaDirectory → HistoriaClinicaService → AdjuntoClinicoService → probe`. Descartado `ObjectProvider`: cambiaba la firma del constructor y rompía los tests unitarios.
+- Sesión del actor por `iniciadaPorCuentaId` **o** `profesionalMembershipId`; sesión consultada antes que turnos, con cortocircuito.
+- Descartado `@Primary` / `@ConditionalOnMissingBean` (ver el javadoc del stub): el stub se borró.
+
+## 8. Problemas, riesgos o bloqueos
+
+- El primer diseño (A3.T2) usaba `AccountContextDirectory.membership` y no levantaba el contexto de Spring (ciclo de beans). Lo detectó el IT de A3.T1; el criterio de T2 no arrancaba el contexto, falla de especificación del atril, no del modelo. Se corrigió con A3.T3 (`@Lazy`) y A3.T4 (vínculos); el IT de T1 pasó a usar membership de sede y se rechazó su primera iteración por `spec`.
+- `sym check` ejecutaba `mvnw.cmd` sin `.\` y fallaba por el PATH de cmd; D corrigió los criterios.
+- `sym check A3` marca como «fuera del territorio» 27 archivos que son de A1, A2, A4 y A6 ya integrados en la rama de D: se compara contra una base que avanzó. El diff propio de A3 contra su base (`2cdf28f`) son 10 archivos, todos en territorio.
+
+## 9. Deuda técnica
+
+- La consulta de sesiones y turnos se hace por vínculo en un bucle (normalmente uno o dos). Si un actor llegara a tener muchos vínculos en la organización habría que agruparlas; sin etapa asignada, medir antes.
+- La relación se evalúa en cada lectura clínica sin caché. Etapa destino: la de endurecimiento/rendimiento del dominio clínico (F4/F8), si las mediciones lo piden.
+
+## 10. Contexto para la etapa siguiente
+
+- **Cambio de comportamiento global:** al dejar de responder siempre `false`, cualquier IT de `clinical` que asumiera «toda lectura exige justificación» puede cambiar. Con A3 sólo se verificaron `TimelineIT` y los propios; la suite completa la corre el director y puede destapar otros.
+- La relación se evalúa por **vínculo de la cuenta en la organización**, no por la membership del contexto del request; un actor que opera con un vínculo distinto sigue contando si alguno de los suyos cubre la sede.
+- Cuando exista el módulo de agenda completo (F5), `TurnoDirectory#existeTurnoVivoDeProfesionalConPersona` es el punto de extensión; no hay que tocar el probe.
+- No se actualizó `openapi/akine-api.yaml`: no hay contrato HTTP nuevo.
+
+# Registro de cierre — G2 · C-7 (fix) — registrar tratamiento avanza la versión de la sesión
+
+Cerrado el **2026-10-03** en la rama `symphony/akine-g2/A7`. Registro conforme a §10.5.
+
+## 1. Resumen del incremento y comportamiento observable
+
+Registrar, editar o quitar un tratamiento realizado ahora avanza `sesion.version` **en la base, una sola vez**. Antes la base quedaba en la versión leída mientras la vista informaba `leida+1`: el cliente no tenía control optimista real y dos altas con la misma versión entraban las dos. Ahora una versión vieja es conflicto (`OptimisticLockingFailureException`, el que ya mapea el handler) y **no inserta**, y de dos altas concurrentes con la misma versión entra una sola. La API pública de `TratamientoService` y `TratamientoView` no cambia.
+
+## 2. Archivos creados
+
+Ninguno.
+
+## 3. Archivos modificados
+
+- `encounter/application/TratamientoService.java`: `sesionParaEscribir` lee con `findByIdInScope` y avanza la versión con `avanzarVersion(..., expectedVersion)`; si afecta cero filas, lanza el conflicto. Se actualizaron la cabecera (punto 2) y el comentario del método.
+- `encounter/domain/port/SesionRepositoryPort.java` y `encounter/infrastructure/SesionRepository.java`: método nuevo `avanzarVersion` (`UPDATE Sesion SET version = version + 1 WHERE ... AND version = :versionEsperada`, `@Modifying(flushAutomatically = true)`). `findWithLockByIdInScope` **no se tocó**: ya no lo usa ningún código de producción, pero `MedicionServiceTest` (fuera de este territorio) lo stubbea y borrarlo rompería su compilación.
+- `encounter/application/TratamientoServiceTest.java`: las colaboraciones mockeadas pasan de `findWithLockByIdInScope` + `save` a `findByIdInScope` + `avanzarVersion`; el test del `save` se reemplazó por dos (llama a `avanzarVersion` con la versión leída; cero filas afectadas es conflicto sin escribir).
+
+## 4. Migraciones, backfills o cambios de datos
+
+Ninguno.
+
+## 5. Endpoints, contratos, eventos o integraciones
+
+Ninguno. No cambia `openapi/akine-api.yaml` ni la versión del contrato.
+
+## 6. Pruebas y resultados
+
+- AC-1 en 0: `TratamientoRealizadoIT` (de la rama de A5, prestado con `it-prestado.js`, no copiado), 47 de 47. Los tres que estaban rojos pasan: `la_version_avanza_una_sola_vez`, `dos_altas_concurrentes_una_sola_entra`, `version_vieja_es_conflicto_y_no_inserta`.
+- AC-2 en 0: `TratamientoServiceTest`, `SesionServiceTest`, `MedicionServiceTest`, `ModuleArchitectureTest`, `CodingConventionsTest`, `CierreConcurrenteIT`, `CierreConDosNumeradoresIT`.
+- **No se corrió la suite completa** (la corre el director).
+
+## 7. Decisiones técnicas y alternativas descartadas
+
+- **Diagnóstico con el SQL de Hibernate** (`-Dspring.jpa.show-sql=true`): durante `registrar` no sale ningún `UPDATE sesion` al commitear. El `OPTIMISTIC_FORCE_INCREMENT` aplicado a una lectura por consulta no incrementa la versión, y `save()` de una entidad gestionada sin cambios no la ensucia.
+- **Descartada la hipótesis de que el `@Query` JPQL era la causa:** se probó una consulta derivada con el mismo `@Lock` (el patrón de `CasoClinicoRepository`) y la base seguía en la versión leída.
+- **Elegido un `UPDATE ... WHERE version = :esperada` propio** (en el repositorio, sin `EntityManager` en el servicio): da conflicto real cuando alguien se adelantó, toma el lock de la fila en el acto (serializa las altas concurrentes, también el `MAX(orden)+1`) y no ensucia la sesión, así que la versión avanza una vez. La entidad leída conserva la versión vieja y las vistas anuncian `expectedVersion + 1`.
+- Descartado `EntityManager.lock(sesion, OPTIMISTIC_FORCE_INCREMENT)`: exigía inyectar el `EntityManager` en el servicio o crear un fragmento de repositorio fuera del territorio.
+
+## 8. Problemas, riesgos o bloqueos
+
+Ninguno bloqueante.
+
+## 9. Deuda técnica
+
+- **La causa parece general, no propia de `Sesion`:** el mismo patrón (`@Lock(OPTIMISTIC_FORCE_INCREMENT)` sobre una lectura y después `save` de la entidad sin cambios) según los comentarios, está en `clinical` (`CasoClinicoRepository`, `EntradaClinica*`, `PlanTratamiento*`, `CasoClinicoService`, `PlanTratamientoService`, `EntradaClinicaService`) y `billing/domain/Egreso`. No se verificó cada sitio ni se tocó ninguno. Decide D si abre otro nodo; conviene un IT que lea `version` de la base, como el escenario 41.
+- `SesionRepositoryPort#findWithLockByIdInScope` quedó sin usos de producción; se puede borrar junto con el stub de `MedicionServiceTest` (que no es de este nodo).
+
+## 10. Contexto para la etapa siguiente
+
+- El PR a `main` lo abre D con título `[G2·C-7 fix] ...`. A5 puede tachar el ítem «ITs de tratamientos (escenarios 39–43…)» de F6 una vez integrado este nodo.
+- Cualquier otra escritura que sólo toque tablas hijas de `sesion` puede usar `SesionRepositoryPort#avanzarVersion`.

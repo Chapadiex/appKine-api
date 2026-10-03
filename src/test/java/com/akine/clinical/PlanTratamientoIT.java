@@ -15,6 +15,7 @@ import com.akine.clinical.application.PlanTratamientoView;
 import com.akine.clinical.application.PlanVersionView;
 import com.akine.clinical.domain.RolEnCaso;
 import com.akine.clinical.domain.exception.PlanNoEditableException;
+import com.akine.clinical.domain.exception.PlanSinItemsException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
 import com.akine.clinical.domain.exception.TransicionDePlanInvalidaException;
 import com.akine.encounter.application.SesionService;
@@ -229,6 +230,67 @@ class PlanTratamientoIT {
 		assertThat(activosDelCaso(caso.id()))
 				.as("uno solo, siempre")
 				.isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("un plan sin items no se activa, no finaliza al vigente y se activa al cargarle un item")
+	void un_plan_sin_items_no_se_activa() {
+		// AC-1: el chequeo va antes de finalizar al plan vigente, y la idempotencia antes del chequeo.
+		Fixture fixture = crearFixture();
+		CasoClinicoView caso = abrirCaso(fixture);
+		PlanTratamientoView vigente = crearYActivar(fixture, caso, 10);
+
+		PlanTratamientoView vacio = planes.crear(fixture.actorClinico(), caso.id(),
+				new ContenidoDelPlan("Sin practicas todavia", null, 2, 4, List.of()),
+				JUSTIFICACION);
+		assertThat(vacio.estado()).isEqualTo("BORRADOR");
+
+		assertThatThrownBy(() -> planes.activar(
+				fixture.actorClinico(), vacio.id(), vacio.version(), JUSTIFICACION))
+				.isInstanceOf(PlanSinItemsException.class)
+				.extracting(e -> ((PlanSinItemsException) e).getPlanId())
+				.isEqualTo(vacio.id());
+
+		assertThat(planes.ver(fixture.actorClinico(), vacio.id(), JUSTIFICACION).estado())
+				.as("sigue BORRADOR")
+				.isEqualTo("BORRADOR");
+		assertThat(tiposDeEvento(vacio.id()))
+				.as("sin evento de activacion")
+				.containsExactly("CREACION");
+		assertThat(planes.ver(fixture.actorClinico(), vigente.id(), JUSTIFICACION).estado())
+				.as("y el vigente del caso no se toco")
+				.isEqualTo("ACTIVO");
+		assertThat(activosDelCaso(caso.id())).isEqualTo(1);
+
+		// Con un item la misma activacion entra y finaliza al anterior.
+		PlanTratamientoView completo = planes.modificar(fixture.actorClinico(), vacio.id(),
+				contenido(fixture, "Ya con practicas", 2, 4, 6), null,
+				verVersionActual(fixture, vacio.id()), JUSTIFICACION);
+		PlanTratamientoView activo = planes.activar(
+				fixture.actorClinico(), vacio.id(), completo.version(), JUSTIFICACION);
+
+		assertThat(activo.estado()).isEqualTo("ACTIVO");
+		assertThat(planes.ver(fixture.actorClinico(), vigente.id(), JUSTIFICACION).estado())
+				.isEqualTo("FINALIZADO");
+		assertThat(activosDelCaso(caso.id())).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("activar un plan ya activo responde igual aunque su version no tenga items")
+	void activar_lo_activo_no_mira_los_items() {
+		// AC-1: la idempotencia se evalua antes del chequeo de items. Se vacia la version por SQL
+		// porque por la API un plan ACTIVO ya no puede quedar sin items.
+		Fixture fixture = crearFixture();
+		CasoClinicoView caso = abrirCaso(fixture);
+		PlanTratamientoView activo = crearYActivar(fixture, caso, 10);
+		jdbc.update("""
+				DELETE FROM plan_item WHERE plan_tratamiento_version_id IN
+				  (SELECT id FROM plan_tratamiento_version WHERE plan_tratamiento_id = ?)
+				""", activo.id());
+
+		assertThat(planes.activar(
+				fixture.actorClinico(), activo.id(), activo.version(), JUSTIFICACION).estado())
+				.isEqualTo("ACTIVO");
 	}
 
 	@Test

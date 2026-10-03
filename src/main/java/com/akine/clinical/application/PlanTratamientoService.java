@@ -13,6 +13,7 @@ import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.AutorizacionNoVinculableException;
 import com.akine.clinical.domain.exception.CasoNoActivoException;
 import com.akine.clinical.domain.exception.OfertaNoHabilitadaException;
+import com.akine.clinical.domain.exception.PlanSinItemsException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
 import com.akine.clinical.domain.exception.PlanVivoEnElCasoException;
 import com.akine.clinical.domain.exception.ReferenciaDelPlanNotAccessibleException;
@@ -406,6 +407,12 @@ public class PlanTratamientoService {
 		CasoClinico caso = exigirCaso(organizationId, plan.getCasoClinicoId());
 		if (!caso.estaActivo()) {
 			throw new CasoNoActivoException(caso.getId());
+		}
+
+		// Antes de finalizar el vigente: un plan vacio no puede llevarse puesto el de otro.
+		PlanTratamientoVersion vigente = exigirVersionVigente(plan);
+		if (items.buscarDeVersion(organizationId, vigente.getId()).isEmpty()) {
+			throw new PlanSinItemsException(plan.getId());
 		}
 
 		finalizarElVigente(organizationId, plan, ahora, actor, acceso);

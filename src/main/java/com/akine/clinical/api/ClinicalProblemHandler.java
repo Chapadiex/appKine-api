@@ -23,6 +23,7 @@ import com.akine.clinical.domain.exception.OfertaNoHabilitadaException;
 import com.akine.clinical.domain.exception.OfertaNoVigenteException;
 import com.akine.clinical.domain.exception.PacienteSinPerfilVigenteException;
 import com.akine.clinical.domain.exception.PlanNoEditableException;
+import com.akine.clinical.domain.exception.PlanSinItemsException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
 import com.akine.clinical.domain.exception.PlanVivoEnElCasoException;
 import com.akine.clinical.domain.exception.ReferenciaDelPlanNotAccessibleException;
@@ -470,6 +471,21 @@ public class ClinicalProblemHandler {
 		problem.setTitle("Transicion de plan no permitida");
 		problem.setProperty("planId", ex.getPlanId());
 		problem.setProperty("estadoActual", ex.getEstadoActual());
+		return problem;
+	}
+
+	/**
+	 * <b>409.</b> Activar un plan sin items. Reusa el {@code type} de la transicion invalida: es la
+	 * misma accion —activar— que el estado del plan no admite todavia, y el cliente la resuelve igual
+	 * (releer el plan y completarlo), asi que no justifica un {@code type} propio.
+	 */
+	@ExceptionHandler(PlanSinItemsException.class)
+	public ProblemDetail handlePlanSinItems(PlanSinItemsException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(PLAN_TRANSICION_INVALIDA);
+		problem.setTitle("El plan de tratamiento no se puede activar sin items");
+		problem.setProperty("planId", ex.getPlanId());
 		return problem;
 	}
 
