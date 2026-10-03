@@ -10073,3 +10073,53 @@ que la fila quedó en la tabla. **El 61 es el más incómodo** — si alguien vu
 El contrato queda en **drift a propósito**: se subió `0.44.0` en los tres lugares y **no se
 escribieron los `securitySchemes` a mano en el YAML**, porque eso sería taparlo. Hay que correr
 **`./mvnw verify -Dakine.contract.update=true` desde esta rama** en cuanto Docker levante.
+
+---
+
+# Registro de cierre — G2·A-2 (ADR que ratifica a `encounter` como dueño de la Sesión)
+
+Cerrada el **2026-10-03**. Rama `symphony/akine-g2/A6`. Registro conforme a §10.5. Paquete sólo documental.
+
+## 1. Resumen del incremento y comportamiento observable
+
+Sin cambio de comportamiento. El desvío «la Sesión vive en `encounter`, no en `clinical` como dice §2.4» estaba documentado sólo en el registro de 06.01; ahora tiene ADR y `AGENT.md` §4 lo refleja.
+
+## 2. Archivos creados
+
+- `docs/adr/0024-encounter-es-duenio-de-la-sesion.md`
+
+## 3. Archivos modificados
+
+- `docs/adr/README.md` (fila 0024 del índice).
+- `AGENT.md` §4 (lista de módulos: `encounter` agregado; `clinical` deja de listar la Sesión).
+- `docs/fases/F0-F1-fundacion-y-plataforma.md` (ítem tachado y fila de la tabla de desvíos corregida).
+- Este plan (este registro).
+
+## 4. Migraciones, backfills o cambios de datos
+
+Ninguno.
+
+## 5. Endpoints, contratos, eventos o integraciones
+
+Ninguno. `akine.contract.version` no cambia.
+
+## 6. Pruebas
+
+Sin pruebas nuevas: no hay código. Criterios del nodo (`sym check A6`): existe `docs/adr/0024-*encounter*.md`, `AGENT.md` contiene «encounter», el ítem de F0-F1 está tachado y el índice contiene «0024».
+
+## 7. Decisiones técnicas y alternativas descartadas
+
+`encounter` queda como dueño de la Sesión, sus mediciones, enmiendas y tratamientos realizados. Descartadas: mover el código a `clinical`, dejar el desvío sin ADR y dividir `encounter`. El ADR describe lo que el código ya hace (verificado en `encounter/`, `encounter.spi.CierreDeSesionObserver`/`SesionCerrada`, `EncounterAtencionProbe`, `ConsumoDeAutorizacionEnCierre`) y no propone cambios.
+
+## 8. Problemas, riesgos o bloqueos
+
+§2.4 del plan sigue diciendo «Sesión» en la fila `clinical` (texto histórico; no se reescribe). El ADR lo declara como consecuencia negativa.
+
+## 9. Deuda técnica
+
+Ninguna nueva. El `CLAUDE.md` del repo no lista módulos, así que no requiere actualización.
+
+## 10. Contexto para la etapa siguiente
+
+- C-3 reemplaza `clinical.infrastructure.RelacionAsistencialSinAgenda` con una implementación en `encounter.infrastructure` (patrón de `EncounterAtencionProbe`); el ADR-0024 fija que esa dependencia va `encounter → clinical.spi` y nunca al revés.
+- Una arista `clinical → encounter` o `person → encounter` cierra ciclos: verificarlo con ArchUnit, no de memoria.
