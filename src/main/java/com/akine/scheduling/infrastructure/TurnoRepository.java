@@ -52,6 +52,28 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta);
 
+	/**
+	 * <p>Cuentan RESERVADO, CONFIRMADO y EN_ESPERA con {@code deletedAt IS NULL}; CANCELADO y
+	 * AUSENTE quedan afuera.
+	 */
+	@Query("""
+			SELECT COUNT(t) > 0 FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.profesionalMembershipId = :profesionalMembershipId
+			   AND t.personaId = :personaId
+			   AND t.deletedAt IS NULL
+			   AND t.estado IN (
+			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
+			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			""")
+	boolean existeTurnoVivoDeProfesionalConPersona(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("profesionalMembershipId") long profesionalMembershipId,
+			@Param("personaId") long personaId);
+
 	@Override
 	@Query("""
 			SELECT t FROM Turno t
