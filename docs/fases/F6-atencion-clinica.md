@@ -59,7 +59,7 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 - [ ] Asociar la sesión a un caso.
 
 ### Tests
-- [ ] ITs de tratamientos (escenarios 39–43 de `docs/tests-diferidos.md`), mediciones y enmiendas.
+- [x] ITs de tratamientos (escenarios 39–43 de `docs/tests-diferidos.md`), mediciones y enmiendas.
 - [x] Test de permiso y de auditoría `SESION_AMENDED`.
 - [ ] E2E de sesión rápida y de cierre → timeline.
 - [ ] Verificar que el administrativo no ve el detalle clínico.

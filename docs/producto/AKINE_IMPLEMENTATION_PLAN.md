@@ -10126,3 +10126,56 @@ Ninguno bloqueante.
 
 - El PR a `main` lo abre D con título `[G2·C-7 fix] ...`. A5 puede tachar el ítem «ITs de tratamientos (escenarios 39–43…)» de F6 una vez integrado este nodo.
 - Cualquier otra escritura que sólo toque tablas hijas de `sesion` puede usar `SesionRepositoryPort#avanzarVersion`.
+
+# Registro de cierre — G2 · C-7 (ITs de tratamientos, mediciones y enmiendas)
+
+Cerrado el **2026-10-03** en la rama `symphony/akine-g2/A5`. Registro conforme a §10.5.
+
+## 1. Resumen del incremento y comportamiento observable
+
+Tres ITs contra MySQL real cubren lo que `encounter` nunca había ejecutado: tratamientos realizados (escenarios 39–43 de 06.04), mediciones y enmiendas de sesión, con la auditoría `SESION_AMENDED` y el permiso de enmendar. Sin cambios en código productivo. Los ITs prueban el comportamiento **actual** (no versionan tratamientos ni mediciones en la enmienda: eso es C-6).
+
+## 2. Archivos creados
+
+- `src/test/java/com/akine/encounter/TratamientoRealizadoIT.java` (CHECK y unique de `V55` incl. `NO_APLICA`, `deleted_key`, orden no reutilizado, versión de sesión una sola vez, borrado de parámetros en el PUT, tenant 404).
+- `src/test/java/com/akine/encounter/MedicionIT.java` (17 tests).
+- `src/test/java/com/akine/encounter/EnmiendaDeSesionIT.java` (13 tests: v1/v2, ráfaga, concurrencia, `SESION_AMENDED` con y sin motivo, permiso 403, sesión ajena 409, tenant 404, sin cambios económicos).
+- `src/test/java/com/akine/encounter/support/EncounterFixtures.java`.
+
+## 3. Archivos modificados
+
+- `docs/tests-diferidos.md`: filas 39–43 de 06.04 marcadas cubiertas.
+- `docs/fases/F6-atencion-clinica.md`: tachados «ITs de tratamientos (escenarios 39–43…)» y «Test de permiso y de auditoría `SESION_AMENDED`».
+
+## 4. Migraciones, backfills o cambios de datos
+
+Ninguno. Depende de `V65` (C-1): un tratamiento con `NO_APLICA` entra.
+
+## 5. Endpoints, contratos, eventos o integraciones
+
+Ninguno. No cambia `openapi/akine-api.yaml`.
+
+## 6. Pruebas y resultados
+
+- AC-1 en 0 (`.\mvnw.cmd -q -Djacoco.skip=true -Dtest=ModuleArchitectureTest,CodingConventionsTest -Dit.test=TratamientoRealizadoIT,MedicionIT,EnmiendaDeSesionIT verify`): los tres ITs verdes, incluidos los tres del escenario 41 tras el arreglo de A7.
+- AC-2 y AC-3 (`checks.js tachado` sobre F6) verdes.
+- **No se corrió la suite completa** (la corre el director).
+
+## 7. Decisiones técnicas y alternativas descartadas
+
+- El primer corrido dejó rojo el escenario 41 (la versión de `sesion` no avanzaba al registrar). No se tocó producción ni se usó `@Disabled`: se dejó el IT rojo y se bloqueó el nodo; D abrió A7, que lo arregló.
+- Fixtures compartidos en `encounter/support` para no copiar la siembra entre los tres ITs.
+
+## 8. Problemas, riesgos o bloqueos
+
+Resuelto: el defecto del escenario 41 (ver punto 7).
+
+## 9. Deuda técnica
+
+- Los ITs no cubren versionado de tratamientos/mediciones en la enmienda ni el permiso reforzado (C-6, fuera de la obra).
+- El patrón `OPTIMISTIC_FORCE_INCREMENT` sobre lecturas puede estar roto en otros módulos (ver deuda de A7); falta un IT por sitio que lea `version` de la base.
+
+## 10. Contexto para la etapa siguiente
+
+- El PR a `main` lo abre D con título `[G2·C-7] ITs de tratamientos, mediciones y enmiendas`; va después del fix de A7 (el IT del escenario 41 no pasa sin él).
+- `EncounterFixtures` es el punto de partida para ITs futuros de `encounter`.
