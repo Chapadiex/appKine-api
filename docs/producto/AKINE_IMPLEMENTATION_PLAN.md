@@ -10073,3 +10073,71 @@ que la fila quedó en la tabla. **El 61 es el más incómodo** — si alguien vu
 El contrato queda en **drift a propósito**: se subió `0.44.0` en los tres lugares y **no se
 escribieron los `securitySchemes` a mano en el YAML**, porque eso sería taparlo. Hay que correr
 **`./mvnw verify -Dakine.contract.update=true` desde esta rama** en cuanto Docker levante.
+
+---
+
+# Registro de cierre — G2·C-5 (04.04: un plan de tratamiento no se activa sin ítems)
+
+Registro conforme a §10.5. Paquete C-5 de la obra `akine-g2`, recortado por decisión del usuario: el
+"unique de caso activo" **no se hace**.
+
+## 1. Resumen del incremento y comportamiento observable
+
+Activar un plan en `BORRADOR` cuya versión vigente tiene **0 ítems** responde **409** con `type`
+`PLAN_TRANSICION_INVALIDA`, título "El plan de tratamiento no se puede activar sin items" y la
+propiedad `planId`. Activar un plan ya `ACTIVO` sigue siendo 200 (la idempotencia se evalúa antes).
+El rechazo ocurre **antes de finalizar el plan vigente** del caso: un plan vacío no se lleva puesto
+el de otro.
+
+## 2. Archivos creados
+
+- `clinical/domain/exception/PlanSinItemsException.java` (`RuntimeException`, ctor `(Long planId)`, `getPlanId()`).
+
+## 3. Archivos modificados
+
+- `clinical/application/PlanTratamientoService.java` (`activar`).
+- `clinical/api/ClinicalProblemHandler.java` (mapeo 409).
+- `docs/fases/F4-dominio-clinico.md` (tres líneas: dos ítems y la fila de desvíos).
+- Este plan.
+
+## 4. Migraciones, backfills o cambios de datos
+
+**Ninguno.** `V67` (reservada al paquete) **queda vacía**: no existe `V67__*.sql`.
+
+## 5. Endpoints, contratos, eventos o integraciones
+
+Ninguno nuevo. El 409 de activar ya estaba en el contrato OpenAPI; no cambia
+`akine.contract.version`.
+
+## 6. Pruebas
+
+Este nodo no escribe tests (los hace A4.T1, que depende de `PlanSinItemsException`). Criterios del
+nodo corridos: compilación, `ModuleArchitectureTest`, `CodingConventionsTest` y los chequeos
+documentales (04.04 y 04.03 tachados, ausencia de `V67__*`).
+
+## 7. Decisiones técnicas y alternativas descartadas
+
+- **Sin unique de caso activo:** RN-M10-002 dice que *puede haber más de un caso activo si
+  clínicamente corresponde*; el duplicado razonable se resuelve con 409 + candidatos y lo cubre
+  `CasoClinicoConcurrenteIT`. Ver V47 y `docs/diseno/AKINE-04.03-challenge.md`.
+- **Sin otro estado de `EstadoCaso`:** M10 solo menciona casos activos y cerrados (RF-M10-002) y el
+  estado CERRADO (RF-M10-005). No se inventó ninguno.
+- **Chequeo en el servicio y no en la entidad:** `PlanTratamiento.activar` no conoce los ítems (viven
+  en otra tabla); pasarlos por parámetro obligaba a tocar a todos los llamadores sin ganar nada.
+- **`ProblemType` existente** `PLAN_TRANSICION_INVALIDA`: mismo conflicto, misma acción del cliente.
+  Uno nuevo habría tocado `platform/spi/problem`.
+
+## 8. Problemas, riesgos o bloqueos
+
+Ninguno bloqueante.
+
+## 9. Deuda técnica diferida
+
+- Los tests existentes que activan planes sin ítems fallarán hasta que A4.T1 los corrija.
+- Este nodo no corrió ITs.
+
+## 10. Contexto para la etapa siguiente
+
+A4.T1 escribe los tests contra `PlanSinItemsException(Long planId)`; esa firma no cambia. Queda
+pendiente para el usuario marcar `V67` como "vacía" en la tabla §6 de `01-trabajo-en-paralelo.md`
+(rama `docs/trabajo-en-paralelo`).
