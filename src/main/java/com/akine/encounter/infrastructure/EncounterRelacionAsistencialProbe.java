@@ -3,17 +3,23 @@ package com.akine.encounter.infrastructure;
 import com.akine.clinical.spi.HistoriaClinicaDirectory;
 import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
-import com.akine.organization.spi.AccountContextDirectory;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.scheduling.spi.TurnoDirectory;
+import java.time.Instant;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
  * Contesta {@link RelacionAsistencialProbe} desde el modulo que es dueno de la Sesion.
  *
- * <p>Hay relacion asistencial si el actor atendio o inicio una sesion de esa persona en la sede, o
- * si tiene un turno vivo con ella. La sesion se consulta primero: si hay una, no se miran turnos.
- * Reemplaza a la implementacion sin agenda: queda un solo bean.
+ * <p>El actor es el profesional y se lo identifica por sus vinculos habilitados: los de la sede
+ * consultada y los de alcance organizacion, que cubren todas. Un vinculo suspendido, revocado,
+ * vencido o dado de baja no cuenta.
+ *
+ * <p>Hay relacion asistencial si, con alguno de esos vinculos, el actor atendio o inicio una
+ * sesion de esa persona en la sede, o tiene un turno vivo con ella. Por cada vinculo la sesion se
+ * consulta primero: si hay una, no se miran turnos. Reemplaza a la implementacion sin agenda:
+ * queda un solo bean.
  */
 @Component
 public class EncounterRelacionAsistencialProbe implements RelacionAsistencialProbe {
@@ -21,7 +27,7 @@ public class EncounterRelacionAsistencialProbe implements RelacionAsistencialPro
 	private final SesionRepositoryPort sesiones;
 	private final TurnoDirectory turnos;
 	private final HistoriaClinicaDirectory historias;
-	private final AccountContextDirectory cuentas;
+	private final ConsultorioMembershipDirectory vinculos;
 
 	// @Lazy: HistoriaClinicaDirectory -> HistoriaClinicaService -> AdjuntoClinicoService vuelven a
 	// pedir este probe; el proxy perezoso corta el ciclo de beans al arrancar el contexto.
@@ -29,28 +35,39 @@ public class EncounterRelacionAsistencialProbe implements RelacionAsistencialPro
 			SesionRepositoryPort sesiones,
 			TurnoDirectory turnos,
 			@Lazy HistoriaClinicaDirectory historias,
-			AccountContextDirectory cuentas) {
+			ConsultorioMembershipDirectory vinculos) {
 		this.sesiones = sesiones;
 		this.turnos = turnos;
 		this.historias = historias;
-		this.cuentas = cuentas;
+		this.vinculos = vinculos;
 	}
 
 	@Override
 	public boolean tieneRelacionAsistencial(
 			long organizationId, long consultorioId, long actorAccountId, long personaId) {
-		var membership = cuentas.membership(actorAccountId, organizationId);
-		if (membership.isEmpty()) {
+		Instant ahora = Instant.now();
+		var habilitados = vinculos.findByAccount(organizationId, actorAccountId).stream()
+				.filter(v -> v.validAt(ahora) && v.cubreConsultorio(consultorioId))
+				.toList();
+		if (habilitados.isEmpty()) {
 			return false;
 		}
 		var historia = historias.find(organizationId, personaId);
 		if (historia.isEmpty()) {
 			return false;
 		}
-		long membershipId = membership.get().membershipId();
-		return sesiones.existeSesionDelActor(
-						organizationId, consultorioId, historia.get().id(), membershipId, actorAccountId)
-				|| turnos.existeTurnoVivoDeProfesionalConPersona(
-						organizationId, consultorioId, membershipId, personaId);
+		for (var v : habilitados) {
+			if (sesiones.existeSesionDelActor(
+							organizationId,
+							consultorioId,
+							historia.get().id(),
+							v.membershipId(),
+							actorAccountId)
+					|| turnos.existeTurnoVivoDeProfesionalConPersona(
+							organizationId, consultorioId, v.membershipId(), personaId)) {
+				return true;
+			}
+		}
+		return false;
 	}
 }
