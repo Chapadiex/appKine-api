@@ -10073,3 +10073,18 @@ que la fila quedó en la tabla. **El 61 es el más incómodo** — si alguien vu
 El contrato queda en **drift a propósito**: se subió `0.44.0` en los tres lugares y **no se
 escribieron los `securitySchemes` a mano en el YAML**, porque eso sería taparlo. Hay que correr
 **`./mvnw verify -Dakine.contract.update=true` desde esta rama** en cuanto Docker levante.
+
+---
+
+# Registro de cierre — G2 · C-2 (API de la historia clínica) · backend
+
+1. **Incremento.** La historia clínica tiene puerta REST. `HistoriaClinicaController` expone, bajo `/api/v1/historias-clinicas/por-persona/{personaId}`, obtener-o-abrir idempotente, lectura, actualización del resumen y antecedentes (registrar, listar, baja). No se tocó la lógica de dominio: `HistoriaClinicaService` y `AntecedenteClinicoService` ya la tenían y eran código muerto para la API.
+2. **Archivos creados.** `clinical/api/HistoriaClinicaController.java`; DTOs en `clinical/api/dto`: `HistoriaClinicaResponse`, `AntecedenteResponse`, `ActualizarResumenRequest`, `RegistrarAntecedenteRequest`, `BajaDeAntecedenteRequest`.
+3. **Archivos modificados.** `pom.xml` y `application.yml` (`akine.contract.version` 0.44.0 → 0.45.0), `openapi/akine-api.yaml` (regenerado, no editado a mano), `docs/fases/F4-dominio-clinico.md` (ítem tachado).
+4. **Migraciones / datos.** Ninguno.
+5. **Endpoints.** `PUT /por-persona/{personaId}` (200, idempotente), `GET /por-persona/{personaId}` (200 / 404), `PUT .../resumen` (`{texto, expectedVersion}`), `GET .../antecedentes?tipo=&soloVigentes=`, `POST .../antecedentes` (201), `POST .../antecedentes/{antecedenteId}/baja`. Cabecera opcional `AccesoClinicoHeaders.JUSTIFICACION`. Contrato 0.45.0. Errores mapeados por `ClinicalProblemHandler` sin cambios.
+6. **Pruebas.** Las escribe el nodo A2.T1 (`HistoriaClinicaControllerTest`, `HistoriaClinicaApiIT`); ver el estado de esa evidencia en la partichela de A2 al integrar. Contrato regenerado con `mvnw.cmd verify -Dakine.contract.update=true -Dit.test=OpenApiContractIT`.
+7. **Decisiones.** Se direcciona por `personaId` (no por `historiaClinicaId`) porque los servicios ya trabajan por persona y no choca con `/{historiaClinicaId}/...`. `PUT` para obtener-o-abrir por ser idempotente. `ActualizarResumenRequest.texto` limitado a 2000 = largo de la columna.
+8. **Problemas.** `OpenApiContractIT` exige que `application.yml` y `pom.xml` coincidan en la versión del contrato; `application.yml` estaba fuera del territorio y D lo habilitó (sólo esa línea).
+9. **Deuda diferida.** Lectura limitada para `ADMINISTRATIVO` (ítem aparte de F4); relación asistencial real (C-3); consumo desde el frontend (Paciente 360).
+10. **Para la etapa siguiente.** El front (G3) puede consumir las rutas `/por-persona/{personaId}` desde el contrato 0.45.0. Otros paquetes que suban la versión del contrato van a chocar en `pom.xml`/`application.yml`/YAML: resolver al integrar.

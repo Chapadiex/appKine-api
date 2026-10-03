@@ -36,7 +36,7 @@ los registros**. Es deuda documentada que quedó huérfana.
 ## Faltantes
 
 ### Backend / API
-- [ ] **`HistoriaClinicaController`**: obtener-o-abrir idempotente por persona, resumen,
+- [x] **`HistoriaClinicaController`**: obtener-o-abrir idempotente por persona, resumen,
   antecedentes. Con contrato y entrada desde el Paciente 360.
 - [ ] **`RelacionAsistencialProbe` real** sobre turnos y sesiones. Hoy solo existe
   `RelacionAsistencialSinAgenda`, que devuelve `false` siempre → **toda** lectura clínica exige
