@@ -10255,3 +10255,69 @@ pendiente para el usuario marcar `V67` como "vacía" en la tabla §6 de `01-trab
 8. **Problemas.** `OpenApiContractIT` exige que `application.yml` y `pom.xml` coincidan en la versión del contrato; `application.yml` estaba fuera del territorio y D lo habilitó (sólo esa línea).
 9. **Deuda diferida.** Lectura limitada para `ADMINISTRATIVO` (ítem aparte de F4); relación asistencial real (C-3); consumo desde el frontend (Paciente 360).
 10. **Para la etapa siguiente.** El front (G3) puede consumir las rutas `/por-persona/{personaId}` desde el contrato 0.45.0. Otros paquetes que suban la versión del contrato van a chocar en `pom.xml`/`application.yml`/YAML: resolver al integrar.
+
+---
+
+# Registro de cierre — G2 · C-3 (`RelacionAsistencialProbe` real) · backend
+
+Cerrado el **2026-10-03** en la rama `symphony/akine-g2/A3`. Registro conforme a §10.5.
+
+## 1. Resumen del incremento y comportamiento observable
+
+El stub `RelacionAsistencialSinAgenda` (siempre `false`: **toda** lectura clínica exigía justificación) se reemplazó por `EncounterRelacionAsistencialProbe`. Ahora hay relación asistencial si el actor, con alguno de sus **vínculos habilitados** que cubra la sede, tiene una sesión no borrada de esa persona en esa sede (la atendió la membership o la inició la cuenta) o un turno vivo con ella (`RESERVADO`, `CONFIRMADO`, `EN_ESPERA`; `CANCELADO` y `AUSENTE` no cuentan). Queda **un solo bean** de `RelacionAsistencialProbe`. Efecto visible: un profesional con atención o agenda con la persona lee su historia sin declarar justificación; el resto sigue exigiéndola.
+
+## 2. Archivos creados
+
+- `src/main/java/com/akine/encounter/infrastructure/EncounterRelacionAsistencialProbe.java`
+- `src/test/java/com/akine/encounter/infrastructure/EncounterRelacionAsistencialProbeTest.java`
+- `src/test/java/com/akine/encounter/RelacionAsistencialIT.java`
+
+## 3. Archivos modificados
+
+- `scheduling/spi/TurnoDirectory.java`: método nuevo y aditivo `existeTurnoVivoDeProfesionalConPersona(organizationId, consultorioId, profesionalMembershipId, personaId)`.
+- `scheduling/infrastructure/SchedulingTurnoDirectory.java` y `TurnoRepository.java`: su implementación y la query (filtra por organización, sede, profesional, persona, `deletedAt IS NULL` y estados vivos).
+- `encounter/domain/port/SesionRepositoryPort.java` y `encounter/infrastructure/SesionRepository.java`: `existeSesionDelActor(organizationId, consultorioId, historiaClinicaId, profesionalMembershipId, actorAccountId)`.
+- `docs/fases/F4-dominio-clinico.md`: ítem «`RelacionAsistencialProbe` real» tachado (sólo esa línea).
+- **Borrado:** `clinical/infrastructure/RelacionAsistencialSinAgenda.java`.
+
+## 4. Migraciones, backfills o cambios de datos
+
+Ninguno. Las queries usan columnas e índices existentes; no se agregó migración.
+
+## 5. Endpoints, contratos, eventos o integraciones
+
+Ningún endpoint ni evento. `clinical/spi/RelacionAsistencialProbe` **no cambió**. Único cambio de contrato entre módulos: el método nuevo en `scheduling.spi.TurnoDirectory` (aditivo; `scheduling` es del grupo G5, no se tocó ninguna firma existente). `encounter` ahora consume además `organization.spi.ConsultorioMembershipDirectory` y `clinical.spi.HistoriaClinicaDirectory`, ya permitidos por `ModuleArchitectureTest`.
+
+## 6. Pruebas y resultados
+
+- `EncounterRelacionAsistencialProbeTest`: 17 unitarios (Mockito sobre los puertos, con `ConsultorioMembershipSnapshot` reales). Cubre vínculos que no cuentan, historia ausente, sesión/turno, alcance de sede y de organización, y el cortocircuito.
+- `RelacionAsistencialIT`: 22 casos contra base real (Testcontainers): bean único; los cinco estados de turno; otro profesional, otra sede, otra organización; sesión por cuenta o por membership, de otro actor, de otra sede, borrada; profesional de **una sola sede**, de alcance organización, y membership suspendida, revocada, vencida o dada de baja.
+- Criterios de A3, todos en 0 el 2026-10-03 con `sym check A3`: AC-1 (`.\mvnw.cmd -q -Djacoco.skip=true -Dtest=*RelacionAsistencial*Test,ModuleArchitectureTest,CodingConventionsTest -Dit.test=RelacionAsistencialIT,TimelineIT verify`), AC-2 (F4 tachado), AC-3 (stub borrado).
+- Verificación adversaria: sacar el filtro `validAt` del probe hace fallar 5 de los 17 unitarios (suspendido, revocado, vencido, futuro, baja lógica).
+- **No se corrió la suite completa** (la corre el director). `TimelineIT` pasa con el comportamiento nuevo.
+
+## 7. Decisiones técnicas y alternativas descartadas
+
+- **Actor por vínculos, no por `AccountContextDirectory.membership`.** Ese método devuelve a propósito sólo la membership de alcance organización (evita escalar permisos): un profesional con membership de una sola sede nunca habría tenido relación. Se usa `ConsultorioMembershipDirectory.findByAccount` + `validAt` + `cubreConsultorio`.
+- **Sólo cuenta un vínculo habilitado** (decisión del usuario): suspendido, revocado, vencido o dado de baja no da relación, ni siquiera por sesiones ya atendidas. Se prefirió exigir justificación antes que abrir una historia a quien ya no es profesional activo.
+- **`@Lazy` sobre `HistoriaClinicaDirectory`** en el constructor, para cortar el ciclo `probe → HistoriaClinicaDirectory → HistoriaClinicaService → AdjuntoClinicoService → probe`. Descartado `ObjectProvider`: cambiaba la firma del constructor y rompía los tests unitarios.
+- Sesión del actor por `iniciadaPorCuentaId` **o** `profesionalMembershipId`; sesión consultada antes que turnos, con cortocircuito.
+- Descartado `@Primary` / `@ConditionalOnMissingBean` (ver el javadoc del stub): el stub se borró.
+
+## 8. Problemas, riesgos o bloqueos
+
+- El primer diseño (A3.T2) usaba `AccountContextDirectory.membership` y no levantaba el contexto de Spring (ciclo de beans). Lo detectó el IT de A3.T1; el criterio de T2 no arrancaba el contexto, falla de especificación del atril, no del modelo. Se corrigió con A3.T3 (`@Lazy`) y A3.T4 (vínculos); el IT de T1 pasó a usar membership de sede y se rechazó su primera iteración por `spec`.
+- `sym check` ejecutaba `mvnw.cmd` sin `.\` y fallaba por el PATH de cmd; D corrigió los criterios.
+- `sym check A3` marca como «fuera del territorio» 27 archivos que son de A1, A2, A4 y A6 ya integrados en la rama de D: se compara contra una base que avanzó. El diff propio de A3 contra su base (`2cdf28f`) son 10 archivos, todos en territorio.
+
+## 9. Deuda técnica
+
+- La consulta de sesiones y turnos se hace por vínculo en un bucle (normalmente uno o dos). Si un actor llegara a tener muchos vínculos en la organización habría que agruparlas; sin etapa asignada, medir antes.
+- La relación se evalúa en cada lectura clínica sin caché. Etapa destino: la de endurecimiento/rendimiento del dominio clínico (F4/F8), si las mediciones lo piden.
+
+## 10. Contexto para la etapa siguiente
+
+- **Cambio de comportamiento global:** al dejar de responder siempre `false`, cualquier IT de `clinical` que asumiera «toda lectura exige justificación» puede cambiar. Con A3 sólo se verificaron `TimelineIT` y los propios; la suite completa la corre el director y puede destapar otros.
+- La relación se evalúa por **vínculo de la cuenta en la organización**, no por la membership del contexto del request; un actor que opera con un vínculo distinto sigue contando si alguno de los suyos cubre la sede.
+- Cuando exista el módulo de agenda completo (F5), `TurnoDirectory#existeTurnoVivoDeProfesionalConPersona` es el punto de extensión; no hay que tocar el probe.
+- No se actualizó `openapi/akine-api.yaml`: no hay contrato HTTP nuevo.
