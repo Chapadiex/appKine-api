@@ -6,6 +6,7 @@ import com.akine.encounter.domain.port.SesionRepositoryPort;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -47,6 +48,29 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("sesionId") long sesionId);
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>{@code flushAutomatically} para que cualquier cambio pendiente de la sesion salga antes
+	 * y no pise esta version; no se limpia el contexto ({@code clearAutomatically}) porque el
+	 * llamador sigue usando la entidad ya leida y despues escribe en otras tablas.
+	 */
+	@Override
+	@Modifying(flushAutomatically = true)
+	@Query("""
+			UPDATE Sesion s
+			   SET s.version = s.version + 1
+			 WHERE s.organizationId = :organizationId
+			   AND s.consultorioId = :consultorioId
+			   AND s.id = :sesionId
+			   AND s.version = :versionEsperada
+			""")
+	int avanzarVersion(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("sesionId") long sesionId,
+			@Param("versionEsperada") long versionEsperada);
 
 	/**
 	 * <p>Sin filtro por sede a proposito: un turno pertenece a UNA sede, asi que agregarlo no

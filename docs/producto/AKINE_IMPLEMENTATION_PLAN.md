@@ -10321,3 +10321,56 @@ Ningún endpoint ni evento. `clinical/spi/RelacionAsistencialProbe` **no cambió
 - La relación se evalúa por **vínculo de la cuenta en la organización**, no por la membership del contexto del request; un actor que opera con un vínculo distinto sigue contando si alguno de los suyos cubre la sede.
 - Cuando exista el módulo de agenda completo (F5), `TurnoDirectory#existeTurnoVivoDeProfesionalConPersona` es el punto de extensión; no hay que tocar el probe.
 - No se actualizó `openapi/akine-api.yaml`: no hay contrato HTTP nuevo.
+
+# Registro de cierre — G2 · C-7 (fix) — registrar tratamiento avanza la versión de la sesión
+
+Cerrado el **2026-10-03** en la rama `symphony/akine-g2/A7`. Registro conforme a §10.5.
+
+## 1. Resumen del incremento y comportamiento observable
+
+Registrar, editar o quitar un tratamiento realizado ahora avanza `sesion.version` **en la base, una sola vez**. Antes la base quedaba en la versión leída mientras la vista informaba `leida+1`: el cliente no tenía control optimista real y dos altas con la misma versión entraban las dos. Ahora una versión vieja es conflicto (`OptimisticLockingFailureException`, el que ya mapea el handler) y **no inserta**, y de dos altas concurrentes con la misma versión entra una sola. La API pública de `TratamientoService` y `TratamientoView` no cambia.
+
+## 2. Archivos creados
+
+Ninguno.
+
+## 3. Archivos modificados
+
+- `encounter/application/TratamientoService.java`: `sesionParaEscribir` lee con `findByIdInScope` y avanza la versión con `avanzarVersion(..., expectedVersion)`; si afecta cero filas, lanza el conflicto. Se actualizaron la cabecera (punto 2) y el comentario del método.
+- `encounter/domain/port/SesionRepositoryPort.java` y `encounter/infrastructure/SesionRepository.java`: método nuevo `avanzarVersion` (`UPDATE Sesion SET version = version + 1 WHERE ... AND version = :versionEsperada`, `@Modifying(flushAutomatically = true)`). `findWithLockByIdInScope` **no se tocó**: ya no lo usa ningún código de producción, pero `MedicionServiceTest` (fuera de este territorio) lo stubbea y borrarlo rompería su compilación.
+- `encounter/application/TratamientoServiceTest.java`: las colaboraciones mockeadas pasan de `findWithLockByIdInScope` + `save` a `findByIdInScope` + `avanzarVersion`; el test del `save` se reemplazó por dos (llama a `avanzarVersion` con la versión leída; cero filas afectadas es conflicto sin escribir).
+
+## 4. Migraciones, backfills o cambios de datos
+
+Ninguno.
+
+## 5. Endpoints, contratos, eventos o integraciones
+
+Ninguno. No cambia `openapi/akine-api.yaml` ni la versión del contrato.
+
+## 6. Pruebas y resultados
+
+- AC-1 en 0: `TratamientoRealizadoIT` (de la rama de A5, prestado con `it-prestado.js`, no copiado), 47 de 47. Los tres que estaban rojos pasan: `la_version_avanza_una_sola_vez`, `dos_altas_concurrentes_una_sola_entra`, `version_vieja_es_conflicto_y_no_inserta`.
+- AC-2 en 0: `TratamientoServiceTest`, `SesionServiceTest`, `MedicionServiceTest`, `ModuleArchitectureTest`, `CodingConventionsTest`, `CierreConcurrenteIT`, `CierreConDosNumeradoresIT`.
+- **No se corrió la suite completa** (la corre el director).
+
+## 7. Decisiones técnicas y alternativas descartadas
+
+- **Diagnóstico con el SQL de Hibernate** (`-Dspring.jpa.show-sql=true`): durante `registrar` no sale ningún `UPDATE sesion` al commitear. El `OPTIMISTIC_FORCE_INCREMENT` aplicado a una lectura por consulta no incrementa la versión, y `save()` de una entidad gestionada sin cambios no la ensucia.
+- **Descartada la hipótesis de que el `@Query` JPQL era la causa:** se probó una consulta derivada con el mismo `@Lock` (el patrón de `CasoClinicoRepository`) y la base seguía en la versión leída.
+- **Elegido un `UPDATE ... WHERE version = :esperada` propio** (en el repositorio, sin `EntityManager` en el servicio): da conflicto real cuando alguien se adelantó, toma el lock de la fila en el acto (serializa las altas concurrentes, también el `MAX(orden)+1`) y no ensucia la sesión, así que la versión avanza una vez. La entidad leída conserva la versión vieja y las vistas anuncian `expectedVersion + 1`.
+- Descartado `EntityManager.lock(sesion, OPTIMISTIC_FORCE_INCREMENT)`: exigía inyectar el `EntityManager` en el servicio o crear un fragmento de repositorio fuera del territorio.
+
+## 8. Problemas, riesgos o bloqueos
+
+Ninguno bloqueante.
+
+## 9. Deuda técnica
+
+- **La causa parece general, no propia de `Sesion`:** el mismo patrón (`@Lock(OPTIMISTIC_FORCE_INCREMENT)` sobre una lectura y después `save` de la entidad sin cambios) según los comentarios, está en `clinical` (`CasoClinicoRepository`, `EntradaClinica*`, `PlanTratamiento*`, `CasoClinicoService`, `PlanTratamientoService`, `EntradaClinicaService`) y `billing/domain/Egreso`. No se verificó cada sitio ni se tocó ninguno. Decide D si abre otro nodo; conviene un IT que lea `version` de la base, como el escenario 41.
+- `SesionRepositoryPort#findWithLockByIdInScope` quedó sin usos de producción; se puede borrar junto con el stub de `MedicionServiceTest` (que no es de este nodo).
+
+## 10. Contexto para la etapa siguiente
+
+- El PR a `main` lo abre D con título `[G2·C-7 fix] ...`. A5 puede tachar el ítem «ITs de tratamientos (escenarios 39–43…)» de F6 una vez integrado este nodo.
+- Cualquier otra escritura que sólo toque tablas hijas de `sesion` puede usar `SesionRepositoryPort#avanzarVersion`.
