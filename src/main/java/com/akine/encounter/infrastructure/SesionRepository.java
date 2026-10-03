@@ -65,6 +65,23 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("organizationId") long organizationId,
 			@Param("turnoId") long turnoId);
 
+	@Override
+	@Query("""
+			SELECT COUNT(s) > 0 FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.consultorioId = :consultorioId
+			   AND s.historiaClinicaId = :historiaClinicaId
+			   AND s.deletedAt IS NULL
+			   AND (s.profesionalMembershipId = :profesionalMembershipId
+			        OR s.iniciadaPorCuentaId = :actorAccountId)
+			""")
+	boolean existeSesionDelActor(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("historiaClinicaId") long historiaClinicaId,
+			@Param("profesionalMembershipId") long profesionalMembershipId,
+			@Param("actorAccountId") long actorAccountId);
+
 	/**
 	 * <p>{@code ORDER BY iniciadaEn DESC} con {@code LIMIT 1} via {@code Optional}: Spring Data lo
 	 * traduce a un {@code LIMIT}, y el indice {@code ix_sesion_comparacion} de V34 lo sostiene. Sin
