@@ -46,8 +46,8 @@ los registros**. Es deuda documentada que quedó huérfana.
   camino los emite.
 - [ ] 04.05: reversión automática del consumo ante sesión anulada (hoy manual).
 - [ ] 04.05: validar cobertura y caso al consumir.
-- [ ] 04.04: el plan puede activarse sin ítems.
-- [ ] 04.03: unique de caso activo (RN-M10-002); `EstadoCaso` solo tiene `ACTIVO`/`CERRADO`.
+- [x] 04.04: el plan puede activarse sin ítems.
+- [x] 04.03: unique de caso activo (RN-M10-002); `EstadoCaso` solo tiene `ACTIVO`/`CERRADO`. *No aplica: RN-M10-002 admite varios casos activos; ver V47 y docs/diseno/AKINE-04.03-challenge.md. Tampoco se agrega otro estado: M10 solo pide `ACTIVO` y `CERRADO` (RF-M10-002 "activos primero y luego cerrados", RF-M10-005 "estado CERRADO"; no define ningún otro).*
 - [ ] Gate RF-M10-007 (exigir caso al reservar o atender): etapa propia con ventana de migración.
   Se coordina con [F6](F6-atencion-clinica.md).
 
@@ -72,7 +72,7 @@ los registros**. Es deuda documentada que quedó huérfana.
 | **Ítems del plan por oferta/servicio, no por práctica** (contra RF-M11-002) | Decisión pendiente 6 del `CLAUDE.md`, **sin ADR** |
 | Editar un borrador de plan borra físicamente sus ítems | Sí, registro y `V49` |
 | Storage de adjuntos duplicado (`person` y `clinical`), con salida "al tercer consumidor" | Sí |
-| Sin unique de caso activo, sin backfill de sesiones previas | Sí |
+| Sin unique de caso activo (**no aplica**: RN-M10-002 admite varios casos activos; ver V47 y `AKINE-04.03-challenge.md`), sin backfill de sesiones previas | Sí |
 | Cierre sin saldo de autorización no falla | Sí, registro de 04.05 |
 | Arista `person → encounter` invertida para evitar ciclo | Sí |
 | No hay endpoint explícito de "consumir": solo nace del cierre | Sí |
