@@ -60,6 +60,25 @@ public interface SesionRepositoryPort {
 			long organizationId, long consultorioId, long sesionId);
 
 	/**
+	 * Avanza en uno la version de la sesion <b>si todavia es {@code versionEsperada}</b>, con un
+	 * {@code UPDATE ... WHERE version = :versionEsperada} propio. Devuelve las filas afectadas:
+	 * {@code 1} avanzo, {@code 0} alguien se adelanto (o la sesion no existe) y el llamador
+	 * responde conflicto.
+	 *
+	 * <p>Es lo que usan las escrituras de tratamientos en lugar de
+	 * {@link #findWithLockByIdInScope}: contra MySQL, el {@code OPTIMISTIC_FORCE_INCREMENT}
+	 * aplicado a una lectura por consulta no emitia ningun {@code UPDATE} al commitear (y
+	 * {@code save} de una entidad ya gestionada y sin cambios no la marca), asi que la version
+	 * quedaba donde estaba. Este {@code UPDATE} toma el lock de la fila en el acto, asi que dos
+	 * altas con la misma version se serializan y la segunda afecta cero filas.
+	 *
+	 * <p>No toca ninguna otra columna ni refresca la entidad ya leida: quien lo llama sabe que la
+	 * nueva version es {@code versionEsperada + 1}.
+	 */
+	int avanzarVersion(
+			long organizationId, long consultorioId, long sesionId, long versionEsperada);
+
+	/**
 	 * La sesion viva de ese turno, si ya se inicio.
 	 *
 	 * <p>Es lo que hace idempotente el doble inicio: RN-M14-001 dice que un turno produce como
