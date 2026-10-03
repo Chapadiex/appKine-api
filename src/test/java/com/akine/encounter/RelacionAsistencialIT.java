@@ -338,9 +338,9 @@ class RelacionAsistencialIT {
 		long otraSedeId = crearConsultorio(organizationId, "Sede B " + sufijo);
 
 		long cuentaId = crearCuenta("actor-" + sufijo);
-		long membershipId = crearMembership(organizationId, consultorioId, cuentaId);
+		long membershipId = crearMembership(organizationId, cuentaId);
 		long otraCuentaId = crearCuenta("otro-" + sufijo);
-		long otroMembershipId = crearMembership(organizationId, consultorioId, otraCuentaId);
+		long otroMembershipId = crearMembership(organizationId, otraCuentaId);
 
 		long personaId = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave,
@@ -398,14 +398,18 @@ class RelacionAsistencialIT {
 				""", new Object[]{email, email});
 	}
 
-	private long crearMembership(long organizationId, long consultorioId, long cuentaId) {
+	/**
+	 * De alcance ORGANIZACION ({@code consultorio_id} NULL): es la unica que devuelve
+	 * {@code AccountContextDirectory.membership}, y la sonda parte de ella.
+	 */
+	private long crearMembership(long organizationId, long cuentaId) {
 		return insertar("""
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'PROFESIONAL', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
+				VALUES (?, NULL, ?, 'PROFESIONAL', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
 				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-				""", new Object[]{organizationId, consultorioId, cuentaId});
+				""", new Object[]{organizationId, cuentaId});
 	}
 
 	private long crearOferta(long organizationId, long consultorioId, long servicioId,
