@@ -10411,7 +10411,7 @@ Ninguno. No cambia `openapi/akine-api.yaml`.
 
 ## 7. Decisiones técnicas y alternativas descartadas
 
-- El primer corrido dejó rojo el escenario 41 (la versión de `sesion` no avanzaba al registrar). No se tocó producción ni se usó `@Disabled`: se dejó el IT rojo y se bloqueó el nodo; D abrió A7, que lo arregló.
+- El primer corrido dejó rojo el escenario 41 (la versión de `sesion` no avanzaba al registrar). No se tocó producción ni se desactivó ningún test: se dejó el IT rojo y se bloqueó el nodo; D abrió A7, que lo arregló.
 - Fixtures compartidos en `encounter/support` para no copiar la siembra entre los tres ITs.
 
 ## 8. Problemas, riesgos o bloqueos
