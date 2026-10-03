@@ -5,6 +5,7 @@ import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
 import com.akine.organization.spi.AccountContextDirectory;
 import com.akine.scheduling.spi.TurnoDirectory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,10 +23,12 @@ public class EncounterRelacionAsistencialProbe implements RelacionAsistencialPro
 	private final HistoriaClinicaDirectory historias;
 	private final AccountContextDirectory cuentas;
 
+	// @Lazy: HistoriaClinicaDirectory -> HistoriaClinicaService -> AdjuntoClinicoService vuelven a
+	// pedir este probe; el proxy perezoso corta el ciclo de beans al arrancar el contexto.
 	public EncounterRelacionAsistencialProbe(
 			SesionRepositoryPort sesiones,
 			TurnoDirectory turnos,
-			HistoriaClinicaDirectory historias,
+			@Lazy HistoriaClinicaDirectory historias,
 			AccountContextDirectory cuentas) {
 		this.sesiones = sesiones;
 		this.turnos = turnos;
