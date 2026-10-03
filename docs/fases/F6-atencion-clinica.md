@@ -87,7 +87,7 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 
 ## Para cerrar la fase
 
-- [ ] Migración que corrija el CHECK de lateralidad, con IT.
+- [x] Migración que corrija el CHECK de lateralidad, con IT.
 - [ ] Caso obligatorio y atención sin turno (coordinado con F4 y F5).
 - [ ] Enmiendas que versionen tratamientos y mediciones, con permiso reforzado.
 - [ ] Pantallas de mediciones, tratamientos y enmiendas con E2E.
