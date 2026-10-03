@@ -146,8 +146,8 @@ class HistoriaClinicaServiceTest {
 	void la_carrera_la_resuelve_el_unique() {
 		// La segunda capa de idempotencia, la unica que de verdad protege: el pre-chequeo tiene
 		// ventana de carrera y el unique de V32 no.
-		given(historias.buscarVigentePorPersona(ORG_ID, PERSONA_ID))
-				.willReturn(Optional.empty())
+		given(historias.buscarVigentePorPersona(ORG_ID, PERSONA_ID)).willReturn(Optional.empty());
+		given(escrituraAparte.releerVigente(ORG_ID, PERSONA_ID))
 				.willReturn(Optional.of(historiaExistente()));
 		willThrow(new DataIntegrityViolationException("uk_historia_clinica_persona_vigente"))
 				.given(escrituraAparte).insertar(any());
