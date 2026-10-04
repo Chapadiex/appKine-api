@@ -70,6 +70,17 @@ public interface SesionRepositoryPort {
 	Optional<Sesion> findVivaPorTurno(long organizationId, long turnoId);
 
 	/**
+	 * {@code true} si hay una sesion no borrada de esa historia clinica en esa sede atendida por
+	 * esa membership o iniciada por esa cuenta.
+	 */
+	boolean existeSesionDelActor(
+			long organizationId,
+			long consultorioId,
+			long historiaClinicaId,
+			long profesionalMembershipId,
+			long actorAccountId);
+
+	/**
 	 * La sesion anterior del mismo paciente que tenga evaluacion cargada.
 	 *
 	 * <p>Es lo que permite comparar: "la vez pasada tenia 7". Se filtra por {@code evaluadaEn}
