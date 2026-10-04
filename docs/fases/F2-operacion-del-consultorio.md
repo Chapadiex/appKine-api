@@ -46,6 +46,8 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 - [ ] `esquema_cobro` se guarda y nadie lo interpreta (se retoma en F9 / 08.06).
 - [ ] La capacidad efectiva de habilitaciones no considera clases; no se valida disciplina del profesional.
 - [ ] `ofertaVersion` en `HabilitacionesResponse`.
+- [ ] 02.07: el reemplazo de habilitaciones confía en `OPTIMISTIC_FORCE_INCREMENT` sobre la oferta,
+  y contra MySQL eso no avanza la versión. Ver [deuda-force-increment.md](deuda-force-increment.md).
 - [ ] Endpoint que le diga al frontend si quien mira tiene rol de plataforma (prerrequisito de RF-M06-005).
 - [ ] Primer box + horario general en el alta de sede (CA-M03-002).
 
