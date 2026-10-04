@@ -2,6 +2,7 @@ package com.akine.clinical.application;
 
 import com.akine.clinical.domain.HistoriaClinica;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRepositoryPort;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,5 +64,19 @@ public class HistoriaClinicaEscrituraAparte {
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public HistoriaClinica insertar(HistoriaClinica historia) {
 		return historias.saveAndFlush(historia);
+	}
+
+	/**
+	 * Relee la historia vigente en una transaccion nueva, con snapshot propio.
+	 *
+	 * <p>Es la relectura de la ganadora tras perder la carrera del unique. No puede correr en la
+	 * transaccion de negocio: esa ya hizo el {@code SELECT} previo (vacio) y, con
+	 * {@code REPEATABLE READ}, seguiria viendo ese snapshot —no encontraria la fila que la otra
+	 * apertura ya commiteo— y la apertura concurrente terminaria en 409 en vez de devolver la
+	 * historia que gano.
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+	public Optional<HistoriaClinica> releerVigente(long organizationId, long personaId) {
+		return historias.buscarVigentePorPersona(organizationId, personaId);
 	}
 }

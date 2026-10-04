@@ -57,7 +57,7 @@
 
 | Desvío | Documentado |
 |---|---|
-| El módulo `encounter` es dueño de la Sesión; §2.4 la pone en `clinical` | **No — silencioso.** Solo lo menciona el registro de 06.01. Falta ADR, y `AGENT.md` §4 no lista `encounter` |
+| El módulo `encounter` es dueño de la Sesión; §2.4 la pone en `clinical` | Sí — [ADR-0024](../adr/0024-encounter-es-duenio-de-la-sesion.md); `AGENT.md` §4 lista `encounter` |
 | Estado de la organización derivado de la suscripción | Sí, registro de 01.01 |
 | `ORG_ADMIN` con `is_founder` en vez de rol `OWNER` | Sí, registro de 01.01 |
 | Sin lockout automático por intentos | Sí, `V6` y rebaseline de 00.03 |
@@ -67,7 +67,7 @@
 
 ## Para cerrar la fase
 
-- [ ] ADR que ratifique `encounter` como módulo propietario de la Sesión; actualizar `AGENT.md` §4.
+- [x] ~~ADR que ratifique `encounter` como módulo propietario de la Sesión; actualizar `AGENT.md` §4.~~ → ADR-0024 y `AGENT.md` §4 (A-2).
 - [ ] Decisión + implementación del bootstrap de `PLATFORM_ADMIN`.
 - [ ] Endpoint de retry de notificaciones con su test.
 - [ ] Los tres E2E de arriba, contra backend real.

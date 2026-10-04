@@ -12,6 +12,7 @@ import com.akine.clinical.domain.exception.EntradaClinicaInactivaException;
 import com.akine.clinical.domain.exception.EntradaClinicaNotAccessibleException;
 import com.akine.clinical.domain.exception.HistoriaClinicaNotAccessibleException;
 import com.akine.clinical.domain.exception.PacienteSinPerfilVigenteException;
+import com.akine.clinical.domain.exception.PlanSinItemsException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -92,6 +93,19 @@ class ClinicalProblemHandlerTest {
 		assertThat(esperar(sinPerfil,
 				HttpStatus.CONFLICT, ProblemType.PERSONA_SIN_PERFIL_PACIENTE)).isTrue();
 		assertThat(sinPerfil.getProperties()).containsEntry("personaId", 42L);
+	}
+
+	@Test
+	@DisplayName("activar un plan sin items es 409 con el type de la transicion invalida")
+	void plan_sin_items_es_409() {
+		// AC-1
+		ProblemDetail problem = handler.handlePlanSinItems(new PlanSinItemsException(77L));
+
+		assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+		assertThat(problem.getType()).isEqualTo(ProblemType.PLAN_TRANSICION_INVALIDA.uri());
+		assertThat(problem.getTitle())
+				.isEqualTo("El plan de tratamiento no se puede activar sin items");
+		assertThat(problem.getProperties()).containsEntry("planId", 77L);
 	}
 
 	@Test

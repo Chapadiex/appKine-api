@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.44.0
+  version: 0.45.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -40,6 +40,9 @@ tags:
 - description: "Saldo, ledger de movimientos y reversion (M17). El consumo lo dispara\
     \ el cierre de sesion, no una persona"
   name: Consumo de autorizaciones
+- description: "Apertura, resumen y antecedentes de la Historia Clinica de una persona\
+    \ (M09)"
+  name: Historia clinica
 - description: Deuda derivada de prestaciones. No es el cobro ni la caja (M18)
   name: Obligaciones
 - description: "Bloqueo, desbloqueo y baja logica de cuentas de la propia organizacion"
@@ -10530,6 +10533,395 @@ paths:
       summary: "Editar un plan, o cerrar su vigencia"
       tags:
       - Financiadores y planes
+  /api/v1/historias-clinicas/por-persona/{personaId}:
+    get:
+      description: |-
+        RF-M09-001. Devuelve la historia con su resumen, sus antecedentes vigentes y un asomo del timeline (sin contenido clinico). No la abre: si la persona no tiene historia responde 404.
+
+        CADA LECTURA SE AUDITA (DP-03) como HISTORIA_CLINICA_ACCESSED, con la via por la que se accedio. Exige hc:read mas relacion asistencial o motivo declarado.
+      operationId: verHistoriaClinica
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoriaClinicaResponse"
+          description: La historia
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:read, o sin relacion asistencial ni motivo\
+            \ declarado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona no tiene historia, o es de otra organizacion. Los\
+            \ dos casos son indistinguibles a proposito"
+      summary: Ver la Historia Clinica de una persona
+      tags:
+      - Historia clinica
+    put:
+      description: |-
+        RF-M09-001. Abre la historia de esa persona o devuelve la que ya tiene. Es IDEMPOTENTE: repetir el pedido, incluso en simultaneo, devuelve la misma historia y deja una sola fila. Un boton tocado dos veces o un reintento tras un timeout son el mismo pedido, no un conflicto.
+
+        La persona tiene que ser paciente vigente de la organizacion: si no existe en el tenant responde 404 (indistinguible de "no existe"); si existe pero no tiene perfil de paciente vigente, 409.
+
+        Exige hc:write mas relacion asistencial o motivo declarado. Solo la apertura efectiva deja el evento HISTORIA_CLINICA_OPENED.
+      operationId: abrirOObtenerHistoriaClinica
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoriaClinicaResponse"
+          description: "La historia, recien abierta o ya existente"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:write, o sin relacion asistencial ni\
+            \ motivo declarado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona no existe o es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona no tiene perfil de paciente vigente
+      summary: Abrir u obtener la Historia Clinica de una persona
+      tags:
+      - Historia clinica
+  /api/v1/historias-clinicas/por-persona/{personaId}/antecedentes:
+    get:
+      description: |-
+        RF-M09-002. Por defecto trae solo los VIGENTES; soloVigentes=false suma los dados de baja, que siguen siendo consultables con su motivo (regla maestra 10). tipo filtra por clase de antecedente.
+
+        Es una lectura clinica y se audita como tal. Exige hc:read mas relacion asistencial o motivo declarado.
+      operationId: listarAntecedentesClinicos
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Filtro opcional por clase de antecedente
+        in: query
+        name: tipo
+        required: false
+        schema:
+          type: string
+          enum:
+          - MEDICO
+          - QUIRURGICO
+          - ALERGIA
+          - MEDICACION
+          - FAMILIAR
+          - HABITO
+          - OTRO
+      - description: Si es true (por defecto) trae solo los vigentes
+        in: query
+        name: soloVigentes
+        required: false
+        schema:
+          type: boolean
+          default: true
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AntecedenteResponse"
+          description: Los antecedentes de la historia
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: tipo desconocido
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:read, o sin relacion asistencial ni motivo\
+            \ declarado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona no tiene historia, o es de otra organizacion"
+      summary: Listar los antecedentes de la historia de una persona
+      tags:
+      - Historia clinica
+    post:
+      description: |-
+        RF-M09-002. Registra un antecedente en la historia vigente de la persona. No hay operacion de edicion y es el diseño (RN-M09-004): corregir un antecedente es darlo de baja con motivo y registrar el nuevo, y asi quedan las dos versiones con sus autores y sus fechas.
+
+        La descripcion NO queda en la auditoria (es contenido clinico). Exige hc:write mas relacion asistencial o motivo declarado. La persona tiene que tener historia: abrirla es la operacion PUT de la raiz.
+      operationId: registrarAntecedenteClinico
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarAntecedenteRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntecedenteResponse"
+          description: Antecedente registrado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Cuerpo invalido
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:write, o sin relacion asistencial ni\
+            \ motivo declarado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona no tiene historia, o es de otra organizacion"
+      summary: Registrar un antecedente clinico
+      tags:
+      - Historia clinica
+  /api/v1/historias-clinicas/por-persona/{personaId}/antecedentes/{antecedenteId}/baja:
+    post:
+      description: |-
+        RF-M09-002. Baja LOGICA con motivo obligatorio: el antecedente no se borra y sigue consultable (regla maestra 10).
+
+        Es IDEMPOTENTE: dar de baja uno que ya estaba de baja devuelve el antecedente como estaba, con su motivo ORIGINAL intacto. Un antecedente que no es de la historia de esa persona responde 404. Exige hc:write mas relacion asistencial o motivo declarado.
+      operationId: darDeBajaAntecedenteClinico
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Antecedente a dar de baja
+        example: 41
+        in: path
+        name: antecedenteId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BajaDeAntecedenteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntecedenteResponse"
+          description: Antecedente dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Cuerpo invalido o motivo ausente
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:write, o sin relacion asistencial ni\
+            \ motivo declarado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona no tiene historia, el antecedente no es de ella,\
+            \ o es de otra organizacion"
+      summary: Dar de baja un antecedente clinico
+      tags:
+      - Historia clinica
+  /api/v1/historias-clinicas/por-persona/{personaId}/resumen:
+    put:
+      description: |-
+        RF-M09-001. Reemplaza el resumen clinico minimo.
+
+        expectedVersion ES LA VERSION DE LA HISTORIA que el operador leyo. Si alguien la modifico en el medio responde 409 en vez de pisar en silencio lo que escribio el otro: se vuelve a leer la historia y se reintenta.
+
+        El texto del resumen NO queda en la auditoria (es contenido clinico): solo que hubo escritura, quien y cuando. Exige hc:write mas relacion asistencial o motivo declarado.
+      operationId: actualizarResumenHistoriaClinica
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActualizarResumenRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoriaClinicaResponse"
+          description: La historia con el resumen nuevo
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Cuerpo invalido
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:write, o sin relacion asistencial ni\
+            \ motivo declarado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona no tiene historia, o es de otra organizacion"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La historia cambio desde que se leyo (expectedVersion desfasada)
+      summary: Actualizar el resumen clinico de la historia
+      tags:
+      - Historia clinica
   /api/v1/historias-clinicas/{historiaClinicaId}/adjuntos:
     get:
       description: |-
@@ -17206,6 +17598,23 @@ components:
           minLength: 0
       required:
       - token
+    ActualizarResumenRequest:
+      type: object
+      description: Reemplazo del resumen clinico minimo de la historia
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version de la historia que el operador leyo
+          example: 0
+        texto:
+          type: string
+          description: Nuevo texto del resumen. Reemplaza al anterior
+          maxLength: 2000
+          minLength: 0
+      required:
+      - expectedVersion
+      - texto
     AdjuntoClinicoPageResponse:
       type: object
       description: Pagina de documentos clinicos de una Historia Clinica
@@ -17546,6 +17955,56 @@ components:
           example: 9001
       required:
       - obligacionId
+    AntecedenteResponse:
+      type: object
+      description: Antecedente clinico de una historia (RF-M09-002)
+      properties:
+        deactivationReason:
+          type: string
+          description: "Motivo declarado de la baja, o null"
+        deletedAt:
+          type: string
+          format: date-time
+          description: "Instante UTC de la baja logica, o null"
+        descripcion:
+          type: string
+          description: "Texto clinico del antecedente. No se edita: se da de baja\
+            \ y se registra el nuevo"
+        id:
+          type: integer
+          format: int64
+          description: Identificador del antecedente
+          example: 41
+        registradoEn:
+          type: string
+          format: date-time
+          description: Instante UTC en que se registro
+        registradoPor:
+          type: integer
+          format: int64
+          description: Cuenta que lo registro
+          example: 8
+        tipo:
+          type: string
+          description: Clase de antecedente
+          enum:
+          - MEDICO
+          - QUIRURGICO
+          - ALERGIA
+          - MEDICACION
+          - FAMILIAR
+          - HABITO
+          - OTRO
+          example: ALERGIA
+        version:
+          type: integer
+          format: int64
+          description: Version del registro
+          example: 0
+        vigente:
+          type: boolean
+          description: Si el antecedente sigue vigente
+          example: true
     AnularEgreso:
       type: object
       description: Anula con motivo obligatorio. **Anular no significa borrar.**
@@ -18301,6 +18760,18 @@ components:
           type: string
           description: Motivo declarado de la baja. Obligatorio
           example: Credencial vencida; se cargo la nueva
+          maxLength: 280
+          minLength: 0
+      required:
+      - motivo
+    BajaDeAntecedenteRequest:
+      type: object
+      description: Baja logica de un antecedente clinico
+      properties:
+        motivo:
+          type: string
+          description: Motivo declarado de la baja. Obligatorio
+          example: Registrado en la historia equivocada
           maxLength: 280
           minLength: 0
       required:
@@ -22697,6 +23168,70 @@ components:
           description: "Si la oferta esta restringida a una lista de profesionales.\
             \ false significa que cualquier profesional con vinculo vigente puede\
             \ prestarla, NO que no pueda ninguno"
+    HistoriaClinicaResponse:
+      type: object
+      description: "Historia clinica de una persona, con su resumen y antecedentes\
+        \ vigentes"
+      properties:
+        abiertaEn:
+          type: string
+          format: date-time
+          description: Instante UTC de apertura de la historia
+        abiertaPor:
+          type: integer
+          format: int64
+          description: Cuenta que la abrio
+          example: 8
+        antecedentes:
+          type: array
+          description: Antecedentes vigentes de la historia
+          items:
+            $ref: "#/components/schemas/AntecedenteResponse"
+        conRelacionAsistencial:
+          type: boolean
+          description: Si el acceso se autorizo por relacion asistencial (true) o
+            por motivo declarado (false)
+          example: false
+        eventos:
+          type: array
+          description: "Asomo del timeline: los hechos clinicos mas recientes, sin\
+            \ contenido clinico"
+          items:
+            $ref: "#/components/schemas/EventoClinicoResponse"
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la historia
+          example: 88
+        personaDocumento:
+          type: string
+          description: "Documento del paciente, o null"
+          example: DNI 30111222
+        personaId:
+          type: integer
+          format: int64
+          description: Persona titular de la historia
+          example: 12
+        personaNombreCompleto:
+          type: string
+          description: "Nombre completo del paciente, leido de person en cada consulta"
+        resumen:
+          type: string
+          description: "Resumen clinico minimo, o null si nunca se escribio"
+        resumenActualizadoEn:
+          type: string
+          format: date-time
+          description: "Instante UTC de la ultima actualizacion del resumen, o null"
+        resumenActualizadoPor:
+          type: integer
+          format: int64
+          description: "Cuenta que actualizo el resumen por ultima vez, o null"
+        version:
+          type: integer
+          format: int64
+          description: Version de la historia. Se devuelve como expectedVersion al
+            actualizar el resumen
+          example: 0
     HitoResponse:
       type: object
       description: Un hecho datado del resumen
@@ -25525,6 +26060,31 @@ components:
       - lastName
       - organizationName
       - password
+    RegistrarAntecedenteRequest:
+      type: object
+      description: Alta de un antecedente clinico
+      properties:
+        descripcion:
+          type: string
+          description: Texto clinico del antecedente
+          example: Alergia a la penicilina
+          maxLength: 1000
+          minLength: 0
+        tipo:
+          type: string
+          description: Clase de antecedente
+          enum:
+          - MEDICO
+          - QUIRURGICO
+          - ALERGIA
+          - MEDICACION
+          - FAMILIAR
+          - HABITO
+          - OTRO
+          example: ALERGIA
+      required:
+      - descripcion
+      - tipo
     RegistrarAsistencia:
       type: object
       description: Marca a un participante. Repetir el mismo resultado es idempotente
