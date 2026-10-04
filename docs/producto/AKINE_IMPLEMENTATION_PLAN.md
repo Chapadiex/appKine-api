@@ -10073,3 +10073,52 @@ que la fila quedó en la tabla. **El 61 es el más incómodo** — si alguien vu
 El contrato queda en **drift a propósito**: se subió `0.44.0` en los tres lugares y **no se
 escribieron los `securitySchemes` a mano en el YAML**, porque eso sería taparlo. Hay que correr
 **`./mvnw verify -Dakine.contract.update=true` desde esta rama** en cuanto Docker levante.
+
+---
+
+# Registro de cierre — G2·C-1 (CHECK de lateralidad admite NO_APLICA)
+
+Cerrada el **2026-10-03**. Registro conforme a §10.5.
+
+## 1. Resumen del incremento y comportamiento observable
+
+Registrar un tratamiento con `lateralidad = NO_APLICA` (zona central: lumbar, cervical) deja de violar `ck_tratamiento_lateralidad`. El CHECK admite ahora exactamente los valores del enum `encounter.domain.Lateralidad` (`IZQUIERDA`, `DERECHA`, `BILATERAL`, `NO_APLICA`) y `NULL`.
+
+## 2. Archivos creados
+
+- `src/main/resources/db/migration/V65__c1_tratamiento_lateralidad_no_aplica.sql`
+- `src/test/java/com/akine/encounter/infrastructure/TratamientoLateralidadMigrationIT.java`
+
+## 3. Archivos modificados
+
+- `docs/fases/F6-atencion-clinica.md` (ítem "Migración que corrija el CHECK de lateralidad" tachado).
+- `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` (este registro).
+
+## 4. Migraciones
+
+`V65`: `DROP CHECK` + `ADD CONSTRAINT ck_tratamiento_lateralidad` sobre `tratamiento_realizado`, mismo nombre. Sin backfill: ampliar el CHECK no invalida ninguna fila existente. `V55` no se tocó.
+
+## 5. Endpoints, contratos, eventos
+
+Ninguno. DTOs, enum y servicios de `encounter` ya aceptaban `NO_APLICA`; el contrato OpenAPI no cambia.
+
+## 6. Pruebas
+
+`TratamientoLateralidadMigrationIT` (5 tests): admite todos los valores del enum y `NULL`; `NO_APLICA` se acepta; un valor fuera del enum sigue rechazado; `NO_APLICA` sin zona sigue rechazado por `ck_tratamiento_lateralidad_con_zona`; el constraint conserva su nombre. Rojo primero: sin `V65` fallaron 3 de 5 (`Check constraint 'ck_tratamiento_lateralidad' is violated`). Con `V65`, ver los criterios AC-1 a AC-3 de la partichela.
+
+## 7. Decisiones y alternativas descartadas
+
+- Recrear el CHECK en una migración nueva en vez de editar `V55` (una migración aplicada es historia).
+- El IT inserta directo con `FOREIGN_KEY_CHECKS = 0` en la conexión del test, para ejercer el CHECK sin sembrar sesión, práctica y espacio. Descartado: sembrar todo el grafo, que es el trabajo de C-7 (A5).
+
+## 8. Problemas, riesgos o bloqueos
+
+Ninguno.
+
+## 9. Deuda técnica
+
+Los ITs de tratamientos a través del servicio (escenarios 39–43 de `docs/tests-diferidos.md`) siguen pendientes: C-7.
+
+## 10. Contexto para la etapa siguiente
+
+C-7 puede registrar tratamientos con `NO_APLICA` desde el servicio y depende de `V65`. Siguiente migración libre del grupo: `V67` (queda vacía por decisión de C-5).
