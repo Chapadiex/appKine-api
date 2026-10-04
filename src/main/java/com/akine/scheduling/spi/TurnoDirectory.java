@@ -17,4 +17,12 @@ import java.util.Optional;
 public interface TurnoDirectory {
 
 	Optional<TurnoSnapshot> find(long organizationId, long consultorioId, long turnoId);
+
+	/**
+	 * {@code true} si el profesional tiene, en esa sede, un turno vivo con esa persona: RESERVADO,
+	 * CONFIRMADO o EN_ESPERA. Un turno CANCELADO o AUSENTE no cuenta. Existe para que otros modulos
+	 * puedan demostrar relacion asistencial por agenda sin traer turnos.
+	 */
+	boolean existeTurnoVivoDeProfesionalConPersona(
+			long organizationId, long consultorioId, long profesionalMembershipId, long personaId);
 }

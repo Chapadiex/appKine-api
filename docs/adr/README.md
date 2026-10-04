@@ -59,6 +59,7 @@ de commits, o directamente se revierte una decisión correcta por desconocer su 
 | [0021](0021-catalogos-clinicos-globales-sin-organization-id.md) | Los catálogos clínicos llevan `organization_id` nullable | Superseded by ADR-0023 | AKINE-02.05 |
 | [0022](0022-feriados-globales-sin-organization-id.md) | `feriado` es global, sin `organization_id` | Superseded by ADR-0023 | AKINE-02.04 |
 | [0023](0023-tablas-globales-sin-organization-id.md) | Qué tabla puede no llevar `organization_id`: criterio único y lista consolidada | Aceptado | AKINE-02.06 |
+| [0024](0024-encounter-es-duenio-de-la-sesion.md) | `encounter` es el módulo dueño de la Sesión (no `clinical`) | Aceptado | AKINE-06.01 |
 
 > **La lista de excepciones a [ADR-0004](0004-convenciones-de-persistencia-multi-tenant.md) vive
 > en [ADR-0023](0023-tablas-globales-sin-organization-id.md), y sólo ahí.** Ese ADR consolida las

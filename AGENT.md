@@ -106,7 +106,8 @@ organization/   # organización, suscripción, consultorio, memberships → M01,
 resource/       # espacios, disponibilidad, catálogos operativos      → M04–M06
 person/         # Persona, Paciente, coberturas, adjuntos admin       → M07–M08, M15, M25
 contracting/    # financiadores, planes, convenios, aranceles, autorizaciones → M15–M17
-clinical/       # HC, timeline, Caso, Plan, Sesión, evolución         → M09–M14
+clinical/       # HC, timeline, Caso, Plan, derivaciones, adjuntos    → M09–M13
+encounter/      # Sesión, evolución, mediciones, tratamientos (ADR-0024) → M14
 scheduling/     # slots, Turno, series, check-in, agenda              → M12–M13
 billing/        # obligaciones, anticipos, cobros, caja, claims, egresos → M18–M22
 offering/       # Servicio, Oferta, habilitaciones                    → M27

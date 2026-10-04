@@ -59,8 +59,8 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 - [ ] Asociar la sesión a un caso.
 
 ### Tests
-- [ ] ITs de tratamientos (escenarios 39–43 de `docs/tests-diferidos.md`), mediciones y enmiendas.
-- [ ] Test de permiso y de auditoría `SESION_AMENDED`.
+- [x] ITs de tratamientos (escenarios 39–43 de `docs/tests-diferidos.md`), mediciones y enmiendas.
+- [x] Test de permiso y de auditoría `SESION_AMENDED`.
 - [ ] E2E de sesión rápida y de cierre → timeline.
 - [ ] Verificar que el administrativo no ve el detalle clínico.
 
@@ -87,7 +87,7 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 
 ## Para cerrar la fase
 
-- [ ] Migración que corrija el CHECK de lateralidad, con IT.
+- [x] Migración que corrija el CHECK de lateralidad, con IT.
 - [ ] Caso obligatorio y atención sin turno (coordinado con F4 y F5).
 - [ ] Enmiendas que versionen tratamientos y mediciones, con permiso reforzado.
 - [ ] Pantallas de mediciones, tratamientos y enmiendas con E2E.

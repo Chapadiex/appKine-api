@@ -209,10 +209,11 @@ public class HistoriaClinicaService {
 		catch (DataIntegrityViolationException choque) {
 			// Otro request gano la carrera contra el unique. No es un error del usuario: es el
 			// mismo pedido resuelto por el otro camino. La que murio fue la transaccion del
-			// INSERT, no esta: la relectura corre sobre una sesion sana.
+			// INSERT, no esta. La relectura va en transaccion nueva: esta ya miro (y no vio nada)
+			// y con REPEATABLE READ seguiria sin ver la fila que la ganadora commiteo.
 			log.info("Apertura concurrente de historia clinica resuelta como idempotente: "
 					+ "personaId={}", personaId);
-			HistoriaClinica ganadora = historias.buscarVigentePorPersona(organizationId, personaId)
+			HistoriaClinica ganadora = escrituraAparte.releerVigente(organizationId, personaId)
 					.orElseThrow(() -> choque);
 			return new Apertura(ganadora, false);
 		}
