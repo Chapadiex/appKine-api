@@ -59,9 +59,11 @@ import java.util.Map;
  *
  * <p>Escribir un tratamiento <b>no toca ni una columna de {@code sesion}</b>, y un {@code @Version}
  * sobre el padre no protege una escritura que solo toca tablas hijas — la leccion de 02.07,
- * {@code b8bbc67}, pagada con un 409 que no aparecia nunca. Por eso las tres mutaciones leen la
- * sesion con {@code findWithLockByIdInScope} ({@code OPTIMISTIC_FORCE_INCREMENT}) y la guardan
- * aunque no cambie ninguna de sus columnas: eso ultimo es lo que materializa el avance de version.
+ * {@code b8bbc67}, pagada con un 409 que no aparecia nunca. Por eso las tres mutaciones avanzan la
+ * version con un {@code UPDATE ... WHERE version = :esperada} propio
+ * ({@code SesionRepositoryPort#avanzarVersion}): cero filas es conflicto, y la fila queda bloqueada
+ * hasta el commit. No se usa {@code OPTIMISTIC_FORCE_INCREMENT} sobre la lectura: contra MySQL no
+ * emitia ningun {@code UPDATE} y la base quedaba en la version leida.
  *
  * <p><b>Y la reciproca se respeta</b>, que es la otra mitad de la regla y la que 04.02 pago: estas
  * escrituras no ensucian la sesion por ningun otro camino, asi que la version avanza <b>una</b> vez
@@ -343,8 +345,9 @@ public class TratamientoService {
 	 * La sesion sobre la que se va a escribir, con su version ya forzada a avanzar.
 	 *
 	 * <p>Concentra los cuatro controles que toda mutacion comparte: sede del tenant, permiso,
-	 * propiedad de la atencion y control optimista. Y usa {@code findWithLockByIdInScope} porque
-	 * la escritura que viene no toca ninguna columna de la sesion — ver el punto 2 de la cabecera.
+	 * propiedad de la atencion y control optimista. Y avanza la version con {@code avanzarVersion}
+	 * porque la escritura que viene no toca ninguna columna de la sesion — ver el punto 2 de la
+	 * cabecera.
 	 */
 	private Sesion sesionParaEscribir(
 			OperatingActor actor,
@@ -356,7 +359,7 @@ public class TratamientoService {
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirRegistro(actor, organizationId, consultorioId);
 
-		Sesion sesion = sesiones.findWithLockByIdInScope(organizationId, consultorioId, sesionId)
+		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
 				.filter(Sesion::estaViva)
 				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
 
@@ -370,9 +373,13 @@ public class TratamientoService {
 
 		exigirVersion(sesion, expectedVersion);
 
-		// Esto es lo que materializa el OPTIMISTIC_FORCE_INCREMENT de la lectura: sin el save,
-		// la sesion no se marca y la version no avanza al commitear.
-		return sesiones.save(sesion);
+		// Una sola vez, y en la base: la entidad leida queda con la version vieja (no se ensucia,
+		// asi que nada mas la escribe) y las respuestas anuncian expectedVersion + 1.
+		if (sesiones.avanzarVersion(organizationId, consultorioId, sesionId, expectedVersion) != 1) {
+			throw new OptimisticLockingFailureException(
+					"La sesion " + sesionId + " cambio desde que se leyo: version " + expectedVersion);
+		}
+		return sesion;
 	}
 
 	/**

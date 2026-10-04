@@ -52,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -67,7 +68,7 @@ import static org.mockito.Mockito.verify;
  * adivinando</b>, que es el caso borde con el que la etapa se escribio: adivinar es como se cuela
  * un valor de dosificacion interpretado al reves.
  *
- * <p>Lo que estos tests NO pueden decir: que la sesion leida con force-increment efectivamente
+ * <p>Lo que estos tests NO pueden decir: que el UPDATE de version efectivamente
  * serialice a dos escritores concurrentes. Eso lo contesta la base, no un mock, y vive en los ITs.
  */
 @ExtendWith(MockitoExtension.class)
@@ -114,9 +115,10 @@ class TratamientoServiceTest {
 		given(memberships.findByAccount(ORG_ID, CUENTA_PROPIA)).willReturn(List.of(
 				new ConsultorioMembershipSnapshot(MEMBERSHIP_PROPIA, CUENTA_PROPIA, ORG_ID,
 						CONSULTORIO_ID, "PROFESIONAL", "ACTIVA", Instant.EPOCH, null, true, true)));
-		given(sesiones.findWithLockByIdInScope(ORG_ID, CONSULTORIO_ID, SESION_ID))
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, SESION_ID))
 				.willReturn(Optional.of(sesionAbierta()));
-		given(sesiones.save(any())).willAnswer(i -> i.getArgument(0));
+		given(sesiones.avanzarVersion(eq(ORG_ID), eq(CONSULTORIO_ID), eq(SESION_ID), anyLong()))
+				.willReturn(1);
 		given(catalogo.findPractica(anyLong(), anyLong(), any()))
 				.willReturn(Optional.of(practica(true)));
 		given(tratamientos.ultimoOrden(ORG_ID, SESION_ID)).willReturn(0);
@@ -157,20 +159,30 @@ class TratamientoServiceTest {
 		verify(parametros).save(any(TratamientoParametro.class));
 		verify(auditTrail).record(any(AuditEntry.class));
 		assertThat(vista.sesionVersion())
-				.as("la vista anuncia la version que la sesion VA a tener: el force-increment la "
-						+ "sube al commitear, despues de que esta respuesta se arma")
+				.as("la vista anuncia la version que la sesion tiene tras el UPDATE de version: la "
+						+ "entidad leida conserva la vieja y la respuesta suma uno")
 				.isEqualTo(1L);
 	}
 
 	@Test
-	@DisplayName("La sesion se guarda aunque no cambie ninguna de sus columnas")
-	void la_sesion_se_toca_para_que_avance_la_version() {
-		// Es lo unico que materializa el OPTIMISTIC_FORCE_INCREMENT de la lectura. Sin este save
-		// la sesion no se marca, la version no avanza y dos escrituras concurrentes commitean las
-		// dos: el `@Version` del padre no protege por si solo una escritura que toca tablas hijas.
+	@DisplayName("La version de la sesion avanza con un UPDATE contra la version leida")
+	void la_version_avanza_con_update_condicionado() {
+		// Lo unico que la mueve en la base: ninguna columna de la sesion cambia. La prueba de que
+		// la base queda en leida+1 vive en TratamientoRealizadoIT (escenario 41).
 		service.registrar(actor, CONSULTORIO_ID, SESION_ID, aplicado(), 0L);
 
-		verify(sesiones).save(any(Sesion.class));
+		verify(sesiones).avanzarVersion(ORG_ID, CONSULTORIO_ID, SESION_ID, 0L);
+	}
+
+	@Test
+	@DisplayName("Si el UPDATE no afecta ninguna fila, alguien se adelanto: 409 sin escribir")
+	void si_el_update_de_version_no_afecta_filas_es_conflicto() {
+		given(sesiones.avanzarVersion(ORG_ID, CONSULTORIO_ID, SESION_ID, 0L)).willReturn(0);
+
+		assertThatThrownBy(() -> service.registrar(actor, CONSULTORIO_ID, SESION_ID, aplicado(), 0L))
+				.isInstanceOf(OptimisticLockingFailureException.class);
+
+		verify(tratamientos, never()).save(any());
 	}
 
 	@Test
@@ -179,7 +191,7 @@ class TratamientoServiceTest {
 		// La propiedad NO es un permiso: quien opera tiene `sesion:register` perfectamente. Un 403
 		// mandaria a la pantalla a decir "no tenes permiso", que es falso, y a pedir un permiso que
 		// ya tiene.
-		given(sesiones.findWithLockByIdInScope(ORG_ID, CONSULTORIO_ID, SESION_ID))
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, SESION_ID))
 				.willReturn(Optional.of(sesionDe(MEMBERSHIP_AJENA)));
 
 		assertThatThrownBy(() -> service.registrar(actor, CONSULTORIO_ID, SESION_ID, aplicado(), 0L))
@@ -201,7 +213,7 @@ class TratamientoServiceTest {
 	@Test
 	@DisplayName("Una sesion que no existe o no esta viva da 404, no 409")
 	void sesion_inexistente() {
-		given(sesiones.findWithLockByIdInScope(ORG_ID, CONSULTORIO_ID, SESION_ID))
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, SESION_ID))
 				.willReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.registrar(actor, CONSULTORIO_ID, SESION_ID, aplicado(), 0L))

@@ -10073,3 +10073,109 @@ que la fila quedó en la tabla. **El 61 es el más incómodo** — si alguien vu
 El contrato queda en **drift a propósito**: se subió `0.44.0` en los tres lugares y **no se
 escribieron los `securitySchemes` a mano en el YAML**, porque eso sería taparlo. Hay que correr
 **`./mvnw verify -Dakine.contract.update=true` desde esta rama** en cuanto Docker levante.
+
+# Registro de cierre — G2 · C-7 (fix) — registrar tratamiento avanza la versión de la sesión
+
+Cerrado el **2026-10-03** en la rama `symphony/akine-g2/A7`. Registro conforme a §10.5.
+
+## 1. Resumen del incremento y comportamiento observable
+
+Registrar, editar o quitar un tratamiento realizado ahora avanza `sesion.version` **en la base, una sola vez**. Antes la base quedaba en la versión leída mientras la vista informaba `leida+1`: el cliente no tenía control optimista real y dos altas con la misma versión entraban las dos. Ahora una versión vieja es conflicto (`OptimisticLockingFailureException`, el que ya mapea el handler) y **no inserta**, y de dos altas concurrentes con la misma versión entra una sola. La API pública de `TratamientoService` y `TratamientoView` no cambia.
+
+## 2. Archivos creados
+
+Ninguno.
+
+## 3. Archivos modificados
+
+- `encounter/application/TratamientoService.java`: `sesionParaEscribir` lee con `findByIdInScope` y avanza la versión con `avanzarVersion(..., expectedVersion)`; si afecta cero filas, lanza el conflicto. Se actualizaron la cabecera (punto 2) y el comentario del método.
+- `encounter/domain/port/SesionRepositoryPort.java` y `encounter/infrastructure/SesionRepository.java`: método nuevo `avanzarVersion` (`UPDATE Sesion SET version = version + 1 WHERE ... AND version = :versionEsperada`, `@Modifying(flushAutomatically = true)`). `findWithLockByIdInScope` **no se tocó**: ya no lo usa ningún código de producción, pero `MedicionServiceTest` (fuera de este territorio) lo stubbea y borrarlo rompería su compilación.
+- `encounter/application/TratamientoServiceTest.java`: las colaboraciones mockeadas pasan de `findWithLockByIdInScope` + `save` a `findByIdInScope` + `avanzarVersion`; el test del `save` se reemplazó por dos (llama a `avanzarVersion` con la versión leída; cero filas afectadas es conflicto sin escribir).
+
+## 4. Migraciones, backfills o cambios de datos
+
+Ninguno.
+
+## 5. Endpoints, contratos, eventos o integraciones
+
+Ninguno. No cambia `openapi/akine-api.yaml` ni la versión del contrato.
+
+## 6. Pruebas y resultados
+
+- AC-1 en 0: `TratamientoRealizadoIT` (de la rama de A5, prestado con `it-prestado.js`, no copiado), 47 de 47. Los tres que estaban rojos pasan: `la_version_avanza_una_sola_vez`, `dos_altas_concurrentes_una_sola_entra`, `version_vieja_es_conflicto_y_no_inserta`.
+- AC-2 en 0: `TratamientoServiceTest`, `SesionServiceTest`, `MedicionServiceTest`, `ModuleArchitectureTest`, `CodingConventionsTest`, `CierreConcurrenteIT`, `CierreConDosNumeradoresIT`.
+- **No se corrió la suite completa** (la corre el director).
+
+## 7. Decisiones técnicas y alternativas descartadas
+
+- **Diagnóstico con el SQL de Hibernate** (`-Dspring.jpa.show-sql=true`): durante `registrar` no sale ningún `UPDATE sesion` al commitear. El `OPTIMISTIC_FORCE_INCREMENT` aplicado a una lectura por consulta no incrementa la versión, y `save()` de una entidad gestionada sin cambios no la ensucia.
+- **Descartada la hipótesis de que el `@Query` JPQL era la causa:** se probó una consulta derivada con el mismo `@Lock` (el patrón de `CasoClinicoRepository`) y la base seguía en la versión leída.
+- **Elegido un `UPDATE ... WHERE version = :esperada` propio** (en el repositorio, sin `EntityManager` en el servicio): da conflicto real cuando alguien se adelantó, toma el lock de la fila en el acto (serializa las altas concurrentes, también el `MAX(orden)+1`) y no ensucia la sesión, así que la versión avanza una vez. La entidad leída conserva la versión vieja y las vistas anuncian `expectedVersion + 1`.
+- Descartado `EntityManager.lock(sesion, OPTIMISTIC_FORCE_INCREMENT)`: exigía inyectar el `EntityManager` en el servicio o crear un fragmento de repositorio fuera del territorio.
+
+## 8. Problemas, riesgos o bloqueos
+
+Ninguno bloqueante.
+
+## 9. Deuda técnica
+
+- **La causa parece general, no propia de `Sesion`:** el mismo patrón (`@Lock(OPTIMISTIC_FORCE_INCREMENT)` sobre una lectura y después `save` de la entidad sin cambios) según los comentarios, está en `clinical` (`CasoClinicoRepository`, `EntradaClinica*`, `PlanTratamiento*`, `CasoClinicoService`, `PlanTratamientoService`, `EntradaClinicaService`) y `billing/domain/Egreso`. No se verificó cada sitio ni se tocó ninguno. Decide D si abre otro nodo; conviene un IT que lea `version` de la base, como el escenario 41.
+- `SesionRepositoryPort#findWithLockByIdInScope` quedó sin usos de producción; se puede borrar junto con el stub de `MedicionServiceTest` (que no es de este nodo).
+
+## 10. Contexto para la etapa siguiente
+
+- El PR a `main` lo abre D con título `[G2·C-7 fix] ...`. A5 puede tachar el ítem «ITs de tratamientos (escenarios 39–43…)» de F6 una vez integrado este nodo.
+- Cualquier otra escritura que sólo toque tablas hijas de `sesion` puede usar `SesionRepositoryPort#avanzarVersion`.
+
+# Registro de cierre — G2 · C-7 (ITs de tratamientos, mediciones y enmiendas)
+
+Cerrado el **2026-10-03** en la rama `symphony/akine-g2/A5`. Registro conforme a §10.5.
+
+## 1. Resumen del incremento y comportamiento observable
+
+Tres ITs contra MySQL real cubren lo que `encounter` nunca había ejecutado: tratamientos realizados (escenarios 39–43 de 06.04), mediciones y enmiendas de sesión, con la auditoría `SESION_AMENDED` y el permiso de enmendar. Sin cambios en código productivo. Los ITs prueban el comportamiento **actual** (no versionan tratamientos ni mediciones en la enmienda: eso es C-6).
+
+## 2. Archivos creados
+
+- `src/test/java/com/akine/encounter/TratamientoRealizadoIT.java` (CHECK y unique de `V55` incl. `NO_APLICA`, `deleted_key`, orden no reutilizado, versión de sesión una sola vez, borrado de parámetros en el PUT, tenant 404).
+- `src/test/java/com/akine/encounter/MedicionIT.java` (17 tests).
+- `src/test/java/com/akine/encounter/EnmiendaDeSesionIT.java` (13 tests: v1/v2, ráfaga, concurrencia, `SESION_AMENDED` con y sin motivo, permiso 403, sesión ajena 409, tenant 404, sin cambios económicos).
+- `src/test/java/com/akine/encounter/support/EncounterFixtures.java`.
+
+## 3. Archivos modificados
+
+- `docs/tests-diferidos.md`: filas 39–43 de 06.04 marcadas cubiertas.
+- `docs/fases/F6-atencion-clinica.md`: tachados «ITs de tratamientos (escenarios 39–43…)» y «Test de permiso y de auditoría `SESION_AMENDED`».
+
+## 4. Migraciones, backfills o cambios de datos
+
+Ninguno. Depende de `V65` (C-1): un tratamiento con `NO_APLICA` entra.
+
+## 5. Endpoints, contratos, eventos o integraciones
+
+Ninguno. No cambia `openapi/akine-api.yaml`.
+
+## 6. Pruebas y resultados
+
+- AC-1 en 0 (`.\mvnw.cmd -q -Djacoco.skip=true -Dtest=ModuleArchitectureTest,CodingConventionsTest -Dit.test=TratamientoRealizadoIT,MedicionIT,EnmiendaDeSesionIT verify`): los tres ITs verdes, incluidos los tres del escenario 41 tras el arreglo de A7.
+- AC-2 y AC-3 (`checks.js tachado` sobre F6) verdes.
+- **No se corrió la suite completa** (la corre el director).
+
+## 7. Decisiones técnicas y alternativas descartadas
+
+- El primer corrido dejó rojo el escenario 41 (la versión de `sesion` no avanzaba al registrar). No se tocó producción ni se desactivó ningún test: se dejó el IT rojo y se bloqueó el nodo; D abrió A7, que lo arregló.
+- Fixtures compartidos en `encounter/support` para no copiar la siembra entre los tres ITs.
+
+## 8. Problemas, riesgos o bloqueos
+
+Resuelto: el defecto del escenario 41 (ver punto 7).
+
+## 9. Deuda técnica
+
+- Los ITs no cubren versionado de tratamientos/mediciones en la enmienda ni el permiso reforzado (C-6, fuera de la obra).
+- El patrón `OPTIMISTIC_FORCE_INCREMENT` sobre lecturas puede estar roto en otros módulos (ver deuda de A7); falta un IT por sitio que lea `version` de la base.
+
+## 10. Contexto para la etapa siguiente
+
+- El PR a `main` lo abre D con título `[G2·C-7] ITs de tratamientos, mediciones y enmiendas`; va después del fix de A7 (el IT del escenario 41 no pasa sin él).
+- `EncounterFixtures` es el punto de partida para ITs futuros de `encounter`.
