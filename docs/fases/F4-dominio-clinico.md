@@ -50,6 +50,8 @@ los registros**. Es deuda documentada que quedó huérfana.
 - [x] 04.03: unique de caso activo (RN-M10-002); `EstadoCaso` solo tiene `ACTIVO`/`CERRADO`. *No aplica: RN-M10-002 admite varios casos activos; ver V47 y docs/diseno/AKINE-04.03-challenge.md. Tampoco se agrega otro estado: M10 solo pide `ACTIVO` y `CERRADO` (RF-M10-002 "activos primero y luego cerrados", RF-M10-005 "estado CERRADO"; no define ningún otro).*
 - [ ] Gate RF-M10-007 (exigir caso al reservar o atender): etapa propia con ventana de migración.
   Se coordina con [F6](F6-atencion-clinica.md).
+- [ ] 04.03: `CasoClinicoService#cambiarEquipo` confía en `OPTIMISTIC_FORCE_INCREMENT` sobre el caso,
+  y contra MySQL eso no avanza la versión. Ver [deuda-force-increment.md](deuda-force-increment.md).
 
 ### Frontend (en este orden, cada una con su E2E contra backend real)
 - [ ] Entrada a la HC desde el Paciente 360 (abrir / ver resumen / antecedentes).
