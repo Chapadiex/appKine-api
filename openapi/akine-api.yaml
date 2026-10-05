@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.45.0
+  version: 0.46.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -14197,7 +14197,8 @@ paths:
         OJO: esPaciente es DERIVADO y de solo lectura. Una persona sin perfil clinico es una persona valida y completa —RN-M07-006—, no una ficha a medio cargar.
       operationId: buscarPersonas
       parameters:
-      - description: "Texto libre: documento, apellido, nombre o telefono"
+      - description: "Texto libre: documento, apellido, nombre, telefono o numero\
+          \ de afiliado"
         in: query
         name: q
         required: false

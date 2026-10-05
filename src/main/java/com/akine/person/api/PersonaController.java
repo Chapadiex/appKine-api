@@ -99,8 +99,6 @@ import java.net.URI;
  *   <li><b>Contenido clinico en el 360</b>: no falta, se decidio no ponerlo. AKINE-04.01 exige
  *       justificacion declarada para todo acceso clinico, y mostrarlo al abrir una ficha de
  *       mostrador convertiria ese control en un formalismo.</li>
- *   <li><b>La busqueda por numero de afiliado</b> que RF-M07-001 menciona: el afiliado es un dato
- *       de la cobertura (M08, etapa 03.04) y todavia no hay ninguna contra la que buscar.</li>
  *   <li><b>El vinculo entre una persona y una cuenta del portal.</b> RN-M07-002 los separa, y
  *       resolver el autoservicio es una etapa propia.</li>
  *   <li><b>La fusion de fichas duplicadas.</b> El caso borde "paciente fusionado" de la etapa no
@@ -166,7 +164,7 @@ public class PersonaController {
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
 	public PersonaPageResponse buscar(
-			@Parameter(description = "Texto libre: documento, apellido, nombre o telefono")
+			@Parameter(description = "Texto libre: documento, apellido, nombre, telefono o numero de afiliado")
 			@RequestParam(required = false) String q,
 
 			@Parameter(description = "Filtro por ciclo de vida. Por defecto solo las ACTIVAS")

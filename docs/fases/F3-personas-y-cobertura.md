@@ -32,8 +32,8 @@ para esta práctica en esta fecha?".
 ## Faltantes
 
 ### Backend / API
-- [ ] Búsqueda por número de afiliado (RF-M07-001). `PersonaBusqueda` solo tiene `texto/estado/perfil`.
-  Se difirió a 03.04 y nunca se cableó.
+- [x] ~~Búsqueda por número de afiliado (RF-M07-001). `PersonaBusqueda` solo tiene `texto/estado/perfil`.
+  Se difirió a 03.04 y nunca se cableó.~~ → B-1: `q` también busca por `numero_afiliado` (contrato 0.46.0).
 - [ ] RF-M08-006/007: resolver la cobertura aplicable por oferta.
 - [ ] RF-M16-007 (importación masiva con preview) y RF-M16-008/009 (oferta asociada al convenio,
   arancel particular por oferta). Dependen del puente Oferta↔Práctica de F2.
@@ -74,7 +74,7 @@ para esta práctica en esta fecha?".
 ## Para cerrar la fase
 
 - [ ] E2E de la vertical persona → cobertura → autorización contra backend real.
-- [ ] Búsqueda por afiliado y RF-M08-006/007.
+- [ ] ~~Búsqueda por afiliado~~ (B-1) y RF-M08-006/007.
 - [ ] Decisión sobre el historial de autorización.
-- [ ] `spi` de cobertura vigente listo para que F5 (recepción) y F7 (devengado) lo consuman.
+- [x] ~~`spi` de cobertura vigente listo para que F5 (recepción) y F7 (devengado) lo consuman.~~ → B-2: `person.spi.CoberturasAplicablesDirectory`.
 - [ ] Corregir los registros de cierre (frontend entregado) y escribir los diseños que faltan.
