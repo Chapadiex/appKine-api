@@ -52,7 +52,10 @@ bloquean. Está pensada para alinear a un agente en un chat nuevo sin depender d
 
 1. `docs/fases/README.md` — cómo se usa y un prompt para abrir el chat.
 2. `docs/fases/00-orden-recomendado.md` — orden de las fases, arreglos rápidos y handoff del trabajo en curso.
-3. `docs/fases/FX-*.md` — la ficha de la fase que vas a trabajar.
+3. `docs/fases/01-trabajo-en-paralelo.md` — **si trabajás en paralelo con otras personas**: carriles,
+   paquetes de trabajo con dependencias, migraciones reservadas, decisiones bloqueantes y reglas de
+   convivencia (worktrees, contrato, puntos calientes). Diagrama en `01-trabajo-en-paralelo.excalidraw`.
+4. `docs/fases/FX-*.md` — la ficha de la fase que vas a trabajar.
 
 Las fichas son una foto: **verificá cada faltante contra el código antes de actuar**, y tachá en
 la ficha lo que cerrás, en el mismo commit.
