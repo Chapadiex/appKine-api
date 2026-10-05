@@ -69,8 +69,12 @@ class ClaseServiceTest {
 	private static final long ESPACIO_ID = 8L;
 	private static final long CUENTA_ID = 99L;
 
-	private static final Instant INICIO = Instant.parse("2026-10-05T12:00:00Z");
-	private static final Instant FIN = Instant.parse("2026-10-05T13:00:00Z");
+	// Relativa al dia de corrida: el servicio compara contra Instant.now(), y una fecha fija se
+	// vuelve "clase ya empezada" el dia que llega (paso el 2026-10-05 y rompio el build).
+	private static final Instant INICIO = Instant.now()
+			.truncatedTo(java.time.temporal.ChronoUnit.DAYS)
+			.plus(java.time.Duration.ofDays(30).plusHours(12));
+	private static final Instant FIN = INICIO.plusSeconds(3600);
 
 	@Mock private ClaseProgramadaRepositoryPort clases;
 	@Mock private ClaseEventoRepositoryPort eventos;
