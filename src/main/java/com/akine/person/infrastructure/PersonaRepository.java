@@ -32,6 +32,13 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 	 * esa relacion es exactamente lo que {@code PerfilPaciente} evita a proposito, para que nadie
 	 * navegue de una persona a su perfil sin quererlo.
 	 *
+	 * <p>Tambien encuentra por numero de afiliado: un {@code EXISTS} (no un JOIN, para que una
+	 * persona con varias coberturas que matchean salga una sola vez) contra las coberturas no
+	 * dadas de baja de la misma organizacion, de cualquier vigencia. El numero se guarda tal como
+	 * se tipeo, asi que se le quitan los separadores en la consulta —todo lo que no sea letra o
+	 * digito ASCII, igual que {@code ClaveDeBusqueda.deDocumento}— y se compara contra
+	 * {@code patronClave}. Sin migracion: no hay columna de clave materializada.
+	 *
 	 * <p>El {@code LIMIT/OFFSET} esta en la consulta y no se recorta en memoria: el padron es la
 	 * primera tabla del sistema con volumen real (RNF-M07-004).
 	 *
@@ -57,7 +64,13 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			   AND (p.documento_clave LIKE :patronClave
 			        OR p.apellido_clave LIKE :patronNombre
 			        OR p.nombre_clave LIKE :patronNombre
-			        OR p.telefono_clave LIKE :patronClave)
+			        OR p.telefono_clave LIKE :patronClave
+			        OR EXISTS (SELECT 1 FROM cobertura_paciente cp
+			                    WHERE cp.persona_id = p.id
+			                      AND cp.organization_id = p.organization_id
+			                      AND cp.active = 1
+			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado), '[^A-Z0-9]', '')
+			                          LIKE :patronClave))
 			 ORDER BY p.apellido_clave ASC, p.nombre_clave ASC, p.id ASC
 			 LIMIT :limite OFFSET :offset
 			""", nativeQuery = true)
@@ -88,7 +101,13 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			   AND (p.documento_clave LIKE :patronClave
 			        OR p.apellido_clave LIKE :patronNombre
 			        OR p.nombre_clave LIKE :patronNombre
-			        OR p.telefono_clave LIKE :patronClave)
+			        OR p.telefono_clave LIKE :patronClave
+			        OR EXISTS (SELECT 1 FROM cobertura_paciente cp
+			                    WHERE cp.persona_id = p.id
+			                      AND cp.organization_id = p.organization_id
+			                      AND cp.active = 1
+			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado), '[^A-Z0-9]', '')
+			                          LIKE :patronClave))
 			""", nativeQuery = true)
 	long contar(
 			@Param("organizationId") Long organizationId,

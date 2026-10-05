@@ -11,7 +11,9 @@ import com.akine.person.api.dto.UpdatePersonaRequest;
 import com.akine.person.application.OperatingActor;
 import com.akine.person.application.PerfilPacienteService;
 import com.akine.person.application.PersonaAltaCommand;
+import com.akine.person.application.PerfilFiltro;
 import com.akine.person.application.PersonaBusqueda;
+import com.akine.person.application.PersonaEstadoFiltro;
 import com.akine.person.application.PersonaPagina;
 import com.akine.person.application.PersonaService;
 import com.akine.person.application.PersonaView;
@@ -90,6 +92,28 @@ class PersonaControllerTest {
 		ArgumentCaptor<PersonaBusqueda> filtros = ArgumentCaptor.forClass(PersonaBusqueda.class);
 		verify(personaService).buscar(any(), filtros.capture(), anyInt(), anyInt());
 		assertThat(filtros.getValue()).isNotNull();
+	}
+
+	@Test
+	@DisplayName("B1-E3b el texto del operador llega a la busqueda desde el parametro q, con estado y perfil")
+	void b1_e3b_el_parametro_http_es_q() {
+		given(personaService.buscar(any(), any(), anyInt(), anyInt()))
+				.willReturn(new PersonaPagina(List.of(), 0L));
+
+		controller.buscar("ab-1234", PersonaEstadoFiltro.TODOS, PerfilFiltro.SIN_PERFIL, 0, 20);
+
+		ArgumentCaptor<PersonaBusqueda> filtros = ArgumentCaptor.forClass(PersonaBusqueda.class);
+		verify(personaService).buscar(any(), filtros.capture(), anyInt(), anyInt());
+		assertThat(filtros.getValue().texto()).isEqualTo("ab-1234");
+		assertThat(filtros.getValue().estado()).isEqualTo(PersonaEstadoFiltro.TODOS);
+		assertThat(filtros.getValue().perfil()).isEqualTo(PerfilFiltro.SIN_PERFIL);
+
+		// El nombre HTTP del parametro es el del argumento Java: tiene que ser "q", no "texto".
+		var buscar = java.util.Arrays.stream(PersonaController.class.getDeclaredMethods())
+				.filter(m -> m.getName().equals("buscar")).findFirst().orElseThrow();
+		assertThat(buscar.getParameters()[0].getName()).isEqualTo("q");
+		assertThat(buscar.getParameters()[0].getAnnotation(
+				org.springframework.web.bind.annotation.RequestParam.class)).isNotNull();
 	}
 
 	@Test
