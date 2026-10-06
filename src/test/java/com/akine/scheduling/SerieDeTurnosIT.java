@@ -78,7 +78,7 @@ class SerieDeTurnosIT {
 	}
 
 	@Test
-	@DisplayName("V70 ejecuto: existe turno_serie y turno.serie_id")
+	@DisplayName("V74 ejecuto: existe turno_serie y turno.serie_id")
 	void la_migracion_v70_ejecuto() {
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM information_schema.columns

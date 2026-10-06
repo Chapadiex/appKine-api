@@ -35,7 +35,7 @@ estados de recepción propia, como pedía DP-05.
 ### Backend / API
 - [x] ~~**Modelo de serie** (05.03): diseño propio, migración, comandos de alcance (este / este y
   futuros / toda la serie), ausencia que preserva futuros.~~ Hecho en **E-3** (backend):
-  `docs/diseno/AKINE-E-3-series.md`, `V70` (`turno_serie`, `turno.serie_id`), alta todo o nada,
+  `docs/diseno/AKINE-E-3-series.md`, `V74` (`turno_serie`, `turno.serie_id`; reservada como `V70`), alta todo o nada,
   cancelación y reprogramación con alcance y confirmación por cantidad (`/series-de-turnos`),
   contrato 0.57.0, `SerieDeTurnosIT`. Falta la mitad web (confirmación de alcance en la UI).
 - [ ] **Recepción con validación administrativa** (05.04): consumir `consultarElegibilidadAdministrativa`

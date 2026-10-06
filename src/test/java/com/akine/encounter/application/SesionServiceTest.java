@@ -12,6 +12,10 @@ import com.akine.encounter.domain.Evolucion;
 import com.akine.encounter.domain.Lateralidad;
 import com.akine.encounter.domain.ModoSesion;
 import com.akine.encounter.domain.Sesion;
+import com.akine.encounter.domain.FotoClinica;
+import com.akine.encounter.domain.MedicionEnmendada;
+import com.akine.encounter.domain.TratamientoAplicado;
+import com.akine.encounter.domain.TratamientoEnmendado;
 import com.akine.encounter.domain.SesionVersion;
 import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.CierreIncompletoException;
@@ -112,6 +116,13 @@ class SesionServiceTest {
 	/** 04.03: solo se consulta cuando la sesion declara un caso. Estos tests no declaran. */
 	@Mock private CasoDirectory casos;
 
+	/** C-6: la foto de tratamientos y mediciones de cada version, y su enmienda. */
+	@Mock private com.akine.encounter.domain.port.TratamientoRepositoryPorts
+			.TratamientoParametroRepositoryPort parametros;
+	@Mock private com.akine.encounter.domain.port.SesionMedicionRepositoryPort mediciones;
+	@Mock private TratamientoService tratamientoService;
+	@Mock private MedicionService medicionService;
+
 	/**
 	 * 06.06: existe para poder probar que la ENMIENDA no lo llama.
 	 *
@@ -130,7 +141,8 @@ class SesionServiceTest {
 		service = new SesionService(
 				sesiones, versiones, auditTrail, turnos, historias, casos, consultorios,
 				memberships, permissionGuard, numerador, numeradorIniciador, ofertas,
-				tratamientos, List.of(observador));
+				tratamientos, parametros, mediciones, tratamientoService, medicionService,
+				List.of(observador));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -584,6 +596,60 @@ class SesionServiceTest {
 	}
 
 	@Test
+	@DisplayName("C-6: tratamientos y mediciones se corrigen DESPUES del flush de la cabecera y "
+			+ "ANTES de la foto")
+	void la_enmienda_clinica_va_entre_la_cabecera_y_la_foto() {
+		// Despues del flush: la cabecera emite su UPDATE versionado primero, asi una segunda
+		// enmienda concurrente espera el lock y termina en 409 sin haber leido un tratamiento.
+		// Antes de la foto: la version tiene que decir lo que quedo.
+		Sesion cerrada = sesionCerrada();
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(cerrada));
+		List<TratamientoEnmendado> tratamientosEnmendados = List.of(new TratamientoEnmendado(5L,
+				new TratamientoAplicado(41L, null, null, null, null, null, null, null, List.of())));
+		List<MedicionEnmendada> medicionesEnmendadas = List.of();
+
+		service.enmendar(actor, CONSULTORIO_ID, 1L, contenido("Nota"), tratamientosEnmendados,
+				medicionesEnmendadas, "  " + MOTIVO + "  ", 0L);
+
+		InOrder orden = inOrder(sesiones, tratamientoService, medicionService, tratamientos, versiones);
+		orden.verify(sesiones).saveAndFlush(cerrada);
+		orden.verify(tratamientoService).aplicarEnmienda(
+				any(), any(), org.mockito.ArgumentMatchers.eq(tratamientosEnmendados),
+				org.mockito.ArgumentMatchers.eq(MOTIVO), any());
+		orden.verify(medicionService).aplicarEnmienda(
+				any(), any(), org.mockito.ArgumentMatchers.eq(medicionesEnmendadas), any());
+		orden.verify(tratamientos).listarVigentes(ORG_ID, 1L);
+		orden.verify(versiones).save(any());
+		verify(observador, never()).alCerrar(any());
+	}
+
+	@Test
+	@DisplayName("C-6: sin listas, la enmienda no toca tratamientos ni mediciones")
+	void sin_listas_no_se_tocan() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionCerrada()));
+
+		service.enmendar(actor, CONSULTORIO_ID, 1L, contenido("Nota"), MOTIVO, 0L);
+
+		verify(tratamientoService, never()).aplicarEnmienda(any(), any(), any(), any(), any());
+		verify(medicionService, never()).aplicarEnmienda(any(), any(), any(), any());
+	}
+
+	@Test
+	@DisplayName("C-6: sin motivo no se escribe nada, tampoco tratamientos: el motivo es su baja")
+	void sin_motivo_no_se_corrigen_tratamientos() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionCerrada()));
+
+		assertThatThrownBy(() -> service.enmendar(actor, CONSULTORIO_ID, 1L, contenido("Nota"),
+				List.of(), List.of(), "   ", 0L))
+				.isInstanceOf(EnmiendaSinMotivoException.class);
+
+		verify(sesiones, never()).saveAndFlush(any());
+		verify(tratamientoService, never()).aplicarEnmienda(any(), any(), any(), any(), any());
+	}
+
+	@Test
 	@DisplayName("La enmienda sin motivo se rechaza y no escribe ninguna version")
 	void enmendar_sin_motivo_se_rechaza() {
 		// RN-M14-006 no prohibe corregir una sesion cerrada: prohibe corregirla SILENCIOSAMENTE.
@@ -658,7 +724,7 @@ class SesionServiceTest {
 		Sesion cerrada = sesionCerrada();
 		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(cerrada));
 		given(versiones.buscarPorSesion(ORG_ID, 1L))
-				.willReturn(List.of(SesionVersion.original(cerrada)));
+				.willReturn(List.of(SesionVersion.original(cerrada, new FotoClinica(null, null))));
 
 		List<SesionVersionView> historial = service.versiones(actor, CONSULTORIO_ID, 1L);
 

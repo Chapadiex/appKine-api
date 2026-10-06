@@ -349,6 +349,68 @@ toca `src/design-system.css` y los siete CSS de feature, y ningún `.ts`.
 **Refinamiento visual.** No entra en la ventana de septiembre. Queda como tramo propio, y la
 tokenización del design system —hoy sin variables CSS— debe ejecutarse antes del pulido.
 
+## DP-11 — Puente Oferta↔Práctica: tabla N:M `oferta_practica` (DU-1)
+
+**Estado:** RESUELTA el 06/10/2026 por el dueño del producto.
+
+**Contexto.** Ni `servicio` ni `oferta` tienen `practica_id` (V24 dejó el puente afuera). Desde
+06.04 cada tratamiento realizado guarda su práctica y `SesionCerrada.practicasRealizadas` la
+lleva al cierre, así que **qué se prestó ya se sabe**. Lo que falta es qué prácticas *ofrece* una
+oferta: lo necesitan el arancel y la cobertura aplicable por oferta (B-3, RF-M08-006/007), el
+avance del plan (RF-M11-002) y el devengo de una sesión cerrada sin tratamientos (F-4).
+
+**Decisión.** Tabla `oferta_practica` N:M, con `organization_id`, una práctica marcada como
+**principal** por oferta y baja lógica. Es lo que pide RF-M06-008 paso 6: *"una Oferta clínica
+utiliza una o más Prácticas durante sus atenciones"*.
+
+- Al devengar o consumir, **manda la práctica realizada** (tratamientos). La principal se usa solo
+  si la sesión cerró sin tratamientos.
+- Una práctica realizada que no está habilitada en la oferta no se rechaza al registrar el
+  tratamiento (sería frenar un acto clínico por una regla administrativa): queda como alerta.
+
+**Alternativas descartadas.** `oferta.practica_id` (1:1): contradice el "una o más" y obliga a
+duplicar ofertas. `plan_item.practica_id`: resuelve el plan pero deja sin práctica a las
+sesiones sin plan y no sirve para arancel ni cobertura por oferta.
+
+**Desbloquea:** A-9 (`V66`) → B-3, C-4, F-4.
+
+## DP-12 — Consumo de autorizaciones: una unidad por autorización involucrada (DU-4)
+
+**Estado:** RESUELTA el 06/10/2026 por el dueño del producto.
+
+**Contexto.** Hoy `ConsumoDeAutorizacionEnCierre` consume **una unidad por sesión** en **una sola**
+autorización, elegida entre las que cubren las prácticas realizadas. Si la sesión aplicó prácticas
+cubiertas por dos autorizaciones distintas, la segunda no se descuenta.
+
+**Decisión.** Una sesión consume **una unidad en cada autorización involucrada**: se agrupan las
+prácticas realizadas por la autorización que las cubre y se descuenta una unidad por grupo.
+Varias prácticas bajo la misma autorización siguen siendo una unidad. Idempotente por
+(sesión, autorización), igual que hoy por sesión.
+
+**Alternativas descartadas.** Una por sesión (deja el hueco descripto). Una por práctica
+realizada (agota autorizaciones que los financiadores otorgan por sesión, no por técnica).
+
+**Desbloquea:** C-4, F-4.
+
+## DP-13 — Reversión del consumo: manual, con alerta al anular la deuda (DU-7)
+
+**Estado:** RESUELTA el 06/10/2026 por el dueño del producto.
+
+**Contexto.** Una sesión no se anula (no existe la operación); lo que se anula es la **deuda**
+(`billing`, `Obligacion#anular`). Revertir un consumo ya existe como acción manual con motivo
+(RF-M17-005).
+
+**Decisión.** La reversión **sigue siendo manual**. Al anular la obligación de una sesión que
+consumió autorización, se genera una **alerta "consumo a revisar"** sobre esa autorización
+(RN-M17-003: faltantes generan alertas), sin tocar el saldo. Anular una deuda no prueba que la
+prestación no ocurrió —puede ser cortesía o un error de precio—, y devolver la unidad sería
+deshacer un hecho clínico por un motivo económico.
+
+**Alternativas descartadas.** Reversión automática al anular la deuda (mezcla deuda con
+prestación). Manual sin alerta (depende de la memoria del operador).
+
+**Desbloquea:** C-4.
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional
@@ -10430,7 +10492,7 @@ Resuelto: el defecto del escenario 41 (ver punto 7).
 
 # Registro de cierre — G5 · E-3 (Series de turnos, DP-04) · backend
 
-**06/10/2026** · rama `akine-E-3-series-de-turnos` · `V70`, cinco endpoints y contrato **0.57.0**. Diseño y design challenge en `docs/diseno/AKINE-E-3-series.md`.
+**06/10/2026** · rama `akine-E-3-series-de-turnos` · `V74` (reservada como `V70`, renumerada al integrar), cinco endpoints y contrato **0.57.0**. Diseño y design challenge en `docs/diseno/AKINE-E-3-series.md`.
 
 - **La serie es la regla; los turnos son la verdad** (ADR-0011). `turno_serie` guarda la regla semanal con la que se generaron los turnos y `turno.serie_id` (nullable, aditivo) los vincula. La serie no tiene estado ni baja: "está cancelada" se lee en sus turnos. Reprogramar por alcance **no** reescribe la regla.
 - **Alta todo o nada** (RF-M12-002, "no dejar cambios parciales"; sin RF de modo parcial). Bajo el lock de `agenda_sede` en `READ_COMMITTED`, cada ocurrencia pasa por `RevalidadorDeSlot`; si una no entra hay rollback entero y el 409 conserva el `problemType` de la causa con `ocurrenciaInicio`. Idempotencia con hash en `turno_serie`. Tope de 52 ocurrencias.

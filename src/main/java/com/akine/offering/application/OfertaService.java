@@ -474,11 +474,11 @@ public class OfertaService {
 	 * rastro de que la sede dejo de ofrecerla alguna vez, que es justo lo que la baja logica
 	 * existe para conservar.
 	 *
-	 * <p><b>El caso borde "baja con turnos futuros" no existe todavia</b>, y no se finge resuelto:
-	 * no hay agenda —llega en F5— asi que no hay nada que consultar. Cuando la haya, que debe pasar
-	 * con los turnos ya reservados sobre una oferta que se da de baja es una decision de esa etapa,
-	 * y ADR-0011 prohibe una cancelacion en cascada sin confirmacion explicita, motivo y auditoria
-	 * por turno. Esta clase no inventa una sonda sin implementaciones para aparentarlo.
+	 * <p><b>El caso borde "baja con turnos futuros" no se controla</b>, y no se finge resuelto: el
+	 * paquete E-1 enchufo sondas de turnos para sedes, espacios, profesionales y disponibilidad,
+	 * pero no para ofertas, asi que la baja procede aunque haya turnos reservados sobre la oferta.
+	 * Que debe pasar con esos turnos es una decision abierta, y ADR-0011 prohibe una cancelacion en
+	 * cascada sin confirmacion explicita, motivo y auditoria por turno.
 	 *
 	 * @throws OfertaNotAccessibleException si no existe, es de otro tenant o de otra sede (404)
 	 * @throws OfertaInactivaException si ya estaba dada de baja (409)

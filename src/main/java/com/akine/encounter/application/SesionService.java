@@ -17,7 +17,12 @@ import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
 import com.akine.encounter.domain.ContenidoDeSesion;
+import com.akine.encounter.domain.FotoClinica;
+import com.akine.encounter.domain.MedicionEnmendada;
 import com.akine.encounter.domain.SesionVersion;
+import com.akine.encounter.domain.TratamientoEnmendado;
+import com.akine.encounter.domain.port.SesionMedicionRepositoryPort;
+import com.akine.encounter.domain.port.TratamientoRepositoryPorts.TratamientoParametroRepositoryPort;
 import com.akine.encounter.domain.exception.SesionNoCerradaException;
 import com.akine.encounter.domain.port.SesionNumeradorPort;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
@@ -101,6 +106,17 @@ public class SesionService {
 	 */
 	private final TratamientoRepositoryPort tratamientos;
 
+	/** C-6: para la foto de tratamientos y mediciones que lleva cada version. */
+	private final TratamientoParametroRepositoryPort parametros;
+	private final SesionMedicionRepositoryPort mediciones;
+
+	/**
+	 * C-6: la enmienda corrige tratamientos y mediciones a traves de sus servicios, que son los
+	 * que saben validarlos. Ninguno de los dos depende de este.
+	 */
+	private final TratamientoService tratamientoService;
+	private final MedicionService medicionService;
+
 	private final List<CierreDeSesionObserver> observadores;
 
 	@SuppressWarnings("java:S107")
@@ -118,6 +134,10 @@ public class SesionService {
 			NumeradorIniciador numeradorIniciador,
 			OfertaDirectory ofertas,
 			TratamientoRepositoryPort tratamientos,
+			TratamientoParametroRepositoryPort parametros,
+			SesionMedicionRepositoryPort mediciones,
+			TratamientoService tratamientoService,
+			MedicionService medicionService,
 			List<CierreDeSesionObserver> observadores) {
 
 		this.sesiones = sesiones;
@@ -133,6 +153,10 @@ public class SesionService {
 		this.numeradorIniciador = numeradorIniciador;
 		this.ofertas = ofertas;
 		this.tratamientos = tratamientos;
+		this.parametros = parametros;
+		this.mediciones = mediciones;
+		this.tratamientoService = tratamientoService;
+		this.medicionService = medicionService;
 		this.observadores = List.copyOf(observadores);
 	}
 
@@ -396,7 +420,10 @@ public class SesionService {
 		// primero, y recien despues se deriva lo economico. Si un observador hace fallar el cierre
 		// —lo puede hacer, y es intencional— cae todo junto, asi que el orden no cambia el
 		// resultado; cambia que lea el codigo.
-		versiones.save(SesionVersion.original(sesion));
+		//
+		// C-6: la v1 lleva tambien la foto de tratamientos y mediciones. Sin ella, la primera
+		// enmienda que los corrigiera se llevaria el original.
+		versiones.save(SesionVersion.original(sesion, fotoClinica(organizationId, sesionId)));
 
 		// Dentro de la transaccion, a proposito: una prestacion sin deuda NO se nota —nadie
 		// reclama una factura que nunca existio— y el centro descubre el agujero cuando cuadra
@@ -482,6 +509,36 @@ public class SesionService {
 			OperatingActor actor, long consultorioId, long sesionId,
 			ContenidoDeSesion contenido, String motivo, long expectedVersion) {
 
+		return enmendar(actor, consultorioId, sesionId, contenido, null, null, motivo,
+				expectedVersion);
+	}
+
+	/**
+	 * Enmienda una sesion cerrada, incluidos sus tratamientos y sus mediciones (C-6).
+	 *
+	 * <p>{@code tratamientos} y {@code mediciones} son listas <b>completas</b> de lo que tiene que
+	 * quedar, o {@code null} para no tocarlos. Es la unica excepcion al "reemplazo completo" de
+	 * 06.06: el contrato es aditivo, y un cliente que no conoce estos campos no puede, por
+	 * omitirlos, vaciar los tratamientos de una sesion cerrada. Lista vacia es "no queda ninguno".
+	 *
+	 * <p>El orden es el que hace correcta la concurrencia: la cabecera se escribe y se flushea
+	 * <b>antes</b> de tocar tratamientos o mediciones, asi que una segunda enmienda concurrente se
+	 * queda esperando el lock de fila de {@code sesion} y termina en 409 sin haber leido un solo
+	 * tratamiento. Y la foto se toma <b>despues</b> de aplicarlos, para que la version diga lo que
+	 * quedo.
+	 *
+	 * @param tratamientos lo que tiene que quedar, o {@code null} para no tocarlos
+	 * @param mediciones   lo que tiene que quedar, o {@code null} para no tocarlas
+	 */
+	@Transactional
+	@SuppressWarnings("java:S107")
+	public SesionView enmendar(
+			OperatingActor actor, long consultorioId, long sesionId,
+			ContenidoDeSesion contenido,
+			List<TratamientoEnmendado> tratamientosEnmendados,
+			List<MedicionEnmendada> medicionesEnmendadas,
+			String motivo, long expectedVersion) {
+
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirRegistro(actor, organizationId, consultorioId);
@@ -503,14 +560,26 @@ public class SesionService {
 		// normal habria rechazado.
 		int numero = sesion.enmendar(contenido, sesion.getAsistencia());
 
+		// C-6: el motivo se exige ANTES de escribir nada, porque ademas es el motivo de baja de los
+		// tratamientos que la enmienda quita. La version lo vuelve a exigir: ningun camino que
+		// esquive este servicio puede escribir una enmienda sin decir por que.
+		String razon = SesionVersion.exigirMotivoDeEnmienda(sesionId, motivo);
+
 		Instant ahora = Instant.now();
 		Sesion cabecera = sesiones.saveAndFlush(sesion);
 
-		// SesionVersion.enmienda COPIA el contenido de la sesion ya modificada: por eso va despues
-		// del enmendar y no antes. El motivo lo exige la propia version —EnmiendaSinMotivoException,
-		// que la capa HTTP mapea a 400 y no a 409— asi que ningun camino futuro que esquive este
-		// servicio puede escribir una enmienda sin decir por que.
-		versiones.save(SesionVersion.enmienda(cabecera, motivo, ahora, actor.accountId()));
+		// C-6. Despues del flush de la cabecera y sin avanzarVersion: ver el javadoc del metodo.
+		if (tratamientosEnmendados != null) {
+			tratamientoService.aplicarEnmienda(actor, cabecera, tratamientosEnmendados, razon, ahora);
+		}
+		if (medicionesEnmendadas != null) {
+			medicionService.aplicarEnmienda(actor, cabecera, medicionesEnmendadas, ahora);
+		}
+
+		// SesionVersion.enmienda COPIA el contenido de la sesion ya modificada y la foto de lo que
+		// quedo: por eso va despues de todo lo anterior y no antes.
+		versiones.save(SesionVersion.enmienda(
+				cabecera, fotoClinica(organizationId, sesionId), razon, ahora, actor.accountId()));
 
 		// El MOTIVO no va a la auditoria, y es la misma decision que tomo 04.02 con el cuerpo de la
 		// entrada clinica: es prosa que el profesional escribe sobre un paciente, y `audit_event`
@@ -527,13 +596,17 @@ public class SesionService {
 				"VERSION_" + anterior,
 				"VERSION_" + numero,
 				Map.of("historiaClinicaId", String.valueOf(cabecera.getHistoriaClinicaId()),
-						"numeroSesion", String.valueOf(cabecera.getNumeroSesion())),
+						"numeroSesion", String.valueOf(cabecera.getNumeroSesion()),
+						"tratamientosEnmendados", String.valueOf(tratamientosEnmendados != null),
+						"medicionesEnmendadas", String.valueOf(medicionesEnmendadas != null)),
 				null,
 				AuditEvents.correlationId(),
 				ahora));
 
-		log.info("Sesion enmendada: sesionId={} numeroVersion={} historiaClinicaId={}",
-				sesionId, numero, cabecera.getHistoriaClinicaId());
+		log.info("Sesion enmendada: sesionId={} numeroVersion={} historiaClinicaId={} "
+						+ "tratamientos={} mediciones={}",
+				sesionId, numero, cabecera.getHistoriaClinicaId(),
+				tratamientosEnmendados != null, medicionesEnmendadas != null);
 
 		return conPrevia(cabecera, organizationId);
 	}
@@ -635,6 +708,22 @@ public class SesionService {
 				.map(HistoriaClinicaSnapshot::personaId)
 				.orElseThrow(() -> new IllegalStateException(
 						"La sesion " + sesion.getId() + " apunta a una historia clinica que no existe"));
+	}
+
+	/**
+	 * Lo que la version fotografia de las tablas vivas: tratamientos vigentes con sus parametros
+	 * y mediciones (C-6).
+	 *
+	 * <p>Se lee dentro de la transaccion de quien escribe, despues de sus escrituras: las
+	 * consultas disparan el flush automatico y ven lo que quedo.
+	 */
+	private FotoClinica fotoClinica(long organizationId, long sesionId) {
+		List<FotoClinica.Tratamiento> vigentes = tratamientos.listarVigentes(organizationId, sesionId)
+				.stream()
+				.map(tratamiento -> new FotoClinica.Tratamiento(
+						tratamiento, parametros.listarDe(organizationId, tratamiento.getId())))
+				.toList();
+		return new FotoClinica(vigentes, mediciones.listarDeSesion(organizationId, sesionId));
 	}
 
 	private SesionView conPrevia(Sesion sesion, long organizationId) {

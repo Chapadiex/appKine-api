@@ -285,8 +285,17 @@ public class SesionController {
 					**La enmienda no vuelve a disparar nada economico.** No se devenga deuda ni \
 					se consume autorizacion: ninguno de los campos enmendables los afecta.
 
+					**Tratamientos y mediciones tambien se enmiendan (C-6)**, con `tratamientos` \
+					y `mediciones`: listas completas de lo que tiene que quedar. La version nueva \
+					lleva la foto de lo que quedo y la anterior conserva lo que habia. Lo que no \
+					se puede cambiar es **el conjunto de practicas realizadas**: eligieron al \
+					cierre que autorizacion se consumio, y cambiarlas es una compensacion en \
+					M17 (409 `enmienda-cambia-practicas`).
+
 					**Es un reemplazo completo, no un parche.** Un campo ausente significa "queda \
-					vacio", no "dejalo como estaba": la pantalla manda el formulario entero.
+					vacio", no "dejalo como estaba": la pantalla manda el formulario entero. La \
+					unica excepcion son `tratamientos` y `mediciones`: **ausentes no se tocan**, \
+					para que un cliente que no los conoce no pueda vaciarlos por omision.
 
 					**Solo el profesional de la sesion puede enmendar.** No es cuestion de \
 					permiso —dos profesionales de la misma sede tienen el mismo \
@@ -312,7 +321,9 @@ public class SesionController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "La sesion todavia esta abierta (`sesion-no-cerrada`: se guarda, "
-							+ "no se enmienda), la atiende otro profesional, o la version quedo vieja",
+							+ "no se enmienda), la atiende otro profesional, la version quedo vieja, "
+							+ "o la enmienda cambiaria las practicas realizadas "
+							+ "(`enmienda-cambia-practicas`)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<SesionResponse> enmendar(
 			@PathVariable long consultorioId,
@@ -321,7 +332,8 @@ public class SesionController {
 
 		return ResponseEntity.ok(SesionResponse.de(sesionService.enmendar(
 				apiActor.current(), consultorioId, sesionId,
-				request.aDominio(), request.motivo(), request.version())));
+				request.aDominio(), request.tratamientosADominio(), request.medicionesADominio(),
+				request.motivo(), request.version())));
 	}
 
 	@GetMapping("/{sesionId}/versiones")

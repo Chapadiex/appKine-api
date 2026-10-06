@@ -344,8 +344,11 @@ public class ConsultorioController {
 					operativamente muerta, recuperable solo con intervencion manual. Es una \
 					restriccion agregada al comportamiento del requerimiento, decidida \
 					explicitamente.
-					- consultorio-has-active-references: reservado. Hoy no lo emite nadie; lo \
-					emitira el modulo de agenda cuando existan turnos futuros sobre la sede.
+					- consultorio-has-active-references: la sede tiene turnos pendientes \
+					(reservados, confirmados o en espera, y que todavia no terminaron, incluido \
+					el que esta en curso). El cuerpo trae el tipo turnos-futuros y cuantos son. \
+					La baja no cancela esos turnos en cascada: hay que resolverlos antes, uno por \
+					uno, y recien ahi la sede se puede dar de baja.
 
 					Exige consultorio:manage con alcance ORGANIZACION, o sea que hoy solo un \
 					ORG_ADMIN puede dar de baja una sede. Es mas estricto que la lectura literal \

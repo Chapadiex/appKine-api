@@ -36,6 +36,11 @@ mayoría esperando, así que acá se reemplaza por **dependencias explícitas en
 | Última migración | `V64`. La próxima libre es **`V65`** |
 | Contrato | `0.44.0`, cliente del frontend regenerado contra `0.44.0` |
 
+> **Al 06/10/2026** (`main` = `d110aaf`, PR #39): `V55` con `NO_APLICA` resuelto por C-1 (`V65`);
+> `cuentaCorriente` y `sumarAnuladoEnElReporte` resueltos por F-1 y G-2; última migración **`V69`**;
+> contrato **`0.54.0`**, con el cliente del frontend en `0.46.0`. `reporte:read` sigue abierto
+> (G-1, espera DU-3). La tabla de arriba queda como foto del 02/10.
+
 ## 3. Reglas de convivencia — leer antes de tomar un paquete
 
 Estas reglas existen porque el proyecto **ya pagó** cada una (ver `CLAUDE.md` §7).
@@ -100,13 +105,13 @@ Ninguna se inventa en silencio: cada una sale como ADR o DP escrita (`AGENT.md` 
 
 | # | Decisión | Desbloquea | Urgencia |
 |---|---|---|---|
-| **DU-1** | **Puente Oferta↔Práctica** (`oferta.practica_id` o `plan_item.practica_id`) | A-9 → B-3, C-4, F-4. **Ruta crítica de la economía** | **ola 0** |
+| ~~**DU-1**~~ | ~~**Puente Oferta↔Práctica**~~ → **resuelta: DP-11**, tabla N:M `oferta_practica` con práctica principal (06/10/2026) | A-9 → B-3, C-4, F-4. **Ruta crítica de la economía** | **ola 0** |
 | **DU-2** | Bootstrap del `PLATFORM_ADMIN` de `V15` (toca ADR-0018) | A-4 → A-7, B-catálogo global | ola 0 |
 | **DU-3** | Alcance de `reporte:read` para `PROFESIONAL` (¿solo lo suyo?) | G-1 (arreglo rápido) | ola 0 |
-| **DU-4** | ¿N tratamientos consumen N unidades de autorización o 1? | C-4, F-4 | ola 1 |
+| ~~**DU-4**~~ | ~~¿N tratamientos consumen N unidades o 1?~~ → **resuelta: DP-12**, una unidad por autorización involucrada (06/10/2026) | C-4, F-4 | ola 1 |
 | **DU-5** | Unificar `concurrent-modification` y `conflict` | G-5 (hallazgo alto 07.07); cambia respuestas de varios módulos | ola 1 |
 | **DU-6** | Alcance `OWN` / `paciente:read` (vínculo cuenta↔persona) | B-8, G-5; autoservicio de E | ola 1 |
-| **DU-7** | Reversión del consumo ante sesión anulada: automática o manual | C-4 | ola 1 |
+| ~~**DU-7**~~ | ~~Reversión del consumo: automática o manual~~ → **resuelta: DP-13**, manual con alerta al anular la deuda (06/10/2026) | C-4 | ola 1 |
 | **DU-8** | Historial de autorización: tabla propia o auditoría | B-4 | ola 1 |
 | **DU-9** | ¿La recepción tiene máquina de estados propia (DP-05) o se documenta el desvío? | E-4 | ola 1 |
 | **DU-10** | `egreso:manage` propio o `caja:operate`; adjunto binario del egreso (¿storage a `platform.spi`?) | F-5 | ola 2 |
@@ -120,15 +125,19 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 
 | Versión | Paquete | Contenido previsto |
 |---|---|---|
-| `V65` | C-1 | Recrear `ck_tratamiento_lateralidad` con `NO_APLICA` |
-| `V66` | A-9 | Puente Oferta↔Práctica (según DU-1) |
-| `V67` | C-5 | Unique de caso activo (RN-M10-002) |
+| `V65` | C-1 | **Usada**: `V65__c1_tratamiento_lateralidad_no_aplica.sql` — recrea `ck_tratamiento_lateralidad` con `NO_APLICA` |
+| `V66` | A-9 | **Vacía**: quedó por debajo de migraciones ya mergeadas; A-9 usa `V75`. No se reusa |
+| `V67` | C-5 | **Vacía**: C-5 no la usó, porque RN-M10-002 admite varios casos activos y el unique sería un defecto. No se reusa |
 | `V68` | B-4 | Historial de estados de autorización (si DU-8 = tabla) |
 | `V69` | F-3 | **Usada**: `V69__m19_anticipos_y_reintegro.sql` — saldo a favor y anulación en `cobro`, imputación posterior en `cobro_imputacion`, tabla `cobro_reintegro`, origen `REINTEGRO` en `movimiento_caja` |
-| `V70` | E-3 | **Usada**: `V70__m12_serie_de_turnos.sql` — tabla `turno_serie` (regla semanal, idempotencia) y `turno.serie_id` nullable con `fk_turno_turno_serie` e `ix_turno_serie_inicio` |
-| `V71` | C-6 | `sesion_version` con tratamientos y mediciones |
+| `V70` | E-3 | **Vacía**: E-3 la reservó y se renumeró a `V74` al integrar, porque `V71` (C-6) entró antes. No se reusa |
+| `V71` | C-6 | **Usada**: `V71__c6_sesion_version_tratamientos_y_mediciones.sql` — tablas `sesion_version_tratamiento`, `sesion_version_tratamiento_parametro` y `sesion_version_medicion` (foto inmutable por version) con backfill desde el estado vivo |
 | `V72` | F-4 | Obligación del financiador, coseguro y snapshot de convenio |
-| `V73`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
+| `V73` | E-5 | **Vacía / liberada**: E-5 la reservó y entró sin migración (`notification_outbox.tipo` es `VARCHAR(40)` sin CHECK). No se reusa |
+| `V74` | E-3 | **Usada**: `V74__m12_serie_de_turnos.sql` (nació como `V70` y se renumeró al integrar: `V71` ya estaba en `main` y Flyway corre sin `outOfOrder`) — tabla `turno_serie` (regla semanal, idempotencia) y `turno.serie_id` nullable con `fk_turno_turno_serie` e `ix_turno_serie_inicio` |
+| `V75` | A-9 | Puente Oferta↔Práctica: tabla `oferta_practica` (DP-11). Reemplaza a `V66` |
+| `V76` | C-4 | Consumo de autorizaciones (DP-12, DP-13), si la necesita |
+| `V77`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
 
 ## 7. Paquetes de trabajo
 
@@ -141,41 +150,41 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 |---|---|---|---|---|---|
 | L-0 | Cambiar la rama por defecto de GitHub a `main` en los dos repos; protección de rama | — | S | — | F0-F1 |
 | L-1 | Sesión de decisiones DU-1, DU-2, DU-3 → ADR/DP | docs | S | — | 00-orden |
-| C-1 | Migración `V65`: CHECK de lateralidad con `NO_APLICA`, IT que lo reproduce primero | api | S | — | F6 |
+| ~~C-1~~ | ~~Migración `V65`: CHECK de lateralidad con `NO_APLICA`, IT que lo reproduce primero~~ — hecho (`V65`, antes del 06/10) | api | S | — | F6 |
 | G-1 | Otorgar `reporte:read` según DU-3, con test | api | S | DU-3 | F8 |
-| F-1 | Verificar y arreglar `cuentaCorriente` (filtro por sede + paginación fija) | api | S | — | F7 |
-| G-2 | Verificar y arreglar `sumarAnuladoEnElReporte` sin `deletedAt` | api | S | — | F8 |
-| A-2 | ADR que ratifica `encounter` como dueño de la Sesión; `AGENT.md` §4 | docs | S | — | F0-F1 |
+| ~~F-1~~ | ~~Verificar y arreglar `cuentaCorriente` (filtro por sede + paginación fija)~~ — hecho (#14, 06/10) | api | S | — | F7 |
+| ~~G-2~~ | ~~Verificar y arreglar `sumarAnuladoEnElReporte` sin `deletedAt`~~ — hecho (#13, 06/10) | api | S | — | F8 |
+| ~~A-2~~ | ~~ADR que ratifica `encounter` como dueño de la Sesión; `AGENT.md` §4~~ — hecho (ADR-0024, antes del 06/10) | docs | S | — | F0-F1 |
 
 ### Ola 1 — sin dependencias pendientes: arrancan todos a la vez
 
 | ID | Qué | Repo | Tam. | Dep. | Ficha |
 |---|---|---|---|---|---|
-| **A-3** | `POST /notifications/{id}/retry` con permiso administrativo y filtro por tenant | api | S | — | F0-F1 |
-| A-5 | Slice tests de `MembershipController`, `AuditEventController` y plataforma; unitarios de los 4 servicios de F2 | api | M | — | F0-F1, F2 |
+| ~~**A-3**~~ | ~~`POST /notifications/{id}/retry` con permiso administrativo y filtro por tenant~~ — hecho (#15, contrato 0.47.0, 06/10) | api | S | — | F0-F1 |
+| ~~A-5~~ | ~~Slice tests de `MembershipController`, `AuditEventController` y plataforma; unitarios de los 4 servicios de F2~~ — hecho (#25 slices, #26 unitarios de F2, 06/10) | api | M | — | F0-F1, F2 |
 | A-6 | E2E: crear organización; registro → activación → login → reset con canje real; acceso denegado y auditoría | web | M | — | F0-F1 |
 | A-8 | CA-M03-002: primer box + horario general en el alta de sede | api + web | M | — | F2 |
-| **B-1** | Búsqueda por número de afiliado (RF-M07-001) | api + web | S | — | F3 |
-| **B-2** | `spi` "cobertura vigente de esta persona para esta práctica en esta fecha" | api | M | — | F3 |
-| B-5 | Contribuyente de cobertura al Paciente 360 | api + web | S | — | F3 |
+| ~~**B-1**~~ | ~~Búsqueda por número de afiliado (RF-M07-001)~~ — hecho (contrato 0.46.0, antes del 06/10) | api + web | S | — | F3 |
+| ~~**B-2**~~ | ~~`spi` "cobertura vigente de esta persona para esta práctica en esta fecha"~~ — hecho (`cfa85d8`, antes del 06/10) | api | M | — | F3 |
+| B-5 | Contribuyente de cobertura al Paciente 360 — **backend hecho** (#34, 06/10, sin cambio de contrato); falta la pantalla | api + web | S | — | F3 |
 | B-6 | E2E persona → paciente → cobertura → orden → autorización → vencimiento; `AdjuntoConcurrenteIT` | web + api | M | — | F3 |
-| **C-2** | `HistoriaClinicaController`: obtener-o-abrir idempotente por persona, resumen, antecedentes | api | M | — | F4 |
-| **C-3** | `RelacionAsistencialProbe` real sobre turnos y sesiones (implementación fuera de `clinical`, vía `spi`) | api | M | — | F4 |
-| C-5 | 04.03 unique de caso activo (`V67`); 04.04 el plan no se activa sin ítems | api | S | — | F4 |
-| C-7 | ITs de tratamientos (39–43), mediciones y enmiendas; auditoría `SESION_AMENDED` | api | M | C-1 | F6 |
+| ~~**C-2**~~ | ~~`HistoriaClinicaController`: obtener-o-abrir idempotente por persona, resumen, antecedentes~~ — hecho (contrato 0.45.0, antes del 06/10) | api | M | — | F4 |
+| ~~**C-3**~~ | ~~`RelacionAsistencialProbe` real sobre turnos y sesiones (implementación fuera de `clinical`, vía `spi`)~~ — hecho (antes del 06/10) | api | M | — | F4 |
+| ~~C-5~~ | ~~04.03 unique de caso activo (`V67`); 04.04 el plan no se activa sin ítems~~ — hecho sin `V67`: RN-M10-002 admite varios casos activos (antes del 06/10) | api | S | — | F4 |
+| ~~C-7~~ | ~~ITs de tratamientos (39–43), mediciones y enmiendas; auditoría `SESION_AMENDED`~~ — hecho (antes del 06/10) | api | M | C-1 | F6 |
 | **D-a** | Timeline de la HC (cursor, entradas, adjuntos con preview seguro) + E2E | web | L | — | F4 |
 | **D-b** | Casos: listado, alta, detalle, cierre, reapertura, equipo + E2E | web | L | — | F4 |
 | D-c | Plan de tratamiento: editor, versiones, avance + E2E | web | L | — | F4 |
 | D-d | Mediciones y tratamientos realizados en `atencion-page` + E2E | web | M | C-1 | F6 |
-| **E-1** | Implementar las 4 sondas de impacto de F2 contra turnos reales, con ITs que devuelvan 409 | api | M | — | F2 |
-| E-2 | Reescribir los E2E de agenda contra backend real; E2E de ciclo y recepción; IT de `ReservaProbeSobreTurnos` | web + api | M | — | F5 |
-| E-5 | Notificaciones de reserva, cancelación y reprogramación por outbox (RF-M26-002/003) | api | M | — | F5 |
-| F-2 | Defectos de `billing` reportados el 01/10 (`debitar`, advice propio, CSV, `FINANCIADOR_DISTINTO` → cambio de contrato) | api | M | — | F7 |
-| ~~**F-3**~~ | ~~Anticipos, imputación posterior, anulación y reintegro (`V69`)~~ — hecho (backend) | api | L | — | F7 |
+| ~~**E-1**~~ | ~~Implementar las 4 sondas de impacto de F2 contra turnos reales, con ITs que devuelvan 409~~ — hecho (#38, 06/10) | api | M | — | F2 |
+| E-2 | Reescribir los E2E de agenda contra backend real; E2E de ciclo y recepción; ~~IT de `ReservaProbeSobreTurnos`~~ (hecho: `AgendaDescuentaReservasIT`, #22, 06/10) | web + api | M | — | F5 |
+| ~~E-5~~ | ~~Notificaciones de reserva, cancelación y reprogramación por outbox (RF-M26-002/003)~~ — hecho (#37, 06/10) | api | M | — | F5 |
+| ~~F-2~~ | ~~Defectos de `billing` reportados el 01/10 (`debitar`, advice propio, CSV, `FINANCIADOR_DISTINTO` → cambio de contrato)~~ — hecho (#16, #17, #18 con contrato 0.48.0, 06/10) | api | M | — | F7 |
+| ~~**F-3**~~ | ~~Anticipos, imputación posterior, anulación y reintegro (`V69`)~~ — hecho en el backend (#39, contrato 0.54.0, 06/10); sin pantalla | api | L | — | F7 |
 | F-6 | Pantallas de caja diaria + E2E cierre → deuda → cobro → caja | web | L | — | F7 |
 | F-7 | Pantallas de presentaciones (bandejas, armado, factura, débito, pagos) | web | L | — | F7 |
-| F-8 | ITs diferidos 33–48 (caja concurrente, presentaciones, egresos) | api | M | — | F7 |
-| G-3 | Dockerfile de los dos repos + SBOM | los dos | M | — | F8 |
+| F-8 | ITs diferidos 33–48 (caja concurrente, presentaciones, egresos) — **parcial** (06/10): corridos 33, 34 (#28), 37, 39, 40 (#30), 41, 42, 45, 46, 48 (#24) y 43, 47 (#19); faltan 35, 36, 38 y 44 | api | M | — | F7 |
+| G-3 | Dockerfile de los dos repos + SBOM — **backend hecho** (#29, 06/10: Dockerfile, SBOM CycloneDX, job `imagen` del CI); falta el del frontend | los dos | M | — | F8 |
 | G-4 | Observabilidad: logging JSON con correlación, Micrometer/Prometheus, OpenTelemetry | api | L | — | F8 |
 | G-6 | Sonar, Dependabot/OWASP, reglas JaCoCo `PACKAGE` | los dos | S | L-0 | F0-F1, F8 |
 | G-7 | a11y: WCAG 1.4.11, `:hover`/`:focus-visible`, foco por teclado | web | M | — | F8 |
@@ -211,7 +220,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | C-9 | Gate RF-M10-007: caso obligatorio al reservar/atender, con ventana de migración | api + web | L | C-2, D-b, E-3 | F4, F5, F6 |
 | E-6 | Prepago de recepción como anticipo | api + web | M | E-4, F-3 | F5 |
 | G-10 | Carga con k6 contra los SLO de ADR-0016; LCP del frontend | los dos | M | G-4 | F8 |
-| G-11 | Cobertura de vuelta a 0,80 (cada carril sube la de sus módulos; G vigila el gate) | api | M | ola 2 | F8 |
+| G-11 | Cobertura de vuelta a 0,80 (cada carril sube la de sus módulos; G vigila el gate) — **avance** (06/10): unitarios de `activity` (#31) y `encounter` (#32) | api | M | ola 2 | F8 |
 
 ### Ola 4 — gate del MVP (todo el equipo)
 

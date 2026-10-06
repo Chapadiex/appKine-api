@@ -1,6 +1,7 @@
 package com.akine.encounter.application;
 
 import com.akine.encounter.domain.LateralidadMedicion;
+import com.akine.encounter.domain.MedicionEnmendada;
 import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.SesionMedicion;
 import com.akine.encounter.domain.ValorMedido;
@@ -284,6 +285,62 @@ class MedicionServiceTest {
 		ComparacionDeMedicionesView vista = service.comparar(actor, CONSULTORIO_ID, SESION_ID);
 
 		assertThat(vista).isNotNull();
+	}
+
+	// =================================================================================
+	// C-6 — enmienda de una sesion cerrada
+	// =================================================================================
+
+	@Test
+	@DisplayName("C-6: una medicion que no cambio no se reescribe, y la que falta se quita")
+	void la_enmienda_solo_toca_lo_que_cambia() {
+		// Reescribir la que no cambio movería su autoria al que enmienda, y la foto de la version
+		// nueva le atribuiria una medida que no toco. "5" contra "5.000" es la misma medida.
+		SesionMedicion igual = medicionExistente();
+		SesionMedicion quitada = new SesionMedicion(ORG_ID, SESION_ID,
+				definicion(true, BigDecimal.ZERO, BigDecimal.TEN), LateralidadMedicion.IZQUIERDA,
+				new ValorMedido(new BigDecimal("3"), null, null), null, Instant.EPOCH, CUENTA_PROPIA);
+		given(mediciones.listarDeSesion(ORG_ID, SESION_ID)).willReturn(List.of(igual, quitada));
+
+		service.aplicarEnmienda(actor, sesionAbierta(), List.of(new MedicionEnmendada(
+				DEFINICION_ID, LateralidadMedicion.DERECHA,
+				new ValorMedido(new BigDecimal("5.000"), null, null), null)), Instant.EPOCH);
+
+		verify(mediciones).delete(quitada);
+		verify(mediciones, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("C-6: corregir una medicion cuya definicion se dio de baja se puede; agregar una nueva no")
+	void la_enmienda_y_la_definicion_inactiva() {
+		// La baja del catalogo no cascadea (06.03): lo unico que impide es registrar NUEVAS.
+		given(definiciones.find(ORG_ID, DEFINICION_ID))
+				.willReturn(Optional.of(definicion(false, BigDecimal.ZERO, BigDecimal.TEN)));
+		SesionMedicion existente = medicionExistente();
+		given(mediciones.listarDeSesion(ORG_ID, SESION_ID)).willReturn(List.of(existente));
+
+		service.aplicarEnmienda(actor, sesionAbierta(), List.of(new MedicionEnmendada(
+				DEFINICION_ID, LateralidadMedicion.DERECHA,
+				new ValorMedido(new BigDecimal("8"), null, null), "corregida")), Instant.EPOCH);
+
+		assertThat(existente.getValorNumerico()).isEqualByComparingTo("8");
+		verify(mediciones).save(existente);
+
+		assertThatThrownBy(() -> service.aplicarEnmienda(actor, sesionAbierta(), List.of(
+				new MedicionEnmendada(DEFINICION_ID, LateralidadMedicion.DERECHA,
+						new ValorMedido(new BigDecimal("8"), null, null), null),
+				new MedicionEnmendada(DEFINICION_ID, LateralidadMedicion.IZQUIERDA,
+						new ValorMedido(new BigDecimal("8"), null, null), null)), Instant.EPOCH))
+				.isInstanceOf(MedicionDefinicionInactivaException.class);
+	}
+
+	@Test
+	@DisplayName("C-6: la enmienda valida el rango igual que el registro")
+	void la_enmienda_valida_el_rango() {
+		assertThatThrownBy(() -> service.aplicarEnmienda(actor, sesionAbierta(), List.of(
+				new MedicionEnmendada(DEFINICION_ID, LateralidadMedicion.DERECHA,
+						new ValorMedido(new BigDecimal("11"), null, null), null)), Instant.EPOCH))
+				.isInstanceOf(MedicionFueraDeRangoException.class);
 	}
 
 	// =================================================================================

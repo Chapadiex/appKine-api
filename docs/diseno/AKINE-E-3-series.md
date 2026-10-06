@@ -2,7 +2,7 @@
 
 > Paquete **E-3** de `docs/fases/01-trabajo-en-paralelo.md` (grupo G5, carril E). Cierra el ítem
 > "Modelo de serie (05.03)" de `docs/fases/F5-agenda-y-recepcion.md`.
-> Migración reservada: **`V70`**. Contrato: **0.57.0**.
+> Migración: **`V74`** (reservada como `V70`; renumerada al integrar porque `V71` entró antes). Contrato: **0.57.0**.
 
 ## 1. Qué se cubre y de dónde sale
 

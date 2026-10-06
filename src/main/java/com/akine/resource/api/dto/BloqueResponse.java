@@ -11,18 +11,16 @@ import java.time.LocalTime;
 /**
  * Un bloque recurrente de disponibilidad tal como lo publica la API (RF-M05-003, RF-M05-005).
  *
- * <h2>{@code turnosAfectados} responde hoy siempre 0, y no es un bug</h2>
+ * <h2>Que cuenta {@code turnosAfectados}</h2>
  *
- * <p>Es el mismo cero estructural que {@code EspacioAvailabilityResponse} declara para
- * {@code lugaresComprometidos}, y por el mismo motivo: los turnos son del modulo
- * {@code scheduling} (F5, M12), que todavia no existe. El servicio SI consulta la sonda de
- * impacto en la edicion y en la baja —no es codigo muerto esperando a F5—, pero la unica
- * implementacion registrada responde "ningun impacto".
+ * <p>En la edicion y en la baja, los turnos pendientes de ese profesional en esa sede que
+ * empiezan en la ventana del cambio, segun {@code scheduling.infrastructure.DisponibilidadImpactoSobreTurnos}
+ * (paquete E-1). En el alta es cero por construccion. <b>Es una cota superior</b>: la sonda no
+ * distingue un turno que cae en el bloque que se recorta de uno que cae en otro bloque vigente
+ * del mismo profesional, asi que puede avisar de mas, nunca de menos.
  *
- * <p>Cuando F5 traiga la implementacion real este numero deja de ser cero <b>sin ningun cambio
- * de contrato</b>: un cliente escrito hoy sigue funcionando. Lo que NO hay que hacer es leer
- * "cero conflictos" como "se puede cambiar sin consecuencias": eso va a dejar turnos huerfanos
- * en cuanto exista la agenda, y el bug no va a parecer de esta etapa.
+ * <p>El impacto se informa y no bloquea (RN-M05-004): la pantalla decide que hacer con esos
+ * turnos.
  *
  * <h2>La medianoche viaja como {@code "24:00"}</h2>
  *
@@ -80,15 +78,16 @@ public record BloqueResponse(
 				example = "0")
 		long version,
 
-		@Schema(description = "Turnos futuros que este cambio dejaria en conflicto (RN-M05-004). "
-				+ "SIEMPRE 0 en esta version del contrato: el modulo de agenda no existe todavia. "
-				+ "En un ALTA es 0 por construccion —agregar disponibilidad no deja ningun turno "
-				+ "afuera—; en una edicion o una baja va a dejar de ser 0 cuando exista F5, sin "
-				+ "cambiar este contrato", example = "0")
+		@Schema(description = "Turnos futuros que este cambio podria dejar en conflicto "
+				+ "(RN-M05-004): los pendientes de ese profesional en esa sede que empiezan entre "
+				+ "ahora y el fin de vigencia mas lejano entre el estado anterior y el nuevo, con un "
+				+ "horizonte de 90 dias si no hay fin. Es una cota superior: puede incluir turnos de "
+				+ "otros bloques vigentes del mismo profesional. En un ALTA es 0 por construccion "
+				+ "—agregar disponibilidad no deja ningun turno afuera—", example = "0")
 		long turnosAfectados,
 
 		@Schema(description = "Instante del primero de esos turnos, para que la pantalla pueda "
-				+ "decir \"desde el martes\". null cuando no hay ninguno, que es siempre hoy")
+				+ "decir \"desde el martes\". null cuando no hay ninguno")
 		Instant primerTurnoAfectado) {
 
 	/**

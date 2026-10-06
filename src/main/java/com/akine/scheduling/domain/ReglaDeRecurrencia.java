@@ -79,7 +79,7 @@ public record ReglaDeRecurrencia(
 		return resultado;
 	}
 
-	/** Dias ISO separados por coma, de lunes a domingo: {@code "1,4"}. Es lo que guarda V70. */
+	/** Dias ISO separados por coma, de lunes a domingo: {@code "1,4"}. Es lo que guarda V74. */
 	public String diasComoTexto() {
 		return dias.stream()
 				.sorted()
