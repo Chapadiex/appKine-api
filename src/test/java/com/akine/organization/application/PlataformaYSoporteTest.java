@@ -11,6 +11,8 @@ import com.akine.organization.domain.port.SupportAccessRepositoryPort;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.identity.AccountIdentity;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -28,6 +30,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static com.akine.organization.application.Fixtures.ACCOUNT_ID;
@@ -265,11 +268,20 @@ class PlataformaYSoporteTest {
 		@Mock
 		private PlatformRoleRepositoryPort platformRoleRepository;
 
+		@Mock
+		private AccountIdentityDirectory cuentas;
+
 		@InjectMocks
 		private PlatformRoleService servicio;
 
 		private PlatformRoleService servicioReal() {
-			return new PlatformRoleService(platformRoleRepository, permissionEvaluator, auditTrail);
+			return new PlatformRoleService(
+					platformRoleRepository, permissionEvaluator, auditTrail, cuentas);
+		}
+
+		private void laCuentaDestinoExiste() {
+			given(cuentas.identidadesDe(List.of(OTRA_CUENTA))).willReturn(Map.of(OTRA_CUENTA,
+					new AccountIdentity(OTRA_CUENTA, "Sintetica DePrueba", "otra@ejemplo.test")));
 		}
 
 		private void esAdminDePlataforma(boolean loEs) {
@@ -294,6 +306,7 @@ class PlataformaYSoporteTest {
 		@DisplayName("Otorgar exige motivo y audita SIN tenant: es un evento de plataforma")
 		void otorgar_audita_sin_tenant() {
 			esAdminDePlataforma(true);
+			laCuentaDestinoExiste();
 			given(platformRoleRepository.saveAndFlush(any()))
 					.willAnswer(i -> Fixtures.conId(i.getArgument(0), 5L));
 
@@ -323,9 +336,22 @@ class PlataformaYSoporteTest {
 		}
 
 		@Test
+		@DisplayName("A una cuenta que no existe no se le otorga: 400, sin fila y sin auditoria")
+		void cuenta_inexistente_no_se_otorga() {
+			esAdminDePlataforma(true);
+			given(cuentas.identidadesDe(List.of(OTRA_CUENTA))).willReturn(Map.of());
+
+			assertThatThrownBy(() -> servicioReal().grant(ACCOUNT_ID, OTRA_CUENTA, "motivo"))
+					.isInstanceOf(IllegalArgumentException.class)
+					.hasMessageContaining("no existe");
+			verifyNoInteractions(platformRoleRepository, auditTrail);
+		}
+
+		@Test
 		@DisplayName("Otorgarlo dos veces choca contra el unique y no es un 500")
 		void otorgarlo_dos_veces_es_conflicto() {
 			esAdminDePlataforma(true);
+			laCuentaDestinoExiste();
 			given(platformRoleRepository.saveAndFlush(any()))
 					.willThrow(new DataIntegrityViolationException("uk_platform_role_activo"));
 
