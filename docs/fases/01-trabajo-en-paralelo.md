@@ -105,13 +105,13 @@ Ninguna se inventa en silencio: cada una sale como ADR o DP escrita (`AGENT.md` 
 
 | # | Decisión | Desbloquea | Urgencia |
 |---|---|---|---|
-| **DU-1** | **Puente Oferta↔Práctica** (`oferta.practica_id` o `plan_item.practica_id`) | A-9 → B-3, C-4, F-4. **Ruta crítica de la economía** | **ola 0** |
+| ~~**DU-1**~~ | ~~**Puente Oferta↔Práctica**~~ → **resuelta: DP-11**, tabla N:M `oferta_practica` con práctica principal (06/10/2026) | A-9 → B-3, C-4, F-4. **Ruta crítica de la economía** | **ola 0** |
 | **DU-2** | Bootstrap del `PLATFORM_ADMIN` de `V15` (toca ADR-0018) | A-4 → A-7, B-catálogo global | ola 0 |
 | **DU-3** | Alcance de `reporte:read` para `PROFESIONAL` (¿solo lo suyo?) | G-1 (arreglo rápido) | ola 0 |
-| **DU-4** | ¿N tratamientos consumen N unidades de autorización o 1? | C-4, F-4 | ola 1 |
+| ~~**DU-4**~~ | ~~¿N tratamientos consumen N unidades o 1?~~ → **resuelta: DP-12**, una unidad por autorización involucrada (06/10/2026) | C-4, F-4 | ola 1 |
 | **DU-5** | Unificar `concurrent-modification` y `conflict` | G-5 (hallazgo alto 07.07); cambia respuestas de varios módulos | ola 1 |
 | **DU-6** | Alcance `OWN` / `paciente:read` (vínculo cuenta↔persona) | B-8, G-5; autoservicio de E | ola 1 |
-| **DU-7** | Reversión del consumo ante sesión anulada: automática o manual | C-4 | ola 1 |
+| ~~**DU-7**~~ | ~~Reversión del consumo: automática o manual~~ → **resuelta: DP-13**, manual con alerta al anular la deuda (06/10/2026) | C-4 | ola 1 |
 | **DU-8** | Historial de autorización: tabla propia o auditoría | B-4 | ola 1 |
 | **DU-9** | ¿La recepción tiene máquina de estados propia (DP-05) o se documenta el desvío? | E-4 | ola 1 |
 | **DU-10** | `egreso:manage` propio o `caja:operate`; adjunto binario del egreso (¿storage a `platform.spi`?) | F-5 | ola 2 |
@@ -126,7 +126,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | Versión | Paquete | Contenido previsto |
 |---|---|---|
 | `V65` | C-1 | **Usada**: `V65__c1_tratamiento_lateralidad_no_aplica.sql` — recrea `ck_tratamiento_lateralidad` con `NO_APLICA` |
-| `V66` | A-9 | Puente Oferta↔Práctica (según DU-1) |
+| `V66` | A-9 | Puente Oferta↔Práctica: tabla `oferta_practica` (DP-11) |
 | `V67` | C-5 | **Vacía**: C-5 no la usó, porque RN-M10-002 admite varios casos activos y el unique sería un defecto. No se reusa |
 | `V68` | B-4 | Historial de estados de autorización (si DU-8 = tabla) |
 | `V69` | F-3 | **Usada**: `V69__m19_anticipos_y_reintegro.sql` — saldo a favor y anulación en `cobro`, imputación posterior en `cobro_imputacion`, tabla `cobro_reintegro`, origen `REINTEGRO` en `movimiento_caja` |
