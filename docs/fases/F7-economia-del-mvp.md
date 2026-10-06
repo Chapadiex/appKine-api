@@ -74,6 +74,7 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 
 ### Tests
 - [ ] ITs de los escenarios diferidos 33–48 (caja concurrente, presentaciones, egresos).
+  → parcial: 07.05 escenarios 41, 42, 45, 46 y 48, en `PagoEgresoConcurrenteIT`, `EgresoCicloDeCajaIT` y `EgresoAislamientoTenantIT`
 - [ ] E2E económicos: cierre → deuda → cobro → caja; presentación de punta a punta.
 
 > **En curso al 01/10:** la rama `akine-integracion-total` agregó unitarios de `ObligacionService`,
