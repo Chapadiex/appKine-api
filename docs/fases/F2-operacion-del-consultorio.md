@@ -63,7 +63,7 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 
 ### Tests
 - [ ] Unitarios de `ConsultorioService`, `EspacioService`, `CatalogoService`, `CatalogoSolicitudService` (hoy solo ITs).
-- [ ] IT del escenario diferido 20 (que la `@Version` forzada de 02.07 avance contra MySQL real).
+- [x] ~~IT del escenario diferido 20 (que la `@Version` forzada de 02.07 avance contra MySQL real).~~ → `HabilitacionesVersionForzadaIT`: avanza una sola vez y el segundo guardado choca.
 - [ ] ITs de baja y reducción de capacidad **con turnos reales**.
 - [ ] E2E de alta → baja por cada pantalla del tramo. **No hay ni uno.**
 
