@@ -56,6 +56,19 @@ class ConvenioYArancelTest {
 		}
 
 		@Test
+		@DisplayName("una moneda que no es un codigo ISO 4217 se rechaza, aunque tenga 3 letras")
+		void moneda_fuera_de_iso_4217() {
+			// "XYZ" pasa el @Size(3) del DTO; "PESOS" ni siquiera entra en la columna de 3 y
+			// terminaba en un error de base. Las dos tienen que ser un 400 con motivo.
+			assertThatThrownBy(() -> convenioConMoneda("XYZ"))
+					.isInstanceOf(IllegalArgumentException.class)
+					.hasMessageContaining("ISO 4217");
+			assertThatThrownBy(() -> convenioConMoneda("PESOS"))
+					.isInstanceOf(IllegalArgumentException.class)
+					.hasMessageContaining("ISO 4217");
+		}
+
+		@Test
 		@DisplayName("un tope mensual de cero no es 'sin tope': se rechaza")
 		void tope_cero_se_rechaza() {
 			// Sin tope pactado se expresa OMITIENDO el campo. Admitir cero dejaria en la base un
