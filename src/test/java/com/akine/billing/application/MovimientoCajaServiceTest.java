@@ -5,6 +5,7 @@ import com.akine.billing.domain.MedioDePago;
 import com.akine.billing.domain.MovimientoCaja;
 import com.akine.billing.domain.OrigenMovimiento;
 import com.akine.billing.domain.TipoMovimiento;
+import com.akine.billing.domain.exception.CajaCerradaException;
 import com.akine.billing.domain.exception.CajaNoAbiertaException;
 import com.akine.billing.domain.exception.MovimientoCajaNotAccessibleException;
 import com.akine.billing.domain.exception.MovimientoNoReversibleException;
@@ -119,6 +120,24 @@ class MovimientoCajaServiceTest {
 			assertThatThrownBy(() -> service.registrarManual(
 					actor, CONSULTORIO_ID, comando(TipoMovimiento.INGRESO, null)))
 					.isInstanceOf(CajaNoAbiertaException.class);
+
+			verify(movimientos, never()).save(any());
+		}
+
+		@Test
+		@DisplayName("Un ingreso que no mueve el saldo es caja-cerrada, aunque la relectura la vea abierta")
+		void ingreso_contra_jornada_que_cerro() {
+			// El WHERE de la suma no mira el saldo: cero filas solo puede ser que cerro. La
+			// relectura bajo REPEATABLE READ —el cobro— devuelve la foto vieja, ABIERTA, y antes
+			// eso terminaba en caja-saldo-insuficiente sobre un ingreso. Ver
+			// CierreDeCajaConcurrenteIT.
+			given(jornadas.sumarAlSaldo(anyLong(), anyLong(), any())).willReturn(0);
+			given(jornadas.findByIdInScope(ORG_ID, CONSULTORIO_ID, JORNADA_ID))
+					.willReturn(Optional.of(jornada()));
+
+			assertThatThrownBy(() -> service.registrarManual(
+					actor, CONSULTORIO_ID, comando(TipoMovimiento.INGRESO, null)))
+					.isInstanceOf(CajaCerradaException.class);
 
 			verify(movimientos, never()).save(any());
 		}
