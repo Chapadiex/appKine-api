@@ -48,6 +48,18 @@ public interface PresentacionRepository
 			@Param("consultorioId") long consultorioId,
 			@Param("presentacionId") long presentacionId);
 
+	/** Ver el puerto. Nativo para que el {@code FOR UPDATE} quede a la vista. */
+	@Override
+	@Query(value = """
+			SELECT id FROM presentacion
+			 WHERE id = :presentacionId
+			   AND organization_id = :organizationId
+			   FOR UPDATE
+			""", nativeQuery = true)
+	Long bloquearParaEditar(
+			@Param("organizationId") long organizationId,
+			@Param("presentacionId") long presentacionId);
+
 	/**
 	 * Nativo por la paginacion con {@code LIMIT/OFFSET} y por los filtros opcionales, que en JPQL
 	 * obligarian a varias consultas o a un criteria que nadie va a leer. Mismo criterio que

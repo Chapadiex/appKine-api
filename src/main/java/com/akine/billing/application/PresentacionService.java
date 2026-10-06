@@ -28,6 +28,7 @@ import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -77,6 +79,7 @@ public class PresentacionService {
 	private final CobroRepositoryPort cobros;
 	private final PresentacionNumeradorPort numerador;
 	private final PresentacionNumeradorIniciador numeradorIniciador;
+	private final ObligacionOcupadaConsulta ocupacion;
 	private final PresentacionAcceso acceso;
 	private final AuditTrail auditTrail;
 
@@ -88,6 +91,7 @@ public class PresentacionService {
 			CobroRepositoryPort cobros,
 			PresentacionNumeradorPort numerador,
 			PresentacionNumeradorIniciador numeradorIniciador,
+			ObligacionOcupadaConsulta ocupacion,
 			PresentacionAcceso acceso,
 			AuditTrail auditTrail) {
 
@@ -97,6 +101,7 @@ public class PresentacionService {
 		this.cobros = cobros;
 		this.numerador = numerador;
 		this.numeradorIniciador = numeradorIniciador;
+		this.ocupacion = ocupacion;
 		this.acceso = acceso;
 		this.auditTrail = auditTrail;
 	}
@@ -169,6 +174,8 @@ public class PresentacionService {
 		ConsultorioSnapshot sede = acceso.exigirSedeDelTenant(organizationId, consultorioId);
 		acceso.exigirOperar(actor, organizationId, consultorioId);
 
+		// ANTES de cargar la entidad: ver PresentacionRepositoryPort.bloquearParaEditar.
+		presentaciones.bloquearParaEditar(organizationId, presentacionId);
 		Presentacion presentacion = exigirPresentacion(organizationId, consultorioId, presentacionId);
 		exigirEditable(presentacion);
 
@@ -194,6 +201,7 @@ public class PresentacionService {
 		acceso.exigirSedeDelTenant(organizationId, consultorioId);
 		acceso.exigirOperar(actor, organizationId, consultorioId);
 
+		presentaciones.bloquearParaEditar(organizationId, presentacionId);
 		Presentacion presentacion = exigirPresentacion(organizationId, consultorioId, presentacionId);
 		exigirEditable(presentacion);
 
@@ -532,12 +540,33 @@ public class PresentacionService {
 			throw new ObligacionYaPresentadaException(obligacionId, vivo.getPresentacionId());
 		});
 
-		return items.save(new PresentacionItem(
-				organizationId,
-				presentacion.getId(),
-				obligacion,
-				obligacion.getDevengadaEn().atZone(ZoneId.of(sede.timezone())).toLocalDate(),
-				ahora));
+		try {
+			return items.save(new PresentacionItem(
+					organizationId,
+					presentacion.getId(),
+					obligacion,
+					obligacion.getDevengadaEn().atZone(ZoneId.of(sede.timezone())).toLocalDate(),
+					ahora));
+		} catch (DataIntegrityViolationException choque) {
+			// La ventana de la consulta de arriba: otro administrativo agrego la misma obligacion a
+			// otro lote entre que leimos y escribimos, y el unique sobre la columna generada lo
+			// freno. Sin esta traduccion el perdedor recibia el 409 generico `conflict`, sin el lote
+			// que la tiene, en vez del `obligacion-ya-presentada` que el contrato promete. Lo
+			// encontro PresentacionItemConcurrenteIT. El lote se lee en una transaccion aparte:
+			// esta sesion JPA ya fallo un insert y no se vuelve a tocar.
+			if (!indiceContiene(choque, "uk_presentacion_item_ocupa")) {
+				throw choque;
+			}
+			long lote = ocupacion.loteQueLaOcupa(organizationId, obligacionId)
+					.orElseThrow(() -> choque);
+			throw new ObligacionYaPresentadaException(obligacionId, lote);
+		}
+	}
+
+	/** Mismo criterio que {@code FinanciadorService}: el nombre del indice es la unica senal. */
+	private static boolean indiceContiene(DataIntegrityViolationException choque, String indice) {
+		String mensaje = choque.getMostSpecificCause().getMessage();
+		return mensaje != null && mensaje.toLowerCase(Locale.ROOT).contains(indice);
 	}
 
 	/**
