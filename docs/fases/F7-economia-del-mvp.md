@@ -65,7 +65,10 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 - [ ] 07.05: adjunto binario del comprobante (RF-M22-003). **Decisión pendiente**: ¿alcanza la
   referencia, o se extrae el storage a `platform.spi` (refactor de `person` y `clinical`)?
 - [ ] 07.05: `egreso:manage` propio o seguir reusando `caja:operate` (**decisión pendiente**).
-- [ ] 07.05: `totalPagadoVigente` no tiene uso.
+- [x] ~~07.05: `totalPagadoVigente` no tiene uso.~~ → lo usa `SaldoDeEgresoConfrontadoIT` para
+  confrontar `saldo_pendiente`, que es para lo que existía. Ese IT destapó que **anular un pago
+  por transferencia sin caja abierta daba 500** (NPE en el log de `MovimientoCajaService.revertir`);
+  corregido en el mismo cambio.
 
 ### Frontend
 - [ ] Caja diaria: abrir, movimientos, cerrar con diferencia, reversión.
