@@ -6,7 +6,10 @@ import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseProgramadaRep
 import com.akine.activity.domain.port.ActivityRepositoryPorts.InscripcionClaseRepositoryPort;
 import com.akine.activity.domain.exception.CapacidadNoAdmitidaException;
 import com.akine.activity.domain.exception.ClaseNoProgramableException;
+import com.akine.activity.domain.exception.HorarioNoDisponibleException;
+import com.akine.activity.domain.exception.OfertaNotAccessibleException;
 import com.akine.activity.domain.exception.RecursoOcupadoException;
+import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
@@ -355,6 +358,239 @@ class ClaseServiceTest {
 
 		assertThatThrownBy(() -> service.ver(actor(), SEDE_ID, 77L))
 				.isInstanceOf(ClaseNotAccessibleException.class);
+	}
+
+	// =================================================================================
+	// Programar: el camino feliz y la idempotencia
+	// =================================================================================
+
+	@Test
+	@DisplayName("Programar crea la clase con el box elegido, registra CREACION y audita")
+	void programar_feliz() {
+		var resultado = service.programar(actor(), SEDE_ID, OFERTA_ID, comando(8, null));
+
+		assertThat(resultado.creada()).isTrue();
+		assertThat(resultado.clase().espacioId()).isEqualTo(ESPACIO_ID);
+		assertThat(resultado.clase().capacidadEfectiva()).isEqualTo(8);
+		org.mockito.Mockito.verify(eventos).registrar(org.mockito.ArgumentMatchers.argThat(
+				evento -> evento.getTipo() == com.akine.activity.domain.TipoEventoClase.CREACION));
+		org.mockito.Mockito.verify(auditTrail).record(any());
+	}
+
+	@Test
+	@DisplayName("El reintento con la misma clave devuelve la clase existente sin crear otra")
+	void programar_reintento_idempotente() {
+		ProgramarClaseCommand comando = comando(8, "k-1");
+		ClaseProgramada existente = conId(new ClaseProgramada(ORG_ID, SEDE_ID, OFERTA_ID,
+				PROFESIONAL_ID, ESPACIO_ID, "Pilates - avanzado", INICIO, FIN, 8, CUENTA_ID,
+				Instant.now(), "k-1", comando.huella(SEDE_ID, OFERTA_ID)), 77L);
+		given(clases.findByIdempotencyKey(ORG_ID, "k-1")).willReturn(Optional.of(existente));
+
+		var resultado = service.programar(actor(), SEDE_ID, OFERTA_ID, comando);
+
+		assertThat(resultado.creada()).isFalse();
+		assertThat(resultado.clase().id()).isEqualTo(77L);
+		org.mockito.Mockito.verify(clases, org.mockito.Mockito.never()).save(any());
+	}
+
+	@Test
+	@DisplayName("La misma clave con otra capacidad es conflicto, no la clase anterior")
+	void programar_misma_clave_otro_pedido() {
+		ClaseProgramada existente = conId(new ClaseProgramada(ORG_ID, SEDE_ID, OFERTA_ID,
+				PROFESIONAL_ID, ESPACIO_ID, "Pilates - avanzado", INICIO, FIN, 8, CUENTA_ID,
+				Instant.now(), "k-1", comando(8, "k-1").huella(SEDE_ID, OFERTA_ID)), 77L);
+		given(clases.findByIdempotencyKey(ORG_ID, "k-1")).willReturn(Optional.of(existente));
+
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID, comando(6, "k-1")))
+				.isInstanceOf(IdempotencyKeyConflictException.class);
+	}
+
+	// =================================================================================
+	// Programar: oferta, profesional y espacio
+	// =================================================================================
+
+	@Test
+	@DisplayName("Una oferta de otro tenant es 404; una dada de baja no se programa")
+	void oferta_inaccesible_o_de_baja() {
+		given(ofertas.find(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(Optional.empty());
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID, comando(8, null)))
+				.isInstanceOf(OfertaNotAccessibleException.class);
+
+		given(ofertas.find(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(Optional.of(new OfertaSnapshot(
+				OFERTA_ID, ORG_ID, SEDE_ID, 3L, "Pilates", 60, 8, true, true, true, false, false,
+				LocalDate.of(2020, 1, 1), null, false)));
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID, comando(8, null)))
+				.isInstanceOf(ClaseNoProgramableException.class)
+				.hasMessageContaining("dada de baja");
+	}
+
+	@Test
+	@DisplayName("Una oferta que vence antes de la fecha de la clase no la sostiene")
+	void oferta_vencida_para_esa_fecha() {
+		given(ofertas.find(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(Optional.of(new OfertaSnapshot(
+				OFERTA_ID, ORG_ID, SEDE_ID, 3L, "Pilates", 60, 8, true, true, true, false, false,
+				LocalDate.of(2020, 1, 1), LocalDate.ofInstant(INICIO, java.time.ZoneOffset.UTC)
+						.minusDays(1), true)));
+
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID, comando(8, null)))
+				.isInstanceOf(ClaseNoProgramableException.class)
+				.hasMessageContaining("no esta vigente");
+	}
+
+	@Test
+	@DisplayName("La oferta exige profesional: sin profesional no hay clase")
+	void profesional_obligatorio() {
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID,
+				new ProgramarClaseCommand(INICIO, FIN, null, 8, "Pilates", null)))
+				.isInstanceOf(HorarioNoDisponibleException.class)
+				.hasMessageContaining("exige profesional");
+	}
+
+	@Test
+	@DisplayName("Si la oferta declara habilitados, un profesional fuera de la lista no dicta")
+	void profesional_no_habilitado() {
+		given(ofertas.profesionalesHabilitados(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(List.of(
+				new HabilitacionSnapshot(1L, PROFESIONAL_ID + 1, Instant.parse("2020-01-01T00:00:00Z"),
+						null, true)));
+
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID, comando(8, null)))
+				.isInstanceOf(HorarioNoDisponibleException.class)
+				.hasMessageContaining("no esta habilitado");
+	}
+
+	@Test
+	@DisplayName("Un profesional habilitado pero fuera de su franja no dicta la clase")
+	void profesional_fuera_de_franja() {
+		given(ofertas.profesionalesHabilitados(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(List.of(
+				new HabilitacionSnapshot(1L, PROFESIONAL_ID, Instant.parse("2020-01-01T00:00:00Z"),
+						null, true)));
+		// La franja termina media hora antes que la clase: no la cubre entera.
+		given(disponibilidad.efectiva(anyLong(), any(), anyLong(), any(), any()))
+				.willReturn(List.of(diaConFranjaDe(INICIO, FIN.minusSeconds(1800))));
+
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID, comando(8, null)))
+				.isInstanceOf(HorarioNoDisponibleException.class)
+				.hasMessageContaining("no atiende");
+	}
+
+	@Test
+	@DisplayName("Otra clase viva del mismo profesional en ese horario lo ocupa")
+	void otra_clase_ocupa_al_profesional() {
+		given(clases.findVivasDeProfesionalQueCruzan(ORG_ID, PROFESIONAL_ID, INICIO, FIN))
+				.willReturn(List.of(conId(nuevaClase(8), 90L)));
+
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID, comando(8, null)))
+				.isInstanceOf(RecursoOcupadoException.class)
+				.satisfies(error -> assertThat(((RecursoOcupadoException) error).getRecurso())
+						.isEqualTo("profesional"));
+	}
+
+	/**
+	 * Un box habilitado de OTRA sede no es candidato aunque este libre: la habilitacion es de la
+	 * oferta, pero la clase ocurre en esta sede.
+	 */
+	@Test
+	@DisplayName("Con espacios habilitados solo cuentan los de esta sede; si no queda ninguno, ocupado")
+	void espacio_habilitado_de_otra_sede() {
+		given(ofertas.espaciosHabilitados(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(List.of(
+				new HabilitacionSnapshot(2L, ESPACIO_ID, Instant.parse("2020-01-01T00:00:00Z"),
+						null, true)));
+		given(espacios.find(ORG_ID, ESPACIO_ID, INICIO)).willReturn(Optional.of(new EspacioSnapshot(
+				ESPACIO_ID, ORG_ID, SEDE_ID + 1, "Salon", "SALON", 20,
+				Instant.parse("2020-01-01T00:00:00Z"), null, true, true)));
+
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID, comando(8, null)))
+				.isInstanceOf(RecursoOcupadoException.class)
+				.satisfies(error -> assertThat(((RecursoOcupadoException) error).getRecurso())
+						.isEqualTo("espacio"));
+	}
+
+	// =================================================================================
+	// Reprogramar
+	// =================================================================================
+
+	/**
+	 * RF-M12-012: la capacidad nueva no puede dejar afuera a quien ya tiene su lugar. Bajarla por
+	 * debajo de los ocupados convertiria una reprogramacion en una baja silenciosa.
+	 */
+	@Test
+	@DisplayName("Reprogramar por debajo de los ocupados es capacidad no admitida")
+	void reprogramar_por_debajo_de_ocupados() {
+		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		ReflectionTestUtils.setField(clase, "cupoOcupado", 6);
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+
+		assertThatThrownBy(() -> service.reprogramar(actor(), SEDE_ID, 77L,
+				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 4, 0L)))
+				.isInstanceOf(CapacidadNoAdmitidaException.class)
+				.hasMessageContaining("por debajo");
+	}
+
+	/** Una clase que se corre media hora no puede chocar contra si misma. */
+	@Test
+	@DisplayName("Reprogramar se excluye a si misma del control de solapamiento")
+	void reprogramar_no_choca_consigo_misma() {
+		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.saveAndFlush(any())).willAnswer(invocacion -> invocacion.getArgument(0));
+		given(clases.findVivasDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
+				.willReturn(List.of(clase));
+		given(clases.findVivasDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
+				.willReturn(List.of(clase));
+
+		ClaseView movida = service.reprogramar(actor(), SEDE_ID, 77L,
+				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 7, 0L));
+
+		assertThat(movida.capacidad()).isEqualTo(7);
+	}
+
+	// =================================================================================
+	// Lecturas
+	// =================================================================================
+
+	@Test
+	@DisplayName("Listar proyecta cada clase con su capacidad efectiva")
+	void listar_proyecta() {
+		given(clases.findDeLaSedeEnVentana(ORG_ID, SEDE_ID, INICIO, FIN))
+				.willReturn(List.of(conId(nuevaClase(10), 77L)));
+		given(espacios.find(ORG_ID, ESPACIO_ID, INICIO)).willReturn(Optional.of(espacio(6)));
+
+		List<ClaseView> lista = service.listar(actor(), SEDE_ID, INICIO, FIN);
+
+		assertThat(lista).singleElement().satisfies(vista -> {
+			assertThat(vista.capacidad()).isEqualTo(10);
+			assertThat(vista.capacidadEfectiva()).as("min(clase 10, oferta 8, box 6)").isEqualTo(6);
+		});
+	}
+
+	@Test
+	@DisplayName("El historial de una clase ajena es 404; el propio devuelve sus eventos")
+	void historial() {
+		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		com.akine.activity.domain.ClaseEvento creacion = com.akine.activity.domain.ClaseEvento.de(
+				clase, com.akine.activity.domain.TipoEventoClase.CREACION, null, null, CUENTA_ID,
+				Instant.now());
+		ReflectionTestUtils.setField(creacion, "id", 1L);
+		given(eventos.historial(ORG_ID, 77L)).willReturn(List.of(creacion));
+
+		assertThat(service.historial(actor(), SEDE_ID, 77L))
+				.singleElement()
+				.satisfies(evento -> assertThat(evento.tipo()).isEqualTo("CREACION"));
+
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 78L)).willReturn(Optional.empty());
+		assertThatThrownBy(() -> service.historial(actor(), SEDE_ID, 78L))
+				.isInstanceOf(ClaseNotAccessibleException.class);
+	}
+
+	@Test
+	@DisplayName("Sin contexto de trabajo es 403 antes de tocar la agenda")
+	void sin_contexto() {
+		assertThatThrownBy(() -> service.programar(new OperatingActor(CUENTA_ID, false, null, null),
+				SEDE_ID, OFERTA_ID, comando(8, null)))
+				.isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+		org.mockito.Mockito.verifyNoInteractions(agenda);
 	}
 
 	// =================================================================================

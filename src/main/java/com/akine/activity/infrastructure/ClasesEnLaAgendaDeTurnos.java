@@ -1,5 +1,6 @@
 package com.akine.activity.infrastructure;
 
+import com.akine.activity.application.CapacidadDeClase;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.scheduling.spi.EventoExternoDeAgenda;
@@ -38,10 +39,14 @@ public class ClasesEnLaAgendaDeTurnos implements OcupacionExternaProbe, EventoEx
 
 	private final ClaseProgramadaRepository clases;
 	private final OfertaDirectory ofertas;
+	private final CapacidadDeClase capacidad;
 
-	public ClasesEnLaAgendaDeTurnos(ClaseProgramadaRepository clases, OfertaDirectory ofertas) {
+	public ClasesEnLaAgendaDeTurnos(
+			ClaseProgramadaRepository clases, OfertaDirectory ofertas, CapacidadDeClase capacidad) {
+
 		this.clases = clases;
 		this.ofertas = ofertas;
+		this.capacidad = capacidad;
 	}
 
 	// =================================================================================
@@ -70,7 +75,13 @@ public class ClasesEnLaAgendaDeTurnos implements OcupacionExternaProbe, EventoEx
 	 * publica sin participantes, y esta proyeccion alimenta la agenda que ve todo el mostrador.
 	 *
 	 * <p>La capacidad que viaja es la <b>efectiva</b>, ya resuelta aca: M12 no conoce las reglas de
-	 * M28 y no tiene con que calcularla. La ocupacion es 0 hasta 08.02.
+	 * M28 y no tiene con que calcularla. Se resuelve con {@link CapacidadDeClase} —clase, oferta
+	 * <b>y box</b>—, la misma regla que publican los cupos de la clase: si cada vista la calculara
+	 * por su cuenta, la grilla y la pantalla de cupos dirian numeros distintos de la misma clase.
+	 *
+	 * <p>La ocupacion es la columna {@code cupo_ocupado}, la que otorga el lugar desde 08.02. Hasta
+	 * este arreglo viajaba un {@code 0} fijo que habia quedado de 08.01: la agenda mostraba toda
+	 * clase vacia aunque estuviera completa.
 	 */
 	@Override
 	public List<EventoDeAgendaExterno> enVentana(
@@ -84,12 +95,13 @@ public class ClasesEnLaAgendaDeTurnos implements OcupacionExternaProbe, EventoEx
 	private EventoDeAgendaExterno proyectar(
 			long organizationId, long consultorioId, ClaseProgramada clase) {
 
-		int capacidad = clase.getCapacidad();
+		int efectiva = clase.getCapacidad();
 		String nombreOferta = null;
 		var oferta = ofertas.find(organizationId, consultorioId, clase.getOfertaId());
 		if (oferta.isPresent()) {
 			nombreOferta = oferta.get().nombreComercial();
-			capacidad = Math.min(capacidad, oferta.get().capacidad());
+			efectiva = capacidad.efectiva(organizationId, oferta.get(), clase.getEspacioId(),
+					clase.getInicio(), clase.getCapacidad());
 		}
 		return new EventoDeAgendaExterno(
 				TIPO_CLASE,
@@ -102,7 +114,7 @@ public class ClasesEnLaAgendaDeTurnos implements OcupacionExternaProbe, EventoEx
 				clase.getTitulo(),
 				clase.getProfesionalMembershipId(),
 				clase.getEspacioId(),
-				capacidad,
-				0);
+				efectiva,
+				clase.getCupoOcupado());
 	}
 }
