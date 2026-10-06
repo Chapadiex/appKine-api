@@ -63,5 +63,15 @@ public enum OrigenMovimiento {
 	 * aplicada sin excepcion. Si el financiador paga en efectivo —raro pero legitimo— rige la otra
 	 * mitad de esa regla y hace falta jornada abierta.
 	 */
-	PAGO_FINANCIADOR
+	PAGO_FINANCIADOR,
+
+	/**
+	 * Lo genero el reintegro de un saldo a favor (M19, F-3), en su misma transaccion.
+	 *
+	 * <p>{@code referencia_origen} es el id del {@code cobro_reintegro}, y el movimiento es un
+	 * {@code EGRESO}: la plata sale del cajon. <b>No es una {@link #REVERSION}</b>, que compensa un
+	 * movimiento entero y una sola vez; un reintegro puede ser parcial, repetirse y salir por otro
+	 * medio que el que entro.
+	 */
+	REINTEGRO
 }

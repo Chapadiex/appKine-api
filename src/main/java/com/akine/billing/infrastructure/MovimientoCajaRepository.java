@@ -81,6 +81,20 @@ public interface MovimientoCajaRepository
 			@Param("tipoOrigen") String tipoOrigen,
 			@Param("referenciaOrigen") long referenciaOrigen);
 
+	/** Todos los movimientos de un origen. Nativa por lo mismo que {@link #findPorOrigen}. */
+	@Override
+	@Query(value = """
+			SELECT * FROM movimiento_caja
+			 WHERE organization_id = :organizationId
+			   AND tipo_origen = :tipoOrigen
+			   AND referencia_origen = :referenciaOrigen
+			 ORDER BY id
+			""", nativeQuery = true)
+	List<MovimientoCaja> findTodosPorOrigen(
+			@Param("organizationId") long organizationId,
+			@Param("tipoOrigen") String tipoOrigen,
+			@Param("referenciaOrigen") long referenciaOrigen);
+
 	/**
 	 * RF-M20-004. Nativo por los filtros opcionales y el {@code LIMIT/OFFSET}.
 	 *

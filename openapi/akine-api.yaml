@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.50.0
+  version: 0.54.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -4240,7 +4240,7 @@ paths:
 
         **Manda `idempotencyKey`.** Un reintento devuelve el mismo cobro con el mismo comprobante; sin ella, un doble click cobra dos veces. La idempotencia se evalua antes de tocar el numerador, para que un reintento no consuma un numero de comprobante que despues nadie usa: la numeracion fiscal con huecos es peor que un cobro repetido.
 
-        **No hay anticipos ni anulacion todavia.** Los dos exigen la Caja (AKINE-07.03): un anticipo sin caja es plata que entro y que ningun arqueo puede encontrar, y un reintegro saca dinero de una caja que no existe.
+        **Anticipo.** Lo que no se imputa puede quedar a favor del paciente, pero **se declara** en `anticipo`: las imputaciones mas el anticipo tienen que dar el total. Un cobro puede ser todo anticipo —sin imputaciones, y entonces con `moneda`—. La plata entra a la caja ahora, una vez, y se aplica despues con `imputarSaldoAFavor` o se devuelve con `reintegrarSaldoAFavor`.
       operationId: registrarCobro
       parameters:
       - in: path
@@ -4292,7 +4292,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: La sede no existe o es de otro tenant
+          description: "La sede no existe o es de otro tenant; o, en un anticipo puro,\
+            \ la persona no es de la organizacion"
         "409":
           content:
             application/json:
@@ -4345,6 +4346,243 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "El cobro o la sede no existen, o son de otro tenant"
       summary: Recuperar un comprobante
+      tags:
+      - Cobros
+  /api/v1/consultorios/{consultorioId}/cobros/{cobroId}/anulacion:
+    post:
+      description: |-
+        Revierte un cobro con trazabilidad (RF-M19-007, RN-M19-004), en una sola transaccion: cada imputacion **devuelve su importe a la deuda** —que vuelve a `PENDIENTE` o `PARCIAL`— y cada movimiento de caja del cobro **se revierte** en la jornada abierta hoy. Nada se borra: el cobro queda `ANULADO` con su motivo y **conserva su comprobante**.
+
+        Si el cobro entro en efectivo, la reversion exige caja abierta (409 `caja-no-abierta`) y plata en el cajon (409 `caja-saldo-insuficiente`). Un cobro que ya reintegro parte de su saldo a favor no se anula (409 `cobro-con-reintegros`): esa plata saldria del cajon dos veces.
+
+        Exige `cobro:register` **y** `caja:operate`: mueve plata del cajon.
+      operationId: anularCobro
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: cobroId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnularCobro"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cobro"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Cobro"
+          description: Cobro anulado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `cobro:register` o sin `caja:operate` en esa sede, o sin\
+            \ contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El cobro o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya anulado; con reintegros; sin caja abierta o sin plata en
+            el cajon para revertir el efectivo
+      summary: Anular un cobro
+      tags:
+      - Cobros
+  /api/v1/consultorios/{consultorioId}/cobros/{cobroId}/imputaciones:
+    post:
+      description: |-
+        Aplica parte del **anticipo** de un cobro a una deuda que nacio despues (RF-M19-003). Una deuda por pedido. **No mueve caja**: la plata entro cuando se cobro.
+
+        La deuda tiene que ser de la misma persona y la misma sede que el cobro, admitir cobro y estar en su moneda. Un cobro no imputa dos veces a la misma deuda: se imputa lo que corresponde de una vez.
+
+        Si otro operador uso el anticipo entre que la pantalla lo mostro y este confirmo, la respuesta es 409 `saldo-a-favor-insuficiente` con lo `disponible`. Manda `idempotencyKey`: un reintento devuelve el mismo cobro sin imputar dos veces.
+      operationId: imputarSaldoAFavor
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: cobroId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImputarSaldoAFavor"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cobro"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Cobro"
+          description: Cobro con la imputacion nueva
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Cuerpo invalido
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `cobro:register` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El cobro o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Cobro anulado; saldo a favor insuficiente; deuda no cobrable,\
+            \ sin ese saldo o ya imputada por este cobro; o clave reusada"
+      summary: Imputar el saldo a favor de un cobro a una deuda
+      tags:
+      - Cobros
+  /api/v1/consultorios/{consultorioId}/cobros/{cobroId}/reintegros:
+    post:
+      description: |-
+        Devuelve en dinero parte del **anticipo** de un cobro (DP-06). Es una salida de caja de origen `REINTEGRO` y no una reversion: puede ser parcial, repetirse y salir por otro medio que el que entro. **No toca ninguna deuda.**
+
+        En efectivo exige caja abierta y plata en el cajon. Si el saldo a favor no alcanza, 409 `saldo-a-favor-insuficiente` con lo `disponible`. Manda `idempotencyKey`: un reintento no devuelve dos veces.
+
+        Exige `cobro:register` **y** `caja:operate`.
+      operationId: reintegrarSaldoAFavor
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: cobroId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReintegrarSaldoAFavor"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReintegroDeCobro"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ReintegroDeCobro"
+          description: Reintegro registrado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Cuerpo invalido
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `cobro:register` o sin `caja:operate` en esa sede, o sin\
+            \ contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El cobro o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Cobro anulado; saldo a favor insuficiente; sin caja abierta
+            o sin plata en el cajon; o clave reusada
+      summary: Reintegrar el saldo a favor de un cobro
       tags:
       - Cobros
   /api/v1/consultorios/{consultorioId}/convenios:
@@ -18058,6 +18296,21 @@ components:
           type: boolean
           description: Si el antecedente sigue vigente
           example: true
+    AnularCobro:
+      type: object
+      description: "Anula un cobro con motivo obligatorio. **Anular no significa borrar**:\
+        \ el cobro y su comprobante quedan, sus imputaciones devuelven saldo a las\
+        \ deudas y sus movimientos de caja se revierten."
+      properties:
+        motivo:
+          type: string
+          description: "Por que se anula. Queda en el cobro, en las reversiones de\
+            \ caja y en la auditoria."
+          example: Cobrado al paciente equivocado
+          maxLength: 280
+          minLength: 0
+      required:
+      - motivo
     AnularEgreso:
       type: object
       description: Anula con motivo obligatorio. **Anular no significa borrar.**
@@ -19829,6 +20082,10 @@ components:
       type: object
       description: Dinero recibido. No es la deuda (M18) ni la caja (M20).
       properties:
+        anuladoEn:
+          type: string
+          format: date-time
+          description: Cuando se anulo. Nulo si esta vigente.
         cobradoEn:
           type: string
           format: date-time
@@ -19843,13 +20100,22 @@ components:
           type: integer
           format: int64
           example: 7
+        estado:
+          type: string
+          description: "Un cobro anulado **conserva su comprobante**: el numero queda\
+            \ usado."
+          enum:
+          - VIGENTE
+          - ANULADO
+          example: VIGENTE
         id:
           type: integer
           format: int64
           example: 5001
         imputaciones:
           type: array
-          description: Contra que deudas se aplico. Su suma da el total.
+          description: "Contra que deudas se aplico, al cobrar o despues. Su suma,\
+            \ mas el saldo a favor y lo reintegrado, da el total."
           items:
             $ref: "#/components/schemas/ImputacionAplicada"
         medios:
@@ -19860,10 +20126,19 @@ components:
         moneda:
           type: string
           example: ARS
+        motivoAnulacion:
+          type: string
+          description: Por que se anulo. Nulo si esta vigente.
         personaId:
           type: integer
           format: int64
           example: 128
+        saldoAFavor:
+          type: number
+          description: Lo recibido que todavia no se imputo ni se reintegro (anticipo).
+            Se aplica a una deuda con `imputarSaldoAFavor` o se devuelve con `reintegrarSaldoAFavor`.
+            Cero en un cobro anulado.
+          example: 0.0
         total:
           type: number
           example: 8500.0
@@ -23328,6 +23603,11 @@ components:
         importe:
           type: number
           description: Lo que ESTE cobro aplico. El saldo que quedo vive en la obligacion.
+        imputadaEn:
+          type: string
+          format: date-time
+          description: Cuando. Igual a `cobradoEn` si nacio con el cobro; posterior
+            si aplico un anticipo despues.
         obligacionId:
           type: integer
           format: int64
@@ -23342,6 +23622,32 @@ components:
         obligacionId:
           type: integer
           format: int64
+          example: 9001
+          minimum: 0
+      required:
+      - importe
+      - obligacionId
+    ImputarSaldoAFavor:
+      type: object
+      description: "Aplica parte del saldo a favor (anticipo) de un cobro a una deuda.\
+        \ No mueve caja: la plata entro cuando se cobro."
+      properties:
+        idempotencyKey:
+          type: string
+          description: Clave del cliente para que un reintento no impute dos veces.
+            Reusarla con **otro** contenido devuelve 409.
+          example: a1b2c3d4-0000-4000-8000-000000000001
+          maxLength: 80
+          minLength: 0
+        importe:
+          type: number
+          description: Cuanto del saldo a favor se le aplica
+          example: 8500.0
+          minimum: 0.01
+        obligacionId:
+          type: integer
+          format: int64
+          description: La deuda. De la misma persona y la misma sede que el cobro.
           example: 9001
           minimum: 0
       required:
@@ -25791,6 +26097,9 @@ components:
       - https://akine.app/problems/cobro-no-cuadra
       - https://akine.app/problems/saldo-insuficiente
       - https://akine.app/problems/obligacion-no-cobrable
+      - https://akine.app/problems/cobro-anulado
+      - https://akine.app/problems/cobro-con-reintegros
+      - https://akine.app/problems/saldo-a-favor-insuficiente
       - https://akine.app/problems/consultorio-no-operable
       - https://akine.app/problems/persona-documento-taken
       - https://akine.app/problems/persona-posible-duplicado
@@ -26220,9 +26529,18 @@ components:
       - expectedVersion
     RegistrarCobro:
       type: object
-      description: "Dinero recibido, con sus medios y sus imputaciones. La suma de\
-        \ los medios y la de las imputaciones tienen que dar el total."
+      description: "Dinero recibido, con sus medios, sus imputaciones y su anticipo.\
+        \ La suma de los medios tiene que dar el total, y la de las imputaciones mas\
+        \ el anticipo tambien."
       properties:
+        anticipo:
+          type: number
+          description: "Lo que queda **a favor** del paciente (anticipo, DP-06). Se\
+            \ declara: lo que no se imputa y no se declara aca es un 400 `cobro-no-cuadra`,\
+            \ no un saldo a favor silencioso. Entra a la caja ahora y se imputa despues\
+            \ con `imputarSaldoAFavor`. Por defecto cero."
+          example: 0.0
+          minimum: 0.00
         idempotencyKey:
           type: string
           description: "Clave del cliente para que un reintento no cobre dos veces.\
@@ -26232,13 +26550,11 @@ components:
           minLength: 0
         imputaciones:
           type: array
-          description: "Contra que deudas se aplica. Un cobro puede saldar varias\
-            \ sesiones juntas. **Su suma tiene que dar el total**: mientras no existan\
-            \ los anticipos —AKINE-07.03, junto con la Caja— todo el dinero recibido\
-            \ tiene que aplicarse a alguna deuda."
+          description: Contra que deudas se aplica. Un cobro puede saldar varias sesiones
+            juntas. **Su suma mas el `anticipo` tiene que dar el total.** Puede venir
+            vacia si todo el cobro es anticipo.
           items:
             $ref: "#/components/schemas/ImputacionDeCobro"
-          minItems: 1
         medios:
           type: array
           description: "Por que via entro. Puede ser mas de uno: mitad efectivo y\
@@ -26246,6 +26562,13 @@ components:
           items:
             $ref: "#/components/schemas/MedioDeCobro"
           minItems: 1
+        moneda:
+          type: string
+          description: "Moneda del cobro. **Obligatoria si no hay imputaciones**:\
+            \ sin deudas no hay de donde tomarla. Con imputaciones sale de ellas y,\
+            \ si viene, tiene que coincidir."
+          example: ARS
+          pattern: "[A-Za-z]{3}"
         personaId:
           type: integer
           format: int64
@@ -26258,7 +26581,6 @@ components:
           example: 8500.0
           minimum: 0.01
       required:
-      - imputaciones
       - medios
       - personaId
       - total
@@ -26687,6 +27009,97 @@ components:
       required:
       - practicaId
       - version
+    ReintegrarSaldoAFavor:
+      type: object
+      description: "Devuelve en dinero parte del saldo a favor de un cobro. Sale de\
+        \ la caja: en efectivo exige caja abierta y plata en el cajon."
+      properties:
+        idempotencyKey:
+          type: string
+          description: Clave del cliente para que un reintento no devuelva dos veces.
+            Reusarla con **otro** contenido devuelve 409.
+          example: a1b2c3d4-0000-4000-8000-000000000002
+          maxLength: 80
+          minLength: 0
+        importe:
+          type: number
+          description: Cuanto se devuelve. No puede superar el saldo a favor.
+          example: 1500.0
+          minimum: 0.01
+        medio:
+          type: string
+          description: Por donde sale la plata. Puede no ser el medio por el que entro.
+          enum:
+          - EFECTIVO
+          - TRANSFERENCIA
+          - TARJETA_DEBITO
+          - TARJETA_CREDITO
+          - OTRO
+          example: EFECTIVO
+        motivo:
+          type: string
+          description: Por que se devuelve. Queda en el reintegro y en la auditoria.
+          example: El paciente suspendio el tratamiento
+          maxLength: 280
+          minLength: 0
+        referencia:
+          type: string
+          description: Numero de operacion o lo que corresponda
+          example: trf-55120
+          maxLength: 120
+          minLength: 0
+      required:
+      - importe
+      - medio
+      - motivo
+    ReintegroDeCobro:
+      type: object
+      description: "Devolucion en dinero de un saldo a favor. Es una salida de caja\
+        \ de origen REINTEGRO, no una reversion del cobro."
+      properties:
+        cobroId:
+          type: integer
+          format: int64
+          example: 5001
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        id:
+          type: integer
+          format: int64
+          example: 301
+        importe:
+          type: number
+          example: 1500.0
+        medio:
+          type: string
+          enum:
+          - EFECTIVO
+          - TRANSFERENCIA
+          - TARJETA_DEBITO
+          - TARJETA_CREDITO
+          - OTRO
+        moneda:
+          type: string
+          example: ARS
+        motivo:
+          type: string
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+        referencia:
+          type: string
+        reintegradoEn:
+          type: string
+          format: date-time
+          example: 2026-10-06T15:20:00Z
+        saldoAFavorRestante:
+          type: number
+          description: "Lo que el cobro todavia tiene a favor. En un reintento idempotente\
+            \ es el saldo actual, no el de entonces."
+          example: 2500.0
     ReparoDePresentacion:
       type: object
       properties:

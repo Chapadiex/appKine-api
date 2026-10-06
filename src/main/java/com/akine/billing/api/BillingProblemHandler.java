@@ -20,7 +20,12 @@ import com.akine.billing.domain.exception.CajaNoAbiertaException;
 import com.akine.billing.domain.exception.CajaSaldoCambioException;
 import com.akine.billing.domain.exception.CajaSaldoInsuficienteException;
 import com.akine.billing.domain.exception.CajaYaAbiertaException;
+import com.akine.billing.domain.exception.CobroAnuladoException;
+import com.akine.billing.domain.exception.CobroConReintegrosException;
+import com.akine.billing.domain.exception.CobroInvalidoException;
 import com.akine.billing.domain.exception.CobroNotAccessibleException;
+import com.akine.billing.domain.exception.PersonaNoAccesibleException;
+import com.akine.billing.domain.exception.SaldoAFavorInsuficienteException;
 import com.akine.billing.domain.exception.FacturaDuplicadaException;
 import com.akine.billing.domain.exception.FinanciadorNoAccesibleException;
 import com.akine.billing.domain.exception.ImporteDeDebitoInvalidoException;
@@ -73,6 +78,9 @@ public class BillingProblemHandler {
 	private static final URI SALDO_INSUFICIENTE = ProblemType.SALDO_INSUFICIENTE.uri();
 	private static final URI OBLIGACION_NO_COBRABLE = ProblemType.OBLIGACION_NO_COBRABLE.uri();
 	private static final URI IDEMPOTENCY_KEY_CONFLICT = ProblemType.IDEMPOTENCY_KEY_CONFLICT.uri();
+	private static final URI COBRO_ANULADO = ProblemType.COBRO_ANULADO.uri();
+	private static final URI COBRO_CON_REINTEGROS = ProblemType.COBRO_CON_REINTEGROS.uri();
+	private static final URI SALDO_A_FAVOR_INSUFICIENTE = ProblemType.SALDO_A_FAVOR_INSUFICIENTE.uri();
 	private static final URI CAJA_NO_ABIERTA = ProblemType.CAJA_NO_ABIERTA.uri();
 	private static final URI CAJA_YA_ABIERTA = ProblemType.CAJA_YA_ABIERTA.uri();
 	private static final URI CAJA_CERRADA = ProblemType.CAJA_CERRADA.uri();
@@ -173,7 +181,57 @@ public class BillingProblemHandler {
 		problem.setType(COBRO_NO_CUADRA);
 		problem.setTitle("Las imputaciones no dan el total");
 		problem.setProperty("esperado", exception.getTotal());
-		problem.setProperty("recibido", exception.getSumaImputada());
+		// Imputaciones mas anticipo declarado (F-3): es lo que se compara con el total.
+		problem.setProperty("recibido", exception.getRecibido());
+		return problem;
+	}
+
+	// --- F-3: anticipos, imputacion posterior, anulacion y reintegro -------------------
+
+	/** <b>400.</b> Un anticipo puro sin moneda. Mismo {@code type} que cualquier cuerpo invalido. */
+	@ExceptionHandler(CobroInvalidoException.class)
+	public ProblemDetail handleCobroInvalido(CobroInvalidoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(VALIDATION_ERROR);
+		problem.setTitle("Solicitud invalida");
+		return problem;
+	}
+
+	/** <b>404.</b> La persona del anticipo no es del tenant. Ajena e inexistente son lo mismo. */
+	@ExceptionHandler(PersonaNoAccesibleException.class)
+	public ProblemDetail handlePersonaNoAccesible(PersonaNoAccesibleException exception) {
+		log.debug("Persona no accesible para un anticipo: personaId={}", exception.getPersonaId());
+		return noEncontrado("La persona no existe.");
+	}
+
+	@ExceptionHandler(CobroAnuladoException.class)
+	public ProblemDetail handleCobroAnulado(CobroAnuladoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(COBRO_ANULADO);
+		problem.setTitle("El cobro esta anulado");
+		return problem;
+	}
+
+	@ExceptionHandler(CobroConReintegrosException.class)
+	public ProblemDetail handleCobroConReintegros(CobroConReintegrosException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(COBRO_CON_REINTEGROS);
+		problem.setTitle("El cobro ya reintegro parte de su saldo a favor");
+		return problem;
+	}
+
+	/** <b>409</b>, como {@code saldo-insuficiente}: otro operador uso el anticipo primero. */
+	@ExceptionHandler(SaldoAFavorInsuficienteException.class)
+	public ProblemDetail handleSaldoAFavorInsuficiente(SaldoAFavorInsuficienteException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(SALDO_A_FAVOR_INSUFICIENTE);
+		problem.setTitle("El cobro no tiene ese saldo a favor");
+		problem.setProperty("disponible", exception.getDisponible());
+		problem.setProperty("importeIntentado", exception.getImporteIntentado());
 		return problem;
 	}
 

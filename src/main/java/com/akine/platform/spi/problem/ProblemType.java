@@ -309,6 +309,28 @@ public enum ProblemType {
 	SALDO_INSUFICIENTE("saldo-insuficiente"),
 	/** La deuda esta anulada, ya pagada, o es de otra persona. Lleva {@code motivo}. */
 	OBLIGACION_NO_COBRABLE("obligacion-no-cobrable"),
+	/**
+	 * El cobro esta anulado y la operacion exige uno vigente (409). F-3.
+	 *
+	 * <p>Cubre anularlo dos veces —revertiria la caja dos veces— e imputar o reintegrar el saldo a
+	 * favor de un cobro anulado, que es plata que la anulacion ya devolvio.
+	 */
+	COBRO_ANULADO("cobro-anulado"),
+	/**
+	 * Se intenta anular un cobro que ya reintegro parte de su saldo a favor (409). F-3.
+	 *
+	 * <p>La anulacion revierte los ingresos del cobro por entero: lo ya devuelto saldria del cajon
+	 * dos veces.
+	 */
+	COBRO_CON_REINTEGROS("cobro-con-reintegros"),
+	/**
+	 * Se intenta imputar o reintegrar mas saldo a favor del que el cobro tiene (409). F-3. Lleva
+	 * {@code disponible} e {@code importeIntentado}.
+	 *
+	 * <p>Es el desenlace legitimo de una carrera sobre el mismo anticipo, como
+	 * {@link #SALDO_INSUFICIENTE} lo es sobre la misma deuda: recargar y reintentar.
+	 */
+	SALDO_A_FAVOR_INSUFICIENTE("saldo-a-favor-insuficiente"),
 	CONSULTORIO_NO_OPERABLE("consultorio-no-operable"),
 
 	// --- Personas y perfiles de paciente (M07, AKINE-03.01) ---------------------------------

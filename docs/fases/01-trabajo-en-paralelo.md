@@ -124,7 +124,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V66` | A-9 | Puente Oferta↔Práctica (según DU-1) |
 | `V67` | C-5 | Unique de caso activo (RN-M10-002) |
 | `V68` | B-4 | Historial de estados de autorización (si DU-8 = tabla) |
-| `V69` | F-3 | Anticipos, imputación posterior, anulación y reintegro |
+| `V69` | F-3 | **Usada**: `V69__m19_anticipos_y_reintegro.sql` — saldo a favor y anulación en `cobro`, imputación posterior en `cobro_imputacion`, tabla `cobro_reintegro`, origen `REINTEGRO` en `movimiento_caja` |
 | `V70` | E-3 | Series de turnos (DP-04) |
 | `V71` | C-6 | `sesion_version` con tratamientos y mediciones |
 | `V72` | F-4 | Obligación del financiador, coseguro y snapshot de convenio |
@@ -171,7 +171,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | E-2 | Reescribir los E2E de agenda contra backend real; E2E de ciclo y recepción; IT de `ReservaProbeSobreTurnos` | web + api | M | — | F5 |
 | E-5 | Notificaciones de reserva, cancelación y reprogramación por outbox (RF-M26-002/003) | api | M | — | F5 |
 | F-2 | Defectos de `billing` reportados el 01/10 (`debitar`, advice propio, CSV, `FINANCIADOR_DISTINTO` → cambio de contrato) | api | M | — | F7 |
-| **F-3** | Anticipos, imputación posterior, anulación y reintegro (`V69`) | api | L | — | F7 |
+| ~~**F-3**~~ | ~~Anticipos, imputación posterior, anulación y reintegro (`V69`)~~ — hecho (backend) | api | L | — | F7 |
 | F-6 | Pantallas de caja diaria + E2E cierre → deuda → cobro → caja | web | L | — | F7 |
 | F-7 | Pantallas de presentaciones (bandejas, armado, factura, débito, pagos) | web | L | — | F7 |
 | F-8 | ITs diferidos 33–48 (caja concurrente, presentaciones, egresos) | api | M | — | F7 |

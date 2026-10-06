@@ -8,9 +8,12 @@ import com.akine.billing.domain.MedioDePago;
 import com.akine.billing.domain.Obligacion;
 import com.akine.billing.domain.Responsable;
 import com.akine.billing.domain.exception.CajaNoAbiertaException;
+import com.akine.billing.domain.exception.CobroInvalidoException;
 import com.akine.billing.domain.exception.CobroNotAccessibleException;
 import com.akine.billing.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.billing.domain.exception.ImputacionesNoSumanException;
 import com.akine.billing.domain.exception.ObligacionNoCobrableException;
+import com.akine.billing.domain.exception.PersonaNoAccesibleException;
 import com.akine.billing.domain.exception.SaldoInsuficienteException;
 import com.akine.billing.domain.port.CobroRepositoryPort;
 import com.akine.billing.domain.port.ComprobanteNumeradorPort;
@@ -20,6 +23,8 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.person.spi.PacienteDirectory;
+import com.akine.person.spi.PacienteSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -122,6 +127,7 @@ class CobroServiceTest {
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private CajaDeCobro caja;
+	@Mock private PacienteDirectory pacientes;
 
 	private CobroService service;
 
@@ -132,7 +138,7 @@ class CobroServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new CobroService(
-				cobros, obligaciones, numerador, iniciador, consultorios, permissionGuard, caja);
+				cobros, obligaciones, numerador, iniciador, consultorios, permissionGuard, caja, pacientes);
 
 		given(consultorios.find(ORG, SEDE)).willReturn(Optional.of(sede));
 		given(permissionGuard.requirePermission(any()))
@@ -526,6 +532,119 @@ class CobroServiceTest {
 			assertThat(service.deLaPersona(administrativo, SEDE, PERSONA)).hasSize(1);
 			verify(cobros).findDeLaPersona(ORG, PERSONA);
 		}
+	}
+
+	// =================================================================================
+	// Anticipos (F-3)
+	// =================================================================================
+
+	@Nested
+	@DisplayName("Anticipos (F-3)")
+	class Anticipos {
+
+		@Test
+		@DisplayName("un anticipo puro: valida la persona en el padron, no toca deudas y deja todo a favor")
+		void anticipo_puro() {
+			given(pacientes.find(ORG, PERSONA)).willReturn(Optional.of(new PacienteSnapshot(
+					PERSONA, ORG, "Perez", "Ana", "DNI", "30111222", null, true, true, 1L, null)));
+
+			CobroView vista = service.registrar(administrativo, SEDE, anticipoPuro("5000.00", MONEDA));
+
+			assertThat(vista.saldoAFavor()).isEqualByComparingTo("5000.00");
+			assertThat(vista.imputaciones()).isEmpty();
+			assertThat(vista.moneda()).isEqualTo(MONEDA);
+			assertThat(vista.estado()).isEqualTo(CobroView.VIGENTE);
+			verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
+			// La plata entra a la caja AHORA, una vez: es lo que hace honesto al anticipo (DP-06).
+			verify(caja).registrarIngresos(
+					eq(ORG), eq(sede), eq(COBRO), eq(MONEDA), any(), any(), eq(CUENTA));
+		}
+
+		@Test
+		@DisplayName("un anticipo puro de una persona de otro tenant es 404 y no numera comprobante")
+		void anticipo_de_persona_ajena_es_404() {
+			given(pacientes.find(ORG, PERSONA)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, anticipoPuro("5000.00", MONEDA)))
+					.isInstanceOf(PersonaNoAccesibleException.class);
+			verify(numerador, never()).incrementar(anyLong(), anyLong());
+		}
+
+		@Test
+		@DisplayName("un anticipo puro sin moneda es 400: no hay deuda de donde tomarla")
+		void anticipo_sin_moneda_es_400() {
+			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, anticipoPuro("5000.00", null)))
+					.isInstanceOf(CobroInvalidoException.class);
+			verifyNoInteractions(pacientes);
+		}
+
+		@Test
+		@DisplayName("un sobrante declarado: imputa la deuda y deja el resto a favor")
+		void sobrante_declarado() {
+			given(obligaciones.findByIdInScope(ORG, SEDE, OBLIGACION))
+					.willReturn(Optional.of(deuda(OBLIGACION, PERSONA, "6000.00", MONEDA)));
+
+			CobroView vista = service.registrar(administrativo, SEDE, new CobroCommand(
+					PERSONA, new BigDecimal("10000.00"),
+					List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, new BigDecimal("10000.00"), null)),
+					List.of(new CobroCommand.ImputacionPedida(OBLIGACION, new BigDecimal("6000.00"))),
+					CLAVE, new BigDecimal("4000.00"), null));
+
+			assertThat(vista.saldoAFavor()).isEqualByComparingTo("4000.00");
+			verify(cobros).descontarSaldo(ORG, OBLIGACION, new BigDecimal("6000.00"));
+			// Con deudas, la persona la validan ellas: no hace falta preguntarle al padron.
+			verifyNoInteractions(pacientes);
+		}
+
+		@Test
+		@DisplayName("un sobrante SIN declarar sigue siendo 400: el anticipo no se infiere")
+		void sobrante_sin_declarar_es_400() {
+			given(obligaciones.findByIdInScope(ORG, SEDE, OBLIGACION))
+					.willReturn(Optional.of(deuda(OBLIGACION, PERSONA, "6000.00", MONEDA)));
+
+			// Un cero de menos en la imputacion no puede convertirse en un saldo a favor que nadie
+			// pidio: es justo lo que cobro-no-cuadra existe para atajar.
+			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, new CobroCommand(
+					PERSONA, new BigDecimal("10000.00"),
+					List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, new BigDecimal("10000.00"), null)),
+					List.of(new CobroCommand.ImputacionPedida(OBLIGACION, new BigDecimal("6000.00"))),
+					CLAVE)))
+					.isInstanceOf(ImputacionesNoSumanException.class);
+		}
+
+		@Test
+		@DisplayName("la moneda declarada tiene que coincidir con la de las deudas")
+		void moneda_declarada_distinta_es_409() {
+			given(obligaciones.findByIdInScope(ORG, SEDE, OBLIGACION))
+					.willReturn(Optional.of(deuda(OBLIGACION, PERSONA, "6000.00", MONEDA)));
+
+			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, new CobroCommand(
+					PERSONA, new BigDecimal("6000.00"),
+					List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, new BigDecimal("6000.00"), null)),
+					List.of(new CobroCommand.ImputacionPedida(OBLIGACION, new BigDecimal("6000.00"))),
+					CLAVE, BigDecimal.ZERO, "USD")))
+					.isInstanceOf(ObligacionNoCobrableException.class);
+		}
+
+		@Test
+		@DisplayName("la huella de un cobro sin anticipo es la misma que antes de F-3")
+		void la_huella_vieja_no_cambia() {
+			// Un reintento de un cobro registrado antes de F-3 tiene que seguir siendo un reintento,
+			// no un 409 que el usuario no puede entender.
+			CobroCommand viejo = cobroSimple("8500.00", CLAVE);
+			CobroCommand nuevo = new CobroCommand(viejo.personaId(), viejo.total(), viejo.medios(),
+					viejo.imputaciones(), CLAVE, new BigDecimal("0.00"), null);
+
+			assertThat(nuevo.huella(SEDE)).isEqualTo(viejo.huella(SEDE));
+			assertThat(anticipoPuro("8500.00", MONEDA).huella(SEDE)).isNotEqualTo(viejo.huella(SEDE));
+		}
+	}
+
+	private static CobroCommand anticipoPuro(String total, String moneda) {
+		return new CobroCommand(
+				PERSONA, new BigDecimal(total),
+				List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, new BigDecimal(total), null)),
+				List.of(), CLAVE, new BigDecimal(total), moneda);
 	}
 
 	// =================================================================================
