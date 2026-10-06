@@ -26,13 +26,13 @@ import java.util.Set;
  * <h2>Que consolida, y por que no consolida mas</h2>
  *
  * <p>RF-M07-004 pide "cobertura, turnos, casos y situacion economica <b>segun permisos</b>". Lo
- * que esta etapa entrega son la identidad, los adjuntos, los turnos y la situacion economica. Las
- * otras dos faltan por razones distintas y conviene no confundirlas:
+ * que 03.02 entrego son la identidad, los adjuntos, los turnos y la situacion economica. Las otras
+ * dos tuvieron destinos distintos y conviene no confundirlos:
  *
  * <ul>
- *   <li><b>Cobertura: no existe todavia.</b> Es M15/M08 y son las etapas 03.03 y 03.04. Cuando
- *       existan, agregan su {@link ResumenDePersonaContributor} y la seccion aparece sola, sin
- *       tocar una linea de este modulo.</li>
+ *   <li><b>Cobertura: llego despues, como contribuyente.</b> 03.04 trajo la cobertura del
+ *       paciente y B-5 la sumo con {@link CoberturasEnElResumenDePersona}, sin tocar una linea de
+ *       este servicio: es la prueba de que el 360 crece por contribuyentes.</li>
  *   <li><b>Casos clinicos: existen y NO se muestran, a proposito.</b> AKINE-04.01 dejo fijado que
  *       todo acceso clinico exige justificacion declarada y queda auditado. Una ficha de mostrador
  *       que muestre casos al abrirla convertiria ese control en un formalismo: la justificacion
