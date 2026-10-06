@@ -27415,9 +27415,12 @@ components:
           example: 7
         estado:
           type: string
-          description: "Estado de la ATENCION, no del turno ni del cobro"
+          description: "Estado de la ATENCION, no del turno ni del cobro. `BORRADOR`\
+            \ mientras se carga; `CERRADA` desde el cierre clinico, y sigue `CERRADA`\
+            \ despues de cada enmienda."
           enum:
           - BORRADOR
+          - CERRADA
           example: BORRADOR
         evaluacion:
           $ref: "#/components/schemas/EvaluacionBase"
