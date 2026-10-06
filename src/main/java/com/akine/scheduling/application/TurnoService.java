@@ -167,6 +167,15 @@ public class TurnoService {
 		Instant fin = inicio.plusSeconds(oferta.duracionMinutos() * 60L);
 		LocalDate fecha = inicio.atZone(zona).toLocalDate();
 
+		// Defecto encontrado en E-3. Reprogramar ya rechazaba un destino pasado y la reserva no: el
+		// motor de 05.01 dibuja tambien los slots de hoy que ya pasaron, y el revalidador solo mira
+		// que el hueco exista. Un turno reservado en el pasado nace inalterable (DP-04) y un error de
+		// fecha solo podia cerrarse marcando AUSENTE a un paciente que nunca falto. Va DESPUES de la
+		// idempotencia: el reintento de un turno ya creado cuya hora paso sigue devolviendo ese turno.
+		if (!inicio.isAfter(Instant.now())) {
+			throw new SlotNoDisponibleException("el horario ya paso: un turno se reserva hacia adelante");
+		}
+
 		if (!oferta.vigenteEl(fecha)) {
 			throw new OfertaNoAgendableException(ofertaId, oferta.active()
 					? "no esta vigente el " + fecha

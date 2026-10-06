@@ -44,5 +44,6 @@ public record TurnoDelDiaView(
 		Long espacioId,
 		Instant llegadaEn,
 		String motivoCancelacion,
+		Long serieId,
 		long version) {
 }

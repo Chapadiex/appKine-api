@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.56.0
+  version: 0.57.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -49,6 +49,8 @@ tags:
   name: Administracion de cuentas
 - description: "Tableros operativos, clinicos y economicos del MVP (M23)"
   name: Reportes
+- description: Turnos recurrentes con identidad propia y operaciones con alcance (DP-04)
+  name: Series de turnos
 - description: Alta self-service y habilitacion de la cuenta
   name: Registro y activacion
 - description: "Estudios, informes y documentos de una Historia Clinica (M09/M25)"
@@ -8348,6 +8350,380 @@ paths:
       summary: Exportar un reporte a CSV
       tags:
       - Reportes
+  /api/v1/consultorios/{consultorioId}/series-de-turnos:
+    post:
+      description: |-
+        Reserva **todas** las ocurrencias de una regla semanal —dias, hora local, desde y cantidad o fecha fin— **o ninguna**. Cada ocurrencia se revalida como una reserva suelta y bajo el mismo lock de sede, asi que una serie y una reserva que pisan el mismo hueco no entran las dos.
+
+        Si una ocurrencia no tiene lugar, no se crea nada y el 409 conserva el tipo de la causa (`slot-no-disponible`, `slot-completo`, `recurso-ocupado`, `oferta-no-agendable`) con la propiedad `ocurrenciaInicio`.
+
+        Cada ocurrencia es un turno pleno: conserva identidad, estado e historial propios (DP-04), y una ausencia en la primera **no** elimina la serie.
+      operationId: crearSerieDeTurnos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearSerieDeTurnos"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SerieDeTurnos"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/SerieDeTurnos"
+          description: "Reintento con la misma clave y el mismo pedido: la serie ya\
+            \ creada"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SerieDeTurnos"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/SerieDeTurnos"
+          description: Serie creada con todas sus ocurrencias
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Regla invalida: sin dias, cantidad y fecha fin juntas o ninguna,\
+            \ mas de 52 ocurrencias, o la primera ya paso"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la oferta o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Una ocurrencia no tiene lugar (con `ocurrenciaInicio`), la\
+            \ persona no es paciente, o la clave de idempotencia se reuso con otro\
+            \ pedido"
+      summary: Crear una serie semanal de turnos
+      tags:
+      - Series de turnos
+  /api/v1/consultorios/{consultorioId}/series-de-turnos/{serieId}:
+    get:
+      description: "La regla con la que se genero y los turnos **tal como estan hoy**,\
+        \ en cualquier estado. Exige `turno:read`."
+      operationId: verSerieDeTurnos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: serieId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SerieDeTurnos"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/SerieDeTurnos"
+          description: La serie
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La serie o la sede no existen, o son de otro tenant"
+      summary: Ver una serie y sus turnos
+      tags:
+      - Series de turnos
+  /api/v1/consultorios/{consultorioId}/series-de-turnos/{serieId}/alcance:
+    get:
+      description: |-
+        Calcula, **sin tocar nada**, los turnos que cancelaria o moveria una operacion con ese alcance y los que dejaria como estan, con su motivo. Es el insumo de la confirmacion explicita de DP-04: la pantalla muestra el resultado y el operador confirma la **cantidad** de afectados, que el comando vuelve a verificar.
+
+        - `ESTE`: solo el turno indicado.
+        - `ESTE_Y_SIGUIENTES`: el indicado y los de la serie que empiezan despues, por su horario actual.
+        - `TODA_LA_SERIE`: todos (el turno es opcional).
+
+        Exige `turno:read`.
+      operationId: previsualizarAlcanceDeSerie
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: serieId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Alcance de la operacion
+        example: ESTE_Y_SIGUIENTES
+        in: query
+        name: alcance
+        required: true
+        schema:
+          type: string
+          enum:
+          - ESTE
+          - ESTE_Y_SIGUIENTES
+          - TODA_LA_SERIE
+      - description: Turno pivote
+        example: 301
+        in: query
+        name: turnoId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlcanceDeSerie"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/AlcanceDeSerie"
+          description: Afectados y omitidos
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el turno para ese alcance, o no es de la serie"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La serie o la sede no existen, o son de otro tenant"
+      summary: Previsualizar que turnos toca una operacion con alcance
+      tags:
+      - Series de turnos
+  /api/v1/consultorios/{consultorioId}/series-de-turnos/{serieId}/cancelacion:
+    post:
+      description: |-
+        Cancela los turnos **futuros pendientes** del alcance, cada uno con la misma cancelacion de un turno suelto: motivo, actor, historial, aviso al paciente y **liberacion del lugar**, sin borrar ninguna fila (RN-M12-002).
+
+        Los pasados, los cancelados o ausentes, los que estan en espera y los que tienen atencion **no se tocan**: vuelven en `omitidos` (DP-04).
+
+        **Confirmacion explicita**: `cantidadConfirmada` tiene que coincidir con los afectados que hay al ejecutar. Si alguien movio o cancelo un turno entre medio, 409 `conflict` y no se cancela nada. No es idempotente: repetirla da 409.
+      operationId: cancelarSerieDeTurnos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: serieId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelarSerieDeTurnos"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlcanceDeSerie"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/AlcanceDeSerie"
+          description: Turnos cancelados y omitidos
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta motivo, alcance, cantidad o el turno para ese alcance"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La serie o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La cantidad confirmada ya no es la real, o no queda ningun\
+            \ turno pendiente en el alcance"
+      summary: Cancelar turnos de una serie con alcance
+      tags:
+      - Series de turnos
+  /api/v1/consultorios/{consultorioId}/series-de-turnos/{serieId}/reprogramacion:
+    post:
+      description: |-
+        **Mueve** los turnos futuros pendientes del alcance: cada uno conserva id, paciente e historial (RN-M12-003). El desplazamiento es el que lleva al turno pivote de su horario actual a `inicio`, medido en hora local de la sede, y se aplica igual a todos.
+
+        Cada destino se revalida como una reserva y bajo el mismo lock de sede. **Todo o nada**: si un destino no tiene lugar no se mueve ninguno, y el 409 conserva el tipo de la causa con `ocurrenciaInicio`.
+
+        La regla de la serie **no** se reescribe: describe como se genero. Misma confirmacion explicita que la cancelacion.
+      operationId: reprogramarSerieDeTurnos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: serieId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReprogramarSerieDeTurnos"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlcanceDeSerie"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/AlcanceDeSerie"
+          description: Turnos movidos y omitidos
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta motivo, alcance, cantidad, pivote u horario nuevo, o\
+            \ el horario nuevo es el mismo"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La serie, la sede o la oferta no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Un destino no tiene lugar (con `ocurrenciaInicio`), la cantidad\
+            \ confirmada ya no es la real, o no queda ningun turno pendiente"
+      summary: Mover turnos de una serie con alcance
+      tags:
+      - Series de turnos
   /api/v1/consultorios/{consultorioId}/sesiones/turnos/{turnoId}:
     post:
       description: |-
@@ -18249,6 +18625,39 @@ components:
           example: 9001
       required:
       - obligacionId
+    AlcanceDeSerie:
+      type: object
+      description: "Que turnos toca una operacion con alcance y cuales deja como estan.\
+        \ En la previsualizacion, lo que tocaria; en la respuesta del comando, lo\
+        \ que toco."
+      properties:
+        afectados:
+          type: array
+          description: Turnos futuros pendientes que la operacion toca. Su tamano
+            es lo que se confirma en `cantidadConfirmada`.
+          items:
+            $ref: "#/components/schemas/Turno"
+        alcance:
+          type: string
+          enum:
+          - ESTE
+          - ESTE_Y_SIGUIENTES
+          - TODA_LA_SERIE
+          example: ESTE_Y_SIGUIENTES
+        omitidos:
+          type: array
+          description: "Candidatos que NO se tocan, con su motivo"
+          items:
+            $ref: "#/components/schemas/TurnoOmitido"
+        serieId:
+          type: integer
+          format: int64
+          example: 12
+        turnoId:
+          type: integer
+          format: int64
+          description: "Turno pivote, si se indico"
+          example: 301
     AntecedenteResponse:
       type: object
       description: Antecedente clinico de una historia (RF-M09-002)
@@ -19294,6 +19703,44 @@ components:
           maxLength: 300
           minLength: 0
       required:
+      - motivo
+    CancelarSerieDeTurnos:
+      type: object
+      description: "Cancelacion con alcance (DP-04). Solo se cancelan turnos FUTUROS\
+        \ PENDIENTES: los pasados, los ya cancelados o ausentes, los que estan en\
+        \ espera y los que tienen atencion se informan como omitidos y no se tocan."
+      properties:
+        alcance:
+          type: string
+          description: Sobre que turnos de la serie actua
+          enum:
+          - ESTE
+          - ESTE_Y_SIGUIENTES
+          - TODA_LA_SERIE
+          example: ESTE_Y_SIGUIENTES
+        cantidadConfirmada:
+          type: integer
+          format: int32
+          description: "**Confirmacion explicita** (DP-04): la cantidad de turnos\
+            \ afectados que mostro la previsualizacion (`GET .../alcance`). Si ya\
+            \ no coincide, 409 y no se cancela nada."
+          example: 6
+          minimum: 1
+        motivo:
+          type: string
+          description: Por que se cancela. **Obligatorio** (DP-04).
+          example: El paciente termino el tratamiento
+          maxLength: 300
+          minLength: 0
+        turnoId:
+          type: integer
+          format: int64
+          description: Turno desde el que se cuenta. Obligatorio salvo en `TODA_LA_SERIE`.
+          example: 301
+          minimum: 0
+      required:
+      - alcance
+      - cantidadConfirmada
       - motivo
     CancelarTurno:
       type: object
@@ -20457,6 +20904,80 @@ components:
       - moneda
       - periodoDesde
       - periodoHasta
+    CrearSerieDeTurnos:
+      type: object
+      description: "Alta de una serie semanal de turnos (DP-04). Se reservan TODAS\
+        \ las ocurrencias o ninguna: si una no tiene lugar, no se crea nada y el 409\
+        \ la nombra en `ocurrenciaInicio`. Termina por `cantidad` o por `fechaHasta`,\
+        \ exactamente uno."
+      properties:
+        cantidad:
+          type: integer
+          format: int32
+          description: Cantidad de turnos. Excluyente con `fechaHasta`. Maximo 52.
+          example: 10
+          maximum: 52
+          minimum: 1
+        diasSemana:
+          type: array
+          description: "Dias de la semana, ISO: 1 = lunes ... 7 = domingo"
+          items:
+            type: integer
+            format: int32
+            example: 1
+            maximum: 7
+            minimum: 1
+          maxItems: 7
+          minItems: 0
+        fechaDesde:
+          type: string
+          format: date
+          description: "Primer dia en que puede caer una ocurrencia, en la zona de\
+            \ la sede"
+          example: 2026-10-12
+        fechaHasta:
+          type: string
+          format: date
+          description: Ultimo dia en que puede caer una ocurrencia. Excluyente con
+            `cantidad`.
+          example: 2026-12-21
+        hora:
+          type: string
+          format: time
+          description: "Hora de inicio, en la zona de la sede"
+          example: 09:00:00
+        idempotencyKey:
+          type: string
+          description: Clave del cliente para que un reintento no cree una segunda
+            serie. Reusarla con **otro** contenido devuelve 409 `idempotency-key-conflict`.
+          example: 1c9e7b2a-3f4d-4e5f-8a91-2c3d4e5f6a7b
+          maxLength: 80
+          minLength: 0
+        ofertaId:
+          type: integer
+          format: int64
+          description: Oferta de la sede
+          example: 42
+          minimum: 0
+        personaId:
+          type: integer
+          format: int64
+          description: "Persona del padron, con perfil de paciente vigente"
+          example: 128
+          minimum: 0
+        profesionalId:
+          type: integer
+          format: int64
+          description: Membership del profesional de todas las ocurrencias. Obligatorio
+            si la oferta lo requiere.
+          example: 31
+          minimum: 0
+      required:
+      - diasSemana
+      - fechaDesde
+      - hora
+      - ofertaId
+      - personaId
     CreateArancelRequest:
       type: object
       description: Datos para definir el arancel de una practica bajo un convenio
@@ -27326,6 +27847,59 @@ components:
       - fin
       - inicio
       - version
+    ReprogramarSerieDeTurnos:
+      type: object
+      description: "Mueve los turnos pendientes del alcance con el MISMO desplazamiento\
+        \ que lleva al pivote a su horario nuevo, medido en hora local de la sede.\
+        \ Cada turno conserva su id y su historial. Todo o nada: si un destino no\
+        \ tiene lugar, no se mueve ninguno y el 409 lo nombra en `ocurrenciaInicio`."
+      properties:
+        alcance:
+          type: string
+          description: Sobre que turnos de la serie actua
+          enum:
+          - ESTE
+          - ESTE_Y_SIGUIENTES
+          - TODA_LA_SERIE
+          example: ESTE_Y_SIGUIENTES
+        cantidadConfirmada:
+          type: integer
+          format: int32
+          description: "**Confirmacion explicita**: la cantidad de turnos afectados\
+            \ que mostro la previsualizacion."
+          example: 6
+          minimum: 1
+        inicio:
+          type: string
+          format: date-time
+          description: "Horario nuevo DEL PIVOTE, UTC"
+          example: 2026-10-13T13:00:00Z
+        motivo:
+          type: string
+          description: Por que se mueve. **Obligatorio** (DP-04).
+          example: El profesional deja de atender los lunes
+          maxLength: 300
+          minLength: 0
+        profesionalId:
+          type: integer
+          format: int64
+          description: "Si viene, todos los afectados pasan a este profesional. Si\
+            \ no, cada uno conserva el suyo."
+          example: 31
+          minimum: 0
+        turnoId:
+          type: integer
+          format: int64
+          description: "Turno pivote: de su horario actual y el nuevo sale el desplazamiento.\
+            \ Obligatorio en los tres alcances."
+          example: 301
+          minimum: 0
+      required:
+      - alcance
+      - cantidadConfirmada
+      - inicio
+      - motivo
+      - turnoId
     ReprogramarTurno:
       type: object
       description: "Mueve la reserva a otro intervalo. Es el MISMO turno: conserva\
@@ -27839,6 +28413,77 @@ components:
       required:
       - consultorioId
       - organizationId
+    SerieDeTurnos:
+      type: object
+      description: "La regla con la que se generaron los turnos y los turnos tal como\
+        \ estan HOY. La regla no se reescribe cuando un turno se mueve: describe como\
+        \ se genero la serie."
+      properties:
+        cantidad:
+          type: integer
+          format: int32
+          description: Ausente si la serie termina por fecha
+          example: 10
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        creadaEn:
+          type: string
+          format: date-time
+          example: 2026-10-06T14:03:11Z
+        diasSemana:
+          type: array
+          description: "Dias ISO, 1 = lunes"
+          items:
+            type: integer
+            format: int32
+        fechaDesde:
+          type: string
+          format: date
+          example: 2026-10-12
+        fechaHasta:
+          type: string
+          format: date
+          description: Ausente si la serie termina por cantidad
+          example: 2026-12-21
+        frecuencia:
+          type: string
+          enum:
+          - SEMANAL
+          example: SEMANAL
+        hora:
+          type: string
+          format: time
+          description: Hora local de inicio
+          example: 09:00:00
+        id:
+          type: integer
+          format: int64
+          example: 12
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+        profesionalId:
+          type: integer
+          format: int64
+          description: Ausente si la oferta no requiere profesional
+          example: 31
+        timezone:
+          type: string
+          description: Zona de la sede al crear la serie
+          example: America/Argentina/Cordoba
+        turnos:
+          type: array
+          description: "Los turnos de la serie, del mas temprano al mas tarde, en\
+            \ cualquier estado"
+          items:
+            $ref: "#/components/schemas/Turno"
     ServicioResponse:
       type: object
       description: Servicio del catalogo global de la plataforma
@@ -28726,6 +29371,13 @@ components:
           type: string
           format: date-time
           example: 2026-09-01T14:03:11Z
+        serieId:
+          type: integer
+          format: int64
+          description: "Serie que genero este turno (AKINE E-3). Ausente en un turno\
+            \ suelto. Un turno de una serie conserva identidad, estado e historial\
+            \ propios: se cancela o se mueve solo, o junto con otros por `/series-de-turnos/{serieId}`."
+          example: 12
         version:
           type: integer
           format: int64
@@ -28804,11 +29456,34 @@ components:
           format: int64
           description: Membership del profesional. Ausente si la oferta no lo requiere.
           example: 31
+        serieId:
+          type: integer
+          format: int64
+          description: "Serie que genero el turno (AKINE E-3). Ausente en un turno\
+            \ suelto: la pantalla lo usa para ofrecer el alcance al cancelar o mover."
+          example: 12
         version:
           type: integer
           format: int64
           description: Version para el control optimista de las transiciones
           example: 0
+    TurnoOmitido:
+      type: object
+      description: Un turno del alcance que la operacion de serie deja como esta
+      properties:
+        motivo:
+          type: string
+          description: "`YA_EMPEZO` (el pasado es inalterable), `ESTADO_TERMINAL`\
+            \ (ya cancelado o ausente), `EN_ESPERA` (el paciente esta en la sala:\
+            \ se resuelve solo) o `CON_ATENCION` (tiene una Sesion registrada)"
+          enum:
+          - YA_EMPEZO
+          - ESTADO_TERMINAL
+          - EN_ESPERA
+          - CON_ATENCION
+          example: YA_EMPEZO
+        turno:
+          $ref: "#/components/schemas/Turno"
     UpdateArancelRequest:
       type: object
       description: Cambios a aplicar sobre un arancel. Los campos nulos no se tocan
