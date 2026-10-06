@@ -243,7 +243,7 @@ worktrees separados. `main` tiene **368 commits** y el último merge es `d110aaf
 |---|---|
 | Contrato | `openapi/akine-api.yaml` **0.54.0**, **277 operaciones** (`grep -c operationId`). El cliente del frontend en `appKine-web` `main` está en **0.46.0** |
 | Migraciones | Última **`V69`** (F-3). `V65` la usó C-1. `V66`–`V68` no existen: `V67` quedó vacía (C-5 resolvió que RN-M10-002 no lleva unique) y `V66`/`V68` siguen reservadas. Ver §6 del plan de trabajo en paralelo |
-| Tests | Último total reportado: **3.006 unitarias, 0 fallos** (PR #39, `./mvnw -o test -DskipITs`). Ese número lo midió el agente del PR; **no se volvió a medir para escribir esto** |
+| Tests | **3.044 unitarias, 0 fallos**, medidas sobre la combinación de `main` con F-3 antes de mergear #39 (`./mvnw -o test -DskipITs`). Sobre la misma combinación, **46 ITs** de `billing` + `OpenApiContractIT` + `EsquemaMultiTenantIT` en verde. La suite completa con todos los ITs no se corrió ese día |
 
 #### Qué agregó cada minor del contrato desde 0.44.0
 
