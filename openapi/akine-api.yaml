@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.46.0
+  version: 0.48.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -62,6 +62,8 @@ tags:
   name: Cobros
 - description: Coberturas particulares y financiadas de un paciente (M08)
   name: Coberturas del paciente
+- description: Reintento administrativo de notificaciones del tenant
+  name: Notificaciones
 - description: "Que se aplico REALMENTE en la atencion, donde, por quien y con que\
     \ parametros (M14, RF-M14-005 y RF-M04-005)"
   name: Tratamientos realizados
@@ -13962,6 +13964,56 @@ paths:
       summary: Suspender temporalmente un vinculo
       tags:
       - Colaboradores
+  /api/v1/organizations/{orgId}/notifications/{notificationId}/retry:
+    post:
+      description: |-
+        Devuelve a la cola una notificacion **FALLIDA** o **AGOTADA** y reinicia su contador de intentos (RF-M26-005). No reejecuta ningun negocio: lo unico que se repite es el envio.
+
+        Requiere `colaborador:manage`. Solo alcanza notificaciones de la organizacion del contexto; las de identidad (activacion, recuperacion) no tienen tenant y responden 404.
+      operationId: retryNotification
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la notificacion
+        example: 42
+        in: path
+        name: notificationId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "204":
+          description: Notificacion devuelta a la cola
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto de trabajo activo, o sin `colaborador:manage`"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La notificacion no existe, o no es de la organizacion del\
+            \ contexto"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`conflict`: la notificacion no esta FALLIDA ni AGOTADA; el\
+            \ estado actual viaja en la propiedad `estado`"
+      summary: Reintentar una notificacion fallida
+      tags:
+      - Notificaciones
   /api/v1/organizations/{orgId}/subscription:
     get:
       description: |-
@@ -26638,6 +26690,7 @@ components:
           enum:
           - OBLIGACION_ANULADA
           - SIN_SALDO
+          - DEUDA_DEL_PACIENTE
           - FINANCIADOR_DISTINTO
           - SEDE_DISTINTA
           - FUERA_DEL_PERIODO

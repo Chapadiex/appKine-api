@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -103,7 +103,8 @@ public class FinanciadoresEnElReporte implements ReporteContributor {
 		long org = consulta.organizationId();
 		long sede = consulta.consultorioId();
 
-		Map<Long, BigDecimal> prestadoPorFinanciador = new HashMap<>();
+		// Linked: conserva el orden del SQL para las filas de financiadores sin lote.
+		Map<Long, BigDecimal> prestadoPorFinanciador = new LinkedHashMap<>();
 		BigDecimal prestado = BigDecimal.ZERO;
 		for (Object[] fila : obligaciones.sumarPrestadoPorFinanciadorEnElReporte(
 				org, sede, consulta.desdeInstante(), consulta.hastaInstante(),
@@ -148,6 +149,20 @@ public class FinanciadoresEnElReporte implements ReporteContributor {
 					filaDebitado.toPlainString(),
 					filaCobrado.toPlainString(),
 					filaPendiente.toPlainString()));
+			prestadoPorFinanciador.remove(financiador);
+		}
+
+		// Los financiadores con prestado y sin lote que toque el periodo tambien tienen fila: si no,
+		// la columna "Prestado" del detalle (y del CSV) no suma al indicador, y la brecha entre
+		// prestado y presentado queda sin dueno visible.
+		for (Map.Entry<Long, BigDecimal> sinLote : prestadoPorFinanciador.entrySet()) {
+			if (filas.size() >= consulta.limiteFilas()) {
+				break;
+			}
+			filas.add(FilaDeReporte.de(
+					String.valueOf(sinLote.getKey()),
+					sinLote.getValue().toPlainString(),
+					"0", "0", "0", "0", "0"));
 		}
 
 		BigDecimal cobradoEnElPeriodo = cero(

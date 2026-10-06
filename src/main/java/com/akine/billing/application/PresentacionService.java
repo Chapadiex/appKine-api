@@ -345,9 +345,13 @@ public class PresentacionService {
 				.findByIdEnLaPresentacion(organizationId, presentacionId, itemId)
 				.orElseThrow(() -> new PresentacionItemNotAccessibleException(itemId));
 
-		// El saldo del lote se mueve PRIMERO, porque es la operacion que puede fallar por una
-		// condicion del motor: si no alcanza, no queda un item marcado como debitado por un debito
-		// que no se registro. Mismo orden que MovimientoCajaService.asentar.
+		// Primero lo que se decide sin la base: estado del item y que el importe entre en lo
+		// presentado. Un debito invalido no llega a mover el saldo del lote.
+		item.exigirDebitable(debito.importe());
+
+		// Despues el saldo del lote, ANTES de marcar el item, porque es la operacion que puede
+		// fallar por una condicion del motor: si no alcanza, no queda un item marcado como debitado
+		// por un debito que no se registro. Mismo orden que MovimientoCajaService.asentar.
 		moverSaldo(
 				organizationId, presentacion,
 				presentaciones.registrarDebito(organizationId, presentacionId, debito.importe()),
@@ -537,7 +541,7 @@ public class PresentacionService {
 	}
 
 	/**
-	 * Las seis comprobaciones de RF-M21-003 que el sistema puede hacer hoy.
+	 * Las comprobaciones de RF-M21-003 que el sistema puede hacer hoy.
 	 *
 	 * <p>Faltan los tres requisitos documentales del convenio —orden, autorizacion y credencial—,
 	 * que viven en {@code ArancelCongelado} y que el devengado nunca copio a {@code obligacion}.
@@ -552,8 +556,10 @@ public class PresentacionService {
 		if (obligacion.getSaldo().signum() <= 0) {
 			return Optional.of(HallazgoDeValidacion.SIN_SALDO);
 		}
-		if (obligacion.getResponsable() != Responsable.FINANCIADOR
-				|| !presentacion.getFinanciadorId().equals(obligacion.getFinanciadorId())) {
+		if (obligacion.getResponsable() != Responsable.FINANCIADOR) {
+			return Optional.of(HallazgoDeValidacion.DEUDA_DEL_PACIENTE);
+		}
+		if (!presentacion.getFinanciadorId().equals(obligacion.getFinanciadorId())) {
 			return Optional.of(HallazgoDeValidacion.FINANCIADOR_DISTINTO);
 		}
 		if (!presentacion.getConsultorioId().equals(obligacion.getConsultorioId())) {

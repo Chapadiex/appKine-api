@@ -43,7 +43,8 @@ public record ValidacionPresentacionResponse(
 							+ "autorizacion y credencial— **todavia no se validan**: viven en el "
 							+ "arancel congelado y el devengado no los copia a la obligacion.",
 					allowableValues = {
-							"OBLIGACION_ANULADA", "SIN_SALDO", "FINANCIADOR_DISTINTO",
+							"OBLIGACION_ANULADA", "SIN_SALDO", "DEUDA_DEL_PACIENTE",
+							"FINANCIADOR_DISTINTO",
 							"SEDE_DISTINTA", "FUERA_DEL_PERIODO", "MONEDA_DISTINTA"},
 					example = "FUERA_DEL_PERIODO")
 			String hallazgo) {

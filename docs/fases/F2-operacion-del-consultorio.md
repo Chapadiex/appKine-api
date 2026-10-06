@@ -63,7 +63,7 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 
 ### Tests
 - [x] ~~Unitarios de `ConsultorioService`, `EspacioService`, `CatalogoService`, `CatalogoSolicitudService` (hoy solo ITs).~~ → 70 unitarios (Mockito, sin Spring): `EspacioServiceTest` 24, `CatalogoServiceTest` 20, `CatalogoSolicitudServiceTest` 10, `ConsultorioServiceTest` 16. Destaparon que una edición de sede amparada en soporte dejaba **dos** `SUPPORT_ACCESS_USED`; corregido en `ConsultorioService.exigirSobreLaSede`.
-- [ ] IT del escenario diferido 20 (que la `@Version` forzada de 02.07 avance contra MySQL real).
+- [x] ~~IT del escenario diferido 20 (que la `@Version` forzada de 02.07 avance contra MySQL real).~~ → `HabilitacionesVersionForzadaIT`: avanza una sola vez y el segundo guardado choca.
 - [ ] ITs de baja y reducción de capacidad **con turnos reales**.
 - [ ] E2E de alta → baja por cada pantalla del tramo. **No hay ni uno.**
 

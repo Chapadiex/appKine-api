@@ -274,7 +274,7 @@ public class Convenio extends MarcaTemporal {
 			throw new IllegalArgumentException(
 					"El convenio necesita una moneda: sus aranceles no pueden tener importe sin ella");
 		}
-		return moneda.strip().toUpperCase(java.util.Locale.ROOT);
+		return MonedaIso4217.normalizar(moneda);
 	}
 
 	private static Integer exigirLimite(Integer limite) {
