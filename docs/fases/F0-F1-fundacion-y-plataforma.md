@@ -27,9 +27,11 @@
 ## Faltantes
 
 ### Backend
-- [ ] **API de reintento manual de notificaciones** (01.02). `OutboxDispatchService.reintentarManualmente`
+- [x] ~~**API de reintento manual de notificaciones** (01.02). `OutboxDispatchService.reintentarManualmente`
   existe y no tiene llamador; `notification` no tiene paquete `api`. Propuesta:
-  `POST /api/v1/notifications/{id}/retry` con permiso administrativo y filtro por tenant.
+  `POST /api/v1/notifications/{id}/retry` con permiso administrativo y filtro por tenant.~~
+  → A-3: `POST /api/v1/organizations/{orgId}/notifications/{notificationId}/retry` con
+  `colaborador:manage` (contrato 0.47.0).
 - [ ] **Bootstrap del `PLATFORM_ADMIN`** sembrado por `V15`. Hoy es inalcanzable:
   `PasswordResetService.solicitar` corta en `!cuenta.puedeAutenticarse()` y responde 202 en
   silencio. Consecuencia: en un despliegue nuevo ningún endpoint de `/api/v1/platform/**` es
@@ -69,6 +71,6 @@
 
 - [x] ~~ADR que ratifique `encounter` como módulo propietario de la Sesión; actualizar `AGENT.md` §4.~~ → ADR-0024 y `AGENT.md` §4 (A-2).
 - [ ] Decisión + implementación del bootstrap de `PLATFORM_ADMIN`.
-- [ ] Endpoint de retry de notificaciones con su test.
+- [x] ~~Endpoint de retry de notificaciones con su test.~~ → A-3, `ReintentoDeNotificacionServiceTest`.
 - [ ] Los tres E2E de arriba, contra backend real.
 - [ ] Registro de cierre de 01.02 y 01.03 actualizado.
