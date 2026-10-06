@@ -315,9 +315,21 @@ class PlanTratamientoIT {
 				() -> planes.activar(
 						fixture.actorClinico(), otro.id(), otro.version(), JUSTIFICACION)));
 
-		assertThat(desenlaces.stream().filter(d -> !d.fallo()).count())
-				.as("una sola activacion entra. Desenlaces: %s", desenlaces)
-				.isEqualTo(1);
+		// Hay DOS desenlaces correctos, segun como caiga el tiempo:
+		// - se solapan: una entra y la otra choca contra el unique (un OK);
+		// - se serializan: la segunda finaliza a la primera al activarse —es lo que hace
+		//   `finalizarElVigente`— y las dos responden OK.
+		// Exigir un solo OK hacia fallar el test cada vez que el CI las serializaba (06/10/2026,
+		// PR #18). Lo que no puede pasar en ningun caso es que queden dos ACTIVO.
+		long entraron = desenlaces.stream().filter(d -> !d.fallo()).count();
+		assertThat(entraron)
+				.as("entra al menos una activacion. Desenlaces: %s", desenlaces)
+				.isBetween(1L, 2L);
+		if (entraron == 2) {
+			assertThat(List.of(estadoDe(uno.id()), estadoDe(otro.id())))
+					.as("serializadas: la segunda finalizo a la primera. Desenlaces: %s", desenlaces)
+					.containsExactlyInAnyOrder("ACTIVO", "FINALIZADO");
+		}
 		assertThat(activosDelCaso(caso.id()))
 				.as("y en la BASE queda uno solo: el Caso ES el problema terapeutico, y dos planes "
 						+ "activos significan que en realidad son dos problemas. Desenlaces: %s",
@@ -680,6 +692,11 @@ class PlanTratamientoIT {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM plan_tratamiento WHERE caso_clinico_id = ? AND estado = 'ACTIVO'
 				""", Integer.class, casoId);
+	}
+
+	private String estadoDe(long planId) {
+		return jdbc.queryForObject(
+				"SELECT estado FROM plan_tratamiento WHERE id = ?", String.class, planId);
 	}
 
 	private int versionesDe(long planId) {
