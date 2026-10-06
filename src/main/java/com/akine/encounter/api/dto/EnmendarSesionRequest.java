@@ -3,15 +3,25 @@ package com.akine.encounter.api.dto;
 import com.akine.encounter.domain.ContenidoDeSesion;
 import com.akine.encounter.domain.Evolucion;
 import com.akine.encounter.domain.Lateralidad;
+import com.akine.encounter.domain.LateralidadMedicion;
+import com.akine.encounter.domain.MedicionEnmendada;
 import com.akine.encounter.domain.ProximaConducta;
 import com.akine.encounter.domain.Tolerancia;
+import com.akine.encounter.domain.TratamientoAplicado;
+import com.akine.encounter.domain.TratamientoEnmendado;
+import com.akine.encounter.domain.ValorMedido;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+
+import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * La enmienda de una sesion cerrada (RF-M14-010).
@@ -88,6 +98,25 @@ public record EnmendarSesionRequest(
 		ProximaConducta proximaConducta,
 
 		@Schema(
+				description = "Los tratamientos realizados como tienen que quedar (C-6). **Lista "
+						+ "completa**: un item con `tratamientoId` corrige ese tratamiento, uno sin "
+						+ "`tratamientoId` agrega uno, y un tratamiento vigente que no aparece se da de "
+						+ "baja con el motivo de la enmienda. **Ausente significa \"no se tocan\"**; "
+						+ "lista vacia significa \"no queda ninguno\". **No puede cambiar el conjunto "
+						+ "de practicas realizadas** (409 `enmienda-cambia-practicas`): esas practicas "
+						+ "eligieron al cierre que autorizacion se consumio. La version anterior "
+						+ "conserva lo que habia.")
+		@Valid List<TratamientoEnmiendaRequest> tratamientos,
+
+		@Schema(
+				description = "Las mediciones como tienen que quedar (C-6), identificadas por "
+						+ "`definicionId` + `lateralidad`. **Lista completa**: lo que no aparece se "
+						+ "quita. **Ausente significa \"no se tocan\"**. Una medicion nueva exige "
+						+ "definicion activa; una existente se corrige aunque la definicion se haya "
+						+ "dado de baja. La version anterior conserva los valores de antes.")
+		@Valid List<MedicionEnmiendaRequest> mediciones,
+
+		@Schema(
 				description = "**Por que se corrige. Obligatorio.** Sin esto una enmienda es "
 						+ "indistinguible de una correccion de tipeo y el historial deja de servir "
 						+ "para lo unico que sirve, que es entender por que cambio el registro "
@@ -114,6 +143,104 @@ public record EnmendarSesionRequest(
 	 * —toda la evaluacion base lo es— no se puede expresar en JSON sin inventar un centinela. La
 	 * pantalla manda el formulario completo, que es lo que ya hace al evaluar.
 	 */
+	@Schema(
+			name = "TratamientoEnmendado",
+			description = "Un tratamiento como tiene que quedar en la enmienda. Mismos campos y "
+					+ "reglas que al registrarlo, mas el id del tratamiento que se corrige")
+	public record TratamientoEnmiendaRequest(
+
+			@Schema(description = "Tratamiento vigente que se corrige. **Ausente si es uno nuevo**. "
+					+ "Uno que no es de esta sesion o ya estaba dado de baja es 404", example = "301")
+			@Positive Long tratamientoId,
+
+			@Schema(description = "Practica realizada. Si cambia, el conjunto de practicas de la "
+					+ "sesion tiene que seguir siendo el mismo", example = "41")
+			@NotNull @Positive Long practicaId,
+
+			@Schema(example = "TENS convencional") @Size(max = 160) String tecnica,
+
+			@Schema(example = "Lumbar") @Size(max = 120) String zona,
+
+			@Schema(description = "**Exige zona**",
+					allowableValues = {"IZQUIERDA", "DERECHA", "BILATERAL", "NO_APLICA"},
+					example = "BILATERAL")
+			Lateralidad lateralidad,
+
+			@Schema(example = "20") @Min(1) @Max(1440) Integer duracionMinutos,
+
+			@Schema(description = "Co-atencion. Si no cambia se conserva aunque hoy no tenga "
+					+ "membership vigente; si cambia, tiene que tenerla", example = "88")
+			@Positive Long profesionalMembershipId,
+
+			@Schema(description = "Espacio realmente utilizado. Si no cambia se conserva aunque "
+					+ "hoy este dado de baja", example = "12")
+			@Positive Long espacioId,
+
+			@Schema(example = "Tolero bien") @Size(max = 500) String observacion,
+
+			@Schema(description = "Parametros tipados. Reemplazan a los anteriores")
+			@Valid List<RegistrarTratamientoRequest.ParametroRequest> parametros) {
+
+		TratamientoEnmendado aDominio() {
+			return new TratamientoEnmendado(tratamientoId, new TratamientoAplicado(
+					practicaId,
+					tecnica,
+					zona,
+					lateralidad,
+					duracionMinutos,
+					profesionalMembershipId,
+					espacioId,
+					observacion,
+					parametros == null
+							? List.of()
+							: parametros.stream()
+									.map(RegistrarTratamientoRequest.ParametroRequest::aDominio)
+									.toList()));
+		}
+	}
+
+	@Schema(
+			name = "MedicionEnmendada",
+			description = "Una medicion como tiene que quedar en la enmienda. Exactamente uno de "
+					+ "los tres valores, segun el tipo de la definicion")
+	public record MedicionEnmiendaRequest(
+
+			@Schema(description = "Medida del catalogo", example = "7")
+			@NotNull @Positive Long definicionId,
+
+			@Schema(description = "Lado. Ausente es `NO_APLICA`",
+					allowableValues = {"IZQUIERDA", "DERECHA", "NO_APLICA"}, example = "DERECHA")
+			LateralidadMedicion lateralidad,
+
+			@Schema(example = "92.5") BigDecimal valorNumerico,
+
+			@Schema(example = "Marcha antalgica")
+			@Size(max = 500) String valorTexto,
+
+			@Schema(example = "true") Boolean valorBooleano,
+
+			@Schema(example = "Con dolor al final del rango") @Size(max = 280) String nota) {
+
+		MedicionEnmendada aDominio() {
+			return new MedicionEnmendada(definicionId, lateralidad,
+					new ValorMedido(valorNumerico, valorTexto, valorBooleano), nota);
+		}
+	}
+
+	/** Los tratamientos de la enmienda, o {@code null} si no se tocan. */
+	public List<TratamientoEnmendado> tratamientosADominio() {
+		return tratamientos == null
+				? null
+				: tratamientos.stream().map(TratamientoEnmiendaRequest::aDominio).toList();
+	}
+
+	/** Las mediciones de la enmienda, o {@code null} si no se tocan. */
+	public List<MedicionEnmendada> medicionesADominio() {
+		return mediciones == null
+				? null
+				: mediciones.stream().map(MedicionEnmiendaRequest::aDominio).toList();
+	}
+
 	public ContenidoDeSesion aDominio() {
 		return new ContenidoDeSesion(
 				motivoClinico, dolorEva, dolorZona, dolorLateralidad, evolucion, objetivoSesion,

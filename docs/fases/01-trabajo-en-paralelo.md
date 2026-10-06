@@ -126,7 +126,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V68` | B-4 | Historial de estados de autorización (si DU-8 = tabla) |
 | `V69` | F-3 | **Usada**: `V69__m19_anticipos_y_reintegro.sql` — saldo a favor y anulación en `cobro`, imputación posterior en `cobro_imputacion`, tabla `cobro_reintegro`, origen `REINTEGRO` en `movimiento_caja` |
 | `V70` | E-3 | Series de turnos (DP-04) |
-| `V71` | C-6 | `sesion_version` con tratamientos y mediciones |
+| `V71` | C-6 | **Usada**: `V71__c6_sesion_version_tratamientos_y_mediciones.sql` — tablas `sesion_version_tratamiento`, `sesion_version_tratamiento_parametro` y `sesion_version_medicion` (foto inmutable por version) con backfill desde el estado vivo |
 | `V72` | F-4 | Obligación del financiador, coseguro y snapshot de convenio |
 | `V73`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
 

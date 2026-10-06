@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.54.0
+  version: 0.56.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -8609,7 +8609,9 @@ paths:
 
         **La enmienda no vuelve a disparar nada economico.** No se devenga deuda ni se consume autorizacion: ninguno de los campos enmendables los afecta.
 
-        **Es un reemplazo completo, no un parche.** Un campo ausente significa "queda vacio", no "dejalo como estaba": la pantalla manda el formulario entero.
+        **Tratamientos y mediciones tambien se enmiendan (C-6)**, con `tratamientos` y `mediciones`: listas completas de lo que tiene que quedar. La version nueva lleva la foto de lo que quedo y la anterior conserva lo que habia. Lo que no se puede cambiar es **el conjunto de practicas realizadas**: eligieron al cierre que autorizacion se consumio, y cambiarlas es una compensacion en M17 (409 `enmienda-cambia-practicas`).
+
+        **Es un reemplazo completo, no un parche.** Un campo ausente significa "queda vacio", no "dejalo como estaba": la pantalla manda el formulario entero. La unica excepcion son `tratamientos` y `mediciones`: **ausentes no se tocan**, para que un cliente que no los conoce no pueda vaciarlos por omision.
 
         **Solo el profesional de la sesion puede enmendar.** No es cuestion de permiso —dos profesionales de la misma sede tienen el mismo `sesion:register`— sino de propiedad de esa atencion, y por eso el rechazo es 409 y no 403.
 
@@ -8673,7 +8675,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "La sesion todavia esta abierta (`sesion-no-cerrada`: se guarda,\
-            \ no se enmienda), la atiende otro profesional, o la version quedo vieja"
+            \ no se enmienda), la atiende otro profesional, la version quedo vieja,\
+            \ o la enmienda cambiaria las practicas realizadas (`enmienda-cambia-practicas`)"
       summary: Enmendar una sesion cerrada
       tags:
       - Sesiones
@@ -22375,6 +22378,15 @@ components:
           example: No podia atarse los cordones
           maxLength: 500
           minLength: 0
+        mediciones:
+          type: array
+          description: "Las mediciones como tienen que quedar (C-6), identificadas\
+            \ por `definicionId` + `lateralidad`. **Lista completa**: lo que no aparece\
+            \ se quita. **Ausente significa \"no se tocan\"**. Una medicion nueva\
+            \ exige definicion activa; una existente se corrige aunque la definicion\
+            \ se haya dado de baja. La version anterior conserva los valores de antes."
+          items:
+            $ref: "#/components/schemas/MedicionEnmendada"
         motivo:
           type: string
           description: "**Por que se corrige. Obligatorio.** Sin esto una enmienda\
@@ -22428,6 +22440,18 @@ components:
           - REGULAR
           - MALA
           example: BUENA
+        tratamientos:
+          type: array
+          description: "Los tratamientos realizados como tienen que quedar (C-6).\
+            \ **Lista completa**: un item con `tratamientoId` corrige ese tratamiento,\
+            \ uno sin `tratamientoId` agrega uno, y un tratamiento vigente que no\
+            \ aparece se da de baja con el motivo de la enmienda. **Ausente significa\
+            \ \"no se tocan\"**; lista vacia significa \"no queda ninguno\". **No\
+            \ puede cambiar el conjunto de practicas realizadas** (409 `enmienda-cambia-practicas`):\
+            \ esas practicas eligieron al cierre que autorizacion se consumio. La\
+            \ version anterior conserva lo que habia."
+          items:
+            $ref: "#/components/schemas/TratamientoEnmendado"
         version:
           type: integer
           format: int64
@@ -24249,6 +24273,87 @@ components:
           description: "Version que hay que reenviar para editarla. Si quedo vieja,\
             \ 409"
           example: 0
+    MedicionEnVersion:
+      type: object
+      description: "Una medicion tal como estaba en una version de la sesion, con\
+        \ el significado de la definicion congelado"
+      properties:
+        codigo:
+          type: string
+        definicionId:
+          type: integer
+          format: int64
+          example: 7
+        lateralidad:
+          type: string
+          enum:
+          - IZQUIERDA
+          - DERECHA
+          - NO_APLICA
+        nombre:
+          type: string
+        nota:
+          type: string
+        registradaEn:
+          type: string
+          format: date-time
+        registradaPor:
+          type: integer
+          format: int64
+          description: Quien la cargo o la corrigio por ultima vez antes de esta version
+          example: 8
+        tipo:
+          type: string
+          enum:
+          - NUMERICO
+          - ESCALA
+          - TEXTO
+          - BOOLEANO
+        unidad:
+          type: string
+        valorBooleano:
+          type: boolean
+        valorNumerico:
+          type: number
+        valorTexto:
+          type: string
+    MedicionEnmendada:
+      type: object
+      description: "Una medicion como tiene que quedar en la enmienda. Exactamente\
+        \ uno de los tres valores, segun el tipo de la definicion"
+      properties:
+        definicionId:
+          type: integer
+          format: int64
+          description: Medida del catalogo
+          example: 7
+          minimum: 0
+        lateralidad:
+          type: string
+          description: Lado. Ausente es `NO_APLICA`
+          enum:
+          - IZQUIERDA
+          - DERECHA
+          - NO_APLICA
+          example: DERECHA
+        nota:
+          type: string
+          example: Con dolor al final del rango
+          maxLength: 280
+          minLength: 0
+        valorBooleano:
+          type: boolean
+          example: true
+        valorNumerico:
+          type: number
+          example: 92.5
+        valorTexto:
+          type: string
+          example: Marcha antalgica
+          maxLength: 500
+          minLength: 0
+      required:
+      - definicionId
     MedicionesDeSesion:
       type: object
       description: Mediciones cargadas en la sesion y cuanto del catalogo cubren
@@ -26092,6 +26197,7 @@ components:
       - https://akine.app/problems/sesion-ajena
       - https://akine.app/problems/sesion-cerrada
       - https://akine.app/problems/sesion-no-cerrada
+      - https://akine.app/problems/enmienda-cambia-practicas
       - https://akine.app/problems/obligacion-already-anulada
       - https://akine.app/problems/obligacion-con-cobros
       - https://akine.app/problems/cobro-no-cuadra
@@ -27947,6 +28053,11 @@ components:
           type: string
         limitacionFuncional:
           type: string
+        mediciones:
+          type: array
+          description: Las mediciones **de esta version**. Foto inmutable (C-6)
+          items:
+            $ref: "#/components/schemas/MedicionEnVersion"
         motivoClinico:
           type: string
           description: No es un diagnostico
@@ -27991,6 +28102,13 @@ components:
           - BUENA
           - REGULAR
           - MALA
+        tratamientos:
+          type: array
+          description: "Los tratamientos **vigentes en esta version**, en orden cronologico.\
+            \ Foto inmutable: una enmienda posterior que los corrija no cambia lo\
+            \ que dice esta version (C-6)"
+          items:
+            $ref: "#/components/schemas/TratamientoEnVersion"
     SlotDisponible:
       type: object
       description: Un hueco concreto y reservable
@@ -28390,6 +28508,126 @@ components:
         zona:
           type: string
           example: Lumbar
+    TratamientoEnVersion:
+      type: object
+      description: Un tratamiento realizado tal como estaba en una version de la sesion
+      properties:
+        duracionMinutos:
+          type: integer
+          format: int32
+        espacioId:
+          type: integer
+          format: int64
+        espacioNombre:
+          type: string
+        lateralidad:
+          type: string
+          enum:
+          - IZQUIERDA
+          - DERECHA
+          - BILATERAL
+          - NO_APLICA
+        observacion:
+          type: string
+        orden:
+          type: integer
+          format: int32
+          example: 1
+        parametros:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParametroDeTratamientoLeido"
+        practicaCodigo:
+          type: string
+        practicaId:
+          type: integer
+          format: int64
+          example: 41
+        practicaNombre:
+          type: string
+        profesionalMembershipId:
+          type: integer
+          format: int64
+        tecnica:
+          type: string
+        tratamientoId:
+          type: integer
+          format: int64
+          description: Id del tratamiento vivo. Permite seguir el mismo tratamiento
+            de una version a otra y es el que se manda para corregirlo
+          example: 301
+        zona:
+          type: string
+    TratamientoEnmendado:
+      type: object
+      description: "Un tratamiento como tiene que quedar en la enmienda. Mismos campos\
+        \ y reglas que al registrarlo, mas el id del tratamiento que se corrige"
+      properties:
+        duracionMinutos:
+          type: integer
+          format: int32
+          example: 20
+          maximum: 1440
+          minimum: 1
+        espacioId:
+          type: integer
+          format: int64
+          description: Espacio realmente utilizado. Si no cambia se conserva aunque
+            hoy este dado de baja
+          example: 12
+          minimum: 0
+        lateralidad:
+          type: string
+          description: '**Exige zona**'
+          enum:
+          - IZQUIERDA
+          - DERECHA
+          - BILATERAL
+          - NO_APLICA
+          example: BILATERAL
+        observacion:
+          type: string
+          example: Tolero bien
+          maxLength: 500
+          minLength: 0
+        parametros:
+          type: array
+          description: Parametros tipados. Reemplazan a los anteriores
+          items:
+            $ref: "#/components/schemas/ParametroDeTratamiento"
+        practicaId:
+          type: integer
+          format: int64
+          description: "Practica realizada. Si cambia, el conjunto de practicas de\
+            \ la sesion tiene que seguir siendo el mismo"
+          example: 41
+          minimum: 0
+        profesionalMembershipId:
+          type: integer
+          format: int64
+          description: "Co-atencion. Si no cambia se conserva aunque hoy no tenga\
+            \ membership vigente; si cambia, tiene que tenerla"
+          example: 88
+          minimum: 0
+        tecnica:
+          type: string
+          example: TENS convencional
+          maxLength: 160
+          minLength: 0
+        tratamientoId:
+          type: integer
+          format: int64
+          description: Tratamiento vigente que se corrige. **Ausente si es uno nuevo**.
+            Uno que no es de esta sesion o ya estaba dado de baja es 404
+          example: 301
+          minimum: 0
+        zona:
+          type: string
+          example: Lumbar
+          maxLength: 120
+          minLength: 0
+      required:
+      - practicaId
     Turno:
       type: object
       description: "Reserva de un slot. No es la prestacion: DP-05 separa Turno, Recepcion\

@@ -10,7 +10,9 @@ import com.akine.encounter.domain.EvaluacionBase;
 import com.akine.encounter.domain.Lateralidad;
 import com.akine.encounter.domain.ProximaConducta;
 import com.akine.encounter.domain.Sesion;
+import com.akine.encounter.domain.FotoClinica;
 import com.akine.encounter.domain.SesionVersion;
+import com.akine.encounter.domain.TratamientoEnmendado;
 import com.akine.encounter.domain.Tolerancia;
 import com.akine.platform.spi.tenant.AuthenticatedPrincipal;
 import com.akine.platform.spi.tenant.TenantContextHolder;
@@ -171,7 +173,7 @@ class SesionControllerTest {
 	@Test
 	@DisplayName("La enmienda lleva el contenido y el motivo por separado: el motivo no es contenido")
 	void la_enmienda_se_traduce() throws Exception {
-		given(sesionService.enmendar(any(), anyLong(), anyLong(), any(), anyString(), anyLong()))
+		given(sesionService.enmendar(any(), anyLong(), anyLong(), any(), any(), any(), anyString(), anyLong()))
 				.willReturn(SesionView.de(cerrada()));
 
 		mockMvc.perform(post(RUTA + "/501/enmiendas")
@@ -184,10 +186,36 @@ class SesionControllerTest {
 				.andExpect(status().isOk());
 
 		ArgumentCaptor<ContenidoDeSesion> contenido = ArgumentCaptor.forClass(ContenidoDeSesion.class);
-		verify(sesionService).enmendar(any(), eq(7L), eq(501L), contenido.capture(),
+		verify(sesionService).enmendar(any(), eq(7L), eq(501L), contenido.capture(), isNull(), isNull(),
 				eq("Era del lado izquierdo"), eq(5L));
 		assertThat(contenido.getValue().notaDeCierre()).isEqualTo("Nota corregida");
 		assertThat(contenido.getValue().dolorLateralidad()).isEqualTo(Lateralidad.IZQUIERDA);
+	}
+
+	@Test
+	@DisplayName("C-6: la enmienda traduce tratamientos y mediciones; ausentes viajan como null")
+	@SuppressWarnings("unchecked")
+	void la_enmienda_clinica_se_traduce() throws Exception {
+		given(sesionService.enmendar(any(), anyLong(), anyLong(), any(), any(), any(), anyString(), anyLong()))
+				.willReturn(SesionView.de(cerrada()));
+
+		mockMvc.perform(post(RUTA + "/501/enmiendas")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"notaDeCierre":"Nota","motivo":"Era hombro","version":5,
+								 "tratamientos":[{"tratamientoId":300,"practicaId":41,"zona":"Hombro",
+								   "parametros":[{"clave":"intensidad","tipoDato":"NUMERICO","valorNumerico":2.5}]},
+								   {"practicaId":41}]}""")
+						.with(miembro(8L)))
+				.andExpect(status().isOk());
+
+		ArgumentCaptor<List<TratamientoEnmendado>> tratamientos = ArgumentCaptor.forClass(List.class);
+		verify(sesionService).enmendar(any(), eq(7L), eq(501L), any(), tratamientos.capture(),
+				isNull(), eq("Era hombro"), eq(5L));
+		assertThat(tratamientos.getValue()).hasSize(2);
+		assertThat(tratamientos.getValue().get(0).tratamientoId()).isEqualTo(300L);
+		assertThat(tratamientos.getValue().get(0).aplicado().parametros()).hasSize(1);
+		assertThat(tratamientos.getValue().get(1).esNuevo()).isTrue();
 	}
 
 	@Test
@@ -200,7 +228,7 @@ class SesionControllerTest {
 				.andExpect(status().isBadRequest());
 
 		verify(sesionService, never())
-				.enmendar(any(), anyLong(), anyLong(), any(), any(), anyLong());
+				.enmendar(any(), anyLong(), anyLong(), any(), any(), any(), any(), anyLong());
 	}
 
 	@Test
@@ -208,7 +236,7 @@ class SesionControllerTest {
 	void el_historial_publica_las_versiones() throws Exception {
 		Sesion sesion = cerrada();
 		given(sesionService.versiones(any(), anyLong(), anyLong()))
-				.willReturn(List.of(SesionVersionView.de(SesionVersion.original(sesion))));
+				.willReturn(List.of(SesionVersionView.de(SesionVersion.original(sesion, new FotoClinica(null, null)))));
 
 		mockMvc.perform(get(RUTA + "/501/versiones").with(miembro(8L)))
 				.andExpect(status().isOk())
