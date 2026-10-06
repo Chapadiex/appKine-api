@@ -7973,7 +7973,7 @@ paths:
 
         El motivo va en el CUERPO y no en la query string a proposito: un motivo en la URL queda en los logs de acceso de cualquier proxy intermedio.
 
-        Devuelve el bloque dado de baja, no un 204 vacio, porque el cuerpo trae turnosAfectados: la baja QUITA disponibilidad y los turnos que caian ahi quedan en conflicto (RN-M05-004). El impacto se INFORMA, no bloquea —ADR-0011 prohibe decidir en cascada por el usuario—, y hoy vale siempre 0 porque el modulo de agenda no existe.
+        Devuelve el bloque dado de baja, no un 204 vacio, porque el cuerpo trae turnosAfectados: la baja QUITA disponibilidad y los turnos que caian ahi quedan en conflicto (RN-M05-004). El impacto se INFORMA, no bloquea —ADR-0011 prohibe decidir en cascada por el usuario—. Cuenta los turnos pendientes de ese profesional en esa sede desde ahora hasta el fin de vigencia del bloque (noventa dias si no tiene fin), como cota superior: puede incluir turnos de otros bloques suyos que siguen vigentes.
 
         Se permite aunque la sede este dada de baja y aunque el profesional ya se haya desvinculado: son las operaciones con las que se ordena el horario de un centro que se esta cerrando, y prohibirlas lo dejarian congelado.
 
@@ -8065,7 +8065,7 @@ paths:
 
         version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 con type conflict —el generico, NO concurrent-modification, que es el que emite organization para el mismo hecho— y el cliente recarga. Sin eso dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se entere.
 
-        AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El impacto se INFORMA, no bloquea: quien decide que hacer con esos turnos es la pantalla. Hoy ese numero es siempre 0 porque el modulo de agenda no existe; va a dejar de serlo sin cambiar este contrato.
+        AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El impacto se INFORMA, no bloquea: quien decide que hacer con esos turnos es la pantalla. Cuenta los turnos pendientes de ese profesional en esa sede que empiezan entre ahora y el fin de vigencia mas lejano entre el bloque anterior y el editado, con un horizonte de noventa dias si alguno no tiene fin. Es una cota superior: incluye turnos que caen en otros bloques vigentes del mismo profesional, asi que puede avisar de mas pero nunca de menos.
 
         Un bloque dado de baja no se puede editar: 409 bloque-inactivo.
       operationId: updateBloqueDisponibilidad
@@ -13101,7 +13101,7 @@ paths:
         Dos rechazos que hay que mostrar con su mensaje real y no con un generico:
 
         - last-consultorio-required: es la ultima sede activa del tenant. Sin ninguna sede activa nadie podria canjear contexto y la organizacion quedaria operativamente muerta, recuperable solo con intervencion manual. Es una restriccion agregada al comportamiento del requerimiento, decidida explicitamente.
-        - consultorio-has-active-references: reservado. Hoy no lo emite nadie; lo emitira el modulo de agenda cuando existan turnos futuros sobre la sede.
+        - consultorio-has-active-references: la sede tiene turnos pendientes (reservados, confirmados o en espera, y que todavia no terminaron, incluido el que esta en curso). El cuerpo trae el tipo turnos-futuros y cuantos son. La baja no cancela esos turnos en cascada: hay que resolverlos antes, uno por uno, y recien ahi la sede se puede dar de baja.
 
         Exige consultorio:manage con alcance ORGANIZACION, o sea que hoy solo un ORG_ADMIN puede dar de baja una sede. Es mas estricto que la lectura literal de la matriz de permisos, por el mismo criterio que impide que alguien se quite a si mismo su ultimo rol administrativo: nadie destruye el alcance desde el que opera. Queda como enmienda pendiente de confirmacion.
       operationId: deactivateConsultorio
@@ -13329,7 +13329,7 @@ paths:
       description: |-
         Devuelve los espacios de la sede que estan EN SERVICIO durante toda la ventana pedida (RF-M04-003): activos y con su vigencia cubriendo el intervalo completo. Los dados de baja y los que estan fuera de su ventana operativa NO aparecen, que es el criterio de aceptacion de la etapa. Exige espacio:read sobre esa sede, no consultorio:manage: lo tienen todos los roles de la sede salvo PACIENTE, que recibe 403.
 
-        LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. Esta consulta responde si el recurso esta en servicio, NO si esta libre de reservas. Los turnos y las inscripciones son de modulos que todavia no existen, asi que lugaresComprometidos es SIEMPRE 0 en esta version del contrato y lugaresDisponibles siempre igual a capacidad. Cuando la agenda exista, esos dos numeros van a cambiar solos y este contrato no cambia. Rotular disponible=true como "el box esta libre" va a ser mentira en cuanto exista la agenda.
+        LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. lugaresComprometidos es el PICO de turnos pendientes del espacio que se cruzan en un mismo instante desde el inicio de la ventana EN ADELANTE —no solo dentro de ella—, y lugaresDisponibles es capacidad menos ese pico. disponible es true si el espacio esta en servicio toda la ventana y le queda al menos un lugar. Es una cota conservadora: puede mostrar ocupado un box que en esa franja puntual esta libre, nunca al reves. Para saber si una franja concreta se puede reservar, la fuente es la agenda, no esta consulta. Las inscripciones a clases no se cuentan aca.
 
         La ventana es semiabierta: hasta es exclusivo. Se exige hasta posterior a desde y un maximo de 31 dias, que es la unidad natural de una agenda; sin tope, una ventana de diez años sobre un centro grande es un scan.
       operationId: checkEspaciosAvailability
@@ -13461,7 +13461,7 @@ paths:
 
         version es obligatoria y se compara antes de mutar: si quedo vieja, la respuesta es 409 concurrent-modification y el cliente recarga. Sin eso, dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se entere.
 
-        REDUCIR la capacidad pasa por una comprobacion adicional contra la ocupacion ya comprometida, dentro de una transaccion que bloquea la fila del espacio. Si no alcanza, 409 espacio-capacity-below-occupancy, con los dos numeros en el cuerpo para que la pantalla pueda decir a cuanto SI se puede bajar. AVISO AL CLIENTE: mientras no exista el modulo de agenda esa ocupacion es siempre cero y toda reduccion procede; el codigo esta publicado desde ya para que su aparicion no sea un cambio de comportamiento sorpresivo.
+        REDUCIR la capacidad pasa por una comprobacion adicional contra la ocupacion ya comprometida, dentro de una transaccion que bloquea la fila del espacio. Si no alcanza, 409 espacio-capacity-below-occupancy, con los dos numeros en el cuerpo para que la pantalla pueda decir a cuanto SI se puede bajar. La ocupacion es el PICO de turnos pendientes que se cruzan en un mismo instante de aca en adelante, no el total: dos turnos consecutivos ocupan un lugar, y ocho turnos de la misma franja ocupan ocho.
 
         La sede del espacio NO se puede cambiar: mover un box de sede cambiaria el significado de todos los hechos historicos que lo referencian. Un espacio que se muda es uno que se da de baja y otro que se crea.
 
@@ -13542,7 +13542,7 @@ paths:
 
         No hay reactivacion: ningun RF de M04 la pide, y un recurso que vuelve de una refaccion es una ventana de vigencia nueva, no una baja deshecha. Si lo que se quiere es sacarlo de servicio temporalmente, el camino es editar validUntil, no dar de baja.
 
-        El codigo espacio-has-active-references esta RESERVADO: hoy no lo emite nadie; lo emitira el modulo de agenda cuando existan turnos futuros sobre el espacio. La pantalla de confirmacion de baja deberia estar preparada para mostrarlo.
+        Si el espacio tiene turnos pendientes (reservados, confirmados o en espera, y que todavia no terminaron), la baja responde 409 espacio-has-active-references con el tipo turnos-futuros y el pico de lugares comprometidos. La baja no cancela esos turnos en cascada: hay que resolverlos antes. La pantalla de confirmacion tiene que mostrarlo.
 
         Exige consultorio:manage sobre esa sede.
       operationId: deactivateEspacio
@@ -13791,7 +13791,7 @@ paths:
 
         ESTO NO BLOQUEA NADA. RN-M05-004 pide que los turnos futuros queden visibles para resolucion, no que impidan la desvinculacion: cuando alguien renuncia, renuncio. Es la diferencia con la baja de una sede, donde las operaciones vigentes si la impiden.
 
-        Hoy responde siempre count=0: M12 (agenda) no existe todavia y no hay ninguna sonda enchufada. La operacion se publica igual para que la pantalla de desvinculacion se escriba una sola vez y el numero aparezca el dia que la agenda exista, sin cambiar el contrato.
+        Si el profesional tiene turnos pendientes en cualquier sede de la organizacion (reservados, confirmados o en espera, y que todavia no terminaron), responde tipo=turnos con cuantos son y el instante del primero. Si no tiene turnos pero si bloques o excepciones de disponibilidad vigentes, responde esos. Se informa uno solo, el primero con contenido en ese orden, nunca la suma: turnos y bloques no se cuentan en la misma unidad. count=0 cuando no queda nada pendiente.
       operationId: getDesvinculacionImpacto
       parameters:
       - description: Identificador de la organizacion
@@ -13816,7 +13816,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DesvinculacionImpactoResponse"
-          description: Trabajo pendiente. count=0 mientras no exista la agenda
+          description: Trabajo pendiente. count=0 si no queda nada
         "403":
           content:
             application/problem+json:
@@ -19189,16 +19189,17 @@ components:
           type: string
           format: date-time
           description: "Instante del primero de esos turnos, para que la pantalla\
-            \ pueda decir \"desde el martes\". null cuando no hay ninguno, que es\
-            \ siempre hoy"
+            \ pueda decir \"desde el martes\". null cuando no hay ninguno"
         turnosAfectados:
           type: integer
           format: int64
-          description: "Turnos futuros que este cambio dejaria en conflicto (RN-M05-004).\
-            \ SIEMPRE 0 en esta version del contrato: el modulo de agenda no existe\
-            \ todavia. En un ALTA es 0 por construccion —agregar disponibilidad no\
-            \ deja ningun turno afuera—; en una edicion o una baja va a dejar de ser\
-            \ 0 cuando exista F5, sin cambiar este contrato"
+          description: "Turnos futuros que este cambio podria dejar en conflicto (RN-M05-004):\
+            \ los pendientes de ese profesional en esa sede que empiezan entre ahora\
+            \ y el fin de vigencia mas lejano entre el estado anterior y el nuevo,\
+            \ con un horizonte de 90 dias si no hay fin. Es una cota superior: puede\
+            \ incluir turnos de otros bloques vigentes del mismo profesional. En un\
+            \ ALTA es 0 por construccion —agregar disponibilidad no deja ningun turno\
+            \ afuera—"
           example: 0
         version:
           type: integer
@@ -22622,8 +22623,8 @@ components:
           example: 2026-09-01T13:00:00Z
         disponible:
           type: boolean
-          description: "Si el espacio se puede ofrecer para esa ventana. Hoy equivale\
-            \ a estar en servicio: la ocupacion real llega con el modulo de agenda"
+          description: "Si el espacio se puede ofrecer para esa ventana: esta en servicio\
+            \ durante toda la ventana y le queda al menos un lugar libre"
           example: true
         espacioId:
           type: integer
@@ -22638,8 +22639,9 @@ components:
         lugaresComprometidos:
           type: integer
           format: int64
-          description: "Lugares ya comprometidos en la ventana. SIEMPRE 0 en esta\
-            \ version del contrato: no existe todavia ningun modulo que reserve"
+          description: "Pico de turnos pendientes del espacio que se cruzan en un\
+            \ mismo instante, desde el inicio de la ventana en adelante (no solo dentro\
+            \ de ella). Es una cota conservadora"
           example: 0
         lugaresDisponibles:
           type: integer

@@ -296,8 +296,11 @@ public class DisponibilidadController {
 					AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA \
 					disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El \
 					impacto se INFORMA, no bloquea: quien decide que hacer con esos turnos es la \
-					pantalla. Hoy ese numero es siempre 0 porque el modulo de agenda no existe; \
-					va a dejar de serlo sin cambiar este contrato.
+					pantalla. Cuenta los turnos pendientes de ese profesional en esa sede que \
+					empiezan entre ahora y el fin de vigencia mas lejano entre el bloque anterior \
+					y el editado, con un horizonte de noventa dias si alguno no tiene fin. Es una \
+					cota superior: incluye turnos que caen en otros bloques vigentes del mismo \
+					profesional, asi que puede avisar de mas pero nunca de menos.
 
 					Un bloque dado de baja no se puede editar: 409 bloque-inactivo.""")
 	@ApiResponses({
@@ -377,8 +380,10 @@ public class DisponibilidadController {
 					Devuelve el bloque dado de baja, no un 204 vacio, porque el cuerpo trae \
 					turnosAfectados: la baja QUITA disponibilidad y los turnos que caian ahi \
 					quedan en conflicto (RN-M05-004). El impacto se INFORMA, no bloquea —ADR-0011 \
-					prohibe decidir en cascada por el usuario—, y hoy vale siempre 0 porque el \
-					modulo de agenda no existe.
+					prohibe decidir en cascada por el usuario—. Cuenta los turnos pendientes de \
+					ese profesional en esa sede desde ahora hasta el fin de vigencia del bloque \
+					(noventa dias si no tiene fin), como cota superior: puede incluir turnos de \
+					otros bloques suyos que siguen vigentes.
 
 					Se permite aunque la sede este dada de baja y aunque el profesional ya se \
 					haya desvinculado: son las operaciones con las que se ordena el horario de un \

@@ -8,7 +8,7 @@ import java.time.Instant;
  * <h2>Por que un puerto invertido y no una consulta directa</h2>
  *
  * <p>La ocupacion real de un box son sus turnos y sus inscripciones, y esas tablas son de
- * {@code scheduling} (F5, M12) y de {@code activity} (M28), que todavia no existen. Que
+ * {@code scheduling} (M12) y de {@code activity} (M28). Que
  * {@code resource} las consultara violaria la regla 1 de AGENT.md seccion 4 —cada tabla tiene
  * un modulo propietario— y ademas dibujaria la flecha {@code resource -> scheduling}, o sea
  * del cimiento hacia el consumidor: ciclo garantizado, y ArchUnit lo rechazaria.
@@ -28,12 +28,11 @@ import java.time.Instant;
  *       necesita saber si queda algo comprometido, sin importar cuanto.</li>
  * </ul>
  *
- * <p><b>En F2 la lista de implementaciones es VACIA y las dos operaciones proceden siempre.</b>
- * Eso no es simular funcionalidad: es declarar la forma para que agregarla en F5 sea sumar una
- * clase y no rediseñar la edicion y la baja. Los codigos
- * {@code espacio-capacity-below-occupancy} y {@code espacio-has-active-references} se reservan
- * en el contrato desde ya para que su aparicion no sea un cambio de comportamiento sorpresivo
- * para el frontend.
+ * <p>En F2 la lista de implementaciones era vacia y los codigos
+ * {@code espacio-capacity-below-occupancy} y {@code espacio-has-active-references} quedaron
+ * reservados en el contrato. Desde el paquete E-1 los emite la implementacion de turnos,
+ * {@code scheduling.infrastructure.EspacioOcupadoPorTurnos}. {@code activity} todavia no
+ * declara la suya.
  */
 public interface EspacioOccupancyProbe {
 

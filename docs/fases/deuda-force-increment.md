@@ -4,6 +4,31 @@
 > `docs/producto/AKINE_IMPLEMENTATION_PLAN.md`, registro de cierre del fix de C-7 (§7 y §9).
 > **Si vas a tocar alguno de los sitios de abajo, leé esto antes.**
 
+> **Corrección del 06/10/2026 — para `offering`, la evidencia contra MySQL dice lo contrario.**
+> El documento habla del mismo mecanismo que usan las habilitaciones de la oferta
+> (force-increment sobre una **lectura** por consulta derivada, sin ensuciar el padre), así que no
+> es "otra cosa": en ese sitio la conclusión de abajo **no se sostiene**.
+> `HabilitacionesVersionForzadaIT` lee `version` de `oferta_servicio_consultorio` con JDBC después
+> de cada reemplazo, contra MySQL real:
+>
+> - `el_segundo_en_guardar_choca` (`7dcae17`, PR #23, escenario diferido 20): A reemplaza
+>   profesionales y la versión queda en `leída + 1`, exactamente una vez; B guarda con la versión
+>   que leyó antes y recibe `OptimisticLockingFailureException` (409); B relee y entra, y la tabla
+>   queda en `leída + 2`.
+> - `los_reemplazos_se_encadenan_con_la_version_devuelta` (`351ae21`, PR #36): tres reemplazos
+>   encadenados —profesionales, espacios, profesionales— con la `ofertaVersion` devuelta y sin
+>   releer; la tabla queda en `leída + 3` y una versión de dos pasos atrás sigue chocando.
+>
+> O sea: en `offering` el force-increment **sí** emite el `UPDATE` del padre al commitear, una vez
+> por reemplazo. El sitio sale de la tabla de pendientes.
+>
+> Lo que **no** cambia: el hallazgo de C-7 sobre `Sesion` es una medición propia
+> (`TratamientoRealizadoIT`) y su arreglo con `UPDATE … WHERE version = :esperada` sigue siendo
+> correcto y está probado. **Por qué el mismo mecanismo avanza en un sitio y no en el otro no está
+> explicado**: no se investigó la diferencia entre los dos flujos. Hasta que alguien la explique,
+> la regla práctica es la de "Cómo encararlo": **ningún sitio se da por bueno ni por roto sin un
+> IT que lea `version` de la tabla.** `clinical/cambiarEquipo` sigue sin esa medición.
+
 ## Qué se encontró
 
 Patrón usado en varios módulos para que una escritura que **sólo toca tablas hijas** haga chocar
@@ -42,7 +67,7 @@ La vista anuncia `expectedVersion + 1`. Escenario cubierto en `TratamientoRealiz
 | Módulo | Lectura con force-increment | Escritura que depende de ella |
 |---|---|---|
 | `clinical` | `CasoClinicoRepository#findWithLockByIdAndOrganizationId` | `CasoClinicoService#cambiarEquipo`: escribe en `caso_profesional` y hace `save(caso)` sin cambios |
-| `offering` | `OfertaRepository#findWithLockByIdAndOrganizationIdAndConsultorioId` | `OfertaHabilitacionService` (reemplazo de habilitaciones, vía `exigirOfertaConfigurable`): no toca columnas de `oferta` |
+| ~~`offering`~~ | ~~`OfertaRepository#findWithLockByIdAndOrganizationIdAndConsultorioId`~~ | ~~`OfertaHabilitacionService` (reemplazo de habilitaciones)~~ — **no afectado**: medido contra MySQL el 06/10/2026, la versión avanza una vez por reemplazo (`HabilitacionesVersionForzadaIT`, ver la corrección de arriba) |
 
 No están afectados, porque sus comentarios lo descartan a propósito y la escritura ensucia la
 cabecera: `EntradaClinica`, `PlanTratamiento`, `MedicionService`, `SesionService` (enmienda) y

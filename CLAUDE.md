@@ -229,7 +229,85 @@ ArchUnit · Testcontainers.
 > `SerializationFeature` a `DateTimeFeature`, o sea `spring.jackson.datatype.datetime.*`.
 > Ante una duda de API, inspeccionar el jar antes de asumir la forma de 3.x.
 
-### Estado vigente (29/09/2026, medido sobre `343ad43`)
+### Estado al 06/10/2026, sobre `d110aaf`
+
+> Esta subsección **supersede** a la del 29/09 que sigue abajo en contrato, migraciones y
+> paquetes. Lo de abajo queda como historia: explica cómo se llegó acá. Las cifras de cobertura
+> **no** se actualizan en esta subsección; viven en su propio bloque más abajo.
+
+El 06/10 entraron a `main` **27 PR, del #13 al #39**, todos de paquetes de
+[`docs/fases/01-trabajo-en-paralelo.md`](docs/fases/01-trabajo-en-paralelo.md) trabajados en
+worktrees separados. `main` tiene **368 commits** y el último merge es `d110aaf` (PR #39).
+
+| | Valor |
+|---|---|
+| Contrato | `openapi/akine-api.yaml` **0.54.0**, **277 operaciones** (`grep -c operationId`). El cliente del frontend en `appKine-web` `main` está en **0.46.0** |
+| Migraciones | Última **`V69`** (F-3). `V65` la usó C-1. `V66`–`V68` no existen: `V67` quedó vacía (C-5 resolvió que RN-M10-002 no lleva unique) y `V66`/`V68` siguen reservadas. Ver §6 del plan de trabajo en paralelo |
+| Tests | **3.044 unitarias, 0 fallos**, medidas sobre la combinación de `main` con F-3 antes de mergear #39 (`./mvnw -o test -DskipITs`). Sobre la misma combinación, **46 ITs** de `billing` + `OpenApiContractIT` + `EsquemaMultiTenantIT` en verde. La suite completa con todos los ITs no se corrió ese día |
+
+#### Qué agregó cada minor del contrato desde 0.44.0
+
+| Versión | Paquete · PR | Qué agrega |
+|---|---|---|
+| 0.45.0 | C-2 (`a5bdce2`, antes del 06/10) | API REST de la historia clínica por persona |
+| 0.46.0 | B-1 (`4c8be24`, antes del 06/10) | Búsqueda de personas por número de afiliado |
+| 0.47.0 | A-3 · #15 | `POST /organizations/{orgId}/notifications/{notificationId}/retry` (`retryNotification`), con `colaborador:manage` |
+| 0.48.0 | F-2 · #18 | Valor `DEUDA_DEL_PACIENTE` en `HallazgoDeValidacion` / `ReparoDePresentacion` |
+| 0.49.0 | C · #35 | `Sesion.estado` publica `CERRADA`, que el servidor ya emitía |
+| 0.50.0 | A · #36 | `ofertaVersion` en `HabilitacionesResponse` (lectura y los dos reemplazos) |
+| 0.54.0 | F-3 · #39 | Anticipo en el registro de cobro, `imputarSaldoAFavor`, `anularCobro`, `reintegrarSaldoAFavor` y los problem types `cobro-anulado`, `cobro-con-reintegros`, `saldo-a-favor-insuficiente` |
+
+`0.51.0`–`0.53.0` no existen en `main`: F-3 se reservó `0.54.0` en su diseño
+(`docs/diseno/AKINE-F-3-anticipos.md`). Todos los cambios son aditivos.
+
+#### Paquetes que entraron el 06/10
+
+- **Cerrados:** G-2 (#13), F-1 (#14), A-3 (#15), F-2 (#16, #17, #18), A-5 (#25 slices de
+  membership, auditoría y plataforma; #26 unitarios de los cuatro servicios de F2), E-1 (#38),
+  E-5 (#37).
+- **Cerrados en el backend, sin pantalla:** B-5 (#34), F-3 (#39), G-3 (#29: Dockerfile, SBOM
+  CycloneDX y job `imagen` en el CI; el Dockerfile del frontend sigue abierto).
+- **Avance parcial:** F-8 (#19, #24, #28, #30: escenarios 33, 34, 37, 39–43, 45, 46 y 48 de
+  07.03–07.05 corridos contra MySQL; faltan 35, 36, 38 y 44), G-11 (#31 `activity`, #32
+  `encounter`), E-2 (#22: `AgendaDescuentaReservasIT`, la parte de backend), escenario diferido
+  20 (#23) y escenarios 43–45 de 08.02 (#33).
+- **Sueltos:** moneda ISO 4217 en `contracting` (#21), rol de plataforma a cuenta inexistente
+  (#27), test flaky de activación concurrente de planes (#20, sólo el test).
+
+#### Los defectos reales que aparecieron el 06/10
+
+Veinte, uno por fila. Casi todos los destapó **un IT contra MySQL o un unitario escrito para
+cubrir otra cosa**, no una revisión del código.
+
+| # | Qué pasaba | Dónde | PR |
+|---|---|---|---|
+| 1 | El indicador de anulados del reporte sumaba obligaciones dadas de baja: 4000 en vez de 1000 | `ObligacionRepository.sumarAnuladoEnElReporte` | #13 |
+| 2 | La cuenta corriente del financiador filtraba por la sede de la ruta y cortaba en 200 lotes | `FinanciadorPagoService.cuentaCorriente` | #14 |
+| 3 | El débito movía el saldo del lote antes de validar el ítem, y podía responder 409 donde correspondía 400; el rechazo salía por `GlobalExceptionHandler` | `PresentacionService.debitar` | #16 |
+| 4 | El detalle de financiadores del reporte no sumaba al indicador `prestado` (hoy no observable: no hay obligaciones del financiador) | `FinanciadoresEnElReporte` | #17 |
+| 5 | Una obligación del paciente se reportaba como `FINANCIADOR_DISTINTO`, que tiene el remedio opuesto | `PresentacionService.revisar` | #18 |
+| 6 | Anular un pago por transferencia sin caja abierta daba **500** por un NPE en el log; el caso que 07.05 quiso habilitar nunca funcionó | `MovimientoCajaService.revertir` | #19 |
+| 7 | La moneda no se validaba contra ISO 4217: `XYZ` entraba y `PESOS` terminaba en error de base | `Convenio`, `PlanCobertura` | #21 |
+| 8 | El PATCH de membership sin `changeScope` respondía 400: `boolean` primitivo y Jackson 3 rechaza el `null` | `ChangeMembershipRequest` | #25 |
+| 9 | Otorgar el rol de plataforma a una cuenta inexistente respondía **201** y dejaba una fila huérfana | `PlatformRoleService.grant` | #27 |
+| 10 | Un cobro que perdía la carrera contra el cierre de caja recibía `caja-saldo-insuficiente` "para egresar" en vez de caja cerrada (`REPEATABLE READ`) | `MovimientoCajaService.moverSaldo` | #28 |
+| 11 | El perdedor de la carrera por una obligación recibía el `conflict` genérico en vez de `obligacion-ya-presentada` | `PresentacionService.incluir` | #30 |
+| 12 | Dos obligaciones distintas agregadas a la vez al mismo borrador: la segunda moría por `@Version` | `PresentacionService.agregarItem` / `quitarItem` | #30 |
+| 13 | El lote de asistencia corría cada ítem **sin transacción**: la autoinvocación no pasa por el proxy | `AsistenciaService.registrarLote` | #31 |
+| 14 | La agenda unificada mostraba vacía toda clase y calculaba la capacidad sin el box | `ClasesEnLaAgendaDeTurnos.proyectar` | #31 |
+| 15 | Un `valorTexto` en blanco junto a un valor NUMERICO o BOOLEANO chocaba contra el CHECK de `V55` y se perdía el tratamiento | `TratamientoParametro` | #32 |
+| 16 | `promover` no movía `version`: la baja concurrente de quien esperaba pisaba la promoción y el cupo quedaba en 3 con 2 recibos | `InscripcionClaseRepository#promover` | #33 |
+| 17 | El contrato publicaba `Sesion.estado` sólo con `BORRADOR` | `SesionResponse` | #35 |
+| 18 | Un nombre de sede o de clase que contuviera "secret" hacía fallar cancelar o reprogramar la clase entera | `AvisosDeClase` / `SanitizedPayload` | #37 |
+| 19 | Una oferta grupal que exige espacio no admitía a una segunda persona: 409 `recurso-ocupado` | `RevalidadorDeSlot.elegirEspacio` | #38 |
+| 20 | `descontarSaldo` del cobro no movía `version`: una anulación vieja dejaba la deuda `ANULADA` con un cobro imputado | `CobroRepository.descontarSaldo` | #39 |
+
+> **El patrón que más se repitió: un UPDATE nativo que no mueve `version`** (filas 16 y 20),
+> el mismo mecanismo que el defecto 5 de la integración del 29/09. Toda columna que mueve un UPDATE
+> nativo necesita que ese UPDATE también haga `version = version + 1`, o `@DynamicUpdate` si la
+> edición nunca escribe esa columna.
+
+### Estado al 29/09/2026, medido sobre `343ad43` (histórico)
 
 **Todo integrado en `main`.** Las diez ramas que quedaban abiertas —04.05, 06.03, 06.04, 06.06,
 07.07 y 08.01 a 08.06— entraron sobre `akine-f7-integracion`, y `main` **contiene las 25 ramas
@@ -366,10 +444,12 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
   **No hay E2E de la vertical clínica, ni de F3, ni de cobros.**
 - **Escenario diferido 7b** —conflicto de `Idempotency-Key` por payload distinto—: necesita
   `request_hash` en `onboarding_registro`, o sea migración más cambio de API. `docs/tests-diferidos.md`.
-- **Escenario diferido 20** —que la `@Version` forzada de 02.07 realmente avance contra una base
-  real— sigue abierto, y 04.02 sumó el mismo hueco para la numeración de versiones de entrada clínica.
-- **`ReservaProbeSobreTurnos`** —que la agenda descuente los turnos ya vendidos— **nunca se ejerció
-  contra el stack real**: el QA del 01/09 corrió antes de que esa sonda existiera.
+- ~~**Escenario diferido 20**~~ —que la `@Version` forzada de 02.07 realmente avance contra una
+  base real— **corrido el 06/10/2026**: `HabilitacionesVersionForzadaIT` (`7dcae17`, PR #23) ve
+  avanzar la versión una sola vez por reemplazo y el segundo guardado con la versión vieja choca.
+  Sigue abierto el hueco que 04.02 sumó para la numeración de versiones de entrada clínica.
+- ~~**`ReservaProbeSobreTurnos`** nunca se ejerció contra el stack real~~ — **cubierto el
+  06/10/2026** por `AgendaDescuentaReservasIT` (PR #22), verificado por mutación. Sigue sin E2E.
 - **Suites concurrentes que sí se ejercieron contra MySQL real**, cuando había Docker:
   `TurnoConcurrenteIT`, `DisponibilidadIT`, `CierreConcurrenteIT`, `CobroConcurrenteIT` y las de
   solapamiento de coberturas y convenios.
@@ -394,6 +474,37 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
    plan `BASICO` permite una sola sede y el cambio está reservado a `PLATFORM_ADMIN`, así que un
    centro que se registra no puede abrir su segunda sede. Falta resolver el cobro.
 
+> **Las de abajo las abrieron los PR del 06/10/2026.** Cada una quedó implementada con un
+> criterio provisorio que el PR declara; lo que falta es confirmarlo o cambiarlo.
+
+5. **Qué permiso pide la sección `coberturas` del Paciente 360** (#34). Hoy `permisoRequerido()` es
+   `null`: alcanza con pertenecer al tenant, el mismo criterio con el que `CoberturaPacienteService`
+   lista las coberturas, porque la matriz no tiene `cobertura:read` ni `paciente:read`. Por eso la
+   sección nunca cae en `seccionesOmitidas`. El número de afiliado viaja enmascarado.
+6. **La contradicción del documento de force-increment** (#36). `docs/fases/deuda-force-increment.md`
+   daba a `offering` como sitio donde la versión no avanza; los ITs contra MySQL muestran que sí.
+   El documento ya está corregido para `offering` (06/10). Queda decidir si `clinical/cambiarEquipo`
+   se mide con un IT o se pasa al `UPDATE` condicionado de `Sesion` sin medir.
+7. **Qué eventos de turno notifican** (#37). Hoy avisan reservar, cancelar y reprogramar.
+   **Confirmar no avisa** (RF-M26-002 habla de la creación) y **marcar ausente tampoco**. El aviso
+   de cancelación sale aunque la oferta ya no resuelva, sin nombre de servicio.
+8. **Dos límites de las sondas de impacto** (#38). **(a)** `DisponibilidadImpactProbe` informa una
+   **cota superior**: también cuenta turnos de otro bloque vigente del mismo profesional, porque el
+   `spi` recibe la ventana y no el bloque; corregirlo cambia el `spi` de `resource`. **(b)** Hay una
+   **carrera residual en la baja de sede**: la baja toma el lock del tenant y la reserva el de
+   `agenda_sede`, y la reserva valida la sede activa antes de su lock, así que puede colarse un turno
+   entre la sonda y el commit de la baja. Cerrarlo exige revalidar la sede bajo el lock de agenda.
+   Además el impacto de desvinculación muestra una sola fuente, y mostrar las dos es un cambio de
+   contrato.
+9. **Permisos de anular y reintegrar un cobro, y anticipo explícito** (#39). Anular y reintegrar
+   exigen `cobro:register` **y** `caja:operate`, no un `cobro:annul` propio: la matriz §32 no tiene
+   fila y hoy los dos permisos los tienen los mismos roles. El anticipo **se declara**, no se infiere
+   del sobrante. También queda por confirmar que la imputación posterior exija la misma sede y que
+   un cobro con reintegros no se pueda anular.
+10. **El permiso del reintento de notificaciones** (#15). Reusa `colaborador:manage` porque hoy las
+    únicas notificaciones con `organization_id` son invitaciones. Con los avisos de turno de E-5 en
+    el outbox, conviene revisarlo.
+
 ### Huecos funcionales conocidos
 
 - **El OpenAPI no declara ningún `securityScheme`**, en ningún módulo. El frontend funciona porque
@@ -412,18 +523,25 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
 
 ### Próximo paso concreto
 
-1. **Las pantallas de F4 en adelante.** El cliente TypeScript ya se regenero contra `0.44.0` el
-   01/10, asi que el frontend puede llamar al backend; lo que falta es la UI: timeline clinico,
-   caso, plan de tratamiento, examen, caja, presentaciones, reportes y segunda entrega.
-2. **El QA manual del parrafo 6**, sin correr desde 02.02 y declarado bloqueante para deploy.
-   Docker funciona y el contrato esta al dia.
-3. **La etapa de tests de `billing`, `encounter` y `activity`**, que es lo que devuelve el gate de
-   cobertura a 0,80.
-4. **El QA manual del §6**, sin correr desde 02.02 y declarado bloqueante para deploy. Ahora que
-   Docker funciona y el contrato está al día, no queda excusa técnica.
-5. Las **decisiones pendientes del usuario** de más abajo, empezando por el recableado del
-   devengado: hoy no existe ninguna obligación con `responsable = FINANCIADOR`, así que la bandeja
-   de 07.04 devuelve lista vacía en un despliegue real.
+> Reescrito el 06/10/2026. La versión anterior daba el cliente regenerado contra `0.44.0` y
+> repetía dos veces el QA manual.
+
+1. **Regenerar el cliente TypeScript contra `0.54.0`** en la rama del frontend que lo necesite: en
+   `appKine-web` `main` está en `0.46.0`, y entre medio entraron el reintento de notificaciones,
+   `DEUDA_DEL_PACIENTE`, `Sesion.estado = CERRADA`, `ofertaVersion` y las tres operaciones de F-3.
+2. **Las pantallas de F4 en adelante** y las de lo que entró el 06/10 sin pantalla: timeline
+   clínico, caso, plan, examen, caja (F-6), presentaciones (F-7), anticipos y anulación de cobros
+   (F-3), la sección de coberturas del 360 (B-5) y el impacto de desvinculación y de disponibilidad
+   (A-10, desbloqueado por E-1).
+3. **El QA manual del §6**, sin correr desde 02.02 y declarado bloqueante para deploy. Docker
+   funciona y el contrato está al día: no queda excusa técnica.
+4. **Lo que falta de F-8**: escenarios 35, 36, 38 y 44 de `docs/tests-diferidos.md` (los `V54`,
+   `V56` y `V57` contra el motor, y el débito contra la transferencia del mismo lote).
+5. **La ruta crítica del MVP sigue sin moverse:** DU-1 → A-9 (puente Oferta↔Práctica) → C-4 → F-4
+   (obligación del financiador). Hoy no existe ninguna obligación con `responsable = FINANCIADOR`,
+   así que la bandeja de 07.04 devuelve lista vacía en un despliegue real.
+6. Las **decisiones pendientes del usuario** de más arriba, en particular las seis que abrieron
+   los PR del 06/10.
 
 Pendientes que arrastra el backend:
 

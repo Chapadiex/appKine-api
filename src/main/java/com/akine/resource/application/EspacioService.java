@@ -187,8 +187,9 @@ public class EspacioService {
 	 *
 	 * <p><b>Responde si el recurso esta EN SERVICIO, no si esta libre de reservas.</b> La
 	 * distincion, y por que no puede ser de otra manera todavia, esta en
-	 * {@link DisponibilidadView}. En F2 {@code lugaresComprometidos} es cero para todos porque
-	 * no hay ninguna implementacion de {@link EspacioOccupancyProbe}.
+	 * {@link DisponibilidadView}. {@code lugaresComprometidos} es el maximo de los picos que
+	 * declaran las implementaciones de {@link EspacioOccupancyProbe} desde {@code desde} en
+	 * adelante; desde el paquete E-1 la unica es la de turnos de {@code scheduling}.
 	 *
 	 * <p>El filtro por vigencia y por estado ocurre en la BASE y no en memoria: es la consulta
 	 * que la agenda de F5 va a ejecutar por cada franja, y traer el catalogo entero para
@@ -327,19 +328,16 @@ public class EspacioService {
 	 * consultar a las sondas en cada edicion de un nombre pagaria el costo de la agenda de F5
 	 * para nada.
 	 *
-	 * <h2>El caso borde "capacidad reducida bajo ocupacion" — estado real en F2</h2>
+	 * <h2>El caso borde "capacidad reducida bajo ocupacion"</h2>
 	 *
-	 * <p>El protocolo esta completo y probado con hilos reales. Lo que <b>no</b> esta es la otra
-	 * mitad del dato: en F2 no existe ninguna implementacion de {@link EspacioOccupancyProbe}
-	 * —{@code scheduling} llega en F5 y {@code activity} en M28— asi que el pico es siempre cero
-	 * y toda reduccion valida por capacidad procede. Lo que SI se ejerce hoy, y es lo que puede
-	 * romper hoy, es la <b>actualizacion perdida</b>: dos reducciones simultaneas donde la
-	 * segunda pisa a la primera. La sostienen el lock y la comparacion de version, y
-	 * {@code EspaciosConcurrenteIT} la corre con hilos reales afirmando contra la base.
-	 *
-	 * <p>Es la misma forma, y la misma honestidad, que {@code ConsultorioDeactivationProbe} en
-	 * 02.01: el codigo del contrato se reserva desde ya para que su aparicion en F5 no sea un
-	 * cambio de comportamiento sorpresivo para el frontend.
+	 * <p>Desde el paquete E-1 {@link EspacioOccupancyProbe} tiene implementacion
+	 * ({@code scheduling.infrastructure.EspacioOcupadoPorTurnos}): si el pico de turnos
+	 * pendientes supera la capacidad pedida, la edicion responde
+	 * {@code 409 espacio-capacity-below-occupancy}. {@code activity} (M28) todavia no declara
+	 * sonda, asi que las inscripciones no cuentan. La otra carrera, la <b>actualizacion
+	 * perdida</b> —dos reducciones simultaneas donde la segunda pisa a la primera—, la sostienen
+	 * el lock y la comparacion de version, y {@code EspaciosConcurrenteIT} la corre con hilos
+	 * reales afirmando contra la base.
 	 *
 	 * @throws EspacioInactiveException si el espacio esta dado de baja (409)
 	 * @throws OptimisticLockingFailureException si la version enviada quedo vieja (409)
@@ -420,11 +418,10 @@ public class EspacioService {
 	 * {@link #update}: la consulta a las sondas decide, y una decision que se toma sobre un
 	 * snapshot viejo es una decision equivocada que nadie reproduce con un solo usuario.
 	 *
-	 * <p><b>El caso borde "baja con reservas futuras" esta declarado y no implementado</b>: en
-	 * F2 no hay ninguna sonda, asi que la baja siempre procede. El codigo
-	 * {@code espacio-has-active-references} se reserva en el contrato desde ya. Que debe pasar
-	 * exactamente con los turnos ya reservados sobre un espacio que se da de baja es una
-	 * decision abierta de F5, del mismo tipo que la que 02.01 dejo abierta para las sedes:
+	 * <p><b>El caso borde "baja con reservas futuras"</b>: desde el paquete E-1 la sonda de
+	 * turnos de {@code scheduling} declara los turnos pendientes del espacio y la baja responde
+	 * {@code 409 espacio-has-active-references}. La baja no los cancela: que hacer con ellos
+	 * sigue siendo decision abierta, del mismo tipo que la que 02.01 dejo para las sedes, y
 	 * ADR-0011 prohibe una cancelacion en cascada sin confirmacion explicita, motivo y auditoria
 	 * por turno.
 	 *
