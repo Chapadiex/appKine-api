@@ -38,8 +38,9 @@ Migración + cambio de contrato. Etapa propia con design challenge.
 
 ## Defectos — a verificar
 
-- [ ] `FinanciadorPagoService.cuentaCorriente` filtra por `consultorioId` y pagina fijo `200, 0`
-  (alrededor de la línea 191) → desde el lote 201 los totales salen mal.
+- [x] ~~`FinanciadorPagoService.cuentaCorriente` filtra por `consultorioId` y pagina fijo `200, 0`
+  (alrededor de la línea 191) → desde el lote 201 los totales salen mal.~~ → F-1: la suma la hace
+  la base (`sumarCuentaCorriente`), cruza sedes y no pagina; `CuentaCorrienteDeFinanciadorIT`.
 
 Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `akine-integracion-total`.
 **No están corregidos**:
