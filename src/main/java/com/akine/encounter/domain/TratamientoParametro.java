@@ -117,7 +117,11 @@ public class TratamientoParametro {
 		this.clave = aplicado.clave().strip();
 		this.tipoDato = aplicado.tipoDato();
 		this.valorNumerico = aplicado.valorNumerico();
-		this.valorTexto = aplicado.valorTexto() == null ? null : aplicado.valorTexto().strip();
+		// En blanco es NULL, igual que lo cuenta exigirCoherente: guardar "" al lado de un valor
+		// NUMERICO o BOOLEANO choca contra ck_tratamiento_parametro_valor de V55.
+		this.valorTexto = aplicado.valorTexto() == null || aplicado.valorTexto().isBlank()
+				? null
+				: aplicado.valorTexto().strip();
 		this.valorBooleano = aplicado.valorBooleano();
 		this.unidad = aplicado.unidad() == null || aplicado.unidad().isBlank()
 				? null

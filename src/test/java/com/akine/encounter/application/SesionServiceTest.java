@@ -15,6 +15,13 @@ import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.SesionVersion;
 import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.CierreIncompletoException;
+import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.encounter.domain.exception.SesionNoCerradaException;
+import com.akine.encounter.spi.SesionCerrada;
+import com.akine.offering.spi.PrecioDeOferta;
+import com.akine.platform.spi.audit.AuditEntry;
+import org.springframework.security.access.AccessDeniedException;
+import java.math.BigDecimal;
 import com.akine.encounter.domain.exception.EnmiendaSinMotivoException;
 import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
@@ -611,5 +618,173 @@ class SesionServiceTest {
 
 		verify(versiones, never()).save(any());
 		verify(versiones, never()).buscarPorSesion(anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("La enmienda se audita como transicion de version, sin el motivo en el evento")
+	void la_enmienda_se_audita_sin_el_motivo() {
+		// El motivo es prosa sobre un paciente, y audit_event se lee con auditoria:read, que no es
+		// un permiso clinico. Va la transicion; el detalle vive en la version.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionCerrada()));
+
+		service.enmendar(actor, CONSULTORIO_ID, 1L, contenido("Nota corregida"), MOTIVO, 0L);
+
+		ArgumentCaptor<AuditEntry> evento = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(evento.capture());
+		assertThat(evento.getValue().eventType()).isEqualTo(AuditEvents.SESION_AMENDED);
+		assertThat(evento.getValue().previousState()).isEqualTo("VERSION_1");
+		assertThat(evento.getValue().newState()).isEqualTo("VERSION_2");
+		assertThat(evento.getValue().reason()).isNull();
+		assertThat(evento.getValue().details().values()).doesNotContain(MOTIVO);
+	}
+
+	@Test
+	@DisplayName("Enmendar una sesion abierta es 409: eso se guarda, no se enmienda")
+	void la_abierta_no_se_enmienda() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		assertThatThrownBy(() ->
+				service.enmendar(actor, CONSULTORIO_ID, 1L, contenido("Nota"), MOTIVO, 0L))
+				.isInstanceOf(SesionNoCerradaException.class);
+		verify(versiones, never()).save(any());
+		verify(auditTrail, never()).record(any());
+	}
+
+	@Test
+	@DisplayName("El historial devuelve las versiones del puerto, de la 1 a la ultima")
+	void el_historial_se_lee_del_puerto() {
+		Sesion cerrada = sesionCerrada();
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(cerrada));
+		given(versiones.buscarPorSesion(ORG_ID, 1L))
+				.willReturn(List.of(SesionVersion.original(cerrada)));
+
+		List<SesionVersionView> historial = service.versiones(actor, CONSULTORIO_ID, 1L);
+
+		assertThat(historial).singleElement().satisfies(version -> {
+			assertThat(version.numeroVersion()).isEqualTo(1);
+			assertThat(version.motivoEnmienda()).isNull();
+			assertThat(version.notaDeCierre()).isEqualTo("Terapia manual");
+			assertThat(version.registradaPor()).isEqualTo(CUENTA_PROPIA);
+		});
+	}
+
+	// =================================================================================
+	// Lo que el cierre le avisa a billing y contracting (07.01, 04.05, 06.04)
+	// =================================================================================
+
+	@Test
+	@DisplayName("El aviso de cierre lleva la persona de la historia, el precio de la oferta y las "
+			+ "practicas realizadas")
+	void el_aviso_de_cierre_lleva_lo_que_el_observador_necesita() {
+		// Se lee todo ACA y no en cada observador: si cada uno leyera el precio por su cuenta, dos
+		// de ellos podrian devengar contra precios distintos si alguien edita la oferta en el medio.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(8);
+		given(ofertas.precioDe(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(
+				new PrecioDeOferta(OFERTA_ID, new BigDecimal("8500.00"), "ARS")));
+		given(tratamientos.practicasVigentesDe(ORG_ID, 1L)).willReturn(List.of(610L, 611L, 610L));
+
+		service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Terapia manual"), 0L);
+
+		ArgumentCaptor<SesionCerrada> aviso = ArgumentCaptor.forClass(SesionCerrada.class);
+		verify(observador).alCerrar(aviso.capture());
+		assertThat(aviso.getValue().personaId()).isEqualTo(PERSONA_ID);
+		assertThat(aviso.getValue().numeroSesion()).isEqualTo(8);
+		assertThat(aviso.getValue().asistio()).isTrue();
+		assertThat(aviso.getValue().precioDeLaOferta()).isEqualByComparingTo("8500");
+		assertThat(aviso.getValue().moneda()).isEqualTo("ARS");
+		assertThat(aviso.getValue().practicasRealizadas()).containsExactlyInAnyOrder(610L, 611L);
+	}
+
+	@Test
+	@DisplayName("Una oferta sin precio no impide cerrar: el aviso viaja sin importe")
+	void la_oferta_sin_precio_cierra_igual() {
+		// DP-06: cerrar no cobra. Que la oferta no este tarifada es asunto de billing; negar el
+		// cierre clinico por eso haria que un problema de facturacion bloquee una historia clinica.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(1);
+		given(ofertas.precioDe(anyLong(), anyLong(), anyLong())).willReturn(Optional.empty());
+
+		service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(Asistencia.AUSENTE, null), 0L);
+
+		ArgumentCaptor<SesionCerrada> aviso = ArgumentCaptor.forClass(SesionCerrada.class);
+		verify(observador).alCerrar(aviso.capture());
+		assertThat(aviso.getValue().asistio()).isFalse();
+		assertThat(aviso.getValue().precioDeLaOferta()).isNull();
+		assertThat(aviso.getValue().moneda()).isNull();
+	}
+
+	@Test
+	@DisplayName("Una sesion cuya historia clinica no existe no se cierra: falla antes de avisar")
+	void historia_inexistente_falla_cerrado() {
+		// Sin persona no hay a quien devengarle la deuda. Seguir con un id inventado seria peor
+		// que fallar, y el fallo deshace el cierre entero.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(1);
+		given(historias.findPorId(anyLong(), anyLong())).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.cerrar(
+				actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Terapia manual"), 0L))
+				.isInstanceOf(IllegalStateException.class);
+		verify(observador, never()).alCerrar(any());
+	}
+
+	// =================================================================================
+	// Precondiciones de acceso
+	// =================================================================================
+
+	@Test
+	@DisplayName("Sin contexto de trabajo es 403 y nunca 401: un 401 deja al frontend en bucle")
+	void sin_contexto_es_403() {
+		OperatingActor sinContexto = new OperatingActor(CUENTA_PROPIA, false, null, null);
+
+		assertThatThrownBy(() -> service.ver(sinContexto, CONSULTORIO_ID, 1L))
+				.isInstanceOf(AccessDeniedException.class);
+	}
+
+	@Test
+	@DisplayName("Una sede de otro tenant es 404 antes de evaluar ningun permiso")
+	void la_sede_ajena_es_404() {
+		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, null))
+				.isInstanceOf(ConsultorioNoAccesibleException.class);
+		verify(permissionGuard, never()).requirePermission(any());
+	}
+
+	@Test
+	@DisplayName("Sin un vinculo activo con la sede no se escribe en ninguna sesion")
+	void sin_vinculo_activo_con_la_sede() {
+		// La membership es lo que identifica al profesional, no la cuenta: sin una activa en esta
+		// sede no hay a nombre de quien comprobar la propiedad.
+		given(memberships.findByAccount(ORG_ID, CUENTA_PROPIA)).willReturn(List.of(
+				new ConsultorioMembershipSnapshot(MEMBERSHIP_PROPIA, CUENTA_PROPIA, ORG_ID,
+						CONSULTORIO_ID, "PROFESIONAL", "ACTIVA", Instant.EPOCH, null, false, true)));
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		assertThatThrownBy(() -> service.guardarBorrador(actor, CONSULTORIO_ID, 1L, "{}", 0L))
+				.isInstanceOf(AccessDeniedException.class);
+		verify(sesiones, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("Un caso que no existe en el tenant es 404, igual que uno de otra historia")
+	void caso_inexistente() {
+		given(sesiones.findVivaPorTurno(ORG_ID, TURNO_ID)).willReturn(Optional.empty());
+		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID))
+				.willReturn(Optional.of(turno(MEMBERSHIP_PROPIA, true)));
+		given(casos.find(ORG_ID, CASO_ID)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, CASO_ID))
+				.isInstanceOf(CasoNoAsignableException.class)
+				.extracting(e -> ((CasoNoAsignableException) e).getMotivo())
+				.isEqualTo(CasoNoAsignableException.Motivo.NO_ACCESIBLE);
+		verify(sesiones, never()).save(any());
 	}
 }
