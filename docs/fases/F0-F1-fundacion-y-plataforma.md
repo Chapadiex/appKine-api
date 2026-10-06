@@ -48,7 +48,7 @@
 - [x] ~~Slice tests de `MembershipController`, `AuditEventController` y los dos controllers de plataforma.~~ → A-5: 51 tests `@WebMvcTest` en `organization/api` (22 + 11 + 9 + 9). Destaparon un defecto real: el PATCH de membership sin `changeScope` —el request que arma la pantalla para cambiar sólo el rol— respondía 400 por `boolean` primitivo bajo Jackson 3; corregido a `Boolean`.
 
 ### CI y operación (se pueden diferir a F8, pero se anotan acá porque nacieron en F0)
-- [ ] Job que construya imagen Docker del backend con SBOM.
+- [x] ~~Job que construya imagen Docker del backend con SBOM.~~ → G-3: `Dockerfile` multi-stage en la raíz, `cyclonedx-maven-plugin` en el `pom.xml` (SBOM CycloneDX JSON embebido en el jar) y job `imagen` en `ci.yml` que hace `docker build` sin push y publica el SBOM extraído de la imagen como artifact `akine-api-sbom`.
 - [ ] Activar el job E2E del `ci.yml` del frontend (está comentado: **hoy ningún E2E corre en CI**).
 - [ ] Dependabot u OWASP dependency-check en los dos repos.
 - [ ] Protección de rama en `main`.

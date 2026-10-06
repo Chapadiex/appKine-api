@@ -54,7 +54,8 @@ El criterio de aceptación pide **cero hallazgos altos**. Abiertos:
 - [ ] Baseline y runbooks.
 
 ### 07.09 Gate de release
-- [ ] Dockerfile de los dos repos (no hay ninguno).
+- [x] ~~Dockerfile del backend.~~ → G-3: `Dockerfile` multi-stage (JDK 21 → JRE 21, usuario no root, layered jar, healthcheck sobre `/actuator/health/liveness`), verificado arrancando contra el MySQL de `compose.yaml`; SBOM CycloneDX y job `imagen` en el CI.
+- [ ] Dockerfile del frontend (no hay ninguno). **Sigue abierto**: G-3 cubrió solo el backend.
 - [ ] Job E2E del CI del frontend contra el backend (hoy comentado).
 - [ ] E2E core M01–M27 (hoy 7 specs: auth, contexto, agenda ×2, contraste, errores, smoke).
 - [ ] **QA manual del §6 del `CLAUDE.md`**, que no corre desde 02.02 y está declarado bloqueante.
