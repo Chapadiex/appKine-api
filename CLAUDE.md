@@ -280,8 +280,10 @@ ejecutar: no leer el código.
 
 - **`cambiarEquipo` devuelve la versión LEÍDA, no la nueva.** El force-increment la incrementa al
   commitear, después de armar la respuesta, así que encadenar dos escrituras da 409 y la pantalla
-  tiene que repedir. Es lo que 02.07 ya había declarado para las habilitaciones de una oferta, y la
-  alternativa —ensuciar también el padre— hace avanzar la versión **dos** veces.
+  tiene que repedir. La alternativa —ensuciar también el padre— hace avanzar la versión **dos**
+  veces. Las habilitaciones de una oferta tenían la misma conducta y **ya no**: desde el contrato
+  0.50.0 su respuesta publica `ofertaVersion = leída + 1`, que es exacta porque el reemplazo no
+  ensucia la oferta y el único avance es el forzado (`HabilitacionesVersionForzadaIT`).
 - **La especificación funcional vive ahora en `docs/producto/`**, dentro de este repo. Hasta el
   29/09 estaba en `AKINE/docs/`, fuera de todo git: sin historial y sin copia.
 
