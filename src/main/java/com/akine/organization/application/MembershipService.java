@@ -553,10 +553,8 @@ public class MembershipService implements MembershipProvisioning {
 	 * el permiso de ejecutar. Exigir el permiso de escritura convertiria el analisis previo en
 	 * algo que solo puede ver quien ya podia hacerlo sin mirar.
 	 *
-	 * <p>Hoy devuelve siempre "nada": no hay ninguna sonda implementada porque M12 no existe.
-	 * La operacion se publica igual para que la interfaz de desvinculacion se escriba una sola
-	 * vez, y para que el dia que la agenda enchufe su sonda el numero aparezca sin cambiar el
-	 * contrato.
+	 * <p>Responden dos sondas: la de turnos pendientes de {@code scheduling} (paquete E-1), que va
+	 * primero, y la de bloques de disponibilidad de {@code resource}. Ver {@link #impactoDe}.
 	 */
 	@Transactional(readOnly = true)
 	public ColaboradorDesvinculacionProbe.Impacto desvinculacionImpacto(
@@ -571,9 +569,9 @@ public class MembershipService implements MembershipProvisioning {
 	 * Recorre las sondas y devuelve el primer impacto con contenido.
 	 *
 	 * <p>El primero y no la suma: sumar "14 turnos" con "3 sesiones abiertas" da 17 de nada.
-	 * Cuando exista mas de una sonda —hoy no hay ninguna— esto tiene que pasar a devolver la
-	 * lista entera y la respuesta de la API a ser un array. Queda anotado acá y no en un
-	 * comentario suelto porque el cambio es de contrato.
+	 * Desde E-1 hay dos —turnos y bloques de disponibilidad— y el orden lo fija {@code @Order} en
+	 * la de turnos: cuando hay turnos, se muestran ellos y los bloques no. Mostrar las dos a la
+	 * vez exige que la respuesta de la API pase a ser un array, y eso es cambio de contrato.
 	 */
 	private ColaboradorDesvinculacionProbe.Impacto impactoDe(
 			long organizationId, Membership membership, Instant at) {

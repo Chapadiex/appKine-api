@@ -172,7 +172,8 @@ public class EspacioProblemHandler {
 	 * de la implementacion ni de ninguna persona — {@code occupancyType} es vocabulario del
 	 * modulo que declaro la ocupacion, no un nombre ni un identificador.
 	 *
-	 * <p><b>Reservado en F2:</b> no lo emite nadie mientras no exista ningun modulo que reserve.
+	 * <p>Lo dispara {@code scheduling.infrastructure.EspacioOcupadoPorTurnos} con el pico de turnos
+	 * pendientes del espacio (paquete E-1).
 	 */
 	@ExceptionHandler(EspacioCapacityBelowOccupancyException.class)
 	public ProblemDetail handleCapacityBelowOccupancy(
@@ -194,8 +195,8 @@ public class EspacioProblemHandler {
 	/**
 	 * Baja bloqueada por ocupacion vigente sobre el espacio.
 	 *
-	 * <p><b>Reservado en F2:</b> lo emitira el modulo de agenda cuando existan turnos futuros.
-	 * Se publica desde ya para que la pantalla de confirmacion de baja se escriba una sola vez.
+	 * <p>Lo dispara {@code scheduling.infrastructure.EspacioOcupadoPorTurnos} cuando el espacio
+	 * tiene turnos pendientes (paquete E-1).
 	 */
 	@ExceptionHandler(EspacioHasActiveReferencesException.class)
 	public ProblemDetail handleEspacioHasActiveReferences(

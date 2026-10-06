@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
 /**
@@ -265,6 +266,24 @@ class RevalidadorDeSlotTest {
 
 			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
 					.isInstanceOf(RecursoOcupadoException.class);
+		}
+
+		@Test
+		@DisplayName("La segunda persona de una franja grupal comparte el box de su grupo")
+		void grupal_comparte_el_box_del_grupo() {
+			// Defecto corregido en E-1: el box tenia "un turno que se cruza" —el del propio grupo—
+			// y la segunda inscripcion salia con recurso-ocupado.
+			Turno delGrupo = turno(OFERTA_ID, INICIO, TURNO_ID + 5);
+			given(turnos.contarVivosEnSlot(ORG_ID, OFERTA_ID, INICIO)).willReturn(1L);
+			given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
+					.willReturn(List.of(delGrupo));
+			given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
+					.willReturn(List.of(delGrupo));
+			given(turnos.findVivosDeLaOfertaEnVentana(eq(ORG_ID), eq(OFERTA_ID), eq(INICIO), any()))
+					.willReturn(List.of(delGrupo));
+
+			assertThat(revalidador.revalidar(pedidoDe(ofertaCon(3))).espacioId())
+					.isEqualTo(ESPACIO_ID);
 		}
 
 		@Test
