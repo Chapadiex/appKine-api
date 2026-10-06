@@ -38,8 +38,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -112,6 +114,16 @@ public class AsistenciaService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 
+	/**
+	 * La transaccion de cada item del lote. <b>No alcanza con que {@link #registrar} este
+	 * anotado</b>: el lote lo invoca como {@code this.registrar(...)}, esa llamada no pasa por el
+	 * proxy de Spring y la anotacion no se aplica. Sin esta plantilla cada item corria <b>sin
+	 * transaccion</b> —cada {@code saveAndFlush} commiteaba por su cuenta— y un fallo a mitad de
+	 * item dejaba la inscripcion proyectada como {@code ASISTIO} sin la fila de asistencia que la
+	 * respalda.
+	 */
+	private final TransactionTemplate transaccionPorItem;
+
 	public AsistenciaService(
 			AsistenciaActividadRepositoryPort asistencias,
 			AsistenciaEventoRepositoryPort eventos,
@@ -122,7 +134,8 @@ public class AsistenciaService {
 			PacienteDirectory personas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			PlatformTransactionManager transactionManager) {
 
 		this.asistencias = asistencias;
 		this.eventos = eventos;
@@ -134,6 +147,7 @@ public class AsistenciaService {
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.transaccionPorItem = new TransactionTemplate(transactionManager);
 	}
 
 	// =================================================================================
@@ -412,8 +426,10 @@ public class AsistenciaService {
 	}
 
 	/**
-	 * Un item del lote. Cada uno abre y cierra <b>su propia transaccion</b> porque delega en
-	 * {@link #registrar}, que es la que la tiene.
+	 * Un item del lote. Cada uno abre y cierra <b>su propia transaccion</b>, y la abre
+	 * {@link #transaccionPorItem}: la anotacion de {@link #registrar} no aplica a una llamada
+	 * interna. La excepcion sale de la plantilla <b>despues</b> del rollback, asi que atraparla
+	 * aca no deja ninguna transaccion marcada a medio camino.
 	 *
 	 * <p>El error se traduce al <b>mismo</b> {@code problemType} que habria viajado en un
 	 * {@code ProblemDetail} individual, para que el cliente use el mapeo que ya tiene y no un
@@ -424,8 +440,9 @@ public class AsistenciaService {
 			RegistrarAsistenciaCommand comando) {
 
 		try {
-			return ItemDeLote.ok(
-					comando.inscripcionId(), registrar(actor, consultorioId, claseId, comando));
+			ResultadoDeAsistencia resultado = transaccionPorItem.execute(
+					estado -> registrar(actor, consultorioId, claseId, comando));
+			return ItemDeLote.ok(comando.inscripcionId(), resultado);
 		} catch (InscripcionNotAccessibleException excepcion) {
 			// 404 y nunca "no es tuyo": sin el predicado de clase y tenant en la consulta, un lote
 			// seria un enumerador cross-tenant con resultados parciales explicando cual id existe.
