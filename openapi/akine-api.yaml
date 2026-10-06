@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.48.0
+  version: 0.49.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -27407,9 +27407,12 @@ components:
           example: 7
         estado:
           type: string
-          description: "Estado de la ATENCION, no del turno ni del cobro"
+          description: "Estado de la ATENCION, no del turno ni del cobro. `BORRADOR`\
+            \ mientras se carga; `CERRADA` desde el cierre clinico, y sigue `CERRADA`\
+            \ despues de cada enmienda."
           enum:
           - BORRADOR
+          - CERRADA
           example: BORRADOR
         evaluacion:
           $ref: "#/components/schemas/EvaluacionBase"
