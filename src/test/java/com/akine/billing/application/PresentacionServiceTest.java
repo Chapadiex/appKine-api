@@ -112,6 +112,9 @@ class PresentacionServiceTest {
 	private PresentacionNumeradorIniciador numeradorIniciador;
 
 	@Mock
+	private ObligacionOcupadaConsulta ocupacion;
+
+	@Mock
 	private PresentacionAcceso acceso;
 
 	@Mock
@@ -124,7 +127,7 @@ class PresentacionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new PresentacionService(
-				presentaciones, items, obligaciones, cobros, numerador, numeradorIniciador,
+				presentaciones, items, obligaciones, cobros, numerador, numeradorIniciador, ocupacion,
 				acceso, auditTrail);
 
 		given(acceso.exigirSedeDelTenant(anyLong(), anyLong()))

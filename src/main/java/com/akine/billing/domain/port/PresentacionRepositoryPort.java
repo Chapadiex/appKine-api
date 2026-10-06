@@ -24,6 +24,22 @@ public interface PresentacionRepositoryPort {
 			long organizationId, long consultorioId, long presentacionId);
 
 	/**
+	 * Toma el lock de fila del lote antes de editar su composicion ({@code SELECT ... FOR UPDATE}).
+	 *
+	 * <p>Agregar o quitar un item recalcula {@code total_presentado} sumando los items, y esa suma
+	 * se escribe por la presentacion cargada en JPA, con su {@code @Version}. Dos administrativos que
+	 * agregaban prestaciones <b>distintas</b> al mismo borrador a la vez leian la misma version, y el
+	 * segundo en commitear moria en un {@code ObjectOptimisticLockingFailureException} por algo que
+	 * no es un conflicto. Con el lock tomado <b>antes</b> de cargar la entidad las dos ediciones se
+	 * serializan, la segunda ve el item de la primera —van en {@code READ_COMMITTED}— y las dos
+	 * entran con el total correcto. Lo encontro {@code PresentacionItemConcurrenteIT}.
+	 *
+	 * @return el id si la fila existe en la organizacion; {@code null} si no. El llamador carga la
+	 *         entidad despues igual, y el 404 sale por el camino de siempre
+	 */
+	Long bloquearParaEditar(long organizationId, long presentacionId);
+
+	/**
 	 * Las bandejas por estado (RF-M21-001 y siguientes), paginadas.
 	 *
 	 * @param estado        {@code null} no filtra
