@@ -60,6 +60,13 @@ public class Turno {
 	@Column(name = "espacio_id")
 	private Long espacioId;
 
+	/**
+	 * Serie que genero este turno (AKINE E-3). {@code null} en un turno suelto. Se fija antes del
+	 * INSERT y no cambia: la serie es la regla que lo genero, no un dato que se reasigna.
+	 */
+	@Column(name = "serie_id", updatable = false)
+	private Long serieId;
+
 	@Column(name = "inicio", nullable = false)
 	private Instant inicio;
 
@@ -339,6 +346,14 @@ public class Turno {
 	}
 
 	/** Un turno vivo ocupa lugar. Un cancelado no: su baja logica es lo que libera el hueco. */
+	/** Vincula el turno a la serie que lo genera. Solo antes de persistirlo, y una sola vez. */
+	public void vincularASerie(long serieId) {
+		if (id != null || this.serieId != null) {
+			throw new IllegalStateException("La serie de un turno se fija al crearlo y no cambia");
+		}
+		this.serieId = serieId;
+	}
+
 	public boolean estaVivo() {
 		return deletedAt == null;
 	}
@@ -366,6 +381,10 @@ public class Turno {
 
 	public Long getPersonaId() {
 		return personaId;
+	}
+
+	public Long getSerieId() {
+		return serieId;
 	}
 
 	public Long getProfesionalMembershipId() {

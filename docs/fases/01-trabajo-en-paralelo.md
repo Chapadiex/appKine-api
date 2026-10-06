@@ -125,7 +125,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V67` | C-5 | Unique de caso activo (RN-M10-002) |
 | `V68` | B-4 | Historial de estados de autorización (si DU-8 = tabla) |
 | `V69` | F-3 | **Usada**: `V69__m19_anticipos_y_reintegro.sql` — saldo a favor y anulación en `cobro`, imputación posterior en `cobro_imputacion`, tabla `cobro_reintegro`, origen `REINTEGRO` en `movimiento_caja` |
-| `V70` | E-3 | Series de turnos (DP-04) |
+| `V70` | E-3 | **Usada**: `V70__m12_serie_de_turnos.sql` — tabla `turno_serie` (regla semanal, idempotencia) y `turno.serie_id` nullable con `fk_turno_turno_serie` e `ix_turno_serie_inicio` |
 | `V71` | C-6 | `sesion_version` con tratamientos y mediciones |
 | `V72` | F-4 | Obligación del financiador, coseguro y snapshot de convenio |
 | `V73`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
