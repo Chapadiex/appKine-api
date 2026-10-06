@@ -12,7 +12,7 @@
 | 06.03 Examen y mediciones | PARCIAL | 55 | **Sin frontend**; ROM/fuerza/marcha como estructura propia |
 | 06.04 Tratamientos realizados | PARCIAL | 45 | **Defecto `NO_APLICA`**; sin frontend |
 | 06.05 Cierre idempotente | CUMPLIDA con desvío | 80 | E2E cierre → timeline |
-| 06.06 Enmiendas | PARCIAL | 45 | No versiona tratamientos ni mediciones; permiso no reforzado; sin frontend |
+| 06.06 Enmiendas | PARCIAL | 60 | Versiona tratamientos y mediciones desde C-6; permiso no reforzado; sin frontend |
 
 La pantalla `atencion-page` cubre inicio, evaluación y cierre (06.01/06.02/06.05). **El frontend
 se cortó ahí**: mediciones, tratamientos y enmiendas no tienen UI (`atencion-page` todavía dice
@@ -45,8 +45,10 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 - [ ] 06.03: subbloques ROM, fuerza y marcha (hoy todo es medición genérica, desvío no documentado);
   obligatorios por modo/política; "copiar previo con confirmación".
 - [ ] 06.04: parámetros obligatorios por práctica (**decisión pendiente**: no hay configuración que los declare).
-- [ ] 06.06: `sesion_version` no incluye tratamientos ni mediciones → corregir un tratamiento
-  cerrado es imposible.
+- [x] ~~06.06: `sesion_version` no incluye tratamientos ni mediciones → corregir un tratamiento
+  cerrado es imposible.~~ **Cerrado por C-6** (`V71`, contrato 0.56.0): cada version lleva la foto
+  de tratamientos y mediciones, y la enmienda los corrige sin poder cambiar las practicas
+  realizadas. Ver `docs/diseno/AKINE-C-6-enmiendas.md`.
 - [ ] 06.06: permiso reforzado y política temporal para enmendar (hoy usa el mismo `sesion:register`).
 - [ ] 06.05: el criterio pide "HC consistente aunque la economía falle y reintente"; hoy un
   observador que falla hace fallar el cierre. Decidir si se mantiene como contrapartida (escribirla
@@ -89,6 +91,6 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 
 - [x] Migración que corrija el CHECK de lateralidad, con IT.
 - [ ] Caso obligatorio y atención sin turno (coordinado con F4 y F5).
-- [ ] Enmiendas que versionen tratamientos y mediciones, con permiso reforzado.
+- [ ] Enmiendas que versionen tratamientos y mediciones (**hecho en C-6**), con permiso reforzado (pendiente: decision del usuario).
 - [ ] Pantallas de mediciones, tratamientos y enmiendas con E2E.
 - [ ] Registros de 06.03, 06.04 y 06.06 promovidos a cierre.

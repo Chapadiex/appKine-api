@@ -278,6 +278,14 @@ public enum ProblemType {
 	 * cambiando, y el historial clinico pasaria a registrar tipeos en vez de correcciones.
 	 */
 	SESION_NO_CERRADA("sesion-no-cerrada"),
+	/**
+	 * Una enmienda cambiaria el conjunto de practicas realizadas en la sesion (409). C-6.
+	 *
+	 * <p>Ese conjunto decidio al cierre que autorizacion se consumio (06.04), y la enmienda no
+	 * vuelve a disparar el consumo. Cambiar que se presto es una compensacion economica en M17,
+	 * no una correccion clinica: lleva a otra accion y por eso tiene tipo propio.
+	 */
+	ENMIENDA_CAMBIA_PRACTICAS("enmienda-cambia-practicas"),
 
 	// --- Deuda (M18) -----------------------------------------------------------------------
 	/** La obligacion ya estaba anulada. Anular dos veces no es idempotente: es un error. */
