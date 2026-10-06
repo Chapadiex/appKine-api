@@ -5,6 +5,8 @@ import com.akine.offering.domain.port.OfferingRepositoryPorts.OfertaRepositoryPo
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -48,6 +50,18 @@ public interface OfertaRepository
 	@Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
 	Optional<OfertaServicioConsultorio> findWithLockByIdAndOrganizationIdAndConsultorioId(
 			Long id, Long organizationId, Long consultorioId);
+
+	/** {@inheritDoc} Las tres columnas en el {@code WHERE}, como el resto de este puerto. */
+	@Override
+	@Query(value = """
+			SELECT version FROM oferta_servicio_consultorio
+			WHERE id = :id AND organization_id = :organizationId AND consultorio_id = :consultorioId
+			FOR UPDATE
+			""", nativeQuery = true)
+	Optional<Long> bloquearParaConfigurar(
+			@Param("id") Long id,
+			@Param("organizationId") Long organizationId,
+			@Param("consultorioId") Long consultorioId);
 
 	@Override
 	List<OfertaServicioConsultorio> findAllByOrganizationIdAndConsultorioIdOrderByNombreComercialAsc(
