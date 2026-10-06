@@ -21,6 +21,14 @@ public record HabilitacionesResponse(
 		long ofertaId,
 
 		@Schema(
+				description = "Version de la OFERTA que hay que mandar como expectedVersion en el "
+						+ "proximo reemplazo. En la lectura es la vigente; en la respuesta de un "
+						+ "reemplazo es la que la oferta queda teniendo despues de ese reemplazo, "
+						+ "asi que dos reemplazos se encadenan sin releer",
+				example = "3")
+		long ofertaVersion,
+
+		@Schema(
 				description = "Si la oferta esta restringida a una lista de profesionales. false "
 						+ "significa que cualquier profesional con vinculo vigente puede "
 						+ "prestarla, NO que no pueda ninguno")
@@ -154,6 +162,7 @@ public record HabilitacionesResponse(
 	public static HabilitacionesResponse de(HabilitacionesView view) {
 		return new HabilitacionesResponse(
 				view.ofertaId(),
+				view.ofertaVersion(),
 				view.restringidaPorProfesional(),
 				view.restringidaPorEspacio(),
 				view.profesionales().stream()

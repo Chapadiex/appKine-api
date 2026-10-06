@@ -20,9 +20,17 @@ import java.util.List;
  * @param capacidadEfectiva  {@code min(comercial, capacidad de los espacios habilitados)}
  * @param espacioQueLimita   nombre del espacio que fija la efectiva, o {@code null} si no la acota
  *                           ninguno. Un numero mas chico sin explicacion es un bug reportado
+ * @param ofertaVersion      version de la OFERTA que el cliente tiene que mandar como
+ *                           {@code expectedVersion} en el proximo reemplazo. En una lectura es la
+ *                           vigente. En la respuesta de un reemplazo es la que la oferta <b>va a
+ *                           tener despues del commit</b> ({@code leida + 1}), no la leida: el
+ *                           {@code OPTIMISTIC_FORCE_INCREMENT} la sube al cerrar la transaccion,
+ *                           cuando esta vista ya se armo. Devolver la leida haria que encadenar dos
+ *                           reemplazos sin releer diera 409 siempre
  */
 public record HabilitacionesView(
 		long ofertaId,
+		long ofertaVersion,
 		boolean restringidaPorProfesional,
 		boolean restringidaPorEspacio,
 		List<ProfesionalHabilitadoView> profesionales,

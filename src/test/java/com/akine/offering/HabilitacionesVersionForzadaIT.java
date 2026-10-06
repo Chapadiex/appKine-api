@@ -1,6 +1,7 @@
 package com.akine.offering;
 
 import com.akine.TestcontainersConfiguration;
+import com.akine.offering.application.HabilitacionesView;
 import com.akine.offering.application.OfertaHabilitacionService;
 import com.akine.offering.application.OperatingActor;
 import com.akine.scheduling.AgendaFixtures;
@@ -68,6 +69,58 @@ class HabilitacionesVersionForzadaIT {
 		habilitaciones.reemplazarProfesionales(admin, fixture.organizationId(),
 				fixture.consultorioId(), fixture.ofertaId(), Set.of(), leida + 1);
 		assertThat(versionDeLaOferta(fixture)).isEqualTo(leida + 2);
+	}
+
+	@Test
+	@DisplayName("ofertaVersion: tres reemplazos encadenados con la version que devolvio el "
+			+ "anterior, sin releer, entran todos")
+	void los_reemplazos_se_encadenan_con_la_version_devuelta() {
+		Fixture fixture = new AgendaFixtures(jdbc).crear(1);
+		OperatingActor admin = new OperatingActor(
+				fixture.actor().accountId(), false, fixture.organizationId(), fixture.consultorioId());
+		// La lectura exige pertenencia, y la pertenencia exige una organizacion con suscripcion
+		// vigente. AgendaFixtures no la crea porque sus consumidores no pasan por ahi.
+		jdbc.update("""
+				INSERT INTO subscription (organization_id, plan_id, status, started_at, active,
+				                          version, created_at, updated_at)
+				SELECT ?, id, 'ACTIVA', UTC_TIMESTAMP(6), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)
+				FROM plan WHERE code = 'BASICO'
+				""", fixture.organizationId());
+
+		// El cliente parte de una lectura, como la pantalla.
+		HabilitacionesView leida = habilitaciones.leer(admin, fixture.organizationId(),
+				fixture.consultorioId(), fixture.ofertaId());
+		assertThat(leida.ofertaVersion()).isEqualTo(versionDeLaOferta(fixture));
+
+		// Cada guardado usa SOLO lo que respondio el anterior. Si la respuesta devolviera la
+		// version leida (el force-increment se aplica al commitear, despues de armarla), el
+		// segundo moriria con 409. Mezclar los dos endpoints prueba que comparten la version.
+		HabilitacionesView primera = habilitaciones.reemplazarProfesionales(admin,
+				fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(),
+				Set.of(fixture.profesionalMembershipId()), leida.ofertaVersion());
+		assertThat(primera.ofertaVersion())
+				.as("lo devuelto es lo que quedo en la base despues del commit")
+				.isEqualTo(versionDeLaOferta(fixture))
+				.isEqualTo(leida.ofertaVersion() + 1);
+
+		HabilitacionesView segunda = habilitaciones.reemplazarEspacios(admin,
+				fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(),
+				Set.of(), primera.ofertaVersion());
+		assertThat(segunda.ofertaVersion()).isEqualTo(versionDeLaOferta(fixture));
+
+		HabilitacionesView tercera = habilitaciones.reemplazarProfesionales(admin,
+				fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(),
+				Set.of(), segunda.ofertaVersion());
+		assertThat(tercera.ofertaVersion())
+				.isEqualTo(versionDeLaOferta(fixture))
+				.isEqualTo(leida.ofertaVersion() + 3);
+		assertThat(tercera.restringidaPorProfesional()).isFalse();
+
+		// Y la version devuelta sigue protegiendo: la de dos pasos atras choca.
+		assertThatThrownBy(() -> habilitaciones.reemplazarProfesionales(admin,
+				fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(),
+				Set.of(), primera.ofertaVersion()))
+				.isInstanceOf(OptimisticLockingFailureException.class);
 	}
 
 	private long versionDeLaOferta(Fixture fixture) {
