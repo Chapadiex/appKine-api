@@ -90,6 +90,34 @@ public class CajaDeCobro {
 	}
 
 	/**
+	 * La salida de plata de un reintegro de saldo a favor (F-3).
+	 *
+	 * <p>Las mismas reglas que el ingreso, del otro lado: solo el efectivo mueve el arqueo, el
+	 * efectivo exige jornada abierta, y <b>el cajon no queda en negativo</b> —un reintegro que no
+	 * entra en el cajon se rechaza—. Todo por {@link MovimientoCajaService#asentar}, para que no haya
+	 * un segundo camino por el que salga plata (ver {@code CajaDeEgreso}).
+	 *
+	 * @throws CajaNoAbiertaException se reintegra en efectivo y la sede no tiene caja abierta (409)
+	 */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public void registrarReintegro(
+			long organizationId, ConsultorioSnapshot sede, long reintegroId, long cobroId,
+			MedioDePago medio, BigDecimal importe, String moneda, Instant cuando, long actorCuentaId) {
+
+		JornadaCaja jornada = jornadas.findAbierta(organizationId, sede.id()).orElse(null);
+		LocalDate fechaNegocio = jornada != null
+				? jornada.getFechaNegocio()
+				: CajaAcceso.fechaDeNegocio(sede, cuando);
+
+		movimientos.asentar(
+				organizationId, sede.id(), jornada, fechaNegocio,
+				TipoMovimiento.EGRESO, medio, importe, moneda,
+				"Reintegro del cobro " + cobroId, null,
+				OrigenMovimiento.REINTEGRO, reintegroId, null,
+				cuando, actorCuentaId, null, null);
+	}
+
+	/**
 	 * Un medio repetido es un solo movimiento. Ver el javadoc de la clase.
 	 *
 	 * <p>{@link LinkedHashMap} y no {@code HashMap}: el orden de asiento queda igual al orden en que

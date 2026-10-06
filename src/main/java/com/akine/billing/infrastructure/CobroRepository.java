@@ -2,7 +2,9 @@ package com.akine.billing.infrastructure;
 
 import com.akine.billing.domain.Cobro;
 import com.akine.billing.domain.port.CobroRepositoryPort;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -25,6 +27,57 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("cobroId") long cobroId);
+
+	/** El lock de fila de F-3. Ver el javadoc del puerto. */
+	@Override
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+			SELECT c FROM Cobro c
+			 WHERE c.organizationId = :organizationId
+			   AND c.consultorioId = :consultorioId
+			   AND c.id = :cobroId
+			""")
+	Optional<Cobro> findByIdInScopeParaEscribir(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("cobroId") long cobroId);
+
+	/** Nativa porque {@code cobro_imputacion} no tiene entidad navegable hacia su cobro. */
+	@Override
+	@Query(value = """
+			SELECT cobro_id FROM cobro_imputacion
+			 WHERE organization_id = :organizationId
+			   AND idempotency_key = :idempotencyKey
+			""", nativeQuery = true)
+	Optional<Long> cobroDeLaImputacionConClave(
+			@Param("organizationId") long organizationId,
+			@Param("idempotencyKey") String idempotencyKey);
+
+	/**
+	 * El espejo del descuento. Ver el javadoc del puerto.
+	 *
+	 * <p><b>El estado va antes que el saldo en el SET</b>, y no es estilo: MySQL evalua las
+	 * asignaciones de un UPDATE de izquierda a derecha y cada una ve el valor que dejo la anterior.
+	 * Con el saldo primero, el {@code CASE} compararia el saldo ya devuelto y una deuda que vuelve
+	 * entera quedaria {@code PARCIAL}.
+	 */
+	@Modifying
+	@Query(value = """
+			UPDATE obligacion
+			   SET estado = CASE WHEN saldo + :importe >= importe_original
+			                     THEN 'PENDIENTE' ELSE 'PARCIAL' END,
+			       saldo = saldo + :importe,
+			       version = version + 1
+			 WHERE id = :obligacionId
+			   AND organization_id = :organizationId
+			   AND saldo + :importe <= importe_original
+			   AND estado IN ('PARCIAL', 'PAGADA')
+			""", nativeQuery = true)
+	@Override
+	int devolverSaldo(
+			@Param("organizationId") long organizationId,
+			@Param("obligacionId") long obligacionId,
+			@Param("importe") BigDecimal importe);
 
 	@Override
 	@Query("""
@@ -63,7 +116,8 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 	@Modifying
 	@Query(value = """
 			UPDATE obligacion
-			   SET saldo = saldo - :importe
+			   SET saldo = saldo - :importe,
+			       version = version + 1
 			 WHERE id = :obligacionId
 			   AND organization_id = :organizationId
 			   AND saldo >= :importe
@@ -130,6 +184,13 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 	 *
 	 * <p>Nativa porque {@code cobro_medio} es una coleccion mapeada con {@code JoinColumn} y no
 	 * tiene entidad propia navegable desde JPQL para agregarla.
+	 *
+	 * <p><b>Incluye los cobros anulados (F-3), a diferencia de {@link #sumarCobradoEnElReporte}.</b>
+	 * La mitad derecha suma los {@code INGRESO} de origen {@code COBRO} y no resta reversiones —es
+	 * deliberado, ver {@code MovimientoCajaRepository}—, asi que es una cifra bruta. Si esta excluyera
+	 * los anulados, la diferencia dejaria de dar cero el primer dia que alguien anulara un cobro en
+	 * efectivo, y la conciliacion denunciaria un faltante que no existe. La anulacion queda a la vista
+	 * en la caja como {@code REVERSION_DE_INGRESO}.
 	 */
 	@Query(value = """
 			SELECT SUM(m.importe)
@@ -137,7 +198,6 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 			  JOIN cobro c ON c.id = m.cobro_id
 			 WHERE c.organization_id = :organizationId
 			   AND c.consultorio_id = :consultorioId
-			   AND c.deleted_at IS NULL
 			   AND c.cobrado_en >= :desde
 			   AND c.cobrado_en < :hasta
 			   AND m.medio = :medio

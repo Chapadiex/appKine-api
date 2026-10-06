@@ -48,6 +48,15 @@ final class AuditEvents {
 	static final String EGRESO_PAGADO = "EGRESO_PAGADO";
 	static final String EGRESO_PAGO_ANULADO = "EGRESO_PAGO_ANULADO";
 
+	/**
+	 * Lo que se hace sobre un cobro ya registrado (M19, F-3). Las tres mueven plata o deuda despues
+	 * de emitido el comprobante, que es justo lo que RN-M19-003 pide que no pase en silencio.
+	 */
+	static final String COBRO_SALDO_IMPUTADO = "COBRO_SALDO_IMPUTADO";
+	static final String COBRO_ANULADO = "COBRO_ANULADO";
+	static final String COBRO_REINTEGRADO = "COBRO_REINTEGRADO";
+
+	static final String ENTITY_COBRO = "Cobro";
 	static final String ENTITY_JORNADA_CAJA = "JornadaCaja";
 	static final String ENTITY_MOVIMIENTO_CAJA = "MovimientoCaja";
 	static final String ENTITY_PRESENTACION = "Presentacion";

@@ -1,6 +1,11 @@
 package com.akine.billing.api;
 
 import com.akine.billing.application.IdempotencyKeyConflictException;
+import com.akine.billing.domain.exception.CobroAnuladoException;
+import com.akine.billing.domain.exception.CobroConReintegrosException;
+import com.akine.billing.domain.exception.CobroInvalidoException;
+import com.akine.billing.domain.exception.PersonaNoAccesibleException;
+import com.akine.billing.domain.exception.SaldoAFavorInsuficienteException;
 import com.akine.billing.domain.exception.BeneficiarioNoVinculadoException;
 import com.akine.billing.domain.exception.CajaCerradaException;
 import com.akine.billing.domain.exception.CajaDiferenciaSinMotivoException;
@@ -238,6 +243,35 @@ class BillingProblemHandlerTest {
 
 			assertThat(respuestas).allSatisfy(problem ->
 					assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value()));
+		}
+
+		@Test
+		@DisplayName("F-3: cobro anulado, con reintegros y saldo a favor insuficiente son 409 con type propio")
+		void conflictos_de_f3() {
+			ProblemDetail anulado = handler.handleCobroAnulado(new CobroAnuladoException(5L));
+			ProblemDetail conReintegros = handler.handleCobroConReintegros(new CobroConReintegrosException(5L));
+			ProblemDetail sinSaldo = handler.handleSaldoAFavorInsuficiente(
+					new SaldoAFavorInsuficienteException(5L, PLATA, BigDecimal.TEN));
+
+			assertThat(List.of(anulado, conReintegros, sinSaldo)).allSatisfy(problem ->
+					assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value()));
+			assertThat(anulado.getType()).isEqualTo(ProblemType.COBRO_ANULADO.uri());
+			assertThat(conReintegros.getType()).isEqualTo(ProblemType.COBRO_CON_REINTEGROS.uri());
+			assertThat(sinSaldo.getType()).isEqualTo(ProblemType.SALDO_A_FAVOR_INSUFICIENTE.uri());
+			// Sin el disponible, el operador reintenta a ciegas.
+			assertThat(sinSaldo.getProperties()).containsEntry("disponible", BigDecimal.TEN);
+		}
+
+		@Test
+		@DisplayName("F-3: anticipo sin moneda es 400 validation-error; persona ajena es 404")
+		void anticipo_invalido_y_persona_ajena() {
+			ProblemDetail invalido = handler.handleCobroInvalido(new CobroInvalidoException("sin moneda"));
+			ProblemDetail ajena = handler.handlePersonaNoAccesible(new PersonaNoAccesibleException(9L));
+
+			assertThat(invalido.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+			assertThat(invalido.getType()).isEqualTo(ProblemType.VALIDATION_ERROR.uri());
+			assertThat(ajena.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+			assertThat(ajena.getType()).isEqualTo(ProblemType.NOT_FOUND.uri());
 		}
 
 		@Test

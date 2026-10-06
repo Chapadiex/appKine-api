@@ -8,7 +8,7 @@
 | Etapa | Estado | % | Lo que falta, en una línea |
 |---|---|---|---|
 | 07.01 Obligaciones | PARCIAL | 60 | **Solo deuda del paciente**: sin financiador, mixto, coseguro ni snapshot de convenio |
-| 07.02 Cobros | PARCIAL | 55 | Anticipos, imputación posterior, anulación, reintegro |
+| 07.02 Cobros | PARCIAL | 85 | ~~Anticipos, imputación posterior, anulación, reintegro~~ (F-3). Falta frontend y E2E |
 | 07.03 Caja diaria | PARCIAL | 55 | Sin frontend; ITs concurrentes |
 | 07.04 Presentaciones a financiadores | DESVIADA / PARCIAL | 40 | **La bandeja de elegibles queda vacía en un despliegue real** |
 | 07.05 Egresos y pagos | PARCIAL | 50 | Adjunto binario; sin frontend |
@@ -62,9 +62,14 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 
 ### Backend / API
 - [ ] **Obligación del financiador** (ver arriba).
-- [ ] 07.02: anticipos, imputación posterior, anulación y reintegro. El recorte se justificó porque
+- [x] ~~07.02: anticipos, imputación posterior, anulación y reintegro. El recorte se justificó porque
   no existía caja; **la caja existe desde 07.03** y nadie reabrió el tema. `CobroController` lo dice:
-  "No hay anticipos ni anulacion todavia". También lo necesita el prepago de recepción ([F5](F5-agenda-y-recepcion.md)).
+  "No hay anticipos ni anulacion todavia". También lo necesita el prepago de recepción ([F5](F5-agenda-y-recepcion.md)).~~
+  → F-3 (`V69`, contrato 0.54.0): anticipo declarado en el registro, `imputarSaldoAFavor`,
+  `anularCobro` y `reintegrarSaldoAFavor`; diseño en `docs/diseno/AKINE-F-3-anticipos.md`,
+  `AnticipoYAnulacionIT`. Destapó y corrigió que `descontarSaldo` no avanzaba la `version` de la
+  obligación: una anulación concurrente podía dejarla `ANULADA` con un cobro imputado. Quedan
+  afuera la política de prepago (E-6) y el reintegro asociado a cancelación de F9.
 - [ ] 07.04: listados exportables; permiso propio (hoy reusa `cobro:register`).
 - [ ] 07.05: adjunto binario del comprobante (RF-M22-003). **Decisión pendiente**: ¿alcanza la
   referencia, o se extrae el storage a `platform.spi` (refactor de `person` y `clinical`)?
@@ -95,7 +100,7 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 | Desvío | Documentado |
 |---|---|
 | Solo obligación del paciente (DP-10) | Sí; **el recableado nunca se hizo** |
-| Sin anticipos aunque la caja ya existe | El recorte sí; **no** que su justificación caducó |
+| ~~Sin anticipos aunque la caja ya existe~~ | Cerrado por F-3 |
 | Registro de 07.02 es reconstrucción, no acta | Sí |
 | El cobro no exige `caja:operate` | Sí |
 | Presentaciones reusa `cobro:register`; DELETE físico de ítems en BORRADOR | Sí |
@@ -110,7 +115,7 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 ## Para cerrar la fase
 
 - [ ] Obligación del financiador con snapshot de convenio, con ITs.
-- [ ] Anticipos y anulación con reintegro.
+- [x] ~~Anticipos y anulación con reintegro.~~ → F-3, backend. Las pantallas siguen pendientes.
 - [ ] Pantallas de caja, presentaciones y egresos con E2E.
 - [ ] ITs diferidos 33–48.
 - [ ] Registros de 07.03–07.05 promovidos a cierre.

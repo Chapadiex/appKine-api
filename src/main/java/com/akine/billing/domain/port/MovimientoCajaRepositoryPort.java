@@ -45,6 +45,17 @@ public interface MovimientoCajaRepositoryPort {
 			long organizationId, String tipoOrigen, long referenciaOrigen);
 
 	/**
+	 * Todos los movimientos que asento un hecho de otro agregado (F-3).
+	 *
+	 * <p>Existe porque un cobro, a diferencia de un pago de egreso, <b>puede tener varios</b>: uno
+	 * por medio. Anularlo exige revertirlos a todos.
+	 *
+	 * @param tipoOrigen nombre del {@link com.akine.billing.domain.OrigenMovimiento}
+	 */
+	List<MovimientoCaja> findTodosPorOrigen(
+			long organizationId, String tipoOrigen, long referenciaOrigen);
+
+	/**
 	 * La operatoria, filtrada (RF-M20-004).
 	 *
 	 * <p>Por jornada, o por fecha de negocio de la sede — que es lo que permite ver tambien los

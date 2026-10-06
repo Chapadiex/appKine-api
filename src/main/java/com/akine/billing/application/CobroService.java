@@ -5,9 +5,11 @@ import com.akine.billing.domain.CobroImputacion;
 import com.akine.billing.domain.CobroMedio;
 import com.akine.billing.domain.Obligacion;
 import com.akine.billing.domain.PermissionCodes;
+import com.akine.billing.domain.exception.CobroInvalidoException;
 import com.akine.billing.domain.exception.CobroNotAccessibleException;
 import com.akine.billing.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.billing.domain.exception.ObligacionNoCobrableException;
+import com.akine.billing.domain.exception.PersonaNoAccesibleException;
 import com.akine.billing.domain.exception.SaldoInsuficienteException;
 import com.akine.billing.domain.port.CobroRepositoryPort;
 import com.akine.billing.domain.port.ComprobanteNumeradorPort;
@@ -16,6 +18,7 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.person.spi.PacienteDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
@@ -71,12 +74,12 @@ import java.util.Optional;
  * sabe a que jornada pertenece, el arqueo de ese dia no cuadra contra nada. Los medios que no son
  * efectivo no lo exigen: esa plata nunca toco el cajon.
  *
- * <h2>Lo que esta etapa NO hace</h2>
+ * <h2>Anticipos (F-3)</h2>
  *
- * <p>No registra anticipos ni anula cobros. Los dos quedaron afuera en 07.02 <b>porque no habia
- * caja</b>; ahora la hay y el primitivo de movimiento y de reversion existe, pero los dos exigen
- * tocar este agregado —un cobro sin obligacion imputada, y una anulacion que devuelva saldo a la
- * deuda— y eso es alcance de M19, no de M20.
+ * <p>Un cobro puede dejar parte o todo su total <b>a favor</b> del paciente, declarandolo en
+ * {@code anticipo}: la plata entra a la caja ahora, una sola vez, y se imputa despues. Lo que se
+ * hace sobre un cobro ya registrado —imputar ese saldo, reintegrarlo, anular el cobro— vive en
+ * {@link CobroPosteriorService}.
  */
 @Service
 public class CobroService {
@@ -90,7 +93,9 @@ public class CobroService {
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final CajaDeCobro caja;
+	private final PacienteDirectory pacientes;
 
+	@SuppressWarnings("checkstyle:ParameterNumber")
 	public CobroService(
 			CobroRepositoryPort cobros,
 			ObligacionRepositoryPort obligaciones,
@@ -98,7 +103,8 @@ public class CobroService {
 			ComprobanteIniciador iniciador,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
-			CajaDeCobro caja) {
+			CajaDeCobro caja,
+			PacienteDirectory pacientes) {
 
 		this.cobros = cobros;
 		this.obligaciones = obligaciones;
@@ -107,6 +113,7 @@ public class CobroService {
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.caja = caja;
+		this.pacientes = pacientes;
 	}
 
 	/**
@@ -137,10 +144,21 @@ public class CobroService {
 			return CobroView.de(existente);
 		}
 
+		// F-3. Un anticipo puro no tiene deudas que validen a la persona ni de donde tomar la moneda:
+		// las dos se exigen aca. Con deudas, las dos salen de ellas, como antes.
+		if (command.esAnticipoPuro()) {
+			if (command.moneda() == null) {
+				throw new CobroInvalidoException(
+						"Un anticipo sin deudas imputadas tiene que declarar su moneda");
+			}
+			pacientes.find(organizationId, command.personaId())
+					.orElseThrow(() -> new PersonaNoAccesibleException(command.personaId()));
+		}
+
 		// PASO 2 y 3. Validar y descontar. Si una imputacion falla, la transaccion revierte las
 		// anteriores: no puede quedar plata descontada de una deuda por un cobro que no existe.
 		List<CobroImputacion> imputaciones = new ArrayList<>();
-		String moneda = null;
+		String moneda = command.moneda();
 		for (CobroCommand.ImputacionPedida pedido : command.imputaciones()) {
 			Obligacion obligacion = obligaciones
 					.findByIdInScope(organizationId, consultorioId, pedido.obligacionId())
@@ -177,7 +195,7 @@ public class CobroService {
 				cobradoEn, actor.accountId(),
 				command.idempotencyKey(),
 				command.idempotencyKey() == null ? null : command.huella(consultorioId),
-				medios, imputaciones));
+				medios, imputaciones, command.anticipo()));
 
 		// PASO 7. Caja (AKINE-07.03). Va DESPUES del save porque necesita el id del cobro como
 		// referencia de origen —es lo que hace idempotente el reintento— y DENTRO de esta misma
@@ -187,9 +205,10 @@ public class CobroService {
 		caja.registrarIngresos(
 				organizationId, sede, cobro.getId(), moneda, medios, cobradoEn, actor.accountId());
 
-		log.info("Cobro registrado: cobroId={} comprobante={} personaId={} total={} {} imputaciones={}",
+		log.info("Cobro registrado: cobroId={} comprobante={} personaId={} total={} {} imputaciones={} "
+						+ "anticipo={}",
 				vista.id(), comprobante, command.personaId(), command.total(), moneda,
-				imputaciones.size());
+				imputaciones.size(), command.anticipo());
 
 		return vista;
 	}
@@ -236,7 +255,7 @@ public class CobroService {
 	 * corrientes quedarian mal sin que nada falle: una con plata que no pago y la otra con deuda
 	 * que si pago.
 	 */
-	private static void exigirCobrable(Obligacion obligacion, long personaId) {
+	static void exigirCobrable(Obligacion obligacion, long personaId) {
 		if (obligacion.getPersonaId() != personaId) {
 			throw new ObligacionNoCobrableException(obligacion.getId(), "es de otra persona");
 		}
@@ -253,7 +272,7 @@ public class CobroService {
 	 * y una cotizacion es una decision de negocio que nadie tomo. Rechazarlo es preferible a
 	 * sumar pesos con dolares.
 	 */
-	private static String exigirMonedaUnica(String monedaHastaAhora, Obligacion obligacion) {
+	static String exigirMonedaUnica(String monedaHastaAhora, Obligacion obligacion) {
 		if (monedaHastaAhora == null) {
 			return obligacion.getMoneda();
 		}

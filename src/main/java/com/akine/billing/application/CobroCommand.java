@@ -3,10 +3,6 @@ package com.akine.billing.application;
 import com.akine.billing.domain.MedioDePago;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.List;
 
 /**
@@ -14,17 +10,38 @@ import java.util.List;
  *
  * @param idempotencyKey clave del cliente para que un reintento no cobre dos veces. {@code null} la
  *                       desactiva, y es legitimo en una carga manual
+ * @param anticipo       lo que queda a favor del paciente (F-3). Cero cuando todo se imputa
+ * @param moneda         obligatoria solo sin imputaciones; con ellas sale de las deudas
  */
 public record CobroCommand(
 		long personaId,
 		BigDecimal total,
 		List<MedioPedido> medios,
 		List<ImputacionPedida> imputaciones,
-		String idempotencyKey) {
+		String idempotencyKey,
+		BigDecimal anticipo,
+		String moneda) {
 
 	public CobroCommand {
 		medios = List.copyOf(medios);
-		imputaciones = List.copyOf(imputaciones);
+		imputaciones = List.copyOf(imputaciones == null ? List.of() : imputaciones);
+		anticipo = anticipo == null ? BigDecimal.ZERO : anticipo;
+		moneda = moneda == null || moneda.isBlank() ? null : moneda.trim().toUpperCase();
+	}
+
+	/** Un cobro que imputa todo su total: el de 07.02. */
+	public CobroCommand(
+			long personaId,
+			BigDecimal total,
+			List<MedioPedido> medios,
+			List<ImputacionPedida> imputaciones,
+			String idempotencyKey) {
+
+		this(personaId, total, medios, imputaciones, idempotencyKey, BigDecimal.ZERO, null);
+	}
+
+	public boolean esAnticipoPuro() {
+		return imputaciones.isEmpty();
 	}
 
 	public record MedioPedido(MedioDePago medio, BigDecimal importe, String referencia) {
@@ -45,6 +62,10 @@ public record CobroCommand(
 	 * daria un 409 que el usuario no puede entender ni arreglar.
 	 */
 	public String huella(long consultorioId) {
+		return Huella.de(textoCanonico(consultorioId));
+	}
+
+	private String textoCanonico(long consultorioId) {
 		StringBuilder canonico = new StringBuilder()
 				.append(consultorioId).append('|')
 				.append(personaId).append('|')
@@ -53,12 +74,14 @@ public record CobroCommand(
 			canonico.append('|').append(imputacion.obligacionId())
 					.append(':').append(imputacion.importe().stripTrailingZeros().toPlainString());
 		}
-		try {
-			byte[] digest = MessageDigest.getInstance("SHA-256")
-					.digest(canonico.toString().getBytes(StandardCharsets.UTF_8));
-			return HexFormat.of().formatHex(digest);
-		} catch (NoSuchAlgorithmException imposible) {
-			throw new IllegalStateException("SHA-256 no disponible en esta JVM", imposible);
+		// F-3. Solo cuando vienen: asi la huella de un cobro sin anticipo es la misma que antes, y
+		// un reintento de un cobro registrado antes de F-3 no se vuelve un 409.
+		if (anticipo.signum() != 0) {
+			canonico.append("|anticipo:").append(anticipo.stripTrailingZeros().toPlainString());
 		}
+		if (moneda != null) {
+			canonico.append("|moneda:").append(moneda);
+		}
+		return canonico.toString();
 	}
 }

@@ -1,9 +1,15 @@
 package com.akine.billing.api;
 
+import com.akine.billing.api.dto.AnularCobroRequest;
 import com.akine.billing.api.dto.CobroResponse;
+import com.akine.billing.api.dto.ImputarSaldoAFavorRequest;
 import com.akine.billing.api.dto.RegistrarCobroRequest;
+import com.akine.billing.api.dto.ReintegrarSaldoAFavorRequest;
+import com.akine.billing.api.dto.ReintegroResponse;
+import com.akine.billing.application.CobroPosteriorService;
 import com.akine.billing.application.CobroService;
 import com.akine.billing.application.CobroView;
+import com.akine.billing.application.ReintegroView;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -39,10 +45,16 @@ import java.util.List;
 public class CobroController {
 
 	private final CobroService cobroService;
+	private final CobroPosteriorService cobroPosteriorService;
 	private final BillingApiActor apiActor;
 
-	public CobroController(CobroService cobroService, BillingApiActor apiActor) {
+	public CobroController(
+			CobroService cobroService,
+			CobroPosteriorService cobroPosteriorService,
+			BillingApiActor apiActor) {
+
 		this.cobroService = cobroService;
+		this.cobroPosteriorService = cobroPosteriorService;
 		this.apiActor = apiActor;
 	}
 
@@ -71,9 +83,11 @@ public class CobroController {
 					de comprobante que despues nadie usa: la numeracion fiscal con huecos es peor \
 					que un cobro repetido.
 
-					**No hay anticipos ni anulacion todavia.** Los dos exigen la Caja \
-					(AKINE-07.03): un anticipo sin caja es plata que entro y que ningun arqueo \
-					puede encontrar, y un reintegro saca dinero de una caja que no existe.""")
+					**Anticipo.** Lo que no se imputa puede quedar a favor del paciente, pero \
+					**se declara** en `anticipo`: las imputaciones mas el anticipo tienen que dar \
+					el total. Un cobro puede ser todo anticipo —sin imputaciones, y entonces con \
+					`moneda`—. La plata entra a la caja ahora, una vez, y se aplica despues con \
+					`imputarSaldoAFavor` o se devuelve con `reintegrarSaldoAFavor`.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201", description = "Cobro registrado"),
 			@ApiResponse(
@@ -86,7 +100,8 @@ public class CobroController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "404",
-					description = "La sede no existe o es de otro tenant",
+					description = "La sede no existe o es de otro tenant; o, en un anticipo puro, la "
+							+ "persona no es de la organizacion",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
@@ -103,6 +118,142 @@ public class CobroController {
 		return ResponseEntity
 				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/cobros/" + vista.id()))
 				.body(CobroResponse.de(vista));
+	}
+
+	@PostMapping("/{cobroId}/imputaciones")
+	@Operation(
+			operationId = "imputarSaldoAFavor",
+			summary = "Imputar el saldo a favor de un cobro a una deuda",
+			description = """
+					Aplica parte del **anticipo** de un cobro a una deuda que nacio despues \
+					(RF-M19-003). Una deuda por pedido. **No mueve caja**: la plata entro cuando se \
+					cobro.
+
+					La deuda tiene que ser de la misma persona y la misma sede que el cobro, admitir \
+					cobro y estar en su moneda. Un cobro no imputa dos veces a la misma deuda: se \
+					imputa lo que corresponde de una vez.
+
+					Si otro operador uso el anticipo entre que la pantalla lo mostro y este \
+					confirmo, la respuesta es 409 `saldo-a-favor-insuficiente` con lo `disponible`. \
+					Manda `idempotencyKey`: un reintento devuelve el mismo cobro sin imputar dos \
+					veces.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Cobro con la imputacion nueva"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Cuerpo invalido",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `cobro:register` en esa sede, o sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El cobro o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "Cobro anulado; saldo a favor insuficiente; deuda no cobrable, "
+							+ "sin ese saldo o ya imputada por este cobro; o clave reusada",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<CobroResponse> imputarSaldoAFavor(
+			@PathVariable long consultorioId,
+			@PathVariable long cobroId,
+			@RequestBody @Valid ImputarSaldoAFavorRequest request) {
+
+		return ResponseEntity.ok(CobroResponse.de(cobroPosteriorService.imputarSaldoAFavor(
+				apiActor.current(), consultorioId, cobroId, request.aDominio())));
+	}
+
+	@PostMapping("/{cobroId}/anulacion")
+	@Operation(
+			operationId = "anularCobro",
+			summary = "Anular un cobro",
+			description = """
+					Revierte un cobro con trazabilidad (RF-M19-007, RN-M19-004), en una sola \
+					transaccion: cada imputacion **devuelve su importe a la deuda** —que vuelve a \
+					`PENDIENTE` o `PARCIAL`— y cada movimiento de caja del cobro **se revierte** en \
+					la jornada abierta hoy. Nada se borra: el cobro queda `ANULADO` con su motivo y \
+					**conserva su comprobante**.
+
+					Si el cobro entro en efectivo, la reversion exige caja abierta (409 \
+					`caja-no-abierta`) y plata en el cajon (409 `caja-saldo-insuficiente`). Un cobro \
+					que ya reintegro parte de su saldo a favor no se anula (409 \
+					`cobro-con-reintegros`): esa plata saldria del cajon dos veces.
+
+					Exige `cobro:register` **y** `caja:operate`: mueve plata del cajon.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Cobro anulado"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Falta el motivo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `cobro:register` o sin `caja:operate` en esa sede, o sin contexto",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El cobro o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "Ya anulado; con reintegros; sin caja abierta o sin plata en el cajon "
+							+ "para revertir el efectivo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<CobroResponse> anularCobro(
+			@PathVariable long consultorioId,
+			@PathVariable long cobroId,
+			@RequestBody @Valid AnularCobroRequest request) {
+
+		return ResponseEntity.ok(CobroResponse.de(cobroPosteriorService.anular(
+				apiActor.current(), consultorioId, cobroId, request.motivo())));
+	}
+
+	@PostMapping("/{cobroId}/reintegros")
+	@Operation(
+			operationId = "reintegrarSaldoAFavor",
+			summary = "Reintegrar el saldo a favor de un cobro",
+			description = """
+					Devuelve en dinero parte del **anticipo** de un cobro (DP-06). Es una salida de \
+					caja de origen `REINTEGRO` y no una reversion: puede ser parcial, repetirse y \
+					salir por otro medio que el que entro. **No toca ninguna deuda.**
+
+					En efectivo exige caja abierta y plata en el cajon. Si el saldo a favor no \
+					alcanza, 409 `saldo-a-favor-insuficiente` con lo `disponible`. Manda \
+					`idempotencyKey`: un reintento no devuelve dos veces.
+
+					Exige `cobro:register` **y** `caja:operate`.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "201", description = "Reintegro registrado"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Cuerpo invalido",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `cobro:register` o sin `caja:operate` en esa sede, o sin contexto",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El cobro o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "Cobro anulado; saldo a favor insuficiente; sin caja abierta o sin "
+							+ "plata en el cajon; o clave reusada",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ReintegroResponse> reintegrarSaldoAFavor(
+			@PathVariable long consultorioId,
+			@PathVariable long cobroId,
+			@RequestBody @Valid ReintegrarSaldoAFavorRequest request) {
+
+		ReintegroView vista = cobroPosteriorService.reintegrar(
+				apiActor.current(), consultorioId, cobroId, request.aDominio());
+
+		return ResponseEntity
+				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/cobros/" + cobroId))
+				.body(ReintegroResponse.de(vista));
 	}
 
 	@GetMapping("/{cobroId}")

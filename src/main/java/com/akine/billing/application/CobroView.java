@@ -13,6 +13,10 @@ import java.util.List;
  * este camino.
  *
  * @param comprobanteNumero correlativo por sede. Es lo que el paciente se lleva
+ * @param saldoAFavor       lo recibido que todavia no se imputo ni se reintegro (F-3). Cero en un
+ *                          cobro anulado
+ * @param estado            {@code VIGENTE} o {@code ANULADO}. Un cobro anulado conserva su
+ *                          comprobante: el numero queda usado
  */
 public record CobroView(
 		long id,
@@ -24,16 +28,25 @@ public record CobroView(
 		Instant cobradoEn,
 		List<MedioView> medios,
 		List<ImputacionView> imputaciones,
-		long version) {
+		long version,
+		BigDecimal saldoAFavor,
+		String estado,
+		Instant anuladoEn,
+		String motivoAnulacion) {
+
+	public static final String VIGENTE = "VIGENTE";
+	public static final String ANULADO = "ANULADO";
 
 	public record MedioView(String medio, BigDecimal importe, String referencia) {
 	}
 
 	/**
-	 * @param importe lo que ESTE cobro aplico a esa deuda. El saldo que quedo vive en la
-	 *                obligacion: duplicarlo aca habilitaria que las dos versiones discrepen
+	 * @param importe    lo que ESTE cobro aplico a esa deuda. El saldo que quedo vive en la
+	 *                   obligacion: duplicarlo aca habilitaria que las dos versiones discrepen
+	 * @param imputadaEn cuando. Igual a {@code cobradoEn} para las que nacieron con el cobro; posterior
+	 *                   para las que aplicaron un anticipo despues
 	 */
-	public record ImputacionView(long obligacionId, BigDecimal importe) {
+	public record ImputacionView(long obligacionId, BigDecimal importe, Instant imputadaEn) {
 	}
 
 	public static CobroView de(Cobro cobro) {
@@ -51,8 +64,13 @@ public record CobroView(
 						.toList(),
 				cobro.getImputaciones().stream()
 						.map(imputacion -> new ImputacionView(
-								imputacion.getObligacionId(), imputacion.getImporte()))
+								imputacion.getObligacionId(), imputacion.getImporte(),
+								imputacion.getImputadaEn()))
 						.toList(),
-				cobro.getVersion());
+				cobro.getVersion(),
+				cobro.getSaldoAFavor(),
+				cobro.estaAnulado() ? ANULADO : VIGENTE,
+				cobro.getAnuladoEn(),
+				cobro.getMotivoAnulacion());
 	}
 }
