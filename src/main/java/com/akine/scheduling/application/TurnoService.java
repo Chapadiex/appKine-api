@@ -78,10 +78,8 @@ import java.util.Optional;
  * adentro. Las dos comparten el lock de la sede y el {@link RevalidadorDeSlot}, que es lo unico que
  * tenian que compartir.
  *
- * <p>Ninguna de las dos notifica. La regla "un fallo de email no revierte la reserva" ya la
- * garantiza el outbox transaccional de M26, pero cablear un tipo de notificacion nuevo toca las
- * plantillas de {@code notification} y el {@code SecureLinkResolver} de {@code identity}, que tiene
- * un defecto abierto conocido. RF-M26-003 sigue diferido, con esa razon declarada.
+ * <p>Las dos notifican al paciente por el outbox transaccional de M26 (RF-M26-002/003, AKINE E-5),
+ * dentro de la misma transaccion de la operacion: ver {@link AvisosDeTurno}.
  */
 @Service
 public class TurnoService {
@@ -97,6 +95,7 @@ public class TurnoService {
 	private final PermissionGuard permissionGuard;
 	private final AgendaSedeIniciador iniciador;
 	private final RevalidadorDeSlot revalidador;
+	private final AvisosDeTurno avisos;
 
 	public TurnoService(
 			TurnoRepositoryPort turnos,
@@ -107,7 +106,8 @@ public class TurnoService {
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
 			AgendaSedeIniciador iniciador,
-			RevalidadorDeSlot revalidador) {
+			RevalidadorDeSlot revalidador,
+			AvisosDeTurno avisos) {
 
 		this.turnos = turnos;
 		this.eventos = eventos;
@@ -118,6 +118,7 @@ public class TurnoService {
 		this.permissionGuard = permissionGuard;
 		this.iniciador = iniciador;
 		this.revalidador = revalidador;
+		this.avisos = avisos;
 	}
 
 	/**
@@ -190,6 +191,9 @@ public class TurnoService {
 
 		eventos.registrar(TurnoEvento.de(
 				turno, TipoEventoTurno.RESERVA, null, null, actor.accountId(), ahora));
+		// RF-M26-002. En esta misma transaccion: si la reserva hace rollback, el aviso tambien.
+		// El reintento idempotente de arriba retorna antes y no encola de nuevo.
+		avisos.avisarReserva(turno, sede, oferta.nombreComercial());
 
 		log.info("Turno reservado: turnoId={} consultorioId={} ofertaId={} personaId={} inicio={}",
 				turno.getId(), consultorioId, ofertaId, command.personaId(), inicio);

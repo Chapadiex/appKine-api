@@ -134,7 +134,8 @@ public class IdentitySecureLinkResolver implements SecureLinkResolver {
 			case ACTIVACION_CUENTA -> Optional.of(TipoTokenVerificacion.ACTIVACION);
 			case RECUPERACION_PASSWORD -> Optional.of(TipoTokenVerificacion.RESET);
 			case INVITACION_COLABORADOR, CUENTA_YA_REGISTRADA,
-					CLASE_MODIFICADA, CUPO_LIBERADO -> Optional.empty();
+					CLASE_MODIFICADA, CUPO_LIBERADO,
+					TURNO_RESERVADO, TURNO_CANCELADO, TURNO_REPROGRAMADO -> Optional.empty();
 		};
 	}
 

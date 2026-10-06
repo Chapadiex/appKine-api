@@ -97,6 +97,7 @@ public class CicloDeTurnoService {
 	private final RevalidadorDeSlot revalidador;
 	private final AtencionProbe atenciones;
 	private final AuditTrail auditTrail;
+	private final AvisosDeTurno avisos;
 
 	public CicloDeTurnoService(
 			TurnoRepositoryPort turnos,
@@ -108,7 +109,8 @@ public class CicloDeTurnoService {
 			AgendaSedeIniciador iniciador,
 			RevalidadorDeSlot revalidador,
 			AtencionProbe atenciones,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			AvisosDeTurno avisos) {
 
 		this.turnos = turnos;
 		this.eventos = eventos;
@@ -120,6 +122,7 @@ public class CicloDeTurnoService {
 		this.revalidador = revalidador;
 		this.atenciones = atenciones;
 		this.auditTrail = auditTrail;
+		this.avisos = avisos;
 	}
 
 	// =================================================================================
@@ -142,7 +145,7 @@ public class CicloDeTurnoService {
 			String motivo, long expectedVersion) {
 
 		long organizationId = exigirContexto(actor);
-		exigirSedeDelTenant(organizationId, consultorioId);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
 
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
@@ -158,6 +161,12 @@ public class CicloDeTurnoService {
 				cancelado, TipoEventoTurno.CANCELACION, anterior,
 				cancelado.getMotivoCancelacion(), actor.accountId(), ahora));
 		auditar(actor, cancelado, "TURNO_CANCELADO", anterior, cancelado.getMotivoCancelacion(), ahora);
+		// RF-M26-003. Sin el motivo: ver AvisosDeTurno. La oferta solo pone el nombre del servicio,
+		// y si ya no resuelve el aviso sale igual, sin el.
+		avisos.avisarCancelacion(cancelado, sede, ofertas
+				.find(organizationId, consultorioId, cancelado.getOfertaId())
+				.map(OfertaSnapshot::nombreComercial)
+				.orElse(null));
 
 		log.info("Turno cancelado: turnoId={} consultorioId={} estadoAnterior={}",
 				turnoId, consultorioId, anterior);
@@ -272,6 +281,9 @@ public class CicloDeTurnoService {
 				movido, anterior, inicioAnterior, finAnterior,
 				command.motivo(), actor.accountId(), ahora));
 		auditar(actor, movido, "TURNO_REPROGRAMADO", anterior, command.motivo(), ahora);
+		// RF-M26-003. Despues del saveAndFlush: la clave idempotente lleva la version que deja
+		// este cambio.
+		avisos.avisarReprogramacion(movido, sede, oferta.nombreComercial(), inicioAnterior);
 
 		log.info("Turno reprogramado: turnoId={} consultorioId={} de={} a={}",
 				turnoId, consultorioId, inicioAnterior, nuevoInicio);
