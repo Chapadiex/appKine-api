@@ -119,9 +119,8 @@ public class DisponibilidadService {
 	 *
 	 * <p>No sale de ningun RF y es deliberadamente finita: un bloque sin fin previsto no tiene
 	 * un "hasta" con el que acotar la pregunta, y {@link DisponibilidadImpactProbe#turnosEn} pide
-	 * dos instantes. Noventa dias es el horizonte con el que un centro planifica; que la ventana
-	 * correcta sea otra lo va a saber {@code scheduling} cuando exista —su javadoc lo dice— y
-	 * cambiarla no toca el contrato.
+	 * dos instantes. Noventa dias es el horizonte con el que un centro planifica; cambiarlo no
+	 * toca el contrato.
 	 */
 	private static final int DIAS_DE_HORIZONTE_DE_IMPACTO = 90;
 
@@ -265,8 +264,8 @@ public class DisponibilidadService {
 	 * falta los dos.
 	 *
 	 * <p>Segundo, la consulta a {@link DisponibilidadImpactProbe}: una edicion puede QUITAR
-	 * disponibilidad, y los turnos que caian ahi quedan en conflicto (RN-M05-004). Hoy la
-	 * respuesta es siempre cero porque {@code scheduling} no existe; ver {@link BloqueView}.
+	 * disponibilidad, y los turnos que caian ahi quedan en conflicto (RN-M05-004). Desde el
+	 * paquete E-1 la responde {@code scheduling}, como cota superior; ver {@link BloqueView}.
 	 * <b>El impacto se informa, no bloquea</b>: RN-M05-004 pide que los turnos afectados queden
 	 * VISIBLES para su resolucion, y ADR-0011 prohibe justamente decidir por el usuario en
 	 * cascada. Quien decide que hacer con esos turnos es la pantalla.
@@ -680,8 +679,7 @@ public class DisponibilidadService {
 	 *
 	 * <h2>La ventana sale de la UNION del estado anterior y el nuevo, no del nuevo</h2>
 	 *
-	 * <p>Es el error que este metodo existe para no cometer, y no se ve hasta que
-	 * {@code scheduling} exista. Un bloque "martes 09-12, sin fin" con turnos reservados hasta
+	 * <p>Es el error que este metodo existe para no cometer. Un bloque "martes 09-12, sin fin" con turnos reservados hasta
 	 * diciembre al que el administrador le pone {@code vigenciaHasta = 2026-09-01}: los turnos
 	 * que esa edicion deja huerfanos son <b>exactamente los del 2026-09-01 en adelante</b>. Una
 	 * ventana derivada del estado POSTERIOR termina el 2026-09-01, o sea que consulta justo el

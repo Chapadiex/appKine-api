@@ -24,13 +24,12 @@ import java.time.Instant;
  *       que estos turnos quedaron sin profesional" se responde con esa fila.</li>
  * </ol>
  *
- * <h2>Hoy no hay ninguna implementacion, y eso es deliberado</h2>
+ * <h2>Implementaciones</h2>
  *
- * <p>M12 (agenda) no existe todavia. La lista de sondas que inyecta {@code MembershipService}
- * llega vacia y {@link Impacto#ninguno()} es lo que se reporta. El puerto existe igual, por lo
- * mismo que {@code ConsultorioDeactivationProbe} en 02.01: el dia que exista la agenda, la
- * regla empieza a aplicar <b>sin tocar la API ni el contrato</b>, porque el lugar donde se
- * enchufa ya esta escrito y probado.
+ * <p>Conviven dos, y {@code MembershipService} reporta la <b>primera con contenido</b>, no la
+ * suma: {@code scheduling.infrastructure.ProfesionalConTurnosPendientes} (paquete E-1, va
+ * primero) cuenta los turnos pendientes, y {@code resource.infrastructure.ResourceDesvinculacionProbe}
+ * los bloques y excepciones de disponibilidad vigentes.
  *
  * <p><b>Quien implemente esto: no lo convierta en un bloqueo.</b> Si la agenda decide que hay
  * casos en los que la desvinculacion no puede proceder, eso es una regla nueva que necesita su

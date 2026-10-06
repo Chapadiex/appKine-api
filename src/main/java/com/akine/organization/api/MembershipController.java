@@ -233,14 +233,17 @@ public class MembershipController {
 					renuncio. Es la diferencia con la baja de una sede, donde las operaciones \
 					vigentes si la impiden.
 
-					Hoy responde siempre count=0: M12 (agenda) no existe todavia y no hay ninguna \
-					sonda enchufada. La operacion se publica igual para que la pantalla de \
-					desvinculacion se escriba una sola vez y el numero aparezca el dia que la \
-					agenda exista, sin cambiar el contrato.""")
+					Si el profesional tiene turnos pendientes en cualquier sede de la \
+					organizacion (reservados, confirmados o en espera, y que todavia no \
+					terminaron), responde tipo=turnos con cuantos son y el instante del primero. \
+					Si no tiene turnos pero si bloques o excepciones de disponibilidad vigentes, \
+					responde esos. Se informa uno solo, el primero con contenido en ese orden, \
+					nunca la suma: turnos y bloques no se cuentan en la misma unidad. count=0 \
+					cuando no queda nada pendiente.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
-					description = "Trabajo pendiente. count=0 mientras no exista la agenda",
+					description = "Trabajo pendiente. count=0 si no queda nada",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(

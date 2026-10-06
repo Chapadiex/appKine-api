@@ -4,9 +4,11 @@ import com.akine.encounter.domain.ParametroAplicado;
 import com.akine.encounter.domain.PermissionCodes;
 import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.TratamientoAplicado;
+import com.akine.encounter.domain.TratamientoEnmendado;
 import com.akine.encounter.domain.TratamientoParametro;
 import com.akine.encounter.domain.TratamientoRealizado;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.encounter.domain.exception.EnmiendaCambiaPracticasException;
 import com.akine.encounter.domain.exception.EspacioNoAccesibleException;
 import com.akine.encounter.domain.exception.EspacioNoOperableException;
 import com.akine.encounter.domain.exception.PracticaNoUtilizableException;
@@ -33,12 +35,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Tratamientos realmente aplicados en una sesion y espacios realmente utilizados (M14/M04/M06,
@@ -299,6 +306,173 @@ public class TratamientoService {
 		auditar(actor, tratamiento, AuditEvents.TRATAMIENTO_DADO_DE_BAJA, razon);
 
 		log.info("Tratamiento dado de baja: sesionId={} tratamientoId={}", sesionId, tratamientoId);
+	}
+
+	// =================================================================================
+	// C-6 — tratamientos de una sesion cerrada, por enmienda
+	// =================================================================================
+
+	/**
+	 * Deja los tratamientos de una sesion <b>cerrada</b> como dice la enmienda (C-6).
+	 *
+	 * <p>Lo llama {@code SesionService#enmendar} y solo el: corre dentro de su transaccion
+	 * ({@code MANDATORY}), despues de que la cabecera ya emitio su {@code UPDATE} versionado. Por
+	 * eso aca <b>no hay control de version ni {@code avanzarVersion}</b>: la enmienda ya ensucio la
+	 * sesion, y forzar el incremento la haria avanzar dos veces (la reciproca de 02.07, que 04.02
+	 * pago). Tampoco hay control de permiso ni de propiedad: los hizo quien llama.
+	 *
+	 * <p>{@code deseados} es la lista <b>completa</b>: con id corrige ese tratamiento, sin id
+	 * agrega uno, y un vigente que no aparece se da de <b>baja logica</b> con el motivo de la
+	 * enmienda. El contenido anterior queda en la foto de la version previa, que es inmutable.
+	 *
+	 * <h2>El conjunto de practicas no cambia</h2>
+	 *
+	 * <p>Las practicas realizadas decidieron al cierre que autorizacion se consumio (06.04), y la
+	 * enmienda no vuelve a disparar el consumo (06.06 §5). Si el conjunto —sin repetidos— de
+	 * practicas cambiara, el consumo quedaria imputado a una prestacion que la historia ya no
+	 * registra. Es {@link EnmiendaCambiaPracticasException}, 409.
+	 *
+	 * <h2>Lo que no cambia no se revalida contra el catalogo de hoy</h2>
+	 *
+	 * <p>Una enmienda corrige un hecho pasado. Si un tratamiento conserva su practica, su espacio o
+	 * su profesional, se conservan sus snapshots aunque hoy esten dados de baja; revalidarlos
+	 * impediria corregir la zona de una sesion de hace dos años porque el box cerro. Lo que cambia
+	 * si se valida, y la practica <b>no exige vigencia</b>: como el conjunto no cambia, siempre es
+	 * una que ya se realizo en esta sesion.
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void aplicarEnmienda(
+			OperatingActor actor,
+			Sesion sesion,
+			List<TratamientoEnmendado> deseados,
+			String motivo,
+			Instant ahora) {
+
+		long organizationId = sesion.getOrganizationId();
+		long consultorioId = sesion.getConsultorioId();
+		long sesionId = sesion.getId();
+
+		Map<Long, TratamientoRealizado> vigentes = new LinkedHashMap<>();
+		tratamientos.listarVigentes(organizationId, sesionId)
+				.forEach(tratamiento -> vigentes.put(tratamiento.getId(), tratamiento));
+
+		Set<Long> corregidos = new HashSet<>();
+		for (TratamientoEnmendado deseado : deseados) {
+			deseado.aplicado().exigirCoherente();
+			if (deseado.esNuevo()) {
+				continue;
+			}
+			if (!vigentes.containsKey(deseado.tratamientoId())) {
+				throw new TratamientoNoAccesibleException(deseado.tratamientoId());
+			}
+			if (!corregidos.add(deseado.tratamientoId())) {
+				throw new IllegalArgumentException("El tratamiento " + deseado.tratamientoId()
+						+ " aparece dos veces en la enmienda");
+			}
+		}
+
+		Set<Long> practicasAntes = new TreeSet<>();
+		vigentes.values().forEach(tratamiento -> practicasAntes.add(tratamiento.getPracticaId()));
+		Set<Long> practicasDespues = new TreeSet<>();
+		deseados.forEach(deseado -> practicasDespues.add(deseado.aplicado().practicaId()));
+		if (!practicasAntes.equals(practicasDespues)) {
+			throw new EnmiendaCambiaPracticasException(sesionId, practicasAntes, practicasDespues);
+		}
+
+		for (TratamientoRealizado vigente : vigentes.values()) {
+			if (!corregidos.contains(vigente.getId())) {
+				vigente.darDeBaja(motivo, ahora);
+				tratamientos.save(vigente);
+				auditar(actor, vigente, AuditEvents.TRATAMIENTO_DADO_DE_BAJA, null);
+			}
+		}
+
+		int orden = tratamientos.ultimoOrden(organizationId, sesionId);
+		for (TratamientoEnmendado deseado : deseados) {
+			TratamientoAplicado aplicado = deseado.aplicado();
+			TratamientoRealizado tratamiento;
+			String evento;
+			if (deseado.esNuevo()) {
+				CatalogoSnapshot practica = practicaRealizada(organizationId, aplicado.practicaId());
+				orden++;
+				tratamiento = new TratamientoRealizado(
+						organizationId, consultorioId, sesionId, orden, practica.id(),
+						practica.codigo(), practica.name(),
+						sesion.getProfesionalMembershipId(), ahora, actor.accountId());
+				aplicar(tratamiento, aplicado, practica,
+						resolverEspacio(organizationId, consultorioId, sesion, aplicado),
+						resolverProfesional(organizationId, consultorioId, sesion, aplicado), ahora);
+				evento = AuditEvents.TRATAMIENTO_REGISTRADO;
+			} else {
+				tratamiento = vigentes.get(deseado.tratamientoId());
+				corregir(organizationId, consultorioId, sesion, tratamiento, aplicado, ahora);
+				evento = AuditEvents.TRATAMIENTO_MODIFICADO;
+			}
+			TratamientoRealizado guardado = tratamientos.save(tratamiento);
+			reemplazarParametros(organizationId, guardado.getId(), aplicado.parametros(), ahora);
+			auditar(actor, guardado, evento, null);
+		}
+
+		log.info("Tratamientos enmendados: sesionId={} vigentesAntes={} vigentesDespues={}",
+				sesionId, vigentes.size(), deseados.size());
+	}
+
+	/**
+	 * Corrige un tratamiento existente conservando lo que no cambia.
+	 *
+	 * <p>Practica, espacio y profesional se revalidan <b>solo si cambian</b>: ver la cabecera de
+	 * {@link #aplicarEnmienda}.
+	 */
+	private void corregir(
+			long organizationId, long consultorioId, Sesion sesion,
+			TratamientoRealizado tratamiento, TratamientoAplicado aplicado, Instant ahora) {
+
+		long practicaId = tratamiento.getPracticaId();
+		String practicaCodigo = tratamiento.getPracticaCodigo();
+		String practicaNombre = tratamiento.getPracticaNombre();
+		if (aplicado.practicaId() != practicaId) {
+			CatalogoSnapshot practica = practicaRealizada(organizationId, aplicado.practicaId());
+			practicaId = practica.id();
+			practicaCodigo = practica.codigo();
+			practicaNombre = practica.name();
+		}
+
+		Long espacioId = tratamiento.getEspacioId();
+		String espacioNombre = tratamiento.getEspacioNombre();
+		if (!Objects.equals(aplicado.espacioId(), espacioId)) {
+			EspacioSnapshot espacio = resolverEspacio(organizationId, consultorioId, sesion, aplicado);
+			espacioId = espacio == null ? null : espacio.id();
+			espacioNombre = espacio == null ? null : espacio.name();
+		}
+
+		long profesional = Objects.equals(
+				aplicado.profesionalMembershipId(), tratamiento.getProfesionalMembershipId())
+				? tratamiento.getProfesionalMembershipId()
+				: resolverProfesional(organizationId, consultorioId, sesion, aplicado);
+
+		tratamiento.redefinir(
+				practicaId,
+				practicaCodigo,
+				practicaNombre,
+				limpiar(aplicado.tecnica()),
+				limpiar(aplicado.zona()),
+				aplicado.lateralidad(),
+				aplicado.duracionMinutos(),
+				profesional,
+				espacioId,
+				espacioNombre,
+				limpiar(aplicado.observacion()),
+				ahora);
+	}
+
+	/**
+	 * Una practica que ya se realizo en la sesion: tiene que existir en el tenant, pero
+	 * <b>no tiene que estar vigente</b>. Ver la cabecera de {@link #aplicarEnmienda}.
+	 */
+	private CatalogoSnapshot practicaRealizada(long organizationId, long practicaId) {
+		return catalogo.findPractica(organizationId, practicaId, Instant.now())
+				.orElseThrow(() -> new PracticaNoUtilizableException(
+						practicaId, PracticaNoUtilizableException.Motivo.INEXISTENTE));
 	}
 
 	// =================================================================================

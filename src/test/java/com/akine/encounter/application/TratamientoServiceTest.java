@@ -5,7 +5,9 @@ import com.akine.encounter.domain.ParametroAplicado;
 import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.TipoDatoParametro;
 import com.akine.encounter.domain.TratamientoAplicado;
+import com.akine.encounter.domain.TratamientoEnmendado;
 import com.akine.encounter.domain.TratamientoParametro;
+import com.akine.encounter.domain.exception.EnmiendaCambiaPracticasException;
 import com.akine.encounter.domain.TratamientoRealizado;
 import com.akine.encounter.domain.exception.EspacioNoAccesibleException;
 import com.akine.encounter.domain.exception.EspacioNoOperableException;
@@ -474,6 +476,93 @@ class TratamientoServiceTest {
 		assertThatThrownBy(() -> service.reemplazar(
 				actor, CONSULTORIO_ID, SESION_ID, TRATAMIENTO_ID, aplicado(), 0L))
 				.isInstanceOf(TratamientoNoAccesibleException.class);
+	}
+
+	// =================================================================================
+	// C-6 — enmienda de una sesion cerrada
+	// =================================================================================
+
+	@Test
+	@DisplayName("C-6: la enmienda corrige el tratamiento sin avanzar la version de la sesion")
+	void la_enmienda_corrige_sin_force_increment() {
+		// La reciproca de 02.07: la enmienda ya ensucio la cabecera, asi que avanzar aca la haria
+		// subir dos veces y el cliente comeria un 409 del que no puede salir.
+		TratamientoRealizado vigente = tratamientoVigente();
+		given(tratamientos.listarVigentes(ORG_ID, SESION_ID)).willReturn(List.of(vigente));
+
+		service.aplicarEnmienda(actor, sesionAbierta(), List.of(new TratamientoEnmendado(
+				TRATAMIENTO_ID, new TratamientoAplicado(PRACTICA_ID, "Ultrasonido", "hombro",
+						Lateralidad.DERECHA, 20, null, null, null, List.of()))),
+				"Era hombro, no rodilla", Instant.EPOCH);
+
+		assertThat(vigente.getZona()).isEqualTo("hombro");
+		assertThat(vigente.getLateralidad()).isEqualTo(Lateralidad.DERECHA);
+		assertThat(vigente.estaVigente()).isTrue();
+		verify(sesiones, never()).avanzarVersion(anyLong(), anyLong(), anyLong(), anyLong());
+		verify(parametros).borrarDe(ORG_ID, TRATAMIENTO_ID);
+	}
+
+	@Test
+	@DisplayName("C-6: un tratamiento que no aparece en la enmienda se da de BAJA con su motivo")
+	void la_enmienda_da_de_baja_lo_que_falta() {
+		TratamientoRealizado quitado = tratamientoVigente();
+		TratamientoRealizado otro = new TratamientoRealizado(ORG_ID, CONSULTORIO_ID, SESION_ID, 2,
+				PRACTICA_ID, "US-01", "Ultrasonido", MEMBERSHIP_PROPIA, Instant.EPOCH, CUENTA_PROPIA);
+		ReflectionTestUtils.setField(otro, "id", TRATAMIENTO_ID + 1);
+		given(tratamientos.listarVigentes(ORG_ID, SESION_ID)).willReturn(List.of(quitado, otro));
+
+		service.aplicarEnmienda(actor, sesionAbierta(),
+				List.of(new TratamientoEnmendado(TRATAMIENTO_ID + 1, aplicado())),
+				"Se habia cargado dos veces", Instant.EPOCH);
+
+		assertThat(quitado.estaVigente()).as("baja logica, nunca DELETE").isFalse();
+		assertThat(quitado.getDeactivationReason()).isEqualTo("Se habia cargado dos veces");
+		assertThat(otro.estaVigente()).isTrue();
+	}
+
+	@Test
+	@DisplayName("C-6: la enmienda no puede cambiar el conjunto de practicas realizadas: 409")
+	void la_enmienda_no_cambia_las_practicas() {
+		// Esas practicas eligieron al cierre que autorizacion se consumio (06.04).
+		given(tratamientos.listarVigentes(ORG_ID, SESION_ID)).willReturn(List.of(tratamientoVigente()));
+
+		assertThatThrownBy(() -> service.aplicarEnmienda(actor, sesionAbierta(),
+				List.of(new TratamientoEnmendado(TRATAMIENTO_ID, new TratamientoAplicado(
+						PRACTICA_ID + 1, null, null, null, null, null, null, null, List.of()))),
+				"Era otra practica", Instant.EPOCH))
+				.isInstanceOf(EnmiendaCambiaPracticasException.class);
+
+		assertThatThrownBy(() -> service.aplicarEnmienda(actor, sesionAbierta(), List.of(),
+				"No hubo nada", Instant.EPOCH))
+				.as("quitar el unico tratamiento tambien cambia el conjunto")
+				.isInstanceOf(EnmiendaCambiaPracticasException.class);
+
+		verify(tratamientos, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("C-6: corregir un tratamiento que no es vigente de la sesion es 404")
+	void la_enmienda_de_un_tratamiento_ajeno_es_404() {
+		given(tratamientos.listarVigentes(ORG_ID, SESION_ID)).willReturn(List.of(tratamientoVigente()));
+
+		assertThatThrownBy(() -> service.aplicarEnmienda(actor, sesionAbierta(),
+				List.of(new TratamientoEnmendado(TRATAMIENTO_ID + 50, aplicado())),
+				"motivo", Instant.EPOCH))
+				.isInstanceOf(TratamientoNoAccesibleException.class);
+	}
+
+	@Test
+	@DisplayName("C-6: una practica que se dio de baja despues no impide corregir la zona")
+	void la_practica_conservada_no_exige_vigencia() {
+		// La enmienda corrige un hecho pasado: revalidar contra el catalogo de hoy impediria
+		// corregir una sesion de hace dos años.
+		given(catalogo.findPractica(anyLong(), anyLong(), any())).willReturn(Optional.of(practica(false)));
+		given(tratamientos.listarVigentes(ORG_ID, SESION_ID)).willReturn(List.of(tratamientoVigente()));
+
+		assertThatCode(() -> service.aplicarEnmienda(actor, sesionAbierta(),
+				List.of(new TratamientoEnmendado(TRATAMIENTO_ID, aplicado())), "motivo",
+				Instant.EPOCH))
+				.doesNotThrowAnyException();
 	}
 
 	// =================================================================================
