@@ -48,7 +48,26 @@ public enum NotificationType {
 	 * ventana de aceptacion —ofrecer sin reservar—, va a hacer falta un tipo distinto, porque el
 	 * texto de este afirma que el lugar es suyo.
 	 */
-	CUPO_LIBERADO(false);
+	CUPO_LIBERADO(false),
+
+	/**
+	 * Se reservo un turno a nombre de la persona (RF-M26-002, AKINE E-5). Comunica fecha, hora,
+	 * sede y servicio, y nada mas: ni profesional, ni nada clinico (RN-M26-002).
+	 */
+	TURNO_RESERVADO(false),
+
+	/**
+	 * Se cancelo un turno de la persona (RF-M26-003). <b>El motivo de la cancelacion no viaja</b>:
+	 * lo escribe el recepcionista en texto libre y puede decir cualquier cosa, incluido algo
+	 * clinico. El mail solo dice que turno se cancelo.
+	 */
+	TURNO_CANCELADO(false),
+
+	/**
+	 * Se movio un turno de la persona a otro horario (RF-M26-003). Lleva el horario anterior y el
+	 * nuevo; tampoco lleva el motivo, por la misma razon que la cancelacion.
+	 */
+	TURNO_REPROGRAMADO(false);
 
 	private final boolean requiereEnlaceSeguro;
 

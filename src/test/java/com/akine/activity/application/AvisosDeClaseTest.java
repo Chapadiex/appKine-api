@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -106,6 +107,35 @@ class AvisosDeClaseTest {
 		assertThat(comando.getValue().datosDeRender())
 				.containsEntry("nombre", "")
 				.containsEntry("consultorioNombre", "");
+	}
+
+	/**
+	 * Defecto corregido en AKINE E-5. "Jardin Secreto" contiene {@code secret}, que el sanitizador
+	 * del outbox rechaza; mandado tal cual, {@code enqueue} lanzaba dentro de la transaccion de la
+	 * clase y cancelar o reprogramar moria por el nombre de la sede (RN-M26-001). Ahora el dato se
+	 * omite antes de encolar y el aviso sale igual.
+	 */
+	@Test
+	@DisplayName("Un dato que el outbox rechazaria se omite y el aviso sale igual")
+	void dato_rechazado_se_omite() {
+		given(contactos.findAll(ORG_ID, List.of(500L))).willReturn(Map.of(
+				500L, new ContactoDePersona(500L, "ana@example.test", "Ana")));
+		willAnswer(invocacion -> {
+			Map<String, String> datos = invocacion.getArgument(0);
+			if (datos.containsKey("consultorioNombre")) {
+				throw new IllegalArgumentException("contiene un enlace o un secreto");
+			}
+			return null;
+		}).given(outbox).validarDatosDeRender(any());
+
+		avisos.avisarCupoLiberado(clase(), "Jardin Secreto", "UTC", inscripcion(7L, 500L));
+
+		ArgumentCaptor<NotificationEnqueueCommand> comando =
+				ArgumentCaptor.forClass(NotificationEnqueueCommand.class);
+		verify(outbox).enqueue(comando.capture());
+		assertThat(comando.getValue().datosDeRender())
+				.doesNotContainKey("consultorioNombre")
+				.containsEntry("claseTitulo", "Pilates");
 	}
 
 	private static ClaseProgramada clase() {

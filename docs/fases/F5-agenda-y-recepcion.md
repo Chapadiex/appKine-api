@@ -42,7 +42,10 @@ estados de recepción propia, como pedía DP-05.
 - [ ] Decidir si la recepción tiene máquina de estados propia (DP-05) o se documenta el desvío.
 - [ ] `ReservarTurnoRequest` sin cobertura elegida ni caso, aunque el plan valida "caso cuando la
   oferta lo exige". Se coordina con el gate RF-M10-007 ([F4](F4-dominio-clinico.md), [F6](F6-atencion-clinica.md)).
-- [ ] Notificaciones de reserva, cancelación y reprogramación (RF-M26-002/003) por el outbox.
+- [x] ~~Notificaciones de reserva, cancelación y reprogramación (RF-M26-002/003) por el outbox.~~
+  Hecho en E-5: `scheduling.application.AvisosDeTurno`, tipos `TURNO_RESERVADO`,
+  `TURNO_CANCELADO` y `TURNO_REPROGRAMADO`, encolados en la transacción de la operación
+  (`NotificacionDeTurnoIT`).
 - [ ] Política de ventana de cancelación para el paciente.
 - [ ] Vista pública de slots con PII mínima.
 - [ ] Autoservicio del paciente: depende del alcance `OWN` (decisión del usuario).
@@ -64,7 +67,7 @@ estados de recepción propia, como pedía DP-05.
 | Series diferidas sin etapa destino | Sí, registro de 05.03, **sin destino** |
 | Recepción "reducida" por DP-10 y nunca recableada | Sí el recorte; **no** la falta de recableado |
 | Check-in como estado del turno, sin máquina propia | Parcial |
-| Notificaciones diferidas | Sí, javadoc de `TurnoService` |
+| Notificaciones diferidas | Sí, javadoc de `TurnoService`. **Cableadas en E-5** |
 | Slots sin persistir; el espacio se elige en 05.02 | Sí |
 
 ## Para cerrar la fase
@@ -72,4 +75,4 @@ estados de recepción propia, como pedía DP-05.
 - [ ] Diseño + implementación del modelo de serie, con design challenge.
 - [ ] Recepción validando elegibilidad contra `contracting`.
 - [ ] E2E reales de agenda, ciclo y recepción.
-- [ ] Notificaciones de turno por outbox.
+- [x] ~~Notificaciones de turno por outbox.~~ E-5.
