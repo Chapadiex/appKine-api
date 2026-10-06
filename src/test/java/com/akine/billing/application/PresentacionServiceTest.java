@@ -358,7 +358,9 @@ class PresentacionServiceTest {
 
 		// El responsable se mira ANTES que el financiador: una obligacion del paciente no tiene
 		// financiador, y sin este control pasaria el equals contra null y se reclamaria igual.
-		assertNoPresentable(delPaciente, HallazgoDeValidacion.FINANCIADOR_DISTINTO);
+		// Y tiene su propio hallazgo: el remedio es el opuesto al de FINANCIADOR_DISTINTO —esta
+		// deuda se le cobra al paciente; aquella va al lote de otro financiador—.
+		assertNoPresentable(delPaciente, HallazgoDeValidacion.DEUDA_DEL_PACIENTE);
 	}
 
 	@Test

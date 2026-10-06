@@ -3,7 +3,7 @@ package com.akine.billing.application;
 /**
  * Por que una prestacion no se puede reclamar (RF-M21-003).
  *
- * <p><b>El hallazgo viaja con motivo y no como un "no entra" a secas.</b> Los seis casos mandan al
+ * <p><b>El hallazgo viaja con motivo y no como un "no entra" a secas.</b> Los siete casos mandan al
  * administrativo a lugares distintos —uno se arregla cambiando el periodo del lote, otro exige
  * pasar la deuda al paciente— y colapsarlos obligaria a adivinar cual es. Es la misma leccion que
  * 05.01 dejo escrita con {@code MotivoSinSlots} y 03.05 con {@code MotivoSinArancel}.
@@ -24,7 +24,15 @@ public enum HallazgoDeValidacion {
 	/** Saldo cero: ya se cobro por otra via. Presentarla seria reclamar dos veces. */
 	SIN_SALDO,
 
-	/** Es deuda de otro financiador. Un lote se le manda a uno solo. */
+	/**
+	 * Es deuda del paciente, no de un financiador. Se cobra en mostrador; no va en ningun lote.
+	 *
+	 * <p>Separado de {@link #FINANCIADOR_DISTINTO} porque el remedio es el opuesto: aquella deuda
+	 * se reclama igual, pero en el lote de su financiador.
+	 */
+	DEUDA_DEL_PACIENTE,
+
+	/** Es deuda de otro financiador. Un lote se le manda a uno solo: va en el lote de ese. */
 	FINANCIADOR_DISTINTO,
 
 	/** Se presto en otra sede. El convenio es contextual a la sede (RN-M16-001). */

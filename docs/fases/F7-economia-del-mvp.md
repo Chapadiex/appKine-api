@@ -44,9 +44,10 @@ Migración + cambio de contrato. Etapa propia con design challenge.
 Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `akine-integracion-total`.
 **No están corregidos**:
 
-- [ ] `PresentacionService.revisar` colapsa "deuda de otro financiador" y "deuda del paciente" en
+- [x] ~~`PresentacionService.revisar` colapsa "deuda de otro financiador" y "deuda del paciente" en
   el mismo hallazgo `FINANCIADOR_DISTINTO`, y el remedio de cada caso es el opuesto. Arreglarlo
-  agrega un valor al enum → **cambio de contrato**.
+  agrega un valor al enum → **cambio de contrato**.~~ → F-2: nuevo hallazgo `DEUDA_DEL_PACIENTE`
+  (contrato 0.48.0).
 - [ ] `debitar` mueve el saldo del lote **antes** de validar el importe del ítem; hoy solo lo salva
   el rollback.
 - [ ] Ese rechazo sale por `GlobalExceptionHandler` y no por `BillingProblemHandler` (rompe la regla
