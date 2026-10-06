@@ -6,6 +6,7 @@ import com.akine.organization.domain.port.PlatformRoleRepositoryPort;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -48,25 +49,31 @@ public class PlatformRoleService {
 	private final PlatformRoleRepositoryPort platformRoleRepository;
 	private final PermissionEvaluator permissionEvaluator;
 	private final AuditTrail auditTrail;
+	private final AccountIdentityDirectory cuentas;
 
 	public PlatformRoleService(
 			PlatformRoleRepositoryPort platformRoleRepository,
 			PermissionEvaluator permissionEvaluator,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			AccountIdentityDirectory cuentas) {
 		this.platformRoleRepository = platformRoleRepository;
 		this.permissionEvaluator = permissionEvaluator;
 		this.auditTrail = auditTrail;
+		this.cuentas = cuentas;
 	}
 
 	/**
 	 * Otorga el rol de plataforma a una cuenta existente.
 	 *
-	 * <p>La existencia de la cuenta no se verifica aca y no puede verificarse: {@code cuenta} es
-	 * de {@code identity} y {@code organization} no compila contra ese modulo. Es la misma
-	 * situacion que el alta directa de membership, y se resuelve igual — la capa {@code api} de
-	 * esta operacion vive del lado de {@code identity}, que resuelve el email y entra con el id.
+	 * <p><b>La cuenta tiene que existir, y se verifica aca.</b> {@code platform_role.account_id}
+	 * es una referencia logica sin FK fisica (ADR-0001) y el controller recibe el id crudo: sin
+	 * esta verificacion, un id inexistente entraba con 201 y dejaba el permiso mas alto del sistema
+	 * reservado para una cuenta que podria crearse despues con ese id. Se pregunta por el puerto
+	 * invertido {@link AccountIdentityDirectory} de {@code platform.spi}, el mismo que usa
+	 * {@code MembershipService}: {@code organization} sigue sin compilar contra {@code identity}.
 	 *
 	 * @throws AccessDeniedException si el actor no es administrador de plataforma (403)
+	 * @throws IllegalArgumentException si falta el motivo o la cuenta destino no existe (400)
 	 * @throws IllegalStateException si esa cuenta ya tiene el rol vigente (409, traducido por el
 	 *         advice a partir de la clave duplicada)
 	 */
@@ -77,6 +84,9 @@ public class PlatformRoleService {
 		if (motivo == null || motivo.isBlank()) {
 			throw new IllegalArgumentException(
 					"Otorgar el permiso mas alto del sistema exige un motivo declarado");
+		}
+		if (!cuentas.identidadesDe(List.of(targetAccountId)).containsKey(targetAccountId)) {
+			throw new IllegalArgumentException("La cuenta destino no existe: " + targetAccountId);
 		}
 
 		PlatformRole rol = new PlatformRole(targetAccountId, actorAccountId, motivo, ahora);
