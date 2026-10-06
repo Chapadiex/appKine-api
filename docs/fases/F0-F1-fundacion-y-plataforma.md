@@ -45,7 +45,7 @@
 - [ ] E2E de acceso denegado y de consulta de auditoría.
 
 ### Tests backend
-- [ ] Slice tests de `MembershipController`, `AuditEventController` y los dos controllers de plataforma.
+- [x] ~~Slice tests de `MembershipController`, `AuditEventController` y los dos controllers de plataforma.~~ → A-5: 51 tests `@WebMvcTest` en `organization/api` (22 + 11 + 9 + 9). Destaparon un defecto real: el PATCH de membership sin `changeScope` —el request que arma la pantalla para cambiar sólo el rol— respondía 400 por `boolean` primitivo bajo Jackson 3; corregido a `Boolean`.
 
 ### CI y operación (se pueden diferir a F8, pero se anotan acá porque nacieron en F0)
 - [ ] Job que construya imagen Docker del backend con SBOM.

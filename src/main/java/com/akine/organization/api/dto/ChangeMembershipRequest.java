@@ -17,6 +17,15 @@ import jakarta.validation.constraints.Size;
  *
  * <p>Los dos cambios se auditan por separado: mover a alguien de sede y cambiar lo que puede
  * hacer son dos decisiones distintas.
+ *
+ * <h2>Por que {@code changeScope} es {@code Boolean} y no {@code boolean}</h2>
+ *
+ * <p>El contrato lo declara opcional con default {@code false}, y el caso normal —cambiar el
+ * rol sin tocar la sede— lo omite. Jackson 3 pasa {@code null} por cada componente ausente de
+ * un record y {@code FAIL_ON_NULL_FOR_PRIMITIVES} lo rechazaba con un 400 de cuerpo ilegible
+ * antes de llegar al controller. El controller lo lee con {@code Boolean.TRUE.equals}: ausente
+ * es {@code false}.
+ * Es la misma trampa que documenta {@code UpdateEspacioRequest}.
  */
 @Schema(description = "Cambio de rol y/o de alcance de un vinculo")
 public record ChangeMembershipRequest(
@@ -35,7 +44,7 @@ public record ChangeMembershipRequest(
 				example = "false",
 				defaultValue = "false",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		boolean changeScope,
+		Boolean changeScope,
 
 		@Schema(
 				description = "Sede destino cuando changeScope es true. null significa alcance de "
