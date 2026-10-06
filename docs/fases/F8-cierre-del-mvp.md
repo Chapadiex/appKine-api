@@ -19,8 +19,9 @@ Esta fase es **el gate** que DP-07 exige antes de abrir F9.
 - [ ] **Verificado:** `reporte:read` existe en `PermissionCode` y lo exige `ReporteService`, pero
   **no está en `RolePermissions`** → los tres endpoints de `reporting` (catálogo, reporte, CSV) son
   inalcanzables. Antes de otorgarlo, decidir el alcance del `PROFESIONAL` (¿ve solo lo suyo?).
-- [ ] **A verificar:** `sumarAnuladoEnElReporte` no filtra `deletedAt` → el indicador de anulados
-  cuenta de más.
+- [x] ~~**A verificar:** `sumarAnuladoEnElReporte` no filtra `deletedAt` → el indicador de anulados
+  cuenta de más.~~ → G-2: verificado (contaba 4000 en vez de 1000) y corregido;
+  `AnuladoEnElReporteIT`.
 
 ## Faltantes
 
