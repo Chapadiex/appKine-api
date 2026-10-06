@@ -53,8 +53,9 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 - [x] ~~Ese rechazo sale por `GlobalExceptionHandler` y no por `BillingProblemHandler` (rompe la regla
   "cada módulo mapea sus excepciones en su propio advice").~~ → F-2: `ImporteDeDebitoInvalidoException`,
   mismo `validation-error` 400, ahora con `importe` e `importePresentado`.
-- [ ] El CSV de financiadores puede no sumar al indicador `prestado`: las filas de detalle iteran
-  sobre el resumen de lotes.
+- [x] ~~El CSV de financiadores puede no sumar al indicador `prestado`: las filas de detalle iteran
+  sobre el resumen de lotes.~~ → F-2: los financiadores con prestado y sin lote en el periodo
+  también tienen fila.
 
 ## Faltantes
 
