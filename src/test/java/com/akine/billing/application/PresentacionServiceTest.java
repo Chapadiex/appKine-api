@@ -7,6 +7,8 @@ import com.akine.billing.domain.Presentacion;
 import com.akine.billing.domain.PresentacionItem;
 import com.akine.billing.domain.Responsable;
 import com.akine.billing.domain.exception.FacturaDuplicadaException;
+import com.akine.billing.domain.exception.ImporteDeDebitoInvalidoException;
+import com.akine.billing.domain.exception.ItemNoDebitableException;
 import com.akine.billing.domain.exception.ObligacionNoPresentableException;
 import com.akine.billing.domain.exception.ObligacionYaPresentadaException;
 import com.akine.billing.domain.exception.PresentacionConHallazgosException;
@@ -671,21 +673,37 @@ class PresentacionServiceTest {
 		PresentacionItem item = item(55010L, 9001L, new BigDecimal("15000.00"));
 		given(items.findByIdEnLaPresentacion(ORG_ID, PRESENTACION_ID, 55010L))
 				.willReturn(Optional.of(item));
-		given(presentaciones.registrarDebito(ORG_ID, PRESENTACION_ID, new BigDecimal("50000.00")))
-				.willReturn(1);
 
 		assertThatThrownBy(() -> service.debitar(
 				actor, SEDE_ID, PRESENTACION_ID, 55010L,
 				new PresentacionCommands.Debito(new BigDecimal("50000.00"), "Rechazo")))
-				.isInstanceOf(IllegalArgumentException.class);
+				.isInstanceOf(ImporteDeDebitoInvalidoException.class);
 
-		// El limite lo pone la entidad DESPUES del UPDATE condicional, que ya movio el saldo del
-		// lote: lo unico que impide que ese movimiento quede es el rollback de la transaccion. El
-		// orden esta elegido asi a proposito, pero vale dejarlo escrito: este control NO es
-		// defensa en profundidad contra un camino que no sea transaccional.
-		verify(presentaciones).registrarDebito(ORG_ID, PRESENTACION_ID, new BigDecimal("50000.00"));
+		// El limite del item se valida ANTES del UPDATE condicional: el saldo del lote no se toca.
+		// Antes se validaba despues y solo lo salvaba el rollback; y si el importe superaba tambien
+		// el saldo del lote, el operador recibia un 409 de saldo en vez del 400 que corresponde.
+		verify(presentaciones, never()).registrarDebito(anyLong(), anyLong(), any());
 		assertThat(item.getEstado()).isEqualTo(EstadoItemPresentacion.INCLUIDO);
 		verify(auditTrail, never()).record(any());
+	}
+
+	@Test
+	@DisplayName("un item ya debitado se rechaza sin mover el saldo del lote")
+	void debitarDosVecesNoMueveElSaldo() {
+		Presentacion lote = confirmada(new BigDecimal("100000.00"), new BigDecimal("100000.00"));
+		given(presentaciones.findByIdInScope(ORG_ID, SEDE_ID, PRESENTACION_ID))
+				.willReturn(Optional.of(lote));
+		PresentacionItem item = item(55010L, 9001L, new BigDecimal("15000.00"));
+		item.debitar(new BigDecimal("15000.00"), "Primer rechazo", Instant.now(), ACCOUNT_ID);
+		given(items.findByIdEnLaPresentacion(ORG_ID, PRESENTACION_ID, 55010L))
+				.willReturn(Optional.of(item));
+
+		assertThatThrownBy(() -> service.debitar(
+				actor, SEDE_ID, PRESENTACION_ID, 55010L,
+				new PresentacionCommands.Debito(new BigDecimal("15000.00"), "Segundo rechazo")))
+				.isInstanceOf(ItemNoDebitableException.class);
+
+		verify(presentaciones, never()).registrarDebito(anyLong(), anyLong(), any());
 	}
 
 	@Test

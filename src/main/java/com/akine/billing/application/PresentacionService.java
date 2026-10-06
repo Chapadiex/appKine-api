@@ -345,9 +345,13 @@ public class PresentacionService {
 				.findByIdEnLaPresentacion(organizationId, presentacionId, itemId)
 				.orElseThrow(() -> new PresentacionItemNotAccessibleException(itemId));
 
-		// El saldo del lote se mueve PRIMERO, porque es la operacion que puede fallar por una
-		// condicion del motor: si no alcanza, no queda un item marcado como debitado por un debito
-		// que no se registro. Mismo orden que MovimientoCajaService.asentar.
+		// Primero lo que se decide sin la base: estado del item y que el importe entre en lo
+		// presentado. Un debito invalido no llega a mover el saldo del lote.
+		item.exigirDebitable(debito.importe());
+
+		// Despues el saldo del lote, ANTES de marcar el item, porque es la operacion que puede
+		// fallar por una condicion del motor: si no alcanza, no queda un item marcado como debitado
+		// por un debito que no se registro. Mismo orden que MovimientoCajaService.asentar.
 		moverSaldo(
 				organizationId, presentacion,
 				presentaciones.registrarDebito(organizationId, presentacionId, debito.importe()),

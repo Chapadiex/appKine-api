@@ -48,10 +48,11 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 - [ ] `PresentacionService.revisar` colapsa "deuda de otro financiador" y "deuda del paciente" en
   el mismo hallazgo `FINANCIADOR_DISTINTO`, y el remedio de cada caso es el opuesto. Arreglarlo
   agrega un valor al enum → **cambio de contrato**.
-- [ ] `debitar` mueve el saldo del lote **antes** de validar el importe del ítem; hoy solo lo salva
-  el rollback.
-- [ ] Ese rechazo sale por `GlobalExceptionHandler` y no por `BillingProblemHandler` (rompe la regla
-  "cada módulo mapea sus excepciones en su propio advice").
+- [x] ~~`debitar` mueve el saldo del lote **antes** de validar el importe del ítem; hoy solo lo salva
+  el rollback.~~ → F-2: `PresentacionItem.exigirDebitable` corre antes del UPDATE condicional.
+- [x] ~~Ese rechazo sale por `GlobalExceptionHandler` y no por `BillingProblemHandler` (rompe la regla
+  "cada módulo mapea sus excepciones en su propio advice").~~ → F-2: `ImporteDeDebitoInvalidoException`,
+  mismo `validation-error` 400, ahora con `importe` e `importePresentado`.
 - [ ] El CSV de financiadores puede no sumar al indicador `prestado`: las filas de detalle iteran
   sobre el resumen de lotes.
 

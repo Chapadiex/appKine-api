@@ -1,5 +1,6 @@
 package com.akine.billing.domain;
 
+import com.akine.billing.domain.exception.ImporteDeDebitoInvalidoException;
 import com.akine.billing.domain.exception.ItemNoDebitableException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -125,24 +126,34 @@ public class PresentacionItem {
 	 * paciente— es una decision del centro que esta etapa no toma por el.
 	 *
 	 * @throws ItemNoDebitableException ya fue debitado, aceptado o anulado (409)
+	 * @throws ImporteDeDebitoInvalidoException no va entre cero y lo presentado (400)
 	 */
 	public void debitar(
 			BigDecimal importe, String motivo, Instant occurredAt, long actorCuentaId) {
 
-		if (estado != EstadoItemPresentacion.INCLUIDO) {
-			throw new ItemNoDebitableException(id, estado.name());
-		}
-		if (importe == null || importe.signum() <= 0
-				|| importe.compareTo(importePresentado) > 0) {
-			throw new IllegalArgumentException(
-					"El debito va entre cero y lo presentado: " + importe + " sobre "
-							+ importePresentado);
-		}
+		exigirDebitable(importe);
 		this.estado = EstadoItemPresentacion.DEBITADO;
 		this.importeDebitado = importe;
 		this.motivoDebito = motivo;
 		this.debitadoEn = occurredAt;
 		this.debitadoPorCuentaId = actorCuentaId;
+	}
+
+	/**
+	 * Las precondiciones del debito, sin cambiar nada.
+	 *
+	 * <p>Separadas de {@link #debitar} para que el servicio las evalue <b>antes</b> del UPDATE
+	 * condicional sobre el saldo del lote: un debito invalido no tiene que mover el saldo y depender
+	 * del rollback para deshacerlo.
+	 */
+	public void exigirDebitable(BigDecimal importe) {
+		if (estado != EstadoItemPresentacion.INCLUIDO) {
+			throw new ItemNoDebitableException(id, estado.name());
+		}
+		if (importe == null || importe.signum() <= 0
+				|| importe.compareTo(importePresentado) > 0) {
+			throw new ImporteDeDebitoInvalidoException(importe, importePresentado);
+		}
 	}
 
 	/** El financiador lo acepto. Solo lo invoca la conciliacion del lote. */
