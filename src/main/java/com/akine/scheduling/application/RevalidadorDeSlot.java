@@ -18,7 +18,9 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -222,6 +224,16 @@ class RevalidadorDeSlot {
 	 * para el mismo estado de la base.
 	 */
 	private Long elegirEspacio(Pedido pedido) {
+		// Paquete E-1. Una franja grupal ocupa UN box con todas sus personas. Sin esto, la segunda
+		// inscripcion veia el box "ocupado por un turno que se cruza" —el de su propio grupo— y se
+		// rechazaba con recurso-ocupado: una oferta grupal que exige espacio no admitia mas de una
+		// persona. Es la misma distincion que hayConflictoRealDeProfesional hace para el
+		// profesional. El cupo ya lo controlo contarOcupacion contra la capacidad de la oferta.
+		Optional<Long> delGrupo = espacioDelGrupo(pedido);
+		if (delGrupo.isPresent()) {
+			return delGrupo.get();
+		}
+
 		List<HabilitacionSnapshot> habilitados = ofertas.espaciosHabilitados(
 				pedido.organizationId(), pedido.consultorioId(), pedido.oferta().id());
 		if (habilitados.isEmpty()) {
@@ -286,6 +298,24 @@ class RevalidadorDeSlot {
 	private boolean espacioLibreDeEventosExternos(Pedido pedido, long espacioId) {
 		return !ocupacionExterna.espacioOcupado(
 				pedido.organizationId(), espacioId, pedido.inicio(), pedido.fin());
+	}
+
+	/**
+	 * El box de los otros turnos vivos de la misma franja —misma oferta, mismo inicio—, si los hay.
+	 *
+	 * <p>La ventana es de un microsegundo porque {@code inicio} se guarda en {@code DATETIME(6)} y
+	 * la consulta filtra {@code [desde, hasta)}: es la forma de pedir "exactamente este inicio" sin
+	 * agregar otra consulta al puerto.
+	 */
+	private Optional<Long> espacioDelGrupo(Pedido pedido) {
+		return turnos.findVivosDeLaOfertaEnVentana(pedido.organizationId(), pedido.oferta().id(),
+						pedido.inicio(), pedido.inicio().plus(1, ChronoUnit.MICROS))
+				.stream()
+				.filter(otro -> !esElExcluido(otro, pedido))
+				.filter(otro -> otro.getInicio().equals(pedido.inicio()))
+				.map(Turno::getEspacioId)
+				.filter(Objects::nonNull)
+				.findFirst();
 	}
 
 	private static boolean esElExcluido(Turno turno, Pedido pedido) {
