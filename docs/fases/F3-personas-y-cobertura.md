@@ -37,7 +37,7 @@ para esta práctica en esta fecha?".
 - [ ] RF-M08-006/007: resolver la cobertura aplicable por oferta.
 - [ ] RF-M16-007 (importación masiva con preview) y RF-M16-008/009 (oferta asociada al convenio,
   arancel particular por oferta). Dependen del puente Oferta↔Práctica de F2.
-- [ ] Validar moneda contra ISO 4217.
+- [x] ~~Validar moneda contra ISO 4217.~~ → `contracting.domain.MonedaIso4217` (`java.util.Currency`), en convenio y plan.
 - [ ] Historial de estados de la autorización: hoy solo queda el evento `AUTORIZACION_RESUELTA`
   en auditoría. **Decidir** tabla propia o auditoría, y escribirlo.
 - [ ] Estado de la orden médica (hoy solo vigencia).

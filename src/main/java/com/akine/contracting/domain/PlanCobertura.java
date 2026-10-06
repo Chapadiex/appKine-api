@@ -267,11 +267,8 @@ public class PlanCobertura extends MarcaTemporal {
 			throw new IllegalArgumentException(
 					"El copago no puede ser negativo: un negativo no es un descuento, es un dato roto");
 		}
-		if (monedaNormalizada.length() != 3) {
-			throw new IllegalArgumentException("La moneda se declara con su codigo ISO 4217 de 3 letras");
-		}
 		this.copago = copago;
-		this.moneda = monedaNormalizada;
+		this.moneda = MonedaIso4217.normalizar(monedaNormalizada);
 	}
 
 	private static void exigirVigenciaCoherente(LocalDate desde, LocalDate hasta) {

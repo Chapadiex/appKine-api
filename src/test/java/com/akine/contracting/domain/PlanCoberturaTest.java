@@ -162,6 +162,12 @@ class PlanCoberturaTest {
 					7L, 31L, "c", "n", null, DESDE, null, false, true,
 					new BigDecimal("1.00"), "PESOS"))
 					.isInstanceOf(IllegalArgumentException.class);
+			// Tres letras no alcanzan: tiene que ser un codigo que exista.
+			assertThatThrownBy(() -> new PlanCobertura(
+					7L, 31L, "c", "n", null, DESDE, null, false, true,
+					new BigDecimal("1.00"), "XYZ"))
+					.isInstanceOf(IllegalArgumentException.class)
+					.hasMessageContaining("ISO 4217");
 		}
 	}
 
