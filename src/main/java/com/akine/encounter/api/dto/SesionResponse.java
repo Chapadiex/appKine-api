@@ -37,7 +37,12 @@ public record SesionResponse(
 		@Schema(description = "Membership del profesional que atiende. Decide quien puede guardar.", example = "31")
 		long profesionalId,
 
-		@Schema(description = "Estado de la ATENCION, no del turno ni del cobro", allowableValues = "BORRADOR", example = "BORRADOR")
+		@Schema(
+				description = "Estado de la ATENCION, no del turno ni del cobro. `BORRADOR` mientras "
+						+ "se carga; `CERRADA` desde el cierre clinico, y sigue `CERRADA` despues de "
+						+ "cada enmienda.",
+				allowableValues = {"BORRADOR", "CERRADA"},
+				example = "BORRADOR")
 		String estado,
 
 		@Schema(example = "2026-09-15T12:02:44Z")

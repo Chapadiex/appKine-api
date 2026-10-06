@@ -142,22 +142,7 @@ public class OfertaHabilitacionService {
 
 		exigirLectura(actor, organizationId, consultorioId);
 		OfertaServicioConsultorio oferta = cargar(organizationId, consultorioId, ofertaId);
-		Instant ahora = Instant.now();
-
-		List<OfertaProfesionalHabilitado> filasProfesional =
-				profesionales.findAllByOrganizationIdAndOfertaId(organizationId, ofertaId);
-		List<OfertaEspacioHabilitado> filasEspacio =
-				espacios.findAllByOrganizationIdAndOfertaId(organizationId, ofertaId);
-
-		return new HabilitacionesView(
-				ofertaId,
-				restringida(filasProfesional),
-				restringida(filasEspacio),
-				vistasDeProfesional(filasProfesional, organizationId, ahora),
-				vistasDeEspacio(filasEspacio, organizationId, ahora),
-				oferta.getCapacidad(),
-				capacidadEfectiva(oferta, filasEspacio, organizationId, ahora),
-				espacioQueLimita(oferta, filasEspacio, organizationId, ahora));
+		return armarVista(oferta, oferta.getVersion(), organizationId, ofertaId);
 	}
 
 	/**
@@ -270,7 +255,7 @@ public class OfertaHabilitacionService {
 		log.info("Habilitaciones de profesional reconfiguradas: ofertaId={} habilitados={}",
 				ofertaId, pedidos.size());
 
-		return leerSinAutorizar(oferta, organizationId, ofertaId);
+		return vistaTrasReemplazo(oferta, organizationId, ofertaId);
 	}
 
 	/** Reemplaza el conjunto de espacios habilitados. Ver el javadoc de la clase. */
@@ -318,7 +303,7 @@ public class OfertaHabilitacionService {
 		log.info("Habilitaciones de espacio reconfiguradas: ofertaId={} habilitados={}",
 				ofertaId, pedidos.size());
 
-		return leerSinAutorizar(oferta, organizationId, ofertaId);
+		return vistaTrasReemplazo(oferta, organizationId, ofertaId);
 	}
 
 	/**
@@ -547,8 +532,27 @@ public class OfertaHabilitacionService {
 		return List.copyOf(vistas);
 	}
 
-	private HabilitacionesView leerSinAutorizar(
+	/**
+	 * La configuracion resultante de un reemplazo, sin volver a autorizar.
+	 *
+	 * <p><b>{@code ofertaVersion} es {@code leida + 1}, no {@code oferta.getVersion()}.</b> La
+	 * oferta se cargo con {@code OPTIMISTIC_FORCE_INCREMENT}, que Hibernate aplica al cerrar la
+	 * transaccion: aca adentro la entidad todavia dice la version leida. Devolver esa haria que el
+	 * siguiente reemplazo, mandado con lo que el servidor acaba de responder, chocara siempre con un
+	 * 409 que no le echa la culpa a nadie —la conducta que {@code cambiarEquipo} documenta en vez de
+	 * corregir—. El {@code +1} es exacto y no una estimacion porque el reemplazo no ensucia ninguna
+	 * columna de la oferta: el unico avance es el forzado, y es uno solo. Lo fijan los dos tests de
+	 * {@code HabilitacionesVersionForzadaIT}: que avanza una vez, y que lo devuelto alcanza para
+	 * encadenar el siguiente reemplazo sin releer. Si un reemplazo pasara a tocar la oferta, la
+	 * version avanzaria dos veces y los dos se romperian juntos.
+	 */
+	private HabilitacionesView vistaTrasReemplazo(
 			OfertaServicioConsultorio oferta, long organizationId, long ofertaId) {
+		return armarVista(oferta, oferta.getVersion() + 1, organizationId, ofertaId);
+	}
+
+	private HabilitacionesView armarVista(
+			OfertaServicioConsultorio oferta, long ofertaVersion, long organizationId, long ofertaId) {
 
 		Instant ahora = Instant.now();
 		List<OfertaProfesionalHabilitado> filasProfesional =
@@ -558,6 +562,7 @@ public class OfertaHabilitacionService {
 
 		return new HabilitacionesView(
 				ofertaId,
+				ofertaVersion,
 				restringida(filasProfesional),
 				restringida(filasEspacio),
 				vistasDeProfesional(filasProfesional, organizationId, ahora),

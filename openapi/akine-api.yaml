@@ -23482,6 +23482,14 @@ components:
           format: int64
           description: Oferta configurada
           example: 34
+        ofertaVersion:
+          type: integer
+          format: int64
+          description: "Version de la OFERTA que hay que mandar como expectedVersion\
+            \ en el proximo reemplazo. En la lectura es la vigente; en la respuesta\
+            \ de un reemplazo es la que la oferta queda teniendo despues de ese reemplazo,\
+            \ asi que dos reemplazos se encadenan sin releer"
+          example: 3
         profesionales:
           type: array
           description: "Habilitaciones de profesional, activas e inactivas"
@@ -27820,9 +27828,12 @@ components:
           example: 7
         estado:
           type: string
-          description: "Estado de la ATENCION, no del turno ni del cobro"
+          description: "Estado de la ATENCION, no del turno ni del cobro. `BORRADOR`\
+            \ mientras se carga; `CERRADA` desde el cierre clinico, y sigue `CERRADA`\
+            \ despues de cada enmienda."
           enum:
           - BORRADOR
+          - CERRADA
           example: BORRADOR
         evaluacion:
           $ref: "#/components/schemas/EvaluacionBase"

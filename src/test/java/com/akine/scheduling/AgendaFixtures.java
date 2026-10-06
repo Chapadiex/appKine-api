@@ -62,12 +62,30 @@ public final class AgendaFixtures {
 		long adminAccountId = insertarCuenta("admin-" + sufijo);
 		insertarMembership(organizationId, consultorioId, adminAccountId, "ORG_ADMIN");
 
+		return poblar(organizationId, consultorioId, adminAccountId, capacidad, false);
+	}
+
+	/**
+	 * Completa un tenant que YA existe —p.ej. uno dado de alta por el camino HTTP real— con lo que
+	 * hace falta para reservar: un profesional con disponibilidad los lunes de 09:00 a 13:00 (hora
+	 * de la sede), una oferta que lo habilita y tres pacientes.
+	 *
+	 * <p>{@code requiereEspacio} en {@code true} hace que cada reserva tome un box de la sede: lo
+	 * usan los tests de las sondas de impacto (paquete E-1), que necesitan turnos con espacio.
+	 */
+	public Fixture poblar(
+			long organizationId, long consultorioId, long adminAccountId, int capacidad,
+			boolean requiereEspacio) {
+
+		String sufijo = UUID.randomUUID().toString().substring(0, 8);
+
 		long profesionalAccountId = insertarCuenta("pro-" + sufijo);
 		long profesionalMembershipId =
 				insertarMembership(organizationId, consultorioId, profesionalAccountId, "PROFESIONAL");
 
 		long servicioId = insertarServicio(sufijo);
-		long ofertaId = insertarOferta(organizationId, consultorioId, servicioId, capacidad, sufijo);
+		long ofertaId = insertarOferta(
+				organizationId, consultorioId, servicioId, capacidad, requiereEspacio, sufijo);
 		insertarHabilitacion(organizationId, consultorioId, ofertaId, profesionalMembershipId);
 		// Lunes de 09:00 a 13:00. El slot de las 09:00 cae adentro con cualquier duracion sensata.
 		insertarDisponibilidad(organizationId, consultorioId, profesionalMembershipId);
@@ -210,12 +228,13 @@ public final class AgendaFixtures {
 	}
 
 	/**
-	 * {@code requiere_espacio = 0} a proposito: lo que estos tests miden es la exclusion sobre el
-	 * profesional y el cupo. Meter un box agregaria una segunda fuente de rechazo y el test no
-	 * podria decir cual de las dos actuo.
+	 * {@code requiere_espacio = 0} en los tests de concurrencia, a proposito: lo que miden es la
+	 * exclusion sobre el profesional y el cupo. Meter un box agregaria una segunda fuente de
+	 * rechazo y el test no podria decir cual de las dos actuo.
 	 */
 	private long insertarOferta(
-			long organizationId, long consultorioId, long servicioId, int capacidad, String sufijo) {
+			long organizationId, long consultorioId, long servicioId, int capacidad,
+			boolean requiereEspacio, String sufijo) {
 
 		String nombre = "Oferta Sintetica " + sufijo;
 		jdbc.update("""
@@ -224,11 +243,11 @@ public final class AgendaFixtures {
 				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				        genera_registro_clinico, requiere_profesional, requiere_espacio,
 				        vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 60, ?, 0, 0, 0, 1, 0,
+				VALUES (?, ?, ?, ?, ?, 60, ?, 0, 0, 0, 1, ?,
 				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioId, servicioId, nombre,
-				capacidad > 1 ? "GRUPAL" : "INDIVIDUAL", capacidad);
+				capacidad > 1 ? "GRUPAL" : "INDIVIDUAL", capacidad, requiereEspacio ? 1 : 0);
 		return jdbc.queryForObject("""
 				SELECT id FROM oferta_servicio_consultorio
 				 WHERE organization_id = ? AND nombre_comercial = ?

@@ -30,10 +30,14 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * Las reglas del servicio que no dependen de la base.
@@ -62,6 +66,7 @@ class CicloDeTurnoServiceTest {
 	@Mock private RevalidadorDeSlot revalidador;
 	@Mock private AtencionProbe atenciones;
 	@Mock private AuditTrail auditTrail;
+	@Mock private AvisosDeTurno avisos;
 
 	private CicloDeTurnoService service;
 	private final OperatingActor actor = new OperatingActor(9L, false, ORG_ID, CONSULTORIO_ID);
@@ -69,7 +74,7 @@ class CicloDeTurnoServiceTest {
 	@BeforeEach
 	void prepararServicio() {
 		service = new CicloDeTurnoService(turnos, eventos, agendas, ofertas, consultorios,
-				permissionGuard, iniciador, revalidador, atenciones, auditTrail);
+				permissionGuard, iniciador, revalidador, atenciones, auditTrail, avisos);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -89,6 +94,25 @@ class CicloDeTurnoServiceTest {
 				.as("y el turno no queda a medio cancelar")
 				.isEqualTo(EstadoTurno.RESERVADO);
 		verify(turnos, never()).save(turno);
+		verifyNoInteractions(avisos);
+	}
+
+	/**
+	 * RF-M26-003 (AKINE E-5). El aviso se pide dentro del mismo metodo transaccional, despues de
+	 * guardar. Si la oferta ya no resuelve, el aviso sale igual, sin nombre de servicio: que el
+	 * correo no pueda decir "de Kinesiologia" no es razon para no avisar.
+	 */
+	@Test
+	@DisplayName("cancelar encola el aviso al paciente, aunque la oferta ya no resuelva")
+	void cancelar_avisa_al_paciente() {
+		Turno turno = turnoFuturo();
+		given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(turno));
+		given(turnos.saveAndFlush(turno)).willReturn(turno);
+		given(ofertas.find(ORG_ID, CONSULTORIO_ID, 42L)).willReturn(Optional.empty());
+
+		service.cancelar(actor, CONSULTORIO_ID, TURNO_ID, "el paciente aviso", 0L);
+
+		verify(avisos).avisarCancelacion(eq(turno), any(ConsultorioSnapshot.class), isNull());
 	}
 
 	@Test

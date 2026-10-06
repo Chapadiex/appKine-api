@@ -133,6 +133,52 @@ class EmailTemplatesTest {
 				.contains("Inicia sesion");
 	}
 
+	@Test
+	@DisplayName("el aviso de turno reservado dice fecha, hora, sede y servicio")
+	void el_turno_reservado_dice_cuando_y_donde() {
+		EmailMessage mensaje = EmailTemplates.render(
+				NotificationType.TURNO_RESERVADO,
+				DESTINATARIO,
+				SanitizedPayload.of(Map.of(
+						"nombre", "Ana",
+						"turnoInicio", "01/03/2027 a las 09:00",
+						"consultorioNombre", "Sede Centro",
+						"servicioNombre", "Kinesiologia")),
+				null);
+
+		assertThat(mensaje.asunto()).isEqualTo("Tu turno en Sede Centro");
+		assertThat(mensaje.cuerpo())
+				.startsWith("Hola Ana,")
+				.contains("turno de Kinesiologia para el 01/03/2027 a las 09:00 en Sede Centro")
+				.doesNotContain("http");
+	}
+
+	@Test
+	@DisplayName("el aviso de reprogramacion dice de donde a donde se movio el turno")
+	void el_turno_reprogramado_dice_de_donde_a_donde() {
+		EmailMessage mensaje = EmailTemplates.render(
+				NotificationType.TURNO_REPROGRAMADO,
+				DESTINATARIO,
+				SanitizedPayload.of(Map.of(
+						"turnoInicio", "08/03/2027 a las 10:30",
+						"turnoInicioAnterior", "01/03/2027 a las 09:00")),
+				null);
+
+		assertThat(mensaje.cuerpo())
+				.contains("del 01/03/2027 a las 09:00 paso al 08/03/2027 a las 10:30");
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@EnumSource(value = NotificationType.class, names = {
+			"TURNO_RESERVADO", "TURNO_CANCELADO", "TURNO_REPROGRAMADO"})
+	@DisplayName("un aviso de turno sin datos usa textos neutros y no imprime null")
+	void el_turno_sin_datos_no_imprime_null(NotificationType tipo) {
+		EmailMessage mensaje = EmailTemplates.render(tipo, DESTINATARIO, SanitizedPayload.vacio(), null);
+
+		assertThat(mensaje.asunto()).doesNotContain("null").endsWith("AKINE");
+		assertThat(mensaje.cuerpo()).doesNotContain("null").startsWith("Hola,");
+	}
+
 	@ParameterizedTest
 	@EnumSource(NotificationType.class)
 	@DisplayName("ningun template deja el cuerpo o el asunto vacios")

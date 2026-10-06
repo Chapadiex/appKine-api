@@ -44,7 +44,13 @@ public final class SanitizedPayload {
 			// dato de otro participante, ningun dato clinico y ningun identificador interno.
 			"claseTitulo",
 			"claseInicio",
-			"consultorioNombre");
+			"consultorioNombre",
+			// AKINE E-5: lo minimo para que un aviso de turno diga de que turno habla (RF-M26-002:
+			// "fecha, hora y consultorio"). El servicio es el nombre comercial de la oferta, no una
+			// practica ni un diagnostico. Ni profesional, ni motivo, ni ningun identificador.
+			"turnoInicio",
+			"turnoInicioAnterior",
+			"servicioNombre");
 
 	/** Un nombre propio no llega ni cerca de este limite; un secreto pegado, si. */
 	private static final int LARGO_MAXIMO_VALOR = 200;

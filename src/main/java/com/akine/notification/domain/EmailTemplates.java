@@ -82,7 +82,49 @@ public final class EmailTemplates {
 							+ " del " + payload.getOrDefault("claseInicio", "horario reservado")
 							+ ".\n\nEl lugar ya es tuyo: no hace falta que confirmes nada. Si no "
 							+ "podes asistir, avisale al centro para liberarlo." + FIRMA);
+			// AKINE E-5 (RF-M26-002/003). Fecha, hora, sede y servicio, y NADA MAS: ni el
+			// profesional, ni el motivo de una cancelacion —texto libre que puede ser clinico—, ni
+			// un id interno. RN-M26-002.
+			case TURNO_RESERVADO -> new EmailMessage(
+					destinatario,
+					"Tu turno en " + payload.getOrDefault("consultorioNombre", "AKINE"),
+					saludo + ",\n\nTe reservamos un turno" + servicio(payload)
+							+ " para el " + payload.getOrDefault("turnoInicio", "horario acordado")
+							+ sede(payload)
+							+ ".\n\nSi no podes asistir, avisale al centro con anticipacion para "
+							+ "liberar el lugar." + FIRMA);
+			case TURNO_CANCELADO -> new EmailMessage(
+					destinatario,
+					"Se cancelo tu turno en " + payload.getOrDefault("consultorioNombre", "AKINE"),
+					saludo + ",\n\nSe cancelo tu turno" + servicio(payload)
+							+ " del " + payload.getOrDefault("turnoInicio", "horario reservado")
+							+ sede(payload)
+							+ ".\n\nSi queres sacar uno nuevo, comunicate con el centro." + FIRMA);
+			case TURNO_REPROGRAMADO -> new EmailMessage(
+					destinatario,
+					"Cambio el horario de tu turno en "
+							+ payload.getOrDefault("consultorioNombre", "AKINE"),
+					saludo + ",\n\nTu turno" + servicio(payload) + anterior(payload)
+							+ " paso al " + payload.getOrDefault("turnoInicio", "nuevo horario acordado")
+							+ sede(payload)
+							+ ".\n\nSi el nuevo horario no te queda bien, comunicate con el centro."
+							+ FIRMA);
 		};
+	}
+
+	private static String servicio(SanitizedPayload payload) {
+		String servicio = payload.getOrDefault("servicioNombre", null);
+		return servicio == null ? "" : " de " + servicio;
+	}
+
+	private static String sede(SanitizedPayload payload) {
+		String sede = payload.getOrDefault("consultorioNombre", null);
+		return sede == null ? "" : " en " + sede;
+	}
+
+	private static String anterior(SanitizedPayload payload) {
+		String anterior = payload.getOrDefault("turnoInicioAnterior", null);
+		return anterior == null ? "" : " del " + anterior;
 	}
 
 	private static String saludo(SanitizedPayload payload) {

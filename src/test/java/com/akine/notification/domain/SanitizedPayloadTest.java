@@ -33,7 +33,9 @@ class SanitizedPayloadTest {
 						// AKINE-08.02: lo minimo para que un aviso de clase diga de que clase
 						// habla. Que agregarlas obligue a tocar este test es exactamente lo que el
 						// test existe para conseguir.
-						"claseTitulo", "claseInicio", "consultorioNombre");
+						"claseTitulo", "claseInicio", "consultorioNombre",
+						// AKINE E-5: los avisos de turno. Fecha, hora y servicio; nada clinico.
+						"turnoInicio", "turnoInicioAnterior", "servicioNombre");
 	}
 
 	@ParameterizedTest(name = "clave fuera de la lista blanca: {0}")

@@ -286,6 +286,29 @@ class OfertaHabilitacionServiceTest {
 	}
 
 	@Test
+	@DisplayName("ofertaVersion: la lectura devuelve la vigente y cada reemplazo la que queda "
+			+ "despues del commit, para que el cliente encadene sin releer")
+	void la_vista_publica_la_version_que_sirve_para_el_proximo_reemplazo() {
+		OfertaServicioConsultorio leida = ofertaCapacidad(8);
+		ReflectionTestUtils.setField(leida, "version", 3L);
+		given(ofertas.findByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE))
+				.willReturn(Optional.of(leida));
+		given(ofertas.findWithLockByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE))
+				.willReturn(Optional.of(leida));
+
+		assertThat(service.leer(actor(), ORG, SEDE, OFERTA_ID).ofertaVersion()).isEqualTo(3L);
+
+		// Con mocks la entidad sigue en 3 al salir: el force-increment lo aplica Hibernate al
+		// commitear. La vista tiene que anticiparlo, o el cliente manda 3 y choca contra 4.
+		assertThat(service.reemplazarProfesionales(
+				actor(), ORG, SEDE, OFERTA_ID, Set.of(MEMBERSHIP_A), 3L).ofertaVersion())
+				.isEqualTo(4L);
+		assertThat(service.reemplazarEspacios(
+				actor(), ORG, SEDE, OFERTA_ID, Set.of(ESPACIO_CHICO), 3L).ofertaVersion())
+				.isEqualTo(4L);
+	}
+
+	@Test
 	@DisplayName("leer NO fuerza el avance de version: seria una escritura disfrazada de lectura")
 	void la_lectura_no_mueve_la_version() {
 		service.leer(actor(), ORG, SEDE, OFERTA_ID);

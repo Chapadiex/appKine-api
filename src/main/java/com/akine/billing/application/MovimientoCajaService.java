@@ -288,6 +288,17 @@ public class MovimientoCajaService {
 		if (filas > 0) {
 			return;
 		}
+		// En la SUMA, cero filas tiene una sola causa posible: el WHERE de sumarAlSaldo no mira el
+		// saldo, y la jornada ya se encontro en el alcance antes de llegar aca, asi que lo unico
+		// que puede haber fallado es `estado = 'ABIERTA'`. No se relee, y no es una optimizacion:
+		// releer era el defecto. CobroService.registrar corre en REPEATABLE READ, y bajo esa
+		// aislacion la relectura devuelve la foto de la primera lectura consistente —la jornada
+		// todavia ABIERTA— aunque el UPDATE, que lee lo ultimo commiteado, ya la vio CERRADA. El
+		// cobro que perdia la carrera contra el cierre terminaba en caja-saldo-insuficiente "para
+		// egresar" sobre un ingreso. Lo destapo CierreDeCajaConcurrenteIT (escenario 34).
+		if (tipo.signo() > 0) {
+			throw new CajaCerradaException(jornadaId);
+		}
 		JornadaCaja actual = jornadas.findByIdInScope(organizationId, consultorioId, jornadaId)
 				.orElseThrow(() -> new JornadaCajaNotAccessibleException(jornadaId));
 		if (!actual.estaAbierta()) {
