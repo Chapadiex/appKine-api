@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -128,11 +129,36 @@ public class AvisosDeClase {
 				claveIdempotente,
 				clase.getOrganizationId(),
 				null,
-				Map.of(
+				depurar(tipo, clase, Map.of(
 						"nombre", contacto.nombre() == null ? "" : contacto.nombre(),
 						"claseTitulo", clase.getTitulo() == null ? "" : clase.getTitulo(),
 						"claseInicio", FORMATO.format(
 								clase.getInicio().atZone(ZoneId.of(zonaHoraria))),
-						"consultorioNombre", sedeNombre == null ? "" : sedeNombre)));
+						"consultorioNombre", sedeNombre == null ? "" : sedeNombre))));
+	}
+
+	/**
+	 * Deja solo los datos que el outbox va a aceptar (defecto corregido en AKINE E-5).
+	 *
+	 * <p>{@code enqueue} rechaza un valor con pinta de secreto, y uno de los fragmentos es
+	 * {@code secret}: una sede "Jardin Secreto" o una clase "Yoga secreto" lo contienen. El rechazo
+	 * ocurre DENTRO de la transaccion del negocio, la deja marcada para rollback —atrapar la
+	 * excepcion no la des-marca— y cancelar o reprogramar la clase moria por su nombre, contra
+	 * RN-M26-001. Validar cada dato antes con {@link NotificationOutbox#validarDatosDeRender}, que
+	 * no participa de la transaccion, permite omitir solo el que no pasa: el template cae a su
+	 * texto neutro y el aviso sale igual.
+	 */
+	private Map<String, String> depurar(
+			NotificationType tipo, ClaseProgramada clase, Map<String, String> datos) {
+		Map<String, String> aceptados = new LinkedHashMap<>();
+		datos.forEach((clave, valor) -> {
+			try {
+				outbox.validarDatosDeRender(Map.of(clave, valor));
+				aceptados.put(clave, valor);
+			} catch (IllegalArgumentException rechazado) {
+				log.warn("Dato de render omitido en {}: clave={} claseId={}", tipo, clave, clase.getId());
+			}
+		});
+		return aceptados;
 	}
 }
