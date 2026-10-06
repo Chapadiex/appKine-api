@@ -23,6 +23,7 @@ import com.akine.billing.domain.exception.CajaYaAbiertaException;
 import com.akine.billing.domain.exception.CobroNotAccessibleException;
 import com.akine.billing.domain.exception.FacturaDuplicadaException;
 import com.akine.billing.domain.exception.FinanciadorNoAccesibleException;
+import com.akine.billing.domain.exception.ImporteDeDebitoInvalidoException;
 import com.akine.billing.domain.exception.ItemNoDebitableException;
 import com.akine.billing.domain.exception.ObligacionNoPresentableException;
 import com.akine.billing.domain.exception.ObligacionYaPresentadaException;
@@ -65,6 +66,7 @@ public class BillingProblemHandler {
 	private static final Logger log = LoggerFactory.getLogger(BillingProblemHandler.class);
 
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
+	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 	private static final URI OBLIGACION_ALREADY_ANULADA = ProblemType.OBLIGACION_ALREADY_ANULADA.uri();
 	private static final URI OBLIGACION_CON_COBROS = ProblemType.OBLIGACION_CON_COBROS.uri();
 	private static final URI COBRO_NO_CUADRA = ProblemType.COBRO_NO_CUADRA.uri();
@@ -574,6 +576,22 @@ public class BillingProblemHandler {
 		problem.setType(ITEM_NO_DEBITABLE);
 		problem.setTitle("La prestacion no admite un debito");
 		problem.setProperty("estado", exception.getEstado());
+		return problem;
+	}
+
+	/**
+	 * Debito fuera de rango para ese item. Mismo tipo `validation-error` que salia antes por
+	 * `GlobalExceptionHandler` —el contrato no cambia—, pero mapeado aca y con los dos importes,
+	 * para que la pantalla diga cuanto se puede debitar.
+	 */
+	@ExceptionHandler(ImporteDeDebitoInvalidoException.class)
+	public ProblemDetail handleImporteDeDebitoInvalido(ImporteDeDebitoInvalidoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setType(VALIDATION_ERROR);
+		problem.setTitle("Solicitud invalida");
+		problem.setProperty("importe", exception.getImporte());
+		problem.setProperty("importePresentado", exception.getImportePresentado());
 		return problem;
 	}
 
