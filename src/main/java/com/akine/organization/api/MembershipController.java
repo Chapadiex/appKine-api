@@ -340,7 +340,8 @@ public class MembershipController {
 				orgId,
 				membershipId,
 				request.roleCode(),
-				request.changeScope(),
+				// Ausente es false, el default del contrato: ver ChangeMembershipRequest.
+				Boolean.TRUE.equals(request.changeScope()),
 				request.consultorioId(),
 				request.reason())));
 	}
