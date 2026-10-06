@@ -16,11 +16,13 @@ import java.time.Instant;
  * puede negarse a registrarlo porque tenga la agenda llena. Lo que tiene que hacer es no perder
  * esos turnos y decir cuantos son mientras quien decide todavia puede elegir el momento.
  *
- * <h2>Hoy siempre responde que no hay nada</h2>
+ * <h2>Que informa</h2>
  *
- * <p>M12 (agenda) no existe, asi que no hay ninguna sonda enchufada y {@code count} vale cero.
- * La operacion se publica igual para que la pantalla de desvinculacion se escriba una sola vez:
- * el dia que la agenda enchufe su sonda, el numero aparece <b>sin cambiar el contrato</b>.
+ * <p>La primera sonda con contenido, no la suma: primero los turnos pendientes del profesional
+ * en cualquier sede ({@code scheduling.infrastructure.ProfesionalConTurnosPendientes}, paquete
+ * E-1) y, si no tiene, sus bloques y excepciones de disponibilidad vigentes
+ * ({@code resource.infrastructure.ResourceDesvinculacionProbe}). {@code count} vale cero cuando
+ * no queda nada pendiente.
  *
  * @param tipo  que son, en plural y en lenguaje del usuario: "turnos", "sesiones abiertas".
  *              {@code null} cuando no hay nada

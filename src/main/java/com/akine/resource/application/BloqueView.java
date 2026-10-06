@@ -11,20 +11,13 @@ import java.time.LocalTime;
  * Proyeccion de lectura de un bloque de disponibilidad. Es lo unico que cruza el borde del
  * servicio: la entity nunca sale (AGENT.md seccion 4, regla 6).
  *
- * <h2>{@code turnosAfectados} responde hoy siempre 0, y no es un bug</h2>
+ * <h2>Que cuenta {@code turnosAfectados}</h2>
  *
- * <p>Es el mismo cero estructural que {@code EspacioAvailabilityResponse} declara para
- * {@code lugaresComprometidos}, y por el mismo motivo: los turnos son del modulo
- * {@code scheduling} (F5, M12), que no existe. El servicio SI consulta
- * {@link DisponibilidadImpactProbe} en la edicion y en la baja. <b>Actualizacion (paquete
- * E-1):</b> la implementacion ya no es la nula; {@code scheduling.infrastructure.DisponibilidadImpactoSobreTurnos}
- * cuenta los turnos pendientes de la ventana, como cota superior. Lo de abajo queda como
- * historia del porque.
- *
- * <p><b>Una pantalla que interprete "cero conflictos" como "se puede cambiar sin
- * consecuencias" va a dejar turnos huerfanos en cuanto exista la agenda</b>, y el bug no va a
- * parecer de esta etapa. Cuando F5 traiga la implementacion real, este campo deja de ser cero
- * sin ningun cambio de contrato.
+ * <p>El servicio consulta {@link DisponibilidadImpactProbe} en la edicion y en la baja, y desde
+ * el paquete E-1 la implementacion es {@code scheduling.infrastructure.DisponibilidadImpactoSobreTurnos}:
+ * cuenta los turnos pendientes del profesional en la sede dentro de la ventana del cambio,
+ * <b>como cota superior</b> —puede incluir turnos de otros bloques vigentes del mismo
+ * profesional—. Informa, no bloquea (RN-M05-004).
  *
  * @param estado               DERIVADO de {@code active}, no una columna
  * @param version              la que hay que reenviar para editar

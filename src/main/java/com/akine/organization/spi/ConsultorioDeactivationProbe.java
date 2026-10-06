@@ -7,8 +7,8 @@ import java.time.Instant;
  *
  * <h2>Por que un puerto invertido y no una consulta directa</h2>
  *
- * <p>El unico bloqueo previsto son los turnos futuros, y {@code scheduling} no existe todavia
- * (llega en F5, M12). Que {@code organization} consultara turnos violaria la regla 1 de
+ * <p>El unico bloqueo previsto son los turnos futuros, que son de {@code scheduling} (M12).
+ * Que {@code organization} consultara turnos violaria la regla 1 de
  * {@code AGENT.md} seccion 4 —cada tabla tiene un modulo propietario— y ademas dibujaria una
  * flecha {@code organization -> scheduling}, o sea del cimiento hacia el consumidor: ciclo
  * garantizado, y ArchUnit lo rechazaria.
@@ -17,11 +17,10 @@ import java.time.Instant;
  * y ya probada — es el mismo patron de {@code platform.spi.tenant.MembershipDirectory},
  * declarado por {@code platform} e implementado por {@code organization.infrastructure.tenant}.
  *
- * <p><b>En F1 la lista de implementaciones es VACIA, y la baja siempre procede.</b> Eso no es
- * simular funcionalidad: es declarar la forma para que agregarla en F5 sea sumar una clase, no
- * rediseñar la baja. El codigo {@code 409 consultorio-has-active-references} se reserva en el
- * contrato desde ya para que su aparicion no sea un cambio de comportamiento sorpresivo para el
- * frontend.
+ * <p>En F1 la lista de implementaciones era vacia y la baja siempre procedia; el codigo
+ * {@code 409 consultorio-has-active-references} quedo reservado en el contrato. Desde el
+ * paquete E-1 lo implementa {@code scheduling.infrastructure.SedeConTurnosPendientes}, y una
+ * sede con turnos pendientes ya no se da de baja.
  *
  * <p>Que debe pasar exactamente con los turnos ya reservados es una decision abierta (D-8):
  * RN-M03-003 solo dice que una sede inactiva no recibe turnos NUEVOS, y ADR-0011 (DP-04)

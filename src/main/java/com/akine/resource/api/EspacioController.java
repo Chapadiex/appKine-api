@@ -342,10 +342,10 @@ public class EspacioController {
 					REDUCIR la capacidad pasa por una comprobacion adicional contra la ocupacion \
 					ya comprometida, dentro de una transaccion que bloquea la fila del espacio. \
 					Si no alcanza, 409 espacio-capacity-below-occupancy, con los dos numeros en \
-					el cuerpo para que la pantalla pueda decir a cuanto SI se puede bajar. AVISO \
-					AL CLIENTE: mientras no exista el modulo de agenda esa ocupacion es siempre \
-					cero y toda reduccion procede; el codigo esta publicado desde ya para que su \
-					aparicion no sea un cambio de comportamiento sorpresivo.
+					el cuerpo para que la pantalla pueda decir a cuanto SI se puede bajar. La \
+					ocupacion es el PICO de turnos pendientes que se cruzan en un mismo instante \
+					de aca en adelante, no el total: dos turnos consecutivos ocupan un lugar, y \
+					ocho turnos de la misma franja ocupan ocho.
 
 					La sede del espacio NO se puede cambiar: mover un box de sede cambiaria el \
 					significado de todos los hechos historicos que lo referencian. Un espacio que \
@@ -429,10 +429,11 @@ public class EspacioController {
 					se quiere es sacarlo de servicio temporalmente, el camino es editar \
 					validUntil, no dar de baja.
 
-					El codigo espacio-has-active-references esta RESERVADO: hoy no lo emite \
-					nadie; lo emitira el modulo de agenda cuando existan turnos futuros sobre el \
-					espacio. La pantalla de confirmacion de baja deberia estar preparada para \
-					mostrarlo.
+					Si el espacio tiene turnos pendientes (reservados, confirmados o en espera, \
+					y que todavia no terminaron), la baja responde 409 \
+					espacio-has-active-references con el tipo turnos-futuros y el pico de \
+					lugares comprometidos. La baja no cancela esos turnos en cascada: hay que \
+					resolverlos antes. La pantalla de confirmacion tiene que mostrarlo.
 
 					Exige consultorio:manage sobre esa sede.""")
 	@ApiResponses({
@@ -497,14 +498,15 @@ public class EspacioController {
 					espacio:read sobre esa sede, no consultorio:manage: lo tienen todos los \
 					roles de la sede salvo PACIENTE, que recibe 403.
 
-					LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. Esta consulta responde si el \
-					recurso esta en servicio, NO si esta libre de reservas. Los turnos y las \
-					inscripciones son de modulos que todavia no existen, asi que \
-					lugaresComprometidos es SIEMPRE 0 en esta version del contrato y \
-					lugaresDisponibles siempre igual a capacidad. Cuando la agenda exista, esos \
-					dos numeros van a cambiar solos y este contrato no cambia. Rotular \
-					disponible=true como "el box esta libre" va a ser mentira en cuanto exista la \
-					agenda.
+					LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. lugaresComprometidos es el PICO de \
+					turnos pendientes del espacio que se cruzan en un mismo instante desde el \
+					inicio de la ventana EN ADELANTE —no solo dentro de ella—, y \
+					lugaresDisponibles es capacidad menos ese pico. disponible es true si el \
+					espacio esta en servicio toda la ventana y le queda al menos un lugar. Es \
+					una cota conservadora: puede mostrar ocupado un box que en esa franja puntual \
+					esta libre, nunca al reves. Para saber si una franja concreta se puede \
+					reservar, la fuente es la agenda, no esta consulta. Las inscripciones a \
+					clases no se cuentan aca.
 
 					La ventana es semiabierta: hasta es exclusivo. Se exige hasta posterior a \
 					desde y un maximo de 31 dias, que es la unidad natural de una agenda; sin \

@@ -22,9 +22,10 @@ import java.util.List;
  * {@code organization}) cuenta BLOQUES y EXCEPCIONES de disponibilidad —filas que ya existen
  * hoy en este modulo— para la pantalla de desvinculacion de un colaborador. La otra
  * ({@code DisponibilidadImpactProbe}, definida por este modulo) cuenta TURNOS de
- * {@code scheduling}, que no existe todavia, para la pantalla de edicion de disponibilidad. Que
- * las dos empiecen con "cuenta lo que queda pendiente" no las hace intercambiables: una tiene
- * datos reales para contar hoy y la otra, por diseno, siempre cero.
+ * {@code scheduling}, implementada alla desde el paquete E-1, para la pantalla de edicion de
+ * disponibilidad. Que las dos empiecen con "cuenta lo que queda pendiente" no las hace
+ * intercambiables. Para la desvinculacion, los turnos los cuenta otra sonda de
+ * {@code scheduling} ({@code ProfesionalConTurnosPendientes}) que va antes que esta.
  *
  * <h2>Que cuenta, y por que no bloquea nada</h2>
  *
