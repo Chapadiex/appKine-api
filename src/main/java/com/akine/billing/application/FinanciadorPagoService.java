@@ -13,6 +13,7 @@ import com.akine.billing.domain.exception.PresentacionSaldoInsuficienteException
 import com.akine.billing.domain.port.FinanciadorPagoRepositoryPort;
 import com.akine.billing.domain.port.JornadaCajaRepositoryPort;
 import com.akine.billing.domain.port.PresentacionRepositoryPort;
+import com.akine.billing.domain.port.TotalesDeCuentaCorriente;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
@@ -182,23 +183,14 @@ public class FinanciadorPagoService {
 		acceso.exigirOperar(actor, organizationId, consultorioId);
 		acceso.exigirFinanciador(organizationId, financiadorId);
 
-		BigDecimal presentado = BigDecimal.ZERO.setScale(2);
-		BigDecimal debitado = BigDecimal.ZERO.setScale(2);
-		BigDecimal cobrado = BigDecimal.ZERO.setScale(2);
-		BigDecimal saldo = BigDecimal.ZERO.setScale(2);
-
-		List<Presentacion> lotes = presentaciones.buscar(
-				organizationId, consultorioId, null, financiadorId, null, null, 200, 0);
-		for (Presentacion lote : lotes) {
-			presentado = presentado.add(lote.getTotalPresentado());
-			debitado = debitado.add(lote.getTotalDebitado());
-			cobrado = cobrado.add(lote.getTotalCobrado());
-			saldo = saldo.add(lote.getSaldo());
-		}
+		// La sede de la ruta solo decide el acceso: los totales son de la organizacion entera.
+		TotalesDeCuentaCorriente totales =
+				presentaciones.sumarCuentaCorriente(organizationId, financiadorId);
 
 		return new CuentaCorrienteDeFinanciador(
 				financiadorId, acceso.nombreDe(organizationId, financiadorId),
-				presentado, debitado, cobrado, saldo, lotes.size());
+				totales.presentado(), totales.debitado(), totales.cobrado(), totales.saldo(),
+				Math.toIntExact(totales.lotes()));
 	}
 
 	// =================================================================================

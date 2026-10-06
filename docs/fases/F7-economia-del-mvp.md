@@ -38,22 +38,25 @@ Migración + cambio de contrato. Etapa propia con design challenge.
 
 ## Defectos — a verificar
 
-- [ ] `FinanciadorPagoService.cuentaCorriente` filtra por `consultorioId` y pagina fijo `200, 0`
-  (alrededor de la línea 191) → desde el lote 201 los totales salen mal.
+- [x] ~~`FinanciadorPagoService.cuentaCorriente` filtra por `consultorioId` y pagina fijo `200, 0`
+  (alrededor de la línea 191) → desde el lote 201 los totales salen mal.~~ → F-1: la suma la hace
+  la base (`sumarCuentaCorriente`), cruza sedes y no pagina; `CuentaCorrienteDeFinanciadorIT`.
 
 Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `akine-integracion-total`.
-**No están corregidos**:
+**Corregidos el 06/10/2026** (PR #16, #17 y #18):
 
 - [x] ~~`PresentacionService.revisar` colapsa "deuda de otro financiador" y "deuda del paciente" en
   el mismo hallazgo `FINANCIADOR_DISTINTO`, y el remedio de cada caso es el opuesto. Arreglarlo
   agrega un valor al enum → **cambio de contrato**.~~ → F-2: nuevo hallazgo `DEUDA_DEL_PACIENTE`
   (contrato 0.48.0).
-- [ ] `debitar` mueve el saldo del lote **antes** de validar el importe del ítem; hoy solo lo salva
-  el rollback.
-- [ ] Ese rechazo sale por `GlobalExceptionHandler` y no por `BillingProblemHandler` (rompe la regla
-  "cada módulo mapea sus excepciones en su propio advice").
-- [ ] El CSV de financiadores puede no sumar al indicador `prestado`: las filas de detalle iteran
-  sobre el resumen de lotes.
+- [x] ~~`debitar` mueve el saldo del lote **antes** de validar el importe del ítem; hoy solo lo salva
+  el rollback.~~ → F-2: `PresentacionItem.exigirDebitable` corre antes del UPDATE condicional.
+- [x] ~~Ese rechazo sale por `GlobalExceptionHandler` y no por `BillingProblemHandler` (rompe la regla
+  "cada módulo mapea sus excepciones en su propio advice").~~ → F-2: `ImporteDeDebitoInvalidoException`,
+  mismo `validation-error` 400, ahora con `importe` e `importePresentado`.
+- [x] ~~El CSV de financiadores puede no sumar al indicador `prestado`: las filas de detalle iteran
+  sobre el resumen de lotes.~~ → F-2: los financiadores con prestado y sin lote en el periodo
+  también tienen fila.
 
 ## Faltantes
 
@@ -66,7 +69,10 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 - [ ] 07.05: adjunto binario del comprobante (RF-M22-003). **Decisión pendiente**: ¿alcanza la
   referencia, o se extrae el storage a `platform.spi` (refactor de `person` y `clinical`)?
 - [ ] 07.05: `egreso:manage` propio o seguir reusando `caja:operate` (**decisión pendiente**).
-- [ ] 07.05: `totalPagadoVigente` no tiene uso.
+- [x] ~~07.05: `totalPagadoVigente` no tiene uso.~~ → lo usa `SaldoDeEgresoConfrontadoIT` para
+  confrontar `saldo_pendiente`, que es para lo que existía. Ese IT destapó que **anular un pago
+  por transferencia sin caja abierta daba 500** (NPE en el log de `MovimientoCajaService.revertir`);
+  corregido en el mismo cambio.
 
 ### Frontend
 - [ ] Caja diaria: abrir, movimientos, cerrar con diferencia, reversión.

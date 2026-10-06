@@ -189,8 +189,11 @@ public class MovimientoCajaService {
 
 		auditar(actor, AuditEvents.CAJA_MOVIMIENTO_REVERTIDO, reversion, motivo, ahora);
 
+		// La jornada sale de la reversion y no de `jornada`, que es null cuando se revierte un
+		// movimiento no-efectivo sin caja abierta: leerla aca tiraba NullPointerException y hacia
+		// rollback de la anulacion entera, justo el caso que el cambio de arriba quiso habilitar.
 		log.info("Movimiento de caja revertido: originalId={} reversionId={} jornadaId={} motivo={}",
-				movimientoId, reversion.getId(), jornada.getId(), motivo);
+				movimientoId, reversion.getId(), reversion.getJornadaCajaId(), motivo);
 
 		return MovimientoCajaView.de(reversion);
 	}

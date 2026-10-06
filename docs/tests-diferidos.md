@@ -149,7 +149,7 @@ costura que lo habilita.
 
 | # | Escenario | Motivo y etapa destino |
 |---|---|---|
-| 20 | **Dos administradores configurando la misma oferta: el segundo en guardar recibe 409.** A y B leen la oferta en la misma versión; A reemplaza los profesionales; B guarda con la versión que leyó y **debe** chocar. Origen: AKINE-02.07, defecto encontrado el 30/08/2026 | **No corrido.** Exige MySQL real por Testcontainers y en esta máquina el motor de Docker no arranca sin elevación. Lo que sí está fijado en unitarias es que el camino de escritura carga la oferta por `findWithLockByIdAndOrganizationIdAndConsultorioId` —el método anotado con `OPTIMISTIC_FORCE_INCREMENT`— y que la lectura **no** lo usa. Destino: primera sesión con Docker disponible |
+| 20 | **Dos administradores configurando la misma oferta: el segundo en guardar recibe 409.** A y B leen la oferta en la misma versión; A reemplaza los profesionales; B guarda con la versión que leyó y **debe** chocar. Origen: AKINE-02.07, defecto encontrado el 30/08/2026 | **Corrido el 06/10/2026: verde.** `offering/HabilitacionesVersionForzadaIT` contra MySQL por Testcontainers: la version avanza exactamente una vez, el segundo guardado con la version vieja recibe `OptimisticLockingFailureException` (409) y, como control negativo, releyendo entra |
 
 **Por qué importa que este escenario existiera sin cubrir.** El test que había,
 `el_reemplazo_respeta_el_control_optimista`, pasa una versión desactualizada a mano y verifica que
