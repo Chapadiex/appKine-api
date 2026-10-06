@@ -42,7 +42,10 @@ para esta práctica en esta fecha?".
   en auditoría. **Decidir** tabla propia o auditoría, y escribirlo.
 - [ ] Estado de la orden médica (hoy solo vigencia).
 - [ ] Obligatoriedad de requisitos configurable por financiador o por prestación (hoy solo por convenio).
-- [ ] Contribuyente de cobertura al Paciente 360.
+- [x] ~~Contribuyente de cobertura al Paciente 360.~~ → B-5 (backend):
+  `person.application.CoberturasEnElResumenDePersona`, sección `coberturas`, por pertenencia
+  (sin permiso propio, igual que `GET .../coberturas`), solo vigentes, afiliado enmascarado. Sin
+  cambio de contrato: viaja en la estructura genérica de indicadores e hitos. Falta la parte web.
 - [ ] Catálogo global de financiadores para `PLATFORM_ADMIN` (depende del bootstrap de F1).
 
 ### Seguridad
