@@ -62,7 +62,7 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 - [ ] Pantalla para resolver solicitudes de catálogo / consola de plataforma.
 
 ### Tests
-- [ ] Unitarios de `ConsultorioService`, `EspacioService`, `CatalogoService`, `CatalogoSolicitudService` (hoy solo ITs).
+- [x] ~~Unitarios de `ConsultorioService`, `EspacioService`, `CatalogoService`, `CatalogoSolicitudService` (hoy solo ITs).~~ → 70 unitarios (Mockito, sin Spring): `EspacioServiceTest` 24, `CatalogoServiceTest` 20, `CatalogoSolicitudServiceTest` 10, `ConsultorioServiceTest` 16. Destaparon que una edición de sede amparada en soporte dejaba **dos** `SUPPORT_ACCESS_USED`; corregido en `ConsultorioService.exigirSobreLaSede`.
 - [ ] IT del escenario diferido 20 (que la `@Version` forzada de 02.07 avance contra MySQL real).
 - [ ] ITs de baja y reducción de capacidad **con turnos reales**.
 - [ ] E2E de alta → baja por cada pantalla del tramo. **No hay ni uno.**
@@ -82,5 +82,5 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 - [ ] Las cuatro sondas implementadas, con ITs que den de baja con turnos futuros y verifiquen el 409.
 - [ ] Decisión + migración del puente Oferta↔Práctica.
 - [ ] Frontend mostrando impacto de desvinculación y de cambio de disponibilidad.
-- [ ] Unitarios de los cuatro servicios y un E2E por pantalla.
+- [ ] ~~Unitarios de los cuatro servicios~~ (hechos) y un E2E por pantalla (pendiente).
 - [ ] QA manual del §6 del `CLAUDE.md` para el tramo.

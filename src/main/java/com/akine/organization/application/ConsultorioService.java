@@ -486,20 +486,20 @@ public class ConsultorioService {
 	 *
 	 * <p>El uso de soporte se registra <b>dentro</b> de la transaccion del negocio: es la regla
 	 * T-2, y aca si aplica, porque hay una mutacion que no puede quedar confirmada sin rastro.
+	 * <b>Lo registra el llamador</b>, despues del evento del negocio, igual que en el alta y la
+	 * baja. Registrarlo tambien aca dejaba DOS {@code SUPPORT_ACCESS_USED} por cada edicion
+	 * amparada en soporte, y quien reconstruye la intervencion contaba dos operaciones.
 	 */
 	private PermissionDecision exigirSobreLaSede(
 			OperatingActor actor, long organizationId, long consultorioId) {
 
-		Instant ahora = Instant.now();
-		PermissionDecision decision = permissionGuard.requirePermission(new PermissionQuery(
+		return permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(),
 				PermissionCode.CONSULTORIO_MANAGE.code(),
 				organizationId,
 				consultorioId,
 				null,
-				ahora));
-		auditarSoporte(decision, organizationId, consultorioId, actor, ahora);
-		return decision;
+				Instant.now()));
 	}
 
 	/**
