@@ -601,9 +601,9 @@ public class OrganizationProblemHandler {
 	/**
 	 * Algun modulo declaro referencias vigentes que bloquean la baja de la sede.
 	 *
-	 * <p><b>Hoy no lo emite nadie:</b> el unico bloqueo previsto son los turnos futuros y el
-	 * modulo de agenda llega en F5. El codigo se publica desde ya para que su aparicion no sea un
-	 * cambio de comportamiento sorpresivo para el frontend, que ya puede escribir el mensaje.
+	 * <p>Lo emite {@code scheduling.infrastructure.SedeConTurnosPendientes} cuando la sede tiene
+	 * turnos pendientes (paquete E-1). El codigo estaba reservado desde 02.01 y nadie lo emitia
+	 * hasta entonces.
 	 *
 	 * <p>Se publican el tipo y la cantidad de referencias: son datos del propio tenant, no
 	 * revelan nada de otros, y sin ellos el mensaje seria inaccionable.

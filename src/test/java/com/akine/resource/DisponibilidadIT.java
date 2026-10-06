@@ -2,6 +2,7 @@ package com.akine.resource;
 
 import com.akine.TestcontainersConfiguration;
 import com.akine.organization.spi.ColaboradorDesvinculacionProbe;
+import com.akine.resource.infrastructure.ResourceDesvinculacionProbe;
 import com.akine.resource.application.BloqueAltaCommand;
 import com.akine.resource.application.BloqueView;
 import com.akine.resource.application.CalendarioService;
@@ -138,7 +139,7 @@ class DisponibilidadIT {
 	private DisponibilidadExcepcionRepository excepcionRepository;
 
 	@Autowired
-	private ColaboradorDesvinculacionProbe desvinculacionProbe;
+	private ResourceDesvinculacionProbe desvinculacionProbe;
 
 	@Autowired
 	private PlatformTransactionManager transactionManager;

@@ -16,9 +16,10 @@ import java.time.LocalTime;
  * <p>Es el mismo cero estructural que {@code EspacioAvailabilityResponse} declara para
  * {@code lugaresComprometidos}, y por el mismo motivo: los turnos son del modulo
  * {@code scheduling} (F5, M12), que no existe. El servicio SI consulta
- * {@link DisponibilidadImpactProbe} en la edicion y en la baja —la interfaz tiene llamador
- * desde hoy, no es codigo muerto esperando a F5—, pero la unica implementacion registrada
- * responde {@code Impacto.ninguno()}.
+ * {@link DisponibilidadImpactProbe} en la edicion y en la baja. <b>Actualizacion (paquete
+ * E-1):</b> la implementacion ya no es la nula; {@code scheduling.infrastructure.DisponibilidadImpactoSobreTurnos}
+ * cuenta los turnos pendientes de la ventana, como cota superior. Lo de abajo queda como
+ * historia del porque.
  *
  * <p><b>Una pantalla que interprete "cero conflictos" como "se puede cambiar sin
  * consecuencias" va a dejar turnos huerfanos en cuanto exista la agenda</b>, y el bug no va a

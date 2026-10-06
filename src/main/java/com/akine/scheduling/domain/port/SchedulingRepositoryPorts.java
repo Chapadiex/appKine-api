@@ -138,6 +138,37 @@ public final class SchedulingRepositoryPorts {
 		 * Separarlos por estado es trabajo del contribuyente, no de la consulta.
 		 */
 		List<Turno> findDeLaPersona(long organizationId, long personaId, int limite);
+
+		// -----------------------------------------------------------------------------
+		// Sondas de impacto de F2 (paquete E-1)
+		// -----------------------------------------------------------------------------
+		//
+		// "Pendiente" es mas estricto que "vivo": ademas de {@code deletedAt IS NULL} exige un
+		// estado que todavia comprometa a alguien —RESERVADO, CONFIRMADO o EN_ESPERA— y que el
+		// turno no haya terminado ({@code fin > at}). AUSENTE queda afuera aunque conserve
+		// {@code deletedAt} nulo: es un hecho consumado, no un compromiso que la baja de un
+		// recurso deje huerfano. El turno EN CURSO cuenta: el paciente esta en la sala.
+
+		/** Cuantos turnos pendientes tiene la sede desde {@code at}. */
+		long contarPendientesDeLaSede(long organizationId, long consultorioId, Instant at);
+
+		/** Los turnos pendientes de un espacio desde {@code at}, para calcular el pico. */
+		List<Turno> findPendientesDelEspacio(long organizationId, long espacioId, Instant at);
+
+		/**
+		 * Los turnos pendientes de un profesional desde {@code at}, en cualquier sede de la
+		 * organizacion, del mas temprano al mas tarde.
+		 */
+		List<Turno> findPendientesDelProfesional(
+				long organizationId, long profesionalMembershipId, Instant at);
+
+		/**
+		 * Los turnos pendientes de un profesional en una sede que EMPIEZAN en
+		 * {@code [desde, hasta)}, del mas temprano al mas tarde.
+		 */
+		List<Turno> findPendientesDelProfesionalEnLaSede(
+				long organizationId, long consultorioId, long profesionalMembershipId,
+				Instant desde, Instant hasta);
 	}
 
 	/**

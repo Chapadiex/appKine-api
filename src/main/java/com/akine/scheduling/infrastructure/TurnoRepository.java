@@ -181,6 +181,89 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("limite") int limite);
 
 	// =================================================================================
+	// Sondas de impacto de F2 (paquete E-1)
+	// =================================================================================
+	//
+	// Las cuatro comparten el mismo predicado de "pendiente", repetido a la vista en cada una
+	// en vez de derivado: deletedAt IS NULL, estado comprometido y fin > :at. Ver el javadoc
+	// del puerto para por que AUSENTE no cuenta y el turno en curso si.
+
+	@Override
+	@Query("""
+			SELECT COUNT(t) FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.deletedAt IS NULL
+			   AND t.estado IN (
+			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
+			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			   AND t.fin > :at
+			""")
+	long contarPendientesDeLaSede(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("at") Instant at);
+
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.espacioId = :espacioId
+			   AND t.deletedAt IS NULL
+			   AND t.estado IN (
+			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
+			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			   AND t.fin > :at
+			 ORDER BY t.inicio ASC, t.id ASC
+			""")
+	List<Turno> findPendientesDelEspacio(
+			@Param("organizationId") long organizationId,
+			@Param("espacioId") long espacioId,
+			@Param("at") Instant at);
+
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.profesionalMembershipId = :profesionalMembershipId
+			   AND t.deletedAt IS NULL
+			   AND t.estado IN (
+			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
+			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			   AND t.fin > :at
+			 ORDER BY t.inicio ASC, t.id ASC
+			""")
+	List<Turno> findPendientesDelProfesional(
+			@Param("organizationId") long organizationId,
+			@Param("profesionalMembershipId") long profesionalMembershipId,
+			@Param("at") Instant at);
+
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.profesionalMembershipId = :profesionalMembershipId
+			   AND t.deletedAt IS NULL
+			   AND t.estado IN (
+			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
+			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			   AND t.inicio >= :desde
+			   AND t.inicio < :hasta
+			 ORDER BY t.inicio ASC, t.id ASC
+			""")
+	List<Turno> findPendientesDelProfesionalEnLaSede(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("profesionalMembershipId") long profesionalMembershipId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	// =================================================================================
 	// M23 — agregaciones de reporte (AKINE-07.06)
 	// =================================================================================
 

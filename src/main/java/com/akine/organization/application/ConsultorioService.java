@@ -442,8 +442,8 @@ public class ConsultorioService {
 			throw new LastConsultorioException(organizationId);
 		}
 
-		// 6. En F1 la lista esta vacia y esto no hace nada. Existe para que agregar el bloqueo
-		//    por turnos futuros en F5 sea sumar una clase, no rediseñar la baja.
+		// 6. Hoy la unica sonda es la de turnos pendientes de `scheduling` (paquete E-1):
+		//    entro sumando una clase, sin rediseñar la baja, que es para lo que existia el puerto.
 		Instant ahora = Instant.now();
 		exigirSinReferenciasVigentes(organizationId, consultorioId, ahora);
 
