@@ -126,7 +126,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | Versión | Paquete | Contenido previsto |
 |---|---|---|
 | `V65` | C-1 | **Usada**: `V65__c1_tratamiento_lateralidad_no_aplica.sql` — recrea `ck_tratamiento_lateralidad` con `NO_APLICA` |
-| `V66` | A-9 | Puente Oferta↔Práctica: tabla `oferta_practica` (DP-11) |
+| `V66` | A-9 | **Vacía**: A-9 la reservó y quedó por debajo de migraciones ya mergeadas (Flyway corre sin `outOfOrder`); usó `V75`. No se reusa |
 | `V67` | C-5 | **Vacía**: C-5 no la usó, porque RN-M10-002 admite varios casos activos y el unique sería un defecto. No se reusa |
 | `V68` | B-4 | Historial de estados de autorización (si DU-8 = tabla) |
 | `V69` | F-3 | **Usada**: `V69__m19_anticipos_y_reintegro.sql` — saldo a favor y anulación en `cobro`, imputación posterior en `cobro_imputacion`, tabla `cobro_reintegro`, origen `REINTEGRO` en `movimiento_caja` |
@@ -134,7 +134,8 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V71` | C-6 | `sesion_version` con tratamientos y mediciones |
 | `V72` | F-4 | Obligación del financiador, coseguro y snapshot de convenio |
 | `V73` | E-5 | **Vacía / liberada**: E-5 la reservó y entró sin migración (`notification_outbox.tipo` es `VARCHAR(40)` sin CHECK). No se reusa |
-| `V74`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
+| `V75` | A-9 | **Usada**: `V75__m27_oferta_practica.sql` — tabla `oferta_practica` (DP-11) con práctica principal sostenida por `uk_oferta_practica_principal` |
+| `V74`, `V76`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
 
 ## 7. Paquetes de trabajo
 
@@ -191,7 +192,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 
 | ID | Qué | Repo | Tam. | Dep. | Ficha |
 |---|---|---|---|---|---|
-| **A-9** | **Puente Oferta↔Práctica** (`V66`) | api + web | M | DU-1 | F2 |
+| ~~**A-9**~~ | ~~**Puente Oferta↔Práctica**~~ — **backend hecho** (`V75`, contrato 0.58.0, 06/10): tabla `oferta_practica`, `GET`/`PUT …/ofertas/{ofertaId}/practicas` y `offering.spi.PracticasDeOfertaDirectory` para C-4 y F-4; falta la pantalla | api + web | M | DU-1 | F2 |
 | A-4 | Bootstrap del `PLATFORM_ADMIN` | api | M | DU-2 | F0-F1 |
 | A-7 | Endpoint "¿tengo rol de plataforma?" + consola de solicitudes de catálogo; catálogo global de financiadores | api + web | M | A-4 | F2, F3 |
 | A-10 | UI de impacto de desvinculación y preview de turnos al editar disponibilidad | web | M | E-1 | F2 |

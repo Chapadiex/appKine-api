@@ -12,7 +12,7 @@
 | 02.03 Colaboradores | PARCIAL | 70 | ~~La desvinculación no cuenta turnos~~ (E-1); la UI no muestra el impacto |
 | 02.04 Disponibilidad | PARCIAL | 80 | ~~`DisponibilidadImpactProbeSinAgenda` sigue devolviendo `ninguno()`~~ (E-1) |
 | 02.05 Catálogos | PARCIAL | 75 | `nomenclador_item` sin consumidor; resolver solicitudes sin pantalla |
-| 02.06 Servicio y oferta | PARCIAL | 80 | **No existe el puente Oferta↔Práctica**; `esquema_cobro` sin interpretar |
+| 02.06 Servicio y oferta | PARCIAL | 80 | ~~No existe el puente Oferta↔Práctica~~ (A-9, `V75`); `esquema_cobro` sin interpretar |
 | 02.07 Habilitaciones | PARCIAL | 70 | ~~Escenario diferido 20 sin IT~~ → `HabilitacionesVersionForzadaIT` desde `7dcae17` (PR #23): la versión forzada avanza una vez por reemplazo contra MySQL |
 
 Todas tienen backend **y** pantallas. Lo que falta es lo que cada etapa dejó "para cuando exista F5"
@@ -38,9 +38,12 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 
 ### Backend
 - [x] ~~Implementar las cuatro sondas contra `scheduling` (y dejar el punto de extensión para `activity`).~~ E-1. Sede, espacio y colaborador se inyectan como lista: `activity` suma la suya con una clase. La de disponibilidad es bean único por diseño (`resource.spi.DisponibilidadImpactProbe`).
-- [ ] **Puente Oferta↔Práctica (RF-M06-008).** Ni `servicio` ni `oferta` tienen `practica_id`.
+- [x] ~~**Puente Oferta↔Práctica (RF-M06-008).** Ni `servicio` ni `oferta` tienen `practica_id`.
   Lo necesitan el plan de tratamiento (F4), el consumo de autorizaciones (F6) y el arancel (F7).
-  **Requiere decisión del usuario** y migración.
+  **Requiere decisión del usuario** y migración.~~ → A-9 (DP-11): tabla `oferta_practica` (`V75`)
+  con práctica principal, `GET`/`PUT /consultorios/{id}/ofertas/{ofertaId}/practicas` (contrato
+  0.58.0) y `offering.spi.PracticasDeOfertaDirectory` para C-4 y F-4. Diseño en
+  [AKINE-A-9-oferta-practica.md](../diseno/AKINE-A-9-oferta-practica.md). Falta la pantalla.
 - [ ] Decidir el uso de `nomenclador_item`: hoy `convenio_arancel` (`V43`) referencia la práctica,
   no una versión de nomenclador, así que la regla "convenios referencian versión/vigencia" no se cumple.
 - [ ] `esquema_cobro` se guarda y nadie lo interpreta (se retoma en F9 / 08.06).
@@ -82,7 +85,7 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 ## Para cerrar la fase
 
 - [x] ~~Las cuatro sondas implementadas, con ITs que den de baja con turnos futuros y verifiquen el 409.~~ E-1, `SondasDeImpactoIT`: 409 en sede y espacio (baja y capacidad); desvinculación y disponibilidad informan, no bloquean (RN-M05-004).
-- [ ] Decisión + migración del puente Oferta↔Práctica.
+- [x] ~~Decisión + migración del puente Oferta↔Práctica.~~ DP-11 + `V75` (A-9).
 - [ ] Frontend mostrando impacto de desvinculación y de cambio de disponibilidad.
 - [ ] ~~Unitarios de los cuatro servicios~~ (hechos) y un E2E por pantalla (pendiente).
 - [ ] QA manual del §6 del `CLAUDE.md` para el tramo.

@@ -372,7 +372,7 @@ utiliza una o más Prácticas durante sus atenciones"*.
 duplicar ofertas. `plan_item.practica_id`: resuelve el plan pero deja sin práctica a las
 sesiones sin plan y no sirve para arancel ni cobertura por oferta.
 
-**Desbloquea:** A-9 (`V66`) → B-3, C-4, F-4.
+**Desbloquea:** A-9 (reservó `V66`; usó `V75`, implementado el 06/10/2026 — `docs/diseno/AKINE-A-9-oferta-practica.md`) → B-3, C-4, F-4.
 
 ## DP-12 — Consumo de autorizaciones: una unidad por autorización involucrada (DU-4)
 
