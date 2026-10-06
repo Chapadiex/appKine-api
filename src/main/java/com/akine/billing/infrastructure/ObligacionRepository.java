@@ -133,12 +133,16 @@ public interface ObligacionRepository
 	 * <p>Ni suma al producido ni desaparece. Es lo que responde el caso de QA "correcciones
 	 * posteriores": alguien que ve el mes pasado con tres anulaciones entiende por que el total
 	 * bajo, en vez de sospechar del reporte.
+	 *
+	 * <p>Anular no es dar de baja: {@code anular} no toca {@code deletedAt}. Por eso el filtro de
+	 * baja logica va igual que en el producido; sin el, una fila dada de baja seguia sumando aca.
 	 */
 	@Query("""
 			SELECT SUM(o.importeOriginal) FROM Obligacion o
 			 WHERE o.organizationId = :organizationId
 			   AND o.consultorioId = :consultorioId
 			   AND o.estado = com.akine.billing.domain.EstadoObligacion.ANULADA
+			   AND o.deletedAt IS NULL
 			   AND o.devengadaEn >= :desde
 			   AND o.devengadaEn < :hasta
 			""")
