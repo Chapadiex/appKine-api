@@ -2,6 +2,7 @@ package com.akine.billing.infrastructure;
 
 import com.akine.billing.domain.Presentacion;
 import com.akine.billing.domain.port.PresentacionRepositoryPort;
+import com.akine.billing.domain.port.TotalesDeCuentaCorriente;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -91,6 +92,25 @@ public interface PresentacionRepository
 			@Param("organizationId") long organizationId,
 			@Param("financiadorId") long financiadorId,
 			@Param("facturaNumero") String facturaNumero);
+
+	/**
+	 * Sin filtrar por sede a proposito, igual que {@link #existeFactura}: la relacion comercial con
+	 * el financiador es de la organizacion. La sirve {@code ix_presentacion_cuenta_corriente} de
+	 * V56, que tampoco lleva la sede.
+	 */
+	@Override
+	@Query("""
+			SELECT new com.akine.billing.domain.port.TotalesDeCuentaCorriente(
+			           SUM(p.totalPresentado), SUM(p.totalDebitado), SUM(p.totalCobrado),
+			           SUM(p.saldo), COUNT(p))
+			  FROM Presentacion p
+			 WHERE p.organizationId = :organizationId
+			   AND p.financiadorId = :financiadorId
+			   AND p.deletedAt IS NULL
+			""")
+	TotalesDeCuentaCorriente sumarCuentaCorriente(
+			@Param("organizationId") long organizationId,
+			@Param("financiadorId") long financiadorId);
 
 	/** RF-M21-007. Ver el puerto: cero filas es la respuesta, no un error tecnico. */
 	@Modifying(flushAutomatically = true, clearAutomatically = true)

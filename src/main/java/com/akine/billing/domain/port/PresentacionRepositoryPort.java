@@ -37,6 +37,13 @@ public interface PresentacionRepositoryPort {
 	boolean existeFactura(long organizationId, long financiadorId, String facturaNumero);
 
 	/**
+	 * La cuenta corriente de un financiador en toda la organizacion: cruza sedes y no pagina.
+	 * Sumar en la base, y no recorriendo una pagina de lotes, es lo que evita que los totales
+	 * dependan de cuantos lotes haya.
+	 */
+	TotalesDeCuentaCorriente sumarCuentaCorriente(long organizationId, long financiadorId);
+
+	/**
 	 * Descuenta del saldo por un <b>pago</b> recibido (RF-M21-007).
 	 *
 	 * <p>Suma a {@code total_cobrado} y resta del saldo en la misma sentencia. Solo sobre un lote
