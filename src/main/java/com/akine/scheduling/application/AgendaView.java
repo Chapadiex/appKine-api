@@ -47,7 +47,7 @@ public record AgendaView(
 	 *                     al menos un espacio habilitado y vigente, pero no clava cual: elegirlo
 	 *                     es parte de la reserva y tiene que ocurrir bajo el mismo lock que la
 	 *                     crea, o dos busquedas concurrentes prometen el mismo box. Lo llena 05.02
-	 * @param cupoLibre    hoy siempre igual a {@code cupoTotal}: no existen los turnos todavia
+	 * @param cupoLibre    {@code cupoTotal} menos las reservas vivas que arrancan en ese instante
 	 */
 	public record SlotDisponible(
 			Instant desde,

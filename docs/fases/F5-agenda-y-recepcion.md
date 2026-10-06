@@ -55,7 +55,7 @@ estados de recepción propia, como pedía DP-05.
 - [ ] Los dos E2E de agenda (`agenda-buscador`, `agenda-reserva`) **sintetizan el HTTP con
   `route.fulfill`**: no prueban el backend. Reescribirlos contra el servidor real.
 - [ ] E2E de ciclo de turno y de recepción → espera.
-- [ ] `ReservaProbeSobreTurnos` (corregida el 28/09) solo tiene unitarios: IT contra MySQL.
+- [x] ~~`ReservaProbeSobreTurnos` (corregida el 28/09) solo tiene unitarios: IT contra MySQL.~~ → `AgendaDescuentaReservasIT`, por el buscador; verificado por mutación (con la sonda vacía falla).
 
 ## Desvíos
 
