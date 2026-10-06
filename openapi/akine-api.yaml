@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.47.0
+  version: 0.48.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -26690,6 +26690,7 @@ components:
           enum:
           - OBLIGACION_ANULADA
           - SIN_SALDO
+          - DEUDA_DEL_PACIENTE
           - FINANCIADOR_DISTINTO
           - SEDE_DISTINTA
           - FUERA_DEL_PERIODO

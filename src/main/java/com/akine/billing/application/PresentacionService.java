@@ -541,7 +541,7 @@ public class PresentacionService {
 	}
 
 	/**
-	 * Las seis comprobaciones de RF-M21-003 que el sistema puede hacer hoy.
+	 * Las comprobaciones de RF-M21-003 que el sistema puede hacer hoy.
 	 *
 	 * <p>Faltan los tres requisitos documentales del convenio —orden, autorizacion y credencial—,
 	 * que viven en {@code ArancelCongelado} y que el devengado nunca copio a {@code obligacion}.
@@ -556,8 +556,10 @@ public class PresentacionService {
 		if (obligacion.getSaldo().signum() <= 0) {
 			return Optional.of(HallazgoDeValidacion.SIN_SALDO);
 		}
-		if (obligacion.getResponsable() != Responsable.FINANCIADOR
-				|| !presentacion.getFinanciadorId().equals(obligacion.getFinanciadorId())) {
+		if (obligacion.getResponsable() != Responsable.FINANCIADOR) {
+			return Optional.of(HallazgoDeValidacion.DEUDA_DEL_PACIENTE);
+		}
+		if (!presentacion.getFinanciadorId().equals(obligacion.getFinanciadorId())) {
 			return Optional.of(HallazgoDeValidacion.FINANCIADOR_DISTINTO);
 		}
 		if (!presentacion.getConsultorioId().equals(obligacion.getConsultorioId())) {
