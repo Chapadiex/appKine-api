@@ -153,12 +153,21 @@ public interface InscripcionClaseRepository
 	 *
 	 * <p>Nativa por lo mismo que el cupo: el valor esta en el {@code WHERE}, no en una lectura
 	 * previa que podria quedar vieja entre que se lee y se escribe.
+	 *
+	 * <p><b>{@code version = version + 1} no es decoracion</b> (escenario 45, corrido el 06/10/2026).
+	 * Sin el, la baja concurrente de la persona promovida —que la leyo como {@code LISTA_ESPERA}
+	 * antes de la promocion y por eso no libera cupo— flusheaba {@code CANCELADA} con su version
+	 * vieja todavia valida y pisaba la promocion: el lugar quedaba otorgado sin recibo, para siempre.
+	 * Con la version movida, ese flush pierde con un conflicto optimista (409) y el reintento del
+	 * cliente cancela una inscripcion con lugar, que si lo libera. Es el mismo mecanismo que
+	 * {@link #cancelarTodasPorClaseCancelada} ya cubria.
 	 */
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query(value = """
 			UPDATE inscripcion_clase
 			   SET estado = 'RESERVADA',
-			       promovida_en = :ahora
+			       promovida_en = :ahora,
+			       version = version + 1
 			 WHERE id = :inscripcionId
 			   AND organization_id = :organizationId
 			   AND estado = 'LISTA_ESPERA'
