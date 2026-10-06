@@ -352,6 +352,33 @@ class FinanciadoresEnElReporteTest {
 				.contains("zona de la sede");
 	}
 
+	@Test
+	@DisplayName("Un financiador con prestado y sin lote en el periodo tambien tiene su fila")
+	void el_detalle_suma_al_indicador_prestado() {
+		// SWISS tiene deuda devengada pero ningun lote que toque el periodo. Si las filas salieran
+		// solo del resumen de lotes, su prestado quedaria en el indicador y no en el detalle: el
+		// CSV no sumaria y el operador no podria ver de quien es la brecha.
+		given(obligaciones.sumarPrestadoPorFinanciadorEnElReporte(
+				anyLong(), anyLong(), any(), any(), anyInt()))
+				.willReturn(List.<Object[]>of(
+						new Object[] {OSDE, bd("100000")},
+						new Object[] {SWISS, bd("30000")}));
+		given(presentaciones.resumirPorFinanciadorEnElReporte(
+				anyLong(), anyLong(), any(), any(), anyInt()))
+				.willReturn(List.<Object[]>of(
+						new Object[] {OSDE, bd("50000"), bd("0"), bd("0"), bd("0"), bd("50000")}));
+
+		AporteDeReporte aporte = contributor.aportar(consulta());
+
+		assertThat(aporte.filas()).extracting(FilaDeReporte::celdas).containsExactly(
+				List.of("11", "100000", "50000", "0", "0", "0", "50000"),
+				List.of("22", "30000", "0", "0", "0", "0", "0"));
+		BigDecimal prestadoDelDetalle = aporte.filas().stream()
+				.map(fila -> new BigDecimal(fila.celdas().get(1)))
+				.reduce(BigDecimal.ZERO, BigDecimal::add);
+		assertThat(prestadoDelDetalle).isEqualByComparingTo(valorDe(aporte, "prestado"));
+	}
+
 	// =================================================================================
 	// Fixtures
 	// =================================================================================

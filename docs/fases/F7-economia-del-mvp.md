@@ -51,8 +51,9 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
   el rollback.
 - [ ] Ese rechazo sale por `GlobalExceptionHandler` y no por `BillingProblemHandler` (rompe la regla
   "cada módulo mapea sus excepciones en su propio advice").
-- [ ] El CSV de financiadores puede no sumar al indicador `prestado`: las filas de detalle iteran
-  sobre el resumen de lotes.
+- [x] ~~El CSV de financiadores puede no sumar al indicador `prestado`: las filas de detalle iteran
+  sobre el resumen de lotes.~~ → F-2: los financiadores con prestado y sin lote en el periodo
+  también tienen fila.
 
 ## Faltantes
 
