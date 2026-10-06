@@ -13,7 +13,7 @@
 | 02.04 Disponibilidad | PARCIAL | 80 | ~~`DisponibilidadImpactProbeSinAgenda` sigue devolviendo `ninguno()`~~ (E-1) |
 | 02.05 Catálogos | PARCIAL | 75 | `nomenclador_item` sin consumidor; resolver solicitudes sin pantalla |
 | 02.06 Servicio y oferta | PARCIAL | 80 | **No existe el puente Oferta↔Práctica**; `esquema_cobro` sin interpretar |
-| 02.07 Habilitaciones | PARCIAL | 70 | Escenario diferido 20 sin IT |
+| 02.07 Habilitaciones | PARCIAL | 70 | ~~Escenario diferido 20 sin IT~~ → `HabilitacionesVersionForzadaIT` desde `7dcae17` (PR #23): la versión forzada avanza una vez por reemplazo contra MySQL |
 
 Todas tienen backend **y** pantallas. Lo que falta es lo que cada etapa dejó "para cuando exista F5"
 y F5 nunca conectó.
@@ -46,8 +46,10 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 - [ ] `esquema_cobro` se guarda y nadie lo interpreta (se retoma en F9 / 08.06).
 - [ ] La capacidad efectiva de habilitaciones no considera clases; no se valida disciplina del profesional.
 - [x] ~~`ofertaVersion` en `HabilitacionesResponse`.~~ → lectura y los dos reemplazos la devuelven (contrato 0.50.0). Tras un reemplazo es `leída + 1`, la que queda después del commit, así que dos reemplazos se encadenan sin releer; lo prueba `HabilitacionesVersionForzadaIT` contra MySQL.
-- [ ] 02.07: el reemplazo de habilitaciones confía en `OPTIMISTIC_FORCE_INCREMENT` sobre la oferta,
-  y contra MySQL eso no avanza la versión. Ver [deuda-force-increment.md](deuda-force-increment.md).
+- [x] ~~02.07: el reemplazo de habilitaciones confía en `OPTIMISTIC_FORCE_INCREMENT` sobre la oferta,
+  y contra MySQL eso no avanza la versión.~~ → **No aplica** (06/10/2026): medido contra MySQL, la
+  versión de la oferta avanza una vez por reemplazo (`HabilitacionesVersionForzadaIT`, PR #23 y
+  #36). Ver la corrección en [deuda-force-increment.md](deuda-force-increment.md).
 - [ ] Endpoint que le diga al frontend si quien mira tiene rol de plataforma (prerrequisito de RF-M06-005).
 - [ ] Primer box + horario general en el alta de sede (CA-M03-002).
 
@@ -64,7 +66,7 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 ### Tests
 - [x] ~~Unitarios de `ConsultorioService`, `EspacioService`, `CatalogoService`, `CatalogoSolicitudService` (hoy solo ITs).~~ → 70 unitarios (Mockito, sin Spring): `EspacioServiceTest` 24, `CatalogoServiceTest` 20, `CatalogoSolicitudServiceTest` 10, `ConsultorioServiceTest` 16. Destaparon que una edición de sede amparada en soporte dejaba **dos** `SUPPORT_ACCESS_USED`; corregido en `ConsultorioService.exigirSobreLaSede`.
 - [x] ~~IT del escenario diferido 20 (que la `@Version` forzada de 02.07 avance contra MySQL real).~~ → `HabilitacionesVersionForzadaIT`: avanza una sola vez y el segundo guardado choca.
-- [ ] ITs de baja y reducción de capacidad **con turnos reales**.
+- [x] ~~ITs de baja y reducción de capacidad **con turnos reales**.~~ → `SondasDeImpactoIT` (E-1, PR #38), por HTTP contra MySQL.
 - [ ] E2E de alta → baja por cada pantalla del tramo. **No hay ni uno.**
 
 ## Desvíos
