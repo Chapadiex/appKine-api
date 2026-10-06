@@ -302,6 +302,47 @@ y sin TLS). El perfil `local` envía **de verdad** contra él: las activaciones,
 invitaciones aparecen ahí con su enlace de un solo uso, y nada sale de la máquina. Para volver
 al adaptador que solo registra en el log: `AKINE_EMAIL_MODE=log`.
 
+### Imagen Docker (G-3)
+
+`Dockerfile` multi-stage en la raíz: compila con el `mvnw` del repo sobre `eclipse-temurin:21-jdk`
+(sin tests: corren en el CI) y corre el jar en capas sobre `eclipse-temurin:21-jre`, como el
+usuario sin privilegios `akine` (UID 10001), con `-XX:MaxRAMPercentage=75.0`. La imagen **no
+lleva configuración de entorno ni secretos**: todo llega por variable de entorno al arrancar.
+
+```bash
+docker build -t akine-api:local .
+```
+
+Correrla contra el MySQL y el Mailpit de `compose.yaml` (`docker compose up -d` antes). Desde
+el contenedor, la máquina se alcanza como `host.docker.internal` (Docker Desktop; en Linux
+agregar `--add-host=host.docker.internal:host-gateway`):
+
+```bash
+docker run --rm --name akine-api -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=local \
+  -e AKINE_DB_URL='jdbc:mysql://host.docker.internal:3306/akine_local?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC' \
+  -e AKINE_DB_USER=akine -e AKINE_DB_PASSWORD=akine \
+  -e AKINE_MAIL_HOST=host.docker.internal \
+  akine-api:local
+```
+
+- **Perfil `local` solo para desarrollo.** Fuera de un perfil de desarrollo la aplicación **no
+  arranca** sin `AKINE_JWT_SECRET` (≥ 32 bytes), con `AKINE_EMAIL_MODE=smtp` y su relay
+  (`AKINE_MAIL_HOST`, `AKINE_MAIL_USER`, `AKINE_MAIL_PASSWORD`, `AKINE_MAIL_FROM`), además de
+  `AKINE_DB_*`, `AKINE_CORS_ORIGINS` y `AKINE_PUBLIC_BASE_URL`. Ver `application.yml`.
+- **Adjuntos:** la aplicación escribe en `/app/var` (`adjuntos/` y `adjuntos-clinicos/`). Sin
+  volumen montado ahí, los binarios se pierden con el contenedor.
+- **Healthcheck:** `GET /actuator/health/liveness`. El primer arranque contra una base vacía
+  aplica todas las migraciones y tarda (≈2,5 min medido el 06/10/2026), por eso el
+  `start-period` es de 120 s.
+- **JVM:** `-e JAVA_OPTS=...` reemplaza los flags por defecto.
+- **SBOM:** CycloneDX JSON, lo genera `./mvnw package` en
+  `target/classes/META-INF/sbom/application.cdx.json` y viaja embebido en el jar y en la imagen
+  (`/app/META-INF/sbom/application.cdx.json`). El job `imagen` del CI lo publica como artifact
+  `akine-api-sbom`. La imagen **no se publica** en ningún registry. **Ojo:** el goal de CycloneDX
+  exige modo online; con `./mvnw -o` se saltea con un WARNING y no falla, así que un jar
+  construido offline puede salir sin SBOM o con uno viejo. La imagen y el CI construyen online.
+
 ### Endpoints existentes
 
 | Ruta | Qué es |

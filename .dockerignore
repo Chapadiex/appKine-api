@@ -1,0 +1,57 @@
+# Contexto de build de la imagen del backend (G-3).
+#
+# El Dockerfile solo necesita mvnw, .mvn/, pom.xml y src/. Todo lo demas se excluye: achica el
+# contexto que se manda al daemon y evita que un artefacto local o un secreto termine en una
+# capa de la imagen.
+
+# Build local: la imagen compila desde cero, nunca reutiliza un target/ de la maquina.
+target/
+**/target/
+
+# Git y worktrees.
+.git/
+.gitignore
+.gitattributes
+.wt/
+.claude/
+wt-*/
+
+# CI y documentacion: no participan del build.
+.github/
+docs/
+openapi/
+*.md
+
+# IDE y sistema operativo.
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Datos locales y secretos.
+var/
+logs/
+tmp/
+*.log
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+application-secrets.yml
+application-*-secrets.yml
+
+# Infra local y la propia receta.
+compose.yaml
+Dockerfile
+.dockerignore
+mvnw.cmd

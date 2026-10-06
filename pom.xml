@@ -171,6 +171,18 @@
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
 
+			<!-- SBOM CycloneDX (G-3). Version y ejecucion las administra el parent de Spring
+			     Boot: makeAggregateBom en generate-resources, JSON, sin dependencias de test,
+			     escrito en target/classes/META-INF/sbom/application.cdx.json. Como corre antes
+			     de package, el SBOM queda ademas EMBEBIDO en el jar y por lo tanto en la imagen
+			     Docker. El CI lo publica como artifact.
+			     OJO: el goal exige modo online. Con `./mvnw -o` se SALTEA con un WARNING (no
+			     falla) y target/classes conserva el SBOM de la ultima corrida online, si la hubo. -->
+			<plugin>
+				<groupId>org.cyclonedx</groupId>
+				<artifactId>cyclonedx-maven-plugin</artifactId>
+			</plugin>
+
 			<!-- Tests unitarios y de arquitectura. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

@@ -88,6 +88,43 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # Imagen Docker del backend con su SBOM (G-3).
+  #
+  # Construye la imagen con el Dockerfile de la raiz y NO la publica en ningun registry: el job
+  # prueba que la receta compila y deja el SBOM como evidencia. Corre en paralelo con `build`:
+  # la imagen no ejecuta tests (-DskipTests), los tests son responsabilidad del otro job.
+  #
+  # El SBOM se extrae DE LA IMAGEN y no de target/: asi el artifact es exactamente el inventario
+  # de dependencias que viaja dentro del jar construido, no uno de un build paralelo.
+  imagen:
+    name: Imagen Docker y SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Construir imagen
+        run: docker build --tag akine-api:${{ github.sha }} .
+
+      - name: Extraer el SBOM embebido en la imagen
+        run: |
+          id=$(docker create akine-api:${{ github.sha }})
+          mkdir -p sbom
+          docker cp "$id:/app/META-INF/sbom/application.cdx.json" sbom/akine-api.cdx.json
+          docker rm "$id"
+          test -s sbom/akine-api.cdx.json
+          echo "Imagen: $(docker image inspect akine-api:${{ github.sha }} --format '{{.Size}}') bytes"
+
+      - name: Publicar SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: akine-api-sbom
+          path: sbom/akine-api.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+
   # PENDIENTE(AKINE-00.02): activar cuando exista la instancia de SonarQube y su token.
   # El job queda declarado para que la etapa siguiente solo tenga que descomentarlo y
   # cargar el secret, sin rediscutir el diseno del pipeline.
