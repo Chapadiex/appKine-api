@@ -1,6 +1,7 @@
 package com.akine.scheduling.domain.port;
 
 import com.akine.scheduling.domain.AgendaSede;
+import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.Recepcion;
 import com.akine.scheduling.domain.RecepcionEvento;
 import com.akine.scheduling.domain.Turno;
@@ -149,6 +150,13 @@ public final class SchedulingRepositoryPorts {
 		 */
 		List<Turno> findDeLaSerie(long organizationId, long serieId);
 
+		/**
+		 * Los turnos de un lote de series, en cualquier estado (AKINE E-8). Es lo que la bandeja de
+		 * series resume —total, pendientes, proximo—: una consulta para toda la pagina, no una por
+		 * serie. Una serie tiene a lo sumo 52 turnos, asi que una pagina trae pocos miles de filas.
+		 */
+		List<Turno> findDeLasSeries(long organizationId, Collection<Long> serieIds);
+
 		// -----------------------------------------------------------------------------
 		// Sondas de impacto de F2 (paquete E-1)
 		// -----------------------------------------------------------------------------
@@ -204,6 +212,22 @@ public final class SchedulingRepositoryPorts {
 		Optional<TurnoSerie> findByIdInScope(long organizationId, long consultorioId, long serieId);
 
 		Optional<TurnoSerie> findByIdempotencyKey(long organizationId, String idempotencyKey);
+
+		/**
+		 * Las series de una sede, mas nuevas primero, para la bandeja (AKINE E-8).
+		 *
+		 * @param personaId filtro opcional por paciente; {@code null} = todas
+		 * @param estado    filtro opcional por estado DERIVADO: una serie es {@code VIGENTE} si le
+		 *                  queda un turno RESERVADO o CONFIRMADO, vivo y con {@code inicio > ahora};
+		 *                  {@code null} = todas
+		 * @param pagina    base cero
+		 */
+		List<TurnoSerie> listar(
+				long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado,
+				Instant ahora, int pagina, int tamano);
+
+		/** El total del mismo filtro que {@link #listar}. */
+		long contar(long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado, Instant ahora);
 	}
 
 	// =================================================================================

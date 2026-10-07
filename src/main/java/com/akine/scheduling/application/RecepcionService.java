@@ -169,7 +169,8 @@ public class RecepcionService {
 				.stream()
 				.collect(Collectors.toMap(Recepcion::getTurnoId, Function.identity()));
 
-		// El prepago de cada recepcion (E-6): una consulta a billing para todo el lote.
+		// El prepago de cada turno, con o sin recepcion (E-6, E-8): una consulta a billing para todo
+		// el lote y una por oferta distinta.
 		Map<Long, PrepagoView> prepagoDe = prepago.de(organizationId, consultorioId, lote, recepcionDe);
 
 		Map<Long, String> nombreDeOferta = new HashMap<>();
@@ -195,7 +196,8 @@ public class RecepcionService {
 						recepcionDe.containsKey(turno.getId())
 								? RecepcionView.de(recepcionDe.get(turno.getId()),
 										prepagoDe.get(turno.getId()))
-								: null))
+								: null,
+						prepagoDe.get(turno.getId())))
 				.toList();
 	}
 
@@ -211,11 +213,11 @@ public class RecepcionService {
 	 * cada consumidor a decidir que poner; devolver la lista sin ese turno escondería una fila que
 	 * ocupa un lugar real en la agenda del profesional.
 	 */
-	private static String nombreDe(PacienteSnapshot paciente) {
+	static String nombreDe(PacienteSnapshot paciente) {
 		return paciente == null ? "(ficha no disponible)" : paciente.nombreCompleto();
 	}
 
-	private static String documentoDe(PacienteSnapshot paciente) {
+	static String documentoDe(PacienteSnapshot paciente) {
 		if (paciente == null || paciente.numeroDocumento() == null) {
 			return null;
 		}
