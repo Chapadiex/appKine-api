@@ -2,6 +2,7 @@ package com.akine.organization.api;
 
 import com.akine.organization.api.dto.AuthorizedContextResponse;
 import com.akine.organization.api.dto.EffectivePermissionsResponse;
+import com.akine.organization.api.dto.MyPlatformRoleResponse;
 import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.spi.AccountContextDirectory;
 import com.akine.organization.spi.PermissionEvaluator;
@@ -168,5 +169,46 @@ public class MeContextController {
 						actor.accountId(),
 						organizationId,
 						authorizationGuard.consultorioDelContexto())));
+	}
+
+	@GetMapping("/platform-role")
+	@Operation(
+			operationId = "getMyPlatformRole",
+			summary = "Si la cuenta administra la plataforma",
+			description = """
+					Responde si la cuenta autenticada tiene un rol de plataforma vigente. Es lo \
+					que el frontend consulta para decidir si muestra la consola de plataforma \
+					(bandeja de solicitudes de catalogo, catalogo global) o el selector de \
+					contexto.
+
+					El rol NO sale del token: se revalida contra la base en este mismo request, \
+					asi que un rol revocado hace un minuto ya responde false aunque el access \
+					token siga vigente.
+
+					No requiere contexto de tenant: se consulta con el token pre_context, antes \
+					de elegir donde trabajar. Con sesion responde siempre 200 —false no es un \
+					error—. No se audita: es la cuenta preguntando por si misma.
+
+					Es insumo de UX, no un mecanismo de seguridad: cada endpoint de plataforma \
+					verifica el rol por su cuenta.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "200",
+					description = "Si la cuenta tiene el rol de plataforma vigente",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = MyPlatformRoleResponse.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "No hay sesion autenticada. Nunca 401",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<MyPlatformRoleResponse> platformRole() {
+		// El principal lo armo JwtAuthenticationFilter revalidando platform_role en este mismo
+		// request (ADR-0020): no hace falta otra consulta, y leer el claim del token seria
+		// convertir la ventana de revocacion del permiso mas alto en el TTL del token.
+		return ResponseEntity.ok(new MyPlatformRoleResponse(
+				ApiActor.current(tenantContextHolder).platformAdmin()));
 	}
 }

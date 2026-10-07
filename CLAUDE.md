@@ -525,8 +525,11 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
 - **`consultarElegibilidadAdministrativa` no tiene consumidor.** Responde, pero ni turno ni sesión
   ni obligación la consultan. Es el trabajo de **04.05**.
 - **RF-M06-005 no cierra de punta a punta:** resolver un pedido al catálogo de la plataforma no
-  tiene pantalla, y su prerrequisito es un endpoint que le diga al frontend si quien mira tiene rol
-  de plataforma.
+  tiene pantalla. ~~Su prerrequisito es un endpoint que le diga al frontend si quien mira tiene rol
+  de plataforma.~~ El backend está completo desde A-7 (contrato 0.64.0): `GET /me/platform-role`
+  sin contexto, y aprobar una solicitud publica el concepto global en la misma transacción.
+- **Catálogo global de financiadores (F3):** diseñado en A-7 y sin implementar, espera **DU-13**
+  —referencia con `owner_key` o copia adoptada— (`docs/diseno/AKINE-A-7-plataforma.md` §3).
 - **CA-M03-002 parcialmente cubierto:** RF-M03-002 pide consultorio + primer box + horario en un
   acto; el box lo entregó 02.02 y el horario general va a F5.
 

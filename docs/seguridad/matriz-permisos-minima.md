@@ -451,8 +451,13 @@ al que acceder. Es el mismo tratamiento que el catálogo de planes (`plan`, `pla
   mismo: los crea. Recibe 403.
 - **Un administrador de tenant no puede promover su concepto a global**, ni al crearlo ni
   editándolo. El camino es la solicitud, y la decide la plataforma.
-- **Aprobar una solicitud no crea el concepto global.** La aprobación es una decisión registrada;
-  la publicación del concepto pasa por el alta normal, con el rol de plataforma.
+- ~~**Aprobar una solicitud no crea el concepto global.** La aprobación es una decisión registrada;
+  la publicación del concepto pasa por el alta normal, con el rol de plataforma.~~ **Cambiado por
+  AKINE-A-7 (07/10/2026):** aprobar **publica** el concepto global en la misma transacción, con el
+  código, nombre y descripción que fija la plataforma en la resolución (los propuestos por el centro
+  son solo el default), por el mismo alta global y con el mismo rol de plataforma. Si la publicación
+  choca, la solicitud sigue pendiente. **No cambia ningún permiso**: resolver sigue siendo del rol de
+  plataforma y la bandeja sigue sin pasar por soporte. Ver `docs/diseno/AKINE-A-7-plataforma.md` §2.
 
 ---
 
