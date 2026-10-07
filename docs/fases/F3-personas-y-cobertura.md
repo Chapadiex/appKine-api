@@ -51,6 +51,10 @@ para esta práctica en esta fecha?".
   (sin permiso propio, igual que `GET .../coberturas`), solo vigentes, afiliado enmascarado. Sin
   cambio de contrato: viaja en la estructura genérica de indicadores e hitos. Falta la parte web.
 - [ ] Catálogo global de financiadores para `PLATFORM_ADMIN` (depende del bootstrap de F1).
+  **Diseñado en A-7 y no implementado: decisión pendiente DU-13** —el RF no dice si el centro
+  *referencia* la fila global (`owner_key`, el camino de la cabecera de `V41`, que reabre todo
+  `contracting`) o la *adopta* como copia (tabla global aparte, recomendada)—. Opciones, costos y
+  alcance mínimo en [AKINE-A-7-plataforma.md](../diseno/AKINE-A-7-plataforma.md) §3.
 
 ### Seguridad
 - [ ] Alcance `OWN` / `paciente:read`: hoy una membership con rol `PACIENTE` lee el padrón entero

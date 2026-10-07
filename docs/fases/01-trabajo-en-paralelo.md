@@ -117,6 +117,7 @@ Ninguna se inventa en silencio: cada una sale como ADR o DP escrita (`AGENT.md` 
 | **DU-10** | `egreso:manage` propio o `caja:operate`; adjunto binario del egreso (¿storage a `platform.spi`?) | F-5 | ola 2 |
 | **DU-11** | Parámetros obligatorios por práctica; ¿un observador que falla debe hacer fallar el cierre? | C-8 | ola 2 |
 | **DU-12** | ¿F9 espera al gate del MVP? (DP-07) y `clase:*` vs `turno:*` | F9 entera | después del gate |
+| **DU-13** | Catálogo global de financiadores: el centro **referencia** la fila global (`owner_key` en `financiador`/`plan_cobertura`) o la **adopta** como copia (tabla global aparte). Recomendada la copia; opciones y costos en `docs/diseno/AKINE-A-7-plataforma.md` §3 | la parte de A-7 que no entró (F3) | ola 2 |
 
 ## 6. Migraciones reservadas
 
@@ -139,7 +140,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V76` | C-4 | **Usada**: `V76__c4_autorizacion_alerta_consumo_a_revisar.sql` — tabla `autorizacion_alerta` (DP-13) e índice `ix_movimiento_origen` en `autorizacion_movimiento` |
 | `V77` | F-4 | **Usada**: `V77__f4_obligacion_del_financiador.sql` — `obligacion.concepto` (`PARTICULAR`/`FINANCIADOR`/`COSEGURO`), práctica y cobertura aplicadas, alerta DP-11 y el snapshot entero del convenio y del arancel (los tres importes y los requisitos de RF-M21-003), con cinco CHECK de coherencia |
 | `V78` | E-4 | **Usada**: `V78__m13_recepcion_maquina_propia.sql` — tablas `recepcion` (una vigente por turno, `uk_recepcion_turno_vigente`) y `recepcion_evento` (append-only), migración de los turnos `EN_ESPERA` y de los cancelados con llegada, `ck_turno_estado` sin `EN_ESPERA`. No borra columnas de `turno` (ADR-0007) |
-| `V79` | libre | Tomar la siguiente libre y anotarla acá |
+| `V79` | libre | A-7 la tuvo asignada y entró sin migración: sigue libre. Tomar la siguiente libre y anotarla acá |
 | `V80` | B-3 | **Usada**: `V80__b3_arancel_por_oferta_y_precio_particular.sql` — `convenio_arancel.oferta_id` nullable (`fk_convenio_arancel_oferta`, `ix_convenio_arancel_oferta`; dueño `contracting`) y tabla `oferta_precio_particular` (precio particular por vigencia; dueño `offering`). Los dos no-solapamientos los hace cumplir un lock, ningún índice |
 
 ## 7. Paquetes de trabajo
@@ -199,7 +200,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 |---|---|---|---|---|---|
 | ~~**A-9**~~ | ~~**Puente Oferta↔Práctica**~~ — **backend hecho** (`V75`, contrato 0.58.0, 06/10): tabla `oferta_practica`, `GET`/`PUT …/ofertas/{ofertaId}/practicas` y `offering.spi.PracticasDeOfertaDirectory` para C-4 y F-4; falta la pantalla | api + web | M | DU-1 | F2 |
 | ~~A-4~~ | ~~Bootstrap del `PLATFORM_ADMIN`~~ — **hecho** (07/10, DP-14): `AKINE_BOOTSTRAP_ADMIN_EMAIL` re-apunta la cuenta de `V15` y le encola el enlace de activación al arrancar; sin migración ni cambio de contrato (`docs/diseno/AKINE-A-4-bootstrap.md`) | api | M | DU-2 | F0-F1 |
-| A-7 | Endpoint "¿tengo rol de plataforma?" + consola de solicitudes de catálogo; catálogo global de financiadores | api + web | M | A-4 | F2, F3 |
+| A-7 | Endpoint "¿tengo rol de plataforma?" + consola de solicitudes de catálogo; catálogo global de financiadores — **backend hecho** (contrato 0.64.0, sin migración): `GET /me/platform-role` y aprobar una solicitud publica el concepto global. El catálogo global de financiadores quedó **diseñado y no implementado**: espera DU-13 (`docs/diseno/AKINE-A-7-plataforma.md`). Falta la pantalla | api + web | M | A-4 | F2, F3 |
 | A-10 | UI de impacto de desvinculación y preview de turnos al editar disponibilidad | web | M | E-1 | F2 |
 | B-3 | Cobertura aplicable por oferta (RF-M08-006/007); arancel por oferta; importación masiva de convenio — **backend hecho** (`V80`, contrato 0.65.0, 07/10): `GET /personas/{id}/cobertura-aplicable`, arancel por oferta en el convenio (RF-M16-008) y precio particular por vigencia (RF-M16-009); la importación masiva (RF-M16-007) quedó diseñada y fuera (`docs/diseno/AKINE-B-3-cobertura-por-oferta.md`); falta la pantalla | api + web | L | A-9 | F3 |
 | B-4 | Historial de estados de autorización (`V68`); estado de la orden médica | api | M | DU-8 | F3 |

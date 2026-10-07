@@ -168,4 +168,40 @@ class MeContextControllerTest {
 						org.mockito.ArgumentMatchers.anyLong(),
 						org.mockito.ArgumentMatchers.any());
 	}
+
+	// =================================================================================
+	// GET /me/platform-role (AKINE-A-7)
+	// =================================================================================
+
+	@Test
+	@DisplayName("Un administrador de plataforma, sin contexto, recibe platformAdmin = true")
+	void plataforma_sin_contexto_responde_true() throws Exception {
+		given(tenantContextHolder.current()).willReturn(Optional.empty());
+
+		mockMvc.perform(get("/api/v1/me/platform-role").with(ApiActors.platformAdmin(7L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.platformAdmin").value(true));
+	}
+
+	@Test
+	@DisplayName("Una cuenta de tenant recibe false con 200, tenga o no contexto: no es un error")
+	void cuenta_de_tenant_responde_false() throws Exception {
+		given(tenantContextHolder.current()).willReturn(Optional.empty());
+		mockMvc.perform(get("/api/v1/me/platform-role").with(ApiActors.miembro(7L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.platformAdmin").value(false));
+
+		conContexto(1L, 10L);
+		mockMvc.perform(get("/api/v1/me/platform-role").with(ApiActors.miembro(7L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.platformAdmin").value(false));
+	}
+
+	@Test
+	@DisplayName("Sin sesion la pregunta por el rol de plataforma es 403, jamas 401")
+	void rol_de_plataforma_sin_sesion_es_403() throws Exception {
+		mockMvc.perform(get("/api/v1/me/platform-role"))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/forbidden"));
+	}
 }

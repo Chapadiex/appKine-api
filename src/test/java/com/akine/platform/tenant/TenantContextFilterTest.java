@@ -286,6 +286,7 @@ class TenantContextFilterTest {
 		for (String ruta : List.of(
 				"/api/v1/version",
 				"/api/v1/me/contexts",
+				"/api/v1/me/platform-role",
 				"/actuator/health",
 				"/v3/api-docs",
 				"/swagger-ui/index.html",

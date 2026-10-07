@@ -13,13 +13,14 @@ import jakarta.validation.constraints.Size;
  * centro sin saber si su pedido se entendio; rechazar sin decir por que lo deja sin nada
  * accionable, y la unica salida es volver a pedir lo mismo.
  *
- * <p><b>Aprobar no crea el concepto global.</b> El concepto que la plataforma termina publicando
- * casi nunca es el que el centro propuso —el codigo se normaliza, el nombre se unifica con los
- * que ya existen— y crearlo automaticamente desde el texto de un pedido llenaria el catalogo
- * comun de duplicados con nombres parecidos, que es exactamente lo que este circuito existe para
- * evitar.
+ * <p><b>Aprobar publica el concepto global (AKINE-A-7)</b>, en la misma transaccion. Los cuatro
+ * campos de concepto son la normalizacion de la plataforma: el centro propone, la plataforma
+ * dispone. Si {@code codigo} o {@code nombre} faltan se usan los propuestos; asi el concepto
+ * publicado no es el texto crudo del pedido salvo que la plataforma lo acepte tal cual, y el
+ * unique del catalogo global rechaza el duplicado. En un rechazo no se mandan.
  */
-@Schema(description = "Aprobacion o rechazo de una solicitud de catalogo")
+@Schema(description = "Aprobacion o rechazo de una solicitud de catalogo. Aprobar publica el "
+		+ "concepto global en el mismo acto")
 public record ResolveCatalogoSolicitudRequest(
 
 		@Schema(description = "Desenlace. PENDIENTE no es una resolucion y se rechaza con 400",
@@ -38,5 +39,23 @@ public record ResolveCatalogoSolicitudRequest(
 				+ "concurrent-modification", example = "0",
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		@NotNull(message = "La version es obligatoria para resolver una solicitud")
-		Long version) {
+		Long version,
+
+		@Schema(description = "Solo al aprobar: codigo con el que se publica el concepto global. "
+				+ "Si falta, el propuesto; si tampoco hay propuesto, 400", example = "TO-01")
+		@Size(max = 48, message = "El codigo no puede superar los 48 caracteres")
+		String codigo,
+
+		@Schema(description = "Solo al aprobar: nombre con el que se publica. Si falta, el "
+				+ "propuesto", example = "Terapia ocupacional")
+		@Size(max = 160, message = "El nombre no puede superar los 160 caracteres")
+		String nombre,
+
+		@Schema(description = "Solo al aprobar: descripcion del concepto publicado")
+		@Size(max = 280, message = "La descripcion no puede superar los 280 caracteres")
+		String descripcion,
+
+		@Schema(description = "Solo al aprobar una PRACTICA, y obligatorio en ese caso: "
+				+ "especialidad GLOBAL de la que cuelga", example = "1")
+		Long especialidadId) {
 }

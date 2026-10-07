@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.65.0
+  version: 0.64.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -1701,7 +1701,7 @@ paths:
       description: |-
         Reservado a la administracion de plataforma. La resolucion es TERMINAL: una solicitud aprobada o rechazada no se reabre. Si la plataforma se equivoco, el centro vuelve a pedir, y esa segunda solicitud es una fila nueva con su propia justificacion y su propia fecha.
 
-        APROBAR NO CREA EL CONCEPTO GLOBAL, y es deliberado: el concepto que la plataforma termina publicando casi nunca es el que el centro propuso —el codigo se normaliza, el nombre se unifica con los que ya existen— y crearlo automaticamente desde el texto de un pedido llenaria el catalogo comun de duplicados con nombres parecidos, que es exactamente lo que este circuito existe para evitar. La plataforma aprueba y despues publica el concepto por el alta normal.
+        APROBAR PUBLICA EL CONCEPTO GLOBAL, en la misma transaccion, y devuelve su id en conceptoId. El centro propone y la plataforma dispone: codigo, nombre, descripcion y especialidadId del cuerpo son la normalizacion con la que se publica; sin codigo o sin nombre se usan los propuestos, y sin ningun codigo posible la respuesta es 400. especialidadId es obligatorio al aprobar una PRACTICA y tiene que ser una especialidad global. La publicacion pasa por las mismas validaciones que el alta global: si el codigo o el nombre ya estan tomados en el catalogo comun responde 409 catalogo-code-taken o catalogo-name-taken, y la solicitud SIGUE PENDIENTE sin ningun concepto creado. Si el concepto ya existe en el catalogo comun, el desenlace es rechazar con una nota que lo diga. Un rechazo no lleva datos de concepto (400 si los trae).
 
         La nota es obligatoria en los dos desenlaces. version se compara antes de mutar: dos administradores de plataforma sobre la misma bandeja tienen que enterarse de que el otro llego primero.
       operationId: resolveCatalogoSolicitud
@@ -1732,7 +1732,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta la nota, falta la version, o el desenlace es PENDIENTE"
+          description: "Falta la nota o la version, el desenlace es PENDIENTE, se\
+            \ aprueba sin codigo posible o una PRACTICA sin especialidadId, o un rechazo\
+            \ trae datos de concepto"
         "403":
           content:
             application/problem+json:
@@ -1744,14 +1746,17 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: La solicitud no existe
+          description: "La solicitud no existe, o la especialidad de la practica a\
+            \ publicar no existe en el catalogo global"
         "409":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Ya estaba resuelta (catalogo-solicitud-ya-resuelta), o version\
-            \ desactualizada (concurrent-modification)"
+            \ desactualizada (concurrent-modification), o el concepto a publicar choca\
+            \ en el catalogo global (catalogo-code-taken, catalogo-name-taken, catalogo-reference-inactive);\
+            \ en esos casos la solicitud sigue PENDIENTE"
       summary: Aprobar o rechazar una solicitud
       tags:
       - Catalogo clinico
@@ -2439,16 +2444,6 @@ paths:
         schema:
           type: string
           format: date
-      - description: "Oferta dentro de la cual se presta la practica (RF-M16-008).\
-          \ Si se pasa, el arancel especifico de esa oferta manda sobre el general\
-          \ de la practica. Si se omite, solo el general"
-        example: 77
-        in: query
-        name: ofertaId
-        required: false
-        schema:
-          type: integer
-          format: int64
       responses:
         "200":
           content:
@@ -5048,8 +5043,6 @@ paths:
         La vigencia del arancel tiene que estar CONTENIDA en la del convenio. Fuera de ella nunca podria resolver, porque la resolucion exige primero un convenio aplicable.
 
         La practica puede ser global de plataforma o propia de la organizacion; una de otro tenant responde 404.
-
-        ARANCEL POR OFERTA (RF-M16-008): con ofertaId, el arancel es el de esa practica cuando se presta dentro de esa oferta, y al resolver con esa oferta manda sobre el general. El general y el de cada oferta conviven en el mismo periodo; dos de la misma oferta no. La oferta tiene que ser de esta sede (404), admitir obra social (409 oferta-sin-obra-social) y declarar la practica (409 practica-no-habilitada-en-oferta).
       operationId: createArancel
       parameters:
       - description: Identificador de la sede
@@ -5100,15 +5093,14 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "La sede, el convenio, la practica o la oferta no son accesibles"
+          description: "La sede, el convenio o la practica no son accesibles"
         "409":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Periodo solapado (arancel-solapado), convenio dado de baja\
-            \ (convenio-inactivo), oferta sin obra social (oferta-sin-obra-social)\
-            \ o practica que la oferta no declara (practica-no-habilitada-en-oferta)"
+          description: Periodo solapado (arancel-solapado) o convenio dado de baja
+            (convenio-inactivo)
       summary: Definir el arancel de una practica bajo un convenio
       tags:
       - Convenios y aranceles
@@ -6898,258 +6890,6 @@ paths:
             \ elegir (practica-no-utilizable), oferta dada de baja (oferta-inactiva),\
             \ o sede no operable (consultorio-no-operable)"
       summary: Fijar que practicas puede prestar la oferta y cual es la principal
-      tags:
-      - Servicios y ofertas
-  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/precios-particulares:
-    get:
-      description: |-
-        RF-M16-009. La grilla de vigencias, ACTIVOS E HISTORICOS, del mas nuevo al mas viejo. vigente dice cual rige hoy.
-
-        El dia que ningun precio particular lo cubre, la oferta cobra su precio de lista (precioBase). Una lista vacia es el caso normal de una oferta que nunca tuvo precios por vigencia.
-      operationId: listPreciosParticularesDeOferta
-      parameters:
-      - description: Sede de la oferta
-        example: 3
-        in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: Oferta
-        example: 34
-        in: path
-        name: ofertaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PrecioParticularResponse"
-          description: Precios particulares de la oferta
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo, o sin pertenencia a la organizacion"
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "La oferta o la sede no existen, o son de otro tenant"
-      summary: Listar los precios particulares por vigencia de la oferta
-      tags:
-      - Servicios y ofertas
-    post:
-      description: |-
-        RF-M16-009. Exige consultorio:manage sobre la sede de la ruta.
-
-        DOS PRECIOS ACTIVOS DE LA MISMA OFERTA NO PUEDEN PISARSE: 409 precio-particular-solapado, con el id y el periodo del que choca. Para subir un precio se cierra la vigencia del actual (PUT) y se carga el nuevo.
-
-        El importe no se edita despues: corregir una carga es darla de baja y cargarla de nuevo. Lo ya devengado no cambia nunca, porque la obligacion copio su importe.
-
-        Sin moneda, hereda la del precio de lista de la oferta.
-      operationId: createPrecioParticularDeOferta
-      parameters:
-      - description: Sede de la oferta
-        example: 3
-        in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: Oferta
-        example: 34
-        in: path
-        name: ofertaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreatePrecioParticularRequest"
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PrecioParticularResponse"
-          description: Precio creado
-        "400":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Importe negativo, vigencia invertida o moneda ausente o invalida"
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "La oferta o la sede no existen, o son de otro tenant"
-        "409":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Periodo solapado (precio-particular-solapado), oferta dada\
-            \ de baja (oferta-inactiva) o sede no operable (consultorio-no-operable)"
-      summary: Fijar un precio particular de la oferta para un periodo
-      tags:
-      - Servicios y ofertas
-  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/precios-particulares/{precioId}:
-    delete:
-      description: Baja LOGICA con motivo obligatorio. Exige consultorio:manage. Libera
-        el periodo; lo ya devengado con ese precio no se toca.
-      operationId: deactivatePrecioParticularDeOferta
-      parameters:
-      - description: Sede de la oferta
-        example: 3
-        in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: Oferta
-        example: 34
-        in: path
-        name: ofertaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: Precio particular
-        example: 51
-        in: path
-        name: precioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DeactivateOfferingRequest"
-        required: true
-      responses:
-        "204":
-          description: Precio dado de baja
-        "400":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Falta el motivo
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "La oferta, la sede o el precio no existen, o son de otro tenant"
-        "409":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: El precio ya estaba dado de baja (precio-particular-inactivo)
-      summary: Dar de baja un precio particular
-      tags:
-      - Servicios y ofertas
-    put:
-      description: "RF-M16-009. Exige consultorio:manage. Es lo UNICO editable de\
-        \ un precio: el fin de su vigencia. Extenderlo puede producir 409 precio-particular-solapado."
-      operationId: cambiarFinPrecioParticularDeOferta
-      parameters:
-      - description: Sede de la oferta
-        example: 3
-        in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: Oferta
-        example: 34
-        in: path
-        name: ofertaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: Precio particular
-        example: 51
-        in: path
-        name: precioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CambiarFinPrecioParticularRequest"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PrecioParticularResponse"
-          description: Precio actualizado
-        "400":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Vigencia invertida o falta la version
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "La oferta, la sede o el precio no existen, o son de otro tenant"
-        "409":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Periodo solapado (precio-particular-solapado), precio dado\
-            \ de baja (precio-particular-inactivo) o version desactualizada (conflict)"
-      summary: Cerrar o reabrir la vigencia de un precio particular
       tags:
       - Servicios y ofertas
   /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/validacion:
@@ -13340,6 +13080,33 @@ paths:
       summary: Permisos efectivos en el contexto activo
       tags:
       - Mi cuenta
+  /api/v1/me/platform-role:
+    get:
+      description: |-
+        Responde si la cuenta autenticada tiene un rol de plataforma vigente. Es lo que el frontend consulta para decidir si muestra la consola de plataforma (bandeja de solicitudes de catalogo, catalogo global) o el selector de contexto.
+
+        El rol NO sale del token: se revalida contra la base en este mismo request, asi que un rol revocado hace un minuto ya responde false aunque el access token siga vigente.
+
+        No requiere contexto de tenant: se consulta con el token pre_context, antes de elegir donde trabajar. Con sesion responde siempre 200 —false no es un error—. No se audita: es la cuenta preguntando por si misma.
+
+        Es insumo de UX, no un mecanismo de seguridad: cada endpoint de plataforma verifica el rol por su cuenta.
+      operationId: getMyPlatformRole
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyPlatformRoleResponse"
+          description: Si la cuenta tiene el rol de plataforma vigente
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada. Nunca 401
+      summary: Si la cuenta administra la plataforma
+      tags:
+      - Mi cuenta
   /api/v1/mediciones/definiciones:
     get:
       description: |-
@@ -16932,67 +16699,6 @@ paths:
       summary: Aplicar la respuesta del financiador
       tags:
       - Autorizaciones
-  /api/v1/personas/{personaId}/cobertura-aplicable:
-    get:
-      description: |-
-        RF-M08-006 y RF-M08-007. Para cada cobertura FINANCIADA vigente de la persona dice si aplica a la oferta, con que practica y con que arancel; si no aplica, por que. Y sugiere la condicion: COBERTURA si alguna aplica, PARTICULAR si no, con el precio particular que rige ese dia.
-
-        LA OFERTA MANDA ANTES QUE LA COBERTURA (RN-M08-005): si la oferta no admite obra social, ninguna cobertura aplica y el paciente paga particular aunque tenga obra social (CA-M08-006-06, Pilates). Tener la cobertura no alcanza.
-
-        CON VARIAS PRACTICAS en la oferta (A-9), se prueban en el orden de DP-11 —la principal primero— y la cobertura aplica con la primera que resuelve. El detalle por practica explica las demas. El arancel especifico de la oferta (RF-M16-008) manda sobre el general de la practica: arancel.ofertaId lo dice.
-
-        NO DECIDE NADA. Atender como particular aunque haya cobertura es decision del operador en la recepcion (RF-M13-005) y no toca la cobertura del paciente (CA-M08-007-06). No persiste, no consume y es idempotente.
-
-        Exige consultorio en el contexto: la oferta y el convenio son de la sede. Se autoriza por pertenencia, como la lista de coberturas. El numero de afiliado no viaja.
-      operationId: resolverCoberturaAplicablePorOferta
-      parameters:
-      - description: Identificador de la persona
-        example: 1204
-        in: path
-        name: personaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: Oferta de la sede del contexto
-        example: 34
-        in: query
-        name: ofertaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: "Dia de la atencion. Si se omite, hoy"
-        example: 2026-11-03
-        in: query
-        name: fecha
-        required: false
-        schema:
-          type: string
-          format: date
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CoberturaParaOfertaResponse"
-          description: "Coberturas que aplican y que no, y la condicion sugerida"
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo activo, o sin consultorio en el contexto"
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "La persona o la oferta no existen, o son de otra organizacion\
-            \ o de otra sede"
-      summary: Que cubre la obra social de la persona para esta oferta
-      tags:
-      - Coberturas del paciente
   /api/v1/personas/{personaId}/coberturas:
     get:
       description: |-
@@ -19955,12 +19661,6 @@ components:
           - SIN_CONVENIO_VIGENTE
           - SIN_ARANCEL_VIGENTE
           example: SIN_CONVENIO_VIGENTE
-        ofertaId:
-          type: integer
-          format: int64
-          description: B-3. Null si salio el arancel GENERAL de la practica; el id
-            de la oferta si salio el arancel especifico de esa oferta (RF-M16-008)
-          example: 77
         requiereAutorizacion:
           type: boolean
           description: Si exige autorizacion previa del financiador
@@ -20017,13 +19717,6 @@ components:
           type: string
           description: "ISO 4217, heredada del convenio"
           example: ARS
-        ofertaId:
-          type: integer
-          format: int64
-          description: "Null = arancel GENERAL de la practica en el convenio. Con\
-            \ valor: arancel de la practica cuando se presta dentro de esa oferta\
-            \ (RF-M16-008), que al resolver con esa oferta manda sobre el general"
-          example: 77
         practicaId:
           type: integer
           format: int64
@@ -20803,23 +20496,6 @@ components:
             \ la exija: es lo que le permite a la pantalla detectar que alguien mas\
             \ la cambio"
           example: 0
-    CambiarFinPrecioParticularRequest:
-      type: object
-      description: Nuevo fin de vigencia del precio particular
-      properties:
-        expectedVersion:
-          type: integer
-          format: int64
-          description: Version del precio que se esta editando
-          example: 0
-        vigenciaHasta:
-          type: string
-          format: date
-          description: "ULTIMO dia en que rige, INCLUSIVE. Null reabre la vigencia\
-            \ sin fin"
-          example: 2027-02-28
-      required:
-      - expectedVersion
     CancelInvitacionRequest:
       type: object
       description: Motivo con el que se retira una invitacion pendiente
@@ -21226,9 +20902,9 @@ components:
         conceptoId:
           type: integer
           format: int64
-          description: "Concepto global creado al aprobar, si se creo. Aprobar NO\
-            \ crea el concepto automaticamente: la plataforma lo publica por el alta\
-            \ normal"
+          description: "Concepto global publicado al aprobar, del tipo de la solicitud.\
+            \ null mientras esta PENDIENTE, si se rechazo, o si se aprobo antes del\
+            \ contrato 0.64.0, cuando aprobar no publicaba el concepto"
         consultorioId:
           type: integer
           format: int64
@@ -21566,196 +21242,6 @@ components:
           format: int32
           description: Sesiones vivas que se revocaron
           example: 3
-    CoberturaParaOfertaAplicable:
-      type: object
-      description: Una cobertura que aplica a la oferta
-      properties:
-        arancel:
-          $ref: "#/components/schemas/CoberturaParaOfertaArancel"
-        coberturaId:
-          type: integer
-          format: int64
-          example: 77
-        credencialVencida:
-          type: boolean
-          description: "Solo alerta: no excluye la cobertura"
-        credencialVigenciaHasta:
-          type: string
-          format: date
-        financiadorId:
-          type: integer
-          format: int64
-          example: 31
-        financiadorNombre:
-          type: string
-          example: OSDE
-        planId:
-          type: integer
-          format: int64
-          example: 88
-        planNombre:
-          type: string
-          example: "210"
-        practicaId:
-          type: integer
-          format: int64
-          description: "Primera practica de la oferta que resolvio, la principal primero"
-          example: 412
-        practicas:
-          type: array
-          description: Detalle por practica de la oferta
-          items:
-            $ref: "#/components/schemas/CoberturaParaOfertaPractica"
-        principal:
-          type: boolean
-    CoberturaParaOfertaArancel:
-      type: object
-      description: Arancel de una practica de la oferta bajo la cobertura
-      properties:
-        arancelId:
-          type: integer
-          format: int64
-          description: Arancel
-          example: 901
-        convenioCodigo:
-          type: string
-          description: Codigo del convenio
-          example: OSDE-2026
-        convenioId:
-          type: integer
-          format: int64
-          description: Convenio del que salio
-          example: 140
-        coseguro:
-          type: number
-          example: 2400.0
-        importeFinanciador:
-          type: number
-          example: 9600.0
-        importeTotal:
-          type: number
-          example: 12000.0
-        moneda:
-          type: string
-          example: ARS
-        ofertaId:
-          type: integer
-          format: int64
-          description: Null si es el arancel general de la practica; el id de la oferta
-            si es el arancel especifico de la oferta (RF-M16-008)
-          example: 34
-        requiereAutorizacion:
-          type: boolean
-        requiereCredencial:
-          type: boolean
-        requiereOrden:
-          type: boolean
-    CoberturaParaOfertaNoAplicable:
-      type: object
-      description: Una cobertura vigente que no aplica a la oferta
-      properties:
-        coberturaId:
-          type: integer
-          format: int64
-          example: 78
-        financiadorId:
-          type: integer
-          format: int64
-          example: 32
-        financiadorNombre:
-          type: string
-          example: Swiss Medical
-        motivo:
-          type: string
-          enum:
-          - OFERTA_NO_ADMITE_OBRA_SOCIAL
-          - OFERTA_SIN_PRACTICAS
-          - SIN_CONVENIO_VIGENTE
-          - SIN_ARANCEL_VIGENTE
-        planId:
-          type: integer
-          format: int64
-          example: 90
-        planNombre:
-          type: string
-          example: SMG20
-        practicas:
-          type: array
-          description: Detalle por practica. Vacio si el corte fue la oferta
-          items:
-            $ref: "#/components/schemas/CoberturaParaOfertaPractica"
-        principal:
-          type: boolean
-    CoberturaParaOfertaPractica:
-      type: object
-      description: Como resolvio una practica de la oferta bajo la cobertura
-      properties:
-        arancel:
-          $ref: "#/components/schemas/CoberturaParaOfertaArancel"
-          description: Null si no resolvio
-        motivo:
-          type: string
-          description: Por que no resolvio. Null si resolvio
-          enum:
-          - SIN_CONVENIO_VIGENTE
-          - SIN_ARANCEL_VIGENTE
-        practicaId:
-          type: integer
-          format: int64
-          example: 412
-        principal:
-          type: boolean
-          description: Si es la practica principal de la oferta
-    CoberturaParaOfertaResponse:
-      type: object
-      description: Cobertura aplicable por oferta y condicion particular sugerida
-      properties:
-        admiteObraSocial:
-          type: boolean
-          description: Si la oferta admite obra social. En false toda cobertura sale
-            en noAplicables con OFERTA_NO_ADMITE_OBRA_SOCIAL
-        aplicables:
-          type: array
-          description: Coberturas que aplican. La principal primero
-          items:
-            $ref: "#/components/schemas/CoberturaParaOfertaAplicable"
-        condicionSugerida:
-          type: string
-          description: "COBERTURA si al menos una cobertura aplica, PARTICULAR si\
-            \ ninguna. Es una sugerencia: atender como particular igual es decision\
-            \ del operador y no toca la cobertura del paciente"
-          enum:
-          - COBERTURA
-          - PARTICULAR
-        fecha:
-          type: string
-          format: date
-          description: Dia contra el que se resolvio
-          example: 2026-11-03
-        moneda:
-          type: string
-          description: ISO 4217 del precio particular
-          example: ARS
-        noAplicables:
-          type: array
-          description: "Coberturas vigentes que NO aplican, con motivo"
-          items:
-            $ref: "#/components/schemas/CoberturaParaOfertaNoAplicable"
-        ofertaId:
-          type: integer
-          format: int64
-          description: Oferta
-          example: 34
-        personaId:
-          type: integer
-          format: int64
-          description: Persona
-          example: 1204
-        precioParticular:
-          type: number
-          description: Precio particular que rige ese dia (precio por vigencia o de
-            lista). Null si la oferta no esta tarifada
-          example: 8500.0
     CoberturaResponse:
       type: object
       description: "Cobertura de un paciente, con la referencia al plan congelada\
@@ -22412,16 +21898,6 @@ components:
             y significa una practica sin cargo
           example: 12000.0
           minimum: 0.00
-        ofertaId:
-          type: integer
-          format: int64
-          description: "Opcional (RF-M16-008). Sin oferta, el arancel es el GENERAL\
-            \ de la practica. Con oferta, es el arancel de la practica cuando se presta\
-            \ dentro de esa oferta, y al resolver con esa oferta manda sobre el general.\
-            \ La oferta tiene que ser de la misma sede, admitir obra social y declarar\
-            \ la practica (A-9)"
-          example: 77
-          minimum: 0
         practicaId:
           type: integer
           format: int64
@@ -23498,33 +22974,6 @@ components:
       required:
       - codigo
       - nombre
-      - vigenciaDesde
-    CreatePrecioParticularRequest:
-      type: object
-      description: Precio particular de la oferta para un periodo
-      properties:
-        importe:
-          type: number
-          description: Precio particular en ese periodo. Cero es valido
-          example: 8500.0
-          minimum: 0.00
-        moneda:
-          type: string
-          description: "ISO 4217. Si se omite, la del precio de lista de la oferta"
-          example: ARS
-          pattern: "[A-Za-z]{3}"
-        vigenciaDesde:
-          type: string
-          format: date
-          description: Primer dia en que rige
-          example: 2026-11-01
-        vigenciaHasta:
-          type: string
-          format: date
-          description: "ULTIMO dia en que rige, INCLUSIVE. Null = sin fin previsto"
-          example: 2027-03-31
-      required:
-      - importe
       - vigenciaDesde
     CreateServicioRequest:
       type: object
@@ -26836,6 +26285,15 @@ components:
           - SESION
           - MANUAL
           example: SESION
+    MyPlatformRoleResponse:
+      type: object
+      description: Si la cuenta autenticada tiene un rol de plataforma vigente
+      properties:
+        platformAdmin:
+          type: boolean
+          description: "true si la cuenta tiene el rol PLATFORM_ADMIN vigente en este\
+            \ instante, revalidado contra la base en este request"
+          example: false
     Obligacion:
       type: object
       description: "Deuda derivada de una prestacion. **No es el cobro ni la caja**:\
@@ -28047,58 +27505,6 @@ components:
           description: "Practicas de la oferta, activas e inactivas, en orden de alta"
           items:
             $ref: "#/components/schemas/PracticaDeOferta"
-    PrecioParticularResponse:
-      type: object
-      description: Precio particular de la oferta para un periodo
-      properties:
-        deactivationReason:
-          type: string
-          description: Motivo de la baja. Null mientras este activo
-        deletedAt:
-          type: string
-          format: date-time
-          description: Instante de la baja. Null mientras este activo
-        estado:
-          type: string
-          description: Ciclo de vida
-          enum:
-          - ACTIVO
-          - INACTIVO
-        id:
-          type: integer
-          format: int64
-          description: Identificador del precio
-          example: 51
-        importe:
-          type: number
-          description: Precio particular en el periodo
-          example: 8500.0
-        moneda:
-          type: string
-          description: ISO 4217
-          example: ARS
-        ofertaId:
-          type: integer
-          format: int64
-          description: Oferta
-          example: 34
-        version:
-          type: integer
-          format: int64
-          description: Version a reenviar para cambiar el fin
-          example: 0
-        vigenciaDesde:
-          type: string
-          format: date
-          description: Primer dia en que rige
-          example: 2026-11-01
-        vigenciaHasta:
-          type: string
-          format: date
-          description: "Ultimo dia en que rige, INCLUSIVE. Null = sin fin previsto"
-        vigente:
-          type: boolean
-          description: Si es el precio que rige hoy
     Presentacion:
       type: object
       description: "Lote reclamado a un financiador (M21). **No es un cobro y no es\
@@ -28357,8 +27763,6 @@ components:
       - https://akine.app/problems/oferta-nombre-comercial-taken
       - https://akine.app/problems/oferta-inactiva
       - https://akine.app/problems/oferta-already-inactive
-      - https://akine.app/problems/precio-particular-solapado
-      - https://akine.app/problems/precio-particular-inactivo
       - https://akine.app/problems/oferta-no-agendable
       - https://akine.app/problems/slot-no-disponible
       - https://akine.app/problems/slot-completo
@@ -28408,8 +27812,6 @@ components:
       - https://akine.app/problems/arancel-solapado
       - https://akine.app/problems/arancel-inactivo
       - https://akine.app/problems/arancel-already-inactive
-      - https://akine.app/problems/practica-no-habilitada-en-oferta
-      - https://akine.app/problems/oferta-sin-obra-social
       - https://akine.app/problems/orden-inactiva
       - https://akine.app/problems/orden-already-inactive
       - https://akine.app/problems/autorizacion-inactiva
@@ -29812,8 +29214,27 @@ components:
       - personaId
     ResolveCatalogoSolicitudRequest:
       type: object
-      description: Aprobacion o rechazo de una solicitud de catalogo
+      description: Aprobacion o rechazo de una solicitud de catalogo. Aprobar publica
+        el concepto global en el mismo acto
       properties:
+        codigo:
+          type: string
+          description: "Solo al aprobar: codigo con el que se publica el concepto\
+            \ global. Si falta, el propuesto; si tampoco hay propuesto, 400"
+          example: TO-01
+          maxLength: 48
+          minLength: 0
+        descripcion:
+          type: string
+          description: "Solo al aprobar: descripcion del concepto publicado"
+          maxLength: 280
+          minLength: 0
+        especialidadId:
+          type: integer
+          format: int64
+          description: "Solo al aprobar una PRACTICA, y obligatorio en ese caso: especialidad\
+            \ GLOBAL de la que cuelga"
+          example: 1
         estado:
           type: string
           description: Desenlace. PENDIENTE no es una resolucion y se rechaza con
@@ -29822,6 +29243,13 @@ components:
           - APROBADA
           - RECHAZADA
           example: APROBADA
+        nombre:
+          type: string
+          description: "Solo al aprobar: nombre con el que se publica. Si falta, el\
+            \ propuesto"
+          example: Terapia ocupacional
+          maxLength: 160
+          minLength: 0
         nota:
           type: string
           description: Motivo de la decision

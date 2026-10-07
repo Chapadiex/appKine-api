@@ -9,9 +9,9 @@ import com.akine.resource.domain.SolicitudEstado;
  * al centro sin saber si su pedido se entendio; rechazar sin decir por que lo deja sin nada
  * accionable, y la unica salida es volver a pedir lo mismo.
  *
- * <p>{@code conceptoId} lo llena el servicio si la aprobacion crea el concepto global en el
- * acto; el comando no lo trae porque la plataforma aprueba una solicitud, no la implementa desde
- * este endpoint.
+ * <p>Los cuatro campos de concepto solo valen al aprobar (AKINE-A-7): son la normalizacion con
+ * la que la plataforma publica el concepto global. {@code codigo} y {@code nombre} nulos toman
+ * los propuestos por el centro.
  */
 public record SolicitudResolucionCommand(
 
@@ -20,5 +20,23 @@ public record SolicitudResolucionCommand(
 
 		String nota,
 
-		long expectedVersion) {
+		long expectedVersion,
+
+		String codigo,
+
+		String nombre,
+
+		String descripcion,
+
+		/** Obligatorio al aprobar una practica: especialidad GLOBAL de la que cuelga. */
+		Long especialidadId) {
+
+	/** Un rechazo, o una aprobacion que publica con los datos propuestos. */
+	public SolicitudResolucionCommand(SolicitudEstado estado, String nota, long expectedVersion) {
+		this(estado, nota, expectedVersion, null, null, null, null);
+	}
+
+	boolean traeDatosDeConcepto() {
+		return codigo != null || nombre != null || descripcion != null || especialidadId != null;
+	}
 }
