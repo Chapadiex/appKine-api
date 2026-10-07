@@ -13,11 +13,14 @@ import com.akine.contracting.domain.exception.FinanciadorInactivoException;
 import com.akine.contracting.domain.exception.FinanciadorNombreTakenException;
 import com.akine.contracting.domain.exception.FinanciadorNotAccessibleException;
 import com.akine.contracting.domain.exception.FinanciadorYaInactivoException;
+import com.akine.contracting.domain.exception.OfertaNoAccesibleException;
+import com.akine.contracting.domain.exception.OfertaSinObraSocialException;
 import com.akine.contracting.domain.exception.PlanCodigoTakenException;
 import com.akine.contracting.domain.exception.PlanNombreTakenException;
 import com.akine.contracting.domain.exception.PlanNotAccessibleException;
 import com.akine.contracting.domain.exception.PlanYaInactivoException;
 import com.akine.contracting.domain.exception.PracticaNoAccesibleException;
+import com.akine.contracting.domain.exception.PracticaNoHabilitadaEnOfertaException;
 import com.akine.contracting.domain.exception.SedeNoAccesibleException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
@@ -74,6 +77,9 @@ public class ContractingProblemHandler {
 	private static final URI CONVENIO_CODIGO_TAKEN = ProblemType.CONVENIO_CODIGO_TAKEN.uri();
 	private static final URI CONVENIO_SOLAPADO = ProblemType.CONVENIO_SOLAPADO.uri();
 	private static final URI CONVENIO_INACTIVO = ProblemType.CONVENIO_INACTIVO.uri();
+	private static final URI PRACTICA_NO_HABILITADA_EN_OFERTA =
+			ProblemType.PRACTICA_NO_HABILITADA_EN_OFERTA.uri();
+	private static final URI OFERTA_SIN_OBRA_SOCIAL = ProblemType.OFERTA_SIN_OBRA_SOCIAL.uri();
 	private static final URI CONVENIO_ALREADY_INACTIVE =
 			ProblemType.CONVENIO_ALREADY_INACTIVE.uri();
 	private static final URI ARANCEL_SOLAPADO = ProblemType.ARANCEL_SOLAPADO.uri();
@@ -309,6 +315,40 @@ public class ContractingProblemHandler {
 		problem.setProperty("arancelExistenteId", exception.getArancelExistenteId());
 		problem.setProperty("periodoExistente", exception.getPeriodoExistente());
 		return problem;
+	}
+
+	/** B-3: la oferta de un arancel por oferta no es de esta sede o no existe. */
+	@ExceptionHandler(OfertaNoAccesibleException.class)
+	public ProblemDetail handleOfertaNoAccesible(OfertaNoAccesibleException exception) {
+		log.debug("Oferta no accesible: ofertaId={}", exception.getOfertaId());
+		return noEncontrado("La oferta no existe en esta sede.");
+	}
+
+	@ExceptionHandler(PracticaNoHabilitadaEnOfertaException.class)
+	public ProblemDetail handlePracticaNoHabilitadaEnOferta(
+			PracticaNoHabilitadaEnOfertaException exception) {
+
+		log.debug("Arancel por oferta con practica no declarada: practicaId={} ofertaId={}",
+				exception.getPracticaId(), exception.getOfertaId());
+		ProblemDetail problem = conflicto(
+				"La oferta no declara esa practica. Agregala a las practicas de la oferta o elegi "
+						+ "una de las que ya presta.",
+				"Practica no habilitada en la oferta",
+				PRACTICA_NO_HABILITADA_EN_OFERTA);
+		problem.setProperty("practicaId", exception.getPracticaId());
+		problem.setProperty("ofertaId", exception.getOfertaId());
+		return problem;
+	}
+
+	@ExceptionHandler(OfertaSinObraSocialException.class)
+	public ProblemDetail handleOfertaSinObraSocial(OfertaSinObraSocialException exception) {
+		log.debug("Arancel por oferta sobre una oferta sin obra social: ofertaId={}",
+				exception.getOfertaId());
+		return conflicto(
+				"La oferta no admite obra social: se cobra siempre particular y un arancel de "
+						+ "convenio para ella no se aplicaria nunca.",
+				"La oferta no admite obra social",
+				OFERTA_SIN_OBRA_SOCIAL);
 	}
 
 	@ExceptionHandler(ConvenioYaInactivoException.class)

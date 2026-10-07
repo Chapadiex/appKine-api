@@ -148,7 +148,14 @@ public class ArancelController {
 					aplicable.
 
 					La practica puede ser global de plataforma o propia de la organizacion; una de \
-					otro tenant responde 404.""")
+					otro tenant responde 404.
+
+					ARANCEL POR OFERTA (RF-M16-008): con ofertaId, el arancel es el de esa practica \
+					cuando se presta dentro de esa oferta, y al resolver con esa oferta manda sobre \
+					el general. El general y el de cada oferta conviven en el mismo periodo; dos de \
+					la misma oferta no. La oferta tiene que ser de esta sede (404), admitir obra \
+					social (409 oferta-sin-obra-social) y declarar la practica (409 \
+					practica-no-habilitada-en-oferta).""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201",
 					description = "Arancel creado. La cabecera Location apunta al recurso",
@@ -164,12 +171,13 @@ public class ArancelController {
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",
-					description = "La sede, el convenio o la practica no son accesibles",
+					description = "La sede, el convenio, la practica o la oferta no son accesibles",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "409",
-					description = "Periodo solapado (arancel-solapado) o convenio dado de baja "
-							+ "(convenio-inactivo)",
+					description = "Periodo solapado (arancel-solapado), convenio dado de baja "
+							+ "(convenio-inactivo), oferta sin obra social (oferta-sin-obra-social) o "
+							+ "practica que la oferta no declara (practica-no-habilitada-en-oferta)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<ArancelResponse> create(
@@ -195,7 +203,8 @@ public class ArancelController {
 						request.importeFinanciador(),
 						request.coseguro(),
 						request.vigenciaDesde(),
-						request.vigenciaHasta()));
+						request.vigenciaHasta(),
+						request.ofertaId()));
 
 		return ResponseEntity
 				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/convenios/"
@@ -389,11 +398,17 @@ public class ArancelController {
 
 			@Parameter(description = "Dia de la PRESTACION. Si se omite, hoy", example = "2026-03-15")
 			@RequestParam(required = false)
-			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
+			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+
+			@Parameter(description = "Oferta dentro de la cual se presta la practica (RF-M16-008). "
+					+ "Si se pasa, el arancel especifico de esa oferta manda sobre el general de la "
+					+ "practica. Si se omite, solo el general", example = "77")
+			@RequestParam(required = false) Long ofertaId) {
 
 		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
 		ResolucionDeArancel resolucion = arancelService.resolver(
-				apiActor.current(), consultorioId, financiadorId, planId, practicaId, contra);
+				apiActor.current(), consultorioId, financiadorId, planId, practicaId, ofertaId,
+				contra);
 
 		return ResponseEntity.ok(ArancelEfectivoResponse.de(resolucion, contra));
 	}

@@ -410,7 +410,7 @@ class ConvenioControllersTest {
 		@Test
 		@DisplayName("cuando resuelve, devuelve el importe Y la derivacion completa")
 		void resuelve() throws Exception {
-			given(arancelService.resolver(any(), anyLong(), anyLong(), anyLong(), anyLong(), any()))
+			given(arancelService.resolver(any(), anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))
 					.willReturn(ResolucionDeArancel.resuelta(vigente()));
 
 			mockMvc.perform(get("/api/v1/consultorios/20/aranceles/efectivo")
@@ -431,7 +431,7 @@ class ConvenioControllersTest {
 		void sin_convenio_es_200() throws Exception {
 			// Es el desenlace mas frecuente —el paciente se atiende como particular— y un 404
 			// obligaria a la pantalla a tratar el caso normal como una excepcion. RN-M16-005.
-			given(arancelService.resolver(any(), anyLong(), anyLong(), anyLong(), anyLong(), any()))
+			given(arancelService.resolver(any(), anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))
 					.willReturn(ResolucionDeArancel.sinArancel(
 							MotivoSinArancel.SIN_CONVENIO_VIGENTE));
 
@@ -448,7 +448,7 @@ class ConvenioControllersTest {
 		@Test
 		@DisplayName("'hay convenio pero la practica no esta tarifada' es un motivo DISTINTO")
 		void sin_arancel_es_otro_motivo() throws Exception {
-			given(arancelService.resolver(any(), anyLong(), anyLong(), anyLong(), anyLong(), any()))
+			given(arancelService.resolver(any(), anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))
 					.willReturn(ResolucionDeArancel.sinArancel(MotivoSinArancel.SIN_ARANCEL_VIGENTE));
 
 			mockMvc.perform(get("/api/v1/consultorios/20/aranceles/efectivo")

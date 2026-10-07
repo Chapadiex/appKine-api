@@ -518,7 +518,7 @@ class RecepcionIT {
 
 	private void conCobertura(Fixture fixture, long coberturaId) {
 		given(coberturas.aplicables(fixture.organizationId(), fixture.consultorioId(),
-				fixture.personaA(), PRACTICA, LUNES))
+				fixture.personaA(), PRACTICA, fixture.ofertaId(), LUNES))
 				.willReturn(List.of(new CoberturaAplicable(coberturaId, true,
 						new ReferenciaCongelada(1L, "Financiador Sintetico", 2L, "Plan Sintetico"),
 						null, false, null)));

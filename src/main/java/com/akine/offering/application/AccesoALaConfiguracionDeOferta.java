@@ -106,6 +106,42 @@ final class AccesoALaConfiguracionDeOferta {
 	}
 
 	/** Pertenencia a la organizacion del contexto, y la sede del tenant. */
+	/**
+	 * B-3 (RF-M16-009): el mismo control que {@link #exigirOfertaConfigurable} para escribir un
+	 * precio particular, con el lock exclusivo de la fila de la oferta y <b>sin</b> version ni
+	 * force-increment.
+	 *
+	 * <p>El lock es lo que hace cumplir el no-solapamiento de precios: dos altas concurrentes de la
+	 * misma oferta se serializan, y la segunda lee la fila de la primera porque el servicio corre en
+	 * {@code READ_COMMITTED}. La version de la oferta no se pide porque el precio no edita la oferta
+	 * —obligar a la pantalla de precios a conocerla seria acoplar dos formularios que no se pisan—,
+	 * y por eso tampoco se fuerza: un precio nuevo no invalida una edicion de la oferta en vuelo.
+	 */
+	OfertaServicioConsultorio exigirOfertaParaPrecio(
+			OperatingActor actor, long organizationId, long consultorioId, long ofertaId) {
+
+		exigirContextoDeLaSede(actor, organizationId, consultorioId);
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.CONSULTORIO_MANAGE,
+				organizationId,
+				consultorioId,
+				null,
+				Instant.now()));
+
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
+		if (!sede.active()) {
+			throw new ConsultorioNoOperableException(sede.id());
+		}
+		ofertas.bloquearParaConfigurar(ofertaId, organizationId, consultorioId)
+				.orElseThrow(() -> new OfertaNotAccessibleException(ofertaId));
+		OfertaServicioConsultorio oferta = cargar(organizationId, consultorioId, ofertaId);
+		if (!oferta.isOperable()) {
+			throw new OfertaInactivaException(ofertaId, "configurar");
+		}
+		return oferta;
+	}
+
 	ConsultorioSnapshot exigirLectura(OperatingActor actor, long organizationId, long consultorioId) {
 		if (actor.contextOrganizationId() == null) {
 			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");

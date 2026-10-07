@@ -71,6 +71,14 @@ public class ConvenioArancel extends MarcaTemporal {
 	@Column(name = "practica_id", nullable = false, updatable = false)
 	private Long practicaId;
 
+	/**
+	 * B-3 (RF-M16-008). {@code null} = arancel GENERAL de la practica en el convenio, lo que habia
+	 * hasta V80. Con valor = arancel de la practica cuando se presta dentro de ESA oferta: al
+	 * resolver con oferta manda sobre el general. No se muda: cambiarlo seria inventar otro arancel.
+	 */
+	@Column(name = "oferta_id", updatable = false)
+	private Long ofertaId;
+
 	@Column(name = "importe_total", nullable = false, precision = 12, scale = 2)
 	private BigDecimal importeTotal;
 
@@ -120,10 +128,30 @@ public class ConvenioArancel extends MarcaTemporal {
 			LocalDate vigenciaDesde,
 			LocalDate vigenciaHasta) {
 
+		this(organizationId, consultorioId, convenioId, practicaId, null, importeTotal,
+				importeFinanciador, coseguro, moneda, vigenciaDesde, vigenciaHasta);
+	}
+
+	/** Alta de un arancel especifico de una oferta (B-3, RF-M16-008); general si es {@code null}. */
+	@SuppressWarnings("java:S107")
+	public ConvenioArancel(
+			long organizationId,
+			long consultorioId,
+			long convenioId,
+			long practicaId,
+			Long ofertaId,
+			BigDecimal importeTotal,
+			BigDecimal importeFinanciador,
+			BigDecimal coseguro,
+			String moneda,
+			LocalDate vigenciaDesde,
+			LocalDate vigenciaHasta) {
+
 		this.organizationId = organizationId;
 		this.consultorioId = consultorioId;
 		this.convenioId = convenioId;
 		this.practicaId = practicaId;
+		this.ofertaId = ofertaId;
 		aplicarImportes(importeTotal, importeFinanciador, coseguro);
 		this.moneda = exigirMoneda(moneda);
 		aplicarVigencia(vigenciaDesde, vigenciaHasta);
@@ -253,6 +281,16 @@ public class ConvenioArancel extends MarcaTemporal {
 
 	public Long getPracticaId() {
 		return practicaId;
+	}
+
+	/** {@code null} = arancel general de la practica. Ver el campo. */
+	public Long getOfertaId() {
+		return ofertaId;
+	}
+
+	/** Si pertenece al grupo de no-solapamiento de esa oferta ({@code null} = el general). */
+	public boolean esDelGrupo(Long oferta) {
+		return java.util.Objects.equals(ofertaId, oferta);
 	}
 
 	public BigDecimal getImporteTotal() {

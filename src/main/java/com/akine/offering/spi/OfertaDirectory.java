@@ -1,5 +1,7 @@
 package com.akine.offering.spi;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,6 +27,23 @@ public interface OfertaDirectory {
 	 * Lo que cuesta la oferta. Ver {@link PrecioDeOferta}: viaja aparte del snapshot general.
 	 */
 	Optional<PrecioDeOferta> precioDe(long organizationId, long consultorioId, long ofertaId);
+
+	/**
+	 * B-3 (RF-M16-009): lo que cuesta la oferta ESE dia local. El precio particular activo que
+	 * cubre la fecha manda sobre el precio de lista; sin precio particular, es {@link #precioDe}.
+	 *
+	 * <p>LECTURA VIVA: quien devenga copia el importe a su propia fila y no lo vuelve a pedir.
+	 */
+	Optional<PrecioDeOferta> precioVigenteEl(
+			long organizationId, long consultorioId, long ofertaId, LocalDate fecha);
+
+	/**
+	 * {@link #precioVigenteEl} para el dia local de la SEDE en ese instante. Existe para quien solo
+	 * tiene el instante del hecho —el cierre de una sesion— y no la zona de la sede: resolverlo en
+	 * UTC correria el dia despues de las 21 h en Argentina.
+	 */
+	Optional<PrecioDeOferta> precioEn(
+			long organizationId, long consultorioId, long ofertaId, Instant momento);
 
 	/**
 	 * Memberships de profesionales habilitados para la oferta, con su vigencia.

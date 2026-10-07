@@ -10,8 +10,8 @@
 | 03.01 Persona, perfil paciente, dedup | PARCIAL | 85 | Búsqueda por número de afiliado; alcance `OWN` |
 | 03.02 Paciente 360 y adjuntos | PARCIAL | 80 | Cobertura como sección del 360; IT de subida concurrente |
 | 03.03 Financiadores y planes | PARCIAL | 85 | Catálogo global de plataforma; `convenio:read` |
-| 03.04 Coberturas del paciente | PARCIAL | 80 | RF-M08-006/007 (cobertura por oferta); la cobertura no viaja a turno/sesión/obligación |
-| 03.05 Convenios y aranceles | PARCIAL | 70 | `congelar` del arancel sin consumidor; importación masiva; arancel por oferta |
+| 03.04 Coberturas del paciente | PARCIAL | 80 | ~~RF-M08-006/007~~ (B-3); la cobertura no viaja a turno/sesión/obligación |
+| 03.05 Convenios y aranceles | PARCIAL | 70 | `congelar` del arancel sin consumidor; importación masiva (diseñada en B-3); ~~arancel por oferta~~ (B-3) |
 | 03.06 Órdenes y autorizaciones | PARCIAL | 75 | Historial de estados de la autorización; estado de la orden |
 
 Todas tienen backend y pantallas (los registros de cierre de 03.02–03.06 dicen "sin frontend";
@@ -34,9 +34,13 @@ para esta práctica en esta fecha?".
 ### Backend / API
 - [x] ~~Búsqueda por número de afiliado (RF-M07-001). `PersonaBusqueda` solo tiene `texto/estado/perfil`.
   Se difirió a 03.04 y nunca se cableó.~~ → B-1: `q` también busca por `numero_afiliado` (contrato 0.46.0).
-- [ ] RF-M08-006/007: resolver la cobertura aplicable por oferta.
-- [ ] RF-M16-007 (importación masiva con preview) y RF-M16-008/009 (oferta asociada al convenio,
-  arancel particular por oferta). Dependen del puente Oferta↔Práctica de F2.
+- [x] ~~RF-M08-006/007: resolver la cobertura aplicable por oferta.~~ → B-3 (backend): `GET /api/v1/personas/{personaId}/cobertura-aplicable?ofertaId=` con condición sugerida y precio particular del día (contrato 0.65.0). La selección particular la hace la recepción (E-4); que llegue a la obligación queda abierto (`docs/diseno/AKINE-B-3-cobertura-por-oferta.md` §8). Falta la pantalla.
+- [x] ~~RF-M16-008/009 (oferta asociada al convenio, arancel particular por oferta).~~ → B-3
+  (backend, `V80`, contrato 0.65.0): `convenio_arancel.oferta_id` (el arancel de la oferta manda
+  sobre el general al resolver con oferta, y F-4 lo congela) y `oferta_precio_particular` (precio
+  por vigencia que manda sobre `precio_base`). Falta la pantalla.
+- [ ] RF-M16-007 (importación masiva con preview). **Diseñada y fuera de B-3**:
+  `docs/diseno/AKINE-B-3-cobertura-por-oferta.md` §7.
 - [x] ~~Validar moneda contra ISO 4217.~~ → `contracting.domain.MonedaIso4217` (`java.util.Currency`), en convenio y plan.
 - [ ] Historial de estados de la autorización: hoy solo queda el evento `AUTORIZACION_RESUELTA`
   en auditoría. **Decidir** tabla propia o auditoría, y escribirlo.
@@ -75,13 +79,13 @@ para esta práctica en esta fecha?".
 | Paciente fusionado no implementado; la baja no valida turnos ni deuda | Sí |
 | Financiador como dato de la organización, sin alcance global | Sí, registro y cabecera de `V41` |
 | Única principal y no-solapamiento por lock, no por constraint | Sí, intencional |
-| Sin columna `prioridad` en convenio; arancel por práctica y no por oferta | Sí, cabecera de `V43` |
+| Sin columna `prioridad` en convenio; ~~arancel por práctica y no por oferta~~ (B-3: `convenio_arancel.oferta_id`, `V80`) | Sí, cabecera de `V43` y `V80` |
 | Faltan diseño y challenge de 03.03, 03.05 y 03.06 en `docs/diseno/` | — |
 
 ## Para cerrar la fase
 
 - [ ] E2E de la vertical persona → cobertura → autorización contra backend real.
-- [ ] ~~Búsqueda por afiliado~~ (B-1) y RF-M08-006/007.
+- [x] ~~Búsqueda por afiliado~~ (B-1) y ~~RF-M08-006/007~~ (B-3, backend).
 - [ ] Decisión sobre el historial de autorización.
 - [x] ~~`spi` de cobertura vigente listo para que F5 (recepción) y F7 (devengado) lo consuman.~~ → B-2: `person.spi.CoberturasAplicablesDirectory`.
 - [ ] Corregir los registros de cierre (frontend entregado) y escribir los diseños que faltan.

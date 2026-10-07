@@ -204,7 +204,8 @@ public class CicloDeRecepcionService {
 		LocalDate dia = turno.getInicio().atZone(ZoneId.of(sede.timezone())).toLocalDate();
 
 		List<CoberturaAplicable> aplicables = coberturas.aplicables(
-				organizationId, consultorioId, turno.getPersonaId(), practicaId, dia);
+				organizationId, consultorioId, turno.getPersonaId(), practicaId, turno.getOfertaId(),
+				dia);
 		if (aplicables.isEmpty()) {
 			String observacion = SIN_COBERTURA_APLICABLE + ": la persona no tiene ninguna "
 					+ "cobertura que aplique a esta practica el " + dia + ".";

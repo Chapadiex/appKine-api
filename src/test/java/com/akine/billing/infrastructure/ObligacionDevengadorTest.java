@@ -126,8 +126,8 @@ class ObligacionDevengadorTest {
 
 		devengador.alCerrar(cierre(Set.of(KINE), true));
 
-		verify(coberturas).aplicables(ORG, SEDE, PERSONA, KINE, DIA_LOCAL);
-		verify(aranceles).congelar(ORG, SEDE, FINANCIADOR, PLAN, KINE, DIA_LOCAL);
+		verify(coberturas).aplicables(ORG, SEDE, PERSONA, KINE, OFERTA, DIA_LOCAL);
+		verify(aranceles).congelar(ORG, SEDE, FINANCIADOR, PLAN, KINE, OFERTA, DIA_LOCAL);
 	}
 
 	@Test
@@ -163,7 +163,7 @@ class ObligacionDevengadorTest {
 	@Test
 	@DisplayName("sin cobertura aplicable: una sola particular por el precio de la oferta")
 	void sin_cobertura_particular() {
-		given(coberturas.aplicables(anyLong(), anyLong(), anyLong(), anyLong(), any()))
+		given(coberturas.aplicables(anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of());
 
 		devengador.alCerrar(cierre(Set.of(KINE), true));
@@ -187,9 +187,9 @@ class ObligacionDevengadorTest {
 	@Test
 	@DisplayName("aplicable pero congelar no devuelve (carrera): prueba la siguiente y si no, particular")
 	void congelar_vacio_cae_a_particular() {
-		given(coberturas.aplicables(anyLong(), anyLong(), anyLong(), anyLong(), any()))
+		given(coberturas.aplicables(anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of(aplicable()));
-		given(aranceles.congelar(anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), any()))
+		given(aranceles.congelar(anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))
 				.willReturn(Optional.empty());
 
 		devengador.alCerrar(cierre(Set.of(KINE), true));
@@ -204,7 +204,7 @@ class ObligacionDevengadorTest {
 
 		devengador.alCerrar(cierre(Set.of(), true));
 
-		verify(coberturas).aplicables(ORG, SEDE, PERSONA, KINE, DIA_LOCAL);
+		verify(coberturas).aplicables(ORG, SEDE, PERSONA, KINE, OFERTA, DIA_LOCAL);
 		assertThat(guardadas(2)).allMatch(o -> o.getPracticaId() == KINE);
 	}
 
@@ -239,13 +239,13 @@ class ObligacionDevengadorTest {
 
 		List<Obligacion> filas = guardadas(2);
 		assertThat(filas).allMatch(o -> o.getPracticaId() == KINE);
-		verify(aranceles, never()).congelar(anyLong(), anyLong(), anyLong(), anyLong(), eq(FONO), any());
+		verify(aranceles, never()).congelar(anyLong(), anyLong(), anyLong(), anyLong(), eq(FONO), any(), any());
 	}
 
 	@Test
 	@DisplayName("si la principal no tiene cobertura, se factura la siguiente realizada")
 	void la_principal_sin_cobertura_pasa_a_la_siguiente() {
-		given(coberturas.aplicables(ORG, SEDE, PERSONA, KINE, DIA_LOCAL)).willReturn(List.of());
+		given(coberturas.aplicables(ORG, SEDE, PERSONA, KINE, OFERTA, DIA_LOCAL)).willReturn(List.of());
 		cubre(FONO, "9000.00", "8000.00", "1000.00");
 
 		devengador.alCerrar(cierre(Set.of(FONO, KINE), true));
@@ -291,7 +291,7 @@ class ObligacionDevengadorTest {
 
 		devengador.alCerrar(cierre(Set.of(KINE), true));
 
-		verify(coberturas).aplicables(ORG, SEDE, PERSONA, KINE, LocalDate.of(2026, 10, 7));
+		verify(coberturas).aplicables(ORG, SEDE, PERSONA, KINE, OFERTA, LocalDate.of(2026, 10, 7));
 	}
 
 	@Test
@@ -302,7 +302,7 @@ class ObligacionDevengadorTest {
 
 		devengador.alCerrar(cierre(Set.of(KINE), true));
 
-		verify(coberturas).aplicables(ORG, SEDE, PERSONA, KINE, LocalDate.of(2026, 10, 7));
+		verify(coberturas).aplicables(ORG, SEDE, PERSONA, KINE, OFERTA, LocalDate.of(2026, 10, 7));
 	}
 
 	// =================================================================================
@@ -331,9 +331,9 @@ class ObligacionDevengadorTest {
 	}
 
 	private void cubre(long practica, String total, String financiador, String coseguro) {
-		given(coberturas.aplicables(ORG, SEDE, PERSONA, practica, DIA_LOCAL))
+		given(coberturas.aplicables(ORG, SEDE, PERSONA, practica, OFERTA, DIA_LOCAL))
 				.willReturn(List.of(aplicable()));
-		given(aranceles.congelar(ORG, SEDE, FINANCIADOR, PLAN, practica, DIA_LOCAL))
+		given(aranceles.congelar(ORG, SEDE, FINANCIADOR, PLAN, practica, OFERTA, DIA_LOCAL))
 				.willReturn(Optional.of(new ArancelCongelado(12L, "CONV-1", "Convenio sintetico",
 						"POR_PRESTACION", FINANCIADOR, PLAN, practica, 77L, new BigDecimal(total),
 						new BigDecimal(financiador), new BigDecimal(coseguro), "ARS", true, false,

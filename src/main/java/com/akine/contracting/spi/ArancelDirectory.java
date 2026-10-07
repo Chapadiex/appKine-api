@@ -53,12 +53,36 @@ public interface ArancelDirectory {
 	 * @param fecha dia de la prestacion, en la zona local de la sede. Explicito y nunca un reloj
 	 *              implicito, misma regla que {@code PermissionQuery.at}
 	 */
+	default ResolucionDeArancel resolver(
+			long organizationId,
+			long consultorioId,
+			long financiadorId,
+			long planId,
+			long practicaId,
+			LocalDate fecha) {
+
+		return resolver(organizationId, consultorioId, financiadorId, planId, practicaId, null, fecha);
+	}
+
+	/**
+	 * B-3 (RF-M16-008, RN-M16-006): la resolucion para una practica prestada DENTRO de una oferta.
+	 *
+	 * <p>Con {@code ofertaId}, el arancel especifico de esa oferta que cubre la fecha manda sobre el
+	 * general de la practica; si no hay especifico, sale el general. Con {@code ofertaId} en
+	 * {@code null} es la resolucion de siempre: solo aranceles generales, y un arancel pactado para
+	 * una oferta nunca se aplica a otra. {@link ArancelVigente#ofertaId()} dice cual de los dos salio.
+	 *
+	 * <p><b>Quien conoce la oferta tiene que pasarla</b>: el devengo (F-4) y la recepcion (E-4) la
+	 * conocen, y si no la pasaran cobrarian el general donde el centro pacto otra cosa.
+	 */
+	@SuppressWarnings("java:S107")
 	ResolucionDeArancel resolver(
 			long organizationId,
 			long consultorioId,
 			long financiadorId,
 			long planId,
 			long practicaId,
+			Long ofertaId,
 			LocalDate fecha);
 
 	/**
@@ -73,11 +97,25 @@ public interface ArancelDirectory {
 	 * <p>Lo devuelto ya no depende de esta interfaz: es una copia. Volver a llamar mañana puede dar
 	 * otro resultado, y esa es exactamente la razon por la que el consumidor tiene que guardarlo.
 	 */
+	default Optional<ArancelCongelado> congelar(
+			long organizationId,
+			long consultorioId,
+			long financiadorId,
+			long planId,
+			long practicaId,
+			LocalDate fecha) {
+
+		return congelar(organizationId, consultorioId, financiadorId, planId, practicaId, null, fecha);
+	}
+
+	/** B-3: {@link #congelar} con oferta, con la regla de {@link #resolver(long, long, long, long, long, Long, LocalDate)}. */
+	@SuppressWarnings("java:S107")
 	Optional<ArancelCongelado> congelar(
 			long organizationId,
 			long consultorioId,
 			long financiadorId,
 			long planId,
 			long practicaId,
+			Long ofertaId,
 			LocalDate fecha);
 }
