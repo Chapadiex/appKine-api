@@ -113,9 +113,9 @@ public class PresentacionService {
 	/**
 	 * Las prestaciones que se le pueden reclamar a un financiador en un periodo (RF-M21-001).
 	 *
-	 * <p><b>Devuelve lista vacia en cualquier despliegue real</b>, y no es un defecto: no existe
-	 * ninguna obligacion con responsable {@code FINANCIADOR} porque el devengado nunca se recableo
-	 * contra convenios. Reserva declarada en el design challenge de AKINE-07.04.
+	 * <p>Hasta AKINE F-4 devolvia lista vacia en cualquier despliegue real: nada devengaba
+	 * obligaciones con responsable {@code FINANCIADOR}. Desde F-4 las devenga el cierre de cada
+	 * sesion cubierta por un convenio, y cada una trae el convenio congelado con sus requisitos.
 	 */
 	@Transactional(readOnly = true)
 	public List<ObligacionView> elegibles(
@@ -572,9 +572,10 @@ public class PresentacionService {
 	/**
 	 * Las comprobaciones de RF-M21-003 que el sistema puede hacer hoy.
 	 *
-	 * <p>Faltan los tres requisitos documentales del convenio —orden, autorizacion y credencial—,
-	 * que viven en {@code ArancelCongelado} y que el devengado nunca copio a {@code obligacion}.
-	 * Ver {@link HallazgoDeValidacion} y el design challenge de AKINE-07.04.
+	 * <p>Los tres requisitos documentales del convenio —orden, autorizacion y credencial— estan
+	 * congelados en la obligacion desde AKINE F-4 y viajan en la respuesta, pero todavia no son
+	 * hallazgo: decidir si cada faltante bloquea el lote o solo avisa es una decision de M21 que
+	 * sigue abierta. Ver {@link HallazgoDeValidacion}.
 	 */
 	private Optional<HallazgoDeValidacion> revisar(
 			Presentacion presentacion, Obligacion obligacion) {

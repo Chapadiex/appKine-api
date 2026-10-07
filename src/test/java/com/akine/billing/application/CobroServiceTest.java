@@ -3,10 +3,12 @@ package com.akine.billing.application;
 import com.akine.billing.domain.Cobro;
 import com.akine.billing.domain.CobroImputacion;
 import com.akine.billing.domain.CobroMedio;
+import com.akine.billing.domain.ConceptoObligacion;
 import com.akine.billing.domain.EstadoObligacion;
 import com.akine.billing.domain.MedioDePago;
 import com.akine.billing.domain.Obligacion;
 import com.akine.billing.domain.Responsable;
+import com.akine.billing.domain.SnapshotDeConvenio;
 import com.akine.billing.domain.exception.CajaNoAbiertaException;
 import com.akine.billing.domain.exception.CobroInvalidoException;
 import com.akine.billing.domain.exception.CobroNotAccessibleException;
@@ -41,6 +43,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -379,6 +382,31 @@ class CobroServiceTest {
 			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, cobroSimple("8500.00", CLAVE)))
 					.isInstanceOf(ObligacionNoCobrableException.class)
 					.hasMessageContaining("es de otra persona");
+
+			verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
+		}
+
+		@Test
+		@DisplayName("AKINE F-4: el paciente no puede saldar la parte del financiador en el mostrador")
+		void la_deuda_del_financiador_no_se_cobra_al_paciente() {
+			// La persona de la fila es el paciente atendido, asi que el control de persona no la
+			// frena. Sin este rechazo, el cobro saldaba la deuda de la obra social y esa deuda
+			// desaparecia de la bandeja de presentaciones.
+			Obligacion delFinanciador = Obligacion.porConvenio(
+					ORG, SEDE, SESION, PERSONA, ConceptoObligacion.FINANCIADOR, 31L, MONEDA, OFERTA,
+					"Sesion de kinesiologia", Instant.parse("2027-04-08T13:00:00Z"),
+					new SnapshotDeConvenio(12L, "CONV-1", "Convenio sintetico", 4L, 77L, 55L, 310L,
+							new BigDecimal("8500.00"), new BigDecimal("8500.00"), BigDecimal.ZERO,
+							false, false, false, false, LocalDate.of(2027, 4, 8),
+							Instant.parse("2027-04-08T13:00:00Z")),
+					false);
+			ReflectionTestUtils.setField(delFinanciador, "id", OBLIGACION);
+			given(obligaciones.findByIdInScope(ORG, SEDE, OBLIGACION))
+					.willReturn(Optional.of(delFinanciador));
+
+			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, cobroSimple("8500.00", CLAVE)))
+					.isInstanceOf(ObligacionNoCobrableException.class)
+					.hasMessageContaining("es deuda del financiador");
 
 			verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
 		}

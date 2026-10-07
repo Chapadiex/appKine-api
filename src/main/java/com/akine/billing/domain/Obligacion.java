@@ -14,6 +14,8 @@ import jakarta.persistence.Version;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.Optional;
 
 /**
  * Una deuda derivada de una prestacion. <b>No es el cobro ni es la caja.</b>
@@ -73,12 +75,28 @@ public class Obligacion {
 	 * recorrer el agregado de {@code contracting} y que ademas dejaria sin financiador a las deudas
 	 * historicas de un convenio dado de baja.
 	 *
-	 * <p><b>Hoy no la escribe nadie.</b> {@code ObligacionDevengador} devenga una sola obligacion, a
-	 * nombre del paciente: es lo que DP-10 recorto y el enchufe que 03.05 dejo reservado en V36 y
-	 * nunca volvio a conectar.
+	 * <p>La escribe {@code ObligacionDevengador} desde AKINE F-4, con el financiador de la
+	 * cobertura que se aplico.
 	 */
 	@Column(name = "financiador_id", updatable = false)
 	private Long financiadorId;
+
+	/** Que parte de la prestacion es esta fila (AKINE F-4). Ver {@link ConceptoObligacion}. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "concepto", nullable = false, length = 16, updatable = false)
+	private ConceptoObligacion concepto;
+
+	/** La practica facturada (DP-11). {@code null} en las particulares. */
+	@Column(name = "practica_id", updatable = false)
+	private Long practicaId;
+
+	/** La cobertura del paciente que se aplico. {@code null} en las particulares. */
+	@Column(name = "cobertura_id", updatable = false)
+	private Long coberturaId;
+
+	/** DP-11: la practica facturada no esta entre las que la oferta declara. Alerta, no rechazo. */
+	@Column(name = "alerta_practica_no_habilitada", nullable = false, updatable = false)
+	private boolean alertaPracticaNoHabilitada;
 
 	@Column(name = "importe_original", nullable = false, precision = 12, scale = 2, updatable = false)
 	private BigDecimal importeOriginal;
@@ -102,13 +120,53 @@ public class Obligacion {
 	@Column(name = "snapshot_precio", nullable = false, precision = 12, scale = 2, updatable = false)
 	private BigDecimal snapshotPrecio;
 
-	/** Reservado para AKINE-03.05. Ver V36: se declara para que agregarlo sea sumar datos. */
+	// =================================================================================
+	// Snapshot del convenio (V36 reservo los dos ids; V77 agrega el resto y F-4 los escribe).
+	// Todos NULL en PARTICULAR y todos presentes en FINANCIADOR y COSEGURO: lo sostiene
+	// ck_obligacion_snapshot_convenio_coherente. Ver SnapshotDeConvenio.
+	// =================================================================================
+
 	@Column(name = "snapshot_convenio_id", updatable = false)
 	private Long snapshotConvenioId;
 
-	/** Reservado para AKINE-03.05. */
 	@Column(name = "snapshot_arancel_id", updatable = false)
 	private Long snapshotArancelId;
+
+	@Column(name = "snapshot_plan_id", updatable = false)
+	private Long snapshotPlanId;
+
+	@Column(name = "snapshot_convenio_codigo", length = 64, updatable = false)
+	private String snapshotConvenioCodigo;
+
+	@Column(name = "snapshot_convenio_nombre", length = 160, updatable = false)
+	private String snapshotConvenioNombre;
+
+	@Column(name = "snapshot_importe_total", precision = 12, scale = 2, updatable = false)
+	private BigDecimal snapshotImporteTotal;
+
+	@Column(name = "snapshot_importe_financiador", precision = 12, scale = 2, updatable = false)
+	private BigDecimal snapshotImporteFinanciador;
+
+	@Column(name = "snapshot_coseguro", precision = 12, scale = 2, updatable = false)
+	private BigDecimal snapshotCoseguro;
+
+	@Column(name = "snapshot_requeria_orden", updatable = false)
+	private Boolean snapshotRequeriaOrden;
+
+	@Column(name = "snapshot_requeria_autorizacion", updatable = false)
+	private Boolean snapshotRequeriaAutorizacion;
+
+	@Column(name = "snapshot_requeria_credencial", updatable = false)
+	private Boolean snapshotRequeriaCredencial;
+
+	@Column(name = "snapshot_credencial_vencida", updatable = false)
+	private Boolean snapshotCredencialVencida;
+
+	@Column(name = "snapshot_vigente_el", updatable = false)
+	private LocalDate snapshotVigenteEl;
+
+	@Column(name = "snapshot_capturado_en", updatable = false)
+	private Instant snapshotCapturadoEn;
 
 	@Column(name = "devengada_en", nullable = false, updatable = false)
 	private Instant devengadaEn;
@@ -133,6 +191,12 @@ public class Obligacion {
 		// Requerido por JPA.
 	}
 
+	/**
+	 * La deuda del paciente sin cobertura: el precio de la oferta (07.01, {@code PARTICULAR}).
+	 *
+	 * <p>Solo admite {@link Responsable#PACIENTE}: la deuda de un financiador sale siempre de un
+	 * convenio y se crea con {@link #porConvenio}.
+	 */
 	public Obligacion(
 			long organizationId,
 			long consultorioId,
@@ -145,66 +209,107 @@ public class Obligacion {
 			String snapshotNombre,
 			Instant devengadaEn) {
 
-		this(organizationId, consultorioId, sesionId, personaId, responsable, null, importe,
-				moneda, ofertaId, snapshotNombre, devengadaEn);
+		if (responsable != Responsable.PACIENTE) {
+			// ck_obligacion_concepto_responsable (V77) lo impide igual. Aca se atrapa antes para
+			// decir cual es el problema, en vez de dejar reventar una constraint que ademas
+			// dejaria la transaccion del cierre marcada para rollback.
+			throw new IllegalArgumentException(
+					"Una obligacion a cargo del financiador sale de un convenio: usar porConvenio");
+		}
+		this.organizationId = organizationId;
+		this.consultorioId = consultorioId;
+		this.sesionId = sesionId;
+		this.personaId = personaId;
+		this.responsable = Responsable.PACIENTE;
+		this.concepto = ConceptoObligacion.PARTICULAR;
+		this.moneda = moneda;
+		this.ofertaId = ofertaId;
+		this.snapshotNombre = snapshotNombre;
+		this.devengadaEn = devengadaEn;
+		inicializarImporte(importe);
 	}
 
 	/**
-	 * La deuda que le corresponde a un financiador (AKINE-07.04).
+	 * Una de las partes de una prestacion cubierta por un convenio (AKINE F-4, RF-M18-002).
 	 *
-	 * <p>Exige el {@code financiadorId} en la firma y no lo deja opcional: es lo que hace que la
-	 * deuda se pueda reclamar. El {@code CHECK} de V56 lo respalda del lado de la base.
+	 * <p>El importe <b>no se recibe</b>: es la parte del arancel congelado que le toca al concepto
+	 * —{@code importe_financiador} o {@code coseguro}—. El reparto no calcula, copia, y
+	 * {@code ck_obligacion_importe_segun_concepto} (V77) lo respalda del lado de la base.
 	 *
-	 * <p><b>Hoy no la invoca nadie</b>, y esa es la reserva declarada del design challenge: el
-	 * devengado sigue produciendo una sola obligacion a nombre del paciente.
+	 * @param financiadorId obligatorio si el concepto es {@link ConceptoObligacion#FINANCIADOR} y
+	 *                      prohibido si no (los dos CHECK de V56)
 	 */
 	@SuppressWarnings("checkstyle:ParameterNumber")
-	public Obligacion(
+	public static Obligacion porConvenio(
 			long organizationId,
 			long consultorioId,
 			long sesionId,
 			long personaId,
-			Responsable responsable,
+			ConceptoObligacion concepto,
 			Long financiadorId,
-			BigDecimal importe,
 			String moneda,
 			long ofertaId,
 			String snapshotNombre,
-			Instant devengadaEn) {
+			Instant devengadaEn,
+			SnapshotDeConvenio snapshot,
+			boolean alertaPracticaNoHabilitada) {
 
-		if (responsable == Responsable.FINANCIADOR && financiadorId == null) {
-			// El CHECK de V56 lo impide igual. Aca se atrapa antes para poder decir cual es el
-			// problema, en vez de dejar reventar una constraint que ademas dejaria la transaccion
-			// marcada para rollback.
+		if (concepto == ConceptoObligacion.PARTICULAR) {
+			throw new IllegalArgumentException("Una obligacion particular no sale de un convenio");
+		}
+		if (concepto == ConceptoObligacion.FINANCIADOR && financiadorId == null) {
 			throw new IllegalArgumentException(
 					"Una obligacion a cargo del financiador necesita saber de que financiador es");
 		}
-		if (responsable != Responsable.FINANCIADOR && financiadorId != null) {
+		if (concepto != ConceptoObligacion.FINANCIADOR && financiadorId != null) {
 			throw new IllegalArgumentException(
 					"Una obligacion del paciente no lleva financiador: " + financiadorId);
 		}
 
+		Obligacion o = new Obligacion();
+		o.organizationId = organizationId;
+		o.consultorioId = consultorioId;
+		o.sesionId = sesionId;
+		o.personaId = personaId;
+		o.responsable = concepto.responsable();
+		o.financiadorId = financiadorId;
+		o.concepto = concepto;
+		o.moneda = moneda;
+		o.ofertaId = ofertaId;
+		o.snapshotNombre = snapshotNombre;
+		o.devengadaEn = devengadaEn;
+		o.practicaId = snapshot.practicaId();
+		o.coberturaId = snapshot.coberturaId();
+		o.alertaPracticaNoHabilitada = alertaPracticaNoHabilitada;
+		o.snapshotConvenioId = snapshot.convenioId();
+		o.snapshotArancelId = snapshot.arancelId();
+		o.snapshotPlanId = snapshot.planId();
+		o.snapshotConvenioCodigo = snapshot.convenioCodigo();
+		o.snapshotConvenioNombre = snapshot.convenioNombre();
+		o.snapshotImporteTotal = snapshot.importeTotal();
+		o.snapshotImporteFinanciador = snapshot.importeFinanciador();
+		o.snapshotCoseguro = snapshot.coseguro();
+		o.snapshotRequeriaOrden = snapshot.requeriaOrden();
+		o.snapshotRequeriaAutorizacion = snapshot.requeriaAutorizacion();
+		o.snapshotRequeriaCredencial = snapshot.requeriaCredencial();
+		o.snapshotCredencialVencida = snapshot.credencialVencida();
+		o.snapshotVigenteEl = snapshot.vigenteEl();
+		o.snapshotCapturadoEn = snapshot.capturadoEn();
+		o.inicializarImporte(snapshot.parteDe(concepto));
+		return o;
+	}
+
+	private void inicializarImporte(BigDecimal importe) {
 		if (importe == null || importe.signum() <= 0) {
 			// "No cobrar saldo cero" es regla de la etapa. Una deuda de cero solo ensucia la
 			// cuenta corriente con filas que nadie va a pagar, y una negativa es un credito
 			// disfrazado de deuda.
 			throw new IllegalArgumentException("Una obligacion se devenga por un importe positivo: " + importe);
 		}
-
-		this.organizationId = organizationId;
-		this.consultorioId = consultorioId;
-		this.sesionId = sesionId;
-		this.personaId = personaId;
-		this.responsable = responsable;
-		this.financiadorId = financiadorId;
 		this.importeOriginal = importe;
 		this.saldo = importe;
-		this.moneda = moneda;
-		this.estado = EstadoObligacion.PENDIENTE;
-		this.ofertaId = ofertaId;
-		this.snapshotNombre = snapshotNombre;
 		this.snapshotPrecio = importe;
-		this.devengadaEn = devengadaEn;
+		this.estado = EstadoObligacion.PENDIENTE;
 	}
 
 	/**
@@ -307,5 +412,45 @@ public class Obligacion {
 
 	public long getVersion() {
 		return version;
+	}
+
+	public ConceptoObligacion getConcepto() {
+		return concepto;
+	}
+
+	public Long getPracticaId() {
+		return practicaId;
+	}
+
+	public boolean isAlertaPracticaNoHabilitada() {
+		return alertaPracticaNoHabilitada;
+	}
+
+	/**
+	 * El convenio que se aplico, tal como quedo congelado. Vacio en las particulares.
+	 *
+	 * <p>Se arma de las columnas propias: no vuelve a preguntarle nada a {@code contracting}.
+	 */
+	public Optional<SnapshotDeConvenio> getSnapshotDeConvenio() {
+		if (snapshotConvenioId == null) {
+			return Optional.empty();
+		}
+		return Optional.of(new SnapshotDeConvenio(
+				snapshotConvenioId,
+				snapshotConvenioCodigo,
+				snapshotConvenioNombre,
+				snapshotPlanId,
+				snapshotArancelId,
+				practicaId,
+				coberturaId,
+				snapshotImporteTotal,
+				snapshotImporteFinanciador,
+				snapshotCoseguro,
+				Boolean.TRUE.equals(snapshotRequeriaOrden),
+				Boolean.TRUE.equals(snapshotRequeriaAutorizacion),
+				Boolean.TRUE.equals(snapshotRequeriaCredencial),
+				Boolean.TRUE.equals(snapshotCredencialVencida),
+				snapshotVigenteEl,
+				snapshotCapturadoEn));
 	}
 }

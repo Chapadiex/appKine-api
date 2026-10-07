@@ -1,7 +1,6 @@
 package com.akine.billing.infrastructure;
 
 import com.akine.billing.domain.Obligacion;
-import com.akine.billing.domain.Responsable;
 import com.akine.billing.domain.port.ObligacionRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -38,18 +37,17 @@ public interface ObligacionRepository
 	@Query("""
 			SELECT o FROM Obligacion o
 			 WHERE o.sesionId = :sesionId
-			   AND o.responsable = :responsable
 			   AND o.deletedAt IS NULL
+			 ORDER BY o.id
 			""")
-	Optional<Obligacion> findPorPrestacion(
-			@Param("sesionId") long sesionId,
-			@Param("responsable") Responsable responsable);
+	List<Obligacion> findDeLaSesion(@Param("sesionId") long sesionId);
 
 	@Override
 	@Query("""
 			SELECT o FROM Obligacion o
 			 WHERE o.organizationId = :organizationId
 			   AND o.personaId = :personaId
+			   AND o.responsable = com.akine.billing.domain.Responsable.PACIENTE
 			   AND o.deletedAt IS NULL
 			 ORDER BY o.devengadaEn DESC
 			""")
@@ -175,11 +173,9 @@ public interface ObligacionRepository
 	/**
 	 * Lo prestado a un financiador en el periodo (RF-M23-005), por financiador.
 	 *
-	 * <p><b>Hoy devuelve lista vacia en cualquier despliegue real</b>, y no es un defecto de la
-	 * consulta: no existe ninguna obligacion con {@code responsable = FINANCIADOR} porque el
-	 * devengado nunca se recableo contra convenios. Es la misma reserva declarada en el design
-	 * challenge de AKINE-07.04, y el reporte la emite como advertencia en vez de mostrar un cero
-	 * mudo.
+	 * <p>Hasta AKINE F-4 devolvia lista vacia en cualquier despliegue real: nada devengaba
+	 * obligaciones con {@code responsable = FINANCIADOR}. Desde F-4 suma la parte del financiador
+	 * de cada sesion cubierta por un convenio; el coseguro es del paciente y no entra.
 	 */
 	@Query(value = """
 			SELECT o.financiador_id AS financiador, SUM(o.importe_original) AS total
