@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -89,11 +90,22 @@ public interface CasoClinicoRepository
 	// columna que indexa `ix_caso_clinico_sede_apertura` (V59), el primer indice no-unico
 	// que esta tabla tiene.
 
+	// G-1 (DP-15): con `recortar` en verdadero, los tres cuentan solo los casos donde alguna de
+	// `memberships` integra o integro el equipo (`caso_profesional`, cualquier vigencia): es lo
+	// que "le fue asignado" al profesional. Quien dejo el equipo trato al paciente, y la tabla no
+	// borra la fila justamente por eso (V47, punto 5). EXISTS y no JOIN: un profesional que entro,
+	// salio y volvio tiene dos filas, y un JOIN contaria el caso dos veces.
+
 	/** Casos abiertos en el periodo. */
 	@Query("""
 			SELECT COUNT(c) FROM CasoClinico c
 			 WHERE c.organizationId = :organizationId
 			   AND c.ofertaConsultorioId = :consultorioId
+			   AND (:recortar = false OR EXISTS (
+			        SELECT cp.id FROM CasoProfesional cp
+			         WHERE cp.organizationId = c.organizationId
+			           AND cp.casoId = c.id
+			           AND cp.profesionalMembershipId IN :memberships))
 			   AND c.abiertoEn >= :desde
 			   AND c.abiertoEn < :hasta
 			""")
@@ -101,7 +113,9 @@ public interface CasoClinicoRepository
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") java.time.Instant desde,
-			@Param("hasta") java.time.Instant hasta);
+			@Param("hasta") java.time.Instant hasta,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
 
 	/**
 	 * Casos cerrados en el periodo.
@@ -113,6 +127,11 @@ public interface CasoClinicoRepository
 			SELECT COUNT(c) FROM CasoClinico c
 			 WHERE c.organizationId = :organizationId
 			   AND c.ofertaConsultorioId = :consultorioId
+			   AND (:recortar = false OR EXISTS (
+			        SELECT cp.id FROM CasoProfesional cp
+			         WHERE cp.organizationId = c.organizationId
+			           AND cp.casoId = c.id
+			           AND cp.profesionalMembershipId IN :memberships))
 			   AND c.cerradoEn >= :desde
 			   AND c.cerradoEn < :hasta
 			""")
@@ -120,7 +139,9 @@ public interface CasoClinicoRepository
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") java.time.Instant desde,
-			@Param("hasta") java.time.Instant hasta);
+			@Param("hasta") java.time.Instant hasta,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
 
 	/**
 	 * Casos activos <b>hoy</b>, no al dia de corte del reporte.
@@ -134,9 +155,16 @@ public interface CasoClinicoRepository
 			SELECT COUNT(c) FROM CasoClinico c
 			 WHERE c.organizationId = :organizationId
 			   AND c.ofertaConsultorioId = :consultorioId
+			   AND (:recortar = false OR EXISTS (
+			        SELECT cp.id FROM CasoProfesional cp
+			         WHERE cp.organizationId = c.organizationId
+			           AND cp.casoId = c.id
+			           AND cp.profesionalMembershipId IN :memberships))
 			   AND c.estado = com.akine.clinical.domain.EstadoCaso.ACTIVO
 			""")
 	long contarActivosEnElReporte(
 			@Param("organizationId") long organizationId,
-			@Param("consultorioId") long consultorioId);
+			@Param("consultorioId") long consultorioId,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
 }

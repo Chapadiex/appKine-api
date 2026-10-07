@@ -152,7 +152,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | L-0 | Cambiar la rama por defecto de GitHub a `main` en los dos repos; protección de rama | — | S | — | F0-F1 |
 | L-1 | Sesión de decisiones DU-1, DU-2, DU-3 → ADR/DP | docs | S | — | 00-orden |
 | ~~C-1~~ | ~~Migración `V65`: CHECK de lateralidad con `NO_APLICA`, IT que lo reproduce primero~~ — hecho (`V65`, antes del 06/10) | api | S | — | F6 |
-| G-1 | Otorgar `reporte:read` según DU-3, con test | api | S | DU-3 | F8 |
+| ~~G-1~~ | ~~Otorgar `reporte:read` según DU-3, con test~~ — hecho (DP-15, 07/10): todos los roles según la matriz, `PROFESIONAL` con alcance `ACTIVIDAD_PROPIA`, `PLATFORM_ADMIN` con soporte; sin migración ni cambio de contrato | api | S | DU-3 | F8 |
 | ~~F-1~~ | ~~Verificar y arreglar `cuentaCorriente` (filtro por sede + paginación fija)~~ — hecho (#14, 06/10) | api | S | — | F7 |
 | ~~G-2~~ | ~~Verificar y arreglar `sumarAnuladoEnElReporte` sin `deletedAt`~~ — hecho (#13, 06/10) | api | S | — | F8 |
 | ~~A-2~~ | ~~ADR que ratifica `encounter` como dueño de la Sesión; `AGENT.md` §4~~ — hecho (ADR-0024, antes del 06/10) | docs | S | — | F0-F1 |

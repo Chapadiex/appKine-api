@@ -174,7 +174,7 @@ class RolePermissionsTest {
 
 	@ParameterizedTest
 	@EnumSource(value = PermissionCode.class, names = {
-			"CASO_CREATE", "REPORTE_READ"})
+			"CASO_CREATE"})
 	@DisplayName("Los permisos de fases futuras estan declarados y no los tiene NINGUN rol")
 	void los_permisos_de_fases_futuras_deniegan_para_todos(PermissionCode permiso) {
 		// Estan en el catalogo para que agregar una fase sea sumar filas y no rehacer el modelo.
@@ -287,6 +287,48 @@ class RolePermissionsTest {
 					.as("la matriz le dice 'No' a %s en Administrar Convenios", rol)
 					.isEmpty();
 		}
+	}
+
+	@Test
+	@DisplayName("reporte:read sigue la fila Ver Reportes de la matriz (G-1, DP-15)")
+	void reporte_read_quedo_cableado_en_g_1() {
+		// "Si" al ORG_ADMIN y al CONSULTORIO_ADMIN, con el alcance de su membership.
+		assertThat(RolePermissions.baseScope(RoleCode.ORG_ADMIN, PermissionCode.REPORTE_READ))
+				.contains(PermissionScope.ORGANIZACION);
+		assertThat(RolePermissions.baseScope(RoleCode.CONSULTORIO_ADMIN, PermissionCode.REPORTE_READ))
+				.contains(PermissionScope.CONSULTORIO);
+
+		// "Limitado" al PROFESIONAL: solo su propia actividad (§4). No es CONSULTORIO —veria la
+		// agenda de todo el equipo— ni OWN, que es el "Propio" del paciente.
+		assertThat(RolePermissions.baseScope(RoleCode.PROFESIONAL, PermissionCode.REPORTE_READ))
+				.contains(PermissionScope.ACTIVIDAD_PROPIA);
+
+		// "Limitado" al ADMINISTRATIVO: operativos y caja sin contenido clinico. Lo clinico se lo
+		// quita el permiso de cada seccion, no el alcance: con ACTIVIDAD_PROPIA veria cero turnos.
+		assertThat(RolePermissions.baseScope(RoleCode.ADMINISTRATIVO, PermissionCode.REPORTE_READ))
+				.contains(PermissionScope.CONSULTORIO);
+
+		// "Global" al PLATFORM_ADMIN, leido con el criterio de §9.7: es lectura de datos de un
+		// tenant, asi que SOPORTE.
+		assertThat(RolePermissions.baseScope(RoleCode.PLATFORM_ADMIN, PermissionCode.REPORTE_READ))
+				.contains(PermissionScope.SOPORTE);
+
+		assertThat(RolePermissions.baseScope(RoleCode.PACIENTE, PermissionCode.REPORTE_READ))
+				.as("la matriz le dice 'No' al PACIENTE en Ver Reportes")
+				.isEmpty();
+		assertThat(RolePermissions.otorgablesComoGrant())
+				.as("no es otorgable: un grant ignoraria el recorte por actividad propia")
+				.doesNotContain(PermissionCode.REPORTE_READ);
+	}
+
+	@Test
+	@DisplayName("El nombre de ACTIVIDAD_PROPIA es el que el spi publica")
+	void el_nombre_de_actividad_propia_es_el_del_spi() {
+		// `reporting` no puede importar este enum y compara contra la constante del spi. Si alguien
+		// renombra el valor, el recorte del profesional dejaria de aplicarse en silencio.
+		assertThat(PermissionScope.ACTIVIDAD_PROPIA.name())
+				.isEqualTo(com.akine.organization.spi.PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA);
+		assertThat(PermissionScope.ACTIVIDAD_PROPIA.cubreLaOrganizacion()).isFalse();
 	}
 
 	// =================================================================================

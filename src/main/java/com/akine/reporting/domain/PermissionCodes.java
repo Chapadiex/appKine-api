@@ -16,10 +16,11 @@ public final class PermissionCodes {
 	 * §5 lo declara con fase F8 y lo tenia declarado sin asignacion base. No se inventa ningun
 	 * permiso nuevo: una etapa no amplia la matriz.
 	 *
-	 * <p>Lo que este codigo <b>no</b> resuelve es el recorte "Limitado" de §4 —que un
-	 * {@code PROFESIONAL} vea solo su propia actividad—, que es el alcance {@code OWN} y es un
-	 * hueco declarado de F8 en la propia matriz. El recorte que esta etapa si aplica es por
-	 * seccion: cada contribuyente declara el permiso con el que se lee su fuente.
+	 * <p>Hasta AKINE-G-1 no lo tenia ningun rol. Desde DP-15 tiene asignacion base, y el
+	 * "Limitado" de §4 se resuelve en dos capas: el recorte por seccion —cada contribuyente declara
+	 * el permiso con el que se lee su fuente, y eso deja al {@code ADMINISTRATIVO} sin lo clinico—
+	 * y el alcance {@code ACTIVIDAD_PROPIA} del {@code PROFESIONAL}, que recorta turnos, sesiones y
+	 * casos a lo que atendio o le fue asignado.
 	 */
 	public static final String REPORTE_READ = "reporte:read";
 

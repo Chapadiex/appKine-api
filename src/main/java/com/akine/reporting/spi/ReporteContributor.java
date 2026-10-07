@@ -84,6 +84,22 @@ public interface ReporteContributor {
 		return false;
 	}
 
+	/**
+	 * Si esta seccion sabe recortarse a la actividad propia del actor. Por defecto no.
+	 *
+	 * <p>AKINE-G-1 (DP-15): un {@code PROFESIONAL} ve "solo reportes de su propia actividad"
+	 * (matriz §4). Cuando la consulta llega recortada —{@link
+	 * ConsultaDeReporte#recortadaAActividadPropia()}—, solo se invocan las secciones que devuelven
+	 * {@code true} aca; <b>las demas se omiten y se declaran</b>, nunca se calculan sin recorte.
+	 *
+	 * <p>El default es {@code false} a proposito: una seccion nueva que se olvide de declararlo
+	 * queda afuera del reporte limitado en vez de mostrarle al profesional la actividad de todo el
+	 * equipo. Ante la duda, cerrado.
+	 */
+	default boolean filtraPorActividadPropia() {
+		return false;
+	}
+
 	/** El aporte de este modulo. Nunca {@code null}: usar {@link AporteDeReporte#vacio(String)}. */
 	AporteDeReporte aportar(ConsultaDeReporte consulta);
 }
