@@ -113,7 +113,7 @@ Ninguna se inventa en silencio: cada una sale como ADR o DP escrita (`AGENT.md` 
 | **DU-6** | Alcance `OWN` / `paciente:read` (vínculo cuenta↔persona) | B-8, G-5; autoservicio de E | ola 1 |
 | ~~**DU-7**~~ | ~~Reversión del consumo: automática o manual~~ → **resuelta: DP-13**, manual con alerta al anular la deuda (06/10/2026) | C-4 | ola 1 |
 | **DU-8** | Historial de autorización: tabla propia o auditoría | B-4 | ola 1 |
-| **DU-9** | ¿La recepción tiene máquina de estados propia (DP-05) o se documenta el desvío? | E-4 | ola 1 |
+| ~~**DU-9**~~ | ~~¿La recepción tiene máquina de estados propia (DP-05) o se documenta el desvío?~~ → **resuelta: DP-16**, máquina propia (07/10/2026) | E-4 | ola 1 |
 | **DU-10** | `egreso:manage` propio o `caja:operate`; adjunto binario del egreso (¿storage a `platform.spi`?) | F-5 | ola 2 |
 | **DU-11** | Parámetros obligatorios por práctica; ¿un observador que falla debe hacer fallar el cierre? | C-8 | ola 2 |
 | **DU-12** | ¿F9 espera al gate del MVP? (DP-07) y `clase:*` vs `turno:*` | F9 entera | después del gate |
@@ -137,7 +137,9 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V74` | E-3 | **Usada**: `V74__m12_serie_de_turnos.sql` (nació como `V70` y se renumeró al integrar: `V71` ya estaba en `main` y Flyway corre sin `outOfOrder`) — tabla `turno_serie` (regla semanal, idempotencia) y `turno.serie_id` nullable con `fk_turno_turno_serie` e `ix_turno_serie_inicio` |
 | `V75` | A-9 | **Usada**: `V75__m27_oferta_practica.sql` — tabla `oferta_practica` (DP-11) con práctica principal sostenida por `uk_oferta_practica_principal` |
 | `V76` | C-4 | **Usada**: `V76__c4_autorizacion_alerta_consumo_a_revisar.sql` — tabla `autorizacion_alerta` (DP-13) e índice `ix_movimiento_origen` en `autorizacion_movimiento` |
-| `V77`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
+| `V77` | libre | Tomar la siguiente libre y anotarla acá |
+| `V78` | E-4 | **Usada**: `V78__m13_recepcion_maquina_propia.sql` — tablas `recepcion` (una vigente por turno, `uk_recepcion_turno_vigente`) y `recepcion_evento` (append-only), migración de los turnos `EN_ESPERA` y de los cancelados con llegada, `ck_turno_estado` sin `EN_ESPERA`. No borra columnas de `turno` (ADR-0007) |
+| `V79` | libre | Tomar la siguiente libre y anotarla acá |
 
 ## 7. Paquetes de trabajo
 
@@ -207,7 +209,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | D-f | Selector explicable de autorización, saldo y alertas | web | M | C-4 | F4 |
 | D-g | Enmiendas en la UI + E2E sesión rápida y cierre → timeline | web | M | C-6 | F6 |
 | **E-3** | Modelo de serie de turnos (`V70`): diseño con design challenge, comandos de alcance, UI de confirmación | api + web | L | — | F5 |
-| E-4 | Recepción con elegibilidad administrativa y camino "Particular" | api + web | M | B-2, DU-9 | F5 |
+| E-4 | Recepción con elegibilidad administrativa y camino "Particular" — **backend hecho** (`V78`, contrato 0.63.0, DP-16): `Recepcion` con máquina propia, validación por `person.spi.ElegibilidadAdministrativaDirectory`, Particular con motivo; falta la pantalla | api + web | M | B-2, DU-9 | F5 |
 | F-5 | Egresos y pagos a profesionales (backend pendiente + pantallas) | api + web | M | DU-10 | F7 |
 | G-5 | Hallazgos altos de 07.07: `OWN`, unificar errores, threat model, matriz de permisos con tests | api | L | DU-5, DU-6 | F8 |
 | G-9 | Job E2E del CI del frontend contra el backend | web | M | G-3 | F0-F1, F8 |

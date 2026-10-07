@@ -411,6 +411,26 @@ prestación). Manual sin alerta (depende de la memoria del operador).
 
 **Desbloquea:** C-4.
 
+## DP-16 — Recepción con máquina de estados propia (DU-9)
+
+**Estado:** RESUELTA el 07/10/2026 por el dueño del producto.
+
+**Contexto.** DP-05 pedía máquinas independientes para Turno, Check-in/Recepción y Sesión, y
+05.04 "reducida" resolvió el check-in como un estado más del turno (`EN_ESPERA` en
+`EstadoTurno`). DU-9 preguntaba si se documentaba el desvío o se corregía.
+
+**Decisión.** Se cumple DP-05: entidad **Recepción** con estados propios —llegó → validada u
+observada → en espera → llamada—, con actor, hora, estado anterior, estado nuevo y motivo en cada
+transición. **El Turno vuelve a ser sólo la reserva**: `EN_ESPERA` sale de `EstadoTurno`, con
+migración de los datos existentes. La validación administrativa (E-4) y el prepago como anticipo
+(E-6) se apoyan en la Recepción. Ninguna transición de recepción prueba que una prestación
+ocurrió.
+
+**Alternativa descartada.** Documentar el desvío y dejar el check-in en el turno: obligaba a
+colgar la validación administrativa y el prepago de la reserva.
+
+**Implementada en:** E-4 (`V78`, contrato 0.63.0, `docs/diseno/AKINE-E-4-recepcion.md`).
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional
@@ -10501,3 +10521,41 @@ Resuelto: el defecto del escenario 41 (ver punto 7).
 - **Defecto encontrado y corregido: se podía reservar un turno en el pasado.** Reprogramar ya lo rechazaba y la reserva no; el turno nacía inalterable y sólo se podía cerrar como `AUSENTE`. Ahora es 409 `slot-no-disponible` (`TurnoServiceTest`).
 - **Tests:** `SerieDeTurnosIT` (9 escenarios contra MySQL: serie concurrente con reserva que pisa una ocurrencia, todo o nada, "este y los siguientes" libera lugares, cantidad desactualizada, reprogramar una semana, primera ausencia preserva futuros, tenant, idempotencia, V70) más unitarios de regla, selección, servicio y handler.
 - **Fuera de alcance, declarado:** recurrencias no semanales, editar o extender la regla, alta parcial o "saltear feriados", vínculo Plan→serie, aviso consolidado y la mitad web (confirmación de alcance en la UI).
+
+
+# Registro de cierre — G5 · E-4 (Recepción con máquina propia, DP-16) · backend
+
+**07/10/2026** · rama `akine-E-4-recepcion`. `V78`, contrato `0.63.0`, diseño
+`docs/diseno/AKINE-E-4-recepcion.md` con design challenge.
+
+- **DP-16 implementada.** `scheduling.domain.Recepcion` con máquina propia (LLEGO → VALIDADA u
+  OBSERVADA → EN_ESPERA → LLAMADA, más ANULADA y CERRADA) e historial append-only en
+  `recepcion_evento`. `EN_ESPERA` salió de `EstadoTurno`: el turno vuelve a ser sólo la reserva.
+- **Validación administrativa** (RF-M13-003/004): práctica principal de la oferta (DP-11),
+  cobertura aplicable de B-2 y la elegibilidad de M17, que por fin tiene consumidor a través del
+  nuevo `person.spi.ElegibilidadAdministrativaDirectory`. Lo que no cumple queda OBSERVADA, nunca
+  un 4xx. **Particular** (RF-M13-005) es decisión explícita con motivo y no toca la cobertura
+  maestra (RN-M13-004).
+- **Cancelar con la recepción abierta la cierra en CERRADA conservando la llegada**; reprogramar y
+  marcar ausencia siguen vedados con la recepción abierta; la serie la omite (`EN_ESPERA`).
+- **Concurrencia:** check-in en `READ_COMMITTED` con `FOR UPDATE` del turno (dos simultáneos dan
+  la misma recepción) y `PESSIMISTIC_FORCE_INCREMENT` de la versión del turno al crearla, para que
+  una cancelación concurrente pierda en vez de dejar un turno cancelado con alguien en la sala.
+- **`V78`** migra los `EN_ESPERA` (el turno vuelve a `estado_antes_de_espera`, la llegada pasa a
+  una recepción `EN_ESPERA` con su evento en la hora real) y los cancelados con llegada
+  (recepción `CERRADA`), agrega `ck_turno_estado` y **no borra columnas** (ADR-0007).
+- **Contrato:** aditivo más dos deprecaciones. `EN_ESPERA` sigue declarado en `Turno.estado` y
+  `TurnoDelDia.estado`, deprecado y sin emitirse; `POST`/`DELETE /turnos/{id}/llegada` y
+  `Turno.llegadaEn` quedan deprecados.
+- **Defecto evitado, con test:** `TurnoEvento` mapeaba los estados con `EstadoTurno`; sacar
+  `EN_ESPERA` del enum hacía reventar la lectura del historial de todo turno que pasó por la
+  espera. Pasó a texto (`RecepcionIT.el_historial_conserva_los_eventos_de_espera`).
+- **Tests:** 3.137 unitarias (eran 3.103). ITs contra MySQL: `RecepcionIT` 14,
+  `RecepcionConcurrenteIT` 2, `MigracionRecepcionV78IT` 1, y en verde `TurnoConcurrenteIT` 3,
+  `TurnoCicloConcurrenteIT` 5, `SerieDeTurnosIT` 9, `NotificacionDeTurnoIT` 7,
+  `AgendaDescuentaReservasIT` 1, `SondasDeImpactoIT` 6, `RelacionAsistencialIT` 22,
+  `CierreConcurrenteIT` 5, `CierreConDosNumeradoresIT` 8, `EsquemaMultiTenantIT` 4,
+  `OpenApiContractIT` 5 (sin drift).
+- **Fuera de alcance, declarado:** el indicador `turnos-en-espera` del reporte de turnos queda en
+  0 (cuenta `turno.estado`; es de G-1); no hay estado "se retiró"; Particular desde `EN_ESPERA` no
+  se admite; `billing` no lee la modalidad; prepago (E-6) y la mitad web.

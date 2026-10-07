@@ -38,11 +38,17 @@ estados de recepción propia, como pedía DP-05.
   `docs/diseno/AKINE-E-3-series.md`, `V74` (`turno_serie`, `turno.serie_id`; reservada como `V70`), alta todo o nada,
   cancelación y reprogramación con alcance y confirmación por cantidad (`/series-de-turnos`),
   contrato 0.57.0, `SerieDeTurnosIT`. Falta la mitad web (confirmación de alcance en la UI).
-- [ ] **Recepción con validación administrativa** (05.04): consumir `consultarElegibilidadAdministrativa`
+- [x] ~~**Recepción con validación administrativa** (05.04): consumir `consultarElegibilidadAdministrativa`
   y el `spi` de cobertura vigente de [F3](F3-personas-y-cobertura.md); snapshot administrativo
-  preliminar; comando "atender como Particular"; prepago como anticipo (este último depende de
-  anticipos en [F7](F7-economia-del-mvp.md)).
-- [ ] Decidir si la recepción tiene máquina de estados propia (DP-05) o se documenta el desvío.
+  preliminar; comando "atender como Particular".~~ Hecho en **E-4** (backend):
+  `docs/diseno/AKINE-E-4-recepcion.md`, `V78` (`recepcion`, `recepcion_evento`, migración de los
+  turnos `EN_ESPERA`), contrato 0.63.0, `RecepcionIT`, `RecepcionConcurrenteIT`,
+  `MigracionRecepcionV78IT`. La elegibilidad se consume por el nuevo
+  `person.spi.ElegibilidadAdministrativaDirectory`. Falta la mitad web.
+- [ ] Prepago como anticipo en la recepción: es **E-6**, depende de anticipos en
+  [F7](F7-economia-del-mvp.md) y se apoya en la Recepción de E-4.
+- [x] ~~Decidir si la recepción tiene máquina de estados propia (DP-05) o se documenta el desvío.~~
+  Decidido: **DP-16** (07/10/2026), máquina propia. Implementada en E-4.
 - [ ] `ReservarTurnoRequest` sin cobertura elegida ni caso, aunque el plan valida "caso cuando la
   oferta lo exige". Se coordina con el gate RF-M10-007 ([F4](F4-dominio-clinico.md), [F6](F6-atencion-clinica.md)).
 - [x] ~~Notificaciones de reserva, cancelación y reprogramación (RF-M26-002/003) por el outbox.~~
@@ -69,13 +75,13 @@ estados de recepción propia, como pedía DP-05.
 |---|---|
 | Series diferidas sin etapa destino | Sí, registro de 05.03. **Cerrado en E-3** (backend) |
 | Recepción "reducida" por DP-10 y nunca recableada | Sí el recorte; **no** la falta de recableado |
-| Check-in como estado del turno, sin máquina propia | Parcial |
+| Check-in como estado del turno, sin máquina propia | Parcial. **Cerrado en E-4** (DP-16): `Recepcion` con máquina propia, `EN_ESPERA` fuera de `EstadoTurno` |
 | Notificaciones diferidas | Sí, javadoc de `TurnoService`. **Cableadas en E-5** |
 | Slots sin persistir; el espacio se elige en 05.02 | Sí |
 
 ## Para cerrar la fase
 
 - [x] ~~Diseño + implementación del modelo de serie, con design challenge.~~ E-3 (backend).
-- [ ] Recepción validando elegibilidad contra `contracting`.
+- [x] ~~Recepción validando elegibilidad contra `contracting`.~~ E-4 (backend), por `person.spi`.
 - [ ] E2E reales de agenda, ciclo y recepción.
 - [x] ~~Notificaciones de turno por outbox.~~ E-5.
