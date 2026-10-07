@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -148,6 +149,31 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 	void actualizarEstadoPorSaldo(
 			@Param("organizationId") long organizationId,
 			@Param("obligacionId") long obligacionId);
+
+	// =================================================================================
+	// E-6 — prepago de recepcion
+	// =================================================================================
+
+	@Override
+	@Query(value = """
+			SELECT id FROM cobro
+			 WHERE organization_id = :organizationId
+			   AND turno_prepago_vigente = :turnoId
+			""", nativeQuery = true)
+	Optional<Long> prepagoVigenteDelTurno(
+			@Param("organizationId") long organizationId,
+			@Param("turnoId") long turnoId);
+
+	@Override
+	@Query("""
+			SELECT c FROM Cobro c
+			 WHERE c.organizationId = :organizationId
+			   AND c.turnoId IN :turnoIds
+			   AND c.deletedAt IS NULL
+			""")
+	List<Cobro> prepagosVigentesDeTurnos(
+			@Param("organizationId") long organizationId,
+			@Param("turnoIds") Collection<Long> turnoIds);
 
 	// =================================================================================
 	// M23 — agregaciones de reporte (AKINE-07.06)

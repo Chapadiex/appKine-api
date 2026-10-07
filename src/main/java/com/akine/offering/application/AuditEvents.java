@@ -59,6 +59,9 @@ final class AuditEvents {
 	/** Baja logica de una Oferta (RN-M27-007). Motivo obligatorio. */
 	static final String OFERTA_DEACTIVATED = "OFERTA_DEACTIVATED";
 
+	/** Cambio de la politica de prepago de una Oferta (AKINE E-6, DP-06). */
+	static final String OFERTA_POLITICA_PREPAGO_CHANGED = "OFERTA_POLITICA_PREPAGO_CHANGED";
+
 	static final String ENTITY_OFERTA = "OfertaServicioConsultorio";
 
 	private static final String MDC_TRACE_ID = "traceId";

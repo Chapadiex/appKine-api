@@ -207,7 +207,7 @@ class OfertaControllerTest {
 	private static OfertaView vista() {
 		return new OfertaView(77L, ORG_ID, CONSULTORIO_ID, 12L, "Kinesiologia - 45 minutos",
 				"Sesion individual", "INDIVIDUAL", 45, 1, new BigDecimal("8500.00"), "ARS",
-				"POR_SESION", true, false, true, true, true,
+				"POR_SESION", true, false, false, true, true, true,
 				LocalDate.of(2026, 1, 1), null, "ACTIVO", true, null, null, 0L);
 	}
 

@@ -142,6 +142,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V78` | E-4 | **Usada**: `V78__m13_recepcion_maquina_propia.sql` — tablas `recepcion` (una vigente por turno, `uk_recepcion_turno_vigente`) y `recepcion_evento` (append-only), migración de los turnos `EN_ESPERA` y de los cancelados con llegada, `ck_turno_estado` sin `EN_ESPERA`. No borra columnas de `turno` (ADR-0007) |
 | `V79` | libre | A-7 la tuvo asignada y entró sin migración: sigue libre. Tomar la siguiente libre y anotarla acá |
 | `V80` | B-3 | **Usada**: `V80__b3_arancel_por_oferta_y_precio_particular.sql` — `convenio_arancel.oferta_id` nullable (`fk_convenio_arancel_oferta`, `ix_convenio_arancel_oferta`; dueño `contracting`) y tabla `oferta_precio_particular` (precio particular por vigencia; dueño `offering`). Los dos no-solapamientos los hace cumplir un lock, ningún índice |
+| `V81` | E-6 | **Usada**: `V81__e6_prepago_politica_y_anticipo_de_turno.sql` — `oferta_servicio_consultorio.exige_prepago` (política de prepago, DP-06) y `cobro.turno_id` con la columna generada `turno_prepago_vigente` y `uk_cobro_prepago_turno_vigente` (un solo prepago vigente por turno) |
 
 ## 7. Paquetes de trabajo
 
@@ -222,7 +223,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 |---|---|---|---|---|---|
 | ~~**F-4**~~ | ~~**Obligación del financiador**~~ — **backend hecho** (`V77`, contrato 0.60.0, 07/10): el cierre de una sesión cubierta por un convenio devenga la parte del financiador y el coseguro con el snapshot del arancel; la bandeja de 07.04 y el reporte de 07.06 tienen datos. Diseño en `docs/diseno/AKINE-F-4-obligacion-financiador.md`; falta la pantalla | api + web | L | A-9, B-2, C-4 | F7 |
 | C-9 | Gate RF-M10-007: caso obligatorio al reservar/atender, con ventana de migración | api + web | L | C-2, D-b, E-3 | F4, F5, F6 |
-| E-6 | Prepago de recepción como anticipo | api + web | M | E-4, F-3 | F5 |
+| E-6 | Prepago de recepción como anticipo — **backend hecho** (`V81`, contrato 0.66.0): política `exigePrepago` en la oferta, `Recepcion.prepago` como alerta sin bloqueo, cobro con `turnoId` como anticipo de F-3 e imputación automática a la deuda del paciente después del commit del cierre (`docs/diseno/AKINE-E-6-prepago.md`); falta la pantalla | api + web | M | E-4, F-3 | F5 |
 | G-10 | Carga con k6 contra los SLO de ADR-0016; LCP del frontend | los dos | M | G-4 | F8 |
 | G-11 | Cobertura de vuelta a 0,80 (cada carril sube la de sus módulos; G vigila el gate) — **avance** (06/10): unitarios de `activity` (#31) y `encounter` (#32) | api | M | ola 2 | F8 |
 

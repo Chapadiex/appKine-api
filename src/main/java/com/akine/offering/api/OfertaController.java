@@ -3,6 +3,7 @@ package com.akine.offering.api;
 import com.akine.offering.api.dto.CreateOfertaRequest;
 import com.akine.offering.api.dto.DeactivateOfferingRequest;
 import com.akine.offering.api.dto.OfertaResponse;
+import com.akine.offering.api.dto.PoliticaDePrepagoRequest;
 import com.akine.offering.api.dto.UpdateOfertaRequest;
 import com.akine.offering.application.OfertaAltaCommand;
 import com.akine.offering.application.OfertaEdicionCommand;
@@ -443,6 +444,66 @@ public class OfertaController {
 		ofertaService.darDeBaja(actor, organizationId, consultorioId, ofertaId, request.reason());
 
 		return ResponseEntity.noContent().build();
+	}
+
+	@PutMapping(path = "/{ofertaId}/politica-de-prepago", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "updatePoliticaDePrepagoDeOferta",
+			summary = "Cambiar la politica de prepago de una oferta",
+			description = """
+					Exige consultorio:manage sobre esa sede. AKINE E-6, DP-06 / ADR-0013.
+
+					Con exigePrepago en true, la recepcion de los turnos de esta oferta muestra 					el prepago como PENDIENTE hasta que se registre un anticipo con turnoId. Es 					una ALERTA: nunca impide pasar a espera, atender ni cerrar la sesion.
+
+					Una oferta dada de baja no admite cambios: 409 oferta-inactiva.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "200",
+					description = "Politica actualizada",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = OfertaResponse.class))),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Cuerpo invalido",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin contexto de trabajo, o sin consultorio:manage en la sede",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La oferta o la sede no existen, o son de otro tenant",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "Oferta dada de baja (oferta-inactiva) o version desactualizada "
+							+ "(conflict)",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<OfertaResponse> updatePoliticaDePrepago(
+
+			@Parameter(description = "Sede de la oferta", example = "3")
+			@PathVariable long consultorioId,
+
+			@Parameter(description = "Identificador de la oferta", example = "34")
+			@PathVariable long ofertaId,
+
+			@Valid @RequestBody PoliticaDePrepagoRequest request) {
+
+		OperatingActor actor = apiActor.current();
+		long organizationId = exigirContexto(actor);
+
+		return ResponseEntity.ok(OfertaResponse.de(ofertaService.cambiarPoliticaDePrepago(
+				actor, organizationId, consultorioId, ofertaId, request.exigePrepago(),
+				request.expectedVersion())));
 	}
 
 	// =================================================================================

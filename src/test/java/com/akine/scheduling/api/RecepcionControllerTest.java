@@ -5,6 +5,7 @@ import com.akine.platform.spi.tenant.TenantContextHolder;
 import com.akine.scheduling.application.CicloDeRecepcionService;
 import com.akine.scheduling.application.CicloDeRecepcionService.ResultadoDeLlegada;
 import com.akine.scheduling.application.EventoDeRecepcionView;
+import com.akine.scheduling.application.PrepagoView;
 import com.akine.scheduling.application.RecepcionView;
 import com.akine.scheduling.domain.exception.TransicionDeRecepcionNoPermitidaException;
 import org.junit.jupiter.api.DisplayName;
@@ -163,7 +164,9 @@ class RecepcionControllerTest {
 
 	private static RecepcionView vista(String estado) {
 		return new RecepcionView(77L, 301L, estado, Instant.now(), 12L, null, null, null, null,
-				null, null, null, null, null, null, null, 0L);
+				null, null, null, null, null, null, null, 0L,
+				new PrepagoView(PrepagoView.PENDIENTE, new java.math.BigDecimal("8500.00"), "ARS",
+						null, null, null));
 	}
 
 	private static RequestPostProcessor miembro() {

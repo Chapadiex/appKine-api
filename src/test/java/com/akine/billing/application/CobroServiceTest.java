@@ -26,6 +26,11 @@ import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
+import com.akine.scheduling.spi.TurnoDirectory;
+import com.akine.scheduling.spi.TurnoSnapshot;
+import com.akine.billing.domain.exception.PrepagoNoAdmitidoException;
+import com.akine.billing.domain.exception.PrepagoYaRegistradoException;
+import com.akine.billing.domain.exception.TurnoNoAccesibleException;
 import com.akine.person.spi.PacienteSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -131,6 +136,7 @@ class CobroServiceTest {
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private CajaDeCobro caja;
 	@Mock private PacienteDirectory pacientes;
+	@Mock private TurnoDirectory turnos;
 
 	private CobroService service;
 
@@ -141,7 +147,8 @@ class CobroServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new CobroService(
-				cobros, obligaciones, numerador, iniciador, consultorios, permissionGuard, caja, pacientes);
+				cobros, obligaciones, numerador, iniciador, consultorios, permissionGuard, caja, pacientes,
+				turnos);
 
 		given(consultorios.find(ORG, SEDE)).willReturn(Optional.of(sede));
 		given(permissionGuard.requirePermission(any()))
@@ -665,6 +672,110 @@ class CobroServiceTest {
 
 			assertThat(nuevo.huella(SEDE)).isEqualTo(viejo.huella(SEDE));
 			assertThat(anticipoPuro("8500.00", MONEDA).huella(SEDE)).isNotEqualTo(viejo.huella(SEDE));
+		}
+	}
+
+	// =================================================================================
+	// Prepago de recepcion (E-6)
+	// =================================================================================
+
+	@Nested
+	@DisplayName("Prepago de recepcion (E-6)")
+	class Prepago {
+
+		private static final long TURNO = 301L;
+
+		@BeforeEach
+		void personaDelPadron() {
+			given(pacientes.find(ORG, PERSONA)).willReturn(Optional.of(new PacienteSnapshot(
+					PERSONA, ORG, "Perez", "Ana", "DNI", "30111222", null, true, true, 1L, null)));
+		}
+
+		@Test
+		@DisplayName("un anticipo puro con turno queda atado al turno, entra a la caja y no toca deudas")
+		void prepago_atado_al_turno() {
+			given(turnos.find(ORG, SEDE, TURNO)).willReturn(Optional.of(turno(PERSONA, "CONFIRMADO", true)));
+
+			CobroView vista = service.registrar(administrativo, SEDE, prepago("8500.00"));
+
+			assertThat(vista.turnoId()).isEqualTo(TURNO);
+			assertThat(vista.saldoAFavor()).isEqualByComparingTo("8500.00");
+			verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
+			verify(caja).registrarIngresos(
+					eq(ORG), eq(sede), eq(COBRO), eq(MONEDA), any(), any(), eq(CUENTA));
+		}
+
+		@Test
+		@DisplayName("un turno de otra sede o de otro tenant es 404 y no numera comprobante")
+		void turno_ajeno_es_404() {
+			given(turnos.find(ORG, SEDE, TURNO)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, prepago("8500.00")))
+					.isInstanceOf(TurnoNoAccesibleException.class);
+			verify(numerador, never()).incrementar(anyLong(), anyLong());
+		}
+
+		@Test
+		@DisplayName("el turno de otra persona no admite el prepago: 409")
+		void turno_de_otra_persona() {
+			given(turnos.find(ORG, SEDE, TURNO)).willReturn(Optional.of(turno(999L, "RESERVADO", true)));
+
+			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, prepago("8500.00")))
+					.isInstanceOf(PrepagoNoAdmitidoException.class)
+					.hasMessageContaining("otra persona");
+		}
+
+		@Test
+		@DisplayName("un turno cancelado o ausente no admite el prepago: 409")
+		void turno_que_ya_no_es_reserva() {
+			given(turnos.find(ORG, SEDE, TURNO)).willReturn(Optional.of(turno(PERSONA, "AUSENTE", true)));
+
+			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, prepago("8500.00")))
+					.isInstanceOf(PrepagoNoAdmitidoException.class)
+					.hasMessageContaining("ausente");
+		}
+
+		@Test
+		@DisplayName("con un prepago vigente en el turno es 409 prepago-ya-registrado con el cobro existente")
+		void prepago_duplicado() {
+			given(turnos.find(ORG, SEDE, TURNO)).willReturn(Optional.of(turno(PERSONA, "RESERVADO", true)));
+			given(cobros.prepagoVigenteDelTurno(ORG, TURNO)).willReturn(Optional.of(77L));
+
+			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, prepago("8500.00")))
+					.isInstanceOf(PrepagoYaRegistradoException.class)
+					.satisfies(e -> assertThat(((PrepagoYaRegistradoException) e).getCobroId()).isEqualTo(77L));
+			verify(numerador, never()).incrementar(anyLong(), anyLong());
+		}
+
+		@Test
+		@DisplayName("un prepago que no es anticipo puro es 400: con deudas ya no es dinero antes de la obligacion")
+		void prepago_con_imputaciones_es_400() {
+			CobroCommand conDeuda = new CobroCommand(PERSONA, new BigDecimal("8500.00"),
+					List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, new BigDecimal("8500.00"), null)),
+					List.of(new CobroCommand.ImputacionPedida(OBLIGACION, new BigDecimal("8500.00"))),
+					CLAVE, BigDecimal.ZERO, null, TURNO);
+
+			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, conDeuda))
+					.isInstanceOf(CobroInvalidoException.class);
+			verifyNoInteractions(turnos);
+		}
+
+		@Test
+		@DisplayName("el turno entra en la huella solo cuando viene")
+		void la_huella_suma_el_turno() {
+			assertThat(prepago("8500.00").huella(SEDE)).isNotEqualTo(anticipoPuro("8500.00", MONEDA).huella(SEDE));
+		}
+
+		private CobroCommand prepago(String total) {
+			return new CobroCommand(PERSONA, new BigDecimal(total),
+					List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, new BigDecimal(total), null)),
+					List.of(), CLAVE, new BigDecimal(total), MONEDA, TURNO);
+		}
+
+		private TurnoSnapshot turno(long personaId, String estado, boolean vivo) {
+			Instant inicio = Instant.now().plusSeconds(3600);
+			return new TurnoSnapshot(TURNO, ORG, SEDE, OFERTA, personaId, 31L, null,
+					inicio, inicio.plusSeconds(2700), estado, vivo);
 		}
 	}
 

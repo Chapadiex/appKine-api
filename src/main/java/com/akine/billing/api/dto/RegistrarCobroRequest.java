@@ -65,7 +65,17 @@ public record RegistrarCobroRequest(
 						+ "hay de donde tomarla. Con imputaciones sale de ellas y, si viene, tiene "
 						+ "que coincidir.",
 				example = "ARS")
-		@Pattern(regexp = "[A-Za-z]{3}") String moneda) {
+		@Pattern(regexp = "[A-Za-z]{3}") String moneda,
+
+		@Schema(
+				description = "Prepago de recepcion (E-6, DP-06): el turno en cuya recepcion se "
+						+ "cobra antes de atender. Exige un **anticipo puro** —sin imputaciones y con "
+						+ "`anticipo` igual al total— de la misma persona del turno, sobre un turno "
+						+ "RESERVADO o CONFIRMADO. Un solo prepago vigente por turno. Al cerrar la "
+						+ "sesion de ese turno el anticipo se imputa solo a la deuda del paciente; lo "
+						+ "que sobra queda a favor.",
+				example = "301")
+		@Positive Long turnoId) {
 
 	@Schema(name = "MedioDeCobro")
 	public record MedioRequest(
@@ -112,6 +122,7 @@ public record RegistrarCobroRequest(
 								.toList(),
 				idempotencyKey,
 				anticipo,
-				moneda);
+				moneda,
+				turnoId);
 	}
 }

@@ -698,7 +698,9 @@ public class SesionService {
 				// AKINE C-4: el consumo no gasta autorizaciones atadas a otro caso (RF-M17-007).
 				sesion.getCasoId(),
 				// AKINE F-4: si la oferta no admite obra social, el devengo no busca cobertura.
-				precio.map(PrecioDeOferta::admiteObraSocial).orElse(false));
+				precio.map(PrecioDeOferta::admiteObraSocial).orElse(false),
+				// AKINE E-6: billing imputa el prepago que la recepcion de ese turno tomo.
+				sesion.getTurnoId());
 
 		observadores.forEach(observador -> observador.alCerrar(aviso));
 	}

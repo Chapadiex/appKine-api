@@ -7,6 +7,8 @@ import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.spi.CoberturaAplicable;
 import com.akine.person.spi.CoberturasAplicablesDirectory;
 import com.akine.person.spi.ElegibilidadAdministrativaDirectory;
+import com.akine.offering.spi.OfertaDirectory;
+import com.akine.scheduling.spi.PrepagoDeTurnoProbe;
 import com.akine.person.spi.ReferenciaCongelada;
 import com.akine.person.spi.VeredictoDeElegibilidad;
 import com.akine.scheduling.domain.EstadoRecepcion;
@@ -78,6 +80,8 @@ class CicloDeRecepcionServiceTest {
 	@Mock private PracticasDeOfertaDirectory practicas;
 	@Mock private CoberturasAplicablesDirectory coberturas;
 	@Mock private ElegibilidadAdministrativaDirectory elegibilidad;
+	@Mock private OfertaDirectory ofertas;
+	@Mock private PrepagoDeTurnoProbe prepagos;
 
 	private CicloDeRecepcionService service;
 	private final OperatingActor actor = new OperatingActor(9L, false, ORG, SEDE);
@@ -87,7 +91,8 @@ class CicloDeRecepcionServiceTest {
 	@BeforeEach
 	void preparar() {
 		service = new CicloDeRecepcionService(turnos, bloqueos, registro, eventos, consultorios,
-				permissionGuard, practicas, coberturas, elegibilidad);
+				permissionGuard, practicas, coberturas, elegibilidad,
+				new PrepagoDeRecepcion(ofertas, prepagos));
 
 		Instant inicio = Instant.now().plus(Duration.ofDays(2));
 		turno = new Turno(ORG, SEDE, OFERTA, PERSONA, 31L, null,
@@ -281,6 +286,44 @@ class CicloDeRecepcionServiceTest {
 		verify(registro).registrar(any(), eq(TipoEventoRecepcion.LLAMADO), any(), isNull(), eq(9L), any());
 		verify(registro).registrar(any(), eq(TipoEventoRecepcion.ANULACION), eq(EstadoRecepcion.LLAMADA),
 				isNull(), eq(9L), any());
+	}
+
+	@Test
+	@DisplayName("E-6: con el prepago pendiente pasa a espera igual, y el evento lo deja escrito")
+	void espera_con_prepago_pendiente() {
+		Recepcion recepcion = conAbierta();
+		recepcion.atenderComoParticular("Sin cobertura", 9L, Instant.now());
+		given(ofertas.precioDe(ORG, SEDE, OFERTA)).willReturn(Optional.of(
+				new com.akine.offering.spi.PrecioDeOferta(OFERTA, new java.math.BigDecimal("8500.00"),
+						"ARS", false, true)));
+
+		RecepcionView enEspera = service.pasarAEspera(actor, SEDE, TURNO, recepcion.getVersion());
+
+		assertThat(enEspera.estado()).as("alerta, no bloqueo (DP-06)").isEqualTo("EN_ESPERA");
+		assertThat(enEspera.prepago().estado()).isEqualTo(PrepagoView.PENDIENTE);
+		assertThat(enEspera.prepago().importeSugerido()).isEqualByComparingTo("8500.00");
+		verify(registro).registrar(any(), eq(TipoEventoRecepcion.ESPERA), eq(EstadoRecepcion.VALIDADA),
+				org.mockito.ArgumentMatchers.startsWith(CicloDeRecepcionService.PREPAGO_PENDIENTE),
+				eq(9L), any());
+	}
+
+	@Test
+	@DisplayName("E-6: con el prepago registrado, la espera no lleva motivo y la vista lo muestra")
+	void espera_con_prepago_registrado() {
+		Recepcion recepcion = conAbierta();
+		recepcion.atenderComoParticular("Sin cobertura", 9L, Instant.now());
+		given(ofertas.precioDe(ORG, SEDE, OFERTA)).willReturn(Optional.of(
+				new com.akine.offering.spi.PrecioDeOferta(OFERTA, new java.math.BigDecimal("8500.00"),
+						"ARS", false, true)));
+		given(prepagos.prepagosDe(ORG, List.of(TURNO))).willReturn(java.util.Map.of(TURNO,
+				new PrepagoDeTurnoProbe.PrepagoDeTurno(TURNO, 88L, new java.math.BigDecimal("8500.00"),
+						new java.math.BigDecimal("8500.00"), "ARS")));
+
+		RecepcionView enEspera = service.pasarAEspera(actor, SEDE, TURNO, recepcion.getVersion());
+
+		assertThat(enEspera.prepago().estado()).isEqualTo(PrepagoView.REGISTRADO);
+		assertThat(enEspera.prepago().cobroId()).isEqualTo(88L);
+		verify(registro).registrar(any(), eq(TipoEventoRecepcion.ESPERA), any(), isNull(), eq(9L), any());
 	}
 
 	@Test

@@ -356,6 +356,16 @@ public enum ProblemType {
 	 * {@link #SALDO_INSUFICIENTE} lo es sobre la misma deuda: recargar y reintentar.
 	 */
 	SALDO_A_FAVOR_INSUFICIENTE("saldo-a-favor-insuficiente"),
+	/**
+	 * El turno no admite un prepago (409). AKINE E-6. No es de la persona que paga, o ya no es una
+	 * reserva viva (cancelado o ausente).
+	 */
+	PREPAGO_NO_ADMITIDO("prepago-no-admitido"),
+	/**
+	 * El turno ya tiene un prepago vigente (409). AKINE E-6. Lleva {@code cobroId} cuando se lo pudo
+	 * determinar. Para cobrar otro, primero se anula el vigente.
+	 */
+	PREPAGO_YA_REGISTRADO("prepago-ya-registrado"),
 	CONSULTORIO_NO_OPERABLE("consultorio-no-operable"),
 
 	// --- Personas y perfiles de paciente (M07, AKINE-03.01) ---------------------------------

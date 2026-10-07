@@ -16,13 +16,24 @@ import java.math.BigDecimal;
  * @param admiteObraSocial si el centro declaro que la oferta se le puede facturar a un financiador
  *                         (M27). Viaja con el precio porque es el otro dato economico de la oferta:
  *                         decide si el devengo busca cobertura o cobra particular (AKINE F-4)
+ * @param exigePrepago     politica de prepago de la oferta (AKINE E-6, DP-06 / ADR-0013): la
+ *                         recepcion alerta si el paciente no dejo un anticipo antes de ser
+ *                         atendido. Viaja con el precio porque es el dato economico que la
+ *                         recepcion necesita para sugerir el importe. <b>Nunca</b> es una
+ *                         condicion para atender ni para cerrar la sesion
  */
 public record PrecioDeOferta(
-		long ofertaId, BigDecimal precioBase, String moneda, boolean admiteObraSocial) {
+		long ofertaId, BigDecimal precioBase, String moneda, boolean admiteObraSocial,
+		boolean exigePrepago) {
+
+	/** Sin politica de prepago: la forma anterior a E-6, que no exige prepago. */
+	public PrecioDeOferta(long ofertaId, BigDecimal precioBase, String moneda, boolean admiteObraSocial) {
+		this(ofertaId, precioBase, moneda, admiteObraSocial, false);
+	}
 
 	/** Sin el dato de obra social: la forma anterior a F-4, que nunca factura a un financiador. */
 	public PrecioDeOferta(long ofertaId, BigDecimal precioBase, String moneda) {
-		this(ofertaId, precioBase, moneda, false);
+		this(ofertaId, precioBase, moneda, false, false);
 	}
 
 	public boolean estaTarifada() {

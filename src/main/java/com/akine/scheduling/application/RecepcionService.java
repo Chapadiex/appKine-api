@@ -68,6 +68,7 @@ public class RecepcionService {
 	private final PacienteDirectory pacientes;
 	private final OfertaDirectory ofertas;
 	private final PermissionGuard permissionGuard;
+	private final PrepagoDeRecepcion prepago;
 
 	public RecepcionService(
 			TurnoRepositoryPort turnos,
@@ -75,7 +76,8 @@ public class RecepcionService {
 			ConsultorioDirectory consultorios,
 			PacienteDirectory pacientes,
 			OfertaDirectory ofertas,
-			PermissionGuard permissionGuard) {
+			PermissionGuard permissionGuard,
+			PrepagoDeRecepcion prepago) {
 
 		this.turnos = turnos;
 		this.recepciones = recepciones;
@@ -83,6 +85,7 @@ public class RecepcionService {
 		this.pacientes = pacientes;
 		this.ofertas = ofertas;
 		this.permissionGuard = permissionGuard;
+		this.prepago = prepago;
 	}
 
 	/**
@@ -166,6 +169,9 @@ public class RecepcionService {
 				.stream()
 				.collect(Collectors.toMap(Recepcion::getTurnoId, Function.identity()));
 
+		// El prepago de cada recepcion (E-6): una consulta a billing para todo el lote.
+		Map<Long, PrepagoView> prepagoDe = prepago.de(organizationId, consultorioId, lote, recepcionDe);
+
 		Map<Long, String> nombreDeOferta = new HashMap<>();
 		return lote.stream()
 				.map(turno -> new TurnoDelDiaView(
@@ -187,7 +193,8 @@ public class RecepcionService {
 						turno.getSerieId(),
 						turno.getVersion(),
 						recepcionDe.containsKey(turno.getId())
-								? RecepcionView.de(recepcionDe.get(turno.getId()))
+								? RecepcionView.de(recepcionDe.get(turno.getId()),
+										prepagoDe.get(turno.getId()))
 								: null))
 				.toList();
 	}

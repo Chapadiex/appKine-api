@@ -68,7 +68,11 @@ public record CobroResponse(
 		Instant anuladoEn,
 
 		@Schema(description = "Por que se anulo. Nulo si esta vigente.")
-		String motivoAnulacion) {
+		String motivoAnulacion,
+
+		@Schema(description = "Turno en cuya recepcion se tomo este cobro como prepago (E-6). Nulo "
+				+ "en cualquier otro cobro.", example = "301")
+		Long turnoId) {
 
 	@Schema(name = "MedioDeCobroAplicado")
 	public record MedioResponse(
@@ -103,6 +107,7 @@ public record CobroResponse(
 				vista.saldoAFavor(),
 				vista.estado(),
 				vista.anuladoEn(),
-				vista.motivoAnulacion());
+				vista.motivoAnulacion(),
+				vista.turnoId());
 	}
 }

@@ -45,8 +45,13 @@ estados de recepción propia, como pedía DP-05.
   turnos `EN_ESPERA`), contrato 0.63.0, `RecepcionIT`, `RecepcionConcurrenteIT`,
   `MigracionRecepcionV78IT`. La elegibilidad se consume por el nuevo
   `person.spi.ElegibilidadAdministrativaDirectory`. Falta la mitad web.
-- [ ] Prepago como anticipo en la recepción: es **E-6**, depende de anticipos en
-  [F7](F7-economia-del-mvp.md) y se apoya en la Recepción de E-4.
+- [x] ~~Prepago como anticipo en la recepción: es **E-6**, depende de anticipos en
+  [F7](F7-economia-del-mvp.md) y se apoya en la Recepción de E-4.~~ Hecho en **E-6** (backend):
+  `docs/diseno/AKINE-E-6-prepago.md`, `V81`, contrato 0.66.0. La política vive en la oferta
+  (`exige_prepago`, `PUT …/ofertas/{id}/politica-de-prepago`); la recepción la muestra como
+  alerta (`Recepcion.prepago`, motivo `PREPAGO_PENDIENTE` en el evento de espera) sin bloquear; el
+  prepago es un cobro de F-3 con `turnoId` y se imputa a la deuda del paciente después del commit
+  del cierre (`PrepagoDeRecepcionIT`). Falta la mitad web.
 - [x] ~~Decidir si la recepción tiene máquina de estados propia (DP-05) o se documenta el desvío.~~
   Decidido: **DP-16** (07/10/2026), máquina propia. Implementada en E-4.
 - [ ] `ReservarTurnoRequest` sin cobertura elegida ni caso, aunque el plan valida "caso cuando la
@@ -62,6 +67,7 @@ estados de recepción propia, como pedía DP-05.
 ### Frontend
 - [ ] Confirmación de alcance al cancelar/reprogramar una serie.
 - [ ] Recepción mostrando el resultado de elegibilidad y el camino "Particular".
+- [ ] Recepción mostrando el prepago pendiente y el cobro del anticipo con `turnoId` (E-6).
 
 ### Tests
 - [ ] Los dos E2E de agenda (`agenda-buscador`, `agenda-reserva`) **sintetizan el HTTP con

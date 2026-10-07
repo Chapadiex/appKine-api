@@ -73,6 +73,11 @@ public record OfertaResponse(
 		@Schema(description = "Si la oferta se puede presentar a un financiador")
 		boolean admiteObraSocial,
 
+		@Schema(description = "Politica de prepago (E-6): la recepcion alerta si el paciente no "
+				+ "abono antes de ser atendido. Nunca bloquea la atencion ni el cierre (DP-06). Se "
+				+ "cambia con PUT .../ofertas/{ofertaId}/politica-de-prepago")
+		boolean exigePrepago,
+
 		@Schema(description = "Si exige un caso clinico abierto para reservarse")
 		boolean requiereCasoClinico,
 
@@ -129,6 +134,7 @@ public record OfertaResponse(
 				view.moneda(),
 				view.esquemaCobro(),
 				view.admiteObraSocial(),
+				view.exigePrepago(),
 				view.requiereCasoClinico(),
 				view.generaRegistroClinico(),
 				view.requiereProfesional(),
