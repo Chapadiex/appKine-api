@@ -214,6 +214,7 @@ etapa que la tome:
    (exponer la modalidad de la recepción del turno), `encounter` (copiarla en `SesionCerrada`) y
    `billing` (devengar particular), que son los módulos de los paquetes en vuelo E-6 y del cierre.
    **No se tocó en B-3**; queda declarado para decidir quién lo toma.
+   **Cerrado por E-7** (`docs/diseno/AKINE-E-7-particular-en-obligacion.md`), por ese mismo camino.
 2. **Elegibilidad y autorizaciones siguen por práctica.** Si un convenio tiene arancel **sólo** para
    una oferta y no general, `consultarElegibilidadAdministrativa` (y la recepción, que la usa) dirá
    "sin arancel → sin requisitos" para esa práctica, aunque el devengo facture el convenio. Los

@@ -26,4 +26,17 @@ public interface TurnoDirectory {
 	 */
 	boolean existeTurnoVivoDeProfesionalConPersona(
 			long organizationId, long consultorioId, long profesionalMembershipId, long personaId);
+
+	/**
+	 * {@code true} si la recepcion vigente de ese turno se resolvio como <b>Particular</b>
+	 * (RF-M13-005, RF-M08-007; AKINE E-7). {@code false} si no hubo recepcion, si se anulo, si se
+	 * valido con cobertura o si quedo observada sin resolver: en todos esos casos el devengo sigue
+	 * buscando cobertura como antes de E-7.
+	 *
+	 * <p>Lo lee {@code encounter} una sola vez, al cerrar la sesion, y lo pone en
+	 * {@code SesionCerrada}: asi el devengo y el consumo de autorizaciones ven la misma decision
+	 * del mostrador. Es una foto: si la recepcion cambia despues del cierre, la deuda ya devengada
+	 * no se mueve.
+	 */
+	boolean atendidoComoParticular(long organizationId, long consultorioId, long turnoId);
 }

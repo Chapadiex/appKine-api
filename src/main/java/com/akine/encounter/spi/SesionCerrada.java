@@ -37,6 +37,11 @@ import java.util.Set;
  *                           turno (AKINE E-6). Lo necesita billing para imputar el prepago que la
  *                           recepcion de ese turno tomo como anticipo. Es un id administrativo, no
  *                           dato clinico
+ * @param particularPorRecepcion {@code true} si la recepcion de ese turno se resolvio como
+ *                           Particular (RF-M13-005, RF-M08-007; AKINE E-7). Manda sobre la
+ *                           cobertura: el devengo no busca convenio y el consumo no gasta
+ *                           autorizacion. {@code false} sin turno, sin recepcion o con cobertura,
+ *                           y en las formas anteriores a E-7: ahi nada cambia
  */
 public record SesionCerrada(
 		long sesionId,
@@ -53,7 +58,8 @@ public record SesionCerrada(
 		Set<Long> practicasRealizadas,
 		Long casoId,
 		boolean ofertaAdmiteObraSocial,
-		Long turnoId) {
+		Long turnoId,
+		boolean particularPorRecepcion) {
 
 	/**
 	 * <b>AKINE-06.04 agrega {@code practicasRealizadas}, y es lo que cierra el defecto que 04.05
@@ -77,6 +83,29 @@ public record SesionCerrada(
 	 */
 	public SesionCerrada {
 		practicasRealizadas = practicasRealizadas == null ? Set.of() : Set.copyOf(practicasRealizadas);
+	}
+
+	/** Sin la modalidad de la recepcion: la forma anterior a AKINE E-7. */
+	@SuppressWarnings("java:S107")
+	public SesionCerrada(
+			long sesionId,
+			long organizationId,
+			long consultorioId,
+			long personaId,
+			long ofertaId,
+			int numeroSesion,
+			boolean asistio,
+			Instant cerradaEn,
+			Long cerradaPorCuentaId,
+			BigDecimal precioDeLaOferta,
+			String moneda,
+			Set<Long> practicasRealizadas,
+			Long casoId,
+			boolean ofertaAdmiteObraSocial,
+			Long turnoId) {
+		this(sesionId, organizationId, consultorioId, personaId, ofertaId, numeroSesion, asistio,
+				cerradaEn, cerradaPorCuentaId, precioDeLaOferta, moneda, practicasRealizadas, casoId,
+				ofertaAdmiteObraSocial, turnoId, false);
 	}
 
 	/** Sin turno: la forma anterior a AKINE E-6. */
