@@ -1,9 +1,11 @@
 package com.akine.billing.application;
 
 import com.akine.billing.domain.Obligacion;
+import com.akine.billing.domain.SnapshotDeConvenio;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 
 /**
  * Una deuda.
@@ -17,8 +19,10 @@ import java.time.Instant;
  *                        debe el paciente. Lo agrego AKINE-07.04: sin el, la bandeja de M21 no
  *                        tiene por donde agrupar
  * @param saldo           lo que falta pagar
- * @param snapshotPrecio  el precio de la oferta AL MOMENTO de devengar. Editar la oferta manana no
- *                        cambia esto: seria reescribir una cuenta corriente
+ * @param snapshotPrecio  el importe congelado AL MOMENTO de devengar. Editar la oferta o el
+ *                        arancel manana no cambia esto: seria reescribir una cuenta corriente
+ * @param concepto        {@code PARTICULAR}, {@code FINANCIADOR} o {@code COSEGURO} (AKINE F-4)
+ * @param convenio        el convenio aplicado, congelado; {@code null} en las particulares
  */
 public record ObligacionView(
 		long id,
@@ -37,7 +41,42 @@ public record ObligacionView(
 		Instant devengadaEn,
 		Instant anuladaEn,
 		String motivoAnulacion,
-		long version) {
+		long version,
+		String concepto,
+		Long practicaId,
+		boolean alertaPracticaNoHabilitada,
+		ConvenioAplicado convenio) {
+
+	/**
+	 * El snapshot del convenio de una obligacion, para mostrarlo y para RF-M21-003.
+	 *
+	 * <p>Los tres {@code requeria*} son lo que el convenio exigia el dia de la prestacion: lo que el
+	 * administrativo tiene que juntar antes de presentar el lote.
+	 */
+	public record ConvenioAplicado(
+			long convenioId,
+			String convenioCodigo,
+			String convenioNombre,
+			long planId,
+			long arancelId,
+			long coberturaId,
+			BigDecimal importeTotal,
+			BigDecimal importeFinanciador,
+			BigDecimal coseguro,
+			boolean requeriaOrden,
+			boolean requeriaAutorizacion,
+			boolean requeriaCredencial,
+			boolean credencialVencida,
+			LocalDate vigenteEl) {
+
+		static ConvenioAplicado de(SnapshotDeConvenio s) {
+			return new ConvenioAplicado(
+					s.convenioId(), s.convenioCodigo(), s.convenioNombre(), s.planId(),
+					s.arancelId(), s.coberturaId(), s.importeTotal(), s.importeFinanciador(),
+					s.coseguro(), s.requeriaOrden(), s.requeriaAutorizacion(),
+					s.requeriaCredencial(), s.credencialVencida(), s.vigenteEl());
+		}
+	}
 
 	public static ObligacionView de(Obligacion obligacion) {
 		return new ObligacionView(
@@ -57,6 +96,10 @@ public record ObligacionView(
 				obligacion.getDevengadaEn(),
 				obligacion.getAnuladaEn(),
 				obligacion.getMotivoAnulacion(),
-				obligacion.getVersion());
+				obligacion.getVersion(),
+				obligacion.getConcepto().name(),
+				obligacion.getPracticaId(),
+				obligacion.isAlertaPracticaNoHabilitada(),
+				obligacion.getSnapshotDeConvenio().map(ConvenioAplicado::de).orElse(null));
 	}
 }

@@ -5,6 +5,7 @@ import com.akine.billing.domain.CobroImputacion;
 import com.akine.billing.domain.CobroMedio;
 import com.akine.billing.domain.Obligacion;
 import com.akine.billing.domain.PermissionCodes;
+import com.akine.billing.domain.Responsable;
 import com.akine.billing.domain.exception.CobroInvalidoException;
 import com.akine.billing.domain.exception.CobroNotAccessibleException;
 import com.akine.billing.domain.exception.ConsultorioNoAccesibleException;
@@ -258,6 +259,14 @@ public class CobroService {
 	static void exigirCobrable(Obligacion obligacion, long personaId) {
 		if (obligacion.getPersonaId() != personaId) {
 			throw new ObligacionNoCobrableException(obligacion.getId(), "es de otra persona");
+		}
+		if (obligacion.getResponsable() == Responsable.FINANCIADOR) {
+			// AKINE F-4. La persona de la fila es el paciente atendido, asi que el control de
+			// arriba no la frena: sin este, un cobro del paciente saldaba la parte de la obra
+			// social y esa deuda desaparecia de la bandeja de presentaciones. La deuda de un
+			// financiador se cobra conciliando un lote (M21), nunca en el mostrador.
+			throw new ObligacionNoCobrableException(obligacion.getId(),
+					"es deuda del financiador: se reclama en una presentacion");
 		}
 		if (!obligacion.admiteCobro()) {
 			throw new ObligacionNoCobrableException(obligacion.getId(),

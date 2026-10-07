@@ -31,17 +31,16 @@ public record ObligacionResponse(
 		long personaId,
 
 		@Schema(
-				description = "Quien debe. Hoy siempre `PACIENTE`: el Paquete B fija cobertura "
-						+ "particular. `FINANCIADOR` llega con AKINE-03.03 y 03.05.",
+				description = "Quien debe. Una prestacion cubierta por un convenio devenga dos "
+						+ "obligaciones: la parte del `FINANCIADOR` y el coseguro del `PACIENTE`. "
+						+ "Ver `concepto`.",
 				allowableValues = {"PACIENTE", "FINANCIADOR"},
 				example = "PACIENTE")
 		String responsable,
 
 		@Schema(
 				description = "Quien es el financiador cuando `responsable` es `FINANCIADOR`; "
-						+ "ausente cuando debe el paciente. **Hoy siempre ausente**: el devengado "
-						+ "todavia no se recableo contra convenios, asi que no existe ninguna "
-						+ "obligacion de financiador. Sin este campo, M21 no tiene por donde "
+						+ "ausente cuando debe el paciente. Sin este campo, M21 no tiene por donde "
 						+ "agrupar un lote.",
 				example = "31")
 		Long financiadorId,
@@ -68,8 +67,10 @@ public record ObligacionResponse(
 		String snapshotNombre,
 
 		@Schema(
-				description = "Precio de la oferta **al momento de devengar**. Editar la oferta "
-						+ "manana no cambia esto: seria reescribir una cuenta corriente.",
+				description = "Importe congelado **al momento de devengar**: el precio de la oferta "
+						+ "en `PARTICULAR`, la parte del arancel en `FINANCIADOR` y `COSEGURO`. "
+						+ "Editar la oferta o el convenio manana no cambia esto: seria reescribir "
+						+ "una cuenta corriente.",
 				example = "8500.00")
 		BigDecimal snapshotPrecio,
 
@@ -83,7 +84,31 @@ public record ObligacionResponse(
 		String motivoAnulacion,
 
 		@Schema(description = "Version para el control optimista", example = "0")
-		long version) {
+		long version,
+
+		@Schema(
+				description = "Que parte de la prestacion es esta deuda (AKINE F-4). `PARTICULAR`: "
+						+ "sin cobertura aplicable, el precio de la oferta. `FINANCIADOR`: la parte "
+						+ "del arancel que paga el financiador. `COSEGURO`: la parte del arancel que "
+						+ "paga el paciente.",
+				allowableValues = {"PARTICULAR", "FINANCIADOR", "COSEGURO"},
+				example = "PARTICULAR")
+		String concepto,
+
+		@Schema(
+				description = "Practica facturada (DP-11: la realizada, o la principal de la oferta "
+						+ "si la sesion cerro sin tratamientos). Ausente en `PARTICULAR`.",
+				example = "55")
+		Long practicaId,
+
+		@Schema(
+				description = "DP-11: la practica facturada no esta entre las que la oferta declara. "
+						+ "Es una alerta para revisar, no un rechazo.",
+				example = "false")
+		boolean alertaPracticaNoHabilitada,
+
+		@Schema(description = "Convenio aplicado, congelado. Ausente en `PARTICULAR`.")
+		ConvenioAplicadoResponse convenio) {
 
 	public static ObligacionResponse de(ObligacionView vista) {
 		return new ObligacionResponse(
@@ -91,6 +116,8 @@ public record ObligacionResponse(
 				vista.responsable(), vista.financiadorId(), vista.importeOriginal(), vista.saldo(),
 				vista.moneda(),
 				vista.estado(), vista.ofertaId(), vista.snapshotNombre(), vista.snapshotPrecio(),
-				vista.devengadaEn(), vista.anuladaEn(), vista.motivoAnulacion(), vista.version());
+				vista.devengadaEn(), vista.anuladaEn(), vista.motivoAnulacion(), vista.version(),
+				vista.concepto(), vista.practicaId(), vista.alertaPracticaNoHabilitada(),
+				ConvenioAplicadoResponse.de(vista.convenio()));
 	}
 }

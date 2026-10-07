@@ -10566,3 +10566,17 @@ Resuelto: el defecto del escenario 41 (ver punto 7).
 - **Defecto encontrado y corregido: se podía reservar un turno en el pasado.** Reprogramar ya lo rechazaba y la reserva no; el turno nacía inalterable y sólo se podía cerrar como `AUSENTE`. Ahora es 409 `slot-no-disponible` (`TurnoServiceTest`).
 - **Tests:** `SerieDeTurnosIT` (9 escenarios contra MySQL: serie concurrente con reserva que pisa una ocurrencia, todo o nada, "este y los siguientes" libera lugares, cantidad desactualizada, reprogramar una semana, primera ausencia preserva futuros, tenant, idempotencia, V70) más unitarios de regla, selección, servicio y handler.
 - **Fuera de alcance, declarado:** recurrencias no semanales, editar o extender la regla, alta parcial o "saltear feriados", vínculo Plan→serie, aviso consolidado y la mitad web (confirmación de alcance en la UI).
+
+# Registro de cierre — G1 · F-4 (Obligación del financiador, coseguro y snapshot de convenio) · backend
+
+**07/10/2026** · rama `akine-F-4-obligacion-financiador` · `V77` (reservada como `V72`, que quedó por debajo de `V76` y queda vacía) y contrato **0.60.0**. Diseño y design challenge en `docs/diseno/AKINE-F-4-obligacion-financiador.md`. Deshace el recorte de DP-10 sobre 07.01.
+
+- **El cierre devenga dos filas cuando hay convenio.** Oferta que admite obra social + cobertura aplicable (B-2) + arancel congelado (`ArancelDirectory#congelar`) para la práctica (DP-11: la realizada, la principal de la oferta primero; la principal si no hubo tratamientos) → `FINANCIADOR` por `importe_financiador` y `COSEGURO` (paciente) por `coseguro`. Sin cualquiera de las tres → `PARTICULAR` por el precio de la oferta, como siempre. Una parte en cero no genera fila.
+- **El snapshot se copia entero** a columnas propias de `obligacion`: convenio, arancel, plan, cobertura, práctica, los tres importes, los requisitos de RF-M21-003 y la credencial vencida ese día. Cinco CHECK hacen imposible la fila incoherente.
+- **Una obligación por responsable y por sesión, no por práctica** (sin RF; la más conservadora). **La diferencia particular − arancel no se cobra** (RF-M18-011 exige configuración explícita). Las dos, decisiones a revisar.
+- **Idempotencia por hecho de origen**: antes de devengar se mira cualquier obligación viva de la sesión, no sólo la del paciente. El unique de V36 sigue siendo la red.
+- **La contrapartida de 07.01 se mantiene**: ningún desenlace de negocio lanza; todo cae a particular.
+- **Defecto latente corregido:** la cuenta corriente del paciente listaba todas las obligaciones de la persona y el cobro admitía imputar contra cualquiera; con la fila del financiador, el paciente "debía" la parte de su obra social y podía saldarla en el mostrador. Ahora la cuenta corriente es sólo `responsable = PACIENTE` y cobrar la parte del financiador es `409 obligacion-no-cobrable`.
+- **Arista nueva `billing → offering.spi`**, sin ciclos (`ModuleArchitectureTest` 5/5).
+- **Tests:** `ObligacionDelFinanciadorIT` (11 escenarios contra MySQL: reparto con snapshot, cuenta corriente del paciente, sin cobertura, oferta sin obra social, principal sin tratamientos, re-disparo, dos cierres concurrentes, **bandeja de elegibles y lote presentado**, **reporte de financiadores**, tenant y CHECK de V77) y `ObligacionDevengadorTest` (18 unitarios).
+- **Fuera de alcance, declarado:** hallazgos de RF-M21-003 por orden/autorización/credencial (el dato está congelado; falta decidir si bloquea), esquema mixto configurable, pantalla.

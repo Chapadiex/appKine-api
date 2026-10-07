@@ -24,14 +24,14 @@ import java.util.concurrent.TimeUnit;
  * Lo que comparten los ITs de presentaciones de 07.04: un tenant con su sede, un administrativo
  * que tiene {@code cobro:register}, un paciente, una oferta y un financiador.
  *
- * <h2>Las obligaciones del financiador se insertan por JDBC, y no es un atajo</h2>
+ * <h2>Las obligaciones del financiador se insertan por JDBC</h2>
  *
- * <p>Hoy <b>ningun camino del producto</b> devenga una obligacion con
- * {@code responsable = 'FINANCIADOR'}: {@code ObligacionDevengador} devenga una sola, a nombre del
- * paciente, y recablearlo contra convenios es una decision pendiente del usuario (ver la cabecera
- * de {@code V56}). Sin estas filas, la bandeja de elegibles esta vacia y no hay lote que armar.
- * Se insertan respetando los dos CHECK de {@code V56}: {@code FINANCIADOR} con
- * {@code financiador_id}, y nunca uno sin el otro.
+ * <p>Hasta AKINE F-4 ningun camino del producto devengaba una obligacion con
+ * {@code responsable = 'FINANCIADOR'}. Desde F-4 las devenga el cierre de una sesion cubierta por
+ * un convenio —{@code ObligacionDelFinanciadorIT} lo prueba de punta a punta—, pero estos ITs miden
+ * los lotes y no el devengo, y armar convenio, cobertura y cierre por cada fila solo los haria mas
+ * lentos. Se insertan respetando los CHECK de {@code V56} y {@code V77}: {@code FINANCIADOR} con
+ * {@code financiador_id}, concepto {@code FINANCIADOR} y el snapshot de convenio entero.
  *
  * <p>Cada obligacion lleva su <b>propia sesion</b>, porque {@code uk_obligacion_prestacion} es
  * {@code (sesion_id, responsable, deleted_key)}: una prestacion devenga una sola deuda por
@@ -156,17 +156,30 @@ final class PresentacionItFixture {
 				tenant.ofertaId(), 1L, tenant.cuentaId());
 		long sesionId = ultimoId();
 
+		// Desde V77 la parte del financiador lleva el snapshot de convenio ENTERO
+		// (ck_obligacion_snapshot_convenio_coherente). Los ids son sinteticos: las columnas de
+		// snapshot son una copia y no tienen FK.
+		BigDecimal monto = new BigDecimal(importe);
 		jdbc.update("""
 				INSERT INTO obligacion (organization_id, consultorio_id, sesion_id, persona_id,
-				                        responsable, financiador_id, importe_original, saldo, moneda,
+				                        responsable, financiador_id, concepto, practica_id,
+				                        cobertura_id, importe_original, saldo, moneda,
 				                        estado, oferta_id, snapshot_nombre, snapshot_precio,
+				                        snapshot_convenio_id, snapshot_arancel_id, snapshot_plan_id,
+				                        snapshot_convenio_codigo, snapshot_convenio_nombre,
+				                        snapshot_importe_total, snapshot_importe_financiador,
+				                        snapshot_coseguro, snapshot_requeria_orden,
+				                        snapshot_requeria_autorizacion, snapshot_requeria_credencial,
+				                        snapshot_credencial_vencida, snapshot_vigente_el,
+				                        snapshot_capturado_en,
 				                        devengada_en, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'FINANCIADOR', ?, ?, ?, 'ARS', 'PENDIENTE',
-				        ?, 'Sesion sintetica', ?, UTC_TIMESTAMP(6), 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'FINANCIADOR', ?, 'FINANCIADOR', 1, 1, ?, ?, 'ARS', 'PENDIENTE',
+				        ?, 'Sesion sintetica', ?,
+				        1, 1, 1, 'CONV-SINT', 'Convenio sintetico', ?, ?, 0.00, 0, 0, 0, 0,
+				        CURDATE(), UTC_TIMESTAMP(6),
+				        UTC_TIMESTAMP(6), 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", tenant.organizationId(), tenant.consultorioId(), sesionId, tenant.personaId(),
-				financiadorId, new BigDecimal(importe), new BigDecimal(importe), tenant.ofertaId(),
-				new BigDecimal(importe));
+				financiadorId, monto, monto, tenant.ofertaId(), monto, monto, monto);
 		return ultimoId();
 	}
 
