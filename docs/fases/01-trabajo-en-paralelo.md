@@ -195,7 +195,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | ID | Qué | Repo | Tam. | Dep. | Ficha |
 |---|---|---|---|---|---|
 | ~~**A-9**~~ | ~~**Puente Oferta↔Práctica**~~ — **backend hecho** (`V75`, contrato 0.58.0, 06/10): tabla `oferta_practica`, `GET`/`PUT …/ofertas/{ofertaId}/practicas` y `offering.spi.PracticasDeOfertaDirectory` para C-4 y F-4; falta la pantalla | api + web | M | DU-1 | F2 |
-| A-4 | Bootstrap del `PLATFORM_ADMIN` | api | M | DU-2 | F0-F1 |
+| ~~A-4~~ | ~~Bootstrap del `PLATFORM_ADMIN`~~ — **hecho** (07/10, DP-14): `AKINE_BOOTSTRAP_ADMIN_EMAIL` re-apunta la cuenta de `V15` y le encola el enlace de activación al arrancar; sin migración ni cambio de contrato (`docs/diseno/AKINE-A-4-bootstrap.md`) | api | M | DU-2 | F0-F1 |
 | A-7 | Endpoint "¿tengo rol de plataforma?" + consola de solicitudes de catálogo; catálogo global de financiadores | api + web | M | A-4 | F2, F3 |
 | A-10 | UI de impacto de desvinculación y preview de turnos al editar disponibilidad | web | M | E-1 | F2 |
 | B-3 | Cobertura aplicable por oferta (RF-M08-006/007); arancel por oferta; importación masiva de convenio | api + web | L | A-9 | F3 |

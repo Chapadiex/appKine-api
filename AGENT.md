@@ -330,6 +330,18 @@ docker run --rm --name akine-api -p 8080:8080 \
   arranca** sin `AKINE_JWT_SECRET` (≥ 32 bytes), con `AKINE_EMAIL_MODE=smtp` y su relay
   (`AKINE_MAIL_HOST`, `AKINE_MAIL_USER`, `AKINE_MAIL_PASSWORD`, `AKINE_MAIL_FROM`), además de
   `AKINE_DB_*`, `AKINE_CORS_ORIGINS` y `AKINE_PUBLIC_BASE_URL`. Ver `application.yml`.
+- **Primer administrador de plataforma (DP-14, A-4):** en el primer despliegue agregar
+  `-e AKINE_BOOTSTRAP_ADMIN_EMAIL=<casilla institucional>`. Al arrancar, si no hay ningún
+  administrador de plataforma con credencial, la cuenta sembrada por `V15`
+  (`plataforma@akine.app`) pasa a esa casilla, queda `PENDIENTE_ACTIVACION` y se le encola un
+  enlace de activación por el outbox (vence a los 7 días). La persona fija su contraseña con ese
+  enlace, como en el registro, y queda con el rol de plataforma. Es idempotente: con un enlace
+  vigente no reenvía, y en cuanto hay un admin con credencial la variable se ignora (conviene
+  quitarla). Si el enlace venció, sirve el reenvío público (`POST /api/v1/auth/activation/resend`)
+  o reiniciar con la variable. Si la casilla ya es de otra cuenta, no se toca nada ni se le otorga
+  el rol: se elige otra. El resultado de cada arranque queda en el log de
+  `PlatformAdminBootstrapRunner` y el cambio en `audit_event` (`PLATFORM_ADMIN_BOOTSTRAP`, sin
+  tenant). No lleva secretos: la contraseña nunca pasa por el entorno.
 - **Adjuntos:** la aplicación escribe en `/app/var` (`adjuntos/` y `adjuntos-clinicos/`). Sin
   volumen montado ahí, los binarios se pierden con el contenedor.
 - **Healthcheck:** `GET /actuator/health/liveness`. El primer arranque contra una base vacía

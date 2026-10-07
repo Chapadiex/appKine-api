@@ -464,11 +464,12 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
 
 ### Decisiones pendientes del usuario
 
-1. **Cómo se toma posesión del `PLATFORM_ADMIN` sembrado por `V15`.** Hoy es inalcanzable por
-   cualquier camino soportado: `PasswordResetService.solicitar` corta en `!cuenta.puedeAutenticarse()`
-   —`false` para una cuenta sin credencial— y devuelve 202 en silencio, y el otro camino exige el rol
-   que se quiere obtener. En un despliegue nuevo **ningún endpoint de `/api/v1/platform` es
-   alcanzable**. Arreglarlo toca ADR-0018 y el flujo de invitación.
+1. ~~**Cómo se toma posesión del `PLATFORM_ADMIN` sembrado por `V15`.**~~ **Resuelta por DP-14
+   (07/10/2026) e implementada en A-4**: al arrancar, si no hay ningún administrador de plataforma
+   con credencial y está definida `AKINE_BOOTSTRAP_ADMIN_EMAIL`, la cuenta sembrada pasa a esa
+   casilla y se le encola un enlace de activación por el outbox (`AGENT.md` §12, imagen Docker;
+   `docs/diseno/AKINE-A-4-bootstrap.md`). ADR-0018 no se tocó. Si la casilla ya es de otra cuenta
+   no se hace nada y **no** se le otorga el rol: queda a confirmar.
    > Dato relacionado: **otorgar `PLATFORM_ADMIN` a una cuenta le quita sus permisos de tenant.**
 2. **Si se agrega el gate de `BRANCH` a JaCoCo.** La rama viene abajo del 72 %: agregarlo hoy rompe
    el build, así que primero hay que subir la cobertura. El frontend **sí** lo gatea, y por eso la
