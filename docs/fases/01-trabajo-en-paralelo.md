@@ -126,15 +126,16 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | Versión | Paquete | Contenido previsto |
 |---|---|---|
 | `V65` | C-1 | **Usada**: `V65__c1_tratamiento_lateralidad_no_aplica.sql` — recrea `ck_tratamiento_lateralidad` con `NO_APLICA` |
-| `V66` | A-9 | Puente Oferta↔Práctica: tabla `oferta_practica` (DP-11) |
+| `V66` | A-9 | **Vacía**: A-9 la reservó y quedó por debajo de migraciones ya mergeadas (Flyway corre sin `outOfOrder`); usó `V75`. No se reusa |
 | `V67` | C-5 | **Vacía**: C-5 no la usó, porque RN-M10-002 admite varios casos activos y el unique sería un defecto. No se reusa |
 | `V68` | B-4 | Historial de estados de autorización (si DU-8 = tabla) |
 | `V69` | F-3 | **Usada**: `V69__m19_anticipos_y_reintegro.sql` — saldo a favor y anulación en `cobro`, imputación posterior en `cobro_imputacion`, tabla `cobro_reintegro`, origen `REINTEGRO` en `movimiento_caja` |
-| `V70` | E-3 | Series de turnos (DP-04) |
-| `V71` | C-6 | `sesion_version` con tratamientos y mediciones |
+| `V70` | E-3 | **Vacía**: E-3 la reservó y se renumeró a `V74` al integrar, porque `V71` (C-6) entró antes. No se reusa |
+| `V71` | C-6 | **Usada**: `V71__c6_sesion_version_tratamientos_y_mediciones.sql` — tablas `sesion_version_tratamiento`, `sesion_version_tratamiento_parametro` y `sesion_version_medicion` (foto inmutable por version) con backfill desde el estado vivo |
 | `V72` | F-4 | Obligación del financiador, coseguro y snapshot de convenio |
 | `V73` | E-5 | **Vacía / liberada**: E-5 la reservó y entró sin migración (`notification_outbox.tipo` es `VARCHAR(40)` sin CHECK). No se reusa |
-| `V74`–`V75` | libres | Tomar la siguiente libre y anotarla acá |
+| `V74` | E-3 | **Usada**: `V74__m12_serie_de_turnos.sql` (nació como `V70` y se renumeró al integrar: `V71` ya estaba en `main` y Flyway corre sin `outOfOrder`) — tabla `turno_serie` (regla semanal, idempotencia) y `turno.serie_id` nullable con `fk_turno_turno_serie` e `ix_turno_serie_inicio` |
+| `V75` | A-9 | **Usada**: `V75__m27_oferta_practica.sql` — tabla `oferta_practica` (DP-11) con práctica principal sostenida por `uk_oferta_practica_principal` |
 | `V76` | C-4 | **Usada**: `V76__c4_autorizacion_alerta_consumo_a_revisar.sql` — tabla `autorizacion_alerta` (DP-13) e índice `ix_movimiento_origen` en `autorizacion_movimiento` |
 | `V77`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
 
@@ -193,7 +194,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 
 | ID | Qué | Repo | Tam. | Dep. | Ficha |
 |---|---|---|---|---|---|
-| **A-9** | **Puente Oferta↔Práctica** (`V66`) | api + web | M | DU-1 | F2 |
+| ~~**A-9**~~ | ~~**Puente Oferta↔Práctica**~~ — **backend hecho** (`V75`, contrato 0.58.0, 06/10): tabla `oferta_practica`, `GET`/`PUT …/ofertas/{ofertaId}/practicas` y `offering.spi.PracticasDeOfertaDirectory` para C-4 y F-4; falta la pantalla | api + web | M | DU-1 | F2 |
 | A-4 | Bootstrap del `PLATFORM_ADMIN` | api | M | DU-2 | F0-F1 |
 | A-7 | Endpoint "¿tengo rol de plataforma?" + consola de solicitudes de catálogo; catálogo global de financiadores | api + web | M | A-4 | F2, F3 |
 | A-10 | UI de impacto de desvinculación y preview de turnos al editar disponibilidad | web | M | E-1 | F2 |

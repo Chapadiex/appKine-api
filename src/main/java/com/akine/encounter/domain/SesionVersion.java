@@ -1,16 +1,24 @@
 package com.akine.encounter.domain;
 
 import com.akine.encounter.domain.exception.EnmiendaSinMotivoException;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.BatchSize;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * El contenido de una version de sesion cerrada (RF-M14-010, RF-M24-005).
@@ -129,12 +137,32 @@ public class SesionVersion {
 	@Column(name = "registrada_por", nullable = false, updatable = false)
 	private Long registradaPor;
 
+	/**
+	 * La foto de los tratamientos vigentes en esta version (C-6, {@code V71}).
+	 *
+	 * <p>Cascada solo de {@code PERSIST}, sin {@code orphanRemoval}: la foto nace con la version y
+	 * no se modifica nunca. Es el caso en que un agregado JPA se justifica, igual que
+	 * {@code Cobro}: no tiene ciclo de vida propio ni se consulta sin la version.
+	 */
+	@OneToMany(cascade = CascadeType.PERSIST, fetch = FetchType.LAZY)
+	@JoinColumn(name = "sesion_version_id", nullable = false, updatable = false)
+	@OrderBy("orden ASC")
+	@BatchSize(size = 32)
+	private List<SesionVersionTratamiento> tratamientos = new ArrayList<>();
+
+	/** La foto de las mediciones en esta version (C-6, {@code V71}). */
+	@OneToMany(cascade = CascadeType.PERSIST, fetch = FetchType.LAZY)
+	@JoinColumn(name = "sesion_version_id", nullable = false, updatable = false)
+	@OrderBy("definicionId ASC, lateralidad ASC")
+	@BatchSize(size = 32)
+	private List<SesionVersionMedicion> mediciones = new ArrayList<>();
+
 	protected SesionVersion() {
 		// Requerido por JPA.
 	}
 
 	private SesionVersion(
-			Sesion sesion, int numeroVersion, String motivoEnmienda,
+			Sesion sesion, FotoClinica foto, int numeroVersion, String motivoEnmienda,
 			Instant registradaEn, Long registradaPor) {
 
 		if (numeroVersion < 1) {
@@ -161,6 +189,13 @@ public class SesionVersion {
 		this.motivoEnmienda = motivoCoherente(numeroVersion, motivoEnmienda, this.sesionId);
 		this.registradaEn = exigirNoNulo(registradaEn, "La version deja siempre su instante");
 		this.registradaPor = exigirNoNulo(registradaPor, "La version deja siempre a su autor");
+
+		exigirNoNulo(foto, "La version fotografia tratamientos y mediciones: sin foto, una "
+				+ "enmienda posterior se llevaria el original");
+		foto.tratamientos().forEach(vivo ->
+				tratamientos.add(new SesionVersionTratamiento(vivo, this.registradaEn)));
+		foto.mediciones().forEach(viva ->
+				mediciones.add(new SesionVersionMedicion(viva, this.registradaEn)));
 	}
 
 	/**
@@ -170,14 +205,14 @@ public class SesionVersion {
 	 * nuevo, es el registro de uno que acaba de ocurrir. El {@code CHECK} de {@code V35} garantiza
 	 * que los dos existen en cuanto la sesion esta cerrada.
 	 */
-	public static SesionVersion original(Sesion sesion) {
+	public static SesionVersion original(Sesion sesion, FotoClinica foto) {
 		if (!sesion.estaCerrada()) {
 			throw new IllegalStateException(
 					"La version 1 de una sesion se escribe al cerrarla: una sesion abierta todavia "
 							+ "no tiene contenido versionado");
 		}
 		return new SesionVersion(
-				sesion, 1, null, sesion.getCerradaEn(), sesion.getCerradaPorCuentaId());
+				sesion, foto, 1, null, sesion.getCerradaEn(), sesion.getCerradaPorCuentaId());
 	}
 
 	/**
@@ -189,10 +224,22 @@ public class SesionVersion {
 	 * miente—.
 	 */
 	public static SesionVersion enmienda(
-			Sesion sesion, String motivo, Instant registradaEn, Long registradaPor) {
+			Sesion sesion, FotoClinica foto, String motivo, Instant registradaEn,
+			Long registradaPor) {
 
 		return new SesionVersion(
-				sesion, sesion.getUltimoNumeroVersion(), motivo, registradaEn, registradaPor);
+				sesion, foto, sesion.getUltimoNumeroVersion(), motivo, registradaEn, registradaPor);
+	}
+
+	/**
+	 * El motivo de una enmienda, limpio, o la excepcion que corresponde si falta o sobra.
+	 *
+	 * <p>Es la misma regla que aplica el constructor, expuesta para que el servicio la pueda
+	 * exigir <b>antes</b> de escribir: desde C-6 el motivo es tambien el motivo de baja de los
+	 * tratamientos que la enmienda quita (C-6).
+	 */
+	public static String exigirMotivoDeEnmienda(Long sesionId, String motivo) {
+		return motivoCoherente(2, motivo, sesionId);
 	}
 
 	/** {@code true} si esta version es una enmienda y no el contenido original. */
@@ -304,5 +351,13 @@ public class SesionVersion {
 
 	public Long getRegistradaPor() {
 		return registradaPor;
+	}
+
+	public List<SesionVersionTratamiento> getTratamientos() {
+		return List.copyOf(tratamientos);
+	}
+
+	public List<SesionVersionMedicion> getMediciones() {
+		return List.copyOf(mediciones);
 	}
 }

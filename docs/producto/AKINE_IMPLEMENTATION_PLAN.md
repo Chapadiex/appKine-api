@@ -372,7 +372,7 @@ utiliza una o más Prácticas durante sus atenciones"*.
 duplicar ofertas. `plan_item.practica_id`: resuelve el plan pero deja sin práctica a las
 sesiones sin plan y no sirve para arancel ni cobertura por oferta.
 
-**Desbloquea:** A-9 (`V66`) → B-3, C-4, F-4.
+**Desbloquea:** A-9 (reservó `V66`; usó `V75`, implementado el 06/10/2026 — `docs/diseno/AKINE-A-9-oferta-practica.md`) → B-3, C-4, F-4.
 
 ## DP-12 — Consumo de autorizaciones: una unidad por autorización involucrada (DU-4)
 
@@ -10489,3 +10489,15 @@ Resuelto: el defecto del escenario 41 (ver punto 7).
 
 - El PR a `main` lo abre D con título `[G2·C-7] ITs de tratamientos, mediciones y enmiendas`; va después del fix de A7 (el IT del escenario 41 no pasa sin él).
 - `EncounterFixtures` es el punto de partida para ITs futuros de `encounter`.
+
+# Registro de cierre — G5 · E-3 (Series de turnos, DP-04) · backend
+
+**06/10/2026** · rama `akine-E-3-series-de-turnos` · `V74` (reservada como `V70`, renumerada al integrar), cinco endpoints y contrato **0.57.0**. Diseño y design challenge en `docs/diseno/AKINE-E-3-series.md`.
+
+- **La serie es la regla; los turnos son la verdad** (ADR-0011). `turno_serie` guarda la regla semanal con la que se generaron los turnos y `turno.serie_id` (nullable, aditivo) los vincula. La serie no tiene estado ni baja: "está cancelada" se lee en sus turnos. Reprogramar por alcance **no** reescribe la regla.
+- **Alta todo o nada** (RF-M12-002, "no dejar cambios parciales"; sin RF de modo parcial). Bajo el lock de `agenda_sede` en `READ_COMMITTED`, cada ocurrencia pasa por `RevalidadorDeSlot`; si una no entra hay rollback entero y el 409 conserva el `problemType` de la causa con `ocurrenciaInicio`. Idempotencia con hash en `turno_serie`. Tope de 52 ocurrencias.
+- **Cancelar y reprogramar con alcance** (`ESTE`, `ESTE_Y_SIGUIENTES`, `TODA_LA_SERIE`): solo turnos futuros pendientes; el resto vuelve como omitido con motivo. **Confirmación explícita por `cantidadConfirmada`**, comparada bajo el lock contra la previsualización (`GET .../alcance`). Cada turno pasa por la misma transición de 05.03, extraída a `CicloDeTurnoService.aplicarCancelacion/aplicarReprogramacion`. Reprogramar mueve con desplazamiento en hora local y procesa en orden inverso hacia adelante para no chocar contra la propia serie.
+- **Avisos por ocurrencia** con los tipos de E-5; consolidarlos exige un tipo nuevo en `notification` (decisión a revisar).
+- **Defecto encontrado y corregido: se podía reservar un turno en el pasado.** Reprogramar ya lo rechazaba y la reserva no; el turno nacía inalterable y sólo se podía cerrar como `AUSENTE`. Ahora es 409 `slot-no-disponible` (`TurnoServiceTest`).
+- **Tests:** `SerieDeTurnosIT` (9 escenarios contra MySQL: serie concurrente con reserva que pisa una ocurrencia, todo o nada, "este y los siguientes" libera lugares, cantidad desactualizada, reprogramar una semana, primera ausencia preserva futuros, tenant, idempotencia, V70) más unitarios de regla, selección, servicio y handler.
+- **Fuera de alcance, declarado:** recurrencias no semanales, editar o extender la regla, alta parcial o "saltear feriados", vínculo Plan→serie, aviso consolidado y la mitad web (confirmación de alcance en la UI).

@@ -55,7 +55,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * {@code audit_event} con la transicion y sin el texto del motivo.
  *
  * <p>Prueban el comportamiento <b>actual</b>: el permiso es {@code sesion:register} mas propiedad
- * de la atencion, y los tratamientos y las mediciones no se versionan (eso es C-6).
+ * de la atencion. Que tratamientos y mediciones tambien se versionen (C-6) lo prueba
+ * {@code EnmiendaClinicaIT}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("local")

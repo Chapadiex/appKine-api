@@ -68,6 +68,9 @@ public record TurnoDelDiaResponse(
 				example = "El profesional se enfermo")
 		String motivoCancelacion,
 
+		@Schema(description = "Serie que genero el turno (AKINE E-3). Ausente en un turno suelto: la pantalla lo usa para ofrecer el alcance al cancelar o mover.", example = "12")
+		Long serieId,
+
 		@Schema(description = "Version para el control optimista de las transiciones", example = "0")
 		long version) {
 
@@ -77,6 +80,6 @@ public record TurnoDelDiaResponse(
 				vista.personaId(), vista.personaNombre(), vista.documento(),
 				vista.ofertaId(), vista.ofertaNombre(),
 				vista.profesionalId(), vista.espacioId(), vista.llegadaEn(),
-				vista.motivoCancelacion(), vista.version());
+				vista.motivoCancelacion(), vista.serieId(), vista.version());
 	}
 }

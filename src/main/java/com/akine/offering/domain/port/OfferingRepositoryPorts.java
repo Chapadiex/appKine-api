@@ -1,6 +1,7 @@
 package com.akine.offering.domain.port;
 
 import com.akine.offering.domain.OfertaEspacioHabilitado;
+import com.akine.offering.domain.OfertaPractica;
 import com.akine.offering.domain.OfertaProfesionalHabilitado;
 import com.akine.offering.domain.OfertaServicioConsultorio;
 import com.akine.offering.domain.Servicio;
@@ -167,6 +168,27 @@ public final class OfferingRepositoryPorts {
 		Optional<OfertaServicioConsultorio> findWithLockByIdAndOrganizationIdAndConsultorioId(
 				Long id, Long organizationId, Long consultorioId);
 
+		/**
+		 * Toma el lock EXCLUSIVO de la fila de la oferta ({@code SELECT ... FOR UPDATE}) y devuelve
+		 * su version vigente, la ultima commiteada.
+		 *
+		 * <p>Existe por un deadlock medido contra MySQL (A-9, {@code OfertaPracticaIT}). Dos
+		 * reemplazos simultaneos de la misma oferta pasaban los dos la comparacion de version
+		 * —ninguno habia commiteado— e insertaban filas hijas: cada INSERT verifica la FK y deja un
+		 * lock COMPARTIDO sobre la fila de la oferta. Al commitear, el force-increment necesita el
+		 * EXCLUSIVO, y cada transaccion esperaba el compartido de la otra. InnoDB mataba a una con
+		 * {@code CannotAcquireLockException}, que ningun handler mapea: la API respondia <b>500</b>
+		 * donde el contrato promete 409. Las habilitaciones de 02.07 tienen el mismo mecanismo; en
+		 * la corrida medida su perdedor murio por el unique ({@code DataIntegrityViolationException},
+		 * 409 generico "conflicto de datos") y no por deadlock, pero cual de los dos sale depende del
+		 * orden en que InnoDB otorga los locks.
+		 *
+		 * <p>Con el lock tomado <b>antes</b> de escribir, el segundo espera a que el primero
+		 * commitee y lee la version nueva —una lectura con lock ve lo ultimo commiteado, no la foto
+		 * de {@code REPEATABLE READ}—, asi que choca con el 409 de version de forma determinista.
+		 */
+		Optional<Long> bloquearParaConfigurar(Long id, Long organizationId, Long consultorioId);
+
 		/** Todas las ofertas de la sede, activas e historicas, ordenadas por nombre comercial. */
 		List<OfertaServicioConsultorio> findAllByOrganizationIdAndConsultorioIdOrderByNombreComercialAsc(
 				Long organizationId, Long consultorioId);
@@ -229,6 +251,31 @@ public final class OfferingRepositoryPorts {
 				Long organizationId, Long ofertaId);
 
 		List<OfertaEspacioHabilitado> findAllByOrganizationIdAndOfertaIdAndActive(
+				Long organizationId, Long ofertaId, boolean active);
+	}
+
+	/**
+	 * Practicas que puede prestar cada Oferta (A-9, DP-11).
+	 *
+	 * <p>Mismo criterio de lectura que las habilitaciones: la lista COMPLETA, activas e inactivas,
+	 * y filtra la aplicacion. Toda consulta lleva {@code organizationId}.
+	 *
+	 * <p>{@link #flush()} existe por el orden de escritura del reemplazo: Hibernate ejecuta los
+	 * INSERT antes que los UPDATE, asi que las bajas y el desmarcado de la principal anterior se
+	 * vuelcan antes de insertar o marcar la nueva. Sin eso, cambiar la principal a una practica
+	 * recien agregada choca contra {@code uk_oferta_practica_principal}. Ver
+	 * {@code OfertaPracticaService}.
+	 */
+	public interface OfertaPracticaRepositoryPort {
+
+		OfertaPractica save(OfertaPractica fila);
+
+		void flush();
+
+		List<OfertaPractica> findAllByOrganizationIdAndOfertaIdOrderByIdAsc(
+				Long organizationId, Long ofertaId);
+
+		List<OfertaPractica> findAllByOrganizationIdAndOfertaIdAndActiveOrderByIdAsc(
 				Long organizationId, Long ofertaId, boolean active);
 	}
 }

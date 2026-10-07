@@ -152,8 +152,24 @@ public class CicloDeTurnoService {
 		exigirVersion(turno, expectedVersion);
 		exigirSinAtencion(organizationId, consultorioId, turno);
 
+		return TurnoView.de(aplicarCancelacion(actor, sede, turno, motivo, Instant.now()));
+	}
+
+	/**
+	 * La cancelacion de un turno ya validado: transicion, evento, auditoria y aviso.
+	 *
+	 * <p>Separada para que la cancelacion por alcance de una serie (AKINE E-3,
+	 * {@link SerieDeTurnosService}) haga <b>exactamente</b> lo mismo sobre cada turno y no una
+	 * segunda copia que diverja. Corre dentro de la transaccion de quien la llama.
+	 *
+	 * <p>Publica y sin {@code @Transactional} a proposito: la serie la invoca a traves del proxy de
+	 * Spring, que con un metodo de paquete podria ejecutarla sobre la instancia proxy —con los
+	 * campos en {@code null}— en vez de la real. No es API: ningun controller la llama.
+	 */
+	public Turno aplicarCancelacion(
+			OperatingActor actor, ConsultorioSnapshot sede, Turno turno, String motivo, Instant ahora) {
+
 		EstadoTurno anterior = turno.getEstado();
-		Instant ahora = Instant.now();
 		turno.cancelar(motivo, actor.accountId(), ahora);
 		Turno cancelado = turnos.saveAndFlush(turno);
 
@@ -164,13 +180,13 @@ public class CicloDeTurnoService {
 		// RF-M26-003. Sin el motivo: ver AvisosDeTurno. La oferta solo pone el nombre del servicio,
 		// y si ya no resuelve el aviso sale igual, sin el.
 		avisos.avisarCancelacion(cancelado, sede, ofertas
-				.find(organizationId, consultorioId, cancelado.getOfertaId())
+				.find(cancelado.getOrganizationId(), cancelado.getConsultorioId(), cancelado.getOfertaId())
 				.map(OfertaSnapshot::nombreComercial)
 				.orElse(null));
 
 		log.info("Turno cancelado: turnoId={} consultorioId={} estadoAnterior={}",
-				turnoId, consultorioId, anterior);
-		return TurnoView.de(cancelado);
+				cancelado.getId(), cancelado.getConsultorioId(), anterior);
+		return cancelado;
 	}
 
 	// =================================================================================
@@ -255,7 +271,23 @@ public class CicloDeTurnoService {
 		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, turno.getOfertaId())
 				.orElseThrow(() -> new OfertaNotAccessibleException(turno.getOfertaId()));
 
-		Instant nuevoInicio = command.inicio();
+		return TurnoView.de(aplicarReprogramacion(
+				actor, sede, oferta, turno, command.inicio(), command.profesionalId(),
+				command.motivo(), Instant.now()));
+	}
+
+	/**
+	 * La reprogramacion de un turno ya validado, <b>bajo el lock de la sede que ya tomo quien
+	 * llama</b>: vigencia de la oferta ese dia, revalidacion del destino, movimiento, evento,
+	 * auditoria y aviso.
+	 *
+	 * <p>Separada por el mismo motivo que {@link #aplicarCancelacion}: la reprogramacion por alcance
+	 * de una serie (AKINE E-3) la aplica turno por turno.
+	 */
+	public Turno aplicarReprogramacion(
+			OperatingActor actor, ConsultorioSnapshot sede, OfertaSnapshot oferta, Turno turno,
+			Instant nuevoInicio, Long profesionalId, String motivo, Instant ahora) {
+
 		Instant nuevoFin = nuevoInicio.plusSeconds(oferta.duracionMinutos() * 60L);
 		LocalDate fecha = nuevoInicio.atZone(ZoneId.of(sede.timezone())).toLocalDate();
 		if (!oferta.vigenteEl(fecha)) {
@@ -265,13 +297,12 @@ public class CicloDeTurnoService {
 		}
 
 		RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(new RevalidadorDeSlot.Pedido(
-				organizationId, consultorioId, sede, oferta, nuevoInicio, nuevoFin,
-				command.profesionalId(), turnoId));
+				turno.getOrganizationId(), turno.getConsultorioId(), sede, oferta, nuevoInicio, nuevoFin,
+				profesionalId, turno.getId()));
 
 		EstadoTurno anterior = turno.getEstado();
 		Instant inicioAnterior = turno.getInicio();
 		Instant finAnterior = turno.getFin();
-		Instant ahora = Instant.now();
 
 		turno.reprogramar(nuevoInicio, nuevoFin,
 				asignacion.profesionalId(), asignacion.espacioId(), ahora);
@@ -279,15 +310,15 @@ public class CicloDeTurnoService {
 
 		eventos.registrar(TurnoEvento.reprogramacion(
 				movido, anterior, inicioAnterior, finAnterior,
-				command.motivo(), actor.accountId(), ahora));
-		auditar(actor, movido, "TURNO_REPROGRAMADO", anterior, command.motivo(), ahora);
+				motivo, actor.accountId(), ahora));
+		auditar(actor, movido, "TURNO_REPROGRAMADO", anterior, motivo, ahora);
 		// RF-M26-003. Despues del saveAndFlush: la clave idempotente lleva la version que deja
 		// este cambio.
 		avisos.avisarReprogramacion(movido, sede, oferta.nombreComercial(), inicioAnterior);
 
 		log.info("Turno reprogramado: turnoId={} consultorioId={} de={} a={}",
-				turnoId, consultorioId, inicioAnterior, nuevoInicio);
-		return TurnoView.de(movido);
+				movido.getId(), movido.getConsultorioId(), inicioAnterior, nuevoInicio);
+		return movido;
 	}
 
 	// =================================================================================
