@@ -4,11 +4,13 @@ import com.akine.scheduling.api.dto.AlcanceDeSerieResponse;
 import com.akine.scheduling.api.dto.CancelarSerieDeTurnosRequest;
 import com.akine.scheduling.api.dto.CrearSerieDeTurnosRequest;
 import com.akine.scheduling.api.dto.ReprogramarSerieDeTurnosRequest;
+import com.akine.scheduling.api.dto.SerieDeTurnosPageResponse;
 import com.akine.scheduling.api.dto.SerieDeTurnosResponse;
 import com.akine.scheduling.application.AltaDeSerieCommand;
 import com.akine.scheduling.application.OperacionDeSerieCommand;
 import com.akine.scheduling.application.SerieDeTurnosService;
 import com.akine.scheduling.domain.AlcanceDeSerie;
+import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.ReglaDeRecurrencia;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -46,6 +48,9 @@ import java.util.EnumSet;
 		produces = {MediaType.APPLICATION_JSON_VALUE, "application/problem+json"})
 @Tag(name = "Series de turnos", description = "Turnos recurrentes con identidad propia y operaciones con alcance (DP-04)")
 public class SerieDeTurnosController {
+
+	/** Tope duro de la bandeja (E-8), como el resto de los listados paginados de la API. */
+	private static final int TAMANO_MAXIMO = 100;
 
 	private final SerieDeTurnosService service;
 	private final SchedulingApiActor apiActor;
@@ -117,6 +122,49 @@ public class SerieDeTurnosController {
 				.created(URI.create("/api/v1/consultorios/" + consultorioId
 						+ "/series-de-turnos/" + resultado.serie().id()))
 				.body(cuerpo);
+	}
+
+	@GetMapping
+	@Operation(
+			operationId = "listarSeriesDeTurnos",
+			summary = "Bandeja de series de turnos de la sede",
+			description = """
+					Las series de la sede, **mas nuevas primero**, con la regla resumida, el paciente \
+					y la oferta resueltos, y la foto de sus turnos hoy: cuantos tiene, cuantos quedan \
+					pendientes y cuando es el proximo. Para ver los turnos de una, `verSerieDeTurnos`.
+
+					- `personaId`: solo las series de ese paciente. Uno de otro tenant da una pagina \
+					vacia, no un error.
+					- `estado`: la serie **no tiene estado propio** (DP-04); se deriva de sus turnos al \
+					leer. `VIGENTE` = le queda algun turno RESERVADO o CONFIRMADO que todavia no \
+					empezo; `FINALIZADA` = no le queda ninguno.
+
+					Paginado base cero; `size` se acota a 100. Exige `turno:read`. PHI minima: \
+					nombre y documento del paciente, nada clinico.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Una pagina de series"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:read` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede no existe o es de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<SerieDeTurnosPageResponse> listar(
+			@PathVariable long consultorioId,
+			@RequestParam(required = false) @Parameter(description = "Solo las series de este paciente", example = "128")
+			Long personaId,
+			@RequestParam(required = false) @Parameter(description = "Estado derivado de sus turnos", example = "VIGENTE")
+			EstadoDeSerie estado,
+			@RequestParam(defaultValue = "0") @Parameter(description = "Pagina, base cero") int page,
+			@RequestParam(defaultValue = "20") @Parameter(description = "Tamano de pagina, maximo 100") int size) {
+
+		int pagina = Math.max(page, 0);
+		int tamano = Math.min(Math.max(size, 1), TAMANO_MAXIMO);
+		return ResponseEntity.ok(SerieDeTurnosPageResponse.of(
+				service.listar(apiActor.current(), consultorioId, personaId, estado, pagina, tamano),
+				pagina, tamano));
 	}
 
 	@GetMapping("/{serieId}")

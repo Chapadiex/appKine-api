@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.67.0
+  version: 0.68.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -8854,6 +8854,87 @@ paths:
       tags:
       - Reportes
   /api/v1/consultorios/{consultorioId}/series-de-turnos:
+    get:
+      description: |-
+        Las series de la sede, **mas nuevas primero**, con la regla resumida, el paciente y la oferta resueltos, y la foto de sus turnos hoy: cuantos tiene, cuantos quedan pendientes y cuando es el proximo. Para ver los turnos de una, `verSerieDeTurnos`.
+
+        - `personaId`: solo las series de ese paciente. Uno de otro tenant da una pagina vacia, no un error.
+        - `estado`: la serie **no tiene estado propio** (DP-04); se deriva de sus turnos al leer. `VIGENTE` = le queda algun turno RESERVADO o CONFIRMADO que todavia no empezo; `FINALIZADA` = no le queda ninguno.
+
+        Paginado base cero; `size` se acota a 100. Exige `turno:read`. PHI minima: nombre y documento del paciente, nada clinico.
+      operationId: listarSeriesDeTurnos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Solo las series de este paciente
+        example: 128
+        in: query
+        name: personaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: Estado derivado de sus turnos
+        example: VIGENTE
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - VIGENTE
+          - FINALIZADA
+      - description: "Pagina, base cero"
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: "Tamano de pagina, maximo 100"
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SerieDeTurnosPage"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/SerieDeTurnosPage"
+          description: Una pagina de series
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Bandeja de series de turnos de la sede
+      tags:
+      - Series de turnos
     post:
       description: |-
         Reserva **todas** las ocurrencias de una regla semanal —dias, hora local, desde y cantidad o fecha fin— **o ninguna**. Cada ocurrencia se revalida como una reserva suelta y bajo el mismo lock de sede, asi que una serie y una reserva que pisan el mismo hueco no entran las dos.
@@ -30555,6 +30636,141 @@ components:
             \ cualquier estado"
           items:
             $ref: "#/components/schemas/Turno"
+    SerieDeTurnosPage:
+      type: object
+      description: "Pagina de series de turnos de una sede, segun los filtros pedidos"
+      properties:
+        content:
+          type: array
+          description: "Series de esta pagina, mas nuevas primero"
+          items:
+            $ref: "#/components/schemas/SerieDeTurnosResumen"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de series que cumplen el filtro
+          example: 34
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 2
+    SerieDeTurnosResumen:
+      type: object
+      description: "Una serie de turnos en la bandeja de la sede: regla resumida,\
+        \ paciente y oferta resueltos, y cuantos turnos le quedan. PHI minima: ningun\
+        \ dato clinico."
+      properties:
+        cantidad:
+          type: integer
+          format: int32
+          description: Ausente si la serie termina por fecha
+          example: 10
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        creadaEn:
+          type: string
+          format: date-time
+          example: 2026-10-06T14:03:11Z
+        diasSemana:
+          type: array
+          description: "Dias ISO, 1 = lunes"
+          example:
+          - 1
+          - 4
+          items:
+            type: integer
+            format: int32
+        documento:
+          type: string
+          description: "Tipo y numero, para desambiguar homonimos. Ausente si la ficha\
+            \ no lo tiene."
+          example: DNI 30111222
+        estado:
+          type: string
+          description: "Estado DERIVADO de sus turnos, calculado al leer: la serie\
+            \ no tiene estado propio (DP-04). `VIGENTE` si le queda un turno pendiente,\
+            \ `FINALIZADA` si no."
+          enum:
+          - VIGENTE
+          - FINALIZADA
+          example: VIGENTE
+        fechaDesde:
+          type: string
+          format: date
+          example: 2026-10-12
+        fechaHasta:
+          type: string
+          format: date
+          description: Ausente si la serie termina por cantidad
+          example: 2026-12-21
+        frecuencia:
+          type: string
+          enum:
+          - SEMANAL
+          example: SEMANAL
+        hora:
+          type: string
+          format: time
+          description: Hora local de inicio
+          example: 09:00:00
+        id:
+          type: integer
+          format: int64
+          example: 12
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        ofertaNombre:
+          type: string
+          example: Kinesiologia - sesion individual
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+        personaNombre:
+          type: string
+          description: "Apellido y nombre, ya compuestos"
+          example: "Perez, Ana"
+        profesionalId:
+          type: integer
+          format: int64
+          description: Membership del profesional con que se genero. Ausente si la
+            oferta no lo requiere.
+          example: 31
+        proximoTurnoInicio:
+          type: string
+          format: date-time
+          description: "Inicio del proximo turno pendiente, UTC. Ausente si no queda\
+            \ ninguno."
+          example: 2026-10-19T12:00:00Z
+        timezone:
+          type: string
+          description: Zona de la sede al crear la serie
+          example: America/Argentina/Cordoba
+        totalTurnos:
+          type: integer
+          format: int32
+          description: "Turnos de la serie hoy, en cualquier estado"
+          example: 10
+        turnosPendientes:
+          type: integer
+          format: int32
+          description: Turnos RESERVADO o CONFIRMADO que todavia no empezaron
+          example: 6
     ServicioResponse:
       type: object
       description: Servicio del catalogo global de la plataforma
@@ -31540,6 +31756,15 @@ components:
           type: string
           description: "Apellido y nombre, ya compuestos"
           example: "Perez, Ana"
+        prepago:
+          $ref: "#/components/schemas/PrepagoDeRecepcion"
+          description: "Estado del prepago del turno, calculado al leer (AKINE E-8),\
+            \ **tambien antes del check-in**: la agenda sabe si la oferta lo exige\
+            \ sin esperar a que haya recepcion. Sin recepcion, `PENDIENTE` quiere\
+            \ decir \"si se atiende como particular\" —la cobertura la resuelve la\
+            \ validacion— y un turno cancelado o ausente es `NO_EXIGIDO` salvo que\
+            \ tenga un anticipo vigente (`REGISTRADO`). Con recepcion vigente es el\
+            \ mismo que `recepcion.prepago`. Es una alerta: no bloquea nada (DP-06)."
         profesionalId:
           type: integer
           format: int64

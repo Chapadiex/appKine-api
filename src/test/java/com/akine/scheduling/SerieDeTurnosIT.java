@@ -9,11 +9,15 @@ import com.akine.scheduling.application.CicloDeTurnoService;
 import com.akine.scheduling.application.OperacionDeSerieCommand;
 import com.akine.scheduling.application.ReservaCommand;
 import com.akine.scheduling.application.SerieDeTurnosService;
+import com.akine.scheduling.application.SeriePagina;
+import com.akine.scheduling.application.SerieResumenView;
 import com.akine.scheduling.application.SerieView;
 import com.akine.scheduling.application.TurnoService;
 import com.akine.scheduling.application.TurnoView;
 import com.akine.scheduling.domain.AlcanceDeSerie;
+import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.ReglaDeRecurrencia;
+import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
@@ -295,6 +299,61 @@ class SerieDeTurnosIT {
 		assertThat(serieService.ver(duena.actor(), duena.consultorioId(), serie.id()).turnos())
 				.extracting(TurnoView::estado)
 				.containsOnly("RESERVADO");
+	}
+
+	@Test
+	@DisplayName("bandeja (E-8): pagina por sede, filtra por persona y por estado derivado, y no ve otro tenant")
+	void bandeja_de_series() {
+		Fixture duena = fixtures.crear(1);
+		Fixture ajena = fixtures.crear(1);
+		SerieView vigente = crearSerie(duena, duena.personaA(), 3);
+		SerieView terminada = serieService.crear(duena.actor(), duena.consultorioId(),
+				new AltaDeSerieCommand(duena.ofertaId(), duena.personaB(), duena.profesionalMembershipId(),
+						new ReglaDeRecurrencia(Set.of(DayOfWeek.MONDAY), LocalTime.of(11, 0),
+								PRIMER_LUNES, null, 2),
+						null)).serie();
+		serieService.cancelar(duena.actor(), duena.consultorioId(), terminada.id(),
+				OperacionDeSerieCommand.cancelacion(AlcanceDeSerie.TODA_LA_SERIE, null, "Alta medica", 2));
+
+		SeriePagina todas = serieService.listar(duena.actor(), duena.consultorioId(), null, null, 0, 20);
+		assertThat(todas.total()).isEqualTo(2);
+		assertThat(todas.contenido()).extracting(SerieResumenView::id)
+				.as("mas nuevas primero")
+				.containsExactly(terminada.id(), vigente.id());
+		SerieResumenView filaVigente = todas.contenido().get(1);
+		assertThat(filaVigente.estado()).isEqualTo(EstadoDeSerie.VIGENTE);
+		assertThat(filaVigente.totalTurnos()).isEqualTo(3);
+		assertThat(filaVigente.turnosPendientes()).isEqualTo(3);
+		assertThat(filaVigente.proximoTurnoInicio()).isEqualTo(hora(PRIMER_LUNES, 9));
+		assertThat(filaVigente.personaNombre()).startsWith("Paciente");
+		assertThat(filaVigente.ofertaNombre()).isNotBlank();
+		assertThat(filaVigente.diasSemana()).containsExactly(1);
+		SerieResumenView filaTerminada = todas.contenido().get(0);
+		assertThat(filaTerminada.estado()).isEqualTo(EstadoDeSerie.FINALIZADA);
+		assertThat(filaTerminada.turnosPendientes()).isZero();
+		assertThat(filaTerminada.totalTurnos()).as("los cancelados se cuentan: siguen siendo de la serie").isEqualTo(2);
+		assertThat(filaTerminada.proximoTurnoInicio()).isNull();
+
+		assertThat(serieService.listar(duena.actor(), duena.consultorioId(), duena.personaA(), null, 0, 20)
+				.contenido()).extracting(SerieResumenView::id).containsExactly(vigente.id());
+		assertThat(serieService.listar(duena.actor(), duena.consultorioId(), null, EstadoDeSerie.VIGENTE, 0, 20)
+				.contenido()).extracting(SerieResumenView::id).containsExactly(vigente.id());
+		SeriePagina finalizadas = serieService.listar(
+				duena.actor(), duena.consultorioId(), null, EstadoDeSerie.FINALIZADA, 0, 20);
+		assertThat(finalizadas.total()).isEqualTo(1);
+		assertThat(finalizadas.contenido()).extracting(SerieResumenView::id).containsExactly(terminada.id());
+
+		SeriePagina segunda = serieService.listar(duena.actor(), duena.consultorioId(), null, null, 1, 1);
+		assertThat(segunda.total()).isEqualTo(2);
+		assertThat(segunda.contenido()).extracting(SerieResumenView::id).containsExactly(vigente.id());
+
+		// Aislamiento: la sede ajena no ve nada, la sede de otro tenant es 404 y filtrar por un
+		// paciente de otro tenant da una pagina vacia.
+		assertThat(serieService.listar(ajena.actor(), ajena.consultorioId(), null, null, 0, 20).total()).isZero();
+		assertThat(serieService.listar(ajena.actor(), ajena.consultorioId(), duena.personaA(), null, 0, 20)
+				.contenido()).isEmpty();
+		assertThatThrownBy(() -> serieService.listar(ajena.actor(), duena.consultorioId(), null, null, 0, 20))
+				.isInstanceOf(ConsultorioNoAccesibleException.class);
 	}
 
 	@Test

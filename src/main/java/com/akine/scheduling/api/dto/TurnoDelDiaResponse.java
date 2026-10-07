@@ -76,7 +76,15 @@ public record TurnoDelDiaResponse(
 		long version,
 
 		@Schema(description = "La recepcion vigente del turno (M13, DP-16): llegada, validacion, espera y llamado. Ausente si nadie registro la llegada.")
-		RecepcionResponse recepcion) {
+		RecepcionResponse recepcion,
+
+		@Schema(description = "Estado del prepago del turno, calculado al leer (AKINE E-8), "
+				+ "**tambien antes del check-in**: la agenda sabe si la oferta lo exige sin esperar "
+				+ "a que haya recepcion. Sin recepcion, `PENDIENTE` quiere decir \"si se atiende "
+				+ "como particular\" —la cobertura la resuelve la validacion— y un turno cancelado o "
+				+ "ausente es `NO_EXIGIDO` salvo que tenga un anticipo vigente (`REGISTRADO`). Con "
+				+ "recepcion vigente es el mismo que `recepcion.prepago`. Es una alerta: no bloquea nada (DP-06).")
+		PrepagoDeRecepcionResponse prepago) {
 
 	public static TurnoDelDiaResponse de(TurnoDelDiaView vista) {
 		return new TurnoDelDiaResponse(
@@ -85,6 +93,7 @@ public record TurnoDelDiaResponse(
 				vista.ofertaId(), vista.ofertaNombre(),
 				vista.profesionalId(), vista.espacioId(), vista.llegadaEn(),
 				vista.motivoCancelacion(), vista.serieId(), vista.version(),
-				vista.recepcion() == null ? null : RecepcionResponse.de(vista.recepcion()));
+				vista.recepcion() == null ? null : RecepcionResponse.de(vista.recepcion()),
+				PrepagoDeRecepcionResponse.de(vista.prepago()));
 	}
 }

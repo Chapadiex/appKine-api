@@ -18,7 +18,9 @@ import com.akine.offering.application.OfertaService;
 import com.akine.offering.application.OfertaView;
 import com.akine.scheduling.application.CicloDeRecepcionService;
 import com.akine.scheduling.application.PrepagoView;
+import com.akine.scheduling.application.RecepcionService;
 import com.akine.scheduling.application.RecepcionView;
+import com.akine.scheduling.application.TurnoDelDiaView;
 import com.akine.scheduling.spi.PrepagoDeTurnoProbe;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -68,6 +70,7 @@ class PrepagoDeRecepcionIT {
 
 	@Autowired private OfertaService ofertaService;
 	@Autowired private CicloDeRecepcionService recepcion;
+	@Autowired private RecepcionService agenda;
 	@Autowired private CobroService cobroService;
 	@Autowired private CobroPosteriorService posteriorService;
 	@Autowired private SesionService sesionService;
@@ -141,6 +144,40 @@ class PrepagoDeRecepcionIT {
 				SELECT COUNT(*) FROM audit_event
 				 WHERE organization_id = ? AND event_type = 'COBRO_SALDO_IMPUTADO'
 				""", Integer.class, f.organizationId())).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("agenda del dia antes del check-in (E-8): PENDIENTE con el precio sugerido y, al cobrar, REGISTRADO sin recepcion")
+	void la_agenda_del_dia_ve_el_prepago_antes_del_check_in() {
+		Fixture f = crearFixture(true);
+		long turno = insertarTurno(f);
+		LocalDate dia = jdbc.queryForObject("SELECT inicio FROM turno WHERE id = ?",
+				java.time.LocalDateTime.class, turno).atZone(ZoneId.of("UTC"))
+				.withZoneSameInstant(ZoneId.of(ZONA)).toLocalDate();
+
+		TurnoDelDiaView antes = delDia(f, dia, turno);
+		assertThat(antes.recepcion()).as("nadie registro la llegada").isNull();
+		assertThat(antes.prepago().estado()).isEqualTo(PrepagoView.PENDIENTE);
+		assertThat(antes.prepago().importeSugerido()).isEqualByComparingTo(PRECIO);
+		assertThat(antes.prepago().moneda()).isEqualTo("ARS");
+
+		CobroView prepago = prepagar(f, turno, MedioDePago.EFECTIVO, PRECIO, null);
+
+		TurnoDelDiaView despues = delDia(f, dia, turno);
+		assertThat(despues.recepcion()).isNull();
+		assertThat(despues.prepago().estado()).isEqualTo(PrepagoView.REGISTRADO);
+		assertThat(despues.prepago().cobroId()).isEqualTo(prepago.id());
+		assertThat(despues.prepago().saldoAFavor()).isEqualByComparingTo(PRECIO);
+
+		// Con la llegada, la agenda y la recepcion dicen lo mismo del mismo turno.
+		recepcion.registrarLlegada(f.agendaActor(), f.consultorioId(), turno);
+		TurnoDelDiaView conLlegada = delDia(f, dia, turno);
+		assertThat(conLlegada.prepago()).isEqualTo(conLlegada.recepcion().prepago());
+
+		// Y lo que cobro A no aparece en la agenda de B.
+		Fixture b = crearFixture(true);
+		long turnoDeB = insertarTurno(b);
+		assertThat(delDia(b, dia, turnoDeB).prepago().estado()).isEqualTo(PrepagoView.PENDIENTE);
 	}
 
 	@Test
@@ -309,6 +346,13 @@ class PrepagoDeRecepcionIT {
 	// =================================================================================
 	// Operaciones
 	// =================================================================================
+
+	private TurnoDelDiaView delDia(Fixture f, LocalDate dia, long turno) {
+		return agenda.delDia(f.agendaActor(), f.consultorioId(), dia).turnos().stream()
+				.filter(t -> t.id() == turno)
+				.findFirst()
+				.orElseThrow();
+	}
 
 	private CobroView prepagar(Fixture f, long turno, MedioDePago medio, BigDecimal importe, String clave) {
 		return cobroService.registrar(f.billingActor(), f.consultorioId(),
