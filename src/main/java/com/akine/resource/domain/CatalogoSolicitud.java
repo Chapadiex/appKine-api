@@ -130,8 +130,8 @@ public class CatalogoSolicitud extends MarcaTemporal {
 	/**
 	 * Resuelve la solicitud. Es la unica transicion, y es terminal.
 	 *
-	 * @param conceptoId concepto global creado, o {@code null} si se rechaza o si la plataforma
-	 *                   aprueba sin crear nada todavia
+	 * @param conceptoId concepto global publicado al aprobar (AKINE-A-7), o {@code null} si se
+	 *                   rechaza
 	 * @throws IllegalStateException    si ya estaba resuelta. Lo traduce a 409 el manejador: dos
 	 *                                  administradores de plataforma decidiendo a la vez tienen
 	 *                                  que enterarse de que el otro llego primero

@@ -102,10 +102,17 @@ public class TenantContextFilter extends OncePerRequestFilter {
 	 * <p>{@code /api/v1/me/contexts} esta aca por necesidad logica: es el endpoint con el que
 	 * el usuario averigua que contextos tiene. Exigirle contexto para poder elegir contexto
 	 * seria el mismo bucle que evita el 403 de arriba.
+	 *
+	 * <p>{@code /api/v1/me/platform-role} (AKINE-A-7) por el mismo motivo, un paso antes: el
+	 * frontend lo consulta con el token {@code pre_context} para decidir si muestra la consola
+	 * de plataforma o el selector de contexto. Filtrado, una cuenta de tenant sin contexto
+	 * recibiria 403 {@code missing-tenant-context} en vez de {@code false}. La respuesta sale
+	 * del principal, no de ningun dato de tenant.
 	 */
 	private static final List<String> RUTAS_EXACTAS_EXCEPTUADAS = List.of(
 			"/api/v1/version",
-			"/api/v1/me/contexts");
+			"/api/v1/me/contexts",
+			"/api/v1/me/platform-role");
 
 	/**
 	 * Prefijos exceptuados. Actuator y la documentacion del contrato son infraestructura, no

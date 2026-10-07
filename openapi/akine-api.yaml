@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.66.0
+  version: 0.64.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -1701,7 +1701,7 @@ paths:
       description: |-
         Reservado a la administracion de plataforma. La resolucion es TERMINAL: una solicitud aprobada o rechazada no se reabre. Si la plataforma se equivoco, el centro vuelve a pedir, y esa segunda solicitud es una fila nueva con su propia justificacion y su propia fecha.
 
-        APROBAR NO CREA EL CONCEPTO GLOBAL, y es deliberado: el concepto que la plataforma termina publicando casi nunca es el que el centro propuso —el codigo se normaliza, el nombre se unifica con los que ya existen— y crearlo automaticamente desde el texto de un pedido llenaria el catalogo comun de duplicados con nombres parecidos, que es exactamente lo que este circuito existe para evitar. La plataforma aprueba y despues publica el concepto por el alta normal.
+        APROBAR PUBLICA EL CONCEPTO GLOBAL, en la misma transaccion, y devuelve su id en conceptoId. El centro propone y la plataforma dispone: codigo, nombre, descripcion y especialidadId del cuerpo son la normalizacion con la que se publica; sin codigo o sin nombre se usan los propuestos, y sin ningun codigo posible la respuesta es 400. especialidadId es obligatorio al aprobar una PRACTICA y tiene que ser una especialidad global. La publicacion pasa por las mismas validaciones que el alta global: si el codigo o el nombre ya estan tomados en el catalogo comun responde 409 catalogo-code-taken o catalogo-name-taken, y la solicitud SIGUE PENDIENTE sin ningun concepto creado. Si el concepto ya existe en el catalogo comun, el desenlace es rechazar con una nota que lo diga. Un rechazo no lleva datos de concepto (400 si los trae).
 
         La nota es obligatoria en los dos desenlaces. version se compara antes de mutar: dos administradores de plataforma sobre la misma bandeja tienen que enterarse de que el otro llego primero.
       operationId: resolveCatalogoSolicitud
@@ -1732,7 +1732,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta la nota, falta la version, o el desenlace es PENDIENTE"
+          description: "Falta la nota o la version, el desenlace es PENDIENTE, se\
+            \ aprueba sin codigo posible o una PRACTICA sin especialidadId, o un rechazo\
+            \ trae datos de concepto"
         "403":
           content:
             application/problem+json:
@@ -1744,14 +1746,17 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: La solicitud no existe
+          description: "La solicitud no existe, o la especialidad de la practica a\
+            \ publicar no existe en el catalogo global"
         "409":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Ya estaba resuelta (catalogo-solicitud-ya-resuelta), o version\
-            \ desactualizada (concurrent-modification)"
+            \ desactualizada (concurrent-modification), o el concepto a publicar choca\
+            \ en el catalogo global (catalogo-code-taken, catalogo-name-taken, catalogo-reference-inactive);\
+            \ en esos casos la solicitud sigue PENDIENTE"
       summary: Aprobar o rechazar una solicitud
       tags:
       - Catalogo clinico
@@ -6764,72 +6769,6 @@ paths:
           description: "Version desactualizada (conflict), oferta dada de baja (oferta-inactiva),\
             \ o sede no operable (consultorio-no-operable)"
       summary: Fijar que profesionales pueden prestar la oferta
-      tags:
-      - Servicios y ofertas
-  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/politica-de-prepago:
-    put:
-      description: "Exige consultorio:manage sobre esa sede. AKINE E-6, DP-06 / ADR-0013.\n\
-        \nCon exigePrepago en true, la recepcion de los turnos de esta oferta muestra\
-        \ \t\t\t\t\tel prepago como PENDIENTE hasta que se registre un anticipo con\
-        \ turnoId. Es \t\t\t\t\tuna ALERTA: nunca impide pasar a espera, atender ni\
-        \ cerrar la sesion.\n\nUna oferta dada de baja no admite cambios: 409 oferta-inactiva."
-      operationId: updatePoliticaDePrepagoDeOferta
-      parameters:
-      - description: Sede de la oferta
-        example: 3
-        in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: Identificador de la oferta
-        example: 34
-        in: path
-        name: ofertaId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PoliticaDePrepagoRequest"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OfertaResponse"
-          description: Politica actualizada
-        "400":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Cuerpo invalido
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "La oferta o la sede no existen, o son de otro tenant"
-        "409":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Oferta dada de baja (oferta-inactiva) o version desactualizada
-            (conflict)
-      summary: Cambiar la politica de prepago de una oferta
       tags:
       - Servicios y ofertas
   /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/practicas:
@@ -13139,6 +13078,33 @@ paths:
           description: "No hay sesion autenticada, o no hay contexto de trabajo seleccionado\
             \ (missing-tenant-context). Nunca 401"
       summary: Permisos efectivos en el contexto activo
+      tags:
+      - Mi cuenta
+  /api/v1/me/platform-role:
+    get:
+      description: |-
+        Responde si la cuenta autenticada tiene un rol de plataforma vigente. Es lo que el frontend consulta para decidir si muestra la consola de plataforma (bandeja de solicitudes de catalogo, catalogo global) o el selector de contexto.
+
+        El rol NO sale del token: se revalida contra la base en este mismo request, asi que un rol revocado hace un minuto ya responde false aunque el access token siga vigente.
+
+        No requiere contexto de tenant: se consulta con el token pre_context, antes de elegir donde trabajar. Con sesion responde siempre 200 —false no es un error—. No se audita: es la cuenta preguntando por si misma.
+
+        Es insumo de UX, no un mecanismo de seguridad: cada endpoint de plataforma verifica el rol por su cuenta.
+      operationId: getMyPlatformRole
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyPlatformRoleResponse"
+          description: Si la cuenta tiene el rol de plataforma vigente
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada. Nunca 401
+      summary: Si la cuenta administra la plataforma
       tags:
       - Mi cuenta
   /api/v1/mediciones/definiciones:
@@ -20936,9 +20902,9 @@ components:
         conceptoId:
           type: integer
           format: int64
-          description: "Concepto global creado al aprobar, si se creo. Aprobar NO\
-            \ crea el concepto automaticamente: la plataforma lo publica por el alta\
-            \ normal"
+          description: "Concepto global publicado al aprobar, del tipo de la solicitud.\
+            \ null mientras esta PENDIENTE, si se rechazo, o si se aprobo antes del\
+            \ contrato 0.64.0, cuando aprobar no publicaba el concepto"
         consultorioId:
           type: integer
           format: int64
@@ -21457,12 +21423,6 @@ components:
         total:
           type: number
           example: 8500.0
-        turnoId:
-          type: integer
-          format: int64
-          description: Turno en cuya recepcion se tomo este cobro como prepago (E-6).
-            Nulo en cualquier otro cobro.
-          example: 301
         version:
           type: integer
           format: int64
@@ -26325,6 +26285,15 @@ components:
           - SESION
           - MANUAL
           example: SESION
+    MyPlatformRoleResponse:
+      type: object
+      description: Si la cuenta autenticada tiene un rol de plataforma vigente
+      properties:
+        platformAdmin:
+          type: boolean
+          description: "true si la cuenta tiene el rol PLATFORM_ADMIN vigente en este\
+            \ instante, revalidado contra la base en este request"
+          example: false
     Obligacion:
       type: object
       description: "Deuda derivada de una prestacion. **No es el cobro ni la caja**:\
@@ -26487,11 +26456,6 @@ components:
           - ACTIVO
           - INACTIVO
           example: ACTIVO
-        exigePrepago:
-          type: boolean
-          description: "Politica de prepago (E-6): la recepcion alerta si el paciente\
-            \ no abono antes de ser atendido. Nunca bloquea la atencion ni el cierre\
-            \ (DP-06). Se cambia con PUT .../ofertas/{ofertaId}/politica-de-prepago"
         generaRegistroClinico:
           type: boolean
           description: Si al prestarse genera registro clinico
@@ -27466,23 +27430,6 @@ components:
           type: string
           format: date-time
           description: "Vencimiento, o null si no vence"
-    PoliticaDePrepagoRequest:
-      type: object
-      description: Politica de prepago de una oferta
-      properties:
-        exigePrepago:
-          type: boolean
-          description: "Si la recepcion tiene que alertar cuando el paciente no dejo\
-            \ un anticipo antes de ser atendido. Alerta, nunca bloquea (DP-06)"
-        expectedVersion:
-          type: integer
-          format: int64
-          description: Version de la oferta que se leyo
-          example: 3
-          minimum: 0
-      required:
-      - exigePrepago
-      - expectedVersion
     PracticaDeOferta:
       type: object
       description: Practica que la oferta puede prestar
@@ -27558,46 +27505,6 @@ components:
           description: "Practicas de la oferta, activas e inactivas, en orden de alta"
           items:
             $ref: "#/components/schemas/PracticaDeOferta"
-    PrepagoDeRecepcion:
-      type: object
-      description: "Prepago de la recepcion: se calcula al leer con la politica de\
-        \ la oferta y el anticipo registrado en billing. PENDIENTE es una ALERTA:\
-        \ nunca impide pasar a espera, atender ni cerrar la sesion (DP-06)."
-      properties:
-        cobroId:
-          type: integer
-          format: int64
-          description: "El anticipo (cobro) registrado, cuando esta REGISTRADO"
-          example: 88
-        estado:
-          type: string
-          description: "`NO_EXIGIDO` (la oferta no lo exige, la atencion se resolvio\
-            \ con cobertura o la recepcion esta anulada o cerrada), `PENDIENTE` (lo\
-            \ exige y no hay anticipo) o `REGISTRADO` (hay un anticipo vigente con\
-            \ este turnoId)."
-          enum:
-          - NO_EXIGIDO
-          - PENDIENTE
-          - REGISTRADO
-          example: PENDIENTE
-        importe:
-          type: number
-          description: Lo que se cobro como anticipo
-          example: 8500.0
-        importeSugerido:
-          type: number
-          description: "Precio particular de la oferta, sugerido solo cuando esta\
-            \ PENDIENTE. El importe lo decide quien cobra."
-          example: 8500.0
-        moneda:
-          type: string
-          description: Moneda ISO 4217 del importe sugerido o del anticipo
-          example: ARS
-        saldoAFavor:
-          type: number
-          description: Lo que el anticipo todavia no imputo ni reintegro. Al cerrar
-            la sesion se imputa solo a la deuda del paciente
-          example: 8500.0
     Presentacion:
       type: object
       description: "Lote reclamado a un financiador (M21). **No es un cobro y no es\
@@ -27877,8 +27784,6 @@ components:
       - https://akine.app/problems/cobro-anulado
       - https://akine.app/problems/cobro-con-reintegros
       - https://akine.app/problems/saldo-a-favor-insuficiente
-      - https://akine.app/problems/prepago-no-admitido
-      - https://akine.app/problems/prepago-ya-registrado
       - https://akine.app/problems/consultorio-no-operable
       - https://akine.app/problems/persona-documento-taken
       - https://akine.app/problems/persona-posible-duplicado
@@ -28190,9 +28095,6 @@ components:
           format: int64
           description: Practica con la que se valido (principal de la oferta).
           example: 33
-        prepago:
-          $ref: "#/components/schemas/PrepagoDeRecepcion"
-          description: "Estado del prepago (E-6). Una alerta, nunca un bloqueo."
         turnoId:
           type: integer
           format: int64
@@ -28489,17 +28391,6 @@ components:
           description: "Total recibido. Decimal exacto, nunca float."
           example: 8500.0
           minimum: 0.01
-        turnoId:
-          type: integer
-          format: int64
-          description: "Prepago de recepcion (E-6, DP-06): el turno en cuya recepcion\
-            \ se cobra antes de atender. Exige un **anticipo puro** —sin imputaciones\
-            \ y con `anticipo` igual al total— de la misma persona del turno, sobre\
-            \ un turno RESERVADO o CONFIRMADO. Un solo prepago vigente por turno.\
-            \ Al cerrar la sesion de ese turno el anticipo se imputa solo a la deuda\
-            \ del paciente; lo que sobra queda a favor."
-          example: 301
-          minimum: 0
       required:
       - medios
       - personaId
@@ -29323,8 +29214,27 @@ components:
       - personaId
     ResolveCatalogoSolicitudRequest:
       type: object
-      description: Aprobacion o rechazo de una solicitud de catalogo
+      description: Aprobacion o rechazo de una solicitud de catalogo. Aprobar publica
+        el concepto global en el mismo acto
       properties:
+        codigo:
+          type: string
+          description: "Solo al aprobar: codigo con el que se publica el concepto\
+            \ global. Si falta, el propuesto; si tampoco hay propuesto, 400"
+          example: TO-01
+          maxLength: 48
+          minLength: 0
+        descripcion:
+          type: string
+          description: "Solo al aprobar: descripcion del concepto publicado"
+          maxLength: 280
+          minLength: 0
+        especialidadId:
+          type: integer
+          format: int64
+          description: "Solo al aprobar una PRACTICA, y obligatorio en ese caso: especialidad\
+            \ GLOBAL de la que cuelga"
+          example: 1
         estado:
           type: string
           description: Desenlace. PENDIENTE no es una resolucion y se rechaza con
@@ -29333,6 +29243,13 @@ components:
           - APROBADA
           - RECHAZADA
           example: APROBADA
+        nombre:
+          type: string
+          description: "Solo al aprobar: nombre con el que se publica. Si falta, el\
+            \ propuesto"
+          example: Terapia ocupacional
+          maxLength: 160
+          minLength: 0
         nota:
           type: string
           description: Motivo de la decision

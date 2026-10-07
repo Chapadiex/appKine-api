@@ -4,9 +4,11 @@ import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.resource.domain.CatalogoAlcance;
 import com.akine.resource.domain.CatalogoSolicitud;
 import com.akine.resource.domain.CatalogoTipo;
 import com.akine.resource.domain.SolicitudEstado;
+import com.akine.resource.domain.exception.CatalogoCodeTakenException;
 import com.akine.resource.domain.exception.SolicitudDuplicadaException;
 import com.akine.resource.domain.exception.SolicitudNotAccessibleException;
 import com.akine.resource.domain.exception.SolicitudYaResueltaException;
@@ -33,8 +35,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -55,9 +59,13 @@ class CatalogoSolicitudServiceTest {
 	private static final long ACCOUNT_ID = 40L;
 	private static final long ADMIN_ID = 1L;
 	private static final long SOLICITUD_ID = 601L;
+	private static final long CONCEPTO_ID = 77L;
 
 	@Mock
 	private CatalogoRepositoryPorts.SolicitudPort solicitudes;
+
+	@Mock
+	private CatalogoService catalogoService;
 
 	@Mock
 	private PermissionGuard permissionGuard;
@@ -74,7 +82,8 @@ class CatalogoSolicitudServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new CatalogoSolicitudService(solicitudes, permissionGuard, auditTrail);
+		service = new CatalogoSolicitudService(
+				solicitudes, catalogoService, permissionGuard, auditTrail);
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("ORGANIZACION", false));
@@ -187,7 +196,7 @@ class CatalogoSolicitudServiceTest {
 		assertThatThrownBy(() -> service.resolver(plataforma, SOLICITUD_ID,
 				new SolicitudResolucionCommand(SolicitudEstado.APROBADA, "Ok", 0L)))
 				.isInstanceOf(SolicitudYaResueltaException.class);
-		verify(solicitudes, never()).save(any());
+		verify(solicitudes, never()).saveAndFlush(any());
 	}
 
 	@Test
@@ -198,20 +207,32 @@ class CatalogoSolicitudServiceTest {
 		assertThatThrownBy(() -> service.resolver(plataforma, SOLICITUD_ID,
 				new SolicitudResolucionCommand(SolicitudEstado.APROBADA, "Ok", 5L)))
 				.isInstanceOf(OptimisticLockingFailureException.class);
-		verify(solicitudes, never()).save(any());
+		verify(solicitudes, never()).saveAndFlush(any());
 	}
 
 	@Test
-	@DisplayName("La resolucion registra quien y por que, y se audita PENDIENTE -> APROBADA en el tenant")
-	void la_resolucion_se_audita_en_el_tenant_que_pidio() {
+	@DisplayName("Aprobar publica el concepto GLOBAL con los datos de la plataforma, guarda su id y "
+			+ "audita PENDIENTE -> APROBADA en el tenant que pidio")
+	void aprobar_publica_el_concepto_global_y_se_audita_en_el_tenant() {
 		given(solicitudes.findById(SOLICITUD_ID)).willReturn(Optional.of(solicitud()));
+		conceptoPublicado(CONCEPTO_ID);
 
 		CatalogoSolicitudView vista = service.resolver(plataforma, SOLICITUD_ID,
-				new SolicitudResolucionCommand(SolicitudEstado.APROBADA, "Se agrega al comun", 0L));
+				new SolicitudResolucionCommand(SolicitudEstado.APROBADA, "Se agrega al comun", 0L,
+						"PS-01", "Puncion seca seca", "Tecnica invasiva", 5L));
 
 		assertThat(vista.estado()).isEqualTo("APROBADA");
 		assertThat(vista.resueltaPorAccountId()).isEqualTo(ADMIN_ID);
 		assertThat(vista.resolucionNota()).isEqualTo("Se agrega al comun");
+		assertThat(vista.conceptoId()).isEqualTo(CONCEPTO_ID);
+
+		ArgumentCaptor<CatalogoAltaCommand> alta = ArgumentCaptor.forClass(CatalogoAltaCommand.class);
+		verify(catalogoService).crear(eq(plataforma), eq(CatalogoTipo.PRACTICA), alta.capture());
+		assertThat(alta.getValue().alcance()).isEqualTo(CatalogoAlcance.GLOBAL);
+		assertThat(alta.getValue().codigo()).isEqualTo("PS-01");
+		assertThat(alta.getValue().name()).isEqualTo("Puncion seca seca");
+		assertThat(alta.getValue().descripcion()).isEqualTo("Tecnica invasiva");
+		assertThat(alta.getValue().especialidadId()).isEqualTo(5L);
 
 		ArgumentCaptor<AuditEntry> auditoria = ArgumentCaptor.forClass(AuditEntry.class);
 		verify(auditTrail).record(auditoria.capture());
@@ -220,6 +241,83 @@ class CatalogoSolicitudServiceTest {
 		assertThat(auditoria.getValue().previousState()).isEqualTo("PENDIENTE");
 		assertThat(auditoria.getValue().newState()).isEqualTo("APROBADA");
 		assertThat(auditoria.getValue().reason()).isEqualTo("Se agrega al comun");
+		assertThat(auditoria.getValue().details()).containsEntry("conceptoId", "77");
+	}
+
+	@Test
+	@DisplayName("Sin codigo ni nombre en la resolucion, se publica con los propuestos por el centro")
+	void aprobar_sin_datos_usa_los_propuestos() {
+		given(solicitudes.findById(SOLICITUD_ID)).willReturn(Optional.of(solicitud("PS-PROP")));
+		conceptoPublicado(CONCEPTO_ID);
+
+		service.resolver(plataforma, SOLICITUD_ID,
+				new SolicitudResolucionCommand(SolicitudEstado.APROBADA, "Tal cual", 0L));
+
+		ArgumentCaptor<CatalogoAltaCommand> alta = ArgumentCaptor.forClass(CatalogoAltaCommand.class);
+		verify(catalogoService).crear(eq(plataforma), eq(CatalogoTipo.PRACTICA), alta.capture());
+		assertThat(alta.getValue().codigo()).isEqualTo("PS-PROP");
+		assertThat(alta.getValue().name()).isEqualTo("Puncion seca");
+	}
+
+	@Test
+	@DisplayName("Aprobar sin ningun codigo posible es 400 y no publica ni resuelve")
+	void aprobar_sin_codigo_posible_es_400() {
+		given(solicitudes.findById(SOLICITUD_ID)).willReturn(Optional.of(solicitud()));
+
+		assertThatThrownBy(() -> service.resolver(plataforma, SOLICITUD_ID,
+				new SolicitudResolucionCommand(SolicitudEstado.APROBADA, "Ok", 0L)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("codigo");
+
+		verifyNoInteractions(catalogoService, auditTrail);
+		verify(solicitudes, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("Si publicar el concepto falla, la solicitud no se resuelve ni se audita")
+	void si_la_publicacion_falla_la_solicitud_no_cambia() {
+		CatalogoSolicitud pendiente = solicitud("PS-01");
+		given(solicitudes.findById(SOLICITUD_ID)).willReturn(Optional.of(pendiente));
+		given(catalogoService.crear(any(), any(), any()))
+				.willThrow(new CatalogoCodeTakenException("PS-01", true));
+
+		assertThatThrownBy(() -> service.resolver(plataforma, SOLICITUD_ID,
+				new SolicitudResolucionCommand(SolicitudEstado.APROBADA, "Ok", 0L)))
+				.isInstanceOf(CatalogoCodeTakenException.class);
+
+		assertThat(pendiente.estaPendiente()).isTrue();
+		verify(solicitudes, never()).saveAndFlush(any());
+		verifyNoInteractions(auditTrail);
+	}
+
+	@Test
+	@DisplayName("Rechazar no publica nada; un rechazo con datos de concepto es 400")
+	void rechazar_no_publica() {
+		given(solicitudes.findById(SOLICITUD_ID)).willReturn(Optional.of(solicitud("PS-01")));
+
+		assertThatThrownBy(() -> service.resolver(plataforma, SOLICITUD_ID,
+				new SolicitudResolucionCommand(SolicitudEstado.RECHAZADA, "No", 0L,
+						"PS-01", null, null, null)))
+				.isInstanceOf(IllegalArgumentException.class);
+		verify(solicitudes, never()).saveAndFlush(any());
+
+		CatalogoSolicitudView vista = service.resolver(plataforma, SOLICITUD_ID,
+				new SolicitudResolucionCommand(SolicitudEstado.RECHAZADA, "Ya existe como X", 0L));
+
+		assertThat(vista.estado()).isEqualTo("RECHAZADA");
+		assertThat(vista.conceptoId()).isNull();
+		verifyNoInteractions(catalogoService);
+	}
+
+	@Test
+	@DisplayName("PENDIENTE no es un desenlace: 400 sin publicar")
+	void pendiente_no_es_resolucion() {
+		given(solicitudes.findById(SOLICITUD_ID)).willReturn(Optional.of(solicitud("PS-01")));
+
+		assertThatThrownBy(() -> service.resolver(plataforma, SOLICITUD_ID,
+				new SolicitudResolucionCommand(SolicitudEstado.PENDIENTE, "Ok", 0L)))
+				.isInstanceOf(IllegalArgumentException.class);
+		verifyNoInteractions(catalogoService);
 	}
 
 	// =================================================================================
@@ -227,8 +325,18 @@ class CatalogoSolicitudServiceTest {
 	// =================================================================================
 
 	private static CatalogoSolicitud solicitud() {
+		return solicitud(null);
+	}
+
+	private static CatalogoSolicitud solicitud(String codigoPropuesto) {
 		return conId(new CatalogoSolicitud(ORG_ID, CONSULTORIO_ID, CatalogoTipo.PRACTICA,
-				"Puncion seca", null, "La usamos a diario", ACCOUNT_ID));
+				"Puncion seca", codigoPropuesto, "La usamos a diario", ACCOUNT_ID));
+	}
+
+	private void conceptoPublicado(long id) {
+		CatalogoConceptoView publicado = mock(CatalogoConceptoView.class);
+		given(publicado.id()).willReturn(id);
+		given(catalogoService.crear(any(), any(), any())).willReturn(publicado);
 	}
 
 	private static CatalogoSolicitud conId(CatalogoSolicitud solicitud) {

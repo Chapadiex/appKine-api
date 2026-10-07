@@ -4,6 +4,7 @@ import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.resource.domain.CatalogoAlcance;
 import com.akine.resource.domain.CatalogoSolicitud;
 import com.akine.resource.domain.CatalogoTipo;
 import com.akine.resource.domain.PermissionCodes;
@@ -46,7 +47,8 @@ import java.util.Map;
  *   <li><b>Listar</b>: el tenant ve <b>las suyas</b>; el administrador de plataforma ve la
  *       bandeja completa. Es la unica consulta cross-tenant del modulo, y por eso el rol se
  *       verifica antes de elegir la consulta y no despues de filtrar el resultado.</li>
- *   <li><b>Resolver</b>: solamente la plataforma.</li>
+ *   <li><b>Resolver</b>: solamente la plataforma. Aprobar publica el concepto global en el
+ *       mismo acto (AKINE-A-7).</li>
  * </ul>
  *
  * <h2>Idempotencia</h2>
@@ -65,15 +67,18 @@ public class CatalogoSolicitudService {
 	private static final String SIN_FILTRO = "";
 
 	private final CatalogoRepositoryPorts.SolicitudPort solicitudes;
+	private final CatalogoService catalogoService;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 
 	public CatalogoSolicitudService(
 			CatalogoRepositoryPorts.SolicitudPort solicitudes,
+			CatalogoService catalogoService,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail) {
 
 		this.solicitudes = solicitudes;
+		this.catalogoService = catalogoService;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 	}
@@ -141,12 +146,14 @@ public class CatalogoSolicitudService {
 	/**
 	 * Resolucion de una solicitud: aprobarla o rechazarla, con motivo.
 	 *
-	 * <p><b>Aprobar NO crea el concepto global.</b> Es deliberado: el concepto que la plataforma
-	 * termina publicando casi nunca es el que el centro propuso —el codigo se normaliza, el
-	 * nombre se unifica con los que ya existen— y crear uno automaticamente a partir del texto
-	 * de un pedido llenaria el catalogo comun de duplicados con nombres parecidos, que es
-	 * exactamente lo que el circuito de solicitud existe para evitar. La plataforma aprueba, crea
-	 * el concepto por el alta normal y, si quiere, deja su id en {@code conceptoId}.
+	 * <p><b>Aprobar publica el concepto global, en la misma transaccion (AKINE-A-7).</b> Hasta
+	 * A-7 no lo hacia, con un motivo que se conserva: el concepto que la plataforma termina
+	 * publicando casi nunca es el que el centro propuso —el codigo se normaliza, el nombre se
+	 * unifica con los que ya existen— y crearlo desde el texto crudo del pedido llenaria el
+	 * catalogo comun de duplicados. Por eso la resolucion trae codigo, nombre y descripcion de la
+	 * plataforma (los propuestos solo son el default), y el unique del catalogo global rechaza el
+	 * duplicado. Si el concepto ya existe, el desenlace es rechazar con una nota que lo diga. Si
+	 * la publicacion falla, la solicitud sigue PENDIENTE y no queda ningun concepto.
 	 *
 	 * <p>La version se compara antes de mutar: dos administradores de plataforma sobre la misma
 	 * bandeja tienen que enterarse de que el otro llego primero, y no descubrirlo por una fila
@@ -169,23 +176,74 @@ public class CatalogoSolicitudService {
 					"La solicitud fue modificada por otra operacion");
 		}
 
+		Long conceptoId = switch (command.estado()) {
+			case APROBADA -> publicarConcepto(actor, solicitud, command);
+			case RECHAZADA -> {
+				if (command.traeDatosDeConcepto()) {
+					throw new IllegalArgumentException(
+							"Un rechazo no publica ningun concepto: no lleva codigo, nombre, "
+									+ "descripcion ni especialidad");
+				}
+				yield null;
+			}
+			case PENDIENTE -> throw new IllegalArgumentException(
+					"Resolver una solicitud exige aprobarla o rechazarla");
+		};
+
 		Instant ahora = Instant.now();
 		String estadoAnterior = solicitud.getEstado().name();
 		try {
-			solicitud.resolver(command.estado(), actor.accountId(), command.nota(), null, ahora);
+			solicitud.resolver(
+					command.estado(), actor.accountId(), command.nota(), conceptoId, ahora);
 		} catch (IllegalStateException yaResuelta) {
 			throw new SolicitudYaResueltaException(solicitudId);
 		}
 
-		CatalogoSolicitud guardada = solicitudes.save(solicitud);
+		// Con flush: si otro administrador resolvio la misma solicitud mientras tanto, el UPDATE
+		// por version falla ACA, dentro de la transaccion, y se lleva puesto tambien el concepto
+		// recien publicado. Sin flush fallaria igual, pero al commitear.
+		CatalogoSolicitud guardada = solicitudes.saveAndFlush(solicitud);
 
+		Map<String, String> detalles = conceptoId == null
+				? Map.of()
+				: Map.of("conceptoId", conceptoId.toString());
 		auditar(AuditEvents.CATALOGO_SOLICITUD_RESOLVED, guardada, actor,
-				estadoAnterior, guardada.getEstado().name(), command.nota(), Map.of(), ahora);
+				estadoAnterior, guardada.getEstado().name(), command.nota(), detalles, ahora);
 
-		log.info("Solicitud de catalogo resuelta: solicitudId={} estado={}",
-				solicitudId, guardada.getEstado());
+		log.info("Solicitud de catalogo resuelta: solicitudId={} estado={} conceptoId={}",
+				solicitudId, guardada.getEstado(), conceptoId);
 
 		return CatalogoSolicitudView.de(guardada);
+	}
+
+	/**
+	 * Publica el concepto global que la aprobacion decide, por el alta normal del catalogo.
+	 *
+	 * <p>Mismas validaciones, mismo chequeo de rol y mismo {@code CATALOGO_CREATED} que un alta
+	 * global a mano: la solicitud no es una puerta lateral al catalogo comun. Corre en la
+	 * transaccion de la resolucion, asi que un choque de codigo o de nombre deja la solicitud
+	 * PENDIENTE y ningun concepto (CA-M06-005-04).
+	 */
+	private Long publicarConcepto(
+			OperatingActor actor, CatalogoSolicitud solicitud, SolicitudResolucionCommand command) {
+
+		String codigo = command.codigo() != null ? command.codigo() : solicitud.getCodigoPropuesto();
+		if (codigo == null || codigo.isBlank()) {
+			throw new IllegalArgumentException(
+					"Aprobar publica el concepto global y exige un codigo: el centro no propuso "
+							+ "ninguno, asi que lo tiene que fijar la plataforma");
+		}
+		String nombre = command.nombre() != null ? command.nombre() : solicitud.getNombrePropuesto();
+
+		return catalogoService.crear(actor, solicitud.getTipo(), new CatalogoAltaCommand(
+				CatalogoAlcance.GLOBAL,
+				codigo,
+				nombre,
+				command.descripcion(),
+				command.especialidadId(),
+				null,
+				null,
+				null)).id();
 	}
 
 	// =================================================================================

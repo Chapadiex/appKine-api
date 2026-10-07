@@ -58,8 +58,9 @@ public record CatalogoSolicitudResponse(
 		@Schema(description = "Motivo de la aprobacion o del rechazo, o null")
 		String resolucionNota,
 
-		@Schema(description = "Concepto global creado al aprobar, si se creo. Aprobar NO crea el "
-				+ "concepto automaticamente: la plataforma lo publica por el alta normal")
+		@Schema(description = "Concepto global publicado al aprobar, del tipo de la solicitud. "
+				+ "null mientras esta PENDIENTE, si se rechazo, o si se aprobo antes del contrato "
+				+ "0.64.0, cuando aprobar no publicaba el concepto")
 		Long conceptoId,
 
 		@Schema(description = "Instante UTC del pedido")
