@@ -130,6 +130,15 @@ final class AuditEvents {
 
 	static final String ENTITY_CALENDARIO_SEDE = "CalendarioSede";
 
+	/**
+	 * Fijacion o reemplazo del horario general de una sede (RF-M03-002, RF-M03-003). El
+	 * {@code entityId} es la sede: el horario no tiene identidad propia, es un conjunto de
+	 * franjas que se reemplaza entero, y el detalle lleva el antes y el despues.
+	 */
+	static final String HORARIO_GENERAL_UPDATED = "HORARIO_GENERAL_UPDATED";
+
+	static final String ENTITY_HORARIO_GENERAL = "HorarioGeneral";
+
 	/** Clave con la que Micrometer Tracing publica el trace id del request en el MDC. */
 	private static final String MDC_TRACE_ID = "traceId";
 

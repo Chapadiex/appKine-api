@@ -117,6 +117,34 @@ class EspacioServiceTest {
 	}
 
 	// =================================================================================
+	// Primer box en el alta de la sede (A-8)
+	// =================================================================================
+
+	@Test
+	@DisplayName("El primer box de una sede nueva es un BOX, se audita y no reevalua permisos ni relee la sede")
+	void el_primer_box_de_la_sede_nueva() {
+		EspacioView box = service.crearPrimerBoxDeSedeNueva(
+				ORG_ID, CONSULTORIO_ID, ACCOUNT_ID, "  Box 1 ", null);
+
+		assertThat(box.tipo()).isEqualTo(EspacioTipo.BOX.name());
+		assertThat(box.name()).isEqualTo("Box 1");
+		assertThat(box.capacidad()).isEqualTo(1);
+		verify(auditTrail).record(any());
+		// organization ya exigio consultorio:manage con alcance organizacion en la misma
+		// transaccion, y la sede no esta commiteada: ni permiso ni relectura.
+		verifyNoInteractions(permissionGuard, consultorioDirectory, supportAccessAuditor);
+	}
+
+	@Test
+	@DisplayName("Un primer box sin nombre se rechaza: el alta entera revierte")
+	void el_primer_box_sin_nombre_se_rechaza() {
+		assertThatThrownBy(() -> service.crearPrimerBoxDeSedeNueva(
+				ORG_ID, CONSULTORIO_ID, ACCOUNT_ID, " ", null))
+				.isInstanceOf(IllegalArgumentException.class);
+		verify(espacios, never()).saveAndFlush(any());
+	}
+
+	// =================================================================================
 	// Lecturas: pertenencia antes que permiso
 	// =================================================================================
 

@@ -257,13 +257,43 @@ public class EspacioService {
 		// atacante y el consultorio_id de la victima, y la FK la aceptaria sin objetar nada.
 		ConsultorioSnapshot sede = exigirSedeOperable(organizationId, consultorioId);
 
+		EspacioView creado = persistirAlta(organizationId, sede.id(), actor.accountId(), command);
+		auditarSoporte(decision, organizationId, consultorioId, actor, creado.id(), Instant.now());
+		return creado;
+	}
+
+	/**
+	 * Crea el primer box de una sede que se esta dando de alta, dentro de la transaccion del
+	 * alta (A-8, CA-M03-002).
+	 *
+	 * <p><b>No evalua permisos ni relee la sede, y no es un descuido.</b> Lo llama
+	 * {@code organization} a traves de {@code organization.spi.AltaDeSedeExtension}, despues de
+	 * exigir {@code consultorio:manage} con alcance ORGANIZACION —mas fuerte que el de sede que
+	 * pide {@link #create}— en la misma transaccion, y la sede acaba de nacer activa en esa misma
+	 * transaccion. El tipo es siempre {@link EspacioTipo#BOX}: es lo que RF-M03-002 nombra.
+	 *
+	 * <p>Un nombre invalido lanza y revierte el alta entera, sede incluida.
+	 *
+	 * @throws IllegalArgumentException si el nombre o la capacidad no son validos (400)
+	 */
+	@Transactional
+	public EspacioView crearPrimerBoxDeSedeNueva(
+			long organizationId, long consultorioId, long accountId, String nombre, Integer capacidad) {
+
+		return persistirAlta(organizationId, consultorioId, accountId,
+				new EspacioAltaCommand(nombre, EspacioTipo.BOX, capacidad, null, null, null));
+	}
+
+	private EspacioView persistirAlta(
+			long organizationId, long consultorioId, long accountId, EspacioAltaCommand command) {
+
 		Instant ahora = Instant.now();
 		String nombre = exigirNombre(command.name());
 		EspacioTipo tipo = command.tipo() == null ? EspacioTipo.BOX : command.tipo();
 		Instant desde = command.validFrom() == null ? ahora : command.validFrom();
 
 		Espacio espacio = new Espacio(
-				organizationId, sede.id(), nombre, tipo,
+				organizationId, consultorioId, nombre, tipo,
 				exigirCapacidadValida(command.capacidad()), command.notes(),
 				desde, command.validUntil());
 
@@ -285,9 +315,8 @@ public class EspacioService {
 		detalles.put("tipo", tipo.name());
 		detalles.put("capacidad", String.valueOf(persistido.getCapacidad()));
 		detalles.put("validFrom", String.valueOf(persistido.getValidFrom()));
-		auditar(AuditEvents.ESPACIO_CREATED, persistido, actor.accountId(),
+		auditar(AuditEvents.ESPACIO_CREATED, persistido, accountId,
 				null, "ACTIVO", null, detalles, ahora);
-		auditarSoporte(decision, organizationId, consultorioId, actor, persistido.getId(), ahora);
 
 		log.info("Espacio creado: organizationId={} consultorioId={} espacioId={}",
 				organizationId, consultorioId, persistido.getId());

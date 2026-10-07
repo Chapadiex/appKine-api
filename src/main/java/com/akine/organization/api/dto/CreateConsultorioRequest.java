@@ -1,11 +1,14 @@
 package com.akine.organization.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+
+import java.util.List;
 
 /**
  * Alta de una sede adicional (RF-M03-001).
@@ -16,6 +19,10 @@ import jakarta.validation.constraints.Size;
  * <p><b>Solo el nombre es obligatorio.</b> El wizard de alta tiene dos pasos y el segundo
  * —datos institucionales— es enteramente salteable: RNF-M03-005 pide interacciones compactas, y
  * ningun RF de M03 exige un CUIT ni una direccion para abrir una sede.
+ *
+ * <p><b>Primer box y horario general (A-8, RF-M03-002), opcionales y aditivos.</b> Si vienen se
+ * crean en la misma transaccion que la sede; un cliente que no los manda sigue dando de alta la
+ * sede sola, exactamente como antes.
  */
 @Schema(description = "Datos para dar de alta una sede adicional")
 public record CreateConsultorioRequest(
@@ -65,5 +72,25 @@ public record CreateConsultorioRequest(
 		@Schema(description = "Email de contacto", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		@Email(message = "El email de contacto no tiene un formato valido")
 		@Size(max = 160, message = "El email no puede superar los 160 caracteres")
-		String contactEmail) {
+		String contactEmail,
+
+		@Schema(
+				description = "Primer box de la sede (RF-M03-002). Si viene, se crea en la misma "
+						+ "transaccion que la sede: si algo falla no queda ni la sede ni el box. "
+						+ "Omitirlo da de alta la sede sola, como antes",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		@Valid
+		AltaSedePrimerBoxRequest primerBox,
+
+		@Schema(
+				description = "Horario general de la sede (RF-M03-002): franjas semanales en la "
+						+ "zona de la sede. Informativo: NO sustituye la disponibilidad de cada "
+						+ "profesional, que es lo que la agenda usa para ofrecer turnos "
+						+ "(RN-M03-004). Se crea en la misma transaccion que la sede; dos franjas "
+						+ "del mismo dia que se pisan, o una que termina antes de empezar, "
+						+ "rechazan el alta entera con 400. Se lee y se edita despues por "
+						+ "/consultorios/{id}/calendario",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		@Size(max = 28, message = "El horario general admite como maximo 28 franjas")
+		List<@Valid AltaSedeFranjaHorariaRequest> horarioGeneral) {
 }

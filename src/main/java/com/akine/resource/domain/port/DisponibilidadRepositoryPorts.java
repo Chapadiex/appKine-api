@@ -4,6 +4,7 @@ import com.akine.resource.domain.BloqueDisponibilidad;
 import com.akine.resource.domain.CalendarioSede;
 import com.akine.resource.domain.DisponibilidadExcepcion;
 import com.akine.resource.domain.Feriado;
+import com.akine.resource.domain.FranjaHorarioGeneral;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -153,5 +154,18 @@ public final class DisponibilidadRepositoryPorts {
 		void crearSiFalta(long organizationId, long consultorioId);
 
 		CalendarioSede save(CalendarioSede calendario);
+	}
+
+	/**
+	 * Horario general de una sede (V83). Sin {@code saveAll}: un puerto que declara
+	 * {@code saveAll(List)} choca con el {@code saveAll(Iterable)} de {@code JpaRepository} y
+	 * Spring Data lo toma por consulta derivada; la aplicacion no arranca.
+	 */
+	public interface HorarioGeneralRepositoryPort {
+
+		/** Las franjas VIGENTES de la sede, ordenadas por dia y hora de inicio. */
+		List<FranjaHorarioGeneral> findVigentes(Long organizationId, Long consultorioId);
+
+		FranjaHorarioGeneral save(FranjaHorarioGeneral franja);
 	}
 }

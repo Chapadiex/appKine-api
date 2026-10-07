@@ -1,5 +1,6 @@
 package com.akine.organization.api;
 
+import com.akine.organization.api.dto.AltaSedeFranjaHorariaRequest;
 import com.akine.organization.api.dto.ConsultorioResponse;
 import com.akine.organization.api.dto.CreateConsultorioRequest;
 import com.akine.organization.api.dto.DeactivateConsultorioRequest;
@@ -10,6 +11,9 @@ import com.akine.organization.application.ConsultorioEdicionCommand;
 import com.akine.organization.application.ConsultorioService;
 import com.akine.organization.application.ConsultorioView;
 import com.akine.organization.application.OperatingActor;
+import com.akine.organization.spi.AltaDeSedeExtension.Complemento;
+import com.akine.organization.spi.AltaDeSedeExtension.FranjaHoraria;
+import com.akine.organization.spi.AltaDeSedeExtension.PrimerBox;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -37,7 +41,10 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -125,9 +132,14 @@ public class ConsultorioController {
 					cuerpo devuelve la misma sede en vez de crear una segunda, que es lo que \
 					cubre el reintento despues de un timeout de red.
 
-					El primer box y el horario general de la sede NO se crean aca. Box es del \
-					modulo de espacios (AKINE-02.02) y el horario general depende de la \
-					disponibilidad profesional, que llega despues.""")
+					Opcionalmente crea en el MISMO acto el primer box (primerBox) y el horario \
+					general de la sede (horarioGeneral), que es lo que RF-M03-002 pide. Todo \
+					entra en una sola transaccion: si el box o el horario son invalidos la \
+					respuesta es 400 y no queda nada, ni la sede ni el cupo de plan consumido. \
+					El horario general es informativo y no reemplaza la disponibilidad de cada \
+					profesional (RN-M03-004); se lee y se edita despues por \
+					/consultorios/{id}/calendario, y el box por /consultorios/{id}/espacios. \
+					Los dos campos entran en la deteccion de clave de idempotencia reusada.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "201",
@@ -139,7 +151,9 @@ public class ConsultorioController {
 			@ApiResponse(
 					responseCode = "400",
 					description = "Campos invalidos, zona horaria que no es un identificador "
-							+ "IANA, o falta el header Idempotency-Key",
+							+ "IANA, falta el header Idempotency-Key, o un primer box u horario "
+							+ "general invalido (franja que termina antes de empezar, dos "
+							+ "franjas del mismo dia que se pisan). En ese caso no se crea nada",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -200,7 +214,8 @@ public class ConsultorioController {
 						request.phone(),
 						request.contactEmail(),
 						idempotencyKey,
-						hashDe(request)));
+						hashDe(request),
+						complementoDe(request)));
 
 		return ResponseEntity
 				.created(URI.create("/api/v1/organizations/" + orgId + "/consultorios/" + creada.id()))
@@ -428,7 +443,7 @@ public class ConsultorioController {
 	 * sobre el texto crudo convertiria un reintento legitimo en un 409.
 	 */
 	private static String hashDe(CreateConsultorioRequest request) {
-		String canonico = String.join(SEPARADOR_CANONICO,
+		List<String> partes = new ArrayList<>(List.of(
 				normalizar(request.name()),
 				normalizar(request.timezone()),
 				request.slotMinutes() == null ? "" : String.valueOf(request.slotMinutes()),
@@ -436,7 +451,23 @@ public class ConsultorioController {
 				normalizar(request.taxId()),
 				normalizar(request.addressLine()),
 				normalizar(request.phone()),
-				normalizar(request.contactEmail()));
+				normalizar(request.contactEmail())));
+		// El primer box y el horario (A-8) se agregan SOLO si vienen: un alta sin ellos produce
+		// exactamente el hash de antes, y un reintento de un cliente viejo no se vuelve 409.
+		if (request.primerBox() != null) {
+			partes.add("box:" + normalizar(request.primerBox().name()) + ":"
+					+ (request.primerBox().capacidad() == null ? "" : request.primerBox().capacidad()));
+		}
+		if (request.horarioGeneral() != null && !request.horarioGeneral().isEmpty()) {
+			StringBuilder horario = new StringBuilder("horario:");
+			for (AltaSedeFranjaHorariaRequest franja : request.horarioGeneral()) {
+				horario.append(franja.diaSemana()).append(' ')
+						.append(normalizar(franja.horaDesde())).append('-')
+						.append(normalizar(franja.horaHasta())).append(';');
+			}
+			partes.add(horario.toString());
+		}
+		String canonico = String.join(SEPARADOR_CANONICO, partes);
 		try {
 			MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
 			return HexFormat.of().formatHex(sha256.digest(canonico.getBytes(StandardCharsets.UTF_8)));
@@ -445,6 +476,29 @@ public class ConsultorioController {
 			// silencio la deteccion de clave reusada con otro contenido: mejor ruidoso.
 			throw new IllegalStateException("SHA-256 no disponible en esta JVM", imposible);
 		}
+	}
+
+	/**
+	 * Traduce el primer box y el horario del request al complemento que viaja por
+	 * {@code organization.spi}. La medianoche como fin ({@code 24:00}) pasa a ser
+	 * {@link LocalTime#MAX}, la misma convencion que usa la disponibilidad profesional.
+	 */
+	private static Complemento complementoDe(CreateConsultorioRequest request) {
+		PrimerBox box = request.primerBox() == null
+				? null
+				: new PrimerBox(request.primerBox().name(), request.primerBox().capacidad());
+		List<FranjaHoraria> horario = request.horarioGeneral() == null
+				? List.of()
+				: request.horarioGeneral().stream()
+						.map(f -> new FranjaHoraria(
+								f.diaSemana(), hora(f.horaDesde()), hora(f.horaHasta())))
+						.toList();
+		return new Complemento(box, horario);
+	}
+
+	private static LocalTime hora(String texto) {
+		String limpio = texto.strip();
+		return limpio.startsWith("24:") ? LocalTime.MAX : LocalTime.parse(limpio);
 	}
 
 	private static String normalizar(String valor) {

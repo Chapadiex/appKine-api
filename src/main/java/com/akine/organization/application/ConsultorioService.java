@@ -14,6 +14,7 @@ import com.akine.organization.domain.port.ConsultorioAltaRepositoryPort;
 import com.akine.organization.domain.port.ConsultorioRepositoryPort;
 import com.akine.organization.domain.port.OrganizationRepositoryPort;
 import com.akine.organization.domain.port.SubscriptionRepositoryPort;
+import com.akine.organization.spi.AltaDeSedeExtension;
 import com.akine.organization.spi.ConsultorioDeactivationProbe;
 import com.akine.organization.spi.LimitCode;
 import com.akine.organization.spi.PermissionDecision;
@@ -101,6 +102,7 @@ public class ConsultorioService {
 	private final AuditTrail auditTrail;
 	private final SupportAccessReadAuditor supportAccessReadAuditor;
 	private final List<ConsultorioDeactivationProbe> deactivationProbes;
+	private final List<AltaDeSedeExtension> altaExtensions;
 
 	public ConsultorioService(
 			ConsultorioRepositoryPort consultorioRepository,
@@ -112,7 +114,8 @@ public class ConsultorioService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
 			SupportAccessReadAuditor supportAccessReadAuditor,
-			List<ConsultorioDeactivationProbe> deactivationProbes) {
+			List<ConsultorioDeactivationProbe> deactivationProbes,
+			List<AltaDeSedeExtension> altaExtensions) {
 		this.consultorioRepository = consultorioRepository;
 		this.altaRepository = altaRepository;
 		this.organizationRepository = organizationRepository;
@@ -123,6 +126,7 @@ public class ConsultorioService {
 		this.auditTrail = auditTrail;
 		this.supportAccessReadAuditor = supportAccessReadAuditor;
 		this.deactivationProbes = deactivationProbes;
+		this.altaExtensions = altaExtensions;
 	}
 
 	// =================================================================================
@@ -268,10 +272,37 @@ public class ConsultorioService {
 				null, ConsultorioView.de(persistido).estado(), null, detalles, ahora);
 		auditarSoporte(decision, organizationId, persistido.getId(), actor, ahora);
 
+		completarAlta(organizationId, persistido.getId(), actor.accountId(), command);
+
 		log.info("Sede creada: organizationId={} consultorioId={}",
 				organizationId, persistido.getId());
 
 		return ConsultorioView.de(persistido);
+	}
+
+	/**
+	 * El primer box y el horario general, en la misma transaccion que la sede (RF-M03-002).
+	 *
+	 * <p>Los escribe {@code resource} por {@link AltaDeSedeExtension}: son tablas suyas. Una
+	 * excepcion de cualquiera de ellos revierte la sede y el cupo de plan (CA-M03-002-04).
+	 *
+	 * <p>Si el alta trae complemento y no hay ninguna extension registrada, falla ruidoso: seguir
+	 * crearia la sede y descartaria en silencio el box y el horario que el cliente pidio.
+	 */
+	private void completarAlta(
+			long organizationId, long consultorioId, long accountId, ConsultorioAltaCommand command) {
+
+		AltaDeSedeExtension.Complemento complemento = command.complemento();
+		if (complemento.vacio()) {
+			return;
+		}
+		if (altaExtensions.isEmpty()) {
+			throw new IllegalStateException(
+					"El alta trae primer box u horario general y ningun modulo los implementa");
+		}
+		for (AltaDeSedeExtension extension : altaExtensions) {
+			extension.completarAlta(organizationId, consultorioId, accountId, complemento);
+		}
 	}
 
 	// =================================================================================
