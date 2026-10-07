@@ -753,6 +753,8 @@ class SesionServiceTest {
 		given(ofertas.precioEn(eq(ORG_ID), eq(CONSULTORIO_ID), eq(OFERTA_ID), any())).willReturn(Optional.of(
 				new PrecioDeOferta(OFERTA_ID, new BigDecimal("8500.00"), "ARS", true)));
 		given(tratamientos.practicasVigentesDe(ORG_ID, 1L)).willReturn(List.of(610L, 611L, 610L));
+		// AKINE E-7: la recepcion de ese turno se resolvio como Particular.
+		given(turnos.atendidoComoParticular(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(true);
 
 		service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Terapia manual"), 0L);
 
@@ -766,6 +768,7 @@ class SesionServiceTest {
 		assertThat(aviso.getValue().practicasRealizadas()).containsExactlyInAnyOrder(610L, 611L);
 		// AKINE F-4: si la oferta admite obra social se lee en el mismo punto que el precio.
 		assertThat(aviso.getValue().ofertaAdmiteObraSocial()).isTrue();
+		assertThat(aviso.getValue().particularPorRecepcion()).isTrue();
 	}
 
 	@Test
@@ -786,6 +789,7 @@ class SesionServiceTest {
 		assertThat(aviso.getValue().precioDeLaOferta()).isNull();
 		assertThat(aviso.getValue().moneda()).isNull();
 		assertThat(aviso.getValue().ofertaAdmiteObraSocial()).isFalse();
+		assertThat(aviso.getValue().particularPorRecepcion()).isFalse();
 	}
 
 	@Test

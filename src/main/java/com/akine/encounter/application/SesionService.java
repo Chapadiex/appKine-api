@@ -700,7 +700,12 @@ public class SesionService {
 				// AKINE F-4: si la oferta no admite obra social, el devengo no busca cobertura.
 				precio.map(PrecioDeOferta::admiteObraSocial).orElse(false),
 				// AKINE E-6: billing imputa el prepago que la recepcion de ese turno tomo.
-				sesion.getTurnoId());
+				sesion.getTurnoId(),
+				// AKINE E-7 (RF-M08-007): si el mostrador resolvio la atencion como Particular, eso
+				// manda sobre la cobertura. Se lee ACA, una vez, por el mismo motivo que el precio:
+				// el devengo y el consumo tienen que ver la misma decision.
+				sesion.getTurnoId() != null && turnos.atendidoComoParticular(
+						organizationId, sesion.getConsultorioId(), sesion.getTurnoId()));
 
 		observadores.forEach(observador -> observador.alCerrar(aviso));
 	}
