@@ -7,7 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /** Un bloque del reporte, aportado por el modulo propietario de sus datos. */
-@Schema(description = "Una seccion del reporte")
+@Schema(name = "SeccionDeReporteResponse", description = "Una seccion del reporte")
 public record SeccionResponse(
 		@Schema(description = "Nombre estable de la seccion", example = "economia")
 		String seccion,

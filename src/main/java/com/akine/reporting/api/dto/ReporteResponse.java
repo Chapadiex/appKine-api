@@ -62,7 +62,8 @@ public record ReporteResponse(
 	}
 
 	/** Viaja el codigo de permiso y no una frase: la pantalla decide como decirlo. */
-	@Schema(description = "Una seccion omitida y el permiso que falta para verla")
+	@Schema(name = "SeccionOmitidaDeReporteResponse",
+			description = "Una seccion omitida y el permiso que falta para verla")
 	public record SeccionOmitidaResponse(String seccion, String permisoRequerido) {
 	}
 
