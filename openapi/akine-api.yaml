@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.58.0
+  version: 0.59.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -850,6 +850,50 @@ paths:
       summary: Cerrar todas las sesiones de la propia cuenta
       tags:
       - Sesion
+  /api/v1/autorizaciones/{autorizacionId}/alertas:
+    get:
+      description: |-
+        DP-13 y RN-M17-003. Hoy un solo tipo: CONSUMO_A_REVISAR, que nace cuando se anula la obligacion economica de una sesion que consumio esta autorizacion.
+
+        NO MUEVE EL SALDO. Anular la deuda no prueba que la prestacion no ocurrio —puede ser una cortesia o un error de precio—, asi que la unidad no vuelve sola. Si corresponde devolverla, se revierte el consumo con POST /reversiones, y eso resuelve la alerta (resolucion = REVERTIDO).
+
+        Una alerta por consumo: anular varias obligaciones de la misma sesion no la repite. Se listan de la mas vieja a la mas nueva, resueltas incluidas: una alerta se resuelve, no se borra.
+
+        Las alertas de vencimiento y agote (RF-M17-006) NO viven aca: se calculan al leer, en GET /saldo.
+      operationId: listAlertasDeAutorizacion
+      parameters:
+      - description: Identificador de la autorizacion
+        example: 77
+        in: path
+        name: autorizacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AlertaDeAutorizacionResponse"
+          description: "Alertas, de la mas vieja a la mas nueva"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La autorizacion no existe o es de otra organizacion
+      summary: Las alertas de una autorizacion
+      tags:
+      - Consumo de autorizaciones
   /api/v1/autorizaciones/{autorizacionId}/movimientos:
     get:
       description: |-
@@ -18779,6 +18823,76 @@ components:
           format: int64
           description: "Turno pivote, si se indico"
           example: 301
+    AlertaDeAutorizacionResponse:
+      type: object
+      description: Una alerta sobre una autorizacion que nace de un hecho de otro
+        modulo
+      properties:
+        autorizacionId:
+          type: integer
+          format: int64
+          description: Autorizacion sobre la que se alerta
+          example: 77
+        generadaEn:
+          type: string
+          format: date-time
+          description: Instante UTC de la anulacion que la genero
+          example: 2026-10-06T14:32:10.123456Z
+        generadaPor:
+          type: integer
+          format: int64
+          description: Cuenta que anulo la obligacion
+          example: 42
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la alerta
+          example: 31
+        motivoOrigen:
+          type: string
+          description: Motivo con que se anulo la obligacion. Null si no se declaro
+        movimientoId:
+          type: integer
+          format: int64
+          description: El movimiento CONSUMO del ledger que hay que revisar
+          example: 9001
+        obligacionId:
+          type: integer
+          format: int64
+          description: Primera obligacion cuya anulacion genero la alerta
+          example: 5120
+        pendiente:
+          type: boolean
+          description: Sin resolver todavia
+          example: true
+        resolucion:
+          type: string
+          description: "Como se resolvio. REVERTIDO: se revirtio el consumo. Null\
+            \ si esta pendiente"
+          enum:
+          - REVERTIDO
+          example: REVERTIDO
+        resueltaEn:
+          type: string
+          format: date-time
+          description: Instante UTC de la resolucion. Null si esta pendiente
+        resueltaPor:
+          type: integer
+          format: int64
+          description: Cuenta que la resolvio. Null si esta pendiente
+          example: 42
+        sesionId:
+          type: integer
+          format: int64
+          description: Sesion que consumio
+          example: 3312
+        tipo:
+          type: string
+          description: "Que clase de alerta es. CONSUMO_A_REVISAR: se anulo la obligacion\
+            \ de una sesion que consumio esta autorizacion (DP-13)"
+          enum:
+          - CONSUMO_A_REVISAR
+          example: CONSUMO_A_REVISAR
     AntecedenteResponse:
       type: object
       description: Antecedente clinico de una historia (RF-M09-002)
@@ -28507,6 +28621,13 @@ components:
           format: int32
           description: Consumidas recalculadas desde el ledger. Tiene que coincidir
           example: 4
+        consumosARevisar:
+          type: integer
+          format: int32
+          description: "Alertas 'consumo a revisar' PENDIENTES: consumos de sesiones\
+            \ cuya obligacion se anulo (DP-13). No mueven el saldo; se resuelven revirtiendo\
+            \ el consumo. El detalle esta en GET /alertas"
+          example: 0
         diasParaVencer:
           type: integer
           format: int64

@@ -136,7 +136,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V73` | E-5 | **Vacía / liberada**: E-5 la reservó y entró sin migración (`notification_outbox.tipo` es `VARCHAR(40)` sin CHECK). No se reusa |
 | `V74` | E-3 | **Usada**: `V74__m12_serie_de_turnos.sql` (nació como `V70` y se renumeró al integrar: `V71` ya estaba en `main` y Flyway corre sin `outOfOrder`) — tabla `turno_serie` (regla semanal, idempotencia) y `turno.serie_id` nullable con `fk_turno_turno_serie` e `ix_turno_serie_inicio` |
 | `V75` | A-9 | **Usada**: `V75__m27_oferta_practica.sql` — tabla `oferta_practica` (DP-11) con práctica principal sostenida por `uk_oferta_practica_principal` |
-| `V76` | C-4 | Consumo de autorizaciones (DP-12, DP-13), si la necesita |
+| `V76` | C-4 | **Usada**: `V76__c4_autorizacion_alerta_consumo_a_revisar.sql` — tabla `autorizacion_alerta` (DP-13) e índice `ix_movimiento_origen` en `autorizacion_movimiento` |
 | `V77`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
 
 ## 7. Paquetes de trabajo
@@ -200,7 +200,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | A-10 | UI de impacto de desvinculación y preview de turnos al editar disponibilidad | web | M | E-1 | F2 |
 | B-3 | Cobertura aplicable por oferta (RF-M08-006/007); arancel por oferta; importación masiva de convenio | api + web | L | A-9 | F3 |
 | B-4 | Historial de estados de autorización (`V68`); estado de la orden médica | api | M | DU-8 | F3 |
-| C-4 | 04.05: `RESERVA`/`LIBERACION_DE_RESERVA`, reversión del consumo, validar cobertura y caso | api | M | DU-4, DU-7, B-2 | F4 |
+| ~~C-4~~ | ~~04.05: `RESERVA`/`LIBERACION_DE_RESERVA`, reversión del consumo, validar cobertura y caso~~ — hecho en el backend (`V76`, contrato 0.59.0): DP-12 una unidad por autorización involucrada, DP-13 alerta "consumo a revisar" al anular la deuda, cobertura vigente y caso al consumir. `RESERVA` queda afuera: ningún RF dice cuándo se reserva (`docs/diseno/AKINE-C-4-consumo.md`) | api | M | DU-4, DU-7, B-2 | F4 |
 | C-6 | Enmiendas que versionan tratamientos y mediciones (`V71`) + permiso reforzado; `X-Justificacion-Acceso` en `encounter` | api | M | C-7 | F6 |
 | C-8 | 06.01 atención sin turno y reemplazo del profesional; 06.03 subbloques ROM/fuerza/marcha | api | L | DU-11 | F6 |
 | D-e | Entrada a la HC desde el Paciente 360 + E2E de acceso clínico permitido/denegado | web | M | C-2 | F4 |

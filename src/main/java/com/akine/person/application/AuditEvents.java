@@ -137,6 +137,13 @@ final class AuditEvents {
 	 */
 	static final String AUTORIZACION_CONSUMO_REVERTIDO = "AUTORIZACION_CONSUMO_REVERTIDO";
 
+	/**
+	 * Se anulo la obligacion de una sesion que consumio esta autorizacion, y el consumo quedo
+	 * marcado para revisar (DP-13, RN-M17-003, AKINE C-4). <b>No movio el saldo.</b> Va en la
+	 * transaccion de la anulacion.
+	 */
+	static final String AUTORIZACION_CONSUMO_A_REVISAR = "AUTORIZACION_CONSUMO_A_REVISAR";
+
 	static final String ENTITY_AUTORIZACION = "Autorizacion";
 
 	private static final String MDC_TRACE_ID = "traceId";

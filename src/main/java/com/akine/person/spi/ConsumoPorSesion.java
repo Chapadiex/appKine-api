@@ -22,6 +22,10 @@ import java.util.Set;
  * @param practicasRealizadas ids de las practicas de M06 efectivamente aplicadas (AKINE-06.04).
  *                       <b>Acota contra que autorizaciones se puede imputar.</b> Vacio significa
  *                       "no se sabe", NO "ninguna": ver abajo
+ * @param autorizacionesDeOtroCaso autorizaciones atadas a planes de OTRO caso de la misma historia
+ *                       y no a uno del caso de la sesion (AKINE C-4, RF-M17-007 "no reutilizar
+ *                       autorizacion de otro Caso"). Se excluyen del consumo. Vacio si la sesion
+ *                       no tiene caso: ver docs/diseno/AKINE-C-4-consumo.md §5
  */
 public record ConsumoPorSesion(
 		long organizationId,
@@ -31,7 +35,8 @@ public record ConsumoPorSesion(
 		LocalDate fecha,
 		int cantidad,
 		Long actorCuentaId,
-		Set<Long> practicasRealizadas) {
+		Set<Long> practicasRealizadas,
+		Set<Long> autorizacionesDeOtroCaso) {
 
 	/**
 	 * <b>AKINE-06.04 agrega {@code practicasRealizadas} y con eso cierra el defecto que 04.05 dejo
@@ -54,5 +59,22 @@ public record ConsumoPorSesion(
 	 */
 	public ConsumoPorSesion {
 		practicasRealizadas = practicasRealizadas == null ? Set.of() : Set.copyOf(practicasRealizadas);
+		autorizacionesDeOtroCaso = autorizacionesDeOtroCaso == null
+				? Set.of() : Set.copyOf(autorizacionesDeOtroCaso);
+	}
+
+	/** Sin restriccion de caso: la forma de 06.04, para sesiones sin caso. */
+	@SuppressWarnings("java:S107")
+	public ConsumoPorSesion(
+			long organizationId,
+			long personaId,
+			Long consultorioId,
+			long sesionId,
+			LocalDate fecha,
+			int cantidad,
+			Long actorCuentaId,
+			Set<Long> practicasRealizadas) {
+		this(organizationId, personaId, consultorioId, sesionId, fecha, cantidad, actorCuentaId,
+				practicasRealizadas, Set.of());
 	}
 }

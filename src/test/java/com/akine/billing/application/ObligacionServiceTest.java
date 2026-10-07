@@ -13,6 +13,8 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.person.spi.AlertasDeConsumo;
+import com.akine.person.spi.ConsumoARevisar;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -100,6 +102,7 @@ class ObligacionServiceTest {
 	@Mock private ObligacionRepositoryPort obligaciones;
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
+	@Mock private AlertasDeConsumo alertasDeConsumo;
 
 	private ObligacionService service;
 
@@ -107,7 +110,7 @@ class ObligacionServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new ObligacionService(obligaciones, consultorios, permissionGuard);
+		service = new ObligacionService(obligaciones, consultorios, permissionGuard, alertasDeConsumo);
 
 		given(consultorios.find(ORG, SEDE)).willReturn(Optional.of(
 				new ConsultorioSnapshot(SEDE, ORG, "Sede Centro", "America/Argentina/Cordoba", true)));
@@ -310,6 +313,23 @@ class ObligacionServiceTest {
 		}
 
 		@Test
+		@DisplayName("anular la deuda de una sesion alerta sus consumos de autorizacion (DP-13)")
+		void anular_alerta_el_consumo() {
+			Obligacion obligacion = pendiente(SEDE, "8500.00");
+			given(obligaciones.findByIdInScope(ORG, SEDE, OBLIGACION)).willReturn(Optional.of(obligacion));
+
+			service.anular(administrativo, SEDE, OBLIGACION, "Cortesia", 0L);
+
+			ArgumentCaptor<ConsumoARevisar> hecho = ArgumentCaptor.forClass(ConsumoARevisar.class);
+			verify(alertasDeConsumo).consumoARevisar(hecho.capture());
+			assertThat(hecho.getValue().organizationId()).isEqualTo(ORG);
+			assertThat(hecho.getValue().sesionId()).isEqualTo(SESION);
+			assertThat(hecho.getValue().obligacionId()).isEqualTo(OBLIGACION);
+			assertThat(hecho.getValue().motivo()).isEqualTo("Cortesia");
+			assertThat(hecho.getValue().actorCuentaId()).isEqualTo(CUENTA);
+		}
+
+		@Test
 		@DisplayName("una version distinta de la leida es 409 de concurrencia y no persiste nada")
 		void version_vieja_no_anula() {
 			Obligacion obligacion = pendiente(SEDE, "8500.00");
@@ -326,6 +346,7 @@ class ObligacionServiceTest {
 
 			assertThat(obligacion.getEstado()).isEqualTo(EstadoObligacion.PENDIENTE);
 			verify(obligaciones, never()).save(any());
+			verifyNoInteractions(alertasDeConsumo);
 		}
 
 		@Test

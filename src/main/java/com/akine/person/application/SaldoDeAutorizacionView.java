@@ -30,6 +30,7 @@ import java.util.List;
  * @param saldoSegunElLedger lo mismo, recalculado desde los movimientos. {@code null} sin tope
  * @param coherente          las dos cuentas coinciden
  * @param habilita           el veredicto completo: activa, APROBADA, vigente y con saldo
+ * @param consumosARevisar   alertas "consumo a revisar" pendientes (DP-13, AKINE C-4)
  */
 public record SaldoDeAutorizacionView(
 		long autorizacionId,
@@ -46,10 +47,12 @@ public record SaldoDeAutorizacionView(
 		boolean agotada,
 		boolean habilita,
 		Long diasParaVencer,
-		int movimientos) {
+		int movimientos,
+		int consumosARevisar) {
 
 	public static SaldoDeAutorizacionView de(
-			Autorizacion autorizacion, List<AutorizacionMovimiento> ledger, LocalDate fecha) {
+			Autorizacion autorizacion, List<AutorizacionMovimiento> ledger, LocalDate fecha,
+			int consumosARevisar) {
 
 		// El signo lo da el tipo, nunca el numero: ver TipoMovimientoAutorizacion. La suma de los
 		// efectos es negativa cuando se gasto, asi que lo consumido es su opuesto.
@@ -75,6 +78,7 @@ public record SaldoDeAutorizacionView(
 				autorizacion.agotada(),
 				autorizacion.habilitaEl(fecha),
 				autorizacion.diasParaVencer(fecha),
-				ledger.size());
+				ledger.size(),
+				consumosARevisar);
 	}
 }

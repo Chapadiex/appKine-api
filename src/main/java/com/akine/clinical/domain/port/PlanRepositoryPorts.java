@@ -1,5 +1,6 @@
 package com.akine.clinical.domain.port;
 
+import com.akine.clinical.domain.AutorizacionVinculadaACaso;
 import com.akine.clinical.domain.PlanEvento;
 import com.akine.clinical.domain.PlanItem;
 import com.akine.clinical.domain.PlanTratamiento;
@@ -153,6 +154,14 @@ public final class PlanRepositoryPorts {
 		 * (RN-M11-003).
 		 */
 		void borrarDeVersionEnBorrador(Long organizationId, Long planTratamientoVersionId);
+
+		/**
+		 * Autorizaciones atadas a items de planes de los casos de una historia clinica, con el caso
+		 * de cada plan (AKINE C-4, RF-M17-007).
+		 * Todas las versiones y todos los estados del plan: la autorizacion ya se ato a ese caso.
+		 */
+		List<AutorizacionVinculadaACaso> autorizacionesConCasoDeLaHistoria(
+				Long organizationId, Long historiaClinicaId);
 	}
 
 	/**

@@ -25,6 +25,10 @@ import java.util.Set;
  * @param practicasRealizadas ids de las practicas de M06 efectivamente aplicadas en la atencion
  *                           (AKINE-06.04). <b>Vacio significa "no se sabe", NO "ninguna"</b>: ver
  *                           abajo
+ * @param casoId             caso clinico de la sesion, o {@code null} si la sesion no tiene caso
+ *                           (AKINE C-4). Lo necesita el consumo de autorizaciones para no gastar
+ *                           una autorizacion atada a otro caso (RF-M17-007). Es un id, no dato
+ *                           clinico
  */
 public record SesionCerrada(
 		long sesionId,
@@ -38,7 +42,8 @@ public record SesionCerrada(
 		Long cerradaPorCuentaId,
 		BigDecimal precioDeLaOferta,
 		String moneda,
-		Set<Long> practicasRealizadas) {
+		Set<Long> practicasRealizadas,
+		Long casoId) {
 
 	/**
 	 * <b>AKINE-06.04 agrega {@code practicasRealizadas}, y es lo que cierra el defecto que 04.05
@@ -62,5 +67,24 @@ public record SesionCerrada(
 	 */
 	public SesionCerrada {
 		practicasRealizadas = practicasRealizadas == null ? Set.of() : Set.copyOf(practicasRealizadas);
+	}
+
+	/** Sin caso: la forma anterior a AKINE C-4. */
+	@SuppressWarnings("java:S107")
+	public SesionCerrada(
+			long sesionId,
+			long organizationId,
+			long consultorioId,
+			long personaId,
+			long ofertaId,
+			int numeroSesion,
+			boolean asistio,
+			Instant cerradaEn,
+			Long cerradaPorCuentaId,
+			BigDecimal precioDeLaOferta,
+			String moneda,
+			Set<Long> practicasRealizadas) {
+		this(sesionId, organizationId, consultorioId, personaId, ofertaId, numeroSesion, asistio,
+				cerradaEn, cerradaPorCuentaId, precioDeLaOferta, moneda, practicasRealizadas, null);
 	}
 }

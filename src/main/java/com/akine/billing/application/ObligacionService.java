@@ -8,6 +8,8 @@ import com.akine.billing.domain.port.ObligacionRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.person.spi.AlertasDeConsumo;
+import com.akine.person.spi.ConsumoARevisar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
@@ -40,15 +42,18 @@ public class ObligacionService {
 	private final ObligacionRepositoryPort obligaciones;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
+	private final AlertasDeConsumo alertasDeConsumo;
 
 	public ObligacionService(
 			ObligacionRepositoryPort obligaciones,
 			ConsultorioDirectory consultorios,
-			PermissionGuard permissionGuard) {
+			PermissionGuard permissionGuard,
+			AlertasDeConsumo alertasDeConsumo) {
 
 		this.obligaciones = obligaciones;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
+		this.alertasDeConsumo = alertasDeConsumo;
 	}
 
 	/**
@@ -110,9 +115,20 @@ public class ObligacionService {
 							+ expectedVersion + " contra " + obligacion.getVersion());
 		}
 
-		obligacion.anular(motivo, Instant.now(), actor.accountId());
+		Instant ahora = Instant.now();
+		obligacion.anular(motivo, ahora, actor.accountId());
 		log.info("Obligacion anulada: obligacionId={} motivo={}", obligacionId, motivo);
-		return ObligacionView.de(obligaciones.save(obligacion));
+		Obligacion anulada = obligaciones.save(obligacion);
+
+		// DP-13 (AKINE C-4). Si la sesion de esta deuda consumio autorizaciones, quedan alertadas
+		// "consumo a revisar". NO se devuelve la unidad: anular la deuda no prueba que la
+		// prestacion no ocurrio. Misma transaccion: si la anulacion no commitea, no hay alerta.
+		if (anulada.getSesionId() != null) {
+			alertasDeConsumo.consumoARevisar(new ConsumoARevisar(
+					organizationId, anulada.getSesionId(), anulada.getId(), motivo, ahora,
+					actor.accountId()));
+		}
+		return ObligacionView.de(anulada);
 	}
 
 	// =================================================================================

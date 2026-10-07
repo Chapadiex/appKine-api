@@ -99,6 +99,32 @@ public record ResultadoDeConsumo(
 		return new ResultadoDeConsumo(SIN_AUTORIZACION_PARA_LA_PRACTICA, null, null, null);
 	}
 
+	/**
+	 * Habia autorizaciones que habilitaban, y <b>ninguna tiene su cobertura vigente</b> el dia de la
+	 * atencion (AKINE C-4): la cobertura del paciente bajo la que se otorgo esta dada de baja,
+	 * vencida o todavia no empezo. RF-M17-004 pide validar la "vigencia de referencias".
+	 *
+	 * <p>Mismo tratamiento que los demas: no se consume y el cierre clinico sigue (DP-06).
+	 */
+	public static final String SIN_COBERTURA_VIGENTE = "SIN_COBERTURA_VIGENTE";
+
+	/**
+	 * Las autorizaciones que habilitaban estan atadas a planes de OTRO caso clinico del paciente
+	 * (AKINE C-4, RF-M17-007: "no reutilizar autorizacion de otro Caso"). No se consume y el
+	 * cierre sigue.
+	 */
+	public static final String AUTORIZACION_DE_OTRO_CASO = "AUTORIZACION_DE_OTRO_CASO";
+
+	/** Ver {@link #AUTORIZACION_DE_OTRO_CASO}. */
+	public static ResultadoDeConsumo autorizacionDeOtroCaso() {
+		return new ResultadoDeConsumo(AUTORIZACION_DE_OTRO_CASO, null, null, null);
+	}
+
+	/** Ver {@link #SIN_COBERTURA_VIGENTE}. */
+	public static ResultadoDeConsumo sinCoberturaVigente() {
+		return new ResultadoDeConsumo(SIN_COBERTURA_VIGENTE, null, null, null);
+	}
+
 	public static ResultadoDeConsumo sinSaldo(long autorizacionId) {
 		return new ResultadoDeConsumo(SIN_SALDO, autorizacionId, null, null);
 	}

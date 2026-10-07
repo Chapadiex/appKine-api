@@ -42,10 +42,17 @@ los registros**. Es deuda documentada que quedó huérfana.
   `RelacionAsistencialSinAgenda`, que devuelve `false` siempre → **toda** lectura clínica exige
   justificación, para siempre.
 - [ ] Lectura limitada para `ADMINISTRATIVO`.
-- [ ] 04.05: los tipos `RESERVA` / `LIBERACION_DE_RESERVA` existen en el CHECK de `V50` y ningún
-  camino los emite.
-- [ ] 04.05: reversión automática del consumo ante sesión anulada (hoy manual).
-- [ ] 04.05: validar cobertura y caso al consumir.
+- [x] 04.05: los tipos `RESERVA` / `LIBERACION_DE_RESERVA` existen en el CHECK de `V50` y ningún
+  camino los emite. *No aplica (C-4): ningún RF de M17, M12 ni M13 dice cuándo se reserva una
+  unidad, y el plan de 04.05 dice "reservar si la regla lo exige". Quedan en el modelo, sin emisor.
+  Ver `docs/diseno/AKINE-C-4-consumo.md` §6.*
+- [x] 04.05: ~~reversión automática del consumo ante sesión anulada (hoy manual)~~. *Resuelto por
+  DP-13 (C-4): la reversión sigue manual y anular la obligación de la sesión deja una alerta
+  "consumo a revisar" (`autorizacion_alerta`, `V76`, `GET /autorizaciones/{id}/alertas`) sin tocar
+  el saldo; revertir el consumo la resuelve.*
+- [x] 04.05: validar cobertura y caso al consumir. *C-4: la cobertura de la autorización tiene que
+  estar vigente el día de la atención, y no se consume una autorización atada al plan de otro caso
+  (RF-M17-007). Además DP-12: una unidad por autorización involucrada.*
 - [x] 04.04: el plan puede activarse sin ítems.
 - [x] 04.03: unique de caso activo (RN-M10-002); `EstadoCaso` solo tiene `ACTIVO`/`CERRADO`. *No aplica: RN-M10-002 admite varios casos activos; ver V47 y docs/diseno/AKINE-04.03-challenge.md. Tampoco se agrega otro estado: M10 solo pide `ACTIVO` y `CERRADO` (RF-M10-002 "activos primero y luego cerrados", RF-M10-005 "estado CERRADO"; no define ningún otro).*
 - [ ] Gate RF-M10-007 (exigir caso al reservar o atender): etapa propia con ventana de migración.
@@ -82,7 +89,8 @@ los registros**. Es deuda documentada que quedó huérfana.
 ## Decisiones del usuario que bloquean
 
 - Puente Oferta↔Práctica (compartida con [F2](F2-operacion-del-consultorio.md)).
-- Reversión del consumo ante sesión anulada: automática o manual.
+- ~~Reversión del consumo ante sesión anulada: automática o manual.~~ Resuelta: DP-13 (manual con
+  alerta), implementada en C-4.
 
 ## Para cerrar la fase
 

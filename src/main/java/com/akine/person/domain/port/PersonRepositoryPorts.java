@@ -2,6 +2,7 @@ package com.akine.person.domain.port;
 
 import com.akine.person.domain.AdjuntoAdministrativo;
 import com.akine.person.domain.Autorizacion;
+import com.akine.person.domain.AutorizacionAlerta;
 import com.akine.person.domain.AutorizacionMovimiento;
 import com.akine.person.domain.AutorizacionPersonaLock;
 import com.akine.person.domain.TipoMovimientoAutorizacion;
@@ -13,6 +14,7 @@ import com.akine.person.domain.PerfilPaciente;
 import com.akine.person.domain.Persona;
 import com.akine.person.domain.TipoDocumento;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -427,6 +429,59 @@ public final class PersonRepositoryPorts {
 		 */
 		List<AutorizacionMovimiento> listarDeAutorizacion(
 				Long organizationId, Long autorizacionId);
+
+		/**
+		 * Todos los movimientos de un hecho de origen, de CUALQUIER autorizacion (AKINE C-4).
+		 *
+		 * <p>Es la pregunta "que dejo esta sesion en el ledger", y sirve para dos cosas: que el
+		 * re-disparo de un cierre no consuma otra autorizacion por la misma practica (DP-12), y
+		 * saber que consumos alertar cuando se anula la deuda de la sesion (DP-13).
+		 */
+		List<AutorizacionMovimiento> listarDeOrigen(
+				Long organizationId, TipoOrigenMovimiento tipoOrigen, Long referenciaOrigen);
+	}
+
+	/**
+	 * Alertas sobre autorizaciones que nacen de hechos de otros modulos (DP-13, AKINE C-4).
+	 *
+	 * <p><b>Ni {@code save} ni {@code delete}.</b> Se inserta con un {@code INSERT ... ON
+	 * DUPLICATE KEY UPDATE} —una alerta por consumo, idempotente y sin choque ante dos
+	 * anulaciones concurrentes— y se resuelve con un {@code UPDATE} condicional. Una alerta no se
+	 * borra: se resuelve.
+	 */
+	public interface AutorizacionAlertaRepositoryPort {
+
+		/**
+		 * Registra la alerta si ese consumo todavia no tiene una del mismo tipo. Si ya la tiene,
+		 * no hace nada y no lanza.
+		 *
+		 * <p>No devuelve filas afectadas a proposito: con el {@code CLIENT_FOUND_ROWS} que
+		 * Connector/J activa por defecto, el no-op del {@code ON DUPLICATE KEY UPDATE} informa 1
+		 * igual que una insercion, asi que el numero no distingue nada.
+		 */
+		@SuppressWarnings("java:S107")
+		void registrarSiFalta(
+				long organizationId,
+				long autorizacionId,
+				long personaId,
+				long movimientoId,
+				String tipo,
+				long sesionId,
+				long obligacionId,
+				String motivoOrigen,
+				Instant generadaEn,
+				Long generadaPor);
+
+		/** Marca resuelta la alerta PENDIENTE de ese consumo, si la hay. */
+		int resolverDelMovimiento(
+				long organizationId,
+				long movimientoId,
+				String resolucion,
+				Instant resueltaEn,
+				Long resueltaPor);
+
+		/** Las alertas de una autorizacion, de la mas vieja a la mas nueva. */
+		List<AutorizacionAlerta> listarDeAutorizacion(long organizationId, long autorizacionId);
 	}
 
 	/**
