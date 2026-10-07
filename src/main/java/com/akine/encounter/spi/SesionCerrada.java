@@ -29,6 +29,10 @@ import java.util.Set;
  *                           (AKINE C-4). Lo necesita el consumo de autorizaciones para no gastar
  *                           una autorizacion atada a otro caso (RF-M17-007). Es un id, no dato
  *                           clinico
+ * @param ofertaAdmiteObraSocial si la oferta se le puede facturar a un financiador (M27,
+ *                           AKINE F-4). Se lee en el mismo punto que el precio y por la misma
+ *                           razon: dos observadores no pueden ver dos ofertas distintas.
+ *                           {@code false} en las formas anteriores a F-4, que no buscan cobertura
  */
 public record SesionCerrada(
 		long sesionId,
@@ -43,7 +47,8 @@ public record SesionCerrada(
 		BigDecimal precioDeLaOferta,
 		String moneda,
 		Set<Long> practicasRealizadas,
-		Long casoId) {
+		Long casoId,
+		boolean ofertaAdmiteObraSocial) {
 
 	/**
 	 * <b>AKINE-06.04 agrega {@code practicasRealizadas}, y es lo que cierra el defecto que 04.05
@@ -86,5 +91,26 @@ public record SesionCerrada(
 			Set<Long> practicasRealizadas) {
 		this(sesionId, organizationId, consultorioId, personaId, ofertaId, numeroSesion, asistio,
 				cerradaEn, cerradaPorCuentaId, precioDeLaOferta, moneda, practicasRealizadas, null);
+	}
+
+	/** Con caso y sin el dato de obra social: la forma anterior a AKINE F-4. */
+	@SuppressWarnings("java:S107")
+	public SesionCerrada(
+			long sesionId,
+			long organizationId,
+			long consultorioId,
+			long personaId,
+			long ofertaId,
+			int numeroSesion,
+			boolean asistio,
+			Instant cerradaEn,
+			Long cerradaPorCuentaId,
+			BigDecimal precioDeLaOferta,
+			String moneda,
+			Set<Long> practicasRealizadas,
+			Long casoId) {
+		this(sesionId, organizationId, consultorioId, personaId, ofertaId, numeroSesion, asistio,
+				cerradaEn, cerradaPorCuentaId, precioDeLaOferta, moneda, practicasRealizadas, casoId,
+				false);
 	}
 }
