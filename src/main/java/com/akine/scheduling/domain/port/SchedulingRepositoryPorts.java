@@ -3,6 +3,7 @@ package com.akine.scheduling.domain.port;
 import com.akine.scheduling.domain.AgendaSede;
 import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.TurnoEvento;
+import com.akine.scheduling.domain.TurnoSerie;
 
 import java.time.Instant;
 import java.util.List;
@@ -139,6 +140,12 @@ public final class SchedulingRepositoryPorts {
 		 */
 		List<Turno> findDeLaPersona(long organizationId, long personaId, int limite);
 
+		/**
+		 * Los turnos de una serie, del mas temprano al mas tarde por su horario ACTUAL (AKINE E-3).
+		 * Todos, vivos o no: el alcance decide cuales se tocan y cuales se informan como omitidos.
+		 */
+		List<Turno> findDeLaSerie(long organizationId, long serieId);
+
 		// -----------------------------------------------------------------------------
 		// Sondas de impacto de F2 (paquete E-1)
 		// -----------------------------------------------------------------------------
@@ -184,5 +191,15 @@ public final class SchedulingRepositoryPorts {
 
 		/** Los eventos de un turno, del mas viejo al mas nuevo. */
 		List<TurnoEvento> historial(long organizationId, long turnoId);
+	}
+
+	/** Reglas de serie de turnos (AKINE E-3). Sin {@code delete}: una serie no se borra nunca. */
+	public interface TurnoSerieRepositoryPort {
+
+		TurnoSerie save(TurnoSerie serie);
+
+		Optional<TurnoSerie> findByIdInScope(long organizationId, long consultorioId, long serieId);
+
+		Optional<TurnoSerie> findByIdempotencyKey(long organizationId, String idempotencyKey);
 	}
 }

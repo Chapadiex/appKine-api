@@ -2,6 +2,8 @@ package com.akine.scheduling.api;
 
 import com.akine.platform.spi.problem.ProblemType;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
+import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.application.IdempotencyKeyConflictException;
 import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
@@ -220,6 +222,38 @@ public class SchedulingProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(IDEMPOTENCY_KEY_CONFLICT);
 		problem.setTitle("La clave de idempotencia se reuso con otro pedido");
+		return problem;
+	}
+
+	// =================================================================================
+	// Series de turnos — AKINE E-3
+	// =================================================================================
+
+	@ExceptionHandler(SerieNotAccessibleException.class)
+	public ProblemDetail handleSerieNoAccesible(SerieNotAccessibleException exception) {
+		log.debug("Serie de turnos no accesible: serieId={}", exception.getSerieId());
+		return noEncontrado("La serie de turnos no existe.");
+	}
+
+	/**
+	 * Una ocurrencia sin lugar: el problema de la CAUSA, con {@code ocurrenciaInicio} agregado.
+	 *
+	 * <p>No se publica un tipo nuevo: para la pantalla la accion es la misma que en una reserva
+	 * suelta —recargar, ofrecer otro horario, elegir otro profesional—, con una fecha mas para
+	 * mostrar. Reusar los handlers de arriba garantiza que el cuerpo sea identico al de la reserva.
+	 */
+	@ExceptionHandler(OcurrenciaSinLugarException.class)
+	public ProblemDetail handleOcurrenciaSinLugar(OcurrenciaSinLugarException exception) {
+		ProblemDetail problem = switch (exception.getCausa()) {
+			case SlotNoDisponibleException causa -> handleSlotNoDisponible(causa);
+			case SlotCompletoException causa -> handleSlotCompleto(causa);
+			case RecursoOcupadoException causa -> handleRecursoOcupado(causa);
+			case OfertaNoAgendableException causa -> handleOfertaNoAgendable(causa);
+			default -> throw new IllegalStateException(
+					"Causa no prevista para una ocurrencia sin lugar", exception.getCausa());
+		};
+		problem.setDetail(exception.getMessage());
+		problem.setProperty("ocurrenciaInicio", exception.getOcurrenciaInicio().toString());
 		return problem;
 	}
 

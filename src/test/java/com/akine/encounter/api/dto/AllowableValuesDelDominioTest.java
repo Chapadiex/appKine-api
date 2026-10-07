@@ -4,6 +4,8 @@ import com.akine.encounter.domain.Asistencia;
 import com.akine.encounter.domain.EstadoSesion;
 import com.akine.encounter.domain.Evolucion;
 import com.akine.encounter.domain.Lateralidad;
+import com.akine.encounter.domain.LateralidadMedicion;
+import com.akine.resource.spi.MedicionTipo;
 import com.akine.encounter.domain.ModoSesion;
 import com.akine.encounter.domain.ProximaConducta;
 import com.akine.encounter.domain.Tolerancia;
@@ -51,7 +53,10 @@ class AllowableValuesDelDominioTest {
 			Map.entry("SesionVersionResponse.evolucion", Evolucion.class),
 			Map.entry("SesionVersionResponse.tolerancia", Tolerancia.class),
 			Map.entry("SesionVersionResponse.proximaConducta", ProximaConducta.class),
-			Map.entry("TratamientoResponse.lateralidad", Lateralidad.class));
+			Map.entry("TratamientoResponse.lateralidad", Lateralidad.class),
+			Map.entry("TratamientoEnVersionResponse.lateralidad", Lateralidad.class),
+			Map.entry("MedicionEnVersionResponse.tipo", MedicionTipo.class),
+			Map.entry("MedicionEnVersionResponse.lateralidad", LateralidadMedicion.class));
 
 	@Test
 	@DisplayName("Los allowableValues de encounter coinciden exactamente con su enum de dominio")

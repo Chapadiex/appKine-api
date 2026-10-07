@@ -321,10 +321,18 @@ locales**: el barrido de contención no dejó ninguna afuera. F0 a F7 completas 
 | Módulos | **14**: los doce anteriores más **`reporting`** (M23, 07.06) y **`activity`** (M28/M29, F9) |
 | Migraciones | **V1–V64**, menos `V26`, `V29`, `V31` y `V62`, que quedaron vacías. `V45`–`V64` se aplicaron **contra un motor por primera vez** el 29/09 |
 | Tests | **2.349 unitarias + 437 de integración**, 0 fallos, 1 diferida (7b). `./mvnw verify` en **13:03 min** |
-| Cobertura | instrucción **71,15 %** · línea **73,03 %** · rama **63,46 %**. El gate bajó de `0.80` a **`0.73` línea / `0.71` instrucción** — ver abajo |
+| Cobertura | **06/10/2026:** instrucción **86,11 %** · línea **87,36 %** · rama **74,48 %**, sobre 3.044 unitarias + 602 de integración. El gate **volvió a `0.80`** en línea e instrucción — ver abajo. (29/09: 71,15 % · 73,03 % · 63,46 %, gate en 0,73/0,71) |
 | Docker | **Funciona** (29.2.0). Era el bloqueo que mandaba sobre todo desde el 19/09 |
 
 #### El gate de cobertura bajó, y es deuda, no una decisión de calidad
+
+> **Saldado el 06/10/2026 (G-11).** `./mvnw -o verify` sobre `main` (`d110aaf`) midió el BUNDLE en
+> **línea 87,36 % · instrucción 86,11 % · rama 74,48 %**, con 3.044 unitarias y 602 de integración
+> en verde (1 diferida, la 7b). Los tres módulos que lo habían hundido están arriba: `billing`
+> 85,75 % de línea, `encounter` 97,05 %, `activity` 96,39 %. El gate volvió a **`0.80` en línea e
+> instrucción** —el tope que fija el plan, aunque lo medido da más—. Los módulos que hoy quedan más
+> abajo son **`reporting` 54,24 %**, `clinical` 74,40 % y `offering` 77,51 % de línea. `BRANCH`
+> sigue sin gate: 74,48 % es decisión pendiente. Lo que sigue es la historia del 29/09.
 
 No bajó por la integración: bajó porque entraron diez etapas cuya cobertura **nunca se había
 medido**, porque `jacoco:check` corre en `verify` y Docker estuvo caído todo ese tramo. El faltante

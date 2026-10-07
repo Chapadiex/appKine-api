@@ -3,6 +3,8 @@ package com.akine.scheduling.api;
 import com.akine.platform.spi.problem.ProblemType;
 import com.akine.scheduling.application.IdempotencyKeyConflictException;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
+import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
 import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -196,6 +199,35 @@ class SchedulingProblemHandlerTest {
 
 			assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
 			assertThat(problem.getType()).isEqualTo(ProblemType.IDEMPOTENCY_KEY_CONFLICT.uri());
+		}
+	}
+
+	@Nested
+	@DisplayName("Series de turnos (E-3)")
+	class Series {
+
+		@Test
+		@DisplayName("Una serie de otro tenant es 404 con el type generico")
+		void serie_inalcanzable() {
+			ProblemDetail problem = handler.handleSerieNoAccesible(new SerieNotAccessibleException(12L));
+
+			assertThat(problem.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+			assertThat(problem.getType()).isEqualTo(ProblemType.NOT_FOUND.uri());
+		}
+
+		@Test
+		@DisplayName("Una ocurrencia sin lugar conserva el type de la causa y nombra el dia")
+		void ocurrencia_sin_lugar() {
+			Instant lunes = Instant.parse("2027-03-15T12:00:00Z");
+
+			ProblemDetail problem = handler.handleOcurrenciaSinLugar(
+					new OcurrenciaSinLugarException(lunes, new RecursoOcupadoException("profesional")));
+
+			assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+			assertThat(problem.getType()).isEqualTo(ProblemType.RECURSO_OCUPADO.uri());
+			assertThat(problem.getProperties())
+					.containsEntry("recurso", "profesional")
+					.containsEntry("ocurrenciaInicio", "2027-03-15T12:00:00Z");
 		}
 	}
 }

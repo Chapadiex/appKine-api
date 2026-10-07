@@ -16,6 +16,7 @@ import com.akine.encounter.domain.exception.MedicionDefinicionNoAccesibleExcepti
 import com.akine.encounter.domain.exception.MedicionFueraDeRangoException;
 import com.akine.encounter.domain.exception.MedicionNoAccesibleException;
 import com.akine.encounter.domain.exception.MedicionTipoIncompatibleException;
+import com.akine.encounter.domain.exception.EnmiendaCambiaPracticasException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
 import com.akine.encounter.domain.exception.SesionCerradaException;
 import com.akine.encounter.domain.exception.SesionNoCerradaException;
@@ -53,6 +54,8 @@ public class EncounterProblemHandler {
 	private static final URI SESION_CERRADA = ProblemType.SESION_CERRADA.uri();
 	private static final URI SESION_NO_CERRADA = ProblemType.SESION_NO_CERRADA.uri();
 	private static final URI ENMIENDA_SIN_MOTIVO = ProblemType.ENMIENDA_SIN_MOTIVO.uri();
+	private static final URI ENMIENDA_CAMBIA_PRACTICAS =
+			ProblemType.ENMIENDA_CAMBIA_PRACTICAS.uri();
 	private static final URI CASO_NO_ACCESIBLE = ProblemType.CASO_CLINICO_NO_ACCESIBLE.uri();
 	private static final URI CASO_CERRADO = ProblemType.CASO_CLINICO_CERRADO.uri();
 	private static final URI MEDICION_DEFINICION_NO_ACCESIBLE =
@@ -199,6 +202,21 @@ public class EncounterProblemHandler {
 	 * "reintentar" donde lo que corresponde es "completa el motivo", y reintentar sin motivo
 	 * vuelve a fallar exactamente igual.
 	 */
+	/**
+	 * <b>409.</b> La enmienda cambiaria que practicas se realizaron (C-6).
+	 *
+	 * <p>Conflicto de estado y no dato faltante: el pedido es valido en si, lo que lo impide es que
+	 * el cierre ya consumio una autorizacion eligiendola por esas practicas.
+	 */
+	@ExceptionHandler(EnmiendaCambiaPracticasException.class)
+	public ProblemDetail handleEnmiendaCambiaPracticas(EnmiendaCambiaPracticasException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(ENMIENDA_CAMBIA_PRACTICAS);
+		problem.setTitle("La enmienda no puede cambiar las practicas realizadas");
+		return problem;
+	}
+
 	@ExceptionHandler(EnmiendaSinMotivoException.class)
 	public ProblemDetail handleEnmiendaSinMotivo(EnmiendaSinMotivoException exception) {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(

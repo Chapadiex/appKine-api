@@ -1,6 +1,7 @@
 package com.akine.encounter.application;
 
 import com.akine.encounter.domain.LateralidadMedicion;
+import com.akine.encounter.domain.MedicionEnmendada;
 import com.akine.encounter.domain.PermissionCodes;
 import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.SesionMedicion;
@@ -25,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -32,6 +34,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Examen fisico: registro, borrado, listado y comparacion de mediciones (M14, RF-M14-004).
@@ -212,6 +215,110 @@ public class MedicionService {
 		mediciones.delete(medicion);
 		log.info("Medicion borrada: sesionId={} definicionId={} lateralidad={}",
 				sesionId, definicionId, lado);
+	}
+
+	// =================================================================================
+	// C-6 — mediciones de una sesion cerrada, por enmienda
+	// =================================================================================
+
+	/**
+	 * Deja las mediciones de una sesion <b>cerrada</b> como dice la enmienda (C-6).
+	 *
+	 * <p>Lo llama {@code SesionService#enmendar} dentro de su transaccion ({@code MANDATORY}), con
+	 * permiso, propiedad y version ya controlados. {@code deseadas} es la lista <b>completa</b>,
+	 * identificada por {@code (definicionId, lateralidad)}: lo que no aparece se quita.
+	 *
+	 * <p><b>Quitar es {@code DELETE}</b>, como en una sesion abierta ({@link #borrar}): la tabla
+	 * viva dice lo vigente. El valor no se pierde: queda en la foto de la version anterior, que
+	 * es inmutable ({@code sesion_version_medicion}).
+	 *
+	 * <p><b>Una medicion que no cambio no se reescribe.</b> {@code actualizar} mueve la autoria al
+	 * que enmienda, y la foto de la version nueva le atribuiria una medida que no toco.
+	 *
+	 * <p>Una medicion <b>nueva</b> exige definicion activa, igual que al registrar; una existente
+	 * se corrige aunque la definicion se haya dado de baja: la baja del catalogo no cascadea
+	 * (06.03), y no poder corregir una medida vieja porque el test se retiro seria eso.
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void aplicarEnmienda(
+			OperatingActor actor, Sesion sesion, List<MedicionEnmendada> deseadas, Instant ahora) {
+
+		long organizationId = sesion.getOrganizationId();
+		long sesionId = sesion.getId();
+
+		Map<Clave, SesionMedicion> existentes = new LinkedHashMap<>();
+		mediciones.listarDeSesion(organizationId, sesionId).forEach(medicion -> existentes.put(
+				new Clave(medicion.getDefinicionId(), medicion.getLateralidad()), medicion));
+
+		Map<Clave, MedicionEnmendada> porClave = new LinkedHashMap<>();
+		for (MedicionEnmendada deseada : deseadas) {
+			Clave clave = new Clave(deseada.definicionId(), deseada.lateralidad());
+			if (porClave.put(clave, deseada) != null) {
+				throw new IllegalArgumentException("La medida " + deseada.definicionId() + " ("
+						+ deseada.lateralidad() + ") aparece dos veces en la enmienda");
+			}
+		}
+
+		existentes.forEach((clave, existente) -> {
+			if (!porClave.containsKey(clave)) {
+				mediciones.delete(existente);
+			}
+		});
+
+		int cambiadas = 0;
+		for (Map.Entry<Clave, MedicionEnmendada> entrada : porClave.entrySet()) {
+			MedicionEnmendada deseada = entrada.getValue();
+			SesionMedicion existente = existentes.get(entrada.getKey());
+			if (existente != null && sinCambios(existente, deseada)) {
+				continue;
+			}
+			MedicionDefinicionSnapshot definicion = definiciones
+					.find(organizationId, deseada.definicionId())
+					.orElseThrow(() -> new MedicionDefinicionNoAccesibleException(
+							deseada.definicionId()));
+			exigirDentroDeRango(definicion, deseada.valor());
+
+			if (existente == null) {
+				if (!definicion.activa()) {
+					throw new MedicionDefinicionInactivaException(deseada.definicionId());
+				}
+				mediciones.save(new SesionMedicion(
+						organizationId, sesionId, definicion, deseada.lateralidad(),
+						deseada.valor(), deseada.nota(), ahora, actor.accountId()));
+			} else {
+				existente.actualizar(deseada.valor(), deseada.nota(), ahora, actor.accountId());
+				mediciones.save(existente);
+			}
+			cambiadas++;
+		}
+
+		// Los valores NO se loguean: son contenido clinico.
+		log.info("Mediciones enmendadas: sesionId={} antes={} despues={} escritas={}",
+				sesionId, existentes.size(), porClave.size(), cambiadas);
+	}
+
+	/**
+	 * Si la medicion deseada dice lo mismo que la existente.
+	 *
+	 * <p>El numero se compara con {@code compareTo} y no con {@code equals}: la base devuelve la
+	 * escala de la columna, y {@code 92.5} no es {@code equals} a {@code 92.500}.
+	 */
+	private static boolean sinCambios(SesionMedicion existente, MedicionEnmendada deseada) {
+		ValorMedido actual = existente.valor();
+		ValorMedido nuevo = deseada.valor();
+		if (nuevo == null) {
+			return false;
+		}
+		boolean mismoNumero = actual.numerico() == null
+				? nuevo.numerico() == null
+				: nuevo.numerico() != null && actual.numerico().compareTo(nuevo.numerico()) == 0;
+		String nota = deseada.nota() == null || deseada.nota().isBlank()
+				? null
+				: deseada.nota().strip();
+		return mismoNumero
+				&& Objects.equals(actual.texto(), nuevo.texto())
+				&& Objects.equals(actual.booleano(), nuevo.booleano())
+				&& Objects.equals(existente.getNota(), nota);
 	}
 
 	// =================================================================================

@@ -171,6 +171,7 @@ public class RecepcionService {
 						turno.getEspacioId(),
 						turno.getLlegadaEn(),
 						turno.getMotivoCancelacion(),
+						turno.getSerieId(),
 						turno.getVersion()))
 				.toList();
 	}

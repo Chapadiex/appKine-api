@@ -27,6 +27,13 @@ public record TurnoResponse(
 		@Schema(description = "Persona del padron para la que se reservo", example = "128")
 		long personaId,
 
+		@Schema(
+				description = "Serie que genero este turno (AKINE E-3). Ausente en un turno suelto. "
+						+ "Un turno de una serie conserva identidad, estado e historial propios: se "
+						+ "cancela o se mueve solo, o junto con otros por `/series-de-turnos/{serieId}`.",
+				example = "12")
+		Long serieId,
+
 		@Schema(description = "Membership del profesional. Ausente si la oferta no lo requiere.", example = "31")
 		Long profesionalId,
 
@@ -81,7 +88,7 @@ public record TurnoResponse(
 
 	public static TurnoResponse de(TurnoView vista) {
 		return new TurnoResponse(
-				vista.id(), vista.consultorioId(), vista.ofertaId(), vista.personaId(),
+				vista.id(), vista.consultorioId(), vista.ofertaId(), vista.personaId(), vista.serieId(),
 				vista.profesionalId(), vista.espacioId(), vista.inicio(), vista.fin(),
 				vista.estado(), vista.reservadoEn(), vista.confirmadoEn(),
 				vista.motivoCancelacion(), vista.canceladoEn(), vista.ausenteEn(),
