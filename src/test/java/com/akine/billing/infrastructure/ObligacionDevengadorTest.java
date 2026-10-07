@@ -185,6 +185,34 @@ class ObligacionDevengadorTest {
 	}
 
 	@Test
+	@DisplayName("E-7: la recepcion lo resolvio como Particular: solo particular aunque haya convenio")
+	void particular_por_recepcion_manda_sobre_la_cobertura() {
+		cubre(KINE, "12000.00", "10500.00", "1500.00");
+
+		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
+				99L, new BigDecimal("8500.00"), "ARS", Set.of(KINE), null, true, 600L, true));
+
+		Obligacion particular = guardadas(1).get(0);
+		assertThat(particular.getConcepto()).isEqualTo(ConceptoObligacion.PARTICULAR);
+		assertThat(particular.getResponsable()).isEqualTo(Responsable.PACIENTE);
+		assertThat(particular.getImporteOriginal()).isEqualByComparingTo("8500.00");
+		assertThat(particular.getFinanciadorId()).isNull();
+		verifyNoInteractions(coberturas, aranceles);
+	}
+
+	@Test
+	@DisplayName("E-7: con turno y recepcion con cobertura, el devengo por convenio no cambia")
+	void recepcion_con_cobertura_no_cambia() {
+		cubre(KINE, "12000.00", "10500.00", "1500.00");
+
+		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
+				99L, new BigDecimal("8500.00"), "ARS", Set.of(KINE), null, true, 600L, false));
+
+		assertThat(guardadas(2)).extracting(Obligacion::getConcepto)
+				.containsExactly(ConceptoObligacion.FINANCIADOR, ConceptoObligacion.COSEGURO);
+	}
+
+	@Test
 	@DisplayName("aplicable pero congelar no devuelve (carrera): prueba la siguiente y si no, particular")
 	void congelar_vacio_cae_a_particular() {
 		given(coberturas.aplicables(anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))

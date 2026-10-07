@@ -43,7 +43,8 @@ import java.util.Set;
  * <pre>
  *   1. sin asistencia                         -&gt; nada
  *   2. la sesion ya tiene deuda               -&gt; nada (idempotencia por hecho de origen)
- *   3. la oferta no admite obra social        -&gt; PARTICULAR
+ *   3. la oferta no admite obra social, o la recepcion del turno se resolvio como
+ *      Particular (E-7, RF-M08-007)          -&gt; PARTICULAR
  *   4. practicas candidatas (DP-11)
  *   5. primera practica con cobertura aplicable (B-2) y arancel congelado
  *                                             -&gt; FINANCIADOR (importe_financiador)
@@ -112,7 +113,10 @@ public class ObligacionDevengador implements CierreDeSesionObserver {
 			return;
 		}
 
+		// AKINE E-7 (RF-M08-007): la recepcion lo resolvio como Particular -> no se busca
+		// cobertura. Ni financiador ni coseguro: solo la deuda del paciente al precio del dia.
 		Optional<Cubierta> cubierta = cierre.ofertaAdmiteObraSocial()
+				&& !cierre.particularPorRecepcion()
 				? cubierta(cierre)
 				: Optional.empty();
 

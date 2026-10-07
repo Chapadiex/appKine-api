@@ -172,6 +172,14 @@ public class ConsumoDeAutorizacionEnCierre implements CierreDeSesionObserver {
 					cierre.sesionId());
 			return;
 		}
+		if (cierre.particularPorRecepcion()) {
+			// AKINE E-7 (RF-M08-007): se atendio como Particular. El financiador no paga esta
+			// sesion, asi que gastarle una unidad autorizada seria quitarle al paciente una
+			// prestacion que va a necesitar por algo que no se le factura a nadie.
+			log.debug("Sesion atendida como Particular: no se consume autorizacion. sesionId={}",
+					cierre.sesionId());
+			return;
+		}
 
 		Set<Long> deOtroCaso = cierre.casoId() == null
 				? Set.of()
