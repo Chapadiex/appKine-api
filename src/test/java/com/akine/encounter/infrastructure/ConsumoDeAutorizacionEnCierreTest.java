@@ -79,6 +79,17 @@ class ConsumoDeAutorizacionEnCierreTest {
 	}
 
 	@Test
+	@DisplayName("atendida como Particular en la recepcion: no se consume autorizacion (AKINE E-7)")
+	void particular_por_recepcion_no_consume() {
+		observador.alCerrar(new SesionCerrada(
+				SESION, ORG, SEDE, PERSONA, 500L, 4, true,
+				Instant.parse("2027-03-15T14:00:00Z"), 42L, BigDecimal.TEN, "ARS", Set.of(1L),
+				null, true, 600L, true));
+
+		verifyNoInteractions(consumo, consultorios, autorizacionesDelCaso);
+	}
+
+	@Test
 	@DisplayName("el dia se calcula en la zona de la SEDE, no en UTC")
 	void el_dia_es_local() {
 		darSede("America/Argentina/Cordoba");

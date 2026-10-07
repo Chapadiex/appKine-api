@@ -251,4 +251,7 @@ el turno en `RESERVADO`/`CONFIRMADO` con su hora de llegada.
   devengar al financiador. Cerrarlo es exponer la modalidad por `scheduling.spi` y que el
   devengado la consulte; es una decisión de producto (¿manda el mostrador o el convenio?) y se
   deja escrita, no resuelta.
+  > **Cerrado por E-7** (`docs/diseno/AKINE-E-7-particular-en-obligacion.md`): manda el
+  > mostrador (RF-M08-007). La modalidad viaja en `SesionCerrada` y el cierre devenga sólo
+  > `PARTICULAR`, sin consumir autorización.
 - **La pantalla** (mitad web de E-4) no se hace en este paquete.
