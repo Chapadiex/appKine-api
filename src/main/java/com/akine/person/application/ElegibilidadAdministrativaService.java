@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Confronta lo que el convenio EXIGE con lo que el paciente TIENE (M17, RF-M17-007).
@@ -148,6 +149,36 @@ public class ElegibilidadAdministrativaService {
 				.findByIdAndOrganizationIdAndPersonaId(coberturaId, organizationId, personaId)
 				.orElseThrow(() -> new CoberturaNotAccessibleException(coberturaId));
 
+		return evaluarCobertura(
+				organizationId, actor.consultorioId(), personaId, coberturaId, cobertura, practicaId, dia);
+	}
+
+	/**
+	 * La misma regla que {@link #consultar}, sin actor, para otro modulo (AKINE E-4: la recepcion).
+	 *
+	 * <p>No autoriza nada: quien llama ya resolvio permiso y pertenencia. La persona o la cobertura
+	 * que no son de la organizacion responden <b>vacio</b> en vez de una excepcion, porque es una
+	 * costura entre modulos y quien llama decide que hacer con eso.
+	 */
+	@Transactional(readOnly = true)
+	public Optional<ElegibilidadAdministrativa> evaluar(
+			long organizationId, long consultorioId, long personaId, long coberturaId,
+			long practicaId, LocalDate fecha) {
+
+		if (personas.findByIdAndOrganizationId(personaId, organizationId).isEmpty()) {
+			return Optional.empty();
+		}
+		LocalDate dia = fecha == null ? LocalDate.now() : fecha;
+		return coberturas
+				.findByIdAndOrganizationIdAndPersonaId(coberturaId, organizationId, personaId)
+				.map(cobertura -> evaluarCobertura(
+						organizationId, consultorioId, personaId, coberturaId, cobertura, practicaId, dia));
+	}
+
+	private ElegibilidadAdministrativa evaluarCobertura(
+			long organizationId, long consultorioId, long personaId, long coberturaId,
+			CoberturaPaciente cobertura, long practicaId, LocalDate dia) {
+
 		// RN-M17-006: una atencion particular no pide orden ni autorizacion. No hay financiador.
 		if (cobertura.getTipo() != TipoCobertura.FINANCIADA) {
 			return ElegibilidadAdministrativa.sinRequisitos(
@@ -157,7 +188,7 @@ public class ElegibilidadAdministrativaService {
 		// LECTURA VIVA. Ver la cabecera: decidir se hace con la regla de hoy.
 		ResolucionDeArancel resolucion = aranceles.resolver(
 				organizationId,
-				actor.consultorioId(),
+				consultorioId,
 				cobertura.getFinanciadorId(),
 				cobertura.getPlanId(),
 				practicaId,

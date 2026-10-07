@@ -243,6 +243,16 @@ public enum ProblemType {
 	 */
 	TURNO_CON_ATENCION("turno-con-atencion"),
 
+	// --- Recepcion (M13, E-4) ----------------------------------------------------------------
+	/**
+	 * La recepcion del turno no admite la transicion en su estado actual, o no hay ninguna
+	 * recepcion abierta (DP-16). Lleva {@code motivo}.
+	 *
+	 * <p>Aparte de {@link #TURNO_TRANSICION_NO_PERMITIDA} porque son dos maquinas de estado (DP-05):
+	 * la pantalla refresca la recepcion, no el turno.
+	 */
+	RECEPCION_TRANSICION_NO_PERMITIDA("recepcion-transicion-no-permitida"),
+
 	// --- Atencion (M14) --------------------------------------------------------------------
 	/**
 	 * El turno existe pero no habilita una atencion: esta dado de baja, o lo atiende otro

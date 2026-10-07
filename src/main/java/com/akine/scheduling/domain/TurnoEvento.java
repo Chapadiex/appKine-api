@@ -47,13 +47,14 @@ public class TurnoEvento {
 	@Column(name = "tipo", nullable = false, length = 20, updatable = false)
 	private TipoEventoTurno tipo;
 
-	@Enumerated(EnumType.STRING)
+	// Texto y no EstadoTurno, desde E-4 (DP-16). El historial es append-only y guarda filas con
+	// EN_ESPERA, un estado que el turno ya no tiene: mapearlas con el enum haria reventar la
+	// lectura del historial de cualquier turno que paso por la espera antes de V78.
 	@Column(name = "estado_anterior", length = 16, updatable = false)
-	private EstadoTurno estadoAnterior;
+	private String estadoAnterior;
 
-	@Enumerated(EnumType.STRING)
 	@Column(name = "estado_nuevo", nullable = false, length = 16, updatable = false)
-	private EstadoTurno estadoNuevo;
+	private String estadoNuevo;
 
 	@Column(name = "motivo", length = 300, updatable = false)
 	private String motivo;
@@ -95,8 +96,8 @@ public class TurnoEvento {
 		this.consultorioId = consultorioId;
 		this.turnoId = turnoId;
 		this.tipo = tipo;
-		this.estadoAnterior = estadoAnterior;
-		this.estadoNuevo = estadoNuevo;
+		this.estadoAnterior = estadoAnterior == null ? null : estadoAnterior.name();
+		this.estadoNuevo = estadoNuevo.name();
 		this.motivo = motivo;
 		this.actorCuentaId = actorCuentaId;
 		this.ocurridoEn = ocurridoEn;
@@ -159,11 +160,11 @@ public class TurnoEvento {
 		return tipo;
 	}
 
-	public EstadoTurno getEstadoAnterior() {
+	public String getEstadoAnterior() {
 		return estadoAnterior;
 	}
 
-	public EstadoTurno getEstadoNuevo() {
+	public String getEstadoNuevo() {
 		return estadoNuevo;
 	}
 

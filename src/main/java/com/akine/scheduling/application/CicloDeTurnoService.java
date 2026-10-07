@@ -98,6 +98,7 @@ public class CicloDeTurnoService {
 	private final AtencionProbe atenciones;
 	private final AuditTrail auditTrail;
 	private final AvisosDeTurno avisos;
+	private final RegistroDeRecepcion recepciones;
 
 	public CicloDeTurnoService(
 			TurnoRepositoryPort turnos,
@@ -110,7 +111,8 @@ public class CicloDeTurnoService {
 			RevalidadorDeSlot revalidador,
 			AtencionProbe atenciones,
 			AuditTrail auditTrail,
-			AvisosDeTurno avisos) {
+			AvisosDeTurno avisos,
+			RegistroDeRecepcion recepciones) {
 
 		this.turnos = turnos;
 		this.eventos = eventos;
@@ -123,6 +125,7 @@ public class CicloDeTurnoService {
 		this.atenciones = atenciones;
 		this.auditTrail = auditTrail;
 		this.avisos = avisos;
+		this.recepciones = recepciones;
 	}
 
 	// =================================================================================
@@ -176,6 +179,12 @@ public class CicloDeTurnoService {
 		eventos.registrar(TurnoEvento.de(
 				cancelado, TipoEventoTurno.CANCELACION, anterior,
 				cancelado.getMotivoCancelacion(), actor.accountId(), ahora));
+		// E-4 (DP-16): si la persona ya estaba en la recepcion, la recepcion se CIERRA conservando
+		// la llegada —el paciente vino y el centro no lo pudo atender—. Va despues del UPDATE del
+		// turno a proposito: ese UPDATE es el que pierde contra un check-in concurrente que ya
+		// forzo la version, asi que si llegamos aca ningun check-in se colo entre medio.
+		recepciones.cerrarPorCancelacion(cancelado.getOrganizationId(), cancelado.getId(),
+				cancelado.getMotivoCancelacion(), actor.accountId(), ahora);
 		auditar(actor, cancelado, "TURNO_CANCELADO", anterior, cancelado.getMotivoCancelacion(), ahora);
 		// RF-M26-003. Sin el motivo: ver AvisosDeTurno. La oferta solo pone el nombre del servicio,
 		// y si ya no resuelve el aviso sale igual, sin el.
@@ -218,6 +227,9 @@ public class CicloDeTurnoService {
 		// Una atencion registrada es la prueba de que el paciente SI vino (DP-05). Marcarlo ausente
 		// dejaria la agenda contradiciendo a la historia clinica.
 		exigirSinAtencion(organizationId, consultorioId, turno);
+		// Y una recepcion abierta dice que esta en la sala: afirmar que no vino seria falso.
+		exigirSinRecepcionAbierta(organizationId, turno, "el paciente llego: tiene una recepcion "
+				+ "abierta. Si el check-in fue un error, primero se anula");
 
 		EstadoTurno anterior = turno.getEstado();
 		Instant ahora = Instant.now();
@@ -267,6 +279,9 @@ public class CicloDeTurnoService {
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
 		exigirVersion(turno, command.expectedVersion());
 		exigirSinAtencion(organizationId, consultorioId, turno);
+		// Mover un turno cuyo paciente ya llego no tiene sentido (era la regla de EN_ESPERA).
+		exigirSinRecepcionAbierta(organizationId, turno,
+				"el paciente llego: tiene una recepcion abierta");
 
 		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, turno.getOfertaId())
 				.orElseThrow(() -> new OfertaNotAccessibleException(turno.getOfertaId()));
@@ -319,93 +334,6 @@ public class CicloDeTurnoService {
 		log.info("Turno reprogramado: turnoId={} consultorioId={} de={} a={}",
 				movido.getId(), movido.getConsultorioId(), inicioAnterior, nuevoInicio);
 		return movido;
-	}
-
-	// =================================================================================
-	// Recepcion — RF-M13-002, AKINE-05.04
-	// =================================================================================
-
-	/**
-	 * Registra que el paciente llego al centro y lo deja en espera.
-	 *
-	 * <p><b>La hora la pone el servidor</b> (RN-M13-002). La hora de llegada es evidencia
-	 * administrativa: si viniera del cliente, el reloj del mostrador —o cualquiera con la consola
-	 * del navegador abierta— decidiria a que hora llego un paciente.
-	 *
-	 * <p><b>Es idempotente</b>, igual que confirmar: marcar dos veces devuelve 200 sin mover la
-	 * hora ni registrar un segundo evento. El doble click en el mostrador es el caso normal.
-	 *
-	 * <p><b>No valida cobertura ni autorizaciones</b>, y es recableo de DP-10 y no un olvido: el
-	 * plan hace depender esta etapa de 03.06 y 04.05, que quedaron fuera de alcance, y con
-	 * cobertura PARTICULAR unica no hay condicion administrativa que validar. La costura para
-	 * cuando existan es esta misma transaccion.
-	 *
-	 * <p><b>Sin lock de sede</b>: registrar una llegada no ocupa ningun intervalo nuevo, asi que no
-	 * puede crear un solapamiento. Ver la cabecera de la clase.
-	 *
-	 * @throws TurnoNotAccessibleException           el turno no existe en esa sede (404)
-	 * @throws TransicionDeTurnoNoPermitidaException esta cancelado o ya marcado ausente (409)
-	 */
-	@Transactional
-	public TurnoView registrarLlegada(OperatingActor actor, long consultorioId, long turnoId) {
-		long organizationId = exigirContexto(actor);
-		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
-
-		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
-		if (turno.getEstado() == EstadoTurno.EN_ESPERA) {
-			// Idempotente: no se toca la fila ni se registra un segundo evento. Devolver el turno
-			// tal como esta es lo que hace que el doble click no tenga consecuencias.
-			return TurnoView.de(turno);
-		}
-
-		EstadoTurno anterior = turno.getEstado();
-		Instant ahora = Instant.now();
-		turno.registrarLlegada(ahora, actor.accountId());
-		Turno enEspera = turnos.saveAndFlush(turno);
-
-		eventos.registrar(TurnoEvento.de(
-				enEspera, TipoEventoTurno.LLEGADA, anterior, null, actor.accountId(), ahora));
-		auditar(actor, enEspera, "TURNO_LLEGADA", anterior, null, ahora);
-
-		log.info("Llegada registrada: turnoId={} consultorioId={} estadoAnterior={}",
-				turnoId, consultorioId, anterior);
-		return TurnoView.de(enEspera);
-	}
-
-	/**
-	 * Deshace un check-in hecho sobre el turno equivocado.
-	 *
-	 * <p>Existe porque marcar la llegada es un click y equivocarse tambien. Sin vuelta atras la
-	 * unica salida seria cancelar un turno que nadie quiso cancelar.
-	 *
-	 * <p><b>No es idempotente.</b> Deshacer lo ya deshecho responde 409 y no 200 en silencio: a
-	 * diferencia del check-in, aca el segundo click no es un doble click sino una operacion sobre
-	 * un turno que entre medio pudo haber cambiado de estado —lo pudieron marcar ausente— y
-	 * contestar 200 le haria creer al operador que revirtio algo.
-	 *
-	 * @throws TurnoNotAccessibleException           el turno no existe en esa sede (404)
-	 * @throws TransicionDeTurnoNoPermitidaException no esta en espera (409)
-	 */
-	@Transactional
-	public TurnoView deshacerLlegada(OperatingActor actor, long consultorioId, long turnoId) {
-		long organizationId = exigirContexto(actor);
-		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
-
-		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
-		Instant ahora = Instant.now();
-		turno.deshacerLlegada();
-		Turno revertido = turnos.saveAndFlush(turno);
-
-		eventos.registrar(TurnoEvento.de(
-				revertido, TipoEventoTurno.LLEGADA_DESHECHA, EstadoTurno.EN_ESPERA, null,
-				actor.accountId(), ahora));
-		auditar(actor, revertido, "TURNO_LLEGADA_DESHECHA", EstadoTurno.EN_ESPERA, null, ahora);
-
-		log.info("Llegada deshecha: turnoId={} consultorioId={} estadoNuevo={}",
-				turnoId, consultorioId, revertido.getEstado());
-		return TurnoView.de(revertido);
 	}
 
 	// =================================================================================
@@ -468,6 +396,12 @@ public class CicloDeTurnoService {
 	private void exigirSinAtencion(long organizationId, long consultorioId, Turno turno) {
 		if (atenciones.tieneAtencion(organizationId, consultorioId, turno.getId())) {
 			throw new TurnoConAtencionException(turno.getId());
+		}
+	}
+
+	private void exigirSinRecepcionAbierta(long organizationId, Turno turno, String motivo) {
+		if (recepciones.tieneAbierta(organizationId, turno.getId())) {
+			throw new TransicionDeTurnoNoPermitidaException(turno.getId(), motivo);
 		}
 	}
 

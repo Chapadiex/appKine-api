@@ -54,7 +54,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("hasta") Instant hasta);
 
 	/**
-	 * <p>Cuentan RESERVADO, CONFIRMADO y EN_ESPERA con {@code deletedAt IS NULL}; CANCELADO y
+	 * <p>Cuentan RESERVADO y CONFIRMADO (un turno con el paciente en la recepcion sigue en uno de los dos) con {@code deletedAt IS NULL}; CANCELADO y
 	 * AUSENTE quedan afuera.
 	 */
 	@Query("""
@@ -66,8 +66,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deletedAt IS NULL
 			   AND t.estado IN (
 			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
-			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
-			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
 			""")
 	boolean existeTurnoVivoDeProfesionalConPersona(
 			@Param("organizationId") long organizationId,
@@ -208,8 +207,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deletedAt IS NULL
 			   AND t.estado IN (
 			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
-			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
-			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
 			   AND t.fin > :at
 			""")
 	long contarPendientesDeLaSede(
@@ -225,8 +223,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deletedAt IS NULL
 			   AND t.estado IN (
 			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
-			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
-			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
 			   AND t.fin > :at
 			 ORDER BY t.inicio ASC, t.id ASC
 			""")
@@ -243,8 +240,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deletedAt IS NULL
 			   AND t.estado IN (
 			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
-			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
-			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
 			   AND t.fin > :at
 			 ORDER BY t.inicio ASC, t.id ASC
 			""")
@@ -262,8 +258,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deletedAt IS NULL
 			   AND t.estado IN (
 			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
-			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
-			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
 			   AND t.inicio >= :desde
 			   AND t.inicio < :hasta
 			 ORDER BY t.inicio ASC, t.id ASC
@@ -349,6 +344,33 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND (:recortar = false OR t.profesionalMembershipId IN :memberships)
 			""")
 	long contarReprogramadosEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
+
+	/**
+	 * Turnos del periodo cuya recepcion vigente esta EN_ESPERA (E-4, DP-16).
+	 *
+	 * <p>Desde E-4 la espera es un estado de la Recepcion y no del Turno, asi que contarla por
+	 * {@code turno.estado} daria siempre cero. Mismo recorte por actividad propia que el resto.
+	 */
+	@Query("""
+			SELECT COUNT(t) FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.deletedAt IS NULL
+			   AND t.inicio >= :desde
+			   AND t.inicio < :hasta
+			   AND (:recortar = false OR t.profesionalMembershipId IN :memberships)
+			   AND EXISTS (SELECT 1 FROM Recepcion r
+			                WHERE r.organizationId = t.organizationId
+			                  AND r.turnoId = t.id
+			                  AND r.estado = com.akine.scheduling.domain.EstadoRecepcion.EN_ESPERA)
+			""")
+	long contarEnEsperaEnElReporte(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") Instant desde,

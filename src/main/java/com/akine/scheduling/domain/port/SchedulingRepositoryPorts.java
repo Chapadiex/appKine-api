@@ -1,11 +1,14 @@
 package com.akine.scheduling.domain.port;
 
 import com.akine.scheduling.domain.AgendaSede;
+import com.akine.scheduling.domain.Recepcion;
+import com.akine.scheduling.domain.RecepcionEvento;
 import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.TurnoEvento;
 import com.akine.scheduling.domain.TurnoSerie;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -151,7 +154,7 @@ public final class SchedulingRepositoryPorts {
 		// -----------------------------------------------------------------------------
 		//
 		// "Pendiente" es mas estricto que "vivo": ademas de {@code deletedAt IS NULL} exige un
-		// estado que todavia comprometa a alguien —RESERVADO, CONFIRMADO o EN_ESPERA— y que el
+		// estado que todavia comprometa a alguien —RESERVADO o CONFIRMADO— y que el
 		// turno no haya terminado ({@code fin > at}). AUSENTE queda afuera aunque conserve
 		// {@code deletedAt} nulo: es un hecho consumado, no un compromiso que la baja de un
 		// recurso deje huerfano. El turno EN CURSO cuenta: el paciente esta en la sala.
@@ -201,5 +204,51 @@ public final class SchedulingRepositoryPorts {
 		Optional<TurnoSerie> findByIdInScope(long organizationId, long consultorioId, long serieId);
 
 		Optional<TurnoSerie> findByIdempotencyKey(long organizationId, String idempotencyKey);
+	}
+
+	// =================================================================================
+	// Recepcion — M13, AKINE E-4 (DP-16)
+	// =================================================================================
+
+	/**
+	 * El turno bloqueado para registrar una llegada.
+	 *
+	 * <p>Separado de {@link TurnoRepositoryPort} porque no es una consulta: es el control de
+	 * concurrencia del check-in. Ver {@code docs/diseno/AKINE-E-4-recepcion.md} §8.
+	 */
+	public interface BloqueoDeTurnoPort {
+
+		/** {@code SELECT ... FOR UPDATE} del turno en su sede. Vacio si no existe ahi. */
+		Optional<Turno> bloquear(long organizationId, long consultorioId, long turnoId);
+
+		/**
+		 * Avanza la version del turno sin tocar ninguna otra columna.
+		 *
+		 * <p>Para la transaccion que crea una recepcion: escribe solo en la tabla hija, asi que sin
+		 * esto el {@code @Version} del turno no veria nada y una cancelacion concurrente podria
+		 * dejar un turno CANCELADO con un paciente en espera. Es legitimo por la reciproca de la
+		 * regla 3: esa transaccion no ensucia el turno, asi que la version avanza una sola vez.
+		 */
+		void forzarVersion(Turno turno);
+	}
+
+	public interface RecepcionRepositoryPort {
+
+		Recepcion saveAndFlush(Recepcion recepcion);
+
+		/** La recepcion vigente —no ANULADA— del turno. Hay a lo sumo una. */
+		Optional<Recepcion> findVigente(long organizationId, long turnoId);
+
+		/** Las recepciones vigentes de un lote de turnos, para la agenda del dia. */
+		List<Recepcion> findVigentesDeTurnos(long organizationId, Collection<Long> turnoIds);
+	}
+
+	/** Append-only: no hay actualizacion ni borrado. */
+	public interface RecepcionEventoRepositoryPort {
+
+		RecepcionEvento registrar(RecepcionEvento evento);
+
+		/** Todas las transiciones de todas las recepciones del turno, de la mas vieja a la mas nueva. */
+		List<RecepcionEvento> historial(long organizationId, long turnoId);
 	}
 }

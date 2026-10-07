@@ -31,8 +31,8 @@ public record EventoDeTurnoView(
 		return new EventoDeTurnoView(
 				evento.getId(),
 				evento.getTipo().name(),
-				evento.getEstadoAnterior() == null ? null : evento.getEstadoAnterior().name(),
-				evento.getEstadoNuevo().name(),
+				evento.getEstadoAnterior(),
+				evento.getEstadoNuevo(),
 				evento.getMotivo(),
 				evento.getInicioAnterior(),
 				evento.getFinAnterior(),

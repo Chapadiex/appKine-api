@@ -478,6 +478,8 @@ verdad mientras dure).
 
 **Desbloquea:** E-4 → E-6.
 
+**Implementada en:** E-4 (`V78`, contrato 0.63.0, `docs/diseno/AKINE-E-4-recepcion.md`).
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional
@@ -10582,3 +10584,44 @@ Resuelto: el defecto del escenario 41 (ver punto 7).
 - **Arista nueva `billing → offering.spi`**, sin ciclos (`ModuleArchitectureTest` 5/5).
 - **Tests:** `ObligacionDelFinanciadorIT` (11 escenarios contra MySQL: reparto con snapshot, cuenta corriente del paciente, sin cobertura, oferta sin obra social, principal sin tratamientos, re-disparo, dos cierres concurrentes, **bandeja de elegibles y lote presentado**, **reporte de financiadores**, tenant y CHECK de V77) y `ObligacionDevengadorTest` (18 unitarios).
 - **Fuera de alcance, declarado:** hallazgos de RF-M21-003 por orden/autorización/credencial (el dato está congelado; falta decidir si bloquea), esquema mixto configurable, pantalla.
+
+# Registro de cierre — G5 · E-4 (Recepción con máquina propia, DP-16) · backend
+
+**07/10/2026** · rama `akine-E-4-recepcion`. `V78`, contrato `0.63.0`, diseño
+`docs/diseno/AKINE-E-4-recepcion.md` con design challenge.
+
+- **DP-16 implementada.** `scheduling.domain.Recepcion` con máquina propia (LLEGO → VALIDADA u
+  OBSERVADA → EN_ESPERA → LLAMADA, más ANULADA y CERRADA) e historial append-only en
+  `recepcion_evento`. `EN_ESPERA` salió de `EstadoTurno`: el turno vuelve a ser sólo la reserva.
+- **Validación administrativa** (RF-M13-003/004): práctica principal de la oferta (DP-11),
+  cobertura aplicable de B-2 y la elegibilidad de M17, que por fin tiene consumidor a través del
+  nuevo `person.spi.ElegibilidadAdministrativaDirectory`. Lo que no cumple queda OBSERVADA, nunca
+  un 4xx. **Particular** (RF-M13-005) es decisión explícita con motivo y no toca la cobertura
+  maestra (RN-M13-004).
+- **Cancelar con la recepción abierta la cierra en CERRADA conservando la llegada**; reprogramar y
+  marcar ausencia siguen vedados con la recepción abierta; la serie la omite (`EN_ESPERA`).
+- **Concurrencia:** check-in en `READ_COMMITTED` con `FOR UPDATE` del turno (dos simultáneos dan
+  la misma recepción) y `PESSIMISTIC_FORCE_INCREMENT` de la versión del turno al crearla, para que
+  una cancelación concurrente pierda en vez de dejar un turno cancelado con alguien en la sala.
+- **`V78`** migra los `EN_ESPERA` (el turno vuelve a `estado_antes_de_espera`, la llegada pasa a
+  una recepción `EN_ESPERA` con su evento en la hora real) y los cancelados con llegada
+  (recepción `CERRADA`), agrega `ck_turno_estado` y **no borra columnas** (ADR-0007).
+- **Contrato:** aditivo más dos deprecaciones. `EN_ESPERA` sigue declarado en `Turno.estado` y
+  `TurnoDelDia.estado`, deprecado y sin emitirse; `POST`/`DELETE /turnos/{id}/llegada` y
+  `Turno.llegadaEn` quedan deprecados.
+- **Defecto evitado, con test:** `TurnoEvento` mapeaba los estados con `EstadoTurno`; sacar
+  `EN_ESPERA` del enum hacía reventar la lectura del historial de todo turno que pasó por la
+  espera. Pasó a texto (`RecepcionIT.el_historial_conserva_los_eventos_de_espera`).
+- **Tests:** 3.199 unitarias sobre `main` con F-4, A-4 y G-1 integrados (3.137 sobre el `main`
+  de partida, que tenía 3.103). ITs contra MySQL: `RecepcionIT` 14,
+  `RecepcionConcurrenteIT` 2, `MigracionRecepcionV78IT` 1, y en verde `TurnoConcurrenteIT` 3,
+  `TurnoCicloConcurrenteIT` 5, `SerieDeTurnosIT` 9, `NotificacionDeTurnoIT` 7,
+  `AgendaDescuentaReservasIT` 1, `SondasDeImpactoIT` 6, `RelacionAsistencialIT` 22,
+  `CierreConcurrenteIT` 5, `CierreConDosNumeradoresIT` 8, `ObligacionDelFinanciadorIT` 11,
+  `EsquemaMultiTenantIT` 4,
+  `OpenApiContractIT` 5 (sin drift).
+- **Fuera de alcance, declarado:** el indicador `turnos-en-espera` del reporte de turnos queda en
+  0 (cuenta `turno.estado`; es de G-1); no hay estado "se retiró"; Particular desde `EN_ESPERA` no
+  se admite; `billing` no lee la modalidad de la recepción —con F-4 en `main`, una atención que la
+  recepción resolvió como Particular igual devenga la parte del financiador si hay convenio—;
+  prepago (E-6) y la mitad web.

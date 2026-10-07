@@ -107,16 +107,6 @@ public class Turno {
 	@Column(name = "reprogramado_en")
 	private Instant reprogramadoEn;
 
-	@Column(name = "llegada_en")
-	private Instant llegadaEn;
-
-	@Column(name = "llegada_por_cuenta_id")
-	private Long llegadaPorCuentaId;
-
-	@Enumerated(EnumType.STRING)
-	@Column(name = "estado_antes_de_espera", length = 16)
-	private EstadoTurno estadoAntesDeEspera;
-
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
@@ -199,9 +189,9 @@ public class Turno {
 	 * @throws TransicionDeTurnoNoPermitidaException si el turno ya termino su ciclo o ya empezo
 	 */
 	public void cancelar(String motivo, long cuentaId, Instant occurredAt) {
-		// admiteCancelacion y no admiteTransicion: un paciente que ya hizo el check-in y al que el
-		// centro no va a poder atender tiene que poder cancelarse SIN deshacer antes su llegada,
-		// que borraria la evidencia de que vino. El control de "ya empezo" de mas abajo sigue
+		// Un paciente que ya hizo el check-in y al que el centro no va a poder atender se cancela SIN
+		// anular antes su recepcion (desde E-4 la cancelacion la CIERRA conservando la llegada,
+		// ver CicloDeTurnoService). El control de "ya empezo" de mas abajo sigue
 		// protegiendo el pasado igual.
 		if (!estado.admiteCancelacion()) {
 			throw new TransicionDeTurnoNoPermitidaException(
@@ -284,59 +274,18 @@ public class Turno {
 	}
 
 	/**
-	 * Registra que el paciente llego al centro (M13, RF-M13-002).
+	 * Exige que el turno admita registrar la llegada del paciente en su recepcion (M13).
 	 *
-	 * <p><b>La hora la pone el servidor.</b> {@code occurredAt} viene del reloj del backend y nunca
-	 * del cliente: la hora de llegada es evidencia administrativa, y dejarla en manos de quien
-	 * llama significaria que el reloj del mostrador decide a que hora llego un paciente.
-	 *
-	 * <p><b>Es idempotente.</b> Marcar la llegada dos veces no mueve la hora: el doble click en el
-	 * mostrador es el caso normal, y castigarlo con un error obligaria a la pantalla a distinguir
-	 * dos situaciones que para la recepcionista son la misma. Es el mismo criterio que confirmar.
-	 *
-	 * <p>Se guarda de que estado se vino para poder deshacer sin inventar una confirmacion que
-	 * quiza nunca ocurrio.
+	 * <p>Desde E-4 (DP-16) la llegada no cambia el turno: es una fila de {@link Recepcion}. Lo que
+	 * el turno sigue decidiendo es si hay a que llegar.
 	 *
 	 * @throws TransicionDeTurnoNoPermitidaException si el turno esta cancelado o ya marcado ausente
 	 */
-	public void registrarLlegada(Instant occurredAt, long cuentaId) {
-		if (estado == EstadoTurno.EN_ESPERA) {
-			return;
-		}
+	public void exigirAdmiteLlegada() {
 		if (!estado.admiteLlegada()) {
 			throw new TransicionDeTurnoNoPermitidaException(
 					id, "esta " + estado.name().toLowerCase() + " y no admite registrar una llegada");
 		}
-		this.estadoAntesDeEspera = estado;
-		this.estado = EstadoTurno.EN_ESPERA;
-		this.llegadaEn = occurredAt;
-		this.llegadaPorCuentaId = cuentaId;
-	}
-
-	/**
-	 * Deshace un check-in hecho sobre el turno equivocado.
-	 *
-	 * <p>Existe porque marcar la llegada es un click y equivocarse tambien. Sin vuelta atras, la
-	 * unica salida seria cancelar un turno que nadie quiso cancelar.
-	 *
-	 * <p><b>Limpia la hora de llegada.</b> Un check-in deshecho no dejo una llegada: dejo un error
-	 * corregido, y afirmar que el paciente llego a las 09:12 cuando nunca vino es peor que no
-	 * decir nada. El rastro de que ocurrio queda en {@code turno_evento}, que es append-only.
-	 *
-	 * <p>Vuelve al estado del que vino y no siempre a {@code CONFIRMADO}: un turno que estaba
-	 * apenas reservado no se confirma por haber pasado por el mostrador.
-	 *
-	 * @throws TransicionDeTurnoNoPermitidaException si el turno no esta en espera
-	 */
-	public void deshacerLlegada() {
-		if (estado != EstadoTurno.EN_ESPERA) {
-			throw new TransicionDeTurnoNoPermitidaException(
-					id, "no esta en espera: no hay ninguna llegada que deshacer");
-		}
-		this.estado = estadoAntesDeEspera == null ? EstadoTurno.RESERVADO : estadoAntesDeEspera;
-		this.estadoAntesDeEspera = null;
-		this.llegadaEn = null;
-		this.llegadaPorCuentaId = null;
 	}
 
 	private void exigirEstadoTransitable(String motivo) {
@@ -445,18 +394,6 @@ public class Turno {
 
 	public Instant getReprogramadoEn() {
 		return reprogramadoEn;
-	}
-
-	public Instant getLlegadaEn() {
-		return llegadaEn;
-	}
-
-	public Long getLlegadaPorCuentaId() {
-		return llegadaPorCuentaId;
-	}
-
-	public EstadoTurno getEstadoAntesDeEspera() {
-		return estadoAntesDeEspera;
 	}
 
 	public Instant getDeletedAt() {

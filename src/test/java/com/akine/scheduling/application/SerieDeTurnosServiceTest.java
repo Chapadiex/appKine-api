@@ -77,6 +77,7 @@ class SerieDeTurnosServiceTest {
 	@Mock private CicloDeTurnoService ciclo;
 	@Mock private AuditTrail auditTrail;
 	@Mock private AvisosDeTurno avisos;
+	@Mock private RegistroDeRecepcion recepciones;
 
 	private SerieDeTurnosService service;
 	private final OperatingActor actor = new OperatingActor(9L, false, ORG_ID, CONSULTORIO_ID);
@@ -86,7 +87,8 @@ class SerieDeTurnosServiceTest {
 	@BeforeEach
 	void prepararServicio() {
 		service = new SerieDeTurnosService(series, turnos, eventos, agendas, ofertas, pacientes,
-				consultorios, permissionGuard, iniciador, revalidador, atenciones, ciclo, auditTrail, avisos);
+				consultorios, permissionGuard, iniciador, revalidador, atenciones, ciclo, auditTrail, avisos,
+				recepciones);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", ZONA, true)));

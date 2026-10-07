@@ -100,6 +100,7 @@ public class SerieDeTurnosService {
 	private final CicloDeTurnoService ciclo;
 	private final AuditTrail auditTrail;
 	private final AvisosDeTurno avisos;
+	private final RegistroDeRecepcion recepciones;
 
 	public SerieDeTurnosService(
 			TurnoSerieRepositoryPort series,
@@ -115,7 +116,8 @@ public class SerieDeTurnosService {
 			AtencionProbe atenciones,
 			CicloDeTurnoService ciclo,
 			AuditTrail auditTrail,
-			AvisosDeTurno avisos) {
+			AvisosDeTurno avisos,
+			RegistroDeRecepcion recepciones) {
 
 		this.series = series;
 		this.turnos = turnos;
@@ -131,6 +133,7 @@ public class SerieDeTurnosService {
 		this.ciclo = ciclo;
 		this.auditTrail = auditTrail;
 		this.avisos = avisos;
+		this.recepciones = recepciones;
 	}
 
 	// =================================================================================
@@ -390,7 +393,8 @@ public class SerieDeTurnosService {
 		}
 		return SeleccionDeAlcance.calcular(deLaSerie, alcance, pivote, ahora,
 				turno -> atenciones.tieneAtencion(
-						turno.getOrganizationId(), turno.getConsultorioId(), turno.getId()));
+						turno.getOrganizationId(), turno.getConsultorioId(), turno.getId()),
+				turno -> recepciones.tieneAbierta(turno.getOrganizationId(), turno.getId()));
 	}
 
 	private Turno pivoteDe(TurnoSerie serie, long turnoId) {

@@ -31,8 +31,9 @@ public record TurnoDelDiaResponse(
 		Instant fin,
 
 		@Schema(
-				description = "`EN_ESPERA` significa que el paciente llego y aguarda. No significa "
-						+ "que lo esten atendiendo: la prestacion la registra la Sesion.",
+				description = "Estado de la RESERVA. **`EN_ESPERA` esta deprecado desde 0.63.0 y el "
+						+ "servidor ya no lo emite**: si el paciente llego lo dice `recepcion` "
+						+ "(DP-16). Se conserva declarado una version para no romper al cliente.",
 				allowableValues = {"RESERVADO", "CONFIRMADO", "EN_ESPERA", "CANCELADO", "AUSENTE"},
 				example = "CONFIRMADO")
 		String estado,
@@ -58,7 +59,7 @@ public record TurnoDelDiaResponse(
 		@Schema(description = "Box asignado, si la oferta requiere espacio", example = "55")
 		Long espacioId,
 
-		@Schema(description = "Hora REAL de llegada, puesta por el servidor. Ausente si no llego.", example = "2026-09-15T11:52:00Z")
+		@Schema(description = "Hora REAL de llegada, puesta por el servidor, leida de la recepcion vigente. Ausente si no llego. Es la misma que `recepcion.llegadaEn`.", example = "2026-09-15T11:52:00Z")
 		Instant llegadaEn,
 
 		@Schema(
@@ -72,7 +73,10 @@ public record TurnoDelDiaResponse(
 		Long serieId,
 
 		@Schema(description = "Version para el control optimista de las transiciones", example = "0")
-		long version) {
+		long version,
+
+		@Schema(description = "La recepcion vigente del turno (M13, DP-16): llegada, validacion, espera y llamado. Ausente si nadie registro la llegada.")
+		RecepcionResponse recepcion) {
 
 	public static TurnoDelDiaResponse de(TurnoDelDiaView vista) {
 		return new TurnoDelDiaResponse(
@@ -80,6 +84,7 @@ public record TurnoDelDiaResponse(
 				vista.personaId(), vista.personaNombre(), vista.documento(),
 				vista.ofertaId(), vista.ofertaNombre(),
 				vista.profesionalId(), vista.espacioId(), vista.llegadaEn(),
-				vista.motivoCancelacion(), vista.serieId(), vista.version());
+				vista.motivoCancelacion(), vista.serieId(), vista.version(),
+				vista.recepcion() == null ? null : RecepcionResponse.de(vista.recepcion()));
 	}
 }

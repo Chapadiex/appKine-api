@@ -8,6 +8,7 @@ import com.akine.scheduling.api.dto.ReprogramarTurnoRequest;
 import com.akine.scheduling.api.dto.ReservarTurnoRequest;
 import com.akine.scheduling.api.dto.TurnoDelDiaResponse;
 import com.akine.scheduling.api.dto.TurnoResponse;
+import com.akine.scheduling.application.CicloDeRecepcionService;
 import com.akine.scheduling.application.CicloDeTurnoService;
 import com.akine.scheduling.application.ReprogramacionCommand;
 import com.akine.scheduling.application.RecepcionService;
@@ -56,17 +57,20 @@ public class TurnoController {
 	private final TurnoService turnoService;
 	private final CicloDeTurnoService cicloService;
 	private final RecepcionService recepcionService;
+	private final CicloDeRecepcionService cicloDeRecepcion;
 	private final SchedulingApiActor apiActor;
 
 	public TurnoController(
 			TurnoService turnoService,
 			CicloDeTurnoService cicloService,
 			RecepcionService recepcionService,
+			CicloDeRecepcionService cicloDeRecepcion,
 			SchedulingApiActor apiActor) {
 
 		this.turnoService = turnoService;
 		this.cicloService = cicloService;
 		this.recepcionService = recepcionService;
+		this.cicloDeRecepcion = cicloDeRecepcion;
 		this.apiActor = apiActor;
 	}
 
@@ -423,25 +427,23 @@ public class TurnoController {
 	}
 
 	/**
-	 * <p><b>La hora la pone el servidor y el cuerpo va vacio.</b> No hay ningun campo que mandar:
-	 * aceptar una hora del cliente significaria que el reloj del mostrador decide a que hora llego
-	 * un paciente, y la hora de llegada es evidencia administrativa.
+	 * <p><b>Deprecado desde E-4 (DP-16).</b> Se mantiene para no romper al cliente de 05.04: abre la
+	 * recepcion igual que {@code POST /{turnoId}/recepcion} y devuelve el turno con la hora de
+	 * llegada.
 	 */
 	@PostMapping("/{turnoId}/llegada")
 	@Operation(
-			summary = "Registrar la llegada del paciente",
+			summary = "Registrar la llegada del paciente (deprecado)",
+			deprecated = true,
 			description = """
-					Marca que el paciente llego al centro y lo deja **en espera** (RF-M13-002). La \
-					hora la pone el servidor: no se envia ningun cuerpo.
+					**Deprecado desde 0.63.0**: usar `POST /{turnoId}/recepcion` (DP-16).
 
-					**Es idempotente**: marcar dos veces devuelve 200 sin mover la hora ni \
-					registrar un segundo evento. El doble click en el mostrador es el caso normal.
+					Abre la recepcion del turno en `LLEGO`, igual que aquella, y devuelve el turno \
+					con `llegadaEn`. **El turno ya no pasa a `EN_ESPERA`**: la espera es un estado \
+					de la recepcion, no de la reserva, y el turno sigue en `RESERVADO` o \
+					`CONFIRMADO`.
 
-					La llegada es un estado de la RESERVA, no de la atencion (DP-05). Que un turno \
-					no pase por aca no impide atenderlo; impide saber a que hora llego el paciente.
-
-					**No valida cobertura ni autorizaciones**: con cobertura PARTICULAR unica no \
-					hay condicion administrativa que validar (recableo DP-10).""")
+					Es idempotente: marcar dos veces devuelve 200 sin mover la hora.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Paciente en espera"),
 			@ApiResponse(
@@ -460,23 +462,23 @@ public class TurnoController {
 			@PathVariable long consultorioId,
 			@PathVariable long turnoId) {
 
+		var resultado = cicloDeRecepcion.registrarLlegada(apiActor.current(), consultorioId, turnoId);
 		return ResponseEntity.ok(TurnoResponse.de(
-				cicloService.registrarLlegada(apiActor.current(), consultorioId, turnoId)));
+				resultado.turno().conLlegada(resultado.recepcion().llegadaEn())));
 	}
 
 	@DeleteMapping("/{turnoId}/llegada")
 	@Operation(
-			summary = "Deshacer un check-in",
+			summary = "Deshacer un check-in (deprecado)",
+			deprecated = true,
 			description = """
-					Revierte una llegada marcada sobre el turno equivocado. El turno vuelve al \
-					estado del que vino —RESERVADO o CONFIRMADO— y **se limpia la hora de \
-					llegada**: un check-in deshecho no dejo una llegada, dejo un error corregido.
+					**Deprecado desde 0.63.0**: usar `POST /{turnoId}/recepcion/anulacion` (DP-16).
 
-					El rastro de que ocurrio queda en el historial, que es append-only.
+					Anula la recepcion abierta del turno: la llegada no vale. La fila y su \
+					historial quedan. Devuelve el turno, que no cambia de estado.
 
-                    **No es idempotente**: deshacer lo ya deshecho responde 409. A diferencia del \
-                    check-in, aca el segundo click no es un doble click sino una operacion sobre \
-                    un turno que entre medio pudo haber cambiado de estado.""")
+					**No es idempotente**: sin recepcion abierta responde 409 \
+					(`recepcion-transicion-no-permitida`).""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Check-in revertido"),
 			@ApiResponse(
@@ -489,13 +491,13 @@ public class TurnoController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "El turno no esta en espera. `problemType`: `turno-transicion-no-permitida`",
+					description = "No hay recepcion abierta. `problemType`: `recepcion-transicion-no-permitida`",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<TurnoResponse> deshacerLlegada(
 			@PathVariable long consultorioId,
 			@PathVariable long turnoId) {
 
 		return ResponseEntity.ok(TurnoResponse.de(
-				cicloService.deshacerLlegada(apiActor.current(), consultorioId, turnoId)));
+				cicloDeRecepcion.deshacerLlegadaDeprecada(apiActor.current(), consultorioId, turnoId)));
 	}
 }

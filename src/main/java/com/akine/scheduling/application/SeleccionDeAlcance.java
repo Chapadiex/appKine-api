@@ -1,7 +1,6 @@
 package com.akine.scheduling.application;
 
 import com.akine.scheduling.domain.AlcanceDeSerie;
-import com.akine.scheduling.domain.EstadoTurno;
 import com.akine.scheduling.domain.MotivoDeOmision;
 import com.akine.scheduling.domain.Turno;
 
@@ -31,15 +30,16 @@ record SeleccionDeAlcance(List<Turno> afectados, List<Omitido> omitidos) {
 	 * @param pivote        el turno desde el que se cuenta; obligatorio salvo en
 	 *                      {@link AlcanceDeSerie#TODA_LA_SERIE}
 	 * @param tieneAtencion si el turno tiene una Sesion registrada (DP-05)
+	 * @param enRecepcion   si el paciente ya llego: recepcion abierta (E-4, DP-16)
 	 */
 	static SeleccionDeAlcance calcular(
 			List<Turno> deLaSerie, AlcanceDeSerie alcance, Turno pivote, Instant ahora,
-			Predicate<Turno> tieneAtencion) {
+			Predicate<Turno> tieneAtencion, Predicate<Turno> enRecepcion) {
 
 		List<Turno> afectados = new ArrayList<>();
 		List<Omitido> omitidos = new ArrayList<>();
 		for (Turno turno : candidatos(deLaSerie, alcance, pivote)) {
-			motivoDeOmision(turno, ahora, tieneAtencion).ifPresentOrElse(
+			motivoDeOmision(turno, ahora, tieneAtencion, enRecepcion).ifPresentOrElse(
 					motivo -> omitidos.add(new Omitido(turno, motivo)),
 					() -> afectados.add(turno));
 		}
@@ -60,20 +60,25 @@ record SeleccionDeAlcance(List<Turno> afectados, List<Omitido> omitidos) {
 
 	/**
 	 * DP-04: solo se tocan turnos futuros pendientes. El orden de las preguntas importa poco —un
-	 * turno omitido lo esta por cualquiera de ellas— pero la consulta de atencion va ultima porque
-	 * es la unica que sale a la base.
+	 * turno omitido lo esta por cualquiera de ellas— pero las dos consultas que salen a la base
+	 * (recepcion y atencion) van ultimas.
+	 *
+	 * <p>El motivo {@code EN_ESPERA} conserva su nombre publicado, aunque desde E-4 la espera no es
+	 * un estado del turno: significa que el paciente ya llego —tiene una recepcion abierta— y que
+	 * se resuelve turno por turno, no en lote.
 	 */
 	private static Optional<MotivoDeOmision> motivoDeOmision(
-			Turno turno, Instant ahora, Predicate<Turno> tieneAtencion) {
+			Turno turno, Instant ahora, Predicate<Turno> tieneAtencion,
+			Predicate<Turno> enRecepcion) {
 
 		if (turno.getEstado().esTerminal()) {
 			return Optional.of(MotivoDeOmision.ESTADO_TERMINAL);
 		}
-		if (turno.getEstado() == EstadoTurno.EN_ESPERA) {
-			return Optional.of(MotivoDeOmision.EN_ESPERA);
-		}
 		if (!turno.getInicio().isAfter(ahora)) {
 			return Optional.of(MotivoDeOmision.YA_EMPEZO);
+		}
+		if (enRecepcion.test(turno)) {
+			return Optional.of(MotivoDeOmision.EN_ESPERA);
 		}
 		if (tieneAtencion.test(turno)) {
 			return Optional.of(MotivoDeOmision.CON_ATENCION);
