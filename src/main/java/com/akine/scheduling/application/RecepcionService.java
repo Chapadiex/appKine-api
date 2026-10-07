@@ -9,9 +9,11 @@ import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.scheduling.domain.PermissionCodes;
+import com.akine.scheduling.domain.Recepcion;
 import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.scheduling.domain.exception.TurnoNotAccessibleException;
+import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.RecepcionRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,8 @@ import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * La agenda del dia de una sede (M13, AKINE-05.04 reducida).
@@ -40,8 +44,7 @@ import java.util.Map;
  * <p>Esto es <b>solo lectura</b> y aquello es la maquina de estados. Mezclarlas haria que la clase
  * que decide si un turno se puede cancelar cargue tambien con resolver nombres de pacientes y
  * nombres comerciales de ofertas, que es trabajo de presentacion. Las transiciones de recepcion
- * —registrar la llegada y deshacerla— viven en {@code CicloDeTurnoService} con las demas, porque
- * son transiciones y no lecturas.
+ * viven en {@link CicloDeRecepcionService} desde E-4 (DP-16), con su maquina de estados propia.
  *
  * <h2>El dia se calcula en la zona de la SEDE</h2>
  *
@@ -60,6 +63,7 @@ import java.util.Map;
 public class RecepcionService {
 
 	private final TurnoRepositoryPort turnos;
+	private final RecepcionRepositoryPort recepciones;
 	private final ConsultorioDirectory consultorios;
 	private final PacienteDirectory pacientes;
 	private final OfertaDirectory ofertas;
@@ -67,12 +71,14 @@ public class RecepcionService {
 
 	public RecepcionService(
 			TurnoRepositoryPort turnos,
+			RecepcionRepositoryPort recepciones,
 			ConsultorioDirectory consultorios,
 			PacienteDirectory pacientes,
 			OfertaDirectory ofertas,
 			PermissionGuard permissionGuard) {
 
 		this.turnos = turnos;
+		this.recepciones = recepciones;
 		this.consultorios = consultorios;
 		this.pacientes = pacientes;
 		this.ofertas = ofertas;
@@ -153,6 +159,13 @@ public class RecepcionService {
 		Map<Long, PacienteSnapshot> personas = pacientes.findAll(
 				organizationId, lote.stream().map(Turno::getPersonaId).toList());
 
+		// La recepcion vigente de cada turno, en una sola consulta (E-4). Desde DP-16 la llegada no
+		// esta en el turno: sin esto la agenda del dia no sabria quien ya llego.
+		Map<Long, Recepcion> recepcionDe = recepciones
+				.findVigentesDeTurnos(organizationId, lote.stream().map(Turno::getId).toList())
+				.stream()
+				.collect(Collectors.toMap(Recepcion::getTurnoId, Function.identity()));
+
 		Map<Long, String> nombreDeOferta = new HashMap<>();
 		return lote.stream()
 				.map(turno -> new TurnoDelDiaView(
@@ -169,11 +182,18 @@ public class RecepcionService {
 								ofertaId -> nombreComercialDe(organizationId, consultorioId, ofertaId)),
 						turno.getProfesionalMembershipId(),
 						turno.getEspacioId(),
-						turno.getLlegadaEn(),
+						llegadaDe(recepcionDe.get(turno.getId())),
 						turno.getMotivoCancelacion(),
 						turno.getSerieId(),
-						turno.getVersion()))
+						turno.getVersion(),
+						recepcionDe.containsKey(turno.getId())
+								? RecepcionView.de(recepcionDe.get(turno.getId()))
+								: null))
 				.toList();
+	}
+
+	private static Instant llegadaDe(Recepcion recepcion) {
+		return recepcion == null ? null : recepcion.getLlegadaEn();
 	}
 
 	/**

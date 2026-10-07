@@ -229,6 +229,8 @@ class OpenApiContractIT {
 
 		verificarEnumCompleto(contrato, com.akine.scheduling.domain.TipoEventoTurno.class);
 		verificarEnumCompleto(contrato, com.akine.scheduling.domain.EstadoTurno.class);
+		verificarEnumCompleto(contrato, com.akine.scheduling.domain.EstadoRecepcion.class);
+		verificarEnumCompleto(contrato, com.akine.scheduling.domain.TipoEventoRecepcion.class);
 	}
 
 	private static void verificarEnumCompleto(String contrato, Class<? extends Enum<?>> tipo) {

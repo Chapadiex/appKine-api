@@ -11,9 +11,10 @@ import java.time.Instant;
  * la ficha por su propio endpoint, y duplicar nombre y documento aca los expondria en toda
  * respuesta de agenda —incluida la de un rol que puede ver turnos y no fichas—.
  *
- * @param estado             RESERVADO, CONFIRMADO, EN_ESPERA, CANCELADO o AUSENTE
+ * @param estado             RESERVADO, CONFIRMADO, CANCELADO o AUSENTE (la espera es de la recepcion)
  * @param motivoCancelacion  presente solo si el turno esta cancelado
- * @param llegadaEn          hora real de llegada al centro; {@code null} si el paciente no llego
+ * @param llegadaEn          DEPRECADO desde E-4: la llegada es de la Recepcion. Solo lo completa
+ *                           el check-in deprecado de 05.04 ({@link #conLlegada}); si no, {@code null}
  * @param version            para el control optimista de cancelar, mover y marcar ausencia
  */
 public record TurnoView(
@@ -54,7 +55,14 @@ public record TurnoView(
 				turno.getCanceladoEn(),
 				turno.getAusenteEn(),
 				turno.getReprogramadoEn(),
-				turno.getLlegadaEn(),
+				null,
 				turno.getVersion());
+	}
+
+	/** La misma vista con la hora de llegada de la recepcion, para el check-in deprecado de 05.04. */
+	public TurnoView conLlegada(Instant llegada) {
+		return new TurnoView(id, consultorioId, ofertaId, personaId, serieId, profesionalId, espacioId,
+				inicio, fin, estado, reservadoEn, confirmadoEn, motivoCancelacion, canceladoEn,
+				ausenteEn, reprogramadoEn, llegada, version);
 	}
 }

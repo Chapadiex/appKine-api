@@ -359,6 +359,21 @@ class ElegibilidadAdministrativaServiceTest {
 	}
 
 	@Test
+	@DisplayName("evaluar (spi, E-4): misma regla sin actor; persona o cobertura ajenas dan vacio")
+	void evaluar_sin_actor() {
+		darCobertura(coberturaParticular());
+		assertThat(servicio.evaluar(ORG, SEDE, PERSONA, COBERTURA, PRACTICA, HOY))
+				.hasValueSatisfying(veredicto -> {
+					assertThat(veredicto.elegible()).isTrue();
+					assertThat(veredicto.motivo()).isEqualTo(ElegibilidadAdministrativa.PARTICULAR);
+				});
+		assertThat(servicio.evaluar(ORG, SEDE, PERSONA, COBERTURA + 1, PRACTICA, null)).isEmpty();
+
+		given(personas.findByIdAndOrganizationId(anyLong(), anyLong())).willReturn(Optional.empty());
+		assertThat(servicio.evaluar(ORG, SEDE, PERSONA, COBERTURA, PRACTICA, HOY)).isEmpty();
+	}
+
+	@Test
 	@DisplayName("sin fecha se evalua contra hoy")
 	void fecha_por_defecto() {
 		darCobertura(coberturaParticular());

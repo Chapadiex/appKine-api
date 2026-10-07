@@ -53,7 +53,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("hasta") Instant hasta);
 
 	/**
-	 * <p>Cuentan RESERVADO, CONFIRMADO y EN_ESPERA con {@code deletedAt IS NULL}; CANCELADO y
+	 * <p>Cuentan RESERVADO y CONFIRMADO (un turno con el paciente en la recepcion sigue en uno de los dos) con {@code deletedAt IS NULL}; CANCELADO y
 	 * AUSENTE quedan afuera.
 	 */
 	@Query("""
@@ -65,8 +65,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deletedAt IS NULL
 			   AND t.estado IN (
 			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
-			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
-			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
 			""")
 	boolean existeTurnoVivoDeProfesionalConPersona(
 			@Param("organizationId") long organizationId,
@@ -207,8 +206,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deletedAt IS NULL
 			   AND t.estado IN (
 			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
-			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
-			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
 			   AND t.fin > :at
 			""")
 	long contarPendientesDeLaSede(
@@ -224,8 +222,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deletedAt IS NULL
 			   AND t.estado IN (
 			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
-			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
-			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
 			   AND t.fin > :at
 			 ORDER BY t.inicio ASC, t.id ASC
 			""")
@@ -242,8 +239,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deletedAt IS NULL
 			   AND t.estado IN (
 			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
-			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
-			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
 			   AND t.fin > :at
 			 ORDER BY t.inicio ASC, t.id ASC
 			""")
@@ -261,8 +257,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deletedAt IS NULL
 			   AND t.estado IN (
 			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
-			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO,
-			       com.akine.scheduling.domain.EstadoTurno.EN_ESPERA)
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
 			   AND t.inicio >= :desde
 			   AND t.inicio < :hasta
 			 ORDER BY t.inicio ASC, t.id ASC

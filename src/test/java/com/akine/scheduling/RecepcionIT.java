@@ -1,51 +1,67 @@
 package com.akine.scheduling;
 
 import com.akine.TestcontainersConfiguration;
+import com.akine.encounter.application.SesionService;
+import com.akine.encounter.application.SesionView;
+import com.akine.offering.spi.PracticasDeOfertaDirectory;
+import com.akine.person.spi.CoberturaAplicable;
+import com.akine.person.spi.CoberturasAplicablesDirectory;
+import com.akine.person.spi.ElegibilidadAdministrativaDirectory;
+import com.akine.person.spi.ReferenciaCongelada;
+import com.akine.person.spi.VeredictoDeElegibilidad;
 import com.akine.scheduling.AgendaFixtures.Fixture;
 import com.akine.scheduling.application.AgendaDelDiaView;
+import com.akine.scheduling.application.CicloDeRecepcionService;
+import com.akine.scheduling.application.CicloDeRecepcionService.ResultadoDeLlegada;
 import com.akine.scheduling.application.CicloDeTurnoService;
-import com.akine.scheduling.application.EventoDeTurnoView;
+import com.akine.scheduling.application.EventoDeRecepcionView;
 import com.akine.scheduling.application.RecepcionService;
+import com.akine.scheduling.application.RecepcionView;
+import com.akine.scheduling.application.ReprogramacionCommand;
 import com.akine.scheduling.application.ReservaCommand;
 import com.akine.scheduling.application.TurnoDelDiaView;
 import com.akine.scheduling.application.TurnoService;
 import com.akine.scheduling.application.TurnoView;
+import com.akine.scheduling.domain.exception.RecepcionNotAccessibleException;
+import com.akine.scheduling.domain.exception.TransicionDeRecepcionNoPermitidaException;
 import com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException;
+import com.akine.scheduling.domain.exception.TurnoNotAccessibleException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
 
 /**
- * Recepcion y check-in (M13, AKINE-05.04 reducida) contra MySQL real.
+ * Recepcion con maquina de estados propia (M13, AKINE E-4, DP-16) contra MySQL real.
  *
- * <h2>Por que estos escenarios necesitan una base y no dobles</h2>
+ * <p>Lo que solo la base puede decir: los CHECK de {@code V78} (observada con observacion,
+ * particular con motivo, cerrada con hora de cierre), el unique de una sola recepcion vigente por
+ * turno, el {@code FOR UPDATE} y la version forzada del turno, y que el turno no cambie de estado.
  *
- * <p>Tres de los cuatro dependen de cosas que <b>solo existen en la base</b>:
- *
- * <ul>
- *   <li>el {@code CHECK} de {@code V39}, que exige que un turno EN_ESPERA tenga hora de llegada y
- *       que uno que no lo esta no la tenga. Un doble del repositorio acepta cualquier combinacion,
- *       incluida la que la base rechaza;</li>
- *   <li>el recorte del dia en la <b>zona de la sede</b>: que un turno de las 09:00 locales caiga
- *       dentro del dia pedido depende de la conversion real que hace la consulta, y esa conversion
- *       es la unica parte del calculo que no esta en Java;</li>
- *   <li>que el listado <b>incluya los cancelados</b>, que es una decision de la consulta JPQL —no
- *       lleva el filtro de baja logica que llevan todas las demas— y no del servicio.</li>
- * </ul>
+ * <p>Los tres {@code spi} de otros modulos que la validacion consulta —practica de la oferta,
+ * coberturas aplicables y elegibilidad— son dobles: lo que se prueba aca es la recepcion, y lo que
+ * decide un convenio o una cobertura ya tiene su IT en su modulo ({@code OfertaPracticaIT},
+ * {@code CoberturasAplicablesDirectoryIT}). Sin configurar, responden "sin practica" y "sin
+ * coberturas", que es el camino que lleva a Particular.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("local")
@@ -56,11 +72,18 @@ class RecepcionIT {
 	private static final LocalDate LUNES = LocalDate.of(2027, 3, 8);
 
 	private static final ZoneId ZONA = ZoneId.of(AgendaFixtures.ZONA);
+	private static final long PRACTICA = 33L;
 
 	@Autowired private TurnoService turnoService;
 	@Autowired private CicloDeTurnoService cicloService;
-	@Autowired private RecepcionService recepcionService;
+	@Autowired private CicloDeRecepcionService recepcion;
+	@Autowired private RecepcionService agendaDelDia;
+	@Autowired private SesionService sesiones;
 	@Autowired private JdbcTemplate jdbc;
+
+	@MockitoBean private PracticasDeOfertaDirectory practicas;
+	@MockitoBean private CoberturasAplicablesDirectory coberturas;
+	@MockitoBean private ElegibilidadAdministrativaDirectory elegibilidad;
 
 	private AgendaFixtures fixtures;
 
@@ -69,203 +92,445 @@ class RecepcionIT {
 		fixtures = new AgendaFixtures(jdbc);
 	}
 
+	// =================================================================================
+	// Llegada
+	// =================================================================================
+
 	@Test
-	@DisplayName("el check-in deja el turno en espera con la hora del servidor, y la fila lo refleja")
-	void el_check_in_registra_la_llegada() {
+	@DisplayName("el check-in abre la recepcion en LLEGO con la hora del servidor, sin tocar el estado del turno")
+	void el_check_in_abre_la_recepcion() {
 		Fixture fixture = fixtures.crear(1);
 		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
 
 		Instant antes = Instant.now();
-		TurnoView enEspera = cicloService.registrarLlegada(
+		ResultadoDeLlegada llegada = recepcion.registrarLlegada(
 				fixture.actor(), fixture.consultorioId(), turno.id());
 		Instant despues = Instant.now();
 
-		assertThat(enEspera.estado()).isEqualTo("EN_ESPERA");
-		assertThat(enEspera.llegadaEn())
-				.as("la hora la pone el servidor: tiene que caer dentro de la ventana de la llamada")
+		assertThat(llegada.creada()).isTrue();
+		assertThat(llegada.recepcion().estado()).isEqualTo("LLEGO");
+		assertThat(llegada.recepcion().llegadaEn())
+				.as("la hora la pone el servidor")
 				.isBetween(antes, despues);
 
-		Map<String, Object> fila = jdbc.queryForMap(
-				"SELECT estado, llegada_en, llegada_por_cuenta_id, estado_antes_de_espera "
-						+ "FROM turno WHERE id = ?", turno.id());
-		assertThat(fila.get("estado")).isEqualTo("EN_ESPERA");
-		assertThat(fila.get("llegada_en")).isNotNull();
-		assertThat(fila.get("llegada_por_cuenta_id"))
-				.as("siempre hay un responsable: la llegada es evidencia administrativa")
-				.isNotNull();
-		assertThat(fila.get("estado_antes_de_espera"))
-				.as("se guarda de donde vino para poder deshacer sin inventar una confirmacion")
+		Map<String, Object> filaTurno = jdbc.queryForMap(
+				"SELECT estado, version FROM turno WHERE id = ?", turno.id());
+		assertThat(filaTurno.get("estado"))
+				.as("DP-16: el turno es la reserva y no pasa a ningun estado de espera")
 				.isEqualTo("RESERVADO");
+		assertThat(((Number) filaTurno.get("version")).longValue())
+				.as("la version del turno avanza UNA vez: es lo que hace perder a una cancelacion "
+						+ "concurrente que leyo el turno antes de la llegada")
+				.isEqualTo(turno.version() + 1);
+		assertThat(llegada.turno().version())
+				.as("y la respuesta ya trae la version nueva")
+				.isEqualTo(turno.version() + 1);
 
-		List<EventoDeTurnoView> historial = cicloService.historial(
-				fixture.actor(), fixture.consultorioId(), turno.id());
-		assertThat(historial).extracting(EventoDeTurnoView::tipo)
-				.containsExactly("RESERVA", "LLEGADA");
+		Map<String, Object> fila = jdbc.queryForMap(
+				"SELECT estado, llegada_por_cuenta_id, organization_id FROM recepcion WHERE turno_id = ?",
+				turno.id());
+		assertThat(fila.get("estado")).isEqualTo("LLEGO");
+		assertThat(((Number) fila.get("llegada_por_cuenta_id")).longValue())
+				.isEqualTo(fixture.actor().accountId());
+		assertThat(((Number) fila.get("organization_id")).longValue()).isEqualTo(fixture.organizationId());
+
+		assertThat(historial(fixture, turno.id())).extracting(EventoDeRecepcionView::tipo)
+				.containsExactly("LLEGADA");
 	}
 
-	/**
-	 * El doble click en el mostrador es el caso normal, no un error.
-	 *
-	 * <p>Lo que se afirma no es solo el codigo de respuesta: la hora <b>no se mueve</b> y no
-	 * aparece un segundo evento. Un check-in que reescribe la hora en cada click convertiria la
-	 * evidencia administrativa en "la ultima vez que alguien apreto el boton".
-	 */
 	@Test
-	@DisplayName("marcar la llegada dos veces no mueve la hora ni duplica el evento")
+	@DisplayName("marcar la llegada dos veces devuelve la misma recepcion sin mover la hora ni la version")
 	void el_check_in_es_idempotente() {
 		Fixture fixture = fixtures.crear(1);
 		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
 
-		cicloService.registrarLlegada(fixture.actor(), fixture.consultorioId(), turno.id());
-		Object guardadaTrasElPrimero = horaGuardada(turno.id());
+		ResultadoDeLlegada primero = recepcion.registrarLlegada(
+				fixture.actor(), fixture.consultorioId(), turno.id());
+		Object horaGuardada = horaDeLlegadaGuardada(turno.id());
+		long versionTurno = versionDelTurno(turno.id());
 
-		cicloService.registrarLlegada(fixture.actor(), fixture.consultorioId(), turno.id());
+		ResultadoDeLlegada segundo = recepcion.registrarLlegada(
+				fixture.actor(), fixture.consultorioId(), turno.id());
 
-		// Se compara lo GUARDADO antes y despues del segundo click, no las dos respuestas.
-		//
-		// No es un rodeo: la respuesta del primer check-in sale de la entidad en memoria, con la
-		// precision de nanosegundos de Instant.now(), y la del segundo sale de la fila, que MySQL
-		// guardo en DATETIME(6) REDONDEANDO a microsegundos. Las dos difieren en digitos que la
-		// base nunca guardo, asi que compararlas mediria la precision del reloj y no la
-		// idempotencia. Lo que la etapa promete es que la hora almacenada no se mueve.
-		assertThat(horaGuardada(turno.id()))
-				.as("el segundo click no toca la hora guardada")
-				.isEqualTo(guardadaTrasElPrimero);
-		assertThat(cicloService.historial(fixture.actor(), fixture.consultorioId(), turno.id()))
-				.extracting(EventoDeTurnoView::tipo)
-				.as("el segundo click no registra nada")
-				.containsExactly("RESERVA", "LLEGADA");
+		assertThat(segundo.creada()).isFalse();
+		assertThat(segundo.recepcion().id()).isEqualTo(primero.recepcion().id());
+		// Lo GUARDADO, no las respuestas: MySQL redondea DATETIME(6) (registro de 05.04).
+		assertThat(horaDeLlegadaGuardada(turno.id())).isEqualTo(horaGuardada);
+		assertThat(versionDelTurno(turno.id()))
+				.as("el segundo click no fuerza otra version: no cambio nada")
+				.isEqualTo(versionTurno);
+		assertThat(historial(fixture, turno.id())).hasSize(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recepcion WHERE turno_id = ?",
+				Integer.class, turno.id())).isEqualTo(1);
 	}
 
-	/**
-	 * Deshacer limpia la hora, y el CHECK de V39 es lo que lo vuelve obligatorio.
-	 *
-	 * <p>Si el codigo dejara la hora puesta al revertir, la fila diria "no esta en espera pero
-	 * llego a las 09:12" y la base la rechazaria. Es el tipo de invariante que un doble no puede
-	 * sostener.
-	 */
+	// =================================================================================
+	// Validacion y camino Particular
+	// =================================================================================
+
 	@Test
-	@DisplayName("deshacer el check-in vuelve al estado anterior y borra la hora de llegada")
-	void deshacer_el_check_in_limpia_la_llegada() {
+	@DisplayName("sin practica: OBSERVADA; Particular con motivo; espera y llamado, con un evento por transicion")
+	void camino_particular_completo() {
 		Fixture fixture = fixtures.crear(1);
 		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
-		TurnoView confirmado = turnoService.confirmar(
-				fixture.actor(), fixture.consultorioId(), turno.id());
-		assertThat(confirmado.estado()).isEqualTo("CONFIRMADO");
+		RecepcionView abierta = llegar(fixture, turno);
 
-		cicloService.registrarLlegada(fixture.actor(), fixture.consultorioId(), turno.id());
-		TurnoView revertido = cicloService.deshacerLlegada(
-				fixture.actor(), fixture.consultorioId(), turno.id());
+		RecepcionView observada = recepcion.validar(
+				fixture.actor(), fixture.consultorioId(), turno.id(), null, abierta.version());
+		assertThat(observada.estado()).isEqualTo("OBSERVADA");
+		assertThat(observada.observacion()).startsWith("OFERTA_SIN_PRACTICA");
+		assertThat(observada.modalidad()).isNull();
 
-		assertThat(revertido.estado())
-				.as("vuelve a CONFIRMADO y no a RESERVADO: se confirmo de verdad antes del check-in")
-				.isEqualTo("CONFIRMADO");
-		assertThat(revertido.llegadaEn()).isNull();
+		RecepcionView particular = recepcion.atenderComoParticular(
+				fixture.actor(), fixture.consultorioId(), turno.id(),
+				"La oferta no tiene convenio; el paciente abona", observada.version());
+		assertThat(particular.estado()).isEqualTo("VALIDADA");
+		assertThat(particular.modalidad()).isEqualTo("PARTICULAR");
+		assertThat(particular.motivoParticular()).isEqualTo("La oferta no tiene convenio; el paciente abona");
+		assertThat(particular.observacion())
+				.as("la observacion se conserva: es la razon de la decision")
+				.startsWith("OFERTA_SIN_PRACTICA");
 
-		Map<String, Object> fila = jdbc.queryForMap(
-				"SELECT llegada_en, estado_antes_de_espera FROM turno WHERE id = ?", turno.id());
-		assertThat(fila.get("llegada_en")).isNull();
-		assertThat(fila.get("estado_antes_de_espera")).isNull();
+		RecepcionView enEspera = recepcion.pasarAEspera(
+				fixture.actor(), fixture.consultorioId(), turno.id(), particular.version());
+		assertThat(enEspera.estado()).isEqualTo("EN_ESPERA");
+		assertThat(enEspera.enEsperaDesde()).isNotNull();
 
-		// El rastro de que ocurrio queda en el historial, que es lo unico append-only.
-		assertThat(cicloService.historial(fixture.actor(), fixture.consultorioId(), turno.id()))
-				.extracting(EventoDeTurnoView::tipo)
-				.containsExactly("RESERVA", "CONFIRMACION", "LLEGADA", "LLEGADA_DESHECHA");
+		RecepcionView llamada = recepcion.llamar(
+				fixture.actor(), fixture.consultorioId(), turno.id(), enEspera.version());
+		assertThat(llamada.estado()).isEqualTo("LLAMADA");
+		assertThat(llamada.llamadaEn()).isNotNull();
 
-		assertThatThrownBy(() -> cicloService.deshacerLlegada(
+		List<EventoDeRecepcionView> eventos = historial(fixture, turno.id());
+		assertThat(eventos).extracting(EventoDeRecepcionView::tipo)
+				.containsExactly("LLEGADA", "VALIDACION", "PARTICULAR", "ESPERA", "LLAMADO");
+		assertThat(eventos).extracting(EventoDeRecepcionView::estadoAnterior)
+				.containsExactly(null, "LLEGO", "OBSERVADA", "VALIDADA", "EN_ESPERA");
+		assertThat(eventos).extracting(EventoDeRecepcionView::actorCuentaId)
+				.containsOnly(fixture.actor().accountId());
+		assertThat(eventos.get(2).motivo()).isEqualTo("La oferta no tiene convenio; el paciente abona");
+
+		assertThat(jdbc.queryForObject("SELECT estado FROM turno WHERE id = ?", String.class, turno.id()))
+				.as("nada de la recepcion mueve el turno")
+				.isEqualTo("RESERVADO");
+		assertThat(jdbc.queryForMap(
+				"SELECT modalidad, motivo_particular FROM recepcion WHERE turno_id = ?", turno.id()))
+				.containsEntry("modalidad", "PARTICULAR")
+				.containsEntry("motivo_particular", "La oferta no tiene convenio; el paciente abona");
+	}
+
+	@Test
+	@DisplayName("cobertura aplicable y elegible: VALIDADA con el snapshot de practica, cobertura y convenio")
+	void validada_con_cobertura() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		conPractica(fixture);
+		conCobertura(fixture, 412L);
+		given(elegibilidad.evaluar(eq(fixture.organizationId()), eq(fixture.consultorioId()),
+				eq(fixture.personaA()), eq(412L), eq(PRACTICA), eq(LUNES)))
+				.willReturn(new VeredictoDeElegibilidad(true, null, 9L, List.of()));
+		RecepcionView abierta = llegar(fixture, turno);
+
+		RecepcionView validada = recepcion.validar(
+				fixture.actor(), fixture.consultorioId(), turno.id(), null, abierta.version());
+
+		assertThat(validada.estado()).isEqualTo("VALIDADA");
+		assertThat(validada.modalidad()).isEqualTo("COBERTURA");
+		assertThat(jdbc.queryForMap(
+				"SELECT practica_id, cobertura_id, convenio_id, observacion FROM recepcion WHERE turno_id = ?",
+				turno.id()))
+				.containsEntry("practica_id", PRACTICA)
+				.containsEntry("cobertura_id", 412L)
+				.containsEntry("convenio_id", 9L)
+				.containsEntry("observacion", null);
+	}
+
+	@Test
+	@DisplayName("documentacion incompleta: OBSERVADA con el detalle; revalidar cuando trae la orden la deja VALIDADA")
+	void observada_y_revalidada() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		conPractica(fixture);
+		conCobertura(fixture, 412L);
+		given(elegibilidad.evaluar(anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), eq(LUNES)))
+				.willReturn(new VeredictoDeElegibilidad(false, null, 9L,
+						List.of("ORDEN: El convenio exige orden medica.")));
+		RecepcionView abierta = llegar(fixture, turno);
+
+		RecepcionView observada = recepcion.validar(
+				fixture.actor(), fixture.consultorioId(), turno.id(), null, abierta.version());
+		assertThat(observada.estado()).isEqualTo("OBSERVADA");
+		assertThat(observada.observacion())
+				.isEqualTo("DOCUMENTACION_INCOMPLETA: ORDEN: El convenio exige orden medica.");
+
+		given(elegibilidad.evaluar(anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), eq(LUNES)))
+				.willReturn(new VeredictoDeElegibilidad(true, null, 9L, List.of()));
+		RecepcionView revalidada = recepcion.validar(
+				fixture.actor(), fixture.consultorioId(), turno.id(), null, observada.version());
+
+		assertThat(revalidada.estado()).isEqualTo("VALIDADA");
+		assertThat(revalidada.observacion()).isNull();
+		assertThat(historial(fixture, turno.id())).extracting(EventoDeRecepcionView::estadoNuevo)
+				.containsExactly("LLEGO", "OBSERVADA", "VALIDADA");
+	}
+
+	@Test
+	@DisplayName("una observada pasa a espera sin resolverse: la observacion advierte, no bloquea")
+	void la_observacion_no_bloquea() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		conPractica(fixture);
+		RecepcionView abierta = llegar(fixture, turno);
+
+		assertThatThrownBy(() -> recepcion.pasarAEspera(
+				fixture.actor(), fixture.consultorioId(), turno.id(), abierta.version()))
+				.as("desde LLEGO no: falta resolver como se atiende")
+				.isInstanceOf(TransicionDeRecepcionNoPermitidaException.class);
+
+		RecepcionView observada = recepcion.validar(
+				fixture.actor(), fixture.consultorioId(), turno.id(), null, abierta.version());
+		assertThat(observada.observacion()).startsWith("SIN_COBERTURA_APLICABLE");
+
+		RecepcionView enEspera = recepcion.pasarAEspera(
+				fixture.actor(), fixture.consultorioId(), turno.id(), observada.version());
+		assertThat(enEspera.estado()).isEqualTo("EN_ESPERA");
+		assertThat(enEspera.observacion()).startsWith("SIN_COBERTURA_APLICABLE");
+		assertThat(enEspera.modalidad()).isNull();
+	}
+
+	@Test
+	@DisplayName("una version vieja de la recepcion es 409 y no pisa la transicion de otro")
+	void version_vieja() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		RecepcionView abierta = llegar(fixture, turno);
+		recepcion.atenderComoParticular(fixture.actor(), fixture.consultorioId(), turno.id(),
+				"Paga en el mostrador", abierta.version());
+
+		assertThatThrownBy(() -> recepcion.atenderComoParticular(fixture.actor(),
+				fixture.consultorioId(), turno.id(), "Otro motivo", abierta.version()))
+				.isInstanceOf(OptimisticLockingFailureException.class);
+	}
+
+	// =================================================================================
+	// Anulacion y cancelacion del turno
+	// =================================================================================
+
+	@Test
+	@DisplayName("anular deja la fila ANULADA, un check-in posterior abre otra, y anular sin abierta es 409")
+	void anular_y_volver_a_llegar() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		RecepcionView primera = llegar(fixture, turno);
+
+		RecepcionView anulada = recepcion.anular(fixture.actor(), fixture.consultorioId(), turno.id(),
+				"Turno equivocado", primera.version());
+		assertThat(anulada.estado()).isEqualTo("ANULADA");
+		assertThat(anulada.cerradaEn()).isNotNull();
+
+		assertThatThrownBy(() -> recepcion.anular(fixture.actor(), fixture.consultorioId(),
+				turno.id(), null, anulada.version()))
+				.as("anular lo ya anulado es 409, no 200 en silencio")
+				.isInstanceOf(TransicionDeRecepcionNoPermitidaException.class);
+		assertThatThrownBy(() -> recepcion.ver(fixture.actor(), fixture.consultorioId(), turno.id()))
+				.as("una anulada no es vigente")
+				.isInstanceOf(RecepcionNotAccessibleException.class);
+
+		RecepcionView segunda = llegar(fixture, turno);
+		assertThat(segunda.id()).isNotEqualTo(primera.id());
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recepcion WHERE turno_id = ?",
+				Integer.class, turno.id())).isEqualTo(2);
+		assertThat(historial(fixture, turno.id())).extracting(EventoDeRecepcionView::tipo)
+				.containsExactly("LLEGADA", "ANULACION", "LLEGADA");
+	}
+
+	@Test
+	@DisplayName("cancelar el turno con la recepcion abierta la CIERRA conservando la llegada")
+	void la_cancelacion_cierra_la_recepcion() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		RecepcionView abierta = llegar(fixture, turno);
+		recepcion.atenderComoParticular(fixture.actor(), fixture.consultorioId(), turno.id(),
+				"Paga en el mostrador", abierta.version());
+
+		TurnoView cancelado = cicloService.cancelar(fixture.actor(), fixture.consultorioId(),
+				turno.id(), "El profesional se descompuso", versionDelTurno(turno.id()));
+
+		assertThat(cancelado.estado()).isEqualTo("CANCELADO");
+		RecepcionView cerrada = recepcion.ver(fixture.actor(), fixture.consultorioId(), turno.id());
+		assertThat(cerrada.estado()).isEqualTo("CERRADA");
+		assertThat(cerrada.llegadaEn()).as("la llegada consta: el paciente vino").isNotNull();
+		assertThat(cerrada.motivoCierre()).isEqualTo("El profesional se descompuso");
+		assertThat(historial(fixture, turno.id())).extracting(EventoDeRecepcionView::tipo)
+				.containsExactly("LLEGADA", "PARTICULAR", "CIERRE_POR_CANCELACION");
+
+		assertThatThrownBy(() -> recepcion.registrarLlegada(
 				fixture.actor(), fixture.consultorioId(), turno.id()))
-				.as("deshacer lo ya deshecho es 409, no 200 en silencio")
+				.as("sobre un turno cancelado no hay a que llegar")
 				.isInstanceOf(TransicionDeTurnoNoPermitidaException.class);
 	}
 
-	/**
-	 * La agenda del dia, que es la pantalla entera de la recepcion.
-	 *
-	 * <p>Afirma las dos decisiones que no son obvias: que los <b>cancelados vienen igual</b> —con
-	 * su motivo— y que el paciente llega <b>resuelto con nombre</b>, que es lo que distingue esta
-	 * lectura de la de un turno suelto.
-	 */
 	@Test
-	@DisplayName("la agenda del dia trae los turnos con el paciente resuelto, cancelados incluidos")
-	void la_agenda_del_dia_incluye_los_cancelados() {
+	@DisplayName("con la recepcion abierta el turno no se reprograma ni se marca ausente; anulada, si")
+	void la_recepcion_abierta_bloquea_mover_y_ausencia() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		RecepcionView abierta = llegar(fixture, turno);
+
+		assertThatThrownBy(() -> cicloService.reprogramar(fixture.actor(), fixture.consultorioId(),
+				turno.id(), new ReprogramacionCommand(hora(10), fixture.profesionalMembershipId(), "mover",
+						versionDelTurno(turno.id()))))
+				.isInstanceOf(TransicionDeTurnoNoPermitidaException.class)
+				.hasMessageContaining("recepcion abierta");
+		assertThatThrownBy(() -> cicloService.marcarAusente(fixture.actor(), fixture.consultorioId(),
+				turno.id(), null, versionDelTurno(turno.id())))
+				.isInstanceOf(TransicionDeTurnoNoPermitidaException.class)
+				.hasMessageContaining("recepcion abierta");
+
+		recepcion.anular(fixture.actor(), fixture.consultorioId(), turno.id(), null, abierta.version());
+		TurnoView movido = cicloService.reprogramar(fixture.actor(), fixture.consultorioId(),
+				turno.id(), new ReprogramacionCommand(hora(10), fixture.profesionalMembershipId(), "mover",
+						versionDelTurno(turno.id())));
+		assertThat(movido.inicio()).isEqualTo(hora(10));
+	}
+
+	// =================================================================================
+	// Agenda del dia, tenant y Sesion
+	// =================================================================================
+
+	@Test
+	@DisplayName("la agenda del dia trae la recepcion de cada turno y la hora de llegada desde ella")
+	void la_agenda_del_dia_trae_la_recepcion() {
 		Fixture fixture = fixtures.crear(1);
 		TurnoView deLasNueve = reservar(fixture, fixture.personaA(), hora(9));
 		TurnoView deLasDiez = reservar(fixture, fixture.personaB(), hora(10));
+		llegar(fixture, deLasNueve);
 
-		cicloService.cancelar(fixture.actor(), fixture.consultorioId(), deLasDiez.id(),
-				"El profesional se enfermo", deLasDiez.version());
-		cicloService.registrarLlegada(fixture.actor(), fixture.consultorioId(), deLasNueve.id());
-
-		AgendaDelDiaView delDia = recepcionService.delDia(
-				fixture.actor(), fixture.consultorioId(), LUNES);
+		AgendaDelDiaView delDia = agendaDelDia.delDia(fixture.actor(), fixture.consultorioId(), LUNES);
 		List<TurnoDelDiaView> agenda = delDia.turnos();
 
-		assertThat(delDia.timezone())
-				.as("la zona viaja en la respuesta: sin ella la pantalla usa la del navegador y "
-						+ "corre la agenda entera sin fallar")
-				.isEqualTo(AgendaFixtures.ZONA);
-		assertThat(delDia.fecha()).isEqualTo(LUNES);
-
-		assertThat(agenda)
-				.as("los dos turnos del dia, el cancelado incluido")
-				.hasSize(2);
-		assertThat(agenda).extracting(TurnoDelDiaView::id)
-				.as("ordenados por hora")
-				.containsExactly(deLasNueve.id(), deLasDiez.id());
-
+		assertThat(agenda).extracting(TurnoDelDiaView::id).containsExactly(deLasNueve.id(), deLasDiez.id());
 		TurnoDelDiaView primero = agenda.get(0);
-		assertThat(primero.estado()).isEqualTo("EN_ESPERA");
-		assertThat(primero.llegadaEn()).isNotNull();
-		assertThat(primero.personaNombre())
-				.as("el nombre viaja resuelto: una lista con 'persona #5' no sirve para llamar a nadie")
-				.isNotBlank()
-				.doesNotContain("#");
-		assertThat(primero.ofertaNombre()).isNotBlank();
+		assertThat(primero.estado()).isEqualTo("RESERVADO");
+		assertThat(primero.recepcion()).isNotNull();
+		assertThat(primero.recepcion().estado()).isEqualTo("LLEGO");
+		assertThat(primero.llegadaEn()).isEqualTo(primero.recepcion().llegadaEn());
+		assertThat(agenda.get(1).recepcion()).isNull();
+		assertThat(agenda.get(1).llegadaEn()).isNull();
+	}
 
-		TurnoDelDiaView segundo = agenda.get(1);
-		assertThat(segundo.estado()).isEqualTo("CANCELADO");
-		assertThat(segundo.motivoCancelacion())
-				.as("con su motivo: es lo que hace util verlos")
-				.isEqualTo("El profesional se enfermo");
+	@Test
+	@DisplayName("un turno de otro tenant es 404 para la recepcion; uno propio sin llegada, 404 de recepcion")
+	void tenant_ajeno() {
+		Fixture propio = fixtures.crear(1);
+		Fixture ajeno = fixtures.crear(1);
+		TurnoView turnoAjeno = reservar(ajeno, ajeno.personaA(), hora(9));
+		TurnoView turnoPropio = reservar(propio, propio.personaA(), hora(9));
 
-		// Un dia sin turnos no es un error, es una lista vacia.
-		AgendaDelDiaView vacio = recepcionService.delDia(
-				fixture.actor(), fixture.consultorioId(), LUNES.plusDays(1));
-		assertThat(vacio.turnos()).isEmpty();
-		assertThat(vacio.timezone())
-				.as("tambien en un dia vacio: es un dato de la sede, no de los turnos")
-				.isEqualTo(AgendaFixtures.ZONA);
+		// El actor propio apuntando a su sede con el id del turno ajeno.
+		assertThatThrownBy(() -> recepcion.registrarLlegada(
+				propio.actor(), propio.consultorioId(), turnoAjeno.id()))
+				.isInstanceOf(TurnoNotAccessibleException.class);
+		assertThatThrownBy(() -> recepcion.historial(
+				propio.actor(), propio.consultorioId(), turnoAjeno.id()))
+				.isInstanceOf(TurnoNotAccessibleException.class);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recepcion WHERE turno_id = ?",
+				Integer.class, turnoAjeno.id())).isZero();
+
+		assertThatThrownBy(() -> recepcion.ver(propio.actor(), propio.consultorioId(), turnoPropio.id()))
+				.isInstanceOf(RecepcionNotAccessibleException.class);
+	}
+
+	@Test
+	@DisplayName("la Sesion arranca desde el turno con la recepcion llamada, y no la mueve (DP-05)")
+	void la_sesion_arranca_con_la_recepcion_llamada() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		RecepcionView abierta = llegar(fixture, turno);
+		RecepcionView particular = recepcion.atenderComoParticular(fixture.actor(),
+				fixture.consultorioId(), turno.id(), "Paga en el mostrador", abierta.version());
+		RecepcionView enEspera = recepcion.pasarAEspera(
+				fixture.actor(), fixture.consultorioId(), turno.id(), particular.version());
+		RecepcionView llamada = recepcion.llamar(
+				fixture.actor(), fixture.consultorioId(), turno.id(), enEspera.version());
+
+		long cuentaProfesional = jdbc.queryForObject(
+				"SELECT account_id FROM membership WHERE id = ?", Long.class,
+				fixture.profesionalMembershipId());
+		SesionView sesion = sesiones.iniciar(
+				new com.akine.encounter.application.OperatingActor(
+						cuentaProfesional, false, fixture.organizationId(), fixture.consultorioId()),
+				fixture.consultorioId(), turno.id(), null);
+
+		assertThat(sesion.id()).isPositive();
+		assertThat(recepcion.ver(fixture.actor(), fixture.consultorioId(), turno.id()).version())
+				.as("abrir la Sesion no toca la recepcion: son dos maquinas")
+				.isEqualTo(llamada.version());
 	}
 
 	/**
-	 * Un paciente que llego y al que el centro no va a poder atender tiene que poder cancelarse.
-	 *
-	 * <p>Obligar a deshacer antes el check-in seria peor que permitirlo: borraria la evidencia de
-	 * que la persona vino, que es justamente lo que la recepcion existe para registrar.
+	 * El historial del turno es append-only y conserva eventos de 05.04 con {@code EN_ESPERA}, un
+	 * estado que el turno ya no tiene. Si {@code TurnoEvento} lo siguiera mapeando con el enum,
+	 * leer el historial de cualquier turno que paso por la espera antes de V78 reventaria.
 	 */
 	@Test
-	@DisplayName("un turno EN_ESPERA se puede cancelar sin deshacer antes la llegada")
-	void el_paciente_que_llego_y_no_se_pudo_atender() {
+	@DisplayName("el historial del turno sigue leyendo los eventos viejos de EN_ESPERA")
+	void el_historial_conserva_los_eventos_de_espera() {
 		Fixture fixture = fixtures.crear(1);
 		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
-		TurnoView enEspera = cicloService.registrarLlegada(
-				fixture.actor(), fixture.consultorioId(), turno.id());
+		// Las horas se derivan de la del evento de reserva, no del reloj de la base: el orden del
+		// historial es por ocurrido_en y el reloj del contenedor no tiene por que coincidir con el
+		// de la JVM que escribio la reserva.
+		for (String[] evento : new String[][] {
+				{"LLEGADA", "RESERVADO", "EN_ESPERA", "1"},
+				{"LLEGADA_DESHECHA", "EN_ESPERA", "RESERVADO", "2"}}) {
+			jdbc.update("""
+					INSERT INTO turno_evento (organization_id, consultorio_id, turno_id, tipo,
+					                          estado_anterior, estado_nuevo, actor_cuenta_id, ocurrido_en)
+					SELECT organization_id, consultorio_id, turno_id, ?, ?, ?, actor_cuenta_id,
+					       ocurrido_en + INTERVAL ? MINUTE
+					  FROM turno_evento
+					 WHERE turno_id = ? AND tipo = 'RESERVA'
+					""", evento[0], evento[1], evento[2], Integer.parseInt(evento[3]), turno.id());
+		}
 
-		TurnoView cancelado = cicloService.cancelar(
-				fixture.actor(), fixture.consultorioId(), turno.id(),
-				"El profesional se descompuso", enEspera.version());
-
-		assertThat(cancelado.estado()).isEqualTo("CANCELADO");
-		assertThat(jdbc.queryForMap("SELECT llegada_en FROM turno WHERE id = ?", turno.id())
-				.get("llegada_en"))
-				.as("la llegada NO se borra al cancelar: consta que el paciente vino")
-				.isNotNull();
+		assertThat(cicloService.historial(fixture.actor(), fixture.consultorioId(), turno.id()))
+				.extracting(com.akine.scheduling.application.EventoDeTurnoView::estadoNuevo)
+				.containsExactly("RESERVADO", "EN_ESPERA", "RESERVADO");
 	}
 
-	/** La hora de llegada tal como quedo en la fila, que es la unica que el sistema promete. */
-	private Object horaGuardada(long turnoId) {
-		return jdbc.queryForMap("SELECT llegada_en FROM turno WHERE id = ?", turnoId)
+	// =================================================================================
+	// Utilidades
+	// =================================================================================
+
+	private RecepcionView llegar(Fixture fixture, TurnoView turno) {
+		return recepcion.registrarLlegada(fixture.actor(), fixture.consultorioId(), turno.id()).recepcion();
+	}
+
+	private List<EventoDeRecepcionView> historial(Fixture fixture, long turnoId) {
+		return recepcion.historial(fixture.actor(), fixture.consultorioId(), turnoId);
+	}
+
+	private void conPractica(Fixture fixture) {
+		given(practicas.practicaPrincipal(fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId()))
+				.willReturn(Optional.of(PRACTICA));
+	}
+
+	private void conCobertura(Fixture fixture, long coberturaId) {
+		given(coberturas.aplicables(fixture.organizationId(), fixture.consultorioId(),
+				fixture.personaA(), PRACTICA, LUNES))
+				.willReturn(List.of(new CoberturaAplicable(coberturaId, true,
+						new ReferenciaCongelada(1L, "Financiador Sintetico", 2L, "Plan Sintetico"),
+						null, false, null)));
+	}
+
+	private Object horaDeLlegadaGuardada(long turnoId) {
+		return jdbc.queryForMap("SELECT llegada_en FROM recepcion WHERE turno_id = ?", turnoId)
 				.get("llegada_en");
+	}
+
+	private long versionDelTurno(long turnoId) {
+		return jdbc.queryForObject("SELECT version FROM turno WHERE id = ?", Long.class, turnoId);
 	}
 
 	private TurnoView reservar(Fixture fixture, long personaId, Instant inicio) {
@@ -278,4 +543,5 @@ class RecepcionIT {
 	private static Instant hora(int hora) {
 		return LUNES.atTime(hora, 0).atZone(ZONA).toInstant();
 	}
+
 }

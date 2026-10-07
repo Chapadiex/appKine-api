@@ -98,12 +98,23 @@ class RelacionAsistencialIT {
 	}
 
 	@Test
-	@DisplayName("un turno EN_ESPERA del profesional con la persona da relacion")
+	@DisplayName("un turno con el paciente en la recepcion (en espera) da relacion")
 	void turno_en_espera_da_relacion() {
-		// AC-1
+		// AC-1. Desde E-4 (DP-16) la espera es de la recepcion y el turno sigue RESERVADO: la
+		// relacion no puede perderse porque el paciente haya pasado por el mostrador.
 		Fixture f = crearFixture();
 		insertarTurno(f, f.organizationId(), f.sedeId(), f.membershipId(), f.personaId(),
-				f.ofertaId(), "EN_ESPERA");
+				f.ofertaId(), "RESERVADO");
+		long turnoId = jdbc.queryForObject(
+				"SELECT MAX(id) FROM turno WHERE organization_id = ? AND persona_id = ?",
+				Long.class, f.organizationId(), f.personaId());
+		jdbc.update("""
+				INSERT INTO recepcion (organization_id, consultorio_id, turno_id, estado, llegada_en,
+				                       llegada_por_cuenta_id, modalidad, motivo_particular,
+				                       en_espera_desde, version)
+				VALUES (?, ?, ?, 'EN_ESPERA', UTC_TIMESTAMP(6), ?, 'PARTICULAR', 'Abona en el mostrador',
+				        UTC_TIMESTAMP(6), 0)
+				""", f.organizationId(), f.sedeId(), turnoId, f.cuentaId());
 
 		assertThat(consultar(f)).isTrue();
 	}
@@ -370,8 +381,8 @@ class RelacionAsistencialIT {
 	 * Un turno insertado directo, con las columnas que exigen los CHECK de cada estado.
 	 *
 	 * <p>El CANCELADO lleva su baja logica ({@code deleted_at}) y su motivo, como lo deja el ciclo
-	 * de M12; el AUSENTE conserva {@code deleted_at} en NULL (V38, punto 2); el EN_ESPERA necesita
-	 * hora de llegada y responsable (V39).
+	 * de M12; el AUSENTE conserva {@code deleted_at} en NULL (V38, punto 2). EN_ESPERA ya no es un
+	 * estado del turno desde V78 (DP-16): {@code ck_turno_estado} lo rechaza.
 	 */
 	private void insertarTurno(Fixture f, long organizationId, long consultorioId,
 			long membershipId, long personaId, long ofertaId, String estado) {

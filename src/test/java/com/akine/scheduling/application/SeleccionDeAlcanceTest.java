@@ -34,7 +34,7 @@ class SeleccionDeAlcanceTest {
 	@DisplayName("ESTE_Y_SIGUIENTES: el pivote y los que empiezan despues, nunca los anteriores")
 	void este_y_siguientes() {
 		SeleccionDeAlcance seleccion = SeleccionDeAlcance.calcular(
-				serie, AlcanceDeSerie.ESTE_Y_SIGUIENTES, segundo, AHORA, turno -> false);
+				serie, AlcanceDeSerie.ESTE_Y_SIGUIENTES, segundo, AHORA, turno -> false, turno -> false);
 
 		assertThat(seleccion.afectados()).containsExactly(segundo, tercero, cuarto);
 		assertThat(seleccion.omitidos()).isEmpty();
@@ -46,7 +46,7 @@ class SeleccionDeAlcanceTest {
 		primero.cancelar("Aviso", 9L, AHORA);
 
 		SeleccionDeAlcance seleccion = SeleccionDeAlcance.calcular(
-				serie, AlcanceDeSerie.TODA_LA_SERIE, null, AHORA, turno -> turno == cuarto);
+				serie, AlcanceDeSerie.TODA_LA_SERIE, null, AHORA, turno -> turno == cuarto, turno -> false);
 
 		assertThat(seleccion.afectados()).containsExactly(segundo, tercero);
 		assertThat(seleccion.omitidos())
@@ -56,12 +56,12 @@ class SeleccionDeAlcanceTest {
 	}
 
 	@Test
-	@DisplayName("un paciente en la sala no se cancela por lote")
+	@DisplayName("un paciente que ya llego (recepcion abierta) no se cancela por lote")
 	void en_espera_se_omite() {
-		primero.registrarLlegada(AHORA, 9L);
+		// Desde E-4 (DP-16) la llegada es una recepcion abierta, no un estado del turno.
 
 		SeleccionDeAlcance seleccion = SeleccionDeAlcance.calcular(
-				serie, AlcanceDeSerie.ESTE, primero, AHORA, turno -> false);
+				serie, AlcanceDeSerie.ESTE, primero, AHORA, turno -> false, turno -> turno == primero);
 
 		assertThat(seleccion.afectados()).isEmpty();
 		assertThat(seleccion.omitidos()).extracting(SeleccionDeAlcance.Omitido::motivo)

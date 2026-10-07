@@ -9,7 +9,9 @@ import com.akine.scheduling.application.IdempotencyKeyConflictException;
 import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
 import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
 import com.akine.scheduling.domain.exception.PersonaSinPerfilPacienteException;
+import com.akine.scheduling.domain.exception.RecepcionNotAccessibleException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
+import com.akine.scheduling.domain.exception.TransicionDeRecepcionNoPermitidaException;
 import com.akine.scheduling.domain.exception.SlotCompletoException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
 import com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException;
@@ -50,6 +52,8 @@ public class SchedulingProblemHandler {
 	private static final URI IDEMPOTENCY_KEY_CONFLICT = ProblemType.IDEMPOTENCY_KEY_CONFLICT.uri();
 	private static final URI TURNO_TRANSICION_NO_PERMITIDA = ProblemType.TURNO_TRANSICION_NO_PERMITIDA.uri();
 	private static final URI TURNO_CON_ATENCION = ProblemType.TURNO_CON_ATENCION.uri();
+	private static final URI RECEPCION_TRANSICION_NO_PERMITIDA =
+			ProblemType.RECEPCION_TRANSICION_NO_PERMITIDA.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -197,6 +201,28 @@ public class SchedulingProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(TURNO_CON_ATENCION);
 		problem.setTitle("El turno ya tiene una atencion registrada");
+		return problem;
+	}
+
+	// =================================================================================
+	// Recepcion — M13, AKINE E-4
+	// =================================================================================
+
+	@ExceptionHandler(RecepcionNotAccessibleException.class)
+	public ProblemDetail handleRecepcionNoAccesible(RecepcionNotAccessibleException exception) {
+		log.debug("Turno sin recepcion: turnoId={}", exception.getTurnoId());
+		return noEncontrado("El turno no tiene recepcion: nadie registro la llegada.");
+	}
+
+	@ExceptionHandler(TransicionDeRecepcionNoPermitidaException.class)
+	public ProblemDetail handleTransicionDeRecepcion(TransicionDeRecepcionNoPermitidaException exception) {
+		log.debug("Transicion de recepcion no permitida: turnoId={} motivo={}",
+				exception.getTurnoId(), exception.getMotivo());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(RECEPCION_TRANSICION_NO_PERMITIDA);
+		problem.setTitle("La recepcion no admite esa operacion");
+		problem.setProperty("motivo", exception.getMotivo());
 		return problem;
 	}
 

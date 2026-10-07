@@ -9,7 +9,7 @@ public record TurnoOmitidoResponse(
 
 		@Schema(
 				description = "`YA_EMPEZO` (el pasado es inalterable), `ESTADO_TERMINAL` (ya cancelado "
-						+ "o ausente), `EN_ESPERA` (el paciente esta en la sala: se resuelve solo) o "
+						+ "o ausente), `EN_ESPERA` (el paciente ya llego: tiene una recepcion abierta; se resuelve solo) o "
 						+ "`CON_ATENCION` (tiene una Sesion registrada)",
 				allowableValues = {"YA_EMPEZO", "ESTADO_TERMINAL", "EN_ESPERA", "CON_ATENCION"},
 				example = "YA_EMPEZO")

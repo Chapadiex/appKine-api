@@ -67,6 +67,7 @@ class CicloDeTurnoServiceTest {
 	@Mock private AtencionProbe atenciones;
 	@Mock private AuditTrail auditTrail;
 	@Mock private AvisosDeTurno avisos;
+	@Mock private RegistroDeRecepcion recepciones;
 
 	private CicloDeTurnoService service;
 	private final OperatingActor actor = new OperatingActor(9L, false, ORG_ID, CONSULTORIO_ID);
@@ -74,7 +75,7 @@ class CicloDeTurnoServiceTest {
 	@BeforeEach
 	void prepararServicio() {
 		service = new CicloDeTurnoService(turnos, eventos, agendas, ofertas, consultorios,
-				permissionGuard, iniciador, revalidador, atenciones, auditTrail, avisos);
+				permissionGuard, iniciador, revalidador, atenciones, auditTrail, avisos, recepciones);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -138,6 +139,38 @@ class CicloDeTurnoServiceTest {
 				.isInstanceOf(TurnoNotAccessibleException.class);
 
 		verify(eventos, never()).historial(anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("cancelar cierra la recepcion abierta con el motivo de la cancelacion (E-4)")
+	void cancelar_cierra_la_recepcion() {
+		Turno turno = turnoFuturo();
+		given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(turno));
+		given(turnos.saveAndFlush(turno)).willReturn(turno);
+
+		service.cancelar(actor, CONSULTORIO_ID, TURNO_ID, "El profesional se descompuso", 0L);
+
+		verify(recepciones).cerrarPorCancelacion(
+				eq(ORG_ID), eq(TURNO_ID), eq("El profesional se descompuso"), eq(9L), any());
+	}
+
+	@Test
+	@DisplayName("con la recepcion abierta no se marca ausente ni se reprograma: el paciente esta en la sala")
+	void la_recepcion_abierta_bloquea_ausencia_y_reprogramacion() {
+		Turno turno = turnoFuturo();
+		given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(turno));
+		given(recepciones.tieneAbierta(ORG_ID, TURNO_ID)).willReturn(true);
+		given(agendas.lockByScope(ORG_ID, CONSULTORIO_ID))
+				.willReturn(Optional.of(org.mockito.Mockito.mock(com.akine.scheduling.domain.AgendaSede.class)));
+
+		assertThatThrownBy(() -> service.marcarAusente(actor, CONSULTORIO_ID, TURNO_ID, null, 0L))
+				.isInstanceOf(com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException.class)
+				.hasMessageContaining("recepcion abierta");
+		assertThatThrownBy(() -> service.reprogramar(actor, CONSULTORIO_ID, TURNO_ID,
+				new ReprogramacionCommand(turno.getInicio().plus(Duration.ofDays(1)), 31L, "mover", 0L)))
+				.isInstanceOf(com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException.class)
+				.hasMessageContaining("recepcion abierta");
+		assertThat(turno.getEstado()).isEqualTo(EstadoTurno.RESERVADO);
 	}
 
 	private static Turno turnoFuturo() {

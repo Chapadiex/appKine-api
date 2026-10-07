@@ -26,9 +26,12 @@ import java.time.Instant;
  *
  * @param personaNombre     apellido y nombre, ya armados: la pantalla no compone identidades
  * @param documento         tipo y numero, para desambiguar dos personas con el mismo nombre
- * @param llegadaEn         hora real de llegada; {@code null} mientras el paciente no llego
+ * @param llegadaEn         hora real de llegada, leida de la recepcion vigente (desde E-4);
+ *                          {@code null} mientras el paciente no llego
  * @param motivoCancelacion presente solo si el turno esta cancelado — la recepcion los ve igual,
  *                          porque alguien puede presentarse a un turno que se cancelo
+ * @param recepcion         la recepcion vigente del turno (M13, E-4), o {@code null} si nadie
+ *                          registro la llegada
  */
 public record TurnoDelDiaView(
 		long id,
@@ -45,5 +48,6 @@ public record TurnoDelDiaView(
 		Instant llegadaEn,
 		String motivoCancelacion,
 		Long serieId,
-		long version) {
+		long version,
+		RecepcionView recepcion) {
 }

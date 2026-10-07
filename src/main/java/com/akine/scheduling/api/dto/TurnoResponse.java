@@ -53,7 +53,9 @@ public record TurnoResponse(
 		@Schema(
 				description = "Estado de la RESERVA. Nunca dice que la atencion ocurrio: eso lo dice "
 						+ "la Sesion. `CANCELADO` libera el lugar; `AUSENTE` **no**, porque la hora "
-						+ "se consumio igual.",
+						+ "se consumio igual. **`EN_ESPERA` esta deprecado desde 0.63.0 y el servidor "
+						+ "ya no lo emite**: la llegada y la espera son de la Recepcion (DP-16). Se "
+						+ "conserva declarado una version para no romper al cliente generado.",
 				allowableValues = {"RESERVADO", "CONFIRMADO", "EN_ESPERA", "CANCELADO", "AUSENTE"},
 				example = "RESERVADO")
 		String estado,
@@ -77,9 +79,10 @@ public record TurnoResponse(
 		Instant reprogramadoEn,
 
 		@Schema(
-				description = "Hora REAL de llegada del paciente al centro, puesta por el servidor "
-						+ "(M13). Ausente mientras no llego, y se vacia si se deshace el check-in: un "
-						+ "check-in deshecho no dejo una llegada, dejo un error corregido.",
+				description = "**Deprecado desde 0.63.0.** La llegada es de la Recepcion (DP-16): "
+						+ "leerla de `TurnoDelDia.recepcion`. Solo lo completa el `POST "
+						+ "/{turnoId}/llegada` deprecado; en cualquier otra respuesta viaja ausente.",
+				deprecated = true,
 				example = "2026-09-15T11:52:00Z")
 		Instant llegadaEn,
 
