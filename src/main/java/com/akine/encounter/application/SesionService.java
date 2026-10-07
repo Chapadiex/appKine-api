@@ -618,7 +618,9 @@ public class SesionService {
 				cerradaPorCuentaId,
 				precio.map(PrecioDeOferta::precioBase).orElse(null),
 				precio.map(PrecioDeOferta::moneda).orElse(null),
-				practicas);
+				practicas,
+				// AKINE C-4: el consumo no gasta autorizaciones atadas a otro caso (RF-M17-007).
+				sesion.getCasoId());
 
 		observadores.forEach(observador -> observador.alCerrar(aviso));
 	}

@@ -6,6 +6,8 @@ import com.akine.person.spi.ConsumoPorSesion;
 import com.akine.person.spi.ResultadoDeConsumo;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 /**
  * Publica el consumo de autorizaciones hacia los demas modulos (RF-M17-004).
  *
@@ -27,7 +29,7 @@ public class PersonConsumoDeAutorizaciones implements ConsumoDeAutorizaciones {
 	}
 
 	@Override
-	public ResultadoDeConsumo consumirPorSesion(ConsumoPorSesion hecho) {
+	public List<ResultadoDeConsumo> consumirPorSesion(ConsumoPorSesion hecho) {
 		return consumo.consumirPorSesion(hecho);
 	}
 }

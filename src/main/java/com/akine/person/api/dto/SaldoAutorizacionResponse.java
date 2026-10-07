@@ -73,7 +73,14 @@ public record SaldoAutorizacionResponse(
 		Long diasParaVencer,
 
 		@Schema(description = "Cuantos hechos hay en el ledger", example = "5")
-		int movimientos) {
+		int movimientos,
+
+		@Schema(
+				description = "Alertas 'consumo a revisar' PENDIENTES: consumos de sesiones cuya "
+						+ "obligacion se anulo (DP-13). No mueven el saldo; se resuelven revirtiendo "
+						+ "el consumo. El detalle esta en GET /alertas",
+				example = "0")
+		int consumosARevisar) {
 
 	public static SaldoAutorizacionResponse de(SaldoDeAutorizacionView view) {
 		return new SaldoAutorizacionResponse(
@@ -91,6 +98,7 @@ public record SaldoAutorizacionResponse(
 				view.agotada(),
 				view.habilita(),
 				view.diasParaVencer(),
-				view.movimientos());
+				view.movimientos(),
+				view.consumosARevisar());
 	}
 }

@@ -2,7 +2,11 @@ package com.akine.person.application;
 
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.Autorizacion;
+import com.akine.person.domain.AutorizacionAlerta;
 import com.akine.person.domain.AutorizacionMovimiento;
+import com.akine.person.domain.CoberturaPaciente;
+import com.akine.person.domain.ResolucionAlertaAutorizacion;
+import com.akine.person.domain.TipoAlertaAutorizacion;
 import com.akine.person.domain.TipoMovimientoAutorizacion;
 import com.akine.person.domain.TipoOrigenMovimiento;
 import com.akine.person.domain.exception.AutorizacionNotAccessibleException;
@@ -11,9 +15,12 @@ import com.akine.person.domain.exception.MovimientoNotAccessibleException;
 import com.akine.person.domain.exception.MovimientoYaRevertidoException;
 import com.akine.person.domain.exception.PersonaNotAccessibleException;
 import com.akine.person.domain.exception.ReversionSinMotivoException;
+import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionAlertaRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionMovimientoRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionRepositoryPort;
+import com.akine.person.domain.port.PersonRepositoryPorts.CoberturaPacienteRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.PersonaRepositoryPort;
+import com.akine.person.spi.ConsumoARevisar;
 import com.akine.person.spi.ConsumoPorSesion;
 import com.akine.person.spi.ResultadoDeConsumo;
 import com.akine.platform.spi.audit.AuditEntry;
@@ -25,10 +32,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /**
  * Mueve el saldo de las autorizaciones: consumo, reversion y las consultas que los explican (M17,
@@ -113,19 +127,26 @@ public class ConsumoDeAutorizacionService {
 	private final PersonaRepositoryPort personas;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final CoberturaPacienteRepositoryPort coberturas;
+	private final AutorizacionAlertaRepositoryPort alertas;
 
+	@SuppressWarnings("java:S107")
 	public ConsumoDeAutorizacionService(
 			AutorizacionRepositoryPort autorizaciones,
 			AutorizacionMovimientoRepositoryPort movimientos,
 			PersonaRepositoryPort personas,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			CoberturaPacienteRepositoryPort coberturas,
+			AutorizacionAlertaRepositoryPort alertas) {
 
 		this.autorizaciones = autorizaciones;
 		this.movimientos = movimientos;
 		this.personas = personas;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.coberturas = coberturas;
+		this.alertas = alertas;
 	}
 
 	// =================================================================================
@@ -148,11 +169,45 @@ public class ConsumoDeAutorizacionService {
 	 * saldo tienen que caer o sobrevivir junto con la sesion que los produjo.
 	 */
 	@Transactional
-	public ResultadoDeConsumo consumirPorSesion(ConsumoPorSesion hecho) {
+	public List<ResultadoDeConsumo> consumirPorSesion(ConsumoPorSesion hecho) {
+		long organizationId = hecho.organizationId();
 		LocalDate fecha = hecho.fecha() == null ? LocalDate.now() : hecho.fecha();
+		int cantidad = hecho.cantidad() <= 0 ? 1 : hecho.cantidad();
+
+		// IDEMPOTENCIA POR SESION (AKINE C-4). Lo que esta sesion ya dejo en el ledger, en
+		// CUALQUIER autorizacion. El unique de V50 ya impide consumir dos veces la MISMA
+		// autorizacion, pero no alcanza: la que el primer disparo dejo agotada ya no habilita, y
+		// sin esto el re-disparo elegiria OTRA autorizacion de la misma practica y descontaria de
+		// nuevo. Ver docs/diseno/AKINE-C-4-consumo.md §2.3.
+		Map<Long, AutorizacionMovimiento> yaConsumidas = new TreeMap<>();
+		movimientos.listarDeOrigen(organizationId, TipoOrigenMovimiento.SESION, hecho.sesionId())
+				.stream()
+				.filter(movimiento -> movimiento.getTipo() == TipoMovimientoAutorizacion.CONSUMO)
+				.forEach(movimiento ->
+						yaConsumidas.putIfAbsent(movimiento.getAutorizacionId(), movimiento));
+
+		List<ResultadoDeConsumo> resultados = new ArrayList<>();
+		Set<Long> practicasYaCubiertas = new HashSet<>();
+		yaConsumidas.forEach((autorizacionId, previo) -> {
+			Optional<Autorizacion> consumida =
+					autorizaciones.findByIdAndOrganizationId(autorizacionId, organizationId);
+			consumida.map(Autorizacion::getPracticaId).ifPresent(practicasYaCubiertas::add);
+			resultados.add(ResultadoDeConsumo.yaConsumida(
+					autorizacionId, previo.getId(), consumida.map(Autorizacion::saldo).orElse(null)));
+		});
+
+		boolean sinPracticas = hecho.practicasRealizadas().isEmpty();
+		Set<Long> practicasPendientes = new HashSet<>(hecho.practicasRealizadas());
+		practicasPendientes.removeAll(practicasYaCubiertas);
+		if (!yaConsumidas.isEmpty() && (sinPracticas || practicasPendientes.isEmpty())) {
+			// Sin practicas la sesion consume una sola unidad (04.05), y ya la consumio. Con
+			// practicas, todas quedaron cubiertas por lo que ya esta en el ledger.
+			return resultados;
+		}
 
 		List<Autorizacion> habilitadas = autorizaciones
-				.aprobadasDePersona(hecho.organizationId(), hecho.personaId()).stream()
+				.aprobadasDePersona(organizationId, hecho.personaId()).stream()
+				.filter(autorizacion -> !yaConsumidas.containsKey(autorizacion.getId()))
 				.filter(autorizacion -> autorizacion.habilitaEl(fecha))
 				.toList();
 
@@ -161,30 +216,94 @@ public class ConsumoDeAutorizacionService {
 			// social no exige autorizacion previa, cierra todas sus sesiones asi.
 			log.debug("Cierre sin autorizacion elegible: sesionId={} personaId={}",
 					hecho.sesionId(), hecho.personaId());
-			return ResultadoDeConsumo.sinAutorizacionElegible();
+			return conDesenlace(resultados, ResultadoDeConsumo.sinAutorizacionElegible());
 		}
 
-		// AKINE-06.04. Se elige la que vence antes DENTRO de las que cubren una practica que
-		// realmente se aplico: es la que hay que gastar primero, porque es la que se pierde
-		// antes. La consulta ya viene en ese orden.
-		Optional<Autorizacion> elegida = habilitadas.stream()
-				.filter(autorizacion -> cubreAlgunaPracticaRealizada(autorizacion, hecho))
-				.findFirst();
+		// AKINE C-4. La cobertura bajo la que se otorgo tiene que estar vigente el dia de la
+		// atencion (RF-M17-004, "vigencia de referencias"): dada de baja, vencida o todavia no
+		// empezada, la autorizacion no se gasta. Mismo criterio que la cobertura aplicable de B-2.
+		Set<Long> coberturasVigentes = coberturas
+				.activasDe(organizationId, hecho.personaId()).stream()
+				.filter(cobertura -> cobertura.vigenteEl(fecha))
+				.map(CoberturaPaciente::getId)
+				.collect(Collectors.toSet());
+		List<Autorizacion> conCobertura = habilitadas.stream()
+				.filter(autorizacion -> coberturasVigentes.contains(autorizacion.getCoberturaId()))
+				.toList();
+		if (conCobertura.isEmpty()) {
+			log.info("Cierre sin cobertura vigente para las autorizaciones del paciente: "
+							+ "sesionId={} personaId={} habilitadas={}. NO se consume",
+					hecho.sesionId(), hecho.personaId(), habilitadas.size());
+			return conDesenlace(resultados, ResultadoDeConsumo.sinCoberturaVigente());
+		}
 
-		if (elegida.isEmpty()) {
+		// AKINE C-4. RF-M17-007: no reutilizar la autorizacion de otro Caso. Quien sabe que
+		// autorizacion esta atada a que caso es clinical; el observador del cierre ya lo pregunto.
+		List<Autorizacion> candidatas = conCobertura.stream()
+				.filter(autorizacion ->
+						!hecho.autorizacionesDeOtroCaso().contains(autorizacion.getId()))
+				.toList();
+		if (candidatas.isEmpty()) {
+			log.info("Cierre con autorizaciones de otro caso: sesionId={} personaId={} "
+							+ "excluidas={}. NO se consume",
+					hecho.sesionId(), hecho.personaId(), hecho.autorizacionesDeOtroCaso());
+			return conDesenlace(resultados, ResultadoDeConsumo.autorizacionDeOtroCaso());
+		}
+
+		Collection<Autorizacion> involucradas = sinPracticas
+				// Sin practicas registradas se conserva 04.05: una unidad, en la que vence antes.
+				// Vacio es "no se sabe", no "ninguna": ver ConsumoPorSesion.
+				? List.of(candidatas.get(0))
+				: involucradasPorPractica(candidatas, practicasPendientes);
+
+		if (involucradas.isEmpty()) {
 			// Hay saldo vigente y NINGUNA autorizacion es de una practica que se aplico. NO se
-			// consume: ver ResultadoDeConsumo.SIN_AUTORIZACION_PARA_LA_PRACTICA. El cierre
-			// clinico sigue sin bloquearse.
+			// consume: ver ResultadoDeConsumo.SIN_AUTORIZACION_PARA_LA_PRACTICA.
 			log.info("Cierre sin autorizacion para las practicas realizadas: sesionId={} "
 							+ "personaId={} practicas={} vigentes={}. NO se consume: gastar otra "
 							+ "practica le come al paciente unidades que si necesita y le declara "
 							+ "al financiador algo que no se presto",
-					hecho.sesionId(), hecho.personaId(), hecho.practicasRealizadas(),
-					habilitadas.size());
-			return ResultadoDeConsumo.sinAutorizacionParaLaPractica();
+					hecho.sesionId(), hecho.personaId(), practicasPendientes, candidatas.size());
+			return conDesenlace(resultados, ResultadoDeConsumo.sinAutorizacionParaLaPractica());
 		}
 
-		Autorizacion autorizacion = elegida.get();
+		// DP-12: UNA unidad por autorizacion involucrada, en orden de id. El orden importa: dos
+		// cierres concurrentes que tocan las mismas dos autorizaciones toman los locks de fila del
+		// UPDATE en el mismo orden y no se bloquean en cruz.
+		for (Autorizacion autorizacion : involucradas) {
+			resultados.add(consumirUna(hecho, autorizacion, cantidad));
+		}
+		resultados.sort(Comparator.comparing(ResultadoDeConsumo::autorizacionId));
+		return resultados;
+	}
+
+	/**
+	 * DP-12. Cada practica pendiente va a la PRIMERA candidata que la cubre —la que vence antes,
+	 * porque es la que se pierde antes— y se agrupan por autorizacion: dos practicas bajo la misma
+	 * autorizacion son una sola unidad.
+	 */
+	private static Collection<Autorizacion> involucradasPorPractica(
+			List<Autorizacion> candidatas, Set<Long> practicas) {
+
+		Map<Long, Autorizacion> porId = new TreeMap<>();
+		for (Long practica : practicas) {
+			candidatas.stream()
+					.filter(autorizacion -> practica.equals(autorizacion.getPracticaId()))
+					.findFirst()
+					.ifPresent(autorizacion -> porId.putIfAbsent(autorizacion.getId(), autorizacion));
+		}
+		return porId.values();
+	}
+
+	/** Si ya hubo consumos previos de la sesion, ellos son el resultado; si no, el desenlace. */
+	private static List<ResultadoDeConsumo> conDesenlace(
+			List<ResultadoDeConsumo> resultados, ResultadoDeConsumo desenlace) {
+		return resultados.isEmpty() ? List.of(desenlace) : resultados;
+	}
+
+	/** Descuenta una autorizacion para la sesion. Es el consumo de 04.05, ahora por grupo. */
+	private ResultadoDeConsumo consumirUna(
+			ConsumoPorSesion hecho, Autorizacion autorizacion, int cantidad) {
 
 		// IDEMPOTENCIA. Ver la cabecera: se consulta antes, no se atrapa el choque despues.
 		Optional<AutorizacionMovimiento> yaRegistrado = movimientos.buscarPorOrigen(
@@ -195,12 +314,9 @@ public class ConsumoDeAutorizacionService {
 				hecho.sesionId());
 
 		if (yaRegistrado.isPresent()) {
-			AutorizacionMovimiento previo = yaRegistrado.get();
 			return ResultadoDeConsumo.yaConsumida(
-					autorizacion.getId(), previo.getId(), autorizacion.saldo());
+					autorizacion.getId(), yaRegistrado.get().getId(), autorizacion.saldo());
 		}
-
-		int cantidad = hecho.cantidad() <= 0 ? 1 : hecho.cantidad();
 
 		// LA BASE DECIDE. Cero filas es "no hay saldo".
 		int filas = autorizaciones.descontarSaldo(
@@ -247,6 +363,86 @@ public class ConsumoDeAutorizacionService {
 
 		return ResultadoDeConsumo.consumida(
 				autorizacion.getId(), movimiento.getId(), saldoRestante);
+	}
+
+	// =================================================================================
+	// DP-13. La deuda se anulo: el consumo queda para revisar, el saldo no se toca.
+	// =================================================================================
+
+	/**
+	 * Alerta "consumo a revisar" sobre cada consumo vivo de la sesion cuya obligacion se anulo
+	 * (DP-13, RN-M17-003).
+	 *
+	 * <p><b>No mueve el saldo ni el ledger.</b> Anular la deuda no prueba que la prestacion no
+	 * ocurrio. Un consumo que ya se revirtio no se alerta: no queda nada que revisar.
+	 *
+	 * <p>Sin permiso evaluado, por el mismo motivo que el consumo: no lo dispara una persona sobre
+	 * una autorizacion sino un hecho de {@code billing}, que ya exigio el suyo para anular. La
+	 * transaccion es la de la anulacion.
+	 */
+	@Transactional
+	public int consumoARevisar(ConsumoARevisar hecho) {
+		long organizationId = hecho.organizationId();
+		List<AutorizacionMovimiento> delOrigen = movimientos.listarDeOrigen(
+				organizationId, TipoOrigenMovimiento.SESION, hecho.sesionId());
+
+		Set<Long> revertidos = delOrigen.stream()
+				.filter(movimiento -> movimiento.getTipo() == TipoMovimientoAutorizacion.REVERSION)
+				.map(AutorizacionMovimiento::getMovimientoOrigenId)
+				.collect(Collectors.toSet());
+		List<AutorizacionMovimiento> vivos = delOrigen.stream()
+				.filter(movimiento -> movimiento.getTipo() == TipoMovimientoAutorizacion.CONSUMO)
+				.filter(movimiento -> !revertidos.contains(movimiento.getId()))
+				.toList();
+
+		String motivo = recortar(hecho.motivo());
+		Instant ahora = hecho.ocurrioEn() == null ? Instant.now() : hecho.ocurrioEn();
+		for (AutorizacionMovimiento consumo : vivos) {
+			alertas.registrarSiFalta(
+					organizationId,
+					consumo.getAutorizacionId(),
+					consumo.getPersonaId(),
+					consumo.getId(),
+					TipoAlertaAutorizacion.CONSUMO_A_REVISAR.name(),
+					hecho.sesionId(),
+					hecho.obligacionId(),
+					motivo,
+					ahora,
+					hecho.actorCuentaId());
+
+			auditTrail.record(new AuditEntry(
+					organizationId,
+					consumo.getConsultorioId(),
+					hecho.actorCuentaId(),
+					AuditEvents.AUTORIZACION_CONSUMO_A_REVISAR,
+					AuditEvents.ENTITY_AUTORIZACION,
+					consumo.getAutorizacionId(),
+					null,
+					null,
+					new LinkedHashMap<>(Map.of(
+							"movimientoId", String.valueOf(consumo.getId()),
+							"sesionId", String.valueOf(hecho.sesionId()),
+							"obligacionId", String.valueOf(hecho.obligacionId()))),
+					motivo,
+					AuditEvents.correlationId(),
+					ahora));
+
+			log.info("Consumo a revisar por anulacion de la deuda: autorizacionId={} "
+							+ "movimientoId={} sesionId={} obligacionId={}. El saldo NO se toca",
+					consumo.getAutorizacionId(), consumo.getId(), hecho.sesionId(),
+					hecho.obligacionId());
+		}
+		return vivos.size();
+	}
+
+	private static String recortar(String motivo) {
+		if (motivo == null || motivo.isBlank()) {
+			return null;
+		}
+		String limpio = motivo.strip();
+		return limpio.length() > AutorizacionMovimiento.MOTIVO_MAXIMO
+				? limpio.substring(0, AutorizacionMovimiento.MOTIVO_MAXIMO)
+				: limpio;
 	}
 
 	// =================================================================================
@@ -343,6 +539,12 @@ public class ConsumoDeAutorizacionService {
 						"reversionId", String.valueOf(reversion.getId()),
 						"cantidad", String.valueOf(consumo.getCantidad())));
 
+		// DP-13. Revertir es lo que resuelve la alerta "consumo a revisar" que la anulacion de la
+		// deuda pudo haber dejado sobre este consumo. Misma transaccion: o las dos cosas o ninguna.
+		alertas.resolverDelMovimiento(organizationId, consumo.getId(),
+				ResolucionAlertaAutorizacion.REVERTIDO.name(), reversion.getOcurrioEn(),
+				actor.accountId());
+
 		log.info("Consumo revertido: autorizacionId={} movimientoId={} reversionId={}",
 				autorizacionId, consumo.getId(), reversion.getId());
 
@@ -369,10 +571,32 @@ public class ConsumoDeAutorizacionService {
 				actor, "Consultar el saldo de una autorizacion");
 
 		Autorizacion autorizacion = cargar(organizationId, autorizacionId);
+		int consumosARevisar = (int) alertas.listarDeAutorizacion(organizationId, autorizacionId)
+				.stream()
+				.filter(AutorizacionAlerta::pendiente)
+				.count();
 		return SaldoDeAutorizacionView.de(
 				autorizacion,
 				movimientos.listarDeAutorizacion(organizationId, autorizacionId),
-				fecha == null ? LocalDate.now() : fecha);
+				fecha == null ? LocalDate.now() : fecha,
+				consumosARevisar);
+	}
+
+	/**
+	 * Las alertas de una autorizacion, de la mas vieja a la mas nueva (DP-13, RN-M17-003).
+	 *
+	 * <p>Por pertenencia, como el saldo y el ledger: quien atiende necesita saber que hay un
+	 * consumo en duda antes de gastar otro.
+	 */
+	@Transactional(readOnly = true)
+	public List<AlertaDeAutorizacionView> alertas(OperatingActor actor, long autorizacionId) {
+		long organizationId = AutorizacionDePadron.exigirContexto(
+				actor, "Consultar las alertas de una autorizacion");
+
+		cargar(organizationId, autorizacionId);
+		return alertas.listarDeAutorizacion(organizationId, autorizacionId).stream()
+				.map(AlertaDeAutorizacionView::de)
+				.toList();
 	}
 
 	/** El ledger de una autorizacion, del hecho mas viejo al mas nuevo (RF-M17-004). */

@@ -1,5 +1,7 @@
 package com.akine.person.spi;
 
+import java.util.List;
+
 /**
  * Lo que {@code person} ofrece a otros modulos para descontar unidades autorizadas (RF-M17-004).
  *
@@ -38,12 +40,19 @@ public interface ConsumoDeAutorizaciones {
 	/**
 	 * Descuenta las unidades que corresponden a una sesion cerrada, si hay de donde.
 	 *
-	 * <p><b>Idempotente por el hecho de origen.</b> Llamarlo dos veces con el mismo
-	 * {@code sesionId} descuenta una sola vez: lo garantiza el unique
-	 * {@code uk_autorizacion_movimiento_origen} de {@code V50}, y el segundo intento devuelve
-	 * {@link ResultadoDeConsumo#YA_CONSUMIDA} con el movimiento que ya existia.
+	 * <p><b>DP-12 (AKINE C-4): una unidad en CADA autorizacion involucrada.</b> Las practicas
+	 * realizadas se agrupan por la autorizacion que las cubre y se descuenta una unidad por grupo;
+	 * varias practicas bajo la misma autorizacion son una unidad. Sin practicas registradas se
+	 * conserva el comportamiento de 04.05: una unidad en la que vence antes.
 	 *
-	 * @return el desenlace. <b>Nunca lanza por falta de saldo ni por falta de autorizacion</b>
+	 * <p><b>Idempotente por (sesion, autorizacion).</b> Lo garantiza el unique
+	 * {@code uk_autorizacion_movimiento_origen} de {@code V50}; el reintento devuelve
+	 * {@link ResultadoDeConsumo#YA_CONSUMIDA} con el movimiento que ya existia, y las practicas que
+	 * ese consumo ya cubrio no se vuelven a imputar a otra autorizacion.
+	 *
+	 * @return un desenlace por autorizacion involucrada, en orden de id; o UN desenlace global sin
+	 *         autorizacion cuando no hubo ninguna. <b>Nunca vacia, y nunca lanza por falta de
+	 *         saldo ni por falta de autorizacion</b>
 	 */
-	ResultadoDeConsumo consumirPorSesion(ConsumoPorSesion hecho);
+	List<ResultadoDeConsumo> consumirPorSesion(ConsumoPorSesion hecho);
 }

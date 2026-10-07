@@ -71,4 +71,22 @@ public interface AutorizacionMovimientoRepository
 	List<AutorizacionMovimiento> listarDeAutorizacion(
 			@Param("organizationId") Long organizationId,
 			@Param("autorizacionId") Long autorizacionId);
+
+	/**
+	 * Lo que un hecho de origen dejo en el ledger, en todas las autorizaciones (AKINE C-4).
+	 *
+	 * <p>La resuelve {@code ix_movimiento_origen} de {@code V76}.
+	 */
+	@Override
+	@Query("""
+			SELECT m FROM AutorizacionMovimiento m
+			 WHERE m.organizationId = :organizationId
+			   AND m.tipoOrigen = :tipoOrigen
+			   AND m.referenciaOrigen = :referenciaOrigen
+			 ORDER BY m.ocurrioEn ASC, m.id ASC
+			""")
+	List<AutorizacionMovimiento> listarDeOrigen(
+			@Param("organizationId") Long organizationId,
+			@Param("tipoOrigen") TipoOrigenMovimiento tipoOrigen,
+			@Param("referenciaOrigen") Long referenciaOrigen);
 }

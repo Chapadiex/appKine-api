@@ -1,5 +1,6 @@
 package com.akine.encounter.infrastructure;
 
+import com.akine.clinical.spi.AutorizacionesDelCaso;
 import com.akine.encounter.spi.CierreDeSesionObserver;
 import com.akine.encounter.spi.SesionCerrada;
 import com.akine.organization.spi.ConsultorioDirectory;
@@ -15,6 +16,8 @@ import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Convierte el cierre de una atencion en el consumo de una unidad autorizada (RF-M17-004).
@@ -91,9 +94,9 @@ import java.time.ZoneOffset;
  *       corrido a no consumir nada.</li>
  * </ol>
  *
- * <p>La cantidad es <b>una unidad por sesion</b>. Una prestacion que valga dos es una
- * configuracion de oferta que M27 todavia no tiene, y inventarla aca seria decidirla por el
- * usuario.
+ * <p>La cantidad fue <b>una unidad por sesion</b> hasta C-4 (ver la seccion 5). Una prestacion
+ * que valga dos es una configuracion de oferta que M27 todavia no tiene, y inventarla aca seria
+ * decidirla por el usuario.
  *
  * <h2>4. AKINE-06.04: cual autorizacion se consume dejo de ser una loteria</h2>
  *
@@ -110,6 +113,19 @@ import java.time.ZoneOffset;
  *
  * <p><b>Y una sesion sin practicas registradas se comporta exactamente como antes.</b> Son todas
  * las anteriores a 06.04. Ver {@code person.spi.ConsumoPorSesion}.
+ *
+ * <h2>5. AKINE C-4: una unidad por AUTORIZACION involucrada (DP-12), y el caso</h2>
+ *
+ * <p>DP-12 resolvio la cantidad que 06.04 dejo en una por sesion: la sesion consume <b>una unidad
+ * en cada autorizacion involucrada</b>. Varias practicas bajo la misma autorizacion siguen siendo
+ * una unidad; practicas de dos autorizaciones distintas gastan una de cada una. El agrupamiento lo
+ * hace {@code person}, que es quien sabe que practica cubre cada autorizacion; esta clase solo
+ * pasa los hechos y recibe un desenlace por autorizacion.
+ *
+ * <p>Ademas pregunta a {@code clinical} que autorizaciones estan atadas a planes de <b>otro</b>
+ * caso del paciente (RF-M17-007, "no reutilizar autorizacion de otro Caso") y las excluye. Una
+ * sesion sin caso no excluye nada: excluir todo lo atado a algun caso apagaria el consumo de las
+ * sesiones viejas, que son casi todas. La arista {@code encounter -> clinical.spi} ya existia.
  */
 @Component
 public class ConsumoDeAutorizacionEnCierre implements CierreDeSesionObserver {
@@ -117,17 +133,24 @@ public class ConsumoDeAutorizacionEnCierre implements CierreDeSesionObserver {
 	private static final Logger log =
 			LoggerFactory.getLogger(ConsumoDeAutorizacionEnCierre.class);
 
-	/** Una sesion gasta una unidad. Ver la cabecera: mas de una es configuracion de M27. */
-	private static final int UNIDADES_POR_SESION = 1;
+	/**
+	 * Cada autorizacion involucrada gasta una unidad (DP-12). Mas de una por autorizacion seria una
+	 * configuracion de oferta que M27 todavia no tiene.
+	 */
+	private static final int UNIDADES_POR_AUTORIZACION = 1;
 
 	private final ConsumoDeAutorizaciones consumo;
 	private final ConsultorioDirectory consultorios;
+	private final AutorizacionesDelCaso autorizacionesDelCaso;
 
 	public ConsumoDeAutorizacionEnCierre(
-			ConsumoDeAutorizaciones consumo, ConsultorioDirectory consultorios) {
+			ConsumoDeAutorizaciones consumo,
+			ConsultorioDirectory consultorios,
+			AutorizacionesDelCaso autorizacionesDelCaso) {
 
 		this.consumo = consumo;
 		this.consultorios = consultorios;
+		this.autorizacionesDelCaso = autorizacionesDelCaso;
 	}
 
 	/**
@@ -150,29 +173,37 @@ public class ConsumoDeAutorizacionEnCierre implements CierreDeSesionObserver {
 			return;
 		}
 
-		ResultadoDeConsumo resultado = consumo.consumirPorSesion(new ConsumoPorSesion(
+		Set<Long> deOtroCaso = cierre.casoId() == null
+				? Set.of()
+				: autorizacionesDelCaso.deOtrosCasos(cierre.organizationId(), cierre.casoId());
+
+		List<ResultadoDeConsumo> resultados = consumo.consumirPorSesion(new ConsumoPorSesion(
 				cierre.organizationId(),
 				cierre.personaId(),
 				cierre.consultorioId(),
 				cierre.sesionId(),
 				diaLocalDeLaSede(cierre),
-				UNIDADES_POR_SESION,
+				UNIDADES_POR_AUTORIZACION,
 				cierre.cerradaPorCuentaId(),
 				// AKINE-06.04: acota contra que autorizaciones se puede imputar. Vacio conserva
 				// el comportamiento anterior — ver ConsumoPorSesion.
-				cierre.practicasRealizadas()));
+				cierre.practicasRealizadas(),
+				deOtroCaso));
 
-		if (resultado.descontoEfectivo()) {
-			log.info("Autorizacion consumida al cerrar: sesionId={} autorizacionId={} "
-							+ "saldoRestante={}",
-					cierre.sesionId(), resultado.autorizacionId(), resultado.saldoRestante());
-			return;
+		for (ResultadoDeConsumo resultado : resultados) {
+			if (resultado.descontoEfectivo()) {
+				log.info("Autorizacion consumida al cerrar: sesionId={} autorizacionId={} "
+								+ "saldoRestante={}",
+						cierre.sesionId(), resultado.autorizacionId(), resultado.saldoRestante());
+			} else {
+				// El resto de los desenlaces NO son errores y no interrumpen nada.
+				// SIN_AUTORIZACION_ELEGIBLE es ademas el caso mas frecuente: todo paciente
+				// particular cierra asi.
+				log.debug("Cierre sin consumo de autorizacion: sesionId={} autorizacionId={} "
+								+ "desenlace={}",
+						cierre.sesionId(), resultado.autorizacionId(), resultado.desenlace());
+			}
 		}
-
-		// El resto de los desenlaces NO son errores y no interrumpen nada. SIN_AUTORIZACION_
-		// ELEGIBLE es ademas el caso mas frecuente: todo paciente particular cierra asi.
-		log.debug("Cierre sin consumo de autorizacion: sesionId={} desenlace={}",
-				cierre.sesionId(), resultado.desenlace());
 	}
 
 	/**

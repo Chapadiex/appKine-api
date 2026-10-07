@@ -1,5 +1,6 @@
 package com.akine.clinical.infrastructure;
 
+import com.akine.clinical.domain.AutorizacionVinculadaACaso;
 import com.akine.clinical.domain.PlanItem;
 import com.akine.clinical.domain.port.PlanRepositoryPorts.PlanItemRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -70,4 +71,29 @@ public interface PlanItemRepository
 	void borrarDeVersionEnBorrador(
 			@Param("organizationId") Long organizationId,
 			@Param("planTratamientoVersionId") Long planTratamientoVersionId);
+
+	/**
+	 * Autorizaciones atadas a items de planes de la historia, con su caso (AKINE C-4).
+	 *
+	 * <p>Joins por id porque las entidades del plan no se mapean con asociaciones; las cuatro
+	 * filas filtran por la misma organizacion.
+	 */
+	@Override
+	@Query("""
+			SELECT DISTINCT new com.akine.clinical.domain.AutorizacionVinculadaACaso(
+			       i.autorizacionId, p.casoClinicoId)
+			  FROM PlanItem i, PlanTratamientoVersion v, PlanTratamiento p, CasoClinico c
+			 WHERE i.organizationId = :organizationId
+			   AND i.autorizacionId IS NOT NULL
+			   AND v.organizationId = :organizationId
+			   AND v.id = i.planTratamientoVersionId
+			   AND p.organizationId = :organizationId
+			   AND p.id = v.planTratamientoId
+			   AND c.organizationId = :organizationId
+			   AND c.id = p.casoClinicoId
+			   AND c.historiaClinicaId = :historiaClinicaId
+			""")
+	List<AutorizacionVinculadaACaso> autorizacionesConCasoDeLaHistoria(
+			@Param("organizationId") Long organizationId,
+			@Param("historiaClinicaId") Long historiaClinicaId);
 }
