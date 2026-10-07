@@ -106,14 +106,14 @@ Ninguna se inventa en silencio: cada una sale como ADR o DP escrita (`AGENT.md` 
 | # | Decisión | Desbloquea | Urgencia |
 |---|---|---|---|
 | ~~**DU-1**~~ | ~~**Puente Oferta↔Práctica**~~ → **resuelta: DP-11**, tabla N:M `oferta_practica` con práctica principal (06/10/2026) | A-9 → B-3, C-4, F-4. **Ruta crítica de la economía** | **ola 0** |
-| **DU-2** | Bootstrap del `PLATFORM_ADMIN` de `V15` (toca ADR-0018) | A-4 → A-7, B-catálogo global | ola 0 |
-| **DU-3** | Alcance de `reporte:read` para `PROFESIONAL` (¿solo lo suyo?) | G-1 (arreglo rápido) | ola 0 |
+| ~~**DU-2**~~ | ~~Bootstrap del `PLATFORM_ADMIN`~~ → **resuelta: DP-14**, bootstrap por `AKINE_BOOTSTRAP_ADMIN_EMAIL` con enlace de activación (07/10/2026) | A-4 → A-7, B-catálogo global | ola 0 |
+| ~~**DU-3**~~ | ~~Alcance de `reporte:read`~~ → **resuelta: DP-15**, completo según la matriz, PROFESIONAL solo su actividad (07/10/2026) | G-1 (arreglo rápido) | ola 0 |
 | ~~**DU-4**~~ | ~~¿N tratamientos consumen N unidades o 1?~~ → **resuelta: DP-12**, una unidad por autorización involucrada (06/10/2026) | C-4, F-4 | ola 1 |
 | **DU-5** | Unificar `concurrent-modification` y `conflict` | G-5 (hallazgo alto 07.07); cambia respuestas de varios módulos | ola 1 |
 | **DU-6** | Alcance `OWN` / `paciente:read` (vínculo cuenta↔persona) | B-8, G-5; autoservicio de E | ola 1 |
 | ~~**DU-7**~~ | ~~Reversión del consumo: automática o manual~~ → **resuelta: DP-13**, manual con alerta al anular la deuda (06/10/2026) | C-4 | ola 1 |
 | **DU-8** | Historial de autorización: tabla propia o auditoría | B-4 | ola 1 |
-| **DU-9** | ¿La recepción tiene máquina de estados propia (DP-05) o se documenta el desvío? | E-4 | ola 1 |
+| ~~**DU-9**~~ | ~~¿Máquina de recepción propia?~~ → **resuelta: DP-16**, sí, como DP-05; `EN_ESPERA` sale del turno (07/10/2026) | E-4 | ola 1 |
 | **DU-10** | `egreso:manage` propio o `caja:operate`; adjunto binario del egreso (¿storage a `platform.spi`?) | F-5 | ola 2 |
 | **DU-11** | Parámetros obligatorios por práctica; ¿un observador que falla debe hacer fallar el cierre? | C-8 | ola 2 |
 | **DU-12** | ¿F9 espera al gate del MVP? (DP-07) y `clase:*` vs `turno:*` | F9 entera | después del gate |
