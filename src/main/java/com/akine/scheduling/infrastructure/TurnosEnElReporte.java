@@ -78,6 +78,15 @@ public class TurnosEnElReporte implements ReporteContributor {
 		return "turno:read";
 	}
 
+	/**
+	 * Sabe contar solo los turnos del profesional que pide el reporte (G-1, DP-15): son los que
+	 * tienen su membership en {@code profesional_membership_id}.
+	 */
+	@Override
+	public boolean filtraPorActividadPropia() {
+		return true;
+	}
+
 	@Override
 	public AporteDeReporte aportar(ConsultaDeReporte consulta) {
 		Map<EstadoTurnoClave, Long> porEstado = new EnumMap<>(EstadoTurnoClave.class);
@@ -91,7 +100,8 @@ public class TurnosEnElReporte implements ReporteContributor {
 		for (Object[] fila : turnos.contarPorDiaYEstadoEnElReporte(
 				consulta.organizationId(), consulta.consultorioId(),
 				consulta.desdeInstante(), consulta.hastaInstante(),
-				consulta.zona().getId(), consulta.limiteFilas())) {
+				consulta.zona().getId(), consulta.limiteFilas(),
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte())) {
 
 			String dia = String.valueOf(fila[0]);
 			String estado = String.valueOf(fila[1]);
@@ -107,7 +117,8 @@ public class TurnosEnElReporte implements ReporteContributor {
 
 		long reprogramados = turnos.contarReprogramadosEnElReporte(
 				consulta.organizationId(), consulta.consultorioId(),
-				consulta.desdeInstante(), consulta.hastaInstante());
+				consulta.desdeInstante(), consulta.hastaInstante(),
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
 
 		long cancelados = porEstado.get(EstadoTurnoClave.CANCELADO);
 		long ausentes = porEstado.get(EstadoTurnoClave.AUSENTE);

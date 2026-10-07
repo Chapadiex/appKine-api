@@ -136,7 +136,14 @@ public enum PermissionCode {
 	/** Operar Caja. F7. Sin asignacion base todavia: deniega. */
 	CAJA_OPERATE("caja:operate"),
 
-	/** Ver Reportes. F8. Sin asignacion base todavia: deniega. */
+	/**
+	 * Ver Reportes. F8.
+	 *
+	 * <p><b>Con asignacion base desde AKINE-G-1 (DP-15)</b>: ORG_ADMIN, CONSULTORIO_ADMIN y
+	 * ADMINISTRATIVO con el alcance de su membership, PROFESIONAL con
+	 * {@link PermissionScope#ACTIVIDAD_PROPIA} y PLATFORM_ADMIN con SOPORTE. Antes no lo tenia nadie
+	 * y los tres endpoints de {@code reporting} eran inalcanzables.
+	 */
 	REPORTE_READ("reporte:read"),
 
 	/**

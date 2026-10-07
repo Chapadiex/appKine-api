@@ -393,10 +393,13 @@ public class PermissionEvaluatorService implements PermissionEvaluator, Permissi
 		if (alcance.cubreLaOrganizacion()) {
 			return true;
 		}
-		if (alcance != PermissionScope.CONSULTORIO) {
+		if (alcance != PermissionScope.CONSULTORIO && alcance != PermissionScope.ACTIVIDAD_PROPIA) {
 			// OWN y CATALOGO no habilitan nada en Fase 1: sus acciones son de F3 en adelante.
 			return false;
 		}
+		// ACTIVIDAD_PROPIA (G-1, DP-15) cubre la sede igual que CONSULTORIO: la diferencia no es
+		// QUE sede alcanza sino QUE filas dentro de ella, y eso lo recorta quien lee el dato a
+		// partir del `grantedByScope` de la decision.
 		if (consultorioIdPedido == null) {
 			return false;
 		}

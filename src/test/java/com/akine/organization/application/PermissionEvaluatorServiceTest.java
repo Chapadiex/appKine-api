@@ -201,6 +201,38 @@ class PermissionEvaluatorServiceTest {
 			assertThat(decidir(PermissionCode.AUDITORIA_READ, CONSULTORIO_ID).grantedByScope())
 					.isEqualTo(PermissionScope.ORGANIZACION.name());
 		}
+
+		@Test
+		@DisplayName("ACTIVIDAD_PROPIA cubre la sede del profesional, la informa, y no otra sede")
+		void la_actividad_propia_cubre_su_sede_y_lo_dice() {
+			// G-1 (DP-15). El evaluador decide QUE sede alcanza; QUE filas las recorta quien lee el
+			// dato. Por eso lo que importa ademas del granted es el alcance que viaja.
+			sinRolDePlataforma();
+			memberships(Fixtures.membershipDeSede(CONSULTORIO_ID, RoleCode.PROFESIONAL));
+
+			PermissionDecision suSede = decidir(PermissionCode.REPORTE_READ, CONSULTORIO_ID);
+			assertThat(suSede.granted()).isTrue();
+			assertThat(suSede.grantedByScope()).isEqualTo(PermissionScope.ACTIVIDAD_PROPIA.name());
+			assertThat(suSede.limitadaAActividadPropia()).isTrue();
+
+			PermissionDecision otraSede = decidir(PermissionCode.REPORTE_READ, OTRO_CONSULTORIO_ID);
+			assertThat(otraSede.granted()).isFalse();
+			assertThat(otraSede.denial()).isEqualTo(DenialKind.NO_PERMISSION);
+
+			// Sin sede en la consulta no cubre nada, igual que CONSULTORIO.
+			assertThat(decidir(PermissionCode.REPORTE_READ, null).granted()).isFalse();
+		}
+
+		@Test
+		@DisplayName("El ADMINISTRATIVO tiene reporte:read de sede, sin recorte por actividad")
+		void el_administrativo_no_queda_limitado_a_su_actividad() {
+			sinRolDePlataforma();
+			memberships(Fixtures.membershipDeSede(CONSULTORIO_ID, RoleCode.ADMINISTRATIVO));
+
+			PermissionDecision decision = decidir(PermissionCode.REPORTE_READ, CONSULTORIO_ID);
+			assertThat(decision.granted()).isTrue();
+			assertThat(decision.limitadaAActividadPropia()).isFalse();
+		}
 	}
 
 	// =================================================================================
@@ -536,7 +568,9 @@ class PermissionEvaluatorServiceTest {
 							// `asistencia:manage` se suma en AKINE-08.03, con codigo propio:
 							// anotar a alguien y decir que vino son decisiones distintas, y un
 							// instructor podria marcarla sin poder inscribir ni dar de baja.
-							"asistencia:manage");
+							"asistencia:manage",
+							// AKINE-G-1 (DP-15): "Si" en Ver Reportes.
+							"reporte:read");
 		}
 
 		@Test
@@ -614,7 +648,10 @@ class PermissionEvaluatorServiceTest {
 							// dar de baja a quien avisa que no viene.
 							"inscripcion:read", "inscripcion:manage",
 							// AKINE-08.03: es quien toma lista.
-							"asistencia:manage");
+							"asistencia:manage",
+							// AKINE-G-1 (DP-15): aparece aunque sea ACTIVIDAD_PROPIA; el recorte
+							// lo hace el reporte, no la lista que oculta botones.
+							"reporte:read");
 		}
 	}
 

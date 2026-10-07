@@ -7,7 +7,7 @@
 
 | Etapa | Estado | % | Lo que falta, en una línea |
 |---|---|---|---|
-| 07.06 Reportes y tableros | DESVIADA | 30 | **Nadie tiene `reporte:read`**; sin dashboards |
+| 07.06 Reportes y tableros | DESVIADA | 30 | ~~Nadie tiene `reporte:read`~~ (G-1); sin dashboards |
 | 07.07 Hardening seguridad/privacidad/a11y | PARCIAL | 40 | Hallazgos altos sin cerrar; sin SAST/SCA/DAST |
 | 07.08 Rendimiento, concurrencia, observabilidad | NO IMPLEMENTADA | 5 | Todo; sin registro |
 | 07.09 Gate y release del MVP | NO IMPLEMENTADA | 5 | Todo |
@@ -16,9 +16,11 @@ Esta fase es **el gate** que DP-07 exige antes de abrir F9.
 
 ## Defectos
 
-- [ ] **Verificado:** `reporte:read` existe en `PermissionCode` y lo exige `ReporteService`, pero
+- [x] ~~**Verificado:** `reporte:read` existe en `PermissionCode` y lo exige `ReporteService`, pero
   **no está en `RolePermissions`** → los tres endpoints de `reporting` (catálogo, reporte, CSV) son
-  inalcanzables. Antes de otorgarlo, decidir el alcance del `PROFESIONAL` (¿ve solo lo suyo?).
+  inalcanzables. Antes de otorgarlo, decidir el alcance del `PROFESIONAL` (¿ve solo lo suyo?).~~ →
+  G-1 (DP-15): otorgado según la matriz; el `PROFESIONAL` ve solo su actividad (alcance
+  `ACTIVIDAD_PROPIA`), `PLATFORM_ADMIN` con soporte. `ReporteReadIT`; matriz §14.
 - [x] ~~**A verificar:** `sumarAnuladoEnElReporte` no filtra `deletedAt` → el indicador de anulados
   cuenta de más.~~ → G-2: verificado (contaba 4000 en vez de 1000) y corregido;
   `AnuladoEnElReporteIT`.
@@ -26,7 +28,7 @@ Esta fase es **el gate** que DP-07 exige antes de abrir F9.
 ## Faltantes
 
 ### 07.06 Reportes
-- [ ] Otorgar `reporte:read` (ver arriba).
+- [x] ~~Otorgar `reporte:read` (ver arriba).~~ → G-1.
 - [ ] Dashboards en el frontend.
 - [ ] Exports asíncronos.
 - [ ] Reconciliación y carga (escenarios 49–53).

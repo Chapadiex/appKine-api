@@ -148,7 +148,7 @@ Lo que cada rol tiene **implícito** para las acciones de F1. Todo lo que no fig
 |---|---|
 | Modelo de "acceso de soporte": duración, quién lo otorga, cómo se revoca | AKINE-01.03 (diseño) — implementación mínima en F1, completa en F8 hardening |
 | Flag organizacional "paciente puede ver su HC" (Propia autorizada) | F4 |
-| Catálogo definitivo de restricciones "Limitado" en reportes | F8 |
+| ~~Catálogo definitivo de restricciones "Limitado" en reportes~~ | F8 — **cerrado por AKINE-G-1** (DP-15), ver §14 |
 | Si `auditoria:read-clinica` requiere además relación asistencial (DP-03) | F4 |
 
 ---
@@ -590,3 +590,49 @@ exige solo tener contexto de organización activo.
 catálogo entero de financiadores de su organización. Es el mismo hueco que 12.3 dejó abierto en el
 padrón y tiene la misma causa de fondo — el alcance `OWN` no existe— así que se declara igual y no
 se tapa con un permiso que no cambiaría ningún comportamiento.
+
+---
+
+## 14. Enmiendas — AKINE-G-1 (`reporte:read`, DP-15)
+
+`reporte:read` estaba en §5 desde 00.03 con fase F8 y **no lo tenía ningún rol**: los tres
+endpoints de `reporting` (catálogo, reporte, CSV) respondían 403 a todo el mundo desde 07.06. La
+decisión del dueño del producto del **07/10/2026 (DP-15)** fue otorgarlo **completo según la fila
+"Ver Reportes" de §2**. No hay ningún código de permiso nuevo; sí un **alcance** nuevo.
+
+### 14.1 La fila "Ver Reportes", cableada
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `reporte:read` | **Soporte** | Org | Consultorio | **Actividad propia** | Consultorio | — |
+
+No es otorgable por grant: el grant hereda el alcance de la membership y se saltearía el recorte.
+
+Dentro de cada reporte, **cada sección sigue pidiendo el permiso de su fuente** (07.06): `turnos`
+pide `turno:read`, `sesiones` `sesion:register`, `casos` `hc:read`, `economia` y `financiadores`
+`cobro:register`. Una sección sin su permiso se omite y se declara en `omitidas`; no hay 403 sobre el
+tablero entero.
+
+### 14.2 Catálogo definitivo de restricciones "Limitado" en reportes (hueco de §8, cerrado)
+
+| Celda | Restricción de §4 | Cómo se hace cumplir |
+|---|---|---|
+| Ver Reportes — `ADMINISTRATIVO` | Solo operativos y de caja, sin contenido clínico | **Por el permiso de sección, sin alcance especial.** No tiene `hc:read` ni `sesion:register`: `sesiones` y `casos` se omiten y quedan declaradas. Ve turnos y economía de su sede |
+| Ver Reportes — `PROFESIONAL` | Solo reportes de su propia actividad | **Alcance `ACTIVIDAD_PROPIA`.** Turnos y sesiones cuyo `profesional_membership_id` es una de sus memberships; casos de cuyo equipo tratante forma o formó parte. Lo económico no le llega: no tiene `cobro:register`. Una sección que no sabe recortarse a la actividad propia **se omite y se declara** con `permisoRequerido = reporte:read` |
+
+### 14.3 `ACTIVIDAD_PROPIA` no es `OWN`
+
+La §3 traduce "Propio" a alcance `OWN`: las entidades **del propio paciente**, que dependen de un
+vínculo cuenta↔persona que no existe. La actividad **profesional** del actor es otra cosa y se
+resuelve por sus memberships, que sí existen. Reusar `OWN` habría atado el reporte del profesional
+a un hueco ajeno. El evaluador trata `ACTIVIDAD_PROPIA` como `CONSULTORIO` para decidir qué sede
+cubre y lo informa en `grantedByScope`; **las filas las recorta quien lee el dato**. Hoy lo usa
+únicamente `reporte:read`.
+
+### 14.4 `PLATFORM_ADMIN`: "Global" leído como Soporte
+
+Mismo criterio de §9.7, sin excepción: un reporte es una **lectura** de datos de un tenant —agenda,
+caja, actividad— y una lectura no deja por sí misma ninguna fila que diga quién la hizo. Sin
+`support_access` vigente da 403; con él, cada consulta del catálogo o de un reporte deja
+`SUPPORT_ACCESS_USED`. Lo que ve lo sigue recortando cada sección: turnos sí (`turno:read` es
+Soporte), lo clínico no (`hc:read` es Restringido) y lo económico tampoco (no tiene `cobro:register`).

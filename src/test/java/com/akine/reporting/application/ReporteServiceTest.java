@@ -1,6 +1,9 @@
 package com.akine.reporting.application;
 
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioMembershipSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
@@ -12,6 +15,7 @@ import com.akine.reporting.spi.AporteDeReporte;
 import com.akine.reporting.spi.ConsultaDeReporte;
 import com.akine.reporting.spi.ReporteCode;
 import com.akine.reporting.spi.ReporteContributor;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.security.access.AccessDeniedException;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -93,6 +98,20 @@ class ReporteServiceTest {
 
 	@Mock
 	private AuditTrail auditTrail;
+
+	@Mock
+	private ConsultorioMembershipDirectory memberships;
+
+	@Mock
+	private ReportingSupportAccessAuditor supportAccessAuditor;
+
+	@BeforeEach
+	void concedeDeSedePorDefecto() {
+		// El gate devuelve la decision, y la decision manda: su alcance decide si se recorta y su
+		// viaSupportAccess si se audita el soporte. Por defecto, la de un rol de sede comun.
+		given(permissionGuard.requirePermission(any()))
+				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
+	}
 
 	@Test
 	@DisplayName("sin reporte:read no se invoca ningun contribuyente")
@@ -202,9 +221,152 @@ class ReporteServiceTest {
 		verify(auditTrail).record(any(AuditEntry.class));
 	}
 
+	// =================================================================================
+	// Actividad propia y soporte (AKINE-G-1, DP-15)
+	// =================================================================================
+
+	@Test
+	@DisplayName("limitado a la actividad propia: la seccion que sabe recortar recibe las memberships")
+	void laActividadPropiaViajaEnLaConsulta() {
+		ContribuyenteDePrueba turnos = new ContribuyenteDePrueba(
+				"turnos", "turno:read", false, ReporteCode.OPERATIVO).recortable();
+		ReporteService servicio = servicioCon(List.of(turnos));
+
+		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(SEDE));
+		given(permissionGuard.requirePermission(any())).willReturn(
+				PermissionDecision.concedida(PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA, false));
+		given(memberships.findByAccount(ORG_ID, CUENTA_ID))
+				.willReturn(List.of(membership(71L), membership(72L)));
+		given(permissionEvaluator.effectivePermissions(CUENTA_ID, ORG_ID, SEDE_ID))
+				.willReturn(Set.of("reporte:read", "turno:read"));
+
+		ReporteView vista =
+				servicio.generar(ACTOR, SEDE_ID, ReporteCode.OPERATIVO, DESDE, HASTA);
+
+		assertThat(turnos.consultas).singleElement().satisfies(consulta -> {
+			assertThat(consulta.recortadaAActividadPropia()).isTrue();
+			assertThat(consulta.actividadPropiaDe()).containsExactlyInAnyOrder(71L, 72L);
+		});
+		// Y el reporte lo dice: sin esto el profesional lee "12 turnos" como los de la sede.
+		assertThat(vista.advertencias()).extracting(a -> a.codigo())
+				.contains(ReporteService.ADVERTENCIA_ACTIVIDAD_PROPIA);
+	}
+
+	@Test
+	@DisplayName("limitado a la actividad propia: la seccion que no sabe recortar se omite y se declara")
+	void laSeccionQueNoRecortaSeOmite() {
+		ContribuyenteDePrueba turnos = new ContribuyenteDePrueba(
+				"turnos", "turno:read", false, ReporteCode.OPERATIVO).recortable();
+		ContribuyenteDePrueba caja = new ContribuyenteDePrueba(
+				"caja", null, false, ReporteCode.OPERATIVO);
+		ReporteService servicio = servicioCon(List.of(turnos, caja));
+
+		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(SEDE));
+		given(permissionGuard.requirePermission(any())).willReturn(
+				PermissionDecision.concedida(PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA, false));
+		given(memberships.findByAccount(ORG_ID, CUENTA_ID)).willReturn(List.of(membership(71L)));
+		given(permissionEvaluator.effectivePermissions(CUENTA_ID, ORG_ID, SEDE_ID))
+				.willReturn(Set.of("reporte:read", "turno:read"));
+
+		ReporteView vista =
+				servicio.generar(ACTOR, SEDE_ID, ReporteCode.OPERATIVO, DESDE, HASTA);
+
+		assertThat(vista.secciones()).extracting(AporteDeReporte::seccion)
+				.containsExactly("turnos");
+		assertThat(vista.omitidas())
+				.extracting(ReporteView.SeccionOmitida::seccion,
+						ReporteView.SeccionOmitida::permisoRequerido)
+				.containsExactly(org.assertj.core.api.Assertions.tuple("caja", "reporte:read"));
+		// Lo que importa: no se calculo entera. Calcularla le mostraria la caja de todo el centro.
+		assertThat(caja.invocaciones).isZero();
+	}
+
+	@Test
+	@DisplayName("limitado sin ninguna membership: 403 y nadie calcula nada")
+	void elRecorteVacioNoEsUnReporteVacio() {
+		ContribuyenteDePrueba turnos = new ContribuyenteDePrueba(
+				"turnos", "turno:read", false, ReporteCode.OPERATIVO).recortable();
+		ReporteService servicio = servicioCon(List.of(turnos));
+
+		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(SEDE));
+		given(permissionGuard.requirePermission(any())).willReturn(
+				PermissionDecision.concedida(PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA, false));
+		given(memberships.findByAccount(ORG_ID, CUENTA_ID)).willReturn(List.of());
+
+		assertThatThrownBy(() ->
+				servicio.generar(ACTOR, SEDE_ID, ReporteCode.OPERATIVO, DESDE, HASTA))
+				.isInstanceOf(AccessDeniedException.class);
+		assertThat(turnos.invocaciones).isZero();
+	}
+
+	@Test
+	@DisplayName("sin recorte, ninguna seccion recibe memberships y no hay advertencia de alcance")
+	void sinRecorteLaConsultaEsDeLaSede() {
+		ContribuyenteDePrueba turnos = new ContribuyenteDePrueba(
+				"turnos", "turno:read", false, ReporteCode.OPERATIVO).recortable();
+		ReporteService servicio = servicioCon(List.of(turnos));
+
+		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(SEDE));
+		given(permissionEvaluator.effectivePermissions(CUENTA_ID, ORG_ID, SEDE_ID))
+				.willReturn(Set.of("reporte:read", "turno:read"));
+
+		ReporteView vista =
+				servicio.generar(ACTOR, SEDE_ID, ReporteCode.OPERATIVO, DESDE, HASTA);
+
+		assertThat(turnos.consultas).singleElement()
+				.satisfies(consulta -> assertThat(consulta.recortadaAActividadPropia()).isFalse());
+		assertThat(vista.advertencias()).isEmpty();
+		verify(memberships, never()).findByAccount(anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("concedido por soporte: el reporte y el catalogo dejan SUPPORT_ACCESS_USED")
+	void elUsoDeSoporteQuedaAuditado() {
+		ReporteService servicio = servicioCon(List.of());
+
+		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(SEDE));
+		given(permissionGuard.requirePermission(any()))
+				.willReturn(PermissionDecision.concedida("SOPORTE", true));
+		given(permissionEvaluator.effectivePermissions(CUENTA_ID, ORG_ID, SEDE_ID))
+				.willReturn(Set.of("reporte:read"));
+
+		servicio.generar(ACTOR, SEDE_ID, ReporteCode.OPERATIVO, DESDE, HASTA);
+		servicio.catalogo(ACTOR, SEDE_ID);
+
+		org.mockito.ArgumentCaptor<AuditEntry> filas =
+				org.mockito.ArgumentCaptor.forClass(AuditEntry.class);
+		verify(supportAccessAuditor, org.mockito.Mockito.times(2)).record(filas.capture());
+		assertThat(filas.getAllValues()).allSatisfy(fila -> {
+			assertThat(fila.eventType()).isEqualTo("SUPPORT_ACCESS_USED");
+			assertThat(fila.organizationId()).isEqualTo(ORG_ID);
+			assertThat(fila.details()).containsEntry("permiso", "reporte:read");
+		});
+	}
+
+	@Test
+	@DisplayName("sin soporte de por medio no se escribe ningun uso de soporte")
+	void sinSoporteNoSeAuditaSoporte() {
+		ReporteService servicio = servicioCon(List.of());
+
+		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(SEDE));
+		given(permissionEvaluator.effectivePermissions(CUENTA_ID, ORG_ID, SEDE_ID))
+				.willReturn(Set.of("reporte:read"));
+
+		servicio.generar(ACTOR, SEDE_ID, ReporteCode.OPERATIVO, DESDE, HASTA);
+		servicio.catalogo(ACTOR, SEDE_ID);
+
+		verify(supportAccessAuditor, never()).record(any());
+	}
+
+	private static ConsultorioMembershipSnapshot membership(long id) {
+		return new ConsultorioMembershipSnapshot(id, CUENTA_ID, ORG_ID, SEDE_ID, "PROFESIONAL",
+				"ACTIVA", Instant.parse("2025-01-01T00:00:00Z"), null, true, true);
+	}
+
 	private ReporteService servicioCon(List<ReporteContributor> contribuyentes) {
 		return new ReporteService(
-				consultorios, permissionGuard, permissionEvaluator, auditTrail, contribuyentes);
+				consultorios, memberships, permissionGuard, permissionEvaluator, auditTrail,
+				supportAccessAuditor, contribuyentes);
 	}
 
 	/**
@@ -224,6 +386,18 @@ class ReporteServiceTest {
 		private final List<ConsultaDeReporte> consultas = new ArrayList<>();
 
 		private int invocaciones;
+		private boolean recorta;
+
+		/** Declara que sabe recortarse a la actividad propia. */
+		private ContribuyenteDePrueba recortable() {
+			this.recorta = true;
+			return this;
+		}
+
+		@Override
+		public boolean filtraPorActividadPropia() {
+			return recorta;
+		}
 
 		private ContribuyenteDePrueba(
 				String seccion, String permiso, boolean clinica, ReporteCode... reportes) {

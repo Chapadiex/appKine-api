@@ -411,6 +411,26 @@ prestación). Manual sin alerta (depende de la memoria del operador).
 
 **Desbloquea:** C-4.
 
+## DP-15 — `reporte:read` según la matriz; el profesional ve solo su actividad (DU-3)
+
+**Estado:** RESUELTA el 07/10/2026 por el dueño del producto.
+
+**Contexto.** `reporte:read` existía en el catálogo y lo exigía `ReporteService`, pero ningún rol
+lo tenía: los tres endpoints de `reporting` eran inalcanzables. Faltaba decidir el alcance del
+`PROFESIONAL`, al que la matriz §2 le dice "Limitado".
+
+**Decisión.** Se otorga **completo según la fila "Ver Reportes" de la matriz**: `ORG_ADMIN` y
+`CONSULTORIO_ADMIN` todo lo de su alcance; `ADMINISTRATIVO` operativos y caja, sin lo clínico (lo
+recorta el permiso de cada sección); `PROFESIONAL` **solo su propia actividad** —turnos, sesiones y
+casos que atendió o le fueron asignados—; `PACIENTE` nada; `PLATFORM_ADMIN` "Global", aplicado con
+el criterio de las demás lecturas de plataforma (matriz §9.7: soporte vigente y auditado).
+
+**Implementación.** Paquete G-1: alcance `ACTIVIDAD_PROPIA` en el evaluador, recorte por membership
+en los tres contribuyentes, `PLATFORM_ADMIN` con `SOPORTE`. Diseño en
+`docs/diseno/AKINE-G-1-reporte-read.md`; enmienda en la matriz §14.
+
+**Desbloquea:** G-1, G-8.
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional

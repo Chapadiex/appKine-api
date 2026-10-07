@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -296,6 +297,11 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 	 *
 	 * <p>Agrupa por el <b>texto</b> de {@code estado} y no por un enum: un estado nuevo tiene que
 	 * seguir contando en vez de romper el reporte.
+	 *
+	 * <p><b>Actividad propia (G-1, DP-15).</b> Con {@code recortar} en verdadero cuenta solo los
+	 * turnos cuyo profesional es una de {@code memberships}: es el reporte "Limitado" del
+	 * {@code PROFESIONAL}. Un turno sin profesional —oferta que no lo requiere— no es actividad de
+	 * nadie y queda afuera. Es la MISMA consulta con un filtro mas, no una segunda formula.
 	 */
 	@Query(value = """
 			SELECT DATE(IFNULL(CONVERT_TZ(t.inicio, '+00:00', :zona), t.inicio)) AS dia,
@@ -307,6 +313,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.deleted_at IS NULL
 			   AND t.inicio >= :desde
 			   AND t.inicio < :hasta
+			   AND (:recortar = FALSE OR t.profesional_membership_id IN (:memberships))
 			 GROUP BY dia, t.estado
 			 ORDER BY dia, t.estado
 			 LIMIT :limite
@@ -317,7 +324,9 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta,
 			@Param("zona") String zona,
-			@Param("limite") int limite);
+			@Param("limite") int limite,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
 
 	/**
 	 * Turnos del periodo que fueron reprogramados alguna vez (RF-M23-002).
@@ -326,6 +335,8 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 	 * del propio turno, cae dentro del rango que {@code ix_turno_sede_dia} ya cubre, y contarla
 	 * desde el append-only pediria un indice nuevo sobre una tabla que crece sin techo para
 	 * responder exactamente lo mismo.
+	 *
+	 * <p>{@code recortar} y {@code memberships}: ver {@link #contarPorDiaYEstadoEnElReporte}.
 	 */
 	@Query("""
 			SELECT COUNT(t) FROM Turno t
@@ -335,10 +346,13 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.reprogramadoEn IS NOT NULL
 			   AND t.inicio >= :desde
 			   AND t.inicio < :hasta
+			   AND (:recortar = false OR t.profesionalMembershipId IN :memberships)
 			""")
 	long contarReprogramadosEnElReporte(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") Instant desde,
-			@Param("hasta") Instant hasta);
+			@Param("hasta") Instant hasta,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
 }

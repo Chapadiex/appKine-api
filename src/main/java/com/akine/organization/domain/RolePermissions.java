@@ -175,7 +175,15 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.CLASE_READ, PermissionScope.SOPORTE),
 				// `inscripcion:read` con SOPORTE en AKINE-08.02, y aca la razon deja de ser
 				// preventiva: esta lectura SI devuelve nombres y documentos de personas.
-				Map.entry(PermissionCode.INSCRIPCION_READ, PermissionScope.SOPORTE)));
+				Map.entry(PermissionCode.INSCRIPCION_READ, PermissionScope.SOPORTE),
+				// `reporte:read` con SOPORTE en AKINE-G-1 (DP-15). La matriz §2 le dice "Global" en
+				// Ver Reportes, y se lee con el mismo criterio de §9.7 que ya bajo a SOPORTE las
+				// otras lecturas de esta columna: un reporte es una lectura de datos de un tenant
+				// —su agenda, su caja, su actividad— y una lectura no deja por si misma ninguna
+				// fila que diga quien la hizo ni por que. Con soporte vigente, ReporteService
+				// escribe SUPPORT_ACCESS_USED. Lo que ve de cada seccion lo sigue recortando su
+				// permiso de fuente: con esta columna, turnos si; lo clinico y lo economico no.
+				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.SOPORTE)));
 
 		// ORG_ADMIN â "tenant:manage" NO esta: la matriz Â§4 acota su "Limitado" a editar su
 		// organizacion y ver su suscripcion, y deja el cambio de plan y la suspension para
@@ -231,7 +239,11 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.INSCRIPCION_MANAGE, PermissionScope.ORGANIZACION),
 				// AKINE-08.03. Tomar lista tiene codigo propio âun instructor podria marcarla sin
 				// poder anotar ni dar de baja a nadieâ pero el reparto base es el mismo.
-				Map.entry(PermissionCode.ASISTENCIA_MANAGE, PermissionScope.ORGANIZACION)));
+				Map.entry(PermissionCode.ASISTENCIA_MANAGE, PermissionScope.ORGANIZACION),
+				// AKINE-G-1 (DP-15). La matriz §2 le dice "Si" en Ver Reportes. Lo que ve de cada
+				// seccion lo decide el permiso de su fuente: sin hc:read ni sesion:register, lo
+				// clinico se omite y se declara en las secciones omitidas.
+				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.ORGANIZACION)));
 
 		// CONSULTORIO_ADMIN â todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
 		// `Map.ofEntries` y no `Map.of`: AKINE-07.03 sumo `caja:operate` y este mapa llego a once
@@ -261,7 +273,9 @@ public final class RolePermissions {
 				// sea de la ORGANIZACION no lo convierte en un permiso de organizacion â el
 				// alcance sigue siendo el de la membership con la que se decide, mismo criterio
 				// que `paciente:manage` sobre una Persona que tambien es de la organizacion.
-				Map.entry(PermissionCode.CONVENIO_MANAGE, PermissionScope.CONSULTORIO)));
+				Map.entry(PermissionCode.CONVENIO_MANAGE, PermissionScope.CONSULTORIO),
+				// AKINE-G-1 (DP-15). "Si" en Ver Reportes, con el alcance de su sede.
+				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.CONSULTORIO)));
 
 		// PROFESIONAL y ADMINISTRATIVO â ven la lista de colaboradores de su sede y, desde la
 		// aprobacion del 25/08/2026, el catalogo fisico de esa misma sede: sin `espacio:read` un
@@ -309,7 +323,13 @@ public final class RolePermissions {
 				// atencion. La matriz Â§2 le dice "Si" al PROFESIONAL en la fila Registrar Sesion, y
 				// "Segun rol clinico" al CONSULTORIO_ADMIN âo sea NO por defectoâ. A los demas les
 				// dice "No". Quien no atiende no registra atenciones.
-				Map.entry(PermissionCode.SESION_REGISTER, PermissionScope.CONSULTORIO)));
+				Map.entry(PermissionCode.SESION_REGISTER, PermissionScope.CONSULTORIO),
+				// AKINE-G-1 (DP-15). La matriz §2 le dice "Limitado" en Ver Reportes y la §4 define
+				// la restriccion: "solo reportes de su propia actividad". ACTIVIDAD_PROPIA cubre su
+				// sede como CONSULTORIO y le avisa a ReporteService que recorte turnos, sesiones y
+				// casos a lo que atendio o le fue asignado. Lo economico ni siquiera llega: no
+				// tiene cobro:register.
+				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.ACTIVIDAD_PROPIA)));
 		// Map.ofEntries y no Map.of desde AKINE-08.02: el segundo tiene un tope de diez pares y
 		// esta fila lo alcanzo. Mismo cambio que hizo 08.01 con el CONSULTORIO_ADMIN, y por el
 		// mismo motivo: no es semantica, es el unico constructor que admite el par once.
@@ -333,7 +353,13 @@ public final class RolePermissions {
 				// coherente: quien esta en el mostrador es quien abre la caja a la manana y la
 				// arquea a la noche. El PROFESIONAL no lo tiene —su celda dice "No"—, a diferencia
 				// de lo que pasa con turnos, donde si agenda a sus propios pacientes.
-				Map.entry(PermissionCode.CAJA_OPERATE, PermissionScope.CONSULTORIO)));
+				Map.entry(PermissionCode.CAJA_OPERATE, PermissionScope.CONSULTORIO),
+				// AKINE-G-1 (DP-15). "Limitado" en Ver Reportes, y la §4 lo define como "solo
+				// operativos y de caja, sin contenido clinico". Se cumple SIN un alcance especial:
+				// no tiene hc:read ni sesion:register, asi que las secciones clinicas se omiten por
+				// su permiso de fuente y quedan declaradas como omitidas. Darle ACTIVIDAD_PROPIA lo
+				// dejaria viendo solo los turnos que "atendio", que son cero.
+				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.CONSULTORIO)));
 
 		// PACIENTE â ninguna fila de la matriz Â§6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.

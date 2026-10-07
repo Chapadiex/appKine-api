@@ -1,7 +1,10 @@
 package com.akine.reporting.application;
 
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
@@ -32,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Los reportes del MVP (M23): RF-M23-001 a RF-M23-005.
@@ -59,8 +63,25 @@ import java.util.Set;
  *   <li>Exige {@code reporte:read}.</li>
  *   <li>Valida el periodo y lo proyecta a la zona <b>de la sede</b>.</li>
  *   <li>Recorta por permiso de seccion y <b>declara lo que omitio</b>.</li>
- *   <li>Audita cuando alguna seccion es clinica.</li>
+ *   <li>Recorta a la <b>actividad propia</b> cuando {@code reporte:read} se concedio "Limitado"
+ *       (AKINE-G-1, DP-15).</li>
+ *   <li>Audita cuando alguna seccion es clinica, y cada uso de un acceso de soporte.</li>
  * </ol>
+ *
+ * <h2>Los dos "Limitado" de la matriz, y por que se resuelven distinto</h2>
+ *
+ * <p>La matriz §2 le pone "Limitado" a dos celdas de Ver Reportes y la §4 define cada una:
+ *
+ * <ul>
+ *   <li><b>ADMINISTRATIVO</b> — "solo operativos y de caja, sin contenido clinico". No necesita
+ *       nada de esta clase: no tiene {@code hc:read} ni {@code sesion:register}, asi que las
+ *       secciones clinicas caen por el recorte por permiso de seccion y quedan declaradas.</li>
+ *   <li><b>PROFESIONAL</b> — "solo reportes de su propia actividad". Ese no lo resuelve ningun
+ *       permiso de seccion: tiene {@code turno:read} sobre la agenda de toda su sede. Lo resuelve el
+ *       alcance {@code ACTIVIDAD_PROPIA} de la decision: la consulta viaja con sus memberships y
+ *       cada seccion cuenta solo lo suyo. <b>Una seccion que no sabe recortar se omite</b>, nunca se
+ *       calcula entera.</li>
+ * </ul>
  */
 @Service
 public class ReporteService {
@@ -91,23 +112,39 @@ public class ReporteService {
 	private static final String ENTIDAD_REPORTE = "Reporte";
 	private static final String MDC_TRACE_ID = "traceId";
 
+	private static final String EVENTO_SOPORTE_USADO = "SUPPORT_ACCESS_USED";
+
+	/**
+	 * Lo que se declara en {@code omitidas} para una seccion que no sabe recortarse a la actividad
+	 * propia: le falta {@code reporte:read} sin limitar, con el alcance de la sede.
+	 */
+	static final String PERMISO_SIN_LIMITAR = PermissionCodes.REPORTE_READ;
+
+	static final String ADVERTENCIA_ACTIVIDAD_PROPIA = "alcance-actividad-propia";
+
 	private final ConsultorioDirectory consultorios;
+	private final ConsultorioMembershipDirectory memberships;
 	private final PermissionGuard permissionGuard;
 	private final PermissionEvaluator permissionEvaluator;
 	private final AuditTrail auditTrail;
+	private final ReportingSupportAccessAuditor supportAccessAuditor;
 	private final List<ReporteContributor> contribuyentes;
 
 	public ReporteService(
 			ConsultorioDirectory consultorios,
+			ConsultorioMembershipDirectory memberships,
 			PermissionGuard permissionGuard,
 			PermissionEvaluator permissionEvaluator,
 			AuditTrail auditTrail,
+			ReportingSupportAccessAuditor supportAccessAuditor,
 			List<ReporteContributor> contribuyentes) {
 
 		this.consultorios = consultorios;
+		this.memberships = memberships;
 		this.permissionGuard = permissionGuard;
 		this.permissionEvaluator = permissionEvaluator;
 		this.auditTrail = auditTrail;
+		this.supportAccessAuditor = supportAccessAuditor;
 		// Spring inyecta la lista vacia cuando no hay ninguna implementacion, que es un estado
 		// valido aunque hoy no ocurra: un reporte sin secciones sigue siendo una respuesta.
 		this.contribuyentes = List.copyOf(contribuyentes);
@@ -131,17 +168,18 @@ public class ReporteService {
 
 		// El gate del tablero va ANTES de validar el rango: un actor sin permiso no debe poder
 		// distinguir un rango bueno de uno malo, porque eso ya es informacion sobre el sistema.
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.REPORTE_READ,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
+		PermissionDecision decision = exigirReporteRead(actor, organizationId, consultorioId);
+		registrarSoporte(decision, actor, organizationId, consultorioId, "generar", reporte);
+
+		// El recorte se resuelve ANTES de construir la consulta y ANTES de invocar a nadie: una
+		// consulta limitada que saliera sin sus memberships seria el reporte de toda la sede.
+		Set<Long> actividadPropiaDe = decision.limitadaAActividadPropia()
+				? membershipsDelActor(actor, organizationId)
+				: null;
 
 		ZoneId zona = ZoneId.of(sede.timezone());
 		ConsultaDeReporte consulta = construirConsulta(
-				organizationId, consultorioId, desde, hasta, zona);
+				organizationId, consultorioId, desde, hasta, zona, actividadPropiaDe);
 
 		// Los permisos se resuelven UNA vez, no uno por seccion: con cinco secciones serian cinco
 		// resoluciones de memberships y grants para responder una sola pantalla.
@@ -162,6 +200,14 @@ public class ReporteService {
 				omitidas.add(new ReporteView.SeccionOmitida(contribuyente.seccion(), permiso));
 				continue;
 			}
+			if (consulta.recortadaAActividadPropia() && !contribuyente.filtraPorActividadPropia()) {
+				// No sabe contar solo lo del actor, asi que no cuenta nada. Calcularla entera le
+				// mostraria al profesional la actividad de todo el equipo; omitirla en silencio le
+				// haria leer "cero". Se declara, como cualquier otra omision.
+				omitidas.add(new ReporteView.SeccionOmitida(
+						contribuyente.seccion(), PERMISO_SIN_LIMITAR));
+				continue;
+			}
 			alcanzaDatosClinicos |= contribuyente.esClinica();
 
 			AporteDeReporte aporte = contribuyente.aportar(consulta);
@@ -170,6 +216,17 @@ public class ReporteService {
 			}
 			secciones.add(aporte);
 			advertencias.addAll(aporte.advertencias());
+		}
+
+		if (consulta.recortadaAActividadPropia()) {
+			// Sin esto el profesional lee "12 turnos" y entiende que son los de la sede. Va como
+			// advertencia y no como campo nuevo para no cambiar el contrato: la pantalla ya
+			// muestra las advertencias, y el CSV tambien.
+			advertencias.add(0, new AdvertenciaDeReporte(
+					null,
+					ADVERTENCIA_ACTIVIDAD_PROPIA,
+					"Reporte limitado a tu propia actividad: turnos, sesiones y casos que "
+							+ "atendiste o te fueron asignados. No incluye al resto del equipo."));
 		}
 
 		if (alcanzaDatosClinicos) {
@@ -197,13 +254,8 @@ public class ReporteService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.REPORTE_READ,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
+		PermissionDecision decision = exigirReporteRead(actor, organizationId, consultorioId);
+		registrarSoporte(decision, actor, organizationId, consultorioId, "catalogo", null);
 
 		Map<ReporteCode, List<SeccionDisponible>> catalogo = new LinkedHashMap<>();
 		for (ReporteCode reporte : ReporteCode.values()) {
@@ -241,6 +293,76 @@ public class ReporteService {
 	}
 
 	/**
+	 * Exige {@code reporte:read} con la sede como alcance y devuelve la decision.
+	 *
+	 * <p>La decision importa, no solo que no lance: su alcance dice si hay que recortar a la
+	 * actividad propia, y {@code viaSupportAccess} si hay que dejar {@code SUPPORT_ACCESS_USED}.
+	 */
+	private PermissionDecision exigirReporteRead(
+			OperatingActor actor, long organizationId, long consultorioId) {
+
+		return permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.REPORTE_READ,
+				organizationId,
+				consultorioId,
+				null,
+				Instant.now()));
+	}
+
+	/**
+	 * Las memberships de la cuenta en la organizacion: la "actividad propia" se cuenta contra
+	 * cualquiera de ellas.
+	 *
+	 * <p>No se filtra por vigencia ni por sede: lo atendido con una membership que despues se cerro
+	 * sigue siendo actividad del actor, y la sede ya la recorta cada consulta. Si no hay ninguna
+	 * —imposible si el evaluador acaba de conceder por una de ellas, salvo una revocacion en el
+	 * medio— se corta con 403: un recorte vacio no es "sin actividad", es un actor sin vinculo.
+	 */
+	private Set<Long> membershipsDelActor(OperatingActor actor, long organizationId) {
+		Set<Long> ids = memberships.findByAccount(organizationId, actor.accountId()).stream()
+				.map(ConsultorioMembershipSnapshot::membershipId)
+				.collect(Collectors.toUnmodifiableSet());
+		if (ids.isEmpty()) {
+			throw new AccessDeniedException(
+					"La cuenta no tiene un vinculo con la organizacion para limitar el reporte");
+		}
+		return ids;
+	}
+
+	/**
+	 * Deja {@code SUPPORT_ACCESS_USED} cuando {@code reporte:read} se concedio por un acceso de
+	 * soporte (matriz §7: cada operacion amparada, no solo el otorgamiento).
+	 */
+	private void registrarSoporte(
+			PermissionDecision decision, OperatingActor actor, long organizationId,
+			long consultorioId, String operacion, ReporteCode reporte) {
+
+		if (decision == null || !decision.viaSupportAccess()) {
+			return;
+		}
+		Map<String, String> detalle = new LinkedHashMap<>();
+		detalle.put("permiso", PermissionCodes.REPORTE_READ);
+		detalle.put("operacion", operacion);
+		if (reporte != null) {
+			detalle.put("reporte", reporte.name());
+		}
+		supportAccessAuditor.record(new AuditEntry(
+				organizationId,
+				consultorioId,
+				actor.accountId(),
+				EVENTO_SOPORTE_USADO,
+				ENTIDAD_REPORTE,
+				null,
+				null,
+				null,
+				detalle,
+				null,
+				MDC.get(MDC_TRACE_ID),
+				Instant.now()));
+	}
+
+	/**
 	 * Valida el periodo y lo proyecta a instantes con la zona <b>de la sede</b>.
 	 *
 	 * <p>La conversion se hace <b>una sola vez, aca</b>, y viaja resuelta en la consulta. Si cada
@@ -252,7 +374,8 @@ public class ReporteService {
 	 * microsegundo y, peor, haria que el resultado dependiera de la precision de la columna.
 	 */
 	private static ConsultaDeReporte construirConsulta(
-			long organizationId, long consultorioId, LocalDate desde, LocalDate hasta, ZoneId zona) {
+			long organizationId, long consultorioId, LocalDate desde, LocalDate hasta, ZoneId zona,
+			Set<Long> actividadPropiaDe) {
 
 		if (desde == null || hasta == null) {
 			throw new RangoDeReporteInvalidoException(
@@ -274,7 +397,7 @@ public class ReporteService {
 
 		return new ConsultaDeReporte(
 				organizationId, consultorioId, desde, hasta, zona,
-				desdeInstante, hastaInstante, LIMITE_FILAS);
+				desdeInstante, hastaInstante, LIMITE_FILAS, actividadPropiaDe);
 	}
 
 	/**
@@ -303,7 +426,12 @@ public class ReporteService {
 				Map.of(
 						"reporte", reporte.name(),
 						"desde", consulta.desde().toString(),
-						"hasta", consulta.hasta().toString()),
+						"hasta", consulta.hasta().toString(),
+						// G-1: quien audite tiene que poder distinguir el tablero de la sede del
+						// de la actividad propia de un profesional.
+						"alcance", consulta.recortadaAActividadPropia()
+								? PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA
+								: "SEDE"),
 				null,
 				MDC.get(MDC_TRACE_ID),
 				Instant.now()));
