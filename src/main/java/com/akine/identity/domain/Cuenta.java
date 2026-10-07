@@ -37,7 +37,12 @@ public class Cuenta {
 	@Column(name = "email", nullable = false, length = 320)
 	private String email;
 
-	@Column(name = "email_normalizado", nullable = false, length = 320, updatable = false)
+	/**
+	 * Clave de identidad. Sin setter: el unico metodo que la cambia es
+	 * {@link #prepararBootstrapDePlataforma(String)} (DP-14), sobre una cuenta que nunca tuvo
+	 * credencial. {@code uk_cuenta_email_normalizado} sigue garantizando "una persona, una cuenta".
+	 */
+	@Column(name = "email_normalizado", nullable = false, length = 320)
 	private String emailNormalizado;
 
 	@Column(name = "nombre", nullable = false, length = 120)
@@ -173,6 +178,48 @@ public class Cuenta {
 		}
 		this.passwordHash = nuevoHash;
 		this.intentosFallidos = 0;
+	}
+
+	/**
+	 * Re-apunta la cuenta sembrada por {@code V15} a la casilla del operador y la deja esperando
+	 * su enlace de activacion (DP-14, AKINE-A-4).
+	 *
+	 * <p><b>Es la unica excepcion a "nadie vuelve a PENDIENTE_ACTIVACION"</b>, y por eso no pasa
+	 * por {@link AccountStateMachine}: {@code V15} sembro la cuenta {@code ACTIVA} y sin
+	 * credencial, un estado que el alta nunca produce, y {@code activar} exige
+	 * {@code PENDIENTE_ACTIVACION}. Queda acotada a lo que la hace inofensiva:
+	 * <ul>
+	 *   <li>la cuenta <b>no tiene credencial</b>, o sea que nunca pudo entrar: no se le quita el
+	 *       acceso a nadie;</li>
+	 *   <li>esta viva y en {@code ACTIVA} o {@code PENDIENTE_ACTIVACION}: una cuenta bloqueada o
+	 *       desactivada lo esta por decision de una persona, y un arranque no la revierte.</li>
+	 * </ul>
+	 *
+	 * @throws IllegalStateException si la cuenta tiene credencial o no esta en un estado admitido
+	 * @throws IllegalArgumentException si el email esta vacio
+	 */
+	public void prepararBootstrapDePlataforma(String nuevoEmail) {
+		if (passwordHash != null) {
+			throw new IllegalStateException(
+					"El bootstrap de plataforma solo opera sobre una cuenta sin credencial");
+		}
+		if (!admiteBootstrapDePlataforma()) {
+			throw new IllegalStateException(
+					"El bootstrap de plataforma no opera sobre una cuenta en estado " + estado);
+		}
+		String normalizado = EmailNormalizado.of(nuevoEmail);
+		this.email = nuevoEmail.strip();
+		this.emailNormalizado = normalizado;
+		this.estado = EstadoCuenta.PENDIENTE_ACTIVACION;
+	}
+
+	/**
+	 * Indica si la cuenta puede ser destino del bootstrap de plataforma: viva, sin credencial y
+	 * en {@code ACTIVA} o {@code PENDIENTE_ACTIVACION}.
+	 */
+	public boolean admiteBootstrapDePlataforma() {
+		return passwordHash == null && active
+				&& (estado == EstadoCuenta.ACTIVA || estado == EstadoCuenta.PENDIENTE_ACTIVACION);
 	}
 
 	/** Registra un login exitoso: limpia el contador y deja la marca temporal. */

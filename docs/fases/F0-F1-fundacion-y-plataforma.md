@@ -32,10 +32,13 @@
   `POST /api/v1/notifications/{id}/retry` con permiso administrativo y filtro por tenant.~~
   → A-3: `POST /api/v1/organizations/{orgId}/notifications/{notificationId}/retry` con
   `colaborador:manage` (contrato 0.47.0).
-- [ ] **Bootstrap del `PLATFORM_ADMIN`** sembrado por `V15`. Hoy es inalcanzable:
+- [x] ~~**Bootstrap del `PLATFORM_ADMIN`** sembrado por `V15`. Hoy es inalcanzable:
   `PasswordResetService.solicitar` corta en `!cuenta.puedeAutenticarse()` y responde 202 en
   silencio. Consecuencia: en un despliegue nuevo ningún endpoint de `/api/v1/platform/**` es
-  usable. **Requiere decisión del usuario** (toca ADR-0018 y el flujo de invitación).
+  usable. **Requiere decisión del usuario** (toca ADR-0018 y el flujo de invitación).~~
+  → DP-14 + A-4: `AKINE_BOOTSTRAP_ADMIN_EMAIL` re-apunta la cuenta sembrada y le encola un enlace
+  de activación al arrancar (`PlatformAdminBootstrapRunner`, `docs/diseno/AKINE-A-4-bootstrap.md`).
+  Sin migración, sin cambio de contrato y sin tocar ADR-0018.
 - [ ] Soporte para "cambio de email pendiente" (caso borde de 01.02): no hay esquema.
 
 ### Frontend / E2E
@@ -70,7 +73,8 @@
 ## Para cerrar la fase
 
 - [x] ~~ADR que ratifique `encounter` como módulo propietario de la Sesión; actualizar `AGENT.md` §4.~~ → ADR-0024 y `AGENT.md` §4 (A-2).
-- [ ] Decisión + implementación del bootstrap de `PLATFORM_ADMIN`.
+- [x] ~~Decisión + implementación del bootstrap de `PLATFORM_ADMIN`.~~ → DP-14 (07/10/2026) y A-4,
+  con `PlatformAdminBootstrapIT` contra MySQL.
 - [x] ~~Endpoint de retry de notificaciones con su test.~~ → A-3, `ReintentoDeNotificacionServiceTest`.
 - [ ] Los tres E2E de arriba, contra backend real.
 - [ ] Registro de cierre de 01.02 y 01.03 actualizado.
