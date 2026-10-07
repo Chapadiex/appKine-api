@@ -43,6 +43,16 @@ final class IdentityAuditEvents {
 	 */
 	static final String ACTIVACION_REENVIADA = "ACTIVACION_REENVIADA";
 
+	/**
+	 * El arranque re-apunto la cuenta sembrada por {@code V15} a la casilla de
+	 * {@code AKINE_BOOTSTRAP_ADMIN_EMAIL} y le emitio el enlace de activacion (DP-14).
+	 *
+	 * <p>Evento de plataforma: sin {@code organization_id} y con actor {@code null} (el sistema).
+	 * Lleva el email anterior y el nuevo, que es lo que hay que poder responder despues: quien
+	 * quedo a cargo de la plataforma y desde cuando.
+	 */
+	static final String PLATFORM_ADMIN_BOOTSTRAP = "PLATFORM_ADMIN_BOOTSTRAP";
+
 	/** Login aceptado. */
 	static final String LOGIN_EXITOSO = "LOGIN_EXITOSO";
 

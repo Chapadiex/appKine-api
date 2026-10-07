@@ -17,6 +17,7 @@ import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -116,6 +117,28 @@ public class AccountActivationService {
 		}
 
 		Instant ahora = Instant.now();
+		TokenVerificacion token = emitirEnlaceDeActivacion(cuenta, ahora);
+
+		IdentityAuditEvents.registrar(auditTrail, IdentityAuditEvents.ACTIVACION_REENVIADA,
+				null, cuenta.getId(), cuenta.getId(), null, null,
+				// El id de la fila, nunca el token: un id no sirve para activar nada.
+				Map.of("tokenVerificacionId", String.valueOf(token.getId())), null, ahora);
+
+		log.info("Enlace de activacion reenviado: cuentaId={}", cuenta.getId());
+	}
+
+	/**
+	 * Emite un enlace de activacion para la cuenta: invalida los anteriores, guarda el token
+	 * nuevo y encola el correo. No audita: cada llamador registra su propio hecho.
+	 *
+	 * <p>Lo usan el reenvio y el bootstrap del administrador de plataforma (DP-14), y por eso es
+	 * publico: el bootstrap tiene que salir por exactamente el mismo flujo que el registro, no por
+	 * una copia. Corre dentro de la transaccion del llamador, porque el puerto del outbox la exige.
+	 *
+	 * @return la fila del token emitido; el valor en claro solo viaja dentro del enlace encolado
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public TokenVerificacion emitirEnlaceDeActivacion(Cuenta cuenta, Instant ahora) {
 		invalidarTokensDeActivacion(cuenta, ahora);
 
 		String tokenPlano = tokenGenerator.nuevoToken();
@@ -126,7 +149,7 @@ public class AccountActivationService {
 		Map<String, String> datos = new LinkedHashMap<>();
 		datos.put("nombre", cuenta.getNombre());
 
-		// organizationId va en null: el reenvio se pide sin sesion y sin contexto, asi que
+		// organizationId va en null: la activacion se emite sin sesion y sin contexto, asi que
 		// identity no sabe —ni tiene por que preguntarle a organization— a que tenant pertenece
 		// esta persona. El outbox lo admite: null es "evento de identidad global".
 		notificationOutbox.encolar(new NotificationOutboxPort.Notificacion(
@@ -137,13 +160,7 @@ public class AccountActivationService {
 				// El enlace va al campo de transporte, jamas al payload consultable (T-11).
 				linkBuilder.enlaceDe(TipoTokenVerificacion.ACTIVACION, tokenPlano),
 				"activacion:" + token.getId()));
-
-		IdentityAuditEvents.registrar(auditTrail, IdentityAuditEvents.ACTIVACION_REENVIADA,
-				null, cuenta.getId(), cuenta.getId(), null, null,
-				// El id de la fila, nunca el token: un id no sirve para activar nada.
-				Map.of("tokenVerificacionId", String.valueOf(token.getId())), null, ahora);
-
-		log.info("Enlace de activacion reenviado: cuentaId={}", cuenta.getId());
+		return token;
 	}
 
 	/** Busca tolerando un email vacio: la falta de dato sale por el mismo camino que la falta de cuenta. */
