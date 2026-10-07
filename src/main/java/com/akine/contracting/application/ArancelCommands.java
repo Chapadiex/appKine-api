@@ -30,7 +30,21 @@ public final class ArancelCommands {
 			BigDecimal importeFinanciador,
 			BigDecimal coseguro,
 			LocalDate vigenciaDesde,
-			LocalDate vigenciaHasta) {
+			LocalDate vigenciaHasta,
+			Long ofertaId) {
+
+		/** Arancel general de la practica, sin oferta: la forma anterior a B-3. */
+		public ArancelAltaCommand(
+				long practicaId,
+				BigDecimal importeTotal,
+				BigDecimal importeFinanciador,
+				BigDecimal coseguro,
+				LocalDate vigenciaDesde,
+				LocalDate vigenciaHasta) {
+
+			this(practicaId, importeTotal, importeFinanciador, coseguro, vigenciaDesde,
+					vigenciaHasta, null);
+		}
 	}
 
 	/**

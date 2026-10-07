@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Que coberturas de una persona aplican a una practica en una fecha.
@@ -21,6 +22,9 @@ import java.util.List;
  * <p>Solo lectura: sin escrituras ni auditoria. El numero de afiliado no sale de aca. Una persona
  * inexistente o de otra organizacion no tiene coberturas en esta organizacion y da listas vacias.
  * La vigencia de la credencial es solo una alerta y no excluye.
+ *
+ * <p>B-3: con {@code ofertaId}, el arancel especifico de la oferta (RF-M16-008) manda sobre el
+ * general de la practica. Sin oferta, solo el general.
  */
 @Service
 public class CoberturasAplicablesService {
@@ -38,18 +42,21 @@ public class CoberturasAplicablesService {
 	public List<CoberturaAplicable> aplicables(
 			long organizationId, long consultorioId, long personaId, long practicaId,
 			LocalDate fecha) {
+		return aplicables(organizationId, consultorioId, personaId, practicaId, null, fecha);
+	}
+
+	@Transactional(readOnly = true)
+	public List<CoberturaAplicable> aplicables(
+			long organizationId, long consultorioId, long personaId, long practicaId,
+			Long ofertaId, LocalDate fecha) {
 
 		return vigentes(organizationId, personaId, fecha).stream()
 				.map(c -> {
 					ResolucionDeArancel resolucion =
-							resolver(c, organizationId, consultorioId, practicaId, fecha);
-					return resolucion.estaResuelta()
-							? new CoberturaAplicable(
-									c.getId(), c.isPrincipal(), referencia(c), resolucion,
-									c.credencialVencidaEl(fecha), c.getCredencialVigenciaHasta())
-							: null;
+							resolver(c, organizationId, consultorioId, practicaId, ofertaId, fecha);
+					return resolucion.estaResuelta() ? aplicable(c, resolucion, fecha) : null;
 				})
-				.filter(java.util.Objects::nonNull)
+				.filter(Objects::nonNull)
 				.toList();
 	}
 
@@ -57,25 +64,30 @@ public class CoberturasAplicablesService {
 	public List<CoberturaNoAplicable> noAplicables(
 			long organizationId, long consultorioId, long personaId, long practicaId,
 			LocalDate fecha) {
+		return noAplicables(organizationId, consultorioId, personaId, practicaId, null, fecha);
+	}
+
+	@Transactional(readOnly = true)
+	public List<CoberturaNoAplicable> noAplicables(
+			long organizationId, long consultorioId, long personaId, long practicaId,
+			Long ofertaId, LocalDate fecha) {
 
 		return vigentes(organizationId, personaId, fecha).stream()
 				.map(c -> {
 					ResolucionDeArancel resolucion =
-							resolver(c, organizationId, consultorioId, practicaId, fecha);
+							resolver(c, organizationId, consultorioId, practicaId, ofertaId, fecha);
 					return resolucion.estaResuelta()
 							? null
 							: new CoberturaNoAplicable(
 									c.getId(), c.isPrincipal(), referencia(c),
 									resolucion.motivo());
 				})
-				.filter(java.util.Objects::nonNull)
+				.filter(Objects::nonNull)
 				.toList();
 	}
 
 	/** Financiadas, activas y vigentes en la fecha; principal primero y el resto por id. */
-	private List<CoberturaPaciente> vigentes(
-			long organizationId, long personaId, LocalDate fecha) {
-
+	public List<CoberturaPaciente> vigentes(long organizationId, long personaId, LocalDate fecha) {
 		return coberturas.activasDe(organizationId, personaId).stream()
 				.filter(c -> c.getTipo() == TipoCobertura.FINANCIADA)
 				.filter(c -> c.vigenteEl(fecha))
@@ -85,16 +97,23 @@ public class CoberturasAplicablesService {
 				.toList();
 	}
 
-	private ResolucionDeArancel resolver(
+	public ResolucionDeArancel resolver(
 			CoberturaPaciente c, long organizationId, long consultorioId, long practicaId,
-			LocalDate fecha) {
+			Long ofertaId, LocalDate fecha) {
 
 		return aranceles.resolver(
 				organizationId, consultorioId, c.getFinanciadorId(), c.getPlanId(), practicaId,
-				fecha);
+				ofertaId, fecha);
 	}
 
-	private static ReferenciaCongelada referencia(CoberturaPaciente c) {
+	static CoberturaAplicable aplicable(
+			CoberturaPaciente c, ResolucionDeArancel resolucion, LocalDate fecha) {
+		return new CoberturaAplicable(
+				c.getId(), c.isPrincipal(), referencia(c), resolucion,
+				c.credencialVencidaEl(fecha), c.getCredencialVigenciaHasta());
+	}
+
+	static ReferenciaCongelada referencia(CoberturaPaciente c) {
 		return new ReferenciaCongelada(
 				c.getFinanciadorId(), c.getFinanciadorNombre(), c.getPlanId(), c.getPlanNombre());
 	}

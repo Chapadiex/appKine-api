@@ -69,5 +69,15 @@ public record CreateArancelRequest(
 						+ "previsto. Tiene que estar contenido en la vigencia del convenio",
 				example = "2026-06-30",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		LocalDate vigenciaHasta) {
+		LocalDate vigenciaHasta,
+
+		@Schema(
+				description = "Opcional (RF-M16-008). Sin oferta, el arancel es el GENERAL de la practica. "
+						+ "Con oferta, es el arancel de la practica cuando se presta dentro de esa "
+						+ "oferta, y al resolver con esa oferta manda sobre el general. La oferta tiene "
+						+ "que ser de la misma sede, admitir obra social y declarar la practica (A-9)",
+				example = "77",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		@Positive(message = "El identificador de la oferta tiene que ser positivo")
+		Long ofertaId) {
 }

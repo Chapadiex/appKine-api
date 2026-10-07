@@ -36,6 +36,8 @@ import java.time.LocalDate;
  *
  * @param convenioVigenciaHasta ultimo dia del convenio, INCLUSIVE. {@code null} = sin fin previsto
  * @param arancelVigenciaHasta  ultimo dia de ESTE importe, INCLUSIVE. {@code null} = sin fin
+ * @param ofertaId              B-3: {@code null} si salio el arancel general de la practica; el id
+ *                              de la oferta si salio el especifico de esa oferta (RF-M16-008)
  */
 public record ArancelVigente(
 		long convenioId,
@@ -58,5 +60,31 @@ public record ArancelVigente(
 		LocalDate convenioVigenciaHasta,
 		LocalDate arancelVigenciaDesde,
 		LocalDate arancelVigenciaHasta,
-		LocalDate resueltoPara) {
+		LocalDate resueltoPara,
+		Long ofertaId) {
+
+	/**
+	 * La forma anterior a B-3: un arancel GENERAL de la practica, sin oferta.
+	 *
+	 * <p>{@code ofertaId} (B-3, RF-M16-008) es parte de la explicacion: {@code null} dice que salio
+	 * el arancel general de la practica; con valor, que salio el especifico de esa oferta, que manda
+	 * sobre el general cuando se resuelve con oferta.
+	 */
+	@SuppressWarnings("java:S107")
+	public ArancelVigente(
+			long convenioId, String convenioCodigo, String convenioNombre, String modalidad,
+			long financiadorId, long planId, long practicaId, long arancelId,
+			BigDecimal importeTotal, BigDecimal importeFinanciador, BigDecimal coseguro,
+			String moneda, boolean requiereOrden, boolean requiereAutorizacion,
+			boolean requiereCredencial, Integer limiteSesionesMensual,
+			LocalDate convenioVigenciaDesde, LocalDate convenioVigenciaHasta,
+			LocalDate arancelVigenciaDesde, LocalDate arancelVigenciaHasta,
+			LocalDate resueltoPara) {
+
+		this(convenioId, convenioCodigo, convenioNombre, modalidad, financiadorId, planId,
+				practicaId, arancelId, importeTotal, importeFinanciador, coseguro, moneda,
+				requiereOrden, requiereAutorizacion, requiereCredencial, limiteSesionesMensual,
+				convenioVigenciaDesde, convenioVigenciaHasta, arancelVigenciaDesde,
+				arancelVigenciaHasta, resueltoPara, null);
+	}
 }

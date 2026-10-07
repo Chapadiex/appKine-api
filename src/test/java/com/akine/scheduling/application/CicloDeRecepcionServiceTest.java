@@ -187,7 +187,7 @@ class CicloDeRecepcionServiceTest {
 	void validar_sin_cobertura() {
 		conAbierta();
 		conPractica();
-		given(coberturas.aplicables(ORG, SEDE, PERSONA, PRACTICA, diaDelTurno)).willReturn(List.of());
+		given(coberturas.aplicables(ORG, SEDE, PERSONA, PRACTICA, OFERTA, diaDelTurno)).willReturn(List.of());
 
 		RecepcionView vista = service.validar(actor, SEDE, TURNO, null, 0L);
 
@@ -387,6 +387,6 @@ class CicloDeRecepcionServiceTest {
 				.mapToObj(id -> new CoberturaAplicable(id, id == ids[0],
 						new ReferenciaCongelada(1L, "Financiador", 2L, "Plan"), null, false, null))
 				.toList();
-		given(coberturas.aplicables(ORG, SEDE, PERSONA, PRACTICA, diaDelTurno)).willReturn(lista);
+		given(coberturas.aplicables(ORG, SEDE, PERSONA, PRACTICA, OFERTA, diaDelTurno)).willReturn(lista);
 	}
 }

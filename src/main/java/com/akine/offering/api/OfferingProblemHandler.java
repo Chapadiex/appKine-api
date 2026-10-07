@@ -8,6 +8,9 @@ import com.akine.offering.domain.exception.OfertaNombreComercialTakenException;
 import com.akine.offering.domain.exception.OfertaNotAccessibleException;
 import com.akine.offering.domain.exception.PracticaNoElegibleException;
 import com.akine.offering.domain.exception.PracticaPrincipalInvalidaException;
+import com.akine.offering.domain.exception.PrecioParticularInactivoException;
+import com.akine.offering.domain.exception.PrecioParticularNoAccesibleException;
+import com.akine.offering.domain.exception.PrecioParticularSolapadoException;
 import com.akine.offering.domain.exception.ServicioCodigoTakenException;
 import com.akine.offering.domain.exception.ServicioInactivoException;
 import com.akine.offering.domain.exception.ServicioNombreTakenException;
@@ -65,6 +68,8 @@ public class OfferingProblemHandler {
 	private static final URI CONSULTORIO_NO_OPERABLE = ProblemType.CONSULTORIO_NO_OPERABLE.uri();
 	private static final URI PRACTICA_NO_UTILIZABLE = ProblemType.PRACTICA_NO_UTILIZABLE.uri();
 	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
+	private static final URI PRECIO_PARTICULAR_SOLAPADO = ProblemType.PRECIO_PARTICULAR_SOLAPADO.uri();
+	private static final URI PRECIO_PARTICULAR_INACTIVO = ProblemType.PRECIO_PARTICULAR_INACTIVO.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -80,6 +85,38 @@ public class OfferingProblemHandler {
 	public ProblemDetail handleOfertaNoAccesible(OfertaNotAccessibleException exception) {
 		log.debug("Oferta no accesible: ofertaId={}", exception.getOfertaId());
 		return noEncontrado("La oferta no existe.");
+	}
+
+	@ExceptionHandler(PrecioParticularNoAccesibleException.class)
+	public ProblemDetail handlePrecioParticularNoAccesible(
+			PrecioParticularNoAccesibleException exception) {
+		log.debug("Precio particular no accesible: precioId={}", exception.getPrecioId());
+		return noEncontrado("El precio particular no existe en esta oferta.");
+	}
+
+	/** B-3 (RF-M16-009): dos precios activos de la misma oferta no se pisan. */
+	@ExceptionHandler(PrecioParticularSolapadoException.class)
+	public ProblemDetail handlePrecioParticularSolapado(PrecioParticularSolapadoException exception) {
+		log.debug("Precio particular solapado con precioId={}", exception.getPrecioExistenteId());
+		ProblemDetail problem = conflicto(
+				"Ya hay un precio particular de esta oferta cuyo periodo se pisa con el pedido ("
+						+ exception.getPeriodoExistente() + "). Cerra la vigencia del que esta antes "
+						+ "de cargar el nuevo.",
+				"Precio particular solapado",
+				PRECIO_PARTICULAR_SOLAPADO);
+		problem.setProperty("precioExistenteId", exception.getPrecioExistenteId());
+		problem.setProperty("periodoExistente", exception.getPeriodoExistente());
+		return problem;
+	}
+
+	@ExceptionHandler(PrecioParticularInactivoException.class)
+	public ProblemDetail handlePrecioParticularInactivo(PrecioParticularInactivoException exception) {
+		log.debug("Operacion sobre precio particular dado de baja: precioId={}",
+				exception.getPrecioId());
+		return conflicto(
+				"El precio particular esta dado de baja: no admite cambios.",
+				"Precio particular dado de baja",
+				PRECIO_PARTICULAR_INACTIVO);
 	}
 
 	@ExceptionHandler(ConsultorioNoAccesibleException.class)

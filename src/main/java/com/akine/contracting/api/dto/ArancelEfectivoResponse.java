@@ -94,14 +94,18 @@ public record ArancelEfectivoResponse(
 		LocalDate arancelVigenciaDesde,
 
 		@Schema(description = "Ultimo dia de vigencia de ESTE importe, INCLUSIVE")
-		LocalDate arancelVigenciaHasta) {
+		LocalDate arancelVigenciaHasta,
+
+		@Schema(description = "B-3. Null si salio el arancel GENERAL de la practica; el id de la "
+				+ "oferta si salio el arancel especifico de esa oferta (RF-M16-008)", example = "77")
+		Long ofertaId) {
 
 	public static ArancelEfectivoResponse de(ResolucionDeArancel resolucion, LocalDate fecha) {
 		if (!resolucion.estaResuelta()) {
 			return new ArancelEfectivoResponse(
 					false, resolucion.motivo().name(), fecha,
 					null, null, null, null, null, null, null, null, null,
-					null, null, null, null, null, null, null, null);
+					null, null, null, null, null, null, null, null, null);
 		}
 
 		ArancelVigente a = resolucion.arancel();
@@ -125,6 +129,7 @@ public record ArancelEfectivoResponse(
 				a.convenioVigenciaDesde(),
 				a.convenioVigenciaHasta(),
 				a.arancelVigenciaDesde(),
-				a.arancelVigenciaHasta());
+				a.arancelVigenciaHasta(),
+				a.ofertaId());
 	}
 }

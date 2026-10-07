@@ -2,6 +2,7 @@ package com.akine.offering.domain.port;
 
 import com.akine.offering.domain.OfertaEspacioHabilitado;
 import com.akine.offering.domain.OfertaPractica;
+import com.akine.offering.domain.OfertaPrecioParticular;
 import com.akine.offering.domain.OfertaProfesionalHabilitado;
 import com.akine.offering.domain.OfertaServicioConsultorio;
 import com.akine.offering.domain.Servicio;
@@ -277,5 +278,27 @@ public final class OfferingRepositoryPorts {
 
 		List<OfertaPractica> findAllByOrganizationIdAndOfertaIdAndActiveOrderByIdAsc(
 				Long organizationId, Long ofertaId, boolean active);
+	}
+
+	/**
+	 * Precios particulares por vigencia de una oferta (B-3, RF-M16-009). Toda consulta lleva
+	 * {@code organizationId}; la sede ya se resolvio al cargar la oferta.
+	 */
+	public interface OfertaPrecioParticularRepositoryPort {
+
+		OfertaPrecioParticular save(OfertaPrecioParticular precio);
+
+		OfertaPrecioParticular saveAndFlush(OfertaPrecioParticular precio);
+
+		/** Activos e historicos, del mas nuevo al mas viejo. */
+		List<OfertaPrecioParticular> findAllByOrganizationIdAndOfertaIdOrderByVigenciaDesdeDescIdDesc(
+				Long organizationId, Long ofertaId);
+
+		List<OfertaPrecioParticular>
+				findAllByOrganizationIdAndOfertaIdAndActiveOrderByVigenciaDesdeDescIdDesc(
+						Long organizationId, Long ofertaId, boolean active);
+
+		Optional<OfertaPrecioParticular> findByIdAndOrganizationIdAndOfertaId(
+				Long id, Long organizationId, Long ofertaId);
 	}
 }

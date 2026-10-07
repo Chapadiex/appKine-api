@@ -64,12 +64,27 @@ public final class ResolutorDeArancel {
 			long practicaId,
 			LocalDate fecha) {
 
+		return resolver(convenios, aranceles, practicaId, null, fecha);
+	}
+
+	/**
+	 * B-3 (RF-M16-008): resolucion con oferta. {@code ofertaId} en {@code null} es exactamente la
+	 * resolucion anterior —solo aranceles generales—. Ver {@link #arancelAplicable(List, Long,
+	 * LocalDate)} para la regla de especificidad.
+	 */
+	public static ResolucionDeArancel resolver(
+			List<Convenio> convenios,
+			List<ConvenioArancel> aranceles,
+			long practicaId,
+			Long ofertaId,
+			LocalDate fecha) {
+
 		Optional<Convenio> convenio = convenioAplicable(convenios, fecha);
 		if (convenio.isEmpty()) {
 			return ResolucionDeArancel.sinArancel(MotivoSinArancel.SIN_CONVENIO_VIGENTE);
 		}
 
-		Optional<ConvenioArancel> arancel = arancelAplicable(aranceles, fecha);
+		Optional<ConvenioArancel> arancel = arancelAplicable(aranceles, ofertaId, fecha);
 		if (arancel.isEmpty()) {
 			return ResolucionDeArancel.sinArancel(MotivoSinArancel.SIN_ARANCEL_VIGENTE);
 		}
@@ -84,11 +99,42 @@ public final class ResolutorDeArancel {
 		return convenios.stream().filter(c -> c.aplicaEl(fecha)).findFirst();
 	}
 
-	/** El arancel que se aplica ese dia. Ver la cabecera. */
+	/** El arancel GENERAL que se aplica ese dia. Ver la cabecera. */
 	public static Optional<ConvenioArancel> arancelAplicable(
 			List<ConvenioArancel> aranceles, LocalDate fecha) {
 
-		return aranceles.stream().filter(a -> a.aplicaEl(fecha)).findFirst();
+		return arancelAplicable(aranceles, null, fecha);
+	}
+
+	/**
+	 * El arancel que se aplica ese dia para esa oferta (B-3, RF-M16-008).
+	 *
+	 * <p><b>Dos niveles de especificidad, no un desempate.</b> Con oferta, manda el arancel de esa
+	 * oferta que cubre el dia; si no hay, el general de la practica. Sin oferta, solo el general:
+	 * un arancel pactado para Pilates no se aplica a una sesion de otra oferta aunque comparta la
+	 * practica. Dentro de cada nivel sigue habiendo como mucho uno, porque el no-solapamiento es
+	 * por (convenio, practica, oferta) con el general como grupo propio.
+	 *
+	 * <p>Filtrar el grupo ACA y no en la consulta es deliberado: la lista que llega puede traer los
+	 * dos niveles mezclados —{@code findActivosPorPractica} no sabe de ofertas— y sin este filtro un
+	 * llamador sin oferta resolveria el arancel especifico de una oferta ajena.
+	 */
+	public static Optional<ConvenioArancel> arancelAplicable(
+			List<ConvenioArancel> aranceles, Long ofertaId, LocalDate fecha) {
+
+		if (ofertaId != null) {
+			Optional<ConvenioArancel> especifico = aranceles.stream()
+					.filter(a -> a.esDelGrupo(ofertaId))
+					.filter(a -> a.aplicaEl(fecha))
+					.findFirst();
+			if (especifico.isPresent()) {
+				return especifico;
+			}
+		}
+		return aranceles.stream()
+				.filter(a -> a.esDelGrupo(null))
+				.filter(a -> a.aplicaEl(fecha))
+				.findFirst();
 	}
 
 	/**
@@ -144,6 +190,7 @@ public final class ResolutorDeArancel {
 				convenio.getVigenciaHasta(),
 				arancel.getVigenciaDesde(),
 				arancel.getVigenciaHasta(),
-				fecha);
+				fecha,
+				arancel.getOfertaId());
 	}
 }

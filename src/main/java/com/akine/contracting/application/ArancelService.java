@@ -11,12 +11,18 @@ import com.akine.contracting.domain.exception.ArancelSolapadoException;
 import com.akine.contracting.domain.exception.ArancelYaInactivoException;
 import com.akine.contracting.domain.exception.ConvenioNotAccessibleException;
 import com.akine.contracting.domain.exception.ConvenioYaInactivoException;
+import com.akine.contracting.domain.exception.OfertaNoAccesibleException;
+import com.akine.contracting.domain.exception.OfertaSinObraSocialException;
 import com.akine.contracting.domain.exception.PracticaNoAccesibleException;
+import com.akine.contracting.domain.exception.PracticaNoHabilitadaEnOfertaException;
 import com.akine.contracting.domain.exception.SedeNoAccesibleException;
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioArancelRepositoryPort;
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioLockRepositoryPort;
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioRepositoryPort;
 import com.akine.contracting.spi.ResolucionDeArancel;
+import com.akine.offering.spi.OfertaDirectory;
+import com.akine.offering.spi.PracticasDeOfertaDirectory;
+import com.akine.offering.spi.PrecioDeOferta;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
@@ -77,6 +83,8 @@ public class ArancelService {
 	private final CatalogoDirectory catalogo;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final OfertaDirectory ofertas;
+	private final PracticasDeOfertaDirectory practicasDeOferta;
 
 	@SuppressWarnings("java:S107")
 	public ArancelService(
@@ -87,7 +95,9 @@ public class ArancelService {
 			ConsultorioDirectory consultorios,
 			CatalogoDirectory catalogo,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			OfertaDirectory ofertas,
+			PracticasDeOfertaDirectory practicasDeOferta) {
 
 		this.convenios = convenios;
 		this.aranceles = aranceles;
@@ -97,6 +107,8 @@ public class ArancelService {
 		this.catalogo = catalogo;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.ofertas = ofertas;
+		this.practicasDeOferta = practicasDeOferta;
 	}
 
 	// =================================================================================
@@ -157,6 +169,24 @@ public class ArancelService {
 			long practicaId,
 			LocalDate fecha) {
 
+		return resolver(actor, consultorioId, financiadorId, planId, practicaId, null, fecha);
+	}
+
+	/**
+	 * B-3 (RF-M16-008): la misma resolucion para una practica prestada dentro de una oferta. El
+	 * arancel especifico de la oferta manda sobre el general; ver {@code ResolutorDeArancel}.
+	 */
+	@Transactional(readOnly = true)
+	@SuppressWarnings("java:S107")
+	public ResolucionDeArancel resolver(
+			OperatingActor actor,
+			long consultorioId,
+			long financiadorId,
+			long planId,
+			long practicaId,
+			Long ofertaId,
+			LocalDate fecha) {
+
 		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Resolver un arancel");
 		exigirSedeDelTenant(organizationId, consultorioId);
 		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
@@ -172,6 +202,7 @@ public class ArancelService {
 						aranceles.findActivosPorPractica(
 								organizationId, convenio.getId(), practicaId),
 						practicaId,
+						ofertaId,
 						contra))
 				.orElseGet(() -> ResolutorDeArancel.resolver(List.of(), List.of(), practicaId, contra));
 	}
@@ -203,12 +234,17 @@ public class ArancelService {
 		Convenio convenio = cargarConvenio(organizationId, consultorioId, convenioId);
 		exigirConvenioOperable(convenio, "agregar un arancel");
 		exigirPracticaDelTenant(organizationId, command.practicaId());
+		if (command.ofertaId() != null) {
+			exigirOfertaAsociable(organizationId, consultorioId, command.ofertaId(),
+					command.practicaId());
+		}
 
 		ConvenioArancel arancel = new ConvenioArancel(
 				organizationId,
 				consultorioId,
 				convenioId,
 				command.practicaId(),
+				command.ofertaId(),
 				command.importeTotal(),
 				command.importeFinanciador(),
 				command.coseguro(),
@@ -221,13 +257,16 @@ public class ArancelService {
 		// EL ORDEN DE ESTAS TRES LINEAS ES LA GARANTIA. Ver la cabecera de ConvenioService.
 		lockIniciador.asegurar(organizationId, consultorioId);
 		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
-		exigirSinSolapamiento(
-				organizationId, convenioId, command.practicaId(), arancel.vigencia(), null);
+		exigirSinSolapamiento(organizationId, convenioId, command.practicaId(), command.ofertaId(),
+				arancel.vigencia(), null);
 
 		ConvenioArancel creado = aranceles.saveAndFlush(arancel);
 
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("practicaId", String.valueOf(command.practicaId()));
+		if (command.ofertaId() != null) {
+			detalles.put("ofertaId", String.valueOf(command.ofertaId()));
+		}
 		detalles.put("vigencia", creado.vigencia().toString());
 		detalles.put("importeTotal", creado.getImporteTotal() + " " + creado.getMoneda());
 		detalles.put("importeFinanciador", creado.getImporteFinanciador().toString());
@@ -280,7 +319,8 @@ public class ArancelService {
 
 		exigirContenidaEnElConvenio(arancel.vigencia(), convenio);
 		exigirSinSolapamiento(
-				organizationId, convenioId, arancel.getPracticaId(), arancel.vigencia(), arancelId);
+				organizationId, convenioId, arancel.getPracticaId(), arancel.getOfertaId(),
+				arancel.vigencia(), arancelId);
 
 		ConvenioArancel guardado = aranceles.saveAndFlush(arancel);
 
@@ -328,15 +368,23 @@ public class ArancelService {
 	// Invariantes
 	// =================================================================================
 
-	/** RN-M16-002 al nivel del arancel. <b>Se llama SIEMPRE con el lock ya tomado.</b> */
+	/**
+	 * RN-M16-002 al nivel del arancel. <b>Se llama SIEMPRE con el lock ya tomado.</b>
+	 *
+	 * <p>B-3: el grupo es (convenio, practica, oferta), con el general ({@code ofertaId} null) como
+	 * grupo propio. El general y el especifico de una oferta conviven en el mismo periodo —es el
+	 * punto de RF-M16-008—; dos especificos de la misma oferta, o dos generales, no.
+	 */
 	private void exigirSinSolapamiento(
 			long organizationId,
 			long convenioId,
 			long practicaId,
+			Long ofertaId,
 			Vigencia vigencia,
 			Long excluirId) {
 
 		aranceles.findActivosPorPractica(organizationId, convenioId, practicaId).stream()
+				.filter(existente -> existente.esDelGrupo(ofertaId))
 				.filter(existente -> !existente.getId().equals(excluirId))
 				.filter(existente -> existente.vigencia().seSolapaCon(vigencia))
 				.findFirst()
@@ -353,6 +401,34 @@ public class ArancelService {
 					"La vigencia del arancel (" + vigencia + ") tiene que estar contenida en la del "
 							+ "convenio (" + convenio.vigencia() + "): fuera de ella el arancel no "
 							+ "podria resolver nunca");
+		}
+	}
+
+	/**
+	 * B-3 (RF-M16-008): la oferta es de ESTA sede, admite obra social y declara la practica (A-9).
+	 *
+	 * <p>Lectura viva de {@code offering.spi} sin lock de la oferta: si alguien quita la practica o
+	 * apaga la obra social justo despues, el arancel queda como dato que no resuelve —el devengo y
+	 * la cobertura aplicable vuelven a mirar la oferta al usarlo— y no como dato que cobra mal.
+	 * No se filtra por estado de la oferta: una oferta dada de baja no tiene practicas activas que
+	 * declarar, y {@code find} devuelve las inactivas a proposito.
+	 */
+	private void exigirOfertaAsociable(
+			long organizationId, long consultorioId, long ofertaId, long practicaId) {
+
+		ofertas.find(organizationId, consultorioId, ofertaId)
+				.orElseThrow(() -> new OfertaNoAccesibleException(ofertaId));
+		boolean admiteObraSocial = ofertas.precioDe(organizationId, consultorioId, ofertaId)
+				.map(PrecioDeOferta::admiteObraSocial)
+				.orElse(false);
+		if (!admiteObraSocial) {
+			throw new OfertaSinObraSocialException(ofertaId);
+		}
+		boolean declarada = practicasDeOferta
+				.practicasHabilitadas(organizationId, consultorioId, ofertaId).stream()
+				.anyMatch(p -> p.practicaId() == practicaId);
+		if (!declarada) {
+			throw new PracticaNoHabilitadaEnOfertaException(practicaId, ofertaId);
 		}
 	}
 

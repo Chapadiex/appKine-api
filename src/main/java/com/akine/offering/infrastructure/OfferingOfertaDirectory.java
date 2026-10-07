@@ -1,5 +1,6 @@
 package com.akine.offering.infrastructure;
 
+import com.akine.offering.application.OfertaPrecioParticularService;
 import com.akine.offering.domain.Habilitacion;
 import com.akine.offering.domain.Modalidad;
 import com.akine.offering.domain.OfertaServicioConsultorio;
@@ -7,8 +8,17 @@ import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.offering.spi.PrecioDeOferta;
+import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioSnapshot;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.DateTimeException;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,18 +41,26 @@ import java.util.Optional;
 @Component
 public class OfferingOfertaDirectory implements OfertaDirectory {
 
+	private static final Logger log = LoggerFactory.getLogger(OfferingOfertaDirectory.class);
+
 	private final OfertaRepository ofertas;
 	private final OfertaProfesionalHabilitadoRepository profesionales;
 	private final OfertaEspacioHabilitadoRepository espacios;
+	private final OfertaPrecioParticularService precios;
+	private final ConsultorioDirectory consultorios;
 
 	public OfferingOfertaDirectory(
 			OfertaRepository ofertas,
 			OfertaProfesionalHabilitadoRepository profesionales,
-			OfertaEspacioHabilitadoRepository espacios) {
+			OfertaEspacioHabilitadoRepository espacios,
+			OfertaPrecioParticularService precios,
+			ConsultorioDirectory consultorios) {
 
 		this.ofertas = ofertas;
 		this.profesionales = profesionales;
 		this.espacios = espacios;
+		this.precios = precios;
+		this.consultorios = consultorios;
 	}
 
 	@Override
@@ -59,6 +77,35 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 				.map(oferta -> new PrecioDeOferta(
 						oferta.getId(), oferta.getPrecioBase(), oferta.getMoneda(),
 						oferta.isAdmiteObraSocial(), oferta.isExigePrepago()));
+	}
+
+	@Override
+	public Optional<PrecioDeOferta> precioVigenteEl(
+			long organizationId, long consultorioId, long ofertaId, LocalDate fecha) {
+		return precios.precioVigenteEl(organizationId, consultorioId, ofertaId, fecha);
+	}
+
+	@Override
+	public Optional<PrecioDeOferta> precioEn(
+			long organizationId, long consultorioId, long ofertaId, Instant momento) {
+		return precioVigenteEl(organizationId, consultorioId, ofertaId,
+				LocalDate.ofInstant(momento, zonaDeLaSede(organizationId, consultorioId)));
+	}
+
+	/** Si la sede no resuelve o su zona es invalida se cae a UTC, como el devengo de F-4. */
+	private ZoneId zonaDeLaSede(long organizationId, long consultorioId) {
+		return consultorios.find(organizationId, consultorioId)
+				.map(ConsultorioSnapshot::timezone)
+				.map(zona -> {
+					try {
+						return ZoneId.of(zona);
+					} catch (DateTimeException invalida) {
+						log.warn("Zona horaria invalida en la sede: se usa UTC. consultorioId={} "
+								+ "zona={}", consultorioId, zona);
+						return (ZoneId) ZoneOffset.UTC;
+					}
+				})
+				.orElse(ZoneOffset.UTC);
 	}
 
 	@Override

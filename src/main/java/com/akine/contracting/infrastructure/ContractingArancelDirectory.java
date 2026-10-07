@@ -56,6 +56,7 @@ public class ContractingArancelDirectory implements ArancelDirectory {
 			long financiadorId,
 			long planId,
 			long practicaId,
+			Long ofertaId,
 			LocalDate fecha) {
 
 		List<Convenio> candidatos =
@@ -68,6 +69,7 @@ public class ContractingArancelDirectory implements ArancelDirectory {
 						List.of(convenio),
 						aranceles.findActivosPorPractica(organizationId, convenio.getId(), practicaId),
 						practicaId,
+						ofertaId,
 						fecha))
 				.orElseGet(() -> ResolutorDeArancel.resolver(List.of(), List.of(), practicaId, fecha));
 	}
@@ -81,9 +83,11 @@ public class ContractingArancelDirectory implements ArancelDirectory {
 			long financiadorId,
 			long planId,
 			long practicaId,
+			Long ofertaId,
 			LocalDate fecha) {
 
-		return resolver(organizationId, consultorioId, financiadorId, planId, practicaId, fecha)
+		return resolver(
+				organizationId, consultorioId, financiadorId, planId, practicaId, ofertaId, fecha)
 				.valor()
 				.map(vigente -> ResolutorDeArancel.congelar(vigente, Instant.now()));
 	}

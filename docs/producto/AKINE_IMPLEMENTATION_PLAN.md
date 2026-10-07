@@ -10625,3 +10625,31 @@ Resuelto: el defecto del escenario 41 (ver punto 7).
   se admite; `billing` no lee la modalidad de la recepción —con F-4 en `main`, una atención que la
   recepción resolvió como Particular igual devenga la parte del financiador si hay convenio—;
   prepago (E-6) y la mitad web.
+
+# Registro de cierre — G1 · B-3 (Cobertura aplicable por oferta, arancel por oferta, precio particular) · backend
+
+**07/10/2026** · rama `akine-B-3-cobertura-por-oferta`. `V80`, contrato **0.65.0** (aditivo),
+diseño y design challenge en `docs/diseno/AKINE-B-3-cobertura-por-oferta.md`.
+
+- **RF-M08-006/007:** `GET /api/v1/personas/{personaId}/cobertura-aplicable?ofertaId=&fecha=`. La
+  oferta manda antes que la cobertura (sin obra social → ninguna aplica, CA-M08-006-06); con varias
+  prácticas se prueba en orden DP-11 (principal primero) y viaja el detalle por práctica. Sugiere
+  COBERTURA o PARTICULAR con el precio del día; no persiste ni toca la cobertura.
+- **RF-M16-008:** `convenio_arancel.oferta_id` nullable. Con oferta manda el arancel de la oferta,
+  sin oferta sólo el general; no-solapamiento por (convenio, práctica, oferta) bajo `convenio_lock`.
+  F-4 (devengo) y E-4 (recepción) resuelven con la oferta; sin aranceles de oferta el resultado es
+  idéntico al anterior.
+- **RF-M16-009:** tabla `oferta_precio_particular` (dueño `offering`), lock `FOR UPDATE` de la fila
+  de la oferta. `encounter` pasa a leer `OfertaDirectory#precioEn` (día local de la sede del cierre).
+- **Aristas nuevas** `contracting → offering.spi` y `person → offering.spi`, sin ciclos
+  (`ModuleArchitectureTest` 5/5).
+- **Tests:** 3.226 unitarias. ITs contra MySQL: `CoberturaPorOfertaIT` 7 (nuevo: V80, varias
+  prácticas, Pilates particular, arancel de oferta congelado por el devengo, dos concurrencias,
+  tenant), y en verde `ObligacionDelFinanciadorIT` 11, `ConvenioConcurrenteIT` 5,
+  `ConvenioYArancelMigrationIT` 14, `OfertaPracticaIT` 9, `ServicioYOfertaMigrationIT` 11,
+  `CoberturasAplicablesDirectoryIT` 10, `ConsumoPorAutorizacionIT` 10, `RecepcionIT` 14,
+  `RecepcionConcurrenteIT` 2, `CierreConcurrenteIT` 5, `CierreConDosNumeradoresIT` 8,
+  `EsquemaMultiTenantIT` 4, `OpenApiContractIT` 5 (sin drift).
+- **Fuera de alcance, declarado:** RF-M16-007 (importación con preview, diseñada en §7 del diseño);
+  que la decisión Particular de la recepción llegue a la obligación (ya declarado por E-4); la
+  elegibilidad administrativa sigue por práctica; la pantalla.

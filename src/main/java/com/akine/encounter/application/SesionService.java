@@ -665,7 +665,10 @@ public class SesionService {
 			long cerradaPorCuentaId,
 			long organizationId) {
 
-		var precio = ofertas.precioDe(organizationId, sesion.getConsultorioId(), sesion.getOfertaId());
+		// AKINE B-3 (RF-M16-009): el precio que rige el DIA del cierre en la sede —un precio particular
+		// por vigencia si lo hay, si no el de lista—. El devengo lo copia y no lo vuelve a leer.
+		var precio = ofertas.precioEn(
+				organizationId, sesion.getConsultorioId(), sesion.getOfertaId(), ahora);
 
 		// AKINE-06.04. Que practicas se aplicaron REALMENTE, para que el consumo de autorizaciones
 		// deje de poder imputarse a la autorizacion equivocada. Se lee ACA por el mismo motivo por

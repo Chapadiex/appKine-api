@@ -28,7 +28,21 @@ public record ArancelView(
 		String estado,
 		Instant deletedAt,
 		String deactivationReason,
-		long version) {
+		long version,
+		Long ofertaId) {
+
+	/** Sin oferta: la forma anterior a B-3 (arancel general de la practica). */
+	@SuppressWarnings("java:S107")
+	public ArancelView(
+			long id, long convenioId, long practicaId, BigDecimal importeTotal,
+			BigDecimal importeFinanciador, BigDecimal coseguro, String moneda,
+			LocalDate vigenciaDesde, LocalDate vigenciaHasta, boolean vigente, String estado,
+			Instant deletedAt, String deactivationReason, long version) {
+
+		this(id, convenioId, practicaId, importeTotal, importeFinanciador, coseguro, moneda,
+				vigenciaDesde, vigenciaHasta, vigente, estado, deletedAt, deactivationReason, version,
+				null);
+	}
 
 	public static ArancelView de(ConvenioArancel arancel, LocalDate fecha) {
 		return new ArancelView(
@@ -45,6 +59,7 @@ public record ArancelView(
 				arancel.isActive() ? "ACTIVO" : "INACTIVO",
 				arancel.getDeletedAt(),
 				arancel.getDeactivationReason(),
-				arancel.getVersion());
+				arancel.getVersion(),
+				arancel.getOfertaId());
 	}
 }

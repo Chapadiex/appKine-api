@@ -51,6 +51,11 @@ import java.util.Set;
  *   6. ninguna                                -&gt; PARTICULAR (precio de la oferta, como 07.01)
  * </pre>
  *
+ * <p><b>B-3:</b> el arancel se resuelve CON la oferta de la sesion: si el convenio pacto un arancel
+ * especifico para esa oferta (RF-M16-008), manda sobre el general de la practica, y el snapshot
+ * congela ese. El precio particular es el vigente el dia del cierre (RF-M16-009), y lo trae
+ * {@code encounter} en {@link SesionCerrada#precioDeLaOferta()}.
+ *
  * <p><b>Una obligacion por responsable y por sesion, no una por practica.</b> No hay RF que diga si
  * el financiador paga por sesion o por practica; se toma la mas conservadora: facturar de mas a un
  * financiador es un debito en cada lote, facturar de menos es plata que se reclama despues. Es
@@ -247,12 +252,12 @@ public class ObligacionDevengador implements CierreDeSesionObserver {
 		for (long practicaId : candidatas) {
 			List<CoberturaAplicable> aplicables = coberturas.aplicables(
 					cierre.organizationId(), cierre.consultorioId(), cierre.personaId(), practicaId,
-					dia);
+					cierre.ofertaId(), dia);
 			for (CoberturaAplicable cobertura : aplicables) {
 				Optional<ArancelCongelado> arancel = aranceles.congelar(
 						cierre.organizationId(), cierre.consultorioId(),
 						cobertura.referencia().financiadorId(), cobertura.referencia().planId(),
-						practicaId, dia);
+						practicaId, cierre.ofertaId(), dia);
 				if (arancel.isPresent()) {
 					boolean noHabilitada = !declaradas.isEmpty() && declaradas.stream()
 							.noneMatch(p -> p.practicaId() == practicaId);

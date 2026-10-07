@@ -52,7 +52,14 @@ public record ArancelResponse(
 		String deactivationReason,
 
 		@Schema(description = "Version a reenviar para editar", example = "0")
-		long version) {
+		long version,
+
+		@Schema(
+				description = "Null = arancel GENERAL de la practica en el convenio. Con valor: arancel de "
+						+ "la practica cuando se presta dentro de esa oferta (RF-M16-008), que al "
+						+ "resolver con esa oferta manda sobre el general",
+				example = "77")
+		Long ofertaId) {
 
 	public static ArancelResponse de(ArancelView view) {
 		return new ArancelResponse(
@@ -69,6 +76,7 @@ public record ArancelResponse(
 				view.estado(),
 				view.deletedAt(),
 				view.deactivationReason(),
-				view.version());
+				view.version(),
+				view.ofertaId());
 	}
 }

@@ -289,14 +289,14 @@ class CoberturasAplicablesDirectoryIT {
 	private void conConvenio(Plan... planes) {
 		for (Plan plan : planes) {
 			given(aranceles.resolver(anyLong(), anyLong(), eq(plan.financiadorId()),
-					eq(plan.planId()), anyLong(), any(LocalDate.class)))
+					eq(plan.planId()), anyLong(), any(), any(LocalDate.class)))
 					.willReturn(resuelta(plan));
 		}
 	}
 
 	private void sinResolver(Plan plan, MotivoSinArancel motivo) {
 		given(aranceles.resolver(anyLong(), anyLong(), eq(plan.financiadorId()),
-				eq(plan.planId()), anyLong(), any(LocalDate.class)))
+				eq(plan.planId()), anyLong(), any(), any(LocalDate.class)))
 				.willReturn(ResolucionDeArancel.sinArancel(motivo));
 	}
 
