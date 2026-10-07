@@ -21,6 +21,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -47,7 +48,7 @@ class SesionesEnElReporteTest {
 	@BeforeEach
 	void setUp() {
 		contributor = new SesionesEnElReporte(sesiones);
-		given(sesiones.contarCerradasPorCasoEnElReporte(anyLong(), anyLong(), any(), any(), anyInt()))
+		given(sesiones.contarCerradasPorCasoEnElReporte(anyLong(), anyLong(), any(), any(), anyInt(), anyBoolean(), any()))
 				.willReturn(List.of());
 	}
 
@@ -65,14 +66,14 @@ class SesionesEnElReporteTest {
 	@Test
 	@DisplayName("Sin caso es el complemento de con caso sobre las cerradas, no otra consulta")
 	void sin_caso_es_el_complemento() {
-		given(sesiones.contarCerradasEnElReporte(anyLong(), anyLong(), any(), any())).willReturn(10L);
-		given(sesiones.contarCerradasConCasoEnElReporte(anyLong(), anyLong(), any(), any()))
+		given(sesiones.contarCerradasEnElReporte(anyLong(), anyLong(), any(), any(), anyBoolean(), any())).willReturn(10L);
+		given(sesiones.contarCerradasConCasoEnElReporte(anyLong(), anyLong(), any(), any(), anyBoolean(), any()))
 				.willReturn(4L);
 		given(sesiones.contarCerradasPorAsistenciaEnElReporte(
-				anyLong(), anyLong(), any(), any(), eq("PRESENTE"))).willReturn(8L);
+				anyLong(), anyLong(), any(), any(), eq("PRESENTE"), anyBoolean(), any())).willReturn(8L);
 		given(sesiones.contarCerradasPorAsistenciaEnElReporte(
-				anyLong(), anyLong(), any(), any(), eq("AUSENTE"))).willReturn(2L);
-		given(sesiones.contarEnBorradorEnElReporte(anyLong(), anyLong(), any(), any())).willReturn(3L);
+				anyLong(), anyLong(), any(), any(), eq("AUSENTE"), anyBoolean(), any())).willReturn(2L);
+		given(sesiones.contarEnBorradorEnElReporte(anyLong(), anyLong(), any(), any(), anyBoolean(), any())).willReturn(3L);
 
 		AporteDeReporte aporte = contributor.aportar(consulta());
 
@@ -90,7 +91,7 @@ class SesionesEnElReporteTest {
 	@DisplayName("El detalle agrupa por caso, y el grupo sin caso se nombra en vez de decir null")
 	void el_detalle_nombra_el_grupo_sin_caso() {
 		given(sesiones.contarCerradasPorCasoEnElReporte(
-				eq(ORG_ID), eq(CONSULTORIO_ID), any(), any(), eq(50)))
+				eq(ORG_ID), eq(CONSULTORIO_ID), any(), any(), eq(50), anyBoolean(), any()))
 				.willReturn(List.<Object[]>of(
 						new Object[] {null, 5L},
 						new Object[] {17L, java.math.BigInteger.valueOf(3)}));

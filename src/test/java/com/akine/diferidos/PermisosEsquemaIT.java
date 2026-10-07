@@ -235,7 +235,9 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// nombra al administrador entre los actores de una clase.
 						"clase:read", "clase:manage",
 						"inscripcion:read", "inscripcion:manage",
-						"asistencia:manage");
+						"asistencia:manage",
+						// `reporte:read` lo sumo G-1 (DP-15): la matriz da "Si" al ORG_ADMIN en Ver Reportes.
+						"reporte:read");
 	}
 
 	@Test
@@ -260,7 +262,10 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// tiene enfrente y marcar quien vino. `caja:operate` NO esta: su celda dice No.
 						"clase:read", "clase:manage",
 						"inscripcion:read", "inscripcion:manage",
-						"asistencia:manage");
+						"asistencia:manage",
+						// `reporte:read` lo sumo G-1 (DP-15) con alcance ACTIVIDAD_PROPIA: el profesional
+						// ve solo su propia actividad en los reportes.
+						"reporte:read");
 
 		membershipService.revoke(actorDe(tenant), tenant.organizationId(), membership, MOTIVO);
 

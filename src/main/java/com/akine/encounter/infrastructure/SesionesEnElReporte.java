@@ -80,23 +80,39 @@ public class SesionesEnElReporte implements ReporteContributor {
 		return true;
 	}
 
+	/**
+	 * Sabe contar solo las sesiones que atendio el profesional que pide el reporte (G-1, DP-15):
+	 * las que llevan su membership en {@code profesional_membership_id}, que es quien atiende y
+	 * quien firma. Los co-tratantes de un tratamiento no la cuentan como suya: la sesion es de quien
+	 * la atendio, igual que para escribir en ella.
+	 */
+	@Override
+	public boolean filtraPorActividadPropia() {
+		return true;
+	}
+
 	@Override
 	public AporteDeReporte aportar(ConsultaDeReporte consulta) {
 		long cerradas = sesiones.contarCerradasEnElReporte(
 				consulta.organizationId(), consulta.consultorioId(),
-				consulta.desdeInstante(), consulta.hastaInstante());
+				consulta.desdeInstante(), consulta.hastaInstante(),
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
 		long conCaso = sesiones.contarCerradasConCasoEnElReporte(
 				consulta.organizationId(), consulta.consultorioId(),
-				consulta.desdeInstante(), consulta.hastaInstante());
+				consulta.desdeInstante(), consulta.hastaInstante(),
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
 		long presentes = sesiones.contarCerradasPorAsistenciaEnElReporte(
 				consulta.organizationId(), consulta.consultorioId(),
-				consulta.desdeInstante(), consulta.hastaInstante(), "PRESENTE");
+				consulta.desdeInstante(), consulta.hastaInstante(), "PRESENTE",
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
 		long ausentes = sesiones.contarCerradasPorAsistenciaEnElReporte(
 				consulta.organizationId(), consulta.consultorioId(),
-				consulta.desdeInstante(), consulta.hastaInstante(), "AUSENTE");
+				consulta.desdeInstante(), consulta.hastaInstante(), "AUSENTE",
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
 		long enBorrador = sesiones.contarEnBorradorEnElReporte(
 				consulta.organizationId(), consulta.consultorioId(),
-				consulta.desdeInstante(), consulta.hastaInstante());
+				consulta.desdeInstante(), consulta.hastaInstante(),
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
 
 		List<IndicadorDeReporte> indicadores = List.of(
 				IndicadorDeReporte.contando(
@@ -118,7 +134,8 @@ public class SesionesEnElReporte implements ReporteContributor {
 		List<FilaDeReporte> filas = new ArrayList<>();
 		for (Object[] fila : sesiones.contarCerradasPorCasoEnElReporte(
 				consulta.organizationId(), consulta.consultorioId(),
-				consulta.desdeInstante(), consulta.hastaInstante(), consulta.limiteFilas())) {
+				consulta.desdeInstante(), consulta.hastaInstante(), consulta.limiteFilas(),
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte())) {
 
 			filas.add(FilaDeReporte.de(
 					fila[0] == null ? "sin caso" : String.valueOf(fila[0]),

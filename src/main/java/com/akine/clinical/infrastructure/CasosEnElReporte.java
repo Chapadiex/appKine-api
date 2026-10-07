@@ -73,16 +73,29 @@ public class CasosEnElReporte implements ReporteContributor {
 		return true;
 	}
 
+	/**
+	 * Sabe contar solo los casos asignados al profesional que pide el reporte (G-1, DP-15): los
+	 * casos de cuyo equipo tratante forma o formo parte. No alcanza con "abierto_por": quien abre
+	 * un caso puede no tratarlo, y quien lo trata puede no haberlo abierto.
+	 */
+	@Override
+	public boolean filtraPorActividadPropia() {
+		return true;
+	}
+
 	@Override
 	public AporteDeReporte aportar(ConsultaDeReporte consulta) {
 		long abiertos = casos.contarAbiertosEnElReporte(
 				consulta.organizationId(), consulta.consultorioId(),
-				consulta.desdeInstante(), consulta.hastaInstante());
+				consulta.desdeInstante(), consulta.hastaInstante(),
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
 		long cerrados = casos.contarCerradosEnElReporte(
 				consulta.organizationId(), consulta.consultorioId(),
-				consulta.desdeInstante(), consulta.hastaInstante());
+				consulta.desdeInstante(), consulta.hastaInstante(),
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
 		long activos = casos.contarActivosEnElReporte(
-				consulta.organizationId(), consulta.consultorioId());
+				consulta.organizationId(), consulta.consultorioId(),
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
 
 		return AporteDeReporte.de(SECCION, titulo(), List.of(
 				IndicadorDeReporte.contando("casos-abiertos-en-el-periodo", "Casos abiertos",

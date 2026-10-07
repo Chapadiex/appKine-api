@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -215,12 +216,15 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			   AND s.cerradaEn >= :desde
 			   AND s.cerradaEn < :hasta
 			   AND s.deletedAt IS NULL
+			   AND (:recortar = false OR s.profesionalMembershipId IN :memberships)
 			""")
 	long contarCerradasEnElReporte(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") Instant desde,
-			@Param("hasta") Instant hasta);
+			@Param("hasta") Instant hasta,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
 
 	/**
 	 * Las que pertenecen a un Caso Clinico.
@@ -238,12 +242,15 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			   AND s.cerradaEn >= :desde
 			   AND s.cerradaEn < :hasta
 			   AND s.deletedAt IS NULL
+			   AND (:recortar = false OR s.profesionalMembershipId IN :memberships)
 			""")
 	long contarCerradasConCasoEnElReporte(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") Instant desde,
-			@Param("hasta") Instant hasta);
+			@Param("hasta") Instant hasta,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
 
 	/**
 	 * Presentes o ausentes.
@@ -259,6 +266,7 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			   AND s.cerradaEn >= :desde
 			   AND s.cerradaEn < :hasta
 			   AND s.deletedAt IS NULL
+			   AND (:recortar = false OR s.profesionalMembershipId IN :memberships)
 			   AND CAST(s.asistencia AS string) = :asistencia
 			""")
 	long contarCerradasPorAsistenciaEnElReporte(
@@ -266,7 +274,9 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta,
-			@Param("asistencia") String asistencia);
+			@Param("asistencia") String asistencia,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
 
 	/**
 	 * Las abiertas y todavia sin cerrar.
@@ -283,12 +293,15 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			   AND s.iniciadaEn >= :desde
 			   AND s.iniciadaEn < :hasta
 			   AND s.deletedAt IS NULL
+			   AND (:recortar = false OR s.profesionalMembershipId IN :memberships)
 			""")
 	long contarEnBorradorEnElReporte(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") Instant desde,
-			@Param("hasta") Instant hasta);
+			@Param("hasta") Instant hasta,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
 
 	/**
 	 * El detalle, agrupado por Caso.
@@ -308,6 +321,7 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			   AND s.cerrada_en >= :desde
 			   AND s.cerrada_en < :hasta
 			   AND s.deleted_at IS NULL
+			   AND (:recortar = FALSE OR s.profesional_membership_id IN (:memberships))
 			 GROUP BY s.caso_id
 			 ORDER BY cantidad DESC, caso
 			 LIMIT :limite
@@ -317,5 +331,7 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta,
-			@Param("limite") int limite);
+			@Param("limite") int limite,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
 }

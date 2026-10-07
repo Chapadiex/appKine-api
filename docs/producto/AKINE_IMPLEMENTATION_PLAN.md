@@ -455,6 +455,8 @@ administradores (más restrictivo que la matriz).
 
 **Desbloquea:** G-1 (pasa de chico a intermedio) → G-8 (dashboards).
 
+**Implementación (G-1, 07/10/2026).** Alcance nuevo `ACTIVIDAD_PROPIA` en el evaluador de permisos (no se reusó `OWN`, que es el "Propio" del paciente) y recorte por membership en los contribuyentes de turnos, sesiones y casos; una sección que no sabe recortar se omite y se declara. **Desvío explícito:** `PLATFORM_ADMIN` queda con `SOPORTE` y no "Global" —mismo criterio que el resto de las lecturas de plataforma, matriz §9.7: soporte vigente y auditado—. Diseño en `docs/diseno/AKINE-G-1-reporte-read.md`; enmienda en la matriz §14.
+
 ## DP-16 — Recepción con máquina de estados propia, como pide DP-05 (DU-9)
 
 **Estado:** RESUELTA el 07/10/2026 por el dueño del producto.

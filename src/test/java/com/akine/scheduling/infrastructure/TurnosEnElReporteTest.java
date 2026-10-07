@@ -21,6 +21,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -55,9 +56,9 @@ class TurnosEnElReporteTest {
 	void setUp() {
 		contributor = new TurnosEnElReporte(turnos);
 		given(turnos.contarPorDiaYEstadoEnElReporte(
-				anyLong(), anyLong(), any(), any(), anyString(), anyInt()))
+				anyLong(), anyLong(), any(), any(), anyString(), anyInt(), anyBoolean(), any()))
 				.willReturn(List.of());
-		given(turnos.contarReprogramadosEnElReporte(anyLong(), anyLong(), any(), any()))
+		given(turnos.contarReprogramadosEnElReporte(anyLong(), anyLong(), any(), any(), anyBoolean(), any()))
 				.willReturn(0L);
 	}
 
@@ -86,7 +87,7 @@ class TurnosEnElReporteTest {
 	@DisplayName("Cuenta por estado y totaliza: cada fila del dia suma al indicador que le toca")
 	void cuenta_por_estado() {
 		given(turnos.contarPorDiaYEstadoEnElReporte(
-				anyLong(), anyLong(), any(), any(), anyString(), anyInt()))
+				anyLong(), anyLong(), any(), any(), anyString(), anyInt(), anyBoolean(), any()))
 				.willReturn(List.<Object[]>of(
 						fila("2026-09-01", "RESERVADO", 4L),
 						fila("2026-09-01", "CONFIRMADO", 3L),
@@ -109,7 +110,7 @@ class TurnosEnElReporteTest {
 		// Diez turnos, cinco cancelados, uno ausente. Sobre el total daria 10 %; sobre los que
 		// seguian en pie da 20 %, que es la cuenta que mide lo que el indicador dice medir.
 		given(turnos.contarPorDiaYEstadoEnElReporte(
-				anyLong(), anyLong(), any(), any(), anyString(), anyInt()))
+				anyLong(), anyLong(), any(), any(), anyString(), anyInt(), anyBoolean(), any()))
 				.willReturn(List.<Object[]>of(
 						fila("2026-09-01", "RESERVADO", 4L),
 						fila("2026-09-01", "CANCELADO", 5L),
@@ -123,7 +124,7 @@ class TurnosEnElReporteTest {
 	@DisplayName("Un periodo entero cancelado no divide por cero: devuelve cero")
 	void todo_cancelado() {
 		given(turnos.contarPorDiaYEstadoEnElReporte(
-				anyLong(), anyLong(), any(), any(), anyString(), anyInt()))
+				anyLong(), anyLong(), any(), any(), anyString(), anyInt(), anyBoolean(), any()))
 				.willReturn(List.<Object[]>of(fila("2026-09-01", "CANCELADO", 3L)));
 
 		assertThat(valorDe(contributor.aportar(consulta()), "tasa-ausentismo"))
@@ -136,7 +137,7 @@ class TurnosEnElReporteTest {
 		// El dia que una etapa agregue un estado nuevo, el reporte tiene que seguir cuadrando en
 		// vez de fallar: la fila se muestra igual y el total la cuenta.
 		given(turnos.contarPorDiaYEstadoEnElReporte(
-				anyLong(), anyLong(), any(), any(), anyString(), anyInt()))
+				anyLong(), anyLong(), any(), any(), anyString(), anyInt(), anyBoolean(), any()))
 				.willReturn(List.<Object[]>of(fila("2026-09-01", "LLEGO_TARDE", 2L)));
 
 		AporteDeReporte aporte = contributor.aportar(consulta());
@@ -150,7 +151,7 @@ class TurnosEnElReporteTest {
 	void reprogramados_aparte() {
 		// Reprogramar no es un estado: un turno movido sigue RESERVADO. La unica forma de contarlos
 		// es mirar `reprogramado_en`, y por eso es una consulta propia.
-		given(turnos.contarReprogramadosEnElReporte(anyLong(), anyLong(), any(), any()))
+		given(turnos.contarReprogramadosEnElReporte(anyLong(), anyLong(), any(), any(), anyBoolean(), any()))
 				.willReturn(7L);
 
 		assertThat(valorDe(contributor.aportar(consulta()), "turnos-reprogramados"))
@@ -168,6 +169,29 @@ class TurnosEnElReporteTest {
 			assertThat(indicador.fuente()).isNotBlank();
 			assertThat(indicador.criterioDeFecha()).isNotBlank();
 		});
+	}
+
+	@Test
+	@DisplayName("Recortada a la actividad propia, las dos consultas reciben el recorte (G-1)")
+	void la_actividad_propia_viaja_a_las_dos_consultas() {
+		// Si una sola de las dos consultas se olvidara del recorte, el profesional veria sus turnos
+		// por estado y los reprogramados de todo el equipo, y nada fallaria.
+		assertThat(contributor.filtraPorActividadPropia()).isTrue();
+		ConsultaDeReporte base = consulta();
+		ConsultaDeReporte recortada = new ConsultaDeReporte(ORG_ID, CONSULTORIO_ID,
+				base.desde(), base.hasta(), base.zona(), base.desdeInstante(),
+				base.hastaInstante(), 500, java.util.Set.of(77L));
+
+		contributor.aportar(recortada);
+
+		org.mockito.Mockito.verify(turnos).contarPorDiaYEstadoEnElReporte(
+				anyLong(), anyLong(), any(), any(), anyString(), anyInt(),
+				org.mockito.ArgumentMatchers.eq(true),
+				org.mockito.ArgumentMatchers.eq(java.util.Set.of(77L)));
+		org.mockito.Mockito.verify(turnos).contarReprogramadosEnElReporte(
+				anyLong(), anyLong(), any(), any(),
+				org.mockito.ArgumentMatchers.eq(true),
+				org.mockito.ArgumentMatchers.eq(java.util.Set.of(77L)));
 	}
 
 	// =================================================================================

@@ -10,7 +10,8 @@ package com.akine.organization.spi;
  * @param denial         motivo del rechazo; {@link DenialKind#NONE} cuando se concede
  * @param grantedByScope alcance con el que se concedio, como texto
  *                       ({@code GLOBAL} | {@code ORGANIZACION} | {@code CONSULTORIO} |
- *                       {@code OWN} | {@code CATALOGO} | {@code SOPORTE}), o {@code null} si se
+ *                       {@code OWN} | {@code CATALOGO} | {@code SOPORTE} |
+ *                       {@code ACTIVIDAD_PROPIA}), o {@code null} si se
  *                       rechazo. Viaja como {@code String} por el mismo motivo que
  *                       {@code permissionCode}: el enum vive en {@code domain} y es privado
  * @param viaSupportAccess si la concesion se apoyo en un acceso de soporte vigente. Quien
@@ -29,6 +30,23 @@ public record PermissionDecision(
 			throw new IllegalArgumentException(
 					"Una decision concedida lleva DenialKind.NONE y una rechazada lleva un motivo");
 		}
+	}
+
+	/**
+	 * Nombre del alcance "Limitado a la actividad propia" (AKINE-G-1, DP-15), tal como viaja en
+	 * {@link #grantedByScope()}. Es el {@code name()} de {@code PermissionScope.ACTIVIDAD_PROPIA};
+	 * un test de {@code organization} lo sostiene igual.
+	 */
+	public static final String ALCANCE_ACTIVIDAD_PROPIA = "ACTIVIDAD_PROPIA";
+
+	/**
+	 * Si el permiso se concedio solo sobre la actividad propia del actor.
+	 *
+	 * <p>Cuando es {@code true}, <b>el llamador tiene que recortar el dato</b> a lo que el actor
+	 * atendio o le fue asignado: el evaluador decide que sede alcanza, no que filas.
+	 */
+	public boolean limitadaAActividadPropia() {
+		return granted && ALCANCE_ACTIVIDAD_PROPIA.equals(grantedByScope);
 	}
 
 	public static PermissionDecision concedida(String scope, boolean viaSupportAccess) {
