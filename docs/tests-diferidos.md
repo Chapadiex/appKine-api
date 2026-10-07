@@ -68,8 +68,8 @@ inicial"*. Lo que 02.01 entrega de esos cuatro:
 |---|---|---|
 | Crear consultorio | **cubierto** — `POST /api/v1/organizations/{orgId}/consultorios` | — |
 | Intervalo inicial | **cubierto** — `slot_minutes`, columna de `consultorio` | — |
-| **Primer box** | **NO cubierto** | **AKINE-02.02** |
-| **Horario general** | **NO cubierto** | **F5 / agenda** |
+| **Primer box** | ~~NO cubierto~~ **cubierto por A-8** (07/10/2026): `primerBox` en el alta, misma transacción | AKINE-02.02 → A-8 |
+| **Horario general** | ~~NO cubierto~~ **cubierto por A-8** (07/10/2026): `horarioGeneral` en el alta, tabla `consultorio_horario` (`V83`); `AltaDeSedeEnUnActoIT` prueba el alta completa y el rollback | F5 → A-8 |
 
 **Por qué el box no entra, y por qué no es negociable.** `Box`/`Espacio` es del módulo
 `resource` (M04) y el plan lo asigna a AKINE-02.02. Que `organization` cree una fila en una

@@ -1,7 +1,11 @@
 package com.akine.resource.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
+import java.util.List;
 
 /**
  * Edicion de la politica de calendario de una sede (RF-M05-004).
@@ -41,5 +45,15 @@ public record UpdateCalendarioRequest(
 						+ "cambio se audita aunque sea un solo flag",
 				example = "true",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		Boolean cierraPorFeriado) {
+		Boolean cierraPorFeriado,
+
+		@Schema(
+				description = "Horario general de la sede (RF-M03-003). OMITIRLO lo deja como "
+						+ "estaba; una lista vacia lo borra; una lista lo REEMPLAZA entero. Lo "
+						+ "reemplazado no se borra: queda como historia. Informativo: no "
+						+ "sustituye la disponibilidad de cada profesional (RN-M03-004). Dos "
+						+ "franjas del mismo dia que se pisan son 400",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		@Size(max = 28, message = "El horario general admite como maximo 28 franjas")
+		List<@Valid HorarioGeneralFranjaRequest> horarioGeneral) {
 }

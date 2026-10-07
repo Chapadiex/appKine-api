@@ -1,8 +1,10 @@
 package com.akine.resource.api;
 
 import com.akine.resource.api.dto.CalendarioSedeResponse;
+import com.akine.resource.api.dto.HorarioGeneralFranjaRequest;
 import com.akine.resource.api.dto.UpdateCalendarioRequest;
 import com.akine.resource.application.CalendarioService;
+import com.akine.resource.domain.FranjaHorarioGeneral.Franja;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Politica de calendario de una sede y feriados del periodo (M05, RF-M05-004).
@@ -137,7 +140,9 @@ public class CalendarioController {
 			operationId = "updateCalendarioSede",
 			summary = "Edicion de la politica de calendario de la sede",
 			description = """
-					Cambia el pais del calendario y si la sede cierra sus feriados. Crea la fila \
+					Cambia el pais del calendario, si la sede cierra sus feriados y, si viene \
+					horarioGeneral, reemplaza el horario general de la sede (RF-M03-003): lo \
+					reemplazado queda como historia y una lista vacia lo borra. Crea la fila \
 					a demanda si es la primera vez. Exige consultorio:manage sobre ESA sede.
 
 					Semantica de PATCH aunque el verbo sea PUT: cada campo omitido queda como \
@@ -166,7 +171,9 @@ public class CalendarioController {
 							schema = @Schema(implementation = CalendarioSedeResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "El pais viene vacio o no es un codigo de dos letras",
+					description = "El pais viene vacio o no es un codigo de dos letras, o el "
+							+ "horario general es invalido (franja que termina antes de empezar "
+							+ "o dos franjas del mismo dia que se pisan)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -188,7 +195,12 @@ public class CalendarioController {
 
 			@Valid @RequestBody UpdateCalendarioRequest request) {
 
+		List<Franja> horario = request.horarioGeneral() == null
+				? null
+				: request.horarioGeneral().stream().map(HorarioGeneralFranjaRequest::aFranja).toList();
+
 		return ResponseEntity.ok(CalendarioSedeResponse.from(calendarioService.actualizar(
-				apiActor.current(), consultorioId, request.pais(), request.cierraPorFeriado())));
+				apiActor.current(), consultorioId, request.pais(), request.cierraPorFeriado(),
+				horario)));
 	}
 }

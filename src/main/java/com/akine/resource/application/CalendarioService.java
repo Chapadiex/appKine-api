@@ -5,10 +5,13 @@ import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.resource.domain.CalendarioSede;
+import com.akine.resource.domain.FranjaHorarioGeneral;
+import com.akine.resource.domain.FranjaHorarioGeneral.Franja;
 import com.akine.resource.domain.PermissionCodes;
 import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.FeriadoRepositoryPort;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGeneralRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -17,10 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Politica de calendario de una sede y calendario nacional de feriados (M05, RF-M05-004).
@@ -60,6 +65,7 @@ public class CalendarioService {
 	private final ConsultorioDirectory consultorioDirectory;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final HorarioGeneralRepositoryPort horarios;
 
 	public CalendarioService(
 			CalendarioSedeRepositoryPort calendarios,
@@ -67,7 +73,8 @@ public class CalendarioService {
 			FeriadoRepositoryPort feriados,
 			ConsultorioDirectory consultorioDirectory,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			HorarioGeneralRepositoryPort horarios) {
 
 		this.calendarios = calendarios;
 		this.calendarioIniciador = calendarioIniciador;
@@ -75,6 +82,7 @@ public class CalendarioService {
 		this.consultorioDirectory = consultorioDirectory;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.horarios = horarios;
 	}
 
 	// =================================================================================
@@ -112,9 +120,11 @@ public class CalendarioService {
 						.map(FeriadoView::de)
 						.toList();
 
+		List<Franja> horario = horarioVigente(organizationId, consultorioId);
+
 		return politica
-				.map(fila -> CalendarioView.de(fila, delPeriodo))
-				.orElseGet(() -> CalendarioView.porDefecto(consultorioId, delPeriodo));
+				.map(fila -> CalendarioView.de(fila, delPeriodo, horario))
+				.orElseGet(() -> CalendarioView.porDefecto(consultorioId, delPeriodo, horario));
 	}
 
 	// =================================================================================
@@ -143,13 +153,38 @@ public class CalendarioService {
 	 * @throws ConsultorioNotAccessibleException si la sede no existe o es de otro tenant (404)
 	 * @throws IllegalArgumentException si el pais viene vacio (400)
 	 */
+	// La misma transaccion declarada aca: la delegacion es autoinvocacion y no pasa por el proxy.
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public CalendarioView actualizar(
 			OperatingActor actor, long consultorioId, String pais, Boolean cierraPorFeriado) {
+		return actualizar(actor, consultorioId, pais, cierraPorFeriado, null);
+	}
+
+	/**
+	 * Igual que {@link #actualizar(OperatingActor, long, String, Boolean)}, y ademas reemplaza el
+	 * horario general de la sede cuando {@code horarioGeneral} no es {@code null} (RF-M03-003).
+	 *
+	 * <p>{@code null} deja el horario como estaba; una lista vacia lo borra. El reemplazo da de
+	 * baja logica las franjas vigentes e inserta las nuevas bajo el mismo {@code FOR UPDATE} de
+	 * la politica: dos ediciones concurrentes no mezclan franjas de una y de otra.
+	 *
+	 * @throws IllegalArgumentException si dos franjas del mismo dia se solapan (400)
+	 */
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public CalendarioView actualizar(
+			OperatingActor actor,
+			long consultorioId,
+			String pais,
+			Boolean cierraPorFeriado,
+			List<Franja> horarioGeneral) {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
+		// Antes del lock: un horario invalido no tiene por que esperar a nadie.
+		List<Franja> nuevoHorario = horarioGeneral == null
+				? null
+				: FranjaHorarioGeneral.validarHorario(horarioGeneral);
 
 		Instant ahora = Instant.now();
 		CalendarioSede politica = bloquearOCrear(organizationId, consultorioId);
@@ -157,6 +192,11 @@ public class CalendarioService {
 		Map<String, String> detalles = cambios(politica, pais, cierraPorFeriado);
 		politica.actualizarPolitica(pais, cierraPorFeriado);
 		CalendarioSede guardada = calendarios.save(politica);
+
+		List<Franja> horario = nuevoHorario == null
+				? horarioVigente(organizationId, consultorioId)
+				: reemplazarHorario(organizationId, consultorioId, actor.accountId(),
+						nuevoHorario, ahora);
 
 		auditTrail.record(new AuditEntry(
 				organizationId,
@@ -176,7 +216,101 @@ public class CalendarioService {
 				consultorioId, guardada.isCierraPorFeriado());
 
 		// Sin ventana no hay feriados que devolver: ver CalendarioView.
-		return CalendarioView.de(guardada, List.of());
+		return CalendarioView.de(guardada, List.of(), horario);
+	}
+
+	// =================================================================================
+	// Horario general en el alta de la sede (RF-M03-002)
+	// =================================================================================
+
+	/**
+	 * Fija el horario general de una sede que se esta dando de alta, dentro de la transaccion
+	 * del alta (A-8, CA-M03-002).
+	 *
+	 * <p><b>No evalua permisos ni toma el lock de la sede, y no es un descuido.</b> Lo llama
+	 * {@code organization} a traves de {@code organization.spi.AltaDeSedeExtension}, despues de
+	 * exigir {@code consultorio:manage} con alcance organizacion —mas fuerte que el de sede— en
+	 * la misma transaccion. La sede todavia no esta commiteada: nadie mas la ve, asi que no hay
+	 * con quien serializar, y crear la fila-lock en una transaccion aparte seria peor que
+	 * inutil: el INSERT de {@code consultorio_calendario} esperaria por la FK a la fila de
+	 * {@code consultorio} que esta misma transaccion tiene bloqueada.
+	 *
+	 * <p>Un horario invalido lanza y revierte el alta entera, sede incluida.
+	 *
+	 * @throws IllegalArgumentException si el horario no es coherente (400)
+	 */
+	@Transactional
+	public List<Franja> fijarHorarioDeSedeNueva(
+			long organizationId, long consultorioId, long accountId, List<Franja> horarioGeneral) {
+
+		List<Franja> horario = FranjaHorarioGeneral.validarHorario(horarioGeneral);
+		if (horario.isEmpty()) {
+			return horario;
+		}
+		return reemplazarHorario(organizationId, consultorioId, accountId, horario, Instant.now());
+	}
+
+	/**
+	 * Da de baja logica las franjas vigentes, inserta las nuevas y audita el antes y el despues.
+	 * El llamador ya valido el horario y, si la sede existia, tomo su lock.
+	 */
+	private List<Franja> reemplazarHorario(
+			long organizationId,
+			long consultorioId,
+			long accountId,
+			List<Franja> nuevo,
+			Instant ahora) {
+
+		List<FranjaHorarioGeneral> vigentes = horarios.findVigentes(organizationId, consultorioId);
+		List<Franja> anterior = vigentes.stream().map(FranjaHorarioGeneral::franja).toList();
+		if (anterior.equals(nuevo)) {
+			return anterior;
+		}
+
+		for (FranjaHorarioGeneral vigente : vigentes) {
+			vigente.reemplazar(ahora);
+			horarios.save(vigente);
+		}
+		for (Franja franja : nuevo) {
+			horarios.save(new FranjaHorarioGeneral(organizationId, consultorioId, franja));
+		}
+
+		Map<String, String> detalles = new LinkedHashMap<>();
+		detalles.put("horarioGeneral", describir(anterior) + " -> " + describir(nuevo));
+		auditTrail.record(new AuditEntry(
+				organizationId,
+				consultorioId,
+				accountId,
+				AuditEvents.HORARIO_GENERAL_UPDATED,
+				AuditEvents.ENTITY_HORARIO_GENERAL,
+				consultorioId,
+				null,
+				null,
+				detalles,
+				null,
+				AuditEvents.correlationId(),
+				ahora));
+
+		log.info("Horario general de la sede reemplazado: consultorioId={} franjas={}",
+				consultorioId, nuevo.size());
+		return nuevo;
+	}
+
+	private List<Franja> horarioVigente(long organizationId, long consultorioId) {
+		return horarios.findVigentes(organizationId, consultorioId).stream()
+				.map(FranjaHorarioGeneral::franja)
+				.toList();
+	}
+
+	/** {@code "[1 09:00-13:00, 1 14:00-18:00]"}: legible en la auditoria, sin datos sensibles. */
+	private static String describir(List<Franja> horario) {
+		return horario.stream()
+				.map(f -> f.diaSemana() + " " + hora(f.horaDesde()) + "-" + hora(f.horaHasta()))
+				.collect(Collectors.joining(", ", "[", "]"));
+	}
+
+	private static String hora(LocalTime hora) {
+		return LocalTime.MAX.equals(hora) ? "24:00" : hora.toString();
 	}
 
 	// =================================================================================

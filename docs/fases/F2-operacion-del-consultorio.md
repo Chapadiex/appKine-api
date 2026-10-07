@@ -7,7 +7,7 @@
 
 | Etapa | Estado | % | Lo que falta, en una línea |
 |---|---|---|---|
-| 02.01 Consultorios y onboarding | PARCIAL | 75 | ~~`ConsultorioDeactivationProbe` sin implementación~~ (E-1); primer box + horario (CA-M03-002) |
+| 02.01 Consultorios y onboarding | PARCIAL | 75 | ~~`ConsultorioDeactivationProbe` sin implementación~~ (E-1); ~~primer box + horario (CA-M03-002)~~ (A-8, backend) |
 | 02.02 Espacios | PARCIAL | 70 | ~~`EspacioOccupancyProbe` sin implementación~~ (E-1) |
 | 02.03 Colaboradores | PARCIAL | 70 | ~~La desvinculación no cuenta turnos~~ (E-1); la UI no muestra el impacto |
 | 02.04 Disponibilidad | PARCIAL | 80 | ~~`DisponibilidadImpactProbeSinAgenda` sigue devolviendo `ninguno()`~~ (E-1) |
@@ -54,7 +54,11 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
   versión de la oferta avanza una vez por reemplazo (`HabilitacionesVersionForzadaIT`, PR #23 y
   #36). Ver la corrección en [deuda-force-increment.md](deuda-force-increment.md).
 - [x] ~~Endpoint que le diga al frontend si quien mira tiene rol de plataforma (prerrequisito de RF-M06-005).~~ → A-7: `GET /api/v1/me/platform-role` (contrato 0.64.0), sin contexto de tenant y revalidado contra `platform_role` en cada request. Además aprobar una solicitud **publica** el concepto global en la misma transacción (`conceptoId`); diseño en [AKINE-A-7-plataforma.md](../diseno/AKINE-A-7-plataforma.md).
-- [ ] Primer box + horario general en el alta de sede (CA-M03-002).
+- [x] ~~Primer box + horario general en el alta de sede (CA-M03-002).~~ → A-8 (`V83`, contrato
+  0.69.0): el alta acepta `primerBox` y `horarioGeneral` y los crea en la misma transacción
+  (`AltaDeSedeEnUnActoIT`: alta completa y rollback con horario solapado). El horario general es
+  parte del calendario de la sede (`resource`, tabla `consultorio_horario`), se edita por el `PUT`
+  del calendario y es informativo: la agenda no lo lee (RN-M03-004). Falta la pantalla.
 
 ### Permisos
 - [ ] `catalogo:read` / `catalogo:manage` siguen **propuestos**; rige una autorización interina

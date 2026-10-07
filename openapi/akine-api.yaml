@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.68.0
+  version: 0.69.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -3014,7 +3014,7 @@ paths:
       - Calendario de sede
     put:
       description: |-
-        Cambia el pais del calendario y si la sede cierra sus feriados. Crea la fila a demanda si es la primera vez. Exige consultorio:manage sobre ESA sede.
+        Cambia el pais del calendario, si la sede cierra sus feriados y, si viene horarioGeneral, reemplaza el horario general de la sede (RF-M03-003): lo reemplazado queda como historia y una lista vacia lo borra. Crea la fila a demanda si es la primera vez. Exige consultorio:manage sobre ESA sede.
 
         Semantica de PATCH aunque el verbo sea PUT: cada campo omitido queda como estaba. cierraPorFeriado OMITIDO no es false — ese es el error que convierte "no toques la politica" en "abri todos los feriados" para todos los profesionales de la sede, hacia adelante y hacia atras. Por el alcance de ese cambio, la edicion se audita aunque sea un solo flag.
 
@@ -3050,7 +3050,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El pais viene vacio o no es un codigo de dos letras
+          description: "El pais viene vacio o no es un codigo de dos letras, o el\
+            \ horario general es invalido (franja que termina antes de empezar o dos\
+            \ franjas del mismo dia que se pisan)"
         "403":
           content:
             application/problem+json:
@@ -14419,7 +14421,7 @@ paths:
 
         Pasa por el limite MAX_CONSULTORIOS del plan contratado. El header Idempotency-Key es obligatorio: reintentar con la misma clave y el mismo cuerpo devuelve la misma sede en vez de crear una segunda, que es lo que cubre el reintento despues de un timeout de red.
 
-        El primer box y el horario general de la sede NO se crean aca. Box es del modulo de espacios (AKINE-02.02) y el horario general depende de la disponibilidad profesional, que llega despues.
+        Opcionalmente crea en el MISMO acto el primer box (primerBox) y el horario general de la sede (horarioGeneral), que es lo que RF-M03-002 pide. Todo entra en una sola transaccion: si el box o el horario son invalidos la respuesta es 400 y no queda nada, ni la sede ni el cupo de plan consumido. El horario general es informativo y no reemplaza la disponibilidad de cada profesional (RN-M03-004); se lee y se edita despues por /consultorios/{id}/calendario, y el box por /consultorios/{id}/espacios. Los dos campos entran en la deteccion de clave de idempotencia reusada.
       operationId: createConsultorio
       parameters:
       - description: Identificador de la organizacion
@@ -14458,7 +14460,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Campos invalidos, zona horaria que no es un identificador\
-            \ IANA, o falta el header Idempotency-Key"
+            \ IANA, falta el header Idempotency-Key, o un primer box u horario general\
+            \ invalido (franja que termina antes de empezar, dos franjas del mismo\
+            \ dia que se pisan). En ese caso no se crea nada"
         "403":
           content:
             application/problem+json:
@@ -19922,6 +19926,51 @@ components:
           enum:
           - CONSUMO_A_REVISAR
           example: CONSUMO_A_REVISAR
+    AltaSedeFranjaHorariaRequest:
+      type: object
+      description: Franja semanal del horario general de la sede
+      properties:
+        diaSemana:
+          type: integer
+          format: int32
+          description: "Dia de la semana ISO-8601: 1 = lunes .. 7 = domingo"
+          example: 1
+          maximum: 7
+          minimum: 1
+        horaDesde:
+          type: string
+          description: "Hora local de apertura, HH:mm"
+          example: 09:00
+          pattern: "^(([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?|24:00(:00)?)$"
+        horaHasta:
+          type: string
+          description: "Hora local de cierre, EXCLUSIVA, HH:mm. La medianoche es 24:00.\
+            \ No cruza al dia siguiente"
+          example: 13:00
+          pattern: "^(([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?|24:00(:00)?)$"
+      required:
+      - diaSemana
+      - horaDesde
+      - horaHasta
+    AltaSedePrimerBoxRequest:
+      type: object
+      description: "Primer box de la sede, creado junto con ella"
+      properties:
+        capacidad:
+          type: integer
+          format: int32
+          description: "Personas que el box admite a la vez. Si se omite, 1"
+          example: 1
+          maximum: 1000
+          minimum: 1
+        name:
+          type: string
+          description: Nombre del box. Unico entre los espacios vigentes de la sede
+          example: Box 1
+          maxLength: 160
+          minLength: 0
+      required:
+      - name
     AntecedenteResponse:
       type: object
       description: Antecedente clinico de una historia (RF-M09-002)
@@ -20971,6 +21020,15 @@ components:
             \ respuesta del PUT, que no tiene ventana: vacia significa \"no se pregunto\""
           items:
             $ref: "#/components/schemas/FeriadoResponse"
+        horarioGeneral:
+          type: array
+          description: "Franjas VIGENTES del horario general de la sede (RF-M03-002),\
+            \ ordenadas por dia y hora. Vacia significa que la sede no declaro horario\
+            \ general, no que este cerrada. Informativo: la agenda ofrece turnos con\
+            \ la disponibilidad de cada profesional, no con este horario (RN-M03-004).\
+            \ Viaja completa tambien en la respuesta del PUT"
+          items:
+            $ref: "#/components/schemas/HorarioGeneralFranjaResponse"
         pais:
           type: string
           description: Pais cuyo calendario de feriados usa la sede
@@ -22907,6 +22965,18 @@ components:
           description: Email de contacto
           maxLength: 160
           minLength: 0
+        horarioGeneral:
+          type: array
+          description: "Horario general de la sede (RF-M03-002): franjas semanales\
+            \ en la zona de la sede. Informativo: NO sustituye la disponibilidad de\
+            \ cada profesional, que es lo que la agenda usa para ofrecer turnos (RN-M03-004).\
+            \ Se crea en la misma transaccion que la sede; dos franjas del mismo dia\
+            \ que se pisan, o una que termina antes de empezar, rechazan el alta entera\
+            \ con 400. Se lee y se edita despues por /consultorios/{id}/calendario"
+          items:
+            $ref: "#/components/schemas/AltaSedeFranjaHorariaRequest"
+          maxItems: 28
+          minItems: 0
         legalName:
           type: string
           description: Razon social
@@ -22924,6 +22994,11 @@ components:
           description: Telefono de contacto
           maxLength: 40
           minLength: 0
+        primerBox:
+          $ref: "#/components/schemas/AltaSedePrimerBoxRequest"
+          description: "Primer box de la sede (RF-M03-002). Si viene, se crea en la\
+            \ misma transaccion que la sede: si algo falla no queda ni la sede ni\
+            \ el box. Omitirlo da de alta la sede sola, como antes"
         slotMinutes:
           type: integer
           format: int32
@@ -25823,6 +25898,47 @@ components:
           type: string
           description: Titulo corto
           example: Turno
+    HorarioGeneralFranjaRequest:
+      type: object
+      description: Franja semanal del horario general de la sede
+      properties:
+        diaSemana:
+          type: integer
+          format: int32
+          description: "Dia de la semana ISO-8601: 1 = lunes .. 7 = domingo"
+          example: 1
+          maximum: 7
+          minimum: 1
+        horaDesde:
+          type: string
+          description: Hora local de apertura
+          example: 09:00
+        horaHasta:
+          type: string
+          description: "Hora local de cierre, EXCLUSIVA. La medianoche es 24:00"
+          example: 13:00
+      required:
+      - diaSemana
+      - horaDesde
+      - horaHasta
+    HorarioGeneralFranjaResponse:
+      type: object
+      description: Franja semanal vigente del horario general de la sede
+      properties:
+        diaSemana:
+          type: integer
+          format: int32
+          description: "Dia de la semana ISO-8601: 1 = lunes .. 7 = domingo"
+          example: 1
+        horaDesde:
+          type: string
+          description: Hora local de apertura
+          example: 09:00
+        horaHasta:
+          type: string
+          description: "Hora local de cierre, EXCLUSIVA. La medianoche viaja como\
+            \ 24:00"
+          example: 13:00
     ImputacionAplicada:
       type: object
       properties:
@@ -31945,6 +32061,17 @@ components:
             \ del calendario para todos los profesionales de la sede, por eso el cambio\
             \ se audita aunque sea un solo flag"
           example: true
+        horarioGeneral:
+          type: array
+          description: "Horario general de la sede (RF-M03-003). OMITIRLO lo deja\
+            \ como estaba; una lista vacia lo borra; una lista lo REEMPLAZA entero.\
+            \ Lo reemplazado no se borra: queda como historia. Informativo: no sustituye\
+            \ la disponibilidad de cada profesional (RN-M03-004). Dos franjas del\
+            \ mismo dia que se pisan son 400"
+          items:
+            $ref: "#/components/schemas/HorarioGeneralFranjaRequest"
+          maxItems: 28
+          minItems: 0
         pais:
           type: string
           description: Pais cuyo calendario de feriados usa la sede. Omitirlo lo deja

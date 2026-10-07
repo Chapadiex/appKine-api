@@ -1,6 +1,7 @@
 package com.akine.resource.application;
 
 import com.akine.resource.domain.CalendarioSede;
+import com.akine.resource.domain.FranjaHorarioGeneral;
 
 import java.util.List;
 
@@ -26,6 +27,10 @@ import java.util.List;
  * @param existePersistida {@code false} cuando la sede todavia no tiene fila propia y lo que se
  *                         devuelve son los valores por defecto de V23. Es informacion util: dice
  *                         que nadie edito nunca la politica de esa sede, no que no tenga una
+ * @param horarioGeneral   franjas VIGENTES del horario general de la sede (RF-M03-002), ordenadas
+ *                         por dia y hora. Vacia significa que la sede no declaro horario general,
+ *                         no que este cerrada: el horario es informativo y la agenda sigue
+ *                         calculando con la disponibilidad de cada profesional (RN-M03-004)
  */
 public record CalendarioView(
 		long consultorioId,
@@ -33,21 +38,38 @@ public record CalendarioView(
 		boolean cierraPorFeriado,
 		long version,
 		boolean existePersistida,
-		List<FeriadoView> feriados) {
+		List<FeriadoView> feriados,
+		List<FranjaHorarioGeneral.Franja> horarioGeneral) {
 
 	public CalendarioView {
 		feriados = feriados == null ? List.of() : List.copyOf(feriados);
+		horarioGeneral = horarioGeneral == null ? List.of() : List.copyOf(horarioGeneral);
+	}
+
+	/** Sin horario general: la forma de la vista anterior a A-8. */
+	public CalendarioView(
+			long consultorioId,
+			String pais,
+			boolean cierraPorFeriado,
+			long version,
+			boolean existePersistida,
+			List<FeriadoView> feriados) {
+		this(consultorioId, pais, cierraPorFeriado, version, existePersistida, feriados, List.of());
 	}
 
 	/** Vista de una fila que existe en la base. */
-	public static CalendarioView de(CalendarioSede calendario, List<FeriadoView> feriados) {
+	public static CalendarioView de(
+			CalendarioSede calendario,
+			List<FeriadoView> feriados,
+			List<FranjaHorarioGeneral.Franja> horarioGeneral) {
 		return new CalendarioView(
 				calendario.getConsultorioId(),
 				calendario.getPais(),
 				calendario.isCierraPorFeriado(),
 				calendario.getVersion(),
 				true,
-				feriados);
+				feriados,
+				horarioGeneral);
 	}
 
 	/**
@@ -57,14 +79,21 @@ public record CalendarioView(
 	 * una mutacion que nadie pidio y la haria fallar en una transaccion de solo lectura—. La fila
 	 * aparece en la primera edicion de politica o en el primer write de disponibilidad de la
 	 * sede, que son los dos lugares que ya tienen transaccion de escritura.
+	 *
+	 * <p>El horario general es independiente de esa fila: una sede creada con horario y nunca
+	 * editada no tiene fila de politica y si tiene horario.
 	 */
-	public static CalendarioView porDefecto(long consultorioId, List<FeriadoView> feriados) {
+	public static CalendarioView porDefecto(
+			long consultorioId,
+			List<FeriadoView> feriados,
+			List<FranjaHorarioGeneral.Franja> horarioGeneral) {
 		return new CalendarioView(
 				consultorioId,
 				CalendarioSede.PAIS_POR_DEFECTO,
 				CalendarioSede.CIERRA_POR_FERIADO_POR_DEFECTO,
 				0L,
 				false,
-				feriados);
+				feriados,
+				horarioGeneral);
 	}
 }

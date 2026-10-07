@@ -47,7 +47,14 @@ public record CalendarioSedeResponse(
 
 		@Schema(description = "Feriados del pais que caen en [desde, hasta). VACIA en la "
 				+ "respuesta del PUT, que no tiene ventana: vacia significa \"no se pregunto\"")
-		List<FeriadoResponse> feriados) {
+		List<FeriadoResponse> feriados,
+
+		@Schema(description = "Franjas VIGENTES del horario general de la sede (RF-M03-002), "
+				+ "ordenadas por dia y hora. Vacia significa que la sede no declaro horario "
+				+ "general, no que este cerrada. Informativo: la agenda ofrece turnos con la "
+				+ "disponibilidad de cada profesional, no con este horario (RN-M03-004). Viaja "
+				+ "completa tambien en la respuesta del PUT")
+		List<HorarioGeneralFranjaResponse> horarioGeneral) {
 
 	public static CalendarioSedeResponse from(CalendarioView view) {
 		return new CalendarioSedeResponse(
@@ -56,6 +63,7 @@ public record CalendarioSedeResponse(
 				view.cierraPorFeriado(),
 				view.version(),
 				view.existePersistida(),
-				view.feriados().stream().map(FeriadoResponse::from).toList());
+				view.feriados().stream().map(FeriadoResponse::from).toList(),
+				view.horarioGeneral().stream().map(HorarioGeneralFranjaResponse::from).toList());
 	}
 }

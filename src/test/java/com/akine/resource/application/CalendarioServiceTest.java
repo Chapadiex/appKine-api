@@ -10,10 +10,13 @@ import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.resource.domain.BloqueDisponibilidad;
 import com.akine.resource.domain.CalendarioSede;
 import com.akine.resource.domain.Feriado;
+import com.akine.resource.domain.FranjaHorarioGeneral;
+import com.akine.resource.domain.FranjaHorarioGeneral.Franja;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDisponibilidadRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.FeriadoRepositoryPort;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGeneralRepositoryPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,6 +37,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -92,6 +96,8 @@ class CalendarioServiceTest {
 
 	private final CalendarioEnMemoria calendarios = new CalendarioEnMemoria();
 
+	private final HorarioEnMemoria horarios = new HorarioEnMemoria();
+
 	private CalendarioService service;
 	private DisponibilidadEfectivaService efectiva;
 
@@ -104,7 +110,7 @@ class CalendarioServiceTest {
 		// Spring, y lo que estos tests necesitan es que la fila quede creada de verdad.
 		service = new CalendarioService(
 				calendarios, new CalendarioSedeIniciador(calendarios), feriados,
-				consultorioDirectory, permissionGuard, auditTrail);
+				consultorioDirectory, permissionGuard, auditTrail, horarios);
 		efectiva = new DisponibilidadEfectivaService(
 				bloques, excepciones, feriados, calendarios,
 				consultorioDirectory, membershipDirectory, permissionGuard);
@@ -229,8 +235,84 @@ class CalendarioServiceTest {
 	}
 
 	// =================================================================================
+	// Horario general (A-8, RF-M03-002 / RF-M03-003)
+	// =================================================================================
+
+	@Test
+	@DisplayName("El horario de una sede nueva se guarda ordenado, se lee con el calendario y se audita")
+	void el_horario_de_la_sede_nueva_se_guarda_y_se_lee() {
+		service.fijarHorarioDeSedeNueva(ORG_ID, CONSULTORIO_ID, ACCOUNT_ID, List.of(
+				franja(2, 9, 13),
+				new Franja(1, LocalTime.of(14, 0), LocalTime.MAX),
+				franja(1, 9, 13)));
+
+		CalendarioView vista = service.ver(actor, CONSULTORIO_ID, FERIADO, FERIADO.plusDays(1));
+
+		assertThat(vista.horarioGeneral()).containsExactly(
+				franja(1, 9, 13), new Franja(1, LocalTime.of(14, 0), LocalTime.MAX), franja(2, 9, 13));
+		assertThat(vista.existePersistida())
+				.as("el horario no necesita la fila de politica: la sede nueva no la tiene")
+				.isFalse();
+
+		ArgumentCaptor<AuditEntry> auditoria = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(auditoria.capture());
+		assertThat(auditoria.getValue().eventType()).isEqualTo(AuditEvents.HORARIO_GENERAL_UPDATED);
+		assertThat(auditoria.getValue().details().get("horarioGeneral"))
+				.isEqualTo("[] -> [1 09:00-13:00, 1 14:00-24:00, 2 09:00-13:00]");
+	}
+
+	@Test
+	@DisplayName("Dos franjas del mismo dia que se pisan se rechazan sin guardar nada; contiguas valen")
+	void el_horario_que_se_solapa_se_rechaza() {
+		assertThatThrownBy(() -> service.fijarHorarioDeSedeNueva(ORG_ID, CONSULTORIO_ID, ACCOUNT_ID,
+				List.of(franja(1, 9, 13), franja(1, 12, 18))))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("se solapan");
+		assertThat(horarios.filas()).isEmpty();
+
+		service.fijarHorarioDeSedeNueva(ORG_ID, CONSULTORIO_ID, ACCOUNT_ID,
+				List.of(franja(1, 9, 13), franja(1, 13, 18)));
+		assertThat(horarios.filas()).hasSize(2);
+	}
+
+	@Test
+	@DisplayName("Una franja que termina antes de empezar no se puede construir")
+	void la_franja_invertida_no_existe() {
+		assertThatThrownBy(() -> franja(3, 18, 9)).isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	@DisplayName("Editar el horario lo reemplaza dando de baja lo anterior; omitirlo no lo toca")
+	void editar_el_horario_reemplaza_y_conserva_la_historia() {
+		service.fijarHorarioDeSedeNueva(ORG_ID, CONSULTORIO_ID, ACCOUNT_ID, List.of(franja(1, 9, 13)));
+
+		CalendarioView editada = service.actualizar(
+				actor, CONSULTORIO_ID, null, null, List.of(franja(5, 8, 12)));
+		assertThat(editada.horarioGeneral()).containsExactly(franja(5, 8, 12));
+		assertThat(horarios.filas())
+				.as("la franja reemplazada queda como historia, dada de baja logica")
+				.hasSize(2)
+				.anySatisfy(f -> {
+					assertThat(f.isActive()).isFalse();
+					assertThat(f.getDeletedAt()).isNotNull();
+				});
+
+		CalendarioView sinTocar = service.actualizar(actor, CONSULTORIO_ID, null, false);
+		assertThat(sinTocar.horarioGeneral())
+				.as("horarioGeneral omitido deja el horario como estaba")
+				.containsExactly(franja(5, 8, 12));
+
+		CalendarioView vaciada = service.actualizar(actor, CONSULTORIO_ID, null, null, List.of());
+		assertThat(vaciada.horarioGeneral()).as("una lista vacia lo borra").isEmpty();
+	}
+
+	// =================================================================================
 	// Auxiliares
 	// =================================================================================
+
+	private static Franja franja(int dia, int desde, int hasta) {
+		return new Franja(dia, LocalTime.of(desde, 0), LocalTime.of(hasta, 0));
+	}
 
 	private void darFeriado() {
 		Feriado feriado = new Feriado("AR", FERIADO, "Dia de la Independencia", "INAMOVIBLE");
@@ -293,6 +375,38 @@ class CalendarioServiceTest {
 		}
 
 		List<CalendarioSede> filas() {
+			return List.copyOf(filas);
+		}
+	}
+
+	/** Doble en memoria del horario general: guarda de verdad, igual que el de calendario. */
+	private static final class HorarioEnMemoria implements HorarioGeneralRepositoryPort {
+
+		private final List<FranjaHorarioGeneral> filas = new ArrayList<>();
+		private final AtomicLong secuencia = new AtomicLong(700L);
+
+		@Override
+		public List<FranjaHorarioGeneral> findVigentes(Long organizationId, Long consultorioId) {
+			return filas.stream()
+					.filter(f -> f.isActive()
+							&& f.getOrganizationId().equals(organizationId)
+							&& f.getConsultorioId().equals(consultorioId))
+					.sorted(java.util.Comparator
+							.comparingInt((FranjaHorarioGeneral f) -> f.franja().diaSemana())
+							.thenComparing(f -> f.franja().horaDesde()))
+					.toList();
+		}
+
+		@Override
+		public FranjaHorarioGeneral save(FranjaHorarioGeneral franja) {
+			if (franja.getId() == null) {
+				ReflectionTestUtils.setField(franja, "id", secuencia.incrementAndGet());
+				filas.add(franja);
+			}
+			return franja;
+		}
+
+		List<FranjaHorarioGeneral> filas() {
 			return List.copyOf(filas);
 		}
 	}

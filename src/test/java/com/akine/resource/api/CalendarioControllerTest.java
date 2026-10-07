@@ -66,7 +66,7 @@ class CalendarioControllerTest {
 	@DisplayName("Editar SOLO el pais deja la politica de feriados intacta: cierraPorFeriado "
 			+ "omitido llega como null al servicio, jamas como false")
 	void editar_solo_el_pais_deja_la_politica_de_feriados_intacta() throws Exception {
-		given(calendarioService.actualizar(any(), anyLong(), any(), any()))
+		given(calendarioService.actualizar(any(), anyLong(), any(), any(), any()))
 				.willReturn(politica("UY", true, 1L, true, List.of()));
 
 		mockMvc.perform(put(RUTA)
@@ -78,7 +78,7 @@ class CalendarioControllerTest {
 				.andExpect(jsonPath("$.cierraPorFeriado").value(true));
 
 		ArgumentCaptor<Boolean> cierra = ArgumentCaptor.forClass(Boolean.class);
-		verify(calendarioService).actualizar(any(), eq(20L), eq("UY"), cierra.capture());
+		verify(calendarioService).actualizar(any(), eq(20L), eq("UY"), cierra.capture(), any());
 
 		// Si el componente del DTO se declara boolean en vez de Boolean, Jackson pone false y
 		// esta edicion —que solo queria cambiar el pais— apaga el cierre por feriados de toda
@@ -92,7 +92,7 @@ class CalendarioControllerTest {
 	@DisplayName("Apagar el cierre por feriados si se puede pedir explicitamente: false llega "
 			+ "como false y no se confunde con la ausencia")
 	void apagar_el_cierre_por_feriados_llega_como_false() throws Exception {
-		given(calendarioService.actualizar(any(), anyLong(), any(), any()))
+		given(calendarioService.actualizar(any(), anyLong(), any(), any(), any()))
 				.willReturn(politica("AR", false, 2L, true, List.of()));
 
 		mockMvc.perform(put(RUTA)
@@ -102,14 +102,14 @@ class CalendarioControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.cierraPorFeriado").value(false));
 
-		verify(calendarioService).actualizar(any(), eq(20L), eq(null), eq(false));
+		verify(calendarioService).actualizar(any(), eq(20L), eq(null), eq(false), eq(null));
 	}
 
 	@Test
 	@DisplayName("La respuesta del PUT trae feriados vacia, que significa no se pregunto y nunca "
 			+ "no hay feriados: un PUT no lleva ventana")
 	void la_respuesta_del_put_trae_feriados_vacia() throws Exception {
-		given(calendarioService.actualizar(any(), anyLong(), any(), any()))
+		given(calendarioService.actualizar(any(), anyLong(), any(), any(), any()))
 				.willReturn(politica("AR", true, 1L, true, List.of()));
 
 		mockMvc.perform(put(RUTA)
@@ -133,7 +133,7 @@ class CalendarioControllerTest {
 						.with(ResourceApiActors.miembro(7L)))
 				.andExpect(status().isBadRequest());
 
-		verify(calendarioService, never()).actualizar(any(), anyLong(), any(), any());
+		verify(calendarioService, never()).actualizar(any(), anyLong(), any(), any(), any());
 	}
 
 	// =====================================================================================

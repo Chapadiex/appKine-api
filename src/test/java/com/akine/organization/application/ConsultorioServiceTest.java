@@ -11,6 +11,7 @@ import com.akine.organization.domain.port.ConsultorioAltaRepositoryPort;
 import com.akine.organization.domain.port.ConsultorioRepositoryPort;
 import com.akine.organization.domain.port.OrganizationRepositoryPort;
 import com.akine.organization.domain.port.SubscriptionRepositoryPort;
+import com.akine.organization.spi.AltaDeSedeExtension;
 import com.akine.organization.spi.ConsultorioDeactivationProbe;
 import com.akine.organization.spi.LimitCode;
 import com.akine.organization.spi.PermissionDecision;
@@ -32,6 +33,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -100,6 +102,9 @@ class ConsultorioServiceTest {
 	@Mock
 	private ConsultorioDeactivationProbe turnosFuturos;
 
+	@Mock
+	private AltaDeSedeExtension primerBoxYHorario;
+
 	private ConsultorioService service;
 
 	private final OperatingActor actor = new OperatingActor(ACCOUNT_ID, false, CONSULTORIO_ID);
@@ -109,7 +114,8 @@ class ConsultorioServiceTest {
 	void setUp() {
 		service = new ConsultorioService(
 				consultorios, altas, organizaciones, suscripciones, planGate, usageCounter,
-				permissionGuard, auditTrail, supportAccessReadAuditor, List.of(turnosFuturos));
+				permissionGuard, auditTrail, supportAccessReadAuditor, List.of(turnosFuturos),
+				List.of(primerBoxYHorario));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("ORGANIZACION", false));
@@ -183,6 +189,40 @@ class ConsultorioServiceTest {
 		verify(auditTrail).record(auditoria.capture());
 		assertThat(auditoria.getValue().eventType()).isEqualTo(AuditEvents.CONSULTORIO_CREATED);
 		assertThat(auditoria.getValue().newState()).isEqualTo("ACTIVO");
+	}
+
+	@Test
+	@DisplayName("Sin primer box ni horario el alta no llama a la extension de resource")
+	void el_alta_sin_complemento_no_llama_a_la_extension() {
+		service.create(actor, ORG_ID, alta(CLAVE, HASH));
+
+		verifyNoInteractions(primerBoxYHorario);
+	}
+
+	@Test
+	@DisplayName("Con primer box y horario el alta los delega a la extension con la sede recien creada")
+	void el_alta_con_complemento_lo_delega_con_la_sede_nueva() {
+		AltaDeSedeExtension.Complemento complemento = new AltaDeSedeExtension.Complemento(
+				new AltaDeSedeExtension.PrimerBox("Box 1", null),
+				List.of(new AltaDeSedeExtension.FranjaHoraria(
+						1, LocalTime.of(9, 0), LocalTime.of(13, 0))));
+
+		service.create(actor, ORG_ID, altaCon(complemento));
+
+		verify(primerBoxYHorario).completarAlta(ORG_ID, CONSULTORIO_ID, ACCOUNT_ID, complemento);
+	}
+
+	@Test
+	@DisplayName("Si la extension falla, la excepcion sale del alta: la transaccion del gate revierte todo")
+	void si_la_extension_falla_el_alta_falla() {
+		AltaDeSedeExtension.Complemento complemento = new AltaDeSedeExtension.Complemento(
+				null, List.of(new AltaDeSedeExtension.FranjaHoraria(
+						1, LocalTime.of(9, 0), LocalTime.of(13, 0))));
+		willThrow(new IllegalArgumentException("se solapan"))
+				.given(primerBoxYHorario).completarAlta(anyLong(), anyLong(), anyLong(), any());
+
+		assertThatThrownBy(() -> service.create(actor, ORG_ID, altaCon(complemento)))
+				.isInstanceOf(IllegalArgumentException.class);
 	}
 
 	@Test
@@ -359,6 +399,11 @@ class ConsultorioServiceTest {
 	private static ConsultorioAltaCommand alta(String clave, String hash) {
 		return new ConsultorioAltaCommand(
 				"Sede Centro", null, null, null, null, null, null, null, clave, hash);
+	}
+
+	private static ConsultorioAltaCommand altaCon(AltaDeSedeExtension.Complemento complemento) {
+		return new ConsultorioAltaCommand(
+				"Sede Centro", null, null, null, null, null, null, null, CLAVE, HASH, complemento);
 	}
 
 	private static ConsultorioEdicionCommand edicion(Integer slotMinutes, long version) {
