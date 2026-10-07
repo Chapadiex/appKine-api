@@ -13,7 +13,8 @@ import java.math.BigDecimal;
  * caja, presentacion y egreso son cinco conceptos distintos; sumar un cobro con un movimiento de
  * caja cuenta la misma plata dos veces.
  */
-@Schema(description = "Un indicador del reporte, con su fuente y su criterio de corte")
+@Schema(name = "IndicadorDeReporteResponse",
+		description = "Un indicador del reporte, con su fuente y su criterio de corte")
 public record IndicadorResponse(
 		@Schema(description = "Identificador estable", example = "cobrado")
 		String clave,

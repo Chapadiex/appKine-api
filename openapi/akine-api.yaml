@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.66.0
+  version: 0.67.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -25798,6 +25798,37 @@ components:
       required:
       - importe
       - obligacionId
+    IndicadorDeReporteResponse:
+      type: object
+      description: "Un indicador del reporte, con su fuente y su criterio de corte"
+      properties:
+        clave:
+          type: string
+          description: Identificador estable
+          example: cobrado
+        criterioDeFecha:
+          type: string
+          description: Con que columna se recorto el periodo
+          example: "cobrado_en, instante proyectado a la zona de la sede"
+        etiqueta:
+          type: string
+          description: Como se lee en pantalla
+          example: Cobrado
+        fuente:
+          type: string
+          description: De que modulo y tabla sale
+          example: M19 cobro
+        moneda:
+          type: string
+          description: ISO-4217 cuando el tipo es DINERO
+          example: ARS
+        tipo:
+          type: string
+          description: "DINERO, CONTEO o PORCENTAJE"
+          example: DINERO
+        valor:
+          type: number
+          description: "El numero. Siempre decimal exacto, nunca punto flotante"
     IndicadorResponse:
       type: object
       description: Un indicador del resumen
@@ -29766,7 +29797,7 @@ components:
             \ falta. No producen 403: el reporte devuelve lo que se puede ver y declara\
             \ el resto"
           items:
-            $ref: "#/components/schemas/SeccionOmitidaResponse"
+            $ref: "#/components/schemas/SeccionOmitidaDeReporteResponse"
         reporte:
           type: string
           description: Que reporte es
@@ -29774,7 +29805,7 @@ components:
         secciones:
           type: array
           items:
-            $ref: "#/components/schemas/SeccionResponse"
+            $ref: "#/components/schemas/SeccionDeReporteResponse"
         zona:
           type: string
           description: Zona IANA con la que se recorto el periodo
@@ -30328,6 +30359,34 @@ components:
           type: boolean
           description: La vigencia cubre ese dia
           example: true
+    SeccionDeReporteResponse:
+      type: object
+      description: Una seccion del reporte
+      properties:
+        columnas:
+          type: array
+          description: Encabezados del detalle; vacio si la seccion no tiene detalle
+          items:
+            type: string
+        filas:
+          type: array
+          description: Detalle. Ninguna fila lleva identificadores de persona
+          items:
+            type: array
+            items:
+              type: string
+        indicadores:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndicadorDeReporteResponse"
+        seccion:
+          type: string
+          description: Nombre estable de la seccion
+          example: economia
+        titulo:
+          type: string
+          description: Titulo legible
+          example: Economia
     SeccionDisponibleResponse:
       type: object
       description: "Una seccion, el permiso que pide y si toca datos clinicos"
@@ -30341,6 +30400,14 @@ components:
         seccion:
           type: string
         titulo:
+          type: string
+    SeccionOmitidaDeReporteResponse:
+      type: object
+      description: Una seccion omitida y el permiso que falta para verla
+      properties:
+        permisoRequerido:
+          type: string
+        seccion:
           type: string
     SeccionOmitidaResponse:
       type: object
