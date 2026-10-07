@@ -159,6 +159,18 @@ class TurnosEnElReporteTest {
 	}
 
 	@Test
+	@DisplayName("Los en espera salen de la Recepcion (E-4), no del estado del turno")
+	void en_espera_desde_la_recepcion() {
+		// Desde E-4 (DP-16) la espera es un estado de la Recepcion: contarla por turno.estado
+		// daria siempre cero.
+		given(turnos.contarEnEsperaEnElReporte(anyLong(), anyLong(), any(), any(), anyBoolean(), any()))
+				.willReturn(3L);
+
+		assertThat(valorDe(contributor.aportar(consulta()), "turnos-en-espera"))
+				.isEqualByComparingTo(new BigDecimal("3"));
+	}
+
+	@Test
 	@DisplayName("Cada indicador declara su fuente y su criterio: el numero no viaja solo")
 	void los_indicadores_se_explican() {
 		// Un tablero sin criterio obliga a abrir el codigo para saber si "turnos" incluye los

@@ -120,6 +120,12 @@ public class TurnosEnElReporte implements ReporteContributor {
 				consulta.desdeInstante(), consulta.hastaInstante(),
 				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
 
+		// Desde E-4 la espera vive en la Recepcion (DP-16): se cuenta ahi, no por turno.estado.
+		long enEspera = turnos.contarEnEsperaEnElReporte(
+				consulta.organizationId(), consulta.consultorioId(),
+				consulta.desdeInstante(), consulta.hastaInstante(),
+				consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte());
+
 		long cancelados = porEstado.get(EstadoTurnoClave.CANCELADO);
 		long ausentes = porEstado.get(EstadoTurnoClave.AUSENTE);
 
@@ -130,7 +136,7 @@ public class TurnosEnElReporte implements ReporteContributor {
 				IndicadorDeReporte.contando("turnos-confirmados", "Confirmados",
 						porEstado.get(EstadoTurnoClave.CONFIRMADO), FUENTE, CRITERIO),
 				IndicadorDeReporte.contando("turnos-en-espera", "En espera",
-						porEstado.get(EstadoTurnoClave.EN_ESPERA), FUENTE, CRITERIO),
+						enEspera, FUENTE, "recepcion vigente EN_ESPERA de los turnos del periodo"),
 				IndicadorDeReporte.contando(
 						"turnos-cancelados", "Cancelados", cancelados, FUENTE, CRITERIO),
 				IndicadorDeReporte.contando(
