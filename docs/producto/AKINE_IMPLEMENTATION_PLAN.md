@@ -10612,8 +10612,8 @@ Resuelto: el defecto del escenario 41 (ver punto 7).
 - **Defecto evitado, con test:** `TurnoEvento` mapeaba los estados con `EstadoTurno`; sacar
   `EN_ESPERA` del enum hacía reventar la lectura del historial de todo turno que pasó por la
   espera. Pasó a texto (`RecepcionIT.el_historial_conserva_los_eventos_de_espera`).
-- **Tests:** 3.189 unitarias sobre `main` con F-4 y A-4 integrados (3.137 sobre el `main` de
-  partida, que tenía 3.103). ITs contra MySQL: `RecepcionIT` 14,
+- **Tests:** 3.199 unitarias sobre `main` con F-4, A-4 y G-1 integrados (3.137 sobre el `main`
+  de partida, que tenía 3.103). ITs contra MySQL: `RecepcionIT` 14,
   `RecepcionConcurrenteIT` 2, `MigracionRecepcionV78IT` 1, y en verde `TurnoConcurrenteIT` 3,
   `TurnoCicloConcurrenteIT` 5, `SerieDeTurnosIT` 9, `NotificacionDeTurnoIT` 7,
   `AgendaDescuentaReservasIT` 1, `SondasDeImpactoIT` 6, `RelacionAsistencialIT` 22,
