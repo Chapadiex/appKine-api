@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.59.0
+  version: 0.63.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -97,6 +97,8 @@ tags:
   name: Personas
 - description: "Contrato tecnico: salud y versionado"
   name: Platform
+- description: "Llegada, validacion administrativa, espera y llamado (M13, DP-16)"
+  name: Recepcion
 - description: Cierres y aperturas puntuales de una sede o de un profesional
   name: Excepciones de disponibilidad
 - description: "Vinculos de las cuentas con la organizacion, sus roles y sus permisos"
@@ -10349,12 +10351,13 @@ paths:
       - Turnos
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/llegada:
     delete:
+      deprecated: true
       description: |-
-        Revierte una llegada marcada sobre el turno equivocado. El turno vuelve al estado del que vino —RESERVADO o CONFIRMADO— y **se limpia la hora de llegada**: un check-in deshecho no dejo una llegada, dejo un error corregido.
+        **Deprecado desde 0.63.0**: usar `POST /{turnoId}/recepcion/anulacion` (DP-16).
 
-        El rastro de que ocurrio queda en el historial, que es append-only.
+        Anula la recepcion abierta del turno: la llegada no vale. La fila y su historial quedan. Devuelve el turno, que no cambia de estado.
 
-                       **No es idempotente**: deshacer lo ya deshecho responde 409. A diferencia del                check-in, aca el segundo click no es un doble click sino una operacion sobre                un turno que entre medio pudo haber cambiado de estado.
+        **No es idempotente**: sin recepcion abierta responde 409 (`recepcion-transicion-no-permitida`).
       operationId: deshacerLlegada
       parameters:
       - in: path
@@ -10405,19 +10408,18 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "El turno no esta en espera. `problemType`: `turno-transicion-no-permitida`"
-      summary: Deshacer un check-in
+          description: "No hay recepcion abierta. `problemType`: `recepcion-transicion-no-permitida`"
+      summary: Deshacer un check-in (deprecado)
       tags:
       - Turnos
     post:
+      deprecated: true
       description: |-
-        Marca que el paciente llego al centro y lo deja **en espera** (RF-M13-002). La hora la pone el servidor: no se envia ningun cuerpo.
+        **Deprecado desde 0.63.0**: usar `POST /{turnoId}/recepcion` (DP-16).
 
-        **Es idempotente**: marcar dos veces devuelve 200 sin mover la hora ni registrar un segundo evento. El doble click en el mostrador es el caso normal.
+        Abre la recepcion del turno en `LLEGO`, igual que aquella, y devuelve el turno con `llegadaEn`. **El turno ya no pasa a `EN_ESPERA`**: la espera es un estado de la recepcion, no de la reserva, y el turno sigue en `RESERVADO` o `CONFIRMADO`.
 
-        La llegada es un estado de la RESERVA, no de la atencion (DP-05). Que un turno no pase por aca no impide atenderlo; impide saber a que hora llego el paciente.
-
-        **No valida cobertura ni autorizaciones**: con cobertura PARTICULAR unica no hay condicion administrativa que validar (recableo DP-10).
+        Es idempotente: marcar dos veces devuelve 200 sin mover la hora.
       operationId: registrarLlegada
       parameters:
       - in: path
@@ -10470,9 +10472,531 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "El turno esta cancelado o ya marcado ausente. `problemType`:\
             \ `turno-transicion-no-permitida`"
-      summary: Registrar la llegada del paciente
+      summary: Registrar la llegada del paciente (deprecado)
       tags:
       - Turnos
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion:
+    get:
+      description: "La recepcion vigente del turno: abierta, o `CERRADA` si el turno\
+        \ se cancelo con la persona presente. Una anulada no es vigente. Exige `turno:read`."
+      operationId: verRecepcion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+          description: La recepcion
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen o son de otro tenant, o nadie\
+            \ registro la llegada"
+      summary: Ver la recepcion del turno
+      tags:
+      - Recepcion
+    post:
+      description: |-
+        Abre la recepcion del turno en `LLEGO` (RF-M13-002). La hora la pone el servidor: **no se envia ningun cuerpo**.
+
+        **Es idempotente**: con una recepcion abierta devuelve 200 con esa misma, sin mover la hora ni registrar otro evento. Dos check-in simultaneos dan los dos la misma recepcion.
+
+        No cambia el estado del turno (DP-16): el turno es la reserva y sigue en `RESERVADO` o `CONFIRMADO`. Si avanza su `version`: una cancelacion que leyo el turno antes de la llegada se rechaza en vez de dejar a alguien en la sala con el turno cancelado.
+      operationId: registrarLlegadaRecepcion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+          description: "Ya habia una recepcion abierta: se devuelve esa"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+          description: Recepcion abierta
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `turno:manage` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno esta cancelado o ausente (`turno-transicion-no-permitida`),\
+            \ o lo cancelaron mientras se registraba la llegada"
+      summary: Registrar la llegada del paciente (check-in)
+      tags:
+      - Recepcion
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/anulacion:
+    post:
+      description: |-
+        Deja la recepcion `ANULADA`: la llegada no vale. La fila y sus eventos quedan como historia, y un check-in posterior abre una recepcion nueva.
+
+        **No es idempotente**: sin recepcion abierta responde 409.
+      operationId: anularRecepcion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnularRecepcion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+          description: Recepcion anulada
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay recepcion abierta (`recepcion-transicion-no-permitida`),\
+            \ o la version quedo vieja"
+      summary: Anular un check-in hecho por error
+      tags:
+      - Recepcion
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/espera:
+    post:
+      description: "Desde `VALIDADA` u `OBSERVADA` (la observacion advierte, no bloquea).\
+        \ Desde `LLEGO` no: falta resolver como se atiende."
+      operationId: pasarAEsperaRecepcion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransicionDeRecepcion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+          description: En espera
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Estado que no lo admite (`recepcion-transicion-no-permitida`),\
+            \ o la version quedo vieja"
+      summary: Pasar a la sala de espera
+      tags:
+      - Recepcion
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/historial:
+    get:
+      description: "Todas las transiciones de todas las recepciones del turno —incluidas\
+        \ las de un check-in anulado—, de la mas vieja a la mas nueva, con actor,\
+        \ hora, estado anterior, estado nuevo y motivo (DP-05). Exige `turno:read`."
+      operationId: historialRecepcion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventoDeRecepcion"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventoDeRecepcion"
+          description: Historial
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+      summary: Historial de la recepcion del turno
+      tags:
+      - Recepcion
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/llamado:
+    post:
+      description: "Desde `EN_ESPERA`. **Llamar no abre la Sesion** y abrir la Sesion\
+        \ no depende de haber llamado: son dos actos de dos personas (DP-05). `LLAMADA`\
+        \ no significa atendido."
+      operationId: llamarRecepcion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransicionDeRecepcion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+          description: Llamado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Estado que no lo admite (`recepcion-transicion-no-permitida`),\
+            \ o la version quedo vieja"
+      summary: Llamar al paciente
+      tags:
+      - Recepcion
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/particular:
+    post:
+      description: |-
+        RF-M13-005. Decision explicita del operador, **con motivo obligatorio**, cuando la persona no tiene cobertura aplicable o la validacion quedo observada. Deja la recepcion `VALIDADA` con modalidad `PARTICULAR`.
+
+        **No modifica la cobertura maestra del paciente** (RN-M13-004): es un dato de esta recepcion. Desde `LLEGO` u `OBSERVADA`.
+      operationId: atenderComoParticular
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AtenderComoParticular"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+          description: Recepcion validada como Particular
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay recepcion abierta o su estado no lo admite (`recepcion-transicion-no-permitida`),\
+            \ o la version quedo vieja"
+      summary: Continuar como Particular
+      tags:
+      - Recepcion
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/validacion:
+    post:
+      description: |-
+        RF-M13-003 y RF-M13-004. **El servidor calcula el resultado**: busca la practica principal de la oferta, la cobertura aplicable de la persona ese dia y la elegibilidad administrativa del convenio vigente.
+
+        - Elegible: `VALIDADA`, modalidad `COBERTURA`, con cobertura y convenio.
+        - Cualquier otra cosa: `OBSERVADA`, con el detalle en `observacion`.
+
+        **Una observacion no es un error y no bloquea** (RN-M13-003): responde 200. La recepcion puede pasar a espera igual, o continuar como Particular. Se puede revalidar una observada (el paciente trajo la orden).
+
+        No consume ninguna autorizacion (RN-M17-001) ni genera ninguna deuda.
+      operationId: validarRecepcion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidarRecepcion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+          description: Recepcion VALIDADA u OBSERVADA
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay recepcion abierta o su estado no admite validar (`recepcion-transicion-no-permitida`),\
+            \ o la version quedo vieja"
+      summary: Validar cobertura y documentacion
+      tags:
+      - Recepcion
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/reprogramacion:
     post:
       description: |-
@@ -19006,6 +19530,24 @@ components:
           minLength: 0
       required:
       - motivo
+    AnularRecepcion:
+      type: object
+      description: Anulacion de un check-in hecho por error. La fila queda como historia.
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version que devolvio la ultima lectura de la recepcion.
+          example: 0
+          minimum: 0
+        motivo:
+          type: string
+          description: Por que se anula. Opcional.
+          example: Se marco la llegada en el turno equivocado
+          maxLength: 300
+          minLength: 0
+      required:
+      - expectedVersion
     ArancelEfectivoResponse:
       type: object
       description: "Arancel efectivo para una fecha, con la explicacion de la regla\
@@ -19245,6 +19787,27 @@ components:
       required:
       - permissionCode
       - reason
+    AtenderComoParticular:
+      type: object
+      description: Continuar la recepcion como Particular. No modifica la cobertura
+        maestra del paciente (RN-M13-004).
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version que devolvio la ultima lectura de la recepcion.
+          example: 1
+          minimum: 0
+        motivo:
+          type: string
+          description: "Por que se atiende como Particular. **Obligatorio**: es una\
+            \ decision del operador y tiene que quedar explicada."
+          example: Sin orden medica; el paciente prefiere abonar la sesion
+          maxLength: 300
+          minLength: 0
+      required:
+      - expectedVersion
+      - motivo
     AuditEventPageResponse:
       type: object
       description: "Pagina del registro de auditoria, del hecho mas reciente al mas\
@@ -23789,6 +24352,52 @@ components:
           type: string
           description: "CREACION, REPROGRAMACION o CANCELACION"
           example: REPROGRAMACION
+    EventoDeRecepcion:
+      type: object
+      description: "Transicion registrada de una recepcion: quien, cuando, de que\
+        \ estado a cual y con que motivo (DP-05)."
+      properties:
+        actorCuentaId:
+          type: integer
+          format: int64
+          example: 12
+        estadoAnterior:
+          type: string
+          description: Ausente solo en la LLEGADA.
+          example: VALIDADA
+        estadoNuevo:
+          type: string
+          example: EN_ESPERA
+        id:
+          type: integer
+          format: int64
+          example: 5001
+        motivo:
+          type: string
+          example: Sin orden medica; el paciente prefiere abonar
+        ocurridoEn:
+          type: string
+          format: date-time
+          example: 2026-09-15T11:52:00Z
+        recepcionId:
+          type: integer
+          format: int64
+          description: Recepcion a la que pertenece. Un turno puede tener varias si
+            se anulo un check-in.
+          example: 77
+        tipo:
+          type: string
+          description: '`VALIDACION` la calcula el servidor; `PARTICULAR` la decide
+            el operador. Las dos pueden terminar en VALIDADA.'
+          enum:
+          - LLEGADA
+          - VALIDACION
+          - PARTICULAR
+          - ESPERA
+          - LLAMADO
+          - ANULACION
+          - CIERRE_POR_CANCELACION
+          example: LLEGADA
     EventoDeTurno:
       type: object
       description: "Transicion registrada de un turno: quien, cuando, de que estado\
@@ -27026,6 +27635,7 @@ components:
       - https://akine.app/problems/persona-sin-perfil-paciente
       - https://akine.app/problems/turno-transicion-no-permitida
       - https://akine.app/problems/turno-con-atencion
+      - https://akine.app/problems/recepcion-transicion-no-permitida
       - https://akine.app/problems/turno-no-atendible
       - https://akine.app/problems/sesion-ajena
       - https://akine.app/problems/sesion-cerrada
@@ -27266,6 +27876,103 @@ components:
       required:
       - expectedVersion
       - motivo
+    Recepcion:
+      type: object
+      description: "Recepcion de un turno: llegada, validacion administrativa, espera\
+        \ y llamado (DP-16). Ningun estado prueba que la atencion ocurrio: eso lo\
+        \ dice la Sesion."
+      properties:
+        cerradaEn:
+          type: string
+          format: date-time
+          description: Cuando se anulo o se cerro.
+          example: 2026-09-15T12:30:00Z
+        coberturaId:
+          type: integer
+          format: int64
+          description: Cobertura del paciente con la que se valido.
+          example: 412
+        convenioId:
+          type: integer
+          format: int64
+          description: Convenio vigente que fijo los requisitos.
+          example: 9
+        enEsperaDesde:
+          type: string
+          format: date-time
+          example: 2026-09-15T11:54:00Z
+        estado:
+          type: string
+          description: "`LLEGO` (sin validar), `VALIDADA` (se sabe como se atiende),\
+            \ `OBSERVADA` (la validacion encontro algo: advierte, no bloquea), `EN_ESPERA`,\
+            \ `LLAMADA`, `ANULADA` (check-in por error) o `CERRADA` (el turno se cancelo\
+            \ con la persona presente; la llegada consta)."
+          enum:
+          - LLEGO
+          - VALIDADA
+          - OBSERVADA
+          - EN_ESPERA
+          - LLAMADA
+          - ANULADA
+          - CERRADA
+          example: EN_ESPERA
+        id:
+          type: integer
+          format: int64
+          example: 77
+        llamadaEn:
+          type: string
+          format: date-time
+          example: 2026-09-15T12:01:00Z
+        llegadaEn:
+          type: string
+          format: date-time
+          description: "Hora REAL de llegada, puesta por el servidor."
+          example: 2026-09-15T11:52:00Z
+        llegadaPorCuentaId:
+          type: integer
+          format: int64
+          description: Cuenta que registro la llegada.
+          example: 12
+        modalidad:
+          type: string
+          description: "Como se resolvio: con cobertura o Particular. Ausente mientras\
+            \ no se resolvio (incluida una observada que paso a espera sin resolverse)."
+          enum:
+          - COBERTURA
+          - PARTICULAR
+          example: COBERTURA
+        motivoCierre:
+          type: string
+          description: Motivo de la anulacion o de la cancelacion del turno.
+          example: El profesional se descompuso
+        motivoParticular:
+          type: string
+          description: Por que se decidio atender como Particular.
+          example: Sin orden medica
+        observacion:
+          type: string
+          description: "Lo que observo la validacion, con un codigo adelante (`OFERTA_SIN_PRACTICA`,\
+            \ `SIN_COBERTURA_APLICABLE`, `COBERTURA_NO_APLICABLE`, `DOCUMENTACION_INCOMPLETA`)."
+          example: "DOCUMENTACION_INCOMPLETA: ORDEN: El convenio exige orden medica"
+        practicaId:
+          type: integer
+          format: int64
+          description: Practica con la que se valido (principal de la oferta).
+          example: 33
+        turnoId:
+          type: integer
+          format: int64
+          example: 301
+        validadaEn:
+          type: string
+          format: date-time
+          example: 2026-09-15T11:53:00Z
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista de las transiciones
+          example: 2
     ReclasificarAdjuntoClinicoRequest:
       type: object
       description: Reclasificacion de un adjunto clinico. Solo cambia como esta descripto
@@ -29418,6 +30125,20 @@ components:
           example: 4
       required:
       - expectedVersion
+    TransicionDeRecepcion:
+      type: object
+      description: "Transicion de la recepcion sin datos propios: solo el control\
+        \ optimista."
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: "Version que devolvio la ultima lectura de la recepcion. Si\
+            \ otro operador la movio entre medio, la transicion se rechaza con 409."
+          example: 1
+          minimum: 0
+      required:
+      - expectedVersion
     Tratamiento:
       type: object
       description: "Intervencion realmente aplicada en la atencion, con su espacio\
@@ -29658,7 +30379,10 @@ components:
           type: string
           description: "Estado de la RESERVA. Nunca dice que la atencion ocurrio:\
             \ eso lo dice la Sesion. `CANCELADO` libera el lugar; `AUSENTE` **no**,\
-            \ porque la hora se consumio igual."
+            \ porque la hora se consumio igual. **`EN_ESPERA` esta deprecado desde\
+            \ 0.63.0 y el servidor ya no lo emite**: la llegada y la espera son de\
+            \ la Recepcion (DP-16). Se conserva declarado una version para no romper\
+            \ al cliente generado."
           enum:
           - RESERVADO
           - CONFIRMADO
@@ -29684,10 +30408,10 @@ components:
         llegadaEn:
           type: string
           format: date-time
-          description: "Hora REAL de llegada del paciente al centro, puesta por el\
-            \ servidor (M13). Ausente mientras no llego, y se vacia si se deshace\
-            \ el check-in: un check-in deshecho no dejo una llegada, dejo un error\
-            \ corregido."
+          deprecated: true
+          description: "**Deprecado desde 0.63.0.** La llegada es de la Recepcion\
+            \ (DP-16): leerla de `TurnoDelDia.recepcion`. Solo lo completa el `POST\
+            \ /{turnoId}/llegada` deprecado; en cualquier otra respuesta viaja ausente."
           example: 2026-09-15T11:52:00Z
         motivoCancelacion:
           type: string
@@ -29748,8 +30472,9 @@ components:
           example: 55
         estado:
           type: string
-          description: "`EN_ESPERA` significa que el paciente llego y aguarda. No\
-            \ significa que lo esten atendiendo: la prestacion la registra la Sesion."
+          description: "Estado de la RESERVA. **`EN_ESPERA` esta deprecado desde 0.63.0\
+            \ y el servidor ya no lo emite**: si el paciente llego lo dice `recepcion`\
+            \ (DP-16). Se conserva declarado una version para no romper al cliente."
           enum:
           - RESERVADO
           - CONFIRMADO
@@ -29774,8 +30499,8 @@ components:
         llegadaEn:
           type: string
           format: date-time
-          description: "Hora REAL de llegada, puesta por el servidor. Ausente si no\
-            \ llego."
+          description: "Hora REAL de llegada, puesta por el servidor, leida de la\
+            \ recepcion vigente. Ausente si no llego. Es la misma que `recepcion.llegadaEn`."
           example: 2026-09-15T11:52:00Z
         motivoCancelacion:
           type: string
@@ -29803,6 +30528,10 @@ components:
           format: int64
           description: Membership del profesional. Ausente si la oferta no lo requiere.
           example: 31
+        recepcion:
+          $ref: "#/components/schemas/Recepcion"
+          description: "La recepcion vigente del turno (M13, DP-16): llegada, validacion,\
+            \ espera y llamado. Ausente si nadie registro la llegada."
         serieId:
           type: integer
           format: int64
@@ -29821,8 +30550,9 @@ components:
         motivo:
           type: string
           description: "`YA_EMPEZO` (el pasado es inalterable), `ESTADO_TERMINAL`\
-            \ (ya cancelado o ausente), `EN_ESPERA` (el paciente esta en la sala:\
-            \ se resuelve solo) o `CON_ATENCION` (tiene una Sesion registrada)"
+            \ (ya cancelado o ausente), `EN_ESPERA` (el paciente ya llego: tiene una\
+            \ recepcion abierta; se resuelve solo) o `CON_ATENCION` (tiene una Sesion\
+            \ registrada)"
           enum:
           - YA_EMPEZO
           - ESTADO_TERMINAL
@@ -30704,6 +31434,28 @@ components:
           type: integer
           format: int64
           example: 1204
+    ValidarRecepcion:
+      type: object
+      description: "Validacion de cobertura y documentacion (RF-M13-003/004). El servidor\
+        \ decide si queda VALIDADA u OBSERVADA: no se manda el resultado, solo la\
+        \ cobertura elegida, si la hay."
+      properties:
+        coberturaId:
+          type: integer
+          format: int64
+          description: "Cobertura del paciente con la que se quiere atender. Si se\
+            \ omite, se usa la primera que aplique a la practica (la principal va\
+            \ primera)."
+          example: 412
+          minimum: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version que devolvio la ultima lectura de la recepcion.
+          example: 0
+          minimum: 0
+      required:
+      - expectedVersion
     VersionResponse:
       type: object
       description: Identidad tecnica del backend y version del contrato OpenAPI publicado
