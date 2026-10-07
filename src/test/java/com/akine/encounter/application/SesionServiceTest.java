@@ -750,7 +750,7 @@ class SesionServiceTest {
 				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
 		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(8);
 		given(ofertas.precioDe(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(
-				new PrecioDeOferta(OFERTA_ID, new BigDecimal("8500.00"), "ARS")));
+				new PrecioDeOferta(OFERTA_ID, new BigDecimal("8500.00"), "ARS", true)));
 		given(tratamientos.practicasVigentesDe(ORG_ID, 1L)).willReturn(List.of(610L, 611L, 610L));
 
 		service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Terapia manual"), 0L);
@@ -763,6 +763,8 @@ class SesionServiceTest {
 		assertThat(aviso.getValue().precioDeLaOferta()).isEqualByComparingTo("8500");
 		assertThat(aviso.getValue().moneda()).isEqualTo("ARS");
 		assertThat(aviso.getValue().practicasRealizadas()).containsExactlyInAnyOrder(610L, 611L);
+		// AKINE F-4: si la oferta admite obra social se lee en el mismo punto que el precio.
+		assertThat(aviso.getValue().ofertaAdmiteObraSocial()).isTrue();
 	}
 
 	@Test
@@ -782,6 +784,7 @@ class SesionServiceTest {
 		assertThat(aviso.getValue().asistio()).isFalse();
 		assertThat(aviso.getValue().precioDeLaOferta()).isNull();
 		assertThat(aviso.getValue().moneda()).isNull();
+		assertThat(aviso.getValue().ofertaAdmiteObraSocial()).isFalse();
 	}
 
 	@Test

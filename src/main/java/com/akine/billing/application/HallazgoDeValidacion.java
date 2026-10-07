@@ -11,10 +11,10 @@ package com.akine.billing.application;
  * <h2>Lo que esta lista NO tiene, y por que</h2>
  *
  * <p>Faltan los tres requisitos documentales del convenio —orden, autorizacion y credencial—, que
- * es lo primero que RF-M21-003 sugiere validar. Viven en {@code ArancelCongelado} y el consumidor
- * que tenia que copiarlos a {@code obligacion} es el devengado, que <b>no se recableo contra
- * convenios</b>. Es la misma causa raiz por la que no existe ninguna obligacion de financiador, y
- * esta declarada en el design challenge de AKINE-07.04 y en {@code docs/tests-diferidos.md}.
+ * es lo primero que RF-M21-003 sugiere validar. Desde AKINE F-4 el devengado los congela en la
+ * obligacion (y la credencial vencida el dia de la prestacion), asi que el dato existe; lo que
+ * falta decidir es si cada faltante es un reparo que bloquea el lote o un aviso, y eso agrega
+ * valores a este enum. Ver docs/diseno/AKINE-F-4-obligacion-financiador.md.
  */
 public enum HallazgoDeValidacion {
 

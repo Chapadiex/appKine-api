@@ -21,26 +21,19 @@ import java.util.Set;
  * Lo que {@code billing} aporta al reporte de financiadores: prestado, presentado, facturado,
  * cobrado y pendiente (RF-M23-005).
  *
- * <h2>Esta seccion devuelve cero hoy, y lo dice</h2>
+ * <h2>Hasta AKINE F-4 esta seccion devolvia cero, y lo decia</h2>
  *
- * <p><b>No existe ninguna obligacion con {@code responsable = FINANCIADOR} y nada la produce.</b>
- * {@code ObligacionDevengador} devenga una sola obligacion a nombre del paciente; el enchufe que
- * V36 reservo ({@code snapshot_convenio_id}, {@code snapshot_arancel_id}) y el que V56 completo
- * ({@code financiador_id}) nunca se conectaron. Es la decision pendiente del usuario que el design
- * challenge de AKINE-07.04 ya habia declarado, y desde aca se ve que apaga la cadena entera:
+ * <p>Ninguna obligacion se devengaba con {@code responsable = FINANCIADOR}: el devengado de 07.01
+ * producia una sola, a nombre del paciente, y eso apagaba la cadena entera —sin obligacion de
+ * financiador no hay prestacion elegible, ni lote, ni prestado—. La estructura se construyo igual,
+ * y por eso F-4 la encendio <b>sin tocar su logica</b>: {@code prestado} empieza a
+ * sumar la parte del financiador de cada sesion cubierta por un convenio (el coseguro es del
+ * paciente y no entra).
  *
- * <pre>
- *   sin obligacion de financiador
- *      -&gt; sin prestacion elegible        (07.04 lo declaro asi)
- *      -&gt; sin presentacion con items
- *      -&gt; prestado = presentado = facturado = pendiente = 0
- * </pre>
- *
- * <p>La estructura se construye igual: el dia que el devengado se recablee, esta seccion empieza a
- * dar numeros <b>sin tocar una linea</b>. Y mientras tanto emite
- * {@code sin-devengado-de-financiador} cuando sus totales son cero, porque un tablero que en
- * produccion muestra ceros sin explicar por que es peor que uno ausente: el operador leeria "el mes
- * no tuvo actividad con financiadores" donde en realidad dice "esto todavia no esta cableado".
+ * <p>La advertencia {@code sin-devengado-de-financiador} sigue saliendo cuando prestado y
+ * presentado son cero, pero ahora dice lo que ese cero significa: que en el periodo no hubo
+ * prestaciones devengadas a un financiador, y que condiciones tiene que cumplir una sesion para
+ * que las haya.
  *
  * <h2>Tres fuentes, tres conceptos, ningun total</h2>
  *
@@ -58,10 +51,11 @@ public class FinanciadoresEnElReporte implements ReporteContributor {
 
 	private static final String CODIGO_SIN_DEVENGADO = "sin-devengado-de-financiador";
 	private static final String DETALLE_SIN_DEVENGADO =
-			"Ninguna obligacion se devenga todavia a nombre de un financiador: el devengado nunca "
-					+ "se recableo contra convenios y aranceles. Por eso 'prestado' vale cero por "
-					+ "construccion y no por falta de actividad, y sin prestaciones elegibles "
-					+ "tampoco hay lotes para presentar. Es una decision pendiente, no un dato.";
+			"En el periodo no se devengo ninguna prestacion a nombre de un financiador ni se "
+					+ "presento ningun lote. La parte del financiador se devenga al cerrar una "
+					+ "sesion cuya oferta admite obra social, con una cobertura vigente del "
+					+ "paciente y un convenio de la sede con arancel para la practica; sin alguna "
+					+ "de las tres, la sesion se cobra como particular.";
 
 	private final ObligacionRepository obligaciones;
 	private final PresentacionRepository presentaciones;

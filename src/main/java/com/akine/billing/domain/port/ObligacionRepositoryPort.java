@@ -1,7 +1,6 @@
 package com.akine.billing.domain.port;
 
 import com.akine.billing.domain.Obligacion;
-import com.akine.billing.domain.Responsable;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -15,16 +14,28 @@ public interface ObligacionRepositoryPort {
 	Optional<Obligacion> findByIdInScope(long organizationId, long consultorioId, long obligacionId);
 
 	/**
-	 * La obligacion ya devengada por esa prestacion, si existe.
+	 * Las obligaciones vivas ya devengadas por esa prestacion, de cualquier responsable.
 	 *
 	 * <p>Es la idempotencia de RN-M18-001: una prestacion genera su deuda una sola vez. Hace falta
-	 * porque el cierre de sesion es idempotente por RN-M14-005 —cerrar dos veces devuelve lo
-	 * mismo— pero el observador que devenga se ejecuta en el camino del cierre, y sin esta consulta
-	 * un segundo cierre chocaria contra el unique de V36 en vez de no hacer nada.
+	 * porque el observador que devenga se ejecuta en el camino del cierre, y sin esta consulta un
+	 * re-disparo chocaria contra el unique de V36 en vez de no hacer nada.
+	 *
+	 * <p><b>Desde AKINE F-4 mira todos los responsables, no solo el paciente.</b> Una prestacion
+	 * cubierta devenga dos filas: si el re-disparo preguntara solo por el paciente, una sesion que
+	 * devengo financiador y coseguro no veria nada que la frene y agregaria una particular encima.
 	 */
-	Optional<Obligacion> findPorPrestacion(long sesionId, Responsable responsable);
+	List<Obligacion> findDeLaSesion(long sesionId);
 
-	/** La cuenta corriente de un paciente en la organizacion, de la mas reciente a la mas vieja. */
+	/**
+	 * La cuenta corriente <b>del paciente</b> en la organizacion (RF-M18-003): solo lo que debe el
+	 * paciente, de la mas reciente a la mas vieja.
+	 *
+	 * <p><b>Excluye la parte del financiador, a proposito (AKINE F-4).</b> La persona de esas filas
+	 * es el paciente atendido, pero quien debe es la obra social: la pantalla de cuenta corriente
+	 * y el resumen del Paciente 360 suman este saldo, y con ellas adentro le dirian a alguien que
+	 * debe la cuota de su obra social. La deuda del financiador se lee por M21 (bandeja y cuenta
+	 * corriente del financiador).
+	 */
 	List<Obligacion> findDeLaPersona(long organizationId, long personaId);
 
 	/**
@@ -34,10 +45,9 @@ public interface ObligacionRepositoryPort {
 	 * esten vivas en ningun lote —lo que deja afuera las ya presentadas sin tener que consultarlo
 	 * despues, fila por fila—.
 	 *
-	 * <p><b>Hoy devuelve lista vacia en cualquier despliegue real</b>, y no es un defecto de la
-	 * consulta: no existe ninguna obligacion con responsable {@code FINANCIADOR} porque el
-	 * devengado nunca se recableo contra convenios. Es la reserva declarada en el design challenge
-	 * de AKINE-07.04.
+	 * <p>Hasta AKINE F-4 devolvia lista vacia en cualquier despliegue real: nada devengaba
+	 * obligaciones con responsable {@code FINANCIADOR}. Desde F-4 las devenga
+	 * {@code ObligacionDevengador} al cerrar una sesion cubierta por un convenio.
 	 */
 	List<Obligacion> findElegiblesParaPresentar(
 			long organizationId, long consultorioId, long financiadorId,

@@ -411,25 +411,72 @@ prestación). Manual sin alerta (depende de la memoria del operador).
 
 **Desbloquea:** C-4.
 
-## DP-15 — `reporte:read` según la matriz; el profesional ve solo su actividad (DU-3)
+## DP-14 — Bootstrap del `PLATFORM_ADMIN` por variable de entorno (DU-2)
 
 **Estado:** RESUELTA el 07/10/2026 por el dueño del producto.
 
-**Contexto.** `reporte:read` existía en el catálogo y lo exigía `ReporteService`, pero ningún rol
-lo tenía: los tres endpoints de `reporting` eran inalcanzables. Faltaba decidir el alcance del
-`PROFESIONAL`, al que la matriz §2 le dice "Limitado".
+**Contexto.** `V15` siembra la cuenta `plataforma@akine.app` con el rol de plataforma y
+`password_hash` NULL, y prometía tomar posesión por "recuperar contraseña". Pero
+`PasswordResetService.solicitar` descarta en silencio las cuentas que no pueden autenticarse, y
+una cuenta sin credencial no puede: en un despliegue nuevo **ningún endpoint de
+`/api/v1/platform` es alcanzable**. Además el email quedó fijo en la migración.
 
-**Decisión.** Se otorga **completo según la fila "Ver Reportes" de la matriz**: `ORG_ADMIN` y
-`CONSULTORIO_ADMIN` todo lo de su alcance; `ADMINISTRATIVO` operativos y caja, sin lo clínico (lo
-recorta el permiso de cada sección); `PROFESIONAL` **solo su propia actividad** —turnos, sesiones y
-casos que atendió o le fueron asignados—; `PACIENTE` nada; `PLATFORM_ADMIN` "Global", aplicado con
-el criterio de las demás lecturas de plataforma (matriz §9.7: soporte vigente y auditado).
+**Decisión.** Al arrancar, si **no existe ningún administrador de plataforma con credencial** y
+está definida `AKINE_BOOTSTRAP_ADMIN_EMAIL`, la cuenta sembrada pasa a ese email y se le encola
+un **enlace de activación** por el outbox (el mismo flujo del registro, ADR-0017/0018). Una sola
+vez: idempotente (no actúa si ya hay un admin con credencial ni reenvía si hay un enlace vigente),
+auditado como evento de plataforma, sin secretos en el repositorio ni en el entorno.
 
-**Implementación.** Paquete G-1: alcance `ACTIVIDAD_PROPIA` en el evaluador, recorte por membership
-en los tres contribuyentes, `PLATFORM_ADMIN` con `SOPORTE`. Diseño en
-`docs/diseno/AKINE-G-1-reporte-read.md`; enmienda en la matriz §14.
+**Alternativas descartadas.** Abrir el reset para cuentas sin credencial (toca ADR-0018 y obliga
+a tener la casilla `plataforma@akine.app` en cada despliegue). Comando de una vez con contraseña
+por variable de entorno (la contraseña queda en el entorno y en el historial de despliegue).
 
-**Desbloquea:** G-1, G-8.
+**Desbloquea:** A-4 → A-7 (consola de plataforma, catálogo global de financiadores).
+
+## DP-15 — `reporte:read` completo según la matriz (DU-3)
+
+**Estado:** RESUELTA el 07/10/2026 por el dueño del producto.
+
+**Contexto.** `reporte:read` existe y lo exige `ReporteService`, pero **ningún rol lo tiene**:
+los tres endpoints de reportes son inalcanzables. La matriz (`docs/seguridad/matriz-permisos-minima.md`)
+fija el alcance: Ver Reportes = ORG_ADMIN Sí, CONSULTORIO_ADMIN Sí, PROFESIONAL "solo reportes de
+su propia actividad", ADMINISTRATIVO "solo operativos y de caja, sin contenido clínico". Las
+secciones del reporte ya se recortan por el permiso de su fuente (`seccionesOmitidas`).
+
+**Decisión.** Se otorga según la matriz, **completo**:
+- ORG_ADMIN (organización) y CONSULTORIO_ADMIN (sede): todo lo de su alcance.
+- ADMINISTRATIVO (sede): operativos y caja; lo clínico ya queda omitido porque no tiene `hc:read`.
+- PROFESIONAL: **solo su propia actividad**. Se implementa el filtro por profesional en las
+  secciones de turnos, sesiones y casos (el actor ve lo que atendió o le fue asignado); las
+  secciones económicas ya se omiten porque no tiene `cobro:register`.
+
+**Alternativas descartadas.** Por etapas (PROFESIONAL sin acceso hasta el filtro). Solo
+administradores (más restrictivo que la matriz).
+
+**Desbloquea:** G-1 (pasa de chico a intermedio) → G-8 (dashboards).
+
+**Implementación (G-1, 07/10/2026).** Alcance nuevo `ACTIVIDAD_PROPIA` en el evaluador de permisos (no se reusó `OWN`, que es el "Propio" del paciente) y recorte por membership en los contribuyentes de turnos, sesiones y casos; una sección que no sabe recortar se omite y se declara. **Desvío explícito:** `PLATFORM_ADMIN` queda con `SOPORTE` y no "Global" —mismo criterio que el resto de las lecturas de plataforma, matriz §9.7: soporte vigente y auditado—. Diseño en `docs/diseno/AKINE-G-1-reporte-read.md`; enmienda en la matriz §14.
+
+## DP-16 — Recepción con máquina de estados propia, como pide DP-05 (DU-9)
+
+**Estado:** RESUELTA el 07/10/2026 por el dueño del producto.
+
+**Contexto.** DP-05 decidió máquinas independientes para Turno, Check-in/Recepción y Sesión. Por
+el recorte de DP-10, 05.04 implementó el check-in como `EN_ESPERA` **dentro de `EstadoTurno`** y
+sin validación administrativa; `consultarElegibilidadAdministrativa` sigue sin consumidor.
+
+**Decisión.** Se cumple DP-05: entidad **Recepción** con estados propios —llegó → validada u
+observada → en espera → llamada—, con actor, hora, estado anterior, estado nuevo y motivo en cada
+transición. El **Turno vuelve a ser solo la reserva**: `EN_ESPERA` sale de `EstadoTurno` con
+migración de los datos existentes a la tabla de recepción. La validación administrativa (E-4) y
+el prepago como anticipo (E-6) se apoyan en la Recepción. Ninguna transición de recepción prueba
+que una prestación ocurrió (regla de DP-05 intacta).
+
+**Alternativas descartadas.** Documentar el desvío con un ADR (contradice una decisión ya
+resuelta y deja espera y llamado mezclados con la reserva). Híbrido transitorio (dos fuentes de
+verdad mientras dure).
+
+**Desbloquea:** E-4 → E-6.
 
 # 8. Modelo funcional consolidado
 
@@ -10521,3 +10568,17 @@ Resuelto: el defecto del escenario 41 (ver punto 7).
 - **Defecto encontrado y corregido: se podía reservar un turno en el pasado.** Reprogramar ya lo rechazaba y la reserva no; el turno nacía inalterable y sólo se podía cerrar como `AUSENTE`. Ahora es 409 `slot-no-disponible` (`TurnoServiceTest`).
 - **Tests:** `SerieDeTurnosIT` (9 escenarios contra MySQL: serie concurrente con reserva que pisa una ocurrencia, todo o nada, "este y los siguientes" libera lugares, cantidad desactualizada, reprogramar una semana, primera ausencia preserva futuros, tenant, idempotencia, V70) más unitarios de regla, selección, servicio y handler.
 - **Fuera de alcance, declarado:** recurrencias no semanales, editar o extender la regla, alta parcial o "saltear feriados", vínculo Plan→serie, aviso consolidado y la mitad web (confirmación de alcance en la UI).
+
+# Registro de cierre — G1 · F-4 (Obligación del financiador, coseguro y snapshot de convenio) · backend
+
+**07/10/2026** · rama `akine-F-4-obligacion-financiador` · `V77` (reservada como `V72`, que quedó por debajo de `V76` y queda vacía) y contrato **0.60.0**. Diseño y design challenge en `docs/diseno/AKINE-F-4-obligacion-financiador.md`. Deshace el recorte de DP-10 sobre 07.01.
+
+- **El cierre devenga dos filas cuando hay convenio.** Oferta que admite obra social + cobertura aplicable (B-2) + arancel congelado (`ArancelDirectory#congelar`) para la práctica (DP-11: la realizada, la principal de la oferta primero; la principal si no hubo tratamientos) → `FINANCIADOR` por `importe_financiador` y `COSEGURO` (paciente) por `coseguro`. Sin cualquiera de las tres → `PARTICULAR` por el precio de la oferta, como siempre. Una parte en cero no genera fila.
+- **El snapshot se copia entero** a columnas propias de `obligacion`: convenio, arancel, plan, cobertura, práctica, los tres importes, los requisitos de RF-M21-003 y la credencial vencida ese día. Cinco CHECK hacen imposible la fila incoherente.
+- **Una obligación por responsable y por sesión, no por práctica** (sin RF; la más conservadora). **La diferencia particular − arancel no se cobra** (RF-M18-011 exige configuración explícita). Las dos, decisiones a revisar.
+- **Idempotencia por hecho de origen**: antes de devengar se mira cualquier obligación viva de la sesión, no sólo la del paciente. El unique de V36 sigue siendo la red.
+- **La contrapartida de 07.01 se mantiene**: ningún desenlace de negocio lanza; todo cae a particular.
+- **Defecto latente corregido:** la cuenta corriente del paciente listaba todas las obligaciones de la persona y el cobro admitía imputar contra cualquiera; con la fila del financiador, el paciente "debía" la parte de su obra social y podía saldarla en el mostrador. Ahora la cuenta corriente es sólo `responsable = PACIENTE` y cobrar la parte del financiador es `409 obligacion-no-cobrable`.
+- **Arista nueva `billing → offering.spi`**, sin ciclos (`ModuleArchitectureTest` 5/5).
+- **Tests:** `ObligacionDelFinanciadorIT` (11 escenarios contra MySQL: reparto con snapshot, cuenta corriente del paciente, sin cobertura, oferta sin obra social, principal sin tratamientos, re-disparo, dos cierres concurrentes, **bandeja de elegibles y lote presentado**, **reporte de financiadores**, tenant y CHECK de V77) y `ObligacionDevengadorTest` (18 unitarios).
+- **Fuera de alcance, declarado:** hallazgos de RF-M21-003 por orden/autorización/credencial (el dato está congelado; falta decidir si bloquea), esquema mixto configurable, pantalla.

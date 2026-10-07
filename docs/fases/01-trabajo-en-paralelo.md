@@ -106,14 +106,14 @@ Ninguna se inventa en silencio: cada una sale como ADR o DP escrita (`AGENT.md` 
 | # | Decisión | Desbloquea | Urgencia |
 |---|---|---|---|
 | ~~**DU-1**~~ | ~~**Puente Oferta↔Práctica**~~ → **resuelta: DP-11**, tabla N:M `oferta_practica` con práctica principal (06/10/2026) | A-9 → B-3, C-4, F-4. **Ruta crítica de la economía** | **ola 0** |
-| **DU-2** | Bootstrap del `PLATFORM_ADMIN` de `V15` (toca ADR-0018) | A-4 → A-7, B-catálogo global | ola 0 |
-| ~~**DU-3**~~ | ~~Alcance de `reporte:read` para `PROFESIONAL` (¿solo lo suyo?)~~ → **resuelta: DP-15**, solo su propia actividad (07/10/2026) | G-1 (arreglo rápido) | ola 0 |
+| ~~**DU-2**~~ | ~~Bootstrap del `PLATFORM_ADMIN`~~ → **resuelta: DP-14**, bootstrap por `AKINE_BOOTSTRAP_ADMIN_EMAIL` con enlace de activación (07/10/2026) | A-4 → A-7, B-catálogo global | ola 0 |
+| ~~**DU-3**~~ | ~~Alcance de `reporte:read`~~ → **resuelta: DP-15**, completo según la matriz, PROFESIONAL solo su actividad (07/10/2026) | G-1 (arreglo rápido) | ola 0 |
 | ~~**DU-4**~~ | ~~¿N tratamientos consumen N unidades o 1?~~ → **resuelta: DP-12**, una unidad por autorización involucrada (06/10/2026) | C-4, F-4 | ola 1 |
 | **DU-5** | Unificar `concurrent-modification` y `conflict` | G-5 (hallazgo alto 07.07); cambia respuestas de varios módulos | ola 1 |
 | **DU-6** | Alcance `OWN` / `paciente:read` (vínculo cuenta↔persona) | B-8, G-5; autoservicio de E | ola 1 |
 | ~~**DU-7**~~ | ~~Reversión del consumo: automática o manual~~ → **resuelta: DP-13**, manual con alerta al anular la deuda (06/10/2026) | C-4 | ola 1 |
 | **DU-8** | Historial de autorización: tabla propia o auditoría | B-4 | ola 1 |
-| **DU-9** | ¿La recepción tiene máquina de estados propia (DP-05) o se documenta el desvío? | E-4 | ola 1 |
+| ~~**DU-9**~~ | ~~¿Máquina de recepción propia?~~ → **resuelta: DP-16**, sí, como DP-05; `EN_ESPERA` sale del turno (07/10/2026) | E-4 | ola 1 |
 | **DU-10** | `egreso:manage` propio o `caja:operate`; adjunto binario del egreso (¿storage a `platform.spi`?) | F-5 | ola 2 |
 | **DU-11** | Parámetros obligatorios por práctica; ¿un observador que falla debe hacer fallar el cierre? | C-8 | ola 2 |
 | **DU-12** | ¿F9 espera al gate del MVP? (DP-07) y `clase:*` vs `turno:*` | F9 entera | después del gate |
@@ -132,12 +132,13 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V69` | F-3 | **Usada**: `V69__m19_anticipos_y_reintegro.sql` — saldo a favor y anulación en `cobro`, imputación posterior en `cobro_imputacion`, tabla `cobro_reintegro`, origen `REINTEGRO` en `movimiento_caja` |
 | `V70` | E-3 | **Vacía**: E-3 la reservó y se renumeró a `V74` al integrar, porque `V71` (C-6) entró antes. No se reusa |
 | `V71` | C-6 | **Usada**: `V71__c6_sesion_version_tratamientos_y_mediciones.sql` — tablas `sesion_version_tratamiento`, `sesion_version_tratamiento_parametro` y `sesion_version_medicion` (foto inmutable por version) con backfill desde el estado vivo |
-| `V72` | F-4 | Obligación del financiador, coseguro y snapshot de convenio |
+| `V72` | F-4 | **Vacía**: F-4 la reservó y quedó por debajo de `V76` (C-4), ya mergeada; Flyway corre sin `outOfOrder`, así que usó `V77`. No se reusa |
 | `V73` | E-5 | **Vacía / liberada**: E-5 la reservó y entró sin migración (`notification_outbox.tipo` es `VARCHAR(40)` sin CHECK). No se reusa |
 | `V74` | E-3 | **Usada**: `V74__m12_serie_de_turnos.sql` (nació como `V70` y se renumeró al integrar: `V71` ya estaba en `main` y Flyway corre sin `outOfOrder`) — tabla `turno_serie` (regla semanal, idempotencia) y `turno.serie_id` nullable con `fk_turno_turno_serie` e `ix_turno_serie_inicio` |
 | `V75` | A-9 | **Usada**: `V75__m27_oferta_practica.sql` — tabla `oferta_practica` (DP-11) con práctica principal sostenida por `uk_oferta_practica_principal` |
 | `V76` | C-4 | **Usada**: `V76__c4_autorizacion_alerta_consumo_a_revisar.sql` — tabla `autorizacion_alerta` (DP-13) e índice `ix_movimiento_origen` en `autorizacion_movimiento` |
-| `V77`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
+| `V77` | F-4 | **Usada**: `V77__f4_obligacion_del_financiador.sql` — `obligacion.concepto` (`PARTICULAR`/`FINANCIADOR`/`COSEGURO`), práctica y cobertura aplicadas, alerta DP-11 y el snapshot entero del convenio y del arancel (los tres importes y los requisitos de RF-M21-003), con cinco CHECK de coherencia |
+| `V78`–`V79` | libres | Tomar la siguiente libre y anotarla acá |
 
 ## 7. Paquetes de trabajo
 
@@ -216,7 +217,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 
 | ID | Qué | Repo | Tam. | Dep. | Ficha |
 |---|---|---|---|---|---|
-| **F-4** | **Obligación del financiador** (`V72`): `practicaId` en `SesionCerrada`, copiar `ArancelCongelado`, devengar financiador + paciente + coseguro | api + web | L | A-9, B-2, C-4 | F7 |
+| ~~**F-4**~~ | ~~**Obligación del financiador**~~ — **backend hecho** (`V77`, contrato 0.60.0, 07/10): el cierre de una sesión cubierta por un convenio devenga la parte del financiador y el coseguro con el snapshot del arancel; la bandeja de 07.04 y el reporte de 07.06 tienen datos. Diseño en `docs/diseno/AKINE-F-4-obligacion-financiador.md`; falta la pantalla | api + web | L | A-9, B-2, C-4 | F7 |
 | C-9 | Gate RF-M10-007: caso obligatorio al reservar/atender, con ventana de migración | api + web | L | C-2, D-b, E-3 | F4, F5, F6 |
 | E-6 | Prepago de recepción como anticipo | api + web | M | E-4, F-3 | F5 |
 | G-10 | Carga con k6 contra los SLO de ADR-0016; LCP del frontend | los dos | M | G-4 | F8 |
@@ -244,6 +245,10 @@ DU-4 / DU-7 ──────────────────────�
 Sin F-4, la bandeja de presentaciones devuelve lista vacía y el reporte de financiadores da cero:
 **es el hueco funcional más grave del MVP**. Por eso DU-1 va en la ola 0 aunque A-9 se implemente en
 la ola 2, y B-2 arranca el primer día.
+
+> **Actualizado el 07/10/2026:** F-4 entró en el backend (`V77`, contrato 0.60.0). La bandeja de
+> elegibles y la sección de financiadores del reporte tienen datos reales por primera vez
+> (`ObligacionDelFinanciadorIT`). Lo que queda de la ruta crítica es la pantalla y G-12.
 
 ## 9. Grupos de trabajo: cómo repartirlo según cuánta gente haya
 
