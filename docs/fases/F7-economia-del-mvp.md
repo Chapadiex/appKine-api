@@ -7,36 +7,53 @@
 
 | Etapa | Estado | % | Lo que falta, en una línea |
 |---|---|---|---|
-| 07.01 Obligaciones | PARCIAL | 60 | **Solo deuda del paciente**: sin financiador, mixto, coseguro ni snapshot de convenio |
+| 07.01 Obligaciones | PARCIAL | 85 | ~~Solo deuda del paciente~~ → F-4: financiador + coseguro con snapshot de convenio. Falta el esquema mixto configurable (RF-M18-011) y la pantalla |
 | 07.02 Cobros | PARCIAL | 85 | ~~Anticipos, imputación posterior, anulación, reintegro~~ (F-3). Falta frontend y E2E |
 | 07.03 Caja diaria | PARCIAL | 55 | Sin frontend; ITs concurrentes |
-| 07.04 Presentaciones a financiadores | DESVIADA / PARCIAL | 40 | **La bandeja de elegibles queda vacía en un despliegue real** |
+| 07.04 Presentaciones a financiadores | DESVIADA / PARCIAL | 55 | ~~La bandeja de elegibles queda vacía en un despliegue real~~ (F-4). Faltan los hallazgos de orden, autorización y credencial de RF-M21-003 (el dato ya está congelado) |
 | 07.05 Egresos y pagos | PARCIAL | 50 | Adjunto binario; sin frontend |
 
 Frontend existe solo para deuda (`cuenta-corriente`) y cobros (`registro-de-cobro`, `cobros`).
 Caja, presentaciones y egresos: **nada**. No hay ningún E2E económico.
 
-## El hallazgo central: no existe la obligación del financiador
+## ~~El hallazgo central: no existe la obligación del financiador~~ → cerrado por F-4
 
-`ObligacionDevengador` devenga **una sola** obligación, con `Responsable.PACIENTE`. Es el recorte
+> **Cerrado el 07/10/2026 por F-4** (`V77`, contrato 0.60.0, diseño en
+> `docs/diseno/AKINE-F-4-obligacion-financiador.md`). El cierre de una sesión cuya oferta admite
+> obra social, con cobertura vigente del paciente (B-2) y un convenio de la sede con arancel para la
+> práctica (DP-11: la realizada, o la principal), devenga **dos** filas: `FINANCIADOR` por
+> `importe_financiador` y `COSEGURO` (a cargo del paciente) por `coseguro`, con el snapshot entero
+> del convenio y del arancel. Sin cobertura, sigue la `PARTICULAR` de siempre.
+> `ObligacionDelFinanciadorIT` prueba contra MySQL que la fila aparece en la bandeja de elegibles,
+> se presenta en un lote y suma en "prestado" del reporte. Lo que sigue abierto: los **hallazgos**
+> de RF-M21-003 (el dato de orden, autorización y credencial ya está congelado; falta decidir si
+> bloquea o avisa) y el esquema mixto configurable de RF-M18-011.
+
+~~`ObligacionDevengador` devenga **una sola** obligación, con `Responsable.PACIENTE`. Es el recorte
 de DP-10, que **cortó alcance y no modelo**: la columna `responsable` admite `FINANCIADOR` y
-`snapshot_convenio_id` existe, pero queda en NULL y nunca se conectó. Consecuencias medibles:
+`snapshot_convenio_id` existe, pero queda en NULL y nunca se conectó.~~ Consecuencias que tenía:
 
-- `prestaciones-elegibles` (07.04) **devuelve lista vacía** en un despliegue real.
-- RF-M21-003 no puede validar orden, autorización ni credencial: viven en el `ArancelCongelado` y
-  el devengado no los copia.
-- La sección de financiadores del reporte (07.06) siempre da cero.
+- ~~`prestaciones-elegibles` (07.04) **devuelve lista vacía** en un despliegue real.~~
+- ~~RF-M21-003 no puede validar orden, autorización ni credencial: viven en el `ArancelCongelado` y
+  el devengado no los copia.~~ El dato se copia; la validación queda como paso siguiente.
+- ~~La sección de financiadores del reporte (07.06) siempre da cero.~~
 
-**No es deuda de tests: es un cimiento que falta.** Necesita, en este orden:
+Los cuatro pasos que pedía, todos hechos:
 
-1. Cobertura vigente del paciente por `spi` (preparado en [F3](F3-personas-y-cobertura.md)).
-2. `practicaId` en `SesionCerrada` (hoy no la lleva) — depende del puente Oferta↔Práctica de [F2](F2-operacion-del-consultorio.md).
-3. Copiar el `ArancelCongelado` entero al devengar (`ArancelDirectory#congelar`, hoy sin consumidor).
-4. Devengar la parte del financiador, del paciente y el coseguro como obligaciones separadas.
-
-Migración + cambio de contrato. Etapa propia con design challenge.
+1. ~~Cobertura vigente del paciente por `spi`~~ → B-2 (`CoberturasAplicablesDirectory`).
+2. ~~`practicaId` en `SesionCerrada`~~ → viajan las prácticas realizadas (06.04) y la principal sale
+   de `offering.spi.PracticasDeOfertaDirectory` (A-9); `SesionCerrada` suma `ofertaAdmiteObraSocial`.
+3. ~~Copiar el `ArancelCongelado` entero al devengar~~ → columnas `snapshot_*` de `obligacion` (V77).
+4. ~~Devengar la parte del financiador, del paciente y el coseguro como obligaciones separadas~~ →
+   `FINANCIADOR` + `COSEGURO`; la diferencia particular − arancel **no** se cobra (decisión a revisar).
 
 ## Defectos — a verificar
+
+- [x] ~~La cuenta corriente del paciente y el resumen del 360 listaban **todas** las obligaciones de
+  la persona, y el registro de cobro aceptaba imputar un pago del paciente contra cualquiera de
+  ellas.~~ → F-4: era inobservable mientras no existiera la fila del financiador, y F-4 la crea. La
+  cuenta corriente (RF-M18-003) lista sólo `responsable = PACIENTE` y un cobro contra la parte del
+  financiador es `409 obligacion-no-cobrable` ("es deuda del financiador").
 
 - [x] ~~`FinanciadorPagoService.cuentaCorriente` filtra por `consultorioId` y pagina fijo `200, 0`
   (alrededor de la línea 191) → desde el lote 201 los totales salen mal.~~ → F-1: la suma la hace
@@ -61,7 +78,7 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 ## Faltantes
 
 ### Backend / API
-- [ ] **Obligación del financiador** (ver arriba).
+- [x] ~~**Obligación del financiador** (ver arriba).~~ → F-4: financiador + coseguro con snapshot del arancel; ver el hallazgo central.
 - [x] ~~07.02: anticipos, imputación posterior, anulación y reintegro. El recorte se justificó porque
   no existía caja; **la caja existe desde 07.03** y nadie reabrió el tema. `CobroController` lo dice:
   "No hay anticipos ni anulacion todavia". También lo necesita el prepago de recepción ([F5](F5-agenda-y-recepcion.md)).~~
@@ -99,7 +116,7 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 
 | Desvío | Documentado |
 |---|---|
-| Solo obligación del paciente (DP-10) | Sí; **el recableado nunca se hizo** |
+| ~~Solo obligación del paciente (DP-10)~~ | Cerrado por F-4 (`V77`) |
 | ~~Sin anticipos aunque la caja ya existe~~ | Cerrado por F-3 |
 | Registro de 07.02 es reconstrucción, no acta | Sí |
 | El cobro no exige `caja:operate` | Sí |
@@ -114,7 +131,7 @@ Reportados el 01/10 por los agentes que escribieron los tests de `billing` en `a
 
 ## Para cerrar la fase
 
-- [ ] Obligación del financiador con snapshot de convenio, con ITs.
+- [x] ~~Obligación del financiador con snapshot de convenio, con ITs.~~ → F-4 (`V77`, 0.60.0), `ObligacionDelFinanciadorIT`.
 - [x] ~~Anticipos y anulación con reintegro.~~ → F-3, backend. Las pantallas siguen pendientes.
 - [ ] Pantallas de caja, presentaciones y egresos con E2E.
 - [ ] ITs diferidos 33–48.
