@@ -1,5 +1,6 @@
 package com.akine.encounter.infrastructure;
 
+import com.akine.clinical.spi.AutorizacionesDelCaso;
 import com.akine.encounter.spi.SesionCerrada;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
@@ -13,6 +14,7 @@ import org.mockito.ArgumentCaptor;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -43,15 +45,16 @@ class ConsumoDeAutorizacionEnCierreTest {
 
 	private final ConsumoDeAutorizaciones consumo = mock(ConsumoDeAutorizaciones.class);
 	private final ConsultorioDirectory consultorios = mock(ConsultorioDirectory.class);
+	private final AutorizacionesDelCaso autorizacionesDelCaso = mock(AutorizacionesDelCaso.class);
 
 	private final ConsumoDeAutorizacionEnCierre observador =
-			new ConsumoDeAutorizacionEnCierre(consumo, consultorios);
+			new ConsumoDeAutorizacionEnCierre(consumo, consultorios, autorizacionesDelCaso);
 
 	@Test
 	@DisplayName("un cierre SIN SALDO no lanza: el cierre clinico sigue")
 	void sin_saldo_no_rompe_el_cierre() {
 		darSede("America/Argentina/Cordoba");
-		given(consumo.consumirPorSesion(any())).willReturn(ResultadoDeConsumo.sinSaldo(77L));
+		given(consumo.consumirPorSesion(any())).willReturn(List.of(ResultadoDeConsumo.sinSaldo(77L)));
 
 		assertThatCode(() -> observador.alCerrar(cierre(true))).doesNotThrowAnyException();
 	}
@@ -61,7 +64,7 @@ class ConsumoDeAutorizacionEnCierreTest {
 	void sin_autorizacion_no_rompe_el_cierre() {
 		darSede("America/Argentina/Cordoba");
 		given(consumo.consumirPorSesion(any()))
-				.willReturn(ResultadoDeConsumo.sinAutorizacionElegible());
+				.willReturn(List.of(ResultadoDeConsumo.sinAutorizacionElegible()));
 
 		assertThatCode(() -> observador.alCerrar(cierre(true))).doesNotThrowAnyException();
 	}
@@ -80,7 +83,7 @@ class ConsumoDeAutorizacionEnCierreTest {
 	void el_dia_es_local() {
 		darSede("America/Argentina/Cordoba");
 		given(consumo.consumirPorSesion(any()))
-				.willReturn(ResultadoDeConsumo.consumida(77L, 9001L, 5));
+				.willReturn(List.of(ResultadoDeConsumo.consumida(77L, 9001L, 5)));
 
 		// 01:30 UTC del dia 16 es todavia el 15 en Cordoba (UTC-3). Resolverlo en UTC correria
 		// el dia y una autorizacion que vence el 15 rechazaria esta sesion.
@@ -101,7 +104,7 @@ class ConsumoDeAutorizacionEnCierreTest {
 	void zona_invalida_cae_a_utc() {
 		darSede("Zona/Inventada");
 		given(consumo.consumirPorSesion(any()))
-				.willReturn(ResultadoDeConsumo.consumida(77L, 9001L, 5));
+				.willReturn(List.of(ResultadoDeConsumo.consumida(77L, 9001L, 5)));
 
 		observador.alCerrar(new SesionCerrada(
 				SESION, ORG, SEDE, PERSONA, 500L, 4, true,
@@ -110,6 +113,43 @@ class ConsumoDeAutorizacionEnCierreTest {
 		ArgumentCaptor<ConsumoPorSesion> pedido = ArgumentCaptor.forClass(ConsumoPorSesion.class);
 		verify(consumo).consumirPorSesion(pedido.capture());
 		assertThat(pedido.getValue().fecha()).isEqualTo(LocalDate.of(2027, 3, 16));
+	}
+
+	@Test
+	@DisplayName("con caso, excluye las autorizaciones atadas a OTRO caso (AKINE C-4)")
+	void con_caso_excluye_las_de_otro_caso() {
+		darSede("America/Argentina/Cordoba");
+		given(autorizacionesDelCaso.deOtrosCasos(ORG, 900L)).willReturn(Set.of(88L));
+		given(consumo.consumirPorSesion(any()))
+				.willReturn(List.of(ResultadoDeConsumo.consumida(77L, 9001L, 5),
+						ResultadoDeConsumo.consumida(78L, 9002L, 2)));
+
+		observador.alCerrar(new SesionCerrada(
+				SESION, ORG, SEDE, PERSONA, 500L, 4, true,
+				Instant.parse("2027-03-15T14:00:00Z"), 42L, BigDecimal.TEN, "ARS",
+				Set.of(1L, 2L), 900L));
+
+		ArgumentCaptor<ConsumoPorSesion> pedido = ArgumentCaptor.forClass(ConsumoPorSesion.class);
+		verify(consumo).consumirPorSesion(pedido.capture());
+		assertThat(pedido.getValue().autorizacionesDeOtroCaso()).containsExactly(88L);
+		assertThat(pedido.getValue().practicasRealizadas()).containsExactlyInAnyOrder(1L, 2L);
+		// DP-12: una unidad por autorizacion involucrada; el agrupamiento lo hace person.
+		assertThat(pedido.getValue().cantidad()).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("sin caso no pregunta a clinical ni excluye nada")
+	void sin_caso_no_excluye() {
+		darSede("America/Argentina/Cordoba");
+		given(consumo.consumirPorSesion(any()))
+				.willReturn(List.of(ResultadoDeConsumo.sinAutorizacionElegible()));
+
+		observador.alCerrar(cierre(true));
+
+		verifyNoInteractions(autorizacionesDelCaso);
+		ArgumentCaptor<ConsumoPorSesion> pedido = ArgumentCaptor.forClass(ConsumoPorSesion.class);
+		verify(consumo).consumirPorSesion(pedido.capture());
+		assertThat(pedido.getValue().autorizacionesDeOtroCaso()).isEmpty();
 	}
 
 	private void darSede(String zona) {

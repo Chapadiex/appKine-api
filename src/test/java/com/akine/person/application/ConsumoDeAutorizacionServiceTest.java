@@ -4,6 +4,7 @@ import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.AutorizacionMovimiento;
+import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.EstadoAutorizacion;
 import com.akine.person.domain.TipoMovimientoAutorizacion;
 import com.akine.person.domain.TipoOrigenMovimiento;
@@ -11,9 +12,12 @@ import com.akine.person.domain.exception.AutorizacionNotAccessibleException;
 import com.akine.person.domain.exception.MovimientoNotAccessibleException;
 import com.akine.person.domain.exception.MovimientoYaRevertidoException;
 import com.akine.person.domain.exception.ReversionSinMotivoException;
+import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionAlertaRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionMovimientoRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionRepositoryPort;
+import com.akine.person.domain.port.PersonRepositoryPorts.CoberturaPacienteRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.PersonaRepositoryPort;
+import com.akine.person.spi.ConsumoARevisar;
 import com.akine.person.spi.ConsumoPorSesion;
 import com.akine.person.spi.ResultadoDeConsumo;
 import com.akine.platform.spi.audit.AuditTrail;
@@ -74,6 +78,10 @@ class ConsumoDeAutorizacionServiceTest {
 	private final PersonaRepositoryPort personas = mock(PersonaRepositoryPort.class);
 	private final PermissionGuard permissionGuard = mock(PermissionGuard.class);
 	private final AuditTrail auditTrail = mock(AuditTrail.class);
+	private final CoberturaPacienteRepositoryPort coberturas =
+			mock(CoberturaPacienteRepositoryPort.class);
+	private final AutorizacionAlertaRepositoryPort alertas =
+			mock(AutorizacionAlertaRepositoryPort.class);
 
 	private ConsumoDeAutorizacionService service;
 
@@ -82,9 +90,14 @@ class ConsumoDeAutorizacionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ConsumoDeAutorizacionService(
-				autorizaciones, movimientos, personas, permissionGuard, auditTrail);
+				autorizaciones, movimientos, personas, permissionGuard, auditTrail, coberturas,
+				alertas);
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
+		// Por defecto la cobertura de las autorizaciones esta vigente: los casos de 04.05 y 06.04
+		// no tratan de la cobertura. La de C-4 la apaga explicitamente.
+		CoberturaPaciente vigente = cobertura(COBERTURA, true);
+		given(coberturas.activasDe(ORG, PERSONA)).willReturn(List.of(vigente));
 	}
 
 	// =================================================================================
@@ -105,7 +118,7 @@ class ConsumoDeAutorizacionServiceTest {
 			given(autorizaciones.descontarSaldo(ORG, AUTORIZACION, 1)).willReturn(1);
 			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9001L));
 
-			ResultadoDeConsumo resultado = service.consumirPorSesion(cierre());
+			ResultadoDeConsumo resultado = unico(service.consumirPorSesion(cierre()));
 
 			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.CONSUMIDA);
 			assertThat(resultado.autorizacionId()).isEqualTo(AUTORIZACION);
@@ -125,7 +138,7 @@ class ConsumoDeAutorizacionServiceTest {
 			// Cero filas afectadas: la BASE dijo que no alcanza.
 			given(autorizaciones.descontarSaldo(ORG, AUTORIZACION, 1)).willReturn(0);
 
-			ResultadoDeConsumo resultado = service.consumirPorSesion(cierre());
+			ResultadoDeConsumo resultado = unico(service.consumirPorSesion(cierre()));
 
 			// La atencion ocurrio. Bloquear el cierre clinico por esto es lo que DP-06 prohibe.
 			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.SIN_SALDO);
@@ -144,7 +157,7 @@ class ConsumoDeAutorizacionServiceTest {
 					TipoOrigenMovimiento.SESION, SESION))
 					.willReturn(Optional.of(movimiento(9001L, TipoMovimientoAutorizacion.CONSUMO)));
 
-			ResultadoDeConsumo resultado = service.consumirPorSesion(cierre());
+			ResultadoDeConsumo resultado = unico(service.consumirPorSesion(cierre()));
 
 			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.YA_CONSUMIDA);
 			assertThat(resultado.movimientoId()).isEqualTo(9001L);
@@ -158,7 +171,7 @@ class ConsumoDeAutorizacionServiceTest {
 		void sin_autorizacion() {
 			given(autorizaciones.aprobadasDePersona(ORG, PERSONA)).willReturn(List.of());
 
-			ResultadoDeConsumo resultado = service.consumirPorSesion(cierre());
+			ResultadoDeConsumo resultado = unico(service.consumirPorSesion(cierre()));
 
 			assertThat(resultado.desenlace())
 					.isEqualTo(ResultadoDeConsumo.SIN_AUTORIZACION_ELEGIBLE);
@@ -172,7 +185,7 @@ class ConsumoDeAutorizacionServiceTest {
 			given(autorizaciones.aprobadasDePersona(ORG, PERSONA))
 					.willReturn(List.of(autorizacion(10, HOY.minusDays(1))));
 
-			ResultadoDeConsumo resultado = service.consumirPorSesion(cierre());
+			ResultadoDeConsumo resultado = unico(service.consumirPorSesion(cierre()));
 
 			assertThat(resultado.desenlace())
 					.isEqualTo(ResultadoDeConsumo.SIN_AUTORIZACION_ELEGIBLE);
@@ -226,7 +239,8 @@ class ConsumoDeAutorizacionServiceTest {
 			given(autorizaciones.descontarSaldo(ORG, AUTORIZACION, 1)).willReturn(1);
 			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9001L));
 
-			ResultadoDeConsumo resultado = service.consumirPorSesion(cierreCon(Set.of(PRACTICA)));
+			ResultadoDeConsumo resultado =
+					unico(service.consumirPorSesion(cierreCon(Set.of(PRACTICA))));
 
 			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.CONSUMIDA);
 			assertThat(resultado.autorizacionId()).isEqualTo(AUTORIZACION);
@@ -241,7 +255,8 @@ class ConsumoDeAutorizacionServiceTest {
 					.willReturn(List.of(autorizacionDe(
 							OTRA_AUTORIZACION, OTRA_PRACTICA, HOY.plusMonths(2))));
 
-			ResultadoDeConsumo resultado = service.consumirPorSesion(cierreCon(Set.of(PRACTICA)));
+			ResultadoDeConsumo resultado =
+					unico(service.consumirPorSesion(cierreCon(Set.of(PRACTICA))));
 
 			assertThat(resultado.desenlace())
 					.isEqualTo(ResultadoDeConsumo.SIN_AUTORIZACION_PARA_LA_PRACTICA);
@@ -264,7 +279,8 @@ class ConsumoDeAutorizacionServiceTest {
 			given(autorizaciones.descontarSaldo(ORG, OTRA_AUTORIZACION, 1)).willReturn(1);
 			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9002L));
 
-			ResultadoDeConsumo resultado = service.consumirPorSesion(cierreCon(Set.of()));
+			ResultadoDeConsumo resultado =
+					unico(service.consumirPorSesion(cierreCon(Set.of())));
 
 			// Consume igual, aunque la practica no coincida con nada: no hay con que filtrar.
 			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.CONSUMIDA);
@@ -282,11 +298,11 @@ class ConsumoDeAutorizacionServiceTest {
 			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9003L));
 
 			ResultadoDeConsumo resultado =
-					service.consumirPorSesion(cierreCon(Set.of(OTRA_PRACTICA, PRACTICA)));
+					unico(service.consumirPorSesion(cierreCon(Set.of(OTRA_PRACTICA, PRACTICA))));
 
 			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.CONSUMIDA);
-			// Y sigue siendo UNA unidad por sesion aunque se hayan aplicado dos practicas:
-			// cobrar por practica es una decision economica que esta etapa NO toma.
+			// La practica sin autorizacion no consume nada; la otra, UNA unidad (DP-12: una por
+			// autorizacion involucrada, nunca una por practica).
 			verify(autorizaciones).descontarSaldo(ORG, AUTORIZACION, 1);
 		}
 
@@ -297,10 +313,171 @@ class ConsumoDeAutorizacionServiceTest {
 			// particular—: los dos desenlaces llevan a acciones distintas en el mostrador.
 			given(autorizaciones.aprobadasDePersona(ORG, PERSONA)).willReturn(List.of());
 
-			ResultadoDeConsumo resultado = service.consumirPorSesion(cierreCon(Set.of(PRACTICA)));
+			ResultadoDeConsumo resultado =
+					unico(service.consumirPorSesion(cierreCon(Set.of(PRACTICA))));
 
 			assertThat(resultado.desenlace())
 					.isEqualTo(ResultadoDeConsumo.SIN_AUTORIZACION_ELEGIBLE);
+		}
+	}
+
+	/**
+	 * AKINE C-4 — DP-12, cobertura y caso.
+	 *
+	 * <p>DP-12: una unidad en CADA autorizacion involucrada. Y el re-disparo de un cierre no puede
+	 * gastar una segunda autorizacion por la misma practica: es el defecto que C-4 encontro.
+	 */
+	@Nested
+	@DisplayName("Una unidad por autorizacion involucrada, cobertura y caso (AKINE C-4)")
+	class DeC4 {
+
+		private static final long OTRA_PRACTICA = 77L;
+		private static final long OTRA_AUTORIZACION = 4242L;
+
+		@Test
+		@DisplayName("practicas de dos autorizaciones consumen una unidad de CADA una")
+		void dos_autorizaciones_una_de_cada_una() {
+			Autorizacion kinesio = autorizacion(10, HOY.plusMonths(2));
+			Autorizacion fono = autorizacionDe(OTRA_AUTORIZACION, OTRA_PRACTICA, HOY.plusMonths(1));
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA)).willReturn(List.of(fono, kinesio));
+			given(movimientos.buscarPorOrigen(any(), any(), any(), any(), any()))
+					.willReturn(Optional.empty());
+			given(autorizaciones.descontarSaldo(anyLong(), anyLong(), anyInt())).willReturn(1);
+			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9001L));
+
+			List<ResultadoDeConsumo> resultados =
+					service.consumirPorSesion(cierreCon(Set.of(PRACTICA, OTRA_PRACTICA)));
+
+			assertThat(resultados).extracting(ResultadoDeConsumo::autorizacionId)
+					.as("en orden de id: es el orden de los locks")
+					.containsExactly(AUTORIZACION, OTRA_AUTORIZACION);
+			assertThat(resultados).allMatch(ResultadoDeConsumo::descontoEfectivo);
+			verify(autorizaciones).descontarSaldo(ORG, AUTORIZACION, 1);
+			verify(autorizaciones).descontarSaldo(ORG, OTRA_AUTORIZACION, 1);
+		}
+
+		@Test
+		@DisplayName("dos autorizaciones de la MISMA practica: una unidad, en la que vence antes")
+		void misma_practica_una_unidad() {
+			Autorizacion venceDespues = autorizacion(10, HOY.plusMonths(6));
+			Autorizacion venceAntes = autorizacionDe(OTRA_AUTORIZACION, PRACTICA, HOY.plusMonths(1));
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA))
+					.willReturn(List.of(venceAntes, venceDespues));
+			given(movimientos.buscarPorOrigen(any(), any(), any(), any(), any()))
+					.willReturn(Optional.empty());
+			given(autorizaciones.descontarSaldo(ORG, OTRA_AUTORIZACION, 1)).willReturn(1);
+			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9001L));
+
+			ResultadoDeConsumo resultado =
+					unico(service.consumirPorSesion(cierreCon(Set.of(PRACTICA))));
+
+			assertThat(resultado.autorizacionId()).isEqualTo(OTRA_AUTORIZACION);
+			verify(autorizaciones, never()).descontarSaldo(ORG, AUTORIZACION, 1);
+		}
+
+		@Test
+		@DisplayName("el re-disparo despues de agotar NO consume otra autorizacion de la practica")
+		void redisparo_no_gasta_otra() {
+			// El primer disparo ya consumio AUTORIZACION y la dejo agotada: no aparece entre las
+			// aprobadas que habilitan. Sin leer el ledger de la sesion, la otra autorizacion de la
+			// misma practica seria elegida y se descontaria la misma practica dos veces.
+			Autorizacion agotada = autorizacion(1, HOY.plusMonths(2));
+			ReflectionTestUtils.setField(agotada, "cantidadConsumida", 1);
+			given(movimientos.listarDeOrigen(ORG, TipoOrigenMovimiento.SESION, SESION))
+					.willReturn(List.of(consumoDe(9001L, AUTORIZACION)));
+			given(autorizaciones.findByIdAndOrganizationId(AUTORIZACION, ORG))
+					.willReturn(Optional.of(agotada));
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA)).willReturn(List.of(
+					agotada, autorizacionDe(OTRA_AUTORIZACION, PRACTICA, HOY.plusMonths(3))));
+
+			ResultadoDeConsumo resultado =
+					unico(service.consumirPorSesion(cierreCon(Set.of(PRACTICA))));
+
+			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.YA_CONSUMIDA);
+			assertThat(resultado.movimientoId()).isEqualTo(9001L);
+			verify(autorizaciones, never()).descontarSaldo(anyLong(), anyLong(), anyInt());
+			verify(movimientos, never()).save(any());
+		}
+
+		@Test
+		@DisplayName("sin practicas, el re-disparo con un consumo previo no gasta otra")
+		void redisparo_sin_practicas() {
+			given(movimientos.listarDeOrigen(ORG, TipoOrigenMovimiento.SESION, SESION))
+					.willReturn(List.of(consumoDe(9001L, AUTORIZACION)));
+
+			ResultadoDeConsumo resultado = unico(service.consumirPorSesion(cierre()));
+
+			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.YA_CONSUMIDA);
+			verify(autorizaciones, never()).descontarSaldo(anyLong(), anyLong(), anyInt());
+		}
+
+		@Test
+		@DisplayName("con la cobertura de la autorizacion no vigente, no consume y no lanza")
+		void cobertura_no_vigente() {
+			CoberturaPaciente vencida = cobertura(COBERTURA, false);
+			given(coberturas.activasDe(ORG, PERSONA)).willReturn(List.of(vencida));
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA))
+					.willReturn(List.of(autorizacion(10, HOY.plusMonths(2))));
+
+			ResultadoDeConsumo resultado =
+					unico(service.consumirPorSesion(cierreCon(Set.of(PRACTICA))));
+
+			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.SIN_COBERTURA_VIGENTE);
+			verify(autorizaciones, never()).descontarSaldo(anyLong(), anyLong(), anyInt());
+		}
+
+		@Test
+		@DisplayName("una autorizacion atada a otro caso no se consume")
+		void autorizacion_de_otro_caso() {
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA))
+					.willReturn(List.of(autorizacion(10, HOY.plusMonths(2))));
+
+			ResultadoDeConsumo resultado = unico(service.consumirPorSesion(new ConsumoPorSesion(
+					ORG, PERSONA, SEDE, SESION, HOY, 1, 42L, Set.of(PRACTICA),
+					Set.of(AUTORIZACION))));
+
+			assertThat(resultado.desenlace())
+					.isEqualTo(ResultadoDeConsumo.AUTORIZACION_DE_OTRO_CASO);
+			verify(autorizaciones, never()).descontarSaldo(anyLong(), anyLong(), anyInt());
+		}
+	}
+
+	/** DP-13: anular la deuda alerta el consumo y no toca el saldo. */
+	@Nested
+	@DisplayName("Consumo a revisar al anular la deuda (DP-13)")
+	class DelConsumoARevisar {
+
+		@Test
+		@DisplayName("alerta cada consumo vivo de la sesion y no toca el saldo")
+		void alerta_y_no_toca_el_saldo() {
+			AutorizacionMovimiento revertido = consumoDe(9001L, AUTORIZACION);
+			AutorizacionMovimiento reversion = movimiento(9002L, TipoMovimientoAutorizacion.REVERSION);
+			ReflectionTestUtils.setField(reversion, "movimientoOrigenId", 9001L);
+			AutorizacionMovimiento vivo = consumoDe(9003L, 4242L);
+			given(movimientos.listarDeOrigen(ORG, TipoOrigenMovimiento.SESION, SESION))
+					.willReturn(List.of(revertido, reversion, vivo));
+
+			int alcanzados = service.consumoARevisar(new ConsumoARevisar(
+					ORG, SESION, 5120L, "Cortesia", Instant.parse("2027-03-16T10:00:00Z"), 1L));
+
+			assertThat(alcanzados).as("el revertido ya no tiene nada que revisar").isEqualTo(1);
+			verify(alertas).registrarSiFalta(ORG, 4242L, PERSONA, 9003L, "CONSUMO_A_REVISAR",
+					SESION, 5120L, "Cortesia", Instant.parse("2027-03-16T10:00:00Z"), 1L);
+			verify(alertas, never()).registrarSiFalta(anyLong(), anyLong(), anyLong(),
+					org.mockito.ArgumentMatchers.eq(9001L), any(), anyLong(), anyLong(), any(),
+					any(), any());
+			verify(autorizaciones, never()).devolverSaldo(anyLong(), anyLong(), anyInt());
+			verify(autorizaciones, never()).descontarSaldo(anyLong(), anyLong(), anyInt());
+		}
+
+		@Test
+		@DisplayName("una sesion que no consumio no produce nada")
+		void sin_consumos() {
+			int alcanzados = service.consumoARevisar(new ConsumoARevisar(
+					ORG, SESION, 5120L, "Error de precio", Instant.now(), 1L));
+
+			assertThat(alcanzados).isZero();
+			verifyNoInteractions(alertas, auditTrail);
 		}
 	}
 
@@ -333,6 +510,11 @@ class ConsumoDeAutorizacionServiceTest {
 			assertThat(reversion.referenciaOrigen()).isEqualTo(SESION);
 			assertThat(reversion.efectoSobreElSaldo()).isEqualTo(1);
 			verify(autorizaciones).devolverSaldo(ORG, AUTORIZACION, 1);
+			// DP-13: revertir resuelve la alerta "consumo a revisar" de ese consumo, si la hay.
+			verify(alertas).resolverDelMovimiento(
+					org.mockito.ArgumentMatchers.eq(ORG), org.mockito.ArgumentMatchers.eq(9001L),
+					org.mockito.ArgumentMatchers.eq("REVERTIDO"), any(),
+					org.mockito.ArgumentMatchers.eq(1L));
 		}
 
 		@Test
@@ -475,6 +657,27 @@ class ConsumoDeAutorizacionServiceTest {
 				TipoOrigenMovimiento.SESION, SESION,
 				tipo.exigeMotivo() ? "Motivo declarado" : null,
 				null, Instant.parse("2027-03-15T12:00:00Z"), 42L);
+		ReflectionTestUtils.setField(movimiento, "id", id);
+		return movimiento;
+	}
+
+	private static ResultadoDeConsumo unico(List<ResultadoDeConsumo> resultados) {
+		assertThat(resultados).as("un solo desenlace").hasSize(1);
+		return resultados.get(0);
+	}
+
+	private static CoberturaPaciente cobertura(long id, boolean vigente) {
+		CoberturaPaciente cobertura = mock(CoberturaPaciente.class);
+		given(cobertura.getId()).willReturn(id);
+		given(cobertura.vigenteEl(any())).willReturn(vigente);
+		return cobertura;
+	}
+
+	private static AutorizacionMovimiento consumoDe(long id, long autorizacionId) {
+		AutorizacionMovimiento movimiento = new AutorizacionMovimiento(
+				ORG, autorizacionId, PERSONA, SEDE, TipoMovimientoAutorizacion.CONSUMO, 1,
+				TipoOrigenMovimiento.SESION, SESION, null, null,
+				Instant.parse("2027-03-15T12:00:00Z"), 42L);
 		ReflectionTestUtils.setField(movimiento, "id", id);
 		return movimiento;
 	}
