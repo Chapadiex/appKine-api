@@ -130,6 +130,8 @@ class OfertaHabilitacionServiceTest {
 				.willReturn(Optional.of(ofertaCapacidad(8)));
 		given(ofertas.findWithLockByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE))
 				.willReturn(Optional.of(ofertaCapacidad(8)));
+		// El lock de fila (SELECT ... FOR UPDATE) devuelve la version vigente: la de ofertaCapacidad.
+		given(ofertas.bloquearParaConfigurar(OFERTA_ID, ORG, SEDE)).willReturn(Optional.of(0L));
 
 		given(membershipDirectory.find(ORG, MEMBERSHIP_A))
 				.willReturn(Optional.of(vinculoVigente(MEMBERSHIP_A, null)));
@@ -281,6 +283,8 @@ class OfertaHabilitacionServiceTest {
 		service.reemplazarProfesionales(actor(), ORG, SEDE, OFERTA_ID, Set.of(MEMBERSHIP_A), 0L);
 
 		then(ofertas).should().findWithLockByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE);
+		// Y antes, el lock de fila que serializa a dos reemplazos simultaneos (A-9).
+		then(ofertas).should().bloquearParaConfigurar(OFERTA_ID, ORG, SEDE);
 		then(ofertas).should(never())
 				.findByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE);
 	}
@@ -295,6 +299,7 @@ class OfertaHabilitacionServiceTest {
 				.willReturn(Optional.of(leida));
 		given(ofertas.findWithLockByIdAndOrganizationIdAndConsultorioId(OFERTA_ID, ORG, SEDE))
 				.willReturn(Optional.of(leida));
+		given(ofertas.bloquearParaConfigurar(OFERTA_ID, ORG, SEDE)).willReturn(Optional.of(3L));
 
 		assertThat(service.leer(actor(), ORG, SEDE, OFERTA_ID).ofertaVersion()).isEqualTo(3L);
 

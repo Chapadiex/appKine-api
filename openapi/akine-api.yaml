@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.57.0
+  version: 0.58.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -6718,6 +6718,127 @@ paths:
           description: "Version desactualizada (conflict), oferta dada de baja (oferta-inactiva),\
             \ o sede no operable (consultorio-no-operable)"
       summary: Fijar que profesionales pueden prestar la oferta
+      tags:
+      - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/practicas:
+    get:
+      description: |-
+        Devuelve las practicas de la oferta, ACTIVAS E INACTIVAS, con la principal vigente en practicaPrincipalId.
+
+        Declaran lo que la oferta PUEDE prestar, no lo que se presto en una sesion: eso lo dicen los tratamientos realizados. La principal es la que se devenga o consume cuando una sesion cierra sin tratamientos.
+
+        Una lista vacia significa que la oferta no declara practicas (por ejemplo una actividad como Pilates). NO significa todas, al reves que las habilitaciones.
+
+        vigenteEnCatalogo en false es una practica dada de baja en el catalogo que la oferta conserva: la fila sigue valiendo y se muestra.
+      operationId: getPracticasDeOferta
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta configurada
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PracticasDeOfertaResponse"
+          description: Practicas de la oferta
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin pertenencia a la organizacion"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta o la sede no existen, o son de otro tenant"
+      summary: Ver que practicas puede prestar la oferta y cual es la principal
+      tags:
+      - Servicios y ofertas
+    put:
+      description: |-
+        REEMPLAZA EL CONJUNTO COMPLETO. Lo que entra y no estaba se crea, lo que estaba y no entra se da de baja con motivo automatico, y lo que sigue no se toca. Si cambia la principal, la anterior pierde la marca.
+
+        Con al menos una practica, practicaPrincipalId es obligatoria y tiene que estar en la lista; con la lista vacia tiene que ser null. Si no, 400.
+
+        Las practicas que ENTRAN tienen que existir, ser visibles para el centro (propias o del catalogo de plataforma) y poder elegirse hoy: una ajena o inexistente responde 404, una dada de baja o fuera de vigencia 409 practica-no-utilizable. Las que ya estaban no se revalidan.
+
+        expectedVersion es la de la OFERTA, la misma que usan los reemplazos de habilitaciones.
+      operationId: reemplazarPracticasDeOferta
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta configurada
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReemplazarPracticasRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PracticasDeOfertaResponse"
+          description: Practicas resultantes
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta la lista o expectedVersion, o la principal no es coherente\
+            \ con la lista"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta, la sede o alguna practica no existen o no son visibles\
+            \ para este centro"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version desactualizada (conflict), practica que no se puede\
+            \ elegir (practica-no-utilizable), oferta dada de baja (oferta-inactiva),\
+            \ o sede no operable (consultorio-no-operable)"
+      summary: Fijar que practicas puede prestar la oferta y cual es la principal
       tags:
       - Servicios y ofertas
   /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/validacion:
@@ -26451,6 +26572,81 @@ components:
           type: string
           format: date-time
           description: "Vencimiento, o null si no vence"
+    PracticaDeOferta:
+      type: object
+      description: Practica que la oferta puede prestar
+      properties:
+        codigo:
+          type: string
+          description: Codigo de la practica. Null si el catalogo ya no la resuelve
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja. Null mientras este activa
+        estado:
+          type: string
+          description: Ciclo de vida de la fila
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la fila
+          example: 12
+        nombre:
+          type: string
+          description: Nombre de la practica. Null si el catalogo ya no la resuelve
+        practicaId:
+          type: integer
+          format: int64
+          description: Practica del catalogo
+          example: 51
+        principal:
+          type: boolean
+          description: Si es la principal de la oferta
+        version:
+          type: integer
+          format: int64
+          description: Version de la fila
+          example: 0
+        vigenteEnCatalogo:
+          type: boolean
+          description: "Si la practica se puede elegir hoy en el catalogo. Puede ser\
+            \ false con la fila activa: la practica se dio de baja en el catalogo\
+            \ y la oferta la conserva. Se muestra, no se esconde"
+    PracticasDeOfertaResponse:
+      type: object
+      description: "Practicas que una oferta puede prestar, con su principal"
+      properties:
+        ofertaId:
+          type: integer
+          format: int64
+          description: Oferta configurada
+          example: 34
+        ofertaVersion:
+          type: integer
+          format: int64
+          description: "Version de la OFERTA que hay que mandar como expectedVersion\
+            \ en el proximo reemplazo, de practicas o de habilitaciones: las dos comparten\
+            \ la misma. En la lectura es la vigente; en la respuesta de un reemplazo\
+            \ es la que la oferta queda teniendo despues de ese reemplazo"
+          example: 3
+        practicaPrincipalId:
+          type: integer
+          format: int64
+          description: "Practica principal vigente, o null si la oferta no declara\
+            \ practicas"
+          example: 51
+        practicas:
+          type: array
+          description: "Practicas de la oferta, activas e inactivas, en orden de alta"
+          items:
+            $ref: "#/components/schemas/PracticaDeOferta"
     Presentacion:
       type: object
       description: "Lote reclamado a un financiador (M21). **No es un cobro y no es\
@@ -26998,6 +27194,36 @@ components:
       required:
       - expectedVersion
       - ids
+    ReemplazarPracticasRequest:
+      type: object
+      description: "Conjunto completo de practicas de la oferta y su principal. Reemplaza,\
+        \ no agrega"
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version de la OFERTA que el cliente cree estar configurando.
+            Es la misma que usan los reemplazos de habilitaciones
+          example: 0
+          minimum: 0
+        practicaIds:
+          type: array
+          description: Ids de las practicas del catalogo (globales o propias del centro)
+            que la oferta puede prestar. Lista vacia = la oferta no declara practicas;
+            NO significa todas
+          items:
+            type: integer
+            format: int64
+        practicaPrincipalId:
+          type: integer
+          format: int64
+          description: "Practica principal: la que se devenga o consume cuando una\
+            \ sesion de esta oferta cierra sin tratamientos. Obligatoria y dentro\
+            \ de practicaIds si la lista no es vacia; null si es vacia"
+          example: 51
+      required:
+      - expectedVersion
+      - practicaIds
     RegisterAccountRequest:
       type: object
       description: "Alta self-service de cuenta, organizacion y primer consultorio"

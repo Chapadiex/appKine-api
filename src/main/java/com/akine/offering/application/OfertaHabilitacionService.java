@@ -7,12 +7,7 @@ import com.akine.offering.domain.Habilitacion;
 import com.akine.offering.domain.OfertaEspacioHabilitado;
 import com.akine.offering.domain.OfertaProfesionalHabilitado;
 import com.akine.offering.domain.OfertaServicioConsultorio;
-import com.akine.offering.domain.PermissionCodes;
-import com.akine.offering.domain.exception.ConsultorioNoAccesibleException;
-import com.akine.offering.domain.exception.ConsultorioNoOperableException;
 import com.akine.offering.domain.exception.HabilitacionNoAccesibleException;
-import com.akine.offering.domain.exception.OfertaInactivaException;
-import com.akine.offering.domain.exception.OfertaNotAccessibleException;
 import com.akine.offering.domain.port.OfferingRepositoryPorts.OfertaEspacioHabilitadoRepositoryPort;
 import com.akine.offering.domain.port.OfferingRepositoryPorts.OfertaProfesionalHabilitadoRepositoryPort;
 import com.akine.offering.domain.port.OfferingRepositoryPorts.OfertaRepositoryPort;
@@ -22,7 +17,6 @@ import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
-import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.identity.AccountIdentity;
@@ -31,7 +25,6 @@ import com.akine.resource.spi.EspacioDirectory;
 import com.akine.resource.spi.EspacioSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -90,16 +83,13 @@ public class OfertaHabilitacionService {
 	private static final String MOTIVO_REEMPLAZO =
 			"Quitada al reconfigurar las habilitaciones de la oferta";
 
-	private final OfertaRepositoryPort ofertas;
 	private final OfertaProfesionalHabilitadoRepositoryPort profesionales;
 	private final OfertaEspacioHabilitadoRepositoryPort espacios;
-	private final ConsultorioDirectory consultorioDirectory;
 	private final ConsultorioMembershipDirectory membershipDirectory;
-	private final AccountContextDirectory accountContextDirectory;
 	private final AccountIdentityDirectory identityDirectory;
 	private final EspacioDirectory espacioDirectory;
-	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final AccesoALaConfiguracionDeOferta acceso;
 
 	public OfertaHabilitacionService(
 			OfertaRepositoryPort ofertas,
@@ -113,16 +103,14 @@ public class OfertaHabilitacionService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail) {
 
-		this.ofertas = ofertas;
 		this.profesionales = profesionales;
 		this.espacios = espacios;
-		this.consultorioDirectory = consultorioDirectory;
 		this.membershipDirectory = membershipDirectory;
-		this.accountContextDirectory = accountContextDirectory;
 		this.identityDirectory = identityDirectory;
 		this.espacioDirectory = espacioDirectory;
-		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.acceso = new AccesoALaConfiguracionDeOferta(
+				ofertas, consultorioDirectory, accountContextDirectory, permissionGuard);
 	}
 
 	// =================================================================================
@@ -583,82 +571,18 @@ public class OfertaHabilitacionService {
 			long ofertaId,
 			long expectedVersion) {
 
-		exigirContextoDeLaSede(actor, organizationId, consultorioId);
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.CONSULTORIO_MANAGE,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
-
-		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		if (!sede.active()) {
-			throw new ConsultorioNoOperableException(sede.id());
-		}
-
-		// Por `findWithLockByIdAndOrganizationIdAndConsultorioId` y no por `cargar`: es lo que hace avanzar la version de la
-		// oferta al cerrar la transaccion. Sin ese avance, un reemplazo no ensucia ninguna columna
-		// de `oferta`, la version se queda quieta, y la comparacion de abajo nunca falla para el
-		// segundo administrador que guarda. Ver el javadoc del puerto.
-		OfertaServicioConsultorio oferta = ofertas
-				.findWithLockByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
-				.orElseThrow(() -> new OfertaNotAccessibleException(ofertaId));
-		if (!oferta.isOperable()) {
-			// Configurar quien presta una oferta dada de baja no tiene sentido y ademas
-			// reabriria por la ventana lo que la baja cerro por la puerta.
-			throw new OfertaInactivaException(ofertaId, "configurar");
-		}
-		if (oferta.getVersion() != expectedVersion) {
-			throw new org.springframework.dao.OptimisticLockingFailureException(
-					"La oferta avanzo desde la version que el cliente creia estar editando");
-		}
-		return oferta;
-	}
-
-	private void exigirContextoDeLaSede(
-			OperatingActor actor, long organizationId, long consultorioId) {
-
-		if (actor.contextOrganizationId() == null || actor.consultorioId() == null) {
-			log.info("Configuracion de habilitaciones sin contexto validado: accountId={}",
-					actor.accountId());
-			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
-		}
-		if (actor.contextOrganizationId() != organizationId
-				|| actor.consultorioId() != consultorioId) {
-			log.info("Configuracion de habilitaciones fuera del contexto: accountId={} "
-					+ "organizationId={} consultorioId={}",
-					actor.accountId(), organizationId, consultorioId);
-			throw new ConsultorioNoAccesibleException(consultorioId);
-		}
+		return acceso.exigirOfertaConfigurable(
+				actor, organizationId, consultorioId, ofertaId, expectedVersion);
 	}
 
 	private ConsultorioSnapshot exigirLectura(
 			OperatingActor actor, long organizationId, long consultorioId) {
-
-		if (actor.contextOrganizationId() == null) {
-			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
-		}
-		if (actor.contextOrganizationId() != organizationId
-				|| !accountContextDirectory.hasActiveMembership(actor.accountId(), organizationId)) {
-			log.info("Lectura de habilitaciones de organizacion ajena rechazada: accountId={} "
-					+ "organizationId={}", actor.accountId(), organizationId);
-			throw new ConsultorioNoAccesibleException(consultorioId);
-		}
-		return exigirSedeDelTenant(organizationId, consultorioId);
-	}
-
-	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {
-		return consultorioDirectory.find(organizationId, consultorioId)
-				.orElseThrow(() -> new ConsultorioNoAccesibleException(consultorioId));
+		return acceso.exigirLectura(actor, organizationId, consultorioId);
 	}
 
 	private OfertaServicioConsultorio cargar(
 			long organizationId, long consultorioId, long ofertaId) {
-
-		return ofertas
-				.findByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
-				.orElseThrow(() -> new OfertaNotAccessibleException(ofertaId));
+		return acceso.cargar(organizationId, consultorioId, ofertaId);
 	}
 
 	/**

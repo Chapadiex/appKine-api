@@ -6,6 +6,8 @@ import com.akine.offering.domain.exception.HabilitacionNoAccesibleException;
 import com.akine.offering.domain.exception.OfertaInactivaException;
 import com.akine.offering.domain.exception.OfertaNombreComercialTakenException;
 import com.akine.offering.domain.exception.OfertaNotAccessibleException;
+import com.akine.offering.domain.exception.PracticaNoElegibleException;
+import com.akine.offering.domain.exception.PracticaPrincipalInvalidaException;
 import com.akine.offering.domain.exception.ServicioCodigoTakenException;
 import com.akine.offering.domain.exception.ServicioInactivoException;
 import com.akine.offering.domain.exception.ServicioNombreTakenException;
@@ -61,6 +63,8 @@ public class OfferingProblemHandler {
 	private static final URI OFERTA_INACTIVA = ProblemType.OFERTA_INACTIVA.uri();
 	private static final URI OFERTA_ALREADY_INACTIVE = ProblemType.OFERTA_ALREADY_INACTIVE.uri();
 	private static final URI CONSULTORIO_NO_OPERABLE = ProblemType.CONSULTORIO_NO_OPERABLE.uri();
+	private static final URI PRACTICA_NO_UTILIZABLE = ProblemType.PRACTICA_NO_UTILIZABLE.uri();
+	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -208,6 +212,40 @@ public class OfferingProblemHandler {
 				"La sede no esta en un estado que admita operar sobre sus ofertas.",
 				"Sede no operable",
 				CONSULTORIO_NO_OPERABLE);
+	}
+
+	// =================================================================================
+	// Practicas de la oferta (A-9)
+	// =================================================================================
+
+	/**
+	 * La practica que se quiso agregar no existe para este centro (404) o no se puede elegir hoy
+	 * (409 {@code practica-no-utilizable}, el mismo tipo que usa 06.04 al registrar un tratamiento).
+	 */
+	@ExceptionHandler(PracticaNoElegibleException.class)
+	public ProblemDetail handlePracticaNoElegible(PracticaNoElegibleException exception) {
+		log.debug("Practica no elegible para la oferta: practicaId={} motivo={}",
+				exception.getPracticaId(), exception.getMotivo());
+
+		if (exception.getMotivo() == PracticaNoElegibleException.Motivo.NO_VIGENTE) {
+			ProblemDetail problem = conflicto(
+					"La practica fue dada de baja o esta fuera de su ventana de vigencia, asi que "
+							+ "no se puede agregar a la oferta.",
+					"La practica ya no se puede elegir",
+					PRACTICA_NO_UTILIZABLE);
+			problem.setProperty("practicaId", exception.getPracticaId());
+			return problem;
+		}
+		return noEncontrado("La practica no existe en el catalogo accesible.");
+	}
+
+	@ExceptionHandler(PracticaPrincipalInvalidaException.class)
+	public ProblemDetail handlePrincipalInvalida(PracticaPrincipalInvalidaException exception) {
+		ProblemDetail problem =
+				ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setTitle("Practica principal invalida");
+		problem.setType(VALIDATION_ERROR);
+		return problem;
 	}
 
 	// =================================================================================

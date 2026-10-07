@@ -82,6 +82,16 @@ final class AuditEvents {
 
 	static final String HABILITACION_ESPACIO_REVOKED = "HABILITACION_ESPACIO_REVOKED";
 
+	// --- Practicas de Oferta (A-9, DP-11) -------------------------------------------------
+	// Misma entidad auditada que las habilitaciones: la OFERTA. Detalle con el practicaId.
+
+	static final String OFERTA_PRACTICA_ADDED = "OFERTA_PRACTICA_ADDED";
+
+	static final String OFERTA_PRACTICA_REMOVED = "OFERTA_PRACTICA_REMOVED";
+
+	/** Cambio de la practica principal; el detalle lleva {@code anterior} y {@code nueva}. */
+	static final String OFERTA_PRACTICA_PRINCIPAL_CHANGED = "OFERTA_PRACTICA_PRINCIPAL_CHANGED";
+
 	/**
 	 * La entidad auditada es la OFERTA, no la fila de habilitacion.
 	 *
