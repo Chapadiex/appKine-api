@@ -11,6 +11,7 @@ import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.scheduling.domain.AlcanceDeSerie;
+import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.PermissionCodes;
 import com.akine.scheduling.domain.TipoEventoTurno;
 import com.akine.scheduling.domain.Turno;
@@ -46,6 +47,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -235,6 +237,85 @@ public class SerieDeTurnosService {
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_READ);
 		return vista(exigirSerie(organizationId, consultorioId, serieId));
+	}
+
+	/**
+	 * La bandeja de series de una sede, mas nuevas primero (AKINE E-8).
+	 *
+	 * <p>Cuatro consultas por pagina, ninguna por fila: las series (recortadas en la base), el
+	 * total, los turnos de las series de la pagina y los pacientes. Las ofertas se piden una vez por
+	 * oferta distinta. El estado es derivado de los turnos ({@link EstadoDeSerie}) y se calcula con
+	 * el mismo instante con el que se filtro.
+	 *
+	 * <p>Una persona de otro tenant en {@code personaId} no es un error: el filtro va con la
+	 * organizacion del contexto y la pagina sale vacia, como cualquier filtro que no encuentra nada.
+	 *
+	 * @throws ConsultorioNoAccesibleException la sede no existe o es de otro tenant (404)
+	 */
+	@Transactional(readOnly = true)
+	public SeriePagina listar(
+			OperatingActor actor, long consultorioId, Long personaId, EstadoDeSerie estado,
+			int pagina, int tamano) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_READ);
+
+		Instant ahora = Instant.now();
+		long total = series.contar(organizationId, consultorioId, personaId, estado, ahora);
+		if (total == 0 || (long) pagina * tamano >= total) {
+			return new SeriePagina(List.of(), total);
+		}
+		List<TurnoSerie> deLaPagina =
+				series.listar(organizationId, consultorioId, personaId, estado, ahora, pagina, tamano);
+		if (deLaPagina.isEmpty()) {
+			return new SeriePagina(List.of(), total);
+		}
+
+		Map<Long, List<Turno>> turnosDe = turnos
+				.findDeLasSeries(organizationId, deLaPagina.stream().map(TurnoSerie::getId).toList())
+				.stream()
+				.collect(Collectors.groupingBy(Turno::getSerieId));
+		Map<Long, PacienteSnapshot> personas = pacientes.findAll(
+				organizationId, deLaPagina.stream().map(TurnoSerie::getPersonaId).distinct().toList());
+		Map<Long, String> nombreDeOferta = new HashMap<>();
+
+		List<SerieResumenView> filas = deLaPagina.stream()
+				.map(serie -> resumen(serie, turnosDe.getOrDefault(serie.getId(), List.of()),
+						personas.get(serie.getPersonaId()),
+						nombreDeOferta.computeIfAbsent(serie.getOfertaId(), ofertaId -> ofertas
+								.find(organizationId, consultorioId, ofertaId)
+								.map(OfertaSnapshot::nombreComercial)
+								.orElse("(oferta no disponible)")),
+						ahora))
+				.toList();
+		return new SeriePagina(filas, total);
+	}
+
+	/**
+	 * Una fila de la bandeja. "Pendiente" es exactamente el predicado del filtro de estado en la
+	 * base: RESERVADO o CONFIRMADO, vivo y con {@code inicio > ahora}. Si divergieran, una serie
+	 * filtrada como VIGENTE podria mostrarse FINALIZADA.
+	 */
+	static SerieResumenView resumen(
+			TurnoSerie serie, List<Turno> deLaSerie, PacienteSnapshot paciente, String ofertaNombre,
+			Instant ahora) {
+
+		List<Turno> pendientes = deLaSerie.stream()
+				.filter(turno -> turno.estaVivo()
+						&& turno.getEstado().admiteTransicion()
+						&& turno.getInicio().isAfter(ahora))
+				.toList();
+		Instant proximo = pendientes.stream().map(Turno::getInicio).min(Comparator.naturalOrder()).orElse(null);
+		SerieView regla = SerieView.de(serie, List.of());
+		return new SerieResumenView(
+				regla.id(), regla.consultorioId(), regla.personaId(),
+				RecepcionService.nombreDe(paciente), RecepcionService.documentoDe(paciente),
+				regla.ofertaId(), ofertaNombre, regla.profesionalId(), regla.frecuencia(),
+				regla.diasSemana(), regla.hora(), regla.fechaDesde(), regla.fechaHasta(),
+				regla.cantidad(), regla.timezone(), regla.creadaEn(),
+				deLaSerie.size(), pendientes.size(), proximo,
+				pendientes.isEmpty() ? EstadoDeSerie.FINALIZADA : EstadoDeSerie.VIGENTE);
 	}
 
 	/**

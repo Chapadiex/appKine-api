@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.69.0
+  version: 0.68.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -3014,7 +3014,7 @@ paths:
       - Calendario de sede
     put:
       description: |-
-        Cambia el pais del calendario, si la sede cierra sus feriados y, si viene horarioGeneral, reemplaza el horario general de la sede (RF-M03-003): lo reemplazado queda como historia y una lista vacia lo borra. Crea la fila a demanda si es la primera vez. Exige consultorio:manage sobre ESA sede.
+        Cambia el pais del calendario y si la sede cierra sus feriados. Crea la fila a demanda si es la primera vez. Exige consultorio:manage sobre ESA sede.
 
         Semantica de PATCH aunque el verbo sea PUT: cada campo omitido queda como estaba. cierraPorFeriado OMITIDO no es false — ese es el error que convierte "no toques la politica" en "abri todos los feriados" para todos los profesionales de la sede, hacia adelante y hacia atras. Por el alcance de ese cambio, la edicion se audita aunque sea un solo flag.
 
@@ -3050,9 +3050,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "El pais viene vacio o no es un codigo de dos letras, o el\
-            \ horario general es invalido (franja que termina antes de empezar o dos\
-            \ franjas del mismo dia que se pisan)"
+          description: El pais viene vacio o no es un codigo de dos letras
         "403":
           content:
             application/problem+json:
@@ -8856,6 +8854,87 @@ paths:
       tags:
       - Reportes
   /api/v1/consultorios/{consultorioId}/series-de-turnos:
+    get:
+      description: |-
+        Las series de la sede, **mas nuevas primero**, con la regla resumida, el paciente y la oferta resueltos, y la foto de sus turnos hoy: cuantos tiene, cuantos quedan pendientes y cuando es el proximo. Para ver los turnos de una, `verSerieDeTurnos`.
+
+        - `personaId`: solo las series de ese paciente. Uno de otro tenant da una pagina vacia, no un error.
+        - `estado`: la serie **no tiene estado propio** (DP-04); se deriva de sus turnos al leer. `VIGENTE` = le queda algun turno RESERVADO o CONFIRMADO que todavia no empezo; `FINALIZADA` = no le queda ninguno.
+
+        Paginado base cero; `size` se acota a 100. Exige `turno:read`. PHI minima: nombre y documento del paciente, nada clinico.
+      operationId: listarSeriesDeTurnos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Solo las series de este paciente
+        example: 128
+        in: query
+        name: personaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: Estado derivado de sus turnos
+        example: VIGENTE
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - VIGENTE
+          - FINALIZADA
+      - description: "Pagina, base cero"
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: "Tamano de pagina, maximo 100"
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SerieDeTurnosPage"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/SerieDeTurnosPage"
+          description: Una pagina de series
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Bandeja de series de turnos de la sede
+      tags:
+      - Series de turnos
     post:
       description: |-
         Reserva **todas** las ocurrencias de una regla semanal —dias, hora local, desde y cantidad o fecha fin— **o ninguna**. Cada ocurrencia se revalida como una reserva suelta y bajo el mismo lock de sede, asi que una serie y una reserva que pisan el mismo hueco no entran las dos.
@@ -14340,7 +14419,7 @@ paths:
 
         Pasa por el limite MAX_CONSULTORIOS del plan contratado. El header Idempotency-Key es obligatorio: reintentar con la misma clave y el mismo cuerpo devuelve la misma sede en vez de crear una segunda, que es lo que cubre el reintento despues de un timeout de red.
 
-        Opcionalmente crea en el MISMO acto el primer box (primerBox) y el horario general de la sede (horarioGeneral), que es lo que RF-M03-002 pide. Todo entra en una sola transaccion: si el box o el horario son invalidos la respuesta es 400 y no queda nada, ni la sede ni el cupo de plan consumido. El horario general es informativo y no reemplaza la disponibilidad de cada profesional (RN-M03-004); se lee y se edita despues por /consultorios/{id}/calendario, y el box por /consultorios/{id}/espacios. Los dos campos entran en la deteccion de clave de idempotencia reusada.
+        El primer box y el horario general de la sede NO se crean aca. Box es del modulo de espacios (AKINE-02.02) y el horario general depende de la disponibilidad profesional, que llega despues.
       operationId: createConsultorio
       parameters:
       - description: Identificador de la organizacion
@@ -14379,9 +14458,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Campos invalidos, zona horaria que no es un identificador\
-            \ IANA, falta el header Idempotency-Key, o un primer box u horario general\
-            \ invalido (franja que termina antes de empezar, dos franjas del mismo\
-            \ dia que se pisan). En ese caso no se crea nada"
+            \ IANA, o falta el header Idempotency-Key"
         "403":
           content:
             application/problem+json:
@@ -19845,51 +19922,6 @@ components:
           enum:
           - CONSUMO_A_REVISAR
           example: CONSUMO_A_REVISAR
-    AltaSedeFranjaHorariaRequest:
-      type: object
-      description: Franja semanal del horario general de la sede
-      properties:
-        diaSemana:
-          type: integer
-          format: int32
-          description: "Dia de la semana ISO-8601: 1 = lunes .. 7 = domingo"
-          example: 1
-          maximum: 7
-          minimum: 1
-        horaDesde:
-          type: string
-          description: "Hora local de apertura, HH:mm"
-          example: 09:00
-          pattern: "^(([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?|24:00(:00)?)$"
-        horaHasta:
-          type: string
-          description: "Hora local de cierre, EXCLUSIVA, HH:mm. La medianoche es 24:00.\
-            \ No cruza al dia siguiente"
-          example: 13:00
-          pattern: "^(([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?|24:00(:00)?)$"
-      required:
-      - diaSemana
-      - horaDesde
-      - horaHasta
-    AltaSedePrimerBoxRequest:
-      type: object
-      description: "Primer box de la sede, creado junto con ella"
-      properties:
-        capacidad:
-          type: integer
-          format: int32
-          description: "Personas que el box admite a la vez. Si se omite, 1"
-          example: 1
-          maximum: 1000
-          minimum: 1
-        name:
-          type: string
-          description: Nombre del box. Unico entre los espacios vigentes de la sede
-          example: Box 1
-          maxLength: 160
-          minLength: 0
-      required:
-      - name
     AntecedenteResponse:
       type: object
       description: Antecedente clinico de una historia (RF-M09-002)
@@ -20939,15 +20971,6 @@ components:
             \ respuesta del PUT, que no tiene ventana: vacia significa \"no se pregunto\""
           items:
             $ref: "#/components/schemas/FeriadoResponse"
-        horarioGeneral:
-          type: array
-          description: "Franjas VIGENTES del horario general de la sede (RF-M03-002),\
-            \ ordenadas por dia y hora. Vacia significa que la sede no declaro horario\
-            \ general, no que este cerrada. Informativo: la agenda ofrece turnos con\
-            \ la disponibilidad de cada profesional, no con este horario (RN-M03-004).\
-            \ Viaja completa tambien en la respuesta del PUT"
-          items:
-            $ref: "#/components/schemas/HorarioGeneralFranjaResponse"
         pais:
           type: string
           description: Pais cuyo calendario de feriados usa la sede
@@ -22884,18 +22907,6 @@ components:
           description: Email de contacto
           maxLength: 160
           minLength: 0
-        horarioGeneral:
-          type: array
-          description: "Horario general de la sede (RF-M03-002): franjas semanales\
-            \ en la zona de la sede. Informativo: NO sustituye la disponibilidad de\
-            \ cada profesional, que es lo que la agenda usa para ofrecer turnos (RN-M03-004).\
-            \ Se crea en la misma transaccion que la sede; dos franjas del mismo dia\
-            \ que se pisan, o una que termina antes de empezar, rechazan el alta entera\
-            \ con 400. Se lee y se edita despues por /consultorios/{id}/calendario"
-          items:
-            $ref: "#/components/schemas/AltaSedeFranjaHorariaRequest"
-          maxItems: 28
-          minItems: 0
         legalName:
           type: string
           description: Razon social
@@ -22913,11 +22924,6 @@ components:
           description: Telefono de contacto
           maxLength: 40
           minLength: 0
-        primerBox:
-          $ref: "#/components/schemas/AltaSedePrimerBoxRequest"
-          description: "Primer box de la sede (RF-M03-002). Si viene, se crea en la\
-            \ misma transaccion que la sede: si algo falla no queda ni la sede ni\
-            \ el box. Omitirlo da de alta la sede sola, como antes"
         slotMinutes:
           type: integer
           format: int32
@@ -25817,47 +25823,6 @@ components:
           type: string
           description: Titulo corto
           example: Turno
-    HorarioGeneralFranjaRequest:
-      type: object
-      description: Franja semanal del horario general de la sede
-      properties:
-        diaSemana:
-          type: integer
-          format: int32
-          description: "Dia de la semana ISO-8601: 1 = lunes .. 7 = domingo"
-          example: 1
-          maximum: 7
-          minimum: 1
-        horaDesde:
-          type: string
-          description: Hora local de apertura
-          example: 09:00
-        horaHasta:
-          type: string
-          description: "Hora local de cierre, EXCLUSIVA. La medianoche es 24:00"
-          example: 13:00
-      required:
-      - diaSemana
-      - horaDesde
-      - horaHasta
-    HorarioGeneralFranjaResponse:
-      type: object
-      description: Franja semanal vigente del horario general de la sede
-      properties:
-        diaSemana:
-          type: integer
-          format: int32
-          description: "Dia de la semana ISO-8601: 1 = lunes .. 7 = domingo"
-          example: 1
-        horaDesde:
-          type: string
-          description: Hora local de apertura
-          example: 09:00
-        horaHasta:
-          type: string
-          description: "Hora local de cierre, EXCLUSIVA. La medianoche viaja como\
-            \ 24:00"
-          example: 13:00
     ImputacionAplicada:
       type: object
       properties:
@@ -30671,6 +30636,141 @@ components:
             \ cualquier estado"
           items:
             $ref: "#/components/schemas/Turno"
+    SerieDeTurnosPage:
+      type: object
+      description: "Pagina de series de turnos de una sede, segun los filtros pedidos"
+      properties:
+        content:
+          type: array
+          description: "Series de esta pagina, mas nuevas primero"
+          items:
+            $ref: "#/components/schemas/SerieDeTurnosResumen"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de series que cumplen el filtro
+          example: 34
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 2
+    SerieDeTurnosResumen:
+      type: object
+      description: "Una serie de turnos en la bandeja de la sede: regla resumida,\
+        \ paciente y oferta resueltos, y cuantos turnos le quedan. PHI minima: ningun\
+        \ dato clinico."
+      properties:
+        cantidad:
+          type: integer
+          format: int32
+          description: Ausente si la serie termina por fecha
+          example: 10
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        creadaEn:
+          type: string
+          format: date-time
+          example: 2026-10-06T14:03:11Z
+        diasSemana:
+          type: array
+          description: "Dias ISO, 1 = lunes"
+          example:
+          - 1
+          - 4
+          items:
+            type: integer
+            format: int32
+        documento:
+          type: string
+          description: "Tipo y numero, para desambiguar homonimos. Ausente si la ficha\
+            \ no lo tiene."
+          example: DNI 30111222
+        estado:
+          type: string
+          description: "Estado DERIVADO de sus turnos, calculado al leer: la serie\
+            \ no tiene estado propio (DP-04). `VIGENTE` si le queda un turno pendiente,\
+            \ `FINALIZADA` si no."
+          enum:
+          - VIGENTE
+          - FINALIZADA
+          example: VIGENTE
+        fechaDesde:
+          type: string
+          format: date
+          example: 2026-10-12
+        fechaHasta:
+          type: string
+          format: date
+          description: Ausente si la serie termina por cantidad
+          example: 2026-12-21
+        frecuencia:
+          type: string
+          enum:
+          - SEMANAL
+          example: SEMANAL
+        hora:
+          type: string
+          format: time
+          description: Hora local de inicio
+          example: 09:00:00
+        id:
+          type: integer
+          format: int64
+          example: 12
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        ofertaNombre:
+          type: string
+          example: Kinesiologia - sesion individual
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+        personaNombre:
+          type: string
+          description: "Apellido y nombre, ya compuestos"
+          example: "Perez, Ana"
+        profesionalId:
+          type: integer
+          format: int64
+          description: Membership del profesional con que se genero. Ausente si la
+            oferta no lo requiere.
+          example: 31
+        proximoTurnoInicio:
+          type: string
+          format: date-time
+          description: "Inicio del proximo turno pendiente, UTC. Ausente si no queda\
+            \ ninguno."
+          example: 2026-10-19T12:00:00Z
+        timezone:
+          type: string
+          description: Zona de la sede al crear la serie
+          example: America/Argentina/Cordoba
+        totalTurnos:
+          type: integer
+          format: int32
+          description: "Turnos de la serie hoy, en cualquier estado"
+          example: 10
+        turnosPendientes:
+          type: integer
+          format: int32
+          description: Turnos RESERVADO o CONFIRMADO que todavia no empezaron
+          example: 6
     ServicioResponse:
       type: object
       description: Servicio del catalogo global de la plataforma
@@ -31656,6 +31756,15 @@ components:
           type: string
           description: "Apellido y nombre, ya compuestos"
           example: "Perez, Ana"
+        prepago:
+          $ref: "#/components/schemas/PrepagoDeRecepcion"
+          description: "Estado del prepago del turno, calculado al leer (AKINE E-8),\
+            \ **tambien antes del check-in**: la agenda sabe si la oferta lo exige\
+            \ sin esperar a que haya recepcion. Sin recepcion, `PENDIENTE` quiere\
+            \ decir \"si se atiende como particular\" —la cobertura la resuelve la\
+            \ validacion— y un turno cancelado o ausente es `NO_EXIGIDO` salvo que\
+            \ tenga un anticipo vigente (`REGISTRADO`). Con recepcion vigente es el\
+            \ mismo que `recepcion.prepago`. Es una alerta: no bloquea nada (DP-06)."
         profesionalId:
           type: integer
           format: int64
@@ -31836,17 +31945,6 @@ components:
             \ del calendario para todos los profesionales de la sede, por eso el cambio\
             \ se audita aunque sea un solo flag"
           example: true
-        horarioGeneral:
-          type: array
-          description: "Horario general de la sede (RF-M03-003). OMITIRLO lo deja\
-            \ como estaba; una lista vacia lo borra; una lista lo REEMPLAZA entero.\
-            \ Lo reemplazado no se borra: queda como historia. Informativo: no sustituye\
-            \ la disponibilidad de cada profesional (RN-M03-004). Dos franjas del\
-            \ mismo dia que se pisan son 400"
-          items:
-            $ref: "#/components/schemas/HorarioGeneralFranjaRequest"
-          maxItems: 28
-          minItems: 0
         pais:
           type: string
           description: Pais cuyo calendario de feriados usa la sede. Omitirlo lo deja

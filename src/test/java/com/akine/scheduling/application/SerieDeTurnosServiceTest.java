@@ -10,6 +10,7 @@ import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.scheduling.domain.AgendaSede;
 import com.akine.scheduling.domain.AlcanceDeSerie;
+import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.ReglaDeRecurrencia;
 import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.TurnoSerie;
@@ -43,7 +44,11 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -156,6 +161,86 @@ class SerieDeTurnosServiceTest {
 				AlcanceDeSerie.ESTE_Y_SIGUIENTES, null, "Baja", 1))
 				.isInstanceOf(IllegalArgumentException.class);
 		verify(agendas, never()).lockByScope(anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("bandeja (E-8): una consulta de turnos y una de pacientes por pagina, y la oferta una vez por oferta")
+	void bandeja_sin_n_mas_uno() {
+		TurnoSerie primera = serieConId(20L);
+		TurnoSerie segunda = serieConId(21L);
+		given(series.contar(eq(ORG_ID), eq(CONSULTORIO_ID),
+				isNull(), isNull(), any()))
+				.willReturn(2L);
+		given(series.listar(eq(ORG_ID), eq(CONSULTORIO_ID),
+				isNull(), isNull(), any(),
+				eq(0), eq(20)))
+				.willReturn(List.of(segunda, primera));
+		Turno deLaPrimera = futuro(301L, 3);
+		ReflectionTestUtils.setField(deLaPrimera, "serieId", 20L);
+		given(turnos.findDeLasSeries(ORG_ID, List.of(21L, 20L))).willReturn(List.of(deLaPrimera));
+		given(pacientes.findAll(ORG_ID, List.of(128L))).willReturn(java.util.Map.of(128L, new PacienteSnapshot(
+				128L, ORG_ID, "Sintetico", "Paciente", null, null, null, true, true, 5L, Instant.now())));
+
+		SeriePagina pagina = service.listar(actor, CONSULTORIO_ID, null, null, 0, 20);
+
+		assertThat(pagina.total()).isEqualTo(2);
+		assertThat(pagina.contenido()).extracting(SerieResumenView::id).containsExactly(21L, 20L);
+		assertThat(pagina.contenido()).extracting(SerieResumenView::estado)
+				.containsExactly(EstadoDeSerie.FINALIZADA, EstadoDeSerie.VIGENTE);
+		assertThat(pagina.contenido().get(1).ofertaNombre()).isEqualTo("Kinesiologia");
+		verify(ofertas, org.mockito.Mockito.times(1)).find(ORG_ID, CONSULTORIO_ID, 42L);
+		verify(permissionGuard).requirePermission(argThat(
+				consulta -> consulta.permissionCode().equals("turno:read")));
+	}
+
+	@Test
+	@DisplayName("bandeja (E-8): una pagina mas alla del total no consulta series ni turnos")
+	void bandeja_pagina_fuera_de_rango() {
+		given(series.contar(eq(ORG_ID), eq(CONSULTORIO_ID),
+				any(), any(), any())).willReturn(3L);
+
+		SeriePagina pagina = service.listar(actor, CONSULTORIO_ID, 128L, EstadoDeSerie.VIGENTE, 1, 20);
+
+		assertThat(pagina.contenido()).isEmpty();
+		assertThat(pagina.total()).isEqualTo(3);
+		verify(series, never()).listar(anyLong(), anyLong(), any(), any(), any(), anyInt(),
+				anyInt());
+		verify(turnos, never()).findDeLasSeries(anyLong(), any());
+	}
+
+	@Test
+	@DisplayName("resumen (E-8): pendientes son los RESERVADO o CONFIRMADO futuros; el proximo es el mas temprano de ellos")
+	void resumen_cuenta_pendientes() {
+		Turno pasado = futuro(300L, -7);
+		Turno cancelado = futuro(301L, 2);
+		cancelado.cancelar("Viaje", 9L, Instant.now());
+		Turno ausente = futuro(302L, 3);
+		ReflectionTestUtils.setField(ausente, "estado", com.akine.scheduling.domain.EstadoTurno.AUSENTE);
+		Turno proximo = futuro(303L, 9);
+		Turno despues = futuro(304L, 16);
+		despues.confirmar(Instant.now());
+
+		SerieResumenView fila = SerieDeTurnosService.resumen(serieConId(20L),
+				List.of(pasado, cancelado, ausente, proximo, despues), null, "Kinesiologia", Instant.now());
+
+		assertThat(fila.totalTurnos()).isEqualTo(5);
+		assertThat(fila.turnosPendientes()).isEqualTo(2);
+		assertThat(fila.proximoTurnoInicio()).isEqualTo(proximo.getInicio());
+		assertThat(fila.estado()).isEqualTo(EstadoDeSerie.VIGENTE);
+		assertThat(fila.personaNombre()).isEqualTo("(ficha no disponible)");
+		assertThat(fila.diasSemana()).containsExactly(1);
+
+		SerieResumenView terminada = SerieDeTurnosService.resumen(serieConId(20L),
+				List.of(pasado, cancelado), null, "Kinesiologia", Instant.now());
+		assertThat(terminada.estado()).isEqualTo(EstadoDeSerie.FINALIZADA);
+		assertThat(terminada.proximoTurnoInicio()).isNull();
+	}
+
+	private TurnoSerie serieConId(long id) {
+		TurnoSerie serie = new TurnoSerie(ORG_ID, CONSULTORIO_ID, 42L, 128L, 31L, tresLunes, ZONA, 3,
+				9L, Instant.now(), null, null);
+		ReflectionTestUtils.setField(serie, "id", id);
+		return serie;
 	}
 
 	private static Turno futuro(long id, int enDias) {

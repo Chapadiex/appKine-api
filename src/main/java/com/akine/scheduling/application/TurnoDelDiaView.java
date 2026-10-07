@@ -32,6 +32,9 @@ import java.time.Instant;
  *                          porque alguien puede presentarse a un turno que se cancelo
  * @param recepcion         la recepcion vigente del turno (M13, E-4), o {@code null} si nadie
  *                          registro la llegada
+ * @param prepago           el estado del prepago del turno calculado al leer (E-6, E-8), con o
+ *                          sin recepcion: antes del check-in la agenda ya sabe si la oferta lo
+ *                          exige. Con recepcion vigente es el mismo que {@code recepcion.prepago()}
  */
 public record TurnoDelDiaView(
 		long id,
@@ -49,5 +52,6 @@ public record TurnoDelDiaView(
 		String motivoCancelacion,
 		Long serieId,
 		long version,
-		RecepcionView recepcion) {
+		RecepcionView recepcion,
+		PrepagoView prepago) {
 }

@@ -191,6 +191,17 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("organizationId") long organizationId,
 			@Param("serieId") long serieId);
 
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.serieId IN :serieIds
+			 ORDER BY t.inicio ASC, t.id ASC
+			""")
+	List<Turno> findDeLasSeries(
+			@Param("organizationId") long organizationId,
+			@Param("serieIds") Collection<Long> serieIds);
+
 	// =================================================================================
 	// Sondas de impacto de F2 (paquete E-1)
 	// =================================================================================
