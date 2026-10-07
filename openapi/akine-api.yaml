@@ -21518,6 +21518,73 @@ components:
           description: "Version para el control de concurrencia optimista. Hay que\
             \ reenviarla al editar: sin ella dos ediciones simultaneas se pisan"
           example: 0
+    ConvenioAplicado:
+      type: object
+      description: "Convenio y arancel aplicados a la prestacion, **congelados al\
+        \ devengar** (RN-M16-003/004). Cambiar el convenio despues no los modifica.\
+        \ Los tres `requeria*` son los requisitos documentales del convenio el dia\
+        \ de la prestacion (RF-M21-003)."
+      properties:
+        arancelId:
+          type: integer
+          format: int64
+          example: 77
+        coberturaId:
+          type: integer
+          format: int64
+          description: Cobertura del paciente que se aplico
+          example: 310
+        convenioCodigo:
+          type: string
+          description: "Codigo del convenio, inmutable"
+          example: OSDE-2026
+        convenioId:
+          type: integer
+          format: int64
+          example: 12
+        convenioNombre:
+          type: string
+          description: Nombre del convenio el dia de la prestacion
+          example: OSDE 2026
+        coseguro:
+          type: number
+          description: La parte del paciente
+          example: 1500.0
+        credencialVencida:
+          type: boolean
+          description: "La credencial de la cobertura estaba vencida el dia de la\
+            \ prestacion. Es una alerta: no excluyo la cobertura"
+          example: false
+        importeFinanciador:
+          type: number
+          description: La parte del financiador
+          example: 10500.0
+        importeTotal:
+          type: number
+          description: Lo que valia la practica bajo el convenio
+          example: 12000.0
+        planId:
+          type: integer
+          format: int64
+          example: 4
+        requeriaAutorizacion:
+          type: boolean
+          description: El convenio exigia autorizacion previa
+          example: false
+        requeriaCredencial:
+          type: boolean
+          description: El convenio exigia credencial
+          example: true
+        requeriaOrden:
+          type: boolean
+          description: El convenio exigia orden medica
+          example: true
+        vigenteEl:
+          type: string
+          format: date
+          description: "Dia de la prestacion, en la zona de la sede, contra el que\
+            \ se resolvio"
+          example: 2026-10-06
     ConvenioResponse:
       type: object
       description: Convenio de una sede con un plan de un financiador
@@ -26191,14 +26258,33 @@ components:
       description: "Deuda derivada de una prestacion. **No es el cobro ni la caja**:\
         \ son tres cosas distintas (M18, M19, M20)."
       properties:
+        alertaPracticaNoHabilitada:
+          type: boolean
+          description: "DP-11: la practica facturada no esta entre las que la oferta\
+            \ declara. Es una alerta para revisar, no un rechazo."
+          example: false
         anuladaEn:
           type: string
           format: date-time
           description: Ausente si la deuda sigue vigente
+        concepto:
+          type: string
+          description: "Que parte de la prestacion es esta deuda (AKINE F-4). `PARTICULAR`:\
+            \ sin cobertura aplicable, el precio de la oferta. `FINANCIADOR`: la parte\
+            \ del arancel que paga el financiador. `COSEGURO`: la parte del arancel\
+            \ que paga el paciente."
+          enum:
+          - PARTICULAR
+          - FINANCIADOR
+          - COSEGURO
+          example: PARTICULAR
         consultorioId:
           type: integer
           format: int64
           example: 7
+        convenio:
+          $ref: "#/components/schemas/ConvenioAplicado"
+          description: "Convenio aplicado, congelado. Ausente en `PARTICULAR`."
         devengadaEn:
           type: string
           format: date-time
@@ -26216,9 +26302,8 @@ components:
           type: integer
           format: int64
           description: "Quien es el financiador cuando `responsable` es `FINANCIADOR`;\
-            \ ausente cuando debe el paciente. **Hoy siempre ausente**: el devengado\
-            \ todavia no se recableo contra convenios, asi que no existe ninguna obligacion\
-            \ de financiador. Sin este campo, M21 no tiene por donde agrupar un lote."
+            \ ausente cuando debe el paciente. Sin este campo, M21 no tiene por donde\
+            \ agrupar un lote."
           example: 31
         id:
           type: integer
@@ -26243,10 +26328,17 @@ components:
           type: integer
           format: int64
           example: 128
+        practicaId:
+          type: integer
+          format: int64
+          description: "Practica facturada (DP-11: la realizada, o la principal de\
+            \ la oferta si la sesion cerro sin tratamientos). Ausente en `PARTICULAR`."
+          example: 55
         responsable:
           type: string
-          description: "Quien debe. Hoy siempre `PACIENTE`: el Paquete B fija cobertura\
-            \ particular. `FINANCIADOR` llega con AKINE-03.03 y 03.05."
+          description: "Quien debe. Una prestacion cubierta por un convenio devenga\
+            \ dos obligaciones: la parte del `FINANCIADOR` y el coseguro del `PACIENTE`.\
+            \ Ver `concepto`."
           enum:
           - PACIENTE
           - FINANCIADOR
@@ -26266,8 +26358,10 @@ components:
           example: Sesion 8
         snapshotPrecio:
           type: number
-          description: "Precio de la oferta **al momento de devengar**. Editar la\
-            \ oferta manana no cambia esto: seria reescribir una cuenta corriente."
+          description: "Importe congelado **al momento de devengar**: el precio de\
+            \ la oferta en `PARTICULAR`, la parte del arancel en `FINANCIADOR` y `COSEGURO`.\
+            \ Editar la oferta o el convenio manana no cambia esto: seria reescribir\
+            \ una cuenta corriente."
           example: 8500.0
         version:
           type: integer

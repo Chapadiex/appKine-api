@@ -1,11 +1,13 @@
 package com.akine.billing.application;
 
+import com.akine.billing.domain.ConceptoObligacion;
 import com.akine.billing.domain.EstadoItemPresentacion;
 import com.akine.billing.domain.EstadoPresentacion;
 import com.akine.billing.domain.Obligacion;
 import com.akine.billing.domain.Presentacion;
 import com.akine.billing.domain.PresentacionItem;
 import com.akine.billing.domain.Responsable;
+import com.akine.billing.domain.SnapshotDeConvenio;
 import com.akine.billing.domain.exception.FacturaDuplicadaException;
 import com.akine.billing.domain.exception.ImporteDeDebitoInvalidoException;
 import com.akine.billing.domain.exception.ItemNoDebitableException;
@@ -1004,10 +1006,14 @@ class PresentacionServiceTest {
 	}
 
 	private Obligacion obligacionDeFinanciador() {
-		Obligacion obligacion = new Obligacion(
-				ORG_ID, SEDE_ID, 501L, 128L, Responsable.FINANCIADOR, FINANCIADOR_ID,
-				new BigDecimal("85000.00"), "ARS", 42L, "Sesion 8",
-				Instant.parse("2026-08-14T15:00:00Z"));
+		Obligacion obligacion = Obligacion.porConvenio(
+				ORG_ID, SEDE_ID, 501L, 128L, ConceptoObligacion.FINANCIADOR, FINANCIADOR_ID,
+				"ARS", 42L, "Sesion 8", Instant.parse("2026-08-14T15:00:00Z"),
+				new SnapshotDeConvenio(12L, "CONV-1", "Convenio sintetico", 4L, 77L, 55L, 310L,
+						new BigDecimal("85000.00"), new BigDecimal("85000.00"), BigDecimal.ZERO,
+						false, false, false, false, LocalDate.of(2026, 8, 14),
+						Instant.parse("2026-08-14T15:00:00Z")),
+				false);
 		ReflectionTestUtils.setField(obligacion, "id", 9001L);
 		return obligacion;
 	}

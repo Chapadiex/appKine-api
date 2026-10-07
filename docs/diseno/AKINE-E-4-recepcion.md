@@ -245,6 +245,10 @@ el turno en `RESERVADO`/`CONFIRMADO` con su hora de llegada.
   llama, o se anula (que dice que la llegada no valía). Un estado "se retiró" no está en DP-16.
 - **Particular desde `EN_ESPERA`** (decidirlo después de pasar a espera con la observación
   abierta) no se admite: se decide antes de pasar a espera.
-- **`billing` no lee la modalidad de la recepción.** Que una atención Particular devengue sin
-  financiador es de F-4/E-6: hoy la deuda sigue saliendo como hasta ahora.
+- **`billing` no lee la modalidad de la recepción.** F-4 (ya en `main`) devenga la parte del
+  financiador cuando la oferta admite obra social y hay cobertura aplicable con arancel, **sin
+  mirar la recepción**: una atención que el mostrador resolvió como Particular igual puede
+  devengar al financiador. Cerrarlo es exponer la modalidad por `scheduling.spi` y que el
+  devengado la consulte; es una decisión de producto (¿manda el mostrador o el convenio?) y se
+  deja escrita, no resuelta.
 - **La pantalla** (mitad web de E-4) no se hace en este paquete.

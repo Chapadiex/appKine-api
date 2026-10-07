@@ -693,7 +693,9 @@ public class SesionService {
 				precio.map(PrecioDeOferta::moneda).orElse(null),
 				practicas,
 				// AKINE C-4: el consumo no gasta autorizaciones atadas a otro caso (RF-M17-007).
-				sesion.getCasoId());
+				sesion.getCasoId(),
+				// AKINE F-4: si la oferta no admite obra social, el devengo no busca cobertura.
+				precio.map(PrecioDeOferta::admiteObraSocial).orElse(false));
 
 		observadores.forEach(observador -> observador.alCerrar(aviso));
 	}
