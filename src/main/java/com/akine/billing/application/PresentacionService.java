@@ -367,6 +367,11 @@ public class PresentacionService {
 
 		Instant ahora = Instant.now();
 		item.debitar(debito.importe(), debito.motivo(), ahora, actor.accountId());
+		// El save NO es redundante. registrarDebito es un UPDATE nativo con clearAutomatically:
+		// vacia la sesion JPA y el item cargado arriba queda DESACOPLADO. Sin este save el debito
+		// movia el saldo del lote y el item seguia INCLUIDO en la base —ocupando la obligacion y
+		// sin motivo—, aunque la vista devuelta dijera DEBITADO. Lo destapo el escenario 38.
+		items.save(item);
 
 		auditar(actor, AuditEvents.PRESENTACION_ITEM_DEBITADO, presentacion, debito.motivo(), ahora);
 		log.info("Debito registrado: presentacionId={} itemId={} importe={} obligacionId={}",

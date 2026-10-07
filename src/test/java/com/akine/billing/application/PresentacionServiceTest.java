@@ -638,6 +638,9 @@ class PresentacionServiceTest {
 		// porque es la unica explicacion de por que esa plata nunca entro.
 		assertThat(vista.estado()).isEqualTo(EstadoItemPresentacion.DEBITADO);
 		assertThat(vista.motivoDebito()).isEqualTo("Falta autorizacion");
+		// registrarDebito vacia la sesion JPA (clearAutomatically): sin el save explicito el item
+		// queda desacoplado y la marca no llega a la base (escenario 38).
+		verify(items).save(item);
 		verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
 
 		assertThat(auditado().eventType()).isEqualTo(AuditEvents.PRESENTACION_ITEM_DEBITADO);
