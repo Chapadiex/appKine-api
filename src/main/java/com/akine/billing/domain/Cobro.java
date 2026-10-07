@@ -80,6 +80,13 @@ public class Cobro {
 	@Column(name = "persona_id", nullable = false, updatable = false)
 	private Long personaId;
 
+	/**
+	 * Turno en cuya recepcion se tomo este cobro como prepago (AKINE E-6, DP-06). {@code null} en
+	 * cualquier otro cobro. Solo un anticipo puro puede ser prepago: no hay deuda todavia.
+	 */
+	@Column(name = "turno_id", updatable = false)
+	private Long turnoId;
+
 	@Column(name = "total", nullable = false, precision = 12, scale = 2, updatable = false)
 	private BigDecimal total;
 
@@ -289,6 +296,25 @@ public class Cobro {
 		this.anuladoPorCuentaId = porCuentaId;
 		this.motivoAnulacion = motivo.trim();
 		this.saldoAFavor = BigDecimal.ZERO.setScale(2);
+	}
+
+	/**
+	 * Marca este cobro como el prepago de un turno (AKINE E-6). Solo antes de guardarlo, y solo si
+	 * es un anticipo puro: con deudas imputadas ya no es dinero "antes de la obligacion".
+	 */
+	public void comoPrepagoDeTurno(long turnoId) {
+		if (id != null) {
+			throw new IllegalStateException("Un cobro ya registrado no se convierte en prepago");
+		}
+		if (!imputaciones.isEmpty() || saldoAFavor.compareTo(total) != 0) {
+			throw new IllegalArgumentException(
+					"Un prepago es un anticipo puro: todo el total queda a favor, sin imputaciones");
+		}
+		this.turnoId = turnoId;
+	}
+
+	public Long getTurnoId() {
+		return turnoId;
 	}
 
 	public boolean estaAnulado() {

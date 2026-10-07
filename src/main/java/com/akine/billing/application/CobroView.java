@@ -32,7 +32,8 @@ public record CobroView(
 		BigDecimal saldoAFavor,
 		String estado,
 		Instant anuladoEn,
-		String motivoAnulacion) {
+		String motivoAnulacion,
+		Long turnoId) {
 
 	public static final String VIGENTE = "VIGENTE";
 	public static final String ANULADO = "ANULADO";
@@ -71,6 +72,7 @@ public record CobroView(
 				cobro.getSaldoAFavor(),
 				cobro.estaAnulado() ? ANULADO : VIGENTE,
 				cobro.getAnuladoEn(),
-				cobro.getMotivoAnulacion());
+				cobro.getMotivoAnulacion(),
+				cobro.getTurnoId());
 	}
 }

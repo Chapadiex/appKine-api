@@ -12,6 +12,8 @@ import java.util.List;
  *                       desactiva, y es legitimo en una carga manual
  * @param anticipo       lo que queda a favor del paciente (F-3). Cero cuando todo se imputa
  * @param moneda         obligatoria solo sin imputaciones; con ellas sale de las deudas
+ * @param turnoId        turno en cuya recepcion se toma el cobro como prepago (E-6). Exige un
+ *                       anticipo puro. {@code null} en cualquier otro cobro
  */
 public record CobroCommand(
 		long personaId,
@@ -20,13 +22,27 @@ public record CobroCommand(
 		List<ImputacionPedida> imputaciones,
 		String idempotencyKey,
 		BigDecimal anticipo,
-		String moneda) {
+		String moneda,
+		Long turnoId) {
 
 	public CobroCommand {
 		medios = List.copyOf(medios);
 		imputaciones = List.copyOf(imputaciones == null ? List.of() : imputaciones);
 		anticipo = anticipo == null ? BigDecimal.ZERO : anticipo;
 		moneda = moneda == null || moneda.isBlank() ? null : moneda.trim().toUpperCase();
+	}
+
+	/** Sin turno: la forma anterior a E-6. */
+	public CobroCommand(
+			long personaId,
+			BigDecimal total,
+			List<MedioPedido> medios,
+			List<ImputacionPedida> imputaciones,
+			String idempotencyKey,
+			BigDecimal anticipo,
+			String moneda) {
+
+		this(personaId, total, medios, imputaciones, idempotencyKey, anticipo, moneda, null);
 	}
 
 	/** Un cobro que imputa todo su total: el de 07.02. */
@@ -37,11 +53,16 @@ public record CobroCommand(
 			List<ImputacionPedida> imputaciones,
 			String idempotencyKey) {
 
-		this(personaId, total, medios, imputaciones, idempotencyKey, BigDecimal.ZERO, null);
+		this(personaId, total, medios, imputaciones, idempotencyKey, BigDecimal.ZERO, null, null);
 	}
 
 	public boolean esAnticipoPuro() {
 		return imputaciones.isEmpty();
+	}
+
+	/** El cobro se toma como prepago de un turno en su recepcion (E-6). */
+	public boolean esPrepago() {
+		return turnoId != null;
 	}
 
 	public record MedioPedido(MedioDePago medio, BigDecimal importe, String referencia) {
@@ -81,6 +102,10 @@ public record CobroCommand(
 		}
 		if (moneda != null) {
 			canonico.append("|moneda:").append(moneda);
+		}
+		// E-6, mismo criterio: solo cuando viene.
+		if (turnoId != null) {
+			canonico.append("|turno:").append(turnoId);
 		}
 		return canonico.toString();
 	}

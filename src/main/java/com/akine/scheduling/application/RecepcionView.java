@@ -9,6 +9,8 @@ import java.time.Instant;
  *
  * <p>PHI minima: nada clinico. La observacion es administrativa —"falta la orden medica"— y es lo
  * que la recepcion necesita para decirle algo al paciente.
+ *
+ * @param prepago el estado del prepago (AKINE E-6), calculado al leer. Nunca {@code null}
  */
 public record RecepcionView(
 		long id,
@@ -27,9 +29,10 @@ public record RecepcionView(
 		Instant llamadaEn,
 		Instant cerradaEn,
 		String motivoCierre,
-		long version) {
+		long version,
+		PrepagoView prepago) {
 
-	public static RecepcionView de(Recepcion recepcion) {
+	public static RecepcionView de(Recepcion recepcion, PrepagoView prepago) {
 		return new RecepcionView(
 				recepcion.getId(),
 				recepcion.getTurnoId(),
@@ -47,6 +50,7 @@ public record RecepcionView(
 				recepcion.getLlamadaEn(),
 				recepcion.getCerradaEn(),
 				recepcion.getMotivoCierre(),
-				recepcion.getVersion());
+				recepcion.getVersion(),
+				prepago);
 	}
 }

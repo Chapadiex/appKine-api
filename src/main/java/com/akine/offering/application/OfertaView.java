@@ -42,6 +42,7 @@ public record OfertaView(
 		String moneda,
 		String esquemaCobro,
 		boolean admiteObraSocial,
+		boolean exigePrepago,
 		boolean requiereCasoClinico,
 		boolean generaRegistroClinico,
 		boolean requiereProfesional,
@@ -70,6 +71,7 @@ public record OfertaView(
 				// Se muestra tal cual se declaro: nadie lo interpreta (RN-M27-006, EsquemaCobro).
 				oferta.getEsquemaCobro() == null ? null : oferta.getEsquemaCobro().valor(),
 				oferta.isAdmiteObraSocial(),
+				oferta.isExigePrepago(),
 				oferta.isRequiereCasoClinico(),
 				oferta.isGeneraRegistroClinico(),
 				oferta.isRequiereProfesional(),

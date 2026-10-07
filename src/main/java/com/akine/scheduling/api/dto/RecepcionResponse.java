@@ -82,7 +82,10 @@ public record RecepcionResponse(
 		String motivoCierre,
 
 		@Schema(description = "Version para el control optimista de las transiciones", example = "2")
-		long version) {
+		long version,
+
+		@Schema(description = "Estado del prepago (E-6). Una alerta, nunca un bloqueo.")
+		PrepagoDeRecepcionResponse prepago) {
 
 	public static RecepcionResponse de(RecepcionView vista) {
 		return new RecepcionResponse(
@@ -90,6 +93,7 @@ public record RecepcionResponse(
 				vista.llegadaPorCuentaId(), vista.modalidad(), vista.practicaId(),
 				vista.coberturaId(), vista.convenioId(), vista.observacion(),
 				vista.motivoParticular(), vista.validadaEn(), vista.enEsperaDesde(),
-				vista.llamadaEn(), vista.cerradaEn(), vista.motivoCierre(), vista.version());
+				vista.llamadaEn(), vista.cerradaEn(), vista.motivoCierre(), vista.version(),
+				PrepagoDeRecepcionResponse.de(vista.prepago()));
 	}
 }

@@ -20,6 +20,12 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
+import com.akine.billing.domain.exception.PrepagoNoAdmitidoException;
+import com.akine.billing.domain.exception.PrepagoYaRegistradoException;
+import com.akine.billing.domain.exception.TurnoNoAccesibleException;
+import com.akine.scheduling.spi.TurnoDirectory;
+import com.akine.scheduling.spi.TurnoSnapshot;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
@@ -95,6 +101,7 @@ public class CobroService {
 	private final PermissionGuard permissionGuard;
 	private final CajaDeCobro caja;
 	private final PacienteDirectory pacientes;
+	private final TurnoDirectory turnos;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public CobroService(
@@ -105,7 +112,8 @@ public class CobroService {
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
 			CajaDeCobro caja,
-			PacienteDirectory pacientes) {
+			PacienteDirectory pacientes,
+			TurnoDirectory turnos) {
 
 		this.cobros = cobros;
 		this.obligaciones = obligaciones;
@@ -115,6 +123,7 @@ public class CobroService {
 		this.permissionGuard = permissionGuard;
 		this.caja = caja;
 		this.pacientes = pacientes;
+		this.turnos = turnos;
 	}
 
 	/**
@@ -156,6 +165,11 @@ public class CobroService {
 					.orElseThrow(() -> new PersonaNoAccesibleException(command.personaId()));
 		}
 
+		// E-6. Prepago de recepcion: un anticipo puro atado a un turno vivo de la misma persona.
+		if (command.esPrepago()) {
+			exigirPrepagoAdmitido(organizationId, consultorioId, command);
+		}
+
 		// PASO 2 y 3. Validar y descontar. Si una imputacion falla, la transaccion revierte las
 		// anteriores: no puede quedar plata descontada de una deuda por un cobro que no existe.
 		List<CobroImputacion> imputaciones = new ArrayList<>();
@@ -190,13 +204,17 @@ public class CobroService {
 
 		// El constructor verifica las dos sumas de RN-M19. Se hace ahi y no aca porque son
 		// invariantes del cobro y no del caso de uso: un Cobro que no las cumple no puede existir.
-		Cobro cobro = cobros.save(new Cobro(
+		Cobro nuevo = new Cobro(
 				organizationId, consultorioId, command.personaId(),
 				command.total(), moneda, comprobante,
 				cobradoEn, actor.accountId(),
 				command.idempotencyKey(),
 				command.idempotencyKey() == null ? null : command.huella(consultorioId),
-				medios, imputaciones, command.anticipo()));
+				medios, imputaciones, command.anticipo());
+		if (command.esPrepago()) {
+			nuevo.comoPrepagoDeTurno(command.turnoId());
+		}
+		Cobro cobro = guardar(nuevo, command);
 
 		// PASO 7. Caja (AKINE-07.03). Va DESPUES del save porque necesita el id del cobro como
 		// referencia de origen —es lo que hace idempotente el reintento— y DENTRO de esta misma
@@ -247,6 +265,50 @@ public class CobroService {
 	// =================================================================================
 	// Precondiciones
 	// =================================================================================
+
+	/**
+	 * Que el turno admita un prepago (AKINE E-6): anticipo puro, turno de la sede, de la misma
+	 * persona, todavia una reserva viva y sin otro prepago vigente.
+	 *
+	 * <p>El chequeo del prepago existente es la respuesta amable del caso comun; la carrera entre
+	 * dos operadores la frena {@code uk_cobro_prepago_turno_vigente} (ver {@link #guardar}).
+	 */
+	private void exigirPrepagoAdmitido(long organizationId, long consultorioId, CobroCommand command) {
+		long turnoId = command.turnoId();
+		if (!command.esAnticipoPuro() || command.anticipo().compareTo(command.total()) != 0) {
+			throw new CobroInvalidoException("Un prepago es un anticipo puro: sin imputaciones y "
+					+ "con el anticipo igual al total");
+		}
+		TurnoSnapshot turno = turnos.find(organizationId, consultorioId, turnoId)
+				.orElseThrow(() -> new TurnoNoAccesibleException(turnoId));
+		if (turno.personaId() != command.personaId()) {
+			throw new PrepagoNoAdmitidoException(turnoId, "es de otra persona");
+		}
+		if (!turno.vivo() || !("RESERVADO".equals(turno.estado()) || "CONFIRMADO".equals(turno.estado()))) {
+			throw new PrepagoNoAdmitidoException(turnoId,
+					"ya no es una reserva viva (" + turno.estado().toLowerCase() + ")");
+		}
+		cobros.prepagoVigenteDelTurno(organizationId, turnoId).ifPresent(existente -> {
+			throw new PrepagoYaRegistradoException(turnoId, existente);
+		});
+	}
+
+	/**
+	 * Guarda el cobro. Si dos prepagos del mismo turno corren a la vez, los dos pasan el chequeo y
+	 * el segundo INSERT choca contra {@code uk_cobro_prepago_turno_vigente}: se traduce al mismo 409
+	 * que el caso comun. Cualquier otra violacion sigue su camino.
+	 */
+	private Cobro guardar(Cobro nuevo, CobroCommand command) {
+		try {
+			return cobros.save(nuevo);
+		} catch (DataIntegrityViolationException choque) {
+			if (command.esPrepago() && String.valueOf(choque.getMostSpecificCause().getMessage())
+					.contains("uk_cobro_prepago_turno_vigente")) {
+				throw new PrepagoYaRegistradoException(command.turnoId(), null);
+			}
+			throw choque;
+		}
+	}
 
 	/**
 	 * Que la deuda admita cobro y sea de quien paga.

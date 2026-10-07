@@ -58,7 +58,7 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 				.findByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
 				.map(oferta -> new PrecioDeOferta(
 						oferta.getId(), oferta.getPrecioBase(), oferta.getMoneda(),
-						oferta.isAdmiteObraSocial()));
+						oferta.isAdmiteObraSocial(), oferta.isExigePrepago()));
 	}
 
 	@Override

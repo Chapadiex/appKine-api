@@ -511,6 +511,49 @@ public class OfertaService {
 	}
 
 	// =================================================================================
+	// Politica de prepago (AKINE E-6, DP-06 / ADR-0013)
+	// =================================================================================
+
+	/**
+	 * Cambia la politica de prepago de una oferta vigente.
+	 *
+	 * <p>Mismo permiso y mismas reglas que editar —{@code consultorio:manage} sobre la sede, oferta
+	 * operable, version vigente—: es configuracion de la oferta. Lo que decide no es si se atiende
+	 * sino si la recepcion alerta que falta el prepago (diseno de E-6).
+	 *
+	 * @throws OfertaNotAccessibleException si no existe, es de otro tenant o de otra sede (404)
+	 * @throws OfertaInactivaException si la oferta esta dada de baja (409)
+	 * @throws OptimisticLockingFailureException si la version enviada quedo vieja (409)
+	 */
+	@Transactional
+	public OfertaView cambiarPoliticaDePrepago(
+			OperatingActor actor,
+			long organizationId,
+			long consultorioId,
+			long ofertaId,
+			boolean exigePrepago,
+			long expectedVersion) {
+
+		ConsultorioSnapshot sede = exigirGestion(actor, organizationId, consultorioId);
+
+		OfertaServicioConsultorio oferta = cargar(organizationId, consultorioId, ofertaId);
+		exigirOperable(oferta, "cambiar la politica de prepago de");
+		exigirVersion(oferta, expectedVersion);
+
+		boolean anterior = oferta.isExigePrepago();
+		oferta.cambiarPoliticaDePrepago(exigePrepago);
+		OfertaServicioConsultorio guardada = ofertas.saveAndFlush(oferta);
+
+		auditar(AuditEvents.OFERTA_POLITICA_PREPAGO_CHANGED, guardada, actor,
+				String.valueOf(anterior), String.valueOf(exigePrepago), null, Map.of());
+
+		log.info("Politica de prepago de oferta: ofertaId={} exigePrepago={} -> {}",
+				ofertaId, anterior, exigePrepago);
+
+		return OfertaView.de(guardada, hoyEn(sede));
+	}
+
+	// =================================================================================
 	// Autorizacion
 	// =================================================================================
 

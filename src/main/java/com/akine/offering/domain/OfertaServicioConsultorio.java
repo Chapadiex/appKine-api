@@ -120,6 +120,14 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 	@Column(name = "admite_obra_social", nullable = false)
 	private boolean admiteObraSocial;
 
+	/**
+	 * Politica de prepago de la oferta (AKINE E-6, DP-06 / ADR-0013). Es configuracion de la
+	 * recepcion, no del dominio clinico: hace que el mostrador vea "falta el prepago", y nunca
+	 * impide atender ni cerrar la sesion.
+	 */
+	@Column(name = "exige_prepago", nullable = false)
+	private boolean exigePrepago;
+
 	@Column(name = "requiere_caso_clinico", nullable = false)
 	private boolean requiereCasoClinico;
 
@@ -320,6 +328,14 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 		this.deactivationReason = reason.strip();
 	}
 
+	/**
+	 * Cambia la politica de prepago (AKINE E-6). Se edita aparte del resto de la oferta porque es
+	 * configuracion del mostrador y no de la prestacion, y para no tocar el comando de edicion.
+	 */
+	public void cambiarPoliticaDePrepago(boolean exige) {
+		this.exigePrepago = exige;
+	}
+
 	/** {@code true} cuando la oferta admite operaciones nuevas (ciclo de vida). */
 	public boolean isOperable() {
 		return active && deletedAt == null;
@@ -459,6 +475,10 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 
 	public boolean isAdmiteObraSocial() {
 		return admiteObraSocial;
+	}
+
+	public boolean isExigePrepago() {
+		return exigePrepago;
 	}
 
 	public boolean isRequiereCasoClinico() {

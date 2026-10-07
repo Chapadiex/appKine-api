@@ -3,6 +3,7 @@ package com.akine.billing.domain.port;
 import com.akine.billing.domain.Cobro;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -91,4 +92,14 @@ public interface CobroRepositoryPort {
 
 	/** Deriva el estado del saldo: PAGADA cuando llega a cero, PARCIAL mientras no. */
 	void actualizarEstadoPorSaldo(long organizationId, long obligacionId);
+
+	/**
+	 * El id del prepago VIGENTE de un turno (AKINE E-6), si hay. Devuelve un id y no la entidad
+	 * por lo mismo que {@link #cobroDeLaImputacionConClave}: quien lo usa toma despues el lock del
+	 * cobro, y una entidad ya cargada en la sesion haria inutil ese lock.
+	 */
+	Optional<Long> prepagoVigenteDelTurno(long organizationId, long turnoId);
+
+	/** Los prepagos vigentes (no anulados) de esos turnos (AKINE E-6). */
+	List<Cobro> prepagosVigentesDeTurnos(long organizationId, Collection<Long> turnoIds);
 }

@@ -66,6 +66,8 @@ public class CicloDeRecepcionService {
 	static final String SIN_COBERTURA_APLICABLE = "SIN_COBERTURA_APLICABLE";
 	static final String COBERTURA_NO_APLICABLE = "COBERTURA_NO_APLICABLE";
 	static final String DOCUMENTACION_INCOMPLETA = "DOCUMENTACION_INCOMPLETA";
+	/** Motivo del evento de espera cuando la oferta exige prepago y no hay anticipo (E-6). */
+	static final String PREPAGO_PENDIENTE = "PREPAGO_PENDIENTE";
 
 	private final TurnoRepositoryPort turnos;
 	private final BloqueoDeTurnoPort bloqueos;
@@ -76,7 +78,9 @@ public class CicloDeRecepcionService {
 	private final PracticasDeOfertaDirectory practicas;
 	private final CoberturasAplicablesDirectory coberturas;
 	private final ElegibilidadAdministrativaDirectory elegibilidad;
+	private final PrepagoDeRecepcion prepago;
 
+	@SuppressWarnings("checkstyle:ParameterNumber")
 	public CicloDeRecepcionService(
 			TurnoRepositoryPort turnos,
 			BloqueoDeTurnoPort bloqueos,
@@ -86,7 +90,8 @@ public class CicloDeRecepcionService {
 			PermissionGuard permissionGuard,
 			PracticasDeOfertaDirectory practicas,
 			CoberturasAplicablesDirectory coberturas,
-			ElegibilidadAdministrativaDirectory elegibilidad) {
+			ElegibilidadAdministrativaDirectory elegibilidad,
+			PrepagoDeRecepcion prepago) {
 
 		this.turnos = turnos;
 		this.bloqueos = bloqueos;
@@ -97,6 +102,7 @@ public class CicloDeRecepcionService {
 		this.practicas = practicas;
 		this.coberturas = coberturas;
 		this.elegibilidad = elegibilidad;
+		this.prepago = prepago;
 	}
 
 	/** Lo que devuelve el check-in: la recepcion, si se creo ahora, y el turno tal como quedo. */
@@ -132,7 +138,8 @@ public class CicloDeRecepcionService {
 
 		Optional<Recepcion> vigente = registro.vigente(organizationId, turnoId);
 		if (vigente.isPresent() && vigente.get().estaAbierta()) {
-			return new ResultadoDeLlegada(RecepcionView.de(vigente.get()), false, TurnoView.de(turno));
+			return new ResultadoDeLlegada(
+					vista(organizationId, consultorioId, turno, vigente.get()), false, TurnoView.de(turno));
 		}
 		// Una vigente CERRADA solo existe sobre un turno cancelado, y eso lo rechaza esto mismo.
 		turno.exigirAdmiteLlegada();
@@ -145,7 +152,8 @@ public class CicloDeRecepcionService {
 
 		log.info("Llegada registrada: turnoId={} recepcionId={} consultorioId={}",
 				turnoId, creada.getId(), consultorioId);
-		return new ResultadoDeLlegada(RecepcionView.de(creada), true, TurnoView.de(turno));
+		return new ResultadoDeLlegada(
+				vista(organizationId, consultorioId, turno, creada), true, TurnoView.de(turno));
 	}
 
 	// =================================================================================
@@ -183,7 +191,7 @@ public class CicloDeRecepcionService {
 		Recepcion validada = registro.registrar(recepcion, TipoEventoRecepcion.VALIDACION,
 				anterior, motivo, actor.accountId(), ahora);
 		log.info("Recepcion validada: turnoId={} estado={}", turnoId, validada.getEstado());
-		return RecepcionView.de(validada);
+		return vista(organizationId, consultorioId, turno, validada);
 	}
 
 	/** Aplica la transicion de validacion y devuelve el motivo que va al evento. */
@@ -251,7 +259,7 @@ public class CicloDeRecepcionService {
 			long expectedVersion) {
 
 		return transicionar(actor, consultorioId, turnoId, expectedVersion,
-				TipoEventoRecepcion.PARTICULAR, motivo,
+				TipoEventoRecepcion.PARTICULAR, (prepagoActual) -> motivo,
 				(recepcion, ahora) -> recepcion.atenderComoParticular(motivo, actor.accountId(), ahora));
 	}
 
@@ -259,12 +267,22 @@ public class CicloDeRecepcionService {
 	// Espera, llamado y anulacion
 	// =================================================================================
 
+	/**
+	 * Pasa a espera. <b>Un prepago pendiente no lo impide</b> (AKINE E-6, DP-06): la politica de
+	 * prepago de la oferta alerta, nunca condiciona la atencion. Lo que hace es dejarlo escrito en
+	 * el evento de la transicion —motivo {@code PREPAGO_PENDIENTE}—, para que conste que la persona
+	 * paso a la sala sin el anticipo que el centro exige.
+	 */
 	@Transactional
 	public RecepcionView pasarAEspera(
 			OperatingActor actor, long consultorioId, long turnoId, long expectedVersion) {
 
 		return transicionar(actor, consultorioId, turnoId, expectedVersion,
-				TipoEventoRecepcion.ESPERA, null,
+				TipoEventoRecepcion.ESPERA,
+				prepagoActual -> prepagoActual.pendiente()
+						? PREPAGO_PENDIENTE + ": la oferta exige prepago y no se registro ningun "
+								+ "anticipo para este turno"
+						: null,
 				(recepcion, ahora) -> recepcion.pasarAEspera(ahora));
 	}
 
@@ -274,7 +292,7 @@ public class CicloDeRecepcionService {
 			OperatingActor actor, long consultorioId, long turnoId, long expectedVersion) {
 
 		return transicionar(actor, consultorioId, turnoId, expectedVersion,
-				TipoEventoRecepcion.LLAMADO, null,
+				TipoEventoRecepcion.LLAMADO, prepagoActual -> null,
 				(recepcion, ahora) -> recepcion.llamar(actor.accountId(), ahora));
 	}
 
@@ -291,7 +309,7 @@ public class CicloDeRecepcionService {
 			Long expectedVersion) {
 
 		return transicionar(actor, consultorioId, turnoId, expectedVersion,
-				TipoEventoRecepcion.ANULACION, motivo,
+				TipoEventoRecepcion.ANULACION, prepagoActual -> motivo,
 				(recepcion, ahora) -> recepcion.anular(motivo, actor.accountId(), ahora));
 	}
 
@@ -316,9 +334,9 @@ public class CicloDeRecepcionService {
 		long organizationId = exigirContexto(actor);
 		exigirSede(organizationId, consultorioId);
 		exigirLectura(actor, organizationId, consultorioId);
-		exigirTurno(organizationId, consultorioId, turnoId);
+		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
 		return registro.vigente(organizationId, turnoId)
-				.map(RecepcionView::de)
+				.map(recepcion -> vista(organizationId, consultorioId, turno, recepcion))
 				.orElseThrow(() -> new RecepcionNotAccessibleException(turnoId));
 	}
 
@@ -347,14 +365,20 @@ public class CicloDeRecepcionService {
 		void aplicar(Recepcion recepcion, Instant ahora);
 	}
 
+	/** El motivo del evento, que puede depender del prepago ANTES de la transicion (E-6). */
+	@FunctionalInterface
+	private interface MotivoDelEvento {
+		String de(PrepagoView prepagoAntes);
+	}
+
 	private RecepcionView transicionar(
 			OperatingActor actor, long consultorioId, long turnoId, Long expectedVersion,
-			TipoEventoRecepcion tipo, String motivo, Transicion transicion) {
+			TipoEventoRecepcion tipo, MotivoDelEvento motivoDe, Transicion transicion) {
 
 		long organizationId = exigirContexto(actor);
 		exigirSede(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
-		exigirTurno(organizationId, consultorioId, turnoId);
+		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
 		Recepcion recepcion = exigirAbierta(organizationId, turnoId);
 		if (expectedVersion != null) {
 			exigirVersion(recepcion, expectedVersion);
@@ -362,12 +386,18 @@ public class CicloDeRecepcionService {
 
 		Instant ahora = Instant.now();
 		EstadoRecepcion anterior = recepcion.getEstado();
+		String motivo = motivoDe.de(prepago.de(organizationId, consultorioId, turno, recepcion));
 		transicion.aplicar(recepcion, ahora);
 		Recepcion guardada = registro.registrar(recepcion, tipo, anterior,
 				motivo == null || motivo.isBlank() ? null : motivo.strip(), actor.accountId(), ahora);
 
 		log.info("Recepcion {}: turnoId={} {} -> {}", tipo, turnoId, anterior, guardada.getEstado());
-		return RecepcionView.de(guardada);
+		return vista(organizationId, consultorioId, turno, guardada);
+	}
+
+	/** La recepcion con su prepago calculado al leer (E-6). */
+	private RecepcionView vista(long organizationId, long consultorioId, Turno turno, Recepcion recepcion) {
+		return RecepcionView.de(recepcion, prepago.de(organizationId, consultorioId, turno, recepcion));
 	}
 
 	// =================================================================================

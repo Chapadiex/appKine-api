@@ -26,6 +26,9 @@ import com.akine.billing.domain.exception.CobroInvalidoException;
 import com.akine.billing.domain.exception.CobroNotAccessibleException;
 import com.akine.billing.domain.exception.PersonaNoAccesibleException;
 import com.akine.billing.domain.exception.SaldoAFavorInsuficienteException;
+import com.akine.billing.domain.exception.PrepagoNoAdmitidoException;
+import com.akine.billing.domain.exception.PrepagoYaRegistradoException;
+import com.akine.billing.domain.exception.TurnoNoAccesibleException;
 import com.akine.billing.domain.exception.FacturaDuplicadaException;
 import com.akine.billing.domain.exception.FinanciadorNoAccesibleException;
 import com.akine.billing.domain.exception.ImporteDeDebitoInvalidoException;
@@ -81,6 +84,8 @@ public class BillingProblemHandler {
 	private static final URI COBRO_ANULADO = ProblemType.COBRO_ANULADO.uri();
 	private static final URI COBRO_CON_REINTEGROS = ProblemType.COBRO_CON_REINTEGROS.uri();
 	private static final URI SALDO_A_FAVOR_INSUFICIENTE = ProblemType.SALDO_A_FAVOR_INSUFICIENTE.uri();
+	private static final URI PREPAGO_NO_ADMITIDO = ProblemType.PREPAGO_NO_ADMITIDO.uri();
+	private static final URI PREPAGO_YA_REGISTRADO = ProblemType.PREPAGO_YA_REGISTRADO.uri();
 	private static final URI CAJA_NO_ABIERTA = ProblemType.CAJA_NO_ABIERTA.uri();
 	private static final URI CAJA_YA_ABIERTA = ProblemType.CAJA_YA_ABIERTA.uri();
 	private static final URI CAJA_CERRADA = ProblemType.CAJA_CERRADA.uri();
@@ -203,6 +208,33 @@ public class BillingProblemHandler {
 	public ProblemDetail handlePersonaNoAccesible(PersonaNoAccesibleException exception) {
 		log.debug("Persona no accesible para un anticipo: personaId={}", exception.getPersonaId());
 		return noEncontrado("La persona no existe.");
+	}
+
+	@ExceptionHandler(TurnoNoAccesibleException.class)
+	public ProblemDetail handleTurnoNoAccesible(TurnoNoAccesibleException exception) {
+		log.debug("Turno no accesible para un prepago: turnoId={}", exception.getTurnoId());
+		return noEncontrado("El turno no existe.");
+	}
+
+	@ExceptionHandler(PrepagoNoAdmitidoException.class)
+	public ProblemDetail handlePrepagoNoAdmitido(PrepagoNoAdmitidoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(PREPAGO_NO_ADMITIDO);
+		problem.setTitle("El turno no admite un prepago");
+		return problem;
+	}
+
+	@ExceptionHandler(PrepagoYaRegistradoException.class)
+	public ProblemDetail handlePrepagoYaRegistrado(PrepagoYaRegistradoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(PREPAGO_YA_REGISTRADO);
+		problem.setTitle("El turno ya tiene un prepago vigente");
+		if (exception.getCobroId() != null) {
+			problem.setProperty("cobroId", exception.getCobroId());
+		}
+		return problem;
 	}
 
 	@ExceptionHandler(CobroAnuladoException.class)

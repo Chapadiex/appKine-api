@@ -33,6 +33,10 @@ import java.util.Set;
  *                           AKINE F-4). Se lee en el mismo punto que el precio y por la misma
  *                           razon: dos observadores no pueden ver dos ofertas distintas.
  *                           {@code false} en las formas anteriores a F-4, que no buscan cobertura
+ * @param turnoId            turno del que salio la atencion, o {@code null} si se atendio sin
+ *                           turno (AKINE E-6). Lo necesita billing para imputar el prepago que la
+ *                           recepcion de ese turno tomo como anticipo. Es un id administrativo, no
+ *                           dato clinico
  */
 public record SesionCerrada(
 		long sesionId,
@@ -48,7 +52,8 @@ public record SesionCerrada(
 		String moneda,
 		Set<Long> practicasRealizadas,
 		Long casoId,
-		boolean ofertaAdmiteObraSocial) {
+		boolean ofertaAdmiteObraSocial,
+		Long turnoId) {
 
 	/**
 	 * <b>AKINE-06.04 agrega {@code practicasRealizadas}, y es lo que cierra el defecto que 04.05
@@ -72,6 +77,28 @@ public record SesionCerrada(
 	 */
 	public SesionCerrada {
 		practicasRealizadas = practicasRealizadas == null ? Set.of() : Set.copyOf(practicasRealizadas);
+	}
+
+	/** Sin turno: la forma anterior a AKINE E-6. */
+	@SuppressWarnings("java:S107")
+	public SesionCerrada(
+			long sesionId,
+			long organizationId,
+			long consultorioId,
+			long personaId,
+			long ofertaId,
+			int numeroSesion,
+			boolean asistio,
+			Instant cerradaEn,
+			Long cerradaPorCuentaId,
+			BigDecimal precioDeLaOferta,
+			String moneda,
+			Set<Long> practicasRealizadas,
+			Long casoId,
+			boolean ofertaAdmiteObraSocial) {
+		this(sesionId, organizationId, consultorioId, personaId, ofertaId, numeroSesion, asistio,
+				cerradaEn, cerradaPorCuentaId, precioDeLaOferta, moneda, practicasRealizadas, casoId,
+				ofertaAdmiteObraSocial, null);
 	}
 
 	/** Sin caso: la forma anterior a AKINE C-4. */
