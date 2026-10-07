@@ -11,7 +11,7 @@
 | 02.02 Espacios | PARCIAL | 70 | ~~`EspacioOccupancyProbe` sin implementación~~ (E-1) |
 | 02.03 Colaboradores | PARCIAL | 70 | ~~La desvinculación no cuenta turnos~~ (E-1); la UI no muestra el impacto |
 | 02.04 Disponibilidad | PARCIAL | 80 | ~~`DisponibilidadImpactProbeSinAgenda` sigue devolviendo `ninguno()`~~ (E-1) |
-| 02.05 Catálogos | PARCIAL | 75 | `nomenclador_item` sin consumidor; resolver solicitudes sin pantalla |
+| 02.05 Catálogos | PARCIAL | 75 | `nomenclador_item` sin consumidor; resolver solicitudes sin pantalla (backend completo, A-7) |
 | 02.06 Servicio y oferta | PARCIAL | 80 | ~~No existe el puente Oferta↔Práctica~~ (A-9, `V75`); `esquema_cobro` sin interpretar |
 | 02.07 Habilitaciones | PARCIAL | 70 | ~~Escenario diferido 20 sin IT~~ → `HabilitacionesVersionForzadaIT` desde `7dcae17` (PR #23): la versión forzada avanza una vez por reemplazo contra MySQL |
 
@@ -53,7 +53,7 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
   y contra MySQL eso no avanza la versión.~~ → **No aplica** (06/10/2026): medido contra MySQL, la
   versión de la oferta avanza una vez por reemplazo (`HabilitacionesVersionForzadaIT`, PR #23 y
   #36). Ver la corrección en [deuda-force-increment.md](deuda-force-increment.md).
-- [ ] Endpoint que le diga al frontend si quien mira tiene rol de plataforma (prerrequisito de RF-M06-005).
+- [x] ~~Endpoint que le diga al frontend si quien mira tiene rol de plataforma (prerrequisito de RF-M06-005).~~ → A-7: `GET /api/v1/me/platform-role` (contrato 0.64.0), sin contexto de tenant y revalidado contra `platform_role` en cada request. Además aprobar una solicitud **publica** el concepto global en la misma transacción (`conceptoId`); diseño en [AKINE-A-7-plataforma.md](../diseno/AKINE-A-7-plataforma.md).
 - [ ] Primer box + horario general en el alta de sede (CA-M03-002).
 
 ### Permisos
@@ -64,7 +64,7 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 - [ ] Mostrar el impacto de desvinculación (`getDesvinculacionImpacto` existe y nadie lo consume;
   `collaborators-page` revoca sin mostrar turnos afectados).
 - [ ] Preview de turnos afectados al editar disponibilidad.
-- [ ] Pantalla para resolver solicitudes de catálogo / consola de plataforma.
+- [ ] Pantalla para resolver solicitudes de catálogo / consola de plataforma. El backend está completo desde A-7 (rol de plataforma + aprobar publica el concepto).
 
 ### Tests
 - [x] ~~Unitarios de `ConsultorioService`, `EspacioService`, `CatalogoService`, `CatalogoSolicitudService` (hoy solo ITs).~~ → 70 unitarios (Mockito, sin Spring): `EspacioServiceTest` 24, `CatalogoServiceTest` 20, `CatalogoSolicitudServiceTest` 10, `ConsultorioServiceTest` 16. Destaparon que una edición de sede amparada en soporte dejaba **dos** `SUPPORT_ACCESS_USED`; corregido en `ConsultorioService.exigirSobreLaSede`.

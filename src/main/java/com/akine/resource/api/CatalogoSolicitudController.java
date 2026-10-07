@@ -200,13 +200,18 @@ public class CatalogoSolicitudController {
 					el centro vuelve a pedir, y esa segunda solicitud es una fila nueva con su \
 					propia justificacion y su propia fecha.
 
-					APROBAR NO CREA EL CONCEPTO GLOBAL, y es deliberado: el concepto que la \
-					plataforma termina publicando casi nunca es el que el centro propuso —el \
-					codigo se normaliza, el nombre se unifica con los que ya existen— y crearlo \
-					automaticamente desde el texto de un pedido llenaria el catalogo comun de \
-					duplicados con nombres parecidos, que es exactamente lo que este circuito \
-					existe para evitar. La plataforma aprueba y despues publica el concepto por \
-					el alta normal.
+					APROBAR PUBLICA EL CONCEPTO GLOBAL, en la misma transaccion, y devuelve su \
+					id en conceptoId. El centro propone y la plataforma dispone: codigo, nombre, \
+					descripcion y especialidadId del cuerpo son la normalizacion con la que se \
+					publica; sin codigo o sin nombre se usan los propuestos, y sin ningun codigo \
+					posible la respuesta es 400. especialidadId es obligatorio al aprobar una \
+					PRACTICA y tiene que ser una especialidad global. La publicacion pasa por \
+					las mismas validaciones que el alta global: si el codigo o el nombre ya \
+					estan tomados en el catalogo comun responde 409 catalogo-code-taken o \
+					catalogo-name-taken, y la solicitud SIGUE PENDIENTE sin ningun concepto \
+					creado. Si el concepto ya existe en el catalogo comun, el desenlace es \
+					rechazar con una nota que lo diga. Un rechazo no lleva datos de concepto \
+					(400 si los trae).
 
 					La nota es obligatoria en los dos desenlaces. version se compara antes de \
 					mutar: dos administradores de plataforma sobre la misma bandeja tienen que \
@@ -220,7 +225,9 @@ public class CatalogoSolicitudController {
 							schema = @Schema(implementation = CatalogoSolicitudResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "Falta la nota, falta la version, o el desenlace es PENDIENTE",
+					description = "Falta la nota o la version, el desenlace es PENDIENTE, se aprueba "
+							+ "sin codigo posible o una PRACTICA sin especialidadId, o un rechazo trae "
+							+ "datos de concepto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -232,14 +239,18 @@ public class CatalogoSolicitudController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "404",
-					description = "La solicitud no existe",
+					description = "La solicitud no existe, o la especialidad de la practica a "
+							+ "publicar no existe en el catalogo global",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
 					description = "Ya estaba resuelta (catalogo-solicitud-ya-resuelta), o "
-							+ "version desactualizada (concurrent-modification)",
+							+ "version desactualizada (concurrent-modification), o el concepto a "
+							+ "publicar choca en el catalogo global (catalogo-code-taken, "
+							+ "catalogo-name-taken, catalogo-reference-inactive); en esos casos la "
+							+ "solicitud sigue PENDIENTE",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
@@ -253,7 +264,13 @@ public class CatalogoSolicitudController {
 				apiActor.current(),
 				solicitudId,
 				new SolicitudResolucionCommand(
-						request.estado(), request.nota(), request.version()));
+						request.estado(),
+						request.nota(),
+						request.version(),
+						request.codigo(),
+						request.nombre(),
+						request.descripcion(),
+						request.especialidadId()));
 
 		return ResponseEntity.ok(CatalogoSolicitudResponse.from(resuelta));
 	}
