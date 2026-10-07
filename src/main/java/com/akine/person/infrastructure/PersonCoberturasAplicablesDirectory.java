@@ -25,14 +25,16 @@ public class PersonCoberturasAplicablesDirectory implements CoberturasAplicables
 	@Override
 	public List<CoberturaAplicable> aplicables(
 			long organizationId, long consultorioId, long personaId, long practicaId,
-			LocalDate fecha) {
-		return servicio.aplicables(organizationId, consultorioId, personaId, practicaId, fecha);
+			Long ofertaId, LocalDate fecha) {
+		return servicio.aplicables(
+				organizationId, consultorioId, personaId, practicaId, ofertaId, fecha);
 	}
 
 	@Override
 	public List<CoberturaNoAplicable> noAplicables(
 			long organizationId, long consultorioId, long personaId, long practicaId,
-			LocalDate fecha) {
-		return servicio.noAplicables(organizationId, consultorioId, personaId, practicaId, fecha);
+			Long ofertaId, LocalDate fecha) {
+		return servicio.noAplicables(
+				organizationId, consultorioId, personaId, practicaId, ofertaId, fecha);
 	}
 }

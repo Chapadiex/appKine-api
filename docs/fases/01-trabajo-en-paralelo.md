@@ -140,6 +140,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V77` | F-4 | **Usada**: `V77__f4_obligacion_del_financiador.sql` — `obligacion.concepto` (`PARTICULAR`/`FINANCIADOR`/`COSEGURO`), práctica y cobertura aplicadas, alerta DP-11 y el snapshot entero del convenio y del arancel (los tres importes y los requisitos de RF-M21-003), con cinco CHECK de coherencia |
 | `V78` | E-4 | **Usada**: `V78__m13_recepcion_maquina_propia.sql` — tablas `recepcion` (una vigente por turno, `uk_recepcion_turno_vigente`) y `recepcion_evento` (append-only), migración de los turnos `EN_ESPERA` y de los cancelados con llegada, `ck_turno_estado` sin `EN_ESPERA`. No borra columnas de `turno` (ADR-0007) |
 | `V79` | libre | Tomar la siguiente libre y anotarla acá |
+| `V80` | B-3 | **Usada**: `V80__b3_arancel_por_oferta_y_precio_particular.sql` — `convenio_arancel.oferta_id` nullable (`fk_convenio_arancel_oferta`, `ix_convenio_arancel_oferta`; dueño `contracting`) y tabla `oferta_precio_particular` (precio particular por vigencia; dueño `offering`). Los dos no-solapamientos los hace cumplir un lock, ningún índice |
 
 ## 7. Paquetes de trabajo
 
@@ -200,7 +201,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | ~~A-4~~ | ~~Bootstrap del `PLATFORM_ADMIN`~~ — **hecho** (07/10, DP-14): `AKINE_BOOTSTRAP_ADMIN_EMAIL` re-apunta la cuenta de `V15` y le encola el enlace de activación al arrancar; sin migración ni cambio de contrato (`docs/diseno/AKINE-A-4-bootstrap.md`) | api | M | DU-2 | F0-F1 |
 | A-7 | Endpoint "¿tengo rol de plataforma?" + consola de solicitudes de catálogo; catálogo global de financiadores | api + web | M | A-4 | F2, F3 |
 | A-10 | UI de impacto de desvinculación y preview de turnos al editar disponibilidad | web | M | E-1 | F2 |
-| B-3 | Cobertura aplicable por oferta (RF-M08-006/007); arancel por oferta; importación masiva de convenio | api + web | L | A-9 | F3 |
+| B-3 | Cobertura aplicable por oferta (RF-M08-006/007); arancel por oferta; importación masiva de convenio — **backend hecho** (`V80`, contrato 0.65.0, 07/10): `GET /personas/{id}/cobertura-aplicable`, arancel por oferta en el convenio (RF-M16-008) y precio particular por vigencia (RF-M16-009); la importación masiva (RF-M16-007) quedó diseñada y fuera (`docs/diseno/AKINE-B-3-cobertura-por-oferta.md`); falta la pantalla | api + web | L | A-9 | F3 |
 | B-4 | Historial de estados de autorización (`V68`); estado de la orden médica | api | M | DU-8 | F3 |
 | ~~C-4~~ | ~~04.05: `RESERVA`/`LIBERACION_DE_RESERVA`, reversión del consumo, validar cobertura y caso~~ — hecho en el backend (`V76`, contrato 0.59.0): DP-12 una unidad por autorización involucrada, DP-13 alerta "consumo a revisar" al anular la deuda, cobertura vigente y caso al consumir. `RESERVA` queda afuera: ningún RF dice cuándo se reserva (`docs/diseno/AKINE-C-4-consumo.md`) | api | M | DU-4, DU-7, B-2 | F4 |
 | C-6 | Enmiendas que versionan tratamientos y mediciones (`V71`) + permiso reforzado; `X-Justificacion-Acceso` en `encounter` | api | M | C-7 | F6 |

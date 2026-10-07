@@ -24,6 +24,7 @@ import com.akine.person.domain.exception.PersonaDocumentoTakenException;
 import com.akine.person.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.person.domain.exception.PlanNoSeleccionableException;
 import com.akine.person.domain.exception.PersonaInactivaException;
+import com.akine.person.domain.exception.OfertaNoAccesibleEnSedeException;
 import com.akine.person.domain.exception.PersonaNotAccessibleException;
 import com.akine.person.domain.exception.PersonaPosibleDuplicadoException;
 import com.akine.platform.spi.problem.ProblemType;
@@ -104,6 +105,18 @@ public class PersonProblemHandler {
 
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
 				HttpStatus.NOT_FOUND, "La persona no existe.");
+		problem.setTitle("No encontrada");
+		problem.setType(NOT_FOUND);
+		return problem;
+	}
+
+	/** B-3 (RF-M08-006): la oferta no es de la sede del contexto, o no existe. */
+	@ExceptionHandler(OfertaNoAccesibleEnSedeException.class)
+	public ProblemDetail handleOfertaNoAccesible(OfertaNoAccesibleEnSedeException exception) {
+		log.debug("Oferta no accesible en la sede: ofertaId={}", exception.getOfertaId());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.NOT_FOUND, "La oferta no existe en esta sede.");
 		problem.setTitle("No encontrada");
 		problem.setType(NOT_FOUND);
 		return problem;

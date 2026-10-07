@@ -81,7 +81,7 @@ class CoberturasAplicablesServiceTest {
 				financiada(10L, 88L, 910L, false, HOY.minusMonths(1), null, null),
 				financiada(50L, 88L, 950L, true, HOY.minusMonths(1), null, null),
 				financiada(20L, 88L, 920L, false, HOY.minusMonths(1), null, null));
-		given(aranceles.resolver(anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), any()))
+		given(aranceles.resolver(anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))
 				.willReturn(resuelta());
 
 		List<CoberturaAplicable> aplicables = aplicables();
@@ -127,7 +127,7 @@ class CoberturasAplicablesServiceTest {
 				ORG, PERSONA, HOY.minusMonths(1), null, true, null);
 		ReflectionTestUtils.setField(particular, "id", 5L);
 		darCoberturas(particular);
-		given(aranceles.resolver(anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), any()))
+		given(aranceles.resolver(anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))
 				.willReturn(resuelta());
 
 		assertThat(aplicables()).isEmpty();
@@ -140,9 +140,9 @@ class CoberturasAplicablesServiceTest {
 		darCoberturas(
 				financiada(1L, 88L, 901L, true, HOY.minusMonths(1), null, null),
 				financiada(2L, 89L, 902L, false, HOY.minusMonths(1), null, null));
-		given(aranceles.resolver(ORG, SEDE, 88L, 901L, PRACTICA, HOY))
+		given(aranceles.resolver(ORG, SEDE, 88L, 901L, PRACTICA, null, HOY))
 				.willReturn(ResolucionDeArancel.sinArancel(MotivoSinArancel.SIN_CONVENIO_VIGENTE));
-		given(aranceles.resolver(ORG, SEDE, 89L, 902L, PRACTICA, HOY))
+		given(aranceles.resolver(ORG, SEDE, 89L, 902L, PRACTICA, null, HOY))
 				.willReturn(ResolucionDeArancel.sinArancel(MotivoSinArancel.SIN_ARANCEL_VIGENTE));
 
 		assertThat(aplicables()).isEmpty();
@@ -160,7 +160,7 @@ class CoberturasAplicablesServiceTest {
 		darCoberturas(
 				financiada(1L, 88L, 901L, true, HOY.minusMonths(6), null, vencio),
 				financiada(2L, 88L, 902L, false, HOY.minusMonths(6), null, HOY));
-		given(aranceles.resolver(anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), any()))
+		given(aranceles.resolver(anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))
 				.willReturn(resuelta());
 
 		List<CoberturaAplicable> aplicables = aplicables();
@@ -179,7 +179,7 @@ class CoberturasAplicablesServiceTest {
 				financiada(1L, 88L, 901L, true, HOY.minusMonths(1), null, null),
 				financiada(2L, 89L, 902L, false, HOY.minusMonths(1), null, null));
 		resolverConConvenio(88L, 901L);
-		given(aranceles.resolver(ORG, SEDE, 89L, 902L, PRACTICA, HOY))
+		given(aranceles.resolver(ORG, SEDE, 89L, 902L, PRACTICA, null, HOY))
 				.willReturn(ResolucionDeArancel.sinArancel(MotivoSinArancel.SIN_CONVENIO_VIGENTE));
 
 		assertThat(aplicables()).extracting(CoberturaAplicable::coberturaId).containsExactly(1L);
@@ -240,7 +240,7 @@ class CoberturasAplicablesServiceTest {
 
 	private void resolverConConvenio(long financiadorId, long planId) {
 		given(aranceles.resolver(anyLong(), anyLong(), eq(financiadorId),
-				eq(planId), anyLong(), any()))
+				eq(planId), anyLong(), any(), any()))
 				.willReturn(resuelta());
 	}
 

@@ -17,6 +17,11 @@ import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioLockRep
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioRepositoryPort;
 import com.akine.contracting.spi.MotivoSinArancel;
 import com.akine.contracting.spi.ResolucionDeArancel;
+import com.akine.offering.spi.OfertaDirectory;
+import com.akine.offering.spi.OfertaSnapshot;
+import com.akine.offering.spi.PracticaDeOferta;
+import com.akine.offering.spi.PracticasDeOfertaDirectory;
+import com.akine.offering.spi.PrecioDeOferta;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionDecision;
@@ -88,6 +93,8 @@ class ArancelServiceTest {
 	@Mock private CatalogoDirectory catalogo;
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private AuditTrail auditTrail;
+	@Mock private OfertaDirectory ofertas;
+	@Mock private PracticasDeOfertaDirectory practicasDeOferta;
 
 	private ArancelService service;
 
@@ -97,7 +104,7 @@ class ArancelServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ArancelService(convenios, aranceles, locks, lockIniciador, consultorios,
-				catalogo, permissionGuard, auditTrail);
+				catalogo, permissionGuard, auditTrail, ofertas, practicasDeOferta);
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(new ConsultorioSnapshot(
 				SEDE_ID, ORG_ID, "Sede Centro", "America/Argentina/Cordoba", true)));
@@ -376,6 +383,153 @@ class ArancelServiceTest {
 
 		assertThat(service.resolver(delMostrador, SEDE_ID, FINANCIADOR_ID, PLAN_ID, PRACTICA_ID,
 				null).estaResuelta()).isFalse();
+	}
+
+	// =================================================================================
+	// B-3: arancel por oferta (RF-M16-008)
+	// =================================================================================
+
+	private static final long OFERTA_ID = 34L;
+
+	private void ofertaAsociable(boolean admiteObraSocial, long... practicas) {
+		given(ofertas.find(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(Optional.of(new OfertaSnapshot(
+				OFERTA_ID, ORG_ID, SEDE_ID, 5L, "Kinesio OSDE", 45, 1, false, true, false, false,
+				true, ENERO, null, true)));
+		given(ofertas.precioDe(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(Optional.of(
+				new PrecioDeOferta(OFERTA_ID, new BigDecimal("15000.00"), "ARS", admiteObraSocial)));
+		given(practicasDeOferta.practicasHabilitadas(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(
+				java.util.Arrays.stream(practicas).mapToObj(p -> new PracticaDeOferta(p, p == practicas[0]))
+						.toList());
+	}
+
+	@Test
+	@DisplayName("B-3: el arancel de una oferta convive con el general de la practica en el mismo "
+			+ "periodo")
+	void por_oferta_convive_con_el_general() {
+		ofertaAsociable(true, PRACTICA_ID);
+		given(aranceles.findActivosPorPractica(ORG_ID, CONVENIO_ID, PRACTICA_ID))
+				.willReturn(List.of(arancel(999L, ENERO, DICIEMBRE)));
+
+		ArancelView creado = service.crear(delMostrador, SEDE_ID, CONVENIO_ID,
+				altaDeOferta(ENERO, DICIEMBRE));
+
+		assertThat(creado.ofertaId()).isEqualTo(OFERTA_ID);
+	}
+
+	@Test
+	@DisplayName("B-3: dos aranceles de la MISMA oferta que se pisan: 409")
+	void dos_de_la_misma_oferta_se_pisan() {
+		ofertaAsociable(true, PRACTICA_ID);
+		given(aranceles.findActivosPorPractica(ORG_ID, CONVENIO_ID, PRACTICA_ID))
+				.willReturn(List.of(arancelDeOferta(998L, ENERO, DICIEMBRE)));
+
+		assertThatThrownBy(() -> service.crear(delMostrador, SEDE_ID, CONVENIO_ID,
+				altaDeOferta(MARZO, DICIEMBRE)))
+				.isInstanceOf(ArancelSolapadoException.class);
+		verify(aranceles, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("B-3: un general nuevo no choca con el de una oferta, solo con otro general")
+	void el_general_no_choca_con_el_de_una_oferta() {
+		given(aranceles.findActivosPorPractica(ORG_ID, CONVENIO_ID, PRACTICA_ID))
+				.willReturn(List.of(arancelDeOferta(998L, ENERO, DICIEMBRE)));
+
+		assertThatCode(() -> service.crear(delMostrador, SEDE_ID, CONVENIO_ID,
+				alta(PRACTICA_ID, ENERO, DICIEMBRE)))
+				.doesNotThrowAnyException();
+	}
+
+	@Test
+	@DisplayName("B-3: una oferta de otra sede o tenant es 404 y no se escribe nada")
+	void oferta_ajena_es_404() {
+		given(ofertas.find(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.crear(delMostrador, SEDE_ID, CONVENIO_ID,
+				altaDeOferta(ENERO, DICIEMBRE)))
+				.isInstanceOf(com.akine.contracting.domain.exception.OfertaNoAccesibleException.class);
+		verify(aranceles, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("B-3: una oferta que no admite obra social no se asocia a un convenio: 409")
+	void oferta_sin_obra_social() {
+		ofertaAsociable(false, PRACTICA_ID);
+
+		assertThatThrownBy(() -> service.crear(delMostrador, SEDE_ID, CONVENIO_ID,
+				altaDeOferta(ENERO, DICIEMBRE)))
+				.isInstanceOf(com.akine.contracting.domain.exception.OfertaSinObraSocialException.class);
+	}
+
+	@Test
+	@DisplayName("B-3: una practica que la oferta no declara: 409, con los dos ids")
+	void practica_no_declarada_en_la_oferta() {
+		ofertaAsociable(true, 77L);
+
+		assertThatThrownBy(() -> service.crear(delMostrador, SEDE_ID, CONVENIO_ID,
+				altaDeOferta(ENERO, DICIEMBRE)))
+				.isInstanceOf(
+						com.akine.contracting.domain.exception.PracticaNoHabilitadaEnOfertaException.class);
+	}
+
+	@Test
+	@DisplayName("B-3: la oferta queda en la auditoria del alta")
+	void la_oferta_se_audita() {
+		ofertaAsociable(true, PRACTICA_ID);
+
+		service.crear(delMostrador, SEDE_ID, CONVENIO_ID, altaDeOferta(ENERO, DICIEMBRE));
+
+		ArgumentCaptor<AuditEntry> entrada = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(entrada.capture());
+		assertThat(entrada.getValue().details()).containsEntry("ofertaId", String.valueOf(OFERTA_ID));
+	}
+
+	@Test
+	@DisplayName("B-3: con oferta manda el arancel de la oferta; sin oferta, el general")
+	void resolver_con_y_sin_oferta() {
+		given(convenios.findActivosPorAlcance(ORG_ID, SEDE_ID, FINANCIADOR_ID, PLAN_ID))
+				.willReturn(List.of(convenioConId(ENERO, DICIEMBRE)));
+		ConvenioArancel deOferta = arancelDeOferta(998L, ENERO, DICIEMBRE);
+		given(aranceles.findActivosPorPractica(ORG_ID, CONVENIO_ID, PRACTICA_ID))
+				.willReturn(List.of(deOferta, arancel(999L, ENERO, DICIEMBRE)));
+
+		ResolucionDeArancel conOferta = service.resolver(
+				delMostrador, SEDE_ID, FINANCIADOR_ID, PLAN_ID, PRACTICA_ID, OFERTA_ID, MARZO);
+		ResolucionDeArancel sinOferta = service.resolver(
+				delMostrador, SEDE_ID, FINANCIADOR_ID, PLAN_ID, PRACTICA_ID, MARZO);
+		ResolucionDeArancel otraOferta = service.resolver(
+				delMostrador, SEDE_ID, FINANCIADOR_ID, PLAN_ID, PRACTICA_ID, 35L, MARZO);
+
+		assertThat(conOferta.arancel().arancelId()).isEqualTo(998L);
+		assertThat(conOferta.arancel().ofertaId()).isEqualTo(OFERTA_ID);
+		assertThat(sinOferta.arancel().arancelId()).isEqualTo(999L);
+		assertThat(sinOferta.arancel().ofertaId()).isNull();
+		assertThat(otraOferta.arancel().arancelId()).isEqualTo(999L);
+	}
+
+	@Test
+	@DisplayName("B-3: un arancel SOLO de oferta no resuelve para quien pregunta sin oferta")
+	void solo_de_oferta_no_resuelve_sin_oferta() {
+		given(convenios.findActivosPorAlcance(ORG_ID, SEDE_ID, FINANCIADOR_ID, PLAN_ID))
+				.willReturn(List.of(convenioConId(ENERO, DICIEMBRE)));
+		given(aranceles.findActivosPorPractica(ORG_ID, CONVENIO_ID, PRACTICA_ID))
+				.willReturn(List.of(arancelDeOferta(998L, ENERO, DICIEMBRE)));
+
+		assertThat(service.resolver(delMostrador, SEDE_ID, FINANCIADOR_ID, PLAN_ID, PRACTICA_ID,
+				MARZO).motivo()).isEqualTo(MotivoSinArancel.SIN_ARANCEL_VIGENTE);
+	}
+
+	private static ArancelAltaCommand altaDeOferta(LocalDate desde, LocalDate hasta) {
+		return new ArancelAltaCommand(PRACTICA_ID, new BigDecimal("12000.00"),
+				new BigDecimal("9600.00"), new BigDecimal("2400.00"), desde, hasta, OFERTA_ID);
+	}
+
+	private static ConvenioArancel arancelDeOferta(long id, LocalDate desde, LocalDate hasta) {
+		ConvenioArancel arancel = new ConvenioArancel(ORG_ID, SEDE_ID, CONVENIO_ID, PRACTICA_ID,
+				OFERTA_ID, new BigDecimal("12000.00"), new BigDecimal("9600.00"),
+				new BigDecimal("2400.00"), "ARS", desde, hasta);
+		ReflectionTestUtils.setField(arancel, "id", id);
+		return arancel;
 	}
 
 	// =================================================================================

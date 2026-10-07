@@ -92,6 +92,16 @@ final class AuditEvents {
 	/** Cambio de la practica principal; el detalle lleva {@code anterior} y {@code nueva}. */
 	static final String OFERTA_PRACTICA_PRINCIPAL_CHANGED = "OFERTA_PRACTICA_PRINCIPAL_CHANGED";
 
+	// --- Precio particular por vigencia (B-3, RF-M16-009) --------------------------------
+	// Entidad auditada: la OFERTA. Detalle con el precioId, el importe y el periodo.
+
+	static final String OFERTA_PRECIO_PARTICULAR_CREATED = "OFERTA_PRECIO_PARTICULAR_CREATED";
+
+	static final String OFERTA_PRECIO_PARTICULAR_UPDATED = "OFERTA_PRECIO_PARTICULAR_UPDATED";
+
+	static final String OFERTA_PRECIO_PARTICULAR_DEACTIVATED =
+			"OFERTA_PRECIO_PARTICULAR_DEACTIVATED";
+
 	/**
 	 * La entidad auditada es la OFERTA, no la fila de habilitacion.
 	 *

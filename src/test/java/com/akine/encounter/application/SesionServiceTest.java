@@ -66,6 +66,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -749,7 +750,7 @@ class SesionServiceTest {
 		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
 				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
 		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(8);
-		given(ofertas.precioDe(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(
+		given(ofertas.precioEn(eq(ORG_ID), eq(CONSULTORIO_ID), eq(OFERTA_ID), any())).willReturn(Optional.of(
 				new PrecioDeOferta(OFERTA_ID, new BigDecimal("8500.00"), "ARS", true)));
 		given(tratamientos.practicasVigentesDe(ORG_ID, 1L)).willReturn(List.of(610L, 611L, 610L));
 
@@ -775,7 +776,7 @@ class SesionServiceTest {
 		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
 				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
 		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(1);
-		given(ofertas.precioDe(anyLong(), anyLong(), anyLong())).willReturn(Optional.empty());
+		given(ofertas.precioEn(anyLong(), anyLong(), anyLong(), any())).willReturn(Optional.empty());
 
 		service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(Asistencia.AUSENTE, null), 0L);
 

@@ -183,6 +183,13 @@ public enum ProblemType {
 	OFERTA_INACTIVA("oferta-inactiva"),
 	/** La oferta ya estaba dada de baja. */
 	OFERTA_ALREADY_INACTIVE("oferta-already-inactive"),
+	/**
+	 * B-3 (RF-M16-009): ya hay un precio particular activo de la oferta cuyo periodo se pisa con el
+	 * pedido. Lo produce el servicio bajo el lock de la oferta, nunca un indice.
+	 */
+	PRECIO_PARTICULAR_SOLAPADO("precio-particular-solapado"),
+	/** B-3: el precio particular esta dado de baja; no admite cambios ni otra baja. */
+	PRECIO_PARTICULAR_INACTIVO("precio-particular-inactivo"),
 	/** La sede existe y es accesible, pero su estado no admite operar sobre ella. */
 
 	/**
@@ -483,6 +490,16 @@ public enum ProblemType {
 	ARANCEL_INACTIVO("arancel-inactivo"),
 	/** El arancel ya estaba dado de baja. */
 	ARANCEL_ALREADY_INACTIVE("arancel-already-inactive"),
+	/**
+	 * B-3 (RF-M16-008): el arancel por oferta pide una practica que la oferta no declara (A-9,
+	 * DP-11). Ese arancel no resolveria nunca para lo que la oferta presta por defecto.
+	 */
+	PRACTICA_NO_HABILITADA_EN_OFERTA("practica-no-habilitada-en-oferta"),
+	/**
+	 * B-3 (RF-M16-008, RF-M08-006 paso 6): la oferta no admite obra social, asi que asociarla a un
+	 * convenio no tiene efecto: el devengo y la cobertura aplicable la cobran particular igual.
+	 */
+	OFERTA_SIN_OBRA_SOCIAL("oferta-sin-obra-social"),
 
 	// --- Ordenes, autorizaciones y documentacion administrativa (M17, AKINE-03.06) ---
 
