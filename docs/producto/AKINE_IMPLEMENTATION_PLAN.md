@@ -411,6 +411,71 @@ prestación). Manual sin alerta (depende de la memoria del operador).
 
 **Desbloquea:** C-4.
 
+## DP-14 — Bootstrap del `PLATFORM_ADMIN` por variable de entorno (DU-2)
+
+**Estado:** RESUELTA el 07/10/2026 por el dueño del producto.
+
+**Contexto.** `V15` siembra la cuenta `plataforma@akine.app` con el rol de plataforma y
+`password_hash` NULL, y prometía tomar posesión por "recuperar contraseña". Pero
+`PasswordResetService.solicitar` descarta en silencio las cuentas que no pueden autenticarse, y
+una cuenta sin credencial no puede: en un despliegue nuevo **ningún endpoint de
+`/api/v1/platform` es alcanzable**. Además el email quedó fijo en la migración.
+
+**Decisión.** Al arrancar, si **no existe ningún administrador de plataforma con credencial** y
+está definida `AKINE_BOOTSTRAP_ADMIN_EMAIL`, la cuenta sembrada pasa a ese email y se le encola
+un **enlace de activación** por el outbox (el mismo flujo del registro, ADR-0017/0018). Una sola
+vez: idempotente (no actúa si ya hay un admin con credencial ni reenvía si hay un enlace vigente),
+auditado como evento de plataforma, sin secretos en el repositorio ni en el entorno.
+
+**Alternativas descartadas.** Abrir el reset para cuentas sin credencial (toca ADR-0018 y obliga
+a tener la casilla `plataforma@akine.app` en cada despliegue). Comando de una vez con contraseña
+por variable de entorno (la contraseña queda en el entorno y en el historial de despliegue).
+
+**Desbloquea:** A-4 → A-7 (consola de plataforma, catálogo global de financiadores).
+
+## DP-15 — `reporte:read` completo según la matriz (DU-3)
+
+**Estado:** RESUELTA el 07/10/2026 por el dueño del producto.
+
+**Contexto.** `reporte:read` existe y lo exige `ReporteService`, pero **ningún rol lo tiene**:
+los tres endpoints de reportes son inalcanzables. La matriz (`docs/seguridad/matriz-permisos-minima.md`)
+fija el alcance: Ver Reportes = ORG_ADMIN Sí, CONSULTORIO_ADMIN Sí, PROFESIONAL "solo reportes de
+su propia actividad", ADMINISTRATIVO "solo operativos y de caja, sin contenido clínico". Las
+secciones del reporte ya se recortan por el permiso de su fuente (`seccionesOmitidas`).
+
+**Decisión.** Se otorga según la matriz, **completo**:
+- ORG_ADMIN (organización) y CONSULTORIO_ADMIN (sede): todo lo de su alcance.
+- ADMINISTRATIVO (sede): operativos y caja; lo clínico ya queda omitido porque no tiene `hc:read`.
+- PROFESIONAL: **solo su propia actividad**. Se implementa el filtro por profesional en las
+  secciones de turnos, sesiones y casos (el actor ve lo que atendió o le fue asignado); las
+  secciones económicas ya se omiten porque no tiene `cobro:register`.
+
+**Alternativas descartadas.** Por etapas (PROFESIONAL sin acceso hasta el filtro). Solo
+administradores (más restrictivo que la matriz).
+
+**Desbloquea:** G-1 (pasa de chico a intermedio) → G-8 (dashboards).
+
+## DP-16 — Recepción con máquina de estados propia, como pide DP-05 (DU-9)
+
+**Estado:** RESUELTA el 07/10/2026 por el dueño del producto.
+
+**Contexto.** DP-05 decidió máquinas independientes para Turno, Check-in/Recepción y Sesión. Por
+el recorte de DP-10, 05.04 implementó el check-in como `EN_ESPERA` **dentro de `EstadoTurno`** y
+sin validación administrativa; `consultarElegibilidadAdministrativa` sigue sin consumidor.
+
+**Decisión.** Se cumple DP-05: entidad **Recepción** con estados propios —llegó → validada u
+observada → en espera → llamada—, con actor, hora, estado anterior, estado nuevo y motivo en cada
+transición. El **Turno vuelve a ser solo la reserva**: `EN_ESPERA` sale de `EstadoTurno` con
+migración de los datos existentes a la tabla de recepción. La validación administrativa (E-4) y
+el prepago como anticipo (E-6) se apoyan en la Recepción. Ninguna transición de recepción prueba
+que una prestación ocurrió (regla de DP-05 intacta).
+
+**Alternativas descartadas.** Documentar el desvío con un ADR (contradice una decisión ya
+resuelta y deja espera y llamado mezclados con la reserva). Híbrido transitorio (dos fuentes de
+verdad mientras dure).
+
+**Desbloquea:** E-4 → E-6.
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional
