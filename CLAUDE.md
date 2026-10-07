@@ -530,8 +530,11 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
   sin contexto, y aprobar una solicitud publica el concepto global en la misma transacción.
 - **Catálogo global de financiadores (F3):** diseñado en A-7 y sin implementar, espera **DU-13**
   —referencia con `owner_key` o copia adoptada— (`docs/diseno/AKINE-A-7-plataforma.md` §3).
-- **CA-M03-002 parcialmente cubierto:** RF-M03-002 pide consultorio + primer box + horario en un
-  acto; el box lo entregó 02.02 y el horario general va a F5.
+- ~~**CA-M03-002 parcialmente cubierto**~~ **Cubierto en el backend por A-8** (`V83`, contrato
+  0.69.0): el alta de sede acepta `primerBox` y `horarioGeneral` y los crea en la misma
+  transacción. El horario general es informativo —la agenda no lo lee (RN-M03-004)—. Falta la
+  pantalla, y el onboarding compuesto de la primera sede sigue sin box ni horario: se cargan
+  después por espacios y por el `PUT` del calendario.
 
 ### Próximo paso concreto
 

@@ -143,6 +143,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V79` | libre | A-7 la tuvo asignada y entró sin migración: sigue libre. Tomar la siguiente libre y anotarla acá |
 | `V80` | B-3 | **Usada**: `V80__b3_arancel_por_oferta_y_precio_particular.sql` — `convenio_arancel.oferta_id` nullable (`fk_convenio_arancel_oferta`, `ix_convenio_arancel_oferta`; dueño `contracting`) y tabla `oferta_precio_particular` (precio particular por vigencia; dueño `offering`). Los dos no-solapamientos los hace cumplir un lock, ningún índice |
 | `V81` | E-6 | **Usada**: `V81__e6_prepago_politica_y_anticipo_de_turno.sql` — `oferta_servicio_consultorio.exige_prepago` (política de prepago, DP-06) y `cobro.turno_id` con la columna generada `turno_prepago_vigente` y `uk_cobro_prepago_turno_vigente` (un solo prepago vigente por turno) |
+| `V83` | A-8 | **Usada**: `V83__m03_horario_general_de_sede.sql` — tabla `consultorio_horario` (dueño `resource`): franjas semanales del horario general de la sede, baja lógica al reemplazar, sin unique (el solapamiento lo valida la aplicación). `V82` es de otro paquete en paralelo |
 
 ## 7. Paquetes de trabajo
 
@@ -168,7 +169,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | ~~**A-3**~~ | ~~`POST /notifications/{id}/retry` con permiso administrativo y filtro por tenant~~ — hecho (#15, contrato 0.47.0, 06/10) | api | S | — | F0-F1 |
 | ~~A-5~~ | ~~Slice tests de `MembershipController`, `AuditEventController` y plataforma; unitarios de los 4 servicios de F2~~ — hecho (#25 slices, #26 unitarios de F2, 06/10) | api | M | — | F0-F1, F2 |
 | A-6 | E2E: crear organización; registro → activación → login → reset con canje real; acceso denegado y auditoría | web | M | — | F0-F1 |
-| A-8 | CA-M03-002: primer box + horario general en el alta de sede | api + web | M | — | F2 |
+| A-8 | CA-M03-002: primer box + horario general en el alta de sede — **backend hecho** (`V83`, contrato 0.69.0, 07/10): `POST /organizations/{orgId}/consultorios` acepta `primerBox` y `horarioGeneral` opcionales y los crea en la transacción del alta vía `organization.spi.AltaDeSedeExtension` (implementada en `resource`); si algo falla no queda nada. El horario general vive con el calendario de la sede (`GET`/`PUT /consultorios/{id}/calendario`, campo `horarioGeneral`), es informativo y la agenda no lo lee (RN-M03-004); falta la pantalla | api + web | M | — | F2 |
 | ~~**B-1**~~ | ~~Búsqueda por número de afiliado (RF-M07-001)~~ — hecho (contrato 0.46.0, antes del 06/10) | api + web | S | — | F3 |
 | ~~**B-2**~~ | ~~`spi` "cobertura vigente de esta persona para esta práctica en esta fecha"~~ — hecho (`cfa85d8`, antes del 06/10) | api | M | — | F3 |
 | B-5 | Contribuyente de cobertura al Paciente 360 — **backend hecho** (#34, 06/10, sin cambio de contrato); falta la pantalla | api + web | S | — | F3 |
