@@ -203,7 +203,7 @@ public class ConsultorioController {
 		log.info("Alta de sede solicitada: organizationId={} idempotencyKey={}",
 				orgId, idempotencyKey);
 
-		ConsultorioView creada = consultorioService.create(actor(), orgId,
+		ConsultorioView creada = consultorioService.create(actor(orgId), orgId,
 				new ConsultorioAltaCommand(
 						request.name(),
 						request.timezone(),
@@ -264,7 +264,7 @@ public class ConsultorioController {
 			@PathVariable long consultorioId) {
 
 		return ResponseEntity.ok(ConsultorioResponse.from(
-				consultorioService.find(actor(), orgId, consultorioId)));
+				consultorioService.find(actor(orgId), orgId, consultorioId)));
 	}
 
 	@PatchMapping(path = "/{consultorioId}", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -328,7 +328,7 @@ public class ConsultorioController {
 
 			@Valid @RequestBody UpdateConsultorioRequest request) {
 
-		ConsultorioView actualizada = consultorioService.update(actor(), orgId, consultorioId,
+		ConsultorioView actualizada = consultorioService.update(actor(orgId), orgId, consultorioId,
 				new ConsultorioEdicionCommand(
 						request.name(),
 						request.timezone(),
@@ -414,7 +414,7 @@ public class ConsultorioController {
 			@Valid @RequestBody DeactivateConsultorioRequest request) {
 
 		ConsultorioView baja =
-				consultorioService.deactivate(actor(), orgId, consultorioId, request.reason());
+				consultorioService.deactivate(actor(orgId), orgId, consultorioId, request.reason());
 		return ResponseEntity.ok(ConsultorioResponse.from(baja));
 	}
 
@@ -424,11 +424,14 @@ public class ConsultorioController {
 	 * <p>La sede sale del contexto ya revalidado contra la base y jamas de un parametro: sin
 	 * ella, el evaluador no puede decidir un permiso de alcance CONSULTORIO y un
 	 * {@code CONSULTORIO_ADMIN} quedaria sin ninguno.
+	 *
+	 * <p>La organizacion de la ruta tiene que ser la del contexto: ver
+	 * {@link AuthorizationGuard#actorSobre}.
 	 */
-	private OperatingActor actor() {
+	private OperatingActor actor(long orgId) {
 		ApiActor actor = ApiActor.current(tenantContextHolder);
-		return new OperatingActor(
-				actor.accountId(), actor.platformAdmin(), authorizationGuard.consultorioDelContexto());
+		return authorizationGuard.actorSobre(
+				actor.accountId(), actor.platformAdmin(), actor.contextOrganizationId(), orgId);
 	}
 
 	/**

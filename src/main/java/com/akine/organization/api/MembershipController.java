@@ -135,7 +135,7 @@ public class MembershipController {
 				ApiPaging.pagina(page), ApiPaging.tamano(size), Sort.by(Sort.Direction.ASC, "id"));
 
 		return ResponseEntity.ok(MembershipPageResponse.from(
-				membershipService.list(actor(), orgId, pagina)));
+				membershipService.list(actor(orgId), orgId, pagina)));
 	}
 
 	@GetMapping("/{membershipId}")
@@ -172,7 +172,7 @@ public class MembershipController {
 			@PathVariable long membershipId) {
 
 		return ResponseEntity.ok(MembershipResponse.from(
-				membershipService.find(actor(), orgId, membershipId)));
+				membershipService.find(actor(orgId), orgId, membershipId)));
 	}
 
 	@GetMapping("/{membershipId}/grants")
@@ -213,7 +213,7 @@ public class MembershipController {
 			@PathVariable long membershipId) {
 
 		List<MembershipGrantResponse> grants =
-				membershipService.grants(actor(), orgId, membershipId).stream()
+				membershipService.grants(actor(orgId), orgId, membershipId).stream()
 						.map(MembershipGrantResponse::from)
 						.toList();
 
@@ -268,7 +268,7 @@ public class MembershipController {
 			@PathVariable long membershipId) {
 
 		return ResponseEntity.ok(DesvinculacionImpactoResponse.de(
-				membershipService.desvinculacionImpacto(actor(), orgId, membershipId)));
+				membershipService.desvinculacionImpacto(actor(orgId), orgId, membershipId)));
 	}
 
 	// =================================================================================
@@ -339,7 +339,7 @@ public class MembershipController {
 			@Valid @RequestBody ChangeMembershipRequest request) {
 
 		return ResponseEntity.ok(MembershipResponse.from(membershipService.changeRole(
-				actor(),
+				actor(orgId),
 				orgId,
 				membershipId,
 				request.roleCode(),
@@ -402,7 +402,7 @@ public class MembershipController {
 			@Valid @RequestBody MembershipReasonRequest request) {
 
 		return ResponseEntity.ok(MembershipResponse.from(
-				membershipService.suspend(actor(), orgId, membershipId, request.reason())));
+				membershipService.suspend(actor(orgId), orgId, membershipId, request.reason())));
 	}
 
 	@PostMapping(path = "/{membershipId}/reactivate", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -454,7 +454,7 @@ public class MembershipController {
 			@Valid @RequestBody MembershipReasonRequest request) {
 
 		return ResponseEntity.ok(MembershipResponse.from(
-				membershipService.reactivate(actor(), orgId, membershipId, request.reason())));
+				membershipService.reactivate(actor(orgId), orgId, membershipId, request.reason())));
 	}
 
 	@PostMapping(path = "/{membershipId}/revoke", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -516,7 +516,7 @@ public class MembershipController {
 			@Valid @RequestBody MembershipReasonRequest request) {
 
 		return ResponseEntity.ok(MembershipResponse.from(
-				membershipService.revoke(actor(), orgId, membershipId, request.reason())));
+				membershipService.revoke(actor(orgId), orgId, membershipId, request.reason())));
 	}
 
 	// =================================================================================
@@ -578,7 +578,7 @@ public class MembershipController {
 
 		MembershipGrantResponse otorgado = MembershipGrantResponse.from(
 				membershipService.assignGrant(
-						actor(),
+						actor(orgId),
 						orgId,
 						membershipId,
 						request.permissionCode(),
@@ -641,7 +641,7 @@ public class MembershipController {
 			@Parameter(description = "Motivo declarado de la baja. Queda en la auditoria")
 			@RequestParam(required = false) String reason) {
 
-		membershipService.revokeGrant(actor(), orgId, membershipId, permissionCode, reason);
+		membershipService.revokeGrant(actor(orgId), orgId, membershipId, permissionCode, reason);
 		return ResponseEntity.noContent().build();
 	}
 
@@ -655,10 +655,13 @@ public class MembershipController {
 	 * <p>La sede sale del contexto ya revalidado contra la base y jamas de un parametro: sin
 	 * ella, el evaluador no puede decidir un permiso de alcance CONSULTORIO y un
 	 * {@code CONSULTORIO_ADMIN} quedaria sin ninguno.
+	 *
+	 * <p>La organizacion de la ruta tiene que ser la del contexto: ver
+	 * {@link AuthorizationGuard#actorSobre}.
 	 */
-	private OperatingActor actor() {
+	private OperatingActor actor(long orgId) {
 		ApiActor actor = ApiActor.current(tenantContextHolder);
-		return new OperatingActor(
-				actor.accountId(), actor.platformAdmin(), authorizationGuard.consultorioDelContexto());
+		return authorizationGuard.actorSobre(
+				actor.accountId(), actor.platformAdmin(), actor.contextOrganizationId(), orgId);
 	}
 }

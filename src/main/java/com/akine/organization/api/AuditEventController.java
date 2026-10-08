@@ -143,6 +143,9 @@ public class AuditEventController {
 			@Parameter(description = "Elementos por pagina. Se recorta a 100", example = "20")
 			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size) {
 
+		// Primero el aislamiento: una organizacion ajena es 404 aunque los filtros sean invalidos.
+		OperatingActor actor = actor(orgId);
+
 		boolean porEntidad = entityType != null && entityId != null;
 		boolean porActor = actorAccountId != null;
 		boolean porPeriodo = from != null && to != null;
@@ -154,7 +157,6 @@ public class AuditEventController {
 				ApiPaging.tamano(size),
 				Sort.by(Sort.Direction.DESC, "occurredAt"));
 
-		OperatingActor actor = actor();
 		Page<AuditEventSummary> hechos;
 		if (porEntidad) {
 			hechos = auditQueryService.porEntidad(actor, orgId, entityType, entityId, pagina);
@@ -185,9 +187,9 @@ public class AuditEventController {
 		}
 	}
 
-	private OperatingActor actor() {
+	private OperatingActor actor(long orgId) {
 		ApiActor actor = ApiActor.current(tenantContextHolder);
-		return new OperatingActor(
-				actor.accountId(), actor.platformAdmin(), authorizationGuard.consultorioDelContexto());
+		return authorizationGuard.actorSobre(
+				actor.accountId(), actor.platformAdmin(), actor.contextOrganizationId(), orgId);
 	}
 }

@@ -190,6 +190,32 @@ public class AuthorizationGuard {
 	}
 
 	/**
+	 * El actor de una operacion sobre {@code /organizations/{organizationId}/...}, con la
+	 * organizacion de la ruta ya comparada contra la del contexto.
+	 *
+	 * <p><b>El evaluador de permisos no alcanza para aislar, y por eso existe esto.</b>
+	 * {@link PermissionGuard} decide si la cuenta tiene el permiso en la organizacion que se le
+	 * pregunta, y se le pregunta la de la ruta. Una cuenta que administra dos organizaciones lo
+	 * tiene en las dos: con el contexto de A elegido, pedir {@code /organizations/B/...} pasaba
+	 * el evaluador y devolvia los datos de B. El contexto activo es el limite del request —
+	 * cambiarlo es un acto explicito y auditado—, asi que la ruta tiene que coincidir con el
+	 * antes de preguntar nada: distinta es 404, igual que una organizacion inexistente; sin
+	 * contexto es 403.
+	 *
+	 * <p>El administrador de plataforma se saltea la comparacion por el mismo motivo que en
+	 * {@link #requireOrgAdmin}: no tiene membership ni contexto, y lo que decide si pasa es el
+	 * evaluador, que exige un acceso de soporte vigente.
+	 */
+	public OperatingActor actorSobre(
+			long accountId, boolean platformAdmin, Long contextOrganizationId, long organizationId) {
+
+		if (!platformAdmin) {
+			requireSameContext(accountId, organizationId, contextOrganizationId);
+		}
+		return new OperatingActor(accountId, platformAdmin, consultorioDelContexto());
+	}
+
+	/**
 	 * Sede del contexto validado del request, o {@code null} si no hay contexto.
 	 *
 	 * <p>Lo necesitan las decisiones de alcance {@code CONSULTORIO}: sin la sede, el evaluador

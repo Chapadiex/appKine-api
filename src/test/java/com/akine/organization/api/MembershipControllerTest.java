@@ -83,7 +83,8 @@ class MembershipControllerTest {
 	/** Un mock devuelve 0 para un {@code Long}: la sede del contexto se fija explicita. */
 	@BeforeEach
 	void sedeDelContexto() {
-		given(authorizationGuard.consultorioDelContexto()).willReturn(3L);
+		given(authorizationGuard.actorSobre(anyLong(), anyBoolean(), any(), anyLong()))
+				.willAnswer(inv -> new OperatingActor(inv.getArgument(0), inv.getArgument(1), 3L));
 	}
 
 	// =====================================================================================
