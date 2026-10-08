@@ -458,6 +458,7 @@ al que acceder. Es el mismo tratamiento que el catálogo de planes (`plan`, `pla
   son solo el default), por el mismo alta global y con el mismo rol de plataforma. Si la publicación
   choca, la solicitud sigue pendiente. **No cambia ningún permiso**: resolver sigue siendo del rol de
   plataforma y la bandeja sigue sin pasar por soporte. Ver `docs/diseno/AKINE-A-7-plataforma.md` §2.
+  **Confirmado por el dueño del producto el 08/10/2026 (DP-18):** la enmienda queda firme.
 
 ---
 
