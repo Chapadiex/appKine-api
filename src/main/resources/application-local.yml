@@ -48,6 +48,12 @@ logging:
   level:
     com.akine: DEBUG
     org.flywaydb: INFO
+  structured:
+    format:
+      # En local el log sale en TEXTO, legible a ojo, con [app,traceId,spanId,requestId] en
+      # cada linea. Para ver el JSON que sale en los demas perfiles:
+      #   AKINE_LOG_FORMAT=logstash ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+      console: ${AKINE_LOG_FORMAT:}
 
 management:
   endpoint:
