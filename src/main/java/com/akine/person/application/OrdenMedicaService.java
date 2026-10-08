@@ -2,6 +2,7 @@ package com.akine.person.application;
 
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.AdjuntoAdministrativo;
+import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.OrdenMedica;
 import com.akine.person.domain.Persona;
@@ -15,6 +16,7 @@ import com.akine.person.domain.exception.PersonaInactivaException;
 import com.akine.person.domain.exception.PersonaNotAccessibleException;
 import com.akine.person.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.person.domain.port.PersonRepositoryPorts.AdjuntoRepositoryPort;
+import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.CoberturaPacienteRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.OrdenMedicaRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.PerfilPacienteRepositoryPort;
@@ -71,6 +73,7 @@ public class OrdenMedicaService {
 	private final PerfilPacienteRepositoryPort perfiles;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final AutorizacionRepositoryPort autorizaciones;
 
 	@SuppressWarnings("java:S107")
 	public OrdenMedicaService(
@@ -80,7 +83,8 @@ public class OrdenMedicaService {
 			PersonaRepositoryPort personas,
 			PerfilPacienteRepositoryPort perfiles,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			AutorizacionRepositoryPort autorizaciones) {
 
 		this.ordenes = ordenes;
 		this.coberturas = coberturas;
@@ -89,6 +93,7 @@ public class OrdenMedicaService {
 		this.perfiles = perfiles;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.autorizaciones = autorizaciones;
 	}
 
 	// =================================================================================
@@ -116,6 +121,8 @@ public class OrdenMedicaService {
 
 		DocumentoEstadoFiltro filtro = estado == null ? DocumentoEstadoFiltro.TODAS : estado;
 		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
+		// Una sola lectura para todas las ordenes: la situacion de cada una sale de aca (B-4).
+		List<Autorizacion> delPaciente = autorizaciones.historial(organizationId, personaId);
 
 		return ordenes.historial(organizationId, personaId).stream()
 				.filter(orden -> switch (filtro) {
@@ -123,7 +130,7 @@ public class OrdenMedicaService {
 					case INACTIVA -> !orden.isActive();
 					case TODAS -> true;
 				})
-				.map(orden -> OrdenView.de(orden, contra))
+				.map(orden -> OrdenView.de(orden, delPaciente, contra))
 				.toList();
 	}
 
@@ -205,7 +212,7 @@ public class OrdenMedicaService {
 
 		OrdenMedica guardada = persistir(orden);
 		auditar(AuditEvents.ORDEN_UPDATED, guardada, actor, null, null, null, Map.of());
-		return OrdenView.de(guardada, LocalDate.now());
+		return vista(guardada);
 	}
 
 	/**
@@ -242,7 +249,7 @@ public class OrdenMedicaService {
 				Map.of("adjuntoId", String.valueOf(adjuntoId)));
 
 		log.info("Documento de orden actualizado: ordenId={} adjuntoId={}", ordenId, adjuntoId);
-		return OrdenView.de(guardada, LocalDate.now());
+		return vista(guardada);
 	}
 
 	/** Baja logica con motivo obligatorio. No borra nada (regla maestra 10). */
@@ -265,7 +272,15 @@ public class OrdenMedicaService {
 				Map.of());
 
 		log.info("Orden medica dada de baja: ordenId={} personaId={}", ordenId, personaId);
-		return OrdenView.de(guardada, LocalDate.now());
+		return vista(guardada);
+	}
+
+	/** La orden con su situacion de hoy, que depende de las autorizaciones que la usan (B-4). */
+	private OrdenView vista(OrdenMedica orden) {
+		return OrdenView.de(
+				orden,
+				autorizaciones.historial(orden.getOrganizationId(), orden.getPersonaId()),
+				LocalDate.now());
 	}
 
 	// =================================================================================

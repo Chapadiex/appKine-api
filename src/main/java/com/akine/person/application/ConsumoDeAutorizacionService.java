@@ -3,6 +3,9 @@ package com.akine.person.application;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.AutorizacionAlerta;
+import com.akine.person.domain.AutorizacionEvento;
+import com.akine.person.domain.TipoEventoAutorizacion;
+import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionEventoRepositoryPort;
 import com.akine.person.domain.AutorizacionMovimiento;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.ResolucionAlertaAutorizacion;
@@ -129,6 +132,7 @@ public class ConsumoDeAutorizacionService {
 	private final AuditTrail auditTrail;
 	private final CoberturaPacienteRepositoryPort coberturas;
 	private final AutorizacionAlertaRepositoryPort alertas;
+	private final AutorizacionEventoRepositoryPort eventos;
 
 	@SuppressWarnings("java:S107")
 	public ConsumoDeAutorizacionService(
@@ -138,7 +142,8 @@ public class ConsumoDeAutorizacionService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
 			CoberturaPacienteRepositoryPort coberturas,
-			AutorizacionAlertaRepositoryPort alertas) {
+			AutorizacionAlertaRepositoryPort alertas,
+			AutorizacionEventoRepositoryPort eventos) {
 
 		this.autorizaciones = autorizaciones;
 		this.movimientos = movimientos;
@@ -147,6 +152,7 @@ public class ConsumoDeAutorizacionService {
 		this.auditTrail = auditTrail;
 		this.coberturas = coberturas;
 		this.alertas = alertas;
+		this.eventos = eventos;
 	}
 
 	// =================================================================================
@@ -345,6 +351,14 @@ public class ConsumoDeAutorizacionService {
 				Instant.now(),
 				hecho.actorCuentaId()));
 
+		// DP-23. Un evento por movimiento: uk_autorizacion_evento_movimiento lo hace cumplir aun
+		// si dos transacciones llegaran hasta aca con el mismo movimiento, que el unique del
+		// ledger ya impide.
+		eventos.registrar(AutorizacionEvento.delLedger(
+				autorizacion, TipoEventoAutorizacion.CONSUMO, movimiento.getId(), cantidad,
+				"Sesion " + hecho.sesionId(), null, hecho.consultorioId(), hecho.actorCuentaId(),
+				movimiento.getOcurrioEn()));
+
 		Integer saldoRestante = autorizacion.getCantidadAutorizada() == null
 				? null
 				: autorizacion.getCantidadAutorizada()
@@ -532,6 +546,11 @@ public class ConsumoDeAutorizacionService {
 				consumo.getId(),
 				Instant.now(),
 				actor.accountId()));
+
+		eventos.registrar(AutorizacionEvento.delLedger(
+				autorizacion, TipoEventoAutorizacion.REVERSION_DE_CONSUMO, reversion.getId(),
+				consumo.getCantidad(), "Revierte el consumo " + consumo.getId(), motivo,
+				actor.consultorioId(), actor.accountId(), reversion.getOcurrioEn()));
 
 		auditar(AuditEvents.AUTORIZACION_CONSUMO_REVERTIDO, autorizacion, actor.consultorioId(),
 				actor.accountId(), motivo, Map.of(
