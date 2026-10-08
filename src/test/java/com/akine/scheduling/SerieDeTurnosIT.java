@@ -307,19 +307,19 @@ class SerieDeTurnosIT {
 		Fixture duena = fixtures.crear(1);
 		Fixture ajena = fixtures.crear(1);
 		SerieView vigente = crearSerie(duena, duena.personaA(), 3);
-		SerieView terminada = serieService.crear(duena.actor(), duena.consultorioId(),
+		SerieView cancelada = serieService.crear(duena.actor(), duena.consultorioId(),
 				new AltaDeSerieCommand(duena.ofertaId(), duena.personaB(), duena.profesionalMembershipId(),
 						new ReglaDeRecurrencia(Set.of(DayOfWeek.MONDAY), LocalTime.of(11, 0),
 								PRIMER_LUNES, null, 2),
 						null)).serie();
-		serieService.cancelar(duena.actor(), duena.consultorioId(), terminada.id(),
+		serieService.cancelar(duena.actor(), duena.consultorioId(), cancelada.id(),
 				OperacionDeSerieCommand.cancelacion(AlcanceDeSerie.TODA_LA_SERIE, null, "Alta medica", 2));
 
 		SeriePagina todas = serieService.listar(duena.actor(), duena.consultorioId(), null, null, 0, 20);
 		assertThat(todas.total()).isEqualTo(2);
 		assertThat(todas.contenido()).extracting(SerieResumenView::id)
 				.as("mas nuevas primero")
-				.containsExactly(terminada.id(), vigente.id());
+				.containsExactly(cancelada.id(), vigente.id());
 		SerieResumenView filaVigente = todas.contenido().get(1);
 		assertThat(filaVigente.estado()).isEqualTo(EstadoDeSerie.VIGENTE);
 		assertThat(filaVigente.totalTurnos()).isEqualTo(3);
@@ -328,20 +328,20 @@ class SerieDeTurnosIT {
 		assertThat(filaVigente.personaNombre()).startsWith("Paciente");
 		assertThat(filaVigente.ofertaNombre()).isNotBlank();
 		assertThat(filaVigente.diasSemana()).containsExactly(1);
-		SerieResumenView filaTerminada = todas.contenido().get(0);
-		assertThat(filaTerminada.estado()).isEqualTo(EstadoDeSerie.FINALIZADA);
-		assertThat(filaTerminada.turnosPendientes()).isZero();
-		assertThat(filaTerminada.totalTurnos()).as("los cancelados se cuentan: siguen siendo de la serie").isEqualTo(2);
-		assertThat(filaTerminada.proximoTurnoInicio()).isNull();
+		SerieResumenView filaCancelada = todas.contenido().get(0);
+		assertThat(filaCancelada.estado()).isEqualTo(EstadoDeSerie.CANCELADA);
+		assertThat(filaCancelada.turnosPendientes()).isZero();
+		assertThat(filaCancelada.totalTurnos()).as("los cancelados se cuentan: siguen siendo de la serie").isEqualTo(2);
+		assertThat(filaCancelada.proximoTurnoInicio()).isNull();
 
 		assertThat(serieService.listar(duena.actor(), duena.consultorioId(), duena.personaA(), null, 0, 20)
 				.contenido()).extracting(SerieResumenView::id).containsExactly(vigente.id());
 		assertThat(serieService.listar(duena.actor(), duena.consultorioId(), null, EstadoDeSerie.VIGENTE, 0, 20)
 				.contenido()).extracting(SerieResumenView::id).containsExactly(vigente.id());
-		SeriePagina finalizadas = serieService.listar(
-				duena.actor(), duena.consultorioId(), null, EstadoDeSerie.FINALIZADA, 0, 20);
-		assertThat(finalizadas.total()).isEqualTo(1);
-		assertThat(finalizadas.contenido()).extracting(SerieResumenView::id).containsExactly(terminada.id());
+		SeriePagina canceladas = serieService.listar(
+				duena.actor(), duena.consultorioId(), null, EstadoDeSerie.CANCELADA, 0, 20);
+		assertThat(canceladas.total()).isEqualTo(1);
+		assertThat(canceladas.contenido()).extracting(SerieResumenView::id).containsExactly(cancelada.id());
 
 		SeriePagina segunda = serieService.listar(duena.actor(), duena.consultorioId(), null, null, 1, 1);
 		assertThat(segunda.total()).isEqualTo(2);
@@ -354,6 +354,56 @@ class SerieDeTurnosIT {
 				.contenido()).isEmpty();
 		assertThatThrownBy(() -> serieService.listar(ajena.actor(), duena.consultorioId(), null, null, 0, 20))
 				.isInstanceOf(ConsultorioNoAccesibleException.class);
+	}
+
+	@Test
+	@DisplayName("bandeja (E-8b, DP-20): cancelada entera o desde la mitad es CANCELADA; agotada por fecha es FINALIZADA")
+	void bandeja_distingue_cancelada_de_finalizada() {
+		Fixture fixture = fixtures.crear(1);
+
+		// Cancelada entera: "toda la serie" antes de empezar.
+		SerieView entera = crearSerie(fixture, fixture.personaA(), 2, 9);
+		cancelar(fixture, entera, AlcanceDeSerie.TODA_LA_SERIE, null, 2);
+
+		// Cortada desde la mitad con una atencion previa: el primero se atendio (paso), el segundo
+		// y el tercero se cancelaron con "este y los siguientes".
+		SerieView cortada = crearSerie(fixture, fixture.personaB(), 3, 10);
+		cancelar(fixture, cortada, AlcanceDeSerie.ESTE_Y_SIGUIENTES, cortada.turnos().get(1).id(), 2);
+		assertThat(estadoEnLaBandeja(fixture, cortada.id()))
+				.as("mientras el primero no paso, le queda un pendiente")
+				.isEqualTo(EstadoDeSerie.VIGENTE);
+		alPasado(cortada.turnos().get(0).id(), 21);
+
+		// Agotada por fecha, con una cancelacion suelta en el medio: el ultimo turno paso.
+		SerieView agotada = crearSerie(fixture, fixture.personaC(), 3, 11);
+		cancelar(fixture, agotada, AlcanceDeSerie.ESTE, agotada.turnos().get(1).id(), 1);
+		alPasado(agotada.turnos().get(0).id(), 21);
+		alPasado(agotada.turnos().get(1).id(), 14);
+		alPasado(agotada.turnos().get(2).id(), 7);
+
+		SerieView vigente = crearSerie(fixture, fixture.personaA(), 2, 12);
+
+		SeriePagina todas = serieService.listar(fixture.actor(), fixture.consultorioId(), null, null, 0, 20);
+		assertThat(todas.contenido())
+				.extracting(SerieResumenView::id, SerieResumenView::estado)
+				.containsExactly(
+						org.assertj.core.groups.Tuple.tuple(vigente.id(), EstadoDeSerie.VIGENTE),
+						org.assertj.core.groups.Tuple.tuple(agotada.id(), EstadoDeSerie.FINALIZADA),
+						org.assertj.core.groups.Tuple.tuple(cortada.id(), EstadoDeSerie.CANCELADA),
+						org.assertj.core.groups.Tuple.tuple(entera.id(), EstadoDeSerie.CANCELADA));
+
+		// El filtro de la base y el resumen de la fila usan la misma regla: cada filtro devuelve
+		// exactamente las filas que el listado sin filtro muestra con ese estado, y el total cuadra.
+		for (EstadoDeSerie estado : EstadoDeSerie.values()) {
+			SeriePagina filtradas = serieService.listar(
+					fixture.actor(), fixture.consultorioId(), null, estado, 0, 20);
+			List<Long> esperadas = todas.contenido().stream()
+					.filter(fila -> fila.estado() == estado).map(SerieResumenView::id).toList();
+			assertThat(filtradas.contenido()).extracting(SerieResumenView::id)
+					.as("filtro %s", estado).containsExactlyElementsOf(esperadas);
+			assertThat(filtradas.contenido()).extracting(SerieResumenView::estado).containsOnly(estado);
+			assertThat(filtradas.total()).as("total de %s", estado).isEqualTo(esperadas.size());
+		}
 	}
 
 	@Test
@@ -378,6 +428,34 @@ class SerieDeTurnosIT {
 	private SerieView crearSerie(Fixture fixture, long personaId, int cantidad) {
 		return serieService.crear(fixture.actor(), fixture.consultorioId(),
 				alta(fixture, personaId, cantidad, null)).serie();
+	}
+
+	private SerieView crearSerie(Fixture fixture, long personaId, int cantidad, int horaLocal) {
+		return serieService.crear(fixture.actor(), fixture.consultorioId(),
+				new AltaDeSerieCommand(fixture.ofertaId(), personaId, fixture.profesionalMembershipId(),
+						new ReglaDeRecurrencia(Set.of(DayOfWeek.MONDAY), LocalTime.of(horaLocal, 0),
+								PRIMER_LUNES, null, cantidad),
+						null)).serie();
+	}
+
+	private void cancelar(Fixture fixture, SerieView serie, AlcanceDeSerie alcance, Long pivote, int cantidad) {
+		serieService.cancelar(fixture.actor(), fixture.consultorioId(), serie.id(),
+				OperacionDeSerieCommand.cancelacion(alcance, pivote, "Alta medica", cantidad));
+	}
+
+	/** Corre la fila al pasado, como la dejaria el tiempo: el servicio no reserva ni cancela en el pasado. */
+	private void alPasado(long turnoId, int dias) {
+		jdbc.update("""
+				UPDATE turno SET inicio = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL ? DAY),
+				                 fin = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL ? DAY) + INTERVAL 60 MINUTE
+				 WHERE id = ?
+				""", dias, dias, turnoId);
+	}
+
+	private EstadoDeSerie estadoEnLaBandeja(Fixture fixture, long serieId) {
+		return serieService.listar(fixture.actor(), fixture.consultorioId(), null, null, 0, 20)
+				.contenido().stream().filter(fila -> fila.id() == serieId)
+				.map(SerieResumenView::estado).findFirst().orElseThrow();
 	}
 
 	private static AltaDeSerieCommand alta(Fixture fixture, long personaId, int cantidad, String clave) {
