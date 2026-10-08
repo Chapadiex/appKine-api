@@ -167,13 +167,14 @@ class OrdenYAutorizacionServiceTest {
 		}
 
 		@Test
-		@DisplayName("registrar exige paciente:manage, y la lectura no")
+		@DisplayName("registrar exige paciente:manage, y la lectura paciente:read (DP-22)")
 		void permisos() {
 			ordenService.listar(ACTOR, PERSONA, DocumentoEstadoFiltro.TODAS, ENERO);
-			verifyNoInteractions(permissionGuard);
+			verify(permissionGuard).requirePermission(org.mockito.ArgumentMatchers.argThat(q -> "paciente:read".equals(q.permissionCode())));
 
 			ordenService.registrar(ACTOR, PERSONA, altaDeOrden(null));
-			verify(permissionGuard).requirePermission(any());
+			verify(permissionGuard).requirePermission(
+					org.mockito.ArgumentMatchers.argThat(q -> "paciente:manage".equals(q.permissionCode())));
 		}
 
 		@Test
@@ -442,15 +443,17 @@ class OrdenYAutorizacionServiceTest {
 		}
 
 		@Test
-		@DisplayName("la lectura de una autorizacion no exige paciente:manage")
-		void lectura_por_pertenencia() {
+		@DisplayName("la lectura de una autorizacion exige paciente:read y no paciente:manage")
+		void lectura_con_paciente_read() {
 			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(
 					anyLong(), anyLong(), anyLong()))
 					.willReturn(Optional.of(autorizacion(EstadoAutorizacion.APROBADA)));
 
 			autorizacionService.ver(ACTOR, PERSONA, 77L, ENERO);
 
-			verifyNoInteractions(permissionGuard);
+			verify(permissionGuard).requirePermission(org.mockito.ArgumentMatchers.argThat(q -> "paciente:read".equals(q.permissionCode())));
+			verify(permissionGuard, never()).requirePermission(
+					org.mockito.ArgumentMatchers.argThat(q -> "paciente:manage".equals(q.permissionCode())));
 		}
 	}
 
@@ -576,7 +579,7 @@ class OrdenYAutorizacionServiceTest {
 		}
 
 		@Test
-		@DisplayName("el historial se lee por pertenencia, pagina por offset y calcula el vencimiento")
+		@DisplayName("el historial exige paciente:read (DP-22), pagina por offset y calcula el vencimiento")
 		void lectura() {
 			Autorizacion vencida = autorizacion(EstadoAutorizacion.APROBADA);
 			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(77L, ORG, PERSONA))
@@ -590,7 +593,7 @@ class OrdenYAutorizacionServiceTest {
 			assertThat(historial.total()).isEqualTo(25L);
 			assertThat(historial.vencida()).isTrue();
 			assertThat(historial.vencidaDesde()).isEqualTo(LocalDate.of(2028, 1, 1));
-			verifyNoInteractions(permissionGuard);
+			verify(permissionGuard).requirePermission(org.mockito.ArgumentMatchers.argThat(q -> "paciente:read".equals(q.permissionCode())));
 		}
 
 		@Test

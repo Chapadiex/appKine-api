@@ -116,7 +116,7 @@ Ninguna se inventa en silencio: cada una sale como ADR o DP escrita (`AGENT.md` 
 | ~~**DU-3**~~ | ~~Alcance de `reporte:read`~~ → **resuelta: DP-15**, completo según la matriz, PROFESIONAL solo su actividad (07/10/2026) | G-1 (arreglo rápido) | ola 0 |
 | ~~**DU-4**~~ | ~~¿N tratamientos consumen N unidades o 1?~~ → **resuelta: DP-12**, una unidad por autorización involucrada (06/10/2026) | C-4, F-4 | ola 1 |
 | ~~**DU-5**~~ | ~~Unificar `concurrent-modification` y `conflict`~~ → **resuelta: DP-21**, toda versión vieja es `concurrent-modification` en todos los módulos y `conflict` queda para el negocio (08/10/2026) | G-5 (hallazgo alto 07.07); cambia respuestas de varios módulos | ola 1 |
-| **DU-6** | Alcance `OWN` / `paciente:read` (vínculo cuenta↔persona) | B-8, G-5; autoservicio de E | ola 1 |
+| ~~**DU-6**~~ | ~~Alcance `OWN` / `paciente:read` (vínculo cuenta↔persona)~~ → **resuelta: DP-22**, `paciente:read` solo para el personal; el rol `PACIENTE` pierde todo acceso al padrón y el autoservicio (`OWN`) queda para después del MVP (08/10/2026). Implementada en DU-6 (contrato 0.77.0, `V86` vacía) | G-5; B-8 y el autoservicio de E siguen esperando el vínculo cuenta↔persona | ola 1 |
 | ~~**DU-7**~~ | ~~Reversión del consumo: automática o manual~~ → **resuelta: DP-13**, manual con alerta al anular la deuda (06/10/2026) | C-4 | ola 1 |
 | ~~**DU-8**~~ | ~~Historial de autorización: tabla propia o auditoría~~ → **resuelta: DP-23**, tabla propia `autorizacion_evento` append-only, no se lee de `audit_event` (08/10/2026) | B-4 | ola 1 |
 | ~~**DU-9**~~ | ~~¿Máquina de recepción propia?~~ → **resuelta: DP-16**, sí, como DP-05; `EN_ESPERA` sale del turno (07/10/2026) | E-4 | ola 1 |
@@ -152,6 +152,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V82` | E-8 | **Vacía**: E-8 la reservó por si el listado de series necesitaba índice y no hizo falta: el filtro por sede usa el índice de `fk_turno_serie_consultorio` (que en InnoDB ya ordena por `id`) y el estado derivado usa `ix_turno_serie_inicio`. No se reusa |
 | `V83` | A-8 | **Usada**: `V83__m03_horario_general_de_sede.sql` — tabla `consultorio_horario` (dueño `resource`): franjas semanales del horario general de la sede, baja lógica al reemplazar, sin unique (el solapamiento lo valida la aplicación). `V82` es de otro paquete en paralelo |
 | `V85` | B-4 | **Usada**: `V85__b4_autorizacion_evento.sql` — tabla `autorizacion_evento` (dueño `person`, DP-23): historial append-only de cada autorización, un evento por movimiento del ledger (`uk_autorizacion_evento_movimiento`), siembra un `ALTA` reconstruido por autorización existente. `V84` y `V86` quedan para otros paquetes en paralelo |
+| `V86` | DU-6 | **Vacía**: DU-6 la reservó para sembrar `paciente:read`, y no hizo falta: el catálogo de permisos y su asignación por rol viven en código (`PermissionCode`, `RolePermissions`), no en la base, y `membership_grant.permission_code` es un `VARCHAR` sin CHECK. No se reusa |
 
 ## 7. Paquetes de trabajo
 

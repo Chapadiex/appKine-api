@@ -106,8 +106,8 @@ public class OrdenMedicaService {
 	 * <p>Trae las vencidas y las dadas de baja: sin ellas no se puede explicar con que papel se
 	 * atendio al paciente el mes pasado, y "un documento vencido no desaparece".
 	 *
-	 * <p>Se autoriza por <b>pertenencia</b> y no con {@code paciente:manage}, mismo criterio que
-	 * las lecturas del padron en 03.01 y las de cobertura en 03.04: el profesional que va a
+	 * <p>Se autoriza con {@code paciente:read} (DP-22) y no con {@code paciente:manage}, mismo
+	 * criterio que las demas lecturas del padron: el profesional que va a
 	 * atender necesita saber si el paciente trajo la orden, y exigirle el permiso de gestion lo
 	 * dejaria afuera. Es la "lectura justificada del profesional" que la etapa pide.
 	 */
@@ -116,7 +116,8 @@ public class OrdenMedicaService {
 			OperatingActor actor, long personaId, DocumentoEstadoFiltro estado, LocalDate fecha) {
 
 		long organizationId =
-				AutorizacionDePadron.exigirContexto(actor, "Listar ordenes del paciente");
+				AutorizacionDePadron.exigirLecturaDelPadron(
+						permissionGuard, actor, "Listar ordenes del paciente");
 		exigirPersonaDelTenant(organizationId, personaId);
 
 		DocumentoEstadoFiltro filtro = estado == null ? DocumentoEstadoFiltro.TODAS : estado;

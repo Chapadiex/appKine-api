@@ -143,17 +143,29 @@ class PersonaServiceTest {
 		}
 
 		@Test
-		@DisplayName("Leer NO evalua ningun permiso: se autoriza por pertenencia")
-		void leer_no_evalua_permisos() {
-			// La matriz no declara paciente:read y una etapa no amplia la matriz. El hueco que
-			// esto deja —una membership PACIENTE lee el padron entero— esta escrito en
-			// PermissionCodes y no se tapa con un permiso inventado.
+		@DisplayName("Leer exige paciente:read y no paciente:manage (AKINE-DU-6, DP-22)")
+		void leer_exige_paciente_read() {
+			// Hasta DU-6 la lectura se autorizaba por pertenencia y una membership PACIENTE leia
+			// el padron entero. Ahora evalua paciente:read con la sede del contexto.
 			given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(),
 					anyInt(), anyInt())).willReturn(List.of());
 
 			service.buscar(delMostrador, busquedaVacia(), 0, 20);
 
-			verifyNoInteractions(permissionGuard);
+			verify(permissionGuard).requirePermission(org.mockito.ArgumentMatchers.argThat(q -> "paciente:read".equals(q.permissionCode())));
+			verify(permissionGuard, never()).requirePermission(
+					org.mockito.ArgumentMatchers.argThat(q -> "paciente:manage".equals(q.permissionCode())));
+		}
+
+		@Test
+		@DisplayName("Sin paciente:read la busqueda es 403 y no toca el repositorio")
+		void sin_paciente_read_la_busqueda_es_403() {
+			given(permissionGuard.requirePermission(org.mockito.ArgumentMatchers.argThat(q -> "paciente:read".equals(q.permissionCode()))))
+					.willThrow(new org.springframework.security.access.AccessDeniedException("sin paciente:read"));
+
+			assertThatThrownBy(() -> service.buscar(delMostrador, busquedaVacia(), 0, 20))
+					.isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+			verifyNoInteractions(personas);
 		}
 
 		@Test

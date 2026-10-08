@@ -624,6 +624,37 @@ copias de la misma regla y la misma carrera de precedencia que causó la diverge
 
 **Desbloquea:** la parte de "unificar errores" de G-5.
 
+## DP-22 — `paciente:read` solo para el personal; el autoservicio del paciente, después del MVP (DU-6)
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
+
+**Contexto.** No existía ningún permiso de lectura del padrón. Las lecturas de `person` —búsqueda
+(también por número de afiliado), ficha, Paciente 360, coberturas, cobertura aplicable, órdenes,
+autorizaciones con su saldo, ledger y alertas, elegibilidad administrativa y adjuntos— se
+autorizaban por **pertenencia al tenant**: alcanzaba con tener contexto de trabajo en la
+organización. Una membership con rol `PACIENTE` leía así el padrón entero de su organización
+(hueco funcional del `CLAUDE.md` y hallazgo alto de 07.07). La matriz §32 le da "Propio" a esa
+celda, o sea alcance `OWN`, que necesita un vínculo cuenta↔persona que no existe (RN-M07-002).
+
+**Decisión.** Se crea `paciente:read` **solo para el personal**: `ORG_ADMIN` (organización),
+`CONSULTORIO_ADMIN`, `PROFESIONAL` y `ADMINISTRATIVO` (sede). El rol `PACIENTE` **pierde todo
+acceso** al padrón y a los datos de otras personas: 403 en todas las lecturas de `person`. El
+**autoservicio del paciente** —alcance `OWN` sobre sus propios datos, con el vínculo cuenta↔persona—
+queda **para después del MVP**; cuando llegue, entra como un alcance más de este mismo código.
+
+**Alternativas descartadas.** Implementar `OWN` ahora (necesita el vínculo cuenta↔persona y la
+etapa de autoservicio, fuera del MVP). Dejar el hueco documentado como estaba (03.01 sostenía que
+un `paciente:read` "no cambiaría nada": cierto para el autoservicio, falso para el hueco, porque el
+paciente deja de ver lo ajeno).
+
+**Desbloquea:** G-5 (el hallazgo alto de `OWN` de 07.07 queda cerrado para el MVP); B-8 y el
+autoservicio de E siguen esperando el vínculo cuenta↔persona.
+
+**Implementada en:** DU-6 (sin migración —el catálogo de permisos vive en código, `V86` queda
+vacía—, contrato **0.80.0**, `docs/diseno/AKINE-DU-6-paciente-read.md`, enmienda §15 de la matriz).
+`PLATFORM_ADMIN` no lo recibe: no tiene contexto de tenant en `person`; si ese camino se abre,
+entra con `SOPORTE` y `SUPPORT_ACCESS_USED`, como `paciente:manage`. No es otorgable por grant.
+
 ## DP-23 — Historial de estados de la autorización en tabla propia (DU-8)
 
 **Estado:** RESUELTA el 08/10/2026 por el dueño del producto.

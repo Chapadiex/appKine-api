@@ -23,6 +23,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import com.akine.organization.application.PermissionEvaluatorService;
+import com.akine.organization.spi.PermissionDecision;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -46,11 +49,22 @@ class PersonaBusquedaAfiliadoIT {
 	@Autowired private PersonaService personaService;
 	@Autowired private JdbcTemplate jdbc;
 
+	/**
+	 * Este IT prueba el SQL de la busqueda, no la autorizacion: las organizaciones se siembran por
+	 * SQL y no tienen memberships. Desde AKINE-DU-6 (DP-22) leer el padron exige paciente:read, y
+	 * ese control lo prueba {@code PacienteReadIT} por HTTP con cuentas reales. Aca el guard se
+	 * espia y concede: es el mismo bean que {@code PermissionEvaluator}, asi que no se puede
+	 * reemplazar por un mock de una sola interfaz.
+	 */
+	@MockitoSpyBean private PermissionEvaluatorService permisos;
+
 	private CoberturaFixtures datos;
 
 	@BeforeEach
 	void setUp() {
 		datos = new CoberturaFixtures(jdbc);
+		org.mockito.Mockito.doReturn(PermissionDecision.concedida("ORGANIZACION", false))
+				.when(permisos).requirePermission(org.mockito.ArgumentMatchers.any());
 	}
 
 	@Test

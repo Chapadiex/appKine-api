@@ -112,7 +112,7 @@ public class ConsumoDeAutorizacionController {
 							schema = @Schema(implementation = SaldoAutorizacionResponse.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -171,7 +171,7 @@ public class ConsumoDeAutorizacionController {
 									schema = @Schema(implementation = MovimientoResponse.class)))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -223,7 +223,7 @@ public class ConsumoDeAutorizacionController {
 									schema = @Schema(implementation = AlertaDeAutorizacionResponse.class)))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

@@ -72,7 +72,7 @@ import java.util.List;
  *
  * <h2>Autorizacion</h2>
  *
- * <p>Leer con contexto de organizacion —por pertenencia, igual que el padron en 03.01: un
+ * <p>Leer con {@code paciente:read} (AKINE-DU-6, DP-22), igual que el padron: un
  * profesional que va a atender necesita saber con que cobertura viene el paciente—. Mutar con
  * {@code paciente:manage} evaluado sobre la sede del contexto. 404 cross-tenant, 403 sin permiso,
  * 409 para los invariantes y para la version desactualizada.
@@ -127,7 +127,7 @@ public class CoberturaPacienteController {
 									schema = @Schema(implementation = CoberturaResponse.class)))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -189,7 +189,7 @@ public class CoberturaPacienteController {
 							schema = @Schema(implementation = SeleccionDeCoberturaResponse.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

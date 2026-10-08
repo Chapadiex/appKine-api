@@ -160,7 +160,7 @@ public class PersonaController {
 							mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = PersonaPageResponse.class))),
 			@ApiResponse(responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
 	public PersonaPageResponse buscar(
@@ -204,7 +204,7 @@ public class PersonaController {
 					content = @Content(
 							mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = PersonaResponse.class))),
-			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo",
+			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404", description = "No existe, o es de otra organizacion",
@@ -391,7 +391,7 @@ public class PersonaController {
 					content = @Content(
 							mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = ResumenDePersonaResponse.class))),
-			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo",
+			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404", description = "No existe, o es de otra organizacion",

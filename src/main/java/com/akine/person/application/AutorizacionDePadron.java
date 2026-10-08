@@ -20,10 +20,9 @@ import java.time.Instant;
  * <h2>Las dos formas de autorizar de este modulo</h2>
  *
  * <pre>
- *   LEER   pertenencia al tenant: alcanza con tener contexto de organizacion activo.
- *          No hay codigo de permiso de lectura del padron — la matriz no declara
- *          paciente:read y una etapa no amplia la matriz. Ver PermissionCodes para el
- *          hueco conocido que eso deja abierto.
+ *   LEER   paciente:read evaluado con la sede del contexto (AKINE-DU-6, DP-22). Hasta DU-6
+ *          alcanzaba la pertenencia al tenant, y el rol PACIENTE leia el padron entero.
+ *          Lo tiene todo el personal; PACIENTE no.
  *   MUTAR  paciente:manage evaluado CON la sede del contexto. El motivo de que lleve sede
  *          aunque la Persona sea de la organizacion esta en PermissionCodes.PACIENTE_MANAGE
  *          y NO es obvio: sin sede, el evaluador deja afuera a CONSULTORIO_ADMIN y a
@@ -42,12 +41,44 @@ final class AutorizacionDePadron {
 	}
 
 	/**
-	 * Exige contexto de organizacion y lo devuelve. Es el control de las LECTURAS.
+	 * Exige contexto de organizacion, evalua {@code paciente:read} y devuelve la organizacion. Es
+	 * el control de TODAS las LECTURAS del modulo (AKINE-DU-6, DP-22).
+	 *
+	 * <p>Hasta DU-6 alcanzaba con el contexto, y una membership con rol {@code PACIENTE} leia el
+	 * padron entero. Ahora quien pertenece pero no tiene el permiso recibe <b>403</b>; quien pide
+	 * una persona de otra organizacion sigue recibiendo <b>404</b>, porque la organizacion sale del
+	 * contexto y la busqueda posterior no la encuentra.
+	 *
+	 * <p>El permiso se evalua con la sede del contexto, igual que {@code paciente:manage}: sin sede
+	 * los alcances de consultorio no cubren la consulta. {@code TenantContextFilter} no publica un
+	 * contexto sin sede, asi que en la practica siempre viaja.
+	 *
+	 * <p>La decision no se devuelve: ningun rol con alcance {@code SOPORTE} tiene
+	 * {@code paciente:read}, asi que una lectura nunca se concede por acceso de soporte y no hay
+	 * {@code SUPPORT_ACCESS_USED} que dejar. Si algun dia se le da a {@code PLATFORM_ADMIN}, este
+	 * metodo tiene que empezar a devolverla, como {@link #exigirGestionDelPadron}.
+	 */
+	static long exigirLecturaDelPadron(
+			PermissionGuard permissionGuard, OperatingActor actor, String operacion) {
+
+		long organizationId = exigirContexto(actor, operacion);
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.PACIENTE_READ,
+				organizationId,
+				actor.consultorioId(),
+				null,
+				Instant.now()));
+		return organizationId;
+	}
+
+	/**
+	 * Exige contexto de organizacion y lo devuelve.
 	 *
 	 * <p>La organizacion nunca viaja por parametro ni por la ruta: sale del contexto que
 	 * {@code TenantContextFilter} revalido contra la base en este request.
 	 */
-	static long exigirContexto(OperatingActor actor, String operacion) {
+	private static long exigirContexto(OperatingActor actor, String operacion) {
 		if (actor.contextOrganizationId() == null) {
 			log.info("{} sin contexto validado: accountId={}", operacion, actor.accountId());
 			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");

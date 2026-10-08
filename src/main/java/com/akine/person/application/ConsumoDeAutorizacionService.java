@@ -577,16 +577,15 @@ public class ConsumoDeAutorizacionService {
 	/**
 	 * El saldo de una autorizacion, por las dos fuentes (RF-M17-003).
 	 *
-	 * <p>Se autoriza por <b>pertenencia</b>, mismo criterio que el resto de las lecturas de este
-	 * modulo: quien mas necesita este numero es el profesional que esta por atender, y exigirle el
-	 * permiso de gestion lo dejaria afuera. Hereda el hueco conocido del alcance {@code OWN} que
-	 * {@code PermissionCodes} documenta.
+	 * <p>Se autoriza con {@code paciente:read} (DP-22), mismo criterio que el resto de las lecturas
+	 * de este modulo: quien mas necesita este numero es el profesional que esta por atender, y
+	 * exigirle el permiso de gestion lo dejaria afuera.
 	 */
 	@Transactional(readOnly = true)
 	public SaldoDeAutorizacionView saldo(
 			OperatingActor actor, long autorizacionId, LocalDate fecha) {
 
-		long organizationId = AutorizacionDePadron.exigirContexto(
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(permissionGuard,
 				actor, "Consultar el saldo de una autorizacion");
 
 		Autorizacion autorizacion = cargar(organizationId, autorizacionId);
@@ -604,12 +603,12 @@ public class ConsumoDeAutorizacionService {
 	/**
 	 * Las alertas de una autorizacion, de la mas vieja a la mas nueva (DP-13, RN-M17-003).
 	 *
-	 * <p>Por pertenencia, como el saldo y el ledger: quien atiende necesita saber que hay un
+	 * <p>Con {@code paciente:read}, como el saldo y el ledger: quien atiende necesita saber que hay un
 	 * consumo en duda antes de gastar otro.
 	 */
 	@Transactional(readOnly = true)
 	public List<AlertaDeAutorizacionView> alertas(OperatingActor actor, long autorizacionId) {
-		long organizationId = AutorizacionDePadron.exigirContexto(
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(permissionGuard,
 				actor, "Consultar las alertas de una autorizacion");
 
 		cargar(organizationId, autorizacionId);
@@ -621,7 +620,7 @@ public class ConsumoDeAutorizacionService {
 	/** El ledger de una autorizacion, del hecho mas viejo al mas nuevo (RF-M17-004). */
 	@Transactional(readOnly = true)
 	public List<MovimientoView> movimientos(OperatingActor actor, long autorizacionId) {
-		long organizationId = AutorizacionDePadron.exigirContexto(
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(permissionGuard,
 				actor, "Consultar los movimientos de una autorizacion");
 
 		cargar(organizationId, autorizacionId);
@@ -644,7 +643,7 @@ public class ConsumoDeAutorizacionService {
 	public List<AutorizacionElegibleView> elegibles(
 			OperatingActor actor, long personaId, LocalDate fecha) {
 
-		long organizationId = AutorizacionDePadron.exigirContexto(
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(permissionGuard,
 				actor, "Consultar las autorizaciones elegibles del paciente");
 		personas.findByIdAndOrganizationId(personaId, organizationId)
 				.orElseThrow(() -> new PersonaNotAccessibleException(personaId));

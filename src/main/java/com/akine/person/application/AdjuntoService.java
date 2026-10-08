@@ -41,8 +41,8 @@ import java.util.UUID;
  *
  * <p>RN-M25-003 dice que "el acceso hereda permisos de la entidad asociada", y eso se toma al pie
  * de la letra: <b>leer y descargar un adjunto se autoriza igual que leer la ficha de su
- * persona</b> —pertenencia al tenant— y <b>subir, reclasificar y dar de baja se autoriza igual que
- * editar esa ficha</b>, con {@code paciente:manage} sobre la sede del contexto.
+ * persona</b> —{@code paciente:read} desde AKINE-DU-6 (DP-22)— y <b>subir, reclasificar y dar
+ * de baja se autoriza igual que editar esa ficha</b>, con {@code paciente:manage} sobre la sede del contexto.
  *
  * <p>La alternativa que se descarto: exigir {@code paciente:manage} tambien para leer. Dejaria al
  * {@code PROFESIONAL} sin poder abrir el consentimiento firmado del paciente que esta por
@@ -111,7 +111,7 @@ public class AdjuntoService {
 	}
 
 	// =================================================================================
-	// Lecturas — pertenencia al tenant (RN-M25-003)
+	// Lecturas — paciente:read, igual que la ficha (RN-M25-003, DP-22)
 	// =================================================================================
 
 	/**
@@ -130,7 +130,8 @@ public class AdjuntoService {
 			int page,
 			int size) {
 
-		long organizationId = AutorizacionDePadron.exigirContexto(actor, "Listar adjuntos");
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(
+				permissionGuard, actor, "Listar adjuntos");
 		exigirPersonaAccesible(organizationId, personaId);
 
 		String filtroCategoria = categoria == null ? null : categoria.name();
@@ -160,7 +161,8 @@ public class AdjuntoService {
 	 */
 	@Transactional(readOnly = true)
 	public ContenidoDeAdjunto contenido(OperatingActor actor, long personaId, long adjuntoId) {
-		long organizationId = AutorizacionDePadron.exigirContexto(actor, "Descargar adjunto");
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(
+				permissionGuard, actor, "Descargar adjunto");
 		exigirPersonaAccesible(organizationId, personaId);
 
 		AdjuntoAdministrativo adjunto = cargar(organizationId, personaId, adjuntoId);

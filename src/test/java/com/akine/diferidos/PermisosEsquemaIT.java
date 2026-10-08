@@ -224,6 +224,9 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				.containsExactlyInAnyOrder("tenant:read", "consultorio:manage", "espacio:read",
 						"colaborador:manage", "colaborador:read", "auditoria:read",
 						"paciente:manage", "turno:read", "turno:manage", "cobro:register",
+						// `paciente:read` lo sumo AKINE-DU-6 (DP-22): todo el personal lee el padron; el
+						// rol PACIENTE no.
+						"paciente:read",
 						// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`.
 						// Matriz §2 y enmienda §13.
 						"convenio:manage",
@@ -258,6 +261,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				.containsExactlyInAnyOrder(
 						"colaborador:read", "espacio:read", "turno:read", "turno:manage", "sesion:register",
 						"hc:read", "hc:write",
+						// AKINE-DU-6 (DP-22): por base y no por grant, a diferencia de paciente:manage.
+						"paciente:read",
 						// 08.01 a 08.03: el profesional ES quien dicta la clase, necesita saber a quien
 						// tiene enfrente y marcar quien vino. `caja:operate` NO esta: su celda dice No.
 						"clase:read", "clase:manage",
