@@ -40,6 +40,12 @@ mayoría esperando, así que acá se reemplaza por **dependencias explícitas en
 > `cuentaCorriente` y `sumarAnuladoEnElReporte` resueltos por F-1 y G-2; última migración **`V69`**;
 > contrato **`0.54.0`**, con el cliente del frontend en `0.46.0`. `reporte:read` sigue abierto
 > (G-1, espera DU-3). La tabla de arriba queda como foto del 02/10.
+>
+> **Al 07/10/2026** (`main` = `8fe1fae`, PR #60; `appKine-web` `main` = `e22d75d`, PR #23):
+> `reporte:read` resuelto por G-1 (DP-15); última migración **`V83`**; contrato **`0.69.0`** con
+> 301 operaciones, y el cliente del frontend **también en `0.69.0`**. La rama por defecto de
+> GitHub es `main` en `appKine-web`, pero en `appKine-api` **sigue siendo
+> `claude/goofy-goodall-8e6772`** (consultado por la API el 07/10): L-0 sigue abierto.
 
 ## 3. Reglas de convivencia — leer antes de tomar un paquete
 
@@ -129,7 +135,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V65` | C-1 | **Usada**: `V65__c1_tratamiento_lateralidad_no_aplica.sql` — recrea `ck_tratamiento_lateralidad` con `NO_APLICA` |
 | `V66` | A-9 | **Vacía**: A-9 la reservó y quedó por debajo de migraciones ya mergeadas (Flyway corre sin `outOfOrder`); usó `V75`. No se reusa |
 | `V67` | C-5 | **Vacía**: C-5 no la usó, porque RN-M10-002 admite varios casos activos y el unique sería un defecto. No se reusa |
-| `V68` | B-4 | Historial de estados de autorización (si DU-8 = tabla) |
+| `V68` | B-4 | Historial de estados de autorización (si DU-8 = tabla). **Quedó por debajo de `V83`** (07/10): como Flyway corre sin `outOfOrder`, B-4 tiene que tomar la siguiente libre por encima de la última mergeada y dejar `V68` vacía |
 | `V69` | F-3 | **Usada**: `V69__m19_anticipos_y_reintegro.sql` — saldo a favor y anulación en `cobro`, imputación posterior en `cobro_imputacion`, tabla `cobro_reintegro`, origen `REINTEGRO` en `movimiento_caja` |
 | `V70` | E-3 | **Vacía**: E-3 la reservó y se renumeró a `V74` al integrar, porque `V71` (C-6) entró antes. No se reusa |
 | `V71` | C-6 | **Usada**: `V71__c6_sesion_version_tratamientos_y_mediciones.sql` — tablas `sesion_version_tratamiento`, `sesion_version_tratamiento_parametro` y `sesion_version_medicion` (foto inmutable por version) con backfill desde el estado vivo |
@@ -140,7 +146,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V76` | C-4 | **Usada**: `V76__c4_autorizacion_alerta_consumo_a_revisar.sql` — tabla `autorizacion_alerta` (DP-13) e índice `ix_movimiento_origen` en `autorizacion_movimiento` |
 | `V77` | F-4 | **Usada**: `V77__f4_obligacion_del_financiador.sql` — `obligacion.concepto` (`PARTICULAR`/`FINANCIADOR`/`COSEGURO`), práctica y cobertura aplicadas, alerta DP-11 y el snapshot entero del convenio y del arancel (los tres importes y los requisitos de RF-M21-003), con cinco CHECK de coherencia |
 | `V78` | E-4 | **Usada**: `V78__m13_recepcion_maquina_propia.sql` — tablas `recepcion` (una vigente por turno, `uk_recepcion_turno_vigente`) y `recepcion_evento` (append-only), migración de los turnos `EN_ESPERA` y de los cancelados con llegada, `ck_turno_estado` sin `EN_ESPERA`. No borra columnas de `turno` (ADR-0007) |
-| `V79` | libre | A-7 la tuvo asignada y entró sin migración: sigue libre. Tomar la siguiente libre y anotarla acá |
+| `V79` | A-7 | **Vacía**: A-7 la tuvo asignada y entró sin migración (#53); después entraron `V80`–`V83`, así que ya no se puede usar. No se reusa |
 | `V80` | B-3 | **Usada**: `V80__b3_arancel_por_oferta_y_precio_particular.sql` — `convenio_arancel.oferta_id` nullable (`fk_convenio_arancel_oferta`, `ix_convenio_arancel_oferta`; dueño `contracting`) y tabla `oferta_precio_particular` (precio particular por vigencia; dueño `offering`). Los dos no-solapamientos los hace cumplir un lock, ningún índice |
 | `V81` | E-6 | **Usada**: `V81__e6_prepago_politica_y_anticipo_de_turno.sql` — `oferta_servicio_consultorio.exige_prepago` (política de prepago, DP-06) y `cobro.turno_id` con la columna generada `turno_prepago_vigente` y `uk_cobro_prepago_turno_vigente` (un solo prepago vigente por turno) |
 | `V82` | E-8 | **Vacía**: E-8 la reservó por si el listado de series necesitaba índice y no hizo falta: el filtro por sede usa el índice de `fk_turno_serie_consultorio` (que en InnoDB ya ordena por `id`) y el estado derivado usa `ix_turno_serie_inicio`. No se reusa |
@@ -170,10 +176,10 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | ~~**A-3**~~ | ~~`POST /notifications/{id}/retry` con permiso administrativo y filtro por tenant~~ — hecho (#15, contrato 0.47.0, 06/10) | api | S | — | F0-F1 |
 | ~~A-5~~ | ~~Slice tests de `MembershipController`, `AuditEventController` y plataforma; unitarios de los 4 servicios de F2~~ — hecho (#25 slices, #26 unitarios de F2, 06/10) | api | M | — | F0-F1, F2 |
 | A-6 | E2E: crear organización; registro → activación → login → reset con canje real; acceso denegado y auditoría | web | M | — | F0-F1 |
-| A-8 | CA-M03-002: primer box + horario general en el alta de sede — **backend hecho** (`V83`, contrato 0.69.0, 07/10): `POST /organizations/{orgId}/consultorios` acepta `primerBox` y `horarioGeneral` opcionales y los crea en la transacción del alta vía `organization.spi.AltaDeSedeExtension` (implementada en `resource`); si algo falla no queda nada. El horario general vive con el calendario de la sede (`GET`/`PUT /consultorios/{id}/calendario`, campo `horarioGeneral`), es informativo y la agenda no lo lee (RN-M03-004); falta la pantalla | api + web | M | — | F2 |
+| ~~A-8~~ | ~~CA-M03-002: primer box + horario general en el alta de sede~~ — **hecho** (07/10): backend #60 (`V83`, contrato 0.69.0): `POST /organizations/{orgId}/consultorios` acepta `primerBox` y `horarioGeneral` opcionales y los crea en la transacción del alta vía `organization.spi.AltaDeSedeExtension` (implementada en `resource`); si algo falla no queda nada. El horario general vive con el calendario de la sede (`GET`/`PUT /consultorios/{id}/calendario`), es informativo y la agenda no lo lee (RN-M03-004). Pantalla en web #22. El onboarding compuesto de la primera sede sigue sin box ni horario | api + web | M | — | F2 |
 | ~~**B-1**~~ | ~~Búsqueda por número de afiliado (RF-M07-001)~~ — hecho (contrato 0.46.0, antes del 06/10) | api + web | S | — | F3 |
 | ~~**B-2**~~ | ~~`spi` "cobertura vigente de esta persona para esta práctica en esta fecha"~~ — hecho (`cfa85d8`, antes del 06/10) | api | M | — | F3 |
-| B-5 | Contribuyente de cobertura al Paciente 360 — **backend hecho** (#34, 06/10, sin cambio de contrato); falta la pantalla | api + web | S | — | F3 |
+| ~~B-5~~ | ~~Contribuyente de cobertura al Paciente 360~~ — **hecho**: backend #34 (06/10, sin cambio de contrato), pantalla web #16 (07/10) | api + web | S | — | F3 |
 | B-6 | E2E persona → paciente → cobertura → orden → autorización → vencimiento; `AdjuntoConcurrenteIT` | web + api | M | — | F3 |
 | ~~**C-2**~~ | ~~`HistoriaClinicaController`: obtener-o-abrir idempotente por persona, resumen, antecedentes~~ — hecho (contrato 0.45.0, antes del 06/10) | api | M | — | F4 |
 | ~~**C-3**~~ | ~~`RelacionAsistencialProbe` real sobre turnos y sesiones (implementación fuera de `clinical`, vía `spi`)~~ — hecho (antes del 06/10) | api | M | — | F4 |
@@ -188,14 +194,14 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | ~~E-5~~ | ~~Notificaciones de reserva, cancelación y reprogramación por outbox (RF-M26-002/003)~~ — hecho (#37, 06/10) | api | M | — | F5 |
 | ~~F-2~~ | ~~Defectos de `billing` reportados el 01/10 (`debitar`, advice propio, CSV, `FINANCIADOR_DISTINTO` → cambio de contrato)~~ — hecho (#16, #17, #18 con contrato 0.48.0, 06/10) | api | M | — | F7 |
 | ~~**F-3**~~ | ~~Anticipos, imputación posterior, anulación y reintegro (`V69`)~~ — hecho en el backend (#39, contrato 0.54.0, 06/10); sin pantalla | api | L | — | F7 |
-| F-6 | Pantallas de caja diaria + E2E cierre → deuda → cobro → caja | web | L | — | F7 |
-| F-7 | Pantallas de presentaciones (bandejas, armado, factura, débito, pagos) | web | L | — | F7 |
+| ~~F-6~~ | ~~Pantallas de caja diaria + E2E cierre → deuda → cobro → caja~~ — **pantalla hecha** (web #7, 07/10): `/caja` con apertura, movimientos, reversión de manuales, arqueo y cierre. **El E2E no se escribió** | web | L | — | F7 |
+| ~~F-7~~ | ~~Pantallas de presentaciones (bandejas, armado, factura, débito, pagos)~~ — **hecho** (web #9, 07/10): `/presentaciones` y `/presentaciones/:id` con el ciclo completo del lote. Sin E2E | web | L | — | F7 |
 | F-8 | ITs diferidos 33–48 (caja concurrente, presentaciones, egresos) — **cerrado** (07/10): corridos 33, 34 (#28), 37, 39, 40 (#30), 41, 42, 45, 46, 48 (#24), 43, 47 (#19) y 35, 36, 38, 44 (`akine-F-8-diferidos-finales`). El 38 destapó que el débito no persistía la marca del ítem (`clearAutomatically` lo desacoplaba) | api | M | — | F7 |
-| G-3 | Dockerfile de los dos repos + SBOM — **backend hecho** (#29, 06/10: Dockerfile, SBOM CycloneDX, job `imagen` del CI); falta el del frontend | los dos | M | — | F8 |
+| ~~G-3~~ | ~~Dockerfile de los dos repos + SBOM~~ — **hecho**: backend #29 (06/10), frontend web #18 (07/10: nginx no root, proxy `/api` a `AKINE_API_URL` en runtime, SBOM CycloneDX y job `imagen` en el CI; `docs/imagen-docker.md`) | los dos | M | — | F8 |
 | ~~**G-4**~~ | ~~Observabilidad: logging JSON con correlación, Micrometer/Prometheus, OpenTelemetry~~ — hecho (`akine-G-4-observabilidad`, 08/10): log JSON `logstash` fuera de `local`, `X-Request-Id` + `traceId`/`spanId`/tenant en el MDC, `/actuator/prometheus` con histograma y buckets de SLO detrás de token de scraper, trazas OTLP opt-in. Ver `docs/observabilidad.md` | api | L | — | F8 |
 | G-6 | Sonar, Dependabot/OWASP, reglas JaCoCo `PACKAGE` | los dos | S | L-0 | F0-F1, F8 |
 | G-7 | a11y: WCAG 1.4.11, `:hover`/`:focus-visible`, foco por teclado | web | M | — | F8 |
-| G-8 | Dashboards de reportes en el frontend | web | M | G-1 | F8 |
+| ~~G-8~~ | ~~Dashboards de reportes en el frontend~~ — **hecho** (web #12, 07/10): `/reportes` con fuente y criterio de fecha por indicador, secciones omitidas y CSV. Destapó la colisión de schemas que corrigió #58 (contrato 0.67.0) | web | M | G-1 | F8 |
 
 ### Ola 2 — necesitan una decisión o un cimiento de la ola 1
 
@@ -203,9 +209,9 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 |---|---|---|---|---|---|
 | ~~**A-9**~~ | ~~**Puente Oferta↔Práctica**~~ — **backend hecho** (`V75`, contrato 0.58.0, 06/10): tabla `oferta_practica`, `GET`/`PUT …/ofertas/{ofertaId}/practicas` y `offering.spi.PracticasDeOfertaDirectory` para C-4 y F-4; falta la pantalla | api + web | M | DU-1 | F2 |
 | ~~A-4~~ | ~~Bootstrap del `PLATFORM_ADMIN`~~ — **hecho** (07/10, DP-14): `AKINE_BOOTSTRAP_ADMIN_EMAIL` re-apunta la cuenta de `V15` y le encola el enlace de activación al arrancar; sin migración ni cambio de contrato (`docs/diseno/AKINE-A-4-bootstrap.md`) | api | M | DU-2 | F0-F1 |
-| A-7 | Endpoint "¿tengo rol de plataforma?" + consola de solicitudes de catálogo; catálogo global de financiadores — **backend hecho** (contrato 0.64.0, sin migración): `GET /me/platform-role` y aprobar una solicitud publica el concepto global. El catálogo global de financiadores quedó **diseñado y no implementado**: espera DU-13 (`docs/diseno/AKINE-A-7-plataforma.md`). Falta la pantalla | api + web | M | A-4 | F2, F3 |
-| A-10 | UI de impacto de desvinculación y preview de turnos al editar disponibilidad | web | M | E-1 | F2 |
-| B-3 | Cobertura aplicable por oferta (RF-M08-006/007); arancel por oferta; importación masiva de convenio — **backend hecho** (`V80`, contrato 0.65.0, 07/10): `GET /personas/{id}/cobertura-aplicable`, arancel por oferta en el convenio (RF-M16-008) y precio particular por vigencia (RF-M16-009); la importación masiva (RF-M16-007) quedó diseñada y fuera (`docs/diseno/AKINE-B-3-cobertura-por-oferta.md`); falta la pantalla | api + web | L | A-9 | F3 |
+| A-7 | Endpoint "¿tengo rol de plataforma?" + consola de solicitudes de catálogo; catálogo global de financiadores — **hecho salvo el catálogo de financiadores** (07/10): backend #53 (contrato 0.64.0, sin migración): `GET /me/platform-role` y aprobar una solicitud publica el concepto global; consola `/plataforma/solicitudes` en web #13. El catálogo global de financiadores quedó **diseñado y no implementado**: espera DU-13 (`docs/diseno/AKINE-A-7-plataforma.md`) | api + web | M | A-4 | F2, F3 |
+| ~~A-10~~ | ~~UI de impacto de desvinculación y preview de turnos al editar disponibilidad~~ — **hecho** (web #17, 07/10). Límite: para disponibilidad no hay consulta previa en el contrato; `turnosAfectados` llega en la respuesta del PUT/DELETE y es cota superior | web | M | E-1 | F2 |
+| ~~B-3~~ | ~~Cobertura aplicable por oferta (RF-M08-006/007); arancel por oferta; importación masiva de convenio~~ — **hecho salvo la importación masiva** (07/10): backend #55 (`V80`, contrato 0.65.0): `GET /personas/{id}/cobertura-aplicable`, arancel por oferta (RF-M16-008) y precio particular por vigencia (RF-M16-009); pantallas en web #15. La importación masiva (RF-M16-007) quedó diseñada y fuera (`docs/diseno/AKINE-B-3-cobertura-por-oferta.md`) | api + web | L | A-9 | F3 |
 | B-4 | Historial de estados de autorización (`V68`); estado de la orden médica | api | M | DU-8 | F3 |
 | ~~C-4~~ | ~~04.05: `RESERVA`/`LIBERACION_DE_RESERVA`, reversión del consumo, validar cobertura y caso~~ — hecho en el backend (`V76`, contrato 0.59.0): DP-12 una unidad por autorización involucrada, DP-13 alerta "consumo a revisar" al anular la deuda, cobertura vigente y caso al consumir. `RESERVA` queda afuera: ningún RF dice cuándo se reserva (`docs/diseno/AKINE-C-4-consumo.md`) | api | M | DU-4, DU-7, B-2 | F4 |
 | C-6 | Enmiendas que versionan tratamientos y mediciones (`V71`) + permiso reforzado; `X-Justificacion-Acceso` en `encounter` | api | M | C-7 | F6 |
@@ -213,8 +219,8 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | D-e | Entrada a la HC desde el Paciente 360 + E2E de acceso clínico permitido/denegado | web | M | C-2 | F4 |
 | D-f | Selector explicable de autorización, saldo y alertas | web | M | C-4 | F4 |
 | D-g | Enmiendas en la UI + E2E sesión rápida y cierre → timeline | web | M | C-6 | F6 |
-| **E-3** | Modelo de serie de turnos (`V70`): diseño con design challenge, comandos de alcance, UI de confirmación | api + web | L | — | F5 |
-| E-4 | Recepción con elegibilidad administrativa y camino "Particular" — **backend hecho** (`V78`, contrato 0.63.0, DP-16): `Recepcion` con máquina propia, validación por `person.spi.ElegibilidadAdministrativaDirectory`, Particular con motivo; falta la pantalla | api + web | M | B-2, DU-9 | F5 |
+| ~~**E-3**~~ | ~~Modelo de serie de turnos (`V70`): diseño con design challenge, comandos de alcance, UI de confirmación~~ — **hecho** (06/10 y 07/10): backend #44 (`V74`, renumerada desde `V70`; contrato 0.57.0), pantallas de alta con previsualización, detalle y cancelación con alcance en web #10. La reprogramación con alcance existe en el contrato y no tiene pantalla | api + web | L | — | F5 |
+| ~~E-4~~ | ~~Recepción con elegibilidad administrativa y camino "Particular"~~ — **hecho** (07/10): backend #52 (`V78`, contrato 0.63.0, DP-16): `Recepcion` con máquina propia, validación por `person.spi.ElegibilidadAdministrativaDirectory`, Particular con motivo; recepción del día sobre la máquina nueva en web #8 | api + web | M | B-2, DU-9 | F5 |
 | F-5 | Egresos y pagos a profesionales (backend pendiente + pantallas) | api + web | M | DU-10 | F7 |
 | G-5 | Hallazgos altos de 07.07: `OWN`, unificar errores, threat model, matriz de permisos con tests | api | L | DU-5, DU-6 | F8 |
 | G-9 | Job E2E del CI del frontend contra el backend | web | M | G-3 | F0-F1, F8 |
@@ -225,9 +231,9 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 |---|---|---|---|---|---|
 | ~~**F-4**~~ | ~~**Obligación del financiador**~~ — **backend hecho** (`V77`, contrato 0.60.0, 07/10): el cierre de una sesión cubierta por un convenio devenga la parte del financiador y el coseguro con el snapshot del arancel; la bandeja de 07.04 y el reporte de 07.06 tienen datos. Diseño en `docs/diseno/AKINE-F-4-obligacion-financiador.md`; falta la pantalla | api + web | L | A-9, B-2, C-4 | F7 |
 | C-9 | Gate RF-M10-007: caso obligatorio al reservar/atender, con ventana de migración | api + web | L | C-2, D-b, E-3 | F4, F5, F6 |
-| E-6 | Prepago de recepción como anticipo — **backend hecho** (`V81`, contrato 0.66.0): política `exigePrepago` en la oferta, `Recepcion.prepago` como alerta sin bloqueo, cobro con `turnoId` como anticipo de F-3 e imputación automática a la deuda del paciente después del commit del cierre (`docs/diseno/AKINE-E-6-prepago.md`); falta la pantalla | api + web | M | E-4, F-3 | F5 |
-| ~~**E-7**~~ | ~~"Atender como Particular" llega a la obligación~~ — **backend hecho** (07/10, sin migración ni cambio de contrato, RF-M08-007): la recepción resuelta como Particular viaja en `SesionCerrada.particularPorRecepcion` (leída por `scheduling.spi.TurnoDirectory#atendidoComoParticular`); el cierre devenga sólo `PARTICULAR` al precio del día y no consume autorización. Diseño en `docs/diseno/AKINE-E-7-particular-en-obligacion.md` | api | S | E-4, B-3, F-4, E-6 | F5, F7 |
-| E-8 | Bandeja de series y prepago antes del check-in — **backend hecho** (07/10, sin migración, contrato 0.68.0): `GET /consultorios/{c}/series-de-turnos` (`listarSeriesDeTurnos`, `turno:read`) paginado, filtrable por persona y por estado **derivado** de los turnos (`VIGENTE`/`FINALIZADA`), y `TurnoDelDia.prepago` calculado al leer con la sonda de E-6 también sin recepción. Diseño en `docs/diseno/AKINE-E-8-series-y-prepago.md`; faltan las pantallas | api + web | S | E-3, E-6 | F5 |
+| ~~E-6~~ | ~~Prepago de recepción como anticipo~~ — **hecho** (07/10): backend #54 (`V81`, contrato 0.66.0): política `exigePrepago` en la oferta, `Recepcion.prepago` como alerta sin bloqueo, cobro con `turnoId` como anticipo de F-3 e imputación automática a la deuda del paciente después del commit del cierre (`docs/diseno/AKINE-E-6-prepago.md`); pantallas de oferta, recepción y registro de cobro en web #14 | api + web | M | E-4, F-3 | F5 |
+| ~~**E-7**~~ | ~~"Atender como Particular" llega a la obligación~~ — **hecho** (#56, 07/10, sin migración ni cambio de contrato, RF-M08-007): la recepción resuelta como Particular viaja en `SesionCerrada.particularPorRecepcion` (leída por `scheduling.spi.TurnoDirectory#atendidoComoParticular`); el cierre devenga sólo `PARTICULAR` al precio del día y no consume autorización. Diseño en `docs/diseno/AKINE-E-7-particular-en-obligacion.md` | api | S | E-4, B-3, F-4, E-6 | F5, F7 |
+| ~~E-8~~ | ~~Bandeja de series y prepago antes del check-in~~ — **hecho** (07/10): backend #59 (sin migración, `V82` vacía, contrato 0.68.0): `GET /consultorios/{c}/series-de-turnos` (`listarSeriesDeTurnos`, `turno:read`) paginado, filtrable por persona y por estado **derivado** (`VIGENTE`/`FINALIZADA`), y `TurnoDelDia.prepago` calculado al leer también sin recepción (`docs/diseno/AKINE-E-8-series-y-prepago.md`). Pantallas: bandeja `/agenda/series` en web #20 y prepago antes del check-in en web #21 | api + web | S | E-3, E-6 | F5 |
 | G-10 | Carga con k6 contra los SLO de ADR-0016; LCP del frontend | los dos | M | G-4 | F8 |
 | G-11 | Cobertura de vuelta a 0,80 (cada carril sube la de sus módulos; G vigila el gate) — **avance** (06/10): unitarios de `activity` (#31) y `encounter` (#32) | api | M | ola 2 | F8 |
 
