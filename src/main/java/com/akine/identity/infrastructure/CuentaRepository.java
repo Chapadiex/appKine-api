@@ -3,7 +3,11 @@ package com.akine.identity.infrastructure;
 import com.akine.identity.domain.Cuenta;
 import com.akine.identity.domain.port.CuentaRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.Optional;
 
 /**
@@ -40,4 +44,49 @@ public interface CuentaRepository extends JpaRepository<Cuenta, Long>, CuentaRep
 	 */
 	@Override
 	Optional<Cuenta> findById(Long id);
+
+	/**
+	 * Por que es un UPDATE nativo y no la entidad: ver
+	 * {@link CuentaRepositoryPort#registrarLoginExitoso(long, Instant)}.
+	 *
+	 * <p>No toca {@code version} a proposito: la marca de login no es una edicion de la cuenta.
+	 * Las condiciones del {@code WHERE} son las de {@link Cuenta#puedeAutenticarse()}.
+	 */
+	@Override
+	default boolean registrarLoginExitoso(long cuentaId, Instant ahora) {
+		return marcarLoginExitoso(cuentaId, ahora) > 0;
+	}
+
+	@Override
+	default int registrarLoginFallido(long cuentaId, Instant ahora) {
+		incrementarIntentosFallidos(cuentaId, ahora);
+		// Bajo REPEATABLE READ la transaccion ve sus propias escrituras: esto devuelve el valor
+		// que dejo el incremento, que a su vez partio del ultimo commiteado (lectura actual).
+		return leerIntentosFallidos(cuentaId);
+	}
+
+	@Modifying
+	@Query(value = """
+			UPDATE cuenta
+			   SET intentos_fallidos = 0,
+			       ultimo_login_en = :ahora,
+			       updated_at = :ahora
+			 WHERE id = :cuentaId
+			   AND estado = 'ACTIVA'
+			   AND active = TRUE
+			   AND password_hash IS NOT NULL
+			""", nativeQuery = true)
+	int marcarLoginExitoso(@Param("cuentaId") long cuentaId, @Param("ahora") Instant ahora);
+
+	@Modifying
+	@Query(value = """
+			UPDATE cuenta
+			   SET intentos_fallidos = intentos_fallidos + 1,
+			       updated_at = :ahora
+			 WHERE id = :cuentaId
+			""", nativeQuery = true)
+	int incrementarIntentosFallidos(@Param("cuentaId") long cuentaId, @Param("ahora") Instant ahora);
+
+	@Query(value = "SELECT intentos_fallidos FROM cuenta WHERE id = :cuentaId", nativeQuery = true)
+	int leerIntentosFallidos(@Param("cuentaId") long cuentaId);
 }

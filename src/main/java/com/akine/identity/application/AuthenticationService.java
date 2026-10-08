@@ -78,14 +78,22 @@ public class AuthenticationService {
 	 * <p>Transaccional porque escribe: el contador de fallos, la marca de ultimo login y el
 	 * evento de auditoria van todos en la misma transaccion (T-2). Que el camino de fallo
 	 * tambien escriba es deliberado — un login fallido sin rastro es exactamente lo que no se
-	 * puede investigar despues.
+	 * puede investigar despues. La marca y el contador se escriben con UPDATE directos, no por
+	 * la entidad: por la entidad, dos logins simultaneos de la misma cuenta se trababan
+	 * (deadlock o 409, ver {@link CuentaRepositoryPort#registrarLoginExitoso}).
 	 *
 	 * @param email    tal como lo tipeo la persona
 	 * @param password contrasena en claro. No se loguea, ni siquiera su longitud
 	 * @return la cuenta, ya con el login registrado
 	 * @throws InvalidCredentialsException en las cuatro causas de rechazo, sin distinguirlas
 	 */
-	@Transactional
+	// noRollbackFor por lo mismo que SessionService.refrescar: el rechazo es una senal de negocio
+	// y lo que se escribio antes de lanzarlo —el contador de fallos y el LOGIN_FALLIDO o
+	// LOGIN_RECHAZADO_ESTADO de la auditoria— es exactamente lo que tiene que quedar. Sin esto
+	// Spring revertia la transaccion entera: el contador nunca paso de cero, la alerta de
+	// actividad sospechosa no podia dispararse y ningun login fallido dejaba rastro. Lo destapo
+	// LoginConcurrenteIT, que afirma sobre la base y no sobre el codigo de respuesta.
+	@Transactional(noRollbackFor = InvalidCredentialsException.class)
 	public Cuenta autenticar(String email, String password) {
 		Optional<Cuenta> encontrada = buscarPorEmail(email);
 
@@ -121,8 +129,18 @@ public class AuthenticationService {
 			throw new InvalidCredentialsException();
 		}
 
-		cuenta.registrarLoginExitoso(ahora);
-		cuentaRepository.save(cuenta);
+		// UPDATE directo y no la entidad: por la entidad, dos logins simultaneos de la misma
+		// cuenta terminaban en deadlock o en 409 (ver el puerto). Ademas es la ultima palabra
+		// sobre el estado: relee la fila con lock, asi que un bloqueo que entro despues de la
+		// lectura de arriba se respeta.
+		if (!cuentaRepository.registrarLoginExitoso(cuenta.getId(), ahora)) {
+			IdentityAuditEvents.registrar(auditTrail, IdentityAuditEvents.LOGIN_RECHAZADO_ESTADO,
+					null, cuenta.getId(), cuenta.getId(), null, null,
+					Map.of("estado", "CAMBIO_CONCURRENTE"), null, ahora);
+			log.info("Login rechazado: la cuenta dejo de habilitar el acceso durante el login. "
+					+ "cuentaId={}", cuenta.getId());
+			throw new InvalidCredentialsException();
+		}
 		IdentityAuditEvents.registrar(auditTrail, IdentityAuditEvents.LOGIN_EXITOSO,
 				null, cuenta.getId(), cuenta.getId(), null, null, Map.of(), null, ahora);
 		log.info("Login exitoso: cuentaId={}", cuenta.getId());
@@ -130,8 +148,9 @@ public class AuthenticationService {
 	}
 
 	private Cuenta rechazarPorCredencial(Cuenta cuenta, Instant ahora) {
-		int fallos = cuenta.registrarLoginFallido();
-		cuentaRepository.save(cuenta);
+		// Incremento atomico: por la entidad, dos fallos simultaneos daban uno 401 y otro 409, y
+		// un email inexistente da siempre 401. Esa diferencia enumeraria cuentas (ADR-0018).
+		int fallos = cuentaRepository.registrarLoginFallido(cuenta.getId(), ahora);
 
 		Map<String, String> details = new LinkedHashMap<>();
 		details.put("motivo", "CREDENCIALES");

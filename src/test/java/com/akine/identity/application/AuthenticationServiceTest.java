@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 
+import static com.akine.identity.IdentityFixtures.CUENTA_ID;
 import static com.akine.identity.IdentityFixtures.EMAIL;
 import static com.akine.identity.IdentityFixtures.PASSWORD_VALIDA;
 import static com.akine.identity.IdentityFixtures.cuentaActiva;
@@ -26,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -66,15 +68,34 @@ class AuthenticationServiceTest {
 		Cuenta cuenta = cuentaActiva();
 		given(cuentaRepository.findByEmailNormalizado(EMAIL)).willReturn(Optional.of(cuenta));
 		given(passwordHasher.matches(PASSWORD_VALIDA, cuenta.getPasswordHash())).willReturn(true);
+		given(cuentaRepository.registrarLoginExitoso(eq(CUENTA_ID), any())).willReturn(true);
 
 		Cuenta resultado = service.autenticar(EMAIL, PASSWORD_VALIDA);
 
 		assertThat(resultado).isSameAs(cuenta);
-		assertThat(cuenta.getUltimoLoginEn()).isNotNull();
-		assertThat(cuenta.getIntentosFallidos()).isZero();
-		verify(cuentaRepository).save(cuenta);
+		verify(cuentaRepository).registrarLoginExitoso(eq(CUENTA_ID), any());
+		// Por la entidad, el UPDATE movia la version y dos logins simultaneos chocaban.
+		verify(cuentaRepository, never()).save(any());
 		assertThat(auditoria()).singleElement()
 				.satisfies(entrada -> assertThat(entrada.eventType()).isEqualTo("LOGIN_EXITOSO"));
+	}
+
+	@Test
+	@DisplayName("si la cuenta se bloqueo durante el login, el mismo 401 de siempre")
+	void si_la_cuenta_dejo_de_habilitar_durante_el_login_se_rechaza() {
+		Cuenta cuenta = cuentaActiva();
+		given(cuentaRepository.findByEmailNormalizado(EMAIL)).willReturn(Optional.of(cuenta));
+		given(passwordHasher.matches(PASSWORD_VALIDA, cuenta.getPasswordHash())).willReturn(true);
+		// El UPDATE condicionado no encontro la cuenta habilitada: un bloqueo entro despues de
+		// la lectura.
+		given(cuentaRepository.registrarLoginExitoso(eq(CUENTA_ID), any())).willReturn(false);
+
+		assertThatThrownBy(() -> service.autenticar(EMAIL, PASSWORD_VALIDA))
+				.isInstanceOf(InvalidCredentialsException.class);
+
+		assertThat(auditoria()).singleElement()
+				.satisfies(entrada -> assertThat(entrada.eventType())
+						.isEqualTo("LOGIN_RECHAZADO_ESTADO"));
 	}
 
 	@Test
@@ -114,12 +135,13 @@ class AuthenticationServiceTest {
 		Cuenta cuenta = cuentaActiva();
 		given(cuentaRepository.findByEmailNormalizado(EMAIL)).willReturn(Optional.of(cuenta));
 		given(passwordHasher.matches(any(), any())).willReturn(false);
+		given(cuentaRepository.registrarLoginFallido(eq(CUENTA_ID), any())).willReturn(1);
 
 		assertThatThrownBy(() -> service.autenticar(EMAIL, "la-equivocada"))
 				.isInstanceOf(InvalidCredentialsException.class);
 
-		assertThat(cuenta.getIntentosFallidos()).isEqualTo(1);
-		verify(cuentaRepository).save(cuenta);
+		verify(cuentaRepository).registrarLoginFallido(eq(CUENTA_ID), any());
+		verify(cuentaRepository, never()).save(any());
 		assertThat(auditoria()).singleElement().satisfies(entrada -> {
 			assertThat(entrada.eventType()).isEqualTo("LOGIN_FALLIDO");
 			assertThat(entrada.details()).containsEntry("motivo", "CREDENCIALES");
@@ -130,11 +152,11 @@ class AuthenticationServiceTest {
 	@DisplayName("a partir del umbral se emite el evento de actividad sospechosa")
 	void a_partir_del_umbral_se_emite_actividad_sospechosa() {
 		Cuenta cuenta = cuentaActiva();
-		for (int i = 1; i < AuthenticationService.UMBRAL_ACTIVIDAD_SOSPECHOSA; i++) {
-			cuenta.registrarLoginFallido();
-		}
 		given(cuentaRepository.findByEmailNormalizado(EMAIL)).willReturn(Optional.of(cuenta));
 		given(passwordHasher.matches(any(), any())).willReturn(false);
+		// El total lo devuelve el incremento atomico de la base, no la entidad.
+		given(cuentaRepository.registrarLoginFallido(eq(CUENTA_ID), any()))
+				.willReturn(AuthenticationService.UMBRAL_ACTIVIDAD_SOSPECHOSA);
 
 		assertThatThrownBy(() -> service.autenticar(EMAIL, "la-equivocada"))
 				.isInstanceOf(InvalidCredentialsException.class);
