@@ -17,7 +17,7 @@ import com.akine.resource.domain.exception.ConsultorioNotOperableException;
 import com.akine.resource.domain.exception.ProfesionalNoVinculadoException;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDisponibilidadRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
-import com.akine.resource.spi.DisponibilidadImpactProbe;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -113,17 +113,6 @@ public class DisponibilidadService {
 
 	private static final Logger log = LoggerFactory.getLogger(DisponibilidadService.class);
 
-	/**
-	 * Ventana hacia adelante que se le pregunta a la sonda de impacto cuando el bloque no tiene
-	 * fin de vigencia.
-	 *
-	 * <p>No sale de ningun RF y es deliberadamente finita: un bloque sin fin previsto no tiene
-	 * un "hasta" con el que acotar la pregunta, y {@link DisponibilidadImpactProbe#turnosEn} pide
-	 * dos instantes. Noventa dias es el horizonte con el que un centro planifica; cambiarlo no
-	 * toca el contrato.
-	 */
-	private static final int DIAS_DE_HORIZONTE_DE_IMPACTO = 90;
-
 	private final BloqueDisponibilidadRepositoryPort bloques;
 	private final CalendarioSedeRepositoryPort calendarios;
 	private final CalendarioSedeIniciador calendarioIniciador;
@@ -131,7 +120,7 @@ public class DisponibilidadService {
 	private final ConsultorioMembershipDirectory membershipDirectory;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
-	private final DisponibilidadImpactProbe impactProbe;
+	private final SimuladorDeImpacto simulador;
 
 	public DisponibilidadService(
 			BloqueDisponibilidadRepositoryPort bloques,
@@ -141,7 +130,7 @@ public class DisponibilidadService {
 			ConsultorioMembershipDirectory membershipDirectory,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
-			DisponibilidadImpactProbe impactProbe) {
+			SimuladorDeImpacto simulador) {
 
 		this.bloques = bloques;
 		this.calendarios = calendarios;
@@ -150,7 +139,7 @@ public class DisponibilidadService {
 		this.membershipDirectory = membershipDirectory;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
-		this.impactProbe = impactProbe;
+		this.simulador = simulador;
 	}
 
 	// =================================================================================
@@ -180,8 +169,8 @@ public class DisponibilidadService {
 	 *
 	 * <p><b>{@code turnosAfectados} es cero por construccion y no se le pregunta a la sonda.</b>
 	 * Un alta AGREGA disponibilidad: ningun turno existente puede quedar afuera de una franja
-	 * que antes no existia. La consulta a {@link DisponibilidadImpactProbe} corresponde en la
-	 * edicion y en la baja, que si pueden quitarla.
+	 * que antes no existia. El calculo de impacto corresponde en la edicion y en la baja, que si
+	 * pueden quitarla.
 	 *
 	 * @throws ConsultorioNotAccessibleException si la sede no existe o es de otro tenant (404)
 	 * @throws ConsultorioNotOperableException si la sede esta dada de baja (409)
@@ -263,9 +252,9 @@ public class DisponibilidadService {
 	 * caso en que el competidor ya commiteo y la pantalla del segundo quedo desactualizada. Hacen
 	 * falta los dos.
 	 *
-	 * <p>Segundo, la consulta a {@link DisponibilidadImpactProbe}: una edicion puede QUITAR
-	 * disponibilidad, y los turnos que caian ahi quedan en conflicto (RN-M05-004). Desde el
-	 * paquete E-1 la responde {@code scheduling}, como cota superior; ver {@link BloqueView}.
+	 * <p>Segundo, el impacto ({@link SimuladorDeImpacto}): una edicion puede QUITAR
+	 * disponibilidad, y los turnos que caian ahi quedan en conflicto (RN-M05-004). Desde A-11 es
+	 * el conjunto exacto, no la cota superior de E-1; ver {@link BloqueView}.
 	 * <b>El impacto se informa, no bloquea</b>: RN-M05-004 pide que los turnos afectados queden
 	 * VISIBLES para su resolucion, y ADR-0011 prohibe justamente decidir por el usuario en
 	 * cascada. Quien decide que hacer con esos turnos es la pantalla.
@@ -306,12 +295,11 @@ public class DisponibilidadService {
 
 		Map<String, String> detalles = cambios(bloque, command);
 
-		// El fin de vigencia ANTERIOR se guarda antes de mutar, y es lo que hace correcta la
-		// ventana de la sonda. Ver impactoDe: los turnos que una edicion deja huerfanos son
-		// justamente los que caen DESPUES del nuevo fin, o sea fuera de la ventana que el estado
-		// posterior describe. Preguntando solo por el estado nuevo, la respuesta seria cero
-		// exactamente en el caso que la pregunta existe para detectar.
-		LocalDate finDeVigenciaPrevio = bloque.getVigenciaHasta();
+		// El impacto se calcula ANTES de mutar: el simulador compara la disponibilidad con el
+		// bloque como esta y con una copia editada, y la ventana llega al fin de vigencia MAS
+		// LEJANO de los dos —los turnos que una edicion deja huerfanos son justamente los que caen
+		// despues del nuevo fin—. Despues de mutar, "antes" ya no existiria.
+		ImpactoDeDisponibilidad impacto = simulador.deEdicion(sede, bloque, command, ahora);
 
 		bloque.updateDatos(
 				command.diaSemana(), command.horaDesde(), command.horaHasta(),
@@ -325,9 +313,6 @@ public class DisponibilidadService {
 				bloque.getVigenciaDesde(), bloque.getVigenciaHasta());
 
 		BloqueDisponibilidad guardado = bloques.save(bloque);
-		DisponibilidadImpactProbe.Impacto impacto = impactoDe(
-				organizationId, consultorioId, membershipId, sede, ahora,
-				finDeVigenciaPrevio, guardado.getVigenciaHasta());
 		if (impacto.hayAlgo()) {
 			detalles.put("turnosAfectados", String.valueOf(impacto.turnosAfectados()));
 		}
@@ -382,11 +367,9 @@ public class DisponibilidadService {
 			throw new BloqueInactivoException(bloqueId, BloqueInactivoException.Operacion.BAJA);
 		}
 
-		// La sonda se consulta ANTES de la baja: despues, la disponibilidad resultante ya no
-		// contiene la franja y la pregunta "que turnos quedan afuera" perderia su referencia.
-		DisponibilidadImpactProbe.Impacto impacto = impactoDe(
-				organizationId, consultorioId, membershipId, sede, ahora,
-				bloque.getVigenciaHasta(), bloque.getVigenciaHasta());
+		// El impacto se calcula ANTES de la baja: despues, la disponibilidad de "antes" ya no
+		// contendria la franja y la comparacion perderia su referencia.
+		ImpactoDeDisponibilidad impacto = simulador.deBaja(sede, bloque, ahora);
 
 		bloque.deactivate(ahora, motivo);
 		BloqueDisponibilidad guardado = bloques.save(bloque);
@@ -400,6 +383,74 @@ public class DisponibilidadService {
 				consultorioId, membershipId, bloqueId);
 
 		return BloqueView.de(guardado, impacto);
+	}
+
+	// =================================================================================
+	// Impacto previo, sin aplicar nada (A-11)
+	// =================================================================================
+
+	/**
+	 * Que turnos dejaria afuera esta edicion, <b>sin aplicarla</b> (A-11, RN-M05-004).
+	 *
+	 * <p>Misma autorizacion que la edicion —{@code consultorio:manage} sobre la sede—, porque la
+	 * respuesta lista turnos de la agenda del profesional. Es una lectura: no toma el lock de la
+	 * sede, no compara la version ({@code expectedVersion} del comando se ignora) y no audita. Un
+	 * turno reservado entre esta consulta y el {@code PUT} lo informa igual la respuesta del
+	 * {@code PUT}, que recalcula con el mismo simulador.
+	 *
+	 * <p>Exige el profesional en el tenant pero no su vinculo vigente: es lo que exige la baja, y la
+	 * pantalla puede querer evaluar el impacto de ordenar el horario de alguien que se fue.
+	 *
+	 * @throws BloqueNotAccessibleException si el bloque no es accesible (404)
+	 * @throws BloqueInactivoException si el bloque esta dado de baja (409)
+	 * @throws IllegalArgumentException si la edicion propuesta es incoherente (400)
+	 */
+	@Transactional(readOnly = true)
+	public ImpactoDeDisponibilidad simularEdicion(
+			OperatingActor actor,
+			long consultorioId,
+			long membershipId,
+			long bloqueId,
+			BloqueEdicionCommand command) {
+
+		BloqueOperable objetivo = bloqueParaSimular(
+				actor, consultorioId, membershipId, bloqueId, BloqueInactivoException.Operacion.EDICION);
+		return simulador.deEdicion(objetivo.sede(), objetivo.bloque(), command, Instant.now());
+	}
+
+	/**
+	 * Que turnos dejaria afuera la baja de este bloque, <b>sin aplicarla</b> (A-11). Mismas reglas
+	 * que {@link #simularEdicion}.
+	 */
+	@Transactional(readOnly = true)
+	public ImpactoDeDisponibilidad simularBaja(
+			OperatingActor actor, long consultorioId, long membershipId, long bloqueId) {
+
+		BloqueOperable objetivo = bloqueParaSimular(
+				actor, consultorioId, membershipId, bloqueId, BloqueInactivoException.Operacion.BAJA);
+		return simulador.deBaja(objetivo.sede(), objetivo.bloque(), Instant.now());
+	}
+
+	private record BloqueOperable(ConsultorioSnapshot sede, BloqueDisponibilidad bloque) {
+	}
+
+	private BloqueOperable bloqueParaSimular(
+			OperatingActor actor,
+			long consultorioId,
+			long membershipId,
+			long bloqueId,
+			BloqueInactivoException.Operacion operacion) {
+
+		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId);
+		exigirProfesionalDelTenant(organizationId, membershipId);
+
+		BloqueDisponibilidad bloque = cargar(organizationId, consultorioId, membershipId, bloqueId);
+		if (!bloque.isOperable()) {
+			throw new BloqueInactivoException(bloqueId, operacion);
+		}
+		return new BloqueOperable(sede, bloque);
 	}
 
 	// =================================================================================
@@ -672,66 +723,6 @@ public class DisponibilidadService {
 	private ConsultorioSnapshot exigirSedeOperable(long organizationId, long consultorioId) {
 		return AutorizacionDeSede.exigirSedeOperable(
 				consultorioDirectory, organizationId, consultorioId);
-	}
-
-	/**
-	 * Pregunta a la sonda cuantos turnos futuros deja en conflicto el cambio (RN-M05-004).
-	 *
-	 * <h2>La ventana sale de la UNION del estado anterior y el nuevo, no del nuevo</h2>
-	 *
-	 * <p>Es el error que este metodo existe para no cometer. Un bloque "martes 09-12, sin fin" con turnos reservados hasta
-	 * diciembre al que el administrador le pone {@code vigenciaHasta = 2026-09-01}: los turnos
-	 * que esa edicion deja huerfanos son <b>exactamente los del 2026-09-01 en adelante</b>. Una
-	 * ventana derivada del estado POSTERIOR termina el 2026-09-01, o sea que consulta justo el
-	 * tramo que la edicion NO rompe y responde cero.
-	 *
-	 * <p>Por eso se toma el fin MAS LEJANO entre el anterior y el nuevo. Con la union, la ventana
-	 * cubre el tramo que se recorta —que es el que interesa— y tambien el caso simetrico de una
-	 * edicion que ALARGA la vigencia, donde el conflicto puede estar mas alla del fin viejo. Un
-	 * {@code null} de cualquiera de los dos lados significa "sin fin" y gana siempre: se cae al
-	 * horizonte.
-	 *
-	 * <p>Es la misma razon por la que {@link #darDeBaja} consulta la sonda ANTES de desactivar.
-	 * Una baja es el caso extremo de un recorte, y ahi los dos extremos coinciden porque la
-	 * vigencia no cambia.
-	 *
-	 * <p>La ventana arranca en AHORA —los turnos pasados no se tocan— y la zona de la sede es la
-	 * que traduce el dia local a un instante: usar UTC correria el limite hasta tres horas en
-	 * Argentina y dejaria turnos del ultimo dia afuera de la cuenta.
-	 *
-	 * @param finPrevio fin de vigencia ANTES del cambio, {@code null} si no tenia
-	 * @param finNuevo  fin de vigencia DESPUES del cambio, {@code null} si no tiene
-	 */
-	private DisponibilidadImpactProbe.Impacto impactoDe(
-			long organizationId,
-			long consultorioId,
-			long membershipId,
-			ConsultorioSnapshot sede,
-			Instant ahora,
-			LocalDate finPrevio,
-			LocalDate finNuevo) {
-
-		ZoneId zona = zonaDe(sede);
-		LocalDate horizonte =
-				LocalDate.ofInstant(ahora, zona).plusDays(DIAS_DE_HORIZONTE_DE_IMPACTO);
-
-		LocalDate fin;
-		if (finPrevio == null || finNuevo == null) {
-			fin = horizonte;
-		} else {
-			LocalDate masLejano = finPrevio.isAfter(finNuevo) ? finPrevio : finNuevo;
-			// El horizonte tambien acota el caso acotado: sin el, un fin de vigencia a diez años
-			// convertiria cada edicion en un scan de la agenda entera.
-			fin = masLejano.isAfter(horizonte) ? horizonte : masLejano;
-		}
-		Instant hasta = fin.atStartOfDay(zona).toInstant();
-
-		if (!hasta.isAfter(ahora)) {
-			// El bloque ya vencio: no puede haber ningun turno FUTURO amparado por el, y
-			// preguntarlo con una ventana invertida seria pedirle a la sonda algo sin sentido.
-			return DisponibilidadImpactProbe.Impacto.ninguno();
-		}
-		return impactProbe.turnosEn(organizationId, consultorioId, membershipId, ahora, hasta);
 	}
 
 	/**

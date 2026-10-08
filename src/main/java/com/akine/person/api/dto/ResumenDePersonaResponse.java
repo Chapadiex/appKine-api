@@ -2,10 +2,12 @@ package com.akine.person.api.dto;
 
 import com.akine.person.application.ResumenDePersonaView;
 import com.akine.person.spi.AporteDeResumen;
+import com.akine.person.spi.CoberturaDeResumen;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -107,7 +109,81 @@ public record ResumenDePersonaResponse(
 			String estado,
 
 			@Schema(description = "Id de la entidad de origen, para pedir el detalle", example = "9")
-			long referencia) {
+			long referencia,
+
+			@Schema(description = "Datos estructurados de la cobertura. Solo en los hitos de la "
+					+ "seccion coberturas; en los demas viene nulo. Son los mismos datos del "
+					+ "titulo, como campos: el titulo es para leer, no para partir",
+					nullable = true)
+			CoberturaDelHitoResponse cobertura) {
+	}
+
+	/** Los datos de una cobertura del 360, como campos (A-11). */
+	@Schema(name = "CoberturaDelHitoResponse",
+			description = "Cobertura vigente del paciente tal como la muestra el 360")
+	public record CoberturaDelHitoResponse(
+
+			@Schema(description = "PARTICULAR o FINANCIADA", example = "FINANCIADA")
+			String tipo,
+
+			@Schema(description = "Financiador, nulo en una cobertura particular", example = "4",
+					nullable = true)
+			Long financiadorId,
+
+			@Schema(description = "Nombre del financiador congelado al firmar la cobertura",
+					example = "OSDE", nullable = true)
+			String financiadorNombre,
+
+			@Schema(description = "Plan, nulo si la cobertura no tiene plan", example = "7",
+					nullable = true)
+			Long planId,
+
+			@Schema(description = "Nombre del plan congelado al firmar la cobertura",
+					example = "210", nullable = true)
+			String planNombre,
+
+			@Schema(description = "Numero de afiliado con solo los ultimos cuatro caracteres a "
+					+ "la vista. El numero completo esta en la lista de coberturas",
+					example = "···4321", nullable = true)
+			String afiliadoEnmascarado,
+
+			@Schema(description = "Primer dia de la cobertura (fecha sin hora)",
+					example = "2026-01-01")
+			LocalDate vigenciaDesde,
+
+			@Schema(description = "Ultimo dia de la cobertura (fecha sin hora). Nulo si no vence",
+					example = "2026-12-31", nullable = true)
+			LocalDate vigenciaHasta,
+
+			@Schema(description = "Si es la cobertura principal del paciente", example = "true")
+			boolean principal,
+
+			@Schema(description = "Estado de la credencial hoy",
+					allowableValues = {"VIGENTE", "VENCIDA", "SIN_VENCIMIENTO"},
+					example = "VIGENTE")
+			String estadoCredencial,
+
+			@Schema(description = "Vencimiento de la credencial (fecha sin hora), nulo si no lo "
+					+ "tiene", example = "2026-06-30", nullable = true)
+			LocalDate credencialVigenciaHasta) {
+
+		static CoberturaDelHitoResponse from(CoberturaDeResumen cobertura) {
+			if (cobertura == null) {
+				return null;
+			}
+			return new CoberturaDelHitoResponse(
+					cobertura.tipo(),
+					cobertura.financiadorId(),
+					cobertura.financiadorNombre(),
+					cobertura.planId(),
+					cobertura.planNombre(),
+					cobertura.afiliadoEnmascarado(),
+					cobertura.vigenciaDesde(),
+					cobertura.vigenciaHasta(),
+					cobertura.principal(),
+					cobertura.estadoCredencial(),
+					cobertura.credencialVigenciaHasta());
+		}
 	}
 
 	/** Una seccion recortada por permiso. */
@@ -151,7 +227,8 @@ public record ResumenDePersonaResponse(
 								hito.ocurrioEn(),
 								hito.titulo(),
 								hito.estado(),
-								hito.referencia()))
+								hito.referencia(),
+								CoberturaDelHitoResponse.from(hito.cobertura())))
 						.toList());
 	}
 }

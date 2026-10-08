@@ -269,8 +269,8 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 				.isFalse();
 		assertThat(sondaProfesional.pendingWorkOn(
 				orgPropia, ajeno.profesionalMembershipId(), 0L, ahora).hayAlgo()).isFalse();
-		assertThat(sondaDisponibilidad.turnosEn(orgPropia, ajeno.consultorioId(),
-				ajeno.profesionalMembershipId(), ahora, horizonte).hayAlgo()).isFalse();
+		assertThat(sondaDisponibilidad.pendientesEn(orgPropia, ajeno.consultorioId(),
+				ajeno.profesionalMembershipId(), ahora, horizonte)).isEmpty();
 		long espacioCualquiera = 1L;
 		assertThat(sondaEspacio.peakOccupancyFrom(orgPropia, espacioCualquiera, ahora).hayAlguna())
 				.isFalse();

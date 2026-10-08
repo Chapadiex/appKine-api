@@ -16,6 +16,8 @@ import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
 import com.akine.resource.domain.exception.ProfesionalNoVinculadoException;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDisponibilidadRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.FeriadoRepositoryPort;
 import com.akine.resource.spi.DisponibilidadImpactProbe;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -102,6 +104,12 @@ class DisponibilidadServiceTest {
 	@Mock
 	private DisponibilidadImpactProbe impactProbe;
 
+	@Mock
+	private DisponibilidadExcepcionRepositoryPort excepciones;
+
+	@Mock
+	private FeriadoRepositoryPort feriados;
+
 	private DisponibilidadService service;
 
 	private final OperatingActor actor =
@@ -114,7 +122,8 @@ class DisponibilidadServiceTest {
 		service = new DisponibilidadService(
 				bloques, calendarios, new CalendarioSedeIniciador(calendarios),
 				consultorioDirectory, membershipDirectory,
-				permissionGuard, auditTrail, impactProbe);
+				permissionGuard, auditTrail,
+				new SimuladorDeImpacto(bloques, excepciones, feriados, calendarios, impactProbe));
 
 		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID))
 				.willReturn(Optional.of(new ConsultorioSnapshot(
@@ -130,8 +139,8 @@ class DisponibilidadServiceTest {
 			}
 			return guardado;
 		});
-		given(impactProbe.turnosEn(anyLong(), anyLong(), anyLong(), any(), any()))
-				.willReturn(DisponibilidadImpactProbe.Impacto.ninguno());
+		given(impactProbe.pendientesEn(anyLong(), anyLong(), any(), any(), any()))
+				.willReturn(List.of());
 	}
 
 	// =================================================================================
@@ -439,7 +448,7 @@ class DisponibilidadServiceTest {
 				new BloqueEdicionCommand(null, null, null, null, nuevoFin, false, 0L));
 
 		ArgumentCaptor<Instant> hasta = ArgumentCaptor.forClass(Instant.class);
-		verify(impactProbe).turnosEn(
+		verify(impactProbe).pendientesEn(
 				org.mockito.ArgumentMatchers.eq(ORG_ID),
 				org.mockito.ArgumentMatchers.eq(CONSULTORIO_ID),
 				org.mockito.ArgumentMatchers.eq(MEMBERSHIP_ID),
@@ -639,7 +648,7 @@ class DisponibilidadServiceTest {
 				new BloqueEdicionCommand(null, null, null, null, finNuevo, false, 0L));
 
 		ArgumentCaptor<Instant> hasta = ArgumentCaptor.forClass(Instant.class);
-		verify(impactProbe).turnosEn(anyLong(), anyLong(), anyLong(), any(), hasta.capture());
+		verify(impactProbe).pendientesEn(anyLong(), anyLong(), any(), any(), hasta.capture());
 
 		assertThat(hasta.getValue())
 				.as("el fin MAS LEJANO de los dos, no el nuevo y tampoco el horizonte de 90 dias")

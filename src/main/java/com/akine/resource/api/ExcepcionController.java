@@ -3,6 +3,7 @@ package com.akine.resource.api;
 import com.akine.resource.api.dto.CreateExcepcionRequest;
 import com.akine.resource.api.dto.DeactivateExcepcionRequest;
 import com.akine.resource.api.dto.ExcepcionResponse;
+import com.akine.resource.api.dto.ImpactoDisponibilidadResponse;
 import com.akine.resource.application.ExcepcionAltaCommand;
 import com.akine.resource.application.ExcepcionService;
 import com.akine.resource.application.ExcepcionView;
@@ -333,5 +334,98 @@ public class ExcepcionController {
 
 		return ResponseEntity.ok(ExcepcionResponse.from(excepcionService.darDeBaja(
 				apiActor.current(), consultorioId, excepcionId, request.reason())));
+	}
+
+	@PostMapping(path = "/impacto-de-alta", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "simularImpactoAltaExcepcion",
+			summary = "Turnos que dejaria afuera una excepcion, sin cargarla",
+			description = """
+					Consulta previa SIN EFECTOS (A-11, RN-M05-004): evalua la excepcion \
+					propuesta —el mismo cuerpo que el alta— y devuelve los turnos pendientes que \
+					quedarian fuera de la disponibilidad efectiva. No guarda nada, no toma locks \
+					y no audita. Es POST porque la excepcion propuesta viaja en el cuerpo.
+
+					Un CIERRE de un profesional evalua sus turnos; uno sin membershipId (SEDE \
+					ENTERA) evalua los de todos los profesionales de la sede. Una APERTURA \
+					responde cero: solo agrega disponibilidad. Cuenta exacta: un turno cuenta si \
+					la disponibilidad lo cubria antes y no despues. La ventana es la de la \
+					excepcion desde hoy, acotada a noventa dias; evaluadoHasta dice hasta donde \
+					se miro.
+
+					No adelanta los 409 del alta (sede dada de baja, profesional sin vinculo \
+					vigente): esos los responde el alta. Exige consultorio:manage sobre esa \
+					sede.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Impacto calculado",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = ImpactoDisponibilidadResponse.class))),
+			@ApiResponse(responseCode = "400",
+					description = "Campos obligatorios ausentes, rango de fechas incoherente, o "
+							+ "una sola de las dos horas",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403",
+					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404",
+					description = "La sede o el profesional no existen, o pertenecen a otro tenant",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ImpactoDisponibilidadResponse> simularAlta(
+			@Parameter(description = "Identificador de la sede", example = "1")
+			@PathVariable long consultorioId,
+
+			@Valid @RequestBody CreateExcepcionRequest request) {
+
+		return ResponseEntity.ok(ImpactoDisponibilidadResponse.from(excepcionService.simularAlta(
+				apiActor.current(), consultorioId,
+				new ExcepcionAltaCommand(
+						request.membershipId(),
+						request.tipo(),
+						request.motivo(),
+						request.fechaDesde(),
+						request.fechaHasta(),
+						request.horaDesde(),
+						request.horaHasta(),
+						request.feriadoId(),
+						request.notes()))));
+	}
+
+	@GetMapping("/{excepcionId}/impacto-de-baja")
+	@Operation(
+			operationId = "simularImpactoBajaExcepcion",
+			summary = "Turnos que dejaria afuera la baja de una excepcion, sin aplicarla",
+			description = """
+					Consulta previa SIN EFECTOS (A-11, RN-M05-004). Solo quitar una APERTURA \
+					puede dejar turnos afuera; quitar un CIERRE responde cero. Misma cuenta \
+					exacta y misma ventana que la consulta previa del alta. Exige \
+					consultorio:manage sobre esa sede.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Impacto calculado",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = ImpactoDisponibilidadResponse.class))),
+			@ApiResponse(responseCode = "403",
+					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404",
+					description = "La excepcion no existe, es de otra sede o de otro tenant",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409",
+					description = "Ya estaba dada de baja (excepcion-already-inactive)",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ImpactoDisponibilidadResponse> simularBaja(
+			@Parameter(description = "Identificador de la sede", example = "1")
+			@PathVariable long consultorioId,
+
+			@Parameter(description = "Identificador de la excepcion", example = "1")
+			@PathVariable long excepcionId) {
+
+		return ResponseEntity.ok(ImpactoDisponibilidadResponse.from(
+				excepcionService.simularBaja(apiActor.current(), consultorioId, excepcionId)));
 	}
 }

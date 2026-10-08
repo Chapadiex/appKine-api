@@ -97,7 +97,7 @@ class ExcepcionServiceTest {
 		service = new ExcepcionService(
 				excepciones, calendarios, new CalendarioSedeIniciador(calendarios),
 				consultorioDirectory, membershipDirectory,
-				permissionGuard, auditTrail);
+				permissionGuard, auditTrail, org.mockito.Mockito.mock(SimuladorDeImpacto.class));
 
 		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede Sintetica",

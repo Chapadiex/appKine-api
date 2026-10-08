@@ -1,7 +1,6 @@
 package com.akine.resource.application;
 
 import com.akine.resource.domain.BloqueDisponibilidad;
-import com.akine.resource.spi.DisponibilidadImpactProbe;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -13,11 +12,10 @@ import java.time.LocalTime;
  *
  * <h2>Que cuenta {@code turnosAfectados}</h2>
  *
- * <p>El servicio consulta {@link DisponibilidadImpactProbe} en la edicion y en la baja, y desde
- * el paquete E-1 la implementacion es {@code scheduling.infrastructure.DisponibilidadImpactoSobreTurnos}:
- * cuenta los turnos pendientes del profesional en la sede dentro de la ventana del cambio,
- * <b>como cota superior</b> —puede incluir turnos de otros bloques vigentes del mismo
- * profesional—. Informa, no bloquea (RN-M05-004).
+ * <p>El servicio lo calcula con {@link SimuladorDeImpacto} en la edicion y en la baja: los turnos
+ * pendientes que la disponibilidad efectiva cubria antes del cambio y no cubre despues. Desde A-11
+ * es el conjunto exacto dentro de la ventana, no la cota superior de E-1 —un turno que cae en otro
+ * bloque vigente del mismo profesional ya no cuenta—. Informa, no bloquea (RN-M05-004).
  *
  * @param estado               DERIVADO de {@code active}, no una columna
  * @param version              la que hay que reenviar para editar
@@ -58,10 +56,10 @@ public record BloqueView(
 	 * IDEMPOTENTE que devolvio la fila que ya existia.
 	 */
 	public static BloqueView de(BloqueDisponibilidad bloque) {
-		return de(bloque, DisponibilidadImpactProbe.Impacto.ninguno());
+		return de(bloque, ImpactoDeDisponibilidad.ninguno(null));
 	}
 
-	public static BloqueView de(BloqueDisponibilidad bloque, DisponibilidadImpactProbe.Impacto impacto) {
+	public static BloqueView de(BloqueDisponibilidad bloque, ImpactoDeDisponibilidad impacto) {
 		return construir(bloque, impacto, false);
 	}
 
@@ -72,11 +70,11 @@ public record BloqueView(
 	 * {@code Location}; todo lo demas sale 200.
 	 */
 	public static BloqueView nuevo(BloqueDisponibilidad bloque) {
-		return construir(bloque, DisponibilidadImpactProbe.Impacto.ninguno(), true);
+		return construir(bloque, ImpactoDeDisponibilidad.ninguno(null), true);
 	}
 
 	private static BloqueView construir(
-			BloqueDisponibilidad bloque, DisponibilidadImpactProbe.Impacto impacto, boolean nuevo) {
+			BloqueDisponibilidad bloque, ImpactoDeDisponibilidad impacto, boolean nuevo) {
 		return new BloqueView(
 				bloque.getId(),
 				bloque.getOrganizationId(),
@@ -92,7 +90,7 @@ public record BloqueView(
 				bloque.getDeactivationReason(),
 				bloque.getVersion(),
 				impacto.turnosAfectados(),
-				impacto.primero(),
+				impacto.primerTurnoAfectado(),
 				nuevo);
 	}
 }

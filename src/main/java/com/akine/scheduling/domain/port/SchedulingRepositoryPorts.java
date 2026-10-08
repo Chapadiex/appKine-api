@@ -187,6 +187,14 @@ public final class SchedulingRepositoryPorts {
 		List<Turno> findPendientesDelProfesionalEnLaSede(
 				long organizationId, long consultorioId, long profesionalMembershipId,
 				Instant desde, Instant hasta);
+
+		/**
+		 * Los turnos pendientes de TODOS los profesionales de una sede que EMPIEZAN en
+		 * {@code [desde, hasta)}, del mas temprano al mas tarde. Lo pide el impacto de una
+		 * excepcion de disponibilidad de alcance sede (A-11).
+		 */
+		List<Turno> findPendientesEnLaSede(
+				long organizationId, long consultorioId, Instant desde, Instant hasta);
 	}
 
 	/**

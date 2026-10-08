@@ -14,6 +14,8 @@ import java.time.Instant;
  *
  * @param origen     modulo que produjo el hecho, para saber a quien pedirle el detalle
  * @param referencia id de la entidad de origen dentro de ese modulo
+ * @param cobertura  datos estructurados de la cobertura (A-11). Solo los lleva la seccion
+ *                   {@code coberturas}; en cualquier otro hito es {@code null}
  */
 public record HitoDeResumen(
 		String origen,
@@ -21,5 +23,12 @@ public record HitoDeResumen(
 		Instant ocurrioEn,
 		String titulo,
 		String estado,
-		long referencia) {
+		long referencia,
+		CoberturaDeResumen cobertura) {
+
+	/** El hito generico, sin datos de cobertura: el de todas las secciones salvo {@code coberturas}. */
+	public HitoDeResumen(
+			String origen, String tipo, Instant ocurrioEn, String titulo, String estado, long referencia) {
+		this(origen, tipo, ocurrioEn, titulo, estado, referencia, null);
+	}
 }
