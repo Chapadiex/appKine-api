@@ -4,6 +4,7 @@ import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.TipoCobertura;
 import com.akine.person.domain.port.PersonRepositoryPorts.CoberturaPacienteRepositoryPort;
 import com.akine.person.spi.AporteDeResumen;
+import com.akine.person.spi.CoberturaDeResumen;
 import com.akine.person.spi.ConsultaDeResumen;
 import com.akine.person.spi.HitoDeResumen;
 import com.akine.person.spi.IndicadorDeResumen;
@@ -62,8 +63,11 @@ import java.util.List;
  * identificador completo en una pantalla que se abre todo el dia. El numero entero sigue en la
  * lista de coberturas, que es donde se lo va a copiar.
  *
- * <p>Viaja en la estructura generica del 360 —indicadores e hitos—, asi que esta seccion
- * <b>no cambia el contrato OpenAPI</b>: aparece como un elemento mas de {@code secciones}.
+ * <p>Viaja en la estructura generica del 360 —indicadores e hitos—: aparece como un elemento mas
+ * de {@code secciones}. Desde A-11 (contrato 0.70.0) cada hito trae ademas
+ * {@link CoberturaDeResumen} con los mismos datos del titulo como campos —financiador, plan,
+ * afiliado enmascarado, vigencia como fechas, principal y estado de la credencial—, para que la
+ * pantalla deje de partir el {@code titulo}. Es aditivo: el resto de las secciones lo manda nulo.
  */
 @Component
 public class CoberturasEnElResumenDePersona implements ResumenDePersonaContributor {
@@ -125,7 +129,8 @@ public class CoberturasEnElResumenDePersona implements ResumenDePersonaContribut
 					cobertura.getVigenciaDesde().atStartOfDay(ZoneOffset.UTC).toInstant(),
 					titulo(cobertura),
 					cobertura.credencialVencidaEl(hoy) ? "CREDENCIAL_VENCIDA" : "VIGENTE",
-					cobertura.getId()));
+					cobertura.getId(),
+					datos(cobertura, hoy)));
 		}
 
 		return new AporteDeResumen(
@@ -155,6 +160,32 @@ public class CoberturasEnElResumenDePersona implements ResumenDePersonaContribut
 				? "sin vencimiento"
 				: "hasta " + cobertura.getVigenciaHasta());
 		return String.join(" · ", partes.stream().filter(p -> p != null && !p.isBlank()).toList());
+	}
+
+	/**
+	 * Los mismos datos del titulo, como campos (A-11). La pantalla los lee de aca y el titulo
+	 * queda para leer: separar financiador, plan y vigencia partiendo el texto por " · " era la
+	 * unica forma hasta este cambio, y se rompia con cualquier nombre de plan que tuviera un punto.
+	 */
+	private static CoberturaDeResumen datos(CoberturaPaciente cobertura, LocalDate hoy) {
+		String estadoCredencial;
+		if (cobertura.getCredencialVigenciaHasta() == null) {
+			estadoCredencial = "SIN_VENCIMIENTO";
+		} else {
+			estadoCredencial = cobertura.credencialVencidaEl(hoy) ? "VENCIDA" : "VIGENTE";
+		}
+		return new CoberturaDeResumen(
+				cobertura.getTipo().name(),
+				cobertura.getFinanciadorId(),
+				cobertura.getFinanciadorNombre(),
+				cobertura.getPlanId(),
+				cobertura.getPlanNombre(),
+				enmascarar(cobertura.getNumeroAfiliado()),
+				cobertura.getVigenciaDesde(),
+				cobertura.getVigenciaHasta(),
+				cobertura.isPrincipal(),
+				estadoCredencial,
+				cobertura.getCredencialVigenciaHasta());
 	}
 
 	/**

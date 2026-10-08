@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.71.0
+  version: 0.70.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -5119,79 +5119,6 @@ paths:
       summary: Definir el arancel de una practica bajo un convenio
       tags:
       - Convenios y aranceles
-  /api/v1/consultorios/{consultorioId}/convenios/{convenioId}/aranceles/importacion:
-    post:
-      description: |-
-        RF-M16-007. Exige convenio:manage sobre la sede de la ruta, en los dos modos.
-
-        Cada fila se valida con LAS MISMAS reglas que el alta unitaria de un arancel: practica visible para el tenant (por practicaId o por codigoPractica), importes que cuadran, vigencia contenida en la del convenio, oferta de la sede que admite obra social y declara la practica, y que no se pise con un arancel vigente del mismo grupo (convenio, practica, oferta). Ademas, dos filas del mismo lote tampoco pueden pisarse entre si.
-
-        PREVIEW responde 200 con el desenlace de cada fila: ALTA, o RECHAZADA con el problemType que daria el alta unitaria. No escribe nada ni toma el lock: es una prediccion, no una reserva.
-
-        CONFIRMAR es TODO O NADA. Revalida el lote entero bajo el lock del convenio —lo que se cargo despues del preview cuenta— y, si todas las filas entran, las inserta y responde 200 con aplicada = true y el arancelId de cada una. Si una sola no entra, 409 importacion-aranceles-rechazada con el desenlace de cada fila en la propiedad filas, y ninguna fila escrita.
-
-        Reintentar una confirmacion ya aplicada no duplica nada: sus filas chocan contra los aranceles que ella misma creo y responde 409.
-      operationId: importArancelesDeConvenio
-      parameters:
-      - description: Identificador de la sede
-        example: 20
-        in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - description: Identificador del convenio
-        example: 140
-        in: path
-        name: convenioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ImportarArancelesRequest"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ImportacionArancelesResponse"
-          description: "Preview, o confirmacion aplicada"
-        "400":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta el modo, el lote esta vacio o supera las 500 filas"
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Sin contexto de trabajo activo o sin convenio:manage en esa
-            sede
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: La sede o el convenio no son accesibles
-        "409":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Convenio dado de baja (convenio-inactivo), o confirmacion\
-            \ con alguna fila que no entra (importacion-aranceles-rechazada, con filas\
-            \ en el cuerpo)"
-      summary: Previsualizar o confirmar una importacion masiva de aranceles
-      tags:
-      - Convenios y aranceles
   /api/v1/consultorios/{consultorioId}/convenios/{convenioId}/aranceles/{arancelId}:
     delete:
       description: |-
@@ -6019,6 +5946,59 @@ paths:
       summary: Alta de un cierre o de una apertura puntual
       tags:
       - Excepciones de disponibilidad
+  /api/v1/consultorios/{consultorioId}/excepciones/impacto-de-alta:
+    post:
+      description: |-
+        Consulta previa SIN EFECTOS (A-11, RN-M05-004): evalua la excepcion propuesta —el mismo cuerpo que el alta— y devuelve los turnos pendientes que quedarian fuera de la disponibilidad efectiva. No guarda nada, no toma locks y no audita. Es POST porque la excepcion propuesta viaja en el cuerpo.
+
+        Un CIERRE de un profesional evalua sus turnos; uno sin membershipId (SEDE ENTERA) evalua los de todos los profesionales de la sede. Una APERTURA responde cero: solo agrega disponibilidad. Cuenta exacta: un turno cuenta si la disponibilidad lo cubria antes y no despues. La ventana es la de la excepcion desde hoy, acotada a noventa dias; evaluadoHasta dice hasta donde se miro.
+
+        No adelanta los 409 del alta (sede dada de baja, profesional sin vinculo vigente): esos los responde el alta. Exige consultorio:manage sobre esa sede.
+      operationId: simularImpactoAltaExcepcion
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExcepcionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpactoDisponibilidadResponse"
+          description: Impacto calculado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos obligatorios ausentes, rango de fechas incoherente,\
+            \ o una sola de las dos horas"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o el profesional no existen, o pertenecen a otro tenant"
+      summary: "Turnos que dejaria afuera una excepcion, sin cargarla"
+      tags:
+      - Excepciones de disponibilidad
   /api/v1/consultorios/{consultorioId}/excepciones/{excepcionId}:
     delete:
       description: |-
@@ -6095,6 +6075,58 @@ paths:
             \ del DELETE. Algunos clientes HTTP generados no la emiten por defecto\
             \ en un DELETE con cuerpo"
       summary: Baja logica de una excepcion de disponibilidad
+      tags:
+      - Excepciones de disponibilidad
+  /api/v1/consultorios/{consultorioId}/excepciones/{excepcionId}/impacto-de-baja:
+    get:
+      description: "Consulta previa SIN EFECTOS (A-11, RN-M05-004). Solo quitar una\
+        \ APERTURA puede dejar turnos afuera; quitar un CIERRE responde cero. Misma\
+        \ cuenta exacta y misma ventana que la consulta previa del alta. Exige consultorio:manage\
+        \ sobre esa sede."
+      operationId: simularImpactoBajaExcepcion
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador de la excepcion
+        example: 1
+        in: path
+        name: excepcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpactoDisponibilidadResponse"
+          description: Impacto calculado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La excepcion no existe, es de otra sede o de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya estaba dada de baja (excepcion-already-inactive)
+      summary: "Turnos que dejaria afuera la baja de una excepcion, sin aplicarla"
       tags:
       - Excepciones de disponibilidad
   /api/v1/consultorios/{consultorioId}/financiadores/{financiadorId}/cuenta-corriente:
@@ -8553,7 +8585,7 @@ paths:
 
         El motivo va en el CUERPO y no en la query string a proposito: un motivo en la URL queda en los logs de acceso de cualquier proxy intermedio.
 
-        Devuelve el bloque dado de baja, no un 204 vacio, porque el cuerpo trae turnosAfectados: la baja QUITA disponibilidad y los turnos que caian ahi quedan en conflicto (RN-M05-004). El impacto se INFORMA, no bloquea —ADR-0011 prohibe decidir en cascada por el usuario—. Cuenta los turnos pendientes de ese profesional en esa sede desde ahora hasta el fin de vigencia del bloque (noventa dias si no tiene fin), como cota superior: puede incluir turnos de otros bloques suyos que siguen vigentes.
+        Devuelve el bloque dado de baja, no un 204 vacio, porque el cuerpo trae turnosAfectados: la baja QUITA disponibilidad y los turnos que caian ahi quedan en conflicto (RN-M05-004). El impacto se INFORMA, no bloquea —ADR-0011 prohibe decidir en cascada por el usuario—. Cuenta los turnos pendientes de ese profesional en esa sede desde ahora hasta el fin de vigencia del bloque (noventa dias si no tiene fin) que la baja deja fuera de la disponibilidad efectiva: desde 0.70.0 un turno cubierto por otro bloque suyo no cuenta. Para saberlo antes de confirmar: GET .../impacto-de-baja.
 
         Se permite aunque la sede este dada de baja y aunque el profesional ya se haya desvinculado: son las operaciones con las que se ordena el horario de un centro que se esta cerrando, y prohibirlas lo dejarian congelado.
 
@@ -8645,7 +8677,7 @@ paths:
 
         version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 con type conflict —el generico, NO concurrent-modification, que es el que emite organization para el mismo hecho— y el cliente recarga. Sin eso dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se entere.
 
-        AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El impacto se INFORMA, no bloquea: quien decide que hacer con esos turnos es la pantalla. Cuenta los turnos pendientes de ese profesional en esa sede que empiezan entre ahora y el fin de vigencia mas lejano entre el bloque anterior y el editado, con un horizonte de noventa dias si alguno no tiene fin. Es una cota superior: incluye turnos que caen en otros bloques vigentes del mismo profesional, asi que puede avisar de mas pero nunca de menos.
+        AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El impacto se INFORMA, no bloquea: quien decide que hacer con esos turnos es la pantalla, y para saberlo ANTES de confirmar esta POST .../impacto-de-edicion. Cuenta los turnos pendientes de ese profesional en esa sede, entre ahora y el fin de vigencia mas lejano entre el bloque anterior y el editado (horizonte de noventa dias), que la disponibilidad efectiva cubria antes del cambio y no cubre despues. Desde 0.70.0 es la cuenta exacta: un turno que cae en otro bloque vigente del mismo profesional ya no cuenta.
 
         Un bloque dado de baja no se puede editar: 409 bloque-inactivo.
       operationId: updateBloqueDisponibilidad
@@ -8715,6 +8747,143 @@ paths:
             \ activo (bloque-solapado), version desactualizada (conflict), o profesional\
             \ sin vinculo vigente en esa sede (profesional-no-vinculado)"
       summary: Edicion de un bloque de disponibilidad
+      tags:
+      - Disponibilidad profesional
+  /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad/{bloqueId}/impacto-de-baja:
+    get:
+      description: "Consulta previa SIN EFECTOS (A-11, RN-M05-004): los turnos pendientes\
+        \ que quedarian fuera de la disponibilidad efectiva si el bloque se diera\
+        \ de baja. Misma cuenta exacta que la consulta previa de edicion; la ventana\
+        \ va de ahora al fin de vigencia del bloque, con un horizonte de noventa dias.\
+        \ Exige consultorio:manage sobre esa sede, igual que la baja."
+      operationId: simularImpactoBajaBloque
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Vinculo del profesional
+        example: 1
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del bloque
+        example: 1
+        in: path
+        name: bloqueId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpactoDisponibilidadResponse"
+          description: Impacto calculado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El bloque no existe, es de otra sede, de otro profesional\
+            \ o de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Bloque ya dado de baja
+      summary: "Turnos que dejaria afuera la baja de un bloque, sin aplicarla"
+      tags:
+      - Disponibilidad profesional
+  /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad/{bloqueId}/impacto-de-edicion:
+    post:
+      description: |-
+        Consulta previa SIN EFECTOS (A-11, RN-M05-004): evalua la edicion propuesta y devuelve los turnos pendientes que quedarian fuera de la disponibilidad efectiva si se aplicara. No modifica el bloque, no toma locks y no audita. Es POST porque la edicion propuesta viaja en el cuerpo, no porque cree algo.
+
+        Cuenta EXACTA dentro de la ventana: un turno cuenta si la disponibilidad lo cubria antes del cambio y no despues. Uno que cae en otro bloque vigente del mismo profesional sigue cubierto y no cuenta. La ventana va de ahora al fin de vigencia mas lejano entre el bloque actual y el editado, con un horizonte de noventa dias; evaluadoHasta dice hasta donde se miro.
+
+        El cuerpo es el de la edicion sin version. Un turno reservado entre esta consulta y el PUT lo informa igual la respuesta del PUT. Exige consultorio:manage sobre esa sede, igual que la edicion.
+      operationId: simularImpactoEdicionBloque
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Vinculo del profesional
+        example: 1
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del bloque
+        example: 1
+        in: path
+        name: bloqueId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimularEdicionBloqueRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpactoDisponibilidadResponse"
+          description: Impacto calculado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Dia fuera de 1..7 u horario o vigencia incoherentes
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El bloque no existe, es de otra sede, de otro profesional\
+            \ o de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Bloque dado de baja (bloque-inactivo)
+      summary: "Turnos que dejaria afuera una edicion, sin aplicarla"
       tags:
       - Disponibilidad profesional
   /api/v1/consultorios/{consultorioId}/reportes:
@@ -21043,10 +21212,10 @@ components:
           description: "Turnos futuros que este cambio podria dejar en conflicto (RN-M05-004):\
             \ los pendientes de ese profesional en esa sede que empiezan entre ahora\
             \ y el fin de vigencia mas lejano entre el estado anterior y el nuevo,\
-            \ con un horizonte de 90 dias si no hay fin. Es una cota superior: puede\
-            \ incluir turnos de otros bloques vigentes del mismo profesional. En un\
-            \ ALTA es 0 por construccion —agregar disponibilidad no deja ningun turno\
-            \ afuera—"
+            \ con un horizonte de 90 dias si no hay fin, y que la disponibilidad efectiva\
+            \ cubria antes del cambio y no cubre despues: un turno cubierto por otro\
+            \ bloque vigente del mismo profesional no cuenta. En un ALTA es 0 por\
+            \ construccion —agregar disponibilidad no deja ningun turno afuera—"
           example: 0
         version:
           type: integer
@@ -21876,6 +22045,79 @@ components:
           format: int32
           description: Sesiones vivas que se revocaron
           example: 3
+    CoberturaDelHitoResponse:
+      type: object
+      description: Cobertura vigente del paciente tal como la muestra el 360
+      properties:
+        afiliadoEnmascarado:
+          type:
+          - string
+          - "null"
+          description: Numero de afiliado con solo los ultimos cuatro caracteres a
+            la vista. El numero completo esta en la lista de coberturas
+          example: ···4321
+        credencialVigenciaHasta:
+          type:
+          - string
+          - "null"
+          format: date
+          description: "Vencimiento de la credencial (fecha sin hora), nulo si no\
+            \ lo tiene"
+          example: 2026-06-30
+        estadoCredencial:
+          type: string
+          description: Estado de la credencial hoy
+          enum:
+          - VIGENTE
+          - VENCIDA
+          - SIN_VENCIMIENTO
+          example: VIGENTE
+        financiadorId:
+          type:
+          - integer
+          - "null"
+          format: int64
+          description: "Financiador, nulo en una cobertura particular"
+          example: 4
+        financiadorNombre:
+          type:
+          - string
+          - "null"
+          description: Nombre del financiador congelado al firmar la cobertura
+          example: OSDE
+        planId:
+          type:
+          - integer
+          - "null"
+          format: int64
+          description: "Plan, nulo si la cobertura no tiene plan"
+          example: 7
+        planNombre:
+          type:
+          - string
+          - "null"
+          description: Nombre del plan congelado al firmar la cobertura
+          example: "210"
+        principal:
+          type: boolean
+          description: Si es la cobertura principal del paciente
+          example: true
+        tipo:
+          type: string
+          description: PARTICULAR o FINANCIADA
+          example: FINANCIADA
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia de la cobertura (fecha sin hora)
+          example: 2026-01-01
+        vigenciaHasta:
+          type:
+          - string
+          - "null"
+          format: date
+          description: Ultimo dia de la cobertura (fecha sin hora). Nulo si no vence
+          example: 2026-12-31
     CoberturaParaOfertaAplicable:
       type: object
       description: Una cobertura que aplica a la oferta
@@ -25557,104 +25799,6 @@ components:
             \ la fija el CHECK de la migracion y esta version del contrato no ramifica\
             \ comportamiento por tipo, solo lo muestra"
           example: INAMOVIBLE
-    FilaImportacionArancelRequest:
-      type: object
-      description: "Una fila de la importacion: el arancel de una practica, opcionalmente\
-        \ dentro de una oferta"
-      properties:
-        codigoPractica:
-          type: string
-          description: "Codigo de la practica, tal como lo trae la planilla del financiador.\
-            \ Se busca entre las practicas vigentes del tenant (globales y propias)\
-            \ y tiene que resolver a una sola. Si viene junto con practicaId, tiene\
-            \ que ser el suyo"
-          example: 25.01.01
-        coseguro:
-          type: number
-          description: La parte del paciente
-          example: 2400.0
-        importeFinanciador:
-          type: number
-          description: La parte del financiador. Con el coseguro tiene que sumar EXACTAMENTE
-            el importe total
-          example: 9600.0
-        importeTotal:
-          type: number
-          description: Lo que vale la practica bajo el convenio. Hasta 2 decimales
-          example: 12000.0
-        ofertaId:
-          type: integer
-          format: int64
-          description: "Opcional (RF-M16-008). Con oferta, el arancel es el de la\
-            \ practica dentro de esa oferta; sin ella, el general"
-          example: 77
-        practicaId:
-          type: integer
-          format: int64
-          description: "Practica del catalogo. Si se omite, se resuelve por codigoPractica"
-          example: 412
-        vigenciaDesde:
-          type: string
-          format: date
-          description: Primer dia en que el importe se aplica
-          example: 2027-01-01
-        vigenciaHasta:
-          type: string
-          format: date
-          description: "Ultimo dia en que se aplica, INCLUSIVE. Null = sin fin previsto.\
-            \ Tiene que estar contenida en la vigencia del convenio"
-    FilaImportacionArancelResponse:
-      type: object
-      description: Desenlace de una fila de la importacion
-      properties:
-        arancelExistenteId:
-          type: integer
-          format: int64
-          description: "Solo con arancel-solapado contra un arancel vigente: cual"
-          example: 901
-        arancelId:
-          type: integer
-          format: int64
-          description: "Solo en una confirmacion aplicada: el arancel creado"
-          example: 1204
-        detalle:
-          type: string
-          description: "Solo en RECHAZADA: por que, en una frase para el administrador"
-        estado:
-          type: string
-          description: "ALTA: la fila entra como arancel nuevo. RECHAZADA: no entraria;\
-            \ problemType dice por que, con el mismo valor que daria el alta unitaria"
-          enum:
-          - ALTA
-          - RECHAZADA
-        fila:
-          type: integer
-          format: int32
-          description: "Posicion de la fila en el lote, desde 1"
-          example: 3
-        filaEnConflicto:
-          type: integer
-          format: int32
-          description: "Solo con arancel-solapado contra otra fila del mismo lote:\
-            \ su posicion"
-          example: 1
-        ofertaId:
-          type: integer
-          format: int64
-          description: "La oferta de la fila, tal como vino"
-          example: 77
-        practicaId:
-          type: integer
-          format: int64
-          description: La practica resuelta. Null si no resolvio
-          example: 412
-        problemType:
-          type: string
-          description: "Solo en RECHAZADA: el problem type que daria el alta unitaria\
-            \ de esa fila. validation-error (datos invalidos), not-found (practica\
-            \ u oferta no accesibles), oferta-sin-obra-social, practica-no-habilitada-en-oferta\
-            \ o arancel-solapado"
-          example: https://akine.app/problems/arancel-solapado
     FinalizarPlanTratamientoRequest:
       type: object
       description: "Finalizacion de un plan. Es terminal: no se reabre"
@@ -26044,6 +26188,12 @@ components:
       type: object
       description: Un hecho datado del resumen
       properties:
+        cobertura:
+          type: "null"
+          $ref: "#/components/schemas/CoberturaDelHitoResponse"
+          description: "Datos estructurados de la cobertura. Solo en los hitos de\
+            \ la seccion coberturas; en los demas viene nulo. Son los mismos datos\
+            \ del titulo, como campos: el titulo es para leer, no para partir"
         estado:
           type: string
           description: Estado en que quedo
@@ -26110,63 +26260,40 @@ components:
           description: "Hora local de cierre, EXCLUSIVA. La medianoche viaja como\
             \ 24:00"
           example: 13:00
-    ImportacionArancelesResponse:
+    ImpactoDisponibilidadResponse:
       type: object
-      description: Resultado de una importacion de aranceles
+      description: "Turnos pendientes que el cambio dejaria fuera de la disponibilidad\
+        \ efectiva. Es el conjunto exacto dentro de la ventana evaluada: un turno\
+        \ que sigue cubierto por otro bloque, o que ya estaba fuera de la disponibilidad\
+        \ antes del cambio, no cuenta"
       properties:
-        aplicada:
-          type: boolean
-          description: "true solo en una confirmacion que inserto el lote. Un preview\
-            \ nunca aplica, y una confirmacion rechazada responde 409"
-        filas:
+        evaluadoHasta:
+          type:
+          - string
+          - "null"
+          format: date
+          description: "Fecha local EXCLUSIVA hasta la que se evaluo: el fin de vigencia\
+            \ del cambio, acotado a noventa dias. Nulo si el cambio no tenia ningun\
+            \ tramo futuro que evaluar"
+          example: 2027-01-05
+        primerTurnoAfectado:
+          type:
+          - string
+          - "null"
+          format: date-time
+          description: Inicio del primero de esos turnos. Nulo si no hay ninguno
+        turnos:
           type: array
-          description: "El desenlace de cada fila, en el orden del lote"
+          description: "Los primeros 50 turnos afectados, por inicio. Sin datos del\
+            \ paciente: el detalle se abre en la agenda"
           items:
-            $ref: "#/components/schemas/FilaImportacionArancelResponse"
-        filasConAlta:
+            $ref: "#/components/schemas/TurnoAfectadoPorDisponibilidadResponse"
+        turnosAfectados:
           type: integer
           format: int64
-          description: Filas que entran (o entraron) como arancel nuevo
-          example: 118
-        filasRechazadas:
-          type: integer
-          format: int64
-          description: Filas que no entrarian
-          example: 2
-        modo:
-          type: string
-          description: "PREVIEW valida cada fila sin escribir ni bloquear. CONFIRMAR\
-            \ revalida todo bajo el lock del convenio y aplica el lote entero, o nada"
-          enum:
-          - PREVIEW
-          - CONFIRMAR
-        totalFilas:
-          type: integer
-          format: int32
-          description: Filas del lote
-          example: 120
-    ImportarArancelesRequest:
-      type: object
-      description: Lote de aranceles a previsualizar o confirmar
-      properties:
-        filas:
-          type: array
-          description: "Las filas, en el orden de la planilla. La posicion (desde\
-            \ 1) es la que identifica cada fila en la respuesta"
-          items:
-            $ref: "#/components/schemas/FilaImportacionArancelRequest"
-          maxItems: 500
-          minItems: 0
-        modo:
-          type: string
-          description: "PREVIEW valida cada fila sin escribir ni bloquear. CONFIRMAR\
-            \ revalida todo bajo el lock del convenio y aplica el lote entero, o nada"
-          enum:
-          - PREVIEW
-          - CONFIRMAR
-      required:
-      - filas
-      - modo
+          description: Cuantos turnos quedarian afuera. Es la cuenta completa aunque
+            la lista venga recortada
+          example: 3
     ImputacionAplicada:
       type: object
       properties:
@@ -29043,7 +29170,6 @@ components:
       - https://akine.app/problems/arancel-already-inactive
       - https://akine.app/problems/practica-no-habilitada-en-oferta
       - https://akine.app/problems/oferta-sin-obra-social
-      - https://akine.app/problems/importacion-aranceles-rechazada
       - https://akine.app/problems/orden-inactiva
       - https://akine.app/problems/orden-already-inactive
       - https://akine.app/problems/autorizacion-inactiva
@@ -31388,6 +31514,44 @@ components:
             \ que dice esta version (C-6)"
           items:
             $ref: "#/components/schemas/TratamientoEnVersion"
+    SimularEdicionBloqueRequest:
+      type: object
+      description: "Edicion propuesta de un bloque de disponibilidad, para evaluar\
+        \ su impacto antes de aplicarla. Mismos campos y semantica que la edicion,\
+        \ sin version"
+      properties:
+        diaSemana:
+          type: integer
+          format: int32
+          description: "Nuevo dia de la semana, ISO-8601: lunes = 1 .. domingo = 7.\
+            \ Omitirlo lo deja como estaba"
+          example: 3
+          maximum: 7
+          minimum: 1
+        horaDesde:
+          type: string
+          description: Nueva hora local de inicio. Omitirla la deja como estaba
+          example: 10:00
+        horaHasta:
+          type: string
+          description: "Nueva hora local de fin, EXCLUSIVA. 24:00 para un bloque que\
+            \ llega a la medianoche. Omitirla la deja como estaba"
+          example: 13:00
+        limpiarVigenciaHasta:
+          type: boolean
+          description: Saca el fin de vigencia y deja el bloque sin fin previsto
+          example: false
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Nuevo primer dia de vigencia. Omitirlo lo deja como estaba
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Nuevo fin de vigencia, EXCLUSIVO. Se IGNORA si limpiarVigenciaHasta\
+            \ viene en true"
+          example: 2027-01-01
     SlotDisponible:
       type: object
       description: Un hueco concreto y reservable
@@ -32033,6 +32197,28 @@ components:
           description: "Version para el control optimista. Se envia al cancelar, mover\
             \ o marcar ausencia."
           example: 0
+    TurnoAfectadoPorDisponibilidadResponse:
+      type: object
+      description: Un turno pendiente que el cambio dejaria afuera
+      properties:
+        fin:
+          type: string
+          format: date-time
+          description: "Fin del turno, exclusivo"
+        inicio:
+          type: string
+          format: date-time
+          description: Inicio del turno
+        membershipId:
+          type: integer
+          format: int64
+          description: Vinculo del profesional del turno
+          example: 7
+        turnoId:
+          type: integer
+          format: int64
+          description: Id del turno
+          example: 41
     TurnoDelDia:
       type: object
       description: "Turno de la agenda del dia de una sede, con el paciente resuelto.\

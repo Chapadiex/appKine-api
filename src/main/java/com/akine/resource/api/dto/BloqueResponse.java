@@ -13,11 +13,10 @@ import java.time.LocalTime;
  *
  * <h2>Que cuenta {@code turnosAfectados}</h2>
  *
- * <p>En la edicion y en la baja, los turnos pendientes de ese profesional en esa sede que
- * empiezan en la ventana del cambio, segun {@code scheduling.infrastructure.DisponibilidadImpactoSobreTurnos}
- * (paquete E-1). En el alta es cero por construccion. <b>Es una cota superior</b>: la sonda no
- * distingue un turno que cae en el bloque que se recorta de uno que cae en otro bloque vigente
- * del mismo profesional, asi que puede avisar de mas, nunca de menos.
+ * <p>En la edicion y en la baja, los turnos pendientes de ese profesional en esa sede, dentro de
+ * la ventana del cambio, que la disponibilidad efectiva cubria antes y no cubre despues
+ * ({@code SimuladorDeImpacto}, A-11). En el alta es cero por construccion. Hasta A-11 era una
+ * cota superior que incluia turnos de otros bloques vigentes del mismo profesional; ya no.
  *
  * <p>El impacto se informa y no bloquea (RN-M05-004): la pantalla decide que hacer con esos
  * turnos.
@@ -81,8 +80,9 @@ public record BloqueResponse(
 		@Schema(description = "Turnos futuros que este cambio podria dejar en conflicto "
 				+ "(RN-M05-004): los pendientes de ese profesional en esa sede que empiezan entre "
 				+ "ahora y el fin de vigencia mas lejano entre el estado anterior y el nuevo, con un "
-				+ "horizonte de 90 dias si no hay fin. Es una cota superior: puede incluir turnos de "
-				+ "otros bloques vigentes del mismo profesional. En un ALTA es 0 por construccion "
+				+ "horizonte de 90 dias si no hay fin, y que la disponibilidad efectiva cubria antes "
+				+ "del cambio y no cubre despues: un turno cubierto por otro bloque vigente del "
+				+ "mismo profesional no cuenta. En un ALTA es 0 por construccion "
 				+ "—agregar disponibilidad no deja ningun turno afuera—", example = "0")
 		long turnosAfectados,
 

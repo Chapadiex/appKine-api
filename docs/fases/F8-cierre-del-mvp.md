@@ -47,9 +47,9 @@ El criterio de aceptación pide **cero hallazgos altos**. Abiertos:
   `:focus-visible`, foco por teclado, franja del degradé (~4,16:1).
 
 ### 07.08 Rendimiento y observabilidad (hoy solo hay actuator `health,info`)
-- [ ] Logging JSON estructurado con correlación.
-- [ ] Micrometer + Prometheus, métricas RED.
-- [ ] OpenTelemetry.
+- [x] ~~Logging JSON estructurado con correlación.~~ → G-4 (`docs/observabilidad.md`).
+- [x] ~~Micrometer + Prometheus, métricas RED.~~ → G-4: histograma de `http.server.requests` con buckets de 300 ms y 800 ms.
+- [x] ~~OpenTelemetry.~~ → G-4: Micrometer Tracing + OTLP, exportación opt-in.
 - [ ] Dashboards y alertas.
 - [ ] Harness de carga (k6 está elegido en `docs/producto/pruebas-de-carga.md` y nunca se ejecutó).
 - [ ] Medir p95/p99 contra los SLO de ADR-0016; LCP del frontend.

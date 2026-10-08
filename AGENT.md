@@ -348,6 +348,11 @@ docker run --rm --name akine-api -p 8080:8080 \
   aplica todas las migraciones y tarda (≈2,5 min medido el 06/10/2026), por eso el
   `start-period` es de 120 s.
 - **JVM:** `-e JAVA_OPTS=...` reemplaza los flags por defecto.
+- **Observabilidad (G-4):** log JSON por stdout fuera del perfil `local`, `X-Request-Id` en cada
+  respuesta, `/actuator/prometheus` cerrado salvo `AKINE_METRICS_SCRAPE_TOKEN` (abierto en
+  perfiles de desarrollo) y trazas OTLP solo con
+  `MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT`. Variables y cómo mirar cada señal:
+  `docs/observabilidad.md`.
 - **SBOM:** CycloneDX JSON, lo genera `./mvnw package` en
   `target/classes/META-INF/sbom/application.cdx.json` y viaja embebido en el jar y en la imagen
   (`/app/META-INF/sbom/application.cdx.json`). El job `imagen` del CI lo publica como artifact
@@ -361,6 +366,7 @@ docker run --rm --name akine-api -p 8080:8080 \
 |---|---|
 | `GET /api/v1/version` | Contrato técnico de versionado |
 | `GET /actuator/health` | Health con estado de la DB |
+| `GET /actuator/prometheus` | Métricas Prometheus (G-4); acceso según `docs/observabilidad.md` §3 |
 | `GET /v3/api-docs.yaml` | Contrato OpenAPI en runtime |
 | `GET /swagger-ui.html` | Swagger UI |
 

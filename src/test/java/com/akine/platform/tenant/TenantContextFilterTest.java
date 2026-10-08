@@ -110,6 +110,26 @@ class TenantContextFilterTest {
 		assertThat(holder.current()).isEmpty();
 	}
 
+	@Test
+	@DisplayName("G-4: organizacion y sede viajan en el MDC durante el request y no despues")
+	void el_contexto_va_al_mdc_mientras_dura_el_request() throws Exception {
+		autenticar(principal(CUENTA, ORGANIZACION, CONSULTORIO, false));
+		dadoQueElContextoResuelve(TenantOperationalStatus.ACTIVA, "PROFESIONAL");
+		List<String> visto = new ArrayList<>();
+
+		filtro.doFilter(request("GET", "/api/v1/pacientes"), response, (req, res) -> {
+			visto.add(org.slf4j.MDC.get("organizationId"));
+			visto.add(org.slf4j.MDC.get("consultorioId"));
+			visto.add(org.slf4j.MDC.get("accountId"));
+		});
+
+		// La cuenta no va: no hace falta para operar el log y, con la hora, identifica a alguien.
+		assertThat(visto).containsExactly(
+				String.valueOf(ORGANIZACION), String.valueOf(CONSULTORIO), null);
+		assertThat(org.slf4j.MDC.get("organizationId")).isNull();
+		assertThat(org.slf4j.MDC.get("consultorioId")).isNull();
+	}
+
 	// =================================================================================
 	// B-2: el codigo de estado, que es un bug de verdad
 	// =================================================================================
