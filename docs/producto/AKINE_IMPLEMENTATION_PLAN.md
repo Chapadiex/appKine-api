@@ -480,6 +480,29 @@ verdad mientras dure).
 
 **Implementada en:** E-4 (`V78`, contrato 0.63.0, `docs/diseno/AKINE-E-4-recepcion.md`).
 
+## DP-23 — Historial de estados de la autorización en tabla propia (DU-8)
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
+
+**Contexto.** El único rastro de las transiciones de una autorización era `audit_event`
+(`AUTORIZACION_RESUELTA` y compañía): una tabla de `organization`, que se lee con
+`auditoria:read` —el mostrador no lo tiene— y mezcla todas las entidades. La ficha F3 lo
+registraba como desvío silencioso ("historial de autorización reemplazado por auditoría").
+
+**Decisión.** El historial de estados de una autorización vive en una **tabla propia
+`autorizacion_evento`, append-only**, como `turno_evento` y `recepcion_evento`, escrita en la
+misma transacción que cada mutación (alta, resolución, edición, documento, consumo, reversión y
+anulación). **No se arma leyendo `audit_event`.** La auditoría se sigue escribiendo igual: son
+dos datos con dos lectores.
+
+**Alternativas descartadas.** Leer el historial desde la auditoría (otro dueño, otro permiso, y
+un evento de auditoría no es un contrato de negocio).
+
+**Desbloquea:** B-4.
+
+**Implementada en:** B-4 (`V85`, contrato 0.78.0, `docs/diseno/AKINE-B-4-historial-autorizacion.md`).
+El vencimiento no es un evento: se calcula al leer, como VENCIDA en la autorización.
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional

@@ -118,7 +118,7 @@ Ninguna se inventa en silencio: cada una sale como ADR o DP escrita (`AGENT.md` 
 | **DU-5** | Unificar `concurrent-modification` y `conflict` | G-5 (hallazgo alto 07.07); cambia respuestas de varios módulos | ola 1 |
 | **DU-6** | Alcance `OWN` / `paciente:read` (vínculo cuenta↔persona) | B-8, G-5; autoservicio de E | ola 1 |
 | ~~**DU-7**~~ | ~~Reversión del consumo: automática o manual~~ → **resuelta: DP-13**, manual con alerta al anular la deuda (06/10/2026) | C-4 | ola 1 |
-| **DU-8** | Historial de autorización: tabla propia o auditoría | B-4 | ola 1 |
+| ~~**DU-8**~~ | ~~Historial de autorización: tabla propia o auditoría~~ → **resuelta: DP-23**, tabla propia `autorizacion_evento` append-only, no se lee de `audit_event` (08/10/2026) | B-4 | ola 1 |
 | ~~**DU-9**~~ | ~~¿Máquina de recepción propia?~~ → **resuelta: DP-16**, sí, como DP-05; `EN_ESPERA` sale del turno (07/10/2026) | E-4 | ola 1 |
 | **DU-10** | `egreso:manage` propio o `caja:operate`; adjunto binario del egreso (¿storage a `platform.spi`?) | F-5 | ola 2 |
 | **DU-11** | Parámetros obligatorios por práctica; ¿un observador que falla debe hacer fallar el cierre? | C-8 | ola 2 |
@@ -135,7 +135,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V65` | C-1 | **Usada**: `V65__c1_tratamiento_lateralidad_no_aplica.sql` — recrea `ck_tratamiento_lateralidad` con `NO_APLICA` |
 | `V66` | A-9 | **Vacía**: A-9 la reservó y quedó por debajo de migraciones ya mergeadas (Flyway corre sin `outOfOrder`); usó `V75`. No se reusa |
 | `V67` | C-5 | **Vacía**: C-5 no la usó, porque RN-M10-002 admite varios casos activos y el unique sería un defecto. No se reusa |
-| `V68` | B-4 | Historial de estados de autorización (si DU-8 = tabla). **Quedó por debajo de `V83`** (07/10): como Flyway corre sin `outOfOrder`, B-4 tiene que tomar la siguiente libre por encima de la última mergeada y dejar `V68` vacía |
+| `V68` | B-4 | **Vacía**: B-4 la reservó y quedó por debajo de `V83` (07/10); Flyway corre sin `outOfOrder`, así que usó `V85`. No se reusa |
 | `V69` | F-3 | **Usada**: `V69__m19_anticipos_y_reintegro.sql` — saldo a favor y anulación en `cobro`, imputación posterior en `cobro_imputacion`, tabla `cobro_reintegro`, origen `REINTEGRO` en `movimiento_caja` |
 | `V70` | E-3 | **Vacía**: E-3 la reservó y se renumeró a `V74` al integrar, porque `V71` (C-6) entró antes. No se reusa |
 | `V71` | C-6 | **Usada**: `V71__c6_sesion_version_tratamientos_y_mediciones.sql` — tablas `sesion_version_tratamiento`, `sesion_version_tratamiento_parametro` y `sesion_version_medicion` (foto inmutable por version) con backfill desde el estado vivo |
@@ -151,6 +151,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V81` | E-6 | **Usada**: `V81__e6_prepago_politica_y_anticipo_de_turno.sql` — `oferta_servicio_consultorio.exige_prepago` (política de prepago, DP-06) y `cobro.turno_id` con la columna generada `turno_prepago_vigente` y `uk_cobro_prepago_turno_vigente` (un solo prepago vigente por turno) |
 | `V82` | E-8 | **Vacía**: E-8 la reservó por si el listado de series necesitaba índice y no hizo falta: el filtro por sede usa el índice de `fk_turno_serie_consultorio` (que en InnoDB ya ordena por `id`) y el estado derivado usa `ix_turno_serie_inicio`. No se reusa |
 | `V83` | A-8 | **Usada**: `V83__m03_horario_general_de_sede.sql` — tabla `consultorio_horario` (dueño `resource`): franjas semanales del horario general de la sede, baja lógica al reemplazar, sin unique (el solapamiento lo valida la aplicación). `V82` es de otro paquete en paralelo |
+| `V85` | B-4 | **Usada**: `V85__b4_autorizacion_evento.sql` — tabla `autorizacion_evento` (dueño `person`, DP-23): historial append-only de cada autorización, un evento por movimiento del ledger (`uk_autorizacion_evento_movimiento`), siembra un `ALTA` reconstruido por autorización existente. `V84` y `V86` quedan para otros paquetes en paralelo |
 
 ## 7. Paquetes de trabajo
 
