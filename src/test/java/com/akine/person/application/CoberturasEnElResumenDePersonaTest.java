@@ -100,6 +100,20 @@ class CoberturasEnElResumenDePersonaTest {
 		assertThat(segundo.titulo())
 				.isEqualTo("OSDE · 210 · Afiliado ···9012 · sin vencimiento")
 				.doesNotContain("12345678");
+
+		// A-11: los mismos datos como campos, para que la pantalla no parta el titulo.
+		assertThat(primero.cobertura()).satisfies(datos -> {
+			assertThat(datos.tipo()).isEqualTo("FINANCIADA");
+			assertThat(datos.financiadorNombre()).isEqualTo("Swiss Medical");
+			assertThat(datos.planNombre()).isEqualTo("SMG20");
+			assertThat(datos.afiliadoEnmascarado()).isEqualTo("···8765");
+			assertThat(datos.vigenciaDesde()).isEqualTo(HOY.minusMonths(2));
+			assertThat(datos.vigenciaHasta()).isEqualTo(HOY.plusMonths(3));
+			assertThat(datos.principal()).isTrue();
+			assertThat(datos.estadoCredencial()).isEqualTo("SIN_VENCIMIENTO");
+		});
+		assertThat(segundo.cobertura().vigenciaHasta()).isNull();
+		assertThat(segundo.cobertura().afiliadoEnmascarado()).isEqualTo("···9012");
 	}
 
 	@Test
@@ -117,6 +131,8 @@ class CoberturasEnElResumenDePersonaTest {
 			assertThat(hito.estado()).isEqualTo("CREDENCIAL_VENCIDA");
 			// Cuatro digitos o menos se tapan enteros: mostrarlos seria mostrarlos completos.
 			assertThat(hito.titulo()).contains("Afiliado ···").doesNotContain("1234");
+			assertThat(hito.cobertura().estadoCredencial()).isEqualTo("VENCIDA");
+			assertThat(hito.cobertura().credencialVigenciaHasta()).isEqualTo(HOY.minusDays(3));
 		});
 	}
 
