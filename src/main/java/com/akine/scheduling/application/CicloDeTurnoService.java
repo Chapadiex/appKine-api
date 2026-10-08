@@ -311,9 +311,15 @@ public class CicloDeTurnoService {
 					: "esta dada de baja");
 		}
 
+		// Paquete E-2. El contrato declara el profesional opcional: sin el, el turno se mueve con el
+		// que ya tenia. Antes viajaba null al revalidador, que respondia slot-no-disponible ("la
+		// oferta exige profesional y no se indico ninguno") al caso mas comun de todos: correr el
+		// turno de hora con el mismo profesional. La reprogramacion de serie ya lo resolvia asi.
+		Long profesionalDestino = profesionalId != null ? profesionalId : turno.getProfesionalMembershipId();
+
 		RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(new RevalidadorDeSlot.Pedido(
 				turno.getOrganizationId(), turno.getConsultorioId(), sede, oferta, nuevoInicio, nuevoFin,
-				profesionalId, turno.getId()));
+				profesionalDestino, turno.getId()));
 
 		EstadoTurno anterior = turno.getEstado();
 		Instant inicioAnterior = turno.getInicio();

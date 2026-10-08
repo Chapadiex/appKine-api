@@ -173,6 +173,36 @@ class CicloDeTurnoServiceTest {
 		assertThat(turno.getEstado()).isEqualTo(EstadoTurno.RESERVADO);
 	}
 
+	/**
+	 * Paquete E-2. El contrato declara {@code profesionalId} opcional al reprogramar, y sin el la
+	 * reserva respondia {@code slot-no-disponible} ("la oferta exige profesional y no se indico
+	 * ninguno"): el caso mas comun —mover el turno de hora con el mismo profesional— no se podia
+	 * pedir sin repetir un dato que el servidor ya tiene. La reprogramacion de serie ya lo resolvia.
+	 */
+	@Test
+	@DisplayName("reprogramar sin profesional conserva el del turno")
+	void reprogramar_sin_profesional_conserva_el_del_turno() {
+		Turno turno = turnoFuturo();
+		given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(turno));
+		given(turnos.saveAndFlush(turno)).willReturn(turno);
+		given(agendas.lockByScope(ORG_ID, CONSULTORIO_ID))
+				.willReturn(Optional.of(org.mockito.Mockito.mock(com.akine.scheduling.domain.AgendaSede.class)));
+		given(ofertas.find(ORG_ID, CONSULTORIO_ID, 42L)).willReturn(Optional.of(
+				new com.akine.offering.spi.OfertaSnapshot(42L, ORG_ID, CONSULTORIO_ID, 3L, "Kinesiologia",
+						45, 1, false, true, false, false, false,
+						java.time.LocalDate.now().minusYears(1), null, true)));
+		given(revalidador.revalidar(any())).willReturn(new RevalidadorDeSlot.Asignacion(31L, null));
+
+		service.reprogramar(actor, CONSULTORIO_ID, TURNO_ID, new ReprogramacionCommand(
+				turno.getInicio().plus(Duration.ofDays(1)), null, "el paciente pidio otro dia", 0L));
+
+		var pedido = org.mockito.ArgumentCaptor.forClass(RevalidadorDeSlot.Pedido.class);
+		verify(revalidador).revalidar(pedido.capture());
+		assertThat(pedido.getValue().profesionalId())
+				.as("el profesional que ya tenia el turno, no ninguno")
+				.isEqualTo(31L);
+	}
+
 	private static Turno turnoFuturo() {
 		Instant inicio = Instant.now().plus(Duration.ofDays(3));
 		Turno turno = new Turno(ORG_ID, CONSULTORIO_ID, 42L, 128L, 31L, null,
