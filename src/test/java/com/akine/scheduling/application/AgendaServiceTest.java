@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -82,8 +83,7 @@ class AgendaServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new AgendaService(
-				ofertas, disponibilidad, espacios, consultorios, memberships, permissionGuard, reservas);
+		service = conReloj(LUNES.minusDays(13).atTime(12, 0));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede centro", ZONA.getId(), true)));
@@ -129,6 +129,21 @@ class AgendaServiceTest {
 				.willReturn(dias);
 	}
 
+
+	/** "Ahora" fijo, en hora local de la sede. */
+	private AgendaService conReloj(java.time.LocalDateTime ahoraLocal) {
+		return new AgendaService(
+				ofertas, disponibilidad, espacios, consultorios, memberships, permissionGuard, reservas,
+				Clock.fixed(ahoraLocal.atZone(ZONA).toInstant(), ZONA));
+	}
+
+	private static Instant local(LocalDate fecha, String hora) {
+		return fecha.atTime(java.time.LocalTime.parse(hora)).atZone(ZONA).toInstant();
+	}
+
+	private static List<Instant> inicios(AgendaView.DiaDeAgenda dia) {
+		return dia.slots().stream().map(AgendaView.SlotDisponible::desde).toList();
+	}
 
 	private AgendaView buscarUnDia() {
 		return service.buscar(actor, CONSULTORIO_ID, OFERTA_ID, LUNES, MARTES, null);
@@ -282,6 +297,168 @@ class AgendaServiceTest {
 		assertThat(slots).hasSize(2);
 		assertThat(slots.get(0).cupoLibre()).as("el de las 09:00 esta tomado").isZero();
 		assertThat(slots.get(1).cupoLibre()).as("el de las 10:00 sigue libre").isEqualTo(1);
+	}
+
+	/**
+	 * Paquete E-2. Lo que destaparon los E2E contra el backend real: la agenda ofrecia horarios
+	 * que la reserva despues rechazaba, y un dia lleno no decia que estaba lleno.
+	 */
+	@Nested
+	@DisplayName("Lo que la agenda ofrece es lo que la reserva acepta (E-2)")
+	class CoherenciaConLaReserva {
+
+		@Test
+		@DisplayName("Hoy no ofrece los horarios que ya empezaron: la reserva los rechaza")
+		void hoy_no_ofrece_lo_que_ya_paso() {
+			// TurnoService.reservar rechaza todo inicio que no sea posterior a ahora. Si el motor
+			// los dibuja, el usuario elige 09:00 a las 10:15 y se come un slot-no-disponible.
+			service = conReloj(LUNES.atTime(10, 15));
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(30)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "12:00")));
+
+			assertThat(inicios(buscarUnDia().dias().get(0))).containsExactly(
+					local(LUNES, "10:30"), local(LUNES, "11:00"), local(LUNES, "11:30"));
+		}
+
+		@Test
+		@DisplayName("El slot que empieza exactamente ahora tampoco se ofrece")
+		void el_borde_de_ahora_es_pasado() {
+			// Mismo criterio que la reserva: !inicio.isAfter(ahora).
+			service = conReloj(LUNES.atTime(10, 0));
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(60)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "12:00")));
+
+			assertThat(inicios(buscarUnDia().dias().get(0))).containsExactly(local(LUNES, "11:00"));
+		}
+
+		@Test
+		@DisplayName("Un dia que ya paso entero no ofrece nada y lo dice: PASADO")
+		void dia_pasado() {
+			service = conReloj(MARTES.atTime(10, 0));
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(30)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "12:00"),
+					atiende(MARTES, "09:00", "12:00")));
+
+			var dias = service.buscar(
+					actor, CONSULTORIO_ID, OFERTA_ID, LUNES, MARTES.plusDays(1), null).dias();
+
+			assertThat(dias.get(0).slots()).isEmpty();
+			assertThat(dias.get(0).motivoSinSlots()).isEqualTo("PASADO");
+			assertThat(inicios(dias.get(1))).first().isEqualTo(local(MARTES, "10:30"));
+		}
+
+		@Test
+		@DisplayName("Hoy, con todos sus horarios ya empezados: PASADO, no un dia en blanco")
+		void hoy_ya_termino() {
+			service = conReloj(LUNES.atTime(18, 0));
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(30)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "12:00")));
+
+			var dia = buscarUnDia().dias().get(0);
+
+			assertThat(dia.slots()).isEmpty();
+			assertThat(dia.motivoSinSlots()).isEqualTo("PASADO");
+		}
+
+		@Test
+		@DisplayName("Un dia con todos sus slots vendidos declara COMPLETO")
+		void dia_lleno_es_completo() {
+			// El contrato declara COMPLETO y nada lo emitia: el dia lleno viajaba con sus slots en
+			// cupo 0 y sin motivo, y la pantalla —que muestra el motivo solo con la lista vacia—
+			// dibujaba una grilla de horarios deshabilitados sin decir por que.
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(60)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "11:00")));
+			given(reservas.reservasPorInicio(anyLong(), anyLong(), anyLong(), any(), any(), any()))
+					.willReturn(Map.of(local(LUNES, "09:00"), 1, local(LUNES, "10:00"), 1));
+
+			var dia = buscarUnDia().dias().get(0);
+
+			assertThat(dia.motivoSinSlots()).isEqualTo("COMPLETO");
+			assertThat(dia.slots()).isEmpty();
+		}
+
+		@Test
+		@DisplayName("Lo que queda de hoy, todo vendido: COMPLETO, aunque la manana haya pasado libre")
+		void lo_que_queda_de_hoy_esta_lleno() {
+			service = conReloj(LUNES.atTime(9, 30));
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(60)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "11:00")));
+			given(reservas.reservasPorInicio(anyLong(), anyLong(), anyLong(), any(), any(), any()))
+					.willReturn(Map.of(local(LUNES, "10:00"), 1));
+
+			assertThat(buscarUnDia().dias().get(0).motivoSinSlots()).isEqualTo("COMPLETO");
+		}
+
+		@Test
+		@DisplayName("Una habilitacion cargada hoy a la tarde vale para lo que queda de hoy")
+		void habilitacion_de_hoy_vale_hoy() {
+			// La vigencia se evaluaba al mediodia local: una habilitacion con valid_from hoy a las
+			// 15:00 —la que nace con Instant.now() al cargarla— no existia al mediodia y el dia
+			// salia SIN_PROFESIONAL, aunque la reserva de las 16:00 la habria aceptado.
+			service = conReloj(LUNES.atTime(14, 50));
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(60)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(new HabilitacionSnapshot(
+							1L, PROFESIONAL_ID, local(LUNES, "15:00"), null, true)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "18:00")));
+
+			assertThat(inicios(buscarUnDia().dias().get(0))).containsExactly(
+					local(LUNES, "15:00"), local(LUNES, "16:00"), local(LUNES, "17:00"));
+		}
+
+		@Test
+		@DisplayName("Una habilitacion que empieza a la tarde no habilita la manana del mismo dia")
+		void habilitacion_vale_desde_su_hora() {
+			// El revalidador mira la vigencia en el inicio de cada slot: ofrecer las 09:00 de un
+			// profesional habilitado desde las 15:00 es ofrecer un 409.
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(60)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(new HabilitacionSnapshot(
+							1L, PROFESIONAL_ID, local(LUNES, "15:00"), null, true)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "17:00")));
+
+			assertThat(inicios(buscarUnDia().dias().get(0))).containsExactly(
+					local(LUNES, "15:00"), local(LUNES, "16:00"));
+		}
+
+		@Test
+		@DisplayName("El ultimo dia de vigencia ofrece hasta la hora en que vence, no todo o nada")
+		void ultimo_dia_de_vigencia() {
+			// Con el mediodia, una habilitacion que vence a las 11:00 borraba el dia entero —las
+			// 09:00 y las 10:00 eran validas— y una que vence a las 15:00 ofrecia tambien las 16:00,
+			// que la reserva rechaza.
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(60)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, local(LUNES, "11:00"))));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "17:00")));
+
+			assertThat(inicios(buscarUnDia().dias().get(0))).containsExactly(
+					local(LUNES, "09:00"), local(LUNES, "10:00"));
+		}
+
+		@Test
+		@DisplayName("Habilitado solo en horas en que no atiende: SIN_PROFESIONAL, no franja corta")
+		void habilitado_fuera_de_su_horario() {
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(60)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(new HabilitacionSnapshot(
+							1L, PROFESIONAL_ID, local(LUNES, "20:00"), null, true)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "12:00")));
+
+			assertThat(buscarUnDia().dias().get(0).motivoSinSlots()).isEqualTo("SIN_PROFESIONAL");
+		}
 	}
 
 	@Nested

@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.71.0
+  version: 0.72.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -24636,7 +24636,11 @@ components:
           type: string
           description: "Por que el dia no tiene ningun slot. Ausente si el dia SI\
             \ tiene slots. Nunca falta cuando la lista esta vacia: un dia en blanco\
-            \ sin explicacion es indistinguible de un error del sistema."
+            \ sin explicacion es indistinguible de un error del sistema. `COMPLETO`:\
+            \ ningun slot tiene cupo libre (si queda alguno, los llenos viajan con\
+            \ `cupoLibre` 0 y no hay motivo). `PASADO`: el dia ya paso, o es hoy y\
+            \ todos sus horarios ya empezaron. Los horarios de hoy que ya empezaron\
+            \ nunca se ofrecen: la reserva los rechaza."
           enum:
           - FERIADO
           - CIERRE
@@ -24647,6 +24651,7 @@ components:
           - SIN_ESPACIO
           - FRANJA_MAS_CORTA_QUE_LA_OFERTA
           - COMPLETO
+          - PASADO
           example: FERIADO
         slots:
           type: array
@@ -30712,7 +30717,7 @@ components:
           format: int64
           description: "Membership del profesional en el horario nuevo. **Puede ser\
             \ otro**: mover un turno porque el profesional se ausento es el caso mas\
-            \ frecuente."
+            \ frecuente. Si se omite, el turno conserva el profesional que ya tenia."
           example: 31
           minimum: 0
       required:
