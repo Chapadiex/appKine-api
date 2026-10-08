@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.74.0
+  version: 0.76.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -3015,8 +3015,6 @@ paths:
     put:
       description: |-
         Cambia el pais del calendario, si la sede cierra sus feriados y, si viene horarioGeneral, reemplaza el horario general de la sede (RF-M03-003): lo reemplazado queda como historia y una lista vacia lo borra. Crea la fila a demanda si es la primera vez. Exige consultorio:manage sobre ESA sede.
-
-        Desde 0.74.0 (DP-19) el horario general LIMITA la agenda: ningun turno se ofrece ni se reserva fuera de el. Reemplazarlo NO cancela los turnos ya reservados que queden afuera: la respuesta los informa en impactoDelHorario (cuantos, el primero y hasta 50, sin datos del paciente), con el mismo criterio que el impacto de un cambio de disponibilidad. Una lista vacia quita el limite.
 
         Semantica de PATCH aunque el verbo sea PUT: cada campo omitido queda como estaba. cierraPorFeriado OMITIDO no es false — ese es el error que convierte "no toques la politica" en "abri todos los feriados" para todos los profesionales de la sede, hacia adelante y hacia atras. Por el alcance de ese cambio, la edicion se audita aunque sea un solo flag.
 
@@ -8580,7 +8578,7 @@ paths:
 
         LEER ESTO ANTES DE ESCRIBIR LA PANTALLA. franja.origen, franja.recortadoPor y dia.razonVacio NO son extras: son el criterio de aceptacion de la etapa —"la disponibilidad efectiva explica que regla la afecta"—. Una pantalla que dibuje las franjas y descarte esos tres campos deja al administrador sin poder saber por que un dia esta en blanco, que es justamente donde no puede adivinarlo.
 
-        razonVacio tiene CINCO valores y confundir dos de ellos manda a alguien a buscar algo que no existe: FERIADO, CIERRE, VINCULO —el vinculo del profesional no estaba vigente ese dia—, HORARIO_SEDE —el horario general de la sede no abre en esas horas, desde 0.74.0— y null. "No atiende ese dia" y "ya no trabaja aca" necesitan textos distintos.
+        razonVacio tiene CUATRO valores y confundir dos de ellos manda a alguien a buscar algo que no existe: FERIADO, CIERRE, VINCULO —el vinculo del profesional no estaba vigente ese dia— y null. "No atiende ese dia" y "ya no trabaja aca" necesitan textos distintos.
 
         NUNCA se omite un dia de [desde, hasta), ni siquiera si el profesional ya no trabaja en el centro: la pantalla dibuja una grilla de fechas y un dia faltante la correria.
 
@@ -9206,6 +9204,7 @@ paths:
           type: string
           enum:
           - VIGENTE
+          - CANCELADA
           - FINALIZADA
       - description: "Pagina, base cero"
         in: query
@@ -9811,7 +9810,9 @@ paths:
 
         **Es idempotente.** Cerrar dos veces devuelve el mismo resultado con el mismo numero y no renumera: apretar dos veces "cerrar" es el caso normal, y renumerar una sesion cerrada seria reescribir historia clinica. La idempotencia se evalua ANTES de pedir un numero, para que un reintento no consuma un correlativo que despues nadie usa y deje huecos que parecen sesiones borradas.
 
-        **Cerrar no cobra.** DP-06: el cierre clinico no depende del pago y no crea ninguna obligacion economica. La obligacion se deriva despues, en AKINE-07.01, leyendo las sesiones cerradas.
+        **Cerrar no cobra.** DP-06: el cierre clinico no depende del pago. La deuda (obligacion del paciente y, si hay convenio, del financiador) se devenga en la misma transaccion del cierre.
+
+        **Pero toda prestacion cerrada genera deuda** (DP-17). Si el paciente asistio y su deuda es el precio particular —recepcion resuelta como Particular, oferta que no admite obra social, o sin cobertura con convenio y arancel aplicables— y la oferta no tiene precio vigente el dia del cierre (en la zona de la sede), responde **409 `oferta-sin-precio`** con `ofertaId`, `dia` y `motivo`. La sesion sigue abierta, sin numero y sin nada consumido: se carga el precio en la oferta y se reintenta. Con cobertura el coseguro sale del arancel y no hace falta precio particular.
 
         **Una sesion cerrada no se edita: se enmienda.** Corregirla exige motivo y deja una version en el historial (`POST .../enmiendas`). El cierre ademas **inaugura ese historial**: la version 1 es lo que se acaba de asentar.
       operationId: cerrarSesion
@@ -9870,8 +9871,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "La sesion la atiende otro profesional, o la version quedo\
-            \ vieja"
+          description: "La sesion la atiende otro profesional, la version quedo vieja,\
+            \ o la deuda del paciente es el precio particular y la oferta no tiene\
+            \ precio ese dia (oferta-sin-precio)"
       summary: Cerrar la atencion
       tags:
       - Sesiones
@@ -14738,7 +14740,7 @@ paths:
 
         Pasa por el limite MAX_CONSULTORIOS del plan contratado. El header Idempotency-Key es obligatorio: reintentar con la misma clave y el mismo cuerpo devuelve la misma sede en vez de crear una segunda, que es lo que cubre el reintento despues de un timeout de red.
 
-        Opcionalmente crea en el MISMO acto el primer box (primerBox) y el horario general de la sede (horarioGeneral), que es lo que RF-M03-002 pide. Todo entra en una sola transaccion: si el box o el horario son invalidos la respuesta es 400 y no queda nada, ni la sede ni el cupo de plan consumido. Desde 0.74.0 (DP-19) el horario general LIMITA la agenda: ningun turno se ofrece ni se reserva fuera de el, aunque el profesional tenga horario. No reemplaza la disponibilidad de cada profesional (RN-M03-004): la recorta. Se lee y se edita despues por /consultorios/{id}/calendario, y el box por /consultorios/{id}/espacios. Los dos campos entran en la deteccion de clave de idempotencia reusada.
+        Opcionalmente crea en el MISMO acto el primer box (primerBox) y el horario general de la sede (horarioGeneral), que es lo que RF-M03-002 pide. Todo entra en una sola transaccion: si el box o el horario son invalidos la respuesta es 400 y no queda nada, ni la sede ni el cupo de plan consumido. El horario general es informativo y no reemplaza la disponibilidad de cada profesional (RN-M03-004); se lee y se edita despues por /consultorios/{id}/calendario, y el box por /consultorios/{id}/espacios. Los dos campos entran en la deteccion de clave de idempotencia reusada.
       operationId: createConsultorio
       parameters:
       - description: Identificador de la organizacion
@@ -21341,22 +21343,11 @@ components:
           type: array
           description: "Franjas VIGENTES del horario general de la sede (RF-M03-002),\
             \ ordenadas por dia y hora. Vacia significa que la sede no declaro horario\
-            \ general, no que este cerrada. Desde 0.74.0 (DP-19) es un LIMITE de la\
-            \ agenda: la disponibilidad de cada profesional se recorta a este horario\
-            \ y ningun turno se ofrece ni se reserva fuera de el; no abre nada que\
-            \ el profesional no tenga (RN-M03-004). Vacia no limita nada. Viaja completa\
-            \ tambien en la respuesta del PUT"
+            \ general, no que este cerrada. Informativo: la agenda ofrece turnos con\
+            \ la disponibilidad de cada profesional, no con este horario (RN-M03-004).\
+            \ Viaja completa tambien en la respuesta del PUT"
           items:
             $ref: "#/components/schemas/HorarioGeneralFranjaResponse"
-        impactoDelHorario:
-          $ref: "#/components/schemas/ImpactoDisponibilidadResponse"
-          description: "Turnos pendientes que el reemplazo del horario general dejo\
-            \ FUERA de la disponibilidad efectiva (0.74.0). Se informan y NO se cancelan:\
-            \ quien decide que hacer con ellos es la sede. Mismo criterio exacto que\
-            \ el impacto de un cambio de disponibilidad: cuenta un turno que el horario\
-            \ anterior cubria y el nuevo no, de cualquier profesional, desde hoy hasta\
-            \ noventa dias. En el GET y en un PUT que no cambia el horario viaja en\
-            \ cero con evaluadoHasta nulo"
         pais:
           type: string
           description: Pais cuyo calendario de feriados usa la sede
@@ -23369,12 +23360,11 @@ components:
         horarioGeneral:
           type: array
           description: "Horario general de la sede (RF-M03-002): franjas semanales\
-            \ en la zona de la sede. Desde 0.74.0 (DP-19) LIMITA la agenda: ningun\
-            \ turno se ofrece ni se reserva fuera de este horario. NO sustituye la\
-            \ disponibilidad de cada profesional (RN-M03-004): la recorta. Omitido,\
-            \ no limita nada. Se crea en la misma transaccion que la sede; dos franjas\
-            \ del mismo dia que se pisan, o una que termina antes de empezar, rechazan\
-            \ el alta entera con 400. Se lee y se edita despues por /consultorios/{id}/calendario"
+            \ en la zona de la sede. Informativo: NO sustituye la disponibilidad de\
+            \ cada profesional, que es lo que la agenda usa para ofrecer turnos (RN-M03-004).\
+            \ Se crea en la misma transaccion que la sede; dos franjas del mismo dia\
+            \ que se pisan, o una que termina antes de empezar, rechazan el alta entera\
+            \ con 400. Se lee y se edita despues por /consultorios/{id}/calendario"
           items:
             $ref: "#/components/schemas/AltaSedeFranjaHorariaRequest"
           maxItems: 28
@@ -24654,10 +24644,7 @@ components:
             \ ningun slot tiene cupo libre (si queda alguno, los llenos viajan con\
             \ `cupoLibre` 0 y no hay motivo). `PASADO`: el dia ya paso, o es hoy y\
             \ todos sus horarios ya empezaron. Los horarios de hoy que ya empezaron\
-            \ nunca se ofrecen: la reserva los rechaza. `FUERA_DE_HORARIO_SEDE` (0.74.0):\
-            \ el profesional tiene horario ese dia pero la sede no abre en ninguna\
-            \ de esas horas; se corrige en el horario general de la sede, no en el\
-            \ del profesional."
+            \ nunca se ofrecen: la reserva los rechaza."
           enum:
           - FERIADO
           - CIERRE
@@ -24669,7 +24656,6 @@ components:
           - FRANJA_MAS_CORTA_QUE_LA_OFERTA
           - COMPLETO
           - PASADO
-          - FUERA_DE_HORARIO_SEDE
           example: FERIADO
         slots:
           type: array
@@ -24708,7 +24694,7 @@ components:
           - string
           - "null"
           description: |-
-            Por que el dia no tiene ni una franja. CINCO estados, y confundir dos de ellos manda al administrador a buscar algo que no existe:
+            Por que el dia no tiene ni una franja. CUATRO estados, y confundir dos de ellos manda al administrador a buscar algo que no existe:
 
             FERIADO — es feriado del pais y la sede cierra los feriados.
 
@@ -24716,9 +24702,7 @@ components:
 
             VINCULO — el vinculo del profesional NO estaba vigente ese dia: todavia no se habia incorporado, o ya se habia desvinculado. NO es lo mismo que "no atiende ese dia", y mostrarle el mismo cartel a los dos hace que un admin busque un cierre que no existe.
 
-            HORARIO_SEDE (0.74.0) — el profesional tenia horario, pero el horario general de la sede no abre en ninguna de esas horas. Lo que hay que revisar es el horario de la sede, no el del profesional.
-
-            null — quinto estado, y no un descuido: o el dia TIENE franjas, o quedo vacio porque NINGUNA regla lo abrio. Eso no es una regla que lo afecte, es la ausencia de reglas, y se distingue mirando franjas.
+            null — cuarto estado, y no un descuido: o el dia TIENE franjas, o quedo vacio porque NINGUNA regla lo abrio. Eso no es una regla que lo afecte, es la ausencia de reglas, y se distingue mirando franjas.
 
             NO se declara como enum en el contrato aunque la lista sea cerrada: un campo nullable con enum se publica en OpenAPI 3.1 como un tipo que ADMITE el nulo junto a un enum que NO lo contiene, y un cliente generado con validacion estricta rechazaria nuestra propia respuesta la primera vez que un dia llegue sin razon. La enumeracion vive en esta prosa a proposito.
           example: CIERRE
@@ -26103,11 +26087,9 @@ components:
           - string
           - "null"
           description: |-
-            Por que la franja quedo mas corta que la regla que la produjo. TRES estados, y el ultimo es el normal:
+            Por que la franja quedo mas corta que la regla que la produjo. DOS estados, y el segundo es el normal:
 
             CIERRE — una excepcion de tipo CIERRE le recorto un pedazo. Es lo que explica por que la franja termina a las 11 y no a las 13.
-
-            HORARIO_SEDE (0.74.0) — la franja excedia el horario general de la sede y quedo solo la parte comun.
 
             null — nada la recorto: la franja es la regla entera.
 
@@ -29502,6 +29484,7 @@ components:
       - https://akine.app/problems/participacion-sin-asistencia
       - https://akine.app/problems/autorizacion-no-elegible
       - https://akine.app/problems/derivacion-no-accesible
+      - https://akine.app/problems/oferta-sin-precio
     ProfesionalHabilitado:
       type: object
       description: Profesional habilitado para prestar la oferta
@@ -31428,10 +31411,12 @@ components:
         estado:
           type: string
           description: "Estado DERIVADO de sus turnos, calculado al leer: la serie\
-            \ no tiene estado propio (DP-04). `VIGENTE` si le queda un turno pendiente,\
-            \ `FINALIZADA` si no."
+            \ no tiene estado propio (DP-04). `VIGENTE` si le queda un turno pendiente;\
+            \ si no, `CANCELADA` si su ultimo turno esta cancelado (la serie se corto,\
+            \ DP-20) y `FINALIZADA` si no (se agoto por fecha o por cantidad)."
           enum:
           - VIGENTE
+          - CANCELADA
           - FINALIZADA
           example: VIGENTE
         fechaDesde:

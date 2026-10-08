@@ -293,18 +293,16 @@ public class SerieDeTurnosService {
 	}
 
 	/**
-	 * Una fila de la bandeja. "Pendiente" es exactamente el predicado del filtro de estado en la
-	 * base: RESERVADO o CONFIRMADO, vivo y con {@code inicio > ahora}. Si divergieran, una serie
-	 * filtrada como VIGENTE podria mostrarse FINALIZADA.
+	 * Una fila de la bandeja. "Pendiente" y el estado son exactamente el predicado del filtro de
+	 * estado en la base ({@link EstadoDeSerie#de}, DP-20), con el mismo instante. Si divergieran,
+	 * una serie filtrada como VIGENTE o CANCELADA podria mostrarse con otro estado.
 	 */
 	static SerieResumenView resumen(
 			TurnoSerie serie, List<Turno> deLaSerie, PacienteSnapshot paciente, String ofertaNombre,
 			Instant ahora) {
 
 		List<Turno> pendientes = deLaSerie.stream()
-				.filter(turno -> turno.estaVivo()
-						&& turno.getEstado().admiteTransicion()
-						&& turno.getInicio().isAfter(ahora))
+				.filter(turno -> EstadoDeSerie.esPendiente(turno, ahora))
 				.toList();
 		Instant proximo = pendientes.stream().map(Turno::getInicio).min(Comparator.naturalOrder()).orElse(null);
 		SerieView regla = SerieView.de(serie, List.of());
@@ -315,7 +313,7 @@ public class SerieDeTurnosService {
 				regla.diasSemana(), regla.hora(), regla.fechaDesde(), regla.fechaHasta(),
 				regla.cantidad(), regla.timezone(), regla.creadaEn(),
 				deLaSerie.size(), pendientes.size(), proximo,
-				pendientes.isEmpty() ? EstadoDeSerie.FINALIZADA : EstadoDeSerie.VIGENTE);
+				EstadoDeSerie.de(deLaSerie, ahora));
 	}
 
 	/**

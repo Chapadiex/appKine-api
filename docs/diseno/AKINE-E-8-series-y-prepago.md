@@ -46,6 +46,10 @@ No se distingue "cancelada" de "terminada": las dos son "no queda nada por atend
 exigiría decidir qué es una serie con dos turnos atendidos y ocho cancelados. Si la pantalla lo
 necesita, es otro valor del enum (cambio aditivo).
 
+> **Superado por DP-20 (08/10/2026):** el dueño del producto pidió distinguirlas. E-8b agregó
+> `CANCELADA` —sin pendientes y con el último turno cancelado— y la serie de dos atendidos y ocho
+> cancelados quedó resuelta como `CANCELADA`. Ver `docs/diseno/AKINE-E-8b-serie-cancelada.md`.
+
 ### 1.2 Costo por página
 
 Cuatro consultas, ninguna por fila: el total, las series, los turnos de las series de la página

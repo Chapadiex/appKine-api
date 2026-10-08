@@ -8,6 +8,8 @@ import com.akine.billing.domain.port.ObligacionRepositoryPort;
 import com.akine.contracting.spi.ArancelCongelado;
 import com.akine.contracting.spi.ArancelDirectory;
 import com.akine.encounter.spi.CierreDeSesionObserver;
+import com.akine.encounter.spi.OfertaSinPrecioException;
+import com.akine.encounter.spi.PrecioParticularDelCierre;
 import com.akine.encounter.spi.SesionCerrada;
 import com.akine.offering.spi.PracticaDeOferta;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
@@ -67,9 +69,12 @@ import java.util.Set;
  * <ol>
  *   <li><b>Sin asistencia no hay deuda.</b> Una ausencia no es una prestacion, y cobrar un no-show
  *       es una politica de centro que no existe.</li>
- *   <li><b>Sin precio no hay deuda particular.</b> Se loguea y no se lanza: dejar al profesional
- *       sin cerrar su atencion por un dato administrativo ajeno seria peor. La parte del convenio
- *       no necesita el precio de la oferta: sale del arancel.</li>
+ *   <li><b><s>Sin precio no hay deuda particular.</s> Reemplazada por DP-17 (AKINE E-7b): toda
+ *       prestacion cerrada genera deuda.</b> Si la deuda del paciente es el precio particular y la
+ *       oferta no lo tiene ese dia, el cierre se bloquea con 409 {@code oferta-sin-precio}. Lo
+ *       valida {@code encounter} antes de numerar, preguntandole a este mismo bean por
+ *       {@link #exigePrecioParticular}; aca queda solo como red (ver {@code devengarParticular}).
+ *       La parte del convenio no necesita el precio de la oferta: sale del arancel.</li>
  *   <li><b>Un observador que falla hace fallar el cierre</b> (contrapartida asumida en 07.01 y que
  *       F-4 mantiene). Por eso <b>ningun desenlace de negocio lanza</b>: sin cobertura, sin
  *       convenio, sin arancel o sin practica, el devengo cae a particular. Lo unico que propaga es
@@ -77,7 +82,7 @@ import java.util.Set;
  * </ol>
  */
 @Component
-public class ObligacionDevengador implements CierreDeSesionObserver {
+public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParticularDelCierre {
 
 	private static final Logger log = LoggerFactory.getLogger(ObligacionDevengador.class);
 
@@ -113,13 +118,7 @@ public class ObligacionDevengador implements CierreDeSesionObserver {
 			return;
 		}
 
-		// AKINE E-7 (RF-M08-007): la recepcion lo resolvio como Particular -> no se busca
-		// cobertura. Ni financiador ni coseguro: solo la deuda del paciente al precio del dia.
-		Optional<Cubierta> cubierta = cierre.ofertaAdmiteObraSocial()
-				&& !cierre.particularPorRecepcion()
-				? cubierta(cierre)
-				: Optional.empty();
-
+		Optional<Cubierta> cubierta = cubiertaQueCorresponde(cierre);
 		if (cubierta.isPresent()) {
 			devengarPorConvenio(cierre, cubierta.get());
 		} else {
@@ -127,19 +126,46 @@ public class ObligacionDevengador implements CierreDeSesionObserver {
 		}
 	}
 
+	/**
+	 * DP-17 (AKINE E-7b): la regla con la que {@code encounter} decide, ANTES de numerar, si el
+	 * cierre necesita precio particular. Es la misma que usa {@link #alCerrar} para elegir entre
+	 * convenio y particular —{@link #cubiertaQueCorresponde}—, y por eso vive en este bean: con dos
+	 * reglas, una oferta sin precio podria pasar la validacion y caer igual a particular.
+	 *
+	 * <p>Una practica sin cargo bajo el convenio (total cero) no exige precio: hay cobertura y la
+	 * deuda es cero por convenio, no por falta de un dato.
+	 */
+	@Override
+	public boolean exigePrecioParticular(SesionCerrada cierreSinNumero) {
+		return cierreSinNumero.asistio() && cubiertaQueCorresponde(cierreSinNumero).isEmpty();
+	}
+
+	/**
+	 * La cobertura por la que se devenga, o vacio si la deuda del paciente es el precio particular.
+	 *
+	 * <p>AKINE E-7 (RF-M08-007, confirmado por DP-17): la recepcion resuelta como Particular manda
+	 * sobre el convenio —ni se busca cobertura—, igual que una oferta que no admite obra social.
+	 */
+	private Optional<Cubierta> cubiertaQueCorresponde(SesionCerrada cierre) {
+		return cierre.ofertaAdmiteObraSocial() && !cierre.particularPorRecepcion()
+				? cubierta(cierre)
+				: Optional.empty();
+	}
+
 	// =================================================================================
-	// Particular: 07.01 tal cual
+	// Particular: 07.01, con la regla 2 reemplazada por DP-17
 	// =================================================================================
 
 	private void devengarParticular(SesionCerrada cierre) {
 		BigDecimal precio = cierre.precioDeLaOferta();
 		if (precio == null || precio.signum() <= 0) {
-			// Se registra y no se lanza: hacer fallar el cierre clinico porque falta un precio
-			// dejaria al profesional sin poder terminar su atencion por un dato administrativo que
-			// no es suyo. Queda en el log para que se note, que es el punto medio honesto.
-			log.warn("Sesion cerrada sobre una oferta sin precio: no se devenga deuda. "
-					+ "sesionId={} ofertaId={}", cierre.sesionId(), cierre.ofertaId());
-			return;
+			// DP-17: inalcanzable en el flujo normal —el cierre ya pregunto exigePrecioParticular
+			// y, sin precio, respondio 409 antes de numerar—. Si se llega es porque una lectura
+			// viva cambio entre la validacion y el devengo (un arancel dado de baja en el medio).
+			// Se lanza el mismo 409: revierte el cierre entero en vez de dejar una prestacion sin
+			// deuda, que es justo lo que DP-17 prohibe.
+			throw new OfertaSinPrecioException(cierre.ofertaId(), diaLocalDeLaSede(cierre),
+					OfertaSinPrecioException.Motivo.de(cierre));
 		}
 
 		Obligacion obligacion = obligaciones.save(new Obligacion(

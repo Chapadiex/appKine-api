@@ -1,6 +1,6 @@
 # AKINE-A-8b — El horario general de la sede limita la agenda
 
-> Decisión **DP-19** (08/10/2026). Contrato **0.74.0** (aditivo). **Sin migración**: `V83`
+> Decisión **DP-19** (08/10/2026). Contrato **0.77.0** (aditivo). **Sin migración**: `V83`
 > (A-8) ya tiene todo lo que hace falta. Rama `akine-A-8b-horario-sede-limita`.
 
 ## 1. La decisión y su relación con el RN

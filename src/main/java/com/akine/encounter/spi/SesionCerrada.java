@@ -85,6 +85,17 @@ public record SesionCerrada(
 		practicasRealizadas = practicasRealizadas == null ? Set.of() : Set.copyOf(practicasRealizadas);
 	}
 
+	/**
+	 * El mismo hecho con el numero de sesion puesto. AKINE E-7b: el cierre arma el hecho ANTES de
+	 * pedir el numero —para validar el precio con lo mismo que despues ven los observadores— y lo
+	 * completa recien despues de numerar.
+	 */
+	public SesionCerrada conNumeroSesion(int numero) {
+		return new SesionCerrada(sesionId, organizationId, consultorioId, personaId, ofertaId, numero,
+				asistio, cerradaEn, cerradaPorCuentaId, precioDeLaOferta, moneda, practicasRealizadas,
+				casoId, ofertaAdmiteObraSocial, turnoId, particularPorRecepcion);
+	}
+
 	/** Sin la modalidad de la recepcion: la forma anterior a AKINE E-7. */
 	@SuppressWarnings("java:S107")
 	public SesionCerrada(
