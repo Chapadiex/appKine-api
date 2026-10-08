@@ -14,16 +14,19 @@ import com.akine.organization.spi.AccountContextDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -139,6 +142,56 @@ class OfertaPrecioParticularServiceTest {
 
 		assertThatThrownBy(() -> service.darDeBaja(admin, ORG, SEDE, OFERTA_ID, 1L, "otra vez"))
 				.isInstanceOf(PrecioParticularInactivoException.class);
+	}
+
+	@Test
+	@DisplayName("cerrar la vigencia: no choca contra si mismo y se audita el periodo anterior")
+	void cerrar_vigencia() {
+		OfertaPrecioParticular abierto = precio(1L, ENERO, null);
+		activos.add(abierto);
+		given(precios.findByIdAndOrganizationIdAndOfertaId(1L, ORG, OFERTA_ID))
+				.willReturn(Optional.of(abierto));
+
+		OfertaPrecioParticularView cerrado =
+				service.cambiarFin(admin, ORG, SEDE, OFERTA_ID, 1L, JUNIO_30, 0L);
+
+		assertThat(cerrado.vigenciaHasta()).isEqualTo(JUNIO_30);
+		ArgumentCaptor<AuditEntry> auditada = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(auditada.capture());
+		assertThat(auditada.getValue().eventType())
+				.isEqualTo(AuditEvents.OFERTA_PRECIO_PARTICULAR_UPDATED);
+		assertThat(auditada.getValue().details()).containsKey("periodoAnterior");
+	}
+
+	@Test
+	@DisplayName("cambiar el fin con una version vieja es 409 y no escribe")
+	void cambiar_fin_con_version_vieja() {
+		given(precios.findByIdAndOrganizationIdAndOfertaId(1L, ORG, OFERTA_ID))
+				.willReturn(Optional.of(precio(1L, ENERO, null)));
+
+		assertThatThrownBy(() -> service.cambiarFin(admin, ORG, SEDE, OFERTA_ID, 1L, JUNIO_30, 5L))
+				.isInstanceOf(OptimisticLockingFailureException.class);
+		verify(precios, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("la baja exige motivo antes de tomar el lock, y lo guarda recortado")
+	void baja_con_motivo() {
+		assertThatThrownBy(() -> service.darDeBaja(admin, ORG, SEDE, OFERTA_ID, 1L, "  "))
+				.isInstanceOf(IllegalArgumentException.class);
+		verify(ofertas, never()).bloquearParaConfigurar(OFERTA_ID, ORG, SEDE);
+
+		given(precios.findByIdAndOrganizationIdAndOfertaId(1L, ORG, OFERTA_ID))
+				.willReturn(Optional.of(precio(1L, ENERO, null)));
+
+		OfertaPrecioParticularView baja =
+				service.darDeBaja(admin, ORG, SEDE, OFERTA_ID, 1L, "  carga erronea ");
+
+		assertThat(baja.deactivationReason()).isEqualTo("carga erronea");
+		assertThat(baja.deletedAt()).isNotNull();
+		ArgumentCaptor<AuditEntry> auditada = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(auditada.capture());
+		assertThat(auditada.getValue().reason()).isEqualTo("carga erronea");
 	}
 
 	@Test
