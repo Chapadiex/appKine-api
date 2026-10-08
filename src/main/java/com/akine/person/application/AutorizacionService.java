@@ -6,7 +6,10 @@ import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.AccionSobreAutorizacion;
 import com.akine.person.domain.AdjuntoAdministrativo;
 import com.akine.person.domain.Autorizacion;
+import com.akine.person.domain.AutorizacionEvento;
 import com.akine.person.domain.CoberturaPaciente;
+import com.akine.person.domain.TipoEventoAutorizacion;
+import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionEventoRepositoryPort;
 import com.akine.person.domain.EstadoAutorizacion;
 import com.akine.person.domain.OrdenMedica;
 import com.akine.person.domain.Persona;
@@ -103,6 +106,7 @@ public class AutorizacionService {
 	private final ArancelDirectory aranceles;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final AutorizacionEventoRepositoryPort eventos;
 
 	@SuppressWarnings("java:S107")
 	public AutorizacionService(
@@ -116,7 +120,8 @@ public class AutorizacionService {
 			PerfilPacienteRepositoryPort perfiles,
 			ArancelDirectory aranceles,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			AutorizacionEventoRepositoryPort eventos) {
 
 		this.autorizaciones = autorizaciones;
 		this.candados = candados;
@@ -129,6 +134,7 @@ public class AutorizacionService {
 		this.aranceles = aranceles;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.eventos = eventos;
 	}
 
 	// =================================================================================
@@ -177,6 +183,41 @@ public class AutorizacionService {
 
 		return AutorizacionView.de(
 				cargar(organizationId, personaId, autorizacionId),
+				fecha == null ? LocalDate.now() : fecha);
+	}
+
+	/**
+	 * El historial de estados de una autorizacion, del hecho mas viejo al mas nuevo (DP-23).
+	 *
+	 * <p>Mismo permiso que {@link #ver}: pertenencia al tenant. El historial es parte de leer la
+	 * autorizacion, no de auditarla —por eso no sale de {@code audit_event}, que pide
+	 * {@code auditoria:read}—.
+	 *
+	 * <p><b>El vencimiento no es una fila</b>: se informa calculado contra {@code fecha}, igual
+	 * que {@code vencida} en la autorizacion. Ver {@code TipoEventoAutorizacion}.
+	 */
+	@Transactional(readOnly = true)
+	public HistorialDeAutorizacionView historial(
+			OperatingActor actor,
+			long personaId,
+			long autorizacionId,
+			int pagina,
+			int tamano,
+			LocalDate fecha) {
+
+		long organizationId = AutorizacionDePadron.exigirContexto(
+				actor, "Consultar el historial de una autorizacion");
+		exigirPersonaDelTenant(organizationId, personaId);
+		Autorizacion autorizacion = cargar(organizationId, personaId, autorizacionId);
+
+		List<EventoDeAutorizacionView> contenido = eventos
+				.pagina(organizationId, autorizacionId, pagina * tamano, tamano).stream()
+				.map(EventoDeAutorizacionView::de)
+				.toList();
+		return HistorialDeAutorizacionView.de(
+				autorizacion,
+				contenido,
+				eventos.contar(organizationId, autorizacionId),
 				fecha == null ? LocalDate.now() : fecha);
 	}
 
@@ -261,6 +302,8 @@ public class AutorizacionService {
 		detalles.put("convenioCongelado", String.valueOf(creada.tieneConvenioCongelado()));
 		auditar(AuditEvents.AUTORIZACION_CREATED, creada, actor, null,
 				creada.getEstado().name(), null, detalles);
+		historiar(creada, TipoEventoAutorizacion.ALTA, null,
+				CambiosDeAutorizacion.describirAlta(creada), null, actor);
 
 		log.info("Autorizacion registrada: autorizacionId={} personaId={} estado={}",
 				creada.getId(), personaId, creada.getEstado());
@@ -305,6 +348,7 @@ public class AutorizacionService {
 		}
 
 		Long ordenMedicaId = resolverOrden(organizationId, personaId, command.ordenMedicaId());
+		CambiosDeAutorizacion antes = CambiosDeAutorizacion.de(autorizacion);
 		autorizacion.updateDatos(
 				command.numero(),
 				ordenMedicaId,
@@ -325,6 +369,10 @@ public class AutorizacionService {
 
 		Autorizacion guardada = persistir(autorizacion);
 		auditar(AuditEvents.AUTORIZACION_UPDATED, guardada, actor, null, null, null, Map.of());
+		// Una edicion que no cambio nada no es un hecho del historial.
+		antes.describirDiferencia(CambiosDeAutorizacion.de(guardada)).ifPresent(detalle ->
+				historiar(guardada, TipoEventoAutorizacion.MODIFICACION, guardada.getEstado(),
+						detalle, null, actor));
 		return AutorizacionView.de(guardada, LocalDate.now());
 	}
 
@@ -376,6 +424,7 @@ public class AutorizacionService {
 			throw new AutorizacionTransicionNoPermitidaException(
 					autorizacionId, previo.name(), accion.name());
 		}
+		CambiosDeAutorizacion antes = CambiosDeAutorizacion.de(autorizacion);
 
 		autorizacion.resolver(
 				accion,
@@ -403,6 +452,10 @@ public class AutorizacionService {
 		}
 		auditar(AuditEvents.AUTORIZACION_RESUELTA, guardada, actor, previo.name(),
 				guardada.getEstado().name(), command.motivo(), detalles);
+		// Aprobar puede otorgar menos o por menos tiempo: eso es lo que se describe.
+		historiar(guardada, TipoEventoAutorizacion.de(accion), previo,
+				antes.describirDiferencia(CambiosDeAutorizacion.de(guardada)).orElse(null),
+				command.motivo(), actor);
 
 		log.info("Autorizacion resuelta: autorizacionId={} {} -> {}",
 				autorizacionId, previo, guardada.getEstado());
@@ -438,6 +491,11 @@ public class AutorizacionService {
 		Autorizacion guardada = autorizaciones.save(autorizacion);
 		auditar(AuditEvents.AUTORIZACION_DOCUMENTO_LINKED, guardada, actor, null, null, null,
 				Map.of("adjuntoId", String.valueOf(adjuntoId)));
+		historiar(guardada, TipoEventoAutorizacion.DOCUMENTO, guardada.getEstado(),
+				adjuntoId == null
+						? "Comprobante desvinculado"
+						: "Comprobante vinculado: adjunto " + adjuntoId,
+				null, actor);
 
 		return AutorizacionView.de(guardada, LocalDate.now());
 	}
@@ -468,6 +526,8 @@ public class AutorizacionService {
 
 		auditar(AuditEvents.AUTORIZACION_DEACTIVATED, guardada, actor, "ACTIVA", "INACTIVA",
 				motivo, Map.of());
+		historiar(guardada, TipoEventoAutorizacion.ANULACION, guardada.getEstado(), null,
+				guardada.getDeactivationReason(), actor);
 
 		log.info("Autorizacion dada de baja: autorizacionId={} personaId={}",
 				autorizacionId, personaId);
@@ -642,6 +702,23 @@ public class AutorizacionService {
 					"La baja de una autorizacion exige un motivo declarado");
 		}
 		return motivo.strip();
+	}
+
+	/**
+	 * El hecho en el historial (DP-23). En la transaccion de la mutacion: si esta hace rollback,
+	 * el evento tambien. La autorizacion ya tiene aplicado el cambio.
+	 */
+	private void historiar(
+			Autorizacion autorizacion,
+			TipoEventoAutorizacion tipo,
+			EstadoAutorizacion estadoAnterior,
+			String detalle,
+			String motivo,
+			OperatingActor actor) {
+
+		eventos.registrar(AutorizacionEvento.de(
+				autorizacion, tipo, estadoAnterior, detalle, motivo,
+				actor.consultorioId(), actor.accountId(), Instant.now()));
 	}
 
 	@SuppressWarnings("java:S107")

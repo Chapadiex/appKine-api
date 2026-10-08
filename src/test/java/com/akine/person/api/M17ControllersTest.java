@@ -5,6 +5,8 @@ import com.akine.person.application.AutorizacionView;
 import com.akine.person.application.ConsumoDeAutorizacionService;
 import com.akine.person.application.ElegibilidadAdministrativa;
 import com.akine.person.application.ElegibilidadAdministrativaService;
+import com.akine.person.application.EventoDeAutorizacionView;
+import com.akine.person.application.HistorialDeAutorizacionView;
 import com.akine.person.application.OperatingActor;
 import com.akine.person.application.OrdenMedicaService;
 import com.akine.person.application.OrdenView;
@@ -29,11 +31,15 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
@@ -291,6 +297,31 @@ class M17ControllersTest {
 		}
 
 		@Test
+		@DisplayName("el historial pagina, acota el tamano y trae el vencimiento calculado (DP-23)")
+		void historial() throws Exception {
+			given(autorizacionService.historial(any(), anyLong(), anyLong(), anyInt(), anyInt(),
+					any()))
+					.willReturn(new HistorialDeAutorizacionView(77L, "APROBADA", true, true,
+							LocalDate.of(2028, 1, 1),
+							List.of(new EventoDeAutorizacionView(3101L, "APROBACION", "PENDIENTE",
+									"APROBADA", true, null, null, "cantidadAutorizada: 10 -> 6",
+									null, 20L, 15L, Instant.parse("2027-02-01T10:00:00Z"))),
+							201L));
+
+			mockMvc.perform(get(AUTORIZACIONES + "/77/historial")
+							.param("page", "1").param("size", "500"))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.content[0].tipo").value("APROBACION"))
+					.andExpect(jsonPath("$.content[0].estadoAnterior").value("PENDIENTE"))
+					.andExpect(jsonPath("$.vencida").value(true))
+					.andExpect(jsonPath("$.vencidaDesde").value("2028-01-01"))
+					.andExpect(jsonPath("$.size").value(100))
+					.andExpect(jsonPath("$.totalPages").value(3));
+			verify(autorizacionService).historial(any(), eq(1204L), eq(77L), eq(1), eq(100),
+					any());
+		}
+
+		@Test
 		@DisplayName("el alta responde 201 con Location")
 		void alta() throws Exception {
 			given(autorizacionService.registrar(any(), anyLong(), any()))
@@ -529,7 +560,7 @@ class M17ControllersTest {
 		return new OrdenView(
 				51L, 1204L, 20L, 412L, "OM-1", "Dra. Sintetica", "MP 1", ENERO, "Kinesiologia",
 				10, ENERO, DICIEMBRE, !vencida, vencida, diasParaVencer, 907L, null,
-				estado, null, null, 0L);
+				estado, null, null, 0L, "SIN_AUTORIZACION", 0);
 	}
 
 	private static AutorizacionView autorizacion(

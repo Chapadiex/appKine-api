@@ -6,6 +6,7 @@ import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.AutorizacionMovimiento;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.EstadoAutorizacion;
+import com.akine.person.domain.TipoEventoAutorizacion;
 import com.akine.person.domain.TipoMovimientoAutorizacion;
 import com.akine.person.domain.TipoOrigenMovimiento;
 import com.akine.person.domain.exception.AutorizacionNotAccessibleException;
@@ -13,6 +14,7 @@ import com.akine.person.domain.exception.MovimientoNotAccessibleException;
 import com.akine.person.domain.exception.MovimientoYaRevertidoException;
 import com.akine.person.domain.exception.ReversionSinMotivoException;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionAlertaRepositoryPort;
+import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionEventoRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionMovimientoRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.CoberturaPacienteRepositoryPort;
@@ -80,6 +82,8 @@ class ConsumoDeAutorizacionServiceTest {
 	private final AuditTrail auditTrail = mock(AuditTrail.class);
 	private final CoberturaPacienteRepositoryPort coberturas =
 			mock(CoberturaPacienteRepositoryPort.class);
+	private final AutorizacionEventoRepositoryPort eventos =
+			mock(AutorizacionEventoRepositoryPort.class);
 	private final AutorizacionAlertaRepositoryPort alertas =
 			mock(AutorizacionAlertaRepositoryPort.class);
 
@@ -91,7 +95,7 @@ class ConsumoDeAutorizacionServiceTest {
 	void setUp() {
 		service = new ConsumoDeAutorizacionService(
 				autorizaciones, movimientos, personas, permissionGuard, auditTrail, coberturas,
-				alertas);
+				alertas, eventos);
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
 		// Por defecto la cobertura de las autorizaciones esta vigente: los casos de 04.05 y 06.04
@@ -126,6 +130,11 @@ class ConsumoDeAutorizacionServiceTest {
 			// 10 autorizadas, 0 consumidas antes, 1 ahora.
 			assertThat(resultado.saldoRestante()).isEqualTo(9);
 			verify(autorizaciones).descontarSaldo(ORG, AUTORIZACION, 1);
+			// DP-23: el consumo deja su evento, atado al movimiento del ledger.
+			verify(eventos).registrar(org.mockito.ArgumentMatchers.argThat(evento ->
+					evento.getTipo() == TipoEventoAutorizacion.CONSUMO
+							&& Long.valueOf(9001L).equals(evento.getMovimientoId())
+							&& Integer.valueOf(1).equals(evento.getCantidad())));
 		}
 
 		@Test
@@ -145,6 +154,8 @@ class ConsumoDeAutorizacionServiceTest {
 			assertThat(resultado.descontoEfectivo()).isFalse();
 			// Y el ledger no miente: sin descuento no hay fila.
 			verify(movimientos, never()).save(any());
+			// Y el historial tampoco: sin descuento no hay evento.
+			verifyNoInteractions(eventos);
 		}
 
 		@Test
@@ -510,6 +521,10 @@ class ConsumoDeAutorizacionServiceTest {
 			assertThat(reversion.referenciaOrigen()).isEqualTo(SESION);
 			assertThat(reversion.efectoSobreElSaldo()).isEqualTo(1);
 			verify(autorizaciones).devolverSaldo(ORG, AUTORIZACION, 1);
+			verify(eventos).registrar(org.mockito.ArgumentMatchers.argThat(evento ->
+					evento.getTipo() == TipoEventoAutorizacion.REVERSION_DE_CONSUMO
+							&& Long.valueOf(9002L).equals(evento.getMovimientoId())
+							&& "Sesion equivocada".equals(evento.getMotivo())));
 			// DP-13: revertir resuelve la alerta "consumo a revisar" de ese consumo, si la hay.
 			verify(alertas).resolverDelMovimiento(
 					org.mockito.ArgumentMatchers.eq(ORG), org.mockito.ArgumentMatchers.eq(9001L),

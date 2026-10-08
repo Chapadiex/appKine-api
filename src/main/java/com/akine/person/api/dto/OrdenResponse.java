@@ -86,7 +86,23 @@ public record OrdenResponse(
 		String deactivationReason,
 
 		@Schema(description = "Version para el control optimista", example = "0")
-		long version) {
+		long version,
+
+		@Schema(description = "Estado de la orden DERIVADO de su vigencia y de las "
+				+ "autorizaciones activas que la usan, calculado contra la fecha consultada. No "
+				+ "se guarda. Precedencia: ANULADA (dada de baja), CUMPLIDA (las sesiones "
+				+ "prescriptas ya se consumieron), VENCIDA, EN_CURSO (hay consumo), AUTORIZADA "
+				+ "(alguna APROBADA), EN_TRAMITE (alguna PENDIENTE u OBSERVADA), RECHAZADA (todas "
+				+ "rechazadas), SIN_AUTORIZACION (ninguna la usa; normal si la prestacion no exige "
+				+ "autorizacion)",
+				example = "EN_CURSO",
+				allowableValues = {"ANULADA", "CUMPLIDA", "VENCIDA", "EN_CURSO", "AUTORIZADA",
+						"EN_TRAMITE", "RECHAZADA", "SIN_AUTORIZACION"})
+		String situacion,
+
+		@Schema(description = "Sesiones consumidas en las autorizaciones activas y APROBADAS "
+				+ "que usan esta orden", example = "3")
+		int sesionesConsumidas) {
 
 	public static OrdenResponse de(OrdenView vista) {
 		return new OrdenResponse(
@@ -110,6 +126,8 @@ public record OrdenResponse(
 				vista.estado(),
 				vista.deletedAt(),
 				vista.deactivationReason(),
-				vista.version());
+				vista.version(),
+				vista.situacion(),
+				vista.sesionesConsumidas());
 	}
 }

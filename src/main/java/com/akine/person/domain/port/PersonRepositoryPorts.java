@@ -3,6 +3,7 @@ package com.akine.person.domain.port;
 import com.akine.person.domain.AdjuntoAdministrativo;
 import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.AutorizacionAlerta;
+import com.akine.person.domain.AutorizacionEvento;
 import com.akine.person.domain.AutorizacionMovimiento;
 import com.akine.person.domain.AutorizacionPersonaLock;
 import com.akine.person.domain.TipoMovimientoAutorizacion;
@@ -439,6 +440,23 @@ public final class PersonRepositoryPorts {
 		 */
 		List<AutorizacionMovimiento> listarDeOrigen(
 				Long organizationId, TipoOrigenMovimiento tipoOrigen, Long referenciaOrigen);
+	}
+
+	/**
+	 * Historial append-only de una autorizacion (DP-23, AKINE B-4). Sin modificacion ni borrado.
+	 *
+	 * <p>Las dos consultas llevan {@code organizationId}: verificadas una por una, como pide el
+	 * encabezado de este archivo.
+	 */
+	public interface AutorizacionEventoRepositoryPort {
+
+		AutorizacionEvento registrar(AutorizacionEvento evento);
+
+		/** Una pagina del historial, del hecho mas viejo al mas nuevo. */
+		List<AutorizacionEvento> pagina(
+				long organizationId, long autorizacionId, int offset, int limite);
+
+		long contar(long organizationId, long autorizacionId);
 	}
 
 	/**
