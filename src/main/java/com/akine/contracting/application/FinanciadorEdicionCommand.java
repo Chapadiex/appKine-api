@@ -14,10 +14,7 @@ import com.akine.contracting.domain.TipoFinanciador;
  *
  * <p>{@code expectedVersion} es obligatoria y se compara antes de mutar: sin ella dos ediciones
  * simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se
- * entere. Una version desactualizada responde <b>409 con {@code type = conflict}</b> —el
- * {@code OptimisticLockingFailureException} plano que mapea el handler global—, <b>no</b>
- * {@code concurrent-modification}: esa inexactitud la arrastran los contratos publicados de 02.02
- * y 02.05 y esta etapa no la repite.
+ * entere. Una version desactualizada responde <b>409 {@code concurrent-modification}</b> (DP-21).
  */
 public record FinanciadorEdicionCommand(
 		String nombre,

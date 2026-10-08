@@ -188,6 +188,52 @@ class GlobalExceptionHandlerTest {
 				.andExpect(jsonPath("$.status").value(405));
 	}
 
+	// =================================================================================
+	// DP-21 — la concurrencia sale siempre como concurrent-modification
+	// =================================================================================
+
+	@Test
+	@DisplayName("DP-21: una version comparada a mano que quedo vieja es 409 concurrent-modification")
+	void version_vieja_comparada_a_mano_es_concurrent_modification() throws Exception {
+		String cuerpo = mockMvc.perform(post("/test/version-vieja"))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/concurrent-modification"))
+				.andExpect(jsonPath("$.title").value("Modificacion concurrente"))
+				.andExpect(jsonPath("$.detail").value(GlobalExceptionHandler.CONCURRENT_MODIFICATION_DETAIL))
+				.andReturn().getResponse().getContentAsString();
+
+		// El mensaje de la excepcion trae ids y versiones internas: va al log, no al cliente.
+		org.assertj.core.api.Assertions.assertThat(cuerpo).doesNotContain("version 2 contra 3");
+	}
+
+	@Test
+	@DisplayName("DP-21: el @Version de JPA sale con el MISMO type que la version comparada a mano")
+	void version_de_jpa_es_concurrent_modification() throws Exception {
+		String cuerpo = mockMvc.perform(post("/test/version-jpa"))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/concurrent-modification"))
+				.andExpect(jsonPath("$.detail").value(GlobalExceptionHandler.CONCURRENT_MODIFICATION_DETAIL))
+				.andReturn().getResponse().getContentAsString();
+
+		org.assertj.core.api.Assertions.assertThat(cuerpo).doesNotContain("com.akine");
+	}
+
+	@Test
+	@DisplayName("DP-21: el detalle dice que otra persona lo modifico y que hay que recargar")
+	void el_detalle_pide_recargar() {
+		org.assertj.core.api.Assertions.assertThat(GlobalExceptionHandler.CONCURRENT_MODIFICATION_DETAIL)
+				.contains("Otra persona modifico")
+				.contains("Vuelva a cargarlo");
+	}
+
+	@Test
+	@DisplayName("DP-21: un choque de unicidad NO es concurrencia: sigue siendo conflict")
+	void choque_de_unicidad_sigue_siendo_conflict() throws Exception {
+		mockMvc.perform(post("/test/unique"))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/conflict"));
+	}
+
 	@Test
 	@DisplayName("Un cuerpo valido pasa sin tocar el handler")
 	void cuerpo_valido_no_dispara_el_handler() throws Exception {
@@ -215,6 +261,24 @@ class GlobalExceptionHandlerTest {
 		@PostMapping("/validar")
 		String validar(@Valid @RequestBody CuerpoDePrueba cuerpo) {
 			return "ok";
+		}
+
+		@PostMapping("/version-vieja")
+		String versionVieja() {
+			throw new org.springframework.dao.OptimisticLockingFailureException(
+					"La sede 7 cambio desde que se leyo: version 2 contra 3");
+		}
+
+		@PostMapping("/version-jpa")
+		String versionJpa() {
+			throw new org.springframework.orm.ObjectOptimisticLockingFailureException(
+					"com.akine.Turno", 7L);
+		}
+
+		@PostMapping("/unique")
+		String unique() {
+			throw new org.springframework.dao.DataIntegrityViolationException(
+					"Duplicate entry for key uk_consultorio_nombre");
 		}
 
 		@PostMapping("/explotar")

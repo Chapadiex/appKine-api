@@ -569,7 +569,10 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
 2. **Si se agrega el gate de `BRANCH` a JaCoCo.** La rama viene abajo del 72 %: agregarlo hoy rompe
    el build, así que primero hay que subir la cobertura. El frontend **sí** lo gatea, y por eso la
    suya no cayó — es la diferencia práctica entre tener el gate y no tenerlo.
-3. **Cómo se unifican `concurrent-modification` y `conflict`.** Varios contratos publicados prometen
+3. ~~**Cómo se unifican `concurrent-modification` y `conflict`.**~~ **Resuelta por DP-21
+   (08/10/2026), contrato 0.78.0**: toda versión vieja responde `concurrent-modification` desde
+   `GlobalExceptionHandler`, en todos los módulos; `conflict` queda para el negocio. Lo que sigue
+   es la historia. Varios contratos publicados prometen
    un tipo de error que su código no devuelve: `resource`, `espacio` y `catalogo` lanzan el
    `OptimisticLockingFailureException` plano, que `GlobalExceptionHandler` mapea a `conflict`,
    mientras `concurrent-modification` lo emite sólo `OrganizationProblemHandler`. Corregido sólo

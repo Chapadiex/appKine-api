@@ -262,10 +262,8 @@ public class FinanciadorService {
 
 	private static void exigirVersion(Financiador financiador, long esperada) {
 		if (financiador.getVersion() != esperada) {
-			// OptimisticLockingFailureException PLANO, no la subclase de JPA: el handler global lo
-			// mapea a 409 con type = conflict. concurrent-modification lo emite solo el advice de
-			// organization, y prometerlo aca repetiria la inexactitud de los contratos de 02.02 y
-			// 02.05.
+			// GlobalExceptionHandler lo mapea a 409 concurrent-modification (DP-21), igual que la
+			// subclase de JPA.
 			throw new OptimisticLockingFailureException(
 					"El financiador fue modificado por otra operacion");
 		}

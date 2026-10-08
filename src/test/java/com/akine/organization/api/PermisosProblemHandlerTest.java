@@ -16,7 +16,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.net.URI;
 
@@ -178,17 +177,8 @@ class PermisosProblemHandlerTest {
 		assertThat(problem.getDetail()).contains("revocado");
 	}
 
-	@Test
-	@DisplayName("Modificacion concurrente es 409, no 500: el perdedor llego segundo, no hizo nada mal")
-	void modificacion_concurrente_es_409() {
-		ProblemDetail problem = handler.handleOptimisticLock(
-				new ObjectOptimisticLockingFailureException(Object.class, 1L));
-
-		assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
-		assertThat(problem.getType()).isEqualTo(URI.create(BASE + "concurrent-modification"));
-		assertThat(problem.getDetail()).contains("Vuelva a cargarlo");
-		assertSinInternals(problem);
-	}
+	// La modificacion concurrente (@Version de JPA) ya no se mapea en este advice: desde DP-21 la
+	// emite GlobalExceptionHandler para todos los modulos. Su test vive en GlobalExceptionHandlerTest.
 
 	// =================================================================================
 	// 400 — error del cliente

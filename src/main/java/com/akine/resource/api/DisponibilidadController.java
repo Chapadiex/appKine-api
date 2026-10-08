@@ -289,9 +289,9 @@ public class DisponibilidadController {
 					una edicion sino un bloque nuevo (RN-M05-001), y permitirlo dejaria la \
 					autoria historica apuntando a quien nunca atendio en esa franja.
 
-					version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 con \
-					type conflict —el generico, NO concurrent-modification, que es el que emite \
-					organization para el mismo hecho— y el cliente recarga. Sin eso dos ediciones \
+					version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 \
+					concurrent-modification —el mismo type en todos los modulos— y el cliente \
+					recarga. Sin eso dos ediciones \
 					simultaneas se pisan y el segundo en guardar borra el cambio del primero sin \
 					que nadie se entere.
 
@@ -336,7 +336,7 @@ public class DisponibilidadController {
 					responseCode = "409",
 					description = "Bloque dado de baja (bloque-inactivo), solapamiento con otro "
 							+ "activo (bloque-solapado), version desactualizada "
-							+ "(conflict), o profesional sin vinculo vigente en "
+							+ "(concurrent-modification), o profesional sin vinculo vigente en "
 							+ "esa sede (profesional-no-vinculado)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,

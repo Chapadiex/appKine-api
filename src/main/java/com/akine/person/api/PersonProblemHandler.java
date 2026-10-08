@@ -49,10 +49,7 @@ import java.net.URI;
  *
  * <p><b>Lo que este handler NO mapea, y a proposito:</b> el
  * {@code OptimisticLockingFailureException} de la version desactualizada. Lo mapea el handler
- * global a {@code conflict}, y esta etapa no lo intercepta para emitir
- * {@code concurrent-modification} — que es lo que los contratos de 02.02 y 02.05 prometen y su
- * codigo no cumple. Unificarlos es una decision de contrato transversal que excede a M07;
- * mientras no se tome, lo honesto es documentar el que realmente sale.
+ * global, para todos los modulos, a {@code concurrent-modification} (DP-21).
  *
  * <h2>Que se loguea y que no</h2>
  *

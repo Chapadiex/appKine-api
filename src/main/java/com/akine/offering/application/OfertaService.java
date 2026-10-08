@@ -395,7 +395,7 @@ public class OfertaService {
 	 * @throws OfertaNotAccessibleException si no existe, es de otro tenant o de otra sede (404)
 	 * @throws OfertaInactivaException si la oferta esta dada de baja (409)
 	 * @throws OptimisticLockingFailureException si la version enviada quedo vieja (409
-	 *         {@code conflict})
+	 *         {@code concurrent-modification})
 	 * @throws OfertaNombreComercialTakenException si el nombre pedido ya esta tomado (409)
 	 */
 	@Transactional
@@ -725,10 +725,8 @@ public class OfertaService {
 
 	private static void exigirVersion(OfertaServicioConsultorio oferta, long esperada) {
 		if (oferta.getVersion() != esperada) {
-			// OptimisticLockingFailureException PLANO, no la subclase de JPA: el handler global lo
-			// mapea a 409 con type = conflict. concurrent-modification lo emite solo el advice de
-			// organization, para la subclase, y prometerlo aca repetiria la inexactitud que
-			// arrastran los contratos publicados de 02.02 y 02.05.
+			// GlobalExceptionHandler lo mapea a 409 concurrent-modification (DP-21), igual que la
+			// subclase de JPA.
 			throw new OptimisticLockingFailureException(
 					"La oferta fue modificada por otra operacion");
 		}

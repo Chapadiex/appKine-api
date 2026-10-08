@@ -196,6 +196,10 @@ class HistoriaClinicaApiIT {
 		assertThat(desfasada.status())
 				.as("la version vieja no pisa en silencio lo que escribio el primero")
 				.isEqualTo(409);
+		assertThat(desfasada.json().get("type").asString())
+				.as("DP-21: por HTTP real, la version vieja sale como concurrent-modification")
+				.isEqualTo("https://akine.app/problems/concurrent-modification");
+		assertThat(desfasada.json().get("detail").asString()).contains("Vuelva a cargarlo");
 		assertThat(get(base(personaId), centro.token()).json().get("resumen").asString())
 				.isEqualTo("Lumbalgia cronica");
 	}

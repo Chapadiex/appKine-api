@@ -159,7 +159,8 @@ public class SubscriptionController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "invalid-subscription-transition si la maquina de estados no "
-							+ "admite el salto; conflict si expectedStatus no coincide con el real",
+							+ "admite el salto; concurrent-modification si expectedStatus no coincide con el "
+							+ "real",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
@@ -249,7 +250,7 @@ public class SubscriptionController {
 					segundo efecto.
 
 					Requiere la suscripcion ACTIVA (409 subscription-suspended si no lo esta) y la \
-					version vigente (409 conflict si quedo vieja).""")
+					version vigente (409 concurrent-modification si quedo vieja).""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -279,7 +280,7 @@ public class SubscriptionController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "subscription-suspended si la suscripcion no esta ACTIVA; "
-							+ "conflict si la version enviada quedo vieja",
+							+ "concurrent-modification si la version enviada quedo vieja",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})

@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.dao.OptimisticLockingFailureException;
+import com.akine.scheduling.domain.exception.CantidadConfirmadaDesactualizadaException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -220,7 +220,7 @@ class SerieDeTurnosIT {
 		assertThatThrownBy(() -> serieService.cancelar(
 				fixture.actor(), fixture.consultorioId(), serie.id(),
 				OperacionDeSerieCommand.cancelacion(AlcanceDeSerie.TODA_LA_SERIE, null, "Baja", 2)))
-				.isInstanceOf(OptimisticLockingFailureException.class);
+				.isInstanceOf(CantidadConfirmadaDesactualizadaException.class);
 
 		assertThat(serieService.ver(fixture.actor(), fixture.consultorioId(), serie.id()).turnos())
 				.extracting(TurnoView::estado)

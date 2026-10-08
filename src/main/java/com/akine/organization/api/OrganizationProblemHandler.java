@@ -30,7 +30,6 @@ import com.akine.organization.domain.exception.SubscriptionSuspendedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -97,8 +96,6 @@ public class OrganizationProblemHandler {
 			ProblemType.MEMBERSHIP_ALREADY_EXISTS.uri();
 	private static final URI GRANT_ALREADY_ACTIVE =
 			ProblemType.GRANT_ALREADY_ACTIVE.uri();
-	private static final URI CONCURRENT_MODIFICATION =
-			ProblemType.CONCURRENT_MODIFICATION.uri();
 	private static final URI VALIDATION_ERROR =
 			ProblemType.VALIDATION_ERROR.uri();
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
@@ -483,24 +480,10 @@ public class OrganizationProblemHandler {
 		return problem;
 	}
 
-	/**
-	 * Dos escritores tocaron la misma fila y el {@code @Version} decidio.
-	 *
-	 * <p>409 y no 500: el perdedor no hizo nada mal, llego segundo. El cliente reintenta sobre el
-	 * estado nuevo, que es exactamente lo que el optimistic lock existe para forzar.
-	 */
-	@ExceptionHandler(ObjectOptimisticLockingFailureException.class)
-	public ProblemDetail handleOptimisticLock(ObjectOptimisticLockingFailureException exception) {
-		log.info("Modificacion concurrente detectada por optimistic locking");
-
-		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-				HttpStatus.CONFLICT,
-				"Otro usuario modifico este recurso mientras usted trabajaba. "
-						+ "Vuelva a cargarlo e intente de nuevo.");
-		problem.setTitle("Modificacion concurrente");
-		problem.setType(CONCURRENT_MODIFICATION);
-		return problem;
-	}
+	// El @Version de JPA (ObjectOptimisticLockingFailureException) ya NO se mapea aca: desde DP-21
+	// toda modificacion concurrente sale por GlobalExceptionHandler.handleOptimisticLocking con
+	// concurrent-modification, en todos los modulos. Este advice era el unico que lo emitia, y solo
+	// para la subclase de JPA: la version comparada a mano salia como conflict.
 
 	// =================================================================================
 	// AKINE-02.01 — sedes

@@ -81,8 +81,8 @@ import java.util.List;
  *       historicos y tiene que seguir resolviendo.</li>
  *   <li><b>409</b> para los invariantes: nombre comercial repetido entre las vigentes de esa
  *       sede, oferta ya inactiva, servicio dado de baja, sede no operable, o version
- *       desactualizada. El de concurrencia llega con {@code type} <b>{@code conflict}</b>, no
- *       {@code concurrent-modification}.</li>
+ *       desactualizada. El de concurrencia llega con {@code type}
+ *       {@code concurrent-modification} (DP-21).</li>
  * </ul>
  *
  * <h2>Lo que esta etapa deliberadamente NO trae</h2>
@@ -327,7 +327,7 @@ public class OfertaController {
 					responseCode = "409",
 					description = "Nombre comercial repetido "
 							+ "(oferta-nombre-comercial-taken), oferta dada de baja "
-							+ "(oferta-inactiva), o version desactualizada (conflict)",
+							+ "(oferta-inactiva), o version desactualizada (concurrent-modification)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
@@ -484,7 +484,7 @@ public class OfertaController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Oferta dada de baja (oferta-inactiva) o version desactualizada "
-							+ "(conflict)",
+							+ "(concurrent-modification)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})

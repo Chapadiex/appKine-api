@@ -144,6 +144,22 @@ class OfertaControllerTest {
 	}
 
 	@Test
+	@DisplayName("DP-21: editar con una version vieja es 409 concurrent-modification, no conflict")
+	void editar_con_version_vieja() {
+		given(ofertaService.editar(any(), anyLong(), anyLong(), anyLong(), any()))
+				.willThrow(new org.springframework.dao.OptimisticLockingFailureException(
+						"La oferta fue modificada por otra operacion"));
+
+		perform(put(RUTA + "/77").contentType(MediaType.APPLICATION_JSON).content("""
+				{"nombreComercial":"Kinesiologia - 45 minutos","duracionMinutos":45,
+				 "capacidad":1,"precioBase":8500.00,"moneda":"ARS",
+				 "vigenciaDesde":"2026-01-01","expectedVersion":0}
+				"""), status().isConflict(),
+				org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.type")
+						.value("https://akine.app/problems/concurrent-modification"));
+	}
+
+	@Test
 	@DisplayName("Editar manda el id de la oferta y el cuerpo al servicio")
 	void editar() {
 		given(ofertaService.editar(any(), anyLong(), anyLong(), anyLong(), any()))
