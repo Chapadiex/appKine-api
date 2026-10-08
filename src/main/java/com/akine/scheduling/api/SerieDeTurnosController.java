@@ -248,7 +248,9 @@ public class SerieDeTurnosController {
 
 					**Confirmacion explicita**: `cantidadConfirmada` tiene que coincidir con los \
 					afectados que hay al ejecutar. Si alguien movio o cancelo un turno entre medio, \
-					409 `conflict` y no se cancela nada. No es idempotente: repetirla da 409.""")
+					409 `conflict` —no `concurrent-modification`: hay que volver a \
+					previsualizar, no recargar— y no se cancela nada. No es idempotente: repetirla \
+					da 409.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Turnos cancelados y omitidos"),
 			@ApiResponse(

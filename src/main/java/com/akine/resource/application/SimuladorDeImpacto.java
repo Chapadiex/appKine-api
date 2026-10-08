@@ -9,11 +9,14 @@ import com.akine.resource.domain.DisponibilidadEfectivaCalculator;
 import com.akine.resource.domain.DisponibilidadExcepcion;
 import com.akine.resource.domain.Feriado;
 import com.akine.resource.domain.FranjaEfectiva;
+import com.akine.resource.domain.FranjaHorarioGeneral;
+import com.akine.resource.domain.HorarioDeSede;
 import com.akine.resource.domain.IntervaloLocal;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDisponibilidadRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.FeriadoRepositoryPort;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGeneralRepositoryPort;
 import com.akine.resource.spi.DisponibilidadImpactProbe;
 import com.akine.resource.spi.DisponibilidadImpactProbe.TurnoPendiente;
 import org.springframework.stereotype.Component;
@@ -81,19 +84,22 @@ public class SimuladorDeImpacto {
 	private final FeriadoRepositoryPort feriados;
 	private final CalendarioSedeRepositoryPort calendarios;
 	private final DisponibilidadImpactProbe sonda;
+	private final HorarioGeneralRepositoryPort horarios;
 
 	public SimuladorDeImpacto(
 			BloqueDisponibilidadRepositoryPort bloques,
 			DisponibilidadExcepcionRepositoryPort excepciones,
 			FeriadoRepositoryPort feriados,
 			CalendarioSedeRepositoryPort calendarios,
-			DisponibilidadImpactProbe sonda) {
+			DisponibilidadImpactProbe sonda,
+			HorarioGeneralRepositoryPort horarios) {
 
 		this.bloques = bloques;
 		this.excepciones = excepciones;
 		this.feriados = feriados;
 		this.calendarios = calendarios;
 		this.sonda = sonda;
+		this.horarios = horarios;
 	}
 
 	// =================================================================================
@@ -121,7 +127,7 @@ public class SimuladorDeImpacto {
 				? null
 				: max(actual.getVigenciaHasta(), editado.getVigenciaHasta());
 		return simular(sede, actual.getMembershipId(), hoy, fin, ahora,
-				reemplazandoBloque(actual.getId(), editado), UnaryOperator.identity());
+				reemplazandoBloque(actual.getId(), editado), UnaryOperator.identity(), null, null);
 	}
 
 	/** Dar de baja un bloque: lo que cubria hasta su fin de vigencia queda afuera. */
@@ -130,7 +136,7 @@ public class SimuladorDeImpacto {
 
 		LocalDate hoy = LocalDate.ofInstant(ahora, zonaDe(sede));
 		return simular(sede, actual.getMembershipId(), hoy, actual.getVigenciaHasta(), ahora,
-				reemplazandoBloque(actual.getId(), null), UnaryOperator.identity());
+				reemplazandoBloque(actual.getId(), null), UnaryOperator.identity(), null, null);
 	}
 
 	/**
@@ -145,7 +151,7 @@ public class SimuladorDeImpacto {
 		LocalDate hoy = LocalDate.ofInstant(ahora, zonaDe(sede));
 		return simular(sede, nueva.getMembershipId(), max(hoy, nueva.getFechaDesde()),
 				nueva.getFechaHasta(), ahora,
-				UnaryOperator.identity(), agregando(nueva));
+				UnaryOperator.identity(), agregando(nueva), null, null);
 	}
 
 	/** Dar de baja una excepcion. Quitar una APERTURA recorta; quitar un CIERRE solo agrega. */
@@ -155,7 +161,31 @@ public class SimuladorDeImpacto {
 		LocalDate hoy = LocalDate.ofInstant(ahora, zonaDe(sede));
 		return simular(sede, actual.getMembershipId(), max(hoy, actual.getFechaDesde()),
 				actual.getFechaHasta(), ahora,
-				UnaryOperator.identity(), quitando(actual.getId()));
+				UnaryOperator.identity(), quitando(actual.getId()), null, null);
+	}
+
+	/**
+	 * Reemplazar el horario general de la sede (A-8b, DP-19). Evalua los turnos pendientes de TODOS
+	 * los profesionales de la sede, desde hoy hasta el horizonte: el horario no tiene vigencia, asi
+	 * que el cambio rige para siempre.
+	 *
+	 * <p>Mismo criterio exacto que los otros cuatro: un turno cuenta si la disponibilidad —ya
+	 * limitada por el horario ANTERIOR— lo cubria, y la limitada por el NUEVO no. Uno que ya estaba
+	 * fuera del horario anterior no lo deja afuera este cambio, y no cuenta.
+	 *
+	 * @param anterior franjas vigentes hoy; vacia si la sede no tenia horario (sin limite)
+	 * @param nuevo    franjas propuestas; vacia es "sin horario", que no deja nada afuera
+	 */
+	public ImpactoDeDisponibilidad deCambioDeHorarioDeSede(
+			ConsultorioSnapshot sede,
+			List<FranjaHorarioGeneral.Franja> anterior,
+			List<FranjaHorarioGeneral.Franja> nuevo,
+			Instant ahora) {
+
+		LocalDate hoy = LocalDate.ofInstant(ahora, zonaDe(sede));
+		return simular(sede, null, hoy, null, ahora,
+				UnaryOperator.identity(), UnaryOperator.identity(),
+				HorarioDeSede.de(anterior), HorarioDeSede.de(nuevo));
 	}
 
 	// =================================================================================
@@ -174,7 +204,9 @@ public class SimuladorDeImpacto {
 			LocalDate finPedido,
 			Instant ahora,
 			UnaryOperator<List<BloqueDisponibilidad>> cambioDeBloques,
-			UnaryOperator<List<DisponibilidadExcepcion>> cambioDeExcepciones) {
+			UnaryOperator<List<DisponibilidadExcepcion>> cambioDeExcepciones,
+			HorarioDeSede horarioAntesPedido,
+			HorarioDeSede horarioDespuesPedido) {
 
 		ZoneId zona = zonaDe(sede);
 		LocalDate horizonte = LocalDate.ofInstant(ahora, zona).plusDays(DIAS_DE_HORIZONTE);
@@ -194,6 +226,16 @@ public class SimuladorDeImpacto {
 		}
 
 		Set<LocalDate> feriadosQueCierran = feriadosQueCierran(organizationId, consultorioId, desde, hasta);
+		// A-8b: el horario de la sede limita las dos fotos. Para los cambios de bloque y de
+		// excepcion es el vigente en las dos —ese cambio no lo toca—; para el cambio del horario
+		// mismo, el anterior y el propuesto.
+		HorarioDeSede vigente = horarioAntesPedido != null && horarioDespuesPedido != null
+				? null
+				: HorarioDeSede.de(horarios.findVigentes(organizationId, consultorioId).stream()
+						.map(FranjaHorarioGeneral::franja)
+						.toList());
+		HorarioDeSede horarioAntes = horarioAntesPedido != null ? horarioAntesPedido : vigente;
+		HorarioDeSede horarioDespues = horarioDespuesPedido != null ? horarioDespuesPedido : vigente;
 
 		Map<Long, List<TurnoPendiente>> porProfesional = pendientes.stream()
 				.collect(Collectors.groupingBy(TurnoPendiente::membershipId, LinkedHashMap::new,
@@ -208,12 +250,14 @@ public class SimuladorDeImpacto {
 					organizationId, consultorioId, profesional, desde, hasta);
 
 			Map<LocalDate, DiaCalculado> antes = CALCULADOR.calcular(
-					profesional, desde, hasta, bloquesAntes, excepcionesAntes, feriadosQueCierran);
+					profesional, desde, hasta, bloquesAntes, excepcionesAntes, feriadosQueCierran,
+					horarioAntes);
 			Map<LocalDate, DiaCalculado> despues = CALCULADOR.calcular(
 					profesional, desde, hasta,
 					cambioDeBloques.apply(bloquesAntes),
 					cambioDeExcepciones.apply(excepcionesAntes),
-					feriadosQueCierran);
+					feriadosQueCierran,
+					horarioDespues);
 
 			for (TurnoPendiente turno : entrada.getValue()) {
 				if (cubre(antes, turno, zona) && !cubre(despues, turno, zona)) {

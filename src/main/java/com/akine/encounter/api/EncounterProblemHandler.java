@@ -22,6 +22,7 @@ import com.akine.encounter.domain.exception.SesionCerradaException;
 import com.akine.encounter.domain.exception.SesionNoCerradaException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
+import com.akine.encounter.spi.OfertaSinPrecioException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +71,7 @@ public class EncounterProblemHandler {
 	private static final URI ESPACIO_NO_OPERABLE = ProblemType.ESPACIO_NO_OPERABLE.uri();
 	private static final URI PROFESIONAL_NO_ASIGNABLE = ProblemType.PROFESIONAL_NO_ASIGNABLE.uri();
 	private static final URI PARAMETRO_INVALIDO = ProblemType.PARAMETRO_INVALIDO.uri();
+	private static final URI OFERTA_SIN_PRECIO = ProblemType.OFERTA_SIN_PRECIO.uri();
 
 	/**
 	 * El caso no habilita esta atencion (04.03). <b>404 o 409 segun el motivo.</b>
@@ -173,6 +175,32 @@ public class EncounterProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(SESION_CERRADA);
 		problem.setTitle("La atencion ya esta cerrada");
+		return problem;
+	}
+
+	/**
+	 * <b>409 {@code oferta-sin-precio}.</b> DP-17 (AKINE E-7b): la deuda del paciente es el precio
+	 * particular y la oferta no lo tiene ese dia, asi que la atencion no se cierra.
+	 *
+	 * <p>Lleva {@code ofertaId}, {@code dia} y {@code motivo} para que la pantalla diga que cargar y
+	 * donde. <b>No es error del profesional</b>: la sesion sigue abierta, sin numero y sin nada
+	 * consumido, y el cierre se reintenta tal cual una vez cargado el precio.
+	 */
+	@ExceptionHandler(OfertaSinPrecioException.class)
+	public ProblemDetail handleOfertaSinPrecio(OfertaSinPrecioException exception) {
+		log.info("Cierre bloqueado por oferta sin precio: ofertaId={} dia={} motivo={}",
+				exception.getOfertaId(), exception.getDia(), exception.getMotivo());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+				"La atencion se cobra al precio particular y la oferta no tiene precio vigente el "
+						+ exception.getDia() + ". Carga el precio en la oferta (precio de lista o "
+						+ "precio particular que cubra ese dia) y volve a cerrar: la sesion sigue "
+						+ "abierta y no se consumio nada.");
+		problem.setType(OFERTA_SIN_PRECIO);
+		problem.setTitle("La oferta no tiene precio para ese dia");
+		problem.setProperty("ofertaId", exception.getOfertaId());
+		problem.setProperty("dia", exception.getDia().toString());
+		problem.setProperty("motivo", exception.getMotivo().name());
 		return problem;
 	}
 

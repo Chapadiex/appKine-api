@@ -1,6 +1,7 @@
 package com.akine.resource.application;
 
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
@@ -66,6 +67,7 @@ public class CalendarioService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final HorarioGeneralRepositoryPort horarios;
+	private final SimuladorDeImpacto simulador;
 
 	public CalendarioService(
 			CalendarioSedeRepositoryPort calendarios,
@@ -74,7 +76,8 @@ public class CalendarioService {
 			ConsultorioDirectory consultorioDirectory,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
-			HorarioGeneralRepositoryPort horarios) {
+			HorarioGeneralRepositoryPort horarios,
+			SimuladorDeImpacto simulador) {
 
 		this.calendarios = calendarios;
 		this.calendarioIniciador = calendarioIniciador;
@@ -83,6 +86,7 @@ public class CalendarioService {
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 		this.horarios = horarios;
+		this.simulador = simulador;
 	}
 
 	// =================================================================================
@@ -179,7 +183,7 @@ public class CalendarioService {
 			List<Franja> horarioGeneral) {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
-		exigirSedeDelTenant(organizationId, consultorioId);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
 		// Antes del lock: un horario invalido no tiene por que esperar a nadie.
 		List<Franja> nuevoHorario = horarioGeneral == null
@@ -193,8 +197,17 @@ public class CalendarioService {
 		politica.actualizarPolitica(pais, cierraPorFeriado);
 		CalendarioSede guardada = calendarios.save(politica);
 
+		List<Franja> anterior = horarioVigente(organizationId, consultorioId);
+		// A-8b (DP-19): el horario de la sede limita la agenda, asi que reemplazarlo puede dejar
+		// turnos ya reservados fuera de horario. Se INFORMAN y no se cancelan (RN-M05-004, el mismo
+		// criterio que un cambio de disponibilidad): se calcula antes de reemplazar, con el
+		// anterior y el nuevo en memoria, bajo el mismo lock.
+		ImpactoDeDisponibilidad impacto = nuevoHorario == null || anterior.equals(nuevoHorario)
+				? ImpactoDeDisponibilidad.ninguno(null)
+				: simulador.deCambioDeHorarioDeSede(sede, anterior, nuevoHorario, ahora);
+
 		List<Franja> horario = nuevoHorario == null
-				? horarioVigente(organizationId, consultorioId)
+				? anterior
 				: reemplazarHorario(organizationId, consultorioId, actor.accountId(),
 						nuevoHorario, ahora);
 
@@ -216,7 +229,7 @@ public class CalendarioService {
 				consultorioId, guardada.isCierraPorFeriado());
 
 		// Sin ventana no hay feriados que devolver: ver CalendarioView.
-		return CalendarioView.de(guardada, List.of(), horario);
+		return CalendarioView.de(guardada, List.of(), horario).conImpacto(impacto);
 	}
 
 	// =================================================================================
@@ -355,8 +368,9 @@ public class CalendarioService {
 				PermissionCodes.CONSULTORIO_MANAGE, organizationId, consultorioId);
 	}
 
-	private void exigirSedeDelTenant(long organizationId, long consultorioId) {
-		AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId);
+	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {
+		return AutorizacionDeSede.exigirSedeDelTenant(
+				consultorioDirectory, organizationId, consultorioId);
 	}
 
 	// =================================================================================

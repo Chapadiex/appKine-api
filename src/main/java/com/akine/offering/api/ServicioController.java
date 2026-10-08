@@ -76,9 +76,7 @@ import java.util.List;
  *       frontend borra el token ante cualquier 401 y dejaria al usuario en un bucle de login.</li>
  *   <li><b>409</b> para los invariantes: codigo o nombre repetidos entre los VIGENTES, servicio
  *       ya inactivo, o version desactualizada. El de concurrencia llega con {@code type}
- *       <b>{@code conflict}</b> y no {@code concurrent-modification}: lo emite el handler global
- *       a partir del {@code OptimisticLockingFailureException} plano. Es el hallazgo de 02.04 y
- *       aca no se repite la inexactitud que arrastran los contratos de 02.02 y 02.05.</li>
+ *       {@code concurrent-modification} (DP-21).</li>
  * </ul>
  *
  * <h2>Lo que esta etapa deliberadamente NO trae</h2>
@@ -278,7 +276,7 @@ public class ServicioController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Nombre repetido (servicio-nombre-taken), servicio dado de baja "
-							+ "(servicio-inactivo), o version desactualizada (conflict)",
+							+ "(servicio-inactivo), o version desactualizada (concurrent-modification)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})

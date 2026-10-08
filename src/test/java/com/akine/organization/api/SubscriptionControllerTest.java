@@ -248,7 +248,7 @@ class SubscriptionControllerTest {
 	}
 
 	@Test
-	@DisplayName("Un expectedStatus que ya no coincide con el real es 409 de concurrencia")
+	@DisplayName("DP-21: un expectedStatus que ya no coincide con el real es 409 concurrent-modification")
 	void transicion_con_expected_status_desactualizado_es_409() throws Exception {
 		given(subscriptionService.transition(anyLong(), any(), any(), any(), any()))
 				.willThrow(new OptimisticLockingFailureException(
@@ -260,7 +260,7 @@ class SubscriptionControllerTest {
 								+ "\"reason\":\"Cierre\"}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.type").value("https://akine.app/problems/conflict"));
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/concurrent-modification"));
 	}
 
 	// =====================================================================================
@@ -422,7 +422,7 @@ class SubscriptionControllerTest {
 	}
 
 	@Test
-	@DisplayName("Una version de suscripcion vieja responde 409 de concurrencia")
+	@DisplayName("DP-21: una version de suscripcion vieja responde 409 concurrent-modification")
 	void cambio_de_plan_con_version_vieja_es_409() throws Exception {
 		given(subscriptionService.changePlan(anyLong(), any(), anyLong(), any()))
 				.willThrow(new OptimisticLockingFailureException(
@@ -433,7 +433,7 @@ class SubscriptionControllerTest {
 						.content("{\"planCode\":\"PROFESIONAL\",\"expectedVersion\":0}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.type").value("https://akine.app/problems/conflict"));
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/concurrent-modification"));
 	}
 
 	@Test

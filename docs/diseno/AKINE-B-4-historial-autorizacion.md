@@ -1,7 +1,7 @@
 # AKINE B-4 — Historial de estados de la autorización y estado de la orden médica
 
 **08/10/2026** · rama `akine-B-4-historial-autorizacion` · migración `V85` (reservada `V68`, que
-quedó por debajo de `V83`) · contrato `0.78.0` · ficha [F3](../fases/F3-personas-y-cobertura.md) ·
+quedó por debajo de `V83`) · contrato `0.79.0` · ficha [F3](../fases/F3-personas-y-cobertura.md) ·
 decisión **DP-23** (dueño del producto, 08/10/2026, resuelve DU-8).
 
 ## 1. Qué decide DP-23 y qué cambia
@@ -85,7 +85,7 @@ autorizaciones por paciente, no una por orden.
 5. **Baja lógica.** Append-only: sin UPDATE ni DELETE en ningún camino. La baja de la autorización
    es un evento más.
 6. **Contrato.** Aditivo: un endpoint, dos schemas nuevos (`HistorialDeAutorizacionResponse`,
-   `EventoDeAutorizacionResponse`) y dos campos nuevos en `Orden`. Minor `0.78.0`.
+   `EventoDeAutorizacionResponse`) y dos campos nuevos en `Orden`. Minor `0.79.0`.
 7. **Ruta crítica.** Los cimientos existen: autorización (03.06), ledger (04.05), reversión
    manual (DP-13). No adelanta nada.
 8. **El caso que rompe el diseño.** *Dos consumos concurrentes de la última unidad.* El evento se

@@ -158,6 +158,26 @@ class RevalidadorDeSlotTest {
 		}
 
 		@Test
+		@DisplayName("A-8b: una oferta sin profesional fuera del horario de la sede da el mismo 409 de slot no disponible")
+		void sin_profesional_fuera_del_horario_de_la_sede() {
+			given(disponibilidad.fueraDelHorarioDeSede(anyLong(), any(), any(), any()))
+					.willReturn(true);
+
+			assertThatThrownBy(() -> revalidador.revalidar(pedidoDe(oferta(1, false, false))))
+					.isInstanceOf(SlotNoDisponibleException.class);
+		}
+
+		@Test
+		@DisplayName("A-8b: una oferta sin profesional dentro del horario (o sin horario de sede) se reserva igual que antes")
+		void sin_profesional_dentro_del_horario_de_la_sede() {
+			given(disponibilidad.fueraDelHorarioDeSede(anyLong(), any(), any(), any()))
+					.willReturn(false);
+
+			assertThat(revalidador.revalidar(pedidoDe(oferta(1, false, false))).profesionalId())
+					.isNull();
+		}
+
+		@Test
 		@DisplayName("Un profesional que ya no esta habilitado para la oferta: el slot no existe")
 		void profesional_deshabilitado() {
 			// La habilitacion pudo darse de baja entre que la pantalla dibujo la grilla y el

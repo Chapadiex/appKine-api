@@ -123,16 +123,45 @@ public final class DisponibilidadEfectivaCalculator {
 			List<DisponibilidadExcepcion> excepciones,
 			Set<LocalDate> feriadosQueCierran) {
 
+		return calcular(membershipId, desde, hasta, bloques, excepciones, feriadosQueCierran,
+				HorarioDeSede.sinLimite());
+	}
+
+	/**
+	 * Igual que el anterior, con una QUINTA etapa: el recorte al horario general de la sede
+	 * (A-8b, DP-19).
+	 *
+	 * <p>Va ultima, despues de los cierres, porque es un techo y no una regla del profesional: no
+	 * abre nada, solo recorta lo que las cuatro etapas anteriores dejaron abierto. Que este aca y
+	 * no en cada consumidor es lo que hace que la agenda, la reserva, las series, las clases y la
+	 * consulta previa de impacto (A-11) vean exactamente el mismo dia.
+	 *
+	 * @param horarioDeSede el limite; {@link HorarioDeSede#sinLimite()} si la sede no declaro
+	 *                      horario, y entonces el resultado es identico al de la version de seis
+	 *                      parametros
+	 */
+	public Map<LocalDate, DiaCalculado> calcular(
+			long membershipId,
+			LocalDate desde,
+			LocalDate hasta,
+			List<BloqueDisponibilidad> bloques,
+			List<DisponibilidadExcepcion> excepciones,
+			Set<LocalDate> feriadosQueCierran,
+			HorarioDeSede horarioDeSede) {
+
 		if (desde == null || hasta == null) {
 			throw new IllegalArgumentException("La ventana de calculo exige un inicio y un fin");
 		}
 		List<BloqueDisponibilidad> propios = bloquesDelProfesional(membershipId, bloques);
 		List<DisponibilidadExcepcion> aplicables = excepcionesAplicables(membershipId, excepciones);
 		Set<LocalDate> feriados = feriadosQueCierran == null ? Set.of() : feriadosQueCierran;
+		HorarioDeSede limite = horarioDeSede == null ? HorarioDeSede.sinLimite() : horarioDeSede;
 
 		Map<LocalDate, DiaCalculado> resultado = new LinkedHashMap<>();
 		for (LocalDate fecha = desde; fecha.isBefore(hasta); fecha = fecha.plusDays(1)) {
-			resultado.put(fecha, calcularDia(fecha, propios, aplicables, feriados));
+			// Etapa 5 (A-8b): el horario general de la sede, como techo.
+			resultado.put(fecha,
+					limite.limitar(fecha, calcularDia(fecha, propios, aplicables, feriados)));
 		}
 		return resultado;
 	}

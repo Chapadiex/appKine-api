@@ -290,7 +290,7 @@ public class ConvenioController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "409",
 					description = "Periodo solapado (convenio-solapado), convenio dado de baja "
-							+ "(convenio-inactivo) o version desactualizada (conflict)",
+							+ "(convenio-inactivo) o version desactualizada (concurrent-modification)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<ConvenioResponse> update(

@@ -326,10 +326,8 @@ public class ServicioService {
 
 	private static void exigirVersion(Servicio servicio, long esperada) {
 		if (servicio.getVersion() != esperada) {
-			// OptimisticLockingFailureException PLANO, no la subclase de JPA: el handler global lo
-			// mapea a 409 con type = conflict. concurrent-modification lo emite solo el advice de
-			// organization, para la subclase, y prometerlo aca repetiria la inexactitud que
-			// arrastran los contratos publicados de 02.02 y 02.05.
+			// GlobalExceptionHandler lo mapea a 409 concurrent-modification (DP-21), igual que la
+			// subclase de JPA.
 			throw new OptimisticLockingFailureException(
 					"El servicio fue modificado por otra operacion");
 		}

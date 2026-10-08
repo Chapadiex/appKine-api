@@ -132,6 +132,22 @@ class SesionControllerTest {
 	}
 
 	@Test
+	@DisplayName("DP-21: guardar sobre una version vieja es 409 concurrent-modification, no conflict")
+	void version_vieja_es_concurrent_modification() throws Exception {
+		given(sesionService.evaluar(any(), anyLong(), anyLong(), any(), anyLong()))
+				.willThrow(new org.springframework.dao.OptimisticLockingFailureException(
+						"La sesion 501 cambio desde que se leyo: version 3 contra 4"));
+
+		mockMvc.perform(put(RUTA + "/501/evaluacion")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"dolorEva\":6,\"version\":3}")
+						.with(miembro(8L)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type")
+						.value("https://akine.app/problems/concurrent-modification"));
+	}
+
+	@Test
 	@DisplayName("Un dolor fuera de la escala muere en la validacion: 400 sin tocar el servicio")
 	void dolor_fuera_de_escala_es_400() throws Exception {
 		mockMvc.perform(put(RUTA + "/501/evaluacion")
@@ -168,6 +184,26 @@ class SesionControllerTest {
 		assertThat(cierre.getValue().tolerancia()).isEqualTo(Tolerancia.REGULAR);
 		assertThat(cierre.getValue().indicaciones()).isEqualTo("hielo");
 		assertThat(cierre.getValue().proximaConducta()).isEqualTo(ProximaConducta.REEVALUA);
+	}
+
+	@Test
+	@DisplayName("DP-17: oferta sin precio con deuda particular es 409 oferta-sin-precio con ofertaId, dia y motivo")
+	void oferta_sin_precio_es_409() throws Exception {
+		given(sesionService.cerrar(any(), anyLong(), anyLong(), any(), anyLong()))
+				.willThrow(new com.akine.encounter.spi.OfertaSinPrecioException(42L,
+						java.time.LocalDate.of(2026, 10, 8),
+						com.akine.encounter.spi.OfertaSinPrecioException.Motivo.PARTICULAR_POR_RECEPCION));
+
+		mockMvc.perform(post(RUTA + "/501/cierre")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"asistencia":"PRESENTE","notaDeCierre":"Terapia manual","version":4}""")
+						.with(miembro(8L)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/oferta-sin-precio"))
+				.andExpect(jsonPath("$.ofertaId").value(42))
+				.andExpect(jsonPath("$.dia").value("2026-10-08"))
+				.andExpect(jsonPath("$.motivo").value("PARTICULAR_POR_RECEPCION"));
 	}
 
 	@Test

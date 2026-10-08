@@ -480,6 +480,150 @@ verdad mientras dure).
 
 **Implementada en:** E-4 (`V78`, contrato 0.63.0, `docs/diseno/AKINE-E-4-recepcion.md`).
 
+## DP-17 — Toda prestación cerrada genera deuda: sin precio particular, el cierre se bloquea
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
+
+**Contexto.** La regla 2 de 07.01 decía "sin precio no hay deuda particular": si la oferta no
+tenía precio, el cierre de la sesión pasaba, no se devengaba nada y quedaba solo un `log.warn`.
+E-7 (#56) la extendió a "Atender como Particular": una oferta sin precio atendida como Particular
+—o sin cobertura aplicable— cerraba **sin deuda de nadie**. Una prestación sin deuda no se nota:
+nadie reclama una factura que nunca existió, y el agujero aparece al cuadrar la caja del mes.
+
+**Decisión.** **Toda prestación cerrada tiene que generar deuda.** Si el paciente asistió y su
+deuda se valoriza al **precio particular** —recepción resuelta como Particular, oferta que no
+admite obra social, o sin cobertura con convenio y arancel aplicables— y la oferta **no tiene
+precio vigente el día del cierre** (en la zona de la sede), el cierre se **bloquea con 409
+`oferta-sin-precio`** hasta que se cargue el precio. Se valida antes de numerar: el 409 no deja
+correlativo consumido, ni autorización consumida, ni obligación. Con cobertura, el coseguro sale
+del arancel y no hace falta precio particular. Una práctica sin cargo bajo el convenio (arancel
+total cero) sigue sin deuda: es lo que el convenio pacta, no un dato faltante.
+
+**Confirma además la parte (a) de E-7:** elegir "Particular" en la recepción **manda sobre el
+convenio** (RF-M08-007). La parte (b) de E-7 —oferta sin precio + Particular → sin deuda— queda
+reemplazada por esta decisión.
+
+**Alternativas descartadas.** Seguir cerrando sin deuda con un warning (el agujero de arriba).
+Caer al convenio cuando falta el precio particular (contradice la decisión del mostrador,
+RF-M08-007). Cerrar y dejar la deuda "pendiente de valorizar" (una obligación sin importe que
+`V36` no admite y que nadie cobra).
+
+**Implementada en:** E-7b (sin migración, contrato 0.76.0,
+`docs/diseno/AKINE-E-7b-cierre-sin-precio.md`).
+
+## DP-18 — Aprobar una solicitud de catálogo publica el concepto global (A-7)
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto. Confirma lo implementado.
+
+**Contexto.** La matriz §11.2 decía que aprobar una solicitud de catálogo **no** creaba el concepto
+global: la aprobación era una decisión registrada y la publicación pasaba por el alta normal. A-7
+(appKine-api #53, contrato 0.64.0) lo cambió y enmendó la matriz, y quedó como criterio provisorio
+a confirmar.
+
+**Decisión.** Se confirma: aprobar **publica** el concepto global en el mismo acto, en la misma
+transacción, con el código, nombre y descripción que fija la plataforma al resolver (los
+propuestos por el centro son sólo el default). Si la publicación choca, la solicitud sigue
+pendiente. La enmienda de la matriz §11.2 queda **firme**; no cambia ningún permiso.
+
+**Implementada en:** A-7 (#53, contrato 0.64.0, sin migración; `docs/diseno/AKINE-A-7-plataforma.md` §2).
+
+## DP-19 — El horario general de la sede limita la agenda
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
+
+**Contexto.** A-8 (#60, `V83`, tabla `consultorio_horario`, dueño `resource`) agregó el horario
+general de la sede como dato **informativo**: la agenda calculaba sólo con la disponibilidad de
+cada profesional y no leía esas filas, leyendo así RN-M03-004 ("el horario general no reemplaza la
+disponibilidad individual de profesionales"). Una sede que cerraba a las 18 podía ofrecer turnos a
+las 19 si un profesional tenía cargado ese horario.
+
+**Decisión.** El horario general de la sede **limita la agenda para todas las ofertas**: ningún
+turno se ofrece ni se reserva fuera del horario de la sede, aunque el profesional tenga
+disponibilidad cargada. **Si la sede no cargó horario general, no se limita nada.**
+
+**Lectura de RN-M03-004.** No se contradice: el horario de la sede sigue sin *reemplazar* la
+disponibilidad individual —no abre nada que el profesional no tenga—; ahora la *recorta*. La
+disponibilidad efectiva queda intersectada con el horario de la sede.
+
+**Implementada en:** A-8b (contrato 0.77.0, sin migración, `docs/diseno/AKINE-A-8b-horario-sede-limita.md`).
+
+## DP-20 — Una serie de turnos cancelada figura como `CANCELADA`, no como `FINALIZADA` (E-8)
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
+
+**Contexto.** E-8 (#59) publicó el estado derivado de una serie con dos valores: `VIGENTE` (le
+queda un turno pendiente) y `FINALIZADA` (no le queda ninguno). Una serie cancelada se veía igual
+que una que se agotó. La serie no guarda estado (E-3, ADR-0011, DP-04).
+
+**Decisión.** La bandeja distingue la serie que se **cortó** de la que se **agotó**, con un tercer
+valor `CANCELADA`, aditivo. Sigue calculándose al leer, sin columna ni migración. La regla, sobre
+todos los turnos de la serie (los cancelados incluidos):
+
+1. `VIGENTE` si le queda un turno RESERVADO o CONFIRMADO, vivo y con `inicio > ahora`.
+2. `CANCELADA` si no le queda ninguno y **su último turno está cancelado**: ningún turno no
+   cancelado empieza en el mismo instante o después que el último cancelado.
+3. `FINALIZADA` en cualquier otro caso: su último turno pasó (atendido o no) o quedó ausente.
+
+Una serie cancelada desde la mitad con atenciones previas es `CANCELADA`: lo que define el estado
+es cómo terminó, no cuántas veces se atendió. Una serie con cancelaciones sueltas en el medio que
+llegó a su último turno es `FINALIZADA`.
+
+**Alternativas descartadas.** Leer de `turno_evento` o de la auditoría si la cancelación vino de
+una operación con alcance (acopla el estado a cómo se canceló, y una cancelación suelta del último
+turno es igual de un corte). "Todos los no atendidos están cancelados" (una serie agotada con una
+cancelación en el medio y el resto atendido quedaría `CANCELADA`). Persistir el estado en
+`turno_serie` (contradice E-3: una columna que puede contradecir a sus turnos).
+
+**Implementada en:** E-8b (contrato 0.75.0, sin migración; `docs/diseno/AKINE-E-8b-serie-cancelada.md`).
+
+## DP-21 — Toda modificación concurrente es `concurrent-modification`; `conflict` queda para el negocio (DU-5)
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
+
+**Contexto.** El mismo hecho —"otra persona guardó antes que vos"— salía con dos `type` según el
+módulo y según quién lo detectara. Los servicios que comparan a mano la `version` del request
+(`exigirVersion` en `resource`, `offering`, `contracting`, `person`, `scheduling`, `encounter`,
+`clinical`, `billing`, `activity`, `organization`) lanzan el `OptimisticLockingFailureException`
+plano, que `GlobalExceptionHandler` mapeaba al `conflict` genérico; sólo `OrganizationProblemHandler`
+emitía `concurrent-modification`, y sólo para la subclase de JPA (`@Version`). Varios contratos
+publicados —espacios, catálogo, sedes, sesiones, obligaciones— prometían `concurrent-modification`
+y su código devolvía `conflict`; otros (financiadores, servicios, ofertas, personas, bloques)
+documentaban el `conflict` a propósito para no prometer lo que no salía.
+
+**Decisión.** Toda modificación concurrente por versión vieja —optimistic lock, `@Version`,
+comparación de la `version`/`expectedVersion` del request, `OptimisticLockingFailureException` y
+force-increment— responde **409 `concurrent-modification`** en **todos** los módulos, con un
+mensaje que dice que otra persona modificó el registro y que hay que recargar. **`conflict` queda
+sólo para conflictos de negocio**, que recargar no resuelve.
+
+**Implementación (08/10/2026, contrato 0.78.0).**
+- Un único mapeo: `GlobalExceptionHandler.handleOptimisticLocking` toma
+  `OptimisticLockingFailureException` y su subclase de JPA y emite `concurrent-modification`
+  ("Otra persona modificó este registro mientras usted trabajaba. Vuelva a cargarlo e intente de
+  nuevo."). El handler de `OrganizationProblemHandler` se eliminó. `ConcurrenciaUnicaTest`
+  recorre todos los `@RestControllerAdvice` y falla si alguno vuelve a interceptar la concurrencia
+  —un advice de módulo corre con `HIGHEST_PRECEDENCE` y le ganaría al global en todos los
+  controllers—.
+- Los dos usos de `OptimisticLockingFailureException` que no comparan una versión se revisaron:
+  `expectedStatus` de la transición de suscripción **es** concurrencia (el estado cambió mientras
+  el operador miraba: recargar) y pasa a `concurrent-modification`; la **cantidad confirmada de
+  una serie de turnos** no lo es —no hay versión vieja, hay que volver a previsualizar y decidir
+  sobre otra lista— y pasa a `CantidadConfirmadaDesactualizadaException`, que sigue en `conflict`
+  y suma `afectados` y `confirmados`.
+- **Los 409 que siguen siendo `conflict`**, todos de negocio: choque contra un unique
+  (`DataIntegrityViolationException`), transición imposible de cuenta, rol de plataforma ya
+  otorgado, alta de sede en curso, notificación que no admite reintento, inscripción duplicada a
+  una clase, y la cantidad confirmada de series (cancelar y reprogramar).
+- Las descripciones del contrato que decían `conflict` por versión pasan a
+  `concurrent-modification`. Es un cambio de respuesta visible: un cliente que trataba `conflict`
+  como "recargar" sigue funcionando sólo si también reconoce `concurrent-modification`.
+
+**Alternativas descartadas.** Seguir documentando el `type` que realmente sale en cada módulo
+(dos `type` para un hecho). Emitir `concurrent-modification` desde cada advice de módulo (catorce
+copias de la misma regla y la misma carrera de precedencia que causó la divergencia).
+
+**Desbloquea:** la parte de "unificar errores" de G-5.
+
 ## DP-23 — Historial de estados de la autorización en tabla propia (DU-8)
 
 **Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
@@ -500,7 +644,7 @@ un evento de auditoría no es un contrato de negocio).
 
 **Desbloquea:** B-4.
 
-**Implementada en:** B-4 (`V85`, contrato 0.78.0, `docs/diseno/AKINE-B-4-historial-autorizacion.md`).
+**Implementada en:** B-4 (`V85`, contrato 0.79.0, `docs/diseno/AKINE-B-4-historial-autorizacion.md`).
 El vencimiento no es un evento: se calcula al leer, como VENCIDA en la autorización.
 
 # 8. Modelo funcional consolidado

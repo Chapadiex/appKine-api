@@ -411,10 +411,9 @@ class DisponibilidadControllerTest {
 	}
 
 	@Test
-	@DisplayName("Una version vieja devuelve 409 con type conflict, NO concurrent-modification: "
-			+ "resource lanza el OptimisticLockingFailureException plano y el advice global lo "
-			+ "traduce al generico. Este test fija lo que el contrato promete de verdad")
-	void una_version_vieja_devuelve_409_con_type_conflict() throws Exception {
+	@DisplayName("DP-21: una version vieja devuelve 409 concurrent-modification, el mismo type que "
+			+ "en organization, aunque resource lance el OptimisticLockingFailureException plano")
+	void una_version_vieja_devuelve_409_concurrent_modification() throws Exception {
 		willThrow(new OptimisticLockingFailureException("version vieja"))
 				.given(disponibilidadService).editar(any(), anyLong(), anyLong(), anyLong(), any());
 
@@ -423,10 +422,10 @@ class DisponibilidadControllerTest {
 						.content("{\"diaSemana\":3,\"version\":0}")
 						.with(ResourceApiActors.miembro(7L)))
 				.andExpect(status().isConflict())
-				// organization emite concurrent-modification para el mismo hecho, porque ahi lo
-				// levanta el @Version de JPA como ObjectOptimisticLockingFailureException. La
-				// divergencia esta documentada en DisponibilidadProblemHandler.
-				.andExpect(jsonPath("$.type").value("https://akine.app/problems/conflict"));
+				// Hasta DP-21 salia conflict: el advice global traducia el plano al generico y
+				// solo organization emitia concurrent-modification, para la subclase de JPA.
+				.andExpect(jsonPath("$.type").value(
+						"https://akine.app/problems/concurrent-modification"));
 	}
 
 	@Test

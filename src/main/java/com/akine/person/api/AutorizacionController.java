@@ -492,7 +492,7 @@ public class AutorizacionController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Autorizacion dada de baja (autorizacion-inactiva), version "
-							+ "desactualizada (conflict), numero en uso (documento-numero-taken) o "
+							+ "desactualizada (concurrent-modification), numero en uso (documento-numero-taken) o "
 							+ "la edicion crea un solapamiento (autorizacion-superpuesta)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -582,7 +582,7 @@ public class AutorizacionController {
 					responseCode = "409",
 					description = "Estado terminal "
 							+ "(autorizacion-transicion-no-permitida), autorizacion dada de baja "
-							+ "(autorizacion-inactiva), version desactualizada (conflict) o la "
+							+ "(autorizacion-inactiva), version desactualizada (concurrent-modification) o la "
 							+ "aprobacion se solapa con otra (autorizacion-superpuesta)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,

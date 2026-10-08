@@ -115,7 +115,7 @@ Ninguna se inventa en silencio: cada una sale como ADR o DP escrita (`AGENT.md` 
 | ~~**DU-2**~~ | ~~Bootstrap del `PLATFORM_ADMIN`~~ → **resuelta: DP-14**, bootstrap por `AKINE_BOOTSTRAP_ADMIN_EMAIL` con enlace de activación (07/10/2026) | A-4 → A-7, B-catálogo global | ola 0 |
 | ~~**DU-3**~~ | ~~Alcance de `reporte:read`~~ → **resuelta: DP-15**, completo según la matriz, PROFESIONAL solo su actividad (07/10/2026) | G-1 (arreglo rápido) | ola 0 |
 | ~~**DU-4**~~ | ~~¿N tratamientos consumen N unidades o 1?~~ → **resuelta: DP-12**, una unidad por autorización involucrada (06/10/2026) | C-4, F-4 | ola 1 |
-| **DU-5** | Unificar `concurrent-modification` y `conflict` | G-5 (hallazgo alto 07.07); cambia respuestas de varios módulos | ola 1 |
+| ~~**DU-5**~~ | ~~Unificar `concurrent-modification` y `conflict`~~ → **resuelta: DP-21**, toda versión vieja es `concurrent-modification` en todos los módulos y `conflict` queda para el negocio (08/10/2026) | G-5 (hallazgo alto 07.07); cambia respuestas de varios módulos | ola 1 |
 | **DU-6** | Alcance `OWN` / `paciente:read` (vínculo cuenta↔persona) | B-8, G-5; autoservicio de E | ola 1 |
 | ~~**DU-7**~~ | ~~Reversión del consumo: automática o manual~~ → **resuelta: DP-13**, manual con alerta al anular la deuda (06/10/2026) | C-4 | ola 1 |
 | ~~**DU-8**~~ | ~~Historial de autorización: tabla propia o auditoría~~ → **resuelta: DP-23**, tabla propia `autorizacion_evento` append-only, no se lee de `audit_event` (08/10/2026) | B-4 | ola 1 |

@@ -48,22 +48,14 @@ import java.net.URI;
  * modulos. Los tres tienen consumidores reales en M05: ventana invertida, falta de contexto y
  * version desactualizada.
  *
- * <h2>El 409 de concurrencia sale con {@code type: conflict}, no {@code concurrent-modification}</h2>
+ * <h2>El 409 de concurrencia sale con {@code type: concurrent-modification}</h2>
  *
- * <p>Vale la pena saberlo antes de escribir el cliente. {@code DisponibilidadService} —igual que
- * {@code EspacioService} y {@code CatalogoService}— lanza el
- * {@code OptimisticLockingFailureException} <b>plano</b>, que {@code GlobalExceptionHandler}
- * traduce al {@code type} generico {@code conflict}. El {@code concurrent-modification} del
- * catalogo lo emite {@code OrganizationProblemHandler}, y solo para la subclase
- * {@code ObjectOptimisticLockingFailureException} que levanta el {@code @Version} de JPA. O sea:
- * <b>el mismo hecho de negocio sale con dos {@code type} distintos segun el modulo</b>.
- *
- * <p><b>No se corrige desde aca, y es deliberado.</b> Un {@code @ExceptionHandler} de
- * {@code OptimisticLockingFailureException} en este advice no se limitaria a M05: un
- * {@code @RestControllerAdvice} sin selectores aplica a TODOS los controllers, asi que le
- * cambiaria la respuesta a espacios, a catalogo y a cualquier modulo que hoy caiga en el
- * generico. Unificar los dos {@code type} es una decision de contrato de alcance transversal, no
- * un arreglo de esta etapa.
+ * <p>{@code DisponibilidadService} —igual que {@code EspacioService} y {@code CatalogoService}—
+ * lanza el {@code OptimisticLockingFailureException} <b>plano</b>, y {@code GlobalExceptionHandler}
+ * lo traduce a {@code concurrent-modification}, el mismo {@code type} que la subclase de JPA. Hasta
+ * DP-21 salia el {@code conflict} generico y el mismo hecho tenia dos {@code type} segun el modulo;
+ * la unificacion se hizo en el handler global y no aca, porque un {@code @RestControllerAdvice} sin
+ * selectores aplica a TODOS los controllers.
  *
  * <p>La regla que esto NO relaja: <b>falta de contexto es 403 y nunca 401</b> —el interceptor del
  * frontend borra el token ante cualquier 401 y deja al usuario en un bucle de login—, y
