@@ -258,4 +258,43 @@ class AuthorizationGuardTest {
 
 		assertThat(guard.consultorioDelContexto()).isNull();
 	}
+
+	// ------------------------------------------------------------------------ actorSobre
+
+	@Test
+	@DisplayName("actorSobre: la organizacion del contexto arma el actor con la sede del contexto")
+	void actor_sobre_la_organizacion_del_contexto() {
+		given(tenantContextHolder.current()).willReturn(Optional.of(new RequestTenantContext(
+				ACCOUNT_ID, ORG_ID, CONSULTORIO_ID, "ORG_ADMIN", TenantOperationalStatus.ACTIVA)));
+
+		assertThat(guard.actorSobre(ACCOUNT_ID, false, ORG_ID, ORG_ID))
+				.isEqualTo(new OperatingActor(ACCOUNT_ID, false, CONSULTORIO_ID));
+	}
+
+	@Test
+	@DisplayName("actorSobre: otra organizacion que la del contexto es 404, aunque la cuenta sea miembro")
+	void actor_sobre_otra_organizacion_es_404() {
+		// El evaluador concederia: la cuenta administra las dos. Por eso ni se le pregunta.
+		assertThatThrownBy(() -> guard.actorSobre(ACCOUNT_ID, false, OTRA_ORG_ID, ORG_ID))
+				.isInstanceOf(OrganizationNotFoundException.class);
+
+		verifyNoInteractions(permissionGuard);
+	}
+
+	@Test
+	@DisplayName("actorSobre: sin contexto es 403, no 404")
+	void actor_sobre_sin_contexto_es_403() {
+		assertThatThrownBy(() -> guard.actorSobre(ACCOUNT_ID, false, null, ORG_ID))
+				.isInstanceOf(AccessDeniedException.class)
+				.hasMessageContaining("contexto de trabajo activo");
+	}
+
+	@Test
+	@DisplayName("actorSobre: el administrador de plataforma no tiene contexto y decide el evaluador")
+	void actor_sobre_como_plataforma_no_compara_contexto() {
+		given(tenantContextHolder.current()).willReturn(Optional.empty());
+
+		assertThat(guard.actorSobre(ACCOUNT_ID, true, null, ORG_ID))
+				.isEqualTo(new OperatingActor(ACCOUNT_ID, true, null));
+	}
 }

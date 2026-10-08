@@ -3,6 +3,7 @@ package com.akine.organization.api;
 import com.akine.organization.application.AuditQueryService;
 import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.OperatingActor;
+import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.organization.domain.exception.PermissionDeniedException;
 import com.akine.platform.spi.audit.AuditEventSummary;
 import com.akine.platform.spi.tenant.TenantContextHolder;
@@ -26,6 +27,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -64,7 +66,8 @@ class AuditEventControllerTest {
 	@Test
 	@DisplayName("Por entidad: va a porEntidad, publica el hecho entero y ordena del mas nuevo al mas viejo")
 	void filtro_por_entidad() throws Exception {
-		given(authorizationGuard.consultorioDelContexto()).willReturn(3L);
+		given(authorizationGuard.actorSobre(anyLong(), anyBoolean(), any(), anyLong()))
+				.willAnswer(inv -> new OperatingActor(inv.getArgument(0), inv.getArgument(1), 3L));
 		given(auditQueryService.porEntidad(any(), eq(1L), eq("MEMBERSHIP"), eq(10L), any()))
 				.willReturn(pagina(hecho()));
 
@@ -190,6 +193,20 @@ class AuditEventControllerTest {
 		mockMvc.perform(get(BASE).param("actorAccountId", "42").with(ApiActors.miembro(7L)))
 				.andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.requiredPermission").value("auditoria:read"));
+	}
+
+	@Test
+	@DisplayName("Organizacion de la ruta distinta de la del contexto: 404 antes de mirar los filtros")
+	void organizacion_ajena_al_contexto_es_404() throws Exception {
+		given(authorizationGuard.actorSobre(anyLong(), anyBoolean(), any(), eq(1L)))
+				.willThrow(new OrganizationNotFoundException(1L));
+
+		// Sin ningun filtro: si el controller validara antes, responderia 400 y confirmaria
+		// que la ruta existe para esa organizacion.
+		mockMvc.perform(get(BASE).with(ApiActors.miembro(7L)))
+				.andExpect(status().isNotFound());
+
+		verifyNoInteractions(auditQueryService);
 	}
 
 	@Test
