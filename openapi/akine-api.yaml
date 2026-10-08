@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.72.0
+  version: 0.75.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -9204,6 +9204,7 @@ paths:
           type: string
           enum:
           - VIGENTE
+          - CANCELADA
           - FINALIZADA
       - description: "Pagina, base cero"
         in: query
@@ -31406,10 +31407,12 @@ components:
         estado:
           type: string
           description: "Estado DERIVADO de sus turnos, calculado al leer: la serie\
-            \ no tiene estado propio (DP-04). `VIGENTE` si le queda un turno pendiente,\
-            \ `FINALIZADA` si no."
+            \ no tiene estado propio (DP-04). `VIGENTE` si le queda un turno pendiente;\
+            \ si no, `CANCELADA` si su ultimo turno esta cancelado (la serie se corto,\
+            \ DP-20) y `FINALIZADA` si no (se agoto por fecha o por cantidad)."
           enum:
           - VIGENTE
+          - CANCELADA
           - FINALIZADA
           example: VIGENTE
         fechaDesde:
