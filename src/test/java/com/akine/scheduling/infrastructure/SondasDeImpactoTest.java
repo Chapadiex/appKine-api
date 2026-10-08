@@ -151,24 +151,38 @@ class SondasDeImpactoTest {
 	class Disponibilidad {
 
 		@Test
-		@DisplayName("Cuenta los turnos de la ventana y reporta el primero")
-		void cuenta_la_ventana() {
+		@DisplayName("Devuelve los turnos de la ventana con id, profesional e intervalo")
+		void devuelve_la_ventana() {
 			Instant hasta = AHORA.plus(Duration.ofDays(90));
+			Turno nueve = turno(NUEVE);
+			org.springframework.test.util.ReflectionTestUtils.setField(nueve, "id", 501L);
 			given(turnos.findPendientesDelProfesionalEnLaSede(
 					ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, AHORA, hasta))
-					.willReturn(List.of(turno(DIEZ), turno(NUEVE)));
+					.willReturn(List.of(nueve));
 
 			assertThat(new DisponibilidadImpactoSobreTurnos(turnos)
-					.turnosEn(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, AHORA, hasta))
-					.isEqualTo(new DisponibilidadImpactProbe.Impacto(2L, NUEVE));
+					.pendientesEn(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, AHORA, hasta))
+					.containsExactly(new DisponibilidadImpactProbe.TurnoPendiente(
+							501L, MEMBERSHIP_ID, NUEVE, DIEZ));
+		}
+
+		@Test
+		@DisplayName("Sin profesional pregunta por toda la sede (excepcion de alcance sede)")
+		void sin_profesional_es_toda_la_sede() {
+			Instant hasta = AHORA.plus(Duration.ofDays(90));
+			given(turnos.findPendientesEnLaSede(ORG_ID, CONSULTORIO_ID, AHORA, hasta))
+					.willReturn(List.of());
+
+			assertThat(new DisponibilidadImpactoSobreTurnos(turnos)
+					.pendientesEn(ORG_ID, CONSULTORIO_ID, null, AHORA, hasta)).isEmpty();
+			org.mockito.Mockito.verify(turnos).findPendientesEnLaSede(ORG_ID, CONSULTORIO_ID, AHORA, hasta);
 		}
 
 		@Test
 		@DisplayName("Una ventana vacia o invertida no consulta la base")
 		void ventana_invertida() {
 			assertThat(new DisponibilidadImpactoSobreTurnos(turnos)
-					.turnosEn(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, AHORA, AHORA))
-					.isEqualTo(DisponibilidadImpactProbe.Impacto.ninguno());
+					.pendientesEn(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, AHORA, AHORA)).isEmpty();
 			verifyNoInteractions(turnos);
 		}
 	}

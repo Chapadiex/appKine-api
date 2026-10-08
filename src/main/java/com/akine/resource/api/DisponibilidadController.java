@@ -4,6 +4,8 @@ import com.akine.resource.api.dto.BloqueResponse;
 import com.akine.resource.api.dto.CreateBloqueRequest;
 import com.akine.resource.api.dto.DeactivateBloqueRequest;
 import com.akine.resource.api.dto.DisponibilidadEfectivaResponse;
+import com.akine.resource.api.dto.ImpactoDisponibilidadResponse;
+import com.akine.resource.api.dto.SimularEdicionBloqueRequest;
 import com.akine.resource.api.dto.UpdateBloqueRequest;
 import com.akine.resource.application.BloqueAltaCommand;
 import com.akine.resource.application.BloqueEdicionCommand;
@@ -296,11 +298,12 @@ public class DisponibilidadController {
 					AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA \
 					disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El \
 					impacto se INFORMA, no bloquea: quien decide que hacer con esos turnos es la \
-					pantalla. Cuenta los turnos pendientes de ese profesional en esa sede que \
-					empiezan entre ahora y el fin de vigencia mas lejano entre el bloque anterior \
-					y el editado, con un horizonte de noventa dias si alguno no tiene fin. Es una \
-					cota superior: incluye turnos que caen en otros bloques vigentes del mismo \
-					profesional, asi que puede avisar de mas pero nunca de menos.
+					pantalla, y para saberlo ANTES de confirmar esta POST .../impacto-de-edicion. \
+					Cuenta los turnos pendientes de ese profesional en esa sede, entre ahora y \
+					el fin de vigencia mas lejano entre el bloque anterior y el editado (horizonte \
+					de noventa dias), que la disponibilidad efectiva cubria antes del cambio y \
+					no cubre despues. Desde 0.70.0 es la cuenta exacta: un turno que cae en otro \
+					bloque vigente del mismo profesional ya no cuenta.
 
 					Un bloque dado de baja no se puede editar: 409 bloque-inactivo.""")
 	@ApiResponses({
@@ -382,8 +385,9 @@ public class DisponibilidadController {
 					quedan en conflicto (RN-M05-004). El impacto se INFORMA, no bloquea —ADR-0011 \
 					prohibe decidir en cascada por el usuario—. Cuenta los turnos pendientes de \
 					ese profesional en esa sede desde ahora hasta el fin de vigencia del bloque \
-					(noventa dias si no tiene fin), como cota superior: puede incluir turnos de \
-					otros bloques suyos que siguen vigentes.
+					(noventa dias si no tiene fin) que la baja deja fuera de la disponibilidad \
+					efectiva: desde 0.70.0 un turno cubierto por otro bloque suyo no cuenta. \
+					Para saberlo antes de confirmar: GET .../impacto-de-baja.
 
 					Se permite aunque la sede este dada de baja y aunque el profesional ya se \
 					haya desvinculado: son las operaciones con las que se ordena el horario de un \
@@ -544,6 +548,112 @@ public class DisponibilidadController {
 		return ResponseEntity.ok(DisponibilidadEfectivaResponse.from(
 				disponibilidadEfectivaService.efectiva(
 						apiActor.current(), consultorioId, membershipId, desde, hasta)));
+	}
+
+	@PostMapping(path = "/{bloqueId}/impacto-de-edicion", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "simularImpactoEdicionBloque",
+			summary = "Turnos que dejaria afuera una edicion, sin aplicarla",
+			description = """
+					Consulta previa SIN EFECTOS (A-11, RN-M05-004): evalua la edicion propuesta \
+					y devuelve los turnos pendientes que quedarian fuera de la disponibilidad \
+					efectiva si se aplicara. No modifica el bloque, no toma locks y no audita. Es \
+					POST porque la edicion propuesta viaja en el cuerpo, no porque cree algo.
+
+					Cuenta EXACTA dentro de la ventana: un turno cuenta si la disponibilidad lo \
+					cubria antes del cambio y no despues. Uno que cae en otro bloque vigente del \
+					mismo profesional sigue cubierto y no cuenta. La ventana va de ahora al fin \
+					de vigencia mas lejano entre el bloque actual y el editado, con un horizonte \
+					de noventa dias; evaluadoHasta dice hasta donde se miro.
+
+					El cuerpo es el de la edicion sin version. Un turno reservado entre esta \
+					consulta y el PUT lo informa igual la respuesta del PUT. Exige \
+					consultorio:manage sobre esa sede, igual que la edicion.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Impacto calculado",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = ImpactoDisponibilidadResponse.class))),
+			@ApiResponse(responseCode = "400",
+					description = "Dia fuera de 1..7 u horario o vigencia incoherentes",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403",
+					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404",
+					description = "El bloque no existe, es de otra sede, de otro profesional o "
+							+ "de otro tenant",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "Bloque dado de baja (bloque-inactivo)",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ImpactoDisponibilidadResponse> simularEdicion(
+			@Parameter(description = "Identificador de la sede", example = "1")
+			@PathVariable long consultorioId,
+
+			@Parameter(description = "Vinculo del profesional", example = "1")
+			@PathVariable long membershipId,
+
+			@Parameter(description = "Identificador del bloque", example = "1")
+			@PathVariable long bloqueId,
+
+			@Valid @RequestBody SimularEdicionBloqueRequest request) {
+
+		// La version no participa: la consulta no muta nada. El 0 no se compara en ningun lado.
+		return ResponseEntity.ok(ImpactoDisponibilidadResponse.from(
+				disponibilidadService.simularEdicion(
+						apiActor.current(), consultorioId, membershipId, bloqueId,
+						new BloqueEdicionCommand(
+								request.diaSemana(),
+								request.horaDesde(),
+								request.horaHasta(),
+								request.vigenciaDesde(),
+								request.vigenciaHasta(),
+								Boolean.TRUE.equals(request.limpiarVigenciaHasta()),
+								0L))));
+	}
+
+	@GetMapping("/{bloqueId}/impacto-de-baja")
+	@Operation(
+			operationId = "simularImpactoBajaBloque",
+			summary = "Turnos que dejaria afuera la baja de un bloque, sin aplicarla",
+			description = """
+					Consulta previa SIN EFECTOS (A-11, RN-M05-004): los turnos pendientes que \
+					quedarian fuera de la disponibilidad efectiva si el bloque se diera de baja. \
+					Misma cuenta exacta que la consulta previa de edicion; la ventana va de ahora \
+					al fin de vigencia del bloque, con un horizonte de noventa dias. Exige \
+					consultorio:manage sobre esa sede, igual que la baja.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Impacto calculado",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = ImpactoDisponibilidadResponse.class))),
+			@ApiResponse(responseCode = "403",
+					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404",
+					description = "El bloque no existe, es de otra sede, de otro profesional o "
+							+ "de otro tenant",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "Bloque ya dado de baja",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ImpactoDisponibilidadResponse> simularBaja(
+			@Parameter(description = "Identificador de la sede", example = "1")
+			@PathVariable long consultorioId,
+
+			@Parameter(description = "Vinculo del profesional", example = "1")
+			@PathVariable long membershipId,
+
+			@Parameter(description = "Identificador del bloque", example = "1")
+			@PathVariable long bloqueId) {
+
+		return ResponseEntity.ok(ImpactoDisponibilidadResponse.from(
+				disponibilidadService.simularBaja(
+						apiActor.current(), consultorioId, membershipId, bloqueId)));
 	}
 
 	private static String rutaDe(long consultorioId, long membershipId, long bloqueId) {

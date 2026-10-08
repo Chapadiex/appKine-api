@@ -281,6 +281,25 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta);
 
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.deletedAt IS NULL
+			   AND t.estado IN (
+			       com.akine.scheduling.domain.EstadoTurno.RESERVADO,
+			       com.akine.scheduling.domain.EstadoTurno.CONFIRMADO)
+			   AND t.inicio >= :desde
+			   AND t.inicio < :hasta
+			 ORDER BY t.inicio ASC, t.id ASC
+			""")
+	List<Turno> findPendientesEnLaSede(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
 	// =================================================================================
 	// M23 — agregaciones de reporte (AKINE-07.06)
 	// =================================================================================

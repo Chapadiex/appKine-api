@@ -1,58 +1,58 @@
 package com.akine.resource.spi;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
- * Turnos futuros afectados por un cambio de disponibilidad (RF-M05-005, RN-M05-004).
+ * Los turnos pendientes sobre los que {@code resource} evalua un cambio de disponibilidad
+ * (RF-M05-005, RN-M05-004).
  *
  * <h2>Quien la responde</h2>
  *
- * <p>Desde el paquete E-1, {@code scheduling.infrastructure.DisponibilidadImpactoSobreTurnos}:
- * cuenta los turnos pendientes de la membership en la sede que empiezan en la ventana, como
- * <b>cota superior</b> —no distingue el bloque que se recorta de otro bloque vigente del mismo
- * profesional—. Es el mismo patron que {@code EspacioOccupancyProbe} en 02.02.
+ * <p>Desde el paquete E-1, {@code scheduling.infrastructure.DisponibilidadImpactoSobreTurnos},
+ * sobre la tabla {@code turno}. Es el mismo patron que {@code EspacioOccupancyProbe} en 02.02:
+ * {@code resource} declara la pregunta y {@code scheduling}, que ya depende de {@code resource.spi},
+ * la contesta. La arista va en el mismo sentido que antes y no se agrega ninguna.
  *
- * <h2>Por que es un bean singular y no una lista, a diferencia de {@code EspacioOccupancyProbe}</h2>
+ * <h2>Por que devuelve los turnos y no una cuenta (A-11)</h2>
  *
- * <p>{@code EspacioOccupancyProbe} admite varios modulos compitiendo por el mismo lugar fisico
- * (turnos e inscripciones), asi que tiene sentido sumar picos de varias fuentes. Los turnos de
- * una membership en una ventana son una sola fuente de verdad —la agenda de {@code scheduling}—
- * y no hay una segunda sonda con la que combinar el resultado. El consumidor
- * ({@code DisponibilidadService}, AKINE-02.04 tarea 7) inyecta un {@code DisponibilidadImpactProbe}
- * unico, no una lista. Hasta E-1, {@code resource} registraba una implementacion nula
- * ({@code Impacto.ninguno()} siempre); la de {@code scheduling} la reemplazo y la nula se borro.
+ * <p>Hasta A-11 la sonda contaba los turnos de la ventana y {@code resource} informaba esa cuenta
+ * como <b>cota superior</b>: con solo la ventana no se puede distinguir un turno del bloque que se
+ * recorta de uno de OTRO bloque vigente del mismo profesional (limite (a) de la decision
+ * pendiente 8). La correccion no es pasarle el bloque a {@code scheduling} —eso le ensenaria las
+ * reglas de disponibilidad a un modulo que no las tiene, y duplicaria el calculo que
+ * {@code DisponibilidadEfectivaCalculator} ya hace—, sino al reves: {@code scheduling} devuelve los
+ * turnos pendientes, con su intervalo, y {@code resource} decide cuales quedan afuera comparando
+ * la disponibilidad efectiva antes y despues del cambio. La sonda sigue sin saber nada de bloques.
+ *
+ * <p>Sin datos del paciente: id, profesional e intervalo. Es lo que la agenda ya expone a quien
+ * gestiona la sede, y alcanza para que la pantalla liste "estos turnos quedan afuera".
+ *
+ * <h2>Por que es un bean singular y no una lista</h2>
+ *
+ * <p>Los turnos de una sede en una ventana son una sola fuente de verdad —la agenda de
+ * {@code scheduling}— y no hay una segunda sonda con la que combinar el resultado.
  */
 public interface DisponibilidadImpactProbe {
 
 	/**
-	 * Turnos futuros que un cambio de disponibilidad dejaria en conflicto.
+	 * Un turno pendiente —reservado o confirmado, no dado de baja—.
 	 *
-	 * @param turnosAfectados cuantos turnos futuros caen fuera de la disponibilidad resultante.
-	 *                        Cero cuando no hay ninguno
-	 * @param primero         instante del primero de esos turnos, para que la pantalla pueda
-	 *                        decir "desde el martes". {@code null} cuando {@code turnosAfectados}
-	 *                        es cero
+	 * @param turnoId      id del turno, para que la pantalla lo abra en la agenda
+	 * @param membershipId profesional del turno
+	 * @param inicio       instante de inicio
+	 * @param fin          instante de fin, exclusivo
 	 */
-	record Impacto(long turnosAfectados, Instant primero) {
-
-		/** La respuesta de un modulo que no tiene ningun turno que reportar. */
-		public static Impacto ninguno() {
-			return new Impacto(0L, null);
-		}
-
-		/** {@code true} si hay al menos un turno futuro en conflicto. */
-		public boolean hayAlgo() {
-			return turnosAfectados > 0;
-		}
+	record TurnoPendiente(long turnoId, long membershipId, Instant inicio, Instant fin) {
 	}
 
 	/**
-	 * Turnos de esa membership, en esa sede, que caerian en {@code [desde, hasta)} si la
-	 * disponibilidad cambiara de la forma que se esta evaluando.
+	 * Los turnos pendientes de esa sede que <b>empiezan</b> en {@code [desde, hasta)}, ordenados por
+	 * inicio.
 	 *
-	 * <p>{@code DisponibilidadService} decide que ventana corresponde evaluar: esta firma solo
-	 * declara el contrato de la pregunta, no como se calcula la respuesta.
+	 * @param membershipId el profesional, o {@code null} para los de todos los profesionales de la
+	 *                     sede —lo que pide una excepcion de alcance sede—
 	 */
-	Impacto turnosEn(long organizationId, long consultorioId, long membershipId,
-			Instant desde, Instant hasta);
+	List<TurnoPendiente> pendientesEn(
+			long organizationId, long consultorioId, Long membershipId, Instant desde, Instant hasta);
 }

@@ -75,6 +75,7 @@ public class ExcepcionService {
 	private final ConsultorioMembershipDirectory membershipDirectory;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final SimuladorDeImpacto simulador;
 
 	public ExcepcionService(
 			DisponibilidadExcepcionRepositoryPort excepciones,
@@ -83,7 +84,8 @@ public class ExcepcionService {
 			ConsultorioDirectory consultorioDirectory,
 			ConsultorioMembershipDirectory membershipDirectory,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			SimuladorDeImpacto simulador) {
 
 		this.excepciones = excepciones;
 		this.calendarios = calendarios;
@@ -92,6 +94,7 @@ public class ExcepcionService {
 		this.membershipDirectory = membershipDirectory;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.simulador = simulador;
 	}
 
 	// =================================================================================
@@ -235,6 +238,62 @@ public class ExcepcionService {
 	// =================================================================================
 	// Lectura
 	// =================================================================================
+
+	/**
+	 * Que turnos dejaria afuera cargar esta excepcion, <b>sin cargarla</b> (A-11, RN-M05-004).
+	 *
+	 * <p>Un CIERRE de un profesional evalua sus turnos; uno de sede, los de todos los profesionales
+	 * de la sede. Una APERTURA responde cero: solo agrega. Misma autorizacion que el alta
+	 * —{@code consultorio:manage}— pero sin lock, sin escritura y sin auditoria. No exige la sede
+	 * activa ni el vinculo vigente: eso lo rechaza el alta, y la consulta previa no tiene por que
+	 * adelantar ese 409 para contestar cuantos turnos hay.
+	 *
+	 * @throws IllegalArgumentException si las fechas o el horario son incoherentes (400)
+	 */
+	@Transactional(readOnly = true)
+	public ImpactoDeDisponibilidad simularAlta(
+			OperatingActor actor, long consultorioId, ExcepcionAltaCommand command) {
+
+		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
+		var sede = AutorizacionDeSede.exigirSedeDelTenant(
+				consultorioDirectory, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId);
+		if (command.membershipId() != null) {
+			exigirProfesionalDelTenant(organizationId, command.membershipId());
+		}
+
+		// Transitoria: nunca se guarda. El constructor valida fechas y horario igual que en el alta.
+		DisponibilidadExcepcion propuesta = new DisponibilidadExcepcion(
+				organizationId, consultorioId, command.membershipId(), command.tipo(),
+				command.motivo(), command.fechaDesde(), command.fechaHasta(),
+				command.horaDesde(), command.horaHasta(), command.feriadoId(), command.notes());
+		return simulador.deAltaDeExcepcion(sede, propuesta, Instant.now());
+	}
+
+	/**
+	 * Que turnos dejaria afuera dar de baja esta excepcion, <b>sin darla de baja</b> (A-11). Solo
+	 * quitar una APERTURA puede dejar turnos afuera; quitar un CIERRE responde cero.
+	 *
+	 * @throws ExcepcionNotAccessibleException si no existe, es de otra sede o de otro tenant (404)
+	 * @throws ExcepcionInactivaException si ya estaba dada de baja (409)
+	 */
+	@Transactional(readOnly = true)
+	public ImpactoDeDisponibilidad simularBaja(
+			OperatingActor actor, long consultorioId, long excepcionId) {
+
+		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
+		var sede = AutorizacionDeSede.exigirSedeDelTenant(
+				consultorioDirectory, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId);
+
+		DisponibilidadExcepcion excepcion = excepciones
+				.findByIdScoped(excepcionId, organizationId, consultorioId)
+				.orElseThrow(() -> new ExcepcionNotAccessibleException(excepcionId));
+		if (!excepcion.isOperable()) {
+			throw new ExcepcionInactivaException(excepcionId);
+		}
+		return simulador.deBajaDeExcepcion(sede, excepcion, Instant.now());
+	}
 
 	/**
 	 * Excepciones ACTIVAS que cubren algun dia de {@code [desde, hasta)}, ordenadas por fecha de

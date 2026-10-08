@@ -10,24 +10,18 @@ import java.util.List;
 
 /**
  * Implementacion de {@code resource.spi.DisponibilidadImpactProbe} sobre la tabla {@code turno}
- * (paquete E-1). <b>Reemplaza</b> a {@code resource.infrastructure.DisponibilidadImpactProbeSinAgenda},
- * que devolvia siempre cero y se borro en este mismo cambio: la interfaz es un bean singular y las
- * dos no pueden convivir.
+ * (paquete E-1, reescrita en A-11).
  *
- * <h2>Que cuenta, y que aproximacion declara</h2>
+ * <h2>Que devuelve, y que NO decide</h2>
  *
- * <p>Los turnos pendientes de ese profesional, en esa sede, que <b>empiezan</b> dentro de la
- * ventana que {@code DisponibilidadService} calcula —desde ahora hasta el fin de vigencia mas
- * lejano entre el anterior y el nuevo, acotado a noventa dias—.
+ * <p>Los turnos pendientes de la sede —de un profesional, o de todos si la pregunta viene de una
+ * excepcion de alcance sede— que <b>empiezan</b> dentro de la ventana que {@code resource}
+ * calcula. No decide cuales quedan en conflicto: eso lo hace {@code resource} comparando la
+ * disponibilidad efectiva antes y despues del cambio, porque es el unico modulo que conoce las
+ * reglas. Hasta A-11 esta clase devolvia la cuenta de la ventana, y {@code resource} la informaba
+ * como cota superior; ver el javadoc de la interfaz.
  *
- * <p><b>Es una cota superior, no el conjunto exacto.</b> La firma recibe la ventana y no el bloque
- * ni la disponibilidad resultante, asi que no puede distinguir un turno que cae en el bloque que
- * se recorta de uno que cae en OTRO bloque del mismo profesional que sigue vigente. Calcularlo
- * exacto obligaria a cambiar el {@code spi} de {@code resource} —pasar dia, horas y vigencia— y
- * ademas no funcionaria en la baja, donde la sonda se consulta ANTES de desactivar el bloque.
- * Para lo que la sonda existe —que la pantalla avise "revisa estos turnos" antes de confirmar
- * (RN-M05-004)— una cota superior es la direccion segura del error: muestra de mas, nunca deja un
- * turno huerfano sin avisar. <b>Informa, no bloquea</b>: el servicio no rechaza nada por esto.
+ * <p>Ni nombre del paciente ni oferta: id, profesional e intervalo.
  */
 @Component
 public class DisponibilidadImpactoSobreTurnos implements DisponibilidadImpactProbe {
@@ -39,18 +33,19 @@ public class DisponibilidadImpactoSobreTurnos implements DisponibilidadImpactPro
 	}
 
 	@Override
-	public Impacto turnosEn(
-			long organizationId, long consultorioId, long membershipId, Instant desde, Instant hasta) {
+	public List<TurnoPendiente> pendientesEn(
+			long organizationId, long consultorioId, Long membershipId, Instant desde, Instant hasta) {
 
 		if (!hasta.isAfter(desde)) {
-			return Impacto.ninguno();
+			return List.of();
 		}
-		List<Turno> pendientes = turnos.findPendientesDelProfesionalEnLaSede(
-				organizationId, consultorioId, membershipId, desde, hasta);
-		if (pendientes.isEmpty()) {
-			return Impacto.ninguno();
-		}
-		Instant primero = pendientes.stream().map(Turno::getInicio).min(Instant::compareTo).orElseThrow();
-		return new Impacto(pendientes.size(), primero);
+		List<Turno> pendientes = membershipId == null
+				? turnos.findPendientesEnLaSede(organizationId, consultorioId, desde, hasta)
+				: turnos.findPendientesDelProfesionalEnLaSede(
+						organizationId, consultorioId, membershipId, desde, hasta);
+		return pendientes.stream()
+				.map(turno -> new TurnoPendiente(
+						turno.getId(), turno.getProfesionalMembershipId(), turno.getInicio(), turno.getFin()))
+				.toList();
 	}
 }
