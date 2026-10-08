@@ -480,6 +480,54 @@ verdad mientras dure).
 
 **Implementada en:** E-4 (`V78`, contrato 0.63.0, `docs/diseno/AKINE-E-4-recepcion.md`).
 
+## DP-21 — Toda modificación concurrente es `concurrent-modification`; `conflict` queda para el negocio (DU-5)
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
+
+**Contexto.** El mismo hecho —"otra persona guardó antes que vos"— salía con dos `type` según el
+módulo y según quién lo detectara. Los servicios que comparan a mano la `version` del request
+(`exigirVersion` en `resource`, `offering`, `contracting`, `person`, `scheduling`, `encounter`,
+`clinical`, `billing`, `activity`, `organization`) lanzan el `OptimisticLockingFailureException`
+plano, que `GlobalExceptionHandler` mapeaba al `conflict` genérico; sólo `OrganizationProblemHandler`
+emitía `concurrent-modification`, y sólo para la subclase de JPA (`@Version`). Varios contratos
+publicados —espacios, catálogo, sedes, sesiones, obligaciones— prometían `concurrent-modification`
+y su código devolvía `conflict`; otros (financiadores, servicios, ofertas, personas, bloques)
+documentaban el `conflict` a propósito para no prometer lo que no salía.
+
+**Decisión.** Toda modificación concurrente por versión vieja —optimistic lock, `@Version`,
+comparación de la `version`/`expectedVersion` del request, `OptimisticLockingFailureException` y
+force-increment— responde **409 `concurrent-modification`** en **todos** los módulos, con un
+mensaje que dice que otra persona modificó el registro y que hay que recargar. **`conflict` queda
+sólo para conflictos de negocio**, que recargar no resuelve.
+
+**Implementación (08/10/2026, contrato 0.76.0).**
+- Un único mapeo: `GlobalExceptionHandler.handleOptimisticLocking` toma
+  `OptimisticLockingFailureException` y su subclase de JPA y emite `concurrent-modification`
+  ("Otra persona modificó este registro mientras usted trabajaba. Vuelva a cargarlo e intente de
+  nuevo."). El handler de `OrganizationProblemHandler` se eliminó. `ConcurrenciaUnicaTest`
+  recorre todos los `@RestControllerAdvice` y falla si alguno vuelve a interceptar la concurrencia
+  —un advice de módulo corre con `HIGHEST_PRECEDENCE` y le ganaría al global en todos los
+  controllers—.
+- Los dos usos de `OptimisticLockingFailureException` que no comparan una versión se revisaron:
+  `expectedStatus` de la transición de suscripción **es** concurrencia (el estado cambió mientras
+  el operador miraba: recargar) y pasa a `concurrent-modification`; la **cantidad confirmada de
+  una serie de turnos** no lo es —no hay versión vieja, hay que volver a previsualizar y decidir
+  sobre otra lista— y pasa a `CantidadConfirmadaDesactualizadaException`, que sigue en `conflict`
+  y suma `afectados` y `confirmados`.
+- **Los 409 que siguen siendo `conflict`**, todos de negocio: choque contra un unique
+  (`DataIntegrityViolationException`), transición imposible de cuenta, rol de plataforma ya
+  otorgado, alta de sede en curso, notificación que no admite reintento, inscripción duplicada a
+  una clase, y la cantidad confirmada de series (cancelar y reprogramar).
+- Las descripciones del contrato que decían `conflict` por versión pasan a
+  `concurrent-modification`. Es un cambio de respuesta visible: un cliente que trataba `conflict`
+  como "recargar" sigue funcionando sólo si también reconoce `concurrent-modification`.
+
+**Alternativas descartadas.** Seguir documentando el `type` que realmente sale en cada módulo
+(dos `type` para un hecho). Emitir `concurrent-modification` desde cada advice de módulo (catorce
+copias de la misma regla y la misma carrera de precedencia que causó la divergencia).
+
+**Desbloquea:** la parte de "unificar errores" de G-5.
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional
