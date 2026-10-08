@@ -80,9 +80,10 @@ public record SerieDeTurnosResumenResponse(
 		// CUIDADO: lista escrita a mano, con las constantes de domain.EstadoDeSerie.
 		@Schema(
 				description = "Estado DERIVADO de sus turnos, calculado al leer: la serie no tiene "
-						+ "estado propio (DP-04). `VIGENTE` si le queda un turno pendiente, "
-						+ "`FINALIZADA` si no.",
-				allowableValues = {"VIGENTE", "FINALIZADA"},
+						+ "estado propio (DP-04). `VIGENTE` si le queda un turno pendiente; si no, "
+						+ "`CANCELADA` si su ultimo turno esta cancelado (la serie se corto, DP-20) "
+						+ "y `FINALIZADA` si no (se agoto por fecha o por cantidad).",
+				allowableValues = {"VIGENTE", "CANCELADA", "FINALIZADA"},
 				example = "VIGENTE")
 		String estado) {
 

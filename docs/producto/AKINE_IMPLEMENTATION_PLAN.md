@@ -508,8 +508,53 @@ Caer al convenio cuando falta el precio particular (contradice la decisión del 
 RF-M08-007). Cerrar y dejar la deuda "pendiente de valorizar" (una obligación sin importe que
 `V36` no admite y que nadie cobra).
 
-**Implementada en:** E-7b (sin migración, contrato 0.73.0,
+**Implementada en:** E-7b (sin migración, contrato 0.76.0,
 `docs/diseno/AKINE-E-7b-cierre-sin-precio.md`).
+
+## DP-18 — Aprobar una solicitud de catálogo publica el concepto global (A-7)
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto. Confirma lo implementado.
+
+**Contexto.** La matriz §11.2 decía que aprobar una solicitud de catálogo **no** creaba el concepto
+global: la aprobación era una decisión registrada y la publicación pasaba por el alta normal. A-7
+(appKine-api #53, contrato 0.64.0) lo cambió y enmendó la matriz, y quedó como criterio provisorio
+a confirmar.
+
+**Decisión.** Se confirma: aprobar **publica** el concepto global en el mismo acto, en la misma
+transacción, con el código, nombre y descripción que fija la plataforma al resolver (los
+propuestos por el centro son sólo el default). Si la publicación choca, la solicitud sigue
+pendiente. La enmienda de la matriz §11.2 queda **firme**; no cambia ningún permiso.
+
+**Implementada en:** A-7 (#53, contrato 0.64.0, sin migración; `docs/diseno/AKINE-A-7-plataforma.md` §2).
+
+## DP-20 — Una serie de turnos cancelada figura como `CANCELADA`, no como `FINALIZADA` (E-8)
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
+
+**Contexto.** E-8 (#59) publicó el estado derivado de una serie con dos valores: `VIGENTE` (le
+queda un turno pendiente) y `FINALIZADA` (no le queda ninguno). Una serie cancelada se veía igual
+que una que se agotó. La serie no guarda estado (E-3, ADR-0011, DP-04).
+
+**Decisión.** La bandeja distingue la serie que se **cortó** de la que se **agotó**, con un tercer
+valor `CANCELADA`, aditivo. Sigue calculándose al leer, sin columna ni migración. La regla, sobre
+todos los turnos de la serie (los cancelados incluidos):
+
+1. `VIGENTE` si le queda un turno RESERVADO o CONFIRMADO, vivo y con `inicio > ahora`.
+2. `CANCELADA` si no le queda ninguno y **su último turno está cancelado**: ningún turno no
+   cancelado empieza en el mismo instante o después que el último cancelado.
+3. `FINALIZADA` en cualquier otro caso: su último turno pasó (atendido o no) o quedó ausente.
+
+Una serie cancelada desde la mitad con atenciones previas es `CANCELADA`: lo que define el estado
+es cómo terminó, no cuántas veces se atendió. Una serie con cancelaciones sueltas en el medio que
+llegó a su último turno es `FINALIZADA`.
+
+**Alternativas descartadas.** Leer de `turno_evento` o de la auditoría si la cancelación vino de
+una operación con alcance (acopla el estado a cómo se canceló, y una cancelación suelta del último
+turno es igual de un corte). "Todos los no atendidos están cancelados" (una serie agotada con una
+cancelación en el medio y el resto atendido quedaría `CANCELADA`). Persistir el estado en
+`turno_serie` (contradice E-3: una columna que puede contradecir a sus turnos).
+
+**Implementada en:** E-8b (contrato 0.75.0, sin migración; `docs/diseno/AKINE-E-8b-serie-cancelada.md`).
 
 # 8. Modelo funcional consolidado
 

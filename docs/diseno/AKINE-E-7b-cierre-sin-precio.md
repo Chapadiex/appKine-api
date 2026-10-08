@@ -1,6 +1,6 @@
 # AKINE E-7b — Sin precio particular no se cierra (DP-17)
 
-**08/10/2026** · rama `akine-E-7b-cierre-sin-precio` · **sin migración** · contrato **0.73.0**
+**08/10/2026** · rama `akine-E-7b-cierre-sin-precio` · **sin migración** · contrato **0.76.0**
 (aditivo: problem type `oferta-sin-precio` y descripción del cierre). Implementa **DP-17** y
 reemplaza la regla 2 de 07.01 y la decisión (b) de E-7 (§5 de
 [AKINE-E-7-particular-en-obligacion](AKINE-E-7-particular-en-obligacion.md)).
@@ -75,7 +75,7 @@ encounter.SesionService#cerrar
    Convenio ≠ Obligación: con cobertura no se pide precio particular.
 5. **Baja lógica.** Nada se borra. El 409 revierte la transacción entera; no hay escrituras
    compensatorias.
-6. **Contrato.** Aditivo, **0.73.0**: un `problemType` nuevo en el enum y la descripción del cierre
+6. **Contrato.** Aditivo, **0.76.0**: un `problemType` nuevo en el enum y la descripción del cierre
    y de su 409. Ninguna forma de respuesta cambia.
 7. **Ruta crítica.** Cimientos en `main`: precio del día (B-3), devengo por convenio (F-4),
    Particular por recepción (E-7), turno en el hecho (E-6). No se adelanta nada.
