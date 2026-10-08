@@ -28,6 +28,12 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "cuenta")
+// @DynamicUpdate porque `ultimo_login_en` e `intentos_fallidos` los mueve el login con UPDATE
+// NATIVOS que no tocan `version` (CuentaRepositoryPort#registrarLoginExitoso). Sin esto, el flush
+// de cualquier edicion de la cuenta —un bloqueo, una activacion, un cambio de contrasena— reescribe
+// TODAS las columnas con lo que leyo antes del login, el `WHERE version = N` pasa igual, y la marca
+// de login vuelve atras sin que nada falle. Es el mismo mecanismo que `Autorizacion`.
+@org.hibernate.annotations.DynamicUpdate
 public class Cuenta {
 
 	@Id
@@ -222,7 +228,14 @@ public class Cuenta {
 				&& (estado == EstadoCuenta.ACTIVA || estado == EstadoCuenta.PENDIENTE_ACTIVACION);
 	}
 
-	/** Registra un login exitoso: limpia el contador y deja la marca temporal. */
+	/**
+	 * Registra un login exitoso: limpia el contador y deja la marca temporal.
+	 *
+	 * <p><b>El login NO usa este metodo ni {@link #registrarLoginFallido()}</b>: persistirlos por
+	 * la entidad movia {@code version} y hacia chocar dos logins simultaneos de la misma cuenta
+	 * (deadlock o 409). El login va por {@code CuentaRepositoryPort#registrarLoginExitoso} y
+	 * {@code #registrarLoginFallido}. Estos quedan como la regla del dominio en memoria.
+	 */
 	public void registrarLoginExitoso(Instant ahora) {
 		this.intentosFallidos = 0;
 		this.ultimoLoginEn = ahora;

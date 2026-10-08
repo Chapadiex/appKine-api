@@ -6,6 +6,7 @@ import com.akine.identity.domain.RefreshToken;
 import com.akine.identity.domain.SessionSettings;
 import com.akine.identity.domain.TokenDigest;
 import com.akine.identity.domain.exception.ContextNotAvailableException;
+import com.akine.identity.domain.exception.InvalidCredentialsException;
 import com.akine.identity.domain.exception.InvalidRefreshTokenException;
 import com.akine.identity.domain.port.CuentaRepositoryPort;
 import com.akine.identity.domain.port.IdentityClock;
@@ -122,7 +123,10 @@ public class SessionService {
 	 * @throws com.akine.identity.domain.exception.InvalidCredentialsException en cualquiera de
 	 *         las causas de rechazo, sin distinguirlas (ADR-0018)
 	 */
-	@Transactional
+	// noRollbackFor tambien aca, y no es redundante: autenticar se une a ESTA transaccion, y
+	// alcanza con que la de afuera revierta para que el contador de fallos y la auditoria del
+	// rechazo se pierdan. Ver AuthenticationService.autenticar.
+	@Transactional(noRollbackFor = InvalidCredentialsException.class)
 	public SesionEmitida abrirSesion(String email, String password, DatosDeCliente cliente) {
 		Cuenta cuenta = authenticationService.autenticar(email, password);
 
