@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
@@ -196,9 +197,15 @@ public class AdjuntoService {
 	/**
 	 * Sube un documento administrativo (RF-M25-001).
 	 *
+	 * <p><b>{@code READ_COMMITTED}</b>, por la misma causa que {@code AdjuntoClinicoService#subir}:
+	 * cuando dos subidas identicas chocan contra el unique, el perdedor relee la fila del ganador
+	 * para devolverla como reintento idempotente, y bajo {@code REPEATABLE READ} no la ve —la foto se
+	 * fijo antes de que el otro commiteara— y respondia 409 {@code conflict}. Lo destapo
+	 * {@code AdjuntoConcurrenteIT}.
+	 *
 	 * @return el adjunto creado, o el que ya existia si el contenido es identico (idempotencia)
 	 */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public AdjuntoAlta subir(OperatingActor actor, long personaId, AdjuntoAltaCommand command) {
 		PermissionDecision decision =
 				AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, actor, "Subir adjunto");
