@@ -27,10 +27,12 @@ import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
 import com.akine.scheduling.spi.ReservaProbe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -107,7 +109,9 @@ public class AgendaService {
 	private final ConsultorioMembershipDirectory memberships;
 	private final PermissionGuard permissionGuard;
 	private final ReservaProbe reservas;
+	private final Clock clock;
 
+	@Autowired
 	public AgendaService(
 			OfertaDirectory ofertas,
 			DisponibilidadDirectory disponibilidad,
@@ -117,6 +121,22 @@ public class AgendaService {
 			PermissionGuard permissionGuard,
 			ReservaProbe reservas) {
 
+		this(ofertas, disponibilidad, espacios, consultorios, memberships, permissionGuard, reservas,
+				Clock.systemUTC());
+	}
+
+	/** Con reloj propio: el motor descarta lo que ya paso, y un test necesita fijar "ahora". */
+	AgendaService(
+			OfertaDirectory ofertas,
+			DisponibilidadDirectory disponibilidad,
+			EspacioDirectory espacios,
+			ConsultorioDirectory consultorios,
+			ConsultorioMembershipDirectory memberships,
+			PermissionGuard permissionGuard,
+			ReservaProbe reservas,
+			Clock clock) {
+
+		this.clock = clock;
 		this.ofertas = ofertas;
 		this.disponibilidad = disponibilidad;
 		this.espacios = espacios;
@@ -185,11 +205,15 @@ public class AgendaService {
 							organizationId, sede, habilitacion.recursoId(), desde, hasta)));
 		}
 
+		// Un solo "ahora" para toda la ventana: dos lecturas del reloj podrian partir el mismo slot
+		// en ofrecido y no ofrecido segun el dia que se resolvio primero.
+		Instant ahora = clock.instant();
+
 		List<DiaDeAgenda> dias = new ArrayList<>();
 		for (LocalDate fecha = desde; fecha.isBefore(hasta); fecha = fecha.plusDays(1)) {
 			DiaDeSlots dia = resolver(
 					fecha, oferta, zona, duracion, profesionales, espaciosHabilitados,
-					porProfesional, organizationId, consultorioId);
+					porProfesional, organizationId, consultorioId, ahora);
 			dias.add(proyectar(dia, fecha, zona));
 		}
 
@@ -217,6 +241,28 @@ public class AgendaService {
 	 * al final el tamano de la franja. Devolver el <b>primer</b> motivo que aplica —y no una
 	 * lista— es a proposito: la pantalla muestra una frase, y "no hay turnos porque la oferta
 	 * vencio y ademas no hay box" no ayuda a nadie a arreglar nada.
+	 *
+	 * <h3>Lo que se ofrece es lo que la reserva acepta (paquete E-2)</h3>
+	 *
+	 * <p>Tres descartes que antes no existian, y los tres son copias exactas de un control que
+	 * {@code TurnoService.reservar} y {@link RevalidadorDeSlot} ya hacian. Sin ellos el motor
+	 * dibujaba horarios que la reserva despues rechazaba con {@code slot-no-disponible}: lo
+	 * destaparon los E2E contra el backend real, no un unitario, porque los unitarios fijaban
+	 * fechas futuras y habilitaciones abiertas.
+	 * <ul>
+	 *   <li><b>Lo que ya empezo no se ofrece</b>: la reserva rechaza todo inicio que no sea
+	 *       posterior a ahora. Un dia que paso entero, o un hoy sin nada por delante, sale
+	 *       {@link MotivoSinSlots#PASADO}.</li>
+	 *   <li><b>La vigencia de la habilitacion se mira en el inicio de cada slot</b>, como hace el
+	 *       revalidador, y no al mediodia: una habilitacion cargada hoy a las 15:00 —nace con
+	 *       {@code Instant.now()}— no existia al mediodia y el dia salia {@code SIN_PROFESIONAL}; una
+	 *       que vence a las 11:00 borraba tambien las 09:00 y las 10:00, que eran validas.</li>
+	 *   <li><b>Un dia sin ningun cupo libre es {@link MotivoSinSlots#COMPLETO}</b>, con la lista
+	 *       vacia. El contrato declara el motivo "ausente si el dia SI tiene slots" y la pantalla
+	 *       muestra el motivo solo con la lista vacia; un dia lleno que viajaba con sus slots en
+	 *       cupo 0 y sin motivo era una grilla de horarios deshabilitados sin explicacion. Los
+	 *       slots llenos de un dia que todavia tiene lugar siguen viajando en cupo 0.</li>
+	 * </ul>
 	 */
 	private DiaDeSlots resolver(
 			LocalDate fecha,
@@ -227,20 +273,34 @@ public class AgendaService {
 			List<HabilitacionSnapshot> espaciosHabilitados,
 			Map<Long, Map<LocalDate, DiaDisponible>> porProfesional,
 			long organizationId,
-			long consultorioId) {
+			long consultorioId,
+			Instant ahora) {
+
+		// Primero de todo: de un dia que ya paso, lo unico verdadero y util es que paso. Decir
+		// "no tiene horario, cargalo desde Horarios" sobre el martes pasado manda a arreglar algo
+		// que no importa.
+		if (fecha.isBefore(LocalDate.ofInstant(ahora, zona))) {
+			return DiaDeSlots.sin(fecha, MotivoSinSlots.PASADO);
+		}
 
 		if (!oferta.vigenteEl(fecha)) {
 			return DiaDeSlots.sin(fecha, MotivoSinSlots.OFERTA_NO_VIGENTE);
 		}
 
-		// El MEDIODIA local y no la medianoche: es el instante del dia que ningun cambio de
-		// horario de verano puede borrar. Con la medianoche, el dia en que el reloj se adelanta
-		// esa hora local no existe y la conversion se corre sola, asi que preguntar "esta vigente
-		// este dia" contestaria por el dia equivocado una vez al ano y en un solo huso.
+		// El dia como intervalo [inicio, fin). atStartOfDay resuelve solo el dia en que el reloj
+		// se adelanta a la medianoche: devuelve la primera hora local que existe.
+		Instant inicioDelDia = fecha.atStartOfDay(zona).toInstant();
+		Instant finDelDia = fecha.plusDays(1).atStartOfDay(zona).toInstant();
+
+		// El espacio se sigue mirando al MEDIODIA local: el motor solo verifica que exista alguno,
+		// no lo elige (ver la cabecera), y el instante es el que ningun cambio de hora puede
+		// borrar. Lo que cambia es la vigencia de la HABILITACION del espacio, que ahora alcanza
+		// con que toque el dia.
 		Instant mediodia = fecha.atTime(12, 0).atZone(zona).toInstant();
 
 		if (oferta.requiereEspacio()
-				&& !hayEspacio(espaciosHabilitados, organizationId, consultorioId, mediodia)) {
+				&& !hayEspacio(espaciosHabilitados, organizationId, consultorioId, mediodia,
+						inicioDelDia, finDelDia)) {
 			return DiaDeSlots.sin(fecha, MotivoSinSlots.SIN_ESPACIO);
 		}
 
@@ -253,7 +313,7 @@ public class AgendaService {
 		}
 
 		List<HabilitacionSnapshot> vigentes = profesionales.stream()
-				.filter(habilitacion -> habilitacion.vigenteEn(mediodia))
+				.filter(habilitacion -> vigenteDurante(habilitacion, inicioDelDia, finDelDia))
 				.toList();
 		if (vigentes.isEmpty()) {
 			return DiaDeSlots.sin(fecha, MotivoSinSlots.SIN_PROFESIONAL);
@@ -262,6 +322,8 @@ public class AgendaService {
 		List<Slot> slots = new ArrayList<>();
 		MotivoSinSlots motivoDeLaDisponibilidad = null;
 		boolean huboFranjas = false;
+		boolean huboCortes = false;
+		boolean huboHabilitados = false;
 
 		for (HabilitacionSnapshot habilitacion : vigentes) {
 			DiaDisponible dia = porProfesional
@@ -280,12 +342,36 @@ public class AgendaService {
 				continue;
 			}
 			huboFranjas = true;
-			slots.addAll(cortar(dia, habilitacion.recursoId(), oferta, duracion, zona, fecha));
+			for (Slot slot : cortar(dia, habilitacion.recursoId(), oferta, duracion, zona, fecha)) {
+				huboCortes = true;
+				Instant inicio = fecha.atTime(slot.desde()).atZone(zona).toInstant();
+				// La misma vigencia, en el mismo instante, que mira RevalidadorDeSlot.
+				if (!habilitacion.vigenteEn(inicio)) {
+					continue;
+				}
+				huboHabilitados = true;
+				// El mismo criterio que TurnoService.reservar: !inicio.isAfter(ahora) se rechaza.
+				if (inicio.isAfter(ahora)) {
+					slots.add(slot);
+				}
+			}
 		}
 
 		if (!slots.isEmpty()) {
-			return DiaDeSlots.con(fecha, descontarReservas(
-					slots, organizationId, consultorioId, oferta.id(), fecha, zona));
+			List<Slot> conCupo = descontarReservas(
+					slots, organizationId, consultorioId, oferta.id(), fecha, zona);
+			return conCupo.stream().anyMatch(slot -> slot.cupoLibre() > 0)
+					? DiaDeSlots.con(fecha, conCupo)
+					: DiaDeSlots.sin(fecha, MotivoSinSlots.COMPLETO);
+		}
+		if (huboHabilitados) {
+			// Habia horarios validos y todos ya empezaron: es hoy y no queda nada por delante.
+			return DiaDeSlots.sin(fecha, MotivoSinSlots.PASADO);
+		}
+		if (huboCortes) {
+			// Hubo slots, pero ninguno cae dentro de la vigencia de la habilitacion de quien los
+			// atiende: habilitado desde las 20:00 con horario hasta las 12:00.
+			return DiaDeSlots.sin(fecha, MotivoSinSlots.SIN_PROFESIONAL);
 		}
 		if (huboFranjas) {
 			// Hubo horario y hubo recursos, pero ninguna franja alcanzaba para un slot entero:
@@ -404,7 +490,9 @@ public class AgendaService {
 			List<HabilitacionSnapshot> habilitados,
 			long organizationId,
 			long consultorioId,
-			Instant at) {
+			Instant at,
+			Instant inicioDelDia,
+			Instant finDelDia) {
 
 		if (habilitados.isEmpty()) {
 			// Lista vacia significa TODOS: la oferta se puede prestar en cualquier espacio en
@@ -413,7 +501,7 @@ public class AgendaService {
 					.anyMatch(espacio -> espacio.active() && espacio.enServicio());
 		}
 		return habilitados.stream()
-				.filter(habilitacion -> habilitacion.vigenteEn(at))
+				.filter(habilitacion -> vigenteDurante(habilitacion, inicioDelDia, finDelDia))
 				.map(habilitacion -> espacios.find(organizationId, habilitacion.recursoId(), at))
 				.anyMatch(espacio -> espacio
 						.filter(EspacioSnapshot::active)
@@ -452,6 +540,19 @@ public class AgendaService {
 				.map(membership -> new HabilitacionSnapshot(
 						0L, membership.membershipId(), Instant.EPOCH, null, true))
 				.toList();
+	}
+
+	/**
+	 * {@code true} si la habilitacion rige en ALGUN instante de {@code [desde, hasta)}.
+	 *
+	 * <p>Es el filtro grueso del dia; el fino —vigente en el inicio de cada slot— lo aplica
+	 * {@link #resolver}. Mismos bordes que {@link HabilitacionSnapshot#vigenteEn}: desde
+	 * inclusivo, hasta exclusivo.
+	 */
+	private static boolean vigenteDurante(HabilitacionSnapshot habilitacion, Instant desde, Instant hasta) {
+		return habilitacion.active()
+				&& habilitacion.validFrom().isBefore(hasta)
+				&& (habilitacion.validUntil() == null || habilitacion.validUntil().isAfter(desde));
 	}
 
 	private static List<HabilitacionSnapshot> filtrarPorProfesional(

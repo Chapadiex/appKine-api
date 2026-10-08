@@ -64,6 +64,21 @@ public enum MotivoSinSlots {
 	 */
 	FRANJA_MAS_CORTA_QUE_LA_OFERTA,
 
-	/** Habia slots y estan todos tomados. Lo produce 05.02; hoy no puede ocurrir. */
-	COMPLETO
+	/**
+	 * Habia slots y ninguno tiene cupo libre.
+	 *
+	 * <p>Declarado desde 05.01 y emitido recien desde el paquete E-2: hasta entonces el dia lleno
+	 * viajaba con sus slots en cupo 0 y sin motivo. Si al dia le queda aunque sea un lugar, los
+	 * slots llenos siguen viajando en cupo 0 y no hay motivo.
+	 */
+	COMPLETO,
+
+	/**
+	 * El dia ya paso, o es hoy y todos sus horarios ya empezaron. Paquete E-2.
+	 *
+	 * <p>La reserva rechaza todo inicio que no sea posterior a ahora, asi que ofrecerlos era
+	 * ofrecer un {@code slot-no-disponible}. Los horarios de hoy que ya empezaron se omiten sin
+	 * motivo mientras quede alguno por delante: el motivo es del dia, no del slot.
+	 */
+	PASADO
 }
