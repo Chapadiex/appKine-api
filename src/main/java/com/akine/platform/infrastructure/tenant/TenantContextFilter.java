@@ -12,9 +12,11 @@ import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
+import com.akine.platform.infrastructure.observability.ClavesDeMdc;
 import com.akine.platform.infrastructure.security.RequestPaths;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -263,12 +265,20 @@ public class TenantContextFilter extends OncePerRequestFilter {
 				membership.operationalStatus());
 
 		tenantContextHolder.set(context);
+		// G-4: el contexto tambien va al MDC, asi cada linea de log del request dice de que
+		// organizacion y sede es. Son ids tecnicos, no datos de salud. La cuenta NO va: no hace
+		// falta para operar el log y, junto con la hora, identifica a una persona.
+		MDC.put(ClavesDeMdc.ORGANIZATION_ID, String.valueOf(organizationId));
+		MDC.put(ClavesDeMdc.CONSULTORIO_ID, String.valueOf(consultorioId));
 		try {
 			filterChain.doFilter(request, response);
 		} finally {
 			// Innegociable: los hilos del contenedor se reutilizan. Un contexto que sobrevive
-			// al request se lo lleva puesto el proximo usuario que caiga en ese hilo.
+			// al request se lo lleva puesto el proximo usuario que caiga en ese hilo. Vale igual
+			// para el MDC: un tenant que sobrevive aparece en el log del request de otro.
 			tenantContextHolder.clear();
+			MDC.remove(ClavesDeMdc.ORGANIZATION_ID);
+			MDC.remove(ClavesDeMdc.CONSULTORIO_ID);
 		}
 	}
 

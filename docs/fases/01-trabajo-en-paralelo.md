@@ -192,7 +192,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | F-7 | Pantallas de presentaciones (bandejas, armado, factura, débito, pagos) | web | L | — | F7 |
 | F-8 | ITs diferidos 33–48 (caja concurrente, presentaciones, egresos) — **cerrado** (07/10): corridos 33, 34 (#28), 37, 39, 40 (#30), 41, 42, 45, 46, 48 (#24), 43, 47 (#19) y 35, 36, 38, 44 (`akine-F-8-diferidos-finales`). El 38 destapó que el débito no persistía la marca del ítem (`clearAutomatically` lo desacoplaba) | api | M | — | F7 |
 | G-3 | Dockerfile de los dos repos + SBOM — **backend hecho** (#29, 06/10: Dockerfile, SBOM CycloneDX, job `imagen` del CI); falta el del frontend | los dos | M | — | F8 |
-| G-4 | Observabilidad: logging JSON con correlación, Micrometer/Prometheus, OpenTelemetry | api | L | — | F8 |
+| ~~**G-4**~~ | ~~Observabilidad: logging JSON con correlación, Micrometer/Prometheus, OpenTelemetry~~ — hecho (`akine-G-4-observabilidad`, 08/10): log JSON `logstash` fuera de `local`, `X-Request-Id` + `traceId`/`spanId`/tenant en el MDC, `/actuator/prometheus` con histograma y buckets de SLO detrás de token de scraper, trazas OTLP opt-in. Ver `docs/observabilidad.md` | api | L | — | F8 |
 | G-6 | Sonar, Dependabot/OWASP, reglas JaCoCo `PACKAGE` | los dos | S | L-0 | F0-F1, F8 |
 | G-7 | a11y: WCAG 1.4.11, `:hover`/`:focus-visible`, foco por teclado | web | M | — | F8 |
 | G-8 | Dashboards de reportes en el frontend | web | M | G-1 | F8 |
