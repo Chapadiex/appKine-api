@@ -207,8 +207,9 @@ public class AutorizacionService {
 			int tamano,
 			LocalDate fecha) {
 
-		long organizationId = AutorizacionDePadron.exigirContexto(
-				actor, "Consultar el historial de una autorizacion");
+		long organizationId =
+				AutorizacionDePadron.exigirLecturaDelPadron(
+						permissionGuard, actor, "Consultar el historial de una autorizacion");
 		exigirPersonaDelTenant(organizationId, personaId);
 		Autorizacion autorizacion = cargar(organizationId, personaId, autorizacionId);
 

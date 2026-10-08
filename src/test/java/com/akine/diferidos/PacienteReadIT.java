@@ -136,6 +136,7 @@ class PacienteReadIT extends BaseEscenarioDiferido {
 		rutas.put("cobertura aplicable", p + "/cobertura-aplicable?ofertaId=" + INEXISTENTE);
 		rutas.put("descarga de adjunto", p + "/adjuntos/" + INEXISTENTE + "/contenido");
 		rutas.put("autorizacion", p + "/autorizaciones/" + INEXISTENTE);
+		rutas.put("historial de autorizacion", p + "/autorizaciones/" + INEXISTENTE + "/historial");
 		rutas.put("saldo de autorizacion", "/api/v1/autorizaciones/" + INEXISTENTE + "/saldo");
 		rutas.put("ledger de autorizacion", "/api/v1/autorizaciones/" + INEXISTENTE + "/movimientos");
 		rutas.put("alertas de autorizacion", "/api/v1/autorizaciones/" + INEXISTENTE + "/alertas");
