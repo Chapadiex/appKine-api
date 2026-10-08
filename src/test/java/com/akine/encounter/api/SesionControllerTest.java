@@ -171,6 +171,26 @@ class SesionControllerTest {
 	}
 
 	@Test
+	@DisplayName("DP-17: oferta sin precio con deuda particular es 409 oferta-sin-precio con ofertaId, dia y motivo")
+	void oferta_sin_precio_es_409() throws Exception {
+		given(sesionService.cerrar(any(), anyLong(), anyLong(), any(), anyLong()))
+				.willThrow(new com.akine.encounter.spi.OfertaSinPrecioException(42L,
+						java.time.LocalDate.of(2026, 10, 8),
+						com.akine.encounter.spi.OfertaSinPrecioException.Motivo.PARTICULAR_POR_RECEPCION));
+
+		mockMvc.perform(post(RUTA + "/501/cierre")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"asistencia":"PRESENTE","notaDeCierre":"Terapia manual","version":4}""")
+						.with(miembro(8L)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/oferta-sin-precio"))
+				.andExpect(jsonPath("$.ofertaId").value(42))
+				.andExpect(jsonPath("$.dia").value("2026-10-08"))
+				.andExpect(jsonPath("$.motivo").value("PARTICULAR_POR_RECEPCION"));
+	}
+
+	@Test
 	@DisplayName("La enmienda lleva el contenido y el motivo por separado: el motivo no es contenido")
 	void la_enmienda_se_traduce() throws Exception {
 		given(sesionService.enmendar(any(), anyLong(), anyLong(), any(), any(), any(), anyString(), anyLong()))

@@ -153,7 +153,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.72.0
+    version: 0.73.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials

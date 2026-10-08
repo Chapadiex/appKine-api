@@ -226,9 +226,18 @@ public class SesionController {
 					consuma un correlativo que despues nadie usa y deje huecos que parecen \
 					sesiones borradas.
 
-					**Cerrar no cobra.** DP-06: el cierre clinico no depende del pago y no crea \
-					ninguna obligacion economica. La obligacion se deriva despues, en \
-					AKINE-07.01, leyendo las sesiones cerradas.
+					**Cerrar no cobra.** DP-06: el cierre clinico no depende del pago. La deuda \
+					(obligacion del paciente y, si hay convenio, del financiador) se devenga en \
+					la misma transaccion del cierre.
+
+					**Pero toda prestacion cerrada genera deuda** (DP-17). Si el paciente asistio \
+					y su deuda es el precio particular —recepcion resuelta como Particular, oferta \
+					que no admite obra social, o sin cobertura con convenio y arancel aplicables— \
+					y la oferta no tiene precio vigente el dia del cierre (en la zona de la sede), \
+					responde **409 `oferta-sin-precio`** con `ofertaId`, `dia` y `motivo`. La \
+					sesion sigue abierta, sin numero y sin nada consumido: se carga el precio en \
+					la oferta y se reintenta. Con cobertura el coseguro sale del arancel y no hace \
+					falta precio particular.
 
 					**Una sesion cerrada no se edita: se enmienda.** Corregirla exige motivo y \
 					deja una version en el historial (`POST .../enmiendas`). El cierre ademas \
@@ -245,7 +254,9 @@ public class SesionController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "La sesion la atiende otro profesional, o la version quedo vieja",
+					description = "La sesion la atiende otro profesional, la version quedo vieja, "
+							+ "o la deuda del paciente es el precio particular y la oferta no "
+							+ "tiene precio ese dia (oferta-sin-precio)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<SesionResponse> cerrar(
 			@PathVariable long consultorioId,

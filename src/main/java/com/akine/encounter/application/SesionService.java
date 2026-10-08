@@ -6,6 +6,8 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.PrecioDeOferta;
 import com.akine.encounter.domain.Asistencia;
 import com.akine.encounter.spi.CierreDeSesionObserver;
+import com.akine.encounter.spi.OfertaSinPrecioException;
+import com.akine.encounter.spi.PrecioParticularDelCierre;
 import com.akine.encounter.spi.SesionCerrada;
 import com.akine.clinical.spi.HistoriaClinicaSnapshot;
 import com.akine.encounter.domain.CierreDeSesion;
@@ -31,6 +33,7 @@ import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.encounter.domain.port.TratamientoRepositoryPorts.TratamientoRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.PermissionGuard;
@@ -45,7 +48,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DateTimeException;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -119,6 +126,12 @@ public class SesionService {
 
 	private final List<CierreDeSesionObserver> observadores;
 
+	/**
+	 * DP-17 (AKINE E-7b): quien decide, antes de numerar, si la deuda del paciente va a ser el
+	 * precio particular. Hoy es billing; {@code encounter} no sabe quien.
+	 */
+	private final List<PrecioParticularDelCierre> requisitosDePrecio;
+
 	@SuppressWarnings("java:S107")
 	public SesionService(
 			SesionRepositoryPort sesiones,
@@ -138,7 +151,8 @@ public class SesionService {
 			SesionMedicionRepositoryPort mediciones,
 			TratamientoService tratamientoService,
 			MedicionService medicionService,
-			List<CierreDeSesionObserver> observadores) {
+			List<CierreDeSesionObserver> observadores,
+			List<PrecioParticularDelCierre> requisitosDePrecio) {
 
 		this.sesiones = sesiones;
 		this.versiones = versiones;
@@ -158,6 +172,7 @@ public class SesionService {
 		this.tratamientoService = tratamientoService;
 		this.medicionService = medicionService;
 		this.observadores = List.copyOf(observadores);
+		this.requisitosDePrecio = List.copyOf(requisitosDePrecio);
 	}
 
 	/**
@@ -309,6 +324,7 @@ public class SesionService {
 	 *   1. idempotencia   &lt;- ANTES de pedir un numero
 	 *   2. propiedad y version
 	 *   3. minimos del cierre
+	 *   3b. precio particular si la deuda lo necesita (DP-17)  &lt;- ANTES de pedir un numero
 	 *   4. asegurar el numerador  &lt;- en su PROPIA transaccion
 	 *   5. incrementar y leer     &lt;- toma el lock de fila y serializa
 	 *   5b. numero DENTRO DEL CASO, si la sesion tiene caso  &lt;- SIEMPRE despues del 5
@@ -351,9 +367,13 @@ public class SesionService {
 	 *
 	 * <h2>Cerrar no cobra</h2>
 	 *
-	 * <p>DP-06 y la regla de la etapa: "cierre clinico != cobro". Este metodo no crea ninguna
-	 * obligacion economica; la deriva despues AKINE-07.01 leyendo las sesiones cerradas. Atarlas
-	 * haria que un problema de facturacion bloquee una historia clinica.
+	 * <p>DP-06 y la regla de la etapa: "cierre clinico != cobro". El cierre no exige ningun pago;
+	 * la DEUDA la devengan los observadores dentro de esta transaccion (07.01, F-4).
+	 *
+	 * <p><b>Pero si exige que la deuda se pueda valorizar</b> (DP-17, AKINE E-7b, paso 3b): si la
+	 * del paciente es el precio particular y la oferta no lo tiene ese dia, 409
+	 * {@code oferta-sin-precio} antes de pedir ningun numero. Lo que antes era "se loguea y no se
+	 * devenga" dejaba prestaciones sin deuda, que nadie nota hasta cuadrar la caja del mes.
 	 *
 	 * <h2>READ_COMMITTED, como toda mutacion que toma un numerador</h2>
 	 *
@@ -392,6 +412,17 @@ public class SesionService {
 		exigirVersion(sesion, expectedVersion);
 		cierre.exigirMinimos();
 
+		Instant ahora = Instant.now();
+		long cerradaPor = actor.accountId();
+
+		// PASO 3b. DP-17 (AKINE E-7b): toda prestacion cerrada genera deuda. El hecho se arma
+		// ANTES de numerar —todo menos el numero— y, si la deuda del paciente va a ser el precio
+		// particular y la oferta no lo tiene ese dia, se corta aca con 409: sin correlativo
+		// consumido, sin autorizacion consumida, sin obligacion. Los observadores reciben despues
+		// exactamente este mismo hecho, con el numero puesto.
+		SesionCerrada hecho = hechoDelCierre(sesion, cierre, ahora, cerradaPor, organizationId);
+		exigirPrecioSiLaDeudaEsParticular(hecho);
+
 		// PASO 4 y 5. La fila se asegura afuera; el incremento toma el lock y serializa.
 		numeradorIniciador.asegurar(organizationId, sesion.getHistoriaClinicaId());
 		numerador.incrementar(organizationId, sesion.getHistoriaClinicaId());
@@ -402,8 +433,6 @@ public class SesionService {
 				? null
 				: casos.siguienteNumeroDeSesion(organizationId, sesion.getCasoId());
 
-		Instant ahora = Instant.now();
-		long cerradaPor = actor.accountId();
 		sesion.cerrar(cierre, numero, numeroEnCaso, ahora, cerradaPor);
 
 		// PASO 6b. El cierre inaugura el historial de contenido (06.06). La version 1 es lo que se
@@ -428,7 +457,8 @@ public class SesionService {
 		// Dentro de la transaccion, a proposito: una prestacion sin deuda NO se nota —nadie
 		// reclama una factura que nunca existio— y el centro descubre el agujero cuando cuadra
 		// la caja del mes. La contrapartida esta asumida en CierreDeSesionObserver.
-		notificarCierre(sesion, cierre, numero, ahora, cerradaPor, organizationId);
+		SesionCerrada aviso = hecho.conNumeroSesion(numero);
+		observadores.forEach(observador -> observador.alCerrar(aviso));
 
 		log.info("Sesion cerrada: sesionId={} numero={} numeroEnCaso={} historiaClinicaId={} "
 						+ "asistencia={}",
@@ -648,7 +678,7 @@ public class SesionService {
 	 * real en vez de la que recuerda.
 	 */
 	/**
-	 * Avisa del cierre a quien tenga que reaccionar.
+	 * Arma el hecho del cierre que reciben los observadores, todo menos el numero de sesion.
 	 *
 	 * <p>El precio se lee de la Oferta ACA y no en el observador: quien reacciona no tiene por que
 	 * conocer M27, y si cada observador lo leyera por su cuenta, dos de ellos podrian devengar
@@ -656,11 +686,9 @@ public class SesionService {
 	 *
 	 * <p>La lista puede estar vacia y eso es legitimo: { encounter} no sabe quien lo escucha.
 	 */
-	@SuppressWarnings("java:S107")
-	private void notificarCierre(
+	private SesionCerrada hechoDelCierre(
 			Sesion sesion,
 			CierreDeSesion cierre,
-			int numero,
 			Instant ahora,
 			long cerradaPorCuentaId,
 			long organizationId) {
@@ -682,13 +710,14 @@ public class SesionService {
 		var practicas = java.util.Set.copyOf(
 				tratamientos.practicasVigentesDe(organizationId, sesion.getId()));
 
-		var aviso = new SesionCerrada(
+		return new SesionCerrada(
 				sesion.getId(),
 				organizationId,
 				sesion.getConsultorioId(),
 				personaDe(sesion, organizationId),
 				sesion.getOfertaId(),
-				numero,
+				// Todavia sin numero: se pide despues de validar el precio (DP-17).
+				0,
 				cierre.asistencia() == Asistencia.PRESENTE,
 				ahora,
 				cerradaPorCuentaId,
@@ -706,8 +735,48 @@ public class SesionService {
 				// el devengo y el consumo tienen que ver la misma decision.
 				sesion.getTurnoId() != null && turnos.atendidoComoParticular(
 						organizationId, sesion.getConsultorioId(), sesion.getTurnoId()));
+	}
 
-		observadores.forEach(observador -> observador.alCerrar(aviso));
+	/**
+	 * DP-17 (AKINE E-7b): toda prestacion cerrada genera deuda. Si la deuda del paciente va a ser
+	 * el precio particular —recepcion Particular, oferta sin obra social o sin cobertura
+	 * aplicable— y la oferta no tiene precio el dia del cierre, el cierre se bloquea con 409
+	 * {@code oferta-sin-precio} hasta que se cargue el precio.
+	 *
+	 * <p>Quien decide si hace falta precio particular es quien devenga, con su propia regla: ver
+	 * {@link PrecioParticularDelCierre}. Con cobertura, el coseguro sale del arancel y no hace falta.
+	 * La pregunta se hace solo si falta el precio: con precio no hay nada que decidir, y asi el
+	 * caso comun no paga la busqueda de cobertura dos veces.
+	 */
+	private void exigirPrecioSiLaDeudaEsParticular(SesionCerrada hecho) {
+		boolean tarifada = hecho.precioDeLaOferta() != null && hecho.precioDeLaOferta().signum() > 0;
+		if (tarifada) {
+			return;
+		}
+		boolean exige = requisitosDePrecio.stream()
+				.anyMatch(requisito -> requisito.exigePrecioParticular(hecho));
+		if (exige) {
+			LocalDate dia = diaLocalDeLaSede(hecho);
+			log.info("Cierre bloqueado por oferta sin precio (DP-17): sesionId={} ofertaId={} dia={}",
+					hecho.sesionId(), hecho.ofertaId(), dia);
+			throw new OfertaSinPrecioException(hecho.ofertaId(), dia,
+					OfertaSinPrecioException.Motivo.de(hecho));
+		}
+	}
+
+	/** El dia del cierre en la zona de la sede; UTC si la sede no resuelve, como el devengo. */
+	private LocalDate diaLocalDeLaSede(SesionCerrada hecho) {
+		ZoneId zona = consultorios.find(hecho.organizationId(), hecho.consultorioId())
+				.map(ConsultorioSnapshot::timezone)
+				.map(declarada -> {
+					try {
+						return ZoneId.of(declarada);
+					} catch (DateTimeException invalida) {
+						return (ZoneId) ZoneOffset.UTC;
+					}
+				})
+				.orElse(ZoneOffset.UTC);
+		return LocalDate.ofInstant(hecho.cerradaEn(), zona);
 	}
 
 	/**
