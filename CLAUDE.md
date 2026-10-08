@@ -401,7 +401,7 @@ locales**: el barrido de contención no dejó ninguna afuera. F0 a F7 completas 
 | Módulos | **14**: los doce anteriores más **`reporting`** (M23, 07.06) y **`activity`** (M28/M29, F9) |
 | Migraciones | **V1–V64**, menos `V26`, `V29`, `V31` y `V62`, que quedaron vacías. `V45`–`V64` se aplicaron **contra un motor por primera vez** el 29/09 |
 | Tests | **2.349 unitarias + 437 de integración**, 0 fallos, 1 diferida (7b). `./mvnw verify` en **13:03 min** |
-| Cobertura | **06/10/2026:** instrucción **86,11 %** · línea **87,36 %** · rama **74,48 %**, sobre 3.044 unitarias + 602 de integración. El gate **volvió a `0.80`** en línea e instrucción — ver abajo. (29/09: 71,15 % · 73,03 % · 63,46 %, gate en 0,73/0,71) |
+| Cobertura | **07/10/2026 (G-11, sobre `8fe1fae`):** instrucción **87,36 %** · línea **88,70 %** · rama **76,30 %**, sobre 3.297 unitarias + 737 de integración. Gate en **`0.80`** línea e instrucción, sin cambios — ver abajo. (06/10: 86,11 % · 87,36 % · 74,48 %; 29/09: 71,15 % · 73,03 % · 63,46 %, gate en 0,73/0,71) |
 | Docker | **Funciona** (29.2.0). Era el bloqueo que mandaba sobre todo desde el 19/09 |
 
 #### El gate de cobertura bajó, y es deuda, no una decisión de calidad
@@ -413,6 +413,21 @@ locales**: el barrido de contención no dejó ninguna afuera. F0 a F7 completas 
 > instrucción** —el tope que fija el plan, aunque lo medido da más—. Los módulos que hoy quedan más
 > abajo son **`reporting` 54,24 %**, `clinical` 74,40 % y `offering` 77,51 % de línea. `BRANCH`
 > sigue sin gate: 74,48 % es decisión pendiente. Lo que sigue es la historia del 29/09.
+>
+> **Remedido el 07/10/2026 (G-11), sobre `main` `8fe1fae`** (contrato 0.69.0): `./mvnw -o verify`
+> con **3.276 unitarias y 737 de integración, 0 fallos**, 1 salteada (la 7b), y `jacoco:check` en
+> verde. BUNDLE antes de los tests nuevos: **línea 87,58 % · instrucción 86,12 % · rama 75,55 %**.
+> Ningún IT falló ni se colgó. Los tres módulos más bajos eran `reporting` 64,04 %, `clinical`
+> 75,29 % y `offering` 79,13 % de línea, y en los tres el hueco tenía nombre: `ReporteReadIT` entra
+> por el servicio, así que **nada ejercitaba el controller, los DTOs, el handler ni el CSV de
+> reportes**; `DerivacionClinicaService` (derivar un participante de clase al circuito clínico)
+> tenía 13 de 173 líneas cubiertas; y el cambio de fin y la baja del precio particular no tenían
+> test. Con 21 unitarios nuevos —`ReporteControllerTest`, `DerivacionClinicaServiceTest` y tres
+> casos en `OfertaPrecioParticularServiceTest`— el BUNDLE queda en **línea 88,70 % · instrucción
+> 87,36 % · rama 76,30 %**: `reporting` 93,86 %, `clinical` 82,09 %, `offering` **79,86 %** (sigue
+> apenas abajo del 80: lo que falta es la capa REST de servicios, habilitaciones y precios, sin
+> slice de `@WebMvcTest`). El "después" se midió agregando los tests nuevos al `jacoco.exec` de la
+> corrida completa, con `src/main` sin cambios. `BRANCH` sigue sin gate: 76,30 %.
 
 No bajó por la integración: bajó porque entraron diez etapas cuya cobertura **nunca se había
 medido**, porque `jacoco:check` corre en `verify` y Docker estuvo caído todo ese tramo. El faltante
