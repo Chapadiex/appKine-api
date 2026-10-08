@@ -183,6 +183,10 @@ Endpoints: `GET`/`POST /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/p
 
 ## 7. RF-M16-007 — importación masiva con preview: diseñada, fuera de este paquete
 
+> **Implementada por B-7** (`docs/diseno/AKINE-B-7-importacion-aranceles.md`, contrato 0.71.0)
+> siguiendo este diseño, salvo el `Idempotency-Key`: el módulo no lo usa y el reintento queda
+> cubierto por invariante.
+
 Entró B-3 sin ella porque el paquete ya cambia tres módulos y tres consumidores de F-4/E-4, y la
 importación no comparte código con lo anterior más allá de las validaciones del alta. Diseño para la
 etapa que la tome:

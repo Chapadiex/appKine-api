@@ -11,10 +11,7 @@ import com.akine.contracting.domain.exception.ArancelSolapadoException;
 import com.akine.contracting.domain.exception.ArancelYaInactivoException;
 import com.akine.contracting.domain.exception.ConvenioNotAccessibleException;
 import com.akine.contracting.domain.exception.ConvenioYaInactivoException;
-import com.akine.contracting.domain.exception.OfertaNoAccesibleException;
-import com.akine.contracting.domain.exception.OfertaSinObraSocialException;
 import com.akine.contracting.domain.exception.PracticaNoAccesibleException;
-import com.akine.contracting.domain.exception.PracticaNoHabilitadaEnOfertaException;
 import com.akine.contracting.domain.exception.SedeNoAccesibleException;
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioArancelRepositoryPort;
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioLockRepositoryPort;
@@ -22,7 +19,6 @@ import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioReposit
 import com.akine.contracting.spi.ResolucionDeArancel;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
-import com.akine.offering.spi.PrecioDeOferta;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
@@ -404,32 +400,12 @@ public class ArancelService {
 		}
 	}
 
-	/**
-	 * B-3 (RF-M16-008): la oferta es de ESTA sede, admite obra social y declara la practica (A-9).
-	 *
-	 * <p>Lectura viva de {@code offering.spi} sin lock de la oferta: si alguien quita la practica o
-	 * apaga la obra social justo despues, el arancel queda como dato que no resuelve —el devengo y
-	 * la cobertura aplicable vuelven a mirar la oferta al usarlo— y no como dato que cobra mal.
-	 * No se filtra por estado de la oferta: una oferta dada de baja no tiene practicas activas que
-	 * declarar, y {@code find} devuelve las inactivas a proposito.
-	 */
+	/** B-3 (RF-M16-008): la regla vive en {@link AsociacionDeOferta}, compartida con B-7. */
 	private void exigirOfertaAsociable(
 			long organizationId, long consultorioId, long ofertaId, long practicaId) {
 
-		ofertas.find(organizationId, consultorioId, ofertaId)
-				.orElseThrow(() -> new OfertaNoAccesibleException(ofertaId));
-		boolean admiteObraSocial = ofertas.precioDe(organizationId, consultorioId, ofertaId)
-				.map(PrecioDeOferta::admiteObraSocial)
-				.orElse(false);
-		if (!admiteObraSocial) {
-			throw new OfertaSinObraSocialException(ofertaId);
-		}
-		boolean declarada = practicasDeOferta
-				.practicasHabilitadas(organizationId, consultorioId, ofertaId).stream()
-				.anyMatch(p -> p.practicaId() == practicaId);
-		if (!declarada) {
-			throw new PracticaNoHabilitadaEnOfertaException(practicaId, ofertaId);
-		}
+		AsociacionDeOferta.exigir(
+				ofertas, practicasDeOferta, organizationId, consultorioId, ofertaId, practicaId);
 	}
 
 	private void exigirSedeDelTenant(long organizationId, long consultorioId) {

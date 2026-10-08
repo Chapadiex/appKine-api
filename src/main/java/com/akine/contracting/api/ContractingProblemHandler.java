@@ -1,5 +1,7 @@
 package com.akine.contracting.api;
 
+import com.akine.contracting.api.dto.FilaImportacionArancelResponse;
+import com.akine.contracting.application.ImportacionArancelesRechazadaException;
 import com.akine.contracting.domain.exception.ArancelNotAccessibleException;
 import com.akine.contracting.domain.exception.ArancelSolapadoException;
 import com.akine.contracting.domain.exception.ArancelYaInactivoException;
@@ -85,6 +87,8 @@ public class ContractingProblemHandler {
 	private static final URI ARANCEL_SOLAPADO = ProblemType.ARANCEL_SOLAPADO.uri();
 	private static final URI ARANCEL_INACTIVO = ProblemType.ARANCEL_INACTIVO.uri();
 	private static final URI ARANCEL_ALREADY_INACTIVE = ProblemType.ARANCEL_ALREADY_INACTIVE.uri();
+	private static final URI IMPORTACION_RECHAZADA =
+			ProblemType.IMPORTACION_ARANCELES_RECHAZADA.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -322,6 +326,28 @@ public class ContractingProblemHandler {
 	public ProblemDetail handleOfertaNoAccesible(OfertaNoAccesibleException exception) {
 		log.debug("Oferta no accesible: ofertaId={}", exception.getOfertaId());
 		return noEncontrado("La oferta no existe en esta sede.");
+	}
+
+	/**
+	 * B-7 (RF-M16-007): la confirmacion encontro filas que no entran y no escribio ninguna. Viaja el
+	 * desenlace de TODAS las filas, tal como las vio el servidor bajo el lock.
+	 */
+	@ExceptionHandler(ImportacionArancelesRechazadaException.class)
+	public ProblemDetail handleImportacionRechazada(
+			ImportacionArancelesRechazadaException exception) {
+
+		log.debug(exception.getMessage());
+		long rechazadas = exception.getFilas().stream().filter(f -> f.rechazada()).count();
+		ProblemDetail problem = conflicto(
+				rechazadas + " de " + exception.getFilas().size() + " filas no entran, y la "
+						+ "importacion es todo o nada: no se cargo ningun arancel. Corregi las "
+						+ "filas rechazadas y volve a confirmar.",
+				"Importacion de aranceles rechazada",
+				IMPORTACION_RECHAZADA);
+		problem.setProperty("filas", exception.getFilas().stream()
+				.map(FilaImportacionArancelResponse::de)
+				.toList());
+		return problem;
 	}
 
 	@ExceptionHandler(PracticaNoHabilitadaEnOfertaException.class)

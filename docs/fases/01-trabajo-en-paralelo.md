@@ -175,6 +175,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | ~~**B-2**~~ | ~~`spi` "cobertura vigente de esta persona para esta práctica en esta fecha"~~ — hecho (`cfa85d8`, antes del 06/10) | api | M | — | F3 |
 | B-5 | Contribuyente de cobertura al Paciente 360 — **backend hecho** (#34, 06/10, sin cambio de contrato); falta la pantalla | api + web | S | — | F3 |
 | B-6 | E2E persona → paciente → cobertura → orden → autorización → vencimiento; `AdjuntoConcurrenteIT` | web + api | M | — | F3 |
+| B-7 | Importación masiva de aranceles de un convenio con vista previa (RF-M16-007) — **backend hecho** (sin migración, contrato 0.71.0, 07/10): `POST /consultorios/{id}/convenios/{convenioId}/aranceles/importacion` con `modo = PREVIEW \| CONFIRMAR`; resultado por fila con el problem type del alta unitaria, confirmación todo o nada bajo el lock de `convenio_lock` (`docs/diseno/AKINE-B-7-importacion-aranceles.md`); falta la pantalla | api + web | M | B-3 | F3 |
 | ~~**C-2**~~ | ~~`HistoriaClinicaController`: obtener-o-abrir idempotente por persona, resumen, antecedentes~~ — hecho (contrato 0.45.0, antes del 06/10) | api | M | — | F4 |
 | ~~**C-3**~~ | ~~`RelacionAsistencialProbe` real sobre turnos y sesiones (implementación fuera de `clinical`, vía `spi`)~~ — hecho (antes del 06/10) | api | M | — | F4 |
 | ~~C-5~~ | ~~04.03 unique de caso activo (`V67`); 04.04 el plan no se activa sin ítems~~ — hecho sin `V67`: RN-M10-002 admite varios casos activos (antes del 06/10) | api | S | — | F4 |
