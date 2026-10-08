@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.72.0
+  version: 0.76.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -4971,7 +4971,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Periodo solapado (convenio-solapado), convenio dado de baja\
-            \ (convenio-inactivo) o version desactualizada (conflict)"
+            \ (convenio-inactivo) o version desactualizada (concurrent-modification)"
       summary: "Editar un convenio, o cerrar su vigencia"
       tags:
       - Convenios y aranceles
@@ -5341,7 +5341,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Periodo solapado (arancel-solapado), arancel dado de baja\
-            \ (arancel-inactivo) o version desactualizada (conflict)"
+            \ (arancel-inactivo) o version desactualizada (concurrent-modification)"
       summary: Editar un arancel
       tags:
       - Convenios y aranceles
@@ -6668,7 +6668,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Nombre comercial repetido (oferta-nombre-comercial-taken),\
-            \ oferta dada de baja (oferta-inactiva), o version desactualizada (conflict)"
+            \ oferta dada de baja (oferta-inactiva), o version desactualizada (concurrent-modification)"
       summary: Editar una oferta de la sede
       tags:
       - Servicios y ofertas
@@ -6889,8 +6889,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Version desactualizada (conflict), oferta dada de baja (oferta-inactiva),\
-            \ o sede no operable (consultorio-no-operable)"
+          description: "Version desactualizada (concurrent-modification), oferta dada\
+            \ de baja (oferta-inactiva), o sede no operable (consultorio-no-operable)"
       summary: Fijar en que espacios puede prestarse la oferta
       tags:
       - Servicios y ofertas
@@ -6959,8 +6959,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Version desactualizada (conflict), oferta dada de baja (oferta-inactiva),\
-            \ o sede no operable (consultorio-no-operable)"
+          description: "Version desactualizada (concurrent-modification), oferta dada\
+            \ de baja (oferta-inactiva), o sede no operable (consultorio-no-operable)"
       summary: Fijar que profesionales pueden prestar la oferta
       tags:
       - Servicios y ofertas
@@ -7026,7 +7026,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: Oferta dada de baja (oferta-inactiva) o version desactualizada
-            (conflict)
+            (concurrent-modification)
       summary: Cambiar la politica de prepago de una oferta
       tags:
       - Servicios y ofertas
@@ -7145,9 +7145,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Version desactualizada (conflict), practica que no se puede\
-            \ elegir (practica-no-utilizable), oferta dada de baja (oferta-inactiva),\
-            \ o sede no operable (consultorio-no-operable)"
+          description: "Version desactualizada (concurrent-modification), practica\
+            \ que no se puede elegir (practica-no-utilizable), oferta dada de baja\
+            \ (oferta-inactiva), o sede no operable (consultorio-no-operable)"
       summary: Fijar que practicas puede prestar la oferta y cual es la principal
       tags:
       - Servicios y ofertas
@@ -7399,7 +7399,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Periodo solapado (precio-particular-solapado), precio dado\
-            \ de baja (precio-particular-inactivo) o version desactualizada (conflict)"
+            \ de baja (precio-particular-inactivo) o version desactualizada (concurrent-modification)"
       summary: Cerrar o reabrir la vigencia de un precio particular
       tags:
       - Servicios y ofertas
@@ -8748,7 +8748,7 @@ paths:
 
         El PROFESIONAL no se puede cambiar: reasignar un bloque a otra persona no es una edicion sino un bloque nuevo (RN-M05-001), y permitirlo dejaria la autoria historica apuntando a quien nunca atendio en esa franja.
 
-        version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 con type conflict —el generico, NO concurrent-modification, que es el que emite organization para el mismo hecho— y el cliente recarga. Sin eso dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se entere.
+        version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 concurrent-modification —el mismo type en todos los modulos— y el cliente recarga. Sin eso dos ediciones simultaneas se pisan y el segundo en guardar borra el cambio del primero sin que nadie se entere.
 
         AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El impacto se INFORMA, no bloquea: quien decide que hacer con esos turnos es la pantalla, y para saberlo ANTES de confirmar esta POST .../impacto-de-edicion. Cuenta los turnos pendientes de ese profesional en esa sede, entre ahora y el fin de vigencia mas lejano entre el bloque anterior y el editado (horizonte de noventa dias), que la disponibilidad efectiva cubria antes del cambio y no cubre despues. Desde 0.70.0 es la cuenta exacta: un turno que cae en otro bloque vigente del mismo profesional ya no cuenta.
 
@@ -8817,8 +8817,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Bloque dado de baja (bloque-inactivo), solapamiento con otro\
-            \ activo (bloque-solapado), version desactualizada (conflict), o profesional\
-            \ sin vinculo vigente en esa sede (profesional-no-vinculado)"
+            \ activo (bloque-solapado), version desactualizada (concurrent-modification),\
+            \ o profesional sin vinculo vigente en esa sede (profesional-no-vinculado)"
       summary: Edicion de un bloque de disponibilidad
       tags:
       - Disponibilidad profesional
@@ -9475,7 +9475,7 @@ paths:
 
         Los pasados, los cancelados o ausentes, los que estan en espera y los que tienen atencion **no se tocan**: vuelven en `omitidos` (DP-04).
 
-        **Confirmacion explicita**: `cantidadConfirmada` tiene que coincidir con los afectados que hay al ejecutar. Si alguien movio o cancelo un turno entre medio, 409 `conflict` y no se cancela nada. No es idempotente: repetirla da 409.
+        **Confirmacion explicita**: `cantidadConfirmada` tiene que coincidir con los afectados que hay al ejecutar. Si alguien movio o cancelo un turno entre medio, 409 `conflict` —no `concurrent-modification`: hay que volver a previsualizar, no recargar— y no se cancela nada. No es idempotente: repetirla da 409.
       operationId: cancelarSerieDeTurnos
       parameters:
       - in: path
@@ -12308,7 +12308,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Nombre o CUIT repetido, financiador dado de baja (financiador-inactivo),\
-            \ o version desactualizada (conflict)"
+            \ o version desactualizada (concurrent-modification)"
       summary: Editar un financiador
       tags:
       - Financiadores y planes
@@ -12571,7 +12571,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Nombre repetido (plan-cobertura-nombre-taken), plan dado de\
-            \ baja (plan-cobertura-inactivo), o version desactualizada (conflict)"
+            \ baja (plan-cobertura-inactivo), o version desactualizada (concurrent-modification)"
       summary: "Editar un plan, o cerrar su vigencia"
       tags:
       - Financiadores y planes
@@ -14268,7 +14268,7 @@ paths:
 
         El slug no se puede cambiar: se usa en URLs y en soporte, y renombrarlo rompe enlaces. Cambiar de identificador es crear otro tenant, no editar este.
 
-        La version enviada se compara antes de mutar. Si quedo vieja porque alguien mas edito mientras tanto, la respuesta es 409 conflict y hay que releer y reintentar: es preferible a pisar en silencio el cambio de otro.
+        La version enviada se compara antes de mutar. Si quedo vieja porque alguien mas edito mientras tanto, la respuesta es 409 concurrent-modification y hay que releer y reintentar: es preferible a pisar en silencio el cambio de otro.
 
         Los campos omitidos o vacios se dejan como estan; no los borra.
       operationId: updateOrganization
@@ -16133,7 +16133,7 @@ paths:
 
         Reintentar un cambio ya aplicado responde applied=false y no genera una segunda fila de historico ni un segundo evento: un reintento no puede producir un segundo efecto.
 
-        Requiere la suscripcion ACTIVA (409 subscription-suspended si no lo esta) y la version vigente (409 conflict si quedo vieja).
+        Requiere la suscripcion ACTIVA (409 subscription-suspended si no lo esta) y la version vigente (409 concurrent-modification si quedo vieja).
       operationId: changeSubscriptionPlan
       parameters:
       - description: Identificador de la organizacion
@@ -16181,7 +16181,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: subscription-suspended si la suscripcion no esta ACTIVA; conflict
+          description: subscription-suspended si la suscripcion no esta ACTIVA; concurrent-modification
             si la version enviada quedo vieja
       summary: Cambiar el plan contratado
       tags:
@@ -16302,7 +16302,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: invalid-subscription-transition si la maquina de estados no
-            admite el salto; conflict si expectedStatus no coincide con el real
+            admite el salto; concurrent-modification si expectedStatus no coincide
+            con el real
       summary: Aplicar una transicion de estado a la suscripcion
       tags:
       - Suscripciones
@@ -17288,8 +17289,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Autorizacion dada de baja (autorizacion-inactiva), version\
-            \ desactualizada (conflict), numero en uso (documento-numero-taken) o\
-            \ la edicion crea un solapamiento (autorizacion-superpuesta)"
+            \ desactualizada (concurrent-modification), numero en uso (documento-numero-taken)\
+            \ o la edicion crea un solapamiento (autorizacion-superpuesta)"
       summary: Corregir una autorizacion
       tags:
       - Autorizaciones
@@ -17425,7 +17426,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Estado terminal (autorizacion-transicion-no-permitida), autorizacion\
-            \ dada de baja (autorizacion-inactiva), version desactualizada (conflict)\
+            \ dada de baja (autorizacion-inactiva), version desactualizada (concurrent-modification)\
             \ o la aprobacion se solapa con otra (autorizacion-superpuesta)"
       summary: Aplicar la respuesta del financiador
       tags:
@@ -17806,7 +17807,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Cobertura dada de baja (cobertura-inactiva), version desactualizada\
-            \ (conflict) o la edicion crea un solapamiento (cobertura-superpuesta)"
+            \ (concurrent-modification) o la edicion crea un solapamiento (cobertura-superpuesta)"
       summary: "Editar una cobertura, o finalizar su vigencia"
       tags:
       - Coberturas del paciente
@@ -18208,7 +18209,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Orden dada de baja (orden-inactiva), version desactualizada\
-            \ (conflict) o numero en uso (documento-numero-taken)"
+            \ (concurrent-modification) o numero en uso (documento-numero-taken)"
       summary: Corregir una orden medica
       tags:
       - Ordenes medicas
@@ -19508,7 +19509,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Nombre repetido (servicio-nombre-taken), servicio dado de\
-            \ baja (servicio-inactivo), o version desactualizada (conflict)"
+            \ baja (servicio-inactivo), o version desactualizada (concurrent-modification)"
       summary: Editar un servicio del catalogo global
       tags:
       - Servicios y ofertas
@@ -32681,7 +32682,7 @@ components:
           type: integer
           format: int64
           description: "Version que el cliente leyo. Se compara ANTES de mutar: si\
-            \ quedo vieja la respuesta es 409 con type conflict y hay que recargar.\
+            \ quedo vieja la respuesta es 409 concurrent-modification y hay que recargar.\
             \ Sin esto dos ediciones simultaneas se pisan y el segundo en guardar\
             \ borra el cambio del primero sin que nadie se entere"
           example: 0
@@ -33004,7 +33005,7 @@ components:
           type: integer
           format: int64
           description: Version leida. Si no coincide con la vigente la edicion se
-            rechaza con 409 conflict en vez de pisar el cambio de otro
+            rechaza con 409 concurrent-modification en vez de pisar el cambio de otro
           example: 0
         nombre:
           type: string
@@ -33103,7 +33104,7 @@ components:
           type: integer
           format: int64
           description: "Version que el cliente cree estar editando. Si la fila avanzo\
-            \ desde entonces, responde 409 conflict y no pisa nada"
+            \ desde entonces, responde 409 concurrent-modification y no pisa nada"
           example: 0
           minimum: 0
         generaRegistroClinico:
@@ -33331,7 +33332,7 @@ components:
           type: integer
           format: int64
           description: Version leida. Si no coincide con la vigente la edicion se
-            rechaza con 409 conflict en vez de pisar el cambio de otro
+            rechaza con 409 concurrent-modification en vez de pisar el cambio de otro
           example: 0
         moneda:
           type: string
@@ -33369,7 +33370,7 @@ components:
           type: integer
           format: int64
           description: "Version que el cliente cree estar editando. Si la fila avanzo\
-            \ desde entonces, responde 409 conflict y no pisa nada"
+            \ desde entonces, responde 409 concurrent-modification y no pisa nada"
           example: 0
           minimum: 0
         generaRegistroClinicoDefault:

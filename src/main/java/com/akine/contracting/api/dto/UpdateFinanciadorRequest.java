@@ -45,7 +45,7 @@ public record UpdateFinanciadorRequest(
 
 		@Schema(
 				description = "Version leida. Si no coincide con la vigente la edicion se rechaza "
-						+ "con 409 conflict en vez de pisar el cambio de otro",
+						+ "con 409 concurrent-modification en vez de pisar el cambio de otro",
 				example = "0",
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		long expectedVersion) {

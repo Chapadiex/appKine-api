@@ -48,7 +48,10 @@ public enum ProblemType {
 	FORBIDDEN("forbidden"),
 	/** Recurso inexistente, o de otro tenant (404). Los dos casos son indistinguibles. */
 	NOT_FOUND("not-found"),
-	/** Conflicto de estado sin un tipo mas especifico (409). */
+	/**
+	 * Conflicto de NEGOCIO sin un tipo mas especifico (409): recargar no lo resuelve. Nunca una
+	 * version vieja, que es {@link #CONCURRENT_MODIFICATION} (DP-21).
+	 */
 	CONFLICT("conflict"),
 	/** Demasiados intentos en la ventana (429). */
 	RATE_LIMITED("rate-limited"),
@@ -80,7 +83,12 @@ public enum ProblemType {
 	SUBSCRIPTION_SUSPENDED("subscription-suspended"),
 	/** La misma clave de idempotencia se reuso con un cuerpo distinto. */
 	IDEMPOTENCY_KEY_CONFLICT("idempotency-key-conflict"),
-	/** La version enviada quedo vieja: releer y reintentar. */
+	/**
+	 * Otra persona modifico el registro mientras el cliente trabajaba: recargar y reintentar
+	 * (409). Es el unico {@code type} de concurrencia optimista en todos los modulos (DP-21): version
+	 * comparada a mano, {@code @Version} de JPA y force-increment. Lo emite
+	 * {@code GlobalExceptionHandler}.
+	 */
 	CONCURRENT_MODIFICATION("concurrent-modification"),
 
 	// --- Colaboradores --------------------------------------------------------------------

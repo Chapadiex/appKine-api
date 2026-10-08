@@ -151,7 +151,7 @@ public class OfertaPracticaController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "Version desactualizada (conflict), practica que no se puede "
+					description = "Version desactualizada (concurrent-modification), practica que no se puede "
 							+ "elegir (practica-no-utilizable), oferta dada de baja "
 							+ "(oferta-inactiva), o sede no operable (consultorio-no-operable)",
 					content = @Content(

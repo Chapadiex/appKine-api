@@ -343,8 +343,9 @@ class OrganizationControllerTest {
 						.with(ApiActors.miembro(7L)))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.status").value(409))
-				.andExpect(jsonPath("$.type").value("https://akine.app/problems/conflict"))
-				.andExpect(jsonPath("$.title").value("Conflicto de concurrencia"));
+				// DP-21: la version vieja es concurrent-modification, no el conflict generico.
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/concurrent-modification"))
+				.andExpect(jsonPath("$.title").value("Modificacion concurrente"));
 	}
 
 	@Test

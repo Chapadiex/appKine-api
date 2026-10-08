@@ -185,7 +185,7 @@ public class OfertaPrecioParticularController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "409",
 					description = "Periodo solapado (precio-particular-solapado), precio dado de baja "
-							+ "(precio-particular-inactivo) o version desactualizada (conflict)",
+							+ "(precio-particular-inactivo) o version desactualizada (concurrent-modification)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<PrecioParticularResponse> cambiarFin(

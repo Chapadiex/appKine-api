@@ -48,8 +48,9 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  *   <li><b>403 {@code forbidden}</b> — el actor esta dentro de su alcance pero le falta el
  *       permiso. Es el unico caso donde negar no revela nada que el actor no supiera ya.</li>
  *   <li><b>409</b> — el pedido es legitimo pero choca con el estado actual: una transicion que
- *       la maquina de estados no admite, una version desactualizada, un limite de plan
- *       alcanzado.</li>
+ *       la maquina de estados no admite o un limite de plan alcanzado ({@code conflict} o un
+ *       {@code type} propio), o una version desactualizada ({@code concurrent-modification},
+ *       DP-21).</li>
  * </ul>
  *
  * <h2>Aca no se emite ningun 401</h2>
@@ -74,7 +75,16 @@ public class GlobalExceptionHandler {
 	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 	private static final URI FORBIDDEN = ProblemType.FORBIDDEN.uri();
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
+	private static final URI CONCURRENT_MODIFICATION = ProblemType.CONCURRENT_MODIFICATION.uri();
 	private static final URI INTERNAL_ERROR = ProblemType.INTERNAL_ERROR.uri();
+
+	/**
+	 * Lo que lee el usuario ante cualquier modificacion concurrente (DP-21): que no hizo nada mal
+	 * —otra persona llego primero— y que recargar lo resuelve.
+	 */
+	public static final String CONCURRENT_MODIFICATION_DETAIL =
+			"Otra persona modifico este registro mientras usted trabajaba. "
+					+ "Vuelva a cargarlo e intente de nuevo.";
 
 	/**
 	 * Falla de validacion de un {@code @Valid}. Devuelve los campos rechazados: es
@@ -250,21 +260,34 @@ public class GlobalExceptionHandler {
 	}
 
 	/**
-	 * La version enviada por el cliente quedo vieja, o el estado actual no es el esperado.
+	 * La version enviada por el cliente quedo vieja, el estado que creia vigente ya no lo es, o el
+	 * {@code @Version} de JPA detecto que otro escritor llego primero.
 	 *
 	 * <p>No es un fallo del servidor ni del cliente: dos operaciones concurrentes tocaron el
-	 * mismo recurso. La respuesta correcta es pedir releer y reintentar, no pisar el cambio de
+	 * mismo recurso. La respuesta correcta es pedir recargar y reintentar, no pisar el cambio de
 	 * otro en silencio.
+	 *
+	 * <p><b>DP-21: es el UNICO mapeo de concurrencia del sistema y siempre emite
+	 * {@code concurrent-modification}.</b> Cubre la comparacion a mano de la {@code version} del
+	 * request —los {@code exigirVersion} de cada servicio, que lanzan el
+	 * {@code OptimisticLockingFailureException} plano—, el {@code @Version} de JPA
+	 * ({@code ObjectOptimisticLockingFailureException}, subclase) y el force-increment. Hasta DP-21
+	 * este metodo emitia el {@code conflict} generico y solo {@code OrganizationProblemHandler}
+	 * emitia {@code concurrent-modification}, y solo para la subclase de JPA: el mismo hecho salia
+	 * con dos {@code type} segun el modulo y segun quien lo detectara.
+	 *
+	 * <p>{@code conflict} queda para los conflictos de negocio, que recargar no resuelve. Por eso
+	 * ningun servicio puede lanzar esta excepcion para uno de ellos: lanzarla le promete al cliente
+	 * que releer y reintentar alcanza.
 	 */
 	@ExceptionHandler(OptimisticLockingFailureException.class)
 	public ProblemDetail handleOptimisticLocking(OptimisticLockingFailureException exception) {
-		log.info("Conflicto de concurrencia: {}", exception.getMessage());
+		log.info("Modificacion concurrente: {}", exception.getMessage());
 
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-				HttpStatus.CONFLICT,
-				"El recurso fue modificado por otra operacion. Vuelva a leerlo y reintente.");
-		problem.setTitle("Conflicto de concurrencia");
-		problem.setType(CONFLICT);
+				HttpStatus.CONFLICT, CONCURRENT_MODIFICATION_DETAIL);
+		problem.setTitle("Modificacion concurrente");
+		problem.setType(CONCURRENT_MODIFICATION);
 		return problem;
 	}
 

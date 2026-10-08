@@ -132,6 +132,22 @@ class SesionControllerTest {
 	}
 
 	@Test
+	@DisplayName("DP-21: guardar sobre una version vieja es 409 concurrent-modification, no conflict")
+	void version_vieja_es_concurrent_modification() throws Exception {
+		given(sesionService.evaluar(any(), anyLong(), anyLong(), any(), anyLong()))
+				.willThrow(new org.springframework.dao.OptimisticLockingFailureException(
+						"La sesion 501 cambio desde que se leyo: version 3 contra 4"));
+
+		mockMvc.perform(put(RUTA + "/501/evaluacion")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"dolorEva\":6,\"version\":3}")
+						.with(miembro(8L)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type")
+						.value("https://akine.app/problems/concurrent-modification"));
+	}
+
+	@Test
 	@DisplayName("Un dolor fuera de la escala muere en la validacion: 400 sin tocar el servicio")
 	void dolor_fuera_de_escala_es_400() throws Exception {
 		mockMvc.perform(put(RUTA + "/501/evaluacion")

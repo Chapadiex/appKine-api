@@ -318,17 +318,15 @@ class ServicioServiceTest {
 	// =================================================================================
 
 	@Test
-	@DisplayName("Editar con una version vieja da 409 con type conflict, y no pisa el cambio ajeno")
-	void editar_con_version_desactualizada_da_conflict() {
+	@DisplayName("Editar con una version vieja da 409 concurrent-modification, y no pisa el cambio ajeno")
+	void editar_con_version_desactualizada_da_concurrent_modification() {
 		Servicio servicio = servicioVigente();
 		ReflectionTestUtils.setField(servicio, "version", 3L);
 		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(servicio));
 
 		assertThatThrownBy(() -> service.editar(plataforma, SERVICIO_ID, edicionDeNombre("Otro nombre")))
-				// La clase EXACTA importa: OptimisticLockingFailureException plano lo mapea el
-				// handler global a type = conflict. La subclase de JPA la mapea el advice de
-				// organization a concurrent-modification, que es la inexactitud que arrastran los
-				// contratos publicados de 02.02 y 02.05 y que esta etapa no repite.
+				// GlobalExceptionHandler mapea el plano —y la subclase de JPA— a
+				// concurrent-modification (DP-21).
 				.isExactlyInstanceOf(OptimisticLockingFailureException.class);
 
 		assertThat(servicio.getNombre()).isEqualTo("Kinesiologia deportiva");

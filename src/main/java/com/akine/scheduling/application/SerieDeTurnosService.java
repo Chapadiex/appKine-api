@@ -27,6 +27,7 @@ import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
 import com.akine.scheduling.domain.exception.SlotCompletoException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
+import com.akine.scheduling.domain.exception.CantidadConfirmadaDesactualizadaException;
 import com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.AgendaSedeRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoEventoRepositoryPort;
@@ -35,7 +36,6 @@ import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoSerieRepo
 import com.akine.scheduling.spi.AtencionProbe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -345,7 +345,7 @@ public class SerieDeTurnosService {
 	 * Cancela los turnos pendientes del alcance. Cada uno pasa por la MISMA cancelacion de 05.03:
 	 * motivo, actor, baja logica que libera el lugar, evento, auditoria y aviso.
 	 *
-	 * @throws OptimisticLockingFailureException     la cantidad confirmada ya no es la real (409)
+	 * @throws CantidadConfirmadaDesactualizadaException la cantidad confirmada ya no es la real (409)
 	 * @throws TransicionDeTurnoNoPermitidaException no queda ningun turno pendiente en el alcance (409)
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
@@ -388,7 +388,7 @@ public class SerieDeTurnosService {
 	 * horario de verano. Un turno que ya se habia movido solo conserva su diferencia.
 	 *
 	 * @throws OcurrenciaSinLugarException       un destino no tiene lugar: no se movio nada (409)
-	 * @throws OptimisticLockingFailureException la cantidad confirmada ya no es la real (409)
+	 * @throws CantidadConfirmadaDesactualizadaException la cantidad confirmada ya no es la real (409)
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public AlcanceDeSerieView reprogramar(
@@ -498,10 +498,10 @@ public class SerieDeTurnosService {
 					"no queda ningun turno pendiente de la serie " + serie.getId() + " en ese alcance");
 		}
 		if (seleccion.afectados().size() != command.cantidadConfirmada()) {
-			throw new OptimisticLockingFailureException(
-					"La serie " + serie.getId() + " cambio desde la previsualizacion: el alcance "
-							+ command.alcance() + " afecta " + seleccion.afectados().size()
-							+ " turnos y se confirmaron " + command.cantidadConfirmada());
+			// Conflicto de negocio, no de concurrencia (DP-21): ver la excepcion.
+			throw new CantidadConfirmadaDesactualizadaException(serie.getId(),
+					String.valueOf(command.alcance()), seleccion.afectados().size(),
+					command.cantidadConfirmada());
 		}
 	}
 

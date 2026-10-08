@@ -1,6 +1,7 @@
 package com.akine.scheduling.api;
 
 import com.akine.platform.spi.problem.ProblemType;
+import com.akine.scheduling.domain.exception.CantidadConfirmadaDesactualizadaException;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
 import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
@@ -43,6 +44,7 @@ public class SchedulingProblemHandler {
 	private static final Logger log = LoggerFactory.getLogger(SchedulingProblemHandler.class);
 
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
+	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
 	private static final URI OFERTA_NO_AGENDABLE = ProblemType.OFERTA_NO_AGENDABLE.uri();
 	private static final URI VENTANA_DEMASIADO_AMPLIA = ProblemType.VENTANA_DEMASIADO_AMPLIA.uri();
 	private static final URI SLOT_NO_DISPONIBLE = ProblemType.SLOT_NO_DISPONIBLE.uri();
@@ -201,6 +203,30 @@ public class SchedulingProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(TURNO_CON_ATENCION);
 		problem.setTitle("El turno ya tiene una atencion registrada");
+		return problem;
+	}
+
+	/**
+	 * La cantidad confirmada de una operacion de serie ya no es la real. <b>{@code conflict} y no
+	 * {@code concurrent-modification}</b> (DP-21): no hay una version vieja que recargar, hay una
+	 * previsualizacion que repetir y una decision que volver a tomar.
+	 *
+	 * <p>Lleva {@code afectados} y {@code confirmados} para que la pantalla pueda decir "ahora son 3,
+	 * no 2" sin leer prosa.
+	 */
+	@ExceptionHandler(CantidadConfirmadaDesactualizadaException.class)
+	public ProblemDetail handleCantidadConfirmadaDesactualizada(
+			CantidadConfirmadaDesactualizadaException exception) {
+		log.debug("Confirmacion de serie desactualizada: serieId={} afectados={} confirmados={}",
+				exception.getSerieId(), exception.getAfectados(), exception.getConfirmados());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+				"La serie cambio desde la previsualizacion: el alcance ahora afecta "
+						+ exception.getAfectados() + " turnos y se confirmaron "
+						+ exception.getConfirmados() + ". Vuelva a previsualizar antes de confirmar.");
+		problem.setType(CONFLICT);
+		problem.setTitle("La serie cambio desde la previsualizacion");
+		problem.setProperty("afectados", exception.getAfectados());
+		problem.setProperty("confirmados", exception.getConfirmados());
 		return problem;
 	}
 
