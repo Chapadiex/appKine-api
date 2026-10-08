@@ -55,11 +55,13 @@ public record AgendaResponse(
 							+ "ningun slot tiene cupo libre (si queda alguno, los llenos viajan con "
 							+ "`cupoLibre` 0 y no hay motivo). `PASADO`: el dia ya paso, o es hoy y "
 							+ "todos sus horarios ya empezaron. Los horarios de hoy que ya empezaron "
-							+ "nunca se ofrecen: la reserva los rechaza.",
+							+ "nunca se ofrecen: la reserva los rechaza. `FUERA_DE_HORARIO_SEDE` (0.74.0): el "
+							+ "profesional tiene horario ese dia pero la sede no abre en ninguna de esas "
+							+ "horas; se corrige en el horario general de la sede, no en el del profesional.",
 					allowableValues = {
 							"FERIADO", "CIERRE", "VINCULO", "SIN_HORARIO", "OFERTA_NO_VIGENTE",
 							"SIN_PROFESIONAL", "SIN_ESPACIO", "FRANJA_MAS_CORTA_QUE_LA_OFERTA",
-							"COMPLETO", "PASADO"},
+							"COMPLETO", "PASADO", "FUERA_DE_HORARIO_SEDE"},
 					example = "FERIADO")
 			String motivoSinSlots,
 

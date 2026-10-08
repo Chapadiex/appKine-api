@@ -9,6 +9,7 @@ import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDispon
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.FeriadoRepositoryPort;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGeneralRepositoryPort;
 import com.akine.resource.spi.DisponibilidadImpactProbe;
 import com.akine.resource.spi.DisponibilidadImpactProbe.TurnoPendiente;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +57,7 @@ class SimuladorDeImpactoTest {
 	@Mock private DisponibilidadExcepcionRepositoryPort excepciones;
 	@Mock private FeriadoRepositoryPort feriados;
 	@Mock private CalendarioSedeRepositoryPort calendarios;
+	@Mock private HorarioGeneralRepositoryPort horarios;
 	@Mock private DisponibilidadImpactProbe sonda;
 
 	private final ConsultorioSnapshot sede = new ConsultorioSnapshot(SEDE_ID, ORG_ID, "Sede", ZONA, true);
@@ -66,7 +68,7 @@ class SimuladorDeImpactoTest {
 
 	@BeforeEach
 	void setUp() {
-		simulador = new SimuladorDeImpacto(bloques, excepciones, feriados, calendarios, sonda);
+		simulador = new SimuladorDeImpacto(bloques, excepciones, feriados, calendarios, sonda, horarios);
 
 		LocalDate hoy = LocalDate.now(Z);
 		martes = bloque(1L, 2, hoy.minusDays(30));

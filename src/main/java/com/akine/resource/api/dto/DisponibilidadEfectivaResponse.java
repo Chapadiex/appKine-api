@@ -92,7 +92,7 @@ public record DisponibilidadEfectivaResponse(
 
 			@Schema(
 					description = """
-							Por que el dia no tiene ni una franja. CUATRO estados, y confundir \
+							Por que el dia no tiene ni una franja. CINCO estados, y confundir \
 							dos de ellos manda al administrador a buscar algo que no existe:
 
 							FERIADO — es feriado del pais y la sede cierra los feriados.
@@ -105,7 +105,11 @@ public record DisponibilidadEfectivaResponse(
 							lo mismo que "no atiende ese dia", y mostrarle el mismo cartel a los \
 							dos hace que un admin busque un cierre que no existe.
 
-							null — cuarto estado, y no un descuido: o el dia TIENE franjas, o \
+							HORARIO_SEDE (0.74.0) — el profesional tenia horario, pero el horario \
+							general de la sede no abre en ninguna de esas horas. Lo que hay que \
+							revisar es el horario de la sede, no el del profesional.
+
+							null — quinto estado, y no un descuido: o el dia TIENE franjas, o \
 							quedo vacio porque NINGUNA regla lo abrio. Eso no es una regla que \
 							lo afecte, es la ausencia de reglas, y se distingue mirando franjas.
 
@@ -165,11 +169,14 @@ public record DisponibilidadEfectivaResponse(
 
 			@Schema(
 					description = """
-							Por que la franja quedo mas corta que la regla que la produjo. DOS \
-							estados, y el segundo es el normal:
+							Por que la franja quedo mas corta que la regla que la produjo. TRES \
+							estados, y el ultimo es el normal:
 
 							CIERRE — una excepcion de tipo CIERRE le recorto un pedazo. Es lo que \
 							explica por que la franja termina a las 11 y no a las 13.
+
+							HORARIO_SEDE (0.74.0) — la franja excedia el horario general de la \
+							sede y quedo solo la parte comun.
 
 							null — nada la recorto: la franja es la regla entera.
 

@@ -32,5 +32,15 @@ public enum OrigenFranja {
 	 * <p>Sin el, un dia posterior a la desvinculacion sale como dia sin reglas —vacio y sin
 	 * explicacion— y queda indistinguible de un dia en el que simplemente nadie cargo horario.
 	 */
-	VINCULO
+	VINCULO,
+
+	/**
+	 * El HORARIO GENERAL de la sede no cubre esa franja, o no cubre ese dia (A-8b, DP-19).
+	 *
+	 * <p>Como recorte: la franja del profesional excedia el horario de la sede y quedo la parte
+	 * comun. Como razon de dia vacio: el profesional tenia horario y la sede no abre en ninguna de
+	 * esas horas. Lo pone {@link HorarioDeSede}, ultima etapa del calculo, y SOLO cuando la sede
+	 * declaro horario: una sede sin horario cargado no produce nunca este valor.
+	 */
+	HORARIO_SEDE
 }

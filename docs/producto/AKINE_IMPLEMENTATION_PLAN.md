@@ -527,6 +527,26 @@ pendiente. La enmienda de la matriz §11.2 queda **firme**; no cambia ningún pe
 
 **Implementada en:** A-7 (#53, contrato 0.64.0, sin migración; `docs/diseno/AKINE-A-7-plataforma.md` §2).
 
+## DP-19 — El horario general de la sede limita la agenda
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
+
+**Contexto.** A-8 (#60, `V83`, tabla `consultorio_horario`, dueño `resource`) agregó el horario
+general de la sede como dato **informativo**: la agenda calculaba sólo con la disponibilidad de
+cada profesional y no leía esas filas, leyendo así RN-M03-004 ("el horario general no reemplaza la
+disponibilidad individual de profesionales"). Una sede que cerraba a las 18 podía ofrecer turnos a
+las 19 si un profesional tenía cargado ese horario.
+
+**Decisión.** El horario general de la sede **limita la agenda para todas las ofertas**: ningún
+turno se ofrece ni se reserva fuera del horario de la sede, aunque el profesional tenga
+disponibilidad cargada. **Si la sede no cargó horario general, no se limita nada.**
+
+**Lectura de RN-M03-004.** No se contradice: el horario de la sede sigue sin *reemplazar* la
+disponibilidad individual —no abre nada que el profesional no tenga—; ahora la *recorta*. La
+disponibilidad efectiva queda intersectada con el horario de la sede.
+
+**Implementada en:** A-8b (contrato 0.77.0, sin migración, `docs/diseno/AKINE-A-8b-horario-sede-limita.md`).
+
 ## DP-20 — Una serie de turnos cancelada figura como `CANCELADA`, no como `FINALIZADA` (E-8)
 
 **Estado:** RESUELTA el 08/10/2026 por el dueño del producto.

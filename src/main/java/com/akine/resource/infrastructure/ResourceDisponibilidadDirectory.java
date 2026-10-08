@@ -6,6 +6,7 @@ import com.akine.resource.application.DisponibilidadEfectivaView;
 import com.akine.resource.spi.DisponibilidadDirectory;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -49,5 +50,11 @@ public class ResourceDisponibilidadDirectory implements DisponibilidadDirectory 
 								.map(franja -> new Franja(franja.desde(), franja.hasta()))
 								.toList()))
 				.toList();
+	}
+
+	@Override
+	public boolean fueraDelHorarioDeSede(
+			long organizationId, ConsultorioSnapshot sede, Instant inicio, Instant fin) {
+		return disponibilidad.fueraDelHorarioDeSede(organizationId, sede, inicio, fin);
 	}
 }

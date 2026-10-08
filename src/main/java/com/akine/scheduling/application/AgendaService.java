@@ -594,6 +594,7 @@ public class AgendaService {
 			case "FERIADO" -> MotivoSinSlots.FERIADO;
 			case "CIERRE" -> MotivoSinSlots.CIERRE;
 			case "VINCULO" -> MotivoSinSlots.VINCULO;
+			case "HORARIO_SEDE" -> MotivoSinSlots.FUERA_DE_HORARIO_SEDE;
 			default -> MotivoSinSlots.SIN_HORARIO;
 		};
 	}

@@ -35,9 +35,24 @@ public interface DisponibilidadDirectory {
 			LocalDate hasta);
 
 	/**
+	 * {@code true} si {@code [inicio, fin)} cae, aunque sea en parte, fuera del horario general de
+	 * la sede (A-8b, DP-19). Una sede sin horario cargado nunca deja nada afuera.
+	 *
+	 * <p>{@link #efectiva} ya devuelve la disponibilidad recortada a ese horario: esta pregunta es
+	 * para lo que NO pasa por la disponibilidad de un profesional —la reserva de una oferta sin
+	 * profesional—.
+	 *
+	 * @param sede snapshot ya validado contra el tenant del contexto por el llamador
+	 */
+	boolean fueraDelHorarioDeSede(
+			long organizationId, ConsultorioSnapshot sede, Instant inicio, Instant fin);
+
+	/**
 	 * Un dia resuelto.
 	 *
-	 * @param razonVacio {@code "FERIADO"}, {@code "CIERRE"} o {@code "VINCULO"}; {@code null} si el
+	 * @param razonVacio {@code "FERIADO"}, {@code "CIERRE"}, {@code "VINCULO"} o
+	 *                   {@code "HORARIO_SEDE"} (A-8b: el profesional tenia horario y la sede no
+	 *                   abre en ninguna de esas horas); {@code null} si el
 	 *                   dia tiene franjas y tambien —cuarto estado— si quedo vacio porque ninguna
 	 *                   regla lo abrio. El motor de agenda traduce ese {@code null} con franjas
 	 *                   vacias a {@code SIN_HORARIO}, que es un motivo propio suyo
