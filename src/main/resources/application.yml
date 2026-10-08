@@ -79,7 +79,10 @@ management:
     web:
       exposure:
         # Solo lo necesario. Ampliar endpoint por endpoint, con justificacion.
-        include: health,info
+        # prometheus (G-4): el scrape de metricas. Exponerlo NO lo abre: quien puede leerlo lo
+        # decide MetricsScrapeSecurityConfig —token del scraper, o abierto solo en un perfil de
+        # desarrollo—. Ver docs/observabilidad.md.
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
@@ -88,6 +91,53 @@ management:
   health:
     db:
       enabled: true
+
+  # ---- Metricas (G-4) ------------------------------------------------------------------------
+  metrics:
+    tags:
+      # Un tag fijo para distinguir el servicio en un Prometheus compartido. NUNCA un tag con
+      # ids de tenant, de cuenta ni de paciente: cada valor distinto es una serie nueva, y una
+      # serie por organizacion es una base de series que crece con los clientes —ademas de
+      # publicar quien usa el sistema—. Los tags de http.server.requests son metodo, uri
+      # (la PLANTILLA de la ruta, no la ruta con ids), status, outcome y exception.
+      application: ${spring.application.name}
+    distribution:
+      # Histograma con buckets para http.server.requests: es lo que deja calcular p95 y p99 en
+      # Prometheus con histogram_quantile, agregando entre instancias (un percentil calculado en
+      # el proceso no se puede promediar). Los SLO de ADR-0016 —p95 <= 300 ms, p99 <= 800 ms—
+      # van como buckets explicitos para que la fraccion de requests dentro del objetivo salga
+      # exacta y no interpolada.
+      percentiles-histogram:
+        http.server.requests: true
+      slo:
+        http.server.requests: 300ms,800ms
+      minimum-expected-value:
+        http.server.requests: 5ms
+      maximum-expected-value:
+        http.server.requests: 10s
+
+  # ---- Trazas (G-4) --------------------------------------------------------------------------
+  # Micrometer Tracing con el puente a OpenTelemetry. Cada request abre un span y publica
+  # traceId/spanId en el MDC —los toma el log y audit_event.correlation_id—, se exporte o no.
+  #
+  # EXPORTAR es opt-in: el exportador OTLP SOLO se crea si se define
+  #   MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT=http://<collector>:4318/v1/traces
+  # No se declara aca con un default vacio a proposito: la condicion de Spring Boot es "la
+  # propiedad existe", y un valor vacio la cumple y arma un exportador hacia ninguna parte. Sin
+  # la variable no se exporta nada y no hace falta collector, ni en local ni en los tests.
+  tracing:
+    sampling:
+      # Fraccion de trazas muestreadas (y exportadas, si hay endpoint). Bajo por default: una
+      # traza por request a 500 usuarios concurrentes es volumen de collector, no diagnostico.
+      probability: ${AKINE_TRACING_SAMPLING_PROBABILITY:0.1}
+    propagation:
+      # W3C traceparent, entrada y salida. B3 no lo usa nada de este despliegue.
+      type: w3c
+  opentelemetry:
+    resource-attributes:
+      # service.name ya sale de spring.application.name. Las claves con punto van entre
+      # corchetes: sin ellos el binder de mapas las parte en niveles.
+      "[deployment.environment]": ${AKINE_ENVIRONMENT:sin-definir}
 
 springdoc:
   api-docs:
@@ -206,7 +256,32 @@ akine:
       # Subir de aca exige subir primero el del contenedor, que afecta tambien a M07/M25.
       max-bytes: ${AKINE_CLINICAL_ADJUNTOS_MAX_BYTES:10485760}
 
+  observability:
+    metrics:
+      # Token con el que el scraper de Prometheus lee /actuator/prometheus
+      # (Authorization: Bearer <token>). Minimo 32 caracteres; jamas versionado. Vacio: el
+      # scrape queda CERRADO fuera de un perfil de desarrollo. Ver MetricsScrapeSecurityConfig.
+      scrape-token: ${AKINE_METRICS_SCRAPE_TOKEN:}
+
 logging:
   level:
     root: INFO
     com.akine: INFO
+  # ---- Log estructurado (G-4) ----------------------------------------------------------------
+  # Fuera de desarrollo, una linea JSON por evento en la consola (formato logstash de Spring
+  # Boot: @timestamp, level, logger_name, thread_name, message, stack_trace y las claves del
+  # MDC planas — traceId, spanId, requestId, organizationId, consultorioId). El perfil local
+  # lo apaga para leer el log a ojo; AKINE_LOG_FORMAT=logstash lo vuelve a prender.
+  #
+  # El JSON escapa el mensaje: un salto de linea dentro de un valor no fabrica una linea de log
+  # falsa, que con el formato de texto si pasa.
+  structured:
+    format:
+      console: ${AKINE_LOG_FORMAT:logstash}
+    json:
+      add:
+        service: ${spring.application.name}
+  pattern:
+    # Formato de TEXTO (perfil local): agrega el request id a la correlacion que Spring Boot ya
+    # pone con traceId y spanId.
+    correlation: "[${spring.application.name:},%X{traceId:-},%X{spanId:-},%X{requestId:-}] "
