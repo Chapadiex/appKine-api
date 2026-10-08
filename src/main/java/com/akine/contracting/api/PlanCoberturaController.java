@@ -284,7 +284,7 @@ public class PlanCoberturaController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Nombre repetido (plan-cobertura-nombre-taken), plan dado de baja "
-							+ "(plan-cobertura-inactivo), o version desactualizada (conflict)",
+							+ "(plan-cobertura-inactivo), o version desactualizada (concurrent-modification)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})

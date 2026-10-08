@@ -57,6 +57,19 @@ public record IntervaloLocal(LocalTime desde, LocalTime hasta) {
 		return resto;
 	}
 
+	/**
+	 * La parte comun de los dos intervalos, o vacio si no se solapan. Dos intervalos que solo se
+	 * tocan (9-12 y 12-14) no tienen parte comun: el extremo superior es exclusivo.
+	 */
+	public java.util.Optional<IntervaloLocal> interseccion(IntervaloLocal otro) {
+		if (!solapaCon(otro)) {
+			return java.util.Optional.empty();
+		}
+		LocalTime inicio = desde.isAfter(otro.desde) ? desde : otro.desde;
+		LocalTime fin = hasta.isBefore(otro.hasta) ? hasta : otro.hasta;
+		return java.util.Optional.of(new IntervaloLocal(inicio, fin));
+	}
+
 	/** Union solo si se tocan o se solapan; si no, no hay un unico intervalo que los cubra. */
 	public boolean esContiguoCon(IntervaloLocal otro) {
 		return solapaCon(otro) || hasta.equals(otro.desde) || otro.hasta.equals(desde);

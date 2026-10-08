@@ -12,7 +12,7 @@
 | 03.03 Financiadores y planes | PARCIAL | 85 | Catálogo global de plataforma; `convenio:read` |
 | 03.04 Coberturas del paciente | PARCIAL | 80 | ~~RF-M08-006/007~~ (B-3); la cobertura no viaja a turno/sesión/obligación |
 | 03.05 Convenios y aranceles | PARCIAL | 70 | `congelar` del arancel sin consumidor; importación masiva (diseñada en B-3); ~~arancel por oferta~~ (B-3) |
-| 03.06 Órdenes y autorizaciones | PARCIAL | 75 | Historial de estados de la autorización; estado de la orden |
+| 03.06 Órdenes y autorizaciones | PARCIAL | 75 | ~~Historial de estados de la autorización; estado de la orden~~ (B-4, backend); falta la pantalla |
 
 Todas tienen backend y pantallas (los registros de cierre de 03.02–03.06 dicen "sin frontend";
 **eso ya no es cierto**, el frontend llegó después).
@@ -42,9 +42,9 @@ para esta práctica en esta fecha?".
 - [ ] RF-M16-007 (importación masiva con preview). **Diseñada y fuera de B-3**:
   `docs/diseno/AKINE-B-3-cobertura-por-oferta.md` §7.
 - [x] ~~Validar moneda contra ISO 4217.~~ → `contracting.domain.MonedaIso4217` (`java.util.Currency`), en convenio y plan.
-- [ ] Historial de estados de la autorización: hoy solo queda el evento `AUTORIZACION_RESUELTA`
-  en auditoría. **Decidir** tabla propia o auditoría, y escribirlo.
-- [ ] Estado de la orden médica (hoy solo vigencia).
+- [x] ~~Historial de estados de la autorización: hoy solo queda el evento `AUTORIZACION_RESUELTA`
+  en auditoría.~~ → B-4 (backend, DP-23): tabla `autorizacion_evento` (`V85`) y `GET .../autorizaciones/{id}/historial` (contrato 0.78.0). Falta la pantalla.
+- [x] ~~Estado de la orden médica (hoy solo vigencia).~~ → B-4: `Orden.situacion` derivada (`SituacionOrdenMedica`) y `sesionesConsumidas`. Falta la pantalla.
 - [ ] Obligatoriedad de requisitos configurable por financiador o por prestación (hoy solo por convenio).
 - [x] ~~Contribuyente de cobertura al Paciente 360.~~ → B-5 (backend):
   `person.application.CoberturasEnElResumenDePersona`, sección `coberturas`, por pertenencia
@@ -73,7 +73,7 @@ para esta práctica en esta fecha?".
 
 | Desvío | Documentado |
 |---|---|
-| Historial de autorización reemplazado por auditoría | **No — silencioso** |
+| Historial de autorización reemplazado por auditoría | **Corregido por B-4 (DP-23)**: tabla propia append-only |
 | Afiliado diferido a 03.04 y nunca cableado | Sí, javadoc de `PersonaController` y registro |
 | Sin URLs firmadas: cada descarga se autoriza en la aplicación | Sí |
 | Paciente fusionado no implementado; la baja no valida turnos ni deuda | Sí |
@@ -86,6 +86,6 @@ para esta práctica en esta fecha?".
 
 - [ ] E2E de la vertical persona → cobertura → autorización contra backend real.
 - [x] ~~Búsqueda por afiliado~~ (B-1) y ~~RF-M08-006/007~~ (B-3, backend).
-- [ ] Decisión sobre el historial de autorización.
+- [x] ~~Decisión sobre el historial de autorización.~~ → DP-23.
 - [x] ~~`spi` de cobertura vigente listo para que F5 (recepción) y F7 (devengado) lo consuman.~~ → B-2: `person.spi.CoberturasAplicablesDirectory`.
 - [ ] Corregir los registros de cierre (frontend entregado) y escribir los diseños que faltan.

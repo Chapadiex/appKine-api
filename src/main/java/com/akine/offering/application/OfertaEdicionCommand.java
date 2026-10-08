@@ -76,7 +76,7 @@ public record OfertaEdicionCommand(
 
 		/**
 		 * La {@code version} que el cliente leyo. Si quedo vieja, la edicion se rechaza con 409
-		 * {@code conflict} y no pisa el cambio ajeno. Ver {@code OfertaService.exigirVersion}.
+		 * {@code concurrent-modification} y no pisa el cambio ajeno. Ver {@code OfertaService.exigirVersion}.
 		 */
 		long expectedVersion) {
 }

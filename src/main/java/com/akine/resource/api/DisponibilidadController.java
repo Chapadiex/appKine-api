@@ -289,9 +289,9 @@ public class DisponibilidadController {
 					una edicion sino un bloque nuevo (RN-M05-001), y permitirlo dejaria la \
 					autoria historica apuntando a quien nunca atendio en esa franja.
 
-					version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 con \
-					type conflict —el generico, NO concurrent-modification, que es el que emite \
-					organization para el mismo hecho— y el cliente recarga. Sin eso dos ediciones \
+					version es obligatoria y se compara ANTES de mutar: si quedo vieja, 409 \
+					concurrent-modification —el mismo type en todos los modulos— y el cliente \
+					recarga. Sin eso dos ediciones \
 					simultaneas se pisan y el segundo en guardar borra el cambio del primero sin \
 					que nadie se entere.
 
@@ -336,7 +336,7 @@ public class DisponibilidadController {
 					responseCode = "409",
 					description = "Bloque dado de baja (bloque-inactivo), solapamiento con otro "
 							+ "activo (bloque-solapado), version desactualizada "
-							+ "(conflict), o profesional sin vinculo vigente en "
+							+ "(concurrent-modification), o profesional sin vinculo vigente en "
 							+ "esa sede (profesional-no-vinculado)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -475,9 +475,10 @@ public class DisponibilidadController {
 					las franjas y descarte esos tres campos deja al administrador sin poder saber \
 					por que un dia esta en blanco, que es justamente donde no puede adivinarlo.
 
-					razonVacio tiene CUATRO valores y confundir dos de ellos manda a alguien a \
+					razonVacio tiene CINCO valores y confundir dos de ellos manda a alguien a \
 					buscar algo que no existe: FERIADO, CIERRE, VINCULO —el vinculo del \
-					profesional no estaba vigente ese dia— y null. "No atiende ese dia" y "ya no \
+					profesional no estaba vigente ese dia—, HORARIO_SEDE —el horario general \
+					de la sede no abre en esas horas, desde 0.74.0— y null. "No atiende ese dia" y "ya no \
 					trabaja aca" necesitan textos distintos.
 
 					NUNCA se omite un dia de [desde, hasta), ni siquiera si el profesional ya no \

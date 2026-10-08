@@ -147,6 +147,20 @@ class RecepcionControllerTest {
 	}
 
 	@Test
+	@DisplayName("DP-21: una expectedVersion vieja es 409 concurrent-modification, no conflict")
+	void version_vieja_es_concurrent_modification() throws Exception {
+		given(recepcion.pasarAEspera(any(), anyLong(), anyLong(), anyLong()))
+				.willThrow(new org.springframework.dao.OptimisticLockingFailureException(
+						"La recepcion del turno 301 cambio desde que se leyo"));
+
+		mockMvc.perform(post(RUTA + "/espera").with(miembro())
+						.contentType(MediaType.APPLICATION_JSON).content("{\"expectedVersion\":0}"))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type")
+						.value("https://akine.app/problems/concurrent-modification"));
+	}
+
+	@Test
 	@DisplayName("ver e historial")
 	void lecturas() throws Exception {
 		given(recepcion.ver(any(), eq(7L), eq(301L))).willReturn(vista("EN_ESPERA"));

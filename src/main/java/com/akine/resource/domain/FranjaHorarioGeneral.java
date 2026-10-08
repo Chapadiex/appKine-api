@@ -24,8 +24,10 @@ import java.util.Objects;
  *
  * <p>Es parte de la politica de calendario de la sede —cuando abre, igual que si cierra los
  * feriados ({@link CalendarioSede})— y por eso vive en este modulo y se lee por el mismo recurso.
- * <b>Es informativo</b>: la agenda sigue calculando con la disponibilidad de cada profesional
- * ({@link BloqueDisponibilidad}) y no lee estas filas, que es lo que RN-M03-004 exige.
+ * <b>Desde A-8b (DP-19) es un limite, no informacion</b>: la disponibilidad efectiva de cada
+ * profesional se intersecta con estas franjas ({@link HorarioDeSede}). No reemplaza la
+ * disponibilidad individual —RN-M03-004 sigue en pie: no abre nada que el profesional no tenga—,
+ * solo la recorta. Sin franjas vigentes no se limita nada.
  *
  * <p>Misma recurrencia que un bloque de disponibilidad: dia ISO-8601 y franja local
  * {@code [horaDesde, horaHasta)}, con {@link IntervaloLocal#FIN_DE_DIA} admitido y sin cruzar

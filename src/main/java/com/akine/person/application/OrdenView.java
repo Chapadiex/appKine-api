@@ -1,9 +1,13 @@
 package com.akine.person.application;
 
+import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.OrdenMedica;
+import com.akine.person.domain.SituacionOrdenMedica;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
 
 /**
  * Una orden medica tal como sale del backend.
@@ -14,6 +18,9 @@ import java.time.LocalDate;
  *
  * <p>{@code estado} es el CICLO DE VIDA —ACTIVA o INACTIVA—, que no es lo mismo que la vigencia.
  * Una orden ACTIVA vencida es el caso normal; una INACTIVA es una que nunca debio cargarse.
+ *
+ * <p>{@code situacion} es el estado de la orden derivado de su vigencia y de las autorizaciones
+ * que la usan (AKINE B-4). Ver {@link SituacionOrdenMedica}: tampoco se guarda.
  */
 public record OrdenView(
 		long id,
@@ -36,9 +43,21 @@ public record OrdenView(
 		String estado,
 		Instant deletedAt,
 		String deactivationReason,
-		long version) {
+		long version,
+		String situacion,
+		int sesionesConsumidas) {
 
+	/** Una orden que todavia no tiene autorizaciones que la usen: la recien creada. */
 	public static OrdenView de(OrdenMedica orden, LocalDate fecha) {
+		return de(orden, List.of(), fecha);
+	}
+
+	/**
+	 * @param autorizaciones las del paciente; se toman solo las activas que apuntan a esta orden
+	 */
+	public static OrdenView de(
+			OrdenMedica orden, Collection<Autorizacion> autorizaciones, LocalDate fecha) {
+
 		Long dias = orden.diasParaVencer(fecha);
 		return new OrdenView(
 				orden.getId(),
@@ -61,6 +80,8 @@ public record OrdenView(
 				orden.isActive() ? "ACTIVA" : "INACTIVA",
 				orden.getDeletedAt(),
 				orden.getDeactivationReason(),
-				orden.getVersion());
+				orden.getVersion(),
+				SituacionOrdenMedica.de(orden, autorizaciones, fecha).name(),
+				SituacionOrdenMedica.sesionesConsumidas(orden, autorizaciones));
 	}
 }

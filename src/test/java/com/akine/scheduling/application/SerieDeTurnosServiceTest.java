@@ -29,7 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.dao.OptimisticLockingFailureException;
+import com.akine.scheduling.domain.exception.CantidadConfirmadaDesactualizadaException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.DayOfWeek;
@@ -148,7 +148,7 @@ class SerieDeTurnosServiceTest {
 
 		assertThatThrownBy(() -> service.cancelar(actor, CONSULTORIO_ID, SERIE_ID,
 				OperacionDeSerieCommand.cancelacion(AlcanceDeSerie.TODA_LA_SERIE, null, "Baja", 2)))
-				.isInstanceOf(OptimisticLockingFailureException.class)
+				.isInstanceOf(CantidadConfirmadaDesactualizadaException.class)
 				.hasMessageContaining("afecta 3");
 
 		verify(ciclo, never()).aplicarCancelacion(any(), any(), any(), any(), any());
@@ -230,10 +230,15 @@ class SerieDeTurnosServiceTest {
 		assertThat(fila.personaNombre()).isEqualTo("(ficha no disponible)");
 		assertThat(fila.diasSemana()).containsExactly(1);
 
-		SerieResumenView terminada = SerieDeTurnosService.resumen(serieConId(20L),
+		// DP-20: sin pendientes y con el ultimo turno cancelado, la serie se corto.
+		SerieResumenView cortada = SerieDeTurnosService.resumen(serieConId(20L),
 				List.of(pasado, cancelado), null, "Kinesiologia", Instant.now());
+		assertThat(cortada.estado()).isEqualTo(EstadoDeSerie.CANCELADA);
+		assertThat(cortada.proximoTurnoInicio()).isNull();
+
+		SerieResumenView terminada = SerieDeTurnosService.resumen(serieConId(20L),
+				List.of(cancelado, ausente), null, "Kinesiologia", Instant.now());
 		assertThat(terminada.estado()).isEqualTo(EstadoDeSerie.FINALIZADA);
-		assertThat(terminada.proximoTurnoInicio()).isNull();
 	}
 
 	private TurnoSerie serieConId(long id) {

@@ -357,7 +357,7 @@ public class CoberturaPacienteController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Cobertura dada de baja (cobertura-inactiva), version "
-							+ "desactualizada (conflict) o la edicion crea un solapamiento "
+							+ "desactualizada (concurrent-modification) o la edicion crea un solapamiento "
 							+ "(cobertura-superpuesta)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,

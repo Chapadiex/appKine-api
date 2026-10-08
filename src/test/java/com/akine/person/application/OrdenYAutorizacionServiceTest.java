@@ -7,6 +7,8 @@ import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.AccionSobreAutorizacion;
 import com.akine.person.domain.AdjuntoAdministrativo;
 import com.akine.person.domain.Autorizacion;
+import com.akine.person.domain.AutorizacionEvento;
+import com.akine.person.domain.TipoEventoAutorizacion;
 import com.akine.person.domain.CategoriaAdjunto;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.EstadoAutorizacion;
@@ -21,6 +23,7 @@ import com.akine.person.domain.exception.CoberturaInactivaException;
 import com.akine.person.domain.exception.OrdenNotAccessibleException;
 import com.akine.person.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.person.domain.port.PersonRepositoryPorts.AdjuntoRepositoryPort;
+import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionEventoRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionPersonaLockRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.CoberturaPacienteRepositoryPort;
@@ -33,6 +36,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
@@ -94,6 +98,7 @@ class OrdenYAutorizacionServiceTest {
 	private ArancelDirectory aranceles;
 	private PermissionGuard permissionGuard;
 	private AuditTrail auditTrail;
+	private AutorizacionEventoRepositoryPort eventos;
 
 	private OrdenMedicaService ordenService;
 	private AutorizacionService autorizacionService;
@@ -111,12 +116,14 @@ class OrdenYAutorizacionServiceTest {
 		aranceles = mock(ArancelDirectory.class);
 		permissionGuard = mock(PermissionGuard.class);
 		auditTrail = mock(AuditTrail.class);
+		eventos = mock(AutorizacionEventoRepositoryPort.class);
 
 		ordenService = new OrdenMedicaService(
-				ordenes, coberturas, adjuntos, personas, perfiles, permissionGuard, auditTrail);
+				ordenes, coberturas, adjuntos, personas, perfiles, permissionGuard, auditTrail,
+				autorizaciones);
 		autorizacionService = new AutorizacionService(
 				autorizaciones, candados, iniciador, ordenes, coberturas, adjuntos, personas,
-				perfiles, aranceles, permissionGuard, auditTrail);
+				perfiles, aranceles, permissionGuard, auditTrail, eventos);
 
 		given(personas.findByIdAndOrganizationId(anyLong(), anyLong()))
 				.willReturn(Optional.of(persona()));
@@ -450,6 +457,162 @@ class OrdenYAutorizacionServiceTest {
 		}
 	}
 
+	@Nested
+	@DisplayName("Historial de la autorizacion y situacion de la orden (B-4, DP-23)")
+	class DelHistorial {
+
+		private AutorizacionEvento unicoEvento() {
+			ArgumentCaptor<AutorizacionEvento> captor =
+					ArgumentCaptor.forClass(AutorizacionEvento.class);
+			verify(eventos).registrar(captor.capture());
+			return captor.getValue();
+		}
+
+		@Test
+		@DisplayName("el alta deja un ALTA sin estado anterior, con actor y sede")
+		void evento_de_alta() {
+			autorizacionService.registrar(ACTOR, PERSONA, alta(EstadoAutorizacion.PENDIENTE));
+
+			AutorizacionEvento evento = unicoEvento();
+			assertThat(evento.getTipo()).isEqualTo(TipoEventoAutorizacion.ALTA);
+			assertThat(evento.getEstadoAnterior()).isNull();
+			assertThat(evento.getEstadoNuevo()).isEqualTo(EstadoAutorizacion.PENDIENTE);
+			assertThat(evento.getAutorizacionId()).isEqualTo(77L);
+			assertThat(evento.getActorCuentaId()).isEqualTo(1L);
+			assertThat(evento.getConsultorioId()).isEqualTo(SEDE);
+			assertThat(evento.getDetalle()).contains("cantidadAutorizada: 10");
+		}
+
+		@Test
+		@DisplayName("aprobar por menos deja APROBACION PENDIENTE -> APROBADA con lo que cambio")
+		void aprobacion_parcial() {
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(
+					anyLong(), anyLong(), anyLong()))
+					.willReturn(Optional.of(autorizacion(EstadoAutorizacion.PENDIENTE)));
+
+			autorizacionService.resolver(ACTOR, PERSONA, 77L, new ResolucionDeAutorizacionCommand(
+					AccionSobreAutorizacion.APROBAR, null, 6, null, null, 0L));
+
+			AutorizacionEvento evento = unicoEvento();
+			assertThat(evento.getTipo()).isEqualTo(TipoEventoAutorizacion.APROBACION);
+			assertThat(evento.getEstadoAnterior()).isEqualTo(EstadoAutorizacion.PENDIENTE);
+			assertThat(evento.getEstadoNuevo()).isEqualTo(EstadoAutorizacion.APROBADA);
+			assertThat(evento.getDetalle()).isEqualTo("cantidadAutorizada: 10 -> 6");
+		}
+
+		@Test
+		@DisplayName("rechazar deja RECHAZO con el motivo")
+		void rechazo() {
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(
+					anyLong(), anyLong(), anyLong()))
+					.willReturn(Optional.of(autorizacion(EstadoAutorizacion.OBSERVADA)));
+
+			autorizacionService.resolver(ACTOR, PERSONA, 77L, resolucion(
+					AccionSobreAutorizacion.RECHAZAR, "sin cobertura para la practica"));
+
+			AutorizacionEvento evento = unicoEvento();
+			assertThat(evento.getTipo()).isEqualTo(TipoEventoAutorizacion.RECHAZO);
+			assertThat(evento.getEstadoAnterior()).isEqualTo(EstadoAutorizacion.OBSERVADA);
+			assertThat(evento.getMotivo()).isEqualTo("sin cobertura para la practica");
+		}
+
+		@Test
+		@DisplayName("una transicion rechazada no deja evento")
+		void transicion_rechazada_sin_evento() {
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(
+					anyLong(), anyLong(), anyLong()))
+					.willReturn(Optional.of(autorizacion(EstadoAutorizacion.RECHAZADA)));
+
+			assertThatThrownBy(() -> autorizacionService.resolver(ACTOR, PERSONA, 77L,
+					resolucion(AccionSobreAutorizacion.APROBAR, null)))
+					.isInstanceOf(AutorizacionTransicionNoPermitidaException.class);
+			verifyNoInteractions(eventos);
+		}
+
+		@Test
+		@DisplayName("editar la vigencia deja MODIFICACION; las observaciones se nombran, no se copian")
+		void modificacion() {
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(
+					anyLong(), anyLong(), anyLong()))
+					.willReturn(Optional.of(autorizacion(EstadoAutorizacion.PENDIENTE)));
+
+			autorizacionService.editar(ACTOR, PERSONA, 77L, new AutorizacionEdicionCommand(
+					null, null, null, null, LocalDate.of(2027, 6, 30), "dato privado", 0L));
+
+			AutorizacionEvento evento = unicoEvento();
+			assertThat(evento.getTipo()).isEqualTo(TipoEventoAutorizacion.MODIFICACION);
+			assertThat(evento.getEstadoAnterior()).isEqualTo(EstadoAutorizacion.PENDIENTE);
+			assertThat(evento.getDetalle())
+					.isEqualTo("vigenciaHasta: 2027-12-31 -> 2027-06-30; observaciones")
+					.doesNotContain("dato privado");
+		}
+
+		@Test
+		@DisplayName("una edicion que no cambia nada no es un hecho del historial")
+		void edicion_sin_cambios() {
+			Autorizacion igual = autorizacion(EstadoAutorizacion.PENDIENTE);
+			igual.updateDatos(null, null, null, null, null, "nota");
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(
+					anyLong(), anyLong(), anyLong()))
+					.willReturn(Optional.of(igual));
+
+			autorizacionService.editar(ACTOR, PERSONA, 77L, edicion());
+
+			verifyNoInteractions(eventos);
+		}
+
+		@Test
+		@DisplayName("la baja deja ANULACION, inactiva, con el motivo")
+		void anulacion() {
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(
+					anyLong(), anyLong(), anyLong()))
+					.willReturn(Optional.of(autorizacion(EstadoAutorizacion.APROBADA)));
+
+			autorizacionService.darDeBaja(ACTOR, PERSONA, 77L, "  cargada por error ");
+
+			AutorizacionEvento evento = unicoEvento();
+			assertThat(evento.getTipo()).isEqualTo(TipoEventoAutorizacion.ANULACION);
+			assertThat(evento.isActiva()).isFalse();
+			assertThat(evento.getEstadoAnterior()).isEqualTo(EstadoAutorizacion.APROBADA);
+			assertThat(evento.getEstadoNuevo()).isEqualTo(EstadoAutorizacion.APROBADA);
+			assertThat(evento.getMotivo()).isEqualTo("cargada por error");
+		}
+
+		@Test
+		@DisplayName("el historial se lee por pertenencia, pagina por offset y calcula el vencimiento")
+		void lectura() {
+			Autorizacion vencida = autorizacion(EstadoAutorizacion.APROBADA);
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(77L, ORG, PERSONA))
+					.willReturn(Optional.of(vencida));
+			given(eventos.pagina(ORG, 77L, 20, 10)).willReturn(List.of());
+			given(eventos.contar(ORG, 77L)).willReturn(25L);
+
+			HistorialDeAutorizacionView historial = autorizacionService.historial(
+					ACTOR, PERSONA, 77L, 2, 10, LocalDate.of(2028, 1, 5));
+
+			assertThat(historial.total()).isEqualTo(25L);
+			assertThat(historial.vencida()).isTrue();
+			assertThat(historial.vencidaDesde()).isEqualTo(LocalDate.of(2028, 1, 1));
+			verifyNoInteractions(permissionGuard);
+		}
+
+		@Test
+		@DisplayName("el listado de ordenes deriva la situacion de las autorizaciones del paciente")
+		void situacion_de_la_orden() {
+			Autorizacion enCurso = autorizacion(EstadoAutorizacion.APROBADA);
+			ReflectionTestUtils.setField(enCurso, "ordenMedicaId", 51L);
+			ReflectionTestUtils.setField(enCurso, "cantidadConsumida", 3);
+			given(ordenes.historial(ORG, PERSONA)).willReturn(List.of(orden(null)));
+			given(autorizaciones.historial(ORG, PERSONA)).willReturn(List.of(enCurso));
+
+			OrdenView vista = ordenService.listar(ACTOR, PERSONA, DocumentoEstadoFiltro.TODAS,
+					ENERO.plusDays(10)).get(0);
+
+			assertThat(vista.situacion()).isEqualTo("EN_CURSO");
+			assertThat(vista.sesionesConsumidas()).isEqualTo(3);
+		}
+	}
+
 	// =================================================================================
 	// Fixture
 	// =================================================================================
@@ -483,7 +646,8 @@ class OrdenYAutorizacionServiceTest {
 
 	private static Autorizacion autorizacion(EstadoAutorizacion estado) {
 		Autorizacion autorizacion = new Autorizacion(ORG, PERSONA, SEDE, COBERTURA, null, PRACTICA,
-				"AUT-1", estado, 10, ENERO, DICIEMBRE, null, null);
+				"AUT-1", EstadoAutorizacion.PENDIENTE, 10, ENERO, DICIEMBRE, null, null);
+		ReflectionTestUtils.setField(autorizacion, "estado", estado);
 		ReflectionTestUtils.setField(autorizacion, "id", 77L);
 		return autorizacion;
 	}

@@ -83,8 +83,8 @@ import java.net.URI;
  *   <li><b>409</b> para los tres invariantes: documento repetido ({@code persona-documento-taken},
  *       duro, no se puede confirmar), posible duplicado ({@code persona-posible-duplicado},
  *       advertencia que se confirma reenviando), persona inactiva ({@code persona-inactiva}) y
- *       version desactualizada. El de concurrencia llega con {@code type} <b>{@code conflict}</b>,
- *       no {@code concurrent-modification}.</li>
+ *       version desactualizada. El de concurrencia llega con {@code type}
+ *       {@code concurrent-modification} (DP-21).</li>
  * </ul>
  *
  * <h2>Lo que AKINE-03.02 agrego, y lo que sigue sin traer</h2>

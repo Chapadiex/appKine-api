@@ -21,6 +21,8 @@ import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.CierreIncompletoException;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.SesionNoCerradaException;
+import com.akine.encounter.spi.OfertaSinPrecioException;
+import com.akine.encounter.spi.PrecioParticularDelCierre;
 import com.akine.encounter.spi.SesionCerrada;
 import com.akine.offering.spi.PrecioDeOferta;
 import com.akine.platform.spi.audit.AuditEntry;
@@ -71,6 +73,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * Las cuatro reglas de la atencion, y nada mas.
@@ -132,6 +135,9 @@ class SesionServiceTest {
 	 */
 	@Mock private CierreDeSesionObserver observador;
 
+	/** DP-17 (E-7b): billing decide si la deuda del paciente es el precio particular. */
+	@Mock private PrecioParticularDelCierre requisitoDePrecio;
+
 	private SesionService service;
 
 	private final OperatingActor actor =
@@ -143,7 +149,7 @@ class SesionServiceTest {
 				sesiones, versiones, auditTrail, turnos, historias, casos, consultorios,
 				memberships, permissionGuard, numerador, numeradorIniciador, ofertas,
 				tratamientos, parametros, mediciones, tratamientoService, medicionService,
-				List.of(observador));
+				List.of(observador), List.of(requisitoDePrecio));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -790,6 +796,88 @@ class SesionServiceTest {
 		assertThat(aviso.getValue().moneda()).isNull();
 		assertThat(aviso.getValue().ofertaAdmiteObraSocial()).isFalse();
 		assertThat(aviso.getValue().particularPorRecepcion()).isFalse();
+	}
+
+	// =================================================================================
+	// DP-17 (E-7b): toda prestacion cerrada genera deuda
+	// =================================================================================
+
+	@Test
+	@DisplayName("DP-17: Particular por recepcion y oferta sin precio -> 409 antes de numerar")
+	void particular_sin_precio_no_cierra() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(ofertas.precioEn(anyLong(), anyLong(), anyLong(), any())).willReturn(Optional.of(
+				new PrecioDeOferta(OFERTA_ID, null, "ARS", true)));
+		given(turnos.atendidoComoParticular(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(true);
+		given(requisitoDePrecio.exigePrecioParticular(any())).willReturn(true);
+
+		assertThatThrownBy(() -> service.cerrar(
+				actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Terapia manual"), 0L))
+				.isInstanceOfSatisfying(OfertaSinPrecioException.class, e -> {
+					assertThat(e.getOfertaId()).isEqualTo(OFERTA_ID);
+					assertThat(e.getDia()).isNotNull();
+					assertThat(e.getMotivo())
+							.isEqualTo(OfertaSinPrecioException.Motivo.PARTICULAR_POR_RECEPCION);
+				});
+
+		// Nada se escribio: ni numero, ni version, ni aviso a billing ni al consumo.
+		verifyNoInteractions(numeradorIniciador, numerador, casos, versiones, observador);
+		verify(sesiones, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("DP-17: sin cobertura aplicable y oferta sin precio -> 409, sin numerar")
+	void sin_cobertura_sin_precio_no_cierra() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(ofertas.precioEn(anyLong(), anyLong(), anyLong(), any())).willReturn(Optional.of(
+				new PrecioDeOferta(OFERTA_ID, null, "ARS", true)));
+		given(requisitoDePrecio.exigePrecioParticular(any())).willReturn(true);
+
+		assertThatThrownBy(() -> service.cerrar(
+				actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Terapia manual"), 0L))
+				.isInstanceOfSatisfying(OfertaSinPrecioException.class, e -> assertThat(e.getMotivo())
+						.isEqualTo(OfertaSinPrecioException.Motivo.SIN_COBERTURA_APLICABLE));
+
+		verifyNoInteractions(numeradorIniciador, numerador, versiones, observador);
+	}
+
+	@Test
+	@DisplayName("DP-17: con cobertura el coseguro sale del arancel: sin precio particular, cierra")
+	void con_cobertura_sin_precio_cierra() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(4);
+		given(ofertas.precioEn(anyLong(), anyLong(), anyLong(), any())).willReturn(Optional.of(
+				new PrecioDeOferta(OFERTA_ID, null, "ARS", true)));
+		given(requisitoDePrecio.exigePrecioParticular(any())).willReturn(false);
+
+		service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Terapia manual"), 0L);
+
+		// La regla la consulto con el hecho SIN numero, y los observadores recibieron el mismo
+		// hecho con el numero puesto.
+		ArgumentCaptor<SesionCerrada> consultado = ArgumentCaptor.forClass(SesionCerrada.class);
+		verify(requisitoDePrecio).exigePrecioParticular(consultado.capture());
+		assertThat(consultado.getValue().numeroSesion()).isZero();
+		ArgumentCaptor<SesionCerrada> aviso = ArgumentCaptor.forClass(SesionCerrada.class);
+		verify(observador).alCerrar(aviso.capture());
+		assertThat(aviso.getValue()).isEqualTo(consultado.getValue().conNumeroSesion(4));
+	}
+
+	@Test
+	@DisplayName("DP-17: con precio no hay nada que decidir: cierra sin consultar la regla")
+	void con_precio_cierra_sin_consultar() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(numerador.leerUltimo(anyLong(), anyLong())).willReturn(2);
+		given(ofertas.precioEn(anyLong(), anyLong(), anyLong(), any())).willReturn(Optional.of(
+				new PrecioDeOferta(OFERTA_ID, new BigDecimal("8500.00"), "ARS", false)));
+
+		service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(Asistencia.PRESENTE, "Terapia manual"), 0L);
+
+		verifyNoInteractions(requisitoDePrecio);
+		verify(observador).alCerrar(any());
 	}
 
 	@Test

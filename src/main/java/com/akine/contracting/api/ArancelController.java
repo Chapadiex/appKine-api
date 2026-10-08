@@ -252,7 +252,7 @@ public class ArancelController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "409",
 					description = "Periodo solapado (arancel-solapado), arancel dado de baja "
-							+ "(arancel-inactivo) o version desactualizada (conflict)",
+							+ "(arancel-inactivo) o version desactualizada (concurrent-modification)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<ArancelResponse> update(

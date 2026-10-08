@@ -109,7 +109,7 @@ public record UpdateOfertaRequest(
 
 		@Schema(
 				description = "Version que el cliente cree estar editando. Si la fila avanzo "
-						+ "desde entonces, responde 409 conflict y no pisa nada",
+						+ "desde entonces, responde 409 concurrent-modification y no pisa nada",
 				example = "0",
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		@NotNull(message = "expectedVersion es obligatorio")

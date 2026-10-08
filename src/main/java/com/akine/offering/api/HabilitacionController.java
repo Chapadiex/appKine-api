@@ -75,7 +75,7 @@ import java.util.Set;
  *       y cuantos boxes tiene cada centro del SaaS.</li>
  *   <li><b>403</b> sin contexto o sin permiso. <b>Nunca 401</b>: el interceptor del frontend borra
  *       el token ante cualquier 401 y dejaria al usuario en un bucle de login.</li>
- *   <li><b>409</b> con {@code type} <b>{@code conflict}</b> si la version quedo vieja, y
+ *   <li><b>409</b> con {@code type} {@code concurrent-modification} si la version quedo vieja, y
  *       {@code oferta-inactiva} si se intenta configurar una oferta dada de baja.</li>
  * </ul>
  */
@@ -213,7 +213,7 @@ public class HabilitacionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "Version desactualizada (conflict), oferta dada de baja "
+					description = "Version desactualizada (concurrent-modification), oferta dada de baja "
 							+ "(oferta-inactiva), o sede no operable (consultorio-no-operable)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -291,7 +291,7 @@ public class HabilitacionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "Version desactualizada (conflict), oferta dada de baja "
+					description = "Version desactualizada (concurrent-modification), oferta dada de baja "
 							+ "(oferta-inactiva), o sede no operable (consultorio-no-operable)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,

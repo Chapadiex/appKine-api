@@ -4,6 +4,7 @@ import com.akine.person.api.dto.AutorizacionElegibleResponse;
 import com.akine.person.api.dto.AutorizacionResponse;
 import com.akine.person.api.dto.CreateAutorizacionRequest;
 import com.akine.person.api.dto.DeactivateDocumentoRequest;
+import com.akine.person.api.dto.HistorialDeAutorizacionResponse;
 import com.akine.person.api.dto.ResolverAutorizacionRequest;
 import com.akine.person.api.dto.UpdateAutorizacionRequest;
 import com.akine.person.api.dto.VincularDocumentoRequest;
@@ -87,6 +88,8 @@ import java.util.Locale;
 public class AutorizacionController {
 
 	private static final Logger log = LoggerFactory.getLogger(AutorizacionController.class);
+
+	private static final int HISTORIAL_TAMANO_MAXIMO = 100;
 
 	private final AutorizacionService autorizacionService;
 	private final ConsumoDeAutorizacionService consumoService;
@@ -213,6 +216,74 @@ public class AutorizacionController {
 
 		return ResponseEntity.ok(AutorizacionResponse.de(
 				autorizacionService.ver(apiActor.current(), personaId, autorizacionId, fecha)));
+	}
+
+	@GetMapping("/{autorizacionId}/historial")
+	@Operation(
+			operationId = "getHistorialDeAutorizacion",
+			summary = "Historial de estados de una autorizacion",
+			description = """
+					DP-23. Los hechos de la autorizacion, del mas viejo al mas nuevo: ALTA, \
+					APROBACION, OBSERVACION, RECHAZO, MODIFICACION, DOCUMENTO, CONSUMO, \
+					REVERSION_DE_CONSUMO y ANULACION, cada uno con estado anterior y nuevo, \
+					actor, momento y motivo. Vive en una tabla propia append-only, escrita en la \
+					misma transaccion que cada mutacion: no se arma leyendo la auditoria.
+
+					EL VENCIMIENTO NO ES UN EVENTO. Vencer es funcion del reloj y nada lo \
+					escribe: viaja CALCULADO contra fecha en vencida y vencidaDesde.
+
+					Las autorizaciones cargadas antes del historial (V85) traen un solo ALTA \
+					reconstruido con el estado que tenian ese dia, declarado en detalle.
+
+					Mismo permiso que leer la autorizacion: pertenencia al tenant.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "200",
+					description = "Pagina del historial",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(
+									implementation = HistorialDeAutorizacionResponse.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin contexto de trabajo activo",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La autorizacion no existe, es de otra organizacion o de otro "
+							+ "paciente",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<HistorialDeAutorizacionResponse> historial(
+
+			@Parameter(description = "Identificador de la persona", example = "1204")
+			@PathVariable long personaId,
+
+			@Parameter(description = "Identificador de la autorizacion", example = "77")
+			@PathVariable long autorizacionId,
+
+			@Parameter(description = "Pagina, base cero")
+			@RequestParam(defaultValue = "0") int page,
+
+			@Parameter(description = "Tamano de pagina, acotado a " + HISTORIAL_TAMANO_MAXIMO)
+			@RequestParam(defaultValue = "50") int size,
+
+			@Parameter(description = "Dia contra el que se calcula el vencimiento. Si se omite, "
+					+ "hoy", example = "2026-09-03")
+			@RequestParam(required = false)
+			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
+
+		int pagina = Math.max(page, 0);
+		int tamano = Math.min(Math.max(size, 1), HISTORIAL_TAMANO_MAXIMO);
+
+		return ResponseEntity.ok(HistorialDeAutorizacionResponse.of(
+				autorizacionService.historial(
+						apiActor.current(), personaId, autorizacionId, pagina, tamano, fecha),
+				pagina,
+				tamano));
 	}
 
 	@GetMapping("/elegibles")
@@ -421,7 +492,7 @@ public class AutorizacionController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Autorizacion dada de baja (autorizacion-inactiva), version "
-							+ "desactualizada (conflict), numero en uso (documento-numero-taken) o "
+							+ "desactualizada (concurrent-modification), numero en uso (documento-numero-taken) o "
 							+ "la edicion crea un solapamiento (autorizacion-superpuesta)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -511,7 +582,7 @@ public class AutorizacionController {
 					responseCode = "409",
 					description = "Estado terminal "
 							+ "(autorizacion-transicion-no-permitida), autorizacion dada de baja "
-							+ "(autorizacion-inactiva), version desactualizada (conflict) o la "
+							+ "(autorizacion-inactiva), version desactualizada (concurrent-modification) o la "
 							+ "aprobacion se solapa con otra (autorizacion-superpuesta)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,

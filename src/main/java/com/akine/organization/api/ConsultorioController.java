@@ -136,8 +136,10 @@ public class ConsultorioController {
 					general de la sede (horarioGeneral), que es lo que RF-M03-002 pide. Todo \
 					entra en una sola transaccion: si el box o el horario son invalidos la \
 					respuesta es 400 y no queda nada, ni la sede ni el cupo de plan consumido. \
-					El horario general es informativo y no reemplaza la disponibilidad de cada \
-					profesional (RN-M03-004); se lee y se edita despues por \
+					Desde 0.74.0 (DP-19) el horario general LIMITA la agenda: ningun turno se \
+					ofrece ni se reserva fuera de el, aunque el profesional tenga horario. No \
+					reemplaza la disponibilidad de cada profesional (RN-M03-004): la recorta. \
+					Se lee y se edita despues por \
 					/consultorios/{id}/calendario, y el box por /consultorios/{id}/espacios. \
 					Los dos campos entran en la deteccion de clave de idempotencia reusada.""")
 	@ApiResponses({

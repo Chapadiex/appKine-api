@@ -210,6 +210,21 @@ class ConvenioControllersTest {
 		}
 
 		@Test
+		@DisplayName("DP-21: una version vieja del convenio es concurrent-modification, no conflict")
+		void edicion_con_version_vieja() throws Exception {
+			willThrow(new org.springframework.dao.OptimisticLockingFailureException(
+					"El convenio fue modificado por otra operacion"))
+					.given(convenioService).editar(any(), anyLong(), anyLong(), any());
+
+			mockMvc.perform(put(CONVENIOS + "/140")
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("""
+									{"nombre":"Otro","expectedVersion":0}"""))
+					.andExpect(status().isConflict())
+					.andExpect(jsonPath("$.type").value(TIPO + "concurrent-modification"));
+		}
+
+		@Test
 		@DisplayName("la baja responde 204 AUNQUE el cliente pida application/problem+json")
 		void baja_con_accept_problem_json() throws Exception {
 			// Es el defecto que rompio la activacion de cuenta hasta be14ba5: una operacion 204

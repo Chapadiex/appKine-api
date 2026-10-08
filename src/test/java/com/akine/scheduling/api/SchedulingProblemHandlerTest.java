@@ -207,6 +207,23 @@ class SchedulingProblemHandlerTest {
 	class Series {
 
 		@Test
+		@DisplayName("DP-21: la cantidad confirmada desactualizada sigue siendo conflict, no concurrent-modification")
+		void cantidad_confirmada_desactualizada_es_conflict() {
+			// No hay version vieja que recargar: hay que volver a previsualizar y decidir sobre otra
+			// lista. Es el 409 de negocio que DP-21 deja afuera a proposito.
+			ProblemDetail problem = handler.handleCantidadConfirmadaDesactualizada(
+					new com.akine.scheduling.domain.exception.CantidadConfirmadaDesactualizadaException(
+							12L, "TODA_LA_SERIE", 3, 2));
+
+			assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+			assertThat(problem.getType()).isEqualTo(ProblemType.CONFLICT.uri());
+			assertThat(problem.getProperties())
+					.containsEntry("afectados", 3)
+					.containsEntry("confirmados", 2);
+			assertThat(problem.getDetail()).contains("previsualizar");
+		}
+
+		@Test
 		@DisplayName("Una serie de otro tenant es 404 con el type generico")
 		void serie_inalcanzable() {
 			ProblemDetail problem = handler.handleSerieNoAccesible(new SerieNotAccessibleException(12L));

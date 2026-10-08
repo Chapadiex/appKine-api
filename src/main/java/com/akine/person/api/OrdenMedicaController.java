@@ -281,7 +281,7 @@ public class OrdenMedicaController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Orden dada de baja (orden-inactiva), version desactualizada "
-							+ "(conflict) o numero en uso (documento-numero-taken)",
+							+ "(concurrent-modification) o numero en uso (documento-numero-taken)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})

@@ -48,7 +48,10 @@ public enum ProblemType {
 	FORBIDDEN("forbidden"),
 	/** Recurso inexistente, o de otro tenant (404). Los dos casos son indistinguibles. */
 	NOT_FOUND("not-found"),
-	/** Conflicto de estado sin un tipo mas especifico (409). */
+	/**
+	 * Conflicto de NEGOCIO sin un tipo mas especifico (409): recargar no lo resuelve. Nunca una
+	 * version vieja, que es {@link #CONCURRENT_MODIFICATION} (DP-21).
+	 */
 	CONFLICT("conflict"),
 	/** Demasiados intentos en la ventana (429). */
 	RATE_LIMITED("rate-limited"),
@@ -80,7 +83,12 @@ public enum ProblemType {
 	SUBSCRIPTION_SUSPENDED("subscription-suspended"),
 	/** La misma clave de idempotencia se reuso con un cuerpo distinto. */
 	IDEMPOTENCY_KEY_CONFLICT("idempotency-key-conflict"),
-	/** La version enviada quedo vieja: releer y reintentar. */
+	/**
+	 * Otra persona modifico el registro mientras el cliente trabajaba: recargar y reintentar
+	 * (409). Es el unico {@code type} de concurrencia optimista en todos los modulos (DP-21): version
+	 * comparada a mano, {@code @Version} de JPA y force-increment. Lo emite
+	 * {@code GlobalExceptionHandler}.
+	 */
 	CONCURRENT_MODIFICATION("concurrent-modification"),
 
 	// --- Colaboradores --------------------------------------------------------------------
@@ -1206,7 +1214,20 @@ public enum ProblemType {
 	 * <p>Los dos casos colapsan: distinguirlos confirmaria que ese id existe. Cross-tenant es 404,
 	 * nunca 403.
 	 */
-	DERIVACION_NO_ACCESIBLE("derivacion-no-accesible");
+	DERIVACION_NO_ACCESIBLE("derivacion-no-accesible"),
+
+	/**
+	 * La atencion no se puede cerrar porque la deuda del paciente es el precio particular y la
+	 * oferta no tiene precio vigente ese dia (409). DP-17, AKINE E-7b.
+	 *
+	 * <p>Toda prestacion cerrada genera deuda. Antes de DP-17 el cierre pasaba y no se devengaba
+	 * nada —una prestacion sin deuda, que nadie nota hasta cuadrar la caja—. Lleva
+	 * {@code ofertaId}, {@code dia} (fecha local de la sede) y {@code motivo}
+	 * ({@code PARTICULAR_POR_RECEPCION}, {@code OFERTA_SIN_OBRA_SOCIAL},
+	 * {@code SIN_COBERTURA_APLICABLE}). La sesion sigue abierta y sin numero: se carga el precio en
+	 * la oferta y se reintenta el cierre tal cual.
+	 */
+	OFERTA_SIN_PRECIO("oferta-sin-precio");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

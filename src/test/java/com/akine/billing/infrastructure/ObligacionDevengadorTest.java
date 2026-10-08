@@ -8,6 +8,7 @@ import com.akine.contracting.spi.ArancelCongelado;
 import com.akine.contracting.spi.ArancelDirectory;
 import com.akine.contracting.spi.ArancelVigente;
 import com.akine.contracting.spi.ResolucionDeArancel;
+import com.akine.encounter.spi.OfertaSinPrecioException;
 import com.akine.encounter.spi.SesionCerrada;
 import com.akine.offering.spi.PracticaDeOferta;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
@@ -29,6 +30,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -304,12 +306,66 @@ class ObligacionDevengadorTest {
 	}
 
 	@Test
-	@DisplayName("particular sin precio: no se devenga y no se lanza")
-	void particular_sin_precio() {
-		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
-				99L, null, null, Set.of(KINE), null, false));
+	@DisplayName("DP-17: particular sin precio ya no se traga: 409 oferta-sin-precio con el dia de "
+			+ "la sede, y nada guardado")
+	void particular_sin_precio_lanza() {
+		// Inalcanzable en el flujo normal (el cierre lo valida antes de numerar): es la red para
+		// una lectura viva que cambio entre la validacion y el devengo.
+		assertThatThrownBy(() -> devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA,
+				OFERTA, 8, true, CERRADA, 99L, null, null, Set.of(KINE), null, false)))
+				.isInstanceOfSatisfying(OfertaSinPrecioException.class, e -> {
+					assertThat(e.getOfertaId()).isEqualTo(OFERTA);
+					assertThat(e.getDia()).isEqualTo(DIA_LOCAL);
+					assertThat(e.getMotivo())
+							.isEqualTo(OfertaSinPrecioException.Motivo.OFERTA_SIN_OBRA_SOCIAL);
+				});
 
 		verify(obligaciones, never()).save(any());
+	}
+
+	// =================================================================================
+	// DP-17 (E-7b): la regla que el cierre consulta ANTES de numerar
+	// =================================================================================
+
+	@Test
+	@DisplayName("exige precio particular: Particular por recepcion, aunque haya convenio")
+	void exige_precio_particular_por_recepcion() {
+		cubre(KINE, "12000.00", "10500.00", "1500.00");
+
+		assertThat(devengador.exigePrecioParticular(new SesionCerrada(SESION, ORG, SEDE, PERSONA,
+				OFERTA, 0, true, CERRADA, 99L, null, null, Set.of(KINE), null, true, 600L, true)))
+				.isTrue();
+		verifyNoInteractions(coberturas, aranceles);
+	}
+
+	@Test
+	@DisplayName("exige precio particular: sin cobertura aplicable, y la oferta sin obra social")
+	void exige_precio_particular_sin_cobertura() {
+		given(coberturas.aplicables(anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))
+				.willReturn(List.of());
+
+		assertThat(devengador.exigePrecioParticular(cierre(Set.of(KINE), true))).isTrue();
+		assertThat(devengador.exigePrecioParticular(cierre(Set.of(KINE), false))).isTrue();
+	}
+
+	@Test
+	@DisplayName("no exige precio particular: con cobertura el coseguro sale del arancel, aun en "
+			+ "cero; sin asistencia no hay deuda")
+	void no_exige_precio_particular() {
+		cubre(KINE, "12000.00", "10500.00", "1500.00");
+		assertThat(devengador.exigePrecioParticular(cierre(Set.of(KINE), true))).isFalse();
+
+		assertThat(devengador.exigePrecioParticular(new SesionCerrada(SESION, ORG, SEDE, PERSONA,
+				OFERTA, 0, false, CERRADA, 99L, null, null, Set.of(KINE), null, false))).isFalse();
+		verify(obligaciones, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("no exige precio particular: practica sin cargo bajo el convenio")
+	void total_cero_no_exige_precio() {
+		cubre(KINE, "0.00", "0.00", "0.00");
+
+		assertThat(devengador.exigePrecioParticular(cierre(Set.of(KINE), true))).isFalse();
 	}
 
 	@Test

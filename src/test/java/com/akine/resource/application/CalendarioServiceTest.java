@@ -17,6 +17,8 @@ import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSe
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.FeriadoRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGeneralRepositoryPort;
+import com.akine.resource.spi.DisponibilidadImpactProbe;
+import com.akine.resource.spi.DisponibilidadImpactProbe.TurnoPendiente;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,9 +30,12 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +46,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -94,6 +101,9 @@ class CalendarioServiceTest {
 	@Mock
 	private ConsultorioMembershipDirectory membershipDirectory;
 
+	@Mock
+	private DisponibilidadImpactProbe sonda;
+
 	private final CalendarioEnMemoria calendarios = new CalendarioEnMemoria();
 
 	private final HorarioEnMemoria horarios = new HorarioEnMemoria();
@@ -110,10 +120,11 @@ class CalendarioServiceTest {
 		// Spring, y lo que estos tests necesitan es que la fila quede creada de verdad.
 		service = new CalendarioService(
 				calendarios, new CalendarioSedeIniciador(calendarios), feriados,
-				consultorioDirectory, permissionGuard, auditTrail, horarios);
+				consultorioDirectory, permissionGuard, auditTrail, horarios,
+				new SimuladorDeImpacto(bloques, excepciones, feriados, calendarios, sonda, horarios));
 		efectiva = new DisponibilidadEfectivaService(
 				bloques, excepciones, feriados, calendarios,
-				consultorioDirectory, membershipDirectory, permissionGuard);
+				consultorioDirectory, membershipDirectory, permissionGuard, horarios);
 
 		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede Sintetica", ZONA, true)));
@@ -304,6 +315,76 @@ class CalendarioServiceTest {
 
 		CalendarioView vaciada = service.actualizar(actor, CONSULTORIO_ID, null, null, List.of());
 		assertThat(vaciada.horarioGeneral()).as("una lista vacia lo borra").isEmpty();
+	}
+
+	// =================================================================================
+	// El horario de la sede limita la agenda (A-8b, DP-19)
+	// =================================================================================
+
+	@Test
+	@DisplayName("Con horario de sede cargado, la disponibilidad efectiva se recorta a el; sin horario no cambia")
+	void el_horario_de_la_sede_recorta_la_disponibilidad_efectiva() {
+		darBloqueDelJueves();
+		LocalDate jueves = FERIADO.plusWeeks(1);
+
+		DisponibilidadEfectivaView sinHorario = efectiva.efectiva(
+				actor, CONSULTORIO_ID, MEMBERSHIP_ID, jueves, jueves.plusDays(1));
+		assertThat(sinHorario.dias().getFirst().franjas())
+				.as("una sede sin horario cargado no limita nada")
+				.singleElement()
+				.satisfies(f -> assertThat(f.recortadoPor()).isNull());
+
+		service.actualizar(actor, CONSULTORIO_ID, null, null, List.of(franja(DIA_JUEVES, 10, 12)));
+		DisponibilidadEfectivaView recortada = efectiva.efectiva(
+				actor, CONSULTORIO_ID, MEMBERSHIP_ID, jueves, jueves.plusDays(1));
+		assertThat(recortada.dias().getFirst().franjas()).singleElement().satisfies(f -> {
+			assertThat(f.desde()).isEqualTo(jueves.atTime(10, 0).atZone(ZoneId.of(ZONA)).toInstant());
+			assertThat(f.hasta()).isEqualTo(jueves.atTime(12, 0).atZone(ZoneId.of(ZONA)).toInstant());
+			assertThat(f.recortadoPor()).isEqualTo("HORARIO_SEDE");
+		});
+
+		service.actualizar(actor, CONSULTORIO_ID, null, null, List.of(franja(1, 9, 18)));
+		DisponibilidadEfectivaView sinElJueves = efectiva.efectiva(
+				actor, CONSULTORIO_ID, MEMBERSHIP_ID, jueves, jueves.plusDays(1));
+		assertThat(sinElJueves.dias().getFirst().franjas()).isEmpty();
+		assertThat(sinElJueves.dias().getFirst().razonVacio())
+				.as("el profesional tiene horario: lo que hay que corregir es el de la sede")
+				.isEqualTo("HORARIO_SEDE");
+	}
+
+	@Test
+	@DisplayName("El PUT del horario informa los turnos que quedan fuera y no cuenta los que siguen cubiertos")
+	void el_put_del_horario_informa_los_turnos_que_quedan_afuera() {
+		darBloqueDelJueves();
+		ZoneId zona = ZoneId.of(ZONA);
+		LocalDate jueves = LocalDate.now(zona).plusDays(1)
+				.with(TemporalAdjusters.nextOrSame(DayOfWeek.THURSDAY));
+		TurnoPendiente temprano = new TurnoPendiente(71L, MEMBERSHIP_ID,
+				jueves.atTime(9, 0).atZone(zona).toInstant(),
+				jueves.atTime(10, 0).atZone(zona).toInstant());
+		TurnoPendiente cubierto = new TurnoPendiente(72L, MEMBERSHIP_ID,
+				jueves.atTime(11, 0).atZone(zona).toInstant(),
+				jueves.atTime(12, 0).atZone(zona).toInstant());
+		given(sonda.pendientesEn(eq(ORG_ID), eq(CONSULTORIO_ID), isNull(), any(), any()))
+				.willReturn(List.of(temprano, cubierto));
+
+		CalendarioView vista = service.actualizar(
+				actor, CONSULTORIO_ID, null, null, List.of(franja(DIA_JUEVES, 10, 18)));
+
+		assertThat(vista.impactoDelHorario().turnosAfectados()).isEqualTo(1L);
+		assertThat(vista.impactoDelHorario().turnos())
+				.singleElement()
+				.satisfies(t -> assertThat(t.turnoId()).isEqualTo(71L));
+		assertThat(vista.horarioGeneral())
+				.as("el impacto se informa y no bloquea: el horario se reemplaza igual")
+				.containsExactly(franja(DIA_JUEVES, 10, 18));
+
+		CalendarioView sinCambio = service.actualizar(
+				actor, CONSULTORIO_ID, null, null, List.of(franja(DIA_JUEVES, 10, 18)));
+		assertThat(sinCambio.impactoDelHorario().turnosAfectados())
+				.as("un PUT que no cambia el horario no informa nada")
+				.isZero();
+		assertThat(sinCambio.impactoDelHorario().evaluadoHasta()).isNull();
 	}
 
 	// =================================================================================

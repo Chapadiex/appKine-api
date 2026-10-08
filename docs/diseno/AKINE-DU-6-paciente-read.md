@@ -1,6 +1,6 @@
 # AKINE DU-6 — `paciente:read` solo para el personal (DP-22)
 
-Rama `akine-DU-6-paciente-read` · contrato **0.77.0** · sin migración (`V86` reservada y vacía).
+Rama `akine-DU-6-paciente-read` · contrato **0.80.0** · sin migración (`V86` reservada y vacía).
 Decisión del dueño del producto del 08/10/2026, registrada como DP-22 en
 `docs/producto/AKINE_IMPLEMENTATION_PLAN.md`. Enmienda §15 de `docs/seguridad/matriz-permisos-minima.md`.
 
@@ -58,7 +58,7 @@ El catálogo de permisos y su asignación por rol viven en código (`PermissionC
 `membership_grant.permission_code`, un `VARCHAR(48)` sin CHECK, y `paciente:read` no es otorgable
 por grant. `V86` queda vacía y no se reusa (§6 del plan de trabajo en paralelo).
 
-## 5. Contrato 0.77.0
+## 5. Contrato 0.80.0
 
 Solo descripciones: el 403 de los dieciséis GET pasa de "Sin contexto de trabajo activo" a "…, o
 sin `paciente:read`". Los 403 ya estaban declarados, no cambia ningún schema ni ningún

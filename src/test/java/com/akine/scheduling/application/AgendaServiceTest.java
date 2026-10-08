@@ -177,6 +177,22 @@ class AgendaServiceTest {
 		}
 
 		@Test
+		@DisplayName("A-8b: el dia que el horario de la sede vacio sale FUERA_DE_HORARIO_SEDE, no SIN_HORARIO")
+		void fuera_del_horario_de_la_sede() {
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(30)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "10:00"),
+					noAtiende(MARTES, "HORARIO_SEDE")));
+
+			var dias = service.buscar(
+					actor, CONSULTORIO_ID, OFERTA_ID, LUNES, MARTES.plusDays(1), null).dias();
+
+			assertThat(dias.get(0).slots()).hasSize(2);
+			assertThat(dias.get(1).motivoSinSlots()).isEqualTo("FUERA_DE_HORARIO_SEDE");
+		}
+
+		@Test
 		@DisplayName("Sin ningun profesional habilitado vigente ese dia: SIN_PROFESIONAL")
 		void habilitacion_vencida_ese_dia() {
 			// Lo mismo para la habilitacion de 02.07: dada de baja el lunes, el martes no ofrece.
