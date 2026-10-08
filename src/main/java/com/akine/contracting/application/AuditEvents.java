@@ -92,6 +92,13 @@ final class AuditEvents {
 
 	static final String ENTITY_ARANCEL = "ConvenioArancel";
 
+	/**
+	 * Importacion masiva de aranceles confirmada (B-7, RF-M16-007). Un evento por lote, sobre el
+	 * convenio, con la cantidad y el rango; cada fila deja ademas su {@link #ARANCEL_CREATED}.
+	 * Una importacion rechazada no audita nada: no escribio nada.
+	 */
+	static final String ARANCELES_IMPORTADOS = "ARANCELES_IMPORTADOS";
+
 	private static final String MDC_TRACE_ID = "traceId";
 
 	private AuditEvents() {

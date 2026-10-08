@@ -510,6 +510,13 @@ public enum ProblemType {
 	 * convenio no tiene efecto: el devengo y la cobertura aplicable la cobran particular igual.
 	 */
 	OFERTA_SIN_OBRA_SOCIAL("oferta-sin-obra-social"),
+	/**
+	 * B-7 (RF-M16-007, CA-M16-007-04): la confirmacion de una importacion de aranceles encontro,
+	 * bajo el lock, al menos una fila que no entra. No se escribio ninguna. El cuerpo lleva
+	 * {@code filas} con el desenlace de cada una, y cada rechazo nombra el problem type que daria
+	 * el alta unitaria de esa fila.
+	 */
+	IMPORTACION_ARANCELES_RECHAZADA("importacion-aranceles-rechazada"),
 
 	// --- Ordenes, autorizaciones y documentacion administrativa (M17, AKINE-03.06) ---
 
