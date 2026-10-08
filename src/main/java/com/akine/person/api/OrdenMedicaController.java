@@ -115,7 +115,7 @@ public class OrdenMedicaController {
 									schema = @Schema(implementation = OrdenResponse.class)))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

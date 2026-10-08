@@ -259,8 +259,8 @@ class AdjuntoServiceTest {
 	}
 
 	@Test
-	@DisplayName("la descarga NO exige paciente:manage: hereda el acceso de la ficha")
-	void la_descarga_se_autoriza_por_pertenencia() {
+	@DisplayName("la descarga NO exige paciente:manage: hereda paciente:read de la ficha (DP-22)")
+	void la_descarga_se_autoriza_como_la_ficha() {
 		given(adjuntos.buscarDeLaPersona(ORG_ID, PERSONA_ID, ADJUNTO_ID))
 				.willReturn(Optional.of(unAdjunto()));
 		given(storage.leer(anyString())).willReturn(Optional.of(UN_PDF));
@@ -268,7 +268,9 @@ class AdjuntoServiceTest {
 		service.contenido(new OperatingActor(ACCOUNT_ID, false, ORG_ID, null),
 				PERSONA_ID, ADJUNTO_ID);
 
-		verifyNoInteractions(permissionGuard);
+		verify(permissionGuard).requirePermission(org.mockito.ArgumentMatchers.argThat(q -> "paciente:read".equals(q.permissionCode())));
+		verify(permissionGuard, never()).requirePermission(
+				org.mockito.ArgumentMatchers.argThat(q -> "paciente:manage".equals(q.permissionCode())));
 	}
 
 	@Test

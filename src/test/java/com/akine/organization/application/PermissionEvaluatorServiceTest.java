@@ -547,6 +547,8 @@ class PermissionEvaluatorServiceTest {
 							"tenant:read", "consultorio:manage", "espacio:read",
 							"colaborador:manage", "colaborador:read", "auditoria:read",
 							"paciente:manage", "turno:read", "turno:manage", "cobro:register",
+							// `paciente:read` lo sumo AKINE-DU-6 (DP-22): todo el personal lee el padron.
+							"paciente:read",
 							// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`,
 							// el modulo que lo evalua. La matriz §2 se lo da al ORG_ADMIN en la fila
 							// Administrar Convenios y la enmienda esta en la matriz §13.
@@ -641,6 +643,8 @@ class PermissionEvaluatorServiceTest {
 					.containsExactlyInAnyOrder(
 							"colaborador:read", "espacio:read", "turno:read", "turno:manage", "sesion:register",
 							"hc:read", "hc:write",
+							// AKINE-DU-6 (DP-22): por base, no por grant.
+							"paciente:read",
 							// `clase:read` y `clase:manage` entran en AKINE-08.01: M28 §2 lo nombra
 							// como "Profesional / Instructor", y es quien dicta la clase.
 							"clase:read", "clase:manage",

@@ -116,7 +116,7 @@ public class ElegibilidadController {
 							schema = @Schema(implementation = ElegibilidadResponse.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo, o sin consultorio en el contexto",
+					description = "Sin contexto de trabajo activo, sin consultorio en el contexto, o sin paciente:read",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

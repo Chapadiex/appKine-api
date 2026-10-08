@@ -60,7 +60,7 @@ import java.nio.charset.StandardCharsets;
  * <h2>Autorizacion, en una linea</h2>
  *
  * <ul>
- *   <li><b>Listar y descargar</b>: pertenencia al tenant, igual que leer la ficha.</li>
+ *   <li><b>Listar y descargar</b>: {@code paciente:read}, igual que leer la ficha (DP-22).</li>
  *   <li><b>Subir, reclasificar y dar de baja</b>: {@code paciente:manage} sobre la sede del
  *       contexto, igual que editarla.</li>
  * </ul>
@@ -117,7 +117,7 @@ public class AdjuntoController {
 					content = @Content(
 							mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = AdjuntoPageResponse.class))),
-			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo",
+			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404", description = "La persona no existe, o es de otra "
@@ -264,7 +264,7 @@ public class AdjuntoController {
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "El contenido del archivo",
 					content = @Content(mediaType = MediaType.APPLICATION_OCTET_STREAM_VALUE)),
-			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo",
+			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",

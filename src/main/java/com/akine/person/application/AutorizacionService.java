@@ -142,15 +142,16 @@ public class AutorizacionService {
 	 * {@code diasParaVencer} calculados contra la fecha que se pregunta: es lo que le permite al
 	 * panel administrativo mostrar los vencimientos sin que exista ningun job que mueva estados.
 	 *
-	 * <p>Se autoriza por pertenencia, mismo criterio que el padron (03.01) y las coberturas
-	 * (03.04).
+	 * <p>Se autoriza con {@code paciente:read} (AKINE-DU-6, DP-22), como el resto de las lecturas
+	 * del padron.
 	 */
 	@Transactional(readOnly = true)
 	public List<AutorizacionView> listar(
 			OperatingActor actor, long personaId, DocumentoEstadoFiltro estado, LocalDate fecha) {
 
 		long organizationId =
-				AutorizacionDePadron.exigirContexto(actor, "Listar autorizaciones del paciente");
+				AutorizacionDePadron.exigirLecturaDelPadron(
+						permissionGuard, actor, "Listar autorizaciones del paciente");
 		exigirPersonaDelTenant(organizationId, personaId);
 
 		DocumentoEstadoFiltro filtro = estado == null ? DocumentoEstadoFiltro.TODAS : estado;
@@ -172,7 +173,8 @@ public class AutorizacionService {
 			OperatingActor actor, long personaId, long autorizacionId, LocalDate fecha) {
 
 		long organizationId =
-				AutorizacionDePadron.exigirContexto(actor, "Consultar el saldo autorizado");
+				AutorizacionDePadron.exigirLecturaDelPadron(
+						permissionGuard, actor, "Consultar el saldo autorizado");
 		exigirPersonaDelTenant(organizationId, personaId);
 
 		return AutorizacionView.de(

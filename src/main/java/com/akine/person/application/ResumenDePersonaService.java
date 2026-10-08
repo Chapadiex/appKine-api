@@ -1,6 +1,7 @@
 package com.akine.person.application;
 
 import com.akine.organization.spi.PermissionEvaluator;
+import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.Persona;
 import com.akine.person.domain.exception.PersonaNotAccessibleException;
 import com.akine.person.domain.port.PersonRepositoryPorts.AdjuntoRepositoryPort;
@@ -75,6 +76,7 @@ public class ResumenDePersonaService {
 	private final PerfilPacienteRepositoryPort perfiles;
 	private final AdjuntoRepositoryPort adjuntos;
 	private final PermissionEvaluator permissionEvaluator;
+	private final PermissionGuard permissionGuard;
 	private final List<ResumenDePersonaContributor> contribuyentes;
 
 	public ResumenDePersonaService(
@@ -82,12 +84,14 @@ public class ResumenDePersonaService {
 			PerfilPacienteRepositoryPort perfiles,
 			AdjuntoRepositoryPort adjuntos,
 			PermissionEvaluator permissionEvaluator,
+			PermissionGuard permissionGuard,
 			List<ResumenDePersonaContributor> contribuyentes) {
 
 		this.personas = personas;
 		this.perfiles = perfiles;
 		this.adjuntos = adjuntos;
 		this.permissionEvaluator = permissionEvaluator;
+		this.permissionGuard = permissionGuard;
 		// Spring inyecta la lista vacia cuando no hay ninguna implementacion, que es un estado
 		// valido: un 360 con la identidad y los adjuntos y nada mas sigue siendo un 360.
 		this.contribuyentes = List.copyOf(contribuyentes);
@@ -96,16 +100,17 @@ public class ResumenDePersonaService {
 	/**
 	 * La ficha 360 de una persona.
 	 *
-	 * <p>Se autoriza por <b>pertenencia al tenant</b>, igual que ver la ficha suelta: no hay
-	 * {@code paciente:read} en la matriz y una etapa no la amplia. Lo que si filtra por permiso son
-	 * las secciones que aportan los otros modulos.
+	 * <p>Se autoriza con {@code paciente:read} (AKINE-DU-6, DP-22), igual que ver la ficha suelta:
+	 * sin el permiso, 403 sobre la ficha entera. Despues, cada seccion que aportan los otros
+	 * modulos filtra por su propio permiso.
 	 *
 	 * <p><b>Una persona INACTIVA devuelve 200.</b> RN-M07-004: el 360 de una ficha dada de baja es
 	 * justamente donde se consulta su historico.
 	 */
 	@Transactional(readOnly = true)
 	public ResumenDePersonaView ver(OperatingActor actor, long personaId) {
-		long organizationId = AutorizacionDePadron.exigirContexto(actor, "Ver el resumen 360");
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(
+				permissionGuard, actor, "Ver el resumen 360");
 
 		Persona persona = personas.findByIdAndOrganizationId(personaId, organizationId)
 				.orElseThrow(() -> new PersonaNotAccessibleException(personaId));

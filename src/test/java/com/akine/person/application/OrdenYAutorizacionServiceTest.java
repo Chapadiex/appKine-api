@@ -160,13 +160,14 @@ class OrdenYAutorizacionServiceTest {
 		}
 
 		@Test
-		@DisplayName("registrar exige paciente:manage, y la lectura no")
+		@DisplayName("registrar exige paciente:manage, y la lectura paciente:read (DP-22)")
 		void permisos() {
 			ordenService.listar(ACTOR, PERSONA, DocumentoEstadoFiltro.TODAS, ENERO);
-			verifyNoInteractions(permissionGuard);
+			verify(permissionGuard).requirePermission(org.mockito.ArgumentMatchers.argThat(q -> "paciente:read".equals(q.permissionCode())));
 
 			ordenService.registrar(ACTOR, PERSONA, altaDeOrden(null));
-			verify(permissionGuard).requirePermission(any());
+			verify(permissionGuard).requirePermission(
+					org.mockito.ArgumentMatchers.argThat(q -> "paciente:manage".equals(q.permissionCode())));
 		}
 
 		@Test
@@ -435,15 +436,17 @@ class OrdenYAutorizacionServiceTest {
 		}
 
 		@Test
-		@DisplayName("la lectura de una autorizacion no exige paciente:manage")
-		void lectura_por_pertenencia() {
+		@DisplayName("la lectura de una autorizacion exige paciente:read y no paciente:manage")
+		void lectura_con_paciente_read() {
 			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(
 					anyLong(), anyLong(), anyLong()))
 					.willReturn(Optional.of(autorizacion(EstadoAutorizacion.APROBADA)));
 
 			autorizacionService.ver(ACTOR, PERSONA, 77L, ENERO);
 
-			verifyNoInteractions(permissionGuard);
+			verify(permissionGuard).requirePermission(org.mockito.ArgumentMatchers.argThat(q -> "paciente:read".equals(q.permissionCode())));
+			verify(permissionGuard, never()).requirePermission(
+					org.mockito.ArgumentMatchers.argThat(q -> "paciente:manage".equals(q.permissionCode())));
 		}
 	}
 

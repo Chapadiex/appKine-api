@@ -73,7 +73,7 @@ import java.util.Locale;
  *
  * <h2>Autorizacion</h2>
  *
- * <p>Leer por pertenencia; mutar con {@code paciente:manage} sobre la sede del contexto. 404
+ * <p>Leer con {@code paciente:read} (DP-22); mutar con {@code paciente:manage} sobre la sede del contexto. 404
  * cross-tenant, 403 sin permiso, 409 para los invariantes, las transiciones y la version vieja.
  */
 @RestController
@@ -132,7 +132,7 @@ public class AutorizacionController {
 									schema = @Schema(implementation = AutorizacionResponse.class)))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -187,7 +187,7 @@ public class AutorizacionController {
 							schema = @Schema(implementation = AutorizacionResponse.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -250,7 +250,7 @@ public class AutorizacionController {
 									implementation = AutorizacionElegibleResponse.class)))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

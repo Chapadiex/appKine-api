@@ -64,7 +64,7 @@ import java.util.Map;
  *
  * <h2>Autorizacion</h2>
  *
- * <p>Leer exige <b>pertenencia</b> —contexto de organizacion activo— y mutar exige
+ * <p>Leer exige {@code paciente:read} (AKINE-DU-6, DP-22) y mutar exige
  * {@code paciente:manage} evaluado con la sede del contexto. Los dos controles viven en
  * {@link AutorizacionDePadron}, y el motivo no obvio de que la evaluacion lleve sede aunque la
  * persona sea de la organizacion esta en {@code PermissionCodes.PACIENTE_MANAGE}.
@@ -112,7 +112,8 @@ public class PersonaService {
 	 */
 	@Transactional(readOnly = true)
 	public PersonaPagina buscar(OperatingActor actor, PersonaBusqueda filtros, int page, int size) {
-		long organizationId = AutorizacionDePadron.exigirContexto(actor, "Buscar personas");
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(
+				permissionGuard, actor, "Buscar personas");
 
 		List<Persona> encontradas = personas.buscar(
 				organizationId,
@@ -141,7 +142,8 @@ public class PersonaService {
 	/** Una persona del tenant, activa o no. 404 si no existe o es de otra organizacion. */
 	@Transactional(readOnly = true)
 	public PersonaView ver(OperatingActor actor, long personaId) {
-		long organizationId = AutorizacionDePadron.exigirContexto(actor, "Ver persona");
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(
+				permissionGuard, actor, "Ver persona");
 		Persona persona = cargar(organizationId, personaId);
 		return PersonaView.de(persona, perfiles.buscarVigente(organizationId, personaId).orElse(null));
 	}

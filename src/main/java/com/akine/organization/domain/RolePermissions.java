@@ -196,6 +196,9 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.COLABORADOR_READ, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.AUDITORIA_READ, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.PACIENTE_MANAGE, PermissionScope.ORGANIZACION),
+				// `paciente:read` en AKINE-DU-6 (DP-22): las lecturas del padron dejan de
+				// autorizarse por pertenencia. Lo tiene todo el personal; PACIENTE no.
+				Map.entry(PermissionCode.PACIENTE_READ, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.ORGANIZACION),
 				// `cobro:register` entra con asignacion base en AKINE-07.01, la etapa que crea la
@@ -255,6 +258,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.AUDITORIA_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO),
+				// AKINE-DU-6 (DP-22). Ver el comentario del ORG_ADMIN.
+				Map.entry(PermissionCode.PACIENTE_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO),
@@ -305,6 +310,10 @@ public final class RolePermissions {
 		tabla.put(RoleCode.PROFESIONAL, Map.ofEntries(
 				Map.entry(PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO),
+				// AKINE-DU-6 (DP-22). Por base y no por grant, a diferencia de paciente:manage:
+				// "Segun permiso" es la celda de GESTIONAR; para atender hay que poder ver al
+				// paciente, su cobertura y su autorizacion.
+				Map.entry(PermissionCode.PACIENTE_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.HC_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.HC_WRITE, PermissionScope.CONSULTORIO),
@@ -337,6 +346,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.COLABORADOR_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO),
+				// AKINE-DU-6 (DP-22): el mostrador busca, abre fichas y mira coberturas.
+				Map.entry(PermissionCode.PACIENTE_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO),
@@ -363,6 +374,11 @@ public final class RolePermissions {
 
 		// PACIENTE â ninguna fila de la matriz Â§6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.
+		//
+		// AKINE-DU-6 (DP-22): y sigue vacio A PROPOSITO. `paciente:read` es solo del personal;
+		// el "Propio" de esta columna es alcance OWN —el paciente sobre sus propios datos— y
+		// necesita el vinculo cuenta<->persona, que queda para despues del MVP. Hasta entonces el
+		// rol PACIENTE no lee el padron ni datos de ninguna persona: 403 en todo `person`.
 		tabla.put(RoleCode.PACIENTE, Map.of());
 
 		// Se copia a EnumMap para que el acceso sea por indice de ordinal y no por hash: esta

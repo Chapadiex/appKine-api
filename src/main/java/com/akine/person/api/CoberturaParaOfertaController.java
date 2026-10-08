@@ -74,7 +74,7 @@ public class CoberturaParaOfertaController {
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = CoberturaParaOfertaResponse.class))),
 			@ApiResponse(responseCode = "403",
-					description = "Sin contexto de trabajo activo, o sin consultorio en el contexto",
+					description = "Sin contexto de trabajo activo, sin consultorio en el contexto, o sin paciente:read",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",

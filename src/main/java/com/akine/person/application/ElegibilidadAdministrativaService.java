@@ -3,6 +3,7 @@ package com.akine.person.application;
 import com.akine.contracting.spi.ArancelDirectory;
 import com.akine.contracting.spi.ArancelVigente;
 import com.akine.contracting.spi.ResolucionDeArancel;
+import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.OrdenMedica;
@@ -96,29 +97,30 @@ public class ElegibilidadAdministrativaService {
 	private final AutorizacionRepositoryPort autorizaciones;
 	private final PersonaRepositoryPort personas;
 	private final ArancelDirectory aranceles;
+	private final PermissionGuard permissionGuard;
 
 	public ElegibilidadAdministrativaService(
 			CoberturaPacienteRepositoryPort coberturas,
 			OrdenMedicaRepositoryPort ordenes,
 			AutorizacionRepositoryPort autorizaciones,
 			PersonaRepositoryPort personas,
-			ArancelDirectory aranceles) {
+			ArancelDirectory aranceles,
+			PermissionGuard permissionGuard) {
 
 		this.coberturas = coberturas;
 		this.ordenes = ordenes;
 		this.autorizaciones = autorizaciones;
 		this.personas = personas;
 		this.aranceles = aranceles;
+		this.permissionGuard = permissionGuard;
 	}
 
 	/**
 	 * Que le falta al paciente para que le atiendan esa practica con esa cobertura, ese dia.
 	 *
-	 * <p>Se autoriza por <b>pertenencia</b> y no con {@code paciente:manage}: quien mas necesita
-	 * esta respuesta es el profesional que esta por atender, y exigirle el permiso de gestion lo
-	 * dejaria afuera. Es la "lectura justificada del profesional" que la etapa pide, con el mismo
-	 * criterio que el padron (03.01) y las coberturas (03.04) — y hereda su mismo hueco abierto,
-	 * que el alcance {@code OWN} no esta implementado.
+	 * <p>Se autoriza con {@code paciente:read} (DP-22) y no con {@code paciente:manage}: quien mas
+	 * necesita esta respuesta es el profesional que esta por atender, y exigirle el permiso de
+	 * gestion lo dejaria afuera. Es la "lectura justificada del profesional" que la etapa pide.
 	 *
 	 * <p>El permiso se evalua sobre la sede del contexto porque el <b>convenio es de la sede</b>
 	 * (RN-M16-001): la misma cobertura del mismo paciente puede exigir cosas distintas en dos sedes
@@ -132,7 +134,7 @@ public class ElegibilidadAdministrativaService {
 			long practicaId,
 			LocalDate fecha) {
 
-		long organizationId = AutorizacionDePadron.exigirContexto(
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(permissionGuard,
 				actor, "Consultar la elegibilidad administrativa");
 		if (actor.consultorioId() == null) {
 			// Sin sede no hay convenio que resolver: el convenio es de la SEDE. Devolver "elegible

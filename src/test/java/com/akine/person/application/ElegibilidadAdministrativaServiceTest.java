@@ -77,7 +77,8 @@ class ElegibilidadAdministrativaServiceTest {
 		personas = mock(PersonaRepositoryPort.class);
 		aranceles = mock(ArancelDirectory.class);
 		servicio = new ElegibilidadAdministrativaService(
-				coberturas, ordenes, autorizaciones, personas, aranceles);
+				coberturas, ordenes, autorizaciones, personas, aranceles,
+				mock(com.akine.organization.spi.PermissionGuard.class));
 
 		given(personas.findByIdAndOrganizationId(anyLong(), anyLong()))
 				.willReturn(Optional.of(persona()));

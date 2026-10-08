@@ -58,10 +58,10 @@ class CoberturasEnElResumenDePersonaTest {
 	private CoberturaPacienteRepositoryPort coberturas;
 
 	@Test
-	@DisplayName("declara la seccion coberturas y ningun permiso: se lee por pertenencia")
+	@DisplayName("declara la seccion coberturas con paciente:read, el mismo permiso que GET .../coberturas (DP-22)")
 	void declara_seccion_y_permiso() {
 		assertThat(contribuyente().seccion()).isEqualTo("coberturas");
-		assertThat(contribuyente().permisoRequerido()).isNull();
+		assertThat(contribuyente().permisoRequerido()).isEqualTo("paciente:read");
 	}
 
 	@Test
@@ -204,12 +204,14 @@ class CoberturasEnElResumenDePersonaTest {
 		given(perfiles.buscarVigente(ORG_ID, PERSONA_ID)).willReturn(Optional.empty());
 		given(adjuntos.contarVigentesPorCategoria(ORG_ID, PERSONA_ID)).willReturn(List.of());
 		given(permissionEvaluator.effectivePermissions(anyLong(), anyLong(), anyLong()))
-				.willReturn(Set.of());
+				.willReturn(Set.of("paciente:read"));
 		given(coberturas.historial(ORG_ID, PERSONA_ID)).willReturn(List.of(
 				financiada(1L, "OSDE", "210", "123456789", HOY.minusYears(1), null, true, null)));
 
 		ResumenDePersonaView vista = new ResumenDePersonaService(
-				personas, perfiles, adjuntos, permissionEvaluator, List.of(contribuyente()))
+				personas, perfiles, adjuntos, permissionEvaluator,
+				org.mockito.Mockito.mock(com.akine.organization.spi.PermissionGuard.class),
+				List.of(contribuyente()))
 				.ver(new OperatingActor(40L, false, ORG_ID, SEDE_ID), PERSONA_ID);
 
 		assertThat(vista.seccionesOmitidas()).isEmpty();

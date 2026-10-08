@@ -72,6 +72,26 @@ public enum PermissionCode {
 	PACIENTE_MANAGE("paciente:manage"),
 
 	/**
+	 * Ver el padron y los datos administrativos de las personas. <b>DP-22, AKINE-DU-6.</b>
+	 *
+	 * <p>Hasta DU-6 las lecturas de {@code person} —padron, ficha, 360, coberturas, ordenes,
+	 * autorizaciones, adjuntos, elegibilidad— se autorizaban por <b>pertenencia al tenant</b>, y
+	 * una membership con rol {@code PACIENTE} leia el padron entero de su organizacion. La
+	 * decision del 08/10/2026 fue cerrar el hueco con un permiso de lectura <b>solo para el
+	 * personal</b> y dejar el alcance {@code OWN} —el autoservicio del paciente sobre sus propios
+	 * datos, que necesita el vinculo cuenta↔persona— para despues del MVP.
+	 *
+	 * <p>Asignacion base: ORGANIZACION para {@code ORG_ADMIN}; CONSULTORIO para
+	 * {@code CONSULTORIO_ADMIN}, {@code PROFESIONAL} y {@code ADMINISTRATIVO}. El
+	 * {@code PROFESIONAL} lo tiene por base y no por grant, a diferencia de
+	 * {@link #PACIENTE_MANAGE}: no puede atender a quien no puede ver. {@code PACIENTE} no lo
+	 * tiene. {@code PLATFORM_ADMIN} tampoco: no tiene contexto de tenant en {@code person} y las
+	 * lecturas lo exigen; si alguna vez se abre ese camino, entra con SOPORTE y
+	 * {@code SUPPORT_ACCESS_USED}, como {@link #PACIENTE_MANAGE}. No es otorgable por grant.
+	 */
+	PACIENTE_READ("paciente:read"),
+
+	/**
 	 * Ver la agenda y buscar turnos disponibles. F5.
 	 *
 	 * <p><b>Con asignacion base desde AKINE-05.01</b>, la etapa que crea el motor que lo evalua.

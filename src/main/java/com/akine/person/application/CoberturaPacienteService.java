@@ -127,18 +127,18 @@ public class CoberturaPacienteService {
 	 * ellas no se puede explicar con que cobertura se atendio al paciente el mes pasado, que es
 	 * exactamente lo que el criterio de aceptacion de la etapa pide preservar.
 	 *
-	 * <p>Se autoriza por <b>pertenencia</b> y no con {@code paciente:manage}, mismo criterio que
-	 * las lecturas del padron en 03.01: un profesional que va a atender necesita saber con que
-	 * cobertura viene el paciente, y exigirle el permiso de gestion lo dejaria afuera. El hueco que
-	 * eso deja abierto es el mismo que declara 03.01 —una membership con rol PACIENTE lee mas de lo
-	 * que deberia— y su causa de fondo tambien: el alcance {@code OWN} no esta implementado.
+	 * <p>Se autoriza con {@code paciente:read} y no con {@code paciente:manage}: un profesional que
+	 * va a atender necesita saber con que cobertura viene el paciente, y exigirle el permiso de
+	 * gestion lo dejaria afuera. Hasta AKINE-DU-6 bastaba la pertenencia, y el rol PACIENTE leia
+	 * las coberturas de cualquier persona; desde DP-22 recibe 403.
 	 */
 	@Transactional(readOnly = true)
 	public List<CoberturaView> listar(
 			OperatingActor actor, long personaId, CoberturaEstadoFiltro estado, LocalDate fecha) {
 
 		long organizationId =
-				AutorizacionDePadron.exigirContexto(actor, "Listar coberturas del paciente");
+				AutorizacionDePadron.exigirLecturaDelPadron(
+						permissionGuard, actor, "Listar coberturas del paciente");
 		exigirPersonaDelTenant(organizationId, personaId);
 
 		CoberturaEstadoFiltro filtro = estado == null ? CoberturaEstadoFiltro.TODAS : estado;
@@ -166,7 +166,8 @@ public class CoberturaPacienteService {
 			OperatingActor actor, long personaId, LocalDate fecha) {
 
 		long organizationId =
-				AutorizacionDePadron.exigirContexto(actor, "Resolver la cobertura de la atencion");
+				AutorizacionDePadron.exigirLecturaDelPadron(
+						permissionGuard, actor, "Resolver la cobertura de la atencion");
 		exigirPersonaDelTenant(organizationId, personaId);
 
 		LocalDate dia = fecha == null ? LocalDate.now() : fecha;

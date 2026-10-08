@@ -2,6 +2,7 @@ package com.akine.person.application;
 
 import com.akine.contracting.spi.ResolucionDeArancel;
 import com.akine.offering.spi.OfertaDirectory;
+import com.akine.organization.spi.PermissionGuard;
 import com.akine.offering.spi.PracticaDeOferta;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.offering.spi.PrecioDeOferta;
@@ -51,8 +52,8 @@ import java.util.Optional;
  * usa los realizados; por eso viaja el detalle por practica, que explica una oferta con varias.
  *
  * <p>Solo lectura, sin auditoria: es una consulta preliminar, igual que la elegibilidad
- * administrativa. Se autoriza por pertenencia —como {@code GET .../coberturas}— y exige sede en el
- * contexto, porque el convenio es de la sede (RN-M16-001). El numero de afiliado no sale.
+ * administrativa. Se autoriza con {@code paciente:read} —como {@code GET .../coberturas}— y
+ * exige sede en el contexto, porque el convenio es de la sede (RN-M16-001). El numero de afiliado no sale.
  */
 @Service
 public class CoberturaParaOfertaService {
@@ -61,24 +62,27 @@ public class CoberturaParaOfertaService {
 	private final CoberturasAplicablesService coberturas;
 	private final OfertaDirectory ofertas;
 	private final PracticasDeOfertaDirectory practicasDeOferta;
+	private final PermissionGuard permissionGuard;
 
 	public CoberturaParaOfertaService(
 			PersonaRepositoryPort personas,
 			CoberturasAplicablesService coberturas,
 			OfertaDirectory ofertas,
-			PracticasDeOfertaDirectory practicasDeOferta) {
+			PracticasDeOfertaDirectory practicasDeOferta,
+			PermissionGuard permissionGuard) {
 
 		this.personas = personas;
 		this.coberturas = coberturas;
 		this.ofertas = ofertas;
 		this.practicasDeOferta = practicasDeOferta;
+		this.permissionGuard = permissionGuard;
 	}
 
 	@Transactional(readOnly = true)
 	public CoberturaParaOferta resolver(
 			OperatingActor actor, long personaId, long ofertaId, LocalDate fecha) {
 
-		long organizationId = AutorizacionDePadron.exigirContexto(
+		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(permissionGuard,
 				actor, "Resolver la cobertura aplicable por oferta");
 		if (actor.consultorioId() == null) {
 			// Sin sede no hay convenio que resolver. Contestar "particular" seria afirmar algo falso.

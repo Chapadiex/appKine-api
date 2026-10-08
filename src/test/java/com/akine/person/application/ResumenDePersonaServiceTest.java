@@ -66,6 +66,9 @@ class ResumenDePersonaServiceTest {
 	@Mock
 	private PermissionEvaluator permissionEvaluator;
 
+	@Mock
+	private com.akine.organization.spi.PermissionGuard permissionGuard;
+
 	private final OperatingActor delMostrador =
 			new OperatingActor(ACCOUNT_ID, false, ORG_ID, SEDE_ID);
 
@@ -165,6 +168,18 @@ class ResumenDePersonaServiceTest {
 	}
 
 	@Test
+	@DisplayName("sin paciente:read es 403 sobre la ficha entera, aunque pertenezca (DP-22)")
+	void sin_paciente_read_es_403() {
+		given(permissionGuard.requirePermission(org.mockito.ArgumentMatchers.argThat(
+				q -> "paciente:read".equals(q.permissionCode()) && q.consultorioId() != null)))
+				.willThrow(new AccessDeniedException("sin paciente:read"));
+
+		assertThatThrownBy(() -> servicio().ver(delMostrador, PERSONA_ID))
+				.isInstanceOf(AccessDeniedException.class);
+		org.mockito.Mockito.verifyNoInteractions(personas);
+	}
+
+	@Test
 	@DisplayName("sin contexto de organizacion es 403, nunca 401")
 	void sin_contexto_es_403() {
 		OperatingActor sinContexto = new OperatingActor(ACCOUNT_ID, false, null, null);
@@ -175,7 +190,8 @@ class ResumenDePersonaServiceTest {
 
 	private ResumenDePersonaService servicio(ResumenDePersonaContributor... contribuyentes) {
 		return new ResumenDePersonaService(
-				personas, perfiles, adjuntos, permissionEvaluator, List.of(contribuyentes));
+				personas, perfiles, adjuntos, permissionEvaluator, permissionGuard,
+				List.of(contribuyentes));
 	}
 
 	private static ResumenDePersonaContributor contribuyente(

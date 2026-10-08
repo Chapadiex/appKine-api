@@ -1,6 +1,7 @@
 package com.akine.person.application;
 
 import com.akine.person.domain.CoberturaPaciente;
+import com.akine.person.domain.PermissionCodes;
 import com.akine.person.domain.TipoCobertura;
 import com.akine.person.domain.port.PersonRepositoryPorts.CoberturaPacienteRepositoryPort;
 import com.akine.person.spi.AporteDeResumen;
@@ -32,16 +33,15 @@ import java.util.List;
  * {@code contracting.spi} para congelar la referencia— y ademas obligaria a publicar por
  * {@code spi} una lectura que hoy no existe.
  *
- * <h2>Sin permiso propio, a proposito</h2>
+ * <h2>Pide {@code paciente:read}, el mismo permiso que {@code GET .../coberturas}</h2>
  *
- * <p>{@link #permisoRequerido()} es {@code null}: alcanza con la pertenencia al tenant. No es un
- * descuido sino el mismo criterio con el que {@link CoberturaPacienteService#listar} sirve las
- * coberturas: la matriz no tiene {@code cobertura:read} ni {@code paciente:read}, y el profesional
- * que va a atender necesita saber con que cobertura viene el paciente. Exigir aca
- * {@code paciente:manage} haria al 360 <b>mas estricto que el propio modulo duenio</b>: el
- * profesional veria la seccion omitida en la ficha y la lista completa —con el numero de afiliado
- * sin enmascarar— un click mas alla. El dia que la matriz agregue un permiso de lectura, se cambia
- * aca y el 360 lo sigue solo.
+ * <p>Hasta AKINE-DU-6 {@link #permisoRequerido()} era {@code null}: alcanzaba la pertenencia al
+ * tenant, porque la matriz no tenia ningun permiso de lectura del padron. DP-22 lo creo, y la
+ * seccion pide exactamente el mismo que {@link CoberturaPacienteService#listar}: nunca mas estricta
+ * que el modulo duenio —el profesional veria la seccion omitida y la lista completa, con el numero
+ * de afiliado sin enmascarar, un click mas alla— y nunca mas laxa. Como el 360 entero ya exige
+ * {@code paciente:read}, hoy la seccion no se omite nunca; declararlo igual deja escrito de que
+ * permiso depende y que el 360 lo siga solo si el de las coberturas cambia.
  *
  * <h2>Que muestra</h2>
  *
@@ -95,10 +95,10 @@ public class CoberturasEnElResumenDePersona implements ResumenDePersonaContribut
 		return SECCION;
 	}
 
-	/** Pertenencia al tenant, igual que {@code GET .../coberturas}. Ver el javadoc de la clase. */
+	/** {@code paciente:read}, igual que {@code GET .../coberturas}. Ver el javadoc de la clase. */
 	@Override
 	public String permisoRequerido() {
-		return null;
+		return PermissionCodes.PACIENTE_READ;
 	}
 
 	@Override
