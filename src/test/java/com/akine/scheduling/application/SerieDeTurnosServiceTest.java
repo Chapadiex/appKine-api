@@ -230,10 +230,15 @@ class SerieDeTurnosServiceTest {
 		assertThat(fila.personaNombre()).isEqualTo("(ficha no disponible)");
 		assertThat(fila.diasSemana()).containsExactly(1);
 
-		SerieResumenView terminada = SerieDeTurnosService.resumen(serieConId(20L),
+		// DP-20: sin pendientes y con el ultimo turno cancelado, la serie se corto.
+		SerieResumenView cortada = SerieDeTurnosService.resumen(serieConId(20L),
 				List.of(pasado, cancelado), null, "Kinesiologia", Instant.now());
+		assertThat(cortada.estado()).isEqualTo(EstadoDeSerie.CANCELADA);
+		assertThat(cortada.proximoTurnoInicio()).isNull();
+
+		SerieResumenView terminada = SerieDeTurnosService.resumen(serieConId(20L),
+				List.of(cancelado, ausente), null, "Kinesiologia", Instant.now());
 		assertThat(terminada.estado()).isEqualTo(EstadoDeSerie.FINALIZADA);
-		assertThat(terminada.proximoTurnoInicio()).isNull();
 	}
 
 	private TurnoSerie serieConId(long id) {

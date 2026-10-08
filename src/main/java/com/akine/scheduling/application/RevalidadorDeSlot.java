@@ -135,6 +135,13 @@ class RevalidadorDeSlot {
 	 */
 	private Long resolverProfesional(Pedido pedido) {
 		if (!pedido.oferta().requiereProfesional()) {
+			// A-8b (DP-19): una oferta sin profesional no pasa por la disponibilidad efectiva —no
+			// hay de quien calcularla—, asi que el horario general de la sede se controla aca. Sin
+			// esto seria la unica puerta para reservar fuera del horario de la sede.
+			if (disponibilidad.fueraDelHorarioDeSede(
+					pedido.organizationId(), pedido.sede(), pedido.inicio(), pedido.fin())) {
+				throw new SlotNoDisponibleException("la sede no atiende en ese horario");
+			}
 			return null;
 		}
 		if (pedido.profesionalId() == null) {

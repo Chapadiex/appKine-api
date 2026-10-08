@@ -12,6 +12,7 @@ import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDispon
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.FeriadoRepositoryPort;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGeneralRepositoryPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -105,6 +106,9 @@ class DisponibilidadEfectivaSedeIT {
 	private CalendarioSedeRepositoryPort calendarios;
 
 	@Autowired
+	private HorarioGeneralRepositoryPort horarios;
+
+	@Autowired
 	private DataSource dataSource;
 
 	private final ConsultorioDirectory consultorioDirectory = mock(ConsultorioDirectory.class);
@@ -120,7 +124,7 @@ class DisponibilidadEfectivaSedeIT {
 		jdbc = new JdbcTemplate(dataSource);
 		service = new DisponibilidadEfectivaService(
 				bloques, excepciones, feriados, calendarios,
-				consultorioDirectory, membershipDirectory, permissionGuard);
+				consultorioDirectory, membershipDirectory, permissionGuard, horarios);
 	}
 
 	@Test

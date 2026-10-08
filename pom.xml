@@ -26,7 +26,7 @@
 		<greenmail.version>2.1.9</greenmail.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
-		<akine.contract.version>0.76.0</akine.contract.version>
+		<akine.contract.version>0.78.0</akine.contract.version>
 	</properties>
 
 	<dependencies>

@@ -475,9 +475,10 @@ public class DisponibilidadController {
 					las franjas y descarte esos tres campos deja al administrador sin poder saber \
 					por que un dia esta en blanco, que es justamente donde no puede adivinarlo.
 
-					razonVacio tiene CUATRO valores y confundir dos de ellos manda a alguien a \
+					razonVacio tiene CINCO valores y confundir dos de ellos manda a alguien a \
 					buscar algo que no existe: FERIADO, CIERRE, VINCULO —el vinculo del \
-					profesional no estaba vigente ese dia— y null. "No atiende ese dia" y "ya no \
+					profesional no estaba vigente ese dia—, HORARIO_SEDE —el horario general \
+					de la sede no abre en esas horas, desde 0.74.0— y null. "No atiende ese dia" y "ya no \
 					trabaja aca" necesitan textos distintos.
 
 					NUNCA se omite un dia de [desde, hasta), ni siquiera si el profesional ya no \
