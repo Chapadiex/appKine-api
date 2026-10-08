@@ -145,6 +145,13 @@ public class CalendarioController {
 					reemplazado queda como historia y una lista vacia lo borra. Crea la fila \
 					a demanda si es la primera vez. Exige consultorio:manage sobre ESA sede.
 
+					Desde 0.74.0 (DP-19) el horario general LIMITA la agenda: ningun turno se \
+					ofrece ni se reserva fuera de el. Reemplazarlo NO cancela los turnos ya \
+					reservados que queden afuera: la respuesta los informa en \
+					impactoDelHorario (cuantos, el primero y hasta 50, sin datos del \
+					paciente), con el mismo criterio que el impacto de un cambio de \
+					disponibilidad. Una lista vacia quita el limite.
+
 					Semantica de PATCH aunque el verbo sea PUT: cada campo omitido queda como \
 					estaba. cierraPorFeriado OMITIDO no es false — ese es el error que convierte \
 					"no toques la politica" en "abri todos los feriados" para todos los \

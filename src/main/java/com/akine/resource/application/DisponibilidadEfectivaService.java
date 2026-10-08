@@ -14,6 +14,8 @@ import com.akine.resource.domain.DisponibilidadEfectivaCalculator;
 import com.akine.resource.domain.DisponibilidadExcepcion;
 import com.akine.resource.domain.Feriado;
 import com.akine.resource.domain.FranjaEfectiva;
+import com.akine.resource.domain.FranjaHorarioGeneral;
+import com.akine.resource.domain.HorarioDeSede;
 import com.akine.resource.domain.IntervaloLocal;
 import com.akine.resource.domain.OrigenFranja;
 import com.akine.resource.domain.PermissionCodes;
@@ -23,6 +25,7 @@ import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDispon
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.FeriadoRepositoryPort;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGeneralRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
@@ -128,6 +131,7 @@ public class DisponibilidadEfectivaService {
 	private final ConsultorioDirectory consultorioDirectory;
 	private final ConsultorioMembershipDirectory membershipDirectory;
 	private final PermissionGuard permissionGuard;
+	private final HorarioGeneralRepositoryPort horarios;
 
 	public DisponibilidadEfectivaService(
 			BloqueDisponibilidadRepositoryPort bloques,
@@ -136,7 +140,8 @@ public class DisponibilidadEfectivaService {
 			CalendarioSedeRepositoryPort calendarios,
 			ConsultorioDirectory consultorioDirectory,
 			ConsultorioMembershipDirectory membershipDirectory,
-			PermissionGuard permissionGuard) {
+			PermissionGuard permissionGuard,
+			HorarioGeneralRepositoryPort horarios) {
 
 		this.bloques = bloques;
 		this.excepciones = excepciones;
@@ -145,6 +150,7 @@ public class DisponibilidadEfectivaService {
 		this.consultorioDirectory = consultorioDirectory;
 		this.membershipDirectory = membershipDirectory;
 		this.permissionGuard = permissionGuard;
+		this.horarios = horarios;
 	}
 
 	/**
@@ -159,7 +165,7 @@ public class DisponibilidadEfectivaService {
 	 *   4. membership: si no cubre NI UN dia de la ventana, disponibilidad VACIA (no es error)
 	 *   5. bloques, excepciones y feriados de la ventana, TODOS acotados a la sede
 	 *   6. feriadosQueCierran = feriados de la ventana SI la sede cierra por feriado
-	 *   7. calculador (hora local)
+	 *   7. calculador (hora local), con el horario general de la sede como techo (A-8b)
 	 *   8. recorte por vigencia DIA POR DIA (ruling R13) y conversion a Instant con la zona
 	 * </pre>
 	 *
@@ -258,7 +264,8 @@ public class DisponibilidadEfectivaService {
 				politica.isCierraPorFeriado() ? feriadosDeLaVentana.keySet() : Set.of();
 
 		Map<LocalDate, DiaCalculado> calculado = CALCULADOR.calcular(
-				membershipId, desde, hasta, bloquesDeLaSede, excepcionesDeLaSede, feriadosQueCierran);
+				membershipId, desde, hasta, bloquesDeLaSede, excepcionesDeLaSede, feriadosQueCierran,
+				horarioDeSede(organizationId, consultorioId));
 
 		List<DiaEfectivo> dias = new ArrayList<>(calculado.size());
 		for (Map.Entry<LocalDate, DiaCalculado> dia : calculado.entrySet()) {
@@ -274,6 +281,59 @@ public class DisponibilidadEfectivaService {
 		}
 
 		return new DisponibilidadEfectivaView(membershipId, consultorioId, zona.getId(), dias);
+	}
+
+	/**
+	 * {@code true} si el intervalo cae —aunque sea en parte— FUERA del horario general de la sede
+	 * (A-8b, DP-19). Una sede sin horario cargado nunca deja nada afuera.
+	 *
+	 * <p>Es el control de la reserva para las ofertas SIN profesional: esas no pasan por la
+	 * disponibilidad efectiva —no hay de quien calcularla— y sin este control quedarian como la
+	 * unica puerta para reservar fuera del horario de la sede. Las que tienen profesional ya quedan
+	 * limitadas por {@link #sinAutorizar}.
+	 *
+	 * <p>Un intervalo que cruza la medianoche local queda afuera salvo que termine exactamente en
+	 * ella: el horario de la sede no cruza de dia ({@link FranjaHorarioGeneral}).
+	 *
+	 * <p>Sin autorizar, por el mismo motivo que {@link #sinAutorizar}: el llamador ya resolvio la
+	 * sede contra su tenant y aplica su propio permiso.
+	 */
+	@Transactional(readOnly = true)
+	public boolean fueraDelHorarioDeSede(
+			long organizationId, ConsultorioSnapshot sede, Instant inicio, Instant fin) {
+
+		HorarioDeSede horario = horarioDeSede(organizationId, sede.id());
+		if (!horario.limita()) {
+			return false;
+		}
+		ZoneId zona = ZonaSede.de(sede);
+		ZonedDateTime desdeLocal = inicio.atZone(zona);
+		ZonedDateTime hastaLocal = fin.atZone(zona);
+		LocalDate fecha = desdeLocal.toLocalDate();
+		LocalTime horaFin;
+		if (hastaLocal.toLocalDate().equals(fecha)) {
+			horaFin = hastaLocal.toLocalTime();
+		} else if (hastaLocal.toLocalDate().equals(fecha.plusDays(1))
+				&& hastaLocal.toLocalTime().equals(LocalTime.MIDNIGHT)) {
+			horaFin = IntervaloLocal.FIN_DE_DIA;
+		} else {
+			return true;
+		}
+		if (!horaFin.isAfter(desdeLocal.toLocalTime())) {
+			return true;
+		}
+		return !horario.cubre(fecha, new IntervaloLocal(desdeLocal.toLocalTime(), horaFin));
+	}
+
+	/**
+	 * El horario general vigente de la sede como limite. Vacio = {@link HorarioDeSede#sinLimite()}.
+	 * Es la UNICA lectura del horario para el calculo: la agenda, la reserva y la consulta de
+	 * impacto lo obtienen por aca o por el calculador que la recibe.
+	 */
+	HorarioDeSede horarioDeSede(long organizationId, long consultorioId) {
+		return HorarioDeSede.de(horarios.findVigentes(organizationId, consultorioId).stream()
+				.map(FranjaHorarioGeneral::franja)
+				.toList());
 	}
 
 	// =================================================================================

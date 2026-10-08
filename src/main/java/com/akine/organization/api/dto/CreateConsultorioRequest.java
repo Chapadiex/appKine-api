@@ -84,9 +84,10 @@ public record CreateConsultorioRequest(
 
 		@Schema(
 				description = "Horario general de la sede (RF-M03-002): franjas semanales en la "
-						+ "zona de la sede. Informativo: NO sustituye la disponibilidad de cada "
-						+ "profesional, que es lo que la agenda usa para ofrecer turnos "
-						+ "(RN-M03-004). Se crea en la misma transaccion que la sede; dos franjas "
+						+ "zona de la sede. Desde 0.74.0 (DP-19) LIMITA la agenda: ningun turno "
+						+ "se ofrece ni se reserva fuera de este horario. NO sustituye la "
+						+ "disponibilidad de cada profesional (RN-M03-004): la recorta. Omitido, "
+						+ "no limita nada. Se crea en la misma transaccion que la sede; dos franjas "
 						+ "del mismo dia que se pisan, o una que termina antes de empezar, "
 						+ "rechazan el alta entera con 400. Se lee y se edita despues por "
 						+ "/consultorios/{id}/calendario",

@@ -19,6 +19,7 @@ import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDispon
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.FeriadoRepositoryPort;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGeneralRepositoryPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -92,6 +93,9 @@ class DisponibilidadEfectivaServiceTest {
 	private CalendarioSedeRepositoryPort calendarios;
 
 	@Mock
+	private HorarioGeneralRepositoryPort horarios;
+
+	@Mock
 	private ConsultorioDirectory consultorioDirectory;
 
 	@Mock
@@ -109,7 +113,7 @@ class DisponibilidadEfectivaServiceTest {
 	void setUp() {
 		service = new DisponibilidadEfectivaService(
 				bloques, excepciones, feriados, calendarios,
-				consultorioDirectory, membershipDirectory, permissionGuard);
+				consultorioDirectory, membershipDirectory, permissionGuard, horarios);
 
 		enZona(ZONA_AR);
 		given(membershipDirectory.find(ORG_ID, MEMBERSHIP_ID)).willReturn(Optional.of(vinculada()));

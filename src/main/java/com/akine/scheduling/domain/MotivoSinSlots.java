@@ -80,5 +80,15 @@ public enum MotivoSinSlots {
 	 * ofrecer un {@code slot-no-disponible}. Los horarios de hoy que ya empezaron se omiten sin
 	 * motivo mientras quede alguno por delante: el motivo es del dia, no del slot.
 	 */
-	PASADO
+	PASADO,
+
+	/**
+	 * El profesional tiene horario ese dia, pero la sede declaro un horario general que no abre en
+	 * ninguna de esas horas (A-8b, DP-19). Llega desde M05 como {@code razonVacio = HORARIO_SEDE}.
+	 *
+	 * <p>Es distinto de {@link #SIN_HORARIO} a proposito: alli lo que falta es cargar el horario
+	 * del profesional; aca el horario del profesional esta y lo que hay que revisar es el de la
+	 * sede. Mandar al operador a la pantalla equivocada es justamente lo que este enum evita.
+	 */
+	FUERA_DE_HORARIO_SEDE
 }

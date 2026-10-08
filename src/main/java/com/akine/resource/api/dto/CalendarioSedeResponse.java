@@ -51,10 +51,19 @@ public record CalendarioSedeResponse(
 
 		@Schema(description = "Franjas VIGENTES del horario general de la sede (RF-M03-002), "
 				+ "ordenadas por dia y hora. Vacia significa que la sede no declaro horario "
-				+ "general, no que este cerrada. Informativo: la agenda ofrece turnos con la "
-				+ "disponibilidad de cada profesional, no con este horario (RN-M03-004). Viaja "
-				+ "completa tambien en la respuesta del PUT")
-		List<HorarioGeneralFranjaResponse> horarioGeneral) {
+				+ "general, no que este cerrada. Desde 0.74.0 (DP-19) es un LIMITE de la agenda: "
+				+ "la disponibilidad de cada profesional se recorta a este horario y ningun turno "
+				+ "se ofrece ni se reserva fuera de el; no abre nada que el profesional no tenga "
+				+ "(RN-M03-004). Vacia no limita nada. Viaja completa tambien en la respuesta del PUT")
+		List<HorarioGeneralFranjaResponse> horarioGeneral,
+
+		@Schema(description = "Turnos pendientes que el reemplazo del horario general dejo FUERA "
+				+ "de la disponibilidad efectiva (0.74.0). Se informan y NO se cancelan: quien "
+				+ "decide que hacer con ellos es la sede. Mismo criterio exacto que el impacto de "
+				+ "un cambio de disponibilidad: cuenta un turno que el horario anterior cubria y el "
+				+ "nuevo no, de cualquier profesional, desde hoy hasta noventa dias. En el GET y en "
+				+ "un PUT que no cambia el horario viaja en cero con evaluadoHasta nulo")
+		ImpactoDisponibilidadResponse impactoDelHorario) {
 
 	public static CalendarioSedeResponse from(CalendarioView view) {
 		return new CalendarioSedeResponse(
@@ -64,6 +73,7 @@ public record CalendarioSedeResponse(
 				view.version(),
 				view.existePersistida(),
 				view.feriados().stream().map(FeriadoResponse::from).toList(),
-				view.horarioGeneral().stream().map(HorarioGeneralFranjaResponse::from).toList());
+				view.horarioGeneral().stream().map(HorarioGeneralFranjaResponse::from).toList(),
+				ImpactoDisponibilidadResponse.from(view.impactoDelHorario()));
 	}
 }

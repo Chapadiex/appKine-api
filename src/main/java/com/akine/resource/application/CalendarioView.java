@@ -29,8 +29,12 @@ import java.util.List;
  *                         que nadie edito nunca la politica de esa sede, no que no tenga una
  * @param horarioGeneral   franjas VIGENTES del horario general de la sede (RF-M03-002), ordenadas
  *                         por dia y hora. Vacia significa que la sede no declaro horario general,
- *                         no que este cerrada: el horario es informativo y la agenda sigue
- *                         calculando con la disponibilidad de cada profesional (RN-M03-004)
+ *                         no que este cerrada. Desde A-8b (DP-19) es un LIMITE de la agenda:
+ *                         la disponibilidad de cada profesional se recorta a este horario, y
+ *                         vacia no limita nada
+ * @param impactoDelHorario turnos pendientes que el reemplazo del horario dejo fuera de la
+ *                         disponibilidad (A-8b). Cero en la lectura y en un PUT que no cambio
+ *                         el horario
  */
 public record CalendarioView(
 		long consultorioId,
@@ -39,11 +43,37 @@ public record CalendarioView(
 		long version,
 		boolean existePersistida,
 		List<FeriadoView> feriados,
-		List<FranjaHorarioGeneral.Franja> horarioGeneral) {
+		List<FranjaHorarioGeneral.Franja> horarioGeneral,
+		ImpactoDeDisponibilidad impactoDelHorario) {
 
 	public CalendarioView {
 		feriados = feriados == null ? List.of() : List.copyOf(feriados);
 		horarioGeneral = horarioGeneral == null ? List.of() : List.copyOf(horarioGeneral);
+		impactoDelHorario = impactoDelHorario == null
+				? ImpactoDeDisponibilidad.ninguno(null)
+				: impactoDelHorario;
+	}
+
+	/** Sin impacto informado: la lectura, y todo lo anterior a A-8b. */
+	public CalendarioView(
+			long consultorioId,
+			String pais,
+			boolean cierraPorFeriado,
+			long version,
+			boolean existePersistida,
+			List<FeriadoView> feriados,
+			List<FranjaHorarioGeneral.Franja> horarioGeneral) {
+		this(consultorioId, pais, cierraPorFeriado, version, existePersistida, feriados,
+				horarioGeneral, null);
+	}
+
+	/**
+	 * La misma vista con los turnos pendientes que el reemplazo del horario dejo fuera (A-8b). Solo
+	 * la respuesta del {@code PUT} que cambio el horario lo lleva distinto de cero.
+	 */
+	public CalendarioView conImpacto(ImpactoDeDisponibilidad impacto) {
+		return new CalendarioView(consultorioId, pais, cierraPorFeriado, version, existePersistida,
+				feriados, horarioGeneral, impacto);
 	}
 
 	/** Sin horario general: la forma de la vista anterior a A-8. */
