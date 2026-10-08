@@ -85,16 +85,28 @@ class FixedWindowRateLimiter {
 		return resultado.intentos() <= maximo;
 	}
 
-	/** Cuantos segundos faltan para que la clave vuelva a tener cupo. Cero si ya lo tiene. */
+	/**
+	 * Cuantos segundos faltan para que la clave vuelva a tener cupo, redondeado HACIA ARRIBA.
+	 * Cero solo si la ventana ya vencio.
+	 *
+	 * <p>Es el valor de {@code Retry-After}, que solo admite segundos enteros. Truncar —lo que
+	 * hacia {@code Duration.toSeconds()} hasta el 08/10/2026— convertia cualquier resto menor a
+	 * un segundo en {@code Retry-After: 0} sobre un 429: "reintente ya", y el reintento inmediato
+	 * caia en la misma ventana y volvia a ser 429. Lo vieron los E2E de G-9 como
+	 * {@code reintentarEnSegundos=0}. Un rechazo implica ventana viva, asi que tras el redondeo
+	 * el valor informado en un 429 es siempre al menos 1, y esperarlo alcanza.
+	 */
 	long segundosParaReintentar(String clave, Instant ahora) {
 		AtomicReference<Ventana> referencia = ventanas.get(clave);
 		Ventana actual = referencia == null ? null : referencia.get();
 		if (actual == null) {
 			return 0;
 		}
-		Instant fin = actual.inicio().plus(duracion);
-		long restante = Duration.between(ahora, fin).toSeconds();
-		return Math.max(restante, 0);
+		Duration restante = Duration.between(ahora, actual.inicio().plus(duracion));
+		if (restante.isNegative() || restante.isZero()) {
+			return 0;
+		}
+		return restante.toSeconds() + (restante.toNanosPart() > 0 ? 1 : 0);
 	}
 
 	private void purgar(Instant ahora) {
