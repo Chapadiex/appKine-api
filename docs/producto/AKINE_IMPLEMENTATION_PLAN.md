@@ -480,6 +480,37 @@ verdad mientras dure).
 
 **Implementada en:** E-4 (`V78`, contrato 0.63.0, `docs/diseno/AKINE-E-4-recepcion.md`).
 
+## DP-17 — Toda prestación cerrada genera deuda: sin precio particular, el cierre se bloquea
+
+**Estado:** RESUELTA el 08/10/2026 por el dueño del producto.
+
+**Contexto.** La regla 2 de 07.01 decía "sin precio no hay deuda particular": si la oferta no
+tenía precio, el cierre de la sesión pasaba, no se devengaba nada y quedaba solo un `log.warn`.
+E-7 (#56) la extendió a "Atender como Particular": una oferta sin precio atendida como Particular
+—o sin cobertura aplicable— cerraba **sin deuda de nadie**. Una prestación sin deuda no se nota:
+nadie reclama una factura que nunca existió, y el agujero aparece al cuadrar la caja del mes.
+
+**Decisión.** **Toda prestación cerrada tiene que generar deuda.** Si el paciente asistió y su
+deuda se valoriza al **precio particular** —recepción resuelta como Particular, oferta que no
+admite obra social, o sin cobertura con convenio y arancel aplicables— y la oferta **no tiene
+precio vigente el día del cierre** (en la zona de la sede), el cierre se **bloquea con 409
+`oferta-sin-precio`** hasta que se cargue el precio. Se valida antes de numerar: el 409 no deja
+correlativo consumido, ni autorización consumida, ni obligación. Con cobertura, el coseguro sale
+del arancel y no hace falta precio particular. Una práctica sin cargo bajo el convenio (arancel
+total cero) sigue sin deuda: es lo que el convenio pacta, no un dato faltante.
+
+**Confirma además la parte (a) de E-7:** elegir "Particular" en la recepción **manda sobre el
+convenio** (RF-M08-007). La parte (b) de E-7 —oferta sin precio + Particular → sin deuda— queda
+reemplazada por esta decisión.
+
+**Alternativas descartadas.** Seguir cerrando sin deuda con un warning (el agujero de arriba).
+Caer al convenio cuando falta el precio particular (contradice la decisión del mostrador,
+RF-M08-007). Cerrar y dejar la deuda "pendiente de valorizar" (una obligación sin importe que
+`V36` no admite y que nadie cobra).
+
+**Implementada en:** E-7b (sin migración, contrato 0.76.0,
+`docs/diseno/AKINE-E-7b-cierre-sin-precio.md`).
+
 ## DP-18 — Aprobar una solicitud de catálogo publica el concepto global (A-7)
 
 **Estado:** RESUELTA el 08/10/2026 por el dueño del producto. Confirma lo implementado.

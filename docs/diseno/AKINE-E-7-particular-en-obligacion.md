@@ -104,4 +104,7 @@ día del cierre (`OfertaDirectory#precioEn`, B-3: precio por vigencia si lo hay,
    producto ("¿manda el mostrador o el convenio?"); se resolvió por el RF. Si se quisiera lo
    contrario, es un `if` en `ObligacionDevengador`.
 2. **Oferta sin precio + Particular → sin deuda** (regla 2 de 07.01), en vez de caer al convenio.
+   **Reemplazada por DP-17 (08/10/2026, E-7b):** ahora el cierre se bloquea con 409
+   `oferta-sin-precio` hasta que se cargue el precio. Ver
+   [AKINE-E-7b-cierre-sin-precio](AKINE-E-7b-cierre-sin-precio.md). La (1) quedó confirmada.
 3. **Sólo cuenta la recepción vigente al momento del cierre**; no hay recálculo posterior.
