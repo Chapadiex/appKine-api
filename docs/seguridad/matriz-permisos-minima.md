@@ -104,6 +104,7 @@ Códigos `<dominio>:<acción>`. Estable, en minúsculas, sin significado de UI. 
 | `auditoria:read` | Consultar auditoría operativa del alcance | **F1** |
 | `auditoria:read-clinica` | Consultar auditoría de acceso clínico (RN-M24-003) | **F1** (modelo) / F4 |
 | `paciente:manage` | Gestionar paciente | F3 |
+| `paciente:read` | Ver el padrón y los datos administrativos de las personas (DP-22, §15) | F3 (DU-6) |
 | `hc:read` / `hc:write` | Ver / Editar Historia Clínica | F4 |
 | `caso:create` | Crear Caso Clínico | F4 |
 | `sesion:register` | Registrar Sesión | F6 |
@@ -500,6 +501,9 @@ muta el padrón** (403), igual que ofertas y disponibilidad. La persona no queda
 
 ### 12.3 Las lecturas se autorizan por pertenencia, y eso concede de más
 
+> **Superada el 08/10/2026 por DP-22 (§15).** Existe `paciente:read`, solo para el personal, y el
+> rol `PACIENTE` recibe 403 en todas las lecturas de `person`. Lo que sigue queda como historia.
+
 **No existe `paciente:read`** y esta etapa no lo crea: la matriz no lo declara y una etapa no
 amplía la matriz (mismo criterio que 02.04, 02.05 y 02.06). Leer el padrón exige solo tener
 contexto de organización activo.
@@ -641,3 +645,45 @@ caja, actividad— y una lectura no deja por sí misma ninguna fila que diga qui
 `support_access` vigente da 403; con él, cada consulta del catálogo o de un reporte deja
 `SUPPORT_ACCESS_USED`. Lo que ve lo sigue recortando cada sección: turnos sí (`turno:read` es
 Soporte), lo clínico no (`hc:read` es Restringido) y lo económico tampoco (no tiene `cobro:register`).
+
+## 15. Enmiendas — AKINE-DU-6 (`paciente:read`, DP-22)
+
+La decisión del dueño del producto del **08/10/2026 (DP-22)** cierra el hueco de §12.3: se crea
+`paciente:read` **solo para el personal**, y el rol `PACIENTE` pierde todo acceso al padrón y a
+los datos de otras personas. **Hay un código de permiso nuevo**; el alcance `OWN` —el "Propio" de
+la columna `PACIENTE`, el paciente sobre sus propios datos— **no** se implementa y queda para
+después del MVP.
+
+### 15.1 La fila, cableada
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `paciente:read` | — | Org | Consultorio | **Consultorio (base)** | Consultorio | **—** |
+
+- **`PROFESIONAL` por base y no por grant**, a diferencia de `paciente:manage`. "Según permiso" es
+  la celda de *gestionar*; para atender hay que poder ver al paciente, su cobertura, su orden y su
+  autorización. Darle el permiso solo por grant habría dejado sin ficha a todo profesional.
+- **`PACIENTE` sin nada.** Su celda es "Propio" y el alcance `OWN` necesita el vínculo
+  cuenta↔persona (RN-M07-002), que es de la etapa de autoservicio. Hasta entonces, 403.
+- **`PLATFORM_ADMIN` sin nada, y no cambia ningún comportamiento**: `TenantContextFilter` no le
+  publica contexto de tenant, así que ninguna lectura de `person` le era alcanzable. Si ese camino
+  se abre, entra con `SOPORTE` y deja `SUPPORT_ACCESS_USED`, como `paciente:manage` (§12.1).
+- **No es otorgable por grant**: todo el personal ya lo tiene por base.
+
+### 15.2 Qué gobierna
+
+Todas las lecturas de `person`, sin excepción: búsqueda del padrón (también por número de
+afiliado), ficha, Paciente 360, coberturas y cobertura para la atención, cobertura aplicable por
+oferta, órdenes, autorizaciones (lista, detalle, elegibles, saldo, ledger y alertas), elegibilidad
+administrativa y adjuntos administrativos (lista y descarga). Se evalúa **con la sede del
+contexto**, por el mismo motivo de §12.2. Pertenecer sin el permiso es **403**; una persona de otra
+organización sigue siendo **404**, porque la organización sale del contexto.
+
+La sección `coberturas` del Paciente 360 declara `paciente:read` como su permiso requerido —el
+mismo que `GET .../coberturas`—. Como el 360 entero ya lo exige, hoy no se omite nunca.
+
+Las lecturas de **otros módulos** que muestran datos de personas ya pedían su propio permiso, que
+`PACIENTE` no tiene: agenda y recepción `turno:read`, deuda y cobros `cobro:register`,
+presentaciones `cobro:register`, historia clínica `hc:read`, inscripciones
+`inscripcion:read`, reportes `reporte:read`. Ninguna se autorizaba solo por pertenencia.
+
