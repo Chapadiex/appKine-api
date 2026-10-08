@@ -229,7 +229,87 @@ ArchUnit · Testcontainers.
 > `SerializationFeature` a `DateTimeFeature`, o sea `spring.jackson.datatype.datetime.*`.
 > Ante una duda de API, inspeccionar el jar antes de asumir la forma de 3.x.
 
-### Estado al 06/10/2026, sobre `d110aaf`
+### Estado al 07/10/2026, sobre `8fe1fae`
+
+> Esta subsección **supersede** a la del 06/10 que sigue abajo en contrato, migraciones y
+> paquetes; la del 06/10 queda como historia. Las cifras de cobertura **no** se actualizan acá:
+> viven en su propio bloque más abajo.
+
+Entre la noche del 06/10 y el 07/10 entraron a `main` **20 PR, del #41 al #60** (#40 fue el
+documento de estado del 06/10). `main` tiene **451 commits** y el último merge es `8fe1fae`
+(PR #60). En `appKine-web` entraron en el mismo día los PR **#6 al #23**, y el cliente quedó
+regenerado contra **0.69.0**: por primera vez desde el 29/09 el frontend no está atrasado respecto
+del contrato.
+
+| | Valor medido sobre `8fe1fae` |
+|---|---|
+| Contrato | `openapi/akine-api.yaml` y `akine.contract.version` **0.69.0**, **301 operaciones** (`grep -cE '^\s+operationId:'`), ningún `operationId` repetido. El cliente de `appKine-web` `main` está en **0.69.0** |
+| Migraciones | Última **`V83`** (A-8). Desde `V69` se usaron `V71`, `V74`, `V75`, `V76`, `V77`, `V78`, `V80`, `V81` y `V83`. No existen `V66`, `V67`, `V68`, `V70`, `V72`, `V73`, `V79` y `V82` (además de las viejas `V26`, `V29`, `V31`, `V62`). `V68` (B-4) y `V79` siguen sin usar, pero quedaron **por debajo de `V83`**: Flyway corre sin `outOfOrder`, así que B-4 tiene que tomar un número mayor. Detalle en §6 del plan de trabajo en paralelo |
+| Tests | **3.276 unitarias, 0 fallos ni errores** (`./mvnw -o test -DskipITs -Djacoco.skip=true` sobre `8fe1fae`, 07/10; contadas como `<testcase>` en los reportes de surefire, porque el atributo `tests` descuenta los `@Nested` con nombres repetidos y da 3.254). Los ITs se corrieron por PR, cada uno sobre los suyos; **la suite completa con todos los ITs no se corrió sobre `8fe1fae`** |
+
+#### Qué agregó cada minor del contrato desde 0.54.0
+
+| Versión | Paquete · PR | Qué agrega |
+|---|---|---|
+| 0.55.0 | E-1 · #41 | Sólo descripciones: las sondas de impacto ya corren contra turnos reales y el contrato decía "siempre 0" |
+| 0.56.0 | C-6 · #43 | `tratamientos` y `mediciones` opcionales en la enmienda y en cada versión de `GET .../versiones`; problem type `enmienda-cambia-practicas` |
+| 0.57.0 | E-3 · #44 | Series de turnos: `crearSerieDeTurnos`, `verSerieDeTurnos`, `previsualizarAlcanceDeSerie`, `cancelarSerieDeTurnos`, `reprogramarSerieDeTurnos`; `serieId` en `Turno` y `TurnoDelDia` |
+| 0.58.0 | A-9 · #46 | `GET`/`PUT .../ofertas/{ofertaId}/practicas` (`getPracticasDeOferta`, `reemplazarPracticasDeOferta`) |
+| 0.59.0 | C-4 · #47 | `GET /autorizaciones/{id}/alertas` y `consumosARevisar` en el saldo |
+| 0.60.0 | F-4 · #49 | `Obligacion` gana `concepto`, `practicaId`, `alertaPracticaNoHabilitada` y `convenio` (schema `ConvenioAplicado`) |
+| 0.63.0 | E-4 · #52 | Recurso `/turnos/{t}/recepcion` (8 operaciones), `Recepcion`, `EventoDeRecepcion`, `TurnoDelDia.recepcion`, problem type `recepcion-transicion-no-permitida`. `EN_ESPERA` del turno y la llegada vieja quedan **deprecados** |
+| 0.64.0 | A-7 · #53 | `GET /me/platform-role`; aprobar una solicitud de catálogo publica el concepto global. Aprobar sin ningún código posible pasó de 200 a 400 |
+| 0.65.0 | B-3 · #55 | `GET /personas/{id}/cobertura-aplicable`, arancel por oferta (`ofertaId` en aranceles y en `aranceles/efectivo`) y `precios-particulares` de la oferta |
+| 0.66.0 | E-6 · #54 | `PUT .../ofertas/{o}/politica-de-prepago`, `Recepcion.prepago`, `turnoId` en el registro de cobro; problem types `prepago-no-admitido`, `prepago-ya-registrado` |
+| 0.67.0 | #58 | Los schemas de reportes pasan a `IndicadorDeReporteResponse`, `SeccionDeReporteResponse` y `SeccionOmitidaDeReporteResponse` |
+| 0.68.0 | E-8 · #59 | `GET /consultorios/{c}/series-de-turnos` (`listarSeriesDeTurnos`) y `TurnoDelDia.prepago` |
+| 0.69.0 | A-8 · #60 | `primerBox` y `horarioGeneral` en el alta de sede; `horarioGeneral` en el calendario de la sede |
+
+`0.61.0` y `0.62.0` no existen en `main`. Todo es aditivo salvo tres puntos que los PR declaran:
+el 400 nuevo de A-7, la deprecación de `EN_ESPERA` en E-4 —sigue declarado una versión más para no
+romper la compilación del cliente— y el cambio de nombre de los tres schemas de 0.67.0, que corrige
+un contrato que describía mal la respuesta.
+
+#### Paquetes que entraron entre el 06/10 a la noche y el 07/10
+
+- **Decisiones:** DP-11, DP-12 y DP-13 (#42) resuelven DU-1, DU-4 y DU-7; DP-14, DP-15 y DP-16
+  (#48) resuelven DU-2, DU-3 y DU-9.
+- **Cerrados:** E-1 (#41, descripciones), G-11 (#45, gate de vuelta a 0,80), A-4 (#51), G-1 (#50),
+  F-8 (#57, los dieciséis escenarios 33–48 corridos), E-7 (#56).
+- **Backend hecho y pantalla en `appKine-web` el mismo día:** E-3 (#44 · web #10), E-4 (#52 · web
+  #8), A-7 (#53 · web #13), B-3 (#55 · web #15), E-6 (#54 · web #14), E-8 (#59 · web #20 y #21),
+  A-8 (#60 · web #22).
+- **Backend hecho, sin pantalla propia:** C-6 (#43), A-9 (#46: la pantalla de B-3 lee las prácticas
+  de la oferta pero nadie las edita), C-4 (#47: las alertas son D-f), F-4 (#49: el convenio congelado
+  se ve en la bandeja de elegibles de presentaciones, web #9; la cuenta corriente no muestra el
+  `concepto`).
+- **Sólo frontend, sobre backend que ya existía:** F-6 caja (web #7), F-7 presentaciones (web #9),
+  G-8 reportes (web #12), B-5 coberturas del 360 (web #16), A-10 impacto (web #17), G-3 imagen
+  Docker del frontend (web #18).
+- **La ruta crítica del MVP llegó al final del backend:** A-9 → C-4 → F-4 están en `main`. La
+  bandeja de prestaciones elegibles de 07.04 y la sección de financiadores del reporte tienen datos
+  reales por primera vez (`ObligacionDelFinanciadorIT`).
+
+#### Los defectos reales que aparecieron el 07/10
+
+| # | Qué pasaba | Dónde | PR |
+|---|---|---|---|
+| 1 | **Se podía reservar un turno en el pasado.** El motor dibuja también los slots de hoy que ya pasaron y nada lo controlaba; el turno nacía inalterable y sólo se cerraba marcando `AUSENTE` a alguien que nunca faltó | `TurnoService.reservar` | #44 |
+| 2 | Dos reemplazos simultáneos de la configuración de una oferta terminaban en **deadlock → 500**: cada INSERT hijo deja un lock compartido sobre la oferta y el force-increment pide el exclusivo al commitear | `AccesoALaConfiguracionDeOferta` (prácticas y habilitaciones) | #46 |
+| 3 | El re-disparo de un cierre podía **descontar dos veces** la misma práctica: la autorización agotada ya no habilitaba y el reintento elegía otra. El `spi` prometía idempotencia y no la cumplía | `ConsumoDeAutorizacionService` | #47 |
+| 4 | La cuenta corriente del paciente y el cobro **no distinguían quién debe**: con la fila del financiador, el paciente "debía" el arancel entero y un cobro de mostrador podía saldar la parte de la obra social. Inobservable hasta F-4 | `findDeLaPersona`, `CobroService.exigirCobrable` | #49 |
+| 5 | Sacar `EN_ESPERA` del enum rompía la lectura del historial de cualquier turno que pasó por la espera: `TurnoEvento` mapeaba los estados con `EstadoTurno`. Evitado antes de mergear | `TurnoEvento` | #52 |
+| 6 | El indicador `turnos-en-espera` del reporte quedaba siempre en 0 al mover la espera a la recepción. Corregido dentro del mismo PR | `TurnosEnElReporte` | #52 |
+| 7 | **El débito de una presentación no persistía la marca del ítem**: la respuesta decía `DEBITADO` y la base seguía `INCLUIDO`. `registrarDebito` es un UPDATE nativo con `clearAutomatically = true` y desacoplaba el ítem cargado antes | `PresentacionService.debitar` | #57 |
+| 8 | **El contrato publicaba para los reportes los schemas del Paciente 360**: springdoc nombra por el nombre simple y `IndicadorResponse`/`SeccionResponse` existían en `person` y en `reporting`. El cliente generado no podía mostrar ningún número. Lo destapó la pantalla de G-8 (web #12) | `reporting.api.dto` | #58 |
+
+> **El patrón del día: un contrato o un UPDATE nativo que mienten sin fallar.** La fila 7 es otra
+> vez un UPDATE nativo —esta vez por `clearAutomatically`, no por `version`— y la fila 8 es un
+> contrato sin drift que describía otra respuesta: `OpenApiContractIT` compara el contrato contra sí
+> mismo y no podía verlo. #58 sumó `SchemaNameCollisionTest`, que falla si dos records o enums de
+> la capa `api` publican el mismo nombre de schema.
+
+### Estado al 06/10/2026, sobre `d110aaf` (histórico)
 
 > Esta subsección **supersede** a la del 29/09 que sigue abajo en contrato, migraciones y
 > paquetes. Lo de abajo queda como historia: explica cómo se llegó acá. Las cifras de cobertura
@@ -514,6 +594,58 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
     únicas notificaciones con `organization_id` son invitaciones. Con los avisos de turno de E-5 en
     el outbox, conviene revisarlo.
 
+> **Las de abajo las abrieron los PR del 06/10 a la noche y del 07/10.** Igual que las anteriores,
+> cada una quedó implementada con el criterio que su PR o su diseño declara.
+
+11. **DU-13: catálogo global de financiadores** (A-7, #53). El centro **referencia** la fila global
+    (`owner_key` en `financiador`/`plan_cobertura`, que reabre todas las lecturas de `contracting`)
+    o la **adopta** como copia (tabla global aparte). Recomendada la copia. Sin decidirla, esa parte
+    de A-7 no se implementa (`docs/diseno/AKINE-A-7-plataforma.md` §3).
+12. **"Atender como Particular"** (E-7, #56). **(a)** Particular manda sobre el convenio: se tomó
+    de RF-M08-007 lo que E-4 había dejado como pregunta. **(b)** Oferta sin precio + Particular →
+    no se devenga nada, en vez de caer al convenio. **(c)** Es una foto del cierre: si la recepción
+    cambia después, la deuda no se recalcula.
+13. **El horario general de la sede** (A-8, #60). **(a)** Es informativo: que la agenda lo lea —por
+    ejemplo para ofertas sin profesional, hoy `SIN_HORARIO`— es una decisión aparte. **(b)** El
+    onboarding compuesto de la primera sede sigue sin box ni horario (ADR-0008 no se tocó); se
+    cargan después por espacios y por el `PUT` del calendario, que A-8 agregó por eso. **(c)** Un
+    alta con complemento sin ninguna extensión registrada falla con `IllegalStateException` en vez
+    de descartar el box y el horario.
+14. **El estado de una serie y el prepago antes del check-in** (E-8, #59). El estado derivado tiene
+    dos valores: `FINALIZADA` no distingue cancelada de terminada (sería un valor más, aditivo).
+    Antes del check-in el prepago se muestra `PENDIENTE` aunque el paciente después resulte con
+    cobertura.
+15. **Cobertura por oferta** (B-3, #55). **(a)** La importación masiva de convenio (RF-M16-007)
+    quedó diseñada y fuera (§7 del diseño). **(b)** El arancel por oferta es una columna de
+    `convenio_arancel` con la práctica obligatoria, no una tabla `convenio_oferta`. **(c)** Una
+    cobertura aplica con la primera práctica que resuelve, la principal primero, y no hay desempate
+    entre aranceles del mismo nivel. **(d)** El precio particular no edita su importe: sólo se
+    cierra o reabre la vigencia. **(e)** La elegibilidad administrativa y la autorización siguen
+    resolviendo por práctica, sin oferta.
+16. **Prepago de recepción** (E-6, #54). La política vive sólo en la oferta, sin valor por defecto
+    por consultorio. El prepago **avisa y no bloquea**, porque ningún RF pide bloquear. Con
+    cobertura no hay aviso: la recepción no calcula el coseguro. Se imputa sólo a la deuda de esa
+    sesión —lo que sobra no va a deudas viejas—, y si la imputación posterior falla no hay
+    reintento ni bandeja de pendientes, sólo el log.
+17. **La obligación del financiador** (F-4, #49). Una obligación por responsable y por sesión, no
+    por práctica (cambiarlo cambia el unique de `V36`). No se cobra la diferencia particular −
+    arancel (RF-M18-011 pide una configuración que no existe). `admite_obra_social` de la oferta
+    decide si se busca cobertura. El copago del plan no interviene: el coseguro sale del arancel.
+    **RF-M21-003 todavía no bloquea** por orden, autorización ni credencial: el dato está congelado
+    y falta decidir si cada faltante es reparo o aviso.
+18. **Recepción** (E-4, #52). No hay salida "se retiró sin ser atendido" y Particular desde
+    `EN_ESPERA` no se admite. Una instancia vieja que escriba `EN_ESPERA` choca contra
+    `ck_turno_estado`: hay ventana de despliegue. Contraer las columnas de llegada de `turno` queda
+    para una migración posterior.
+19. **Lo que dejaron abierto C-4, E-3, C-6, A-9 y G-1** (#47, #44, #43, #46, #50). C-4: no se puede
+    descartar una alerta de consumo sin revertirlo, una sesión sin caso consume una autorización
+    atada a un caso, y una autorización puede quedar atada a planes de dos casos. E-3: alta de serie
+    todo o nada (un feriado la hace fallar entera), tope de 52, un aviso por ocurrencia y
+    confirmación por cantidad y no por lista. C-6: el permiso reforzado y la ventana temporal para
+    enmendar siguen siendo `sesion:register` más propiedad. A-9: lista vacía significa que la oferta
+    no declara prácticas. G-1: el alcance limitado del profesional viaja como advertencia y no como
+    campo, y `PLATFORM_ADMIN` lee en `SOPORTE` aunque la matriz diga "Global".
+
 ### Huecos funcionales conocidos
 
 - **El OpenAPI no declara ningún `securityScheme`**, en ningún módulo. El frontend funciona porque
@@ -522,41 +654,43 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
   membership con rol `PACIENTE` **lee el padrón entero de su organización**. Aprobar el permiso no
   lo arreglaría: el problema es el alcance `OWN`, sin implementar porque no hay vínculo entre cuenta
   y persona.
-- **`consultarElegibilidadAdministrativa` no tiene consumidor.** Responde, pero ni turno ni sesión
-  ni obligación la consultan. Es el trabajo de **04.05**.
-- **RF-M06-005 no cierra de punta a punta:** resolver un pedido al catálogo de la plataforma no
-  tiene pantalla. ~~Su prerrequisito es un endpoint que le diga al frontend si quien mira tiene rol
-  de plataforma.~~ El backend está completo desde A-7 (contrato 0.64.0): `GET /me/platform-role`
-  sin contexto, y aprobar una solicitud publica el concepto global en la misma transacción.
+- ~~**`consultarElegibilidadAdministrativa` no tiene consumidor.**~~ **La consume la recepción
+  desde E-4** (#52), por `person.spi.ElegibilidadAdministrativaDirectory`: lo que no cumple queda
+  `OBSERVADA`, nunca un 4xx. La sesión y la obligación siguen sin consultarla.
+- ~~**RF-M06-005 no cierra de punta a punta**~~ **Cierra desde el 07/10:** backend en A-7 (contrato
+  0.64.0, `GET /me/platform-role` y aprobar publica el concepto global) y la consola de plataforma
+  en `appKine-web` #13. Sin E2E ni prueba contra el backend real.
 - **Catálogo global de financiadores (F3):** diseñado en A-7 y sin implementar, espera **DU-13**
   —referencia con `owner_key` o copia adoptada— (`docs/diseno/AKINE-A-7-plataforma.md` §3).
 - ~~**CA-M03-002 parcialmente cubierto**~~ **Cubierto en el backend por A-8** (`V83`, contrato
   0.69.0): el alta de sede acepta `primerBox` y `horarioGeneral` y los crea en la misma
-  transacción. El horario general es informativo —la agenda no lo lee (RN-M03-004)—. Falta la
-  pantalla, y el onboarding compuesto de la primera sede sigue sin box ni horario: se cargan
-  después por espacios y por el `PUT` del calendario.
+  transacción. El horario general es informativo —la agenda no lo lee (RN-M03-004)—. La pantalla
+  entró en `appKine-web` #22. El onboarding compuesto de la primera sede sigue sin box ni horario:
+  se cargan después por espacios y por el `PUT` del calendario.
 
 ### Próximo paso concreto
 
-> Reescrito el 06/10/2026. La versión anterior daba el cliente regenerado contra `0.44.0` y
-> repetía dos veces el QA manual.
+> Reescrito el 07/10/2026. La versión del 06/10 pedía regenerar el cliente, las pantallas de F-6,
+> F-7, F-3, B-5 y A-10, cerrar F-8 y mover la ruta crítica: todo eso entró ese día, salvo la
+> pantalla de F-3.
 
-1. **Regenerar el cliente TypeScript contra `0.54.0`** en la rama del frontend que lo necesite: en
-   `appKine-web` `main` está en `0.46.0`, y entre medio entraron el reintento de notificaciones,
-   `DEUDA_DEL_PACIENTE`, `Sesion.estado = CERRADA`, `ofertaVersion` y las tres operaciones de F-3.
-2. **Las pantallas de F4 en adelante** y las de lo que entró el 06/10 sin pantalla: timeline
-   clínico, caso, plan, examen, caja (F-6), presentaciones (F-7), anticipos y anulación de cobros
-   (F-3), la sección de coberturas del 360 (B-5) y el impacto de desvinculación y de disponibilidad
-   (A-10, desbloqueado por E-1).
-3. **El QA manual del §6**, sin correr desde 02.02 y declarado bloqueante para deploy. Docker
-   funciona y el contrato está al día: no queda excusa técnica.
-4. **Lo que falta de F-8**: escenarios 35, 36, 38 y 44 de `docs/tests-diferidos.md` (los `V54`,
-   `V56` y `V57` contra el motor, y el débito contra la transferencia del mismo lote).
-5. **La ruta crítica del MVP sigue sin moverse:** DU-1 → A-9 (puente Oferta↔Práctica) → C-4 → F-4
-   (obligación del financiador). Hoy no existe ninguna obligación con `responsable = FINANCIADOR`,
-   así que la bandeja de 07.04 devuelve lista vacía en un despliegue real.
-6. Las **decisiones pendientes del usuario** de más arriba, en particular las seis que abrieron
-   los PR del 06/10.
+1. **El QA manual del §6 (G-12)**, sin correr desde 02.02 y declarado bloqueante para deploy. Es
+   más urgente que antes: el 07/10 entraron trece PR de pantallas y **ninguno se verificó contra
+   el backend real** —cada PR de `appKine-web` lo declara—, sólo con `HttpTestingController`.
+2. **E2E contra el stack real y el job E2E del CI (G-9).** Lo que lo bloqueaba era la imagen del
+   frontend, y G-3 la cerró (web #18). Las verticales sin un solo E2E son la clínica, F3, caja,
+   presentaciones, recepción y series.
+3. **Las pantallas que siguen faltando:** anulación, reintegro e imputación posterior de cobros
+   (F-3), edición de las prácticas de una oferta (A-9), alertas de consumo y selector de
+   autorización (C-4 / D-f), reprogramación de serie con alcance, reintento de notificaciones,
+   egresos y pagos a profesionales (07.05 / F-5), y la historia clínica en pantalla, que está en el
+   PR #4 de `appKine-web`, abierto y sin mergear (D-a, D-b, D-c).
+4. **B-4 necesita una migración por encima de `V83`**: su `V68` reservada quedó por debajo de lo
+   mergeado. Espera además DU-8.
+5. Las **decisiones pendientes del usuario**: DU-5, DU-6, DU-8, DU-10, DU-11, DU-12 y DU-13 del plan
+   de trabajo en paralelo, y las que abrieron los PR del 07/10 (11 a 19 de arriba). La más cara de
+   postergar es la 17: **RF-M21-003 no bloquea** una presentación sin orden, autorización ni
+   credencial, y el dato ya viaja congelado en cada obligación del financiador.
 
 Pendientes que arrastra el backend:
 
