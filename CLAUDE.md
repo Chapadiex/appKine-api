@@ -696,7 +696,7 @@ Pendientes que arrastra el backend:
 
 - [ ] Protección de rama en `main`
 - [ ] Activar el job de SonarQube en `.github/workflows/ci.yml` (listo, comentado)
-- [ ] Observabilidad: logging JSON, Prometheus, OpenTelemetry
+- [x] ~~Observabilidad: logging JSON, Prometheus, OpenTelemetry~~ — G-4, `docs/observabilidad.md`
 - [ ] Reglas `PACKAGE` de cobertura al 90 % para módulos críticos: el `PENDIENTE(F1)` del `pom.xml` sigue abierto
 - [ ] Gate de `BRANCH` en JaCoCo, después de subir la cobertura de rama
 - [ ] Completar los `PENDIENTE(F1)` de `.claude/qa-config.md`

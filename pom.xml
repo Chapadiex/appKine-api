@@ -97,6 +97,34 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
+		<!-- Metricas en formato Prometheus, servidas en /actuator/prometheus (G-4). La exposicion
+		     y quien puede leerlas las decide application.yml + SecurityConfig; ver
+		     docs/observabilidad.md. -->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<!-- Trazas (G-4): Micrometer Tracing con el puente a OpenTelemetry y el exportador OTLP.
+		     Se usan los modulos sueltos y NO spring-boot-starter-opentelemetry porque el starter
+		     trae tambien micrometer-registry-otlp, que empuja METRICAS por OTLP a
+		     localhost:4318 cada minuto y llena el log de errores donde no hay collector. Las
+		     metricas salen por Prometheus; por OTLP solo salen las trazas, y solo si se
+		     configura un endpoint (ver docs/observabilidad.md). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-micrometer-tracing-opentelemetry</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-tracing-bridge-otel</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.opentelemetry</groupId>
+			<artifactId>opentelemetry-exporter-otlp</artifactId>
+			<scope>runtime</scope>
+		</dependency>
 
 		<!-- ===== Test ===== -->
 		<dependency>

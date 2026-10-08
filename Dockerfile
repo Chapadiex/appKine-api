@@ -59,6 +59,11 @@ RUN mkdir -p /app/var && chown -R akine:akine /app/var
 
 USER akine:akine
 
+# Observabilidad (G-4): el log sale en JSON por stdout (fuera del perfil local), las metricas en
+# /actuator/prometheus —cerrado salvo AKINE_METRICS_SCRAPE_TOKEN— y las trazas se exportan
+# solo si se define MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT. Nada de eso se fija
+# aca: todo llega por entorno. Ver docs/observabilidad.md.
+#
 # Flags de JVM para contenedor: el heap se dimensiona contra el limite de memoria del
 # contenedor, no contra la RAM del host. Se reemplazan con `-e JAVA_OPTS=...` al arrancar.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError" \

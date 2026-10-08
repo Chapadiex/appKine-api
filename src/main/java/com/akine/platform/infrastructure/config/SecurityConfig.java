@@ -23,6 +23,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.akine.platform.infrastructure.observability.CorrelationIdFilter;
 import com.akine.platform.infrastructure.security.JwtAuthenticationFilter;
 import com.akine.platform.infrastructure.security.ProblemAccessDeniedHandler;
 import com.akine.platform.infrastructure.security.ProblemAuthenticationEntryPoint;
@@ -362,14 +363,18 @@ public class SecurityConfig {
 		// esos dos endpoints quedan inalcanzables desde el navegador en cuanto el frontend se
 		// sirve desde otro origen. En desarrollo no se nota: el proxy de Angular vuelve todo
 		// mismo-origen y no hay preflight que falle.
+		// X-Request-Id (G-4): el frontend puede mandar su propio id de correlacion; sin
+		// declararlo, el preflight lo rechazaria y el pedido entero fallaria entre origenes.
 		configuration.setAllowedHeaders(List.of(
-				"Authorization", "Content-Type", "Accept", "Idempotency-Key"));
+				"Authorization", "Content-Type", "Accept", "Idempotency-Key",
+				CorrelationIdFilter.HEADER));
 
 		// Un header de respuesta que no se expone es ilegible desde JavaScript entre origenes:
-		// el navegador lo recibe y el codigo ve null. Retry-After es el unico que la interfaz
-		// necesita leer —para decir "esperá N segundos" en vez de un "probá mas tarde" a
-		// ciegas— y por eso es el unico que se expone.
-		configuration.setExposedHeaders(List.of("Retry-After"));
+		// el navegador lo recibe y el codigo ve null. Retry-After lo necesita la interfaz para
+		// decir "esperá N segundos" en vez de un "probá mas tarde" a ciegas; X-Request-Id
+		// (G-4), para mostrarlo en un error y que el usuario lo pase al reportarlo: con ese id
+		// se encuentra el request en el log.
+		configuration.setExposedHeaders(List.of("Retry-After", CorrelationIdFilter.HEADER));
 		configuration.setAllowCredentials(true);
 
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
