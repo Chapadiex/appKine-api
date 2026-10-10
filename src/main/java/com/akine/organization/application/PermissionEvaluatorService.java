@@ -426,8 +426,13 @@ public class PermissionEvaluatorService implements PermissionEvaluator, Permissi
 	}
 
 	private List<MembershipGrant> grantsVigentes(Membership membership, Instant at) {
+		// G-5: un grant que el rol ACTUAL no admite no concede nada. Cubre las filas otorgadas
+		// antes de que el alta validara el rol, y la membership que cambio de rol despues del
+		// grant (un CONSULTORIO_ADMIN con hc:write que pasa a ADMINISTRATIVO).
 		return grantRepository.findAllByMembershipIdAndActiveTrue(membership.getId()).stream()
 				.filter(g -> g.isValidAt(at))
+				.filter(g -> RolePermissions.otorgableComoGrant(
+						membership.getRoleCode(), g.getPermissionCode()))
 				.toList();
 	}
 }

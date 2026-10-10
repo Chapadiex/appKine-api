@@ -711,6 +711,21 @@ class MembershipServiceTest {
 		}
 
 		@Test
+		@DisplayName("G-5: un permiso otorgable no se le otorga a un rol cuya celda de la matriz es 'No'")
+		void una_celda_no_es_400_y_no_escribe() {
+			// hc:write es otorgable al CONSULTORIO_ADMIN, pero la matriz §2 le dice "No" al
+			// ORG_ADMIN en Editar HC, y la §3 traduce "No" a "no otorgable por membership".
+			objetivo(deOtraCuenta(RoleCode.ORG_ADMIN));
+
+			assertThatThrownBy(() -> service.assignGrant(actor, ORG_ID, MEMBERSHIP_ID,
+					"hc:write", "motivo", null))
+					.isInstanceOf(UnknownPermissionCodeException.class)
+					.hasMessageContaining("ORG_ADMIN");
+			verify(grantRepository, never()).saveAndFlush(any());
+			verifyNoInteractions(auditTrail);
+		}
+
+		@Test
 		@DisplayName("No se otorgan permisos sobre una membership que ya no esta activa")
 		void no_se_otorga_sobre_una_inactiva() {
 			Membership revocada = deOtraCuenta(RoleCode.PROFESIONAL);
