@@ -246,7 +246,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | ID | Qué | Dep. |
 |---|---|---|
 | G-12 | QA manual del §6 del `CLAUDE.md`, fase por fase, contra la DB | olas 1–3 de cada fase |
-| G-13 | Backup/restore, rollback, smoke post-deploy, release notes, runbooks | G-3, G-4 |
+| ~~G-13~~ | ~~Backup/restore, rollback, smoke post-deploy, release notes, runbooks~~ — **hecho** (`akine-G-13-operaciones`, 09/10): scripts en `ops/` y docs en `docs/operaciones/`. Simulacro de restore real en stack aislado (sembrar por API, backup, destruir contenedores y volúmenes, restaurar, Flyway valida, conteos y lectura por API, smoke verde) y rollback a la imagen del 06/10 (`V65`) contra el esquema `V85` probado. Destapó un 500 al descargar adjuntos administrativos (`AdjuntoService.contenido`, auditoría en transacción `readOnly`) y deja declarado que el rate limit es global detrás del proxy (runbook R4) | G-3, G-4 |
 | G-14 | Aprobación clínica y legal (DP-08); deploy y ventana de estabilización (DP-07) | todo |
 | L-2 | Decisión DU-12 → abrir F9 (o no) | G-14 |
 
@@ -291,8 +291,8 @@ compromiso.
 | **G9 · E2E, a11y y dashboards** | web transversal | web | A-6 · B-6 | G-7 · G-8 (espera G-1) | — | ≈ 16 |
 
 **Cierre del MVP, todos juntos**, cuando los grupos terminaron su tramo 3: G-5 hallazgos altos
-(espera DU-5, DU-6), G-10 carga (espera G-4), G-11 cobertura 0,80, **G-12 QA manual**, G-13
-backup/rollback y G-14 aprobación y deploy → **gate del MVP** → DU-12 (¿abrir F9?).
+(espera DU-5, DU-6), G-10 carga (espera G-4), G-11 cobertura 0,80, **G-12 QA manual**, ~~G-13
+backup/rollback~~ (hecho) y G-14 aprobación y deploy → **gate del MVP** → DU-12 (¿abrir F9?).
 
 **Decisiones:** las toma una sola persona, la que decide producto. **DU-1, DU-2 y DU-3 el día 1**,
 junto con L-0 (rama por defecto a `main`). DU-4, DU-7, DU-8 y DU-9 durante el tramo 1, porque las
