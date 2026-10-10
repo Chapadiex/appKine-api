@@ -360,6 +360,11 @@ docker run --rm --name akine-api -p 8080:8080 \
   exige modo online; con `./mvnw -o` se saltea con un WARNING y no falla, así que un jar
   construido offline puede salir sin SBOM o con uno viejo. La imagen y el CI construyen online.
 
+- **Operación (G-13):** backup y restore de base **y** adjuntos (`ops/backup.sh`,
+  `ops/restore.sh`, `ops/verificar-backup.sh`), smoke post-deploy (`ops/smoke.mjs`), borrador de
+  release notes (`ops/release-notes.mjs`), rollback y runbooks: `docs/operaciones/`. El volumen de
+  `/app/var` es parte del backup: sin él, cada adjunto restaurado responde 409.
+
 ### Endpoints existentes
 
 | Ruta | Qué es |
