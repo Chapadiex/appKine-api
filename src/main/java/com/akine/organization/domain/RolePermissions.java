@@ -85,12 +85,60 @@ public final class RolePermissions {
 		// dos a grant explicito sobre la membership. "Segun rol clinico" pide ademas habilitacion
 		// profesional vigente a la fecha del evento, y eso NO se evalua todavia: el grant es la
 		// mitad implementable, y la otra mitad queda anotada en el registro de cierre de la etapa.
-		return Set.of(
-				PermissionCode.AUDITORIA_READ_CLINICA,
-				PermissionCode.PACIENTE_MANAGE,
-				PermissionCode.HC_READ,
-				PermissionCode.HC_WRITE);
+		return GRANT_POR_ROL.keySet();
 	}
+
+	/**
+	 * Si la matriz admite otorgar {@code permiso} como grant a una membership con rol {@code rol}.
+	 *
+	 * <h2>Por que el codigo solo no alcanza (AKINE-G-5)</h2>
+	 *
+	 * <p>Hasta G-5 la validacion miraba unicamente el codigo: cualquier permiso de
+	 * {@link #otorgablesComoGrant()} se le podia otorgar a <b>cualquier</b> rol. Eso convertia en
+	 * otorgables celdas que la matriz §2 marca "No", y la §3 es explicita: <i>"No — Denegado. No
+	 * otorgable por membership"</i>. Con un clic, un administrador le daba {@code hc:write} al
+	 * {@code ORG_ADMIN} ("Editar HC: No"), {@code hc:read} completo al {@code ADMINISTRATIVO} (cuya
+	 * celda "Limitado" es solo metadatos, nunca contenido clinico) o {@code paciente:manage} al
+	 * {@code PACIENTE}.
+	 *
+	 * <p>La tabla traduce cada celda "No por defecto", "Segun permiso" o "Segun rol clinico" a
+	 * grant, y solo esas. Un permiso que el rol ya tiene por base tambien se acepta: es redundante
+	 * e inocuo, y rechazarlo romperia sin motivo un grant ya otorgado antes de un cambio de rol.
+	 *
+	 * <p>El evaluador aplica la misma regla al leer: un grant que el rol actual de la membership
+	 * no admite —porque se otorgo antes de G-5 o porque despues cambio el rol— no concede nada.
+	 */
+	public static boolean otorgableComoGrant(RoleCode rol, PermissionCode permiso) {
+		if (rol == null || permiso == null || rol == RoleCode.PLATFORM_ADMIN) {
+			return false;
+		}
+		if (baseScope(rol, permiso).isPresent()) {
+			return GRANT_POR_ROL.containsKey(permiso);
+		}
+		return GRANT_POR_ROL.getOrDefault(permiso, Set.of()).contains(rol);
+	}
+
+	/**
+	 * Las celdas de la matriz que se cumplen por grant explicito, permiso por permiso.
+	 *
+	 * <ul>
+	 *   <li>{@code auditoria:read-clinica}: §6 "No por defecto (grant)" para {@code ORG_ADMIN} y
+	 *       {@code CONSULTORIO_ADMIN}; "—" para los demas.</li>
+	 *   <li>{@code paciente:manage}: "Segun permiso" del {@code PROFESIONAL} en Gestionar paciente.
+	 *       El {@code PACIENTE} es "Propio" (alcance {@code OWN}, sin implementar).</li>
+	 *   <li>{@code hc:read}: "No por defecto" del {@code ORG_ADMIN} y "Segun rol clinico" del
+	 *       {@code CONSULTORIO_ADMIN} en Ver HC. El {@code ADMINISTRATIVO} es "Limitado" (solo
+	 *       metadatos, sin codigo propio) y el {@code PACIENTE} "Propia autorizada" ({@code OWN}).</li>
+	 *   <li>{@code hc:write}: "No por defecto" del {@code CONSULTORIO_ADMIN} en Editar HC. El
+	 *       {@code ORG_ADMIN}, el {@code ADMINISTRATIVO} y el {@code PACIENTE} son "No".</li>
+	 * </ul>
+	 */
+	private static final Map<PermissionCode, Set<RoleCode>> GRANT_POR_ROL = Map.of(
+			PermissionCode.AUDITORIA_READ_CLINICA,
+			Set.of(RoleCode.ORG_ADMIN, RoleCode.CONSULTORIO_ADMIN),
+			PermissionCode.PACIENTE_MANAGE, Set.of(RoleCode.PROFESIONAL),
+			PermissionCode.HC_READ, Set.of(RoleCode.ORG_ADMIN, RoleCode.CONSULTORIO_ADMIN),
+			PermissionCode.HC_WRITE, Set.of(RoleCode.CONSULTORIO_ADMIN));
 
 	private static Map<RoleCode, Map<PermissionCode, PermissionScope>> base() {
 		Map<RoleCode, Map<PermissionCode, PermissionScope>> tabla = new EnumMap<>(RoleCode.class);

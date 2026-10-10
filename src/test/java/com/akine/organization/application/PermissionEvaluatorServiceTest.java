@@ -418,6 +418,22 @@ class PermissionEvaluatorServiceTest {
 			// Sobre la organizacion entera, no: el grant esta atado a una membership de sede.
 			assertThat(decidir(PermissionCode.AUDITORIA_READ_CLINICA, null).granted()).isFalse();
 		}
+
+		@Test
+		@DisplayName("G-5: un grant que el rol actual no admite no concede nada")
+		void el_grant_que_el_rol_no_admite_no_concede() {
+			// hc:read sobre un ADMINISTRATIVO: su celda de Ver HC es "Limitado" (solo metadatos),
+			// no otorgable. La fila puede existir —otorgada antes de G-5, o a un CONSULTORIO_ADMIN
+			// que despues paso a ADMINISTRATIVO— y no tiene que abrir el contenido clinico.
+			sinRolDePlataforma();
+			memberships(Fixtures.membershipDeSede(CONSULTORIO_ID, RoleCode.ADMINISTRATIVO));
+			given(grantRepository.findAllByMembershipIdAndActiveTrue(MEMBERSHIP_ID))
+					.willReturn(List.of(new MembershipGrant(ORG_ID, MEMBERSHIP_ID,
+							PermissionCode.HC_READ, OTRA_CUENTA, "previo a G-5",
+							AHORA.minus(1, ChronoUnit.DAYS), null)));
+
+			assertThat(decidir(PermissionCode.HC_READ, CONSULTORIO_ID).granted()).isFalse();
+		}
 	}
 
 	// =================================================================================

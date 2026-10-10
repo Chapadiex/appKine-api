@@ -321,6 +321,41 @@ class RolePermissionsTest {
 				.doesNotContain(PermissionCode.REPORTE_READ);
 	}
 
+	@ParameterizedTest(name = "{1} a {0}: otorgable = {2}")
+	@DisplayName("G-5: una celda 'No' de la matriz no es otorgable por grant, aunque el codigo lo sea")
+	@CsvSource({
+			// Ver HC: ORG_ADMIN "No por defecto", CONSULTORIO_ADMIN "Segun rol clinico".
+			"ORG_ADMIN,         HC_READ,                true",
+			"CONSULTORIO_ADMIN, HC_READ,                true",
+			// ADMINISTRATIVO "Limitado" = solo metadatos; PACIENTE "Propia autorizada" = OWN.
+			"ADMINISTRATIVO,    HC_READ,                false",
+			"PACIENTE,          HC_READ,                false",
+			// Editar HC: solo CONSULTORIO_ADMIN "No por defecto"; ORG_ADMIN, ADMINISTRATIVO y
+			// PACIENTE son "No".
+			"CONSULTORIO_ADMIN, HC_WRITE,               true",
+			"ORG_ADMIN,         HC_WRITE,               false",
+			"ADMINISTRATIVO,    HC_WRITE,               false",
+			"PACIENTE,          HC_WRITE,               false",
+			// Gestionar paciente: PROFESIONAL "Segun permiso"; PACIENTE "Propio" (OWN).
+			"PROFESIONAL,       PACIENTE_MANAGE,        true",
+			"PACIENTE,          PACIENTE_MANAGE,        false",
+			// auditoria:read-clinica: §6 solo a los dos administradores.
+			"ORG_ADMIN,         AUDITORIA_READ_CLINICA, true",
+			"CONSULTORIO_ADMIN, AUDITORIA_READ_CLINICA, true",
+			"PROFESIONAL,       AUDITORIA_READ_CLINICA, false",
+			"ADMINISTRATIVO,    AUDITORIA_READ_CLINICA, false",
+			"PACIENTE,          AUDITORIA_READ_CLINICA, false",
+			// Redundante con la base: inocuo, se acepta.
+			"PROFESIONAL,       HC_WRITE,               true",
+			"ADMINISTRATIVO,    PACIENTE_MANAGE,        true",
+			// Fuera del catalogo de grants: nunca, aunque el rol lo tenga por base.
+			"ORG_ADMIN,         CAJA_OPERATE,           false",
+			"PLATFORM_ADMIN,    AUDITORIA_READ_CLINICA, false"
+	})
+	void la_celda_no_no_es_otorgable(RoleCode rol, PermissionCode permiso, boolean otorgable) {
+		assertThat(RolePermissions.otorgableComoGrant(rol, permiso)).isEqualTo(otorgable);
+	}
+
 	@Test
 	@DisplayName("El nombre de ACTIVIDAD_PROPIA es el que el spi publica")
 	void el_nombre_de_actividad_propia_es_el_del_spi() {

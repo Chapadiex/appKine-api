@@ -688,3 +688,50 @@ Las lecturas de **otros módulos** que muestran datos de personas ya pedían su 
 presentaciones `cobro:register`, historia clínica `hc:read`, inscripciones
 `inscripcion:read`, reportes `reporte:read`. Ninguna se autorizaba solo por pertenencia.
 
+
+## 16. Enmiendas — AKINE-G-5 (grants por rol y matriz ejecutable)
+
+No hay ningún código de permiso nuevo ni cambia ninguna asignación base. Lo que cambia es **a quién
+se le puede otorgar** un permiso por grant.
+
+### 16.1 Una celda "No" no es otorgable, aunque el código lo sea para otro rol
+
+**El hueco.** `otorgablesComoGrant()` era una lista de **códigos**: cualquier código de la lista se le
+podía otorgar a **cualquier** rol. La §3 dice lo contrario —*"No: denegado. No otorgable por
+membership"*— y la consecuencia era concreta: un administrador podía darle `hc:write` al
+`ORG_ADMIN` (Editar HC: "No"), `hc:read` completo al `ADMINISTRATIVO` (Ver HC: "Limitado", que §4
+define como solo metadatos y nunca contenido clínico), `paciente:manage` o `hc:read` al `PACIENTE`
+("Propio"/"Propia autorizada", alcance `OWN` sin implementar), o `auditoria:read-clinica` al
+`PROFESIONAL` (§6: "—"). `MatrizDePermisosIT` lo reprodujo por HTTP: los siete grants respondían
+201.
+
+**La regla, celda por celda** (`RolePermissions.otorgableComoGrant`):
+
+| Permiso | Otorgable por grant a | Fuente |
+|---|---|---|
+| `auditoria:read-clinica` | `ORG_ADMIN`, `CONSULTORIO_ADMIN` | §6 "No por defecto (grant)" |
+| `paciente:manage` | `PROFESIONAL` | §2 "Según permiso" |
+| `hc:read` | `ORG_ADMIN`, `CONSULTORIO_ADMIN` | §2 "No por defecto", "Según rol clínico" |
+| `hc:write` | `CONSULTORIO_ADMIN` | §2 "No por defecto" |
+
+Un permiso que el rol ya tiene por base también se acepta (redundante e inocuo). Cualquier otra
+combinación responde **400** con el rol nombrado en el detalle.
+
+**El evaluador aplica la misma regla al leer.** Un grant que el rol **actual** de la membership no
+admite no concede nada: cubre las filas otorgadas antes de G-5 y la membership que cambia de rol
+después del grant (un `CONSULTORIO_ADMIN` con `hc:write` que pasa a `ADMINISTRATIVO`). La fila no se
+borra —baja lógica, y además es historia— y sigue apareciendo en `GET .../grants`.
+
+**Efecto colateral sobre `caso:create`.** Abrir un caso se autoriza con `hc:write`. Con esta regla,
+quien puede abrir un caso es exactamente quien la fila "Crear Caso Clínico" de §2 habilita: el
+`PROFESIONAL` por base y el `CONSULTORIO_ADMIN` por grant ("Según rol clínico"). Si `caso:create`
+se cablea como código propio o se enmienda la matriz para absorberlo en `hc:write` sigue siendo una
+decisión del dueño del producto.
+
+### 16.2 La matriz, ejecutable
+
+`MatrizDePermisosIT` recorre por HTTP real, con los cinco roles de membership, las familias
+críticas: personas, historia clínica, sesiones, cobros, caja, egresos, presentaciones, reportes,
+colaboradores y auditoría. Para cada celda espera lo que dicen §2, §6 y las enmiendas: el código de
+éxito si el rol tiene el permiso y **403** si no. Un endpoint que autorice por pertenencia o con el
+permiso de otra familia rompe ese test, aunque `RolePermissionsTest` siga verde.
