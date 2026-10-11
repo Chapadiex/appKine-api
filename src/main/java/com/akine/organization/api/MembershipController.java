@@ -528,9 +528,12 @@ public class MembershipController {
 			operationId = "assignMembershipGrant",
 			summary = "Otorgar un permiso adicional a un colaborador",
 			description = """
-					Requiere colaborador:manage y motivo obligatorio. El catalogo de codigos \
-					otorgables es cerrado: un permiso que existe pero no es otorgable en esta fase \
-					se rechaza con 400, no se escribe.
+					Requiere colaborador:manage y motivo obligatorio. Lo otorgable depende del rol \
+					del vinculo (matriz de permisos, G-5): un permiso del catalogo que la matriz no \
+					admite para ese rol se rechaza con 400 permiso-no-otorgable-al-rol, con roleCode \
+					y permissionCode en propiedades, y no se escribe. Antes de 0.84.0 salia como \
+					validation-error. Un codigo que no existe sigue siendo validation-error. La \
+					lista de lo otorgable a cada rol la da listPermisosOtorgablesDelRol.
 
 					Otorgar dos veces el mismo permiso responde 409 grant-already-active, y esa \
 					decision la toma la clave unica de la base y no un chequeo previo: dos \
@@ -544,7 +547,9 @@ public class MembershipController {
 							schema = @Schema(implementation = MembershipGrantResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "Falta el motivo, o el codigo no existe o no es otorgable",
+					description = "Falta el motivo o el codigo no existe (validation-error), o la "
+							+ "matriz no admite ese permiso para el rol del vinculo "
+							+ "(permiso-no-otorgable-al-rol)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

@@ -6,6 +6,7 @@ import com.akine.organization.domain.MembershipGrant;
 import com.akine.organization.domain.PermissionCode;
 import com.akine.organization.domain.PermissionScope;
 import com.akine.organization.domain.RoleCode;
+import com.akine.organization.domain.RolePermissions;
 import com.akine.organization.domain.exception.FounderRevocationNotAllowedException;
 import com.akine.organization.domain.exception.GrantAlreadyActiveException;
 import com.akine.organization.domain.exception.LastAdminException;
@@ -14,6 +15,7 @@ import com.akine.organization.domain.exception.MembershipNotAccessibleException;
 import com.akine.organization.domain.exception.MembershipNotActiveException;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.organization.domain.exception.SelfRevokeNotAllowedException;
+import com.akine.organization.domain.exception.PermisoNoOtorgableAlRolException;
 import com.akine.organization.domain.exception.UnknownPermissionCodeException;
 import com.akine.organization.domain.port.ConsultorioRepositoryPort;
 import com.akine.organization.domain.port.MembershipGrantRepositoryPort;
@@ -670,6 +672,7 @@ class MembershipServiceTest {
 
 			assertThat(vista.permissionCode()).isEqualTo("auditoria:read-clinica");
 			assertThat(vista.reason()).isEqualTo("revision anual");
+			assertThat(vista.vigenteConElRolActual()).isTrue();
 			assertThat(auditoria().eventType()).isEqualTo("GRANT_ASSIGNED");
 		}
 
@@ -698,16 +701,18 @@ class MembershipServiceTest {
 		}
 
 		@Test
-		@DisplayName("Un permiso del catalogo que no es otorgable en F1 tambien es 400")
-		void un_permiso_no_otorgable_en_f1_es_400() {
-			// La matriz §6 marca un solo "No por defecto (grant)" en la fase. Escribir la fila
-			// igual dejaria un permiso que el evaluador nunca va a mirar: peor que un rechazo.
+		@DisplayName("Un permiso del catalogo que no es otorgable a ningun rol es 400 permiso-no-otorgable-al-rol")
+		void un_permiso_no_otorgable_a_ningun_rol_es_400() {
+			// Escribir la fila igual dejaria un permiso que el evaluador nunca va a mirar: peor
+			// que un rechazo. Para quien otorga es el mismo "a este rol no" que una celda "No".
 			objetivo(deOtraCuenta(RoleCode.CONSULTORIO_ADMIN));
 
 			assertThatThrownBy(() -> service.assignGrant(actor, ORG_ID, MEMBERSHIP_ID,
 					"tenant:manage", "motivo", null))
-					.isInstanceOf(UnknownPermissionCodeException.class)
-					.hasMessageContaining("no es otorgable");
+					.isInstanceOfSatisfying(PermisoNoOtorgableAlRolException.class, e -> {
+						assertThat(e.getRoleCode()).isEqualTo("CONSULTORIO_ADMIN");
+						assertThat(e.getPermissionCode()).isEqualTo("tenant:manage");
+					});
 		}
 
 		@Test
@@ -719,8 +724,10 @@ class MembershipServiceTest {
 
 			assertThatThrownBy(() -> service.assignGrant(actor, ORG_ID, MEMBERSHIP_ID,
 					"hc:write", "motivo", null))
-					.isInstanceOf(UnknownPermissionCodeException.class)
-					.hasMessageContaining("ORG_ADMIN");
+					.isInstanceOfSatisfying(PermisoNoOtorgableAlRolException.class, e -> {
+						assertThat(e.getRoleCode()).isEqualTo("ORG_ADMIN");
+						assertThat(e.getPermissionCode()).isEqualTo("hc:write");
+					});
 			verify(grantRepository, never()).saveAndFlush(any());
 			verifyNoInteractions(auditTrail);
 		}
@@ -766,6 +773,85 @@ class MembershipServiceTest {
 			service.revokeGrant(actor, ORG_ID, MEMBERSHIP_ID, "auditoria:read-clinica", MOTIVO);
 
 			verifyNoInteractions(auditTrail);
+		}
+
+		@Test
+		@DisplayName("El listado de grants marca sin efecto el que el rol actual ya no admite")
+		void el_listado_marca_el_grant_que_el_rol_actual_no_admite() {
+			// Un CONSULTORIO_ADMIN con hc:write que paso a ADMINISTRATIVO: la fila sigue activa y
+			// el evaluador la ignora. La pantalla tiene que poder decirlo.
+			objetivo(deOtraCuenta(RoleCode.ADMINISTRATIVO));
+			MembershipGrant heredado = Fixtures.conId(new MembershipGrant(ORG_ID, MEMBERSHIP_ID,
+					PermissionCode.HC_WRITE, ACCOUNT_ID, "antes del cambio de rol",
+					Instant.now().minus(1, ChronoUnit.DAYS), null), 81L);
+			given(grantRepository.findAllByMembershipIdAndActiveTrue(MEMBERSHIP_ID))
+					.willReturn(List.of(heredado));
+
+			List<MembershipGrantView> grants = service.grants(actor, ORG_ID, MEMBERSHIP_ID);
+
+			assertThat(grants).singleElement().satisfies(g -> {
+				assertThat(g.active()).isTrue();
+				assertThat(g.vigenteConElRolActual()).isFalse();
+			});
+		}
+
+		@Test
+		@DisplayName("El mismo grant vale con el rol que la matriz admite")
+		void el_listado_marca_vigente_el_grant_admitido() {
+			objetivo(deOtraCuenta(RoleCode.CONSULTORIO_ADMIN));
+			given(grantRepository.findAllByMembershipIdAndActiveTrue(MEMBERSHIP_ID))
+					.willReturn(List.of(Fixtures.conId(new MembershipGrant(ORG_ID, MEMBERSHIP_ID,
+							PermissionCode.HC_WRITE, ACCOUNT_ID, "x",
+							Instant.now().minus(1, ChronoUnit.DAYS), null), 82L)));
+
+			assertThat(service.grants(actor, ORG_ID, MEMBERSHIP_ID))
+					.singleElement()
+					.extracting(MembershipGrantView::vigenteConElRolActual)
+					.isEqualTo(true);
+		}
+
+		@Test
+		@DisplayName("Los permisos otorgables de cada rol son exactamente los que admite otorgableComoGrant")
+		void permisos_otorgables_por_rol() {
+			for (RoleCode rol : RoleCode.values()) {
+				if (rol == RoleCode.PLATFORM_ADMIN) {
+					continue;
+				}
+				List<String> esperados = java.util.Arrays.stream(PermissionCode.values())
+						.filter(p -> RolePermissions.otorgableComoGrant(rol, p))
+						.map(PermissionCode::code)
+						.sorted()
+						.toList();
+
+				assertThat(service.permisosOtorgables(actor, ORG_ID, rol.name()))
+						.as("rol %s", rol)
+						.isEqualTo(esperados);
+			}
+			// paciente:manage lo tiene por base: otorgarlo es redundante e inocuo, y la regla lo
+			// admite para no romper un grant previo a un cambio de rol.
+			assertThat(service.permisosOtorgables(actor, ORG_ID, "CONSULTORIO_ADMIN"))
+					.containsExactly("auditoria:read-clinica", "hc:read", "hc:write", "paciente:manage");
+			assertThat(service.permisosOtorgables(actor, ORG_ID, "PACIENTE")).isEmpty();
+		}
+
+		@Test
+		@DisplayName("Los permisos otorgables exigen colaborador:manage")
+		void permisos_otorgables_exigen_colaborador_manage() {
+			service.permisosOtorgables(actor, ORG_ID, "PROFESIONAL");
+
+			ArgumentCaptor<com.akine.organization.spi.PermissionQuery> consulta =
+					ArgumentCaptor.forClass(com.akine.organization.spi.PermissionQuery.class);
+			verify(permissionGuard).requirePermission(consulta.capture());
+			assertThat(consulta.getValue().permissionCode()).isEqualTo("colaborador:manage");
+		}
+
+		@Test
+		@DisplayName("PLATFORM_ADMIN y un rol inexistente no tienen permisos otorgables: 400")
+		void permisos_otorgables_de_un_rol_invalido_es_400() {
+			assertThatThrownBy(() -> service.permisosOtorgables(actor, ORG_ID, "PLATFORM_ADMIN"))
+					.isInstanceOf(UnknownPermissionCodeException.class);
+			assertThatThrownBy(() -> service.permisosOtorgables(actor, ORG_ID, "JEFE_SUPREMO"))
+					.isInstanceOf(UnknownPermissionCodeException.class);
 		}
 
 		@Test

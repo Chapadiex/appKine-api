@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.82.0
+  version: 0.84.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -15724,7 +15724,7 @@ paths:
       - Colaboradores
     post:
       description: |-
-        Requiere colaborador:manage y motivo obligatorio. El catalogo de codigos otorgables es cerrado: un permiso que existe pero no es otorgable en esta fase se rechaza con 400, no se escribe.
+        Requiere colaborador:manage y motivo obligatorio. Lo otorgable depende del rol del vinculo (matriz de permisos, G-5): un permiso del catalogo que la matriz no admite para ese rol se rechaza con 400 permiso-no-otorgable-al-rol, con roleCode y permissionCode en propiedades, y no se escribe. Antes de 0.84.0 salia como validation-error. Un codigo que no existe sigue siendo validation-error. La lista de lo otorgable a cada rol la da listPermisosOtorgablesDelRol.
 
         Otorgar dos veces el mismo permiso responde 409 grant-already-active, y esa decision la toma la clave unica de la base y no un chequeo previo: dos administradores otorgando a la vez leerian los dos que no existe.
       operationId: assignMembershipGrant
@@ -15763,7 +15763,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta el motivo, o el codigo no existe o no es otorgable"
+          description: "Falta el motivo o el codigo no existe (validation-error),\
+            \ o la matriz no admite ese permiso para el rol del vinculo (permiso-no-otorgable-al-rol)"
         "403":
           content:
             application/problem+json:
@@ -16176,6 +16177,59 @@ paths:
       summary: Reintentar una notificacion fallida
       tags:
       - Notificaciones
+  /api/v1/organizations/{orgId}/roles/{roleCode}/permisos-otorgables:
+    get:
+      description: |-
+        Requiere colaborador:manage, el mismo permiso que otorgar. Devuelve los codigos que la matriz admite como permiso adicional para ese rol, calculados con la misma regla que valida el alta del grant: lo que no esta en la lista se rechaza con 400 permiso-no-otorgable-al-rol.
+
+        Incluye los otorgables que el rol ya tiene por base (paciente:manage del CONSULTORIO_ADMIN, por ejemplo): la regla los admite porque son redundantes e inocuos y rechazarlos romperia un grant previo a un cambio de rol.
+
+        La organizacion de la ruta tiene que ser la del contexto activo: distinta es 404, sin contexto es 403. PLATFORM_ADMIN no es un rol de membership y responde 400, igual que un rol que no existe.
+      operationId: listPermisosOtorgablesDelRol
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Rol de membership
+        example: CONSULTORIO_ADMIN
+        in: path
+        name: roleCode
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermisosOtorgablesResponse"
+          description: Permisos otorgables al rol. Lista vacia si no admite ninguno
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El rol no existe o no es un rol de membership
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto activo, o sin colaborador:manage"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion no existe o no es la del contexto del actor
+      summary: Permisos que se le pueden otorgar como adicionales a un rol
+      tags:
+      - Colaboradores
   /api/v1/organizations/{orgId}/subscription:
     get:
       description: |-
@@ -27726,6 +27780,14 @@ components:
           type: string
           format: date-time
           description: "Momento hasta el que rige, o null si no vence"
+        vigenteConElRolActual:
+          type: boolean
+          description: "Si el permiso concede algo con el rol ACTUAL del vinculo.\
+            \ false cuando la matriz no admite ese permiso como grant para ese rol:\
+            \ se otorgo antes de la regla de G-5 o el rol cambio despues. La fila\
+            \ sigue activa pero el evaluador la ignora, asi que la pantalla la muestra\
+            \ sin efecto"
+          example: true
     MembershipPageResponse:
       type: object
       description: Pagina de colaboradores de la organizacion
@@ -28835,6 +28897,25 @@ components:
           minLength: 0
       required:
       - email
+    PermisosOtorgablesResponse:
+      type: object
+      description: Permisos que la matriz admite otorgar como permiso adicional a
+        un rol
+      properties:
+        permissionCodes:
+          type: array
+          description: "Codigos del catalogo otorgables a ese rol, en orden alfabetico\
+            \ estable. Lista vacia si no admite ninguno"
+          example:
+          - auditoria:read-clinica
+          - hc:read
+          - hc:write
+          items:
+            type: string
+        roleCode:
+          type: string
+          description: Rol consultado
+          example: CONSULTORIO_ADMIN
     PersonaPageResponse:
       type: object
       description: "Pagina de personas del padron, segun los filtros pedidos"
@@ -29764,6 +29845,7 @@ components:
       - https://akine.app/problems/last-admin-required
       - https://akine.app/problems/self-revoke-not-allowed
       - https://akine.app/problems/grant-already-active
+      - https://akine.app/problems/permiso-no-otorgable-al-rol
       - https://akine.app/problems/consultorio-name-taken
       - https://akine.app/problems/consultorio-inactive
       - https://akine.app/problems/consultorio-already-inactive

@@ -13,6 +13,7 @@ import com.akine.organization.domain.exception.MembershipAlreadyExistsException;
 import com.akine.organization.domain.exception.MembershipNotAccessibleException;
 import com.akine.organization.domain.exception.MembershipNotActiveException;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
+import com.akine.organization.domain.exception.PermisoNoOtorgableAlRolException;
 import com.akine.organization.domain.exception.SelfRevokeNotAllowedException;
 import com.akine.organization.domain.exception.UnknownPermissionCodeException;
 import com.akine.organization.domain.port.ConsultorioRepositoryPort;
@@ -213,9 +214,32 @@ public class MembershipService implements MembershipProvisioning {
 	public List<MembershipGrantView> grants(
 			OperatingActor actor, long organizationId, long membershipId) {
 		exigirEnLectura(actor, organizationId, PermissionCode.COLABORADOR_READ, membershipId);
-		cargar(organizationId, membershipId);
+		RoleCode rolActual = cargar(organizationId, membershipId).getRoleCode();
 		return grantRepository.findAllByMembershipIdAndActiveTrue(membershipId).stream()
-				.map(MembershipGrantView::de)
+				.map(grant -> MembershipGrantView.de(grant, rolActual))
+				.toList();
+	}
+
+	/**
+	 * Permisos que la matriz admite otorgar como grant a una membership con {@code roleCode},
+	 * en orden alfabetico estable.
+	 *
+	 * <p>Es la misma regla que aplica {@link #assignGrant} al otorgar y el evaluador al leer
+	 * ({@link RolePermissions#otorgableComoGrant}): publicarla evita que la pantalla ofrezca un
+	 * permiso que el alta va a rechazar con 400. Exige {@code colaborador:manage}, el permiso de
+	 * otorgar, porque sirve para eso y no para leer.
+	 *
+	 * @throws UnknownPermissionCodeException si el rol no existe o es {@code PLATFORM_ADMIN} (400)
+	 */
+	@Transactional(readOnly = true)
+	public List<String> permisosOtorgables(
+			OperatingActor actor, long organizationId, String roleCode) {
+		exigirEnLectura(actor, organizationId, PermissionCode.COLABORADOR_MANAGE, null);
+		RoleCode rol = rolValido(roleCode);
+		return RolePermissions.otorgablesComoGrant().stream()
+				.filter(permiso -> RolePermissions.otorgableComoGrant(rol, permiso))
+				.map(PermissionCode::code)
+				.sorted()
 				.toList();
 	}
 
@@ -609,8 +633,9 @@ public class MembershipService implements MembershipProvisioning {
 	/**
 	 * Otorga un permiso adicional a una membership (matriz §3, "No por defecto").
 	 *
-	 * @throws UnknownPermissionCodeException si el codigo no esta en el catalogo o no es
-	 *         otorgable en esta fase (400)
+	 * @throws UnknownPermissionCodeException si el codigo no esta en el catalogo (400)
+	 * @throws PermisoNoOtorgableAlRolException si la matriz no admite otorgarlo al rol de la
+	 *         membership (400 {@code permiso-no-otorgable-al-rol})
 	 * @throws GrantAlreadyActiveException si ya hay uno vigente de ese permiso (409)
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
@@ -629,13 +654,15 @@ public class MembershipService implements MembershipProvisioning {
 		exigirSobreLaMembership(actor, organizationId, membership);
 		exigirActiva(membership, MembershipEstado.ACTIVA);
 
-		PermissionCode permiso = permisoOtorgable(permissionCode);
+		PermissionCode permiso = PermissionCode.desde(permissionCode)
+				.orElseThrow(() -> new UnknownPermissionCodeException(
+						permissionCode, "El codigo de permiso no existe en el catalogo"));
 		// G-5: el codigo solo no alcanza. Una celda "No" de la matriz no es otorgable por
-		// membership (§3), aunque el mismo codigo si lo sea para otro rol.
+		// membership (§3), aunque el mismo codigo si lo sea para otro rol. Un permiso que no es
+		// otorgable a ningun rol cae aca tambien: para quien otorga es el mismo "a este rol no".
 		if (!RolePermissions.otorgableComoGrant(membership.getRoleCode(), permiso)) {
-			throw new UnknownPermissionCodeException(permissionCode,
-					"La matriz de permisos no admite otorgar ese permiso al rol "
-							+ membership.getRoleCode().name());
+			throw new PermisoNoOtorgableAlRolException(
+					membership.getRoleCode().name(), permiso.code());
 		}
 		Instant ahora = Instant.now();
 
@@ -658,7 +685,7 @@ public class MembershipService implements MembershipProvisioning {
 		auditar(AuditEvents.GRANT_ASSIGNED, AuditEvents.ENTITY_MEMBERSHIP_GRANT, membership,
 				actor.accountId(), null, permiso.code(), reason, detalles, ahora);
 
-		return MembershipGrantView.de(persistido);
+		return MembershipGrantView.de(persistido, membership.getRoleCode());
 	}
 
 	/**
@@ -991,17 +1018,6 @@ public class MembershipService implements MembershipProvisioning {
 					roleCode, "PLATFORM_ADMIN no es un rol de membership: vive en platform_role");
 		}
 		return rol;
-	}
-
-	private static PermissionCode permisoOtorgable(String permissionCode) {
-		PermissionCode permiso = PermissionCode.desde(permissionCode)
-				.orElseThrow(() -> new UnknownPermissionCodeException(
-						permissionCode, "El codigo de permiso no existe en el catalogo"));
-		if (!RolePermissions.otorgablesComoGrant().contains(permiso)) {
-			throw new UnknownPermissionCodeException(permissionCode,
-					"Ese permiso no es otorgable como permiso adicional en esta fase");
-		}
-		return permiso;
 	}
 
 	private static void exigirMotivo(String motivo, String operacion) {
