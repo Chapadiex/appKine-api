@@ -13,7 +13,8 @@
 # 4200 de desarrollo. La base es efimera (volumen anonimo): `down` la borra.
 set -euo pipefail
 
-RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
+# En Git Bash, `pwd -W` da C:/...: con MSYS_NO_PATHCONV, docker build no encuentra /c/...
+RAIZ="$(cd "$(dirname "$0")/.." && { pwd -W 2>/dev/null || pwd; })"
 PERF="$RAIZ/perf"
 WEB_DIR="${AKINE_WEB_DIR:-$RAIZ/../appKine-web}"
 K6_IMAGE="${K6_IMAGE:-grafana/k6:2.3.0}"
@@ -89,7 +90,10 @@ up)
 		-p 127.0.0.1:8040:8025 -p 127.0.0.1:1040:1025 \
 		-e MP_MAX_MESSAGES=2000 -e MP_SMTP_AUTH_ACCEPT_ANY=true -e MP_SMTP_AUTH_ALLOW_INSECURE=true \
 		axllent/mailpit:v1.21.8
-	until docker exec g10-mysql mysqladmin ping -h localhost -uroot -proot --silent >/dev/null 2>&1; do sleep 2; done
+	# Por TCP y con el usuario de la aplicacion: el ping por socket responde durante la
+	# inicializacion del contenedor, cuando el servidor todavia no acepta conexiones de red, y el
+	# backend que arranca en ese momento muere con "Connection refused".
+	until docker exec g10-mysql mysql -h127.0.0.1 -uakine -pakine akine_carga -e "SELECT 1" >/dev/null 2>&1; do sleep 2; done
 	if docker image inspect g10-akine-web:carga >/dev/null 2>&1; then
 		docker run -d --name g10-web --network "$RED" -p 127.0.0.1:4294:8080 \
 			-e AKINE_API_URL=http://g10-api:8080 g10-akine-web:carga
