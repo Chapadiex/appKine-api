@@ -21679,7 +21679,7 @@ components:
           format: int64
           description: Turno desde el que se cuenta. Obligatorio salvo en `TODA_LA_SERIE`.
           example: 301
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - alcance
       - cantidadConfirmada
@@ -23236,20 +23236,20 @@ components:
           format: int64
           description: Oferta de la sede
           example: 42
-          minimum: 0
+          exclusiveMinimum: 0
         personaId:
           type: integer
           format: int64
           description: "Persona del padron, con perfil de paciente vigente"
           example: 128
-          minimum: 0
+          exclusiveMinimum: 0
         profesionalId:
           type: integer
           format: int64
           description: Membership del profesional de todas las ocurrencias. Obligatorio
             si la oferta lo requiere.
           example: 31
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - diasSemana
       - fechaDesde
@@ -23288,13 +23288,13 @@ components:
             \ La oferta tiene que ser de la misma sede, admitir obra social y declarar\
             \ la practica (A-9)"
           example: 77
-          minimum: 0
+          exclusiveMinimum: 0
         practicaId:
           type: integer
           format: int64
           description: Practica del catalogo clinico que se arancela
           example: 412
-          minimum: 0
+          exclusiveMinimum: 0
         vigenciaDesde:
           type: string
           format: date
@@ -23322,7 +23322,7 @@ components:
           description: "Sesiones otorgadas. Null = sin tope declarado, que es distinto\
             \ de cero"
           example: 10
-          minimum: 0
+          exclusiveMinimum: 0
         coberturaId:
           type: integer
           format: int64
@@ -23671,7 +23671,7 @@ components:
           format: int64
           description: Financiador con el que se negocia
           example: 31
-          minimum: 0
+          exclusiveMinimum: 0
         limiteSesionesMensual:
           type: integer
           format: int32
@@ -23714,7 +23714,7 @@ components:
           description: "Plan de cobertura del financiador. Obligatorio: es lo que\
             \ hace que la resolucion del arancel tenga como mucho una candidata"
           example: 88
-          minimum: 0
+          exclusiveMinimum: 0
         requiereAutorizacion:
           type: boolean
           description: Si exige autorizacion previa del financiador. Ausente = false
@@ -24064,7 +24064,7 @@ components:
             \ de la modalidad, porque un box con dos camillas puede atender de a dos\
             \ en individual"
           example: 1
-          minimum: 0
+          exclusiveMinimum: 0
         descripcion:
           type: string
           description: Descripcion libre. Nunca contenido clinico
@@ -24075,7 +24075,7 @@ components:
           format: int32
           description: Duracion de la prestacion en minutos
           example: 45
-          minimum: 0
+          exclusiveMinimum: 0
         esquemaCobro:
           type: string
           description: "Esquema de cobro declarado, texto libre acotado. Se guarda\
@@ -24201,7 +24201,7 @@ components:
           description: "Sesiones que la orden indica. INFORMATIVA: quien limita lo\
             \ que se puede atender es la autorizacion del financiador, no la prescripcion"
           example: 10
-          minimum: 0
+          exclusiveMinimum: 0
         vigenciaDesde:
           type: string
           format: date
@@ -26430,7 +26430,7 @@ components:
           format: int64
           description: Cuenta que recibe el rol
           example: 18
-          minimum: 0
+          exclusiveMinimum: 0
         reason:
           type: string
           description: Motivo declarado. Otorgar el permiso mas alto del sistema lo
@@ -26933,7 +26933,7 @@ components:
           type: integer
           format: int64
           example: 9001
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - importe
       - obligacionId
@@ -26959,7 +26959,7 @@ components:
           format: int64
           description: La deuda. De la misma persona y la misma sede que el cobro.
           example: 9001
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - importe
       - obligacionId
@@ -27035,7 +27035,7 @@ components:
           format: int64
           description: Persona del padron. **No se exige perfil de paciente.**
           example: 301
-          minimum: 0
+          exclusiveMinimum: 0
         resultado:
           type: string
           description: Normalmente PRESENTE o PRESENTE_TARDE
@@ -27069,7 +27069,7 @@ components:
           format: int64
           description: Persona del padron de la organizacion
           example: 512
-          minimum: 0
+          exclusiveMinimum: 0
     Inscripcion:
       type: object
       description: "Un participante en una clase (M28, RN-M28-003)."
@@ -27644,7 +27644,7 @@ components:
           format: int64
           description: Medida del catalogo
           example: 7
-          minimum: 0
+          exclusiveMinimum: 0
         lateralidad:
           type: string
           description: Lado. Ausente es `NO_APLICA`
@@ -30110,7 +30110,7 @@ components:
           description: Membership del profesional o instructor. Obligatorio si la
             oferta lo requiere.
           example: 31
-          minimum: 0
+          exclusiveMinimum: 0
         titulo:
           type: string
           description: Rotulo de esta ocurrencia. El nombre comercial lo da la oferta.
@@ -30408,7 +30408,7 @@ components:
           format: int64
           description: "La inscripcion del participante, no la persona"
           example: 412
-          minimum: 0
+          exclusiveMinimum: 0
         motivo:
           type: string
           description: Obligatorio **solo para corregir**. Registrar por primera vez
@@ -30516,7 +30516,7 @@ components:
           format: int64
           description: Quien paga
           example: 128
-          minimum: 0
+          exclusiveMinimum: 0
         total:
           type: number
           description: "Total recibido. Decimal exacto, nunca float."
@@ -30532,7 +30532,7 @@ components:
             \ Al cerrar la sesion de ese turno el anticipo se imputa solo a la deuda\
             \ del paciente; lo que sobra queda a favor."
           example: 301
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - medios
       - personaId
@@ -30894,7 +30894,7 @@ components:
             \ del reservado en el turno, que es el punto del requerimiento. **No se\
             \ valida ocupacion**: esto registra un hecho consumado, no una reserva."
           example: 12
-          minimum: 0
+          exclusiveMinimum: 0
         lateralidad:
           type: string
           description: "De que lado. **Exige zona**: \"derecha\" de que. `NO_APLICA`\
@@ -30928,7 +30928,7 @@ components:
             \ 409 `practica-no-utilizable`, y una inexistente o de otro tenant, 404.\
             \ Lo ya guardado sigue resolviendo aunque despues se de de baja."
           example: 41
-          minimum: 0
+          exclusiveMinimum: 0
         profesionalMembershipId:
           type: integer
           format: int64
@@ -30937,7 +30937,7 @@ components:
             \ de escritura**: quien escribe sigue siendo el dueño de la atencion.\
             \ Tiene que tener membership vigente en la sede o es 409."
           example: 88
-          minimum: 0
+          exclusiveMinimum: 0
         tecnica:
           type: string
           description: "Tecnica o maniobra utilizada. Opcional: no toda practica tiene\
@@ -31159,7 +31159,7 @@ components:
           format: int64
           description: Membership del profesional. Obligatorio si la oferta lo requiere.
           example: 31
-          minimum: 0
+          exclusiveMinimum: 0
         version:
           type: integer
           format: int64
@@ -31210,14 +31210,14 @@ components:
           description: "Si viene, todos los afectados pasan a este profesional. Si\
             \ no, cada uno conserva el suyo."
           example: 31
-          minimum: 0
+          exclusiveMinimum: 0
         turnoId:
           type: integer
           format: int64
           description: "Turno pivote: de su horario actual y el nuevo sale el desplazamiento.\
             \ Obligatorio en los tres alcances."
           example: 301
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - alcance
       - cantidadConfirmada
@@ -31255,7 +31255,7 @@ components:
             \ otro**: mover un turno porque el profesional se ausento es el caso mas\
             \ frecuente. Si se omite, el turno conserva el profesional que ya tenia."
           example: 31
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - expectedVersion
       - inicio
@@ -31344,13 +31344,13 @@ components:
           format: int64
           description: "Persona del padron, que debe tener perfil de paciente vigente"
           example: 128
-          minimum: 0
+          exclusiveMinimum: 0
         profesionalId:
           type: integer
           format: int64
           description: Membership del profesional. Obligatorio si la oferta lo requiere.
           example: 31
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - inicio
       - personaId
@@ -31426,7 +31426,7 @@ components:
           description: "Sesiones que el financiador realmente otorgo. Puede ser MENOR\
             \ que la pedida: eso es la autorizacion parcial. Solo se aplica al APROBAR"
           example: 6
-          minimum: 0
+          exclusiveMinimum: 0
         expectedVersion:
           type: integer
           format: int64
@@ -31582,7 +31582,7 @@ components:
           description: Movimiento de CONSUMO que se quiere compensar. Tiene que ser
             de esta autorizacion
           example: 9001
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - motivo
       - movimientoId
@@ -31796,13 +31796,13 @@ components:
           format: int64
           description: Identificador del consultorio
           example: 1
-          minimum: 0
+          exclusiveMinimum: 0
         organizationId:
           type: integer
           format: int64
           description: Identificador de la organizacion
           example: 1
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - consultorioId
       - organizationId
@@ -32804,7 +32804,7 @@ components:
           description: Espacio realmente utilizado. Si no cambia se conserva aunque
             hoy este dado de baja
           example: 12
-          minimum: 0
+          exclusiveMinimum: 0
         lateralidad:
           type: string
           description: '**Exige zona**'
@@ -32830,14 +32830,14 @@ components:
           description: "Practica realizada. Si cambia, el conjunto de practicas de\
             \ la sesion tiene que seguir siendo el mismo"
           example: 41
-          minimum: 0
+          exclusiveMinimum: 0
         profesionalMembershipId:
           type: integer
           format: int64
           description: "Co-atencion. Si no cambia se conserva aunque hoy no tenga\
             \ membership vigente; si cambia, tiene que tenerla"
           example: 88
-          minimum: 0
+          exclusiveMinimum: 0
         tecnica:
           type: string
           example: TENS convencional
@@ -32849,7 +32849,7 @@ components:
           description: Tratamiento vigente que se corrige. **Ausente si es uno nuevo**.
             Uno que no es de esta sesion o ya estaba dado de baja es 404
           example: 301
-          minimum: 0
+          exclusiveMinimum: 0
         zona:
           type: string
           example: Lumbar
@@ -33152,7 +33152,7 @@ components:
           format: int32
           description: Sesiones otorgadas. No puede quedar por debajo de lo ya consumido
           example: 10
-          minimum: 0
+          exclusiveMinimum: 0
         expectedVersion:
           type: integer
           format: int64
@@ -33621,7 +33621,7 @@ components:
           type: integer
           format: int32
           description: Capacidad nueva. Null deja la actual
-          minimum: 0
+          exclusiveMinimum: 0
         descripcion:
           type: string
           description: Descripcion nueva. Null deja la actual
@@ -33631,7 +33631,7 @@ components:
           type: integer
           format: int32
           description: Duracion nueva en minutos. Null deja la actual
-          minimum: 0
+          exclusiveMinimum: 0
         esquemaCobro:
           type: string
           description: Esquema de cobro nuevo. Null deja el actual
@@ -33747,7 +33747,7 @@ components:
           format: int32
           description: Sesiones indicadas. Informativa
           example: 10
-          minimum: 0
+          exclusiveMinimum: 0
         vigenciaDesde:
           type: string
           format: date
@@ -34003,7 +34003,7 @@ components:
             \ omite, se usa la primera que aplique a la practica (la principal va\
             \ primera)."
           example: 412
-          minimum: 0
+          exclusiveMinimum: 0
         expectedVersion:
           type: integer
           format: int64
@@ -34038,7 +34038,7 @@ components:
           description: Autorizacion de M17. Tiene que ser del MISMO paciente y habilitar
             hoy
           example: 77
-          minimum: 0
+          exclusiveMinimum: 0
         expectedVersion:
           type: integer
           format: int64
@@ -34051,7 +34051,7 @@ components:
           format: int64
           description: Item de la version VIGENTE del plan que se quiere atar
           example: 310
-          minimum: 0
+          exclusiveMinimum: 0
       required:
       - autorizacionId
       - expectedVersion
