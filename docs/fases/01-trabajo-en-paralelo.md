@@ -226,7 +226,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | ~~**E-3**~~ | ~~Modelo de serie de turnos (`V70`): diseño con design challenge, comandos de alcance, UI de confirmación~~ — **hecho** (06/10 y 07/10): backend #44 (`V74`, renumerada desde `V70`; contrato 0.57.0), pantallas de alta con previsualización, detalle y cancelación con alcance en web #10. La reprogramación con alcance existe en el contrato y no tiene pantalla | api + web | L | — | F5 |
 | ~~E-4~~ | ~~Recepción con elegibilidad administrativa y camino "Particular"~~ — **hecho** (07/10): backend #52 (`V78`, contrato 0.63.0, DP-16): `Recepcion` con máquina propia, validación por `person.spi.ElegibilidadAdministrativaDirectory`, Particular con motivo; recepción del día sobre la máquina nueva en web #8 | api + web | M | B-2, DU-9 | F5 |
 | F-5 | Egresos y pagos a profesionales (backend pendiente + pantallas) | api + web | M | DU-10 | F7 |
-| G-5 | Hallazgos altos de 07.07: `OWN`, unificar errores, threat model, matriz de permisos con tests | api | L | DU-5, DU-6 | F8 |
+| ~~G-5~~ | ~~Hallazgos altos de 07.07: `OWN`, unificar errores, threat model, matriz de permisos con tests~~ — **hecho** (`akine-G-5-seguridad`, 09/10, sin migración ni cambio de contrato): inventario verificado contra el código, `MatrizDePermisosIT` (cinco roles × once familias por HTTP), grants validados por rol contra la matriz (una celda "No" ya no se otorga y el evaluador ignora el grant que el rol actual no admite), auditoría de la Sesión restituida (la había perdido el merge del 29/09) y `docs/seguridad/threat-model.md`. Quedan tres decisiones: SAST/SCA/DAST, justificación en `encounter` y `caso:create` | api | L | DU-5, DU-6 | F8 |
 | G-9 | Job E2E del CI del frontend contra el backend | web | M | G-3 | F0-F1, F8 |
 
 ### Ola 3 — convergencia: tocan varios carriles
@@ -238,7 +238,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | ~~E-6~~ | ~~Prepago de recepción como anticipo~~ — **hecho** (07/10): backend #54 (`V81`, contrato 0.66.0): política `exigePrepago` en la oferta, `Recepcion.prepago` como alerta sin bloqueo, cobro con `turnoId` como anticipo de F-3 e imputación automática a la deuda del paciente después del commit del cierre (`docs/diseno/AKINE-E-6-prepago.md`); pantallas de oferta, recepción y registro de cobro en web #14 | api + web | M | E-4, F-3 | F5 |
 | ~~**E-7**~~ | ~~"Atender como Particular" llega a la obligación~~ — **hecho** (#56, 07/10, sin migración ni cambio de contrato, RF-M08-007): la recepción resuelta como Particular viaja en `SesionCerrada.particularPorRecepcion` (leída por `scheduling.spi.TurnoDirectory#atendidoComoParticular`); el cierre devenga sólo `PARTICULAR` al precio del día y no consume autorización. Diseño en `docs/diseno/AKINE-E-7-particular-en-obligacion.md` | api | S | E-4, B-3, F-4, E-6 | F5, F7 |
 | ~~E-8~~ | ~~Bandeja de series y prepago antes del check-in~~ — **hecho** (07/10): backend #59 (sin migración, `V82` vacía, contrato 0.68.0): `GET /consultorios/{c}/series-de-turnos` (`listarSeriesDeTurnos`, `turno:read`) paginado, filtrable por persona y por estado **derivado** (`VIGENTE`/`FINALIZADA`), y `TurnoDelDia.prepago` calculado al leer también sin recepción (`docs/diseno/AKINE-E-8-series-y-prepago.md`). Pantallas: bandeja `/agenda/series` en web #20 y prepago antes del check-in en web #21 | api + web | S | E-3, E-6 | F5 |
-| G-10 | Carga con k6 contra los SLO de ADR-0016; LCP del frontend | los dos | M | G-4 | F8 |
+| ~~**G-10**~~ | ~~Carga con k6 contra los SLO de ADR-0016; LCP del frontend~~ — hecho (`akine-G-10-carga`, 10/10): escenarios k6, sembrado por API, stack aislado `g10-*` y LCP con Playwright, en `perf/`. **Medido: no cumple.** Las lecturas cumplen con 500 usuarios (p95 43 ms); con reservas y cobros el pool de Hikari se traba por transacciones `REQUIRES_NEW` anidadas (90 % de errores), y el LCP móvil 4G da 2,8–4,1 s. Hallazgos sin corregir en `docs/carga.md` §6 | los dos | M | G-4 | F8 |
 | G-11 | Cobertura de vuelta a 0,80 (cada carril sube la de sus módulos; G vigila el gate) — **avance** (06/10): unitarios de `activity` (#31) y `encounter` (#32). **07/10:** suite completa sobre `main` `8fe1fae`, 3.276 unitarias + 737 ITs en verde (1 salteada, 7b); BUNDLE línea 87,58 → **88,70 %**, instrucción 86,12 → **87,36 %**, rama 75,55 → **76,30 %** con 21 unitarios nuevos (`reporting` 64,04 → 93,86 %, `clinical` 75,29 → 82,09 %, `offering` 79,13 → 79,86 %). Gate sin tocar en 0,80 | api | M | ola 2 | F8 |
 
 ### Ola 4 — gate del MVP (todo el equipo)
@@ -246,7 +246,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 | ID | Qué | Dep. |
 |---|---|---|
 | G-12 | QA manual del §6 del `CLAUDE.md`, fase por fase, contra la DB | olas 1–3 de cada fase |
-| G-13 | Backup/restore, rollback, smoke post-deploy, release notes, runbooks | G-3, G-4 |
+| ~~G-13~~ | ~~Backup/restore, rollback, smoke post-deploy, release notes, runbooks~~ — **hecho** (`akine-G-13-operaciones`, 09/10): scripts en `ops/` y docs en `docs/operaciones/`. Simulacro de restore real en stack aislado (sembrar por API, backup, destruir contenedores y volúmenes, restaurar, Flyway valida, conteos y lectura por API, smoke verde) y rollback a la imagen del 06/10 (`V65`) contra el esquema `V85` probado. Destapó un 500 al descargar adjuntos administrativos (`AdjuntoService.contenido`, auditoría en transacción `readOnly`) y deja declarado que el rate limit es global detrás del proxy (runbook R4) | G-3, G-4 |
 | G-14 | Aprobación clínica y legal (DP-08); deploy y ventana de estabilización (DP-07) | todo |
 | L-2 | Decisión DU-12 → abrir F9 (o no) | G-14 |
 
@@ -291,8 +291,8 @@ compromiso.
 | **G9 · E2E, a11y y dashboards** | web transversal | web | A-6 · B-6 | G-7 · G-8 (espera G-1) | — | ≈ 16 |
 
 **Cierre del MVP, todos juntos**, cuando los grupos terminaron su tramo 3: G-5 hallazgos altos
-(espera DU-5, DU-6), G-10 carga (espera G-4), G-11 cobertura 0,80, **G-12 QA manual**, G-13
-backup/rollback y G-14 aprobación y deploy → **gate del MVP** → DU-12 (¿abrir F9?).
+(espera DU-5, DU-6), G-10 carga (espera G-4), G-11 cobertura 0,80, **G-12 QA manual**, ~~G-13
+backup/rollback~~ (hecho) y G-14 aprobación y deploy → **gate del MVP** → DU-12 (¿abrir F9?).
 
 **Decisiones:** las toma una sola persona, la que decide producto. **DU-1, DU-2 y DU-3 el día 1**,
 junto con L-0 (rama por defecto a `main`). DU-4, DU-7, DU-8 y DU-9 durante el tramo 1, porque las

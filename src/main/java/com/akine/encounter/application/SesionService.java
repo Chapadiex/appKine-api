@@ -245,6 +245,13 @@ public class SesionService {
 				Instant.now(),
 				actor.accountId()));
 
+		auditar(organizationId, consultorioId, actor, AuditEvents.SESION_INICIADA, sesion.getId(),
+				null, "ABIERTA",
+				Map.of("historiaClinicaId", String.valueOf(historia.id()),
+						"turnoId", String.valueOf(turnoId),
+						"casoId", String.valueOf(casoId)),
+				sesion.getIniciadaEn());
+
 		log.info("Sesion iniciada: sesionId={} turnoId={} historiaClinicaId={} casoId={} "
 						+ "profesional={}",
 				sesion.getId(), turnoId, historia.id(), casoId, profesionalMembershipId);
@@ -459,6 +466,14 @@ public class SesionService {
 		// la caja del mes. La contrapartida esta asumida en CierreDeSesionObserver.
 		SesionCerrada aviso = hecho.conNumeroSesion(numero);
 		observadores.forEach(observador -> observador.alCerrar(aviso));
+
+		auditar(organizationId, consultorioId, actor, AuditEvents.SESION_CERRADA, sesion.getId(),
+				"ABIERTA", "CERRADA",
+				Map.of("historiaClinicaId", String.valueOf(sesion.getHistoriaClinicaId()),
+						"numero", String.valueOf(numero),
+						"numeroEnCaso", String.valueOf(numeroEnCaso),
+						"asistencia", String.valueOf(cierre.asistencia())),
+				ahora);
 
 		log.info("Sesion cerrada: sesionId={} numero={} numeroEnCaso={} historiaClinicaId={} "
 						+ "asistencia={}",
@@ -834,17 +849,70 @@ public class SesionService {
 		}
 	}
 
-	/** Lectura de una sesion. Exige {@code sesion:register} igual que la escritura. */
-	@Transactional(readOnly = true)
+	/**
+	 * Lectura de una sesion. Exige {@code sesion:register} igual que la escritura.
+	 *
+	 * <h2>Se audita, y por eso no es {@code readOnly}</h2>
+	 *
+	 * <p>AKINE-04.01 fijo que <b>toda lectura clinica se audita</b> y no solo las mutaciones. Esta
+	 * operacion devuelve la evolucion entera de una atencion. 07.07 lo habia cerrado
+	 * ({@code d6ea5d0}) y la integracion del 29/09 lo perdio al resolver el merge: las tres
+	 * constantes quedaron declaradas en {@link AuditEvents} sin un solo uso. G-5 lo restituye.
+	 *
+	 * <p>Con {@code readOnly} el flush de Hibernate queda en MANUAL y la fila de auditoria no
+	 * llegaria nunca a la base: es el mismo motivo por el que las lecturas de {@code clinical}
+	 * tampoco lo son. {@code SesionAuditadaIT} lo verifica contra MySQL.
+	 */
+	@Transactional
 	public SesionView ver(OperatingActor actor, long consultorioId, long sesionId) {
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirRegistro(actor, organizationId, consultorioId);
 
-		return sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
+		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
 				.filter(Sesion::estaViva)
-				.map(sesion -> conPrevia(sesion, organizationId))
 				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
+
+		// Despues de resolver: auditar un id que no existe o que es de otro tenant construiria
+		// dentro de audit_event el padron de existencia que el 404 uniforme existe para no entregar.
+		auditar(organizationId, consultorioId, actor, AuditEvents.SESION_ACCEDIDA, sesion.getId(),
+				null, null,
+				Map.of("historiaClinicaId", String.valueOf(sesion.getHistoriaClinicaId()),
+						"casoId", String.valueOf(sesion.getCasoId()),
+						"cerrada", String.valueOf(sesion.estaCerrada())),
+				Instant.now());
+
+		return conPrevia(sesion, organizationId);
+	}
+
+	/**
+	 * Una fila de auditoria de inicio, lectura o cierre.
+	 *
+	 * <p><b>El {@code reason} va nulo</b>, y es una carencia declarada: {@code encounter} no pide
+	 * la justificacion de acceso que {@code clinical} exige por {@code X-Justificacion-Acceso}.
+	 * Sumarla es un header obligatorio nuevo en operaciones que el frontend ya consume (decision
+	 * pendiente de G-5). Los detalles llevan ids y banderas, nunca contenido clinico, y el prefijo
+	 * {@code SESION_} esta en el vocabulario clinico: se redactan para quien no tiene
+	 * {@code auditoria:read-clinica}.
+	 */
+	private void auditar(
+			long organizationId, long consultorioId, OperatingActor actor, String eventType,
+			Long sesionId, String estadoAnterior, String estadoNuevo,
+			Map<String, String> detalles, Instant ahora) {
+
+		auditTrail.record(new AuditEntry(
+				organizationId,
+				consultorioId,
+				actor.accountId(),
+				eventType,
+				AuditEvents.ENTITY_SESION,
+				sesionId,
+				estadoAnterior,
+				estadoNuevo,
+				detalles,
+				null,
+				AuditEvents.correlationId(),
+				ahora));
 	}
 
 	// =================================================================================

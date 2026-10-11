@@ -484,10 +484,14 @@ class ObligacionDelFinanciadorIT {
 				        numero_afiliado, credencial_vigencia_hasta, vigencia_desde, principal,
 				        active, version, created_at, updated_at)
 				VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'OBRA_SOCIAL', ?, ?, ?, 0, 1, UTC_TIMESTAMP(6),
-				        ?, DATE_SUB(CURDATE(), INTERVAL 1 DAY), '2020-01-01', 1, 1, 0,
+				        ?, ?, '2020-01-01', 1, 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", org, persona, financiador, "OS-" + s, "Financiador " + s, plan, "P-" + s,
-				"Plan " + s, "AF-" + s);
+				"Plan " + s, "AF-" + s,
+				// La credencial vence AYER en la zona de la sede, que es como la mira el backend: con
+				// CURDATE() (UTC en MySQL) entre las 21 y las 24 de Argentina es otro dia y el test
+				// fallaba solo a esa hora.
+				hoy().minusDays(1));
 
 		long especialidad = insertar("""
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active,

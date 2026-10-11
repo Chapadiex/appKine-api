@@ -7,6 +7,7 @@ import com.akine.identity.application.ColaboradorInvitacionService;
 import com.akine.identity.application.DirectMembershipService;
 import com.akine.identity.application.InvitacionAltaCommand;
 import com.akine.identity.domain.EstadoInvitacion;
+import com.akine.identity.domain.exception.InvitacionNotAccessibleException;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -42,9 +43,8 @@ import java.util.List;
  * {@code organization} por su SPI.
  *
  * <p>La ruta, en cambio, si empieza por {@code /organizations/{orgId}}, porque el recurso es del
- * tenant. El {@code orgId} de la URL es <b>decorativo</b>: el que manda es el del contexto
- * revalidado, igual que en el resto de la API. Se pide igual para que la URL sea legible y
- * cacheable por tenant.
+ * tenant. El {@code orgId} de la URL tiene que coincidir con el del contexto revalidado (si no,
+ * 404), y el que manda para operar es el del contexto, igual que en el resto de la API.
  *
  * <p>El lado del invitado —consultar, aceptar, rechazar— vive en
  * {@link InvitacionPublicaController} y es publico: quien acepta no tiene sesion, y muchas veces
@@ -110,7 +110,8 @@ public class ColaboradorInvitacionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "404",
-					description = "La sede pedida no es de la organizacion del contexto",
+					description = "La sede pedida no es de la organizacion del contexto, o la "
+							+ "organizacion de la ruta no es la del contexto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -127,7 +128,7 @@ public class ColaboradorInvitacionController {
 			@Valid @RequestBody CreateInvitacionRequest request) {
 
 		InvitacionResponse respuesta = InvitacionResponse.de(invitacionService.invitar(
-				actor(),
+				actor(orgId),
 				new InvitacionAltaCommand(
 						request.email(), request.roleCode(), request.consultorioId())));
 
@@ -165,13 +166,19 @@ public class ColaboradorInvitacionController {
 					description = "Sin sesion, sin contexto activo o sin colaborador:manage",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La organizacion de la ruta no es la del contexto",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<List<InvitacionResponse>> list(
 			@PathVariable long orgId,
 			@Parameter(description = "Filtra por estado. Ausente devuelve todas")
 			@RequestParam(required = false) EstadoInvitacion estado) {
 
-		return ResponseEntity.ok(invitacionService.listar(actor(), estado).stream()
+		return ResponseEntity.ok(invitacionService.listar(actor(orgId), estado).stream()
 				.map(InvitacionResponse::de)
 				.toList());
 	}
@@ -205,7 +212,8 @@ public class ColaboradorInvitacionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "404",
-					description = "La invitacion no existe o es de otro tenant. Los dos responden "
+					description = "La invitacion no existe, es de otro tenant o la organizacion de la "
+							+ "ruta no es la del contexto. Todos responden "
 							+ "igual",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -221,7 +229,7 @@ public class ColaboradorInvitacionController {
 			@PathVariable long orgId, @PathVariable long invitacionId) {
 
 		return ResponseEntity.ok(
-				InvitacionResponse.de(invitacionService.reenviar(actor(), invitacionId)));
+				InvitacionResponse.de(invitacionService.reenviar(actor(orgId), invitacionId)));
 	}
 
 	@PostMapping(path = "/{invitacionId}/cancel", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -256,7 +264,8 @@ public class ColaboradorInvitacionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "404",
-					description = "La invitacion no existe o es de otro tenant",
+					description = "La invitacion no existe, es de otro tenant o la organizacion "
+							+ "de la ruta no es la del contexto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -272,19 +281,30 @@ public class ColaboradorInvitacionController {
 			@Valid @RequestBody CancelInvitacionRequest request) {
 
 		return ResponseEntity.ok(InvitacionResponse.de(
-				invitacionService.cancelar(actor(), invitacionId, request.reason())));
+				invitacionService.cancelar(actor(orgId), invitacionId, request.reason())));
 	}
 
 	/**
-	 * El actor del request.
+	 * El actor del request, con la organizacion de la ruta ya comparada contra la del contexto.
 	 *
-	 * <p>La organizacion sale del contexto revalidado y <b>no</b> del {@code orgId} de la URL.
-	 * Ese path variable existe para que la ruta sea legible; usarlo para decidir el tenant seria
-	 * dejar que el cliente elija sobre que organizacion opera.
+	 * <p>La organizacion con la que se opera sale del contexto revalidado y <b>no</b> del
+	 * {@code orgId} de la URL: usarlo para decidir el tenant seria dejar que el cliente elija
+	 * sobre que organizacion opera. Pero tampoco se puede ignorar: con el contexto de A, pedir
+	 * {@code /organizations/B/colaborador-invitaciones} respondia con las invitaciones de A —y
+	 * emitia, reenviaba o cancelaba en A— en vez de 404. Mismo criterio que
+	 * {@code AuthorizationGuard.actorSobre}: ruta distinta del contexto es 404, igual que una
+	 * organizacion inexistente.
+	 *
+	 * <p>Sin contexto no se compara: el servicio ya responde 403 (nunca 401 ni 404), que es lo
+	 * que el frontend traduce en "elegi donde trabajas".
 	 */
-	private DirectMembershipService.Actor actor() {
+	private DirectMembershipService.Actor actor(long orgId) {
 		IdentityApiActor actor = IdentityApiActor.current(tenantContextHolder);
+		Long contexto = actor.contextOrganizationId();
+		if (contexto != null && contexto != orgId) {
+			throw new InvitacionNotAccessibleException();
+		}
 		return new DirectMembershipService.Actor(
-				actor.accountId(), actor.contextOrganizationId(), actor.platformAdmin());
+				actor.accountId(), contexto, actor.platformAdmin());
 	}
 }
