@@ -129,9 +129,8 @@ jobs:
   # en el reporte, que se publica siempre, y no frena el merge. Un falso positivo se silencia en
   # `dependency-check-suppressions.xml` con su motivo; nunca bajando el umbral.
   #
-  # La base del NVD se cachea entre corridas. Sin el secreto `NVD_API_KEY` el NVD limita a 5
-  # pedidos cada 30 s y la PRIMERA descarga tarda decenas de minutos; las siguientes sólo bajan
-  # lo nuevo. La clave es gratuita: https://nvd.nist.gov/developers/request-an-api-key
+  # OWASP necesita el secreto `NVD_API_KEY` (gratuito: https://nvd.nist.gov/developers/request-an-api-key);
+  # sin el, el job analiza contra OSV.dev. Detalle en docs/calidad.md §2.
   vulnerabilidades:
     name: Vulnerabilidades de dependencias (OWASP)
     runs-on: ubuntu-latest
@@ -148,6 +147,31 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
+      # Con NVD_API_KEY corre OWASP dependency-check. SIN clave, el NVD responde 429 a los runners
+      # compartidos de GitHub antes de terminar la primera descarga (11/10/2026: corto al 15 %), asi
+      # que el job cae a OSV.dev (ops/vulnerabilidades-osv.mjs): sin clave, en segundos, con el
+      # mismo umbral (alta o critica) y las mismas excepciones de dependency-check-suppressions.xml.
+      - name: Elegir analizador
+        id: analizador
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -n "$NVD_API_KEY" ]; then
+            echo "owasp=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "owasp=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Sin NVD_API_KEY: se analiza contra OSV.dev en lugar de OWASP dependency-check."
+          fi
+
+      - name: Vulnerabilidades contra OSV.dev
+        if: steps.analizador.outputs.owasp != 'true'
+        run: |
+          mkdir -p target/dependency-check
+          ./mvnw -B --no-transfer-progress -q dependency:list -DincludeScope=runtime \
+            -DoutputFile=target/dependency-check/dependencias.txt
+          node ops/vulnerabilidades-osv.mjs target/dependency-check/dependencias.txt \
+            | tee target/dependency-check/osv.txt
+
       # La base del NVD vive en ~/.cache/dependency-check (ver pom.xml) y NO en ~/.m2: asi no la
       # arrastra la cache de Maven de setup-java. La clave cambia cada dia; restore-keys arranca de
       # la mas reciente y el plugin baja solo lo modificado desde entonces.
@@ -156,10 +180,12 @@ jobs:
       # falla por un CVE, la base actualizada se guarda igual y la proxima corrida no vuelve a
       # bajar 400.000 registros.
       - name: Fecha para la cache del NVD
+        if: steps.analizador.outputs.owasp == 'true'
         id: fecha
         run: echo "hoy=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Restaurar la base del NVD
+        if: steps.analizador.outputs.owasp == 'true'
         id: nvd
         uses: actions/cache/restore@v4
         with:
@@ -168,25 +194,20 @@ jobs:
           restore-keys: nvd-
 
       - name: Actualizar la base del NVD
+        if: steps.analizador.outputs.owasp == 'true'
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          clave=()
-          if [ -n "$NVD_API_KEY" ]; then
-            clave=("-DnvdApiKey=$NVD_API_KEY")
-          else
-            echo "::notice::Sin NVD_API_KEY: la primera descarga del NVD tarda ~40 min (medido el 09/10/2026)."
-          fi
-          ./mvnw -B --no-transfer-progress "${clave[@]}" dependency-check:update-only
+        run: ./mvnw -B --no-transfer-progress "-DnvdApiKey=$NVD_API_KEY" dependency-check:update-only
 
       - name: Guardar la base del NVD
-        if: steps.nvd.outputs.cache-hit != 'true'
+        if: steps.analizador.outputs.owasp == 'true' && steps.nvd.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/dependency-check
           key: nvd-${{ steps.fecha.outputs.hoy }}
 
       - name: OWASP dependency-check
+        if: steps.analizador.outputs.owasp == 'true'
         run: ./mvnw -B --no-transfer-progress -DautoUpdate=false dependency-check:check
 
       - name: Publicar reporte de vulnerabilidades

@@ -20,7 +20,7 @@ y el `compose.yaml`.
 > Las *alertas* de Dependabot se encienden en **Settings › Code security**. Es un ajuste del
 > repositorio, no se versiona: lo activa quien administra el repo.
 
-## 2. OWASP dependency-check — job `vulnerabilidades`
+## 2. Vulnerabilidades de dependencias — job `vulnerabilidades`
 
 ```bash
 ./mvnw dependency-check:check
@@ -35,13 +35,37 @@ y el `compose.yaml`.
   cache de Maven del CI no la arrastre. El job la restaura, la actualiza y la guarda **antes** del
   análisis: si el análisis falla por un CVE, la base nueva se guarda igual.
 
-### La clave del NVD
+### La clave del NVD, y qué pasa sin ella
 
-Sin clave, la **primera** descarga tarda **~40 min** (medido el 09/10/2026: 403.695 registros,
-38 min, con reintentos por el límite de 5 pedidos cada 30 s). Las siguientes bajan sólo lo nuevo.
-Con clave baja en pocos minutos. Es gratuita:
-<https://nvd.nist.gov/developers/request-an-api-key>. Se carga como secreto **`NVD_API_KEY`** en
-Settings › Secrets and variables › Actions, y el CI la pasa con `-DnvdApiKey` sólo si existe.
+**El job usa OWASP sólo si existe el secreto `NVD_API_KEY`.** Es gratuita:
+<https://nvd.nist.gov/developers/request-an-api-key>, y se carga en Settings › Secrets and
+variables › Actions. Con clave, la primera descarga de la base tarda pocos minutos.
+
+**Sin clave, el job analiza contra OSV.dev** con `ops/vulnerabilidades-osv.mjs`: lista las
+dependencias de runtime con `dependency:list`, las consulta en lote, y falla con severidad
+`HIGH` o `CRITICAL` —el equivalente del CVSS ≥ 7— salvo que el CVE esté vigente en
+`dependency-check-suppressions.xml`, que es el mismo archivo de excepciones de OWASP. Tarda
+segundos y no pide clave. Verificado por mutación: con las versiones de antes de este cambio falla
+por los tres críticos de Tomcat 11.0.24.
+
+Por qué hace falta el respaldo, medido:
+
+- En una máquina de desarrollo, sin clave, OWASP bajó los 403.695 registros en **38 min** el
+  09/10/2026, con reintentos por el límite de 5 pedidos cada 30 s.
+- En el runner de GitHub, sin clave, el NVD respondió **429** al 15 % de la descarga el
+  11/10/2026 y el job murió: las IP de los runners son compartidas y el límite se agota antes.
+
+Los dos analizadores no son idénticos y conviene saberlo: OSV ve los CVE que publica GitHub
+Advisory aunque el CPE del NVD no los matchee (los de Jackson de este cambio), y OWASP ve los que
+sólo tiene el NVD (los de Connector/J, que OSV no tiene). Con la clave cargada corre OWASP.
+
+```bash
+# Local, con la base ya bajada o con tiempo:
+./mvnw dependency-check:check -DnvdApiKey=<clave>
+# Local, en segundos:
+./mvnw -q dependency:list -DincludeScope=runtime -DoutputFile=target/dependencias.txt
+node ops/vulnerabilidades-osv.mjs target/dependencias.txt
+```
 
 > **Por qué 12.2.x y no 13.0.0:** la 13.0.0 sin clave muere con `Invalid API Key, length of 0 too
 > short` en el primer reintento, en vez de esperar el límite del NVD. Verificado el 09/10/2026.

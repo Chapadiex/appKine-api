@@ -716,7 +716,7 @@ Pendientes que arrastra el backend:
 - [ ] Activar SonarQube: el job `sonar` del CI ya corre y se saltea limpio; falta cargar `SONAR_TOKEN` y `SONAR_HOST_URL` (G-6, `docs/calidad.md` §3)
 - [x] ~~Observabilidad: logging JSON, Prometheus, OpenTelemetry~~ — G-4, `docs/observabilidad.md`
 - [x] ~~Reglas de cobertura por módulo crítico~~ — G-6: trinquete por módulo en lo medido; `person`, `scheduling`, `billing` y `clinical` siguen abajo del 0,90 (`docs/calidad.md` §4)
-- [ ] Cargar `NVD_API_KEY` en los secretos del repo: sin ella la primera corrida del job `vulnerabilidades` tarda ~40 min
+- [ ] Cargar `NVD_API_KEY` en los secretos del repo: sin ella el job `vulnerabilidades` analiza contra OSV.dev en lugar de OWASP (el NVD da 429 a los runners sin clave)
 - [ ] Gate de `BRANCH` en JaCoCo, después de subir la cobertura de rama
 - [ ] Completar los `PENDIENTE(F1)` de `.claude/qa-config.md`
 - [ ] Escenario diferido 7b: `request_hash` en `onboarding_registro`
