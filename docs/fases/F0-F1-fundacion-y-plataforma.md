@@ -53,10 +53,10 @@
 ### CI y operación (se pueden diferir a F8, pero se anotan acá porque nacieron en F0)
 - [x] ~~Job que construya imagen Docker del backend con SBOM.~~ → G-3: `Dockerfile` multi-stage en la raíz, `cyclonedx-maven-plugin` en el `pom.xml` (SBOM CycloneDX JSON embebido en el jar) y job `imagen` en `ci.yml` que hace `docker build` sin push y publica el SBOM extraído de la imagen como artifact `akine-api-sbom`.
 - [ ] Activar el job E2E del `ci.yml` del frontend (está comentado: **hoy ningún E2E corre en CI**).
-- [ ] Dependabot u OWASP dependency-check en los dos repos.
+- [x] Dependabot u OWASP dependency-check en los dos repos. — G-6: los dos, más `npm audit` en el frontend (`docs/calidad.md`).
 - [ ] Protección de rama en `main`.
-- [ ] Activar SonarQube (el job está escrito y comentado en los dos `ci.yml`).
-- [ ] Reglas JaCoCo `PACKAGE` al 90 % para módulos críticos (`PENDIENTE(F1)` en `pom.xml`).
+- [ ] Activar SonarQube: el job `sonar` ya corre en los dos `ci.yml` y se saltea limpio; falta cargar `SONAR_TOKEN` y `SONAR_HOST_URL` (G-6).
+- [x] Reglas de cobertura por módulo crítico (G-6): trinquete en lo medido; `person`, `scheduling`, `billing` y `clinical` siguen abajo del 0,90 (`docs/calidad.md` §4).
 
 ## Desvíos
 
