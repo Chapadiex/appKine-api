@@ -1,0 +1,12 @@
+{
+  "name": "akine-perf-lcp",
+  "private": true,
+  "description": "Medicion de LCP del frontend para la prueba de carga G-10 (docs/carga.md)",
+  "type": "module",
+  "scripts": {
+    "lcp": "node lcp.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.62.1"
+  }
+}
