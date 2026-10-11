@@ -6,6 +6,7 @@ import com.akine.billing.application.CobroPosteriorService;
 import com.akine.billing.application.CobroService;
 import com.akine.billing.application.CobroView;
 import com.akine.billing.application.ImputacionPosteriorCommand;
+import com.akine.billing.application.ObligacionService;
 import com.akine.billing.application.OperatingActor;
 import com.akine.billing.application.ReintegroCommand;
 import com.akine.billing.domain.MedioDePago;
@@ -38,6 +39,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * Anticipos, imputacion posterior, anulacion y reintegro de cobros contra MySQL real (F-3).
@@ -62,6 +64,7 @@ class AnticipoYAnulacionIT {
 
 	@Autowired private CobroService cobroService;
 	@Autowired private CobroPosteriorService posteriorService;
+	@Autowired private ObligacionService obligacionService;
 	@Autowired private ObligacionRepositoryPort obligaciones;
 	@Autowired private TransactionTemplate transacciones;
 	@Autowired private JdbcTemplate jdbc;
@@ -196,6 +199,44 @@ class AnticipoYAnulacionIT {
 				List.of(new CobroCommand.ImputacionPedida(fixture.obligacionId(), IMPORTE)),
 				null));
 		assertThat(estadoDeDeuda(fixture.obligacionId())).isEqualTo("PAGADA");
+	}
+
+	@Test
+	@DisplayName("registrar y anular un cobro, y anular una deuda, dejan su fila en audit_event (G-12)")
+	void cobro_y_deuda_se_auditan() {
+		Fixture fixture = crearFixture();
+		long otraDeuda = insertarObligacion(conSesionNueva(fixture));
+
+		CobroView cobro = cobroService.registrar(fixture.actor(), fixture.consultorioId(), new CobroCommand(
+				fixture.personaId(), IMPORTE,
+				List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, IMPORTE, null)),
+				List.of(new CobroCommand.ImputacionPedida(fixture.obligacionId(), IMPORTE)),
+				null));
+		posteriorService.anular(fixture.actor(), fixture.consultorioId(), cobro.id(), "Error de carga");
+		obligacionService.anular(fixture.actor(), fixture.consultorioId(), otraDeuda, "Cortesia", 0L);
+
+		assertThat(jdbc.queryForList("""
+				SELECT event_type, entity_type, entity_id, actor_account_id, consultorio_id
+				  FROM audit_event
+				 WHERE organization_id = ?
+				   AND event_type IN ('COBRO_REGISTRADO', 'COBRO_ANULADO', 'OBLIGACION_ANULADA')
+				 ORDER BY id
+				""", fixture.organizationId()))
+				.extracting(fila -> fila.get("event_type"), fila -> fila.get("entity_type"),
+						fila -> ((Number) fila.get("entity_id")).longValue(),
+						fila -> ((Number) fila.get("actor_account_id")).longValue(),
+						fila -> ((Number) fila.get("consultorio_id")).longValue())
+				.containsExactly(
+						tuple("COBRO_REGISTRADO", "Cobro", cobro.id(), fixture.actor().accountId(),
+								fixture.consultorioId()),
+						tuple("COBRO_ANULADO", "Cobro", cobro.id(), fixture.actor().accountId(),
+								fixture.consultorioId()),
+						tuple("OBLIGACION_ANULADA", "Obligacion", otraDeuda, fixture.actor().accountId(),
+								fixture.consultorioId()));
+		assertThat(jdbc.queryForObject("""
+				SELECT reason FROM audit_event
+				 WHERE organization_id = ? AND event_type = 'OBLIGACION_ANULADA'
+				""", String.class, fixture.organizationId())).isEqualTo("Cortesia");
 	}
 
 	@Test

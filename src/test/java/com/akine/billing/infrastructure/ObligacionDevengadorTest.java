@@ -72,7 +72,8 @@ class ObligacionDevengadorTest {
 	private final ConsultorioDirectory consultorios = mock(ConsultorioDirectory.class);
 
 	private final ObligacionDevengador devengador = new ObligacionDevengador(
-			obligaciones, coberturas, aranceles, practicas, consultorios);
+			obligaciones, coberturas, aranceles, practicas, consultorios,
+			mock(com.akine.billing.application.AuditoriaDeObligacion.class));
 
 	@BeforeEach
 	void base() {

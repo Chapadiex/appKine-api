@@ -11,10 +11,11 @@ egresos.
 el cobro (`cobro` + `cobro_medio` + `cobro_imputacion`) la salda; la caja (`jornada_caja` +
 `movimiento_caja`) registra el efectivo. Importes en `DECIMAL`, nunca `float`.
 
-> **Lo que NO escribe `audit_event`:** registrar un cobro, devengar una deuda y anular una deuda.
-> El rastro está en la fila: `cobrado_por_cuenta_id`, `devengada_en`, `anulada_por_cuenta_id` y
-> `motivo_anulacion`. Sí auditan: abrir y cerrar caja, movimiento manual, reversión, anular,
-> reintegrar e imputar un cobro, y los egresos. Ver [90](90-conocido-y-aceptado.md).
+> **Auditoría de cobros y deudas (desde appKine-api #86):** registrar un cobro deja
+> `COBRO_REGISTRADO`, devengar una deuda al cerrar la sesión deja `OBLIGACION_DEVENGADA` (a nombre
+> de quien cerró) y anular una deuda deja `OBLIGACION_ANULADA` con `reason`. También auditan abrir
+> y cerrar caja, movimiento manual, reversión, anular, reintegrar e imputar un cobro, y los egresos.
+> El reintento idempotente de un cobro no audita: no hay hecho nuevo.
 
 Requisitos: sesiones cerradas de [CLI-05](06-atencion-clinica.md) (con cobertura) y
 [CLI-06](06-atencion-clinica.md) (particular).

@@ -1,5 +1,6 @@
 package com.akine.billing.infrastructure;
 
+import com.akine.billing.application.AuditoriaDeObligacion;
 import com.akine.billing.domain.ConceptoObligacion;
 import com.akine.billing.domain.Obligacion;
 import com.akine.billing.domain.Responsable;
@@ -91,19 +92,22 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	private final ArancelDirectory aranceles;
 	private final PracticasDeOfertaDirectory practicasDeOferta;
 	private final ConsultorioDirectory consultorios;
+	private final AuditoriaDeObligacion auditoria;
 
 	public ObligacionDevengador(
 			ObligacionRepositoryPort obligaciones,
 			CoberturasAplicablesDirectory coberturas,
 			ArancelDirectory aranceles,
 			PracticasDeOfertaDirectory practicasDeOferta,
-			ConsultorioDirectory consultorios) {
+			ConsultorioDirectory consultorios,
+			AuditoriaDeObligacion auditoria) {
 
 		this.obligaciones = obligaciones;
 		this.coberturas = coberturas;
 		this.aranceles = aranceles;
 		this.practicasDeOferta = practicasDeOferta;
 		this.consultorios = consultorios;
+		this.auditoria = auditoria;
 	}
 
 	@Override
@@ -179,6 +183,7 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 				cierre.ofertaId(),
 				nombre(cierre),
 				cierre.cerradaEn()));
+		auditoria.devengada(obligacion, cierre.cerradaPorCuentaId(), cierre.cerradaEn());
 
 		log.info("Obligacion devengada: obligacionId={} sesionId={} personaId={} concepto=PARTICULAR "
 						+ "importe={} {}",
@@ -252,6 +257,7 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 				cierre.cerradaEn(),
 				snapshot,
 				cubierta.alertaPracticaNoHabilitada()));
+		auditoria.devengada(obligacion, cierre.cerradaPorCuentaId(), cierre.cerradaEn());
 
 		log.info("Obligacion devengada: obligacionId={} sesionId={} personaId={} concepto={} "
 						+ "financiadorId={} convenioId={} importe={} {}",

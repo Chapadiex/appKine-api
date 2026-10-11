@@ -39,11 +39,11 @@ SELECT COUNT(*) AS en_espera_ahora FROM recepcion WHERE consultorio_id = @sede_a
 Esperado: los mismos conteos por estado que la pantalla, `CANCELADO` incluido. `turnos-en-espera`
 sale de la **recepción**, no del turno (defecto 6 del 07/10).
 
-> **Defecto encontrado al armar esta guía, sin corregir:** el indicador **Cancelados da siempre 0**.
-> La consulta del reporte (`TurnoRepository.contarPorDiaYEstadoEnElReporte`) filtra
-> `deleted_at IS NULL`, y cancelar un turno llena `deleted_at` para liberar el lugar (05.03): ningún
-> cancelado llega nunca al conteo. Se reprodujo en el stack de validación (1 cancelado en la base,
-> 0 en el reporte). Si lo ves, registralo vinculado a este aviso.
+> **Corregido en appKine-api #86:** el indicador **Cancelados daba siempre 0**, porque la consulta
+> del reporte filtraba `deleted_at IS NULL` y cancelar llena `deleted_at` (05.03). Ahora los
+> cancelados cuentan en su indicador, en el total y en el denominador del ausentismo; los
+> reprogramados que después se cancelaron también cuentan como reprogramados. Esperado: tantos
+> cancelados como turnos `CANCELADO` del período en la base. Si da 0, es una regresión.
 
 ---
 
