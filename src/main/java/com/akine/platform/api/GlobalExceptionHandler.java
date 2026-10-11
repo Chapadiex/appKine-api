@@ -73,6 +73,7 @@ public class GlobalExceptionHandler {
 	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
 	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
+	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI FORBIDDEN = ProblemType.FORBIDDEN.uri();
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
 	private static final URI CONCURRENT_MODIFICATION = ProblemType.CONCURRENT_MODIFICATION.uri();
@@ -208,6 +209,15 @@ public class GlobalExceptionHandler {
 		log.info("Request rechazado por el protocolo: status={}", status.value());
 
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detalleDe(status));
+		if (status.value() == 404) {
+			// Una ruta inexistente (NoResourceFoundException) no es una solicitud mal armada: es
+			// un recurso que no existe, y responde con el mismo type y titulo que cualquier otro
+			// 404 del proyecto. Antes salia como validation-error / "Solicitud no procesable", y
+			// el frontend la trataba como un formulario con errores.
+			problem.setTitle("Recurso no encontrado");
+			problem.setType(NOT_FOUND);
+			return ResponseEntity.status(status).headers(respuesta.getHeaders()).body(problem);
+		}
 		problem.setTitle("Solicitud no procesable");
 		problem.setType(status.is4xxClientError() ? VALIDATION_ERROR : INTERNAL_ERROR);
 		return ResponseEntity.status(status).headers(respuesta.getHeaders()).body(problem);
