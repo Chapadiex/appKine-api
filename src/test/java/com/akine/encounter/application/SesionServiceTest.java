@@ -241,6 +241,12 @@ class SesionServiceTest {
 
 		assertThat(service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, null).profesionalId())
 				.isEqualTo(MEMBERSHIP_PROPIA);
+
+		// G-5: el inicio de la atencion deja su fila de auditoria.
+		ArgumentCaptor<AuditEntry> evento = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(evento.capture());
+		assertThat(evento.getValue().eventType()).isEqualTo(AuditEvents.SESION_INICIADA);
+		assertThat(evento.getValue().newState()).isEqualTo("ABIERTA");
 	}
 
 	@Test
@@ -376,6 +382,36 @@ class SesionServiceTest {
 	}
 
 	@Test
+	@DisplayName("G-5: leer una sesion deja rastro, como toda lectura clinica (04.01)")
+	void leer_una_sesion_se_audita() {
+		// 07.07 lo habia cerrado y la integracion del 29/09 lo perdio en el merge: las constantes
+		// quedaron declaradas y sin uso. Este test es lo que impide que vuelva a pasar en silencio.
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		service.ver(actor, CONSULTORIO_ID, 1L);
+
+		ArgumentCaptor<AuditEntry> evento = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(evento.capture());
+		assertThat(evento.getValue().eventType()).isEqualTo(AuditEvents.SESION_ACCEDIDA);
+		assertThat(evento.getValue().actorAccountId()).isEqualTo(CUENTA_PROPIA);
+		assertThat(evento.getValue().organizationId()).isEqualTo(ORG_ID);
+		assertThat(evento.getValue().entityType()).isEqualTo(AuditEvents.ENTITY_SESION);
+		// Ids y banderas, nunca contenido clinico.
+		assertThat(evento.getValue().details()).containsKey("historiaClinicaId");
+	}
+
+	@Test
+	@DisplayName("G-5: una sesion inalcanzable no deja rastro: auditarla confirmaria que existe")
+	void la_sesion_inalcanzable_no_se_audita() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 404L)).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.ver(actor, CONSULTORIO_ID, 404L))
+				.isInstanceOf(SesionNotAccessibleException.class);
+		verify(auditTrail, never()).record(any());
+	}
+
+	@Test
 	@DisplayName("Nadie evalua la sesion de otro profesional")
 	void no_se_evalua_la_sesion_ajena() {
 		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
@@ -432,6 +468,13 @@ class SesionServiceTest {
 		assertThat(service.cerrar(actor, CONSULTORIO_ID, 1L, cierre(Asistencia.AUSENTE, null), 0L)
 				.numeroSesion())
 				.isEqualTo(1);
+
+		// G-5: el cierre deja su fila de auditoria, con la transicion y sin contenido.
+		ArgumentCaptor<AuditEntry> evento = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(evento.capture());
+		assertThat(evento.getValue().eventType()).isEqualTo(AuditEvents.SESION_CERRADA);
+		assertThat(evento.getValue().newState()).isEqualTo("CERRADA");
+		assertThat(evento.getValue().details()).containsEntry("asistencia", "AUSENTE");
 	}
 
 	@Test
