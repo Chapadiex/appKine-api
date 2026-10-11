@@ -342,6 +342,20 @@ docker run --rm --name akine-api -p 8080:8080 \
   el rol: se elige otra. El resultado de cada arranque queda en el log de
   `PlatformAdminBootstrapRunner` y el cambio en `audit_event` (`PLATFORM_ADMIN_BOOTSTRAP`, sin
   tenant). No lleva secretos: la contraseña nunca pasa por el entorno.
+- **Detrás de un proxy inverso (el nginx de la imagen del frontend, G-3) declarar
+  `AKINE_TRUSTED_PROXIES`** con las IPs o rangos CIDR del proxy, separados por coma (p. ej.
+  `-e AKINE_TRUSTED_PROXIES=172.18.0.0/16`, la red de Docker donde corre el nginx). Sin eso todas
+  las requests llegan con la IP del nginx y el rate limit —30 logins, 5 altas y 10 altas de
+  colaborador por minuto **por IP**— pasa a ser **global para todo el sistema**: un solo atacante
+  deja sin login a todos los centros. Con la variable, y **solo** cuando la conexión viene de uno
+  de esos orígenes, la IP del cliente se toma de `X-Forwarded-For` (el primer salto no confiable
+  leído de derecha a izquierda); de cualquier otro origen la cabecera se ignora, porque la
+  escribe el cliente. Vacía por defecto = IP del socket. Una entrada que no es IP ni CIDR hace
+  fallar el arranque. Si hay otro balanceador delante del nginx, también va en la lista. El nginx
+  ya manda `X-Forwarded-For $proxy_add_x_forwarded_for` (`appKine-web`,
+  `docker/nginx/default.conf.template`). **No** se usa `server.forward-headers-strategy`: su
+  `internal-proxies` de Tomcat confía por defecto en todo el espacio privado. Ver
+  `ResolutorDeIpDeCliente`.
 - **Adjuntos:** la aplicación escribe en `/app/var` (`adjuntos/` y `adjuntos-clinicos/`). Sin
   volumen montado ahí, los binarios se pierden con el contenedor.
 - **Healthcheck:** `GET /actuator/health/liveness`. El primer arranque contra una base vacía
