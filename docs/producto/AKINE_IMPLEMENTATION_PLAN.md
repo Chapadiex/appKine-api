@@ -10851,3 +10851,82 @@ diseño y design challenge en `docs/diseno/AKINE-B-3-cobertura-por-oferta.md`.
 - **Fuera de alcance, declarado:** RF-M16-007 (importación con preview, diseñada en §7 del diseño);
   que la decisión Particular de la recepción llegue a la obligación (ya declarado por E-4); la
   elegibilidad administrativa sigue por práctica; la pantalla.
+
+---
+
+# Registro de cierre — G-5 (Hallazgos altos de 07.07: inventario, matriz ejecutable y threat model) · backend
+
+**09/10/2026** · rama `akine-G-5-seguridad`, sobre `main` `2240971` (contrato 0.80.0). **Sin
+migración** (`V87` no se usó) y **sin cambio de contrato** (0.81.0 no se usó): los dos arreglos
+cambian decisiones internas, no la forma de ninguna operación.
+
+## 1. Inventario de los hallazgos altos de 07.07, verificado contra el código
+
+| Hallazgo | Estado al 09/10 | Dónde |
+|---|---|---|
+| `OWN` / `paciente:read`: el `PACIENTE` leía el padrón | **Resuelto** (DP-22). `OWN` sigue sin implementar, por decisión, post-MVP | #76 |
+| `PLATFORM_ADMIN` sembrado por `V15` inalcanzable | **Resuelto** (DP-14): `PlatformAdminBootstrapService` con `AKINE_BOOTSTRAP_ADMIN_EMAIL` | #51 |
+| `concurrent-modification` vs `conflict` | **Resuelto** (DP-21): `GlobalExceptionHandler` mapea `OptimisticLockingFailureException` | #74 |
+| `encounter` no auditaba nada | **Estaba reabierto sin que nadie lo supiera** y se cierra acá: ver §2 | G-5 |
+| `encounter` no exige `X-Justificacion-Acceso` | **Abierto, decisión** (cambio de contrato) | — |
+| `caso:create` que nadie evalúa | **Abierto, decisión**; desde G-5 el efecto coincide con la matriz | — |
+| `auditoria:read-clinica` nunca evaluado | Resuelto en 07.07 y **sigue vivo** (`AuditQueryService` + `VocabularioClinicoDeAuditoria`) | 07.07 |
+| `securityScheme` | Resuelto en 07.07 y vivo en el contrato (`bearerAuth` global, `refreshCookie`) | 07.07 |
+| `UPDATE` de `obligacion` sin tenant | Resuelto en 07.07; el barrido de G-5 no encontró ninguna escritura nativa de negocio sin `organization_id` | 07.07 |
+| Ruta cruda en `TenantContextFilter`, CSV sin protección de fórmulas | Resueltos en 07.07 y vivos | 07.07 |
+| `reporte:read` inalcanzable | Resuelto (DP-15) | G-1 |
+| `cuentaCorriente` truncaba y filtraba por sede; `sumarAnulado` sin `deletedAt` | Resueltos | #14, #13 |
+| Threat model, matriz de permisos con tests | **Hecho en G-5** | G-5 |
+| SAST/SCA/DAST, SonarQube | **Abierto, decisión** | — |
+| a11y (WCAG 1.4.11, foco, degradé) | No aplica a este repo: frontend | — |
+
+## 2. Dos defectos reales, ninguno anunciado por los documentos
+
+1. **La Sesión volvió a no auditarse desde el 29/09.** 07.07 (`d6ea5d0`) había agregado
+   `SESION_INICIADA`, `SESION_ACCEDIDA` y `SESION_CERRADA`; el merge `3656980` de la integración
+   tomó el `SesionService` del otro lado y las tres constantes quedaron declaradas en
+   `AuditEvents` **sin un solo uso**, junto con sus unitarios. Ningún test falló porque se fueron
+   con el código. Se restituyen inicio, lectura y cierre; `ver()` deja de ser `readOnly` (con
+   `readOnly` el flush es MANUAL y la fila nunca llega). `SesionAuditadaIT` verifica las filas en
+   la tabla: es el escenario diferido 61.
+2. **Un grant podía otorgar una celda "No" de la matriz.** La validación miraba solo el código
+   del permiso, no el rol de la membership: `hc:write` al `ORG_ADMIN`, `hc:read` completo al
+   `ADMINISTRATIVO`, `paciente:manage` y `hc:read` al `PACIENTE`, `auditoria:read-clinica` al
+   `PROFESIONAL`. `MatrizDePermisosIT` lo reprodujo por HTTP antes del arreglo: los siete grants
+   respondían 201. Ahora `RolePermissions.otorgableComoGrant(rol, permiso)` decide en el alta
+   (400) **y** en el evaluador, que ignora un grant que el rol actual no admite —cubre filas
+   viejas y cambios de rol—. Enmienda en la matriz §16.
+
+## 3. La matriz, ejecutable
+
+`MatrizDePermisosIT`: cinco roles de membership, cada uno logueado y con contexto elegido por el
+camino real, contra quince rutas de once familias (personas, historia, timeline, casos, sesiones,
+deuda, cobros, jornadas y movimientos de caja, egresos, presentaciones, reportes, colaboradores,
+auditoría), más la gestión de colaboradores, las celdas "No" no otorgables y el grant clínico que
+sí habilita al `CONSULTORIO_ADMIN`. **Ninguna celda de lectura divergía de la matriz**: el único
+desvío fue el de los grants.
+
+## 4. Tests
+
+- **3.432 unitarias, 0 fallos** (`./mvnw -o test -DskipITs`).
+- ITs contra MySQL: `MatrizDePermisosIT` 4 (nuevo), `SesionAuditadaIT` 3 (nuevo),
+  `PermisosEsquemaIT` 11, `AislamientoDeTenantIT` 3, `AislamientoPorContextoIT` 2,
+  `PacienteReadIT` 5, `EsquemaMultiTenantIT` 4, `EnmiendaDeSesionIT` 13, `HistoriaClinicaApiIT` 7,
+  `MembershipConcurrenteIT` 8, `OpenApiContractIT` 5 (sin drift). 65 ITs, 0 fallos.
+
+## 5. Decisiones pendientes del usuario
+
+1. **SAST/SCA/DAST.** Opciones: (a) CodeQL + Dependabot de GitHub (gratis si el repo es público;
+   en privado exige GitHub Advanced Security); (b) activar el job de SonarQube ya escrito en
+   `ci.yml` (necesita instancia y `SONAR_TOKEN`) más OWASP Dependency-Check sobre el SBOM
+   (necesita clave de NVD); (c) DAST con OWASP ZAP baseline contra la imagen en un job no
+   bloqueante. Recomendado: SCA primero —el SBOM ya existe—, bloqueante solo para CVSS ≥ 7.
+2. **Justificación en `encounter`.** (a) `X-Justificacion-Acceso` obligatorio en las operaciones
+   de Sesión (contrato mayor de esas operaciones y cambio del frontend); (b) opcional y auditado
+   cuando viene; (c) declarar que la **propiedad** de la sesión es la relación asistencial que
+   DP-03 pide y dejar `reason` nulo, documentándolo. Recomendado (c) para el dueño y (a) solo si
+   se abre la lectura de sesiones ajenas.
+3. **`caso:create`.** (a) Cablearlo: `PROFESIONAL` por base, otorgable al `CONSULTORIO_ADMIN`, y
+   exigirlo además de `hc:write` al abrir un caso; (b) enmendar la matriz para que "Crear Caso
+   Clínico" se cumpla con `hc:write` y quitar el código. Desde G-5 las dos dan el mismo resultado
+   observable; (b) es la más barata.

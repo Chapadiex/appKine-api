@@ -630,6 +630,13 @@ public class MembershipService implements MembershipProvisioning {
 		exigirActiva(membership, MembershipEstado.ACTIVA);
 
 		PermissionCode permiso = permisoOtorgable(permissionCode);
+		// G-5: el codigo solo no alcanza. Una celda "No" de la matriz no es otorgable por
+		// membership (§3), aunque el mismo codigo si lo sea para otro rol.
+		if (!RolePermissions.otorgableComoGrant(membership.getRoleCode(), permiso)) {
+			throw new UnknownPermissionCodeException(permissionCode,
+					"La matriz de permisos no admite otorgar ese permiso al rol "
+							+ membership.getRoleCode().name());
+		}
 		Instant ahora = Instant.now();
 
 		MembershipGrant grant = new MembershipGrant(
