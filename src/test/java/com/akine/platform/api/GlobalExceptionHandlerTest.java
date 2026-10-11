@@ -188,6 +188,19 @@ class GlobalExceptionHandlerTest {
 				.andExpect(jsonPath("$.status").value(405));
 	}
 
+	@Test
+	@DisplayName("Una ruta inexistente es 404 not-found, no validation-error")
+	void ruta_inexistente_es_not_found() throws Exception {
+		mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+						.get("/api/v1/cobros"))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status").value(404))
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/not-found"))
+				.andExpect(jsonPath("$.title").value("Recurso no encontrado"))
+				.andExpect(jsonPath("$.detail")
+						.value("El recurso solicitado no existe o no esta disponible."));
+	}
+
 	// =================================================================================
 	// DP-21 — la concurrencia sale siempre como concurrent-modification
 	// =================================================================================

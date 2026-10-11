@@ -2,6 +2,7 @@ package com.akine.platform.infrastructure.security;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -61,7 +62,8 @@ public class SecurityFiltersConfig {
 				new FixedWindowRateLimiter(
 						properties.getWindow(), properties.getMembershipMaxAttempts()),
 				Clock.systemUTC(),
-				properties.isEnabled());
+				properties.isEnabled(),
+				ResolutorDeIpDeCliente.desde(properties.getTrustedProxies()));
 	}
 
 	@Bean
@@ -85,6 +87,7 @@ public class SecurityFiltersConfig {
 	 *       max-attempts: 30
 	 *       register-max-attempts: 5
 	 *       membership-max-attempts: 10
+	 *       trusted-proxies: 172.18.0.0/16   # AKINE_TRUSTED_PROXIES, vacio por defecto
 	 * </pre>
 	 *
 	 * <p>Los valores por defecto son holgados a proposito. El limite existe para frenar la
@@ -132,6 +135,18 @@ public class SecurityFiltersConfig {
 		 */
 		private int membershipMaxAttempts = 10;
 
+		/**
+		 * Proxies inversos de confianza: IPs o rangos CIDR (IPv4 o IPv6), separados por coma.
+		 *
+		 * <p>Solo cuando la conexion llega desde uno de estos se lee {@code X-Forwarded-For}
+		 * para saber quien es el cliente; de cualquier otro origen la cabecera se ignora, porque
+		 * la escribe quien quiere. <b>Vacio por defecto</b>, que es el comportamiento seguro sin
+		 * proxy: la IP del socket. Detras del nginx del frontend hay que declararlo, o el limite
+		 * pasa a ser global (todas las requests traen la IP del nginx). Una entrada mal escrita
+		 * hace fallar el arranque. Ver {@link ResolutorDeIpDeCliente}.
+		 */
+		private List<String> trustedProxies = List.of();
+
 		public boolean isEnabled() {
 			return enabled;
 		}
@@ -170,6 +185,14 @@ public class SecurityFiltersConfig {
 
 		public void setMembershipMaxAttempts(int membershipMaxAttempts) {
 			this.membershipMaxAttempts = membershipMaxAttempts;
+		}
+
+		public List<String> getTrustedProxies() {
+			return trustedProxies;
+		}
+
+		public void setTrustedProxies(List<String> trustedProxies) {
+			this.trustedProxies = trustedProxies;
 		}
 	}
 }

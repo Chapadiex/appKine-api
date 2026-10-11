@@ -91,10 +91,10 @@ public class PresentacionController {
 					estan vivas en otro lote**, de modo que armar el reclamo no pueda duplicar una \
 					prestacion (RN-M21-003).
 
-					> **Hoy devuelve lista vacia en cualquier despliegue real**, y no es un defecto \
-					de esta operacion. No existe ninguna obligacion con responsable `FINANCIADOR` \
-					porque el devengado nunca se recableo contra convenios y aranceles. Es la \
-					reserva declarada en el design challenge de AKINE-07.04.""")
+					Desde AKINE F-4 el cierre de una sesion con cobertura devenga, ademas de la \
+					del paciente, la obligacion del financiador con el convenio congelado, y es \
+					esa la que aparece aca. La lista vacia significa que en el periodo no hubo \
+					prestaciones con cobertura de ese financiador pendientes de reclamar.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Prestaciones elegibles"),
 			@ApiResponse(
@@ -270,9 +270,9 @@ public class PresentacionController {
 					autoridad. Tenerla aparte permite mostrar los problemas **mientras se arma** \
 					el lote, en vez de descubrirlos todos juntos al apretar el boton.
 
-					> **Todavia no valida orden, autorizacion ni credencial.** Esos tres requisitos \
-					viven en el arancel congelado del convenio y el devengado no los copia a la \
-					obligacion. Misma causa que la bandeja de elegibles vacia.""")
+					> **Todavia no valida orden, autorizacion ni credencial.** Desde AKINE F-4 esos \
+					tres requisitos viajan congelados en cada obligacion del financiador, pero \
+					decidir si cada faltante bloquea el lote o solo avisa sigue abierto.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Resultado de la revision"),
 			@ApiResponse(
