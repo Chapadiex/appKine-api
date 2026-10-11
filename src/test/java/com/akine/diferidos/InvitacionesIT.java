@@ -251,6 +251,94 @@ class InvitacionesIT extends BaseEscenarioDiferido {
 	}
 
 	// =================================================================================
+	// 5. El correo que no salio se encuentra por el listado y se reintenta con ese id
+	// =================================================================================
+
+	@Test
+	@DisplayName("El correo de invitacion que se agoto aparece en el listado de notificaciones, "
+			+ "sin PHI y solo en su organizacion, y se reintenta con el id que el listado da")
+	void la_notificacion_agotada_se_lista_y_se_reintenta() {
+		Sesion centro = altaCompleta("notif-a");
+		Sesion otro = altaCompleta("notif-b");
+		String email = "rebota-" + UUID.randomUUID() + "@ejemplo.test";
+		assertThat(invitar(centro, email, "PROFESIONAL", centro.consultorioId()).status()).isEqualTo(201);
+		assertThat(invitar(otro, "ajena-" + UUID.randomUUID() + "@ejemplo.test", "PROFESIONAL",
+				otro.consultorioId()).status()).isEqualTo(201);
+
+		long propia = agotarCorreoDeInvitacion(centro.organizationId());
+		long ajena = agotarCorreoDeInvitacion(otro.organizationId());
+
+		String notificaciones = "/api/v1/organizations/" + centro.organizationId() + "/notifications";
+		Respuesta listado = get(notificaciones, centro.token());
+		assertThat(listado.status()).as("listado: %s", listado.body()).isEqualTo(200);
+		assertThat(listado.body())
+				.as("el destinatario va enmascarado y el error, sanitizado")
+				.doesNotContain(email)
+				.doesNotContain("payload");
+
+		var contenido = listado.json().get("content");
+		assertThat(contenido).hasSize(1);
+		var fila = contenido.get(0);
+		assertThat(fila.get("id").asLong()).isEqualTo(propia).isNotEqualTo(ajena);
+		assertThat(fila.get("tipo").asText()).isEqualTo("INVITACION_COLABORADOR");
+		assertThat(fila.get("estado").asText()).isEqualTo("AGOTADA");
+		assertThat(fila.get("reintentable").asBoolean()).isTrue();
+		assertThat(fila.get("destinatario").asText()).startsWith("r***@");
+		assertThat(fila.get("ultimoError").asText()).startsWith("MailSendException");
+		assertThat(listado.json().get("totalElements").asLong()).isEqualTo(1);
+
+		// El filtro manda: con ENVIADA sale la activacion del alta —que es de la organizacion— y
+		// no la invitacion agotada.
+		Respuesta enviadas = get(notificaciones + "?estado=ENVIADA,REINTENTABLE", centro.token());
+		assertThat(enviadas.status()).as("filtrado: %s", enviadas.body()).isEqualTo(200);
+		for (var otra : enviadas.json().get("content")) {
+			assertThat(otra.get("estado").asText()).isIn("ENVIADA", "REINTENTABLE");
+			assertThat(otra.get("id").asLong()).isNotEqualTo(propia).isNotEqualTo(ajena);
+		}
+
+		// El id del listado es el que recibe el reintento.
+		Respuesta reintento = post(notificaciones + "/" + propia + "/retry", centro.token(), "");
+		assertThat(reintento.status()).as("reintento: %s", reintento.body()).isEqualTo(204);
+		assertThat(jdbc.queryForObject(
+				"SELECT estado FROM notification_outbox WHERE id = ?", String.class, propia))
+				.isNotIn("AGOTADA", "FALLIDA");
+	}
+
+	/**
+	 * Lleva a AGOTADA el correo de invitacion de la organizacion, como lo dejaria un relay que
+	 * rechaza siempre. Espera a que el worker termine con la fila: escribir encima de una
+	 * PROCESANDO dejaria al worker pisando el estado.
+	 */
+	private long agotarCorreoDeInvitacion(long organizationId) {
+		long id = jdbc.queryForObject("""
+				SELECT id FROM notification_outbox
+				 WHERE organization_id = ? AND tipo = 'INVITACION_COLABORADOR'
+				""", Long.class, organizationId);
+		long limite = System.currentTimeMillis() + 30_000;
+		while (System.currentTimeMillis() < limite) {
+			String estado = jdbc.queryForObject(
+					"SELECT estado FROM notification_outbox WHERE id = ?", String.class, id);
+			if (!"PENDIENTE".equals(estado) && !"PROCESANDO".equals(estado)
+					&& !"REINTENTABLE".equals(estado)) {
+				break;
+			}
+			try {
+				Thread.sleep(250);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				throw new IllegalStateException(e);
+			}
+		}
+		jdbc.update("""
+				UPDATE notification_outbox
+				   SET estado = 'AGOTADA', intentos = max_intentos, enviado_en = NULL,
+				       error_sanitizado = 'MailSendException: relay [redactado] rechazo el envio'
+				 WHERE id = ?
+				""", id);
+		return id;
+	}
+
+	// =================================================================================
 	// Helpers
 	// =================================================================================
 
