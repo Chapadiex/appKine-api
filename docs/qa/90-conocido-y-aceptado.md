@@ -96,7 +96,7 @@ gate del MVP los cuente.
 
 | Defecto | Dónde se ve | Origen |
 |---|---|---|
-| **Descargar un documento administrativo de una persona responde 500** (`AdjuntoService.contenido` audita dentro de una transacción `readOnly`) | [PER-04](04-personas-coberturas-autorizaciones.md) | Lo destapó G-13 (#77); se reprodujo sobre `5bbf065` al validar esta guía |
+| ~~**Descargar un documento administrativo de una persona responde 500**~~ — **corregido en #82 (`a09a596`)**: `AdjuntoService.contenido` auditaba dentro de una transacción `readOnly` | [PER-04](04-personas-coberturas-autorizaciones.md) | Lo destapó G-13 (#77); se reprodujo sobre `5bbf065` al validar esta guía |
 | **El indicador "Cancelados" del reporte de turnos da siempre 0**: la consulta filtra `deleted_at IS NULL` y cancelar llena `deleted_at` | [REP-01](09-reportes.md) | Encontrado al validar esta guía |
 | Con reservas y cobros concurrentes, el pool de Hikari se traba (transacciones `REQUIRES_NEW` anidadas) | Solo bajo carga; no en el QA manual | G-10, `docs/carga.md` §6 |
 

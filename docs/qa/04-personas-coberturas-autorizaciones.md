@@ -86,10 +86,10 @@ Esperado: una sola fila `DISPONIBLE` con `checksum_sha256` de 64 caracteres.
 
 **Auditoría:** `ADJUNTO_UPLOADED` y, al descargar, `ADJUNTO_DOWNLOADED`.
 
-> **Defecto conocido sin corregir:** la descarga del documento administrativo responde **500** en
-> `main` (`AdjuntoService.contenido` audita dentro de una transacción `readOnly`; lo destapó G-13 y
-> se reprodujo al validar esta guía). Si lo ves, registralo **vinculado** a ese defecto, no como
-> nuevo. La descarga del adjunto **clínico** sí funciona ([CLI-09](06-atencion-clinica.md)).
+> **Corregido en appKine-api #82 (`a09a596`):** la descarga del documento administrativo respondía
+> **500** (`AdjuntoService.contenido` auditaba dentro de una transacción `readOnly`; lo destapó G-13
+> y se reprodujo al validar esta guía). Desde ese merge tiene que responder **200** con los bytes
+> subidos y dejar `ADJUNTO_DOWNLOADED`. Si vuelve a dar 500, es una regresión.
 
 ---
 
