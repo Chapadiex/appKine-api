@@ -4,6 +4,7 @@ import com.akine.billing.application.ImputacionDePrepago;
 import com.akine.billing.application.ImputacionDePrepago.CierreConTurno;
 import com.akine.encounter.spi.CierreDeSesionObserver;
 import com.akine.encounter.spi.SesionCerrada;
+import com.akine.platform.spi.transaccion.DespuesDeLaTransaccion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -42,6 +43,14 @@ public class PrepagoAlCierreDeSesion implements CierreDeSesionObserver {
 				cierre.organizationId(), cierre.consultorioId(), cierre.sesionId(), cierre.turnoId(),
 				cierre.personaId(), cierre.cerradaPorCuentaId());
 
+		// Cuando la transaccion del cierre ya commiteo Y devolvio su conexion. afterCommit corre antes
+		// de esa limpieza: el REQUIRES_NEW de la imputacion pedia una segunda conexion con la del
+		// cierre tomada, y N cierres con prepago a la vez trababan el pool (docs/carga.md §8).
+		if (DespuesDeLaTransaccion.registrar(() -> imputar(hecho))) {
+			return;
+		}
+		// Sin la plantilla de negocio (un llamador que abrio su propia transaccion): el camino de
+		// antes, que sigue reteniendo la conexion durante la imputacion.
 		if (TransactionSynchronizationManager.isSynchronizationActive()) {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override

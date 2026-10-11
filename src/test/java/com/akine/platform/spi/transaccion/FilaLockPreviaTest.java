@@ -4,8 +4,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -79,5 +83,39 @@ class FilaLockPreviaTest {
 		assertThat(creaciones).hasValue(1);
 		verify(transactionManager).getTransaction(any());
 		verify(transactionManager).commit(any());
+	}
+
+	@Test
+	@DisplayName("lo registrado para despues corre cuando la plantilla ya volvio, no adentro")
+	void lo_posterior_corre_despues_de_la_transaccion() {
+		TransactionTemplate plantilla = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
+		List<String> orden = new ArrayList<>();
+
+		plantilla.executeWithoutResult(estado -> {
+			assertThat(DespuesDeLaTransaccion.registrar(() -> orden.add("despues"))).isTrue();
+			orden.add("adentro");
+		});
+
+		assertThat(orden).containsExactly("adentro", "despues");
+		verify(transactionManager).commit(any());
+		assertThat(DespuesDeLaTransaccion.registrar(() -> orden.add("suelto")))
+				.as("fuera de la plantilla no hay alcance").isFalse();
+	}
+
+	@Test
+	@DisplayName("si la transaccion falla, lo registrado para despues se descarta")
+	void lo_posterior_se_descarta_si_falla() {
+		TransactionTemplate plantilla = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.DEFAULT);
+		AtomicInteger corridas = new AtomicInteger();
+
+		assertThatThrownBy(() -> plantilla.executeWithoutResult(estado -> {
+			DespuesDeLaTransaccion.registrar(corridas::incrementAndGet);
+			throw new IllegalStateException("rollback");
+		})).hasMessage("rollback");
+
+		assertThat(corridas).hasValue(0);
+		assertThat(DespuesDeLaTransaccion.registrar(corridas::incrementAndGet)).isFalse();
 	}
 }

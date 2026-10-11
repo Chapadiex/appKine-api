@@ -2,6 +2,7 @@ package com.akine.platform.spi.transaccion;
 
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -79,9 +80,37 @@ public final class FilaLockPrevia {
 	 */
 	public static TransactionTemplate transaccionDeNegocio(
 			PlatformTransactionManager transactionManager, Isolation aislacion) {
-		TransactionTemplate plantilla = new TransactionTemplate(transactionManager);
+		TransactionTemplate plantilla = new PlantillaDeNegocio(transactionManager);
 		plantilla.setIsolationLevel(aislacion.value());
 		return plantilla;
+	}
+
+	/**
+	 * Abre el alcance de {@link DespuesDeLaTransaccion} mientras dura la transaccion, y corre lo
+	 * registrado cuando {@code execute} ya volvio: commit hecho y conexion devuelta. Si la
+	 * transaccion falla, lo registrado se descarta.
+	 */
+	private static final class PlantillaDeNegocio extends TransactionTemplate {
+
+		private static final long serialVersionUID = 1L;
+
+		PlantillaDeNegocio(PlatformTransactionManager transactionManager) {
+			super(transactionManager);
+		}
+
+		@Override
+		public <T> T execute(TransactionCallback<T> accion) {
+			DespuesDeLaTransaccion.abrir();
+			T resultado;
+			try {
+				resultado = super.execute(accion);
+			} catch (RuntimeException | Error falla) {
+				DespuesDeLaTransaccion.cerrar();
+				throw falla;
+			}
+			DespuesDeLaTransaccion.cerrar().forEach(Runnable::run);
+			return resultado;
+		}
 	}
 
 	/**

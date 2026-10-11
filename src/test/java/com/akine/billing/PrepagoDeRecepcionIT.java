@@ -299,6 +299,40 @@ class PrepagoDeRecepcionIT {
 	}
 
 	@Test
+	@DisplayName("doce cierres con prepago a la vez, con un pool de diez: todos imputan y ninguno se queda sin conexion")
+	void doce_cierres_con_prepago_a_la_vez_no_traban_el_pool() {
+		// docs/carga.md §8. La imputacion corria en el afterCommit del cierre con REQUIRES_NEW: la
+		// conexion del cierre seguia tomada y pedia otra. Con mas cierres simultaneos que conexiones
+		// (el pool por defecto es de 10) se trababan, la imputacion moria por timeout y el catch la
+		// dejaba en un warn: el prepago quedaba a favor sin imputar. Ahora corre cuando la
+		// transaccion ya devolvio su conexion (DespuesDeLaTransaccion).
+		Fixture f = crearFixture(true);
+		int cierres = 12;
+		List<Long> sesiones = new ArrayList<>();
+		for (int i = 0; i < cierres; i++) {
+			long turno = insertarTurno(f);
+			prepagar(f, turno, MedioDePago.TRANSFERENCIA, PRECIO, null);
+			sesiones.add(insertarSesion(f, turno));
+		}
+
+		List<Callable<Object>> tareas = new ArrayList<>();
+		for (long sesion : sesiones) {
+			tareas.add(() -> {
+				cerrar(f, sesion, Asistencia.PRESENTE);
+				return null;
+			});
+		}
+		List<Throwable> errores = enParalelo(tareas);
+
+		assertThat(errores).as("los doce cierres entran").containsOnlyNulls();
+		for (long sesion : sesiones) {
+			assertThat(deudaDelPaciente(sesion).get("estado"))
+					.as("el prepago de la sesion %s se imputo", sesion)
+					.isEqualTo("PAGADA");
+		}
+	}
+
+	@Test
 	@DisplayName("dos operadores cobran el mismo prepago a la vez: entra uno y el otro recibe prepago-ya-registrado")
 	void dos_prepagos_a_la_vez() {
 		Fixture f = crearFixture(true);
