@@ -43,17 +43,20 @@ public class ObligacionService {
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final AlertasDeConsumo alertasDeConsumo;
+	private final AuditoriaDeObligacion auditoria;
 
 	public ObligacionService(
 			ObligacionRepositoryPort obligaciones,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
-			AlertasDeConsumo alertasDeConsumo) {
+			AlertasDeConsumo alertasDeConsumo,
+			AuditoriaDeObligacion auditoria) {
 
 		this.obligaciones = obligaciones;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.alertasDeConsumo = alertasDeConsumo;
+		this.auditoria = auditoria;
 	}
 
 	/**
@@ -116,9 +119,11 @@ public class ObligacionService {
 		}
 
 		Instant ahora = Instant.now();
+		String estadoAnterior = obligacion.getEstado().name();
 		obligacion.anular(motivo, ahora, actor.accountId());
 		log.info("Obligacion anulada: obligacionId={} motivo={}", obligacionId, motivo);
 		Obligacion anulada = obligaciones.save(obligacion);
+		auditoria.anulada(anulada, estadoAnterior, actor.accountId(), motivo, ahora);
 
 		// DP-13 (AKINE C-4). Si la sesion de esta deuda consumio autorizaciones, quedan alertadas
 		// "consumo a revisar". NO se devuelve la unidad: anular la deuda no prueba que la

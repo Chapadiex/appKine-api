@@ -20,6 +20,8 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
+import com.akine.platform.spi.audit.AuditEntry;
+import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.billing.domain.exception.PrepagoNoAdmitidoException;
 import com.akine.billing.domain.exception.PrepagoYaRegistradoException;
 import com.akine.billing.domain.exception.TurnoNoAccesibleException;
@@ -39,7 +41,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -106,6 +110,7 @@ public class CobroService {
 	private final CajaDeCobro caja;
 	private final PacienteDirectory pacientes;
 	private final TurnoDirectory turnos;
+	private final AuditTrail auditTrail;
 	private final TransactionTemplate transaccionDeNegocio;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
@@ -119,6 +124,7 @@ public class CobroService {
 			CajaDeCobro caja,
 			PacienteDirectory pacientes,
 			TurnoDirectory turnos,
+			AuditTrail auditTrail,
 			PlatformTransactionManager transactionManager) {
 
 		this.cobros = cobros;
@@ -130,6 +136,7 @@ public class CobroService {
 		this.caja = caja;
 		this.pacientes = pacientes;
 		this.turnos = turnos;
+		this.auditTrail = auditTrail;
 		this.transaccionDeNegocio = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.DEFAULT);
 	}
@@ -241,6 +248,24 @@ public class CobroService {
 		CobroView vista = CobroView.de(cobro);
 		caja.registrarIngresos(
 				organizationId, sede, cobro.getId(), moneda, medios, cobradoEn, actor.accountId());
+
+		// RN-M19-003. En la misma transaccion (regla de 01.01): sin cobro no hay fila, y sin fila
+		// no hay cobro. El reintento idempotente sale antes y no audita: no hay hecho nuevo.
+		Map<String, String> detalles = new LinkedHashMap<>();
+		detalles.put("comprobanteNumero", String.valueOf(comprobante));
+		detalles.put("total", command.total().toPlainString());
+		detalles.put("moneda", moneda);
+		detalles.put("imputaciones", String.valueOf(imputaciones.size()));
+		if (command.anticipo() != null && command.anticipo().signum() > 0) {
+			detalles.put("anticipo", command.anticipo().toPlainString());
+		}
+		if (command.esPrepago()) {
+			detalles.put("turnoId", String.valueOf(command.turnoId()));
+		}
+		auditTrail.record(new AuditEntry(
+				organizationId, consultorioId, actor.accountId(),
+				AuditEvents.COBRO_REGISTRADO, AuditEvents.ENTITY_COBRO, cobro.getId(),
+				null, null, detalles, null, AuditEvents.correlationId(), cobradoEn));
 
 		log.info("Cobro registrado: cobroId={} comprobante={} personaId={} total={} {} imputaciones={} "
 						+ "anticipo={}",
