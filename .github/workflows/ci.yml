@@ -16,6 +16,7 @@ permissions:
 
 env:
   JAVA_VERSION: '21'
+  SONAR_MAVEN_VERSION: '5.8.0.7211'
 
 jobs:
   build:
@@ -26,9 +27,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          # SonarQube necesita el historial completo para atribuir blame.
-          fetch-depth: 0
 
       - name: Configurar JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
@@ -125,25 +123,139 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  # PENDIENTE(AKINE-00.02): activar cuando exista la instancia de SonarQube y su token.
-  # El job queda declarado para que la etapa siguiente solo tenga que descomentarlo y
-  # cargar el secret, sin rediscutir el diseno del pipeline.
+  # Vulnerabilidades conocidas de las dependencias Maven (AKINE G-6), con OWASP dependency-check.
   #
-  # sonar:
-  #   name: Analisis SonarQube
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-  #     - uses: actions/setup-java@v4
-  #       with:
-  #         distribution: temurin
-  #         java-version: '21'
-  #         cache: maven
-  #     - name: Sonar
-  #       env:
-  #         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  #         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-  #       run: ./mvnw -B verify sonar:sonar -Dsonar.projectKey=akine-api
+  # Falla SOLO con CVSS >= 7 (`failBuildOnCVSS` en el pom.xml): lo de severidad media o baja queda
+  # en el reporte, que se publica siempre, y no frena el merge. Un falso positivo se silencia en
+  # `dependency-check-suppressions.xml` con su motivo; nunca bajando el umbral.
+  #
+  # La base del NVD se cachea entre corridas. Sin el secreto `NVD_API_KEY` el NVD limita a 5
+  # pedidos cada 30 s y la PRIMERA descarga tarda decenas de minutos; las siguientes sólo bajan
+  # lo nuevo. La clave es gratuita: https://nvd.nist.gov/developers/request-an-api-key
+  vulnerabilidades:
+    name: Vulnerabilidades de dependencias (OWASP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      # La base del NVD vive en ~/.cache/dependency-check (ver pom.xml) y NO en ~/.m2: asi no la
+      # arrastra la cache de Maven de setup-java. La clave cambia cada dia; restore-keys arranca de
+      # la mas reciente y el plugin baja solo lo modificado desde entonces.
+      #
+      # Restaurar, actualizar y guardar van separados del analisis a proposito: si el analisis
+      # falla por un CVE, la base actualizada se guarda igual y la proxima corrida no vuelve a
+      # bajar 400.000 registros.
+      - name: Fecha para la cache del NVD
+        id: fecha
+        run: echo "hoy=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Restaurar la base del NVD
+        id: nvd
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/dependency-check
+          key: nvd-${{ steps.fecha.outputs.hoy }}
+          restore-keys: nvd-
+
+      - name: Actualizar la base del NVD
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          clave=()
+          if [ -n "$NVD_API_KEY" ]; then
+            clave=("-DnvdApiKey=$NVD_API_KEY")
+          else
+            echo "::notice::Sin NVD_API_KEY: la primera descarga del NVD tarda ~40 min (medido el 09/10/2026)."
+          fi
+          ./mvnw -B --no-transfer-progress "${clave[@]}" dependency-check:update-only
+
+      - name: Guardar la base del NVD
+        if: steps.nvd.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/dependency-check
+          key: nvd-${{ steps.fecha.outputs.hoy }}
+
+      - name: OWASP dependency-check
+        run: ./mvnw -B --no-transfer-progress -DautoUpdate=false dependency-check:check
+
+      - name: Publicar reporte de vulnerabilidades
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: target/dependency-check/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # Análisis de SonarQube (AKINE G-6). Listo y apagado hasta que existan la instancia y el token.
+  #
+  # Para activarlo alcanza con cargar dos secretos en Settings > Secrets and variables > Actions:
+  #   SONAR_TOKEN     token de análisis del proyecto (SonarQube: My Account > Security)
+  #   SONAR_HOST_URL  URL de la instancia, p. ej. https://sonarcloud.io o https://sonar.ejemplo.test
+  # Sin los dos, el job termina en verde con un aviso y no corre el análisis. Detalle en
+  # docs/calidad.md.
+  #
+  # No vuelve a correr los tests: reusa el jacoco.xml que publica `build` y sólo compila, para
+  # que Sonar tenga los .class. Los PR desde forks no reciben secretos y también se saltean.
+  sonar:
+    name: Analisis SonarQube
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+    steps:
+      - name: Verificar si SonarQube esta configurado
+        id: config
+        run: |
+          if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ]; then
+            echo "activo=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "activo=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SonarQube sin configurar (faltan SONAR_TOKEN o SONAR_HOST_URL): se saltea el analisis."
+          fi
+
+      - name: Checkout
+        if: steps.config.outputs.activo == 'true'
+        uses: actions/checkout@v4
+        with:
+          # SonarQube necesita el historial completo para atribuir blame y detectar codigo nuevo.
+          fetch-depth: 0
+
+      - name: Configurar JDK ${{ env.JAVA_VERSION }}
+        if: steps.config.outputs.activo == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Bajar el reporte de cobertura del job build
+        if: steps.config.outputs.activo == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco
+
+      - name: Analisis SonarQube
+        if: steps.config.outputs.activo == 'true'
+        run: >-
+          ./mvnw -B --no-transfer-progress -DskipTests test-compile
+          org.sonarsource.scanner.maven:sonar-maven-plugin:${{ env.SONAR_MAVEN_VERSION }}:sonar
+          -Dsonar.projectKey=akine-api
+          -Dsonar.projectName=akine-api
+          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml

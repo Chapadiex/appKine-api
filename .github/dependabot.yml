@@ -1,0 +1,78 @@
+# Dependabot del backend (AKINE G-6).
+#
+# Criterio: una corrida por semana, los lunes a la mañana de Argentina, y las versiones menores y
+# de parche AGRUPADAS en un solo PR por ecosistema. Las mayores llegan de a una, porque cada una
+# es una decisión (Spring Boot 4 -> 5, Java, MySQL) y merece su propio CI y su propio review.
+#
+# `main` está protegida: ningún PR de Dependabot entra sin el CI verde, incluidos los ITs contra
+# MySQL real y el gate de drift del contrato. Si un bump cambia el OpenAPI generado (springdoc),
+# el CI lo frena y hay que regenerar el contrato en la rama del PR.
+#
+# Las actualizaciones de SEGURIDAD no respetan el agrupado ni el horario: Dependabot las abre
+# apenas sale el advisory, y cuentan aparte del límite de PRs abiertos.
+version: 2
+
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: America/Argentina/Cordoba
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      maven-menores:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # 13.0.0 sin clave del NVD falla en vez de esperar el limite (ver pom.xml).
+      - dependency-name: org.owasp:dependency-check-maven
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: America/Argentina/Cordoba
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - '*'
+
+  # Imagen base del Dockerfile (eclipse-temurin). Las etiquetas son flotantes (`21-jdk`,
+  # `21-jre`), así que Dependabot sólo propone algo si se pasa a fijar por versión o digest.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: America/Argentina/Cordoba
+    open-pull-requests-limit: 2
+
+  # MySQL y Mailpit del compose.yaml, que también usa el job E2E del frontend. De MySQL sólo
+  # entran parches: saltar de 8.4 (LTS) a otra serie es una decisión de motor, no un bump.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: America/Argentina/Cordoba
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: mysql
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
