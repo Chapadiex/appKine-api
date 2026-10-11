@@ -15,7 +15,7 @@
 # ============================================================================================
 # Etapa 1 — build
 # ============================================================================================
-FROM eclipse-temurin:21-jdk AS build
+FROM eclipse-temurin:25-jdk AS build
 WORKDIR /build
 
 # Capa de dependencias: solo cambia cuando cambia el pom.xml o el wrapper. Un cambio de codigo
@@ -35,7 +35,7 @@ RUN ./mvnw -B --no-transfer-progress -DskipTests package \
 # ============================================================================================
 # Etapa 2 — runtime
 # ============================================================================================
-FROM eclipse-temurin:21-jre AS runtime
+FROM eclipse-temurin:25-jre AS runtime
 
 # Usuario sin privilegios, con UID fijo para que los permisos de un volumen montado sean
 # predecibles. El proceso nunca corre como root.
