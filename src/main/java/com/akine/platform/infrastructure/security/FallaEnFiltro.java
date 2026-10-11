@@ -3,14 +3,17 @@ package com.akine.platform.infrastructure.security;
 import com.akine.platform.spi.problem.ProblemType;
 import java.io.IOException;
 import java.sql.SQLException;
+import java.sql.SQLNonTransientConnectionException;
+import java.sql.SQLRecoverableException;
+import java.sql.SQLTransientConnectionException;
 
+import org.hibernate.exception.JDBCConnectionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpStatus;
-import org.springframework.transaction.TransactionException;
+import org.springframework.transaction.CannotCreateTransactionException;
 
-import jakarta.persistence.PersistenceException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -27,8 +30,9 @@ import jakarta.servlet.http.HttpServletResponse;
  * los usuarios a la vez, y la prueba de carga de G-10 lo midio: 427 respuestas 401 con la base
  * trabada.
  *
- * <p>Una falla de infraestructura responde <b>503 {@code service-unavailable}</b>: transitoria, la
- * sesion sigue valida. Cualquier otra excepcion es un bug y responde 500 {@code internal-error}.
+ * <p>Una falla transitoria de conexion con la base responde <b>503 {@code service-unavailable}</b>:
+ * la sesion sigue valida. Cualquier otra excepcion —incluidas las de persistencia que delatan un
+ * bug, como dos memberships vigentes— responde 500 {@code internal-error}.
  * Nunca 401.
  */
 public final class FallaEnFiltro {
@@ -63,15 +67,23 @@ public final class FallaEnFiltro {
 	}
 
 	/**
-	 * Si la causa es la base o el acceso a ella: acceso a datos de Spring, transaccion que no pudo
-	 * abrirse (es lo que lanza Hikari cuando el pool no entrega una conexion a tiempo), JPA o JDBC.
+	 * Si la causa es una falla <b>transitoria de conexion</b> con la base: la conexion no llego del
+	 * pool, se cayo o el motor no contesta. Reintentar en unos segundos puede funcionar.
+	 *
+	 * <p>Deliberadamente angosto. Una {@code NonUniqueResultException} —dos memberships vigentes—,
+	 * una {@code NoResultException} o una {@code UnexpectedRollbackException} tambien son
+	 * {@code PersistenceException} o {@code TransactionException}, pero son bugs: responder 503
+	 * "reintente" a algo que va a fallar siempre esconde el defecto. Esos van como 500.
 	 */
 	public static boolean esDeInfraestructura(Throwable falla) {
 		for (Throwable causa = falla; causa != null; causa = causa.getCause()) {
-			if (causa instanceof DataAccessException
-					|| causa instanceof TransactionException
-					|| causa instanceof PersistenceException
-					|| causa instanceof SQLException) {
+			if (causa instanceof DataAccessResourceFailureException
+					|| causa instanceof CannotCreateTransactionException
+					|| causa instanceof JDBCConnectionException
+					|| causa instanceof SQLTransientConnectionException
+					|| causa instanceof SQLNonTransientConnectionException
+					|| causa instanceof SQLRecoverableException
+					|| causa instanceof SQLException sql && esDeConexion(sql.getSQLState())) {
 				return true;
 			}
 			if (causa.getCause() == causa) {
@@ -79,5 +91,10 @@ public final class FallaEnFiltro {
 			}
 		}
 		return false;
+	}
+
+	/** Clase de SQLSTATE 08: "connection exception" (SQL:2003). */
+	private static boolean esDeConexion(String sqlState) {
+		return sqlState != null && sqlState.startsWith("08");
 	}
 }
