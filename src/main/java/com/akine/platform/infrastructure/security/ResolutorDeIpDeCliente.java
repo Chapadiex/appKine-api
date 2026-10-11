@@ -9,10 +9,13 @@ import java.util.regex.Pattern;
 
 import org.springframework.security.web.util.matcher.IpAddressMatcher;
 
+import com.akine.platform.spi.security.IpDeCliente;
+
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * La IP del cliente que cuenta para el rate limit, con proxies de confianza declarados.
+ * La IP del cliente, con proxies de confianza declarados. La usan el rate limit y, por el
+ * {@code spi} ({@link IpDeCliente}), la fila de cada sesion de {@code identity}.
  *
  * <h2>El defecto que cierra (simulacro de G-13)</h2>
  *
@@ -51,7 +54,7 @@ import jakarta.servlet.http.HttpServletRequest;
  * operador a mano es la forma mas facil de equivocarse en silencio. Aca la configuracion son
  * CIDR, vacia por defecto, y la regla se prueba con unitarios.
  */
-public final class ResolutorDeIpDeCliente {
+public final class ResolutorDeIpDeCliente implements IpDeCliente {
 
 	static final String CABECERA = "X-Forwarded-For";
 
@@ -98,6 +101,7 @@ public final class ResolutorDeIpDeCliente {
 		return new ResolutorDeIpDeCliente(List.copyOf(matchers));
 	}
 
+	@Override
 	public String resolver(HttpServletRequest request) {
 		if (confiables.isEmpty()) {
 			return RateLimitFilter.normalizarIp(request.getRemoteAddr());

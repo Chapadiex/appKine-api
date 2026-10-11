@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Imagen del backend
         run: AKINE_WEB_DIR=/inexistente perf/stack.sh build
@@ -67,7 +67,7 @@ jobs:
 
       - name: Resultados
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: carga-k6
           path: perf/salida/
