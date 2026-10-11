@@ -189,6 +189,8 @@ G13_API_IMAGE=akine-api:local G13_WEB_IMAGE=akine-web:local ops/simulacro-restor
 (`GET /personas/{id}/adjuntos/{id}/contenido`) responde **500** en `main`, restaurado o no:
 `AdjuntoService.contenido` audita la descarga dentro de una transacción `readOnly` y MySQL
 rechaza el INSERT en `audit_event` (*"Connection is read-only"*). Existe desde 03.02 y ningún IT
-descargaba un adjunto contra MySQL. Mientras no se corrija, el simulacro la registra como aviso
-(`SIM_DESCARGA=avisar`); la integridad del binario restaurado la prueba igual
+descargaba un adjunto contra MySQL. **Corregido** en `akine-fix-descarga-y-ratelimit`
+(`LecturaAuditadaIT`), junto con otras dos lecturas con el mismo defecto; desde entonces el
+simulacro exige la descarga y ya no la corre con `SIM_DESCARGA=avisar`, que queda sólo como
+válvula manual contra una imagen anterior. La integridad del binario restaurado la prueba además
 `verificar-adjuntos.sh` contra `checksum_sha256`.
