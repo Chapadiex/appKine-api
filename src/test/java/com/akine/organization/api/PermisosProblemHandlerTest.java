@@ -11,6 +11,7 @@ import com.akine.organization.domain.exception.PermissionDeniedException;
 import com.akine.organization.domain.exception.PlatformRoleNotFoundException;
 import com.akine.organization.domain.exception.SelfRevokeNotAllowedException;
 import com.akine.organization.domain.exception.SupportAccessNotFoundException;
+import com.akine.organization.domain.exception.PermisoNoOtorgableAlRolException;
 import com.akine.organization.domain.exception.UnknownPermissionCodeException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -193,6 +194,20 @@ class PermisosProblemHandlerTest {
 		assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
 		assertThat(problem.getType()).isEqualTo(URI.create(BASE + "validation-error"));
 		assertThat(problem.getDetail()).isEqualTo("El codigo de permiso no existe en el catalogo");
+		assertSinInternals(problem);
+	}
+
+	@Test
+	@DisplayName("Un permiso que la matriz no admite para el rol es 400 con su type propio, rol y permiso")
+	void permiso_no_otorgable_al_rol_es_400_con_type_propio() {
+		ProblemDetail problem = handler.handlePermisoNoOtorgableAlRol(
+				new PermisoNoOtorgableAlRolException("ADMINISTRATIVO", "hc:read"));
+
+		assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+		assertThat(problem.getType()).isEqualTo(URI.create(BASE + "permiso-no-otorgable-al-rol"));
+		assertThat(problem.getProperties())
+				.containsEntry("roleCode", "ADMINISTRATIVO")
+				.containsEntry("permissionCode", "hc:read");
 		assertSinInternals(problem);
 	}
 }
