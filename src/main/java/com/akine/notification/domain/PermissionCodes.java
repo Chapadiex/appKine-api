@@ -18,6 +18,12 @@ public final class PermissionCodes {
 	 */
 	public static final String NOTIFICACION_RETRY = "colaborador:manage";
 
+	/**
+	 * Listar las notificaciones del tenant para encontrar las que fallaron. Mismo codigo que el
+	 * reintento: quien puede reintentar tiene que poder ver que reintentar, y nadie mas.
+	 */
+	public static final String NOTIFICACION_READ = NOTIFICACION_RETRY;
+
 	private PermissionCodes() {
 	}
 }

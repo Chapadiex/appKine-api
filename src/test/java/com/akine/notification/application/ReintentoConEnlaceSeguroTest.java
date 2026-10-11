@@ -240,5 +240,13 @@ class ReintentoConEnlaceSeguroTest {
 		public List<NotificationOutboxEntry> reclamarLeasesVencidos(Instant limite, int maximo) {
 			return List.of();
 		}
+
+		@Override
+		public org.springframework.data.domain.Page<NotificationOutboxEntry> findByOrganizationIdAndEstadoIn(
+				Long organizationId,
+				java.util.Collection<com.akine.notification.domain.OutboxStatus> estados,
+				org.springframework.data.domain.Pageable pageable) {
+			throw new UnsupportedOperationException("este test no lista");
+		}
 	}
 }

@@ -78,7 +78,33 @@ class AislamientoPorContextoIT extends BaseEscenarioDiferido {
 		assertNoExiste(ajenas, post(orgB + "/memberships/" + membershipDelFundadorDeB + "/suspend", tokenA,
 				"{\"reason\":\"Sondeo de aislamiento desde otro contexto\"}"),
 				"suspension de un colaborador");
+		// --- Invitaciones y notificaciones (huecos chicos): actuaban sobre la organizacion del
+		// contexto ignorando la de la URL, asi que con contexto A y URL B respondian con lo de A.
+		Respuesta invitacionDeA = post("/api/v1/organizations/" + a.organizationId()
+				+ "/colaborador-invitaciones", tokenA,
+				"{\"email\":\"ctx-invitada@akine.test\",\"roleCode\":\"PROFESIONAL\"}");
+		assertThat(invitacionDeA.status()).as("invitar en A con contexto A: %s", invitacionDeA.body())
+				.isEqualTo(201);
+		long invitacionId = JSON.readTree(invitacionDeA.body()).get("id").asLong();
+		long invitacionesAntes = contarFilas("colaborador_invitacion");
+
+		assertNoExiste(ajenas, get(orgB + "/colaborador-invitaciones", tokenA), "listado de invitaciones");
+		assertNoExiste(ajenas, post(orgB + "/colaborador-invitaciones", tokenA,
+				"{\"email\":\"ctx-sondeo@akine.test\",\"roleCode\":\"PROFESIONAL\"}"),
+				"emision de una invitacion");
+		assertNoExiste(ajenas, post(orgB + "/colaborador-invitaciones/" + invitacionId + "/resend",
+				tokenA, "{}"), "reenvio de una invitacion");
+		assertNoExiste(ajenas, post(orgB + "/colaborador-invitaciones/" + invitacionId + "/cancel",
+				tokenA, "{\"reason\":\"Sondeo de aislamiento desde otro contexto\"}"),
+				"cancelacion de una invitacion");
+		assertNoExiste(ajenas, get(orgB + "/notifications", tokenA), "listado de notificaciones");
 		ajenas.assertAll();
+
+		assertThat(contarFilas("colaborador_invitacion"))
+				.as("la emision por la URL de B no crea nada en ningun lado").isEqualTo(invitacionesAntes);
+		assertThat(jdbc.queryForObject(
+				"SELECT estado FROM colaborador_invitacion WHERE id = ?", String.class, invitacionId))
+				.as("la cancelacion por la URL de B no toca la invitacion de A").isEqualTo("PENDIENTE");
 
 		String estado = jdbc.queryForObject(
 				"SELECT estado FROM membership WHERE id = ?", String.class, membershipDelFundadorDeB);
@@ -91,12 +117,16 @@ class AislamientoPorContextoIT extends BaseEscenarioDiferido {
 				.isEqualTo(200);
 		assertThat(get(orgB + "/memberships", tokenB).status()).isEqualTo(200);
 		assertThat(get(orgB + "/consultorios/" + b.consultorioId(), tokenB).status()).isEqualTo(200);
+		assertThat(get(orgB + "/colaborador-invitaciones", tokenB).status()).isEqualTo(200);
+		assertThat(get(orgB + "/notifications", tokenB).status()).isEqualTo(200);
 
 		// --- Y con el de A, lo de A sigue funcionando: el 404 es aislamiento, no sesion rota ---
 		String orgA = "/api/v1/organizations/" + a.organizationId();
 		assertThat(get(orgA + "/audit-events" + periodo, tokenA).status()).isEqualTo(200);
 		assertThat(get(orgA + "/memberships", tokenA).status()).isEqualTo(200);
 		assertThat(get(orgA + "/consultorios/" + a.consultorioId(), tokenA).status()).isEqualTo(200);
+		assertThat(get(orgA + "/colaborador-invitaciones", tokenA).status()).isEqualTo(200);
+		assertThat(get(orgA + "/notifications", tokenA).status()).isEqualTo(200);
 	}
 
 	@Test
@@ -111,7 +141,9 @@ class AislamientoPorContextoIT extends BaseEscenarioDiferido {
 		for (String ruta : new String[] {
 				orgA + "/audit-events" + periodo,
 				orgA + "/memberships",
-				orgA + "/consultorios/" + a.consultorioId()}) {
+				orgA + "/consultorios/" + a.consultorioId(),
+				orgA + "/colaborador-invitaciones",
+				orgA + "/notifications"}) {
 			Respuesta respuesta = get(ruta, preContexto);
 			assertThat(respuesta.status())
 					.as("sin contexto %s: 403, nunca 401 ni 404. %s", ruta, respuesta.body())

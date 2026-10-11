@@ -2,6 +2,7 @@ package com.akine.notification.api;
 
 import com.akine.notification.domain.exception.NotificacionNoEncontradaException;
 import com.akine.notification.domain.exception.NotificacionNoReintentableException;
+import com.akine.notification.domain.exception.NotificacionesNoAccesiblesException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -19,8 +20,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class NotificationProblemHandler {
 
 	/** Inexistente, de otra organizacion o sin tenant: <b>404 siempre</b>. */
-	@ExceptionHandler(NotificacionNoEncontradaException.class)
-	public ProblemDetail handleNoEncontrada(NotificacionNoEncontradaException exception) {
+	@ExceptionHandler({NotificacionNoEncontradaException.class, NotificacionesNoAccesiblesException.class})
+	public ProblemDetail handleNoEncontrada(RuntimeException exception) {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
 				HttpStatus.NOT_FOUND, "La notificacion no existe.");
 		problem.setType(ProblemType.NOT_FOUND.uri());

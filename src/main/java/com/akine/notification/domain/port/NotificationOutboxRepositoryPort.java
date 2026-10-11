@@ -1,8 +1,12 @@
 package com.akine.notification.domain.port;
 
 import com.akine.notification.domain.NotificationOutboxEntry;
+import com.akine.notification.domain.OutboxStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -47,4 +51,14 @@ public interface NotificationOutboxRepositoryPort {
 	 * worker vivo que esta legitimamente trabajando sobre una de esas filas.
 	 */
 	List<NotificationOutboxEntry> reclamarLeasesVencidos(Instant limite, int maximo);
+
+	/**
+	 * Notificaciones de una organizacion en alguno de los estados pedidos, paginadas.
+	 *
+	 * <p>La cubre {@code ix_notification_outbox_tenant (organization_id, estado, created_at)} de
+	 * {@code V9}: no hace falta indice nuevo. Las que nacen sin tenant
+	 * ({@code organization_id} NULL, como la recuperacion de contraseña) nunca aparecen.
+	 */
+	Page<NotificationOutboxEntry> findByOrganizationIdAndEstadoIn(
+			Long organizationId, Collection<OutboxStatus> estados, Pageable pageable);
 }
