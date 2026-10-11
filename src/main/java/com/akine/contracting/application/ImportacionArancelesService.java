@@ -167,7 +167,9 @@ public class ImportacionArancelesService {
 			long organizationId) {
 
 		exigirLote(filas);
-		// 404 antes de crear la fila-lock: un convenio ajeno no deja rastro en convenio_lock.
+		// 404 antes de tomar el lock. La fila-lock ya existe: se aseguro antes de abrir esta
+		// transaccion, con la sede ya autorizada, y es de la sede y no del convenio, asi que un
+		// convenio ajeno no deja rastro en convenio_lock.
 		cargarConvenio(organizationId, consultorioId, convenioId);
 
 		// EL ORDEN DE ESTAS LINEAS ES LA GARANTIA. Ver la cabecera de ConvenioService: fila-lock en
