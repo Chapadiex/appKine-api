@@ -57,6 +57,12 @@ public enum ProblemType {
 	RATE_LIMITED("rate-limited"),
 	/** Fallo no previsto. Nunca lleva detalle interno (500). */
 	INTERNAL_ERROR("internal-error"),
+	/**
+	 * La base u otra dependencia de infraestructura no respondio (503). Transitorio: reintentar mas
+	 * tarde puede funcionar, y la sesion del usuario sigue valida. Existe para que una caida de la
+	 * base durante la autenticacion no se lea como 401 y desloguee a todos (docs/carga.md §6.3).
+	 */
+	SERVICE_UNAVAILABLE("service-unavailable"),
 
 	// --- Sesion, contexto y proteccion de la sesion --------------------------------------
 	/** Credenciales rechazadas. Uniforme exista o no la cuenta (ADR-0018). */

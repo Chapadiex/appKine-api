@@ -11,6 +11,7 @@ import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import com.akine.platform.spi.security.AccessTokenClaims;
 import com.akine.platform.spi.security.AccessTokenScope;
@@ -183,5 +184,48 @@ class JwtAuthenticationFilterTest {
 
 		assertThat(response.getStatus()).isEqualTo(200);
 		assertThat(response.getContentAsString()).isEqualTo("ya escrito");
+	}
+
+	@Test
+	@DisplayName("si la base no responde al revalidar el rol: 503 service-unavailable, nunca 401")
+	void la_base_caida_responde_503_y_no_401() throws Exception {
+		// G-10 (docs/carga.md §6.3): con el pool agotado la excepcion salia del filtro, el despacho
+		// a /error corria sin autenticar y el pedido terminaba en 401. El frontend lee 401 como
+		// "tu sesion no vale" y desloguea: una caida de la base sacaba a todos los usuarios.
+		MockFilterChain cadena = new MockFilterChain();
+		MockHttpServletResponse response = new MockHttpServletResponse();
+		JwtAuthenticationFilter filtro = new JwtAuthenticationFilter(
+				token -> Optional.of(claims(AccessTokenScope.CONTEXT, "ORG_ADMIN")),
+				(accountId, at) -> {
+					throw new CannotCreateTransactionException("Connection is not available, request timed out");
+				},
+				Clock.systemUTC());
+
+		filtro.doFilter(conBearer("Bearer abc"), response, cadena);
+
+		assertThat(response.getStatus()).isEqualTo(503);
+		assertThat(response.getContentType()).startsWith("application/problem+json");
+		assertThat(response.getContentAsString())
+				.contains("https://akine.app/problems/service-unavailable")
+				.doesNotContain("Connection is not available");
+		assertThat(cadena.getRequest()).as("no sigue la cadena sin principal").isNull();
+		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+	}
+
+	@Test
+	@DisplayName("una falla que no es de la base en el filtro responde 500, tampoco 401")
+	void un_bug_en_el_filtro_responde_500() throws Exception {
+		MockHttpServletResponse response = new MockHttpServletResponse();
+		JwtAuthenticationFilter filtro = new JwtAuthenticationFilter(
+				token -> Optional.of(claims(AccessTokenScope.CONTEXT, "ORG_ADMIN")),
+				(accountId, at) -> {
+					throw new IllegalStateException("bug");
+				},
+				Clock.systemUTC());
+
+		filtro.doFilter(conBearer("Bearer abc"), response, new MockFilterChain());
+
+		assertThat(response.getStatus()).isEqualTo(500);
+		assertThat(response.getContentAsString()).contains("https://akine.app/problems/internal-error");
 	}
 }

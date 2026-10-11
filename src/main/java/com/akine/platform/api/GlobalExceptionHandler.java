@@ -7,6 +7,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.ErrorResponseException;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
@@ -317,6 +319,23 @@ public class GlobalExceptionHandler {
 				"La operacion choca con un dato ya existente. Verifique los identificadores unicos.");
 		problem.setTitle("Conflicto de datos");
 		problem.setType(CONFLICT);
+		return problem;
+	}
+
+	/**
+	 * La base no entrego una conexion o no respondio (503). No es un bug del pedido: es transitorio y
+	 * reintentar puede funcionar. {@code CannotCreateTransactionException} es lo que llega cuando el
+	 * pool de Hikari no entrega una conexion a tiempo (docs/carga.md §6.1 y §6.3).
+	 */
+	@ExceptionHandler({CannotCreateTransactionException.class, DataAccessResourceFailureException.class})
+	public ProblemDetail handleInfraestructuraNoDisponible(RuntimeException exception) {
+		log.error("La base no respondio", exception);
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.SERVICE_UNAVAILABLE,
+				"El servicio no pudo atender el pedido en este momento. Intente de nuevo en unos segundos.");
+		problem.setTitle("Servicio no disponible");
+		problem.setType(ProblemType.SERVICE_UNAVAILABLE.uri());
 		return problem;
 	}
 

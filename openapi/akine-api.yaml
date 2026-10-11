@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.82.0
+  version: 0.83.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -29747,6 +29747,7 @@ components:
       - https://akine.app/problems/conflict
       - https://akine.app/problems/rate-limited
       - https://akine.app/problems/internal-error
+      - https://akine.app/problems/service-unavailable
       - https://akine.app/problems/invalid-credentials
       - https://akine.app/problems/invalid-refresh
       - https://akine.app/problems/invalid-token
