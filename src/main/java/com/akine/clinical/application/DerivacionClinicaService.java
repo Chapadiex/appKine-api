@@ -112,8 +112,14 @@ public class DerivacionClinicaService {
 	 * <p>Es una <b>lectura clinica</b> y por lo tanto se audita, no solo se autoriza: 04.01 fijo
 	 * que toda lectura clinica deja rastro, y esta dice quien tiene historia abierta y a que Casos
 	 * fue derivado — que es exactamente la clase de dato del que despues hay que poder responder.
+	 *
+	 * <p><b>No es {@code readOnly}</b>, por la misma razon: el INSERT de
+	 * {@code DERIVACION_CLINICA_ACCESSED} se une a esta transaccion y MySQL lo rechaza en una
+	 * conexion de solo lectura. Y un consumidor futuro <b>no puede llamarla desde una transaccion
+	 * propia {@code readOnly}</b>: con {@code REQUIRED} se uniria a ella y volveria el mismo 500.
+	 * Lo fija {@code LecturaAuditadaIT}.
 	 */
-	@Transactional(readOnly = true)
+	@Transactional
 	public EstadoClinicoDeParticipacion consultar(
 			ActorDeDerivacion actorExterno,
 			OrigenDeParticipacion origen,

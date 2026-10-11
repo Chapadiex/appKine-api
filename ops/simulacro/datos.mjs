@@ -134,10 +134,9 @@ if (accion === 'sembrar') {
 		throw new Error(`el adjunto ${estado.adjunto.id} no figura DISPONIBLE por API: ${JSON.stringify(fila ?? null)}`);
 	}
 
-	// La descarga. SIM_DESCARGA=avisar la deja como aviso: hoy responde 500 en main por un defecto
-	// que no es de backup (AdjuntoService.contenido audita dentro de una transaccion readOnly). La
-	// integridad del binario restaurado la prueba igual ops/verificar-adjuntos.sh: SHA-256 del
-	// archivo contra checksum_sha256 de la fila. Cuando el defecto se corrija, sacar el aviso.
+	// La descarga, con SHA-256: si no responde, el simulacro falla. SIM_DESCARGA=avisar la degrada a
+	// aviso; existio mientras AdjuntoService.contenido daba 500 (auditaba dentro de una transaccion
+	// readOnly, ya corregido) y queda solo como valvula manual para correr contra una imagen vieja.
 	let descarga = 'descargado y SHA-256 identico';
 	try {
 		const binario = await http('GET',

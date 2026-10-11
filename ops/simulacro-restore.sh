@@ -160,9 +160,9 @@ if ! diff <(sort "$TRABAJO/antes.tsv") <(sort "$TRABAJO/despues.tsv") >&2; then
 	fail "los conteos de la base restaurada no coinciden con los de antes del backup"
 fi
 log "conteos identicos antes del backup y despues del restore"
-# SIM_DESCARGA=avisar: la descarga de un adjunto administrativo da 500 en main por un defecto ajeno
-# al backup (ver ops/simulacro/datos.mjs). Sacarlo cuando se corrija.
-SIM_DESCARGA=avisar SIM_API_URL="http://127.0.0.1:$PUERTO_API" node "$OPS_NODE/simulacro/datos.mjs" comprobar "$ESTADO"
+# La descarga del adjunto restaurado es parte de la comprobacion: el 500 que obligaba a dejarla
+# como aviso (readOnly + auditoria en AdjuntoService.contenido) esta corregido.
+SIM_API_URL="http://127.0.0.1:$PUERTO_API" node "$OPS_NODE/simulacro/datos.mjs" comprobar "$ESTADO"
 
 # El smoke entra con la cuenta sembrada: es la "cuenta de humo" de este entorno.
 AKINE_SMOKE_API_URL="http://127.0.0.1:$PUERTO_API" AKINE_SMOKE_WEB_URL="http://127.0.0.1:$PUERTO_WEB" \

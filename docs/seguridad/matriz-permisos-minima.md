@@ -735,3 +735,20 @@ críticas: personas, historia clínica, sesiones, cobros, caja, egresos, present
 colaboradores y auditoría. Para cada celda espera lo que dicen §2, §6 y las enmiendas: el código de
 éxito si el rol tiene el permiso y **403** si no. Un endpoint que autorice por pertenencia o con el
 permiso de otra familia rompe ese test, aunque `RolePermissionsTest` siga verde.
+
+### 16.3 La regla, publicada (contrato 0.84.0)
+
+La pantalla de colaboradores ofrecía todos los códigos de `otorgablesComoGrant()` a cualquier rol, y
+el alta los rechazaba con un `validation-error` genérico. Desde 0.84.0 la regla de 16.1 sale por el
+contrato, sin una segunda lista que mantener:
+
+- **`GET /api/v1/organizations/{orgId}/roles/{roleCode}/permisos-otorgables`** devuelve los códigos
+  que `otorgableComoGrant(rol, permiso)` admite, en orden alfabético. Exige `colaborador:manage`
+  —el mismo permiso que otorgar— y aísla por contexto como el resto de `/organizations/{orgId}`:
+  URL distinta del contexto es 404, sin contexto es 403. Incluye los que el rol ya tiene por base,
+  porque la regla los admite.
+- **`MembershipGrantResponse.vigenteConElRolActual`**: si el grant concede algo con el rol actual.
+  Es `false` para la fila que 16.1 describe —activa y sin efecto— y la pantalla puede mostrarla así.
+- **400 `permiso-no-otorgable-al-rol`**, con `roleCode` y `permissionCode` en propiedades, cuando el
+  código existe pero la matriz no lo admite para el rol del vínculo (incluido el que no es otorgable
+  a ningún rol). Un código inexistente sigue siendo `validation-error`.

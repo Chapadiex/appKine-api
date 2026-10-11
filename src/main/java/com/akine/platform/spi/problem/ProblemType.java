@@ -102,6 +102,12 @@ public enum ProblemType {
 	SELF_REVOKE_NOT_ALLOWED("self-revoke-not-allowed"),
 	/** Ese permiso adicional ya esta vigente sobre el vinculo. */
 	GRANT_ALREADY_ACTIVE("grant-already-active"),
+	/**
+	 * La matriz no admite otorgar ese permiso como grant al rol del vinculo (400). Lleva
+	 * {@code roleCode} y {@code permissionCode} en propiedades. Antes de 0.84.0 salia como
+	 * {@link #VALIDATION_ERROR}.
+	 */
+	PERMISO_NO_OTORGABLE_AL_ROL("permiso-no-otorgable-al-rol"),
 
 	// --- Sedes --------------------------------------------------------------------------
 	/** Ya hay una sede activa con ese nombre en la organizacion. */

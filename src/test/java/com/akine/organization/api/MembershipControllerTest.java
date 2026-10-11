@@ -11,6 +11,7 @@ import com.akine.organization.domain.exception.GrantAlreadyActiveException;
 import com.akine.organization.domain.exception.LastAdminException;
 import com.akine.organization.domain.exception.MembershipNotAccessibleException;
 import com.akine.organization.domain.exception.MembershipNotActiveException;
+import com.akine.organization.domain.exception.PermisoNoOtorgableAlRolException;
 import com.akine.organization.domain.exception.PermissionDeniedException;
 import com.akine.organization.domain.exception.SelfRevokeNotAllowedException;
 import com.akine.organization.domain.exception.UnknownPermissionCodeException;
@@ -176,7 +177,22 @@ class MembershipControllerTest {
 				.andExpect(jsonPath("$.length()").value(1))
 				.andExpect(jsonPath("$[0].permissionCode").value("auditoria:read"))
 				.andExpect(jsonPath("$[0].membershipId").value(10))
-				.andExpect(jsonPath("$[0].grantedByAccountId").value(7));
+				.andExpect(jsonPath("$[0].grantedByAccountId").value(7))
+				.andExpect(jsonPath("$[0].vigenteConElRolActual").value(true));
+	}
+
+	@Test
+	@DisplayName("Un grant que el rol actual no admite sale con vigenteConElRolActual en false")
+	void grant_sin_efecto_con_el_rol_actual() throws Exception {
+		given(membershipService.grants(any(), eq(1L), eq(10L)))
+				.willReturn(List.of(new MembershipGrantView(
+						31L, 10L, "hc:write", 7L, "antes del cambio de rol",
+						Instant.parse("2026-02-01T10:00:00Z"), null, true, false)));
+
+		mockMvc.perform(get(BASE + "/10/grants").with(ApiActors.miembro(7L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].active").value(true))
+				.andExpect(jsonPath("$[0].vigenteConElRolActual").value(false));
 	}
 
 	@Test
@@ -398,8 +414,8 @@ class MembershipControllerTest {
 	}
 
 	@Test
-	@DisplayName("Un codigo fuera del catalogo otorgable es 400 validation-error")
-	void otorgar_permiso_no_otorgable_es_400() throws Exception {
+	@DisplayName("Un codigo fuera del catalogo es 400 validation-error")
+	void otorgar_permiso_inexistente_es_400() throws Exception {
 		given(membershipService.assignGrant(any(), anyLong(), anyLong(), any(), any(), any()))
 				.willThrow(new UnknownPermissionCodeException(
 						"plataforma:admin", "El permiso no es otorgable en esta fase"));
@@ -411,6 +427,23 @@ class MembershipControllerTest {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.type").value("https://akine.app/problems/validation-error"))
 				.andExpect(jsonPath("$.detail").value("El permiso no es otorgable en esta fase"));
+	}
+
+	@Test
+	@DisplayName("Un permiso que la matriz no admite para el rol es 400 permiso-no-otorgable-al-rol con rol y permiso")
+	void otorgar_permiso_no_otorgable_al_rol_es_400() throws Exception {
+		given(membershipService.assignGrant(any(), anyLong(), anyLong(), any(), any(), any()))
+				.willThrow(new PermisoNoOtorgableAlRolException("ORG_ADMIN", "hc:write"));
+
+		mockMvc.perform(post(BASE + "/10/grants")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"permissionCode\":\"hc:write\",\"reason\":\"x\"}")
+						.with(ApiActors.miembro(7L)))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.type").value(
+						"https://akine.app/problems/permiso-no-otorgable-al-rol"))
+				.andExpect(jsonPath("$.roleCode").value("ORG_ADMIN"))
+				.andExpect(jsonPath("$.permissionCode").value("hc:write"));
 	}
 
 	@Test
@@ -459,6 +492,6 @@ class MembershipControllerTest {
 	private static MembershipGrantView permiso(String codigo) {
 		return new MembershipGrantView(
 				30L, 10L, codigo, 7L, "Auditoria interna",
-				Instant.parse("2026-02-01T10:00:00Z"), null, true);
+				Instant.parse("2026-02-01T10:00:00Z"), null, true, true);
 	}
 }

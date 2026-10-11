@@ -245,7 +245,7 @@ repartir, no compromisos. "Dep." son paquetes que tienen que estar en `main` ant
 
 | ID | Qué | Dep. |
 |---|---|---|
-| G-12 | QA manual del §6 del `CLAUDE.md`, fase por fase, contra la DB | olas 1–3 de cada fase |
+| G-12 | QA manual del §6 del `CLAUDE.md`, fase por fase, contra la DB — **guía lista, ejecución pendiente del usuario** (`akine-G-12-guia-qa`, 11/10): `docs/qa/`, once circuitos por riesgo con 120 pasos (acción en pantalla, resultado esperado, consulta SQL exacta y auditoría), marcando lo que ya cubre un E2E o un IT, más "conocido y aceptado" (DP-17..23 y los criterios provisorios). Las consultas se validaron contra el esquema `V85` en un stack aislado `g12-*` sembrado por API (`docs/qa/validacion/`). Al validarlas aparecieron dos defectos sin corregir —el indicador "Cancelados" del reporte de turnos da siempre 0, y la descarga del adjunto administrativo sigue en 500 (G-13)— y una pregunta de producto sobre el débito parcial de una presentación (`docs/qa/90-conocido-y-aceptado.md` §4–§5) | olas 1–3 de cada fase |
 | ~~G-13~~ | ~~Backup/restore, rollback, smoke post-deploy, release notes, runbooks~~ — **hecho** (`akine-G-13-operaciones`, 09/10): scripts en `ops/` y docs en `docs/operaciones/`. Simulacro de restore real en stack aislado (sembrar por API, backup, destruir contenedores y volúmenes, restaurar, Flyway valida, conteos y lectura por API, smoke verde) y rollback a la imagen del 06/10 (`V65`) contra el esquema `V85` probado. Destapó un 500 al descargar adjuntos administrativos (`AdjuntoService.contenido`, auditoría en transacción `readOnly`) y deja declarado que el rate limit es global detrás del proxy (runbook R4) | G-3, G-4 |
 | G-14 | Aprobación clínica y legal (DP-08); deploy y ventana de estabilización (DP-07) | todo |
 | L-2 | Decisión DU-12 → abrir F9 (o no) | G-14 |
@@ -291,7 +291,7 @@ compromiso.
 | **G9 · E2E, a11y y dashboards** | web transversal | web | A-6 · B-6 | G-7 · G-8 (espera G-1) | — | ≈ 16 |
 
 **Cierre del MVP, todos juntos**, cuando los grupos terminaron su tramo 3: G-5 hallazgos altos
-(espera DU-5, DU-6), G-10 carga (espera G-4), G-11 cobertura 0,80, **G-12 QA manual**, ~~G-13
+(espera DU-5, DU-6), G-10 carga (espera G-4), G-11 cobertura 0,80, **G-12 QA manual** (guía lista en `docs/qa/`, ejecución pendiente del usuario), ~~G-13
 backup/rollback~~ (hecho) y G-14 aprobación y deploy → **gate del MVP** → DU-12 (¿abrir F9?).
 
 **Decisiones:** las toma una sola persona, la que decide producto. **DU-1, DU-2 y DU-3 el día 1**,
