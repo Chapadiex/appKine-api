@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Excepciones de OWASP dependency-check (AKINE G-6).
+
+  Hay dos clases de entrada, y cada una lleva en <notes> POR QUE y desde cuando:
+
+  1. FALSO POSITIVO: el CPE del NVD matchea el jar pero el CVE no aplica a lo que viaja en la
+     aplicacion. Sin vencimiento.
+  2. EXCEPCION TEMPORAL: el CVE aplica y no hay version publicada que lo corrija. Lleva `until`
+     para que el gate vuelva a fallar solo cuando vence, y es una DECISION abierta, no un olvido:
+     se lista en docs/calidad.md. Bajar el umbral de failBuildOnCVSS nunca es la salida.
+
+  Formato: https://jeremylong.github.io/DependencyCheck/general/suppression.html
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+
+	<!-- 1. Falso positivo. CVE-2026-53914 (9.8) es deserializacion insegura en la metadata de la
+	     cache de BUILD del compilador de Kotlin; kotlin-stdlib llega a runtime solo como
+	     dependencia de okhttp (via el exportador OTLP de G-4) y no compila nada. 09/10/2026. -->
+	<suppress>
+		<notes>Falso positivo: CVE del cache de build del compilador Kotlin, no de kotlin-stdlib en runtime (G-6, 09/10/2026).</notes>
+		<packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/kotlin-stdlib@.*$</packageUrl>
+		<cve>CVE-2026-53914</cve>
+	</suppress>
+
+	<!-- 1. Falso positivo. CVE-2026-54285 es de opentelemetry-js (@opentelemetry/core < 2.8.0);
+	     el CPE del NVD no distingue el SDK de Java. Es 5.3 y no frena el gate, pero ensucia el
+	     reporte. 09/10/2026. -->
+	<suppress>
+		<notes>Falso positivo: CVE de opentelemetry-js, no del SDK de Java (G-6, 09/10/2026).</notes>
+		<packageUrl regex="true">^pkg:maven/io\.opentelemetry/.*$</packageUrl>
+		<cve>CVE-2026-54285</cve>
+	</suppress>
+
+	<!-- 2. Excepcion TEMPORAL. mysql-connector-j 9.7.0 (gestionado por Spring Boot 4.1.1):
+	     CVE-2026-60586 (7.7) y CVE-2026-60623 (7.1), mas dos medias. Oracle declara afectadas
+	     9.7.0-9.7.1 y al 09/10/2026 no hay 9.7.2 ni 9.8 en Maven Central: no existe un bump que lo
+	     corrija. La alternativa es BAJAR a 9.6.0, que no figura como afectada, y eso es decision
+	     del usuario (docs/calidad.md). Vence el 09/11/2026: si para entonces no salio la version
+	     corregida, el gate vuelve a fallar y obliga a decidir. -->
+	<suppress until="2026-11-09Z">
+		<notes>Temporal: Connector/J 9.7.0 sin version corregida publicada; decision pendiente entre esperar o bajar a 9.6.0 (G-6, 09/10/2026).</notes>
+		<packageUrl regex="true">^pkg:maven/com\.mysql/mysql-connector-j@9\.7\..*$</packageUrl>
+		<cve>CVE-2026-60586</cve>
+		<cve>CVE-2026-60623</cve>
+		<cve>CVE-2026-60624</cve>
+		<cve>CVE-2026-61082</cve>
+	</suppress>
+
+</suppressions>
