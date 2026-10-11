@@ -43,14 +43,15 @@ import jakarta.servlet.http.HttpServletResponse;
  * cupo. Por eso el limite es holgado —decenas de intentos por minuto, no tres— y busca frenar la
  * automatizacion, no castigar al que se equivoca dos veces escribiendo su contrasena.
  *
- * <h2>La IP es la del socket</h2>
+ * <h2>La IP es la del socket, salvo detras de un proxy declarado</h2>
  *
- * <p>{@code getRemoteAddr()}, no {@code X-Forwarded-For}: esa cabecera la escribe el cliente y
- * confiar en ella sin un proxy de confianza declarado permite evadir el limite entero cambiando
- * un header. <b>TODO(etapa de observabilidad e infraestructura):</b> cuando haya un proxy
- * inverso propio, declararlo como confiable y recien entonces leer la cabecera reenviada; hasta
- * entonces, detras de un balanceador todos los requests comparten la IP del balanceador y el
- * limite es efectivamente global, que falla del lado seguro.
+ * <p>Por defecto, {@code getRemoteAddr()} y no {@code X-Forwarded-For}: esa cabecera la escribe
+ * el cliente, y creerle sin un proxy de confianza declarado permite evadir el limite entero
+ * cambiando un header. Detras del nginx del frontend eso hacia el limite <b>global</b> —todas las
+ * requests traen la IP del nginx— y un solo atacante dejaba sin login a todos los centros
+ * (simulacro de G-13). Por eso la IP la decide {@link ResolutorDeIpDeCliente}: si la conexion
+ * viene de un proxy declarado en {@code AKINE_TRUSTED_PROXIES}, se toma el primer salto no
+ * confiable de {@code X-Forwarded-For} leido de derecha a izquierda; si no, la del socket.
  *
  * <h2>Corre antes de autenticar</h2>
  *
@@ -131,7 +132,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
 	private final FixedWindowRateLimiter limiterDeAltaDeColaborador;
 	private final Clock clock;
 	private final boolean habilitado;
+	private final ResolutorDeIpDeCliente resolutorDeIp;
 
+	/** Sin proxies de confianza: la IP es siempre la del socket. */
 	public RateLimitFilter(
 			FixedWindowRateLimiter limiter,
 			FixedWindowRateLimiter limiterDeRegistro,
@@ -139,11 +142,24 @@ public class RateLimitFilter extends OncePerRequestFilter {
 			Clock clock,
 			boolean habilitado) {
 
+		this(limiter, limiterDeRegistro, limiterDeAltaDeColaborador, clock, habilitado,
+				ResolutorDeIpDeCliente.sinProxies());
+	}
+
+	public RateLimitFilter(
+			FixedWindowRateLimiter limiter,
+			FixedWindowRateLimiter limiterDeRegistro,
+			FixedWindowRateLimiter limiterDeAltaDeColaborador,
+			Clock clock,
+			boolean habilitado,
+			ResolutorDeIpDeCliente resolutorDeIp) {
+
 		this.limiter = limiter;
 		this.limiterDeRegistro = limiterDeRegistro;
 		this.limiterDeAltaDeColaborador = limiterDeAltaDeColaborador;
 		this.clock = clock;
 		this.habilitado = habilitado;
+		this.resolutorDeIp = resolutorDeIp;
 	}
 
 	/**
@@ -177,7 +193,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
 			return;
 		}
 
-		String clave = claveDe(ruta, normalizarIp(request.getRemoteAddr()));
+		String ip = resolutorDeIp.resolver(request);
+		String clave = claveDe(ruta, ip);
 		if (limitador.permitir(clave, ahora)) {
 			filterChain.doFilter(request, response);
 			return;
@@ -187,7 +204,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 		// La IP se loguea porque es un dato de conexion, no una credencial. El cuerpo del
 		// request no se toca ni se registra: ahi viajan contrasenas y tokens (RN-M02-003).
 		log.warn("Rate limit alcanzado: ruta={} ip={} reintentarEnSegundos={}",
-				ruta, normalizarIp(request.getRemoteAddr()), reintentarEn);
+				ruta, ip, reintentarEn);
 
 		response.setHeader("Retry-After", Long.toString(reintentarEn));
 		ProblemResponses.escribir(request, response, HttpStatus.TOO_MANY_REQUESTS,

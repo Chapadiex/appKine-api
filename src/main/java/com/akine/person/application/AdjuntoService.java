@@ -158,8 +158,15 @@ public class AdjuntoService {
 	 *
 	 * <p>Si el almacenamiento no tiene el binario, es <b>409 y no 404</b>: la metadata existe y
 	 * quien pregunta la esta viendo en la lista.
+	 *
+	 * <p><b>No es {@code readOnly}, aunque no modifique el adjunto.</b> Escribe
+	 * {@code ADJUNTO_DOWNLOADED}, y {@code AuditTrail.record} es {@code MANDATORY}: se une a esta
+	 * transaccion. Con {@code readOnly = true} la conexion sale marcada de solo lectura y MySQL
+	 * rechaza el INSERT ("Connection is read-only"): toda descarga respondia 500 desde 03.02
+	 * (simulacro de G-13). La auditoria va en la transaccion del negocio, como manda T-2; lo que
+	 * se corrige es la transaccion, no la auditoria. Lo fija {@code LecturaAuditadaIT}.
 	 */
-	@Transactional(readOnly = true)
+	@Transactional
 	public ContenidoDeAdjunto contenido(OperatingActor actor, long personaId, long adjuntoId) {
 		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(
 				permissionGuard, actor, "Descargar adjunto");

@@ -171,16 +171,18 @@ sube en endpoints de escritura.
 
 **Contexto.** `RateLimitFilter` limita login, refresh, recuperación y reenvío de activación (30
 por minuto), el alta self-service (5) y el alta directa de colaboradores (10). La clave es
-**ruta + IP del socket** (`getRemoteAddr()`), nunca el email (ADR-0018). El contador vive **en la
-memoria de cada instancia**.
+**ruta + IP del cliente**, nunca el email (ADR-0018). El contador vive **en la memoria de cada
+instancia**.
 
-> **Riesgo conocido del despliegue con proxy — leer antes de diagnosticar.** El backend ignora
-> `X-Forwarded-For` a propósito (lo escribe el cliente), y no hay proxy de confianza declarado
-> (TODO de `RateLimitFilter`). Detrás del nginx del frontend, o de cualquier balanceador, **todos
-> los pedidos llegan con la IP del proxy**: el límite deja de ser por usuario y pasa a ser
-> **global** — 30 logins por minuto para todo el sistema. Con uso real esto produce 429 masivos a
-> primera hora sin ningún ataque. Falla del lado seguro, pero falla. Arreglarlo es una decisión de
-> código (declarar el proxy confiable y leer la cabecera reenviada), no de operación.
+> **Detrás de un proxy, `AKINE_TRUSTED_PROXIES` es obligatoria — leer antes de diagnosticar.**
+> La IP del cliente es la del socket (`getRemoteAddr()`) salvo que la conexión venga de un proxy
+> declarado en `AKINE_TRUSTED_PROXIES` (IPs o CIDR separados por coma, vacía por defecto); sólo
+> entonces se lee `X-Forwarded-For`, tomando el primer salto no confiable de derecha a izquierda
+> (`ResolutorDeIpDeCliente`). Desde cualquier otro origen la cabecera se ignora, porque la escribe
+> el cliente. **Sin la variable**, detrás del nginx del frontend o de cualquier balanceador, todos
+> los pedidos llegan con la IP del proxy y el límite pasa a ser **global**: 30 logins por minuto
+> para todo el sistema, 429 masivos a primera hora sin ningún ataque. El nginx de la imagen del
+> frontend ya manda `X-Forwarded-For`; si hay otro balanceador delante, también va en la lista.
 
 **Síntomas**
 - Usuarios que no pueden entrar: el login responde 429 aunque la contraseña sea correcta.
@@ -199,7 +201,7 @@ sum by (uri) (rate(http_server_requests_seconds_count{status="429"}[5m]))
 
 | Lo que se ve | Lectura |
 |---|---|
-| Una sola `ip=` que es la del proxy/nginx, muchos usuarios afectados | El riesgo de arriba: tráfico legítimo agregado |
+| Una sola `ip=` que es la del proxy/nginx, muchos usuarios afectados | Falta `AKINE_TRUSTED_PROXIES`, o no cubre la IP real del proxy: tráfico legítimo agregado |
 | Una IP externa con cientos de intentos sobre `/auth/login` | Ataque de fuerza bruta o un script roto: el límite está haciendo su trabajo |
 | Muchas IP, ruta `/auth/register` | Alta automatizada (lo que el cupo de 5 existe para frenar) |
 | Pico después de un smoke en bucle | El smoke consume el cupo de la IP de operación |
@@ -207,10 +209,14 @@ sum by (uri) (rate(http_server_requests_seconds_count{status="429"}[5m]))
 **Acciones**
 - **Ataque:** dejar el límite; bloquear la IP en el borde (WAF, firewall). Revisar `audit_event`
   de logins fallidos por cuenta.
-- **Tráfico legítimo agregado por el proxy:** mitigación inmediata, **con su costo dicho**:
-  `AKINE_RATE_LIMIT_ENABLED=false` y reinicio quita la protección contra fuerza bruta y contra la
-  bomba de correos del alta. Sólo como medida temporal, con el borde limitando por IP real, y
-  registrada en el incidente. La solución es el cambio de código.
+- **Tráfico legítimo agregado por el proxy:** declarar el proxy y reiniciar. La IP que hay que
+  cubrir es la que aparece en `ip=` (p. ej. `docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' akine-web`);
+  conviene declarar la subred de la red de Docker, que sobrevive a que el contenedor cambie de
+  IP: `AKINE_TRUSTED_PROXIES=172.18.0.0/16`. Una entrada mal escrita hace fallar el arranque, a
+  propósito. **Nunca** declarar `0.0.0.0/0` ni rangos por los que entren clientes: cualquiera de
+  ellos podría elegir su IP con un header y evadir el límite. Desactivar el límite
+  (`AKINE_RATE_LIMIT_ENABLED=false`) quita la protección contra fuerza bruta y contra la bomba de
+  correos del alta: sólo como último recurso temporal, registrado en el incidente.
 - Reiniciar el backend vacía los contadores (viven en memoria): alivia un minuto, no resuelve.
 - Con varias instancias, el límite efectivo es N × el configurado.
 

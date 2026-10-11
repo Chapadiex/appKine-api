@@ -489,8 +489,14 @@ public class TratamientoService {
 	 * <p>No exige propiedad de la sesion: leer lo que se le hizo al paciente es lo que necesita
 	 * quien continua su tratamiento. Lo que exige es {@code sesion:register} en la sede, igual que
 	 * el resto del modulo, y hereda el hueco conocido del alcance {@code OWN}.
+	 *
+	 * <p><b>No es {@code readOnly}</b>: la auditoria de la lectura es un INSERT que se une a esta
+	 * transaccion ({@code AuditTrail.record} es {@code MANDATORY}), y en una conexion de solo
+	 * lectura MySQL lo rechaza. Con {@code readOnly = true} el listado respondia 500 en todo caso
+	 * feliz; los ITs solo cubrian los caminos que lanzan antes de auditar. Lo fija
+	 * {@code LecturaAuditadaIT}.
 	 */
-	@Transactional(readOnly = true)
+	@Transactional
 	public List<TratamientoView> listar(OperatingActor actor, long consultorioId, long sesionId) {
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
