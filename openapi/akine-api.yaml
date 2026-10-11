@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.80.0
+  version: 0.82.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -64,8 +64,6 @@ tags:
   name: Cobros
 - description: Coberturas particulares y financiadas de un paciente (M08)
   name: Coberturas del paciente
-- description: Reintento administrativo de notificaciones del tenant
-  name: Notificaciones
 - description: "Que se aplico REALMENTE en la atencion, donde, por quien y con que\
     \ parametros (M14, RF-M14-005 y RF-M04-005)"
   name: Tratamientos realizados
@@ -77,6 +75,8 @@ tags:
   name: Sesiones
 - description: "Plan contratado, estado de la suscripcion e historico"
   name: Suscripciones
+- description: Listado y reintento administrativo de notificaciones del tenant
+  name: Notificaciones
 - description: "Login, renovacion, seleccion de contexto y cierre de sesion"
   name: Sesion
 - description: "Convenios de la sede con planes de financiadores, y sus aranceles\
@@ -8305,7 +8305,7 @@ paths:
 
         **Es una lectura: no cambia estado y no bloquea nada.** Lo que bloquea es confirmar, que la vuelve a correr del lado del servidor — el frontend nunca es autoridad. Tenerla aparte permite mostrar los problemas **mientras se arma** el lote, en vez de descubrirlos todos juntos al apretar el boton.
 
-        > **Todavia no valida orden, autorizacion ni credencial.** Esos tres requisitos viven en el arancel congelado del convenio y el devengado no los copia a la obligacion. Misma causa que la bandeja de elegibles vacia.
+        > **Todavia no valida orden, autorizacion ni credencial.** Desde AKINE F-4 esos tres requisitos viajan congelados en cada obligacion del financiador, pero decidir si cada faltante bloquea el lote o solo avisa sigue abierto.
       operationId: validar
       parameters:
       - in: path
@@ -8359,7 +8359,7 @@ paths:
 
         Ya vienen filtradas: deja afuera las anuladas, las sin saldo y **las que ya estan vivas en otro lote**, de modo que armar el reclamo no pueda duplicar una prestacion (RN-M21-003).
 
-        > **Hoy devuelve lista vacia en cualquier despliegue real**, y no es un defecto de esta operacion. No existe ninguna obligacion con responsable `FINANCIADOR` porque el devengado nunca se recableo contra convenios y aranceles. Es la reserva declarada en el design challenge de AKINE-07.04.
+        Desde AKINE F-4 el cierre de una sesion con cobertura devenga, ademas de la del paciente, la obligacion del financiador con el convenio congelado, y es esa la que aparece aca. La lista vacia significa que en el periodo no hubo prestaciones con cobertura de ese financiador pendientes de reclamar.
       operationId: elegibles
       parameters:
       - in: path
@@ -14479,6 +14479,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Sin sesion, sin contexto activo o sin colaborador:manage"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion de la ruta no es la del contexto
       summary: Listar las invitaciones de la organizacion
       tags:
       - Invitaciones
@@ -14530,7 +14536,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: La sede pedida no es de la organizacion del contexto
+          description: "La sede pedida no es de la organizacion del contexto, o la\
+            \ organizacion de la ruta no es la del contexto"
         "409":
           content:
             application/problem+json:
@@ -14591,7 +14598,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: La invitacion no existe o es de otro tenant
+          description: "La invitacion no existe, es de otro tenant o la organizacion\
+            \ de la ruta no es la del contexto"
         "409":
           content:
             application/problem+json:
@@ -14641,8 +14649,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: La invitacion no existe o es de otro tenant. Los dos responden
-            igual
+          description: "La invitacion no existe, es de otro tenant o la organizacion\
+            \ de la ruta no es la del contexto. Todos responden igual"
         "409":
           content:
             application/problem+json:
@@ -16039,6 +16047,85 @@ paths:
       summary: Suspender temporalmente un vinculo
       tags:
       - Colaboradores
+  /api/v1/organizations/{orgId}/notifications:
+    get:
+      description: |-
+        Lo que alimenta a retryNotification: sin esto no habia forma de saber que reintentar. Sin `estado` lista las **FALLIDA** y **AGOTADA**, que son las que admiten reintento; se puede pedir cualquier combinacion de estados (`estado=FALLIDA,AGOTADA` o `estado=FALLIDA&estado=AGOTADA`).
+
+        Requiere `colaborador:manage`, el mismo permiso que el reintento. Solo alcanza notificaciones de la organizacion del contexto. Las que nacen sin tenant (recuperacion de contraseña, activaciones fuera del alta de la organizacion) no aparecen; la activacion del fundador en el alta si, porque es de la organizacion.
+
+        **Sin datos clinicos ni contenido:** el destinatario va enmascarado, el cuerpo no sale nunca y el ultimo error es un resumen ya sanitizado. De la mas nueva a la mas vieja. `size` se acota a 100 por request.
+      operationId: listNotifications
+      parameters:
+      - description: Identificador de la organizacion
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Estados a incluir. Ausente: FALLIDA y AGOTADA"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - PENDIENTE
+            - PROCESANDO
+            - ENVIADA
+            - FALLIDA
+            - REINTENTABLE
+            - AGOTADA
+      - description: "Numero de pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: Elementos por pagina. Se acota a 100
+        example: 20
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPageResponse"
+          description: Pagina de notificaciones
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Un `estado` que no es un valor legal
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin sesion, sin contexto de trabajo activo, o sin `colaborador:manage`"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion de la ruta no es la del contexto
+      summary: Listar las notificaciones de la organizacion
+      tags:
+      - Notificaciones
   /api/v1/organizations/{orgId}/notifications/{notificationId}/retry:
     post:
       description: |-
@@ -28004,6 +28091,108 @@ components:
           description: "true si la cuenta tiene el rol PLATFORM_ADMIN vigente en este\
             \ instante, revalidado contra la base en este request"
           example: false
+    NotificationPageResponse:
+      type: object
+      description: Pagina de notificaciones de la organizacion
+      properties:
+        content:
+          type: array
+          description: "Notificaciones de esta pagina, de la mas nueva a la mas vieja"
+          items:
+            $ref: "#/components/schemas/NotificationResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de notificaciones que cumplen el filtro
+          example: 3
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 1
+    NotificationResponse:
+      type: object
+      description: "Notificacion del tenant, sin contenido y con el destinatario enmascarado"
+      properties:
+        actualizadaEn:
+          type: string
+          format: date-time
+          description: Ultimo cambio de estado
+        creadaEn:
+          type: string
+          format: date-time
+          description: Cuando se encolo
+        destinatario:
+          type: string
+          description: "Destinatario enmascarado: primera letra y dominio"
+          example: j***@ejemplo.test
+        enviadaEn:
+          type: string
+          format: date-time
+          description: Cuando se envio. Ausente si no se envio
+        estado:
+          type: string
+          description: Estado en el outbox
+          enum:
+          - PENDIENTE
+          - PROCESANDO
+          - ENVIADA
+          - FALLIDA
+          - REINTENTABLE
+          - AGOTADA
+          example: AGOTADA
+        id:
+          type: integer
+          format: int64
+          description: Identificador; es el que recibe retryNotification
+          example: 42
+        intentos:
+          type: integer
+          format: int32
+          description: Intentos de envio realizados
+          example: 5
+        maxIntentos:
+          type: integer
+          format: int32
+          description: Intentos maximos antes de quedar AGOTADA
+          example: 5
+        proximaEjecucionEn:
+          type: string
+          format: date-time
+          description: Proximo intento programado. Sin significado en estados terminales
+        reintentable:
+          type: boolean
+          description: true si el estado admite retryNotification (FALLIDA o AGOTADA)
+          example: true
+        tipo:
+          type: string
+          description: Tipo de notificacion
+          enum:
+          - ACTIVACION_CUENTA
+          - INVITACION_COLABORADOR
+          - RECUPERACION_PASSWORD
+          - CUENTA_YA_REGISTRADA
+          - CLASE_MODIFICADA
+          - CUPO_LIBERADO
+          - TURNO_RESERVADO
+          - TURNO_CANCELADO
+          - TURNO_REPROGRAMADO
+          example: INVITACION_COLABORADOR
+        ultimoError:
+          type: string
+          description: "Resumen sanitizado del ultimo error, sin direcciones, hosts\
+            \ ni tokens. Ausente si nunca fallo"
+          example: "MailSendException: Connection refused"
     Obligacion:
       type: object
       description: "Deuda derivada de una prestacion. **No es el cobro ni la caja**:\

@@ -1,6 +1,9 @@
 package com.akine.notification.api;
 
+import com.akine.notification.api.dto.NotificationPageResponse;
+import com.akine.notification.application.ConsultaDeNotificacionesService;
 import com.akine.notification.application.ReintentoDeNotificacionService;
+import com.akine.notification.domain.OutboxStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -11,10 +14,14 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * Operacion administrativa sobre el outbox de notificaciones (M26).
@@ -28,16 +35,84 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping(
 		path = "/api/v1/organizations/{orgId}/notifications",
 		produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE})
-@Tag(name = "Notificaciones", description = "Reintento administrativo de notificaciones del tenant")
+@Tag(name = "Notificaciones", description = "Listado y reintento administrativo de notificaciones del tenant")
 public class NotificationController {
 
+	private static final int TAMANO_MAXIMO = 100;
+
 	private final ReintentoDeNotificacionService reintentos;
+	private final ConsultaDeNotificacionesService consultas;
 	private final NotificationApiActor apiActor;
 
 	public NotificationController(
-			ReintentoDeNotificacionService reintentos, NotificationApiActor apiActor) {
+			ReintentoDeNotificacionService reintentos,
+			ConsultaDeNotificacionesService consultas,
+			NotificationApiActor apiActor) {
 		this.reintentos = reintentos;
+		this.consultas = consultas;
 		this.apiActor = apiActor;
+	}
+
+	@GetMapping
+	@Operation(
+			operationId = "listNotifications",
+			summary = "Listar las notificaciones de la organizacion",
+			description = """
+					Lo que alimenta a retryNotification: sin esto no habia forma de saber que \
+					reintentar. Sin `estado` lista las **FALLIDA** y **AGOTADA**, que son las que \
+					admiten reintento; se puede pedir cualquier combinacion de estados \
+					(`estado=FALLIDA,AGOTADA` o `estado=FALLIDA&estado=AGOTADA`).
+
+					Requiere `colaborador:manage`, el mismo permiso que el reintento. Solo alcanza \
+					notificaciones de la organizacion del contexto. Las que nacen sin tenant \
+					(recuperacion de contraseña, activaciones fuera del alta de la organizacion) \
+					no aparecen; la activacion del fundador en el alta si, porque es de la \
+					organizacion.
+
+					**Sin datos clinicos ni contenido:** el destinatario va enmascarado, el cuerpo \
+					no sale nunca y el ultimo error es un resumen ya sanitizado. De la mas nueva a \
+					la mas vieja. `size` se acota a 100 por request.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "200",
+					description = "Pagina de notificaciones",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = NotificationPageResponse.class))),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Un `estado` que no es un valor legal",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin sesion, sin contexto de trabajo activo, o sin `colaborador:manage`",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La organizacion de la ruta no es la del contexto",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<NotificationPageResponse> list(
+			@Parameter(description = "Identificador de la organizacion", example = "7")
+			@PathVariable long orgId,
+
+			@Parameter(description = "Estados a incluir. Ausente: FALLIDA y AGOTADA")
+			@RequestParam(required = false) List<OutboxStatus> estado,
+
+			@Parameter(description = "Numero de pagina, base cero", example = "0")
+			@RequestParam(defaultValue = "0") int page,
+
+			@Parameter(description = "Elementos por pagina. Se acota a 100", example = "20")
+			@RequestParam(defaultValue = "20") int size) {
+
+		return ResponseEntity.ok(NotificationPageResponse.de(consultas.listar(
+				apiActor.current(), orgId, estado,
+				Math.max(page, 0), Math.min(Math.max(size, 1), TAMANO_MAXIMO))));
 	}
 
 	@PostMapping("/{notificationId}/retry")
