@@ -250,5 +250,5 @@ segundo prepago para el mismo turno es 409 `prepago-ya-registrado`; sobre un tur
 `prepago-no-admitido` (los dos los prueba el E2E). Al cerrar la sesión de ese turno, el anticipo se
 imputa **solo** a la deuda de esa sesión: se verifica en [ECO-03](07-obligaciones-cobros-caja.md).
 
-**Auditoría:** `OFERTA_POLITICA_PREPAGO_CHANGED`. El cobro en sí no escribe `audit_event` (ver
+**Auditoría:** `OFERTA_POLITICA_PREPAGO_CHANGED`. El cobro deja `COBRO_REGISTRADO` (ver
 [07](07-obligaciones-cobros-caja.md)).

@@ -137,6 +137,7 @@ class CobroServiceTest {
 	@Mock private CajaDeCobro caja;
 	@Mock private PacienteDirectory pacientes;
 	@Mock private TurnoDirectory turnos;
+	@Mock private com.akine.platform.spi.audit.AuditTrail auditTrail;
 
 	private CobroService service;
 
@@ -148,7 +149,7 @@ class CobroServiceTest {
 	void setUp() {
 		service = new CobroService(
 				cobros, obligaciones, numerador, iniciador, consultorios, permissionGuard, caja, pacientes,
-				turnos);
+				turnos, auditTrail);
 
 		given(consultorios.find(ORG, SEDE)).willReturn(Optional.of(sede));
 		given(permissionGuard.requirePermission(any()))

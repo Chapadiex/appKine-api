@@ -10,6 +10,7 @@ import com.akine.reporting.spi.AdvertenciaDeReporte;
 import com.akine.reporting.spi.AporteDeReporte;
 import com.akine.reporting.spi.IndicadorDeReporte;
 import com.akine.reporting.spi.ReporteCode;
+import com.akine.scheduling.application.CicloDeTurnoService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -59,6 +60,7 @@ class ReporteReadIT {
 
 	@Autowired private ReporteService reportes;
 	@Autowired private JdbcTemplate jdbc;
+	@Autowired private CicloDeTurnoService ciclo;
 
 	private Centro centro;
 	private LocalDate desde;
@@ -98,6 +100,26 @@ class ReporteReadIT {
 
 		assertThat(valor(vista, "turnos", "turnos-totales")).isEqualByComparingTo("5");
 		assertThat(codigosDeAdvertencia(vista)).doesNotContain("alcance-actividad-propia");
+	}
+
+	@Test
+	@DisplayName("Un turno cancelado cuenta en Cancelados y en el total (G-12)")
+	void el_cancelado_cuenta() {
+		long turnoId = jdbc.queryForObject(
+				"SELECT MIN(id) FROM turno WHERE organization_id = ?",
+				Long.class, centro.organizationId());
+		// Por el servicio real: es quien sella deleted_at al cancelar (RN-M12-002).
+		ciclo.cancelar(
+				new com.akine.scheduling.application.OperatingActor(
+						centro.orgAdmin().accountId(), false,
+						centro.organizationId(), centro.consultorioId()),
+				centro.consultorioId(), turnoId, "Motivo sintetico", 0L);
+
+		ReporteView vista = generar(centro.orgAdmin(), ReporteCode.TURNOS);
+
+		assertThat(valor(vista, "turnos", "turnos-cancelados")).isEqualByComparingTo("1");
+		assertThat(valor(vista, "turnos", "turnos-reservados")).isEqualByComparingTo("4");
+		assertThat(valor(vista, "turnos", "turnos-totales")).isEqualByComparingTo("5");
 	}
 
 	// =================================================================================

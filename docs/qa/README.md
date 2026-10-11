@@ -168,8 +168,7 @@ Lo que vale para toda la tabla:
   justificación declarada va a `reason` **solo cuando el acceso fue por justificación**; con
   relación asistencial (`viaDeAcceso = RELACION_ASISTENCIAL`) `reason` queda NULL. Ver
   [06](06-atencion-clinica.md).
-- **No todo deja auditoría.** Reservar o confirmar un turno, registrar un cobro, devengar o anular
-  una deuda no escriben `audit_event`: su rastro vive en la propia fila (`*_por_cuenta_id`,
+- **No todo deja auditoría.** Reservar o confirmar un turno no escribe `audit_event`: su rastro vive en la propia fila (`*_por_cuenta_id`,
   `motivo_*`) o en una tabla de eventos del dominio (`turno_evento`, `recepcion_evento`,
   `autorizacion_evento`, `caso_evento`, `plan_evento`). Cada paso dice dónde mirar.
 

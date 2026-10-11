@@ -97,7 +97,7 @@ gate del MVP los cuente.
 | Defecto | Dónde se ve | Origen |
 |---|---|---|
 | ~~**Descargar un documento administrativo de una persona responde 500**~~ — **corregido en #82 (`a09a596`)**: `AdjuntoService.contenido` auditaba dentro de una transacción `readOnly` | [PER-04](04-personas-coberturas-autorizaciones.md) | Lo destapó G-13 (#77); se reprodujo sobre `5bbf065` al validar esta guía |
-| **El indicador "Cancelados" del reporte de turnos da siempre 0**: la consulta filtra `deleted_at IS NULL` y cancelar llena `deleted_at` | [REP-01](09-reportes.md) | Encontrado al validar esta guía |
+| ~~**El indicador "Cancelados" del reporte de turnos da siempre 0**~~ — **corregido en #86**: la consulta filtraba `deleted_at IS NULL` y cancelar llena `deleted_at` | [REP-01](09-reportes.md) | Encontrado al validar esta guía |
 | Con reservas y cobros concurrentes, el pool de Hikari se traba (transacciones `REQUIRES_NEW` anidadas) | Solo bajo carga; no en el QA manual | G-10, `docs/carga.md` §6 |
 
 ## 5. Preguntas abiertas que el QA puede encontrar
@@ -107,5 +107,4 @@ No son defectos ni decisiones tomadas: hay que llevarlas al dueño del producto.
 | Pregunta | Dónde se ve |
 |---|---|
 | **Débito parcial**: debitar 1000 de un ítem de 6000 deja el ítem `DEBITADO` entero y, al conciliar, su obligación queda `PENDIENTE` por 6000 aunque el financiador pagó 5000. El diseño lo dice ("un ítem DEBITADO no salda nada", 07.04 §8) pensando en el rechazo total; para el parcial, la cuenta corriente del financiador y los reportes muestran como pendiente lo que ya se cobró | [PRE-06](08-presentaciones-facturacion-pagos.md), [PRE-08](08-presentaciones-facturacion-pagos.md) |
-| **Qué no deja `audit_event`**: registrar un cobro, devengar una deuda y anular una deuda no escriben auditoría (el rastro queda en la fila). La auditoría sí cubre anular y reintegrar un cobro, la caja y los egresos | [07](07-obligaciones-cobros-caja.md) |
 | Para el `PACIENTE`, un pedido con un parámetro obligatorio faltante responde 400 antes que 403 (la validación corre antes que el permiso). No filtra datos | [PAC-01](11-aislamiento-y-rol-paciente.md) |
