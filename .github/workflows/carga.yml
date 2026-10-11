@@ -1,0 +1,78 @@
+name: Carga (k6, manual)
+
+# Prueba de carga contra los SLO de ADR-0016 (G-10). NO corre en push ni en PR: es cara (~20 min
+# entre imagen, migraciones, sembrado y carga) y sus numeros dependen de la maquina. Se dispara a
+# mano desde Actions. Como se corre y como se leen los resultados: docs/carga.md.
+#
+# Solo backend: el LCP del frontend necesita la imagen de appKine-web y se mide en local
+# (perf/lcp, docs/carga.md §5).
+
+on:
+  workflow_dispatch:
+    inputs:
+      vus:
+        description: Usuarios concurrentes del escenario de operacion
+        default: '500'
+      pool:
+        description: Tamano del pool de Hikari (vacio = el default de la aplicacion, 10)
+        default: ''
+      solo_lectura:
+        description: '1 = sin reservas ni cobros'
+        default: '0'
+
+permissions:
+  contents: read
+
+jobs:
+  carga:
+    name: k6 contra un stack aislado
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Imagen del backend
+        run: AKINE_WEB_DIR=/inexistente perf/stack.sh build
+
+      - name: Stack aislado (MySQL, Mailpit, backend)
+        env:
+          AKINE_CARGA_POOL: ${{ inputs.pool }}
+        run: perf/stack.sh up
+
+      - name: Sembrado por la API
+        run: perf/stack.sh sembrar
+
+      - name: Carga
+        run: >-
+          perf/stack.sh carga
+          -e AKINE_CARGA_VUS=${{ inputs.vus }}
+          -e AKINE_CARGA_SOLO_LECTURA=${{ inputs.solo_lectura }}
+
+      - name: Digest de consultas
+        if: always()
+        run: perf/stack.sh metricas || true
+
+      - name: Log del backend
+        if: always()
+        run: docker logs g10-api > perf/salida/backend.log 2>&1 || true
+
+      - name: Resumen en la corrida
+        if: always()
+        run: |
+          cat perf/salida/carga-resumen.md >> "$GITHUB_STEP_SUMMARY" || true
+          echo >> "$GITHUB_STEP_SUMMARY"
+          cat perf/salida/latencia-servidor.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: carga-k6
+          path: perf/salida/
+          include-hidden-files: false
+
+      - name: Bajar el stack
+        if: always()
+        run: perf/stack.sh down --imagenes

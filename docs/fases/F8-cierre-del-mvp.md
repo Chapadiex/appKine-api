@@ -36,13 +36,23 @@ Esta fase es **el gate** que DP-07 exige antes de abrir F9.
 
 ### 07.07 Hardening — hallazgos altos abiertos
 El criterio de aceptación pide **cero hallazgos altos**. Abiertos:
-- [ ] Alcance `OWN` / `paciente:read`: un `PACIENTE` lee el padrón entero de su organización.
-- [ ] `PLATFORM_ADMIN` inalcanzable ([F0-F1](F0-F1-fundacion-y-plataforma.md)).
-- [ ] `concurrent-modification` vs `conflict` sin unificar.
+> **Inventario de G-5 (09/10/2026), verificado contra el código.** Ver el registro de G-5 al final
+> del plan y `docs/seguridad/threat-model.md`.
+
+- [x] ~~Alcance `OWN` / `paciente:read`: un `PACIENTE` lee el padrón entero de su organización.~~ →
+  DP-22 / DU-6 (#76): `paciente:read` solo para el personal; `OWN` queda post-MVP.
+- [x] ~~`PLATFORM_ADMIN` inalcanzable.~~ → DP-14 / A-4 (#51): `AKINE_BOOTSTRAP_ADMIN_EMAIL`.
+- [x] ~~`concurrent-modification` vs `conflict` sin unificar.~~ → DP-21 / DU-5 (#74).
+- [x] ~~`encounter` no auditaba la Sesión~~ → **reabierto y cerrado en G-5**: la integración del
+  29/09 había perdido el cambio de 07.07; restituido con `SesionAuditadaIT`.
 - [ ] `encounter` no exige `X-Justificacion-Acceso` y audita con `reason` nulo (DP-03 parcial).
-- [ ] `caso:create` que nadie evalúa.
-- [ ] Threat model, runbooks, matriz de permisos respaldada por tests.
-- [ ] SAST, SCA y DAST en CI; activar SonarQube.
+  **Decisión del usuario** (cambio de contrato).
+- [ ] `caso:create` que nadie evalúa. **Decisión del usuario**; desde G-5 el efecto coincide con la
+  fila de la matriz porque `hc:write` ya no se otorga a quien la matriz le dice "No".
+- [x] ~~Threat model y matriz de permisos respaldada por tests~~ → G-5:
+  `docs/seguridad/threat-model.md` y `MatrizDePermisosIT`. Los **runbooks** siguen en G-13.
+- [x] ~~Un grant podía otorgar una celda "No" de la matriz~~ (hallazgo nuevo de G-5, cerrado).
+- [ ] SAST, SCA y DAST en CI; activar SonarQube. **Decisión del usuario** (configuración del repo).
 - [ ] a11y pendiente: WCAG 1.4.11 (bordes de control y anillo de foco, 3:1), estados `:hover` y
   `:focus-visible`, foco por teclado, franja del degradé (~4,16:1).
 
