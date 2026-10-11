@@ -94,6 +94,21 @@ class ParticularEnObligacionIT {
 
 		assertThat(obligacionesDe(sesion)).extracting(fila -> fila.get("concepto"))
 				.containsExactly("FINANCIADOR", "COSEGURO");
+		// G-12: cada deuda devengada deja su fila en audit_event, en la transaccion del cierre y
+		// a nombre de quien cerro.
+		List<Long> ids = obligacionesDe(sesion).stream()
+				.map(fila -> ((Number) fila.get("id")).longValue()).toList();
+		assertThat(jdbc.queryForList("""
+				SELECT entity_id, actor_account_id FROM audit_event
+				 WHERE organization_id = ? AND event_type = 'OBLIGACION_DEVENGADA'
+				   AND entity_type = 'Obligacion'
+				 ORDER BY entity_id
+				""", f.organizationId()))
+				.extracting(fila -> ((Number) fila.get("entity_id")).longValue(),
+						fila -> ((Number) fila.get("actor_account_id")).longValue())
+				.containsExactly(
+						org.assertj.core.api.Assertions.tuple(ids.get(0), f.profesionalCuentaId()),
+						org.assertj.core.api.Assertions.tuple(ids.get(1), f.profesionalCuentaId()));
 		assertThat(consumida(autorizacion)).isEqualTo(1);
 		assertThat(consumosDeLaSesion(sesion)).isEqualTo(1);
 	}

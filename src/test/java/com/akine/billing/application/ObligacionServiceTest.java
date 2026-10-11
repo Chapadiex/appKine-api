@@ -103,6 +103,7 @@ class ObligacionServiceTest {
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private AlertasDeConsumo alertasDeConsumo;
+	@Mock private AuditoriaDeObligacion auditoria;
 
 	private ObligacionService service;
 
@@ -110,7 +111,8 @@ class ObligacionServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new ObligacionService(obligaciones, consultorios, permissionGuard, alertasDeConsumo);
+		service = new ObligacionService(obligaciones, consultorios, permissionGuard, alertasDeConsumo,
+				auditoria);
 
 		given(consultorios.find(ORG, SEDE)).willReturn(Optional.of(
 				new ConsultorioSnapshot(SEDE, ORG, "Sede Centro", "America/Argentina/Cordoba", true)));

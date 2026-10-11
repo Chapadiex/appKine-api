@@ -56,7 +56,21 @@ final class AuditEvents {
 	static final String COBRO_ANULADO = "COBRO_ANULADO";
 	static final String COBRO_REINTEGRADO = "COBRO_REINTEGRADO";
 
+	/**
+	 * El cobro en si (M19, RN-M19-003). Hasta G-12 solo se auditaba lo que se hacia DESPUES de
+	 * registrarlo, y el hecho que lo origina —plata que entra— no dejaba fila.
+	 */
+	static final String COBRO_REGISTRADO = "COBRO_REGISTRADO";
+
+	/**
+	 * La deuda (M18). Devengar es lo que hace el cierre de la sesion; anular exige motivo
+	 * (RF-M18-006) y es justo lo que una auditoria busca: un cargo que desaparece.
+	 */
+	static final String OBLIGACION_DEVENGADA = "OBLIGACION_DEVENGADA";
+	static final String OBLIGACION_ANULADA = "OBLIGACION_ANULADA";
+
 	static final String ENTITY_COBRO = "Cobro";
+	static final String ENTITY_OBLIGACION = "Obligacion";
 	static final String ENTITY_JORNADA_CAJA = "JornadaCaja";
 	static final String ENTITY_MOVIMIENTO_CAJA = "MovimientoCaja";
 	static final String ENTITY_PRESENTACION = "Presentacion";

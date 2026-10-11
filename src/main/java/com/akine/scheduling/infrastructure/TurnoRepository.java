@@ -323,6 +323,12 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 	 * <p>Agrupa por el <b>texto</b> de {@code estado} y no por un enum: un estado nuevo tiene que
 	 * seguir contando en vez de romper el reporte.
 	 *
+	 * <p><b>Los cancelados cuentan.</b> Cancelar sella {@code deleted_at} para liberar el lugar
+	 * (RN-M12-002), asi que filtrar solo por {@code deleted_at IS NULL} dejaba el indicador de
+	 * cancelados siempre en cero. La baja logica entra <b>solo</b> con estado {@code CANCELADO}:
+	 * hoy es el unico camino que sella {@code deleted_at} en un turno, y si aparece otro, sus filas
+	 * siguen fuera del reporte.
+	 *
 	 * <p><b>Actividad propia (G-1, DP-15).</b> Con {@code recortar} en verdadero cuenta solo los
 	 * turnos cuyo profesional es una de {@code memberships}: es el reporte "Limitado" del
 	 * {@code PROFESIONAL}. Un turno sin profesional —oferta que no lo requiere— no es actividad de
@@ -335,7 +341,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			  FROM turno t
 			 WHERE t.organization_id = :organizationId
 			   AND t.consultorio_id = :consultorioId
-			   AND t.deleted_at IS NULL
+			   AND (t.deleted_at IS NULL OR t.estado = 'CANCELADO')
 			   AND t.inicio >= :desde
 			   AND t.inicio < :hasta
 			   AND (:recortar = FALSE OR t.profesional_membership_id IN (:memberships))
@@ -361,13 +367,17 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 	 * desde el append-only pediria un indice nuevo sobre una tabla que crece sin techo para
 	 * responder exactamente lo mismo.
 	 *
+	 * <p>Mismo universo que {@link #contarPorDiaYEstadoEnElReporte}: un turno reprogramado y
+	 * despues cancelado fue reprogramado igual.
+	 *
 	 * <p>{@code recortar} y {@code memberships}: ver {@link #contarPorDiaYEstadoEnElReporte}.
 	 */
 	@Query("""
 			SELECT COUNT(t) FROM Turno t
 			 WHERE t.organizationId = :organizationId
 			   AND t.consultorioId = :consultorioId
-			   AND t.deletedAt IS NULL
+			   AND (t.deletedAt IS NULL
+			        OR t.estado = com.akine.scheduling.domain.EstadoTurno.CANCELADO)
 			   AND t.reprogramadoEn IS NOT NULL
 			   AND t.inicio >= :desde
 			   AND t.inicio < :hasta
