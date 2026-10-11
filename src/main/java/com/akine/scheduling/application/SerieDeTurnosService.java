@@ -10,6 +10,7 @@ import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.domain.AlcanceDeSerie;
 import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.PermissionCodes;
@@ -38,8 +39,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -103,6 +106,7 @@ public class SerieDeTurnosService {
 	private final AuditTrail auditTrail;
 	private final AvisosDeTurno avisos;
 	private final RegistroDeRecepcion recepciones;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	public SerieDeTurnosService(
 			TurnoSerieRepositoryPort series,
@@ -119,7 +123,8 @@ public class SerieDeTurnosService {
 			CicloDeTurnoService ciclo,
 			AuditTrail auditTrail,
 			AvisosDeTurno avisos,
-			RegistroDeRecepcion recepciones) {
+			RegistroDeRecepcion recepciones,
+			PlatformTransactionManager transactionManager) {
 
 		this.series = series;
 		this.turnos = turnos;
@@ -136,6 +141,8 @@ public class SerieDeTurnosService {
 		this.auditTrail = auditTrail;
 		this.avisos = avisos;
 		this.recepciones = recepciones;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -150,13 +157,21 @@ public class SerieDeTurnosService {
 	 * @throws OcurrenciaSinLugarException     una ocurrencia no tiene lugar: no se creo nada (409)
 	 * @throws IdempotencyKeyConflictException misma clave, otro pedido (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ResultadoDeSerie crear(OperatingActor actor, long consultorioId, AltaDeSerieCommand command) {
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_MANAGE);
 
 		iniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> crearEnTransaccion(
+				actor, consultorioId, command, organizationId, sede));
+	}
+
+	private ResultadoDeSerie crearEnTransaccion(
+			OperatingActor actor, long consultorioId, AltaDeSerieCommand command,
+			long organizationId, ConsultorioSnapshot sede) {
+
 		BloqueoDeAgenda.tomar(agendas, organizationId, consultorioId);
 
 		// Bajo el lock, como en la reserva: fuera de el dos peticiones con la misma clave leerian
@@ -346,7 +361,6 @@ public class SerieDeTurnosService {
 	 * @throws CantidadConfirmadaDesactualizadaException la cantidad confirmada ya no es la real (409)
 	 * @throws TransicionDeTurnoNoPermitidaException no queda ningun turno pendiente en el alcance (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public AlcanceDeSerieView cancelar(
 			OperatingActor actor, long consultorioId, long serieId, OperacionDeSerieCommand command) {
 
@@ -355,6 +369,15 @@ public class SerieDeTurnosService {
 		exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_MANAGE);
 
 		iniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> cancelarEnTransaccion(
+				actor, consultorioId, serieId, command, organizationId, sede));
+	}
+
+	private AlcanceDeSerieView cancelarEnTransaccion(
+			OperatingActor actor, long consultorioId, long serieId,
+			OperacionDeSerieCommand command, long organizationId, ConsultorioSnapshot sede) {
+
 		BloqueoDeAgenda.tomar(agendas, organizationId, consultorioId);
 
 		TurnoSerie serie = exigirSerie(organizationId, consultorioId, serieId);
@@ -388,7 +411,6 @@ public class SerieDeTurnosService {
 	 * @throws OcurrenciaSinLugarException       un destino no tiene lugar: no se movio nada (409)
 	 * @throws CantidadConfirmadaDesactualizadaException la cantidad confirmada ya no es la real (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public AlcanceDeSerieView reprogramar(
 			OperatingActor actor, long consultorioId, long serieId, OperacionDeSerieCommand command) {
 
@@ -401,6 +423,15 @@ public class SerieDeTurnosService {
 		}
 
 		iniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> reprogramarEnTransaccion(
+				actor, consultorioId, serieId, command, organizationId, sede));
+	}
+
+	private AlcanceDeSerieView reprogramarEnTransaccion(
+			OperatingActor actor, long consultorioId, long serieId,
+			OperacionDeSerieCommand command, long organizationId, ConsultorioSnapshot sede) {
+
 		BloqueoDeAgenda.tomar(agendas, organizationId, consultorioId);
 
 		TurnoSerie serie = exigirSerie(organizationId, consultorioId, serieId);

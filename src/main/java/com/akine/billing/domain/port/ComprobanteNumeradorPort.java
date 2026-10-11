@@ -12,6 +12,9 @@ public interface ComprobanteNumeradorPort {
 	/** Sin lanzar nunca: leer-y-despues-insertar deadlockea entre los primeros cobros de una sede. */
 	void crearSiFalta(long organizationId, long consultorioId);
 
+	/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+	boolean existeFila(long organizationId, long consultorioId);
+
 	/** Toma el lock de fila y serializa. Un comprobante repetido es un problema fiscal. */
 	void incrementar(long organizationId, long consultorioId);
 

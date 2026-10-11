@@ -49,4 +49,18 @@ public interface AutorizacionPersonaLockRepository
 	@Override
 	void crearSiFalta(
 			@Param("organizationId") long organizationId, @Param("personaId") long personaId);
+
+	@Query(value = """
+			SELECT COUNT(*) FROM autorizacion_persona_lock
+			WHERE organization_id = :organizationId
+			  AND persona_id = :personaId
+			""", nativeQuery = true)
+	long contarFila(
+			@Param("organizationId") long organizationId,
+			@Param("personaId") long personaId);
+
+	@Override
+	default boolean existeFila(long organizationId, long personaId) {
+		return contarFila(organizationId, personaId) > 0;
+	}
 }

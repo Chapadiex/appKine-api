@@ -13,6 +13,9 @@ public interface SesionNumeradorPort {
 	/** Crea la fila si falta. Sin lanzar. Va en una transaccion aparte: ver la implementacion. */
 	void crearSiFalta(long organizationId, long historiaClinicaId);
 
+	/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+	boolean existeFila(long organizationId, long historiaClinicaId);
+
 	/** Incrementa el contador tomando el lock de fila. Serializa los cierres del mismo paciente. */
 	void incrementar(long organizationId, long historiaClinicaId);
 

@@ -1,11 +1,11 @@
 package com.akine.resource.application;
 
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * Crea la fila de {@code consultorio_calendario} en su PROPIA transaccion, antes de que la
@@ -38,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <h2>Por que una transaccion aparte</h2>
  *
- * <p>{@code REQUIRES_NEW} hace que el INSERT commitee de inmediato y libere sus locks, en vez de
+ * <p>La transaccion propia hace que el INSERT commitee de inmediato y libere sus locks, en vez de
  * retenerlos hasta el final de la escritura de disponibilidad. La ventana en la que dos pueden
  * chocar pasa de "toda la transaccion de negocio" a "un INSERT".
  *
@@ -54,9 +54,12 @@ public class CalendarioSedeIniciador {
 	private static final Logger log = LoggerFactory.getLogger(CalendarioSedeIniciador.class);
 
 	private final CalendarioSedeRepositoryPort calendarios;
+	private final FilaLockPrevia filaConsultorioCalendario;
 
-	public CalendarioSedeIniciador(CalendarioSedeRepositoryPort calendarios) {
+	public CalendarioSedeIniciador(CalendarioSedeRepositoryPort calendarios,
+			PlatformTransactionManager transactionManager) {
 		this.calendarios = calendarios;
+		this.filaConsultorioCalendario = new FilaLockPrevia("consultorio_calendario", transactionManager);
 	}
 
 	/**
@@ -66,9 +69,10 @@ public class CalendarioSedeIniciador {
 	 * dentro de su propia transaccion, y devolver la instancia de esta otra invitaria a usarla
 	 * sin el lock.
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void asegurar(long organizationId, long consultorioId) {
-		calendarios.crearSiFalta(organizationId, consultorioId);
+		filaConsultorioCalendario.asegurar(
+				() -> calendarios.existeFila(organizationId, consultorioId),
+				() -> calendarios.crearSiFalta(organizationId, consultorioId));
 		log.debug("Calendario de la sede {} asegurado", consultorioId);
 	}
 }

@@ -54,11 +54,10 @@ public class ClinicalCasoDirectory implements CasoDirectory {
 	 * <p>Los tres pasos, en este orden y no en otro:
 	 *
 	 * <ol>
-	 *   <li><b>Asegurar la fila</b>, en una transaccion aparte —{@code REQUIRES_NEW} dentro de
-	 *       {@link CasoNumeradorIniciador}—. Crearla dentro de la transaccion que despues la
+	 *   <li><b>Asegurar la fila</b>: lo hace el llamador ANTES, con
+	 *       {@link #asegurarNumeradorDeSesiones}. Crearla dentro de la transaccion que despues la
 	 *       bloquea produce un deadlock entre los primeros N cierres concurrentes del mismo caso,
-	 *       y el {@code try/catch} no salva porque atrapar una excepcion de persistencia no
-	 *       des-marca la transaccion.</li>
+	 *       y abrir desde aca una transaccion aparte retiene dos conexiones y traba el pool.</li>
 	 *   <li><b>Incrementar</b>, con {@code UPDATE ultimo_numero + 1}. No hay lectura previa, y esa
 	 *       es toda la diferencia con {@code MAX + 1}.</li>
 	 *   <li><b>Leer</b>, en la misma transaccion y con el lock tomado, asi que lee su propia
@@ -72,17 +71,21 @@ public class ClinicalCasoDirectory implements CasoDirectory {
 	@Override
 	@Transactional
 	public int siguienteNumeroDeSesion(long organizationId, long casoId) {
-		numeradorIniciador.asegurarSesionesDelCaso(organizationId, casoId);
 		numerador.incrementar(organizationId, casoId);
 		Integer numero = numerador.leerUltimo(organizationId, casoId);
 		if (numero == null) {
-			// La fila se acaba de asegurar y de incrementar en esta misma transaccion: que no
-			// exista significa que alguien la borro a mano entre las dos operaciones. Falla fuerte
+			// La fila se aseguro antes de esta transaccion y se acaba de incrementar: que no exista
+			// significa que el llamador no la aseguro o que alguien la borro a mano. Falla fuerte
 			// en vez de devolver 0, que seria un correlativo invalido escrito en la historia.
 			throw new IllegalStateException(
 					"El numerador de sesiones del caso " + casoId + " no existe despues de crearlo");
 		}
 		return numero;
+	}
+
+	@Override
+	public void asegurarNumeradorDeSesiones(long organizationId, long casoId) {
+		numeradorIniciador.asegurarSesionesDelCaso(organizationId, casoId);
 	}
 
 	private static CasoSnapshot instantanea(CasoClinico caso) {

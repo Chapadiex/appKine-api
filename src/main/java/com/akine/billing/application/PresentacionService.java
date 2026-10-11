@@ -26,12 +26,15 @@ import com.akine.contracting.spi.FinanciadorSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -82,6 +85,7 @@ public class PresentacionService {
 	private final ObligacionOcupadaConsulta ocupacion;
 	private final PresentacionAcceso acceso;
 	private final AuditTrail auditTrail;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public PresentacionService(
@@ -93,7 +97,8 @@ public class PresentacionService {
 			PresentacionNumeradorIniciador numeradorIniciador,
 			ObligacionOcupadaConsulta ocupacion,
 			PresentacionAcceso acceso,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			PlatformTransactionManager transactionManager) {
 
 		this.presentaciones = presentaciones;
 		this.items = items;
@@ -104,6 +109,8 @@ public class PresentacionService {
 		this.ocupacion = ocupacion;
 		this.acceso = acceso;
 		this.auditTrail = auditTrail;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -252,13 +259,23 @@ public class PresentacionService {
 	 * antes del numerador: un lote que no se puede confirmar no puede consumir un numero de la
 	 * serie, porque el hueco despues no se puede explicar.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public PresentacionView confirmar(
 			OperatingActor actor, long consultorioId, long presentacionId) {
 
 		long organizationId = PresentacionAcceso.exigirContexto(actor);
 		acceso.exigirSedeDelTenant(organizationId, consultorioId);
 		acceso.exigirOperar(actor, organizationId, consultorioId);
+
+		// ANTES de abrir la transaccion de la confirmacion (FilaLockPrevia).
+		asegurarNumerador(organizationId, consultorioId, presentacionId);
+
+		return transaccionReadCommitted.execute(estado -> confirmarEnTransaccion(
+				actor, consultorioId, presentacionId, organizationId));
+	}
+
+	private PresentacionView confirmarEnTransaccion(
+			OperatingActor actor, long consultorioId, long presentacionId,
+			long organizationId) {
 
 		Presentacion presentacion = exigirPresentacion(organizationId, consultorioId, presentacionId);
 		exigirEditable(presentacion);
@@ -664,8 +681,18 @@ public class PresentacionService {
 				actual.getId(), importe, actual.getSaldo());
 	}
 
+	/**
+	 * La fila de {@code presentacion_numerador} del financiador de esa presentacion, en su propia
+	 * transaccion y fuera de la de la confirmacion. Si la presentacion no existe, adentro se responde
+	 * el 404 de siempre.
+	 */
+	private void asegurarNumerador(long organizationId, long consultorioId, long presentacionId) {
+		presentaciones.findByIdInScope(organizationId, consultorioId, presentacionId)
+				.ifPresent(presentacion -> numeradorIniciador.asegurar(
+						organizationId, consultorioId, presentacion.getFinanciadorId()));
+	}
+
 	private int siguienteNumero(long organizationId, long consultorioId, long financiadorId) {
-		numeradorIniciador.asegurar(organizationId, consultorioId, financiadorId);
 		numerador.incrementar(organizationId, consultorioId, financiadorId);
 		return numerador.leerUltimo(organizationId, consultorioId, financiadorId);
 	}

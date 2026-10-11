@@ -190,6 +190,9 @@ public final class PlanRepositoryPorts {
 		/** Crea la fila si falta. Sin lanzar. Va en una transaccion aparte: ver la implementacion. */
 		void crearSiFalta(long organizationId, long casoClinicoId);
 
+		/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+		boolean existeFila(long organizationId, long casoClinicoId);
+
 		/** Incrementa el contador tomando el lock de fila. Serializa las altas de ese caso. */
 		void incrementar(long organizationId, long casoClinicoId);
 

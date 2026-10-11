@@ -23,6 +23,7 @@ import com.akine.person.spi.PacienteDirectory;
 import com.akine.billing.domain.exception.PrepagoNoAdmitidoException;
 import com.akine.billing.domain.exception.PrepagoYaRegistradoException;
 import com.akine.billing.domain.exception.TurnoNoAccesibleException;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.spi.TurnoDirectory;
 import com.akine.scheduling.spi.TurnoSnapshot;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -30,7 +31,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -102,6 +106,7 @@ public class CobroService {
 	private final CajaDeCobro caja;
 	private final PacienteDirectory pacientes;
 	private final TurnoDirectory turnos;
+	private final TransactionTemplate transaccionDeNegocio;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public CobroService(
@@ -113,7 +118,8 @@ public class CobroService {
 			PermissionGuard permissionGuard,
 			CajaDeCobro caja,
 			PacienteDirectory pacientes,
-			TurnoDirectory turnos) {
+			TurnoDirectory turnos,
+			PlatformTransactionManager transactionManager) {
 
 		this.cobros = cobros;
 		this.obligaciones = obligaciones;
@@ -124,6 +130,8 @@ public class CobroService {
 		this.caja = caja;
 		this.pacientes = pacientes;
 		this.turnos = turnos;
+		this.transaccionDeNegocio = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.DEFAULT);
 	}
 
 	/**
@@ -134,13 +142,24 @@ public class CobroService {
 	 * @throws SaldoInsuficienteException       otro cobro se llevo la plata primero (409)
 	 * @throws IdempotencyKeyConflictException  misma clave, pedido distinto (409)
 	 */
-	@Transactional
 	public CobroView registrar(
 			OperatingActor actor, long consultorioId, CobroCommand command) {
 
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
+
+		// La fila del numerador se asegura ANTES de abrir la transaccion del cobro: anidada, el
+		// pedido retenia dos conexiones y diez cobros simultaneos trababan el pool (FilaLockPrevia).
+		iniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionDeNegocio.execute(estado -> registrarEnTransaccion(
+				actor, consultorioId, command, organizationId, sede));
+	}
+
+	private CobroView registrarEnTransaccion(
+			OperatingActor actor, long consultorioId, CobroCommand command,
+			long organizationId, ConsultorioSnapshot sede) {
 
 		// PASO 1. Antes del numerador: un reintento no puede consumir un numero de comprobante.
 		Optional<Cobro> yaCobrado = command.idempotencyKey() == null
@@ -192,7 +211,6 @@ public class CobroService {
 		}
 
 		// PASO 4 y 5. La fila se asegura afuera; el incremento toma el lock y serializa.
-		iniciador.asegurar(organizationId, consultorioId);
 		numerador.incrementar(organizationId, consultorioId);
 		int comprobante = numerador.leerUltimo(organizationId, consultorioId);
 

@@ -2,6 +2,7 @@ package com.akine.scheduling;
 
 import com.akine.TestcontainersConfiguration;
 import com.akine.scheduling.AgendaFixtures.Fixture;
+import com.akine.scheduling.application.AgendaSedeIniciador;
 import com.akine.scheduling.application.CicloDeTurnoService;
 import com.akine.scheduling.application.ReprogramacionCommand;
 import com.akine.scheduling.application.ReservaCommand;
@@ -48,6 +49,7 @@ class NotificacionDeTurnoIT {
 	private static final LocalDate LUNES = LocalDate.of(2027, 3, 1);
 	private static final ZoneId ZONA = ZoneId.of(AgendaFixtures.ZONA);
 
+	@Autowired private AgendaSedeIniciador agendaSedeIniciador;
 	@Autowired private TurnoService turnoService;
 	@Autowired private CicloDeTurnoService cicloService;
 	@Autowired private JdbcTemplate jdbc;
@@ -98,6 +100,9 @@ class NotificacionDeTurnoIT {
 	void el_rollback_se_lleva_el_aviso() {
 		Fixture fixture = fixtures.crear(1);
 		conCorreo(fixture.personaA());
+		// La fila de agenda_sede tiene que existir antes de abrir la transaccion de afuera: dentro de
+		// una transaccion ajena la reserva no puede crearla sin pedir otra conexion (FilaLockPrevia).
+		agendaSedeIniciador.asegurar(fixture.organizationId(), fixture.consultorioId());
 
 		Long turnoId = new TransactionTemplate(transactionManager).execute(estado -> {
 			TurnoView turno = reservar(fixture, fixture.personaA(), a(9, 0), null);

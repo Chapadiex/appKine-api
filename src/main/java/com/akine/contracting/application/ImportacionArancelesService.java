@@ -23,13 +23,16 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.spi.CatalogoDirectory;
 import com.akine.resource.spi.CatalogoSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -94,6 +97,7 @@ public class ImportacionArancelesService {
 	private final AuditTrail auditTrail;
 	private final OfertaDirectory ofertas;
 	private final PracticasDeOfertaDirectory practicasDeOferta;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("java:S107")
 	public ImportacionArancelesService(
@@ -106,7 +110,8 @@ public class ImportacionArancelesService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
 			OfertaDirectory ofertas,
-			PracticasDeOfertaDirectory practicasDeOferta) {
+			PracticasDeOfertaDirectory practicasDeOferta,
+			PlatformTransactionManager transactionManager) {
 
 		this.convenios = convenios;
 		this.aranceles = aranceles;
@@ -118,6 +123,8 @@ public class ImportacionArancelesService {
 		this.auditTrail = auditTrail;
 		this.ofertas = ofertas;
 		this.practicasDeOferta = practicasDeOferta;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	/**
@@ -144,11 +151,21 @@ public class ImportacionArancelesService {
 	 * entran, las inserta. Si una no entra, {@link ImportacionArancelesRechazadaException} y cero
 	 * filas escritas.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public Resultado confirmar(
 			OperatingActor actor, long consultorioId, long convenioId, List<Fila> filas) {
 
 		long organizationId = autorizar(actor, consultorioId, "Confirmar una importacion");
+
+		lockIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> confirmarEnTransaccion(
+				actor, consultorioId, convenioId, filas, organizationId));
+	}
+
+	private Resultado confirmarEnTransaccion(
+			OperatingActor actor, long consultorioId, long convenioId, List<Fila> filas,
+			long organizationId) {
+
 		exigirLote(filas);
 		// 404 antes de crear la fila-lock: un convenio ajeno no deja rastro en convenio_lock.
 		cargarConvenio(organizationId, consultorioId, convenioId);
@@ -156,7 +173,6 @@ public class ImportacionArancelesService {
 		// EL ORDEN DE ESTAS LINEAS ES LA GARANTIA. Ver la cabecera de ConvenioService: fila-lock en
 		// transaccion aparte, lock tomado ANTES de leer, y READ_COMMITTED para que la relectura vea
 		// lo que commiteo quien tuvo el lock antes.
-		lockIniciador.asegurar(organizationId, consultorioId);
 		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
 
 		// El convenio se relee bajo el lock: su vigencia o su estado pudieron cambiar desde el

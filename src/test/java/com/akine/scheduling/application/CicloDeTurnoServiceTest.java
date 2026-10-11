@@ -1,5 +1,6 @@
 package com.akine.scheduling.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
@@ -28,6 +29,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -75,7 +77,7 @@ class CicloDeTurnoServiceTest {
 	@BeforeEach
 	void prepararServicio() {
 		service = new CicloDeTurnoService(turnos, eventos, agendas, ofertas, consultorios,
-				permissionGuard, iniciador, revalidador, atenciones, auditTrail, avisos, recepciones);
+				permissionGuard, iniciador, revalidador, atenciones, auditTrail, avisos, recepciones, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));

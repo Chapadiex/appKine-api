@@ -1,5 +1,6 @@
 package com.akine.encounter.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.clinical.spi.CasoDirectory;
 import com.akine.clinical.spi.CasoSnapshot;
 import com.akine.clinical.spi.HistoriaClinicaDirectory;
@@ -64,6 +65,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -149,7 +151,7 @@ class SesionServiceTest {
 				sesiones, versiones, auditTrail, turnos, historias, casos, consultorios,
 				memberships, permissionGuard, numerador, numeradorIniciador, ofertas,
 				tratamientos, parametros, mediciones, tratamientoService, medicionService,
-				List.of(observador), List.of(requisitoDePrecio));
+				List.of(observador), List.of(requisitoDePrecio), mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -865,7 +867,9 @@ class SesionServiceTest {
 				});
 
 		// Nada se escribio: ni numero, ni version, ni aviso a billing ni al consumo.
-		verifyNoInteractions(numeradorIniciador, numerador, casos, versiones, observador);
+		// La fila del numerador se asegura antes de la transaccion (FilaLockPrevia): no es un numero.
+		verifyNoInteractions(numerador, versiones, observador);
+		verify(casos, never()).siguienteNumeroDeSesion(anyLong(), anyLong());
 		verify(sesiones, never()).saveAndFlush(any());
 	}
 
@@ -883,7 +887,7 @@ class SesionServiceTest {
 				.isInstanceOfSatisfying(OfertaSinPrecioException.class, e -> assertThat(e.getMotivo())
 						.isEqualTo(OfertaSinPrecioException.Motivo.SIN_COBERTURA_APLICABLE));
 
-		verifyNoInteractions(numeradorIniciador, numerador, versiones, observador);
+		verifyNoInteractions(numerador, versiones, observador);
 	}
 
 	@Test

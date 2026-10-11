@@ -8,6 +8,7 @@ import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.domain.EstadoTurno;
 import com.akine.scheduling.domain.PermissionCodes;
 import com.akine.scheduling.domain.TipoEventoTurno;
@@ -31,8 +32,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -99,6 +102,7 @@ public class CicloDeTurnoService {
 	private final AuditTrail auditTrail;
 	private final AvisosDeTurno avisos;
 	private final RegistroDeRecepcion recepciones;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	public CicloDeTurnoService(
 			TurnoRepositoryPort turnos,
@@ -112,7 +116,8 @@ public class CicloDeTurnoService {
 			AtencionProbe atenciones,
 			AuditTrail auditTrail,
 			AvisosDeTurno avisos,
-			RegistroDeRecepcion recepciones) {
+			RegistroDeRecepcion recepciones,
+			PlatformTransactionManager transactionManager) {
 
 		this.turnos = turnos;
 		this.eventos = eventos;
@@ -126,6 +131,8 @@ public class CicloDeTurnoService {
 		this.auditTrail = auditTrail;
 		this.avisos = avisos;
 		this.recepciones = recepciones;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -264,7 +271,6 @@ public class CicloDeTurnoService {
 	 * @throws SlotCompletoException                 el horario nuevo no tiene cupo (409)
 	 * @throws RecursoOcupadoException               profesional o espacio tomados (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public TurnoView reprogramar(
 			OperatingActor actor, long consultorioId, long turnoId, ReprogramacionCommand command) {
 
@@ -274,6 +280,15 @@ public class CicloDeTurnoService {
 
 		// PASO 0 y 1, en el mismo orden que la reserva y por los mismos motivos.
 		iniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> reprogramarEnTransaccion(
+				actor, consultorioId, turnoId, command, organizationId, sede));
+	}
+
+	private TurnoView reprogramarEnTransaccion(
+			OperatingActor actor, long consultorioId, long turnoId,
+			ReprogramacionCommand command, long organizationId, ConsultorioSnapshot sede) {
+
 		BloqueoDeAgenda.tomar(agendas, organizationId, consultorioId);
 
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);

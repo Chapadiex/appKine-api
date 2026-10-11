@@ -23,13 +23,16 @@ import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -96,6 +99,7 @@ public class CasoClinicoService {
 	private final RelacionAsistencialProbe relaciones;
 	private final AuditTrail auditTrail;
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public CasoClinicoService(
@@ -109,7 +113,8 @@ public class CasoClinicoService {
 			PermissionGuard permissionGuard,
 			RelacionAsistencialProbe relaciones,
 			AuditTrail auditTrail,
-			ClinicalSupportAccessAuditor supportAccessAuditor) {
+			ClinicalSupportAccessAuditor supportAccessAuditor,
+			PlatformTransactionManager transactionManager) {
 
 		this.historias = historias;
 		this.casos = casos;
@@ -122,6 +127,8 @@ public class CasoClinicoService {
 		this.relaciones = relaciones;
 		this.auditTrail = auditTrail;
 		this.supportAccessAuditor = supportAccessAuditor;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -150,11 +157,22 @@ public class CasoClinicoService {
 	 *                                              llamador no lo confirmo (409, con candidatos)
 	 * @throws OfertaNoVigenteException             si la oferta no existe en la sede o vencio (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public CasoClinicoView abrir(
 			OperatingActor actor, CasoClinicoAltaCommand command, String justificacion) {
 
 		long organizationId = organizacionDe(actor);
+
+		// ANTES de abrir la transaccion del alta (FilaLockPrevia).
+		asegurarNumeradorDeCasos(organizationId, command.historiaClinicaId());
+
+		return transaccionReadCommitted.execute(estado -> abrirEnTransaccion(
+				actor, command, justificacion, organizationId));
+	}
+
+	private CasoClinicoView abrirEnTransaccion(
+			OperatingActor actor, CasoClinicoAltaCommand command, String justificacion,
+			long organizationId) {
+
 		HistoriaClinica historia = exigirHistoria(organizationId, command.historiaClinicaId());
 
 		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
@@ -178,7 +196,6 @@ public class CasoClinicoService {
 		}
 
 		// PASOS 4 y 5. La fila se asegura AFUERA; el incremento toma el lock y serializa.
-		numeradorIniciador.asegurarCasos(organizationId, historia.getId());
 		numerador.incrementar(organizationId, historia.getId());
 		int numero = numerador.leerUltimo(organizationId, historia.getId());
 
@@ -540,6 +557,16 @@ public class CasoClinicoService {
 			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
 		}
 		return actor.contextOrganizationId();
+	}
+
+	/**
+	 * La fila de {@code caso_numerador} de esa historia, en su propia transaccion y fuera de la del
+	 * alta. Solo si la historia es del tenant: si no lo es, la transaccion responde el 404 de siempre.
+	 */
+	private void asegurarNumeradorDeCasos(long organizationId, long historiaClinicaId) {
+		if (historias.findByIdAndOrganizationId(historiaClinicaId, organizationId).isPresent()) {
+			numeradorIniciador.asegurarCasos(organizationId, historiaClinicaId);
+		}
 	}
 
 	private HistoriaClinica exigirHistoria(long organizationId, long historiaClinicaId) {

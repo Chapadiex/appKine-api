@@ -286,6 +286,9 @@ public final class PersonRepositoryPorts {
 
 		/** Crea la fila si falta, sin lanzar nunca. Ver el javadoc de la implementacion. */
 		void crearSiFalta(long organizationId, long personaId);
+
+		/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+		boolean existeFila(long organizationId, long personaId);
 	}
 
 	/** Ordenes medicas de un paciente (M17, AKINE-03.06). */
@@ -516,5 +519,8 @@ public final class PersonRepositoryPorts {
 
 		/** Crea la fila si falta, sin lanzar nunca. Ver el javadoc de la implementacion. */
 		void crearSiFalta(long organizationId, long personaId);
+
+		/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+		boolean existeFila(long organizationId, long personaId);
 	}
 }

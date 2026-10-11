@@ -21,13 +21,16 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -97,6 +100,7 @@ public class ConvenioService {
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("java:S107")
 	public ConvenioService(
@@ -108,7 +112,8 @@ public class ConvenioService {
 			PlanCoberturaRepositoryPort planes,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			PlatformTransactionManager transactionManager) {
 
 		this.convenios = convenios;
 		this.aranceles = aranceles;
@@ -119,6 +124,8 @@ public class ConvenioService {
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -182,7 +189,6 @@ public class ConvenioService {
 	 * (409). El orden importa: comprobar el permiso antes que la pertenencia de la sede convertiria
 	 * un 404 en un 403 y eso confirmaria que la sede existe en otro tenant.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ConvenioView crear(
 			OperatingActor actor, long consultorioId, ConvenioAltaCommand command) {
 
@@ -190,6 +196,16 @@ public class ConvenioService {
 		exigirSedeDelTenant(organizationId, consultorioId);
 		AutorizacionDeCatalogo.exigirGestionDeLaSede(
 				permissionGuard, actor, consultorioId, "Crear un convenio");
+
+		lockIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> crearEnTransaccion(
+				actor, consultorioId, command, organizationId));
+	}
+
+	private ConvenioView crearEnTransaccion(
+			OperatingActor actor, long consultorioId, ConvenioAltaCommand command,
+			long organizationId) {
 
 		exigirFinanciadorOperable(organizationId, command.financiadorId());
 		PlanCobertura plan = exigirPlanOperable(organizationId, command.planId());
@@ -221,7 +237,6 @@ public class ConvenioService {
 				command.observaciones());
 
 		// EL ORDEN DE ESTAS TRES LINEAS ES LA GARANTIA. Ver la cabecera.
-		lockIniciador.asegurar(organizationId, consultorioId);
 		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
 		exigirSinSolapamiento(
 				organizationId, consultorioId, command.financiadorId(), command.planId(),
@@ -256,7 +271,6 @@ public class ConvenioService {
 	 * efecto que su convenio quede congelado con un error de tipeo. Lo que la baja impide es firmar
 	 * convenios nuevos, no corregir los que hay.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ConvenioView editar(
 			OperatingActor actor,
 			long consultorioId,
@@ -269,6 +283,15 @@ public class ConvenioService {
 				permissionGuard, actor, consultorioId, "Editar un convenio");
 
 		lockIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> editarEnTransaccion(
+				actor, consultorioId, convenioId, command, organizationId));
+	}
+
+	private ConvenioView editarEnTransaccion(
+			OperatingActor actor, long consultorioId, long convenioId,
+			ConvenioEdicionCommand command, long organizationId) {
+
 		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
 
 		Convenio convenio = cargar(organizationId, consultorioId, convenioId);

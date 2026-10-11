@@ -29,6 +29,20 @@ public interface ComprobanteNumeradorRepository
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId);
 
+	@Query(value = """
+			SELECT COUNT(*) FROM comprobante_numerador
+			WHERE organization_id = :organizationId
+			  AND consultorio_id = :consultorioId
+			""", nativeQuery = true)
+	long contarFila(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId);
+
+	@Override
+	default boolean existeFila(long organizationId, long consultorioId) {
+		return contarFila(organizationId, consultorioId) > 0;
+	}
+
 	@Modifying
 	@Query(value = """
 			UPDATE comprobante_numerador
