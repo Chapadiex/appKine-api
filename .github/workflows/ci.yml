@@ -132,7 +132,7 @@ jobs:
   # OWASP necesita el secreto `NVD_API_KEY` (gratuito: https://nvd.nist.gov/developers/request-an-api-key);
   # sin el, el job analiza contra OSV.dev. Detalle en docs/calidad.md §2.
   vulnerabilidades:
-    name: Vulnerabilidades de dependencias (OWASP)
+    name: Vulnerabilidades de dependencias (OWASP / OSV)
     runs-on: ubuntu-latest
     timeout-minutes: 90
 

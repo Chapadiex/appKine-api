@@ -373,8 +373,8 @@
 							</rules>
 						</configuration>
 					</execution>
-					<!-- Trinquete por modulo critico (AKINE G-6, medido el 11/10/2026 con
-					     ./mvnw verify completo: 3.447 unitarias + 777 de integracion).
+					<!-- Trinquete por modulo critico (AKINE G-6, medido el 11/10/2026 en el CI
+					     sobre main 955855f + esta rama, con verify completo).
 
 					     Cada ejecucion mide el AGREGADO de un modulo (com/akine/<modulo>/**) y no
 					     cada paquete Java por separado: el elemento PACKAGE de JaCoCo exige el minimo
@@ -460,12 +460,12 @@
 										<limit>
 											<counter>LINE</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.86</minimum>
+											<minimum>0.87</minimum>
 										</limit>
 										<limit>
 											<counter>INSTRUCTION</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.82</minimum>
+											<minimum>0.83</minimum>
 										</limit>
 									</limits>
 								</rule>
@@ -494,7 +494,7 @@
 										<limit>
 											<counter>INSTRUCTION</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.81</minimum>
+											<minimum>0.82</minimum>
 										</limit>
 									</limits>
 								</rule>

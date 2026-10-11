@@ -111,9 +111,11 @@ va fijado por versión en `SONAR_MAVEN_VERSION`, al principio del `ci.yml`.
 
 ## 4. JaCoCo por módulo — reglas en el `pom.xml`
 
-Medido el **11/10/2026** con `./mvnw verify` completo sobre esta rama (`main` `2240971` más los
-bumps de G-6): **3.447 unitarias + 777 de integración, 0 fallos**, 1 salteada (la 7b). BUNDLE:
-**línea 89,50 % · instrucción 88,29 % · rama 77,04 %**. El gate global sigue en **0,80** de línea e
+Medido el **11/10/2026** con `./mvnw verify` completo sobre `main` `955855f` (después de #77, #78,
+#80 y #81) más esta rama: **3.439 unitarias + 785 de integración, 0 fallos**, 1 salteada (la 7b).
+BUNDLE: **línea 89,80 % · instrucción 88,56 % · rama 77,31 %**. El CI del PR midió lo mismo con
+diferencias de centésimas (`clinical` instrucción 82,24 % en el CI, 82,19 % local: los ITs
+concurrentes no recorren siempre las mismas ramas). El gate global sigue en **0,80** de línea e
 instrucción y `BRANCH` sigue sin gate (decisión pendiente del usuario).
 
 ### Las reglas
@@ -126,18 +128,18 @@ trinquete: un cambio que baje la cobertura de un módulo crítico rompe el build
 > **Por qué no el elemento `PACKAGE` de JaCoCo.** `PACKAGE` exige el mínimo a **cada paquete
 > Java** por separado, no al módulo. Con los números de hoy, la regla de `billing` quedaría en el
 > 0 % de `billing.api.dto` y la de `scheduling` en el 20 % de `scheduling.api.dto`: no protegería
-> nada. La regla por módulo sí. Verificado por mutación: con `billing` en 0,87 el build falla con
-> *lines covered ratio is 0.86, but expected minimum is 0.87*.
+> nada. La regla por módulo sí. Verificado por mutación antes del merge de `main`, con `billing` en
+> 86,33 % y la regla subida a 0,87: *lines covered ratio is 0.86, but expected minimum is 0.87*.
 
 | Módulo | Línea | Instrucción | Rama | Regla (línea / instr.) | ¿Llega al 0,90? |
 |---|---|---|---|---|---|
-| `organization` | 97,95 % | 97,50 % | 88,38 % | 0,97 / 0,97 | sí |
-| `identity` | 96,09 % | 97,07 % | 84,00 % | 0,96 / 0,97 | sí |
-| `encounter` | 94,46 % | 93,65 % | 83,76 % | 0,94 / 0,93 | sí |
-| `person` | 86,54 % | 86,26 % | 73,08 % | 0,86 / 0,86 | **no** |
+| `organization` | 97,96 % | 97,52 % | 88,27 % | 0,97 / 0,97 | sí |
+| `identity` | 96,09 % | 97,12 % | 83,94 % | 0,96 / 0,97 | sí |
+| `encounter` | 94,56 % | 93,81 % | 84,18 % | 0,94 / 0,93 | sí |
+| `billing` | 87,56 % | 83,29 % | 80,88 % | 0,87 / 0,83 | **no** |
+| `person` | 86,54 % | 86,28 % | 73,18 % | 0,86 / 0,86 | **no** |
 | `scheduling` | 86,47 % | 82,74 % | 76,38 % | 0,86 / 0,82 | **no** |
-| `billing` | 86,33 % | 82,37 % | 79,85 % | 0,86 / 0,82 | **no** |
-| `clinical` | 82,09 % | 81,71 % | 70,35 % | 0,82 / 0,81 | **no** |
+| `clinical` | 82,56 % | 82,19 % | 70,35 % | 0,82 / 0,82 | **no** |
 
 ### Los cuatro que no llegan al 0,90, y por qué
 
@@ -147,8 +149,8 @@ respuesta y los mapeos de error quedan sin ejercitar.
 
 | Módulo | Paquetes que lo hunden (línea) |
 |---|---|
-| `clinical` | `clinical.api` 55,1 % (421 líneas), `clinical.api.dto` 47,6 % (206), `clinical.domain.exception` 73,8 % |
-| `billing` | `billing.api` 64,2 % (531 líneas), `billing.api.dto` **0 %** (171) |
+| `clinical` | `clinical.api` 56,3 % (421 líneas), `clinical.api.dto` 47,6 % (206), `clinical.domain.exception` 73,8 % |
+| `billing` | `billing.api` 72,5 % (531 líneas), `billing.api.dto` **0 %** (171) |
 | `scheduling` | `scheduling.api` 61,4 % (277 líneas), `scheduling.api.dto` 20,2 % (99) |
 | `person` | `person.infrastructure` 66,0 % (150 líneas), `person.api.dto` 73,2 % (347) |
 
@@ -158,7 +160,7 @@ parte de G-6— y subir la regla en el mismo PR.
 ### Fuera de las reglas por módulo
 
 `offering` (89,93 % de línea), `resource` (82,84 %), `contracting` (91,88 %), `reporting`
-(93,86 %), `activity`, `notification` y `platform` sólo los cubre el gate global. `resource` es el
+(95,91 %), `activity`, `notification` y `platform` sólo los cubre el gate global. `resource` es el
 más bajo del backend y no es de los siete críticos que fija el plan.
 
 > **Las reglas son estrechas a propósito**: `identity` queda a 0,09 puntos de su mínimo. Si un IT
