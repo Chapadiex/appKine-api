@@ -24,6 +24,16 @@
 		<maven-enforcer.version>3.6.2</maven-enforcer.version>
 		<bouncycastle.version>1.85.2</bouncycastle.version>
 		<greenmail.version>2.1.9</greenmail.version>
+		<dependency-check.version>12.2.2</dependency-check.version>
+		<!-- Parches de seguridad por encima de lo que gestiona Spring Boot 4.1.1 (G-6, 09/10/2026).
+		     Tomcat 11.0.24: tres CVE criticos (CVE-2026-65905, -65182, -68525), corregidos en
+		     11.0.25. Jackson 3.1.5 / 2.21.5: altas en databind y core (CVE-2026-68497, -91776,
+		     -91777, -89425, -89407), corregidas en 3.1.7 / 2.21.7. Son parches de la misma
+		     linea: BORRAR estas tres propiedades cuando el parent de Spring Boot traiga
+		     versiones iguales o mayores, o quedan fijando una version vieja. -->
+		<tomcat.version>11.0.26</tomcat.version>
+		<jackson-bom.version>3.1.7</jackson-bom.version>
+		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
 		<akine.contract.version>0.84.0</akine.contract.version>
@@ -212,6 +222,43 @@
 			</plugin>
 
 			<!-- Tests unitarios y de arquitectura. -->
+			<!-- Vulnerabilidades conocidas de las dependencias (AKINE G-6).
+			     No esta enganchado a ninguna fase: corre en su propio job del CI con
+			     `./mvnw dependency-check:check`, porque bajar la base del NVD tarda y no tiene
+			     por que frenar cada `verify` local.
+			     Falla SOLO con CVSS >= 7 (alta o critica): lo de abajo queda en el reporte, que
+			     el CI publica siempre, pero no frena el merge. Un falso positivo se silencia en
+			     dependency-check-suppressions.xml con su motivo, nunca bajando el umbral. -->
+			<plugin>
+				<groupId>org.owasp</groupId>
+				<artifactId>dependency-check-maven</artifactId>
+				<version>${dependency-check.version}</version>
+				<configuration>
+					<failBuildOnCVSS>7</failBuildOnCVSS>
+					<formats>
+						<format>HTML</format>
+						<format>JSON</format>
+					</formats>
+					<outputDirectory>${project.build.directory}/dependency-check</outputDirectory>
+					<!-- Fuera de ~/.m2 para que la cache de Maven del CI no arrastre los ~250 MB del NVD. -->
+					<dataDirectory>${user.home}/.cache/dependency-check</dataDirectory>
+					<suppressionFiles>
+						<suppressionFile>${project.basedir}/dependency-check-suppressions.xml</suppressionFile>
+					</suppressionFiles>
+					<!-- La clave del NVD NO va aca: el CI la pasa con -DnvdApiKey solo si el secreto
+					     NVD_API_KEY existe. Fijada en 12.2.x a proposito: la 13.0.0 sin clave muere con
+					     "Invalid API Key, length of 0" en vez de esperar el limite del NVD. -->
+					<!-- OSS Index exige cuenta desde 2025; sin credenciales sus 401 tumban la corrida. -->
+					<ossIndexAnalyzerEnabled>false</ossIndexAnalyzerEnabled>
+					<!-- Analizadores de otros ecosistemas: el backend es solo Java. -->
+					<assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+					<nodeAnalyzerEnabled>false</nodeAnalyzerEnabled>
+					<nodeAuditAnalyzerEnabled>false</nodeAuditAnalyzerEnabled>
+					<retireJsAnalyzerEnabled>false</retireJsAnalyzerEnabled>
+					<nuspecAnalyzerEnabled>false</nuspecAnalyzerEnabled>
+					<nugetconfAnalyzerEnabled>false</nugetconfAnalyzerEnabled>
+				</configuration>
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
@@ -323,10 +370,221 @@
 										</limit>
 									</limits>
 								</rule>
-								<!-- PENDIENTE(F1): al crear identity, organization, clinical y
-								     billing, agregar aqui reglas PACKAGE al 0.90 para esos
-								     modulos criticos. Hoy no existen y una regla sobre un
-								     paquete inexistente no verifica nada. -->
+							</rules>
+						</configuration>
+					</execution>
+					<!-- Trinquete por modulo critico (AKINE G-6, medido el 11/10/2026 en el CI
+					     sobre main 955855f + esta rama, con verify completo).
+
+					     Cada ejecucion mide el AGREGADO de un modulo (com/akine/<modulo>/**) y no
+					     cada paquete Java por separado: el elemento PACKAGE de JaCoCo exige el minimo
+					     a CADA paquete, y billing.api.dto (0 %) o scheduling.api.dto (20 %) dejarian
+					     la regla del modulo en un numero que no protege nada.
+
+					     El minimo es lo medido redondeado hacia abajo al punto entero: cualquier
+					     cambio que baje la cobertura de un modulo critico rompe el build. La meta del
+					     plan es 0,90; los que no llegan y por que, en docs/calidad.md §4. Se suben a
+					     mano cuando la cobertura sube, nunca se bajan para hacer pasar un PR. -->
+					<execution>
+						<id>check-coverage-identity</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<includes>
+								<include>com/akine/identity/**</include>
+							</includes>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.96</minimum>
+										</limit>
+										<limit>
+											<counter>INSTRUCTION</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.97</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
+					</execution>
+					<execution>
+						<id>check-coverage-organization</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<includes>
+								<include>com/akine/organization/**</include>
+							</includes>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.97</minimum>
+										</limit>
+										<limit>
+											<counter>INSTRUCTION</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.97</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
+					</execution>
+					<execution>
+						<id>check-coverage-billing</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<includes>
+								<include>com/akine/billing/**</include>
+							</includes>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.87</minimum>
+										</limit>
+										<limit>
+											<counter>INSTRUCTION</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.83</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
+					</execution>
+					<execution>
+						<id>check-coverage-clinical</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<includes>
+								<include>com/akine/clinical/**</include>
+							</includes>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.82</minimum>
+										</limit>
+										<limit>
+											<counter>INSTRUCTION</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.82</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
+					</execution>
+					<execution>
+						<id>check-coverage-encounter</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<includes>
+								<include>com/akine/encounter/**</include>
+							</includes>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.94</minimum>
+										</limit>
+										<limit>
+											<counter>INSTRUCTION</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.93</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
+					</execution>
+					<execution>
+						<id>check-coverage-person</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<includes>
+								<include>com/akine/person/**</include>
+							</includes>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.86</minimum>
+										</limit>
+										<limit>
+											<counter>INSTRUCTION</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.86</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
+					</execution>
+					<execution>
+						<id>check-coverage-scheduling</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<includes>
+								<include>com/akine/scheduling/**</include>
+							</includes>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.86</minimum>
+										</limit>
+										<limit>
+											<counter>INSTRUCTION</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.82</minimum>
+										</limit>
+									</limits>
+								</rule>
 							</rules>
 						</configuration>
 					</execution>
