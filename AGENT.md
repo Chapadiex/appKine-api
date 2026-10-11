@@ -347,7 +347,9 @@ docker run --rm --name akine-api -p 8080:8080 \
   `-e AKINE_TRUSTED_PROXIES=172.18.0.0/16`, la red de Docker donde corre el nginx). Sin eso todas
   las requests llegan con la IP del nginx y el rate limit —30 logins, 5 altas y 10 altas de
   colaborador por minuto **por IP**— pasa a ser **global para todo el sistema**: un solo atacante
-  deja sin login a todos los centros. Con la variable, y **solo** cuando la conexión viene de uno
+  deja sin login a todos los centros, y la IP que guarda cada sesión (el listado de sesiones
+  abiertas) es la del nginx para todas. Las dos usan la misma regla (`platform.spi.security.IpDeCliente`).
+  Con la variable, y **solo** cuando la conexión viene de uno
   de esos orígenes, la IP del cliente se toma de `X-Forwarded-For` (el primer salto no confiable
   leído de derecha a izquierda); de cualquier otro origen la cabecera se ignora, porque la
   escribe el cliente. Vacía por defecto = IP del socket. Una entrada que no es IP ni CIDR hace

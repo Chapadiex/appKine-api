@@ -53,8 +53,19 @@ public class SecurityFiltersConfig {
 		return registro;
 	}
 
+	/**
+	 * Una sola regla para la IP del cliente: la usan el rate limit y la sesion de
+	 * {@code identity}, que la recibe por el {@code spi} como {@code IpDeCliente}. Si cada uno
+	 * resolviera la suya, detras del nginx uno de los dos volveria a ver la IP del proxy.
+	 */
 	@Bean
-	public RateLimitFilter rateLimitFilter(RateLimitProperties properties) {
+	public ResolutorDeIpDeCliente resolutorDeIpDeCliente(RateLimitProperties properties) {
+		return ResolutorDeIpDeCliente.desde(properties.getTrustedProxies());
+	}
+
+	@Bean
+	public RateLimitFilter rateLimitFilter(
+			RateLimitProperties properties, ResolutorDeIpDeCliente resolutorDeIpDeCliente) {
 		return new RateLimitFilter(
 				new FixedWindowRateLimiter(properties.getWindow(), properties.getMaxAttempts()),
 				new FixedWindowRateLimiter(
@@ -63,7 +74,7 @@ public class SecurityFiltersConfig {
 						properties.getWindow(), properties.getMembershipMaxAttempts()),
 				Clock.systemUTC(),
 				properties.isEnabled(),
-				ResolutorDeIpDeCliente.desde(properties.getTrustedProxies()));
+				resolutorDeIpDeCliente);
 	}
 
 	@Bean
