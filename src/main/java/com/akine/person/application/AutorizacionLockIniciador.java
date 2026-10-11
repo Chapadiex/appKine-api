@@ -1,11 +1,11 @@
 package com.akine.person.application;
 
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionPersonaLockRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * Crea la fila de {@code autorizacion_persona_lock} en su PROPIA transaccion, antes de escribir.
@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code cobertura_persona_lock} (03.04)—. Esta clase es la quinta aplicacion del mismo patron y,
  * como la cuarta, esta escrita asi desde el principio.
  *
- * <p>{@code REQUIRES_NEW} hace que el INSERT se commitee de inmediato y libere sus locks, en vez
+ * <p>La transaccion propia hace que el INSERT se commitee de inmediato y libere sus locks, en vez
  * de retenerlos hasta el final de la escritura. No devuelve nada a proposito: la fila que importa
  * es la que el llamador va a BLOQUEAR dentro de su propia transaccion, y devolver esta invitaria a
  * usarla sin el lock.
@@ -33,15 +33,19 @@ public class AutorizacionLockIniciador {
 	private static final Logger log = LoggerFactory.getLogger(AutorizacionLockIniciador.class);
 
 	private final AutorizacionPersonaLockRepositoryPort candados;
+	private final FilaLockPrevia filaAutorizacionPersonaLock;
 
-	public AutorizacionLockIniciador(AutorizacionPersonaLockRepositoryPort candados) {
+	public AutorizacionLockIniciador(AutorizacionPersonaLockRepositoryPort candados,
+			PlatformTransactionManager transactionManager) {
 		this.candados = candados;
+		this.filaAutorizacionPersonaLock = new FilaLockPrevia("autorizacion_persona_lock", transactionManager);
 	}
 
 	/** Se asegura de que la fila exista. Idempotente y seguro entre transacciones concurrentes. */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void asegurar(long organizationId, long personaId) {
-		candados.crearSiFalta(organizationId, personaId);
+		filaAutorizacionPersonaLock.asegurar(
+				() -> candados.existeFila(organizationId, personaId),
+				() -> candados.crearSiFalta(organizationId, personaId));
 		log.debug("Candado de autorizaciones de la persona {} asegurado", personaId);
 	}
 }

@@ -1,5 +1,6 @@
 package com.akine.contracting.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.contracting.domain.Convenio;
 import com.akine.contracting.domain.ConvenioLock;
 import com.akine.contracting.domain.Financiador;
@@ -46,6 +47,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -106,7 +108,7 @@ class ConvenioServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ConvenioService(convenios, aranceles, locks, lockIniciador, financiadores,
-				planes, consultorios, permissionGuard, auditTrail);
+				planes, consultorios, permissionGuard, auditTrail, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, SEDE_ID))
 				.willReturn(Optional.of(new ConsultorioSnapshot(

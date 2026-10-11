@@ -128,5 +128,8 @@ public final class ConvenioRepositoryPorts {
 
 		/** Crea la fila si no existe. <b>Sin lanzar nunca</b>, y ese es todo el punto. */
 		void crearSiFalta(long organizationId, long consultorioId);
+
+		/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+		boolean existeFila(long organizationId, long consultorioId);
 	}
 }

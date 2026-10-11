@@ -1,9 +1,9 @@
 package com.akine.billing.application;
 
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.billing.domain.port.ComprobanteNumeradorPort;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * Crea la fila del numerador de comprobantes en su PROPIA transaccion, antes del cobro.
@@ -17,13 +17,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class ComprobanteIniciador {
 
 	private final ComprobanteNumeradorPort numerador;
+	private final FilaLockPrevia filaComprobanteNumerador;
 
-	public ComprobanteIniciador(ComprobanteNumeradorPort numerador) {
+	public ComprobanteIniciador(ComprobanteNumeradorPort numerador,
+			PlatformTransactionManager transactionManager) {
 		this.numerador = numerador;
+		this.filaComprobanteNumerador = new FilaLockPrevia("comprobante_numerador", transactionManager);
 	}
 
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void asegurar(long organizationId, long consultorioId) {
-		numerador.crearSiFalta(organizationId, consultorioId);
+		filaComprobanteNumerador.asegurar(
+				() -> numerador.existeFila(organizationId, consultorioId),
+				() -> numerador.crearSiFalta(organizationId, consultorioId));
 	}
 }

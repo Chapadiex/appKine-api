@@ -34,13 +34,16 @@ import com.akine.person.spi.AutorizacionDirectory;
 import com.akine.person.spi.AutorizacionSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -124,6 +127,7 @@ public class PlanTratamientoService {
 	private final RelacionAsistencialProbe relaciones;
 	private final AuditTrail auditTrail;
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public PlanTratamientoService(
@@ -141,7 +145,8 @@ public class PlanTratamientoService {
 			PermissionGuard permissionGuard,
 			RelacionAsistencialProbe relaciones,
 			AuditTrail auditTrail,
-			ClinicalSupportAccessAuditor supportAccessAuditor) {
+			ClinicalSupportAccessAuditor supportAccessAuditor,
+			PlatformTransactionManager transactionManager) {
 
 		this.historias = historias;
 		this.casos = casos;
@@ -158,6 +163,8 @@ public class PlanTratamientoService {
 		this.relaciones = relaciones;
 		this.auditTrail = auditTrail;
 		this.supportAccessAuditor = supportAccessAuditor;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -190,7 +197,6 @@ public class PlanTratamientoService {
 	 * que bajo {@code REPEATABLE READ} el {@code SELECT} posterior al incremento podria leer el
 	 * valor viejo. Es la regla que 05.02 dejo fijada para toda mutacion que serializa.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public PlanTratamientoView crear(
 			OperatingActor actor,
 			long casoClinicoId,
@@ -198,6 +204,18 @@ public class PlanTratamientoService {
 			String justificacion) {
 
 		long organizationId = organizacionDe(actor);
+
+		// ANTES de abrir la transaccion del alta (FilaLockPrevia).
+		asegurarNumeradorDePlanes(organizationId, casoClinicoId);
+
+		return transaccionReadCommitted.execute(estado -> crearEnTransaccion(
+				actor, casoClinicoId, contenido, justificacion, organizationId));
+	}
+
+	private PlanTratamientoView crearEnTransaccion(
+			OperatingActor actor, long casoClinicoId, ContenidoDelPlan contenido,
+			String justificacion, long organizationId) {
+
 		CasoClinico caso = exigirCaso(organizationId, casoClinicoId);
 		AccesoClinico acceso = autorizarSobre(
 				actor, caso, PermissionCodes.HC_WRITE, justificacion, "Crear plan de tratamiento");
@@ -211,7 +229,6 @@ public class PlanTratamientoService {
 				organizationId, actor.consultorioId(), contenido.items());
 
 		// PASOS 4 y 5. La fila se asegura AFUERA; el incremento toma el lock y serializa.
-		numeradorIniciador.asegurarPlanes(organizationId, casoClinicoId);
 		numerador.incrementar(organizationId, casoClinicoId);
 		Integer numero = numerador.leerUltimo(organizationId, casoClinicoId);
 		if (numero == null) {
@@ -994,6 +1011,16 @@ public class PlanTratamientoService {
 			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
 		}
 		return actor.contextOrganizationId();
+	}
+
+	/**
+	 * La fila de {@code plan_numerador} de ese caso, en su propia transaccion y fuera de la del
+	 * alta. Solo si el caso es del tenant: si no lo es, la transaccion responde el 404 de siempre.
+	 */
+	private void asegurarNumeradorDePlanes(long organizationId, long casoClinicoId) {
+		if (casos.findByIdAndOrganizationId(casoClinicoId, organizationId).isPresent()) {
+			numeradorIniciador.asegurarPlanes(organizationId, casoClinicoId);
+		}
 	}
 
 	private CasoClinico exigirCaso(long organizationId, long casoClinicoId) {

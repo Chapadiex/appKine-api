@@ -1,5 +1,6 @@
 package com.akine.person.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.contracting.spi.CoberturaCatalogoDirectory;
 import com.akine.contracting.spi.ReferenciaDeCobertura;
 import com.akine.organization.spi.PermissionDecision;
@@ -35,6 +36,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -104,7 +106,7 @@ class CoberturaPacienteServiceTest {
 	void setUp() {
 		service = new CoberturaPacienteService(
 				coberturas, candados, iniciador, personas, perfiles, catalogo, permissionGuard,
-				auditTrail);
+				auditTrail, mock(PlatformTransactionManager.class));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));

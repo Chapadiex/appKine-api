@@ -74,8 +74,12 @@ EXPOSE 8080
 # Liveness del actuator (spring-boot-starter-actuator, probes habilitadas en application.yml y
 # /actuator/health/** abierto en SecurityConfig). Se usa liveness y no /actuator/health a secas:
 # este ultimo incluye la base, y un corte de MySQL no se arregla reiniciando el backend.
-# start-period amplio: el primer arranque aplica todas las migraciones de Flyway.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+# start-period de 10 minutos: el primer arranque contra una base vacia aplica todas las migraciones
+# de Flyway. Medido: 3 min 9 s el 11/10/2026 (4 CPU, 2 GB, 72 migraciones) y 8 min 23 s en la
+# corrida de G-10 del 09/10 (docs/carga.md §6.7). Con 120 s el contenedor quedaba unhealthy a mitad
+# de las migraciones, y un orquestador que reinicia por healthcheck lo mataba. Un chequeo que pasa
+# DENTRO del start-period marca healthy en el acto: el margen no demora los arranques normales.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=600s --retries=3 \
 	CMD curl -fsS "http://localhost:${AKINE_PORT}/actuator/health/liveness" || exit 1
 
 # Forma shell con exec: expande JAVA_OPTS y deja a la JVM como PID 1, que recibe el SIGTERM de

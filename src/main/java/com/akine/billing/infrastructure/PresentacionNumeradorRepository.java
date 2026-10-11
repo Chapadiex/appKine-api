@@ -32,6 +32,22 @@ public interface PresentacionNumeradorRepository
 			@Param("consultorioId") long consultorioId,
 			@Param("financiadorId") long financiadorId);
 
+	@Query(value = """
+			SELECT COUNT(*) FROM presentacion_numerador
+			WHERE organization_id = :organizationId
+			  AND consultorio_id = :consultorioId
+			  AND financiador_id = :financiadorId
+			""", nativeQuery = true)
+	long contarFila(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("financiadorId") long financiadorId);
+
+	@Override
+	default boolean existeFila(long organizationId, long consultorioId, long financiadorId) {
+		return contarFila(organizationId, consultorioId, financiadorId) > 0;
+	}
+
 	@Modifying
 	@Query(value = """
 			UPDATE presentacion_numerador

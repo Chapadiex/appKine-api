@@ -361,8 +361,9 @@ docker run --rm --name akine-api -p 8080:8080 \
 - **Adjuntos:** la aplicación escribe en `/app/var` (`adjuntos/` y `adjuntos-clinicos/`). Sin
   volumen montado ahí, los binarios se pierden con el contenedor.
 - **Healthcheck:** `GET /actuator/health/liveness`. El primer arranque contra una base vacía
-  aplica todas las migraciones y tarda (≈2,5 min medido el 06/10/2026), por eso el
-  `start-period` es de 120 s.
+  aplica todas las migraciones y tarda: ≈2,5 min el 06/10/2026, **8 min 23 s** en la carga de G-10
+  (09/10) y 3 min 9 s el 11/10 (4 CPU, 2 GB, 72 migraciones). El `start-period` es de **600 s**:
+  con los 120 s anteriores el contenedor quedaba `unhealthy` a mitad de Flyway (`docs/carga.md` §6.7).
 - **JVM:** `-e JAVA_OPTS=...` reemplaza los flags por defecto.
 - **Observabilidad (G-4):** log JSON por stdout fuera del perfil `local`, `X-Request-Id` en cada
   respuesta, `/actuator/prometheus` cerrado salvo `AKINE_METRICS_SCRAPE_TOKEN` (abierto en

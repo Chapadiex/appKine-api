@@ -6,6 +6,7 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.domain.BloqueDisponibilidad;
 import com.akine.resource.domain.IntervaloLocal;
 import com.akine.resource.domain.PermissionCodes;
@@ -22,8 +23,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -121,6 +124,7 @@ public class DisponibilidadService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final SimuladorDeImpacto simulador;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	public DisponibilidadService(
 			BloqueDisponibilidadRepositoryPort bloques,
@@ -130,7 +134,8 @@ public class DisponibilidadService {
 			ConsultorioMembershipDirectory membershipDirectory,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
-			SimuladorDeImpacto simulador) {
+			SimuladorDeImpacto simulador,
+			PlatformTransactionManager transactionManager) {
 
 		this.bloques = bloques;
 		this.calendarios = calendarios;
@@ -140,6 +145,8 @@ public class DisponibilidadService {
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 		this.simulador = simulador;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -178,13 +185,23 @@ public class DisponibilidadService {
 	 *         no atiende pacientes (409)
 	 * @throws BloqueSolapadoException si se pisa con otro bloque activo (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public BloqueView crear(
 			OperatingActor actor, long consultorioId, long membershipId, BloqueAltaCommand command) {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		ConsultorioSnapshot sede = exigirSedeOperable(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
+
+		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
+		calendarioIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> crearEnTransaccion(
+				actor, consultorioId, membershipId, command, organizationId, sede));
+	}
+
+	private BloqueView crearEnTransaccion(
+			OperatingActor actor, long consultorioId, long membershipId,
+			BloqueAltaCommand command, long organizationId, ConsultorioSnapshot sede) {
 
 		Instant ahora = Instant.now();
 		exigirProfesionalDeLaSede(organizationId, consultorioId, membershipId, ahora);
@@ -265,7 +282,6 @@ public class DisponibilidadService {
 	 * @throws OptimisticLockingFailureException si la version enviada quedo vieja (409)
 	 * @throws BloqueSolapadoException si el bloque editado se pisa con otro activo (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public BloqueView editar(
 			OperatingActor actor,
 			long consultorioId,
@@ -276,6 +292,17 @@ public class DisponibilidadService {
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
+
+		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
+		calendarioIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> editarEnTransaccion(
+				actor, consultorioId, membershipId, bloqueId, command, organizationId, sede));
+	}
+
+	private BloqueView editarEnTransaccion(
+			OperatingActor actor, long consultorioId, long membershipId, long bloqueId,
+			BloqueEdicionCommand command, long organizationId, ConsultorioSnapshot sede) {
 
 		Instant ahora = Instant.now();
 		exigirProfesionalDeLaSede(organizationId, consultorioId, membershipId, ahora);
@@ -344,7 +371,6 @@ public class DisponibilidadService {
 	 * @throws BloqueInactivoException si ya estaba dado de baja (409)
 	 * @throws IllegalArgumentException si no se declaro un motivo (400)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public BloqueView darDeBaja(
 			OperatingActor actor,
 			long consultorioId,
@@ -355,6 +381,18 @@ public class DisponibilidadService {
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
+
+		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
+		calendarioIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> darDeBajaEnTransaccion(
+				actor, consultorioId, membershipId, bloqueId, motivo, organizationId, sede));
+	}
+
+	private BloqueView darDeBajaEnTransaccion(
+			OperatingActor actor, long consultorioId, long membershipId, long bloqueId,
+			String motivo, long organizationId, ConsultorioSnapshot sede) {
+
 		exigirMotivo(motivo);
 
 		Instant ahora = Instant.now();
@@ -571,7 +609,6 @@ public class DisponibilidadService {
 	 * limpiamente: ver {@link CalendarioSedeIniciador}.
 	 */
 	private void bloquearLaSede(long organizationId, long consultorioId) {
-		calendarioIniciador.asegurar(organizationId, consultorioId);
 		BloqueoDeSede.tomar(calendarios, organizationId, consultorioId);
 	}
 

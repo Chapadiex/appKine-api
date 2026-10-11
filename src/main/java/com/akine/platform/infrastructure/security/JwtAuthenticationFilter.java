@@ -120,8 +120,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		// que AccessTokenClaims documenta que no hay que hacer. Es un seek indexado sobre
 		// platform_role, la misma decision —y el mismo precio— que la revalidacion de membership
 		// del filtro de contexto (T-7).
-		boolean platformAdmin = platformRoleDirectory.isPlatformAdmin(
-				claims.get().accountId(), clock.instant());
+		//
+		// Si la base no responde, 503 y no 401: ver FallaEnFiltro. Dejar escapar la excepcion
+		// terminaba en un 401 que deslogueaba al usuario (docs/carga.md §6.3).
+		boolean platformAdmin;
+		try {
+			platformAdmin = platformRoleDirectory.isPlatformAdmin(
+					claims.get().accountId(), clock.instant());
+		} catch (RuntimeException falla) {
+			FallaEnFiltro.responder(request, response, falla);
+			return;
+		}
 
 		SecurityContext contexto = SecurityContextHolder.createEmptyContext();
 		contexto.setAuthentication(new UsernamePasswordAuthenticationToken(

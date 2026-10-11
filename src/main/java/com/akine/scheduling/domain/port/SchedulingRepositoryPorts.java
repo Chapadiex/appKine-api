@@ -50,6 +50,9 @@ public final class SchedulingRepositoryPorts {
 		 * transaccion. Ver la implementacion.
 		 */
 		void crearSiFalta(long organizationId, long consultorioId);
+
+		/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+		boolean existeFila(long organizationId, long consultorioId);
 	}
 
 	public interface TurnoRepositoryPort {

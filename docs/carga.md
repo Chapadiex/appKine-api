@@ -222,7 +222,8 @@ los 2,5 s en móvil.
 
 ## 6. Hallazgos
 
-Ninguno se corrige en este PR. Están ordenados por gravedad.
+Ninguno se corrige en este PR. Están ordenados por gravedad. **Lo que se corrigió después, y con qué
+números, está en §8.**
 
 ### 6.1 Crítico — el pool de conexiones se traba con transacciones anidadas
 
@@ -326,3 +327,103 @@ Angular con CPU 4× más lenta. Es una hipótesis: no se perfiló.
   de usuarios reales: eso necesita medición en campo (RUM), que no existe.
 - **No hay job de CI obligatorio**: `carga.yml` es manual y sus números en un runner de GitHub no
   son comparables con los de esta máquina.
+
+## 8. Lo que se corrigió el 11/10/2026 (rama `akine-fix-pool-y-carga`)
+
+Mismo stack aislado, mismos scripts y la misma máquina, con el prefijo `pool-` y puertos propios
+(MySQL 3327, Mailpit 8042/1042, backend 8097). Backend con 4 CPU y 2 GB y **el pool por defecto
+(10)**. Cada corrida: base nueva, sembrado, reinicio del backend y la mezcla completa a 500
+usuarios. "Antes" es `main` `2240971` medido el mismo día, que reproduce la corrida 1 de §5.
+
+### Estado de cada hallazgo
+
+| § | Hallazgo | Estado |
+|---|---|---|
+| 6.1 | El pool se traba con transacciones anidadas | **Corregido.** Las once filas-lock se aseguran antes de abrir la transacción de negocio (`FilaLockPrevia`); ningún pedido retiene dos conexiones. `PoolDeConexionesIT` lo reproduce con pool 2: sobre `main` las 16 escrituras mueren por `CannotCreateTransactionException`, con el arreglo ninguna |
+| 6.2 | El cobro serializa en el numerador de la sede | **Mejorado, no eliminado.** El `asegurar` ya no toca la fila existente: el `INSERT ... ON DUPLICATE KEY UPDATE` desapareció del digest. El `+1` sigue serializando, y debe: ver abajo |
+| 6.3 | Un fallo de base en la autenticación responde 401 | **Corregido.** 503 `service-unavailable` (500 si no es la base), nunca 401. 401 en la carga: 120 → **0** |
+| 6.4 | N+1 en la agenda del día | **Corregido.** `OfertaDirectory.findTodas`: una consulta por día, no una por turno |
+| 6.5 | Tres transacciones y lecturas repetidas por pedido | **Sin cambios.** Ver abajo |
+| 6.6 | El backend no se recupera solo | **Desaparece con 6.1**: ya no se traba |
+| 6.7 | El primer arranque supera el `start-period` | **Corregido.** `start-period` de 600 s |
+
+### La mezcla completa, 500 usuarios, pool 10 — antes y después
+
+| Endpoint | Antes p95 / p99 ms | Después p95 / p99 ms | Después, segunda corrida p95 / p99 ms |
+|---|---:|---:|---:|
+| login | 55 964 / 55 969 | 3 230 / 13 848 | 3 099 / 3 430 |
+| agenda del día | 55 958 / 55 965 | 3 071 / 11 797 | 3 126 / 4 554 |
+| búsqueda de slots | 55 964 / 55 966 | 3 387 / 13 752 | 3 142 / 4 567 |
+| recepción del día | 55 964 / 55 965 | 3 255 / 15 192 | 3 045 / 4 481 |
+| Paciente 360 | 55 964 / 55 966 | 3 276 / 10 398 | 3 105 / 4 430 |
+| cobro | 55 964 / 55 967 | 4 988 / 17 841 | 5 110 / 7 001 |
+| reporte | 55 960 / 55 966 | 3 230 / 10 925 | 3 189 / 4 573 |
+| reserva | 55 965 / 55 967 | 5 988 / 16 973 | 4 850 / 6 691 |
+| **todo lo interactivo** | 55 964 / 55 966 (p50 91) | 3 566 / 15 331 (p50 61) | 3 345 / 5 280 (p50 66) |
+| pedidos · req/s | 7 812 · 20,5 | 37 492 · 100,2 | 39 514 · 105,9 |
+| errores técnicos | **30,34 %** | **0,00 %** | 0,02 % |
+| 401 | 120 | **0** | 0 |
+| reservas 201 / 409 | 190 / 1 132 | 469 / 3 052 | 469 / 3 096 |
+
+La segunda corrida es la misma con cuatro volcados de hilos durante la meseta (`kill -3`), que son los
+que se citan abajo.
+
+**El traba desapareció; el SLO a 500 usuarios todavía no se cumple.** Antes, el pool quedaba con 10
+conexiones activas y ~199 pendientes desde los 20 s hasta el final, con la CPU del 2 al 15 %: nadie
+trabajaba. Después, el pool se satura **en ráfagas** de 10 a 40 s (23 de las 61 muestras con
+pendientes) y se vacía solo, con la CPU entre 70 y 100 % de los 4 núcleos: el backend trabaja, y lo
+que queda es capacidad. La mediana de todo lo interactivo es 61–66 ms.
+
+Integridad verificada contra la base al terminar: **3 438 cobros con comprobantes 1 a 3 438, sin
+huecos ni repetidos**, y 594 turnos.
+
+### 6.2 — el numerador del comprobante, medido
+
+| | Antes (G-10, pool 50) | Después (pool 10) |
+|---|---|---|
+| `INSERT ... ON DUPLICATE KEY UPDATE` de `comprobante_numerador` | 342 ms promedio | **no aparece**: la fila existe y el iniciador no la toca |
+| `UPDATE ... ultimo_numero + 1` | 313 ms promedio | **106 ms** y 70 ms en las dos corridas |
+| lock sumado | 2 660 s en 376 s | 409 s en 374 s y 264 s en 372 s |
+
+Que el `+1` serialice los cobros de una sede es el requisito: el comprobante es correlativo y sin
+huecos. Su sección crítica ya es corta —del `UPDATE` al `COMMIT` van dos `INSERT`, la suma a la caja
+si es efectivo y el commit—, y el número no se puede pedir más tarde sin cambiar el esquema: la
+columna es `NOT NULL`, única por sede y no actualizable. Los volcados de hilos durante la meseta
+muestran por qué todavía duele: **en el pico, cuatro de las diez conexiones son cobros esperando ese
+lock**, y con ellas tomadas las lecturas hacen cola.
+
+Se probó y **se descartó** una compuerta en memoria por sede que hiciera esperar a los cobros antes
+de pedir la conexión: las lecturas mejoraron (p95 ~1,7 s) pero el cobro empeoró a p95 **14,9 s**,
+porque el que pasaba la compuerta tenía que esperar una conexión con la compuerta tomada y la cola
+se mudaba a la JVM. El escenario es además el peor caso para cualquier lock por sede —diez cobros por
+segundo en un solo centro—; un centro real cobra mucho menos, y 500 usuarios de un SaaS se reparten
+entre sedes.
+
+### Lo que queda abierto
+
+- **6.5 sin cambios.** Las dos lecturas por pedido de `membership` (filtro y evaluación de permisos)
+  y las tres transacciones siguen. Cachearlas por pedido toca la evaluación de permisos de
+  `organization` (ADR-0020, T-7) y no se hizo a ciegas. En el digest de la corrida: `SET autocommit`
+  252 307 veces y `SET SESSION TRANSACTION READ ONLY/WRITE` 117 000 cada una, para 37 492 pedidos.
+- **Quedan `REQUIRES_NEW` llamados desde adentro de una transacción**, que no son filas-lock y que
+  esta carga no ejercita: los auditores de acceso de soporte y de permiso denegado
+  (`PermissionDenialAuditor`, `PlanLimitRejectionAuditor`, `SupportAccessReadAuditor` y los de
+  `clinical`, `person`, `resource` y `reporting`), la escritura aparte de la historia clínica y de los
+  adjuntos (`HistoriaClinicaEscrituraAparte`, `AdjuntoClinicoEscrituraAparte`,
+  `AdjuntoEscrituraAparte`) y `ObligacionOcupadaConsulta` en presentaciones. Cada uno retiene dos
+  conexiones mientras dura; ninguno es por pedido normal, pero muchos 403 simultáneos o muchas
+  primeras aperturas de historia clínica a la vez pueden agotar el pool del mismo modo.
+- ~~`ImputacionDePrepago` en el `afterCommit` del cierre~~ **corregido en esta misma rama**: corría
+  con la conexión del cierre todavía tomada (`afterCommit` y `afterCompletion` van antes de la limpieza
+  de la transacción). Ahora se registra en `DespuesDeLaTransaccion` y corre cuando la plantilla de
+  negocio ya devolvió la conexión. `PrepagoDeRecepcionIT` cierra doce sesiones con prepago a la vez
+  con el pool de diez: antes se trababa, ahora las doce imputan.
+- El 503 de los filtros quedó para fallas de **conexión** con la base; las de persistencia que delatan
+  un bug —dos memberships vigentes, por ejemplo— responden 500.
+- **El primer arranque, remedido:** 190 a 244 s desde que el contenedor se crea, con la aplicación
+  lista a los 144–176 s y Flyway en 1 min 22 s a 2 min 12 s. Los 8 min 23 s de G-10 no se
+  repitieron, pero el `start-period` cubre ese caso.
+
+`perf/stack.sh` tiene dos arreglos que salieron de correrlo: espera a que MySQL acepte conexiones por
+TCP antes de arrancar el backend (el ping por socket contesta antes, y el backend moría con
+"Connection refused"), y en Git Bash usa `pwd -W` para que `docker build` reciba una ruta de Windows.

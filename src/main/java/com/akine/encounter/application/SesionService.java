@@ -38,6 +38,7 @@ import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.spi.TurnoDirectory;
 import com.akine.scheduling.spi.TurnoSnapshot;
 import org.slf4j.Logger;
@@ -45,8 +46,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.DateTimeException;
 import java.time.Instant;
@@ -131,6 +134,7 @@ public class SesionService {
 	 * precio particular. Hoy es billing; {@code encounter} no sabe quien.
 	 */
 	private final List<PrecioParticularDelCierre> requisitosDePrecio;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("java:S107")
 	public SesionService(
@@ -152,7 +156,8 @@ public class SesionService {
 			TratamientoService tratamientoService,
 			MedicionService medicionService,
 			List<CierreDeSesionObserver> observadores,
-			List<PrecioParticularDelCierre> requisitosDePrecio) {
+			List<PrecioParticularDelCierre> requisitosDePrecio,
+			PlatformTransactionManager transactionManager) {
 
 		this.sesiones = sesiones;
 		this.versiones = versiones;
@@ -173,6 +178,8 @@ public class SesionService {
 		this.medicionService = medicionService;
 		this.observadores = List.copyOf(observadores);
 		this.requisitosDePrecio = List.copyOf(requisitosDePrecio);
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	/**
@@ -396,7 +403,6 @@ public class SesionService {
 	 * depender del orden de dos lineas dentro del metodo, no de una garantia declarada — y
 	 * AKINE-04.03 acaba de convertir este metodo en el que toma <b>dos</b> numeradores.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public SesionView cerrar(
 			OperatingActor actor, long consultorioId, long sesionId,
 			CierreDeSesion cierre, long expectedVersion) {
@@ -404,6 +410,20 @@ public class SesionService {
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirRegistro(actor, organizationId, consultorioId);
+
+		// PASO 4, ANTES de abrir la transaccion del cierre: las filas de los dos numeradores, cada
+		// una en su propia transaccion (FilaLockPrevia). Abrirlas anidadas retenia dos conexiones
+		// por pedido y trababa el pool. La sesion se lee aca solo para saber de que historia y de
+		// que caso es: la lectura que vale es la de adentro.
+		asegurarNumeradores(organizationId, consultorioId, sesionId);
+
+		return transaccionReadCommitted.execute(estado -> cerrarEnTransaccion(
+				actor, consultorioId, sesionId, cierre, expectedVersion, organizationId));
+	}
+
+	private SesionView cerrarEnTransaccion(
+			OperatingActor actor, long consultorioId, long sesionId, CierreDeSesion cierre,
+			long expectedVersion, long organizationId) {
 
 		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
 				.filter(Sesion::estaViva)
@@ -431,7 +451,6 @@ public class SesionService {
 		exigirPrecioSiLaDeudaEsParticular(hecho);
 
 		// PASO 4 y 5. La fila se asegura afuera; el incremento toma el lock y serializa.
-		numeradorIniciador.asegurar(organizationId, sesion.getHistoriaClinicaId());
 		numerador.incrementar(organizationId, sesion.getHistoriaClinicaId());
 		int numero = numerador.leerUltimo(organizationId, sesion.getHistoriaClinicaId());
 
@@ -480,6 +499,22 @@ public class SesionService {
 				sesionId, numero, numeroEnCaso, sesion.getHistoriaClinicaId(), cierre.asistencia());
 
 		return conPrevia(sesiones.saveAndFlush(sesion), organizationId);
+	}
+
+	/**
+	 * Las filas de {@code sesion_numerador} y {@code caso_sesion_numerador}, fuera de toda
+	 * transaccion. Si la sesion no existe o ya esta cerrada no hay nada que numerar: el cierre lo
+	 * resuelve adentro, con su 404 o su reintento estable.
+	 */
+	private void asegurarNumeradores(long organizationId, long consultorioId, long sesionId) {
+		sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
+				.filter(sesion -> sesion.estaViva() && !sesion.estaCerrada())
+				.ifPresent(sesion -> {
+					numeradorIniciador.asegurar(organizationId, sesion.getHistoriaClinicaId());
+					if (sesion.getCasoId() != null) {
+						casos.asegurarNumeradorDeSesiones(organizationId, sesion.getCasoId());
+					}
+				});
 	}
 
 	// =================================================================================

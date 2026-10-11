@@ -1,5 +1,6 @@
 package com.akine.billing.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.billing.domain.Cobro;
 import com.akine.billing.domain.CobroImputacion;
 import com.akine.billing.domain.CobroMedio;
@@ -52,6 +53,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -149,7 +151,7 @@ class CobroServiceTest {
 	void setUp() {
 		service = new CobroService(
 				cobros, obligaciones, numerador, iniciador, consultorios, permissionGuard, caja, pacientes,
-				turnos, auditTrail);
+				turnos, auditTrail, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG, SEDE)).willReturn(Optional.of(sede));
 		given(permissionGuard.requirePermission(any()))
@@ -308,8 +310,8 @@ class CobroServiceTest {
 			// Lo que se protege no es el cobro duplicado sino la NUMERACION: un numero de
 			// comprobante consumido por un reintento que despues nadie usa es un hueco fiscal, y
 			// un hueco no se puede explicar seis meses despues.
+			// (La fila del numerador si se asegura: va antes de la transaccion y no consume numero.)
 			verify(numerador, never()).incrementar(anyLong(), anyLong());
-			verify(iniciador, never()).asegurar(anyLong(), anyLong());
 			// Y tampoco se vuelve a descontar: eso dejaria la deuda saldada dos veces.
 			verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
 			verify(cobros, never()).save(any());
@@ -373,7 +375,6 @@ class CobroServiceTest {
 					.isEqualTo(OBLIGACION);
 
 			// Y el rechazo ocurre antes del numerador: un pedido que no cobra no gasta un numero.
-			verify(iniciador, never()).asegurar(anyLong(), anyLong());
 			verify(numerador, never()).incrementar(anyLong(), anyLong());
 			verify(cobros, never()).save(any());
 		}

@@ -1,14 +1,14 @@
 package com.akine.scheduling.application;
 
 
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.AgendaSedeRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * Crea la fila de {@code agenda_sede} en su PROPIA transaccion, antes de que la reserva empiece.
@@ -33,7 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <h2>Por que una transaccion aparte</h2>
  *
- * <p>{@code REQUIRES_NEW} hace que el INSERT se commitee de inmediato y libere sus locks, en vez de
+ * <p>La transaccion propia hace que el INSERT se commitee de inmediato y libere sus locks, en vez de
  * retenerlos hasta el final de la reserva. La ventana en la que dos pueden chocar pasa de "toda la
  * transaccion de reserva" a "un INSERT", y lo que se recibe en esa ventana ya es un error de
  * escritura normal y no un deadlock entre transacciones largas.
@@ -48,9 +48,12 @@ public class AgendaSedeIniciador {
 	private static final Logger log = LoggerFactory.getLogger(AgendaSedeIniciador.class);
 
 	private final AgendaSedeRepositoryPort agendas;
+	private final FilaLockPrevia filaAgendaSede;
 
-	public AgendaSedeIniciador(AgendaSedeRepositoryPort agendas) {
+	public AgendaSedeIniciador(AgendaSedeRepositoryPort agendas,
+			PlatformTransactionManager transactionManager) {
 		this.agendas = agendas;
+		this.filaAgendaSede = new FilaLockPrevia("agenda_sede", transactionManager);
 	}
 
 	/**
@@ -60,9 +63,10 @@ public class AgendaSedeIniciador {
 	 * dentro de su propia transaccion, y devolver la instancia de esta otra invitaria a usarla sin
 	 * el lock.
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void asegurar(long organizationId, long consultorioId) {
-		agendas.crearSiFalta(organizationId, consultorioId);
+		filaAgendaSede.asegurar(
+				() -> agendas.existeFila(organizationId, consultorioId),
+				() -> agendas.crearSiFalta(organizationId, consultorioId));
 		log.debug("Agenda de la sede {} asegurada", consultorioId);
 	}
 }

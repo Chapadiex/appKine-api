@@ -153,6 +153,9 @@ public final class DisponibilidadRepositoryPorts {
 		 */
 		void crearSiFalta(long organizationId, long consultorioId);
 
+		/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+		boolean existeFila(long organizationId, long consultorioId);
+
 		CalendarioSede save(CalendarioSede calendario);
 	}
 

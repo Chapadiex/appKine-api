@@ -1,5 +1,6 @@
 package com.akine.clinical.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.clinical.domain.CasoClinico;
 import com.akine.clinical.domain.CasoEvento;
 import com.akine.clinical.domain.CasoProfesional;
@@ -40,6 +41,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -113,7 +115,7 @@ class CasoClinicoServiceTest {
 	void setUp() {
 		service = new CasoClinicoService(historias, casos, equipos, eventos, numerador,
 				numeradorIniciador, ofertas, permissionGuard, relaciones, auditTrail,
-				supportAccessAuditor);
+				supportAccessAuditor, mock(PlatformTransactionManager.class));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));

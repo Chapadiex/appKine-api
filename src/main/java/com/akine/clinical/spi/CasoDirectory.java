@@ -45,8 +45,10 @@ public interface CasoDirectory {
 	 * despues escribe la sesion entregaria un numero que otra transaccion podria haber vuelto a
 	 * entregar.
 	 *
-	 * <p>La fila del numerador se asegura internamente en una <b>transaccion aparte</b>: crearla
-	 * dentro de la que la bloquea produce el deadlock que este repositorio ya pago cuatro veces.
+	 * <p><b>La fila del numerador tiene que existir antes</b>: el llamador la asegura con
+	 * {@link #asegurarNumeradorDeSesiones} ANTES de abrir su transaccion. Crearla dentro de la que la
+	 * bloquea produce el deadlock que este repositorio ya pago cuatro veces, y abrir una transaccion
+	 * aparte desde adentro retiene dos conexiones por pedido y traba el pool (docs/carga.md §6.1).
 	 *
 	 * <h2>El orden importa, y el llamador es quien lo garantiza</h2>
 	 *
@@ -62,4 +64,13 @@ public interface CasoDirectory {
 	 * @return el numero reservado, siempre positivo y nunca repetido dentro del caso
 	 */
 	int siguienteNumeroDeSesion(long organizationId, long casoId);
+
+	/**
+	 * Crea la fila del numerador de sesiones del caso si falta, en su propia transaccion.
+	 *
+	 * <p><b>Se llama FUERA de toda transaccion</b>, antes de la que despues pide el numero: si hay
+	 * una activa y la fila falta, lanza {@link IllegalStateException}. Idempotente y sin lock si la
+	 * fila ya existe.
+	 */
+	void asegurarNumeradorDeSesiones(long organizationId, long casoId);
 }

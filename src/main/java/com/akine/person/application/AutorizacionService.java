@@ -37,12 +37,15 @@ import com.akine.person.domain.port.PersonRepositoryPorts.PerfilPacienteReposito
 import com.akine.person.domain.port.PersonRepositoryPorts.PersonaRepositoryPort;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -107,6 +110,7 @@ public class AutorizacionService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final AutorizacionEventoRepositoryPort eventos;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("java:S107")
 	public AutorizacionService(
@@ -121,7 +125,8 @@ public class AutorizacionService {
 			ArancelDirectory aranceles,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
-			AutorizacionEventoRepositoryPort eventos) {
+			AutorizacionEventoRepositoryPort eventos,
+			PlatformTransactionManager transactionManager) {
 
 		this.autorizaciones = autorizaciones;
 		this.candados = candados;
@@ -135,6 +140,8 @@ public class AutorizacionService {
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 		this.eventos = eventos;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -238,7 +245,6 @@ public class AutorizacionService {
 	 * se valida el solapamiento: una PENDIENTE no autoriza ninguna cantidad y no puede duplicar
 	 * ningun saldo.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public AutorizacionView registrar(
 			OperatingActor actor, long personaId, AutorizacionAltaCommand command) {
 
@@ -248,6 +254,18 @@ public class AutorizacionService {
 		long consultorioId = actor.consultorioId();
 
 		exigirPacienteVigente(organizationId, personaId, "cargar una autorizacion");
+
+		// Siempre, aunque esta escritura despues no serialice: es idempotente, no toma lock y tiene
+		// que correr ANTES de abrir la transaccion (FilaLockPrevia).
+		iniciador.asegurar(organizationId, personaId);
+
+		return transaccionReadCommitted.execute(estado -> registrarEnTransaccion(
+				actor, personaId, command, organizationId, consultorioId));
+	}
+
+	private AutorizacionView registrarEnTransaccion(
+			OperatingActor actor, long personaId, AutorizacionAltaCommand command,
+			long organizationId, long consultorioId) {
 
 		long coberturaId = exigirNoNulo(
 				command.coberturaId(),
@@ -282,9 +300,8 @@ public class AutorizacionService {
 				command.observaciones());
 
 		if (estadoInicial.habilita()) {
-			// PASO 0. En su PROPIA transaccion: crearla dentro de esta deadlockea entre las
+			// PASO 0 ya corrio, antes de abrir esta transaccion: crearla dentro deadlockea entre las
 			// primeras autorizaciones concurrentes de una persona. Ver AutorizacionLockIniciador.
-			iniciador.asegurar(organizationId, personaId);
 			// PASO 1. Antes de leer nada de autorizaciones. Ver la cabecera de la clase.
 			BloqueoDeAutorizaciones.tomar(candados, organizationId, personaId);
 			// PASO 2. Bajo el lock. Ningun unique puede expresar esta regla.
@@ -323,7 +340,6 @@ public class AutorizacionService {
 	 * una aprobada es exactamente el mismo riesgo que aprobarla. Editar una PENDIENTE no puede
 	 * crear un solapamiento.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public AutorizacionView editar(
 			OperatingActor actor,
 			long personaId,
@@ -336,13 +352,24 @@ public class AutorizacionService {
 
 		exigirPersonaDelTenant(organizationId, personaId);
 
+		// Siempre, aunque esta escritura despues no serialice: es idempotente, no toma lock y tiene
+		// que correr ANTES de abrir la transaccion (FilaLockPrevia).
+		iniciador.asegurar(organizationId, personaId);
+
+		return transaccionReadCommitted.execute(estado -> editarEnTransaccion(
+				actor, personaId, autorizacionId, command, organizationId));
+	}
+
+	private AutorizacionView editarEnTransaccion(
+			OperatingActor actor, long personaId, long autorizacionId,
+			AutorizacionEdicionCommand command, long organizationId) {
+
 		Autorizacion autorizacion = cargar(organizationId, personaId, autorizacionId);
 		exigirOperable(autorizacion, "edicion");
 		OrdenMedicaService.exigirVersion(autorizacion.getVersion(), command.expectedVersion());
 
 		boolean serializa = autorizacion.getEstado().habilita();
 		if (serializa) {
-			iniciador.asegurar(organizationId, personaId);
 			BloqueoDeAutorizaciones.tomar(candados, organizationId, personaId);
 			// Recargar bajo el lock: entre la lectura de arriba y el lock, otra transaccion pudo
 			// haberla resuelto. La version ya se comprobo, asi que si cambio esta escritura muere
@@ -393,7 +420,6 @@ public class AutorizacionService {
 	 * <p>Solo APROBAR toma el lock. Observar y rechazar no habilitan nada y no pueden duplicar
 	 * ningun saldo.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public AutorizacionView resolver(
 			OperatingActor actor,
 			long personaId,
@@ -406,13 +432,24 @@ public class AutorizacionService {
 
 		exigirPersonaDelTenant(organizationId, personaId);
 
+		// Siempre, aunque esta escritura despues no serialice: es idempotente, no toma lock y tiene
+		// que correr ANTES de abrir la transaccion (FilaLockPrevia).
+		iniciador.asegurar(organizationId, personaId);
+
+		return transaccionReadCommitted.execute(estado -> resolverEnTransaccion(
+				actor, personaId, autorizacionId, command, organizationId));
+	}
+
+	private AutorizacionView resolverEnTransaccion(
+			OperatingActor actor, long personaId, long autorizacionId,
+			ResolucionDeAutorizacionCommand command, long organizationId) {
+
 		AccionSobreAutorizacion accion = exigirNoNuloRef(
 				command.accion(), "La resolucion necesita declarar la accion");
 
 		if (accion == AccionSobreAutorizacion.APROBAR) {
 			// El lock ANTES de leer la autorizacion que se va a modificar: leerla primero y
 			// bloquear despues es la escalada S→X que este proyecto ya documento.
-			iniciador.asegurar(organizationId, personaId);
 			BloqueoDeAutorizaciones.tomar(candados, organizationId, personaId);
 		}
 

@@ -1,5 +1,6 @@
 package com.akine.person.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.contracting.spi.ArancelCongelado;
 import com.akine.contracting.spi.ArancelDirectory;
 import com.akine.organization.spi.PermissionDecision;
@@ -123,7 +124,7 @@ class OrdenYAutorizacionServiceTest {
 				autorizaciones);
 		autorizacionService = new AutorizacionService(
 				autorizaciones, candados, iniciador, ordenes, coberturas, adjuntos, personas,
-				perfiles, aranceles, permissionGuard, auditTrail, eventos);
+				perfiles, aranceles, permissionGuard, auditTrail, eventos, mock(PlatformTransactionManager.class));
 
 		given(personas.findByIdAndOrganizationId(anyLong(), anyLong()))
 				.willReturn(Optional.of(persona()));
@@ -278,8 +279,9 @@ class OrdenYAutorizacionServiceTest {
 		void pendiente_no_serializa() {
 			autorizacionService.registrar(ACTOR, PERSONA, alta(EstadoAutorizacion.PENDIENTE));
 
+			// La fila del candado si se asegura (antes de la transaccion, sin lock): lo que no
+			// pasa es bloquearla.
 			verifyNoInteractions(candados);
-			verify(iniciador, never()).asegurar(anyLong(), anyLong());
 		}
 
 		@Test
