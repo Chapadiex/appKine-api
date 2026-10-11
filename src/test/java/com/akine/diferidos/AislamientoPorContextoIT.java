@@ -98,6 +98,8 @@ class AislamientoPorContextoIT extends BaseEscenarioDiferido {
 				tokenA, "{\"reason\":\"Sondeo de aislamiento desde otro contexto\"}"),
 				"cancelacion de una invitacion");
 		assertNoExiste(ajenas, get(orgB + "/notifications", tokenA), "listado de notificaciones");
+		assertNoExiste(ajenas, get(orgB + "/roles/PROFESIONAL/permisos-otorgables", tokenA),
+				"permisos otorgables de un rol");
 		ajenas.assertAll();
 
 		assertThat(contarFilas("colaborador_invitacion"))
@@ -119,6 +121,8 @@ class AislamientoPorContextoIT extends BaseEscenarioDiferido {
 		assertThat(get(orgB + "/consultorios/" + b.consultorioId(), tokenB).status()).isEqualTo(200);
 		assertThat(get(orgB + "/colaborador-invitaciones", tokenB).status()).isEqualTo(200);
 		assertThat(get(orgB + "/notifications", tokenB).status()).isEqualTo(200);
+		assertThat(get(orgB + "/roles/PROFESIONAL/permisos-otorgables", tokenB).status())
+				.isEqualTo(200);
 
 		// --- Y con el de A, lo de A sigue funcionando: el 404 es aislamiento, no sesion rota ---
 		String orgA = "/api/v1/organizations/" + a.organizationId();
@@ -127,6 +131,8 @@ class AislamientoPorContextoIT extends BaseEscenarioDiferido {
 		assertThat(get(orgA + "/consultorios/" + a.consultorioId(), tokenA).status()).isEqualTo(200);
 		assertThat(get(orgA + "/colaborador-invitaciones", tokenA).status()).isEqualTo(200);
 		assertThat(get(orgA + "/notifications", tokenA).status()).isEqualTo(200);
+		assertThat(get(orgA + "/roles/PROFESIONAL/permisos-otorgables", tokenA).status())
+				.isEqualTo(200);
 	}
 
 	@Test
@@ -143,7 +149,8 @@ class AislamientoPorContextoIT extends BaseEscenarioDiferido {
 				orgA + "/memberships",
 				orgA + "/consultorios/" + a.consultorioId(),
 				orgA + "/colaborador-invitaciones",
-				orgA + "/notifications"}) {
+				orgA + "/notifications",
+				orgA + "/roles/PROFESIONAL/permisos-otorgables"}) {
 			Respuesta respuesta = get(ruta, preContexto);
 			assertThat(respuesta.status())
 					.as("sin contexto %s: 403, nunca 401 ni 404. %s", ruta, respuesta.body())

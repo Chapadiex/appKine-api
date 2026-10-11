@@ -16,6 +16,7 @@ import com.akine.organization.domain.exception.LastAdminException;
 import com.akine.organization.domain.exception.MembershipAlreadyExistsException;
 import com.akine.organization.domain.exception.MembershipNotAccessibleException;
 import com.akine.organization.domain.exception.MembershipNotActiveException;
+import com.akine.organization.domain.exception.PermisoNoOtorgableAlRolException;
 import com.akine.organization.domain.exception.PermissionDeniedException;
 import com.akine.organization.domain.exception.PlatformRoleNotFoundException;
 import com.akine.organization.domain.exception.SelfRevokeNotAllowedException;
@@ -96,6 +97,8 @@ public class OrganizationProblemHandler {
 			ProblemType.MEMBERSHIP_ALREADY_EXISTS.uri();
 	private static final URI GRANT_ALREADY_ACTIVE =
 			ProblemType.GRANT_ALREADY_ACTIVE.uri();
+	private static final URI PERMISO_NO_OTORGABLE_AL_ROL =
+			ProblemType.PERMISO_NO_OTORGABLE_AL_ROL.uri();
 	private static final URI VALIDATION_ERROR =
 			ProblemType.VALIDATION_ERROR.uri();
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
@@ -414,7 +417,27 @@ public class OrganizationProblemHandler {
 		return problem;
 	}
 
-	/** Codigo de permiso o de rol fuera del catalogo, o no otorgable en esta fase. */
+	/**
+	 * Permiso del catalogo que la matriz no admite otorgar como grant al rol del vinculo.
+	 *
+	 * <p>Rol y permiso viajan como propiedades y no solo en el {@code detail}: la pantalla de
+	 * colaboradores ramifica por el {@code type} y nombra lo rechazado sin parsear prosa.
+	 */
+	@ExceptionHandler(PermisoNoOtorgableAlRolException.class)
+	public ProblemDetail handlePermisoNoOtorgableAlRol(PermisoNoOtorgableAlRolException exception) {
+		log.info("Grant rechazado por la matriz: rol={} permiso={}",
+				exception.getRoleCode(), exception.getPermissionCode());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setTitle("Permiso no otorgable a ese rol");
+		problem.setType(PERMISO_NO_OTORGABLE_AL_ROL);
+		problem.setProperty("roleCode", exception.getRoleCode());
+		problem.setProperty("permissionCode", exception.getPermissionCode());
+		return problem;
+	}
+
+	/** Codigo de permiso o de rol fuera del catalogo. */
 	@ExceptionHandler(UnknownPermissionCodeException.class)
 	public ProblemDetail handleUnknownPermission(UnknownPermissionCodeException exception) {
 		log.info("Codigo fuera del catalogo: code={}", exception.getPermissionCode());
