@@ -4,6 +4,7 @@ import java.net.http.HttpRequest;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.akine.organization.application.MembershipService;
+import com.akine.organization.domain.PermissionCode;
+import com.akine.organization.domain.RoleCode;
+import com.akine.organization.domain.RolePermissions;
 import com.akine.organization.spi.DirectMembershipCommand;
 import com.akine.person.support.CoberturaFixtures;
 
@@ -182,29 +186,36 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 		SoftAssertions celdas = new SoftAssertions();
 		// "Editar Historia Clinica": ORG_ADMIN "No", ADMINISTRATIVO "No", PACIENTE "No".
 		rechazado(celdas, post(o + memberships.get(OA) + "/grants", token, grant("hc:write")),
-				"hc:write a ORG_ADMIN");
+				OA, "hc:write");
 		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("hc:write")),
-				"hc:write a ADMINISTRATIVO");
+				ADM, "hc:write");
 		rechazado(celdas, post(o + memberships.get(PAC) + "/grants", token, grant("hc:write")),
-				"hc:write a PACIENTE");
+				PAC, "hc:write");
 		// "Ver Historia Clinica": ADMINISTRATIVO "Limitado" (solo metadatos, sin codigo propio) y
 		// PACIENTE "Propia autorizada" (alcance OWN, sin implementar).
 		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("hc:read")),
-				"hc:read a ADMINISTRATIVO");
+				ADM, "hc:read");
 		rechazado(celdas, post(o + memberships.get(PAC) + "/grants", token, grant("hc:read")),
-				"hc:read a PACIENTE");
+				PAC, "hc:read");
 		// "Gestionar paciente": PACIENTE "Propio" (OWN).
 		rechazado(celdas, post(o + memberships.get(PAC) + "/grants", token, grant("paciente:manage")),
-				"paciente:manage a PACIENTE");
+				PAC, "paciente:manage");
 		// auditoria:read-clinica: la §6 solo la da por grant a los dos administradores.
 		rechazado(celdas, post(o + memberships.get(PROF) + "/grants", token,
-				grant("auditoria:read-clinica")), "auditoria:read-clinica a PROFESIONAL");
+				grant("auditoria:read-clinica")), PROF, "auditoria:read-clinica");
+		// Un permiso del catalogo que no es otorgable a ningun rol sale con el mismo type.
+		rechazado(celdas, post(o + memberships.get(CA) + "/grants", token, grant("tenant:manage")),
+				CA, "tenant:manage");
+		// Un codigo que no existe sigue siendo validation-error, no el type del rol.
+		Respuesta inexistente = post(o + memberships.get(CA) + "/grants", token, grant("no:existe"));
+		celdas.assertThat(inexistente.status()).as(inexistente.body()).isEqualTo(400);
+		celdas.assertThat(inexistente.body()).contains("/problems/validation-error");
 		celdas.assertAll();
 
 		long filas = jdbc.queryForObject(
-				"SELECT COUNT(*) FROM membership_grant WHERE membership_id IN (?, ?, ?, ?)",
+				"SELECT COUNT(*) FROM membership_grant WHERE membership_id IN (?, ?, ?, ?, ?)",
 				Long.class, memberships.get(OA), memberships.get(ADM), memberships.get(PAC),
-				memberships.get(PROF));
+				memberships.get(PROF), memberships.get(CA));
 		assertThat(filas).as("ningun rechazo deja una fila de grant").isZero();
 
 		// Y las celdas que la matriz si traduce a grant se siguen otorgando.
@@ -235,6 +246,91 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 		assertThat(lectura.status()).as(lectura.body()).isEqualTo(200);
 	}
 
+	@Test
+	@DisplayName("G5-M5 permisos-otorgables devuelve, para cada rol, exactamente lo que otorgableComoGrant admite")
+	void permisos_otorgables_por_rol_coinciden_con_la_regla() {
+		String o = "/api/v1/organizations/" + tenant.organizationId() + "/roles/";
+
+		SoftAssertions celdas = new SoftAssertions();
+		for (RoleCode rol : RoleCode.values()) {
+			if (rol == RoleCode.PLATFORM_ADMIN) {
+				continue;
+			}
+			List<String> esperados = Arrays.stream(PermissionCode.values())
+					.filter(p -> RolePermissions.otorgableComoGrant(rol, p))
+					.map(PermissionCode::code)
+					.sorted()
+					.toList();
+
+			Respuesta respuesta = get(o + rol.name() + "/permisos-otorgables", tokens.get(OA));
+			celdas.assertThat(respuesta.status()).as("[%s] %s", rol, respuesta.body()).isEqualTo(200);
+			if (respuesta.status() != 200) {
+				continue;
+			}
+			List<String> devueltos = new ArrayList<>();
+			respuesta.json().get("permissionCodes").forEach(n -> devueltos.add(n.asText()));
+			celdas.assertThat(respuesta.json().get("roleCode").asText()).isEqualTo(rol.name());
+			celdas.assertThat(devueltos).as("[%s] permisos otorgables", rol).isEqualTo(esperados);
+		}
+		celdas.assertThat(get(o + "PLATFORM_ADMIN/permisos-otorgables", tokens.get(OA)).status())
+				.as("PLATFORM_ADMIN no es rol de membership").isEqualTo(400);
+
+		// Mismo permiso que otorgar: colaborador:manage. Los que no lo tienen, 403.
+		for (String rol : List.of(ADM, PROF, PAC)) {
+			Respuesta respuesta = get(o + "PROFESIONAL/permisos-otorgables", tokens.get(rol));
+			celdas.assertThat(respuesta.status()).as("[%s] sin colaborador:manage: %s", rol,
+					respuesta.body()).isEqualTo(403);
+		}
+		celdas.assertThat(get(o + "PROFESIONAL/permisos-otorgables", tokens.get(CA)).status())
+				.as("[CONSULTORIO_ADMIN] tiene colaborador:manage").isEqualTo(200);
+		celdas.assertAll();
+	}
+
+	@Test
+	@DisplayName("G5-M6 lo que permisos-otorgables ofrece a cada rol, el alta lo acepta y concede")
+	void lo_ofrecido_se_otorga() {
+		String o = "/api/v1/organizations/" + tenant.organizationId();
+		SoftAssertions celdas = new SoftAssertions();
+		for (Map.Entry<String, Long> vinculo : memberships.entrySet()) {
+			Respuesta ofrecidos = get(o + "/roles/" + vinculo.getKey() + "/permisos-otorgables",
+					tokens.get(OA));
+			ofrecidos.json().get("permissionCodes").forEach(codigo -> {
+				Respuesta otorgado = post(o + "/memberships/" + vinculo.getValue() + "/grants",
+						tokens.get(OA), grant(codigo.asText()));
+				celdas.assertThat(otorgado.status())
+						.as("%s a %s: %s", codigo.asText(), vinculo.getKey(), otorgado.body())
+						.isEqualTo(201);
+				if (otorgado.status() == 201) {
+					celdas.assertThat(otorgado.json().get("vigenteConElRolActual").asBoolean())
+							.as("%s a %s concede algo", codigo.asText(), vinculo.getKey()).isTrue();
+				}
+			});
+		}
+		celdas.assertAll();
+	}
+
+	@Test
+	@DisplayName("G5-M7 un grant que el rol actual ya no admite se lista con vigenteConElRolActual=false")
+	void el_grant_que_el_rol_ya_no_admite_queda_marcado() {
+		String grants = "/api/v1/organizations/" + tenant.organizationId()
+				+ "/memberships/" + memberships.get(CA) + "/grants";
+		Respuesta otorgado = post(grants, tokens.get(OA), grant("hc:write"));
+		assertThat(otorgado.status()).as(otorgado.body()).isEqualTo(201);
+
+		// El CONSULTORIO_ADMIN pasa a ADMINISTRATIVO: la fila de hc:write sigue activa.
+		Respuesta cambio = patch("/api/v1/organizations/" + tenant.organizationId()
+				+ "/memberships/" + memberships.get(CA), tokens.get(OA),
+				"{\"roleCode\":\"ADMINISTRATIVO\",\"reason\":\"" + MOTIVO + "\"}");
+		assertThat(cambio.status()).as(cambio.body()).isEqualTo(200);
+
+		Respuesta lista = get(grants, tokens.get(OA));
+		assertThat(lista.status()).as(lista.body()).isEqualTo(200);
+		assertThat(lista.json()).hasSize(1);
+		assertThat(lista.json().get(0).get("permissionCode").asText()).isEqualTo("hc:write");
+		assertThat(lista.json().get(0).get("active").asBoolean()).isTrue();
+		assertThat(lista.json().get(0).get("vigenteConElRolActual").asBoolean()).isFalse();
+	}
+
 	// =================================================================================
 	// Apoyo
 	// =================================================================================
@@ -255,8 +351,17 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 		return "{\"permissionCode\":\"" + codigo + "\",\"reason\":\"" + MOTIVO + "\"}";
 	}
 
-	private static void rechazado(SoftAssertions celdas, Respuesta respuesta, String que) {
+	private static void rechazado(
+			SoftAssertions celdas, Respuesta respuesta, String rol, String permiso) {
+		String que = permiso + " a " + rol;
 		celdas.assertThat(respuesta.status()).as("%s: %s", que, respuesta.body()).isEqualTo(400);
+		if (respuesta.status() != 400) {
+			return;
+		}
+		celdas.assertThat(respuesta.json().get("type").asText()).as(que)
+				.isEqualTo("https://akine.app/problems/permiso-no-otorgable-al-rol");
+		celdas.assertThat(respuesta.json().get("roleCode").asText()).as(que).isEqualTo(rol);
+		celdas.assertThat(respuesta.json().get("permissionCode").asText()).as(que).isEqualTo(permiso);
 	}
 
 	private Respuesta conJustificacion(String metodo, String ruta, String token, String cuerpo) {

@@ -33,7 +33,14 @@ public record MembershipGrantResponse(
 
 		@Schema(description = "Baja logica: false cuando el permiso ya fue dado de baja",
 				example = "true")
-		boolean active) {
+		boolean active,
+
+		@Schema(description = "Si el permiso concede algo con el rol ACTUAL del vinculo. false "
+				+ "cuando la matriz no admite ese permiso como grant para ese rol: se otorgo antes "
+				+ "de la regla de G-5 o el rol cambio despues. La fila sigue activa pero el "
+				+ "evaluador la ignora, asi que la pantalla la muestra sin efecto",
+				example = "true")
+		boolean vigenteConElRolActual) {
 
 	public static MembershipGrantResponse from(MembershipGrantView view) {
 		return new MembershipGrantResponse(
@@ -44,6 +51,7 @@ public record MembershipGrantResponse(
 				view.reason(),
 				view.validFrom(),
 				view.validUntil(),
-				view.active());
+				view.active(),
+				view.vigenteConElRolActual());
 	}
 }
