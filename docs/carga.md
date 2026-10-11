@@ -410,10 +410,16 @@ entre sedes.
   (`PermissionDenialAuditor`, `PlanLimitRejectionAuditor`, `SupportAccessReadAuditor` y los de
   `clinical`, `person`, `resource` y `reporting`), la escritura aparte de la historia clínica y de los
   adjuntos (`HistoriaClinicaEscrituraAparte`, `AdjuntoClinicoEscrituraAparte`,
-  `AdjuntoEscrituraAparte`), `ObligacionOcupadaConsulta` en presentaciones e `ImputacionDePrepago`,
-  que corre en el `afterCommit` del cierre con la conexión todavía tomada. Cada uno retiene dos
+  `AdjuntoEscrituraAparte`) y `ObligacionOcupadaConsulta` en presentaciones. Cada uno retiene dos
   conexiones mientras dura; ninguno es por pedido normal, pero muchos 403 simultáneos o muchas
   primeras aperturas de historia clínica a la vez pueden agotar el pool del mismo modo.
+- ~~`ImputacionDePrepago` en el `afterCommit` del cierre~~ **corregido en esta misma rama**: corría
+  con la conexión del cierre todavía tomada (`afterCommit` y `afterCompletion` van antes de la limpieza
+  de la transacción). Ahora se registra en `DespuesDeLaTransaccion` y corre cuando la plantilla de
+  negocio ya devolvió la conexión. `PrepagoDeRecepcionIT` cierra doce sesiones con prepago a la vez
+  con el pool de diez: antes se trababa, ahora las doce imputan.
+- El 503 de los filtros quedó para fallas de **conexión** con la base; las de persistencia que delatan
+  un bug —dos memberships vigentes, por ejemplo— responden 500.
 - **El primer arranque, remedido:** 190 a 244 s desde que el contenedor se crea, con la aplicación
   lista a los 144–176 s y Flyway en 1 min 22 s a 2 min 12 s. Los 8 min 23 s de G-10 no se
   repitieron, pero el `start-period` cubre ese caso.
