@@ -23,13 +23,16 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.spi.CatalogoDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -81,6 +84,7 @@ public class ArancelService {
 	private final AuditTrail auditTrail;
 	private final OfertaDirectory ofertas;
 	private final PracticasDeOfertaDirectory practicasDeOferta;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("java:S107")
 	public ArancelService(
@@ -93,7 +97,8 @@ public class ArancelService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
 			OfertaDirectory ofertas,
-			PracticasDeOfertaDirectory practicasDeOferta) {
+			PracticasDeOfertaDirectory practicasDeOferta,
+			PlatformTransactionManager transactionManager) {
 
 		this.convenios = convenios;
 		this.aranceles = aranceles;
@@ -105,6 +110,8 @@ public class ArancelService {
 		this.auditTrail = auditTrail;
 		this.ofertas = ofertas;
 		this.practicasDeOferta = practicasDeOferta;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -218,7 +225,6 @@ public class ArancelService {
 	 * porque la resolucion exige primero un convenio aplicable. Aceptarlo dejaria en la grilla
 	 * filas que prometen un precio que el motor no va a usar nunca.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ArancelView crear(
 			OperatingActor actor, long consultorioId, long convenioId, ArancelAltaCommand command) {
 
@@ -226,6 +232,16 @@ public class ArancelService {
 		exigirSedeDelTenant(organizationId, consultorioId);
 		AutorizacionDeCatalogo.exigirGestionDeLaSede(
 				permissionGuard, actor, consultorioId, "Crear un arancel");
+
+		lockIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> crearEnTransaccion(
+				actor, consultorioId, convenioId, command, organizationId));
+	}
+
+	private ArancelView crearEnTransaccion(
+			OperatingActor actor, long consultorioId, long convenioId,
+			ArancelAltaCommand command, long organizationId) {
 
 		Convenio convenio = cargarConvenio(organizationId, consultorioId, convenioId);
 		exigirConvenioOperable(convenio, "agregar un arancel");
@@ -251,7 +267,6 @@ public class ArancelService {
 		exigirContenidaEnElConvenio(arancel.vigencia(), convenio);
 
 		// EL ORDEN DE ESTAS TRES LINEAS ES LA GARANTIA. Ver la cabecera de ConvenioService.
-		lockIniciador.asegurar(organizationId, consultorioId);
 		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
 		exigirSinSolapamiento(organizationId, convenioId, command.practicaId(), command.ofertaId(),
 				arancel.vigencia(), null);
@@ -283,7 +298,6 @@ public class ArancelService {
 	 * <p>Los importes se validan como terna aunque llegue uno solo, y eso lo hace la entidad: subir
 	 * el total sin tocar las partes rompe la invariante de que sumen.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ArancelView editar(
 			OperatingActor actor,
 			long consultorioId,
@@ -297,6 +311,15 @@ public class ArancelService {
 				permissionGuard, actor, consultorioId, "Editar un arancel");
 
 		lockIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> editarEnTransaccion(
+				actor, consultorioId, convenioId, arancelId, command, organizationId));
+	}
+
+	private ArancelView editarEnTransaccion(
+			OperatingActor actor, long consultorioId, long convenioId, long arancelId,
+			ArancelEdicionCommand command, long organizationId) {
+
 		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
 
 		Convenio convenio = cargarConvenio(organizationId, consultorioId, convenioId);

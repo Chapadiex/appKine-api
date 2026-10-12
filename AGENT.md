@@ -347,7 +347,9 @@ docker run --rm --name akine-api -p 8080:8080 \
   `-e AKINE_TRUSTED_PROXIES=172.18.0.0/16`, la red de Docker donde corre el nginx). Sin eso todas
   las requests llegan con la IP del nginx y el rate limit —30 logins, 5 altas y 10 altas de
   colaborador por minuto **por IP**— pasa a ser **global para todo el sistema**: un solo atacante
-  deja sin login a todos los centros. Con la variable, y **solo** cuando la conexión viene de uno
+  deja sin login a todos los centros, y la IP que guarda cada sesión (el listado de sesiones
+  abiertas) es la del nginx para todas. Las dos usan la misma regla (`platform.spi.security.IpDeCliente`).
+  Con la variable, y **solo** cuando la conexión viene de uno
   de esos orígenes, la IP del cliente se toma de `X-Forwarded-For` (el primer salto no confiable
   leído de derecha a izquierda); de cualquier otro origen la cabecera se ignora, porque la
   escribe el cliente. Vacía por defecto = IP del socket. Una entrada que no es IP ni CIDR hace
@@ -359,8 +361,9 @@ docker run --rm --name akine-api -p 8080:8080 \
 - **Adjuntos:** la aplicación escribe en `/app/var` (`adjuntos/` y `adjuntos-clinicos/`). Sin
   volumen montado ahí, los binarios se pierden con el contenedor.
 - **Healthcheck:** `GET /actuator/health/liveness`. El primer arranque contra una base vacía
-  aplica todas las migraciones y tarda (≈2,5 min medido el 06/10/2026), por eso el
-  `start-period` es de 120 s.
+  aplica todas las migraciones y tarda: ≈2,5 min el 06/10/2026, **8 min 23 s** en la carga de G-10
+  (09/10) y 3 min 9 s el 11/10 (4 CPU, 2 GB, 72 migraciones). El `start-period` es de **600 s**:
+  con los 120 s anteriores el contenedor quedaba `unhealthy` a mitad de Flyway (`docs/carga.md` §6.7).
 - **JVM:** `-e JAVA_OPTS=...` reemplaza los flags por defecto.
 - **Observabilidad (G-4):** log JSON por stdout fuera del perfil `local`, `X-Request-Id` en cada
   respuesta, `/actuator/prometheus` cerrado salvo `AKINE_METRICS_SCRAPE_TOKEN` (abierto en

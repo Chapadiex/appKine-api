@@ -1,6 +1,7 @@
 package com.akine.scheduling.application;
 
 import com.akine.offering.spi.OfertaDirectory;
+import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
@@ -21,6 +22,8 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * La agenda de una sede con turnos y clases en la misma grilla (RF-M12-011, RF-M12-013).
@@ -94,9 +97,15 @@ public class AgendaUnificadaService {
 		Instant desde = fecha.atStartOfDay(zona).toInstant();
 		Instant hasta = fecha.plusDays(1).atStartOfDay(zona).toInstant();
 
+		List<Turno> delDia = turnos.findDeLaSedeEnVentana(organizationId, consultorioId, desde, hasta);
+		// Las ofertas de todo el dia en UNA consulta. Pedirlas turno por turno era una consulta por
+		// fila: 24 turnos, 49 sentencias, y la mas ejecutada de todo el backend (docs/carga.md §6.4).
+		Map<Long, OfertaSnapshot> ofertaDe = ofertas.findTodas(organizationId, consultorioId,
+				delDia.stream().map(Turno::getOfertaId).distinct().toList());
+
 		List<EventoDeAgendaView> eventos = new ArrayList<>();
-		for (Turno turno : turnos.findDeLaSedeEnVentana(organizationId, consultorioId, desde, hasta)) {
-			eventos.add(proyectar(organizationId, consultorioId, turno));
+		for (Turno turno : delDia) {
+			eventos.add(proyectar(turno, Optional.ofNullable(ofertaDe.get(turno.getOfertaId()))));
 		}
 		for (EventoDeAgendaExterno externo
 				: eventosExternos.enVentana(organizationId, consultorioId, desde, hasta)) {
@@ -120,8 +129,7 @@ public class AgendaUnificadaService {
 	 * es <b>esta</b> reserva. Contar los hermanos del slot seria una consulta por fila y una
 	 * pregunta que la grilla no hace.
 	 */
-	private EventoDeAgendaView proyectar(long organizationId, long consultorioId, Turno turno) {
-		var oferta = ofertas.find(organizationId, consultorioId, turno.getOfertaId());
+	private static EventoDeAgendaView proyectar(Turno turno, Optional<OfertaSnapshot> oferta) {
 		return new EventoDeAgendaView(
 				TIPO_TURNO,
 				turno.getId(),

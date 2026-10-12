@@ -7,6 +7,7 @@ import com.akine.offering.domain.OfertaProfesionalHabilitado;
 import com.akine.offering.domain.OfertaServicioConsultorio;
 import com.akine.offering.domain.Servicio;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -189,6 +190,13 @@ public final class OfferingRepositoryPorts {
 		 * de {@code REPEATABLE READ}—, asi que choca con el 409 de version de forma determinista.
 		 */
 		Optional<Long> bloquearParaConfigurar(Long id, Long organizationId, Long consultorioId);
+
+		/**
+		 * Las ofertas de la sede con esos ids, en una sola consulta: la agenda del dia la usa para no
+		 * pedir la oferta turno por turno (docs/carga.md §6.4).
+		 */
+		List<OfertaServicioConsultorio> findAllByOrganizationIdAndConsultorioIdAndIdIn(
+				Long organizationId, Long consultorioId, Collection<Long> ids);
 
 		/** Todas las ofertas de la sede, activas e historicas, ordenadas por nombre comercial. */
 		List<OfertaServicioConsultorio> findAllByOrganizationIdAndConsultorioIdOrderByNombreComercialAsc(

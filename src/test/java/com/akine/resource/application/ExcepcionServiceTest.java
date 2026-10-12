@@ -1,5 +1,6 @@
 package com.akine.resource.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
@@ -35,6 +36,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -95,9 +97,9 @@ class ExcepcionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ExcepcionService(
-				excepciones, calendarios, new CalendarioSedeIniciador(calendarios),
+				excepciones, calendarios, new CalendarioSedeIniciador(calendarios, mock(PlatformTransactionManager.class)),
 				consultorioDirectory, membershipDirectory,
-				permissionGuard, auditTrail, org.mockito.Mockito.mock(SimuladorDeImpacto.class));
+				permissionGuard, auditTrail, org.mockito.Mockito.mock(SimuladorDeImpacto.class), mock(PlatformTransactionManager.class));
 
 		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede Sintetica",

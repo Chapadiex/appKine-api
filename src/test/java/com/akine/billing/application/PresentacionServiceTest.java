@@ -1,5 +1,6 @@
 package com.akine.billing.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.billing.domain.ConceptoObligacion;
 import com.akine.billing.domain.EstadoItemPresentacion;
 import com.akine.billing.domain.EstadoPresentacion;
@@ -48,6 +49,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
@@ -130,7 +132,7 @@ class PresentacionServiceTest {
 	void setUp() {
 		service = new PresentacionService(
 				presentaciones, items, obligaciones, cobros, numerador, numeradorIniciador, ocupacion,
-				acceso, auditTrail);
+				acceso, auditTrail, mock(PlatformTransactionManager.class));
 
 		given(acceso.exigirSedeDelTenant(anyLong(), anyLong()))
 				.willReturn(new ConsultorioSnapshot(
@@ -525,7 +527,6 @@ class PresentacionServiceTest {
 		// del numerador: un hueco en la serie de una obra social no se puede explicar seis meses
 		// despues, y la serie es lo que el financiador usa para reclamar lo que no recibio.
 		verify(numerador, never()).incrementar(anyLong(), anyLong(), anyLong());
-		verify(numeradorIniciador, never()).asegurar(anyLong(), anyLong(), anyLong());
 	}
 
 	@Test

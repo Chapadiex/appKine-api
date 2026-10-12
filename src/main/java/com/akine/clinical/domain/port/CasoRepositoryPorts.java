@@ -125,6 +125,9 @@ public final class CasoRepositoryPorts {
 		/** Crea la fila si falta. Sin lanzar. Va en una transaccion aparte: ver la implementacion. */
 		void crearSiFalta(long organizationId, long historiaClinicaId);
 
+		/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+		boolean existeFila(long organizationId, long historiaClinicaId);
+
 		/** Incrementa el contador tomando el lock de fila. Serializa las altas de esa historia. */
 		void incrementar(long organizationId, long historiaClinicaId);
 
@@ -144,6 +147,9 @@ public final class CasoRepositoryPorts {
 
 		/** Crea la fila si falta. Sin lanzar. Va en una transaccion aparte. */
 		void crearSiFalta(long organizationId, long casoId);
+
+		/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+		boolean existeFila(long organizationId, long casoId);
 
 		/** Incrementa el contador tomando el lock de fila. Serializa los cierres de ese caso. */
 		void incrementar(long organizationId, long casoId);

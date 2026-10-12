@@ -15,6 +15,9 @@ public interface PresentacionNumeradorPort {
 	/** Sin lanzar nunca. Va en una transaccion propia. */
 	void crearSiFalta(long organizationId, long consultorioId, long financiadorId);
 
+	/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
+	boolean existeFila(long organizationId, long consultorioId, long financiadorId);
+
 	/** Toma el lock de fila y serializa. Nunca {@code MAX + 1}. */
 	void incrementar(long organizationId, long consultorioId, long financiadorId);
 

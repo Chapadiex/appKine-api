@@ -1,5 +1,6 @@
 package com.akine.activity.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseEventoRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseProgramadaRepositoryPort;
@@ -40,6 +41,7 @@ import java.util.Optional;
 import com.akine.activity.domain.exception.ClaseNotAccessibleException;
 import org.springframework.dao.OptimisticLockingFailureException;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -96,7 +98,7 @@ class ClaseServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ClaseService(clases, eventos, inscripciones, avisos, agenda, ofertas, disponibilidad, espacios,
-				consultorios, permissionGuard, auditTrail);
+				consultorios, permissionGuard, auditTrail, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
 		given(ofertas.find(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(Optional.of(ofertaGrupal(8)));

@@ -38,6 +38,20 @@ public interface PlanNumeradorRepository
 			@Param("organizationId") long organizationId,
 			@Param("casoClinicoId") long casoClinicoId);
 
+	@Query(value = """
+			SELECT COUNT(*) FROM plan_numerador
+			WHERE organization_id = :organizationId
+			  AND caso_clinico_id = :casoClinicoId
+			""", nativeQuery = true)
+	long contarFila(
+			@Param("organizationId") long organizationId,
+			@Param("casoClinicoId") long casoClinicoId);
+
+	@Override
+	default boolean existeFila(long organizationId, long casoClinicoId) {
+		return contarFila(organizationId, casoClinicoId) > 0;
+	}
+
 	/**
 	 * Incrementa el contador. El {@code UPDATE} toma un lock exclusivo de fila y serializa.
 	 *

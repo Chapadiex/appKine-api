@@ -1,5 +1,6 @@
 package com.akine.resource.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
@@ -35,7 +36,6 @@ import org.mockito.quality.Strictness;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -44,6 +44,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -114,6 +115,9 @@ class DisponibilidadServiceTest {
 	@Mock
 	private FeriadoRepositoryPort feriados;
 
+	@Mock
+	private PlatformTransactionManager transactionManager;
+
 	private DisponibilidadService service;
 
 	private final OperatingActor actor =
@@ -121,14 +125,16 @@ class DisponibilidadServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		// El iniciador real sobre el puerto mockeado: su REQUIRES_NEW es un no-op sin proxy de
-		// Spring, y asi el InOrder de concurrencia ve el crearSiFalta sobre el mismo mock.
+		// El iniciador real sobre el puerto mockeado: su transaccion es un no-op con el gestor
+		// mockeado, y asi el InOrder de concurrencia ve el crearSiFalta sobre el mismo mock.
 		service = new DisponibilidadService(
-				bloques, calendarios, new CalendarioSedeIniciador(calendarios),
+				bloques, calendarios,
+				new CalendarioSedeIniciador(calendarios, mock(PlatformTransactionManager.class)),
 				consultorioDirectory, membershipDirectory,
 				permissionGuard, auditTrail,
 				new SimuladorDeImpacto(
-						bloques, excepciones, feriados, calendarios, impactProbe, horarios));
+						bloques, excepciones, feriados, calendarios, impactProbe, horarios),
+				transactionManager);
 
 		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID))
 				.willReturn(Optional.of(new ConsultorioSnapshot(
@@ -538,7 +544,7 @@ class DisponibilidadServiceTest {
 
 	@Test
 	@DisplayName("La auditoria se escribe en la transaccion del negocio, no en un listener post-commit")
-	void la_auditoria_se_escribe_en_la_misma_transaccion() throws NoSuchMethodException {
+	void la_auditoria_se_escribe_en_la_misma_transaccion() {
 		service.crear(actor, CONSULTORIO_ID, MEMBERSHIP_ID, altaMartes());
 
 		ArgumentCaptor<AuditEntry> fila = ArgumentCaptor.forClass(AuditEntry.class);
@@ -550,13 +556,14 @@ class DisponibilidadServiceTest {
 		assertThat(fila.getValue().actorAccountId()).isEqualTo(ACCOUNT_ID);
 
 		// Que la escritura ocurra DENTRO de la transaccion no lo prueba el verify de arriba por si
-		// solo: lo prueba que el metodo que la produjo sea transaccional. Un listener post-commit
-		// que falla dejaria la mutacion sin rastro, y es lo que este assert impide reintroducir.
-		Transactional demarcacion = DisponibilidadService.class
-				.getMethod("crear", OperatingActor.class, long.class, long.class, BloqueAltaCommand.class)
-				.getAnnotation(Transactional.class);
-		assertThat(demarcacion).isNotNull();
-		assertThat(demarcacion.readOnly()).isFalse();
+		// solo: lo prueba que ocurra entre la apertura y el commit de la transaccion del negocio.
+		// Un listener post-commit que falla dejaria la mutacion sin rastro, y es lo que este orden
+		// impide reintroducir. Desde G-10 la transaccion no es un @Transactional del metodo sino
+		// la plantilla que corre DESPUES de asegurar la fila-lock (FilaLockPrevia).
+		InOrder orden = inOrder(transactionManager, auditTrail);
+		orden.verify(transactionManager).getTransaction(any());
+		orden.verify(auditTrail).record(any());
+		orden.verify(transactionManager).commit(any());
 	}
 
 	// =================================================================================

@@ -1,10 +1,10 @@
 package com.akine.clinical.application;
 
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoNumeradorPort;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoSesionNumeradorPort;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * Crea la fila de los numeradores del Caso en su PROPIA transaccion, antes de que la que los
@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <b>Este repositorio ya lo pago cuatro veces</b> (agenda_sede, consultorio_calendario,
  * sesion_numerador, autorizacion_persona_lock). No se paga una quinta.
  *
- * <p>{@code REQUIRES_NEW} hace que el INSERT se commitee de inmediato y libere su lock, en vez de
+ * <p>La transaccion propia hace que el INSERT se commitee de inmediato y libere su lock, en vez de
  * retenerlo hasta el final de la operacion que lo llamo.
  *
  * <h2>Los dos metodos, y por que no es uno solo</h2>
@@ -36,21 +36,28 @@ public class CasoNumeradorIniciador {
 
 	private final CasoNumeradorPort casos;
 	private final CasoSesionNumeradorPort sesionesDelCaso;
+	private final FilaLockPrevia filaCasoNumerador;
+	private final FilaLockPrevia filaCasoSesionNumerador;
 
-	public CasoNumeradorIniciador(CasoNumeradorPort casos, CasoSesionNumeradorPort sesionesDelCaso) {
+	public CasoNumeradorIniciador(CasoNumeradorPort casos, CasoSesionNumeradorPort sesionesDelCaso,
+			PlatformTransactionManager transactionManager) {
 		this.casos = casos;
 		this.sesionesDelCaso = sesionesDelCaso;
+		this.filaCasoNumerador = new FilaLockPrevia("caso_numerador", transactionManager);
+		this.filaCasoSesionNumerador = new FilaLockPrevia("caso_sesion_numerador", transactionManager);
 	}
 
 	/** La secuencia de casos de esa historia clinica. */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void asegurarCasos(long organizationId, long historiaClinicaId) {
-		casos.crearSiFalta(organizationId, historiaClinicaId);
+		filaCasoNumerador.asegurar(
+				() -> casos.existeFila(organizationId, historiaClinicaId),
+				() -> casos.crearSiFalta(organizationId, historiaClinicaId));
 	}
 
 	/** La secuencia de sesiones de ese caso. */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void asegurarSesionesDelCaso(long organizationId, long casoId) {
-		sesionesDelCaso.crearSiFalta(organizationId, casoId);
+		filaCasoSesionNumerador.asegurar(
+				() -> sesionesDelCaso.existeFila(organizationId, casoId),
+				() -> sesionesDelCaso.crearSiFalta(organizationId, casoId));
 	}
 }

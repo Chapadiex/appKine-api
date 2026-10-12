@@ -7,9 +7,12 @@ import com.akine.identity.domain.exception.InvalidRefreshTokenException;
 import com.akine.identity.domain.port.IdentityClock;
 import com.akine.platform.spi.security.AccessTokenClaims;
 import com.akine.platform.spi.security.AccessTokenScope;
+import com.akine.platform.infrastructure.security.ResolutorDeIpDeCliente;
 import com.akine.platform.spi.security.AccessTokenVerifier;
+import com.akine.platform.spi.security.IpDeCliente;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import jakarta.servlet.http.Cookie;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,9 +26,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,6 +70,9 @@ class AuthSessionControllerTest {
 	private static final String REFRESH_PLANO = "refresh-opaco-de-prueba";
 	private static final String ACCESS = "eyJhbGciOiJIUzI1NiJ9.cuerpo.firma";
 
+	/** El nginx de la imagen del frontend. */
+	private static final String PROXY = "172.18.0.5";
+
 	@Autowired
 	private MockMvc mockMvc;
 
@@ -84,6 +92,12 @@ class AuthSessionControllerTest {
 		@Bean
 		IdentityClock identityClock() {
 			return () -> AHORA;
+		}
+
+		/** La regla real, con el nginx de la imagen declarado como proxy de confianza. */
+		@Bean
+		IpDeCliente ipDeCliente() {
+			return ResolutorDeIpDeCliente.desde(List.of(PROXY + "/32"));
 		}
 	}
 
@@ -430,6 +444,54 @@ class AuthSessionControllerTest {
 				.andExpect(status().isForbidden());
 
 		verify(sessionService, never()).cerrarTodasLasSesiones(anyLong());
+	}
+
+	// =================================================================================
+	// IP de la sesion
+	// =================================================================================
+
+	@Test
+	@DisplayName("detras de un proxy de confianza la sesion guarda el primer salto no confiable")
+	void detras_de_un_proxy_de_confianza_la_sesion_guarda_la_ip_del_cliente() throws Exception {
+		given(sessionService.abrirSesion(anyString(), anyString(), any())).willReturn(sesion());
+
+		mockMvc.perform(post("/api/v1/auth/login")
+						.with(desde(PROXY))
+						.header("X-Forwarded-For", "1.2.3.4, 203.0.113.7")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(cuerpoLogin()))
+				.andExpect(status().isOk());
+
+		ArgumentCaptor<SessionService.DatosDeCliente> datos =
+				ArgumentCaptor.forClass(SessionService.DatosDeCliente.class);
+		verify(sessionService).abrirSesion(anyString(), anyString(), datos.capture());
+		assertThat(datos.getValue().ip())
+				.as("ni la IP del nginx ni lo que el cliente escribio a la izquierda")
+				.isEqualTo("203.0.113.7");
+	}
+
+	@Test
+	@DisplayName("desde una conexion que no es proxy de confianza se ignora X-Forwarded-For")
+	void sin_proxy_de_confianza_la_sesion_guarda_la_ip_del_socket() throws Exception {
+		given(sessionService.refrescar(anyString(), any())).willReturn(sesion());
+
+		mockMvc.perform(post("/api/v1/auth/refresh")
+						.with(desde("198.51.100.4"))
+						.header("X-Forwarded-For", "203.0.113.7")
+						.cookie(new Cookie("akine_rt", REFRESH_PLANO)))
+				.andExpect(status().isOk());
+
+		ArgumentCaptor<SessionService.DatosDeCliente> datos =
+				ArgumentCaptor.forClass(SessionService.DatosDeCliente.class);
+		verify(sessionService).refrescar(anyString(), datos.capture());
+		assertThat(datos.getValue().ip()).isEqualTo("198.51.100.4");
+	}
+
+	private static RequestPostProcessor desde(String ipDelSocket) {
+		return request -> {
+			request.setRemoteAddr(ipDelSocket);
+			return request;
+		};
 	}
 
 	private static AccessTokenClaims claims(String familia) {

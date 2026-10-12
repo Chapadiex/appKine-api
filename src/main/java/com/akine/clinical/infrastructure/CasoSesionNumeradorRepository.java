@@ -35,6 +35,20 @@ public interface CasoSesionNumeradorRepository
 			@Param("organizationId") long organizationId,
 			@Param("casoId") long casoId);
 
+	@Query(value = """
+			SELECT COUNT(*) FROM caso_sesion_numerador
+			WHERE organization_id = :organizationId
+			  AND caso_id = :casoId
+			""", nativeQuery = true)
+	long contarFila(
+			@Param("organizationId") long organizationId,
+			@Param("casoId") long casoId);
+
+	@Override
+	default boolean existeFila(long organizationId, long casoId) {
+		return contarFila(organizationId, casoId) > 0;
+	}
+
 	/** Incrementa tomando el lock de fila. Serializa los cierres de sesiones de ESE caso. */
 	@Modifying
 	@Query(value = """

@@ -25,6 +25,7 @@ import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.spi.DisponibilidadDirectory;
 import com.akine.resource.spi.EspacioDirectory;
 import com.akine.resource.spi.EspacioSnapshot;
@@ -35,8 +36,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -64,7 +67,7 @@ import java.util.Optional;
  * <h2>El orden, que es el mismo de {@code TurnoService} y por los mismos motivos</h2>
  *
  * <pre>
- *   0. asegurar la fila-lock      &lt;- en su PROPIA transaccion (REQUIRES_NEW)
+ *   0. asegurar la fila-lock      &lt;- en su PROPIA transaccion, ANTES de abrir la del negocio
  *   1. LOCK de agenda_sede        &lt;- ANTES de leer una sola clase o un solo turno
  *   2. idempotencia               &lt;- bajo el lock
  *   3. oferta GRUPAL, profesional, espacio
@@ -112,6 +115,7 @@ public class ClaseService {
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	public ClaseService(
 			ClaseProgramadaRepositoryPort clases,
@@ -124,7 +128,8 @@ public class ClaseService {
 			EspacioDirectory espacios,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			PlatformTransactionManager transactionManager) {
 
 		this.clases = clases;
 		this.eventos = eventos;
@@ -137,6 +142,8 @@ public class ClaseService {
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -154,7 +161,6 @@ public class ClaseService {
 	 * @throws RecursoOcupadoException         profesional o espacio ya tomados, por turno o clase (409)
 	 * @throws IdempotencyKeyConflictException misma clave, pedido distinto (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ResultadoDeProgramacion programar(
 			OperatingActor actor, long consultorioId, long ofertaId, ProgramarClaseCommand command) {
 
@@ -162,11 +168,18 @@ public class ClaseService {
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
 
-		// PASO 0. Corre en su PROPIA transaccion (REQUIRES_NEW, declarado del otro lado del spi) y
-		// va ANTES de tomar el lock. Es un bean distinto, asi que el proxy de Spring si aplica la
-		// propagacion: un metodo de ESTA clase llamado desde ESTA clase se saltea el proxy y la
-		// anotacion no hace nada. Ver la cabecera para por que no puede ir adentro.
+		// PASO 0. En su PROPIA transaccion y ANTES de abrir la del negocio, que recien se abre abajo
+		// con la plantilla: anidada, el pedido retenia dos conexiones y trababa el pool
+		// (FilaLockPrevia). Ver la cabecera para por que no puede crearse adentro.
 		agenda.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> programarEnTransaccion(
+				actor, consultorioId, ofertaId, command, organizationId, sede));
+	}
+
+	private ResultadoDeProgramacion programarEnTransaccion(
+			OperatingActor actor, long consultorioId, long ofertaId,
+			ProgramarClaseCommand command, long organizationId, ConsultorioSnapshot sede) {
 
 		// PASO 1. Antes de leer nada.
 		agenda.bloquear(organizationId, consultorioId);
@@ -238,7 +251,6 @@ public class ClaseService {
 	 * ademas la haria avanzar DOS, la respuesta llevaria {@code leida+1} y el cliente que mande esa
 	 * version se come un 409 del que no puede salir: es la reciproca que 04.02 pago.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ClaseView reprogramar(
 			OperatingActor actor, long consultorioId, long claseId, ReprogramarClaseCommand command) {
 
@@ -248,6 +260,15 @@ public class ClaseService {
 
 		// Mismo orden que programar, y por los mismos motivos. Ver la cabecera.
 		agenda.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> reprogramarEnTransaccion(
+				actor, consultorioId, claseId, command, organizationId, sede));
+	}
+
+	private ClaseView reprogramarEnTransaccion(
+			OperatingActor actor, long consultorioId, long claseId,
+			ReprogramarClaseCommand command, long organizationId, ConsultorioSnapshot sede) {
+
 		agenda.bloquear(organizationId, consultorioId);
 
 		// FOR UPDATE, y no un SELECT plano (AKINE-08.02). Es lo unico que cierra la carrera entre

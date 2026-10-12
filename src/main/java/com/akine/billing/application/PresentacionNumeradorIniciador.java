@@ -1,9 +1,9 @@
 package com.akine.billing.application;
 
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.billing.domain.port.PresentacionNumeradorPort;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * Crea la fila del numerador de lotes en su PROPIA transaccion, antes de confirmar.
@@ -18,13 +18,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class PresentacionNumeradorIniciador {
 
 	private final PresentacionNumeradorPort numerador;
+	private final FilaLockPrevia filaPresentacionNumerador;
 
-	public PresentacionNumeradorIniciador(PresentacionNumeradorPort numerador) {
+	public PresentacionNumeradorIniciador(PresentacionNumeradorPort numerador,
+			PlatformTransactionManager transactionManager) {
 		this.numerador = numerador;
+		this.filaPresentacionNumerador = new FilaLockPrevia("presentacion_numerador", transactionManager);
 	}
 
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void asegurar(long organizationId, long consultorioId, long financiadorId) {
-		numerador.crearSiFalta(organizationId, consultorioId, financiadorId);
+		filaPresentacionNumerador.asegurar(
+				() -> numerador.existeFila(organizationId, consultorioId, financiadorId),
+				() -> numerador.crearSiFalta(organizationId, consultorioId, financiadorId));
 	}
 }

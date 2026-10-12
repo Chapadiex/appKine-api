@@ -1,5 +1,6 @@
 package com.akine.contracting.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.contracting.application.ImportacionAranceles.EstadoFila;
 import com.akine.contracting.application.ImportacionAranceles.Fila;
 import com.akine.contracting.application.ImportacionAranceles.MotivoRechazo;
@@ -45,6 +46,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -97,7 +99,7 @@ class ImportacionArancelesServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ImportacionArancelesService(convenios, aranceles, locks, lockIniciador,
-				consultorios, catalogo, permissionGuard, auditTrail, ofertas, practicasDeOferta);
+				consultorios, catalogo, permissionGuard, auditTrail, ofertas, practicasDeOferta, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(new ConsultorioSnapshot(
 				SEDE_ID, ORG_ID, "Sede Centro", "America/Argentina/Cordoba", true)));

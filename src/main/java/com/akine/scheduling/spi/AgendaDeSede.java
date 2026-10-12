@@ -56,8 +56,10 @@ public interface AgendaDeSede {
 	/**
 	 * Se asegura de que exista la fila que despues se va a bloquear. Idempotente.
 	 *
-	 * <p><b>Corre en su propia transaccion</b> ({@code REQUIRES_NEW}) y hay que llamarla ANTES de
-	 * abrir la transaccion del negocio. Ver el paso 0 de la cabecera.
+	 * <p><b>Corre en su propia transaccion</b> y hay que llamarla ANTES de abrir la transaccion del
+	 * negocio, sin ninguna activa: si hay una y la fila falta, lanza
+	 * {@link IllegalStateException}. Anidada retenia dos conexiones por pedido y trababa el pool
+	 * (docs/carga.md §6.1). Ver el paso 0 de la cabecera.
 	 */
 	void asegurar(long organizationId, long consultorioId);
 

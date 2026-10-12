@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -193,6 +194,24 @@ class TenantContextFilterTest {
 		filtro.doFilter(request("GET", "/api/v1/pacientes"), response, cadena);
 
 		assertThat(response.getStatus()).isEqualTo(404);
+		assertThat(cadena.fueInvocada()).isFalse();
+	}
+
+	@Test
+	@DisplayName("Si la base no responde al resolver la membership: 503 service-unavailable, nunca 401")
+	void base_caida_responde_503_y_no_401() throws Exception {
+		// G-10 (docs/carga.md §6.3): la excepcion que escapaba del filtro terminaba en un 401 por
+		// el despacho a /error, y el frontend desloguea ante cualquier 401.
+		autenticar(principal(CUENTA, ORGANIZACION, CONSULTORIO, false));
+		given(membershipDirectory.resolveMembership(CUENTA, ORGANIZACION, CONSULTORIO, AHORA))
+				.willThrow(new DataAccessResourceFailureException("Communications link failure"));
+
+		filtro.doFilter(request("GET", "/api/v1/pacientes"), response, cadena);
+
+		assertThat(response.getStatus()).isEqualTo(503);
+		assertThat(response.getContentAsString())
+				.contains("https://akine.app/problems/service-unavailable")
+				.doesNotContain("Communications link failure");
 		assertThat(cadena.fueInvocada()).isFalse();
 	}
 

@@ -1,5 +1,6 @@
 package com.akine.resource.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
@@ -41,6 +42,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -119,9 +121,9 @@ class CalendarioServiceTest {
 		// El iniciador real sobre el doble en memoria: su REQUIRES_NEW es un no-op sin proxy de
 		// Spring, y lo que estos tests necesitan es que la fila quede creada de verdad.
 		service = new CalendarioService(
-				calendarios, new CalendarioSedeIniciador(calendarios), feriados,
+				calendarios, new CalendarioSedeIniciador(calendarios, mock(PlatformTransactionManager.class)), feriados,
 				consultorioDirectory, permissionGuard, auditTrail, horarios,
-				new SimuladorDeImpacto(bloques, excepciones, feriados, calendarios, sonda, horarios));
+				new SimuladorDeImpacto(bloques, excepciones, feriados, calendarios, sonda, horarios), mock(PlatformTransactionManager.class));
 		efectiva = new DisponibilidadEfectivaService(
 				bloques, excepciones, feriados, calendarios,
 				consultorioDirectory, membershipDirectory, permissionGuard, horarios);
@@ -453,6 +455,11 @@ class CalendarioServiceTest {
 			if (findByScope(organizationId, consultorioId).isEmpty()) {
 				save(new CalendarioSede(organizationId, consultorioId));
 			}
+		}
+
+		@Override
+		public boolean existeFila(long organizationId, long consultorioId) {
+			return findByScope(organizationId, consultorioId).isPresent();
 		}
 
 		List<CalendarioSede> filas() {

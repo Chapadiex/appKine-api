@@ -1,11 +1,11 @@
 package com.akine.contracting.application;
 
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioLockRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * Crea la fila de {@code convenio_lock} en su PROPIA transaccion, antes de que la escritura
@@ -31,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <h2>Por que una transaccion aparte</h2>
  *
- * <p>{@code REQUIRES_NEW} hace que el INSERT se commitee de inmediato y libere sus locks, en vez de
+ * <p>La transaccion propia hace que el INSERT se commitee de inmediato y libere sus locks, en vez de
  * retenerlos hasta el final de la escritura. La ventana en la que dos pueden chocar pasa de "toda
  * la transaccion" a "un INSERT", y lo que se recibe en esa ventana ya es un error de escritura
  * normal y no un deadlock entre transacciones largas.
@@ -42,9 +42,12 @@ public class ConvenioLockIniciador {
 	private static final Logger log = LoggerFactory.getLogger(ConvenioLockIniciador.class);
 
 	private final ConvenioLockRepositoryPort locks;
+	private final FilaLockPrevia filaConvenioLock;
 
-	public ConvenioLockIniciador(ConvenioLockRepositoryPort locks) {
+	public ConvenioLockIniciador(ConvenioLockRepositoryPort locks,
+			PlatformTransactionManager transactionManager) {
 		this.locks = locks;
+		this.filaConvenioLock = new FilaLockPrevia("convenio_lock", transactionManager);
 	}
 
 	/**
@@ -54,9 +57,10 @@ public class ConvenioLockIniciador {
 	 * dentro de su propia transaccion, y devolver la instancia de esta otra invitaria a usarla sin
 	 * el lock.
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void asegurar(long organizationId, long consultorioId) {
-		locks.crearSiFalta(organizationId, consultorioId);
+		filaConvenioLock.asegurar(
+				() -> locks.existeFila(organizationId, consultorioId),
+				() -> locks.crearSiFalta(organizationId, consultorioId));
 		log.debug("Fila-lock de convenios de la sede {} asegurada", consultorioId);
 	}
 }

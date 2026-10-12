@@ -1,9 +1,9 @@
 package com.akine.clinical.application;
 
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.clinical.domain.port.PlanRepositoryPorts.PlanNumeradorPort;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * Crea la fila del numerador de planes en su PROPIA transaccion, antes de que la que la bloquea
@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code consultorio_calendario}, {@code sesion_numerador}, {@code autorizacion_persona_lock}). No
  * se paga una quinta.
  *
- * <p>{@code REQUIRES_NEW} hace que el INSERT se commitee de inmediato y libere su lock, en vez de
+ * <p>La transaccion propia hace que el INSERT se commitee de inmediato y libere su lock, en vez de
  * retenerlo hasta el final de la operacion que lo llamo.
  *
  * <h2>Por que no se fusiona con {@code CasoNumeradorIniciador}</h2>
@@ -34,14 +34,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class PlanNumeradorIniciador {
 
 	private final PlanNumeradorPort planes;
+	private final FilaLockPrevia filaPlanNumerador;
 
-	public PlanNumeradorIniciador(PlanNumeradorPort planes) {
+	public PlanNumeradorIniciador(PlanNumeradorPort planes,
+			PlatformTransactionManager transactionManager) {
 		this.planes = planes;
+		this.filaPlanNumerador = new FilaLockPrevia("plan_numerador", transactionManager);
 	}
 
 	/** La secuencia de planes de ese Caso Clinico. */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void asegurarPlanes(long organizationId, long casoClinicoId) {
-		planes.crearSiFalta(organizationId, casoClinicoId);
+		filaPlanNumerador.asegurar(
+				() -> planes.existeFila(organizationId, casoClinicoId),
+				() -> planes.crearSiFalta(organizationId, casoClinicoId));
 	}
 }

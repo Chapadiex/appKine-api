@@ -5,6 +5,7 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.domain.CalendarioSede;
 import com.akine.resource.domain.FranjaHorarioGeneral;
 import com.akine.resource.domain.FranjaHorarioGeneral.Franja;
@@ -16,8 +17,10 @@ import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGener
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -68,6 +71,7 @@ public class CalendarioService {
 	private final AuditTrail auditTrail;
 	private final HorarioGeneralRepositoryPort horarios;
 	private final SimuladorDeImpacto simulador;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	public CalendarioService(
 			CalendarioSedeRepositoryPort calendarios,
@@ -77,7 +81,8 @@ public class CalendarioService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
 			HorarioGeneralRepositoryPort horarios,
-			SimuladorDeImpacto simulador) {
+			SimuladorDeImpacto simulador,
+			PlatformTransactionManager transactionManager) {
 
 		this.calendarios = calendarios;
 		this.calendarioIniciador = calendarioIniciador;
@@ -87,6 +92,8 @@ public class CalendarioService {
 		this.auditTrail = auditTrail;
 		this.horarios = horarios;
 		this.simulador = simulador;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -157,8 +164,7 @@ public class CalendarioService {
 	 * @throws ConsultorioNotAccessibleException si la sede no existe o es de otro tenant (404)
 	 * @throws IllegalArgumentException si el pais viene vacio (400)
 	 */
-	// La misma transaccion declarada aca: la delegacion es autoinvocacion y no pasa por el proxy.
-	@Transactional(isolation = Isolation.READ_COMMITTED)
+	// Sin transaccion propia: la del cuerpo la abre la otra sobrecarga, despues de asegurar la fila.
 	public CalendarioView actualizar(
 			OperatingActor actor, long consultorioId, String pais, Boolean cierraPorFeriado) {
 		return actualizar(actor, consultorioId, pais, cierraPorFeriado, null);
@@ -174,7 +180,6 @@ public class CalendarioService {
 	 *
 	 * @throws IllegalArgumentException si dos franjas del mismo dia se solapan (400)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public CalendarioView actualizar(
 			OperatingActor actor,
 			long consultorioId,
@@ -185,6 +190,19 @@ public class CalendarioService {
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
+
+		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
+		calendarioIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> actualizarEnTransaccion(
+				actor, consultorioId, pais, cierraPorFeriado, horarioGeneral, organizationId,
+				sede));
+	}
+
+	private CalendarioView actualizarEnTransaccion(
+			OperatingActor actor, long consultorioId, String pais, Boolean cierraPorFeriado,
+			List<Franja> horarioGeneral, long organizationId, ConsultorioSnapshot sede) {
+
 		// Antes del lock: un horario invalido no tiene por que esperar a nadie.
 		List<Franja> nuevoHorario = horarioGeneral == null
 				? null
@@ -340,7 +358,6 @@ public class CalendarioService {
 	 * {@link CalendarioSedeIniciador}.
 	 */
 	private CalendarioSede bloquearOCrear(long organizationId, long consultorioId) {
-		calendarioIniciador.asegurar(organizationId, consultorioId);
 		return BloqueoDeSede.tomar(calendarios, organizationId, consultorioId);
 	}
 

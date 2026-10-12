@@ -2,7 +2,9 @@ package com.akine.offering.spi;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -22,6 +24,13 @@ public interface OfertaDirectory {
 
 	/** La oferta de esa sede, activa o no. {@code empty} si no existe o es de otro tenant/sede. */
 	Optional<OfertaSnapshot> find(long organizationId, long consultorioId, long ofertaId);
+
+	/**
+	 * Las ofertas de esa sede con esos ids, activas o no, en UNA consulta, indexadas por id. Las que
+	 * no existen o son de otro tenant/sede no aparecen en el mapa. Para listas: pedir la oferta de
+	 * cada fila con {@link #find} es una consulta por fila (docs/carga.md §6.4).
+	 */
+	Map<Long, OfertaSnapshot> findTodas(long organizationId, long consultorioId, Collection<Long> ofertaIds);
 
 	/**
 	 * Lo que cuesta la oferta. Ver {@link PrecioDeOferta}: viaja aparte del snapshot general.

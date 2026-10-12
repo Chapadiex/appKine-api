@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import com.akine.platform.infrastructure.observability.ClavesDeMdc;
+import com.akine.platform.infrastructure.security.FallaEnFiltro;
 import com.akine.platform.infrastructure.security.RequestPaths;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -224,8 +225,15 @@ public class TenantContextFilter extends OncePerRequestFilter {
 		}
 
 		Instant ahora = clock.instant();
-		Optional<TenantMembership> resuelta = membershipDirectory.resolveMembership(
-				principal.accountId(), organizationId, consultorioId, ahora);
+		Optional<TenantMembership> resuelta;
+		try {
+			resuelta = membershipDirectory.resolveMembership(
+					principal.accountId(), organizationId, consultorioId, ahora);
+		} catch (RuntimeException falla) {
+			// 503 si la base no responde, nunca un 401 por el despacho a /error (FallaEnFiltro).
+			FallaEnFiltro.responder(request, response, falla);
+			return;
+		}
 
 		if (resuelta.isEmpty()) {
 			// Membership inexistente, dada de baja o vencida; consultorio inexistente o de otra

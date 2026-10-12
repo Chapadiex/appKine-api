@@ -5,6 +5,7 @@ import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.domain.DisponibilidadExcepcion;
 import com.akine.resource.domain.PermissionCodes;
 import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
@@ -18,8 +19,10 @@ import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.Disponibilid
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -76,6 +79,7 @@ public class ExcepcionService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final SimuladorDeImpacto simulador;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	public ExcepcionService(
 			DisponibilidadExcepcionRepositoryPort excepciones,
@@ -85,7 +89,8 @@ public class ExcepcionService {
 			ConsultorioMembershipDirectory membershipDirectory,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
-			SimuladorDeImpacto simulador) {
+			SimuladorDeImpacto simulador,
+			PlatformTransactionManager transactionManager) {
 
 		this.excepciones = excepciones;
 		this.calendarios = calendarios;
@@ -95,6 +100,8 @@ public class ExcepcionService {
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 		this.simulador = simulador;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -123,13 +130,23 @@ public class ExcepcionService {
 	 *         no atiende pacientes (409)
 	 * @throws IllegalArgumentException si el rango de fechas o el horario son incoherentes (400)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ExcepcionView crear(
 			OperatingActor actor, long consultorioId, ExcepcionAltaCommand command) {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		exigirSedeOperable(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
+
+		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
+		calendarioIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> crearEnTransaccion(
+				actor, consultorioId, command, organizationId));
+	}
+
+	private ExcepcionView crearEnTransaccion(
+			OperatingActor actor, long consultorioId, ExcepcionAltaCommand command,
+			long organizationId) {
 
 		Instant ahora = Instant.now();
 		Long membershipId = command.membershipId();
@@ -201,13 +218,24 @@ public class ExcepcionService {
 	 * @throws ExcepcionInactivaException si ya estaba dada de baja (409)
 	 * @throws IllegalArgumentException si no se declaro un motivo (400)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ExcepcionView darDeBaja(
 			OperatingActor actor, long consultorioId, long excepcionId, String motivo) {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
+
+		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
+		calendarioIniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionReadCommitted.execute(estado -> darDeBajaEnTransaccion(
+				actor, consultorioId, excepcionId, motivo, organizationId));
+	}
+
+	private ExcepcionView darDeBajaEnTransaccion(
+			OperatingActor actor, long consultorioId, long excepcionId, String motivo,
+			long organizationId) {
+
 		exigirMotivo(motivo);
 
 		Instant ahora = Instant.now();
@@ -392,7 +420,6 @@ public class ExcepcionService {
 	 * las primeras N escrituras de una sede. Ver {@link CalendarioSedeIniciador}.
 	 */
 	private void bloquearLaSede(long organizationId, long consultorioId) {
-		calendarioIniciador.asegurar(organizationId, consultorioId);
 		BloqueoDeSede.tomar(calendarios, organizationId, consultorioId);
 	}
 

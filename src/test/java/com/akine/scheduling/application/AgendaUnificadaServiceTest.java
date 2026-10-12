@@ -24,8 +24,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -80,7 +83,11 @@ class AgendaUnificadaServiceTest {
 				turnos, eventosExternos, ofertas, consultorios, permissionGuard);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(sede()));
-		given(ofertas.find(anyLong(), anyLong(), anyLong())).willReturn(Optional.of(oferta()));
+		// Todas las ofertas del dia en una sola llamada (docs/carga.md §6.4): cada id pedido resuelve.
+		given(ofertas.findTodas(anyLong(), anyLong(), any())).willAnswer(pedido -> {
+			Collection<Long> ids = pedido.getArgument(2);
+			return ids == null ? Map.of() : ids.stream().distinct().collect(Collectors.toMap(id -> id, id -> oferta()));
+		});
 		given(turnos.findDeLaSedeEnVentana(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of());
 		given(eventosExternos.enVentana(anyLong(), anyLong(), any(), any())).willReturn(List.of());
@@ -178,7 +185,7 @@ class AgendaUnificadaServiceTest {
 	void oferta_borrada_no_esconde_el_turno() {
 		// Esconder el turno seria peor que mostrarlo incompleto: la hora sigue ocupada y alguien
 		// tiene que verlo.
-		given(ofertas.find(anyLong(), anyLong(), anyLong())).willReturn(Optional.empty());
+		given(ofertas.findTodas(anyLong(), anyLong(), any())).willReturn(Map.of());
 		given(turnos.findDeLaSedeEnVentana(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of(turno(MEDIODIA, 301L)));
 

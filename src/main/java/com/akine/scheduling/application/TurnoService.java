@@ -8,6 +8,7 @@ import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.domain.EstadoTurno;
 import com.akine.scheduling.domain.PermissionCodes;
 import com.akine.scheduling.domain.TipoEventoTurno;
@@ -29,8 +30,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -96,6 +99,7 @@ public class TurnoService {
 	private final AgendaSedeIniciador iniciador;
 	private final RevalidadorDeSlot revalidador;
 	private final AvisosDeTurno avisos;
+	private final TransactionTemplate transaccionDeReserva;
 
 	public TurnoService(
 			TurnoRepositoryPort turnos,
@@ -107,7 +111,8 @@ public class TurnoService {
 			PermissionGuard permissionGuard,
 			AgendaSedeIniciador iniciador,
 			RevalidadorDeSlot revalidador,
-			AvisosDeTurno avisos) {
+			AvisosDeTurno avisos,
+			PlatformTransactionManager transactionManager) {
 
 		this.turnos = turnos;
 		this.eventos = eventos;
@@ -119,6 +124,8 @@ public class TurnoService {
 		this.iniciador = iniciador;
 		this.revalidador = revalidador;
 		this.avisos = avisos;
+		this.transaccionDeReserva = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	/**
@@ -134,17 +141,27 @@ public class TurnoService {
 	 * @throws RecursoOcupadoException              profesional o espacio ya tomados (409)
 	 * @throws IdempotencyKeyConflictException      misma clave, pedido distinto (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ResultadoDeReserva reservar(
 			OperatingActor actor, long consultorioId, long ofertaId, ReservaCommand command) {
 
+		// Sin transaccion hasta despues del PASO 0. Estas lecturas no necesitan el lock: antes
+		// corrian en la misma transaccion READ_COMMITTED, donde cada sentencia ya veia lo ultimo
+		// commiteado, asi que leerlas en la suya no cambia lo que ven.
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
 
-		// PASO 0. En su PROPIA transaccion: crearla dentro de esta deadlockea entre las
-		// primeras reservas concurrentes de una sede. Ver AgendaSedeIniciador.
+		// PASO 0. En su PROPIA transaccion y ANTES de abrir la de la reserva: crearla dentro de
+		// esta deadlockea entre las primeras reservas concurrentes de una sede (AgendaSedeIniciador),
+		// y abrirla anidada retiene dos conexiones por pedido y traba el pool (FilaLockPrevia).
 		iniciador.asegurar(organizationId, consultorioId);
+
+		return transaccionDeReserva.execute(estado -> reservarBajoLock(
+				actor, organizationId, sede, consultorioId, ofertaId, command));
+	}
+
+	private ResultadoDeReserva reservarBajoLock(OperatingActor actor, long organizationId,
+			ConsultorioSnapshot sede, long consultorioId, long ofertaId, ReservaCommand command) {
 
 		// PASO 1. Antes de leer nada. Ver la cabecera.
 		BloqueoDeAgenda.tomar(agendas, organizationId, consultorioId);

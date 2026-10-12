@@ -8,6 +8,7 @@ import com.akine.identity.application.SessionService;
 import com.akine.identity.domain.port.IdentityClock;
 import com.akine.platform.spi.security.AccessTokenClaims;
 import com.akine.platform.spi.security.AccessTokenVerifier;
+import com.akine.platform.spi.security.IpDeCliente;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -69,16 +70,19 @@ public class AuthSessionController {
 	private final AccessTokenVerifier accessTokenVerifier;
 	private final TenantContextHolder tenantContextHolder;
 	private final IdentityClock clock;
+	private final IpDeCliente ipDeCliente;
 
 	public AuthSessionController(
 			SessionService sessionService,
 			AccessTokenVerifier accessTokenVerifier,
 			TenantContextHolder tenantContextHolder,
-			IdentityClock clock) {
+			IdentityClock clock,
+			IpDeCliente ipDeCliente) {
 		this.sessionService = sessionService;
 		this.accessTokenVerifier = accessTokenVerifier;
 		this.tenantContextHolder = tenantContextHolder;
 		this.clock = clock;
+		this.ipDeCliente = ipDeCliente;
 	}
 
 	// =================================================================================
@@ -406,14 +410,17 @@ public class AuthSessionController {
 	 * Lo que se sabe del cliente, para que la persona reconozca una sesion ajena en el listado.
 	 *
 	 * <p>Se trunca el user agent porque es una cadena que manda el cliente y puede venir de
-	 * cualquier largo. La IP es la del socket: {@code X-Forwarded-For} la escribe el cliente y
-	 * confiar en ella sin un proxy declarado permite escribir cualquier cosa en la fila.
+	 * cualquier largo. La IP sale de {@link IpDeCliente}, la misma regla del rate limit. Sin un
+	 * proxy de confianza declarado ({@code AKINE_TRUSTED_PROXIES}) sigue siendo la del socket
+	 * —{@code X-Forwarded-For} la escribe el cliente, y creerle permitiria escribir cualquier cosa
+	 * en la fila—, y detras del nginx de la imagen eso es la IP del proxy para toda sesion. Con
+	 * el proxy declarado, es el primer salto no confiable de {@code X-Forwarded-For}.
 	 */
-	private static SessionService.DatosDeCliente datosDe(HttpServletRequest http) {
+	private SessionService.DatosDeCliente datosDe(HttpServletRequest http) {
 		String userAgent = http.getHeader(HttpHeaders.USER_AGENT);
 		if (userAgent != null && userAgent.length() > 255) {
 			userAgent = userAgent.substring(0, 255);
 		}
-		return new SessionService.DatosDeCliente(http.getRemoteAddr(), userAgent);
+		return new SessionService.DatosDeCliente(ipDeCliente.resolver(http), userAgent);
 	}
 }

@@ -1,5 +1,6 @@
 package com.akine.scheduling.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
@@ -67,7 +68,7 @@ class TurnoServiceTest {
 	@BeforeEach
 	void prepararServicio() {
 		service = new TurnoService(turnos, eventos, agendas, ofertas, pacientes, consultorios,
-				permissionGuard, iniciador, revalidador, avisos);
+				permissionGuard, iniciador, revalidador, avisos, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));

@@ -229,7 +229,125 @@ ArchUnit · Testcontainers.
 > `SerializationFeature` a `DateTimeFeature`, o sea `spring.jackson.datatype.datetime.*`.
 > Ante una duda de API, inspeccionar el jar antes de asumir la forma de 3.x.
 
-### Estado al 07/10/2026, sobre `8fe1fae`
+### Estado al 11/10/2026, sobre `81344c5`
+
+> Esta subsección **supersede** a la del 07/10 que sigue abajo en contrato, migraciones, tests,
+> cobertura y paquetes; la del 07/10 queda como historia. Las cifras de cobertura del bloque del
+> 29/09 más abajo también quedan superadas por las de esta tabla.
+
+Entre el 08/10 y el 11/10 entraron a `main` **26 PR, del #61 al #86**: dieciséis el 08/10
+(#61–#76) y diez el 11/10 (#77–#86). `main` tiene **565 commits** y el último merge es `81344c5`
+(PR #83, G-6). En `appKine-web` entraron **24 PR, del #24 al #48** (queda abierto el #47), y el
+cliente quedó regenerado contra **0.84.0**. Quedan abiertos acá los cuatro PR que Dependabot abrió
+el 11/10 (#87–#90), sin revisar.
+
+| | Valor |
+|---|---|
+| Contrato | `openapi/akine-api.yaml` y `akine.contract.version` **0.84.0**, **309 operaciones** (`grep -cE '^\s+operationId:'`), ningún `operationId` repetido. El cliente de `appKine-web` `main` está en **0.84.0**. Medido sobre `81344c5` |
+| Migraciones | Última **`V85`** (B-4), 72 archivos. Desde el 07/10 sólo entró `V85`. No existen `V26 V29 V31 V62 V66 V67 V68 V70 V72 V73 V79 V82 V84 V86`: `V84` quedó por debajo de `V85` y `V86` la liberó DU-6, así que la próxima libre es **`V87`**. Medido sobre `81344c5` |
+| Tests unitarios | **3.466, 0 fallos ni errores** (`./mvnw -o test -DskipITs -Djacoco.skip=true` sobre `81344c5`, 11/10; contadas como `<testcase>` en los 274 reportes de surefire). Coincide con lo que corrió el CI de #83 |
+| Tests de integración y cobertura | **No se corrieron para este documento.** Los números son los de G-6 (`docs/calidad.md` §4): `./mvnw verify` completo el 11/10 sobre `955855f` + la rama de G-6, **3.439 unitarias + 785 de integración, 0 fallos**, 1 salteada (7b). BUNDLE **línea 89,80 % · instrucción 88,56 % · rama 77,31 %**. El CI de #83, ya con #84 y #85 adentro, corrió 3.466 + 792 y pasaron las ocho reglas de JaCoCo (la global en 0,80 y una por módulo crítico) |
+| GitHub | Rama por defecto **`main`** en los dos repos (antes `claude/goofy-goodall-8e6772` acá). `main` **protegida**: checks obligatorios "Build, test y contrato" e "Imagen Docker y SBOM". Consultado por la API el 11/10 |
+
+#### Qué agregó cada minor del contrato desde 0.69.0
+
+Las versiones **de `main`** no coinciden con las que declaran varios PR: cada uno subió la minor en
+su rama y, al rebasear sobre lo que ya había entrado, la volvió a subir (regla 5 del plan en
+paralelo). Esta tabla sale de `git log --first-parent` sobre el YAML, no de las descripciones.
+
+| Versión | Paquete · PR | Qué agrega |
+|---|---|---|
+| 0.70.0 | A-11 · #64 | Cuatro consultas previas de impacto sin efectos (`impacto-de-edicion`, `impacto-de-baja` de bloques y excepciones, `impacto-de-alta` de excepciones) y `cobertura` estructurada en los hitos de coberturas del 360. 305 operaciones |
+| 0.71.0 | B-7 · #63 | `importArancelesDeConvenio` con `modo = PREVIEW \| CONFIRMAR`; problem type `importacion-aranceles-rechazada` |
+| 0.72.0 | E-2 · #66 | Motivo `PASADO` en `DiaDeAgenda.motivoSinSlots`; `ReprogramarTurno.profesionalId` opcional de verdad |
+| 0.75.0 | E-8b · #71 | `CANCELADA` en el estado derivado de la serie (DP-20) |
+| 0.76.0 | E-7b · #72 | Problem type `oferta-sin-precio` en `cerrarSesion` (DP-17) |
+| 0.77.0 | A-8b · #73 | `FUERA_DE_HORARIO_SEDE` en `motivoSinSlots` e `impactoDelHorario` en el calendario de la sede (DP-19) |
+| 0.78.0 | DP-21 · #74 | Las descripciones de 409 por versión vieja pasan a `concurrent-modification` en todos los módulos |
+| 0.79.0 | B-4 · #75 | `getHistorialDeAutorizacion`; `Orden.situacion` y `Orden.sesionesConsumidas` (DP-23). 307 operaciones |
+| 0.80.0 | DU-6 · #76 | Sólo descripciones de los 403 de `paciente:read` (DP-22) |
+| 0.82.0 | #81 | `listNotifications`; 404 en invitaciones con organización distinta del contexto; descripción corregida de prestaciones elegibles. 308 operaciones |
+| 0.84.0 | #85 | `listPermisosOtorgablesDelRol`, `MembershipGrantResponse.vigenteConElRolActual` y problem type `permiso-no-otorgable-al-rol`. 309 operaciones |
+
+`0.73.0`, `0.74.0`, `0.81.0` y `0.83.0` no existen en `main`. Casi todo es aditivo, pero hay
+**cambios de respuesta visibles** que sus PR declaran: desde 0.76.0 un cierre sin precio
+particular responde 409 donde antes cerraba sin deuda; desde 0.77.0 una sede con horario cargado
+recorta la agenda; desde 0.78.0 la versión vieja es `concurrent-modification` y no `conflict`;
+desde 0.80.0 el rol `PACIENTE` recibe 403 en el padrón; y desde 0.84.0 el 400 de un grant no
+admitido cambia de `type` (`validation-error` → `permiso-no-otorgable-al-rol`).
+
+#### Paquetes que entraron del 08/10 al 11/10
+
+- **Decisiones del usuario del 08/10, implementadas:** DP-17 (E-7b, #72), DP-18 (registrada en
+  #71, confirma A-7), DP-19 (A-8b, #73), DP-20 (E-8b, #71), DP-21 (#74, resuelve DU-5), DP-22
+  (#76, resuelve DU-6) y DP-23 (B-4, #75, resuelve DU-8). Las siete están en
+  `docs/producto/AKINE_IMPLEMENTATION_PLAN.md`.
+- **Backend con pantalla:** A-11 (#64 · web #29), B-7 (#63 · web #28), B-4 y A-8b (#75, #73 · web
+  #39), DP-17/21/22 (#72, #74, #76 · web #40), listado de notificaciones (#81 · web #46), permisos
+  otorgables por rol (#85 · web #44 y #48).
+- **Calidad y operación (carril G):** G-4 observabilidad (#62), G-11 cobertura (#65 y #69), G-13
+  backup/restore, rollback, smoke y runbooks (#77), G-5 hallazgos altos de 07.07 y threat model
+  (#78), G-10 carga con k6 (#80, **no cumple**), G-6 Dependabot, dependency-check, Sonar listo y
+  cobertura por módulo (#83 · web #41) y la **guía** del QA manual de G-12 (#84, ejecución
+  pendiente del usuario). En `appKine-web`: G-7 (#24) y G-9, el job E2E contra el backend real
+  (#30).
+- **Defectos que reportaron otros paquetes:** E-2 (#66, #67), B-6 (#68), #69, #70, #79, #81, #82
+  y #86. Detalle abajo.
+
+#### Los defectos reales corregidos desde el 07/10
+
+| # | Qué pasaba | Dónde | Lo encontró | PR |
+|---|---|---|---|---|
+| 1 | La agenda **ofrecía los slots ya pasados de hoy** y reservarlos daba `slot-no-disponible` | `AgendaService` | E2E de E-2 | #66 |
+| 2 | **`COMPLETO` nunca se emitía**: el día lleno viajaba con slots en cupo 0 y sin motivo | `AgendaService` | E2E de E-2 | #66 |
+| 3 | **Una habilitación cargada hoy no valía para hoy** (vigencia evaluada al mediodía), y el último día de vigencia borraba el día entero u ofrecía horas fuera de ella | motor de slots | E2E de E-2 | #66 |
+| 4 | **Reprogramar sin `profesionalId` daba `slot-no-disponible`** aunque el contrato lo declara opcional | `aplicarReprogramacion` | E2E de E-2 | #66 |
+| 5 | **Dos logins simultáneos de la misma cuenta**: de cinco, uno entraba, uno recibía 409 y tres **500 por deadlock** (escalada S→X sobre `cuenta`: la FK del `refresh_token` toma el S y el UPDATE con `@Version` pide el X) | `CuentaRepositoryPort` | E2E de E-2 | #67 |
+| 6 | **El rechazo del login revertía la transacción entera**: el contador de fallos nunca pasó de 0, `ACTIVIDAD_SOSPECHOSA` no podía dispararse y ningún `LOGIN_FALLIDO` llegó a la auditoría | `autenticar`, `abrirSesion` | `LoginConcurrenteIT` | #67 |
+| 7 | **La subida concurrente de un adjunto administrativo no era idempotente**: el perdedor recibía 409 `conflict`. El mismo `REPEATABLE READ` que ya se había corregido en el adjunto clínico | `AdjuntoService.subir` | `AdjuntoConcurrenteIT` (B-6) | #68 |
+| 8 | **`Retry-After: 0`** en el 429: truncaba los segundos y el reintento inmediato volvía a caer en la ventana | `FixedWindowRateLimiter` | E2E de G-9 | #69 |
+| 9 | **Una cuenta ORG_ADMIN en dos organizaciones leía la auditoría, las memberships y las sedes de B con el contexto de A**, y podía suspender un colaborador de B | `AuditEventController`, `MembershipController`, `ConsultorioController` | E2E de A-6 | #70 |
+| 10 | **La Sesión no se auditaba desde el 29/09**: el merge `3656980` perdió `d6ea5d0` y `SESION_INICIADA/ACCEDIDA/CERRADA` quedaron declaradas y sin uso | `encounter` | inventario de G-5 | #78 |
+| 11 | **Un grant podía otorgar una celda "No" de la matriz** (`hc:write` al ORG_ADMIN, `hc:read` al ADMINISTRATIVO o al PACIENTE, `auditoria:read-clinica` al PROFESIONAL): 201 por HTTP | `RolePermissions`, evaluador | G-5 | #78 |
+| 12 | **Las invitaciones ignoraban el `orgId` de la URL**: con contexto A y URL B, emitir, reenviar y cancelar **escribían en A** | `ColaboradorInvitacionController` | reportado en #70 | #81 |
+| 13 | Una ruta inexistente respondía 404 con `type` `validation-error` | `GlobalExceptionHandler` | — | #81 |
+| 14 | **Descargar un adjunto administrativo daba 500 siempre** contra MySQL: lectura `readOnly` que audita en la misma transacción. El barrido encontró el mismo patrón en `TratamientoService.listar` y, latente, en `DerivacionClinicaService.consultar` | `person`, `encounter`, `clinical` | simulacro de restore de G-13 | #82 |
+| 15 | **El rate limit era global detrás del nginx del frontend**: contaba por `getRemoteAddr()`, que es la IP del proxy. Ahora sólo lee `X-Forwarded-For` desde `AKINE_TRUSTED_PROXIES` | `RateLimitFilter` | G-13 (runbook R4) | #82 |
+| 16 | **El indicador "Cancelados" del reporte de turnos daba siempre 0** (y los reprogramados después cancelados no contaban): cancelar sella `deleted_at` y la consulta lo filtraba | `TurnoRepository` | validación de la guía de G-12 | #86 |
+| 17 | **Registrar un cobro, devengar una deuda y anular una deuda no escribían `audit_event`** | `CobroService`, `ObligacionDevengador`, `ObligacionService` | validación de la guía de G-12 | #86 |
+
+Además, #79 corrigió un IT que fallaba sólo entre las 21 y las 24 de Argentina (`CURDATE()` en UTC
+contra la fecha de la sede); el mismo patrón en la pantalla de agenda lo corrigió `appKine-web`
+#43.
+
+> **El patrón de estos cuatro días: casi nada lo encontró un test unitario.** Los encontraron los
+> E2E contra el backend real (1–5, 8, 9), los ITs de concurrencia (6, 7), un simulacro de restore
+> (14, 15), un inventario de seguridad contra el código (10, 11) y validar las consultas de una
+> guía de QA contra una base sembrada (16, 17). Es la misma lección del 29/09: **lo que destapa es
+> ejecutar**, y cada forma nueva de ejecutar encontró defectos que las anteriores no veían.
+
+#### Lo que se midió y quedó abierto
+
+- **G-10: el backend no cumple los SLO de ADR-0016 con escrituras** (`docs/carga.md` §6). Las
+  lecturas cumplen con 500 usuarios (p95 43 ms). Con reservas y cobros, **el pool de Hikari se
+  traba**: `TurnoService.reservar` y `CobroService.registrar` llaman a un iniciador `REQUIRES_NEW`
+  dentro de su transacción, retienen una conexión y piden otra; con el pool de 10, diez a la vez
+  traban todo (89,8 % de errores). Además: el cobro serializa en `comprobante_numerador` (~330 ms
+  de espera de lock), un fallo de base en la autenticación responde 401, N+1 en la agenda del día y
+  un primer arranque más largo que el `start-period` del healthcheck. **Ninguno corregido en
+  `main` al 11/10.**
+- **G-6: `mysql-connector-j` 9.7.0 tiene cuatro CVE sin versión corregida** en Maven Central
+  (CVE-2026-60586, 7,7, la más alta). Excepción temporal **hasta el 09/11/2026** en
+  `dependency-check-suppressions.xml`: esperar la corrección o bajar a 9.6.0. Los overrides de
+  Tomcat 11.0.26 y Jackson 3.1.7/2.21.7 hay que borrarlos cuando Spring Boot traiga iguales o
+  mayores.
+- **G-6: cuatro módulos críticos debajo de 0,90 de línea** —`billing` 87,56 %, `person` 86,54 %,
+  `scheduling` 86,47 %, `clinical` 82,56 %—, todos por la capa REST, que los ITs no ejercitan.
+- **#82:** `AuthSessionController` sigue guardando `getRemoteAddr()` como IP de la sesión: detrás
+  del nginx registra la del proxy.
+- **G-12:** la guía está; **el QA manual del §6 sigue sin correr desde 02.02**.
+
+### Estado al 07/10/2026, sobre `8fe1fae` (histórico)
 
 > Esta subsección **supersede** a la del 06/10 que sigue abajo en contrato, migraciones y
 > paquetes; la del 06/10 queda como historia. Las cifras de cobertura **no** se actualizan acá:
@@ -584,8 +702,9 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
 > **Las de abajo las abrieron los PR del 06/10/2026.** Cada una quedó implementada con un
 > criterio provisorio que el PR declara; lo que falta es confirmarlo o cambiarlo.
 
-5. **Qué permiso pide la sección `coberturas` del Paciente 360** (#34). Hoy `permisoRequerido()` es
-   `null`: alcanza con pertenecer al tenant, el mismo criterio con el que `CoberturaPacienteService`
+5. ~~**Qué permiso pide la sección `coberturas` del Paciente 360** (#34).~~ **Resuelta por DP-22
+   (#76, 08/10):** la sección declara `paciente:read`. Lo que sigue es la historia. `permisoRequerido()` era
+   `null`: alcanzaba con pertenecer al tenant, el mismo criterio con el que `CoberturaPacienteService`
    lista las coberturas, porque la matriz no tiene `cobertura:read` ni `paciente:read`. Por eso la
    sección nunca cae en `seccionesOmitidas`. El número de afiliado viaja enmascarado.
 6. **La contradicción del documento de force-increment** (#36). `docs/fases/deuda-force-increment.md`
@@ -595,7 +714,8 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
 7. **Qué eventos de turno notifican** (#37). Hoy avisan reservar, cancelar y reprogramar.
    **Confirmar no avisa** (RF-M26-002 habla de la creación) y **marcar ausente tampoco**. El aviso
    de cancelación sale aunque la oferta ya no resuelva, sin nombre de servicio.
-8. **Dos límites de las sondas de impacto** (#38). **(a)** `DisponibilidadImpactProbe` informa una
+8. **Dos límites de las sondas de impacto** (#38). **(a) ~~Cota superior~~ — corregida por A-11
+   (#64, 08/10): la cuenta es exacta.** Lo que sigue de (a) es la historia. `DisponibilidadImpactProbe` informa una
    **cota superior**: también cuenta turnos de otro bloque vigente del mismo profesional, porque el
    `spi` recibe la ventana y no el bloque; corregirlo cambia el `spi` de `resource`. **(b)** Hay una
    **carrera residual en la baja de sede**: la baja toma el lock del tenant y la reserva el de
@@ -619,22 +739,27 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
     (`owner_key` en `financiador`/`plan_cobertura`, que reabre todas las lecturas de `contracting`)
     o la **adopta** como copia (tabla global aparte). Recomendada la copia. Sin decidirla, esa parte
     de A-7 no se implementa (`docs/diseno/AKINE-A-7-plataforma.md` §3).
-12. **"Atender como Particular"** (E-7, #56). **(a)** Particular manda sobre el convenio: se tomó
-    de RF-M08-007 lo que E-4 había dejado como pregunta. **(b)** Oferta sin precio + Particular →
-    no se devenga nada, en vez de caer al convenio. **(c)** Es una foto del cierre: si la recepción
-    cambia después, la deuda no se recalcula.
-13. **El horario general de la sede** (A-8, #60). **(a)** Es informativo: que la agenda lo lea —por
-    ejemplo para ofertas sin profesional, hoy `SIN_HORARIO`— es una decisión aparte. **(b)** El
+12. **"Atender como Particular"** (E-7, #56). ~~**(a)** Particular manda sobre el convenio~~ y
+    ~~**(b)** oferta sin precio + Particular → no se devenga nada~~: **resueltas por DP-17 (#72,
+    08/10)**, que confirma (a) y reemplaza (b) por un 409 `oferta-sin-precio` en el cierre. Sigue
+    abierta **(c)**: es una foto del cierre; si la recepción cambia después, la deuda no se
+    recalcula. Y una nueva de E-7b: **con arancel total cero no hay deuda ni se exige precio**.
+13. **El horario general de la sede** (A-8, #60). ~~**(a)** Es informativo~~ — **resuelta por
+    DP-19 (A-8b, #73, 08/10): limita la agenda para todas las ofertas.** A-8b dejó declarados sus
+    límites: una **apertura especial** de la sede fuera del horario general también queda
+    recortada (regla estricta, ¿se quiere así?), el turno de una oferta sin profesional que queda
+    fuera no aparece en `impactoDelHorario`, y no hay consulta previa del cambio de horario. **(b)** El
     onboarding compuesto de la primera sede sigue sin box ni horario (ADR-0008 no se tocó); se
     cargan después por espacios y por el `PUT` del calendario, que A-8 agregó por eso. **(c)** Un
     alta con complemento sin ninguna extensión registrada falla con `IllegalStateException` en vez
     de descartar el box y el horario.
-14. **El estado de una serie y el prepago antes del check-in** (E-8, #59). El estado derivado tiene
-    dos valores: `FINALIZADA` no distingue cancelada de terminada (sería un valor más, aditivo).
-    Antes del check-in el prepago se muestra `PENDIENTE` aunque el paciente después resulte con
+14. **El estado de una serie y el prepago antes del check-in** (E-8, #59). ~~El estado derivado tiene
+    dos valores: `FINALIZADA` no distingue cancelada de terminada~~ — **resuelta por DP-20 (E-8b,
+    #71, 08/10): `CANCELADA` es un tercer valor.** Sigue abierto: antes del check-in el prepago se muestra `PENDIENTE` aunque el paciente después resulte con
     cobertura.
-15. **Cobertura por oferta** (B-3, #55). **(a)** La importación masiva de convenio (RF-M16-007)
-    quedó diseñada y fuera (§7 del diseño). **(b)** El arancel por oferta es una columna de
+15. **Cobertura por oferta** (B-3, #55). ~~**(a)** La importación masiva de convenio (RF-M16-007)
+    quedó diseñada y fuera~~ — **hecha en B-7 (#63 · web #28, 08/10)**, sin modo parcial ni cierre
+    automático de vigencias previas. **(b)** El arancel por oferta es una columna de
     `convenio_arancel` con la práctica obligatoria, no una tabla `convenio_oferta`. **(c)** Una
     cobertura aplica con la primera práctica que resuelve, la principal primero, y no hay desempate
     entre aranceles del mismo nivel. **(d)** El precio particular no edita su importe: sólo se
@@ -664,14 +789,37 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
     no declara prácticas. G-1: el alcance limitado del profesional viaja como advertencia y no como
     campo, y `PLATFORM_ADMIN` lee en `SOPORTE` aunque la matriz diga "Global".
 
+> **Las de abajo las abrieron los PR del 08/10 al 11/10.** Las del plan en paralelo que siguen
+> abiertas son **DU-10** (`egreso:manage` y adjunto del egreso), **DU-11** (parámetros por práctica
+> y si un observador que falla hace fallar el cierre), **DU-12** (F9 y `clase:*`) y **DU-13** (la
+> 11 de arriba). DU-5, DU-6 y DU-8 se resolvieron como DP-21, DP-22 y DP-23.
+
+20. **SAST, SCA y DAST** (G-5, #78). **SCA ya está** desde G-6 (#83): Dependabot y
+    dependency-check bloqueante con CVSS ≥ 7, con respaldo OSV.dev. Falta decidir el SAST
+    —CodeQL, o SonarQube con el job que ya existe y se saltea sin secretos— y si va un DAST (ZAP
+    baseline no bloqueante, recomendado).
+21. **La justificación de acceso en `encounter`** (G-5). Header obligatorio en el contrato,
+    opcional y auditado, o declarar que la propiedad de la sesión ya es relación asistencial.
+22. **`caso:create`** (G-5). Cablearlo, o enmendar la matriz para absorberlo en `hc:write`, que es
+    el efecto observable desde #78.
+23. **`mysql-connector-j` 9.7.0 con CVE sin corrección** (G-6, #83). Esperar la versión corregida
+    o bajar a 9.6.0. La excepción vence el **09/11/2026** y desde ese día el job
+    `vulnerabilidades` falla.
+24. **El débito parcial de una presentación** (G-12, #84). Deja la obligación del financiador
+    `PENDIENTE` por el total después de conciliar, aunque el resto se cobró (07.04 §8).
+25. **La situación de la orden médica** (B-4, #75). Ningún RF de M17 define una máquina de la
+    orden; los ocho valores de `SituacionOrdenMedica` y su precedencia (`ANULADA` > `CUMPLIDA` >
+    `VENCIDA` > `EN_CURSO` > `AUTORIZADA` > `EN_TRAMITE` > `RECHAZADA` > `SIN_AUTORIZACION`) son
+    del diseño y conviene confirmar los nombres.
+
 ### Huecos funcionales conocidos
 
-- **El OpenAPI no declara ningún `securityScheme`**, en ningún módulo. El frontend funciona porque
-  agrega la autenticación por interceptor; un cliente generado no lo sabría.
-- **No existe `paciente:read`**: las lecturas del padrón se autorizan por pertenencia, así que una
-  membership con rol `PACIENTE` **lee el padrón entero de su organización**. Aprobar el permiso no
-  lo arreglaría: el problema es el alcance `OWN`, sin implementar porque no hay vínculo entre cuenta
-  y persona.
+- ~~**El OpenAPI no declara ningún `securityScheme`**~~ — **lo declara**: `bearerAuth` en
+  `components.securitySchemes` y como seguridad global del contrato (G-5 lo da como resuelto en
+  07.07; verificado en el YAML de `81344c5`).
+- ~~**No existe `paciente:read`**~~ — **resuelto por DP-22 (#76, 08/10)**: el padrón exige
+  `paciente:read`, que tiene sólo el personal; el rol `PACIENTE` recibe 403. El alcance `OWN`
+  (autoservicio del paciente, vínculo cuenta↔persona) queda para después del MVP.
 - ~~**`consultarElegibilidadAdministrativa` no tiene consumidor.**~~ **La consume la recepción
   desde E-4** (#52), por `person.spi.ElegibilidadAdministrativaDirectory`: lo que no cumple queda
   `OBSERVADA`, nunca un 4xx. La sesión y la obligación siguen sin consultarla.
@@ -682,38 +830,41 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
   —referencia con `owner_key` o copia adoptada— (`docs/diseno/AKINE-A-7-plataforma.md` §3).
 - ~~**CA-M03-002 parcialmente cubierto**~~ **Cubierto en el backend por A-8** (`V83`, contrato
   0.69.0): el alta de sede acepta `primerBox` y `horarioGeneral` y los crea en la misma
-  transacción. El horario general es informativo —la agenda no lo lee (RN-M03-004)—. La pantalla
+  transacción. Desde DP-19 (A-8b, #73) el horario general **limita la agenda**; antes era
+  informativo. La pantalla
   entró en `appKine-web` #22. El onboarding compuesto de la primera sede sigue sin box ni horario:
   se cargan después por espacios y por el `PUT` del calendario.
 
 ### Próximo paso concreto
 
-> Reescrito el 07/10/2026. La versión del 06/10 pedía regenerar el cliente, las pantallas de F-6,
-> F-7, F-3, B-5 y A-10, cerrar F-8 y mover la ruta crítica: todo eso entró ese día, salvo la
-> pantalla de F-3.
+> Reescrito el 11/10/2026. El del 07/10 pedía el job E2E del CI, las pantallas de F-3, A-9,
+> reprogramación de serie y reintento de notificaciones, y la migración de B-4: todo entró entre
+> el 08/10 y el 11/10. Siguen en pie el QA manual y las pantallas clínicas.
 
-1. **El QA manual del §6 (G-12)**, sin correr desde 02.02 y declarado bloqueante para deploy. Es
-   más urgente que antes: el 07/10 entraron trece PR de pantallas y **ninguno se verificó contra
-   el backend real** —cada PR de `appKine-web` lo declara—, sólo con `HttpTestingController`.
-2. **E2E contra el stack real y el job E2E del CI (G-9).** Lo que lo bloqueaba era la imagen del
-   frontend, y G-3 la cerró (web #18). Las verticales sin un solo E2E son la clínica, F3, caja,
-   presentaciones, recepción y series.
-3. **Las pantallas que siguen faltando:** anulación, reintegro e imputación posterior de cobros
-   (F-3), edición de las prácticas de una oferta (A-9), alertas de consumo y selector de
-   autorización (C-4 / D-f), reprogramación de serie con alcance, reintento de notificaciones,
-   egresos y pagos a profesionales (07.05 / F-5), y la historia clínica en pantalla, que está en el
-   PR #4 de `appKine-web`, abierto y sin mergear (D-a, D-b, D-c).
-4. **B-4 necesita una migración por encima de `V83`**: su `V68` reservada quedó por debajo de lo
-   mergeado. Espera además DU-8.
-5. Las **decisiones pendientes del usuario**: DU-5, DU-6, DU-8, DU-10, DU-11, DU-12 y DU-13 del plan
-   de trabajo en paralelo, y las que abrieron los PR del 07/10 (11 a 19 de arriba). La más cara de
-   postergar es la 17: **RF-M21-003 no bloquea** una presentación sin orden, autorización ni
-   credencial, y el dato ya viaja congelado en cada obligación del financiador.
+1. **Ejecutar el QA manual del §6 con la guía de G-12** (`docs/qa/`), sin correr desde 02.02 y
+   bloqueante para deploy. La guía —once circuitos, 120 pasos, 127 consultas validadas— está
+   lista; la ejecución es del usuario. Las pantallas de B-7, A-11, A-9, F-3, E-3, B-4, A-8b y los
+   permisos otorgables sólo se probaron con `HttpTestingController`.
+2. **El traba del pool de Hikari que midió G-10**: con escrituras concurrentes el backend deja de
+   responder. Es el hallazgo crítico de `docs/carga.md` §6 y bloquea cualquier despliegue con más
+   de un puñado de usuarios. Después, el lock de `comprobante_numerador` y el 401 ante un fallo de
+   base.
+3. **Decidir Connector/J antes del 09/11** (decisión 23): ese día vence la excepción y el job
+   `vulnerabilidades` se pone rojo.
+4. **Las pantallas clínicas**: la historia clínica está en el PR #4 de `appKine-web`, abierto y sin
+   tocar desde el 06/10 (D-a, D-b, D-c); faltan D-d, D-e, D-f, D-g y los egresos y pagos a
+   profesionales (F-5, espera DU-10).
+5. Las **decisiones pendientes del usuario** que siguen vivas: DU-10, DU-11, DU-12, DU-13 y las
+   numeradas arriba que no están tachadas (de la 20 a la 25 son nuevas). La más cara de postergar sigue siendo la 17: **RF-M21-003 no
+   bloquea** una presentación sin orden, autorización ni credencial.
 
 Pendientes que arrastra el backend:
 
-- [ ] Protección de rama en `main`
+- [x] ~~Protección de rama en `main`~~ — hecha: checks obligatorios "Build, test y contrato" e "Imagen Docker y SBOM", y `main` es la rama por defecto (API de GitHub, 11/10)
 - [ ] Activar SonarQube: el job `sonar` del CI ya corre y se saltea limpio; falta cargar `SONAR_TOKEN` y `SONAR_HOST_URL` (G-6, `docs/calidad.md` §3)
+- [ ] Corregir los hallazgos de G-10 (`docs/carga.md` §6): traba del pool por `REQUIRES_NEW` anidado, lock de `comprobante_numerador`, 401 ante fallo de base, N+1 de la agenda del día y `start-period` del healthcheck
+- [ ] Tests de controller para `billing`, `person`, `scheduling` y `clinical`, los cuatro módulos críticos debajo de 0,90
+- [ ] Revisar los cuatro PR de Dependabot abiertos el 11/10 (#87–#90; uno propone Temurin 25 en la imagen, que es un salto de Java)
 - [x] ~~Observabilidad: logging JSON, Prometheus, OpenTelemetry~~ — G-4, `docs/observabilidad.md`
 - [x] ~~Reglas de cobertura por módulo crítico~~ — G-6: trinquete por módulo en lo medido; desde `akine-cobertura-capa-rest` los siete críticos pasan el 0,90 (`docs/calidad.md` §4)
 - [ ] Cargar `NVD_API_KEY` en los secretos del repo: sin ella el job `vulnerabilidades` analiza contra OSV.dev en lugar de OWASP (el NVD da 429 a los runners sin clave)

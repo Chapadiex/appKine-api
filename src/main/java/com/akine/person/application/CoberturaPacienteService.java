@@ -20,13 +20,16 @@ import com.akine.person.domain.port.PersonRepositoryPorts.PerfilPacienteReposito
 import com.akine.person.domain.port.PersonRepositoryPorts.PersonaRepositoryPort;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -95,6 +98,7 @@ public class CoberturaPacienteService {
 	private final CoberturaCatalogoDirectory catalogo;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	public CoberturaPacienteService(
 			CoberturaPacienteRepositoryPort coberturas,
@@ -104,7 +108,8 @@ public class CoberturaPacienteService {
 			PerfilPacienteRepositoryPort perfiles,
 			CoberturaCatalogoDirectory catalogo,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			PlatformTransactionManager transactionManager) {
 
 		this.coberturas = coberturas;
 		this.candados = candados;
@@ -114,6 +119,8 @@ public class CoberturaPacienteService {
 		this.catalogo = catalogo;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	// =================================================================================
@@ -203,7 +210,6 @@ public class CoberturaPacienteService {
 	 * esta dado de baja, su financiador esta dado de baja, o la fecha cae fuera de su vigencia— y
 	 * las cinco se responden igual: ver {@link PlanNoSeleccionableException}.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public CoberturaView agregar(
 			OperatingActor actor, long personaId, CoberturaAltaCommand command) {
 
@@ -217,9 +223,18 @@ public class CoberturaPacienteService {
 				command.vigenciaDesde(), "La vigencia de la cobertura necesita una fecha de inicio");
 		boolean principal = Boolean.TRUE.equals(command.principal());
 
-		// PASO 0. En su PROPIA transaccion: crearla dentro de esta deadlockea entre las primeras
-		// coberturas concurrentes de una persona. Ver CoberturaLockIniciador.
+		// PASO 0. En su PROPIA transaccion y ANTES de abrir la del negocio: crearla dentro deadlockea
+		// entre las primeras coberturas concurrentes de una persona (CoberturaLockIniciador), y
+		// anidada retenia dos conexiones y trababa el pool (FilaLockPrevia).
 		iniciador.asegurar(organizationId, personaId);
+
+		return transaccionReadCommitted.execute(estado -> agregarEnTransaccion(
+				actor, personaId, command, organizationId, desde, principal));
+	}
+
+	private CoberturaView agregarEnTransaccion(
+			OperatingActor actor, long personaId, CoberturaAltaCommand command,
+			long organizationId, LocalDate desde, boolean principal) {
 
 		// PASO 1. Antes de leer nada de coberturas. Ver la cabecera de la clase.
 		BloqueoDeCoberturas.tomar(candados, organizationId, personaId);
@@ -278,7 +293,6 @@ public class CoberturaPacienteService {
 	 * <p>Una cobertura dada de baja no se edita: 409. Reabrir la ficha de algo dado de baja
 	 * reescribiria el historico que RN-M08-003 protege.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public CoberturaView editar(
 			OperatingActor actor,
 			long personaId,
@@ -291,6 +305,15 @@ public class CoberturaPacienteService {
 		exigirPacienteVigente(organizationId, personaId, "editar una cobertura");
 
 		iniciador.asegurar(organizationId, personaId);
+
+		return transaccionReadCommitted.execute(estado -> editarEnTransaccion(
+				actor, personaId, coberturaId, command, organizationId));
+	}
+
+	private CoberturaView editarEnTransaccion(
+			OperatingActor actor, long personaId, long coberturaId,
+			CoberturaEdicionCommand command, long organizationId) {
+
 		BloqueoDeCoberturas.tomar(candados, organizationId, personaId);
 
 		CoberturaPaciente cobertura = cargar(organizationId, personaId, coberturaId);
@@ -343,7 +366,6 @@ public class CoberturaPacienteService {
 	 * periodo, responde 409 con su id. Desmarcarla en silencio significaria que un click cambia dos
 	 * coberturas, y la que se cambia sin pedirlo es la que despues nadie puede explicar.
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public CoberturaView marcarPrincipal(
 			OperatingActor actor, long personaId, long coberturaId, boolean principal) {
 
@@ -354,6 +376,15 @@ public class CoberturaPacienteService {
 		exigirPacienteVigente(organizationId, personaId, "elegir su cobertura principal");
 
 		iniciador.asegurar(organizationId, personaId);
+
+		return transaccionReadCommitted.execute(estado -> marcarPrincipalEnTransaccion(
+				actor, personaId, coberturaId, principal, organizationId));
+	}
+
+	private CoberturaView marcarPrincipalEnTransaccion(
+			OperatingActor actor, long personaId, long coberturaId, boolean principal,
+			long organizationId) {
+
 		BloqueoDeCoberturas.tomar(candados, organizationId, personaId);
 
 		CoberturaPaciente cobertura = cargar(organizationId, personaId, coberturaId);

@@ -19,8 +19,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Adaptador de {@link OfertaDirectory} sobre las tablas de M27.
@@ -68,6 +72,18 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 		return ofertas
 				.findByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
 				.map(OfferingOfertaDirectory::proyectar);
+	}
+
+	@Override
+	public Map<Long, OfertaSnapshot> findTodas(
+			long organizationId, long consultorioId, Collection<Long> ofertaIds) {
+		if (ofertaIds.isEmpty()) {
+			return Map.of();
+		}
+		return ofertas.findAllByOrganizationIdAndConsultorioIdAndIdIn(
+						organizationId, consultorioId, Set.copyOf(ofertaIds))
+				.stream()
+				.collect(Collectors.toMap(OfertaServicioConsultorio::getId, OfferingOfertaDirectory::proyectar));
 	}
 
 	@Override

@@ -1,5 +1,6 @@
 package com.akine.contracting.application;
 
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.contracting.application.ArancelCommands.ArancelAltaCommand;
 import com.akine.contracting.application.ArancelCommands.ArancelEdicionCommand;
 import com.akine.contracting.domain.Convenio;
@@ -50,6 +51,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -104,7 +106,7 @@ class ArancelServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ArancelService(convenios, aranceles, locks, lockIniciador, consultorios,
-				catalogo, permissionGuard, auditTrail, ofertas, practicasDeOferta);
+				catalogo, permissionGuard, auditTrail, ofertas, practicasDeOferta, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(new ConsultorioSnapshot(
 				SEDE_ID, ORG_ID, "Sede Centro", "America/Argentina/Cordoba", true)));
