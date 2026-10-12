@@ -717,11 +717,14 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
 8. **Dos límites de las sondas de impacto** (#38). **(a) ~~Cota superior~~ — corregida por A-11
    (#64, 08/10): la cuenta es exacta.** Lo que sigue de (a) es la historia. `DisponibilidadImpactProbe` informa una
    **cota superior**: también cuenta turnos de otro bloque vigente del mismo profesional, porque el
-   `spi` recibe la ventana y no el bloque; corregirlo cambia el `spi` de `resource`. **(b)** Hay una
-   **carrera residual en la baja de sede**: la baja toma el lock del tenant y la reserva el de
-   `agenda_sede`, y la reserva valida la sede activa antes de su lock, así que puede colarse un turno
-   entre la sonda y el commit de la baja. Cerrarlo exige revalidar la sede bajo el lock de agenda.
-   Además el impacto de desvinculación muestra una sola fuente, y mostrar las dos es un cambio de
+   `spi` recibe la ventana y no el bloque; corregirlo cambia el `spi` de `resource`. **(b)**
+   ~~Carrera residual en la baja de sede~~ — **cerrada el 12/10 (rama `akine-fix-carreras-sede`)**:
+   la baja toma la fila de `consultorio` con `FOR UPDATE` antes de las sondas, y reservar,
+   reprogramar y crear o mover una serie la releen con `FOR SHARE` bajo el lock de `agenda_sede`
+   (`BloqueoDeAgenda.tomarParaOcupar`, 409 `consultorio-inactive`). Lo mismo para el box: la
+   reserva relee con `FOR SHARE` el espacio que elige. `BajaDeSedeContraReservaIT` lo prueba. Las
+   sondas que sólo **informan** (desvinculación, disponibilidad) no tienen invariante que romper:
+   un turno que se cuela queda visible como conflicto. Además el impacto de desvinculación muestra una sola fuente, y mostrar las dos es un cambio de
    contrato.
 9. **Permisos de anular y reintegrar un cobro, y anticipo explícito** (#39). Anular y reintegrar
    exigen `cobro:register` **y** `caja:operate`, no un `cobro:annul` propio: la matriz §32 no tiene
@@ -750,9 +753,10 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
     recortada (regla estricta, ¿se quiere así?), el turno de una oferta sin profesional que queda
     fuera no aparece en `impactoDelHorario`, y no hay consulta previa del cambio de horario. **(b)** El
     onboarding compuesto de la primera sede sigue sin box ni horario (ADR-0008 no se tocó); se
-    cargan después por espacios y por el `PUT` del calendario, que A-8 agregó por eso. **(c)** Un
-    alta con complemento sin ninguna extensión registrada falla con `IllegalStateException` en vez
-    de descartar el box y el horario.
+    cargan después por espacios y por el `PUT` del calendario, que A-8 agregó por eso. ~~**(c)** Un
+    alta con complemento sin ninguna extensión registrada falla con `IllegalStateException`~~ —
+    **cerrada el 12/10**: responde 400 `validation-error` antes del gate de plan. Se rechaza y no
+    se descarta porque ADR-0008 y CA-M03-002-04 piden todo o nada.
 14. **El estado de una serie y el prepago antes del check-in** (E-8, #59). ~~El estado derivado tiene
     dos valores: `FINALIZADA` no distingue cancelada de terminada~~ — **resuelta por DP-20 (E-8b,
     #71, 08/10): `CANCELADA` es un tercer valor.** Sigue abierto: antes del check-in el prepago se muestra `PENDIENTE` aunque el paciente después resulte con

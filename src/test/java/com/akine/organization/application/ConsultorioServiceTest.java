@@ -226,6 +226,24 @@ class ConsultorioServiceTest {
 	}
 
 	@Test
+	@DisplayName("Con complemento y sin ninguna extension registrada el alta es 400 antes del gate (13c)")
+	void el_alta_con_complemento_sin_extension_es_400() {
+		ConsultorioService sinExtensiones = new ConsultorioService(
+				consultorios, altas, organizaciones, suscripciones, planGate, usageCounter,
+				permissionGuard, auditTrail, supportAccessReadAuditor, List.of(turnosFuturos),
+				List.of());
+		AltaDeSedeExtension.Complemento complemento = new AltaDeSedeExtension.Complemento(
+				new AltaDeSedeExtension.PrimerBox("Box 1", null), List.of());
+
+		assertThatThrownBy(() -> sinExtensiones.create(actor, ORG_ID, altaCon(complemento)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("no admite primer box ni horario general");
+		// Todo o nada (ADR-0008): ni cupo consumido ni sede creada sin lo que se pidio.
+		verifyNoInteractions(planGate);
+		verify(consultorios, never()).saveAndFlush(any());
+	}
+
+	@Test
 	@DisplayName("Un nombre repetido es 409, no registra la clave y no audita")
 	void el_nombre_repetido_es_409() {
 		willThrow(new DataIntegrityViolationException("uk")).given(consultorios).saveAndFlush(any());
@@ -329,15 +347,18 @@ class ConsultorioServiceTest {
 	@Test
 	@DisplayName("La baja bloquea la suscripcion ANTES de evaluar nada: orden subscription -> organization")
 	void la_baja_bloquea_la_suscripcion_primero() {
-		given(consultorios.findByIdAndOrganizationId(CONSULTORIO_ID, ORG_ID))
+		given(consultorios.findByIdAndOrganizationIdForUpdate(CONSULTORIO_ID, ORG_ID))
 				.willReturn(Optional.of(consultorio(CONSULTORIO_ID, "Sede Centro")));
 
 		service.deactivate(actor, ORG_ID, CONSULTORIO_ID, "Cierre de la sucursal");
 
-		InOrder orden = inOrder(suscripciones, permissionGuard, consultorios);
+		InOrder orden = inOrder(suscripciones, permissionGuard, consultorios, turnosFuturos);
 		orden.verify(suscripciones).findByOrganizationIdForUpdate(ORG_ID);
 		orden.verify(permissionGuard).requirePermission(any());
+		// 8b: el exclusivo sobre la sede, ANTES de la sonda. Es lo que serializa contra la reserva.
+		orden.verify(consultorios).findByIdAndOrganizationIdForUpdate(CONSULTORIO_ID, ORG_ID);
 		orden.verify(consultorios).countActiveForShare(ORG_ID, CONSULTORIO_ID);
+		orden.verify(turnosFuturos).activeReferencesOn(eq(ORG_ID), eq(CONSULTORIO_ID), any());
 	}
 
 	@Test
@@ -352,7 +373,7 @@ class ConsultorioServiceTest {
 	@DisplayName("No se da de baja la ultima sede activa de la organizacion: 409")
 	void la_ultima_sede_no_se_da_de_baja() {
 		Consultorio ultima = consultorio(CONSULTORIO_ID, "Sede Centro");
-		given(consultorios.findByIdAndOrganizationId(CONSULTORIO_ID, ORG_ID)).willReturn(Optional.of(ultima));
+		given(consultorios.findByIdAndOrganizationIdForUpdate(CONSULTORIO_ID, ORG_ID)).willReturn(Optional.of(ultima));
 		given(consultorios.countActiveForShare(ORG_ID, CONSULTORIO_ID)).willReturn(0L);
 
 		assertThatThrownBy(() -> service.deactivate(actor, ORG_ID, CONSULTORIO_ID, "Cierre"))
@@ -364,7 +385,7 @@ class ConsultorioServiceTest {
 	@Test
 	@DisplayName("Si una sonda declara referencias vigentes, la baja es 409")
 	void la_baja_con_referencias_vigentes_es_409() {
-		given(consultorios.findByIdAndOrganizationId(CONSULTORIO_ID, ORG_ID))
+		given(consultorios.findByIdAndOrganizationIdForUpdate(CONSULTORIO_ID, ORG_ID))
 				.willReturn(Optional.of(consultorio(CONSULTORIO_ID, "Sede Centro")));
 		given(turnosFuturos.activeReferencesOn(anyLong(), anyLong(), any()))
 				.willReturn(new ConsultorioDeactivationProbe.ActiveReferences("TURNO", 3));
@@ -377,7 +398,7 @@ class ConsultorioServiceTest {
 	@Test
 	@DisplayName("La baja es logica y se audita ACTIVO -> INACTIVO con el motivo")
 	void la_baja_es_logica_y_se_audita() {
-		given(consultorios.findByIdAndOrganizationId(CONSULTORIO_ID, ORG_ID))
+		given(consultorios.findByIdAndOrganizationIdForUpdate(CONSULTORIO_ID, ORG_ID))
 				.willReturn(Optional.of(consultorio(CONSULTORIO_ID, "Sede Centro")));
 
 		ConsultorioView vista = service.deactivate(actor, ORG_ID, CONSULTORIO_ID, "Cierre");

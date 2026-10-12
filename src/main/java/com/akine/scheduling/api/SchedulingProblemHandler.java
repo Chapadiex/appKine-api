@@ -4,6 +4,7 @@ import com.akine.platform.spi.problem.ProblemType;
 import com.akine.scheduling.domain.exception.CantidadConfirmadaDesactualizadaException;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
+import com.akine.scheduling.domain.exception.SedeDadaDeBajaException;
 import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.application.IdempotencyKeyConflictException;
@@ -46,6 +47,7 @@ public class SchedulingProblemHandler {
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
 	private static final URI OFERTA_NO_AGENDABLE = ProblemType.OFERTA_NO_AGENDABLE.uri();
+	private static final URI CONSULTORIO_INACTIVE = ProblemType.CONSULTORIO_INACTIVE.uri();
 	private static final URI VENTANA_DEMASIADO_AMPLIA = ProblemType.VENTANA_DEMASIADO_AMPLIA.uri();
 	private static final URI SLOT_NO_DISPONIBLE = ProblemType.SLOT_NO_DISPONIBLE.uri();
 	private static final URI SLOT_COMPLETO = ProblemType.SLOT_COMPLETO.uri();
@@ -98,6 +100,18 @@ public class SchedulingProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(OFERTA_NO_AGENDABLE);
 		problem.setTitle("La oferta no puede agendar turnos");
+		return problem;
+	}
+
+	/** La sede se dio de baja: el mismo 409 que {@code resource} da para hechos nuevos en ella. */
+	@ExceptionHandler(SedeDadaDeBajaException.class)
+	public ProblemDetail handleSedeDadaDeBaja(SedeDadaDeBajaException exception) {
+		log.debug("Escritura de agenda en sede dada de baja: consultorioId={}",
+				exception.getConsultorioId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(CONSULTORIO_INACTIVE);
+		problem.setTitle("La sede esta dada de baja");
 		return problem;
 	}
 
