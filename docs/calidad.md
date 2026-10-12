@@ -111,12 +111,13 @@ va fijado por versión en `SONAR_MAVEN_VERSION`, al principio del `ci.yml`.
 
 ## 4. JaCoCo por módulo — reglas en el `pom.xml`
 
-Medido el **11/10/2026** con `./mvnw verify` completo sobre `main` `955855f` (después de #77, #78,
-#80 y #81) más esta rama: **3.439 unitarias + 785 de integración, 0 fallos**, 1 salteada (la 7b).
+Las reglas nacieron en G-6, medidas el **11/10/2026** con `./mvnw verify` completo sobre `main`
+`955855f` (después de #77, #78, #80 y #81) más esa rama: **3.439 unitarias + 785 de integración, 0 fallos**, 1 salteada (la 7b).
 BUNDLE: **línea 89,80 % · instrucción 88,56 % · rama 77,31 %**. El CI del PR midió lo mismo con
 diferencias de centésimas (`clinical` instrucción 82,24 % en el CI, 82,19 % local: los ITs
 concurrentes no recorren siempre las mismas ramas). El gate global sigue en **0,80** de línea e
-instrucción y `BRANCH` sigue sin gate (decisión pendiente del usuario).
+instrucción y `BRANCH` sigue sin gate (decisión pendiente del usuario). Los números vigentes son
+los de la tabla de abajo, remedidos después de `akine-cobertura-capa-rest`.
 
 ### Las reglas
 
@@ -133,36 +134,79 @@ trinquete: un cambio que baje la cobertura de un módulo crítico rompe el build
 
 | Módulo | Línea | Instrucción | Rama | Regla (línea / instr.) | ¿Llega al 0,90? |
 |---|---|---|---|---|---|
-| `organization` | 97,96 % | 97,52 % | 88,27 % | 0,97 / 0,97 | sí |
-| `identity` | 96,09 % | 97,12 % | 83,94 % | 0,96 / 0,97 | sí |
+| `organization` | 98,14 % | 97,70 % | 88,24 % | 0,97 / 0,97 | sí |
+| `identity` | 97,78 % | 98,19 % | 86,53 % | 0,97 / 0,97 | sí |
+| `billing` | 96,48 % | 96,37 % | 81,79 % | 0,96 / 0,96 | sí |
 | `encounter` | 94,56 % | 93,81 % | 84,18 % | 0,94 / 0,93 | sí |
-| `billing` | 87,56 % | 83,29 % | 80,88 % | 0,87 / 0,83 | **no** |
-| `person` | 86,54 % | 86,28 % | 73,18 % | 0,86 / 0,86 | **no** |
-| `scheduling` | 86,47 % | 82,74 % | 76,38 % | 0,86 / 0,82 | **no** |
-| `clinical` | 82,56 % | 82,19 % | 70,35 % | 0,82 / 0,82 | **no** |
+| `scheduling` | 93,76 % | 93,05 % | 77,11 % | 0,93 / 0,93 | sí |
+| `person` | 92,86 % | 92,86 % | 74,68 % | 0,92 / 0,92 | sí |
+| `clinical` | 91,69 % | 91,40 % | 71,61 % | 0,91 / 0,91 | sí |
 
-### Los cuatro que no llegan al 0,90, y por qué
+Remedido el **11/10/2026** con `./mvnw -o verify` completo sobre `main` `81344c5` más la rama
+`akine-cobertura-capa-rest`: **3.740 unitarias + 794 de integración, 0 fallos**, 1 salteada (la
+7b), y las ocho ejecuciones de `jacoco:check` en verde. BUNDLE: **línea 93,22 % · instrucción
+92,77 % · rama 77,91 %**.
 
-El hueco tiene el mismo nombre en los cuatro: **la capa REST**. Los ITs de estos módulos entran por
-el servicio, no por el controller, y casi ningún controller tiene slice de `@WebMvcTest`; los DTO de
-respuesta y los mapeos de error quedan sin ejercitar.
+> **Única excepción al redondeo hacia abajo:** la instrucción de `identity` queda en 0,97 y no en
+> 0,98. 98,19 % redondeado dejaría 0,19 puntos de margen, y la G-6 ya midió diferencias de 0,05
+> entre corridas por los ITs concurrentes. Antes de esta rama `identity` estaba a 0,09 puntos de su
+> mínimo de línea; ahora está a 0,78.
 
-| Módulo | Paquetes que lo hunden (línea) |
-|---|---|
-| `clinical` | `clinical.api` 56,3 % (421 líneas), `clinical.api.dto` 47,6 % (206), `clinical.domain.exception` 73,8 % |
-| `billing` | `billing.api` 72,5 % (531 líneas), `billing.api.dto` **0 %** (171) |
-| `scheduling` | `scheduling.api` 61,4 % (277 líneas), `scheduling.api.dto` 20,2 % (99) |
-| `person` | `person.infrastructure` 66,0 % (150 líneas), `person.api.dto` 73,2 % (347) |
+### Cómo se llegó al 0,90: la capa REST
 
-Llevarlos al 0,90 es escribir los tests de controller de esos cuatro módulos —una etapa propia, no
-parte de G-6— y subir la regla en el mismo PR.
+Antes de `akine-cobertura-capa-rest` cuatro módulos críticos no llegaban, y el hueco tenía el mismo
+nombre en los cuatro: **la capa REST**. Los ITs entran por el servicio, no por el controller, y casi
+ningún controller tenía slice de `@WebMvcTest`.
+
+| Módulo | Antes (línea / instr.) | Después | Lo que lo hundía |
+|---|---|---|---|
+| `billing` | 87,75 % / 83,55 % | 96,48 % / 96,37 % | `billing.api` 72,5 %, `billing.api.dto` **0 %** |
+| `person` | 86,54 % / 86,28 % | 92,86 % / 92,86 % | `PersonProblemHandler`, DTOs de autorización y consumo, dos adaptadores de `person.spi` |
+| `scheduling` | 86,47 % / 82,74 % | 93,76 % / 93,05 % | `scheduling.api` 61,4 %, `scheduling.api.dto` 20,2 % |
+| `clinical` | 82,59 % / 82,24 % | 91,69 % / 91,40 % | `clinical.api` 56,3 %, `clinical.api.dto` 47,6 %, `ClinicalProblemHandler` |
+| `identity` | 96,09 % / 97,12 % | 97,78 % / 98,19 % | margen de 0,09 puntos; `JwtEmitter` sin test de rechazo |
+
+Los "antes" son la corrida completa sobre `main` `81344c5` (3.466 unitarias + 794 de integración).
+
+Lo que se agregó, y por qué rinde tanto por test:
+
+- **Un slice por módulo** —`BillingControllersTest`, `PersonControllersTest`,
+  `SchedulingControllersTest`, `ClinicalControllersTest`— sobre el esqueleto común
+  `testsupport/SliceRestDeModulo`. Cada uno recorre **todos** los endpoints del módulo con una
+  tabla (método, ruta, cuerpo, status esperado) y afirma el borde HTTP: 201 con `Location` contra
+  200 contra 204, que el cuerpo deserialice y pase la validación, el binding de filtros y la
+  cabecera `X-Justificacion-Acceso` de `clinical` hasta el servicio.
+- **Los servicios son mocks que devuelven vistas completas** (`testsupport/Fixture`): cada record de
+  vista se arma por reflexión con todos sus campos no nulos y cada lista con un elemento, así que
+  el mapeo vista → DTO se ejercita campo por campo sin escribir constructores de quince argumentos
+  que se rompen con cada campo nuevo.
+- **Cada advice del módulo se recorre entero**: las excepciones se leen de sus `@ExceptionHandler`
+  por reflexión, se instancian y se lanzan desde un endpoint; cada una tiene que salir como Problem
+  Detail 4xx con `type` de AKINE. Un handler nuevo entra al test sin tocarlo. Lo mismo para
+  `IdentityProblemHandler`, en `AccountAdminControllerTest`.
+- Unitarios chicos donde el hueco no era REST: `JwtEmitterTest` (lo que el verificador **rechaza**:
+  token tocado, header `alg:none`, base64 inválido, claims incoherentes con firma válida) y
+  `PersonSpiAdaptersTest` (el veredicto y el motivo que `AutorizacionDirectory` le da a
+  `clinical`, y de dónde sale la organización del perfil que aprovisiona la reserva).
+
+> **Lo que el recorrido de advices confirmó y no es defecto:** `OcurrenciaSinLugarException`
+> delega en el handler de su causa y responde 500 si la causa no es una de las cuatro previstas.
+> Es deliberado —`IllegalStateException` "causa no prevista"— y tiene su propio test con una causa
+> real. Registrar un antecedente responde 201 **sin** `Location`: no hay `GET` individual de
+> antecedente y un `Location` que da 404 es peor que no mandarlo. No apareció ningún defecto real
+> en los controllers: ninguna excepción de los cuatro módulos terminaba en 500.
+
+Lo que queda abajo en cada módulo ya no es la capa REST sino servicios: `PlanTratamientoService`
+(60 líneas), `CoberturaPacienteService` (43), `AutorizacionService` (41) y `OrdenMedicaService`
+(33), y la **rama**, que sigue sin gate: `clinical` 71,61 %, `person` 74,68 %.
 
 ### Fuera de las reglas por módulo
 
 `offering` (89,93 % de línea), `resource` (82,84 %), `contracting` (91,88 %), `reporting`
-(95,91 %), `activity`, `notification` y `platform` sólo los cubre el gate global. `resource` es el
+(95,91 %), `activity` (96,39 %), `notification` (94,82 %) y `platform` (96,84 %) sólo los cubre el
+gate global. `resource` es el
 más bajo del backend y no es de los siete críticos que fija el plan.
 
-> **Las reglas son estrechas a propósito**: `identity` queda a 0,09 puntos de su mínimo. Si un IT
+> **Las reglas son estrechas a propósito**: el mínimo es lo medido redondeado hacia abajo. Si un IT
 > concurrente hace que una corrida cubra un par de líneas menos que otra, el build lo va a decir;
 > la salida es mirar qué rama no se ejercitó, no bajar el número.
