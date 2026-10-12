@@ -405,14 +405,10 @@ entre sedes.
   y las tres transacciones siguen. Cachearlas por pedido toca la evaluación de permisos de
   `organization` (ADR-0020, T-7) y no se hizo a ciegas. En el digest de la corrida: `SET autocommit`
   252 307 veces y `SET SESSION TRANSACTION READ ONLY/WRITE` 117 000 cada una, para 37 492 pedidos.
-- **Quedan `REQUIRES_NEW` llamados desde adentro de una transacción**, que no son filas-lock y que
-  esta carga no ejercita: los auditores de acceso de soporte y de permiso denegado
-  (`PermissionDenialAuditor`, `PlanLimitRejectionAuditor`, `SupportAccessReadAuditor` y los de
-  `clinical`, `person`, `resource` y `reporting`), la escritura aparte de la historia clínica y de los
-  adjuntos (`HistoriaClinicaEscrituraAparte`, `AdjuntoClinicoEscrituraAparte`,
-  `AdjuntoEscrituraAparte`) y `ObligacionOcupadaConsulta` en presentaciones. Cada uno retiene dos
-  conexiones mientras dura; ninguno es por pedido normal, pero muchos 403 simultáneos o muchas
-  primeras aperturas de historia clínica a la vez pueden agotar el pool del mismo modo.
+- ~~**Quedan `REQUIRES_NEW` llamados desde adentro de una transacción**~~ (auditores de soporte y
+  de permiso denegado, escritura aparte de la historia clínica y de los adjuntos,
+  `ObligacionOcupadaConsulta`): **corregidos en `akine-pool-anidamientos`**, ver
+  [abajo](#los-anidamientos-que-no-eran-filas-lock-rama-akine-pool-anidamientos).
 - ~~`ImputacionDePrepago` en el `afterCommit` del cierre~~ **corregido en esta misma rama**: corría
   con la conexión del cierre todavía tomada (`afterCommit` y `afterCompletion` van antes de la limpieza
   de la transacción). Ahora se registra en `DespuesDeLaTransaccion` y corre cuando la plantilla de
@@ -427,3 +423,40 @@ entre sedes.
 `perf/stack.sh` tiene dos arreglos que salieron de correrlo: espera a que MySQL acepte conexiones por
 TCP antes de arrancar el backend (el ping por socket contesta antes, y el backend moría con
 "Connection refused"), y en Git Bash usa `pwd -W` para que `docker build` reciba una ruta de Windows.
+
+### Los anidamientos que no eran filas-lock (rama `akine-pool-anidamientos`)
+
+`FilaLockPrevia` resolvió las filas-lock moviéndolas antes de la transacción de negocio. Quedaban
+otros diez `REQUIRES_NEW` llamados desde adentro de una transacción abierta, cada uno con dos
+conexiones por pedido mientras duraba. Ninguno corre en un pedido normal, así que la carga de §5 no
+los ejercita, pero muchos 403, muchas primeras aperturas de historia clínica o muchas subidas de
+adjuntos a la vez traban el pool igual. `grep REQUIRES_NEW src/main` después del arreglo deja sólo
+transacciones que **no anidan**: `OutboxDispatchService` (el despachador corre sin transacción),
+`DirectMembershipService` (sin transacción de afuera, documentado), `ImputacionDePrepago` (corre en
+`DespuesDeLaTransaccion`) y la plantilla de `AuditoriaAparteImpl` (abajo).
+
+| Camino | Qué protegía el `REQUIRES_NEW` | Cómo quedó |
+|---|---|---|
+| Auditores de rechazo y de soporte: `PermissionDenialAuditor`, `PlanLimitRejectionAuditor`, `SupportAccessReadAuditor` y los `*SupportAccessAuditor` de `clinical`, `person`, `resource` y `reporting` | Que la fila sobreviva al rollback del 403/404 y que se escriba aunque la lectura sea `readOnly` | `platform.spi.audit.AuditoriaAparte`: la entrada se arma en el momento y se escribe en una transacción propia **cuando la del pedido ya terminó y devolvió su conexión**. Para eso el transaction manager de la aplicación (`TransaccionesConfig`) avisa a `AlTerminarLaTransaccion` al empezar cada transacción física y al terminar de limpiarla. `afterCompletion` no servía: corre con la conexión todavía tomada |
+| `AdjuntoClinicoService.contenido` → `marcarNoDisponible` | Que la marca `NO_DISPONIBLE` sobreviva al 409 | La misma: `AlTerminarLaTransaccion.ejecutar` |
+| `HistoriaClinicaService.asegurar` → `HistoriaClinicaEscrituraAparte` | Que el choque contra el unique no deje la transacción `rollbackOnly`, y releer a la ganadora fuera de la foto de `REPEATABLE READ` | **Ya no hay escritura aparte.** `INSERT IGNORE` en la transacción de negocio —el choque queda en advertencia, no en excepción— y relectura con `FOR SHARE`, que ve lo último commiteado. De yapa, la historia y su `HISTORIA_CLINICA_OPENED` se confirman juntas |
+| `AdjuntoClinicoService.subir` y `person.AdjuntoService.subir` → `*EscrituraAparte` | Lo mismo para `uk_adjunto_*_contenido_vigente` | La transacción de afuera desapareció: autorizar y buscar por checksum, el INSERT (su transacción), el binario (sin conexión tomada) y la auditoría van en cuatro pasos de una conexión por vez. La relectura del perdedor es una transacción nueva, así que ya no necesita `READ_COMMITTED`. Las escrituras aparte fallan si alguien las llama con una transacción abierta |
+| `PresentacionService.crear` / `agregarItem` → `ObligacionOcupadaConsulta` | Leer el lote ganador con la sesión JPA del perdedor rota | El perdedor lanza una excepción interna, su transacción revierte y devuelve la conexión, y recién ahí se lee el lote para el 409 `obligacion-ya-presentada` |
+
+Lo que se pierde: si la auditoría diferida falla, ya no puede convertir el pedido en un 500 —la
+respuesta está decidida—, y se loguea en ERROR. La apertura concurrente de la **misma** historia
+ahora espera a la primera (la fila nueva queda bloqueada hasta su commit); si la primera revierte con
+dos o más esperando, InnoDB puede elegir una víctima de deadlock entre ellas.
+
+**Verificado con pool 2.** `PoolDeConexionesIT` suma cinco escenarios de ocho pedidos simultáneos
+(primera apertura de historia, dos por paciente; subida de adjuntos clínicos y administrativos, dos
+por contenido; descarga de adjuntos sin binario; 403 por permiso) y `PresentacionPoolDeConexionesIT`
+arma a mano la carrera de presentaciones con un tercer hilo que retiene la conexión liberada. Sobre
+`main` `5b4ef93`, **los seis fallan**: en los cinco primeros los ocho pedidos mueren por
+`CannotCreateTransactionException`, y en presentaciones muere el perdedor. Con el arreglo pasan los
+seis, con la idempotencia intacta (una historia y un evento por paciente, una fila por contenido) y
+los ocho `PERMISSION_DENIED` y `NO_DISPONIBLE` escritos aunque los pedidos fallen.
+
+La espera por conexión de esos ITs pasó de 3 a 10 s: sobre `main`, la segunda ronda de cobros del IT
+de #91 falló una vez con 3 s sin ningún anidamiento —ocho cobros serializados en el numerador con
+dos conexiones pueden esperar más que eso en esta máquina—.

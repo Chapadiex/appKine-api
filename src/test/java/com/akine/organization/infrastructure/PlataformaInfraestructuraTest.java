@@ -89,7 +89,7 @@ class PlataformaInfraestructuraTest {
 	@Test
 	@DisplayName("Un rechazo por permiso deja actor, tenant, permiso y motivo del rechazo")
 	void el_rechazo_deja_lo_necesario_para_investigarlo() {
-		new PermissionDenialAuditor(auditTrail).recordDenial(new PermissionQuery(
+		new PermissionDenialAuditor(auditTrail::record).recordDenial(new PermissionQuery(
 				ACCOUNT_ID, "colaborador:manage", ORG_ID, 20L, 99L, AHORA),
 				DenialKind.NO_PERMISSION);
 
@@ -114,7 +114,7 @@ class PlataformaInfraestructuraTest {
 	@Test
 	@DisplayName("Sin sede en el contexto, el detalle no inventa una")
 	void sin_sede_no_se_inventa_una() {
-		new PermissionDenialAuditor(auditTrail).recordDenial(
+		new PermissionDenialAuditor(auditTrail::record).recordDenial(
 				PermissionQuery.of(ACCOUNT_ID, "auditoria:read", ORG_ID, AHORA),
 				DenialKind.NO_PERMISSION);
 

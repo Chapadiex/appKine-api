@@ -104,7 +104,8 @@ class AdjuntoServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AdjuntoService(personas, adjuntos, storage, permissionGuard,
-				auditTrail, supportAccessAuditor, escrituraAparte);
+				auditTrail, supportAccessAuditor, escrituraAparte,
+				org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("ORGANIZACION", false));
