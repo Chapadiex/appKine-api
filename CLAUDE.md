@@ -870,7 +870,7 @@ Pendientes que arrastra el backend:
 - [ ] Tests de controller para `billing`, `person`, `scheduling` y `clinical`, los cuatro módulos críticos debajo de 0,90
 - [ ] Revisar los cuatro PR de Dependabot abiertos el 11/10 (#87–#90; uno propone Temurin 25 en la imagen, que es un salto de Java)
 - [x] ~~Observabilidad: logging JSON, Prometheus, OpenTelemetry~~ — G-4, `docs/observabilidad.md`
-- [x] ~~Reglas de cobertura por módulo crítico~~ — G-6: trinquete por módulo en lo medido; `person`, `scheduling`, `billing` y `clinical` siguen abajo del 0,90 (`docs/calidad.md` §4)
+- [x] ~~Reglas de cobertura por módulo crítico~~ — G-6: trinquete por módulo en lo medido; desde `akine-cobertura-capa-rest` los siete críticos pasan el 0,90 (`docs/calidad.md` §4)
 - [ ] Cargar `NVD_API_KEY` en los secretos del repo: sin ella el job `vulnerabilidades` analiza contra OSV.dev en lugar de OWASP (el NVD da 429 a los runners sin clave)
 - [ ] Gate de `BRANCH` en JaCoCo, después de subir la cobertura de rama
 - [ ] Completar los `PENDIENTE(F1)` de `.claude/qa-config.md`
