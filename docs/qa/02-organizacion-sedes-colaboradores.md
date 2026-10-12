@@ -165,7 +165,7 @@ Esperado: invitación `ACEPTADA` con `membership_id` y `aceptada_por_account_id`
 
 ---
 
-### ORG-07 · Grants que la matriz admite
+### ORG-07 · Grants que la matriz admite — `[E2E flujo-colaboradores]`
 
 **Pantalla:** `/organizacion/colaboradores` → profesional → permisos adicionales → otorgar
 `paciente:manage` ("Gestionar paciente: según permiso") con motivo.
@@ -178,14 +178,27 @@ FROM membership_grant g WHERE g.organization_id = @org_a ORDER BY g.id;
 Esperado: fila `PACIENTE_MANAGE`, `active = 1`. Con el profesional ingresado, el padrón ahora le
 permite dar de alta una persona.
 
-Los únicos grants que la matriz admite (G-5, matriz §16.1):
+Los grants que la matriz admite (G-5, matriz §16.1), más los **redundantes** que `appKine-api` #85
+también acepta: un permiso que el rol ya tiene por base se puede otorgar —no agrega nada, y
+rechazarlo rompería un grant hecho antes de un cambio de rol—:
 
-| Permiso | Otorgable a |
-|---|---|
-| `auditoria:read-clinica` | `ORG_ADMIN`, `CONSULTORIO_ADMIN` |
-| `paciente:manage` | `PROFESIONAL` |
-| `hc:read` | `ORG_ADMIN`, `CONSULTORIO_ADMIN` |
-| `hc:write` | `CONSULTORIO_ADMIN` |
+| Permiso | Otorgable a (celda de la matriz) | Además, redundante para |
+|---|---|---|
+| `auditoria:read-clinica` | `ORG_ADMIN`, `CONSULTORIO_ADMIN` | — |
+| `paciente:manage` | `PROFESIONAL` | `ORG_ADMIN`, `CONSULTORIO_ADMIN`, `ADMINISTRATIVO` |
+| `hc:read` | `ORG_ADMIN`, `CONSULTORIO_ADMIN` | `PROFESIONAL` |
+| `hc:write` | `CONSULTORIO_ADMIN` | `PROFESIONAL` |
+
+**Pantalla (web #48):** el selector de "permisos adicionales" ofrece **solo** lo que devuelve
+`GET /api/v1/organizations/<org_a>/roles/<rol>/permisos-otorgables` para el rol de esa persona,
+incluidos los redundantes (la pantalla no conoce los permisos base). Abrí el panel de cada
+colaborador y compará con la tabla: profesional → `hc:read`, `hc:write`, `paciente:manage`;
+administrativo → solo `paciente:manage`; paciente → **nada** (el selector vacío lo explica). Por
+la API, `PLATFORM_ADMIN` o un rol inexistente responden 400. Si la consulta de otorgables falla, el
+selector queda vacío con un mensaje: **no** debe ofrecer el catálogo completo.
+
+Un grant que el rol **actual** ya no admite se sigue listando con la marca **"No vigente con el rol
+actual"** y el botón de baja (ver ORG-09).
 
 **Auditoría:** `GRANT_ASSIGNED` con `reason`. Revocarlo deja `GRANT_REVOKED` y la fila con
 `active = 0` y `revoked_reason`, **no se borra**.
@@ -204,27 +217,35 @@ $A = Entrar 'qa.admin-a@ejemplo.test'
 Api POST "/api/v1/organizations/<org_a>/memberships/<membership_administrativo>/grants" $A @{ permissionCode = 'hc:write'; reason = 'QA G-12: grant prohibido' }
 ```
 
-**Esperado:** **400** con el rol nombrado en el detalle, cada vez. Ninguna fila nueva.
+**Esperado:** **400 `permiso-no-otorgable-al-rol`** (desde `appKine-api` #85; antes era
+`validation-error`) con `permissionCode` y `roleCode` en el cuerpo y el detalle "La matriz de
+permisos no admite otorgar hc:write al rol ADMINISTRATIVO". La pantalla redacta el mensaje con esos
+dos datos. Ninguna fila nueva.
 
 ```sql
 SELECT g.permission_code, m.role_code, g.created_at
 FROM membership_grant g JOIN membership m ON m.id = g.membership_id
 WHERE g.organization_id = @org_a AND g.created_at >= @desde
-  AND NOT ((g.permission_code = 'PACIENTE_MANAGE' AND m.role_code = 'PROFESIONAL')
-        OR (g.permission_code IN ('HC_READ', 'AUDITORIA_READ_CLINICA') AND m.role_code IN ('ORG_ADMIN', 'CONSULTORIO_ADMIN'))
-        OR (g.permission_code = 'HC_WRITE' AND m.role_code = 'CONSULTORIO_ADMIN'));
+  AND NOT ((g.permission_code = 'PACIENTE_MANAGE' AND m.role_code IN ('PROFESIONAL', 'ORG_ADMIN', 'CONSULTORIO_ADMIN', 'ADMINISTRATIVO'))
+        OR (g.permission_code = 'AUDITORIA_READ_CLINICA' AND m.role_code IN ('ORG_ADMIN', 'CONSULTORIO_ADMIN'))
+        OR (g.permission_code = 'HC_READ' AND m.role_code IN ('ORG_ADMIN', 'CONSULTORIO_ADMIN', 'PROFESIONAL'))
+        OR (g.permission_code = 'HC_WRITE' AND m.role_code IN ('CONSULTORIO_ADMIN', 'PROFESIONAL')));
 ```
 
-Esperado: **cero filas**. Una sola fila es hallazgo crítico (un grant que la matriz prohíbe).
+Esperado: **cero filas**. Una sola fila es hallazgo crítico (un grant que la matriz prohíbe). La
+consulta admite los redundantes de ORG-07 y mira el rol **actual**: un grant que quedó "No vigente"
+por un cambio de rol posterior (ORG-09) también aparece, y ése **no** es hallazgo — confirmalo con un
+`MEMBERSHIP_ROLE_CHANGED` posterior al `GRANT_ASSIGNED`.
 
 ---
 
-### ORG-09 · Cambiar el rol de una membership
+### ORG-09 · Cambiar el rol de una membership — `[E2E flujo-colaboradores]`
 
 **Pantalla:** cambiar el rol del administrativo a `CONSULTORIO_ADMIN` con motivo, otorgarle `hc:write`
 (admitido para ese rol), y devolverlo a `ADMINISTRATIVO`.
 
-**Esperado:** el grant `hc:write` **sigue listado** pero ya no concede nada: el evaluador ignora el
+**Esperado:** el grant `hc:write` **sigue listado**, con la marca "No vigente con el rol actual"
+(web #48; en la respuesta, `vigenteConElRolActual = false`), pero ya no concede nada: el evaluador ignora el
 grant que el rol actual no admite (G-5). Con el administrativo ingresado, una lectura de historia
 clínica sigue siendo 403.
 
@@ -342,3 +363,44 @@ GROUP BY event_type ORDER BY event_type;
 ```
 
 Compará: lo que la base guarda contra lo que la pantalla muestra sin y con el grant.
+
+---
+
+### ORG-15 · Notificaciones fallidas y reintento por fila (web #46) — `[E2E flujo-notificaciones]`
+
+**Pantalla nueva:** `/organizacion/colaboradores/notificaciones` (también desde la pantalla de
+invitaciones). Lista las notificaciones **de la organización** con filtro por estado; por defecto
+`FALLIDA` y `AGOTADA`, las únicas que admiten "Reintentar". Exige `colaborador:manage` (criterio
+provisorio, ver [90](90-conocido-y-aceptado.md)).
+
+El E2E llega a `FALLIDA` **escribiendo la base**, cosa que esta guía prohíbe (README §1, regla 3).
+Por el producto, el camino es **bajar el servidor de correo**:
+
+1. `docker stop akine-mailpit`.
+2. admin-a → invitar `qa.notif@ejemplo.test` como administrativo (ORG-06).
+3. A los pocos segundos la fila queda `REINTENTABLE` con el error SMTP sanitizado. Marcá
+   `REINTENTABLE` en el filtro de la pantalla: aparece, **sin** botón de reintento.
+4. El backoff es 1, 5, 15 y 60 minutos: con el correo abajo, la fila llega a **`AGOTADA` unos 81
+   minutos después** del primer intento. Mientras tanto corré circuitos que no dependan de correos.
+5. Con la fila `AGOTADA` en la pantalla: `docker start akine-mailpit` → "Reintentar" en la fila.
+
+```sql
+SELECT id, tipo, estado, intentos, max_intentos, proxima_ejecucion_en, LEFT(error_sanitizado, 120) AS error,
+       enviado_en, updated_at
+FROM notification_outbox WHERE organization_id = @org_a ORDER BY id DESC LIMIT 5;
+```
+
+Esperado: `intentos` sube con cada falla y `proxima_ejecucion_en` respeta el backoff;
+`error_sanitizado` **no** trae host, credenciales ni el enlace (solo la clase de error, p. ej.
+`UnknownHostException`); al llegar a `max_intentos`, `AGOTADA`. Tras "Reintentar": vuelve a la
+cola con el contador de intentos reiniciado y en segundos `ENVIADA`, con el correo en Mailpit.
+Reintentar una fila que no está `FALLIDA` ni `AGOTADA` es 409 `conflict`. **Auditoría:**
+`NOTIFICACION_REINTENTADA` (`entity_type = 'Notificacion'`).
+
+> Ojo: `error_sanitizado` **conserva el último error** aunque la fila termine `ENVIADA`; mirá
+> `estado` y `enviado_en`, no la columna de error.
+>
+> **Defecto encontrado al validar (12/10):** si la invitación se **cancela** mientras su correo
+> está en reintento, cuando el servidor de correo vuelve el correo **sale igual** (`ENVIADA`), con
+> un enlace que ya no sirve (el preview del token responde 404). Está en
+> [90](90-conocido-y-aceptado.md) §4: vinculalo, no lo registres como nuevo.
