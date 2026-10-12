@@ -280,4 +280,25 @@ class AccountAdminControllerTest {
 
 		assertThat(cuenta.bloqueadaEn()).isBefore(Instant.now().plusSeconds(1));
 	}
+
+	static java.util.stream.Stream<Class<? extends Throwable>> excepcionesDeIdentity() {
+		return com.akine.testsupport.SliceDeController.excepcionesManejadas(IdentityProblemHandler.class);
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest(name = "{0}")
+	@org.junit.jupiter.params.provider.MethodSource("excepcionesDeIdentity")
+	@DisplayName("cada excepcion de identity sale como Problem Detail tipado, nunca como 500")
+	void cada_excepcion_es_un_problem(Class<? extends Throwable> tipo) throws Exception {
+		conContexto();
+		given(accountAdminService.bloquear(any(), anyLong(), anyString()))
+				.willThrow(com.akine.testsupport.Fixture.instanciar(tipo));
+
+		mockMvc.perform(post("/api/v1/accounts/" + CUENTA_ID + "/block")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(MOTIVO)
+						.with(IdentityApiActors.miembro(ACTOR_ID)))
+				.andExpect(status().is4xxClientError())
+				.andExpect(jsonPath("$.type").value(
+						org.hamcrest.Matchers.startsWith("https://akine.app/problems/")));
+	}
 }
