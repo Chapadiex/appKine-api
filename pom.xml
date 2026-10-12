@@ -383,8 +383,12 @@
 
 					     El minimo es lo medido redondeado hacia abajo al punto entero: cualquier
 					     cambio que baje la cobertura de un modulo critico rompe el build. La meta del
-					     plan es 0,90; los que no llegan y por que, en docs/calidad.md §4. Se suben a
-					     mano cuando la cobertura sube, nunca se bajan para hacer pasar un PR. -->
+					     plan es 0,90 y desde akine-cobertura-capa-rest (slices de la capa REST de
+					     billing, person, scheduling y clinical) los siete la pasan; numeros en
+					     docs/calidad.md §4. Unica excepcion al redondeo: la instruccion de identity
+					     queda en 0,97 y no en 0,98, porque 98,19 % dejaria 0,19 puntos de margen y
+					     un IT concurrente lo mueve mas que eso. Se suben a mano cuando la cobertura
+					     sube, nunca se bajan para hacer pasar un PR. -->
 					<execution>
 						<id>check-coverage-identity</id>
 						<phase>verify</phase>
@@ -402,7 +406,7 @@
 										<limit>
 											<counter>LINE</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.96</minimum>
+											<minimum>0.97</minimum>
 										</limit>
 										<limit>
 											<counter>INSTRUCTION</counter>
@@ -460,12 +464,12 @@
 										<limit>
 											<counter>LINE</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.87</minimum>
+											<minimum>0.96</minimum>
 										</limit>
 										<limit>
 											<counter>INSTRUCTION</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.83</minimum>
+											<minimum>0.96</minimum>
 										</limit>
 									</limits>
 								</rule>
@@ -489,12 +493,12 @@
 										<limit>
 											<counter>LINE</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.82</minimum>
+											<minimum>0.91</minimum>
 										</limit>
 										<limit>
 											<counter>INSTRUCTION</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.82</minimum>
+											<minimum>0.91</minimum>
 										</limit>
 									</limits>
 								</rule>
@@ -547,12 +551,12 @@
 										<limit>
 											<counter>LINE</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.86</minimum>
+											<minimum>0.92</minimum>
 										</limit>
 										<limit>
 											<counter>INSTRUCTION</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.86</minimum>
+											<minimum>0.92</minimum>
 										</limit>
 									</limits>
 								</rule>
@@ -576,12 +580,12 @@
 										<limit>
 											<counter>LINE</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.86</minimum>
+											<minimum>0.93</minimum>
 										</limit>
 										<limit>
 											<counter>INSTRUCTION</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.82</minimum>
+											<minimum>0.93</minimum>
 										</limit>
 									</limits>
 								</rule>
