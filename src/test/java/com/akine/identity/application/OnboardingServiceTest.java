@@ -225,7 +225,7 @@ class OnboardingServiceTest {
 		given(passwordHasher.hash(PASSWORD_VALIDA)).willReturn("{h}x");
 		given(onboardingRepository.findByClaveIdempotencia(CLAVE))
 				.willReturn(Optional.of(OnboardingRegistro.completado(
-						CLAVE, EMAIL, CUENTA_ID, ORG_ID, 20L, Instant.now())));
+						CLAVE, EMAIL, CUENTA_ID, ORG_ID, 20L, "hash-del-request", Instant.now())));
 
 		ResultadoRegistro resultado = service().registrar(comando());
 
@@ -242,13 +242,75 @@ class OnboardingServiceTest {
 	void reintentar_un_duplicado_no_manda_otro_correo() {
 		given(passwordHasher.hash(PASSWORD_VALIDA)).willReturn("{h}x");
 		given(onboardingRepository.findByClaveIdempotencia(CLAVE))
-				.willReturn(Optional.of(OnboardingRegistro.duplicado(CLAVE, EMAIL, Instant.now())));
+				.willReturn(Optional.of(OnboardingRegistro.duplicado(CLAVE, EMAIL, "hash-del-request", Instant.now())));
 
 		ResultadoRegistro resultado = service().registrar(comando());
 
 		assertThat(resultado.cuentaCreada()).isFalse();
 		assertThat(resultado.cuentaId()).isNull();
 		verifyNoInteractions(notificationOutbox);
+	}
+
+	@Test
+	@DisplayName("7b. la misma clave con otro contenido es conflicto, exista o no la cuenta")
+	void la_misma_clave_con_otro_contenido_es_conflicto() {
+		given(passwordHasher.hash(PASSWORD_VALIDA)).willReturn("{h}x");
+		given(onboardingRepository.findByClaveIdempotencia(CLAVE))
+				.willReturn(Optional.of(OnboardingRegistro.completado(
+						CLAVE, EMAIL, CUENTA_ID, ORG_ID, 20L, "otro-hash", Instant.now())))
+				.willReturn(Optional.of(OnboardingRegistro.duplicado(
+						CLAVE, EMAIL, "otro-hash", Instant.now())));
+
+		// COMPLETADO y DUPLICADO dan lo mismo: si no, el 409 diria si el email tenia cuenta.
+		assertThatThrownBy(() -> service().registrar(comando()))
+				.isInstanceOf(IdempotencyKeyConflictException.class);
+		assertThatThrownBy(() -> service().registrar(comando()))
+				.isInstanceOf(IdempotencyKeyConflictException.class);
+		verifyNoInteractions(notificationOutbox, organizationProvisioning, auditTrail);
+	}
+
+	@Test
+	@DisplayName("7b. un registro sin hash (anterior a V87) se acepta como replay")
+	void un_registro_sin_hash_se_acepta_como_replay() {
+		given(passwordHasher.hash(PASSWORD_VALIDA)).willReturn("{h}x");
+		given(onboardingRepository.findByClaveIdempotencia(CLAVE))
+				.willReturn(Optional.of(OnboardingRegistro.completado(
+						CLAVE, EMAIL, CUENTA_ID, ORG_ID, 20L, null, Instant.now())));
+
+		ResultadoRegistro resultado = service().registrar(comando());
+
+		assertThat(resultado.cuentaCreada()).isFalse();
+		assertThat(resultado.cuentaId()).isEqualTo(CUENTA_ID);
+	}
+
+	@Test
+	@DisplayName("7b. si otro hilo gano la clave con otro contenido, el perdedor recibe conflicto")
+	void si_otro_hilo_gano_la_clave_con_otro_contenido_es_conflicto() {
+		given(onboardingRepository.findByClaveIdempotencia(CLAVE))
+				.willReturn(Optional.empty())
+				.willReturn(Optional.of(OnboardingRegistro.duplicado(
+						CLAVE, EMAIL, "hash-del-ganador", Instant.now())));
+		given(passwordHasher.hash(PASSWORD_VALIDA)).willReturn("{h}x");
+		given(cuentaRepository.findByEmailNormalizado(EMAIL))
+				.willReturn(Optional.of(cuentaPendiente()));
+		given(onboardingRepository.saveAndFlush(any()))
+				.willThrow(new DataIntegrityViolationException("uk_onboarding_registro_clave"));
+
+		assertThatThrownBy(() -> service().registrar(comando()))
+				.isInstanceOf(IdempotencyKeyConflictException.class);
+	}
+
+	@Test
+	@DisplayName("la huella del alta ignora la contrasena y normaliza mayusculas y espacios")
+	void la_huella_ignora_la_contrasena_y_normaliza() {
+		String base = HuellaDeRegistro.de("Ana@Ejemplo.test", "Ana", "Gomez", "Centro",
+				null, null, "BASICO");
+
+		assertThat(base).hasSize(64);
+		assertThat(HuellaDeRegistro.de(" ana@ejemplo.test ", "ANA", "gomez", "centro",
+				"", "  ", "basico")).isEqualTo(base);
+		assertThat(HuellaDeRegistro.de("otra@ejemplo.test", "Ana", "Gomez", "Centro",
+				null, null, "BASICO")).isNotEqualTo(base);
 	}
 
 	@Test

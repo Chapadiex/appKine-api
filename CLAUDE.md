@@ -663,7 +663,7 @@ Ninguna sale de un diseño: las cuatro se pagaron corriendo el sistema entero po
   agenda sintetizan la respuesta HTTP con `route.fulfill`, así que **no prueban que el backend emita
   esos `problemType`**: si el backend renombra uno, la suite sigue verde y la pantalla queda rota.
   **No hay E2E de la vertical clínica, ni de F3, ni de cobros.**
-- **Escenario diferido 7b** —conflicto de `Idempotency-Key` por payload distinto—: necesita
+- ~~**Escenario diferido 7b**~~ —conflicto de `Idempotency-Key` por payload distinto— **cerrado el 11/10/2026** con `V87` (`request_hash`). Lo que sigue es la historia: necesitaba
   `request_hash` en `onboarding_registro`, o sea migración más cambio de API. `docs/tests-diferidos.md`.
 - ~~**Escenario diferido 20**~~ —que la `@Version` forzada de 02.07 realmente avance contra una
   base real— **corrido el 06/10/2026**: `HabilitacionesVersionForzadaIT` (`7dcae17`, PR #23) ve
@@ -870,7 +870,7 @@ Pendientes que arrastra el backend:
 - [ ] Cargar `NVD_API_KEY` en los secretos del repo: sin ella el job `vulnerabilidades` analiza contra OSV.dev en lugar de OWASP (el NVD da 429 a los runners sin clave)
 - [ ] Gate de `BRANCH` en JaCoCo, después de subir la cobertura de rama
 - [ ] Completar los `PENDIENTE(F1)` de `.claude/qa-config.md`
-- [ ] Escenario diferido 7b: `request_hash` en `onboarding_registro`
+- [x] ~~Escenario diferido 7b: `request_hash` en `onboarding_registro`~~ — `V87`, contrato 0.86.0 (11/10)
 
 ## 8. Checklist de cierre de tarea
 

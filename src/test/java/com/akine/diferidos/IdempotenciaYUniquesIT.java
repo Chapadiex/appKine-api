@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -129,41 +128,6 @@ class IdempotenciaYUniquesIT extends BaseEscenarioDiferido {
 		assertThat(contarCuentas(email)).isEqualTo(1);
 	}
 
-	@Disabled("""
-			HALLAZGO ABIERTO — la mitad "payload distinto" del escenario 7 NO esta implementada
-			por HTTP. La deteccion existe, pero es inalcanzable desde el endpoint.
-
-			Resultado observado (23/08/2026): la segunda alta, con la MISMA Idempotency-Key y
-			otro email, otro nombre y otro slug, responde
-			  202 {"message":"Recibimos tu solicitud. ..."}
-			en vez de 409 idempotency-key-conflict. No crea nada —eso esta bien— pero le dice
-			al cliente que recibio un pedido que en realidad ignoro: la persona queda esperando
-			un correo de activacion para una cuenta que nunca se dio de alta.
-
-			CAUSA RAIZ, y es una DECISION DOCUMENTADA, no un descuido:
-			  src/main/java/com/akine/identity/api/AccountRegistrationController.java:147
-			    // requestHash null: la deduplicacion por contenido no se implementa en 01.02.
-			    // La clave sola ya impide el doble submit, que es el caso real.
-
-			El controller pasa requestHash = null, y ademas la tabla onboarding_registro de
-			identity (migracion V8) NO tiene columna request_hash: no hay donde guardarlo. El
-			replay de identity, en OnboardingService.java:137, encuentra la clave y devuelve el
-			desenlace anterior SIN comparar nada. Como identity corta primero, la comparacion
-			de hash que SI existe en organization —OnboardingService.replayDe, que lanza
-			IdempotencyKeyConflictException— nunca llega a ejecutarse por este camino.
-
-			Que el mecanismo funciona esta probado por el test de al lado,
-			el_alta_compuesta_rechaza_la_clave_reusada_con_otro_contenido(), que ejercita el
-			alta compuesta por el spi y si obtiene el conflicto. Lo que falta es cablearlo:
-			calcular el SHA-256 del payload en el controller y persistirlo en identity, que es
-			una migracion mas un cambio de API.
-
-			El otro camino candidato tampoco lo cumple: POST /api/v1/organizations documenta
-			explicitamente que su Idempotency-Key no registra idempotencia y que el alta
-			duplicada la cierra el unique del slug.
-
-			SIGUE DIFERIDO. Etapa destino sugerida: AKINE-01.03, junto con la deduplicacion por
-			contenido. NO SE ARREGLA DESDE ACA.""")
 	@Test
 	@DisplayName("7b. Misma clave y payload distinto: 409 idempotency-key-conflict")
 	void la_misma_clave_con_otro_payload_es_conflicto() {
@@ -185,6 +149,9 @@ class IdempotenciaYUniquesIT extends BaseEscenarioDiferido {
 				.isEqualTo(409);
 		assertThat(segunda.texto("type"))
 				.isEqualTo("https://akine.app/problems/idempotency-key-conflict");
+		assertThat(contarOrganizaciones(slug + "-otro"))
+				.as("el pedido en conflicto no crea nada")
+				.isZero();
 	}
 
 	@Test
