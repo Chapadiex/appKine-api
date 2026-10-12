@@ -303,3 +303,72 @@ ORDER BY id DESC LIMIT 5;
 
 Esperado: el contexto activo es el último elegido; un `CONTEXTO_SELECCIONADO` por cada elección,
 cada uno con su `organization_id`.
+
+---
+
+### ON-11 · La sesión guarda la IP del cliente, no la del proxy (api #93)
+
+Desde `appKine-api` #93 la sesión (`refresh_token.ip`) sale del mismo resolutor que el rate limit
+(#82): `X-Forwarded-For` **solo** si el pedido viene de un proxy declarado en
+`AKINE_TRUSTED_PROXIES`; si no, la IP del socket. **No hay pantalla** que liste las sesiones
+abiertas: se mira en la base.
+
+**Pantalla:** ingresar con admin-a desde el navegador (`npm start`, proxy de desarrollo).
+
+```sql
+SELECT id, ip, LEFT(user_agent, 60) AS user_agent, emitido_en, revocado_en
+FROM refresh_token WHERE cuenta_id = @cuenta_admin_a ORDER BY id DESC LIMIT 3;
+```
+
+Esperado con el stack de desarrollo de esta guía (README §2, sin `AKINE_TRUSTED_PROXIES`): `ip` es
+la del socket que ve el backend —`127.0.0.1` o `::1` (`0:0:0:0:0:0:0:1`) desde el proxy de
+`ng serve`— y el `user_agent` es el del navegador. **Lo que importa probar va con las imágenes
+Docker** (frontend detrás del nginx de `appKine-web`): sin `AKINE_TRUSTED_PROXIES`, todas las
+sesiones quedan con la IP del contenedor nginx; con `AKINE_TRUSTED_PROXIES` = la red de ese
+contenedor, quedan con la IP real del navegador. Si ves la IP del nginx **con** el proxy declarado,
+es hallazgo. Un `X-Forwarded-For` falso mandado desde un cliente que **no** es proxy de confianza
+(`curl -H "X-Forwarded-For: 203.0.113.9"` directo al 8080) **no** debe aparecer en `ip`.
+
+> Validado sobre un stack aislado: el backend en un contenedor, sin proxy declarado, registró la IP
+> del gateway de la red de Docker en las 20 sesiones del sembrado (la del socket).
+
+---
+
+### ON-12 · La base no responde: 503 y la sesión sigue viva (api #91, web #62)
+
+Desde `appKine-api` #91, una falla **de conexión** con la base responde **503
+`service-unavailable`** —en los filtros de seguridad y en los controllers—, nunca 401: antes la
+autenticación respondía 401 y el frontend borraba el token. Desde `appKine-web` #62 el frontend
+muestra un aviso arriba de la pantalla ("Servicio no disponible…", región `status`, con botón
+"Cerrar aviso") y **no desloguea**. Cualquier otro error de base (un bug) sigue siendo 500.
+
+**Pantalla:** ingresado con admin-a en el padrón (`/pacientes`). En otra terminal, **pausá** la base
+de la corrida (no la apagues: `pause` no cierra las conexiones y se recupera sin reiniciar nada):
+
+```powershell
+docker pause akine-mysql
+```
+
+Recargá el padrón (o pasá a la agenda). El pedido tarda **unos 30 segundos** (el `connection-timeout`
+del pool) y vuelve con 503. Después:
+
+```powershell
+docker unpause akine-mysql
+```
+
+**Esperado:** durante la pausa, el aviso de servicio no disponible; **ninguna** redirección a
+`/auth/ingresar`; en DevTools → Network, el pedido con status 503 y cuerpo `type`
+`…/problems/service-unavailable`, detalle "Su sesion sigue valida: intente de nuevo en unos
+segundos". Tras `unpause`, "Reintentar" o recargar trae los datos **con la misma sesión** (sin volver
+a ingresar).
+
+```sql
+SELECT id, revocado_en, motivo_revocacion FROM refresh_token
+WHERE cuenta_id = @cuenta_admin_a ORDER BY id DESC LIMIT 3;
+```
+
+Esperado después del `unpause`: el refresh vigente **no** quedó revocado por el corte. **Auditoría:**
+nada nuevo (el 503 no es un hecho de negocio).
+
+> Validado sobre el stack aislado: con la base pausada, `GET /api/v1/personas` respondió 503
+> `service-unavailable` a los 30,7 s; después del `unpause`, el mismo token respondió 200.
