@@ -1,5 +1,6 @@
 package com.akine.scheduling.infrastructure;
 
+import com.akine.scheduling.domain.OcupacionDeTurno;
 import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -158,6 +159,24 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			   AND t.inicio < :hasta
 			""")
 	List<Turno> findVivosDeLaOfertaEnVentana(
+			@Param("organizationId") long organizationId,
+			@Param("ofertaId") long ofertaId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/** La misma ventana que {@link #findVivosDeLaOfertaEnVentana}, sin cargar las entidades. */
+	@Override
+	@Query("""
+			SELECT new com.akine.scheduling.domain.OcupacionDeTurno(
+			       t.inicio, t.profesionalMembershipId, t.espacioId)
+			  FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.ofertaId = :ofertaId
+			   AND t.deletedAt IS NULL
+			   AND t.inicio >= :desde
+			   AND t.inicio < :hasta
+			""")
+	List<OcupacionDeTurno> findOcupacionDeLaOfertaEnVentana(
 			@Param("organizationId") long organizationId,
 			@Param("ofertaId") long ofertaId,
 			@Param("desde") Instant desde,

@@ -1,6 +1,6 @@
 package com.akine.scheduling.infrastructure;
 
-import com.akine.scheduling.domain.Turno;
+import com.akine.scheduling.domain.OcupacionDeTurno;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -86,15 +86,12 @@ class ReservaProbeSobreTurnosTest {
 		return new ReservaProbeSobreTurnos(turnos);
 	}
 
-	private void dados(Turno... encontrados) {
-		given(turnos.findVivosDeLaOfertaEnVentana(anyLong(), anyLong(), any(), any()))
+	private void dados(OcupacionDeTurno... encontrados) {
+		given(turnos.findOcupacionDeLaOfertaEnVentana(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of(encontrados));
 	}
 
-	private static Turno turno(Instant inicio, Long profesionalId, Long espacioId) {
-		return new Turno(
-				ORG_ID, CONSULTORIO_ID, OFERTA_ID, 128L, profesionalId, espacioId,
-				inicio, inicio.plus(Duration.ofMinutes(60)),
-				7L, inicio.minus(Duration.ofDays(1)), null, null);
+	private static OcupacionDeTurno turno(Instant inicio, Long profesionalId, Long espacioId) {
+		return new OcupacionDeTurno(inicio, profesionalId, espacioId);
 	}
 }

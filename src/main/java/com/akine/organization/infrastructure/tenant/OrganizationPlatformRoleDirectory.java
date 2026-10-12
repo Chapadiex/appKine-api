@@ -1,9 +1,11 @@
 package com.akine.organization.infrastructure.tenant;
 
+import com.akine.organization.application.LecturasDeAcceso;
 import com.akine.organization.domain.PlatformRole;
 import com.akine.organization.domain.port.PlatformRoleRepositoryPort;
 import com.akine.platform.spi.tenant.PlatformRoleDirectory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -20,7 +22,10 @@ import java.time.Instant;
  * <p><b>Sin cache</b> (ADR-0020): se consulta una vez por request autenticado. La ventana de
  * revocacion del permiso mas alto del sistema tiene que ser cero — si alguien compromete una
  * cuenta de plataforma, revocarle el rol tiene que surtir efecto en el request siguiente y no
- * cuando expire un TTL. El costo es un seek por {@code ix_platform_role_account}.
+ * cuando expire un TTL. El costo es un seek por {@code ix_platform_role_account}: una sola
+ * sentencia, sin transaccion propia ({@code SUPPORTS}, docs/carga.md §9), y la lectura queda en
+ * la {@link LecturasDeAcceso memoria del pedido} para que la evaluacion de permisos del mismo
+ * pedido no la repita.
  *
  * <p>La vigencia se evalua en Java con {@link PlatformRole#isValidAt(Instant)} y no en el
  * {@code WHERE}, por el mismo motivo que en las memberships: la regla vive en un solo lugar, se
@@ -36,9 +41,9 @@ public class OrganizationPlatformRoleDirectory implements PlatformRoleDirectory 
 	}
 
 	@Override
-	@Transactional(readOnly = true)
+	@Transactional(propagation = Propagation.SUPPORTS, readOnly = true)
 	public boolean isPlatformAdmin(long accountId, Instant at) {
-		return platformRoleRepository.findAllByAccountIdAndActiveTrue(accountId).stream()
+		return LecturasDeAcceso.rolesDePlataforma(platformRoleRepository, accountId).stream()
 				.anyMatch(rol -> rol.isValidAt(at));
 	}
 }

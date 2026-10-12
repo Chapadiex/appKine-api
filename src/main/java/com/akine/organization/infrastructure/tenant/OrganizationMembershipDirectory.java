@@ -6,6 +6,7 @@ import java.util.Optional;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.akine.organization.application.LecturasDeAcceso;
 import com.akine.organization.domain.Consultorio;
 import com.akine.organization.domain.Membership;
 import com.akine.organization.domain.MembershipSelection;
@@ -87,8 +88,7 @@ public class OrganizationMembershipDirectory implements MembershipDirectory {
 		// cualquier sede del tenant, con valor solo esa) y la baja logica, que ya filtro el
 		// repositorio. Vacio significa cualquiera de los tres, sin distinguir.
 		Optional<Membership> encontrada = MembershipSelection.applicableAt(
-				membershipRepository.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(
-						organizationId, accountId),
+				LecturasDeAcceso.memberships(membershipRepository, organizationId, accountId),
 				consultorioId,
 				at);
 		if (encontrada.isEmpty()) {

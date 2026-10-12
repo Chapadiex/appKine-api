@@ -2,6 +2,7 @@ package com.akine.scheduling.domain.port;
 
 import com.akine.scheduling.domain.AgendaSede;
 import com.akine.scheduling.domain.EstadoDeSerie;
+import com.akine.scheduling.domain.OcupacionDeTurno;
 import com.akine.scheduling.domain.Recepcion;
 import com.akine.scheduling.domain.RecepcionEvento;
 import com.akine.scheduling.domain.Turno;
@@ -128,6 +129,13 @@ public final class SchedulingRepositoryPorts {
 		 * lock— pero convierte un caso normal en un 409 que el usuario no se merece.
 		 */
 		List<Turno> findVivosDeLaOfertaEnVentana(
+				long organizationId, long ofertaId, Instant desde, Instant hasta);
+
+		/**
+		 * Lo mismo que {@link #findVivosDeLaOfertaEnVentana}, proyectado a inicio y recursos: es lo
+		 * que lee el motor de slots en cada dia de una busqueda, y no necesita la entidad.
+		 */
+		List<OcupacionDeTurno> findOcupacionDeLaOfertaEnVentana(
 				long organizationId, long ofertaId, Instant desde, Instant hasta);
 
 		/**

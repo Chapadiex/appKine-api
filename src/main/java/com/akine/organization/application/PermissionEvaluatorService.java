@@ -75,9 +75,12 @@ import java.util.Set;
  *
  * <h2>Dos garantias que no se negocian</h2>
  *
- * <p><b>Sin cache.</b> Cada evaluacion lee la base. La ventana de revocacion es cero: una
- * membership revocada deja de habilitar en la operacion siguiente. Si algun dia el SLO lo
- * exige, es un ADR nuevo (igual que dice hoy el javadoc de {@code MembershipDirectory}).
+ * <p><b>Sin cache.</b> Cada pedido lee la base. La ventana de revocacion es cero: una
+ * membership revocada deja de habilitar en el pedido siguiente. Lo unico que se reutiliza es la
+ * lectura que el filtro de contexto hizo <b>en el mismo pedido</b> ({@link LecturasDeAcceso}), y
+ * nunca dentro de una transaccion de escritura: la mutacion que evalua despues de tomar el
+ * bloqueo del tenant sigue leyendo la base en ese momento. Una cache entre pedidos seria un ADR
+ * nuevo (igual que dice hoy el javadoc de {@code MembershipDirectory}).
  *
  * <p><b>Se evalua dentro de la transaccion de negocio.</b> Las anotaciones de aca son
  * {@code readOnly} y se unen a la transaccion del llamador cuando la hay; no abren una propia
@@ -173,7 +176,7 @@ public class PermissionEvaluatorService implements PermissionEvaluator, Permissi
 	@Override
 	@Transactional(readOnly = true)
 	public boolean isPlatformAdmin(long accountId, Instant at) {
-		return platformRoleRepository.findAllByAccountIdAndActiveTrue(accountId).stream()
+		return LecturasDeAcceso.rolesDePlataforma(platformRoleRepository, accountId).stream()
 				.anyMatch(rol -> rol.isValidAt(at));
 	}
 
@@ -255,9 +258,8 @@ public class PermissionEvaluatorService implements PermissionEvaluator, Permissi
 			return PermissionDecision.rechazada(DenialKind.NO_CONTEXT);
 		}
 
-		List<Membership> memberships = membershipRepository
-				.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(
-						organizationId, query.accountId());
+		List<Membership> memberships = LecturasDeAcceso.memberships(
+				membershipRepository, organizationId, query.accountId());
 		boolean esMiembro = memberships.stream().anyMatch(m -> m.isValidAt(at));
 		if (!esMiembro) {
 			// No pertenece a la organizacion: para el, el recurso no existe. 404.
@@ -374,8 +376,8 @@ public class PermissionEvaluatorService implements PermissionEvaluator, Permissi
 	private Optional<Membership> membershipGobernante(
 			long accountId, long organizationId, Long consultorioId, Instant at) {
 
-		List<Membership> memberships = membershipRepository
-				.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(organizationId, accountId);
+		List<Membership> memberships =
+				LecturasDeAcceso.memberships(membershipRepository, organizationId, accountId);
 		return elegirGobernante(memberships, consultorioId, at);
 	}
 
@@ -418,9 +420,7 @@ public class PermissionEvaluatorService implements PermissionEvaluator, Permissi
 		if (objetivo == null || objetivo == query.accountId()) {
 			return true;
 		}
-		return membershipRepository
-				.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(
-						query.organizationId(), objetivo)
+		return LecturasDeAcceso.memberships(membershipRepository, query.organizationId(), objetivo)
 				.stream()
 				.anyMatch(m -> m.isValidAt(at));
 	}
@@ -429,7 +429,7 @@ public class PermissionEvaluatorService implements PermissionEvaluator, Permissi
 		// G-5: un grant que el rol ACTUAL no admite no concede nada. Cubre las filas otorgadas
 		// antes de que el alta validara el rol, y la membership que cambio de rol despues del
 		// grant (un CONSULTORIO_ADMIN con hc:write que pasa a ADMINISTRATIVO).
-		return grantRepository.findAllByMembershipIdAndActiveTrue(membership.getId()).stream()
+		return LecturasDeAcceso.grants(grantRepository, membership.getId()).stream()
 				.filter(g -> g.isValidAt(at))
 				.filter(g -> RolePermissions.otorgableComoGrant(
 						membership.getRoleCode(), g.getPermissionCode()))
