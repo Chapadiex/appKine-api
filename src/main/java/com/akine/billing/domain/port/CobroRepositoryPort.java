@@ -55,7 +55,10 @@ public interface CobroRepositoryPort {
 
 	Optional<Cobro> findByIdempotencyKey(long organizationId, String idempotencyKey);
 
-	/** Los cobros de un paciente, del mas reciente al mas viejo. */
+	/**
+	 * Los cobros de un paciente, del mas reciente al mas viejo, <b>anulados incluidos</b>. Es una
+	 * lista para mostrar: quien sume importes no la usa, o descarta los anulados.
+	 */
 	List<Cobro> findDeLaPersona(long organizationId, long personaId);
 
 	/**
