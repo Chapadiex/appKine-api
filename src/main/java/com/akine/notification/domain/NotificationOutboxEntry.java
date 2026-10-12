@@ -147,15 +147,38 @@ public class NotificationOutboxEntry extends TimestampedNotification {
 	/**
 	 * Entrega exitosa.
 	 *
-	 * <p>No borra {@code errorSanitizado}: que una notificacion haya entrado despues de tres
-	 * fallos es informacion util para diagnosticar, y el motivo ya viene sanitizado.
+	 * <p><b>Borra {@code errorSanitizado}.</b> Hasta el 12/10/2026 lo conservaba, con el argumento
+	 * de que "entro despues de tres fallos" sirve para diagnosticar. En la practica la columna se
+	 * publica como {@code ultimoError} en el listado de notificaciones, y una fila ENVIADA con
+	 * "MailSendException: relay rechazo el envio" al lado se lee como un envio fallido: lo
+	 * encontro la validacion de la guia de QA (PR #95). El dato de diagnostico que importa no se
+	 * pierde: {@code intentos} sigue diciendo cuantas veces hizo falta.
 	 */
 	public void marcarEnviada(Instant ahora) {
 		OutboxStateMachine.assertTransitionAllowed(estado, OutboxStatus.ENVIADA);
 		this.estado = OutboxStatus.ENVIADA;
 		this.enviadoEn = ahora;
 		this.procesandoDesde = null;
+		this.errorSanitizado = null;
 		this.intentos++;
+	}
+
+	/**
+	 * El hecho que origino la notificacion ya no es el que el correo anuncia —una invitacion
+	 * cancelada, un turno reservado que se cancelo— y el correo NO debe salir.
+	 *
+	 * <p>Termina en {@link OutboxStatus#AGOTADA}, como pide {@code V9} para el enlace que ya no
+	 * sirve (T-11). No consume un intento —no hubo envio— y el motivo queda en
+	 * {@code errorSanitizado} para quien mire la cola. Un reintento administrativo la devuelve a
+	 * la cola y el worker vuelve a preguntar: si el hecho sigue deshecho, vuelve aca.
+	 *
+	 * @param motivo motivo legible; se sanitiza igual antes de guardarse
+	 */
+	public void descartarPorOrigenNoVigente(String motivo) {
+		OutboxStateMachine.assertTransitionAllowed(estado, OutboxStatus.AGOTADA);
+		this.estado = OutboxStatus.AGOTADA;
+		this.errorSanitizado = ErrorSanitizer.sanitize(motivo);
+		this.procesandoDesde = null;
 	}
 
 	/**

@@ -11,7 +11,9 @@ import com.akine.notification.spi.NotificationType;
  * mantener filas bloqueadas— y trabajar sobre la entity fuera de su sesion seria pedir un
  * lazy loading fallido o una escritura accidental.
  *
- * <p>No lleva enlace ni token: el enlace se reconstruye justo antes de redactar (T-11).
+ * <p>No lleva enlace ni token: el enlace se reconstruye justo antes de redactar (T-11). Lleva el
+ * tenant y la clave idempotente para preguntar, antes de enviar, si el hecho que la origino
+ * sigue vigente ({@code VigenciaDeNotificacion}).
  */
 public record PendingDelivery(
 		long id,
@@ -19,5 +21,18 @@ public record PendingDelivery(
 		String destinatario,
 		SanitizedPayload payload,
 		String referenciaTokenId,
-		int intentos) {
+		int intentos,
+		Long organizationId,
+		String claveIdempotente) {
+
+	/** Sin tenant ni clave: alcanza para los tipos que nadie revalida. */
+	public PendingDelivery(
+			long id,
+			NotificationType tipo,
+			String destinatario,
+			SanitizedPayload payload,
+			String referenciaTokenId,
+			int intentos) {
+		this(id, tipo, destinatario, payload, referenciaTokenId, intentos, null, null);
+	}
 }

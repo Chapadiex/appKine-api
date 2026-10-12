@@ -63,11 +63,10 @@ public class IdentitySecureLinkResolver implements SecureLinkResolver {
 		// correo NUNCA salia: el worker lo marcaba como "token muerto" sin haberlo buscado en
 		// ningun lado. Se comprobo contra el stack real.
 		//
-		// Se lee el vault directo y no se revalida la invitacion contra la base: el enlace esta
-		// en memoria porque el encolado acaba de ocurrir, y el vault tiene su propio
-		// vencimiento. Queda una ventana chica —cancelar la invitacion entre el encolado y el
-		// envio manda un enlace que ya no abre nada—, y se acepta porque aceptar la invitacion
-		// revalida contra colaborador_invitacion de todas formas.
+		// Se lee el vault directo y no se revalida la invitacion aca: lo hace antes, en cada
+		// intento, VigenciaDeInvitacion. La "ventana chica" que este comentario aceptaba —cancelar
+		// entre el encolado y el envio— no era chica: con el relay caido dura todo el backoff, y
+		// el correo salia con un enlace muerto (QA, PR #95).
 		if (tipo == NotificationType.INVITACION_COLABORADOR) {
 			return secureLinkVault.leer(referenciaTokenId, Instant.now());
 		}
