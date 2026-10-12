@@ -8,7 +8,6 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -74,8 +73,8 @@ public interface ObligacionRepository
 			   AND o.estado IN ('PENDIENTE', 'PARCIAL')
 			   AND o.saldo > 0
 			   AND o.deleted_at IS NULL
-			   AND (:desde IS NULL OR DATE(o.devengada_en) >= :desde)
-			   AND (:hasta IS NULL OR DATE(o.devengada_en) <= :hasta)
+			   AND (:desde IS NULL OR o.devengada_en >= :desde)
+			   AND (:hasta IS NULL OR o.devengada_en < :hasta)
 			   AND NOT EXISTS (SELECT 1 FROM presentacion_item i
 			                    WHERE i.obligacion_id = o.id
 			                      AND i.estado IN ('INCLUIDO', 'ACEPTADO'))
@@ -86,8 +85,8 @@ public interface ObligacionRepository
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("financiadorId") long financiadorId,
-			@Param("desde") LocalDate desde,
-			@Param("hasta") LocalDate hasta,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
 			@Param("limite") int limite,
 			@Param("desplazamiento") int desplazamiento);
 

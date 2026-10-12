@@ -130,12 +130,14 @@ public class PresentacionService {
 			LocalDate desde, LocalDate hasta, int limite, int desplazamiento) {
 
 		long organizationId = PresentacionAcceso.exigirContexto(actor);
-		acceso.exigirSedeDelTenant(organizationId, consultorioId);
+		ConsultorioSnapshot sede = acceso.exigirSedeDelTenant(organizationId, consultorioId);
 		acceso.exigirOperar(actor, organizationId, consultorioId);
 		acceso.exigirFinanciador(organizationId, financiadorId);
 
+		// El periodo es en dias de la sede, como el `fecha_prestacion` que congela `agregarItem`.
 		return obligaciones.findElegiblesParaPresentar(
-						organizationId, consultorioId, financiadorId, desde, hasta,
+						organizationId, consultorioId, financiadorId,
+						CajaAcceso.inicioDelDia(sede, desde), CajaAcceso.finDelDia(sede, hasta),
 						acotar(limite), Math.max(desplazamiento, 0))
 				.stream()
 				.map(ObligacionView::de)

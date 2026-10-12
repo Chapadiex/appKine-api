@@ -1,6 +1,7 @@
 package com.akine.billing.api;
 
 import com.akine.billing.api.dto.AnularEgresoRequest;
+import com.akine.billing.api.dto.EditarEgresoRequest;
 import com.akine.billing.api.dto.EgresoResponse;
 import com.akine.billing.api.dto.PagoEgresoResponse;
 import com.akine.billing.api.dto.RegistrarEgresoRequest;
@@ -137,25 +138,38 @@ public class EgresoController {
 
 					Una vez confirmado, 409 `egreso-no-editable`. Un importe que cambiara debajo de \
 					pagos ya asentados haria que el saldo dejara de reconciliar con el ledger de \
-					caja **sin que nada fallara**, que es la peor forma de romperse.""")
+					caja **sin que nada fallara**, que es la peor forma de romperse.
+
+					**Control optimista (cambio incompatible desde 0.87.0).** El cuerpo es \
+					`EditarEgreso` y lleva la `version` leida, **requerida**: si otro la cambio \
+					antes, 409 `concurrent-modification` y hay que releer. Antes el cuerpo era \
+					`RegistrarEgreso`, sin version, y dos correcciones simultaneas se pisaban en \
+					silencio. La respuesta trae la version nueva para encadenar la siguiente \
+					correccion.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Borrador corregido"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Cuerpo invalido, incluida la falta de `version`",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "404",
 					description = "El egreso o la sede no existen, o son de otro tenant",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "`egreso-no-editable` o `egreso-comprobante-duplicado`",
+					description = "`egreso-no-editable`, `egreso-comprobante-duplicado` o "
+							+ "`concurrent-modification` (la version quedo vieja)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<EgresoResponse> editar(
 			@PathVariable long consultorioId,
 			@PathVariable long egresoId,
-			@RequestBody @Valid RegistrarEgresoRequest request) {
+			@RequestBody @Valid EditarEgresoRequest request) {
 
 		return ResponseEntity.ok(EgresoResponse.de(
 				egresoService.editar(
-						apiActor.current(), consultorioId, egresoId, request.aDominio())));
+						apiActor.current(), consultorioId, egresoId, request.aDominio(),
+						request.version())));
 	}
 
 	@PostMapping("/{egresoId}/confirmacion")
@@ -261,6 +275,10 @@ public class EgresoController {
 			summary = "Consultar egresos",
 			description = """
 					Lista y filtra por fecha, categoria, beneficiario y estado (RF-M22-004).
+
+					`desde` y `hasta` son **dias de la sede**, inclusivos: se comparan contra el \
+					instante de registro en la zona horaria de la sede, asi que un egreso cargado \
+					a las 22:30 de Cordoba es de ese dia y no del siguiente.
 
 					**Sin los pagos de cada fila**: traerlos seria el N+1 del primer listado que lo \
 					use. El detalle los tiene.

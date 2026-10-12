@@ -2,7 +2,7 @@ package com.akine.billing.domain.port;
 
 import com.akine.billing.domain.Obligacion;
 
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -48,8 +48,12 @@ public interface ObligacionRepositoryPort {
 	 * <p>Hasta AKINE F-4 devolvia lista vacia en cualquier despliegue real: nada devengaba
 	 * obligaciones con responsable {@code FINANCIADOR}. Desde F-4 las devenga
 	 * {@code ObligacionDevengador} al cerrar una sesion cubierta por un convenio.
+	 *
+	 * <p>{@code desde}/{@code hasta} recortan {@code devengada_en} en el rango semiabierto
+	 * {@code [desde, hasta)}: son los limites del periodo en el dia de la sede, ya convertidos a
+	 * instantes. {@code null} no filtra.
 	 */
 	List<Obligacion> findElegiblesParaPresentar(
 			long organizationId, long consultorioId, long financiadorId,
-			LocalDate desde, LocalDate hasta, int limite, int desplazamiento);
+			Instant desde, Instant hasta, int limite, int desplazamiento);
 }

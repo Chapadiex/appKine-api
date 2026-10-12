@@ -94,7 +94,7 @@ class EgresoAislamientoTenantIT {
 
 		// --- Por la propia sede de B: el egreso de A no existe en su alcance ---
 		esNoEncontrado(() -> egresoService.ver(actorB, sedeB, confirmadoA.id()), EgresoNotAccessibleException.class);
-		esNoEncontrado(() -> egresoService.editar(actorB, sedeB, borradorA.id(), comando("15000.00")),
+		esNoEncontrado(() -> egresoService.editar(actorB, sedeB, borradorA.id(), comando("15000.00"), 0L),
 				EgresoNotAccessibleException.class);
 		esNoEncontrado(() -> egresoService.confirmar(actorB, sedeB, borradorA.id()), EgresoNotAccessibleException.class);
 		esNoEncontrado(() -> egresoService.anular(actorB, sedeB, borradorA.id(), "intrusion"),
@@ -115,7 +115,7 @@ class EgresoAislamientoTenantIT {
 		esNoEncontrado(() -> egresoService.buscar(actorB, sedeA, null, null, null, null, null, 100, 0),
 				ConsultorioNoAccesibleException.class);
 		esNoEncontrado(() -> egresoService.ver(actorB, sedeA, confirmadoA.id()), ConsultorioNoAccesibleException.class);
-		esNoEncontrado(() -> egresoService.editar(actorB, sedeA, borradorA.id(), comando("15000.00")),
+		esNoEncontrado(() -> egresoService.editar(actorB, sedeA, borradorA.id(), comando("15000.00"), 0L),
 				ConsultorioNoAccesibleException.class);
 		esNoEncontrado(() -> egresoService.confirmar(actorB, sedeA, borradorA.id()), ConsultorioNoAccesibleException.class);
 		esNoEncontrado(() -> egresoService.anular(actorB, sedeA, borradorA.id(), "intrusion"),
