@@ -15,7 +15,8 @@ public record ValidarRecepcionRequest(
 
 		@Schema(
 				description = "Cobertura del paciente con la que se quiere atender. Si se omite, se "
-						+ "usa la primera que aplique a la practica (la principal va primera).",
+						+ "usa la elegida al reservar el turno y, si no se eligio ninguna, la primera "
+						+ "que aplique a la practica (la principal va primera).",
 				example = "412")
 		@Positive
 		Long coberturaId,

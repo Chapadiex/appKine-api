@@ -220,6 +220,51 @@ class RecepcionIT {
 	}
 
 	@Test
+	@DisplayName("05.02: la cobertura elegida al reservar se guarda en el turno y la recepcion la usa por defecto")
+	void la_cobertura_elegida_al_reservar_llega_a_la_recepcion() {
+		Fixture fixture = fixtures.crear(1);
+		given(coberturas.vigenteDeLaPersona(fixture.organizationId(), fixture.personaA(), 413L, LUNES))
+				.willReturn(true);
+		TurnoView turno = turnoService.reservar(
+				fixture.actor(), fixture.consultorioId(), fixture.ofertaId(),
+				new ReservaCommand(fixture.personaA(), hora(9), fixture.profesionalMembershipId(), null, 413L))
+				.turno();
+		conPractica(fixture);
+		given(coberturas.aplicables(fixture.organizationId(), fixture.consultorioId(),
+				fixture.personaA(), PRACTICA, fixture.ofertaId(), LUNES))
+				.willReturn(List.of(
+						new CoberturaAplicable(412L, true, new ReferenciaCongelada(1L, "Financiador Sintetico", 2L, "Plan A"), null, false, null),
+						new CoberturaAplicable(413L, false, new ReferenciaCongelada(1L, "Financiador Sintetico", 3L, "Plan B"), null, false, null)));
+		given(elegibilidad.evaluar(eq(fixture.organizationId()), eq(fixture.consultorioId()),
+				eq(fixture.personaA()), eq(413L), eq(PRACTICA), eq(LUNES)))
+				.willReturn(new VeredictoDeElegibilidad(true, null, 9L, List.of()));
+		RecepcionView abierta = llegar(fixture, turno);
+
+		RecepcionView validada = recepcion.validar(
+				fixture.actor(), fixture.consultorioId(), turno.id(), null, abierta.version());
+
+		assertThat(turno.coberturaId()).isEqualTo(413L);
+		assertThat(jdbc.queryForObject("SELECT cobertura_id FROM turno WHERE id = ?", Long.class, turno.id()))
+				.isEqualTo(413L);
+		assertThat(validada.coberturaId()).isEqualTo(413L);
+		assertThat(validada.estado()).isEqualTo("VALIDADA");
+	}
+
+	@Test
+	@DisplayName("05.02: una cobertura elegida que no es de la persona no reserva y no deja fila")
+	void la_cobertura_ajena_no_reserva() {
+		Fixture fixture = fixtures.crear(1);
+
+		assertThatThrownBy(() -> turnoService.reservar(
+				fixture.actor(), fixture.consultorioId(), fixture.ofertaId(),
+				new ReservaCommand(fixture.personaA(), hora(9), fixture.profesionalMembershipId(), null, 999L)))
+				.isInstanceOf(com.akine.scheduling.domain.exception.CoberturaNoAccesibleException.class);
+
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM turno WHERE consultorio_id = ?",
+				Long.class, fixture.consultorioId())).isZero();
+	}
+
+	@Test
 	@DisplayName("cobertura aplicable y elegible: VALIDADA con el snapshot de practica, cobertura y convenio")
 	void validada_con_cobertura() {
 		Fixture fixture = fixtures.crear(1);
