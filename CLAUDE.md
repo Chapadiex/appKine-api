@@ -229,7 +229,31 @@ ArchUnit · Testcontainers.
 > `SerializationFeature` a `DateTimeFeature`, o sea `spring.jackson.datatype.datetime.*`.
 > Ante una duda de API, inspeccionar el jar antes de asumir la forma de 3.x.
 
-### Estado al 11/10/2026, sobre `81344c5`
+### Estado al 13/10/2026, sobre `50390b3`
+
+> Esta subsección **supersede** a la del 11/10 en contrato, migraciones y fases; la del 11/10
+> queda como historia. El detalle **no** se repite acá: vive en el *Registro de cierre técnico de
+> fases — 13/10/2026*, al final de `docs/producto/AKINE_IMPLEMENTATION_PLAN.md`, y las decisiones
+> abiertas en una sola lista, [`docs/fases/decisiones-pendientes.md`](docs/fases/decisiones-pendientes.md)
+> (37 entradas, ordenadas por lo que cuesta postergarlas).
+
+Desde `81344c5` entraron a `main` los PR **#88 a #107 y #109**; siguen abiertos **#108** (cierre
+de F7) y **#87** (Dependabot, Temurin 25). Entre el 12 y el 13/10 siete agentes cerraron fases en
+paralelo y dejaron su registro dentro de cada ficha de `docs/fases/`.
+
+| | Valor medido sobre `origin/main` `50390b3` (13/10) |
+|---|---|
+| Contrato | `openapi/akine-api.yaml` **0.97.0**, **310 operaciones** (`grep -c operationId:`). El cliente de `appKine-web` `main` está en **0.89.0**; el PR web #73 (0.92.0) está abierto. El PR #108 lleva su rama a 0.98.0 |
+| Migraciones | Última **`V93`** (cobertura elegida en el turno, cierre de F5), 74 archivos. Desde el 11/10 entraron `V87` (7b, #104) y `V93` (#107); no existen `V86` ni `V88`–`V92`, así que la próxima libre es **`V94`** |
+| Tests | **No se corrieron para este documento.** Cada PR de cierre corrió los suyos; ver cada ficha |
+| Fases | **Cerradas en lo técnico:** F0–F1 (~98 %, #99), F2 (~95 %, #102 · web #72), F3 (~96 %, #103), F5 (~92 %, #107). **Backend cerrado, pantallas pendientes:** F4 (~94 %) y F6 (~88 %), #109. **En PR:** F7 (~94 %, #108). **F8 (~80 %, #106): el gate del MVP no pasa.** F9 congelada, F10 sin empezar |
+
+Lo que frena el gate es del usuario: el QA manual del §6, la aprobación clínica y legal y el
+deploy, la justificación en `encounter`, `caso:create`, Connector/J (la excepción vence el
+**09/11/2026**) y SAST/DAST. Lo técnico que sigue abierto: el SLO de latencia con escrituras a
+500 usuarios (en curso) y las pantallas clínicas con sus E2E (web #4, abierto).
+
+### Estado al 11/10/2026, sobre `81344c5` (histórico)
 
 > Esta subsección **supersede** a la del 07/10 que sigue abajo en contrato, migraciones, tests,
 > cobertura y paquetes; la del 07/10 queda como historia. Las cifras de cobertura del bloque del
