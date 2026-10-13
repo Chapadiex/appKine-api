@@ -9616,7 +9616,7 @@ sesión, no un olvido.
 
 # Registro de avance — AKINE-07.03 (Caja diaria y movimientos reales)
 
-> **Actualización 13/10/2026** (ficha F7, en la rama del PR #108). **Cumplida, 100 %.** Las
+> **Actualización 13/10/2026** (ficha F7, PR #108). **Cumplida, 100 %.** Las
 > causas de "no cerrada" se saldaron: pantalla (F-6, web #7), ITs concurrentes 33–35 (api #28 y
 > #57) y E2E `flujo-caja` contra el backend real (web #35). Lo que sigue es el registro original.
 
@@ -9775,9 +9775,9 @@ de `V55`. Tampoco hay tests de `TratamientoService` ni de la capa REST.
 
 # Registro de avance — AKINE-07.05 (Egresos y pagos a profesionales)
 
-> **Actualización 13/10/2026** (ficha F7, en la rama del PR #108). **90 %.** Pantallas (F-5,
+> **Actualización 13/10/2026** (ficha F7, PR #108). **90 %.** Pantallas (F-5,
 > web #63), E2E de egreso pagado y anulado en `flujo-caja` (web #63), ITs 41–48 (api #19, #24 y
-> #57; el 47 con `AnulacionDePagoSinCajaIT`, en el PR #108 abierto). **Del usuario:** adjunto
+> #57; el 47 con `AnulacionDePagoSinCajaIT`, PR #108). **Del usuario:** adjunto
 > binario (RF-M22-003) y DU-10 (`docs/fases/decisiones-pendientes.md` U-33 y U-31); RF-M22-006/007
 > son de la segunda entrega (U-34). Lo que sigue es el registro original.
 
@@ -10013,10 +10013,10 @@ dejan de ver clases vivas** — la exclusión entera se apaga en silencio.
 
 # Registro de avance — AKINE-07.04 (Presentaciones y cuenta corriente de financiadores)
 
-> **Actualización 13/10/2026** (ficha F7, en la rama del PR #108). **90 %.** Bandeja con datos
+> **Actualización 13/10/2026** (ficha F7, PR #108). **90 %.** Bandeja con datos
 > (F-4, api #49), pantallas (F-7, web #9), E2E `flujo-presentaciones` (web #35), ITs 36–40
 > (api #30 y #57), defectos de F-2 (api #16–#18) y el débito que no persistía la marca (api #57).
-> Listado exportable: **PR #108, abierto al 13/10** (contrato 0.98.0 en la rama). **Del usuario:**
+> Listado exportable: PR #108 (`exportarPresentacion`, contrato 0.98.0). **Del usuario:**
 > RF-M21-003, débito parcial y permiso propio (`docs/fases/decisiones-pendientes.md` U-28, U-11 y
 > U-32). Lo que sigue es el registro original.
 
@@ -11084,11 +11084,11 @@ desvío fue el de los grants.
 > donde vive el detalle. Los registros por etapa de más arriba no se reescribieron; los que las
 > fichas marcan como desactualizados llevan una nota fechada el 13/10/2026 debajo de su título.
 >
-> Medido sobre `origin/main` `50390b3` (13/10/2026, merge del PR #109): contrato
-> `openapi/akine-api.yaml` **0.97.0**, **310 operaciones**; última migración **`V93`** (74
+> Medido sobre `origin/main` `c791c7c` (13/10/2026, merge del PR #108): contrato
+> `openapi/akine-api.yaml` **0.98.0**, **311 operaciones**; última migración **`V93`** (74
 > archivos). `appKine-web` `main` `2cdd3bb`, cliente generado contra **0.89.0** (el PR web #73, que
-> lo lleva a 0.92.0, está abierto). La ficha de **F7** se tomó de la rama del **PR #108, abierto**
-> al 13/10.
+> lo lleva a 0.92.0, está abierto). El **PR #108** (cierre de F7) entró a `main` el 13/10
+> mientras se escribía esta consolidación.
 
 ## Resumen
 
@@ -11100,7 +11100,7 @@ desvío fue el de los grants.
 | F4 Dominio clínico | **Backend cerrado** (12/10); pantallas en curso | backend ~94 | api #109 | C-9, plan por práctica, `caso:create`; pantallas D-a/b/c (web #4, abierto) y D-e |
 | F5 Agenda y recepción | **Cerrada salvo decisiones** (13/10) | ~92 | api #107 | Autoservicio (`OWN`, post-MVP), ventana de cancelación, `RETIRADO`, series; selector de cobertura en pantalla; QA manual |
 | F6 Atención clínica | **Backend cerrado** (12/10); pantallas sin PR | backend ~88 | api #109 | C-8, DU-11, subbloques, parámetros, permiso de enmienda; pantallas D-d y D-g |
-| F7 Economía del MVP | **En PR** (12–13/10) | ~94 | api #108 **abierto** | RF-M21-003, débito parcial, permisos, adjunto binario, arancel 0; QA manual |
+| F7 Economía del MVP | **Cerrada salvo decisiones** (13/10) | ~94 | api #108 | RF-M21-003, débito parcial, permisos, adjunto binario, arancel 0; QA manual |
 | F8 Cierre del MVP | **Gate no pasa** (13/10) | ~80 | api #106 | QA manual, aprobación y deploy, cuatro decisiones de seguridad, SLO de escrituras (en curso) |
 | F9 Segunda entrega | Congelada (DP-07) | ~23 (01/10) | — | Espera el gate de F8 y DU-12 |
 | F10 Consolidación final | No empezada | 0 | — | Depende de F9 |
@@ -11203,18 +11203,15 @@ opción que recomienda cada ficha.
 
 ## F7 — Economía del MVP
 
-> **El PR #108 está abierto al 13/10.** Lo de esta sección sale de la ficha en su rama.
-
 - **Qué quedó:** 07.01 95 %, 07.02 100 %, 07.03 100 %, 07.04 90 %, 07.05 90 %. Obligación del
   financiador con coseguro y snapshot (F-4, `V77`); anticipos, imputación, anulación y reintegro
   (F-3, `V69` · web #33); pantallas de caja, presentaciones y egresos (web #7, #9, #63); los
   dieciséis escenarios diferidos 33–48 contra MySQL; auditoría del cobro y del devengo (api #86);
   cobros concurrentes sin trabar el pool (api #91); el cobro anulado visible en el listado (api
   #101).
-- **Lo que hace el PR:** el export del lote a CSV (`exportarPresentacion`, contrato **0.98.0** en la
-  rama después de rebasear sobre `main`) y el escenario 47 (`AnulacionDePagoSinCajaIT`). Sin
+- **Lo que hizo el cierre:** el export del lote a CSV (`exportarPresentacion`, contrato **0.98.0**) y el escenario 47 (`AnulacionDePagoSinCajaIT`). Sin
   migración. El botón "Exportar CSV" espera el cliente regenerado.
-- **PR del cierre:** api #108, abierto. **~94 %.**
+- **PR del cierre:** api #108. **~94 %.**
 - **Para el usuario:** `egreso:manage` (DU-10) y el permiso de presentaciones, RF-M21-003 (reparo o
   aviso), el débito parcial (necesita migración), arancel 0, liquidación a profesionales, adjunto
   binario del egreso, crédito y bono de RF-M18-011, y el QA manual (`docs/qa/07`, `08`, `12`).
@@ -11241,4 +11238,3 @@ opción que recomienda cada ficha.
   ninguna ficha las da por hechas.
 - **El QA manual del §6** sigue sin correr desde 02.02. Es la única acción que aparece en el
   "pendiente del usuario" de todas las fichas.
-- **El PR #108** de F7 tiene que entrar para que lo dicho de F7 sea cierto en `main`.

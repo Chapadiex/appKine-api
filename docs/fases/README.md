@@ -31,7 +31,7 @@ contra el código antes de actuar**.
 
 Sale de los registros de cierre del 12–13/10 que cada ficha tiene al final, consolidados en el
 *Registro de cierre técnico de fases — 13/10/2026* de `docs/producto/AKINE_IMPLEMENTATION_PLAN.md`.
-Medido sobre `main` `50390b3`: contrato **0.97.0**, última migración **`V93`**.
+Medido sobre `main` `c791c7c`: contrato **0.98.0**, última migración **`V93`**.
 
 | Fase | Estado al 13/10 | % técnico | PR del cierre | Lo que queda |
 |---|---|---|---|---|
@@ -41,7 +41,7 @@ Medido sobre `main` `50390b3`: contrato **0.97.0**, última migración **`V93`**
 | [F4](F4-dominio-clinico.md) | Backend cerrado; pantallas pendientes | backend ~94 | api #109 | Pantallas D-a/b/c (web #4, abierto) y D-e; del usuario: C-9, plan por práctica, `caso:create` |
 | [F5](F5-agenda-y-recepcion.md) | Cerrada salvo decisiones | ~92 | api #107 | Selector de cobertura en la reserva (espera el cliente); del usuario: autoservicio, ventana, `RETIRADO`, series, QA manual |
 | [F6](F6-atencion-clinica.md) | Backend cerrado; pantallas sin PR | backend ~88 | api #109 | Pantallas D-d y D-g; del usuario: C-8, DU-11, subbloques, parámetros, permiso de enmienda |
-| [F7](F7-economia-del-mvp.md) | En PR | ~94 | api #108 **abierto** | Del usuario: RF-M21-003, débito parcial, permisos, adjunto binario, arancel 0, QA manual |
+| [F7](F7-economia-del-mvp.md) | Cerrada salvo decisiones | ~94 | api #108 | Del usuario: RF-M21-003, débito parcial, permisos, adjunto binario, arancel 0, QA manual |
 | [F8](F8-cierre-del-mvp.md) | **El gate del MVP no pasa** | ~80 | api #106 | QA manual, aprobación y deploy, cuatro decisiones de seguridad; SLO de escrituras en curso; E2E clínicos |
 | [F9](F9-segunda-entrega.md) | Congelada (DP-07) | ~23 (01/10) | — | Espera el gate de F8 |
 | [F10](F10-consolidacion-final.md) | Sin empezar | 0 | — | Depende de F9 |

@@ -1,7 +1,7 @@
 # Decisiones pendientes del usuario — lista única
 
 > Consolidada el **13/10/2026** a partir de los "Pendiente del usuario" de los registros de cierre
-> del 12–13/10 de cada ficha de fase (`F0-F1` … `F8`; la de F7 en la rama del PR #108, abierto al
+> del 12–13/10 de cada ficha de fase (`F0-F1` … `F8`; la de F7 entró con el PR #108 el
 > 13/10). **No se inventó ninguna opción:** la pregunta, la opción recomendada y lo que destraba
 > salen de la ficha citada. Donde la ficha no recomienda nada, se dice.
 >
