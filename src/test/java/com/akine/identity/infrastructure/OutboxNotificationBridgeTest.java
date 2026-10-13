@@ -19,6 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -136,6 +138,66 @@ class OutboxNotificationBridgeTest {
 				"ana@ejemplo.test", Map.of(), ENLACE, "500"));
 
 		assertThat(capturarComando().referenciaTokenId()).isEqualTo("500");
+	}
+
+	@Test
+	@DisplayName("dos invitaciones emitidas en el mismo milisegundo resuelven cada una su enlace")
+	void dos_invitaciones_en_el_mismo_instante_no_se_pisan_el_enlace() {
+		given(notificationOutbox.enqueue(any())).willReturn(1L);
+		OutboxNotificationBridge bridge = bridge();
+		long mismoVencimiento = Instant.parse("2026-10-20T12:00:00Z").toEpochMilli();
+		String enlaceDeAna = "https://app.akine.test/invitacion?token=de-ana";
+		String enlaceDeBeto = "https://app.akine.test/invitacion?token=de-beto";
+
+		bridge.encolar(invitacion("ana@ejemplo.test", enlaceDeAna,
+				"invitacion:11:" + mismoVencimiento));
+		bridge.encolar(invitacion("beto@ejemplo.test", enlaceDeBeto,
+				"invitacion:12:" + mismoVencimiento));
+
+		ArgumentCaptor<NotificationEnqueueCommand> captor =
+				ArgumentCaptor.forClass(NotificationEnqueueCommand.class);
+		verify(notificationOutbox, times(2)).enqueue(captor.capture());
+		String referenciaDeAna = captor.getAllValues().get(0).referenciaTokenId();
+		String referenciaDeBeto = captor.getAllValues().get(1).referenciaTokenId();
+
+		assertThat(referenciaDeAna).isNotEqualTo(referenciaDeBeto);
+		assertThat(vault.pendientes()).isEqualTo(2);
+
+		// Por el mismo camino que usa el worker al enviar: el resolutor con la referencia de la fila.
+		IdentitySecureLinkResolver resolver =
+				new IdentitySecureLinkResolver(mock(TokenVerificacionRepository.class), vault);
+		assertThat(resolver.resolveLink(NotificationType.INVITACION_COLABORADOR, referenciaDeAna))
+				.contains(enlaceDeAna);
+		assertThat(resolver.resolveLink(NotificationType.INVITACION_COLABORADOR, referenciaDeBeto))
+				.contains(enlaceDeBeto);
+	}
+
+	@Test
+	@DisplayName("el reenvio de una invitacion no pisa el enlace de la emision anterior: cambia el vencimiento")
+	void el_reenvio_tiene_referencia_propia() {
+		given(notificationOutbox.enqueue(any())).willReturn(1L);
+		OutboxNotificationBridge bridge = bridge();
+
+		bridge.encolar(invitacion("ana@ejemplo.test", "https://app.akine.test/i?token=uno",
+				"invitacion:11:1000"));
+		bridge.encolar(invitacion("ana@ejemplo.test", "https://app.akine.test/i?token=dos",
+				"invitacion:11:2000"));
+
+		ArgumentCaptor<NotificationEnqueueCommand> captor =
+				ArgumentCaptor.forClass(NotificationEnqueueCommand.class);
+		verify(notificationOutbox, times(2)).enqueue(captor.capture());
+		assertThat(captor.getAllValues())
+				.extracting(NotificationEnqueueCommand::referenciaTokenId)
+				.containsExactly("invitacion:11:1000", "invitacion:11:2000");
+		assertThat(vault.leer("invitacion:11:2000", Instant.now()))
+				.contains("https://app.akine.test/i?token=dos");
+	}
+
+	private static NotificationOutboxPort.Notificacion invitacion(
+			String email, String enlace, String clave) {
+		return new NotificationOutboxPort.Notificacion(
+				10L, NotificationOutboxPort.TipoNotificacion.INVITACION_COLABORADOR,
+				email, Map.of(), enlace, clave);
 	}
 
 	@Test

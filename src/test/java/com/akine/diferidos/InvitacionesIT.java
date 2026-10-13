@@ -222,6 +222,20 @@ class InvitacionesIT extends BaseEscenarioDiferido {
 		String tokenNuevo = tokenDe(invitacionId);
 		assertThat(tokenNuevo).isNotEqualTo(tokenViejo);
 
+		// Cada emision guarda su enlace bajo una referencia propia, con el id de la invitacion:
+		// con solo el vencimiento en ms, dos invitaciones del mismo milisegundo compartian la
+		// entrada del vault y el primer invitado recibia el enlace del segundo.
+		var referencias = jdbc.queryForList("""
+				SELECT referencia_token_id FROM notification_outbox
+				 WHERE organization_id = ? AND tipo = 'INVITACION_COLABORADOR'
+				   AND clave_idempotente = referencia_token_id
+				""", String.class, centro.organizationId());
+		assertThat(referencias)
+				.as("la referencia es la clave entera, unica por emision")
+				.hasSize(2)
+				.doesNotHaveDuplicates()
+				.allMatch(referencia -> referencia.startsWith("invitacion:" + invitacionId + ":"));
+
 		// El enlace viejo deja de servir en el mismo acto: dos validos a la vez dejarian al
 		// invitado eligiendo cual usar.
 		Respuesta conElViejo = post(
