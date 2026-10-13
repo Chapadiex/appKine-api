@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -331,6 +332,73 @@ class CasoClinicoConcurrenteIT {
 		assertThat(numerosDeCaso(tenantA.historiaClinicaId()))
 				.as("y nada se escribio en la historia de A")
 				.containsExactly(1);
+	}
+
+	// =================================================================================
+	// (e) El cambio de equipo y su version — deuda-force-increment.md
+	// =================================================================================
+
+	@Test
+	@DisplayName("cambiar el equipo avanza la version de caso_clinico exactamente una vez")
+	void cambiar_el_equipo_avanza_la_version_una_vez() {
+		// El cambio de equipo escribe en caso_profesional y no toca ninguna columna de
+		// caso_clinico. Lo unico que hace chocar a dos escritores es que la version del padre
+		// avance; y eso se mide leyendo la tabla, no el objeto (docs/fases/deuda-force-increment.md).
+		Fixture fixture = crearFixture();
+		CasoClinicoView caso = abrir(fixture, "Gonalgia derecha", true);
+		long leida = versionEnLaBase(caso.id());
+
+		CasoClinicoView cambiado = servicio.cambiarEquipo(fixture.actor(), caso.id(),
+				List.of(new IntegranteDelEquipo(fixture.membershipId(), RolEnCaso.TRATANTE)),
+				leida, JUSTIFICACION);
+
+		assertThat(versionEnLaBase(caso.id()))
+				.as("la version de la fila avanza una sola vez")
+				.isEqualTo(leida + 1);
+		assertThat(cambiado.version())
+				.as("y la respuesta anuncia la que quedo en la base, para encadenar sin releer")
+				.isEqualTo(leida + 1);
+
+		// Encadenar con la version devuelta entra; repetir la vieja choca.
+		servicio.cambiarEquipo(fixture.actor(), caso.id(),
+				List.of(new IntegranteDelEquipo(fixture.membershipId(), RolEnCaso.RESPONSABLE)),
+				cambiado.version(), JUSTIFICACION);
+		assertThat(versionEnLaBase(caso.id())).isEqualTo(leida + 2);
+		assertThatThrownBy(() -> servicio.cambiarEquipo(fixture.actor(), caso.id(),
+				List.of(new IntegranteDelEquipo(fixture.membershipId(), RolEnCaso.TRATANTE)),
+				leida, JUSTIFICACION))
+				.isInstanceOf(OptimisticLockingFailureException.class);
+	}
+
+	@Test
+	@DisplayName("dos cambios de equipo con la misma version: entra uno solo")
+	void dos_cambios_de_equipo_concurrentes_entra_uno() {
+		Fixture fixture = crearFixture();
+		CasoClinicoView caso = abrir(fixture, "Gonalgia derecha", true);
+		long leida = versionEnLaBase(caso.id());
+
+		Callable<CasoClinicoView> uno = () -> servicio.cambiarEquipo(fixture.actor(), caso.id(),
+				List.of(new IntegranteDelEquipo(fixture.membershipId(), RolEnCaso.TRATANTE)),
+				leida, JUSTIFICACION);
+		Callable<CasoClinicoView> otro = () -> servicio.cambiarEquipo(fixture.actor(), caso.id(),
+				List.of(new IntegranteDelEquipo(fixture.membershipId(), RolEnCaso.TRATANTE)),
+				leida, JUSTIFICACION);
+
+		List<Desenlace> desenlaces = enParalelo(List.of(uno, otro));
+
+		assertThat(desenlaces.stream().filter(d -> !d.fallo()).count())
+				.as("el control optimista serializa: uno entra. Desenlaces: %s", desenlaces)
+				.isEqualTo(1L);
+		assertThat(desenlaces.stream().filter(Desenlace::fallo).map(Desenlace::error).toList())
+				.as("y el otro es conflicto de version (409), no un 500")
+				.singleElement()
+				.isInstanceOf(OptimisticLockingFailureException.class);
+		assertThat(versionEnLaBase(caso.id())).isEqualTo(leida + 1);
+	}
+
+	private long versionEnLaBase(long casoId) {
+		return jdbc.queryForObject("SELECT version FROM caso_clinico WHERE id = ?",
+				Long.class, casoId);
 	}
 
 	// =================================================================================

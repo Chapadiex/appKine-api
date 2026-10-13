@@ -297,8 +297,9 @@ class CasoClinicoServiceTest {
 		CasoProfesional saliente = new CasoProfesional(ORG_ID, CASO_ID, 31L, RolEnCaso.TRATANTE,
 				Instant.EPOCH);
 		ReflectionTestUtils.setField(saliente, "id", 904L);
-		given(casos.findWithLockByIdAndOrganizationId(CASO_ID, ORG_ID))
+		given(casos.findByIdAndOrganizationId(CASO_ID, ORG_ID))
 				.willReturn(Optional.of(casoExistente()));
+		given(casos.avanzarVersion(ORG_ID, CASO_ID, 0L)).willReturn(1);
 		given(equipos.buscarDeCaso(ORG_ID, CASO_ID, true)).willReturn(List.of(saliente));
 
 		service.cambiarEquipo(profesional, CASO_ID,
@@ -309,19 +310,31 @@ class CasoClinicoServiceTest {
 	}
 
 	@Test
-	@DisplayName("el cambio de equipo lee el caso con lock forzado, no con la lectura comun")
-	void el_equipo_fuerza_la_version() {
+	@DisplayName("el cambio de equipo avanza la version con el UPDATE condicionado y anuncia leida+1")
+	void el_equipo_avanza_la_version() {
 		// Es la leccion de 02.07: un @Version sobre el padre NO protege una escritura que solo
-		// toca tablas hijas. Sin OPTIMISTIC_FORCE_INCREMENT, dos cambios de equipo concurrentes
-		// commitean los dos y el resultado no es ninguno de los dos.
-		given(casos.findWithLockByIdAndOrganizationId(CASO_ID, ORG_ID))
+		// toca tablas hijas. El UPDATE condicionado es el que hace chocar a dos cambios
+		// concurrentes; el caso no se guarda, para que la version avance una sola vez.
+		given(casos.findByIdAndOrganizationId(CASO_ID, ORG_ID))
 				.willReturn(Optional.of(casoExistente()));
+		given(casos.avanzarVersion(ORG_ID, CASO_ID, 0L)).willReturn(1);
 
-		service.cambiarEquipo(profesional, CASO_ID, List.of(), 0L, null);
+		CasoClinicoView vista = service.cambiarEquipo(profesional, CASO_ID, List.of(), 0L, null);
 
-		verify(casos).findWithLockByIdAndOrganizationId(CASO_ID, ORG_ID);
-		verify(casos, never()).findByIdAndOrganizationId(anyLong(), anyLong());
-		verify(casos).save(any());
+		assertThat(vista.version()).isEqualTo(1L);
+		verify(casos, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("si el UPDATE condicionado no toca filas, el cambio de equipo es conflicto y no escribe")
+	void el_equipo_con_version_vieja_es_conflicto() {
+		given(casos.findByIdAndOrganizationId(CASO_ID, ORG_ID))
+				.willReturn(Optional.of(casoExistente()));
+		given(casos.avanzarVersion(ORG_ID, CASO_ID, 0L)).willReturn(0);
+
+		assertThatThrownBy(() -> service.cambiarEquipo(profesional, CASO_ID, List.of(), 0L, null))
+				.isInstanceOf(OptimisticLockingFailureException.class);
+		verify(equipos, never()).saveAll(any());
 	}
 
 	// =================================================================================
