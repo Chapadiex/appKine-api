@@ -1,5 +1,6 @@
 package com.akine.platform.infrastructure.config;
 
+import com.akine.platform.spi.pedido.MemoriaDelPedido;
 import com.akine.platform.spi.transaccion.AlTerminarLaTransaccion;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.transaction.autoconfigure.TransactionManagerCustomizers;
@@ -48,6 +49,11 @@ public class TransaccionesConfig {
 		@Override
 		protected void doCommit(DefaultTransactionStatus status) {
 			super.doCommit(status);
+			if (!status.isReadOnly()) {
+				// Lo que el pedido memorizo antes de esta escritura puede ser viejo ahora
+				// (docs/carga.md §9): una membership creada o revocada no se sigue leyendo vieja.
+				MemoriaDelPedido.olvidar();
+			}
 			AlTerminarLaTransaccion.commiteo();
 		}
 

@@ -34,7 +34,8 @@ spring:
         # Connector/J 9 abre un span de OpenTelemetry por sentencia en cuanto encuentra la API en
         # el classpath (PREFERRED): ~5 % de la CPU, para spans que no se exportan (el muestreo es
         # 0,1 y por default no hay collector). El span del pedido HTTP sigue existiendo.
-        openTelemetry: DISABLED
+        # AKINE_JDBC_OTEL=PREFERRED los vuelve a encender, p. ej. para diagnosticar con collector.
+        openTelemetry: ${AKINE_JDBC_OTEL:DISABLED}
 
   jpa:
     # Flyway es la unica autoridad sobre el esquema. Hibernate no crea ni altera tablas:

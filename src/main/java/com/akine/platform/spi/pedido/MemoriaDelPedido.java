@@ -24,14 +24,26 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  *       en un {@code finally}; los hilos del contenedor se reutilizan y lo que sobreviviera se lo
  *       llevaria el proximo pedido. Fuera de un pedido —un job, el outbox, un test que llama al
  *       servicio— no hay alcance y cada lectura va a la base, como siempre.</li>
- *   <li><b>Nunca dentro de una transaccion de escritura.</b> Una mutacion que toca memberships
- *       evalua el permiso <b>despues</b> de tomar el bloqueo del tenant, y esa lectura tiene que
- *       ser la de ahora, no la del filtro. Dentro de una transaccion de lectura-escritura la
- *       lectura va a la base y, ademas, la memoria entera se descarta: lo que el pedido escriba de
- *       ahi en adelante puede cambiar lo que ya habia leido.</li>
+ *   <li><b>Nunca dentro de una transaccion de escritura, y nunca despues de un commit de
+ *       escritura.</b> Lo que se evalua <b>dentro</b> de una transaccion de lectura-escritura
+ *       —p. ej. una mutacion de memberships que evalua despues de tomar el bloqueo del tenant—
+ *       lee la base en ese momento, y la memoria entera se descarta. Ademas, cuando commitea
+ *       cualquier transaccion de escritura del pedido, el transaction manager llama a
+ *       {@link #olvidar()}: una membership creada o revocada en el pedido no deja leer lo de
+ *       antes en lo que siga del mismo pedido.</li>
  *   <li><b>Se memorizan filas, no decisiones.</b> Quien usa esta memoria guarda lo que leyo y
  *       sigue evaluando vigencia, alcance y permiso con el instante de cada llamada.</li>
  * </ol>
+ *
+ * <h2>El limite, dicho entero</h2>
+ *
+ * <p>La lectura fresca cubre solo lo que se evalua <b>dentro</b> de una transaccion de escritura.
+ * Las mutaciones que desde #91 evaluan el permiso <b>antes</b> de abrir su transaccion de negocio
+ * —p. ej. {@code CobroService.registrar}, que llama a {@code exigirGestion} y recien despues a
+ * {@code transaccionDeNegocio.execute}— deciden con lo que leyo el filtro de contexto unos
+ * milisegundos antes, en el mismo pedido. La ventana de revocacion es la de un pedido, apenas
+ * mayor que en {@code main} antes de este cambio (donde esa evaluacion releia la base fuera de la
+ * transaccion de negocio), y nunca cruza al pedido siguiente.
  */
 public final class MemoriaDelPedido {
 
@@ -83,6 +95,17 @@ public final class MemoriaDelPedido {
 				ALCANCE.set(previo);
 			}
 		};
+	}
+
+	/**
+	 * Descarta todo lo memorizado en el pedido en curso, si hay uno. Lo llama el transaction
+	 * manager de la aplicacion al commitear una transaccion de escritura.
+	 */
+	public static void olvidar() {
+		Map<Object, Object> memoria = ALCANCE.get();
+		if (memoria != null) {
+			memoria.clear();
+		}
 	}
 
 	private static boolean enTransaccionDeEscritura() {

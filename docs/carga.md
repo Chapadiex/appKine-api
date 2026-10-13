@@ -536,6 +536,13 @@ cada pedido —1 400 filas por consulta, 5,9 millones en una corrida— y crece 
 | La sonda de reservas lee una **proyección** (inicio, profesional, espacio) en vez del `Turno` entero | `OcupacionDeTurno`, `TurnoRepositoryPort.findOcupacionDeLaOfertaEnVentana` | Sin cambios: misma ventana y mismo filtro |
 | Índice `ix_cobro_turno (organization_id, turno_id)` | `V94` | Sólo agrega un índice |
 
+**El límite de la memoria, dicho entero.** La lectura fresca cubre sólo lo que se evalúa
+**dentro** de una transacción de escritura, y al commitear cualquier escritura la memoria del pedido
+se descarta (`TransaccionesConfig`). Las mutaciones que desde #91 evalúan el permiso **antes** de
+abrir su transacción de negocio —p. ej. `CobroService.registrar`, que llama a `exigirGestion` antes
+del `execute`— deciden con lo que leyó el filtro de contexto del mismo pedido: una ventana de
+milisegundos, apenas mayor que antes, que nunca cruza al pedido siguiente.
+
 **Lo que no se hizo:** unir las dos transacciones de los filtros (la de membership sigue: son cuatro
 lecturas que conviene ver en una sola foto) ni `readOnlyPropagatesToServer=false` (quitaría los
 `SET SESSION TRANSACTION READ ONLY/WRITE`, pero también que MySQL rechace una escritura en una

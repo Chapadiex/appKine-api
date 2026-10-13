@@ -22,8 +22,15 @@ import com.akine.platform.spi.pedido.MemoriaDelPedido;
  * dentro de una transaccion de escritura, asi que la revalidacion contra la base en cada pedido
  * (ADR-0020, T-7) queda igual.
  *
- * <p>Se memorizan las <b>filas</b>, inmutables, y nunca la decision: vigencia y alcance se
- * siguen evaluando con el instante de cada llamada.
+ * <p>Se memorizan las <b>filas</b> y nunca la decision: vigencia y alcance se siguen evaluando con
+ * el instante de cada llamada.
+ *
+ * <p><b>Lo memorizado son entidades JPA, y son mutables.</b> La lista es inmutable, sus elementos
+ * no: son entidades leidas en otra transaccion (desprendidas). Se comparten entre todas las
+ * llamadas del pedido, asi que <b>nadie las modifica</b>: estos metodos son solo para decidir
+ * acceso, y ningun llamador las devuelve ni las guarda. Quien necesite cambiar una membership la
+ * lee por su repositorio, dentro de su transaccion. Copiarlas a records exigiria reescribir
+ * {@code MembershipSelection} y los predicados de vigencia del dominio sobre otro tipo.
  */
 public final class LecturasDeAcceso {
 

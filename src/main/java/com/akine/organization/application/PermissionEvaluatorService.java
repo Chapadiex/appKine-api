@@ -78,9 +78,13 @@ import java.util.Set;
  * <p><b>Sin cache.</b> Cada pedido lee la base. La ventana de revocacion es cero: una
  * membership revocada deja de habilitar en el pedido siguiente. Lo unico que se reutiliza es la
  * lectura que el filtro de contexto hizo <b>en el mismo pedido</b> ({@link LecturasDeAcceso}), y
- * nunca dentro de una transaccion de escritura: la mutacion que evalua despues de tomar el
- * bloqueo del tenant sigue leyendo la base en ese momento. Una cache entre pedidos seria un ADR
- * nuevo (igual que dice hoy el javadoc de {@code MembershipDirectory}).
+ * nunca dentro de una transaccion de escritura: la mutacion que evalua <b>dentro</b> de su
+ * transaccion, despues de tomar el bloqueo del tenant, sigue leyendo la base en ese momento.
+ * <b>Limite:</b> las mutaciones que evaluan <b>antes</b> de abrir su transaccion de negocio (las de
+ * #91, p. ej. {@code CobroService.registrar} con {@code exigirGestion}) deciden con lo leido por el
+ * filtro del mismo pedido: una ventana de milisegundos, apenas mayor que antes, que nunca cruza al
+ * pedido siguiente. Una cache entre pedidos seria un ADR nuevo (igual que dice hoy el javadoc de
+ * {@code MembershipDirectory}).
  *
  * <p><b>Se evalua dentro de la transaccion de negocio.</b> Las anotaciones de aca son
  * {@code readOnly} y se unen a la transaccion del llamador cuando la hay; no abren una propia

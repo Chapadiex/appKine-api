@@ -57,6 +57,17 @@ class MemoriaDelPedidoTest {
 	}
 
 	@Test
+	@DisplayName("olvidar descarta lo memorizado en el pedido en curso, y fuera de uno no hace nada")
+	void olvidar() {
+		MemoriaDelPedido.olvidar();
+		try (MemoriaDelPedido.Alcance pedido = MemoriaDelPedido.abrir()) {
+			MemoriaDelPedido.memorizar("clave", lector);
+			MemoriaDelPedido.olvidar();
+			assertThat(MemoriaDelPedido.memorizar("clave", lector)).isEqualTo(2);
+		}
+	}
+
+	@Test
 	@DisplayName("En una transaccion de lectura memoriza")
 	void transaccion_de_lectura() {
 		TransactionSynchronizationManager.setActualTransactionActive(true);
