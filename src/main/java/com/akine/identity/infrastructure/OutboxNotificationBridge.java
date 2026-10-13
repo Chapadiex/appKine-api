@@ -115,6 +115,21 @@ public class OutboxNotificationBridge implements NotificationOutboxPort {
 	/**
 	 * Extrae el id del token de la clave idempotente: de "activacion:42" saca "42".
 	 *
+	 * <p><b>La invitacion es la excepcion y usa la clave entera</b>
+	 * ({@code invitacion:<id>:<expiraEn ms>}). Su clave termina en el vencimiento, no en un id:
+	 * tomar el ultimo segmento convertia el vencimiento en milisegundos en la llave del
+	 * {@link SecureLinkVault}, y dos invitaciones emitidas en el mismo milisegundo compartian
+	 * entrada —la segunda pisaba el enlace de la primera y el primer invitado recibia el enlace
+	 * del segundo—. La clave entera es unica por emision: el id distingue invitaciones y el
+	 * vencimiento distingue un reenvio de la emision original. El prefijo la separa ademas del
+	 * espacio numerico de los ids de {@code token_verificacion}. {@link VigenciaDeInvitacion}
+	 * parsea la clave idempotente de la fila, no esta referencia, y el resolutor de invitaciones
+	 * solo la usa como llave del vault: ninguno depende de su forma. Entra holgada en
+	 * {@code referencia_token_id VARCHAR(64)}: a lo sumo 44 caracteres.
+	 *
+	 * <p>Activacion y recuperacion no tienen el problema: su ultimo segmento es el id de la fila
+	 * de {@code token_verificacion}, unico entre los dos tipos porque comparten tabla.
+	 *
 	 * <p>Los productores de {@code identity} arman esa clave con el id de la fila del token
 	 * justamente porque es lo unico estable del hecho de negocio. Aprovecharla evita agregarle
 	 * un campo al puerto —que vive en {@code domain} y no es de esta etapa— para transportar un
@@ -127,6 +142,9 @@ public class OutboxNotificationBridge implements NotificationOutboxPort {
 	private static String referenciaDe(String claveIdempotente, NotificationType tipo) {
 		if (!tipo.requiereEnlaceSeguro()) {
 			return null;
+		}
+		if (tipo == NotificationType.INVITACION_COLABORADOR) {
+			return claveIdempotente;
 		}
 		int separador = claveIdempotente.lastIndexOf(SEPARADOR_CLAVE);
 		return separador < 0 || separador == claveIdempotente.length() - 1
