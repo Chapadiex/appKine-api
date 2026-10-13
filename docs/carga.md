@@ -534,7 +534,7 @@ cada pedido —1 400 filas por consulta, 5,9 millones en una corrida— y crece 
 | `openTelemetry=DISABLED` en Connector/J | ídem | Se pierden los spans por sentencia SQL, que no se exportaban (muestreo 0,1 y sin collector por defecto). El span del pedido sigue |
 | `management.observations.enable.spring.security: false` | `application.yml` | Se pierden los timers y spans por filtro de seguridad; `http.server.requests` y la traza del pedido siguen |
 | La sonda de reservas lee una **proyección** (inicio, profesional, espacio) en vez del `Turno` entero | `OcupacionDeTurno`, `TurnoRepositoryPort.findOcupacionDeLaOfertaEnVentana` | Sin cambios: misma ventana y mismo filtro |
-| Índice `ix_cobro_turno (organization_id, turno_id)` | `V87` | Sólo agrega un índice |
+| Índice `ix_cobro_turno (organization_id, turno_id)` | `V94` | Sólo agrega un índice |
 
 **Lo que no se hizo:** unir las dos transacciones de los filtros (la de membership sigue: son cuatro
 lecturas que conviene ver en una sola foto) ni `readOnlyPropagatesToServer=false` (quitaría los
@@ -560,7 +560,7 @@ con base recién sembrada:
 
 Cada pedido autenticado hace **una transacción menos** (tres → dos en las lecturas) y deja de
 releer membership y rol. Las conexiones que pide al pool siguen siendo tres: la lectura del rol
-sin transacción también toma una, sólo que la devuelve después de una sentencia. El índice `V87`
+sin transacción también toma una, sólo que la devuelve después de una sentencia. El índice `V94`
 no cambia cuántas sentencias hay: cambia cuántas filas recorre la del prepago (la recepción del
 día cuenta más o menos SELECT según cuántos turnos le queden al día cuando se mide).
 
@@ -593,6 +593,11 @@ contenedores en total).
 | errores técnicos | 0,00 % | 0,00 % |
 | reservas 201 / 409 | 480 / 3 099 | 478 / 3 123 |
 
+Después de este par la rama se mergeó otra vez con `main` (entraron hasta #109, entre ellos #107
+con cambios en reserva y agenda) y la migración pasó de `V87` a `V94` porque `main` tomó `V87`.
+Esa versión final **no se volvió a medir con k6**: pasaron los unitarios tocados y los ITs
+`AgendaDescuentaReservasIT`, `EsquemaMultiTenantIT`, `PoolDeConexionesIT` y `OpenApiContractIT`.
+
 Integridad verificada contra la base al terminar: comprobantes **1 a 2 722** (antes) y
 **1 a 4 187** (después), sin huecos ni repetidos, y **0 turnos solapados** del mismo profesional.
 
@@ -601,7 +606,7 @@ Los dos pares anteriores, con la máquina cargada, van en la misma dirección y 
 - **Par 2** (12/10, sobre `5b4ef93`, sin #97): 90,7 → 99,0 req/s, p50 786 → 66 ms, CPU media
   58 → 37 %, pedidos ≤ 300 ms del 28 al 70 %; el p95 no bajó (3,8 → 4,3 s en k6), porque el
   pool seguía en ráfagas de 10 activas y 190 pendientes con la CPU al 30–50 %.
-- **Par 1** (11/10, sin `V87`): 68,2 → 75,3 req/s, CPU media de ~80 % a ~40 %, p95 ~7 s en los
+- **Par 1** (11/10, sin `V94`): 68,2 → 75,3 req/s, CPU media de ~80 % a ~40 %, p95 ~7 s en los
   dos.
 - Una corrida con JFR de la versión nueva se descarta: coincidió con la máquina más cargada del día
   (37 req/s, 1,14 % de timeouts en k6) y no dice nada del cambio.

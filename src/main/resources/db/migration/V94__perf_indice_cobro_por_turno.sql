@@ -1,5 +1,5 @@
 -- =====================================================================================
--- AKINE — Indice de cobros por turno (docs/carga.md §9).
+-- AKINE — Indice de cobros por turno (V94) (docs/carga.md §9).
 --
 -- La recepcion del dia y la agenda leen el prepago de cada turno con
 --   SELECT ... FROM cobro WHERE organization_id = ? AND turno_id IN (...) AND deleted_at IS NULL
