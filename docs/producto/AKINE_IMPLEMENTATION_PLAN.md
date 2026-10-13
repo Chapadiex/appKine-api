@@ -6319,6 +6319,17 @@ El criterio de aceptación queda **pendiente de verificación**, no cumplido. Se
 
 # Registro de cierre — AKINE-01.02 (Identidad, autenticación y recuperación)
 
+> **Actualización 13/10/2026 (consolidación de los cierres de fase).** El §9 *Deuda diferida* de
+> este registro quedó viejo. **Saldadas:** `SmtpEmailSender` (existe; el E2E de A-6 recibe los dos
+> enlaces por SMTP en Mailpit), `PLATFORM_ADMIN` sin origen productivo (DP-14 / A-4, api #51),
+> reintento manual de notificaciones (A-3, api #15 · web #32), E2E de reset con canje real (A-6,
+> web #36, en CI por web #30) y el **escenario 7b** (`request_hash` en `onboarding_registro`, `V87`,
+> api #104, 13/10). **Siguen abiertas y declaradas:** `SecureLinkVault` y rate limit en memoria (no
+> multi-instancia), la ventana de gracia de 10 s del refresh (necesita ADR) y la purga de
+> `refresh_token` vencidos (ADR-0017). El **cambio de email pendiente** queda fuera de alcance del
+> MVP: ningún RF de M02 lo pide (`docs/fases/decisiones-pendientes.md` U-16). Fuente: registro de
+> cierre de `docs/fases/F0-F1-fundacion-y-plataforma.md`. Lo que sigue es el registro original.
+
 Cerrada el **2026-08-23**. Registro conforme a §10.5.
 
 ## 1. Resumen del incremento y comportamiento observable
@@ -6442,6 +6453,18 @@ código y su supuesto sobre MySQL, o entre lo que el log afirmaba y lo que la ba
 ---
 
 # Registro de cierre — AKINE-01.03 (Memberships, roles, permisos y auditoría base)
+
+> **Actualización 13/10/2026 (consolidación de los cierres de fase).** **Saldadas:**
+> `ProblemDetail.type` referencia `ProblemType` (`GlobalExceptionHandler`, y el gate
+> `check-problem-types.mjs` del frontend), `PLATFORM_ADMIN` inalcanzable (DP-14 / A-4, api #51),
+> slice tests de membership, auditoría y plataforma (A-5, api #25, con el defecto de `changeScope`
+> corregido), E2E de acceso denegado y de auditoría (A-6, web #36 y #37, después de api #70) y el
+> **escenario 7b** (api #104, `V87`, 13/10), que la ficha del 12/10 todavía daba abierto. **Sin
+> cambio:** `consultorio:manage` / `colaborador:manage` GLOBAL para plataforma (decisión tomada),
+> el alta de rol de plataforma por `accountId`, y la distinción de permisos de
+> `AccountAdminController` (documentada; G-5, api #78, hizo ejecutable la matriz). **Del usuario:**
+> la contradicción §4 contra §5 y §6 de la matriz sobre editar la propia organización
+> (`docs/fases/decisiones-pendientes.md` U-15). Fuente: ficha F0–F1. Lo que sigue es el original.
 
 Cerrada el **2026-08-24**. Registro conforme a §10.5.
 
@@ -7959,6 +7982,12 @@ y adjuntos administrativos), que es la que trae la fusión de fichas que este di
 - **Sin frontend y sin E2E.** La pantalla de agenda va con 05.02, que es la que puede reservar.
 # Registro de cierre — AKINE-04.01 · Historia Clínica reducida (M09)
 
+> **Actualización 13/10/2026** (ficha F4). Backend **95 %**: API de la historia clínica (C-2,
+> api #5), `RelacionAsistencialProbe` real (C-3, api #8), `asegurar` idempotente con `INSERT IGNORE`
+> (api #97) y lectura limitada del `ADMINISTRATIVO`
+> (`verDatosAdministrativosDeHistoriaClinica`, api #109, contrato 0.97.0). Pantalla de entrada a
+> la HC (D-e): sin PR. Lo que sigue es el registro original.
+
 Carril paralelo, worktree `.worktrees/api-04.01`, rama `akine-04.01-historia-clinica`.
 Alcance recortado por DP-10: **dominio + `V32` + puertos + servicios**. Sin REST y sin OpenAPI
 (la superficie HTTP la publica el carril principal con 06.01). Sin timeline (04.02) ni Caso (04.03).
@@ -8069,6 +8098,12 @@ Suite: **650/650 en 75 archivos**; cobertura 87,48 st · 80,17 rama · 85,90 fn 
 
 # Registro de cierre — AKINE-06.05 (Resultado, próxima conducta y cierre idempotente)
 
+> **Actualización 13/10/2026** (ficha F6). La pantalla `atencion-page` cubre el cierre: lo de
+> "sin frontend" de abajo ya no es cierto. Backend **90 %**: auditoría de la Sesión restituida
+> (api #78) y 409 `oferta-sin-precio` (api #72). Desacople de la economía (DU-11):
+> `docs/fases/decisiones-pendientes.md` U-14. E2E de cierre → timeline (D-g): sin PR. Lo que sigue
+> es el registro original.
+
 **01/09/2026** · rama `akine-01.02-identidad` · commit `2e5c121`. `V35`, un endpoint y contrato `0.18.0`. La sesión abierta pasa a ser prestación hecha, que es lo que 07.01 lee.
 
 - **Recableado DP-10: el correlativo cuelga de la Historia Clínica, no del Caso** (04.03, cortada). Es "la sesión número 8 de este paciente", que además es lo que un kinesiólogo cuenta en voz alta. Cuando 04.03 llegue, el número por Caso se agrega **al lado**: renumerar sesiones cerradas es reescribir historia clínica, y ADR-0011 lo prohíbe.
@@ -8082,6 +8117,12 @@ Suite: **650/650 en 75 archivos**; cobertura 87,48 st · 80,17 rama · 85,90 fn 
 - **Deudas:** **sin frontend** —la pantalla de atención no tiene botón de cerrar—, **sin E2E** y **sin QA manual** del §6.
 
 # Registro de cierre — AKINE-07.01 (Obligaciones económicas)
+
+> **Actualización 13/10/2026** (ficha F7). **95 %.** La deuda ya no es sólo del paciente
+> (obligación del financiador y coseguro, F-4, api #49, `V77`); pantalla de cuenta corriente con
+> concepto (web #42); auditoría del devengo y la anulación (api #86); sin precio particular el
+> cierre responde 409 (DP-17, api #72). **Del usuario:** arancel 0, crédito y bono
+> (`docs/fases/decisiones-pendientes.md` U-34). Lo que sigue es el registro original.
 
 **01/09/2026** · rama `akine-01.02-identidad` · commit `c9a3b68`. Módulo nuevo `billing`, `V36` y contrato `0.19.0` con tres endpoints —listado, detalle y anulación—. Última pieza antes del cobro.
 
@@ -8211,6 +8252,14 @@ Suite: **650/650 en 75 archivos**; cobertura 87,48 st · 80,17 rama · 85,90 fn 
 
 # Registro de cierre — AKINE-05.04 reducida (Recepción y check-in)
 
+> **Actualización 13/10/2026** (ficha F5). La recepción ya no es "reducida" ni está sin frontend:
+> E-4 (api #52, `V78`, DP-16) le dio máquina de estados propia y validación administrativa;
+> pantalla `recepcion-del-dia` en web #8; prepago E-6 (api #54 · web #14 y #21); "Atender como
+> Particular" hasta la obligación (E-7, api #56; E-7b, api #72); cobertura elegida en la reserva
+> como default de la recepción (api #107, `V93`). E2E `agenda-recepcion` (web #26). **Del
+> usuario:** salida "se retiró sin ser atendido" y Particular desde `EN_ESPERA`
+> (`docs/fases/decisiones-pendientes.md` U-21). Lo que sigue es el registro original.
+
 **02/09/2026** · rama `akine-01.02-identidad`. `V39`, cuatro endpoints y contrato `0.23.0`.
 Primera etapa fuera del Paquete B: DP-10 la había diferido nombrándola "riesgo aceptado".
 
@@ -8263,6 +8312,12 @@ Primera etapa fuera del Paquete B: DP-10 la había diferido nombrándola "riesgo
 
 
 # Registro de cierre — AKINE-03.03 (Financiadores y planes de cobertura)
+
+> **Fe de erratas, 13/10/2026** (ficha F3). "Sin frontend" es falso: el catálogo de
+> financiadores y planes está en `appKine-web` (`58f55ed`, `79c13e3`) desde antes del 19/09.
+> Moneda ISO 4217: api #21. El diseño que la etapa no escribió está reconstruido como índice en la
+> ficha F3 (*Diseño vigente*), declarado como reconstrucción. **Del usuario:** DU-13 y
+> `convenio:read` (`docs/fases/decisiones-pendientes.md` U-12 y U-07). Lo que sigue es el original.
 
 **02/09/2026** · rama `akine-03.03-financiadores`, worktree propio. Módulo nuevo `contracting`,
 migración `V41` y contrato `0.24.0` con nueve endpoints. Primer cimiento de M15–M17: 03.04
@@ -8344,6 +8399,14 @@ migración `V41` y contrato `0.24.0` con nueve endpoints. Primer cimiento de M15
   tests es de dónde viene toda la erosión, etapa tras etapa.
 
 # Registro de cierre — AKINE-03.02 (Paciente 360, baja lógica y adjuntos administrativos)
+
+> **Fe de erratas, 13/10/2026** (ficha F3). Donde este registro da la etapa sin frontend, es
+> falso: la ficha 360, las bajas lógicas y los adjuntos llegaron a `appKine-web` en `8920331`,
+> antes del 19/09, y están en `main`. Y la subida idempotente "probada por el unique" no lo estaba:
+> la primera corrida con dos hilos (B-6, api #68) encontró que el perdedor recibía 409; lo corrigió
+> el mismo PR (`READ_COMMITTED`). La subida multipart de punta a punta la prueba
+> `AdjuntoMultipartIT` (api #103). Coberturas en el 360: B-5 (api #34 · web #16) y A-11 (api #64 ·
+> web #29). Lo que sigue es el registro original.
 
 **Fecha:** 02/09/2026. **Rama:** `akine-03.02-ficha` (worktree `.wt/akine-03.02-ficha`, desde `4a32175`).
 **Commits:** `ed6d83b` (backend, 61 archivos) y `e9616c2` (diseño).
@@ -8435,6 +8498,11 @@ Lo que `AdjuntoMigrationIT` prueba contra MySQL real y ningún doble puede simul
 - **El cliente del frontend queda dos versiones atrás** (`0.21.0` contra `0.23.0`).
 
 # Registro de cierre — AKINE-03.04 (Coberturas del paciente)
+
+> **Fe de erratas, 13/10/2026** (ficha F3). "Sin frontend" es falso: coberturas del paciente en
+> `appKine-web` `0d13807`, antes del 19/09. Cobertura aplicable RF-M08-006/007: B-3 (api #55 ·
+> web #15 y #23). La cobertura viaja a la recepción (E-4, `V78`, api #52), a la reserva (api #107,
+> `V93`) y a la obligación (F-4, `V77`, api #49). Lo que sigue es el registro original.
 
 **02/09/2026** · rama `akine-03.04-coberturas`, worktree propio, desde `339eac4`.
 **Commit:** `440c0cd` (39 archivos). **Diseño:**
@@ -8565,6 +8633,12 @@ que **el borrado físico de un plan referenciado sea imposible** (RESTRICT), y q
 
 
 # Registro de cierre — AKINE-03.05 (Convenios, aranceles y vigencias)
+
+> **Fe de erratas, 13/10/2026** (ficha F3). "Sin frontend" es falso: convenios y grilla de
+> aranceles en `appKine-web` `a0b0e10` y `4c3a1a8`, antes del 19/09. `congelar` ya tiene
+> consumidor (F-4, api #49); arancel por oferta y precio particular (B-3, `V80`); importación
+> masiva con vista previa (B-7, api #63 · web #28). **Del usuario:** clonación controlada de
+> convenio (`docs/fases/decisiones-pendientes.md` U-19). Lo que sigue es el registro original.
 
 **02/09/2026** · rama `akine-03.05-convenios`, worktree propio, desde `339eac4` (03.03). Un commit,
 `4200195`. Extiende el módulo `contracting` con M16: migración **`V43`** con tres tablas y contrato
@@ -8719,6 +8793,12 @@ el borrado físico de un convenio con aranceles.
 
 # Registro de cierre — AKINE-03.06 (Órdenes, autorizaciones y documentación administrativa)
 
+> **Fe de erratas, 13/10/2026** (ficha F3). "Sin frontend" es falso: órdenes, autorizaciones y
+> elegibilidad en `appKine-web` `e5fc5d2`, antes del 19/09. Historial y situación de la orden:
+> B-4 / DP-23 (`V85`, api #75 · web #39). Saldo, ledger y alertas en pantalla: D-f (web #58). E2E
+> persona → cobertura → orden → autorización → vencimiento: web #36. **Del usuario:** requisitos por
+> financiador o prestación (`docs/fases/decisiones-pendientes.md` U-18). Lo que sigue es el original.
+
 > **Cabecera honesta.** La etapa la escribió un agente que se cortó **tres veces** por errores de
 > API (dos `server_error`, un 529). Commiteó en tramos, así que no se perdió nada: `a002b1a`
 > dominio y aplicación, `4158085` capa REST. **Los tests los dejó escritos y sin correr**, y esta
@@ -8826,6 +8906,12 @@ reservaron **antes** de arrancar cada etapa y no durante — que es la lección 
 está usando otra sesión y avanzó varias veces durante F3, así que el merge exige coordinación.
 
 # Registro de avance — AKINE-04.02 (Timeline clínico, entradas versionadas y adjuntos clínicos)
+
+> **Actualización 13/10/2026** (ficha F4). Las causas de "no cerrada" de este registro —contrato
+> sin regenerar, ITs sin correr— se saldaron con la integración del 29/09 contra MySQL. Backend
+> **100 %**: defectos 3 y 6 de esa integración corregidos, `TimelineIT`, `AdjuntoClinicoIT`,
+> cobertura de `clinical` sobre 0,90 (api #94). Pantalla: D-a en web #4, **abierto**. No se
+> promueve a acta de cierre: falta la pantalla con su E2E. Lo que sigue es el registro original.
 
 > **LA ETAPA NO ESTÁ CERRADA, y la cabecera lo dice antes que nada.** Esto es un registro de
 > avance, no un acta de cierre: §10.5 exige criterios de aceptación cumplidos y evidencia
@@ -9060,6 +9146,12 @@ con destino "primera sesión con Docker disponible".
 
 # Registro de avance — AKINE-04.03 (Caso Clínico y numeración contextual)
 
+> **Actualización 13/10/2026** (ficha F4). Backend **90 %**: C-5 (api #7); `cambiarEquipo` medido
+> y corregido —avanzaba la fila, anunciaba la versión leída y dos cambios concurrentes daban
+> deadlock— con `UPDATE … WHERE version` (api #109, `CasoClinicoConcurrenteIT`). Falta el gate
+> RF-M10-007 (C-9, `docs/fases/decisiones-pendientes.md` U-09). Pantalla: D-b en web #4, abierto.
+> Lo que sigue es el registro original.
+
 > **LA ETAPA NO ESTÁ CERRADA**, por la misma causa que 04.02: sin Docker no hay contrato
 > regenerado, ni tests de integración, ni cobertura medida, ni frontend. Registro de avance, no
 > acta de cierre. Escrito el **19/09/2026** por la sesión que hizo el trabajo.
@@ -9210,6 +9302,11 @@ unitarias, 0 fallos**.
 
 # Registro de avance — AKINE-04.04 (Plan de Tratamiento)
 
+> **Actualización 13/10/2026** (ficha F4). Backend **85 %**: el plan no se activa sin ítems
+> (api #7), activación concurrente (api #20). Ítems por oferta y no por práctica: decisión del
+> usuario (`docs/fases/decisiones-pendientes.md` U-10). Pantalla: D-c en web #4, abierto. Lo que
+> sigue es el registro original.
+
 > **NO ESTÁ CERRADA**, por la misma causa que 04.02 y 04.03: sin Docker no hay contrato
 > regenerado, ni integración, ni cobertura, ni frontend. Escrito el **19/09/2026**.
 
@@ -9273,6 +9370,11 @@ active el plan en el medio.
 ---
 
 # Registro de avance — AKINE-04.05 (Integración y consumo de autorizaciones) · **cierra F4**
+
+> **Actualización 13/10/2026** (ficha F4). Backend **100 %** de lo que tiene RF: C-4 (api #47,
+> `V76`), DP-12 y DP-13, `consumosARevisar` por fila (api #98). `RESERVA` / `LIBERACION_DE_RESERVA`
+> quedan en el modelo sin emisor: ningún RF dice cuándo se reserva. Pantalla: D-f, web #58
+> (11/10). Lo que sigue es el registro original.
 
 > **NO ESTÁ CERRADA**, misma causa. Escrito el **19/09/2026**.
 
@@ -9402,6 +9504,10 @@ siempre lo mismo y tiene un solo desbloqueo: **Docker**. Con el motor arriba, en
 
 # Registro de avance — AKINE-06.03 (Evaluación completa, examen y mediciones)
 
+> **Actualización 13/10/2026** (ficha F6). Backend **80 %**: ITs de mediciones (C-7, api #10) y
+> versionado en enmiendas (C-6, api #43). Subbloques ROM, fuerza y marcha: decisión del usuario
+> (`docs/fases/decisiones-pendientes.md` U-26). Pantalla (D-d): sin PR. Lo que sigue es el original.
+
 > **NO ESTÁ CERRADA.** Misma causa que toda F4: Docker no arranca en esta máquina. Escrito el
 > **20/09/2026**.
 
@@ -9464,6 +9570,10 @@ es justamente el gate que no se puede correr—.
 
 # Registro de avance — AKINE-06.06 (Enmiendas y versionado de sesión cerrada)
 
+> **Actualización 13/10/2026** (ficha F6). Backend **85 %**: las enmiendas versionan tratamientos
+> y mediciones (C-6, api #43, `V71`). Permiso reforzado y ventana temporal: decisión del usuario
+> (`docs/fases/decisiones-pendientes.md` U-25). Pantalla (D-g): sin PR. Lo que sigue es el original.
+
 > **NO ESTÁ CERRADA.** Misma causa. Escrito el **20/09/2026**.
 
 **Rama `akine-06.06-enmiendas`**, tres commits, **25 archivos, +2.246 líneas**.
@@ -9505,6 +9615,10 @@ sesión, no un olvido.
 ---
 
 # Registro de avance — AKINE-07.03 (Caja diaria y movimientos reales)
+
+> **Actualización 13/10/2026** (ficha F7, PR #108). **Cumplida, 100 %.** Las
+> causas de "no cerrada" se saldaron: pantalla (F-6, web #7), ITs concurrentes 33–35 (api #28 y
+> #57) y E2E `flujo-caja` contra el backend real (web #35). Lo que sigue es el registro original.
 
 > **NO ESTÁ CERRADA.** Misma causa. Escrito el **20/09/2026**.
 
@@ -9574,6 +9688,11 @@ Integración, cobertura y contrato, como todas. Y **tres escenarios anotados en
 ---
 
 # Registro de avance — AKINE-06.04 (Tratamientos realizados y espacios usados)
+
+> **Actualización 13/10/2026** (ficha F6). Backend **90 %**: el CHECK que rechazaba `NO_APLICA`
+> corregido (C-1, api #6, `V65`), la versión de la sesión avanza una vez (C-7), DP-12. Parámetros
+> obligatorios por práctica: decisión del usuario (`docs/fases/decisiones-pendientes.md` U-27).
+> Pantalla (D-d): sin PR. Lo que sigue es el registro original.
 
 > **NO ESTÁ CERRADA.** Misma causa: Docker no arranca. Escrito el **20/09/2026**.
 
@@ -9655,6 +9774,12 @@ de `V55`. Tampoco hay tests de `TratamientoService` ni de la capa REST.
 ---
 
 # Registro de avance — AKINE-07.05 (Egresos y pagos a profesionales)
+
+> **Actualización 13/10/2026** (ficha F7, PR #108). **90 %.** Pantallas (F-5,
+> web #63), E2E de egreso pagado y anulado en `flujo-caja` (web #63), ITs 41–48 (api #19, #24 y
+> #57; el 47 con `AnulacionDePagoSinCajaIT`, PR #108). **Del usuario:** adjunto
+> binario (RF-M22-003) y DU-10 (`docs/fases/decisiones-pendientes.md` U-33 y U-31); RF-M22-006/007
+> son de la segunda entrega (U-34). Lo que sigue es el registro original.
 
 > **NO ESTÁ CERRADA.** Misma causa: Docker no arranca. Escrito el **20/09/2026**.
 
@@ -9888,6 +10013,13 @@ dejan de ver clases vivas** — la exclusión entera se apaga en silencio.
 
 # Registro de avance — AKINE-07.04 (Presentaciones y cuenta corriente de financiadores)
 
+> **Actualización 13/10/2026** (ficha F7, PR #108). **90 %.** Bandeja con datos
+> (F-4, api #49), pantallas (F-7, web #9), E2E `flujo-presentaciones` (web #35), ITs 36–40
+> (api #30 y #57), defectos de F-2 (api #16–#18) y el débito que no persistía la marca (api #57).
+> Listado exportable: PR #108 (`exportarPresentacion`, contrato 0.98.0). **Del usuario:**
+> RF-M21-003, débito parcial y permiso propio (`docs/fases/decisiones-pendientes.md` U-28, U-11 y
+> U-32). Lo que sigue es el registro original.
+
 > **NO ESTÁ CERRADA.** Misma causa: Docker no arranca. Escrito el **20/09/2026**, por el
 > orquestador y no por el agente que la implementó —el agente pidió no escribir en este archivo
 > porque hay otras etapas en vuelo apendeando al mismo lugar, y tenía razón—.
@@ -9975,6 +10107,12 @@ existe simula cero filas con un mock: **prueba la traducción a 409, no que el m
 ---
 
 # Registro de avance — AKINE-07.06 (Reportes y tableros del MVP)
+
+> **Actualización 13/10/2026** (ficha F8). **90 %.** `reporte:read` según la matriz (G-1, DP-15,
+> api #50), tablero en pantalla (G-8, web #12), escenarios 49, 50, 51 y 53 en verde en
+> `ReportesContraElMotorIT` (api #106). Sigue sin correr el 52 (EXPLAIN). Export síncrono y
+> acotado: desvío a confirmar por el usuario (`docs/fases/decisiones-pendientes.md` U-36). Lo que
+> sigue es el registro original.
 
 > **NO ESTÁ CERRADA.** Misma causa: Docker no arranca. Escrito el **20/09/2026** por el orquestador.
 
@@ -10227,6 +10365,12 @@ sin medir.
 ---
 
 # Registro de avance — AKINE-07.07 (Hardening de seguridad y privacidad del MVP) · backend
+
+> **Actualización 13/10/2026** (ficha F8). **85 %.** G-5 (api #78) cerró el inventario, la matriz
+> ejecutable y el threat model; G-7 (web #24) y web #66 la a11y no textual y la franja del degradé.
+> El criterio "cero hallazgos altos" **no se cumple**: quedan la justificación en `encounter`,
+> `caso:create`, Connector/J bajo excepción hasta el 09/11 y SAST/DAST, todo del usuario
+> (`docs/fases/decisiones-pendientes.md` U-03 a U-06). Lo que sigue es el registro original.
 
 > **NO ESTÁ CERRADA.** Misma causa: Docker no arranca. Escrito el **20/09/2026** por el orquestador.
 > **La parte de accesibilidad es frontend y se hizo aparte** — ver la rama `akine-a11y-contraste`.
@@ -10930,3 +11074,167 @@ desvío fue el de los grants.
    exigirlo además de `hc:write` al abrir un caso; (b) enmendar la matriz para que "Crear Caso
    Clínico" se cumpla con `hc:write` y quitar el código. Desde G-5 las dos dan el mismo resultado
    observable; (b) es la más barata.
+
+# Registro de cierre técnico de fases — 13/10/2026
+
+> **Consolidación, no acta nueva.** Entre el 12 y el 13/10/2026 siete agentes cerraron fases en
+> paralelo y escribieron su "Registro de cierre — 12/10/2026" **dentro de cada ficha** de
+> `docs/fases/`, porque tenían prohibido tocar este plan y los demás archivos compartidos. Este
+> registro los junta. **No agrega evidencia propia:** cada número sale de la ficha citada, que es
+> donde vive el detalle. Los registros por etapa de más arriba no se reescribieron; los que las
+> fichas marcan como desactualizados llevan una nota fechada el 13/10/2026 debajo de su título.
+>
+> Medido sobre `origin/main` `c791c7c` (13/10/2026, merge del PR #108): contrato
+> `openapi/akine-api.yaml` **0.98.0**, **311 operaciones**; última migración **`V93`** (74
+> archivos). `appKine-web` `main` `2cdd3bb`, cliente generado contra **0.89.0** (el PR web #73, que
+> lo lleva a 0.92.0, está abierto). El **PR #108** (cierre de F7) entró a `main` el 13/10
+> mientras se escribía esta consolidación.
+
+## Resumen
+
+| Fase | Cierre técnico | % técnico | PR del cierre | Lo que queda |
+|---|---|---|---|---|
+| F0–F1 Fundación y plataforma | **Cerrada** (12/10) | ~98 | api #99 | Secretos de Sonar; QA manual; cambio de email y la contradicción de la matriz |
+| F2 Operación del consultorio | **Cerrada** (12–13/10) | ~95 | api #102 · web #72 | `nomenclador_item`, `catalogo:*`, disciplina; QA manual |
+| F3 Personas y cobertura | **Cerrada en código** (12–13/10) | ~96 | api #103 | DU-13, requisitos, clonación, `convenio:read`; QA manual |
+| F4 Dominio clínico | **Backend cerrado** (12/10); pantallas en curso | backend ~94 | api #109 | C-9, plan por práctica, `caso:create`; pantallas D-a/b/c (web #4, abierto) y D-e |
+| F5 Agenda y recepción | **Cerrada salvo decisiones** (13/10) | ~92 | api #107 | Autoservicio (`OWN`, post-MVP), ventana de cancelación, `RETIRADO`, series; selector de cobertura en pantalla; QA manual |
+| F6 Atención clínica | **Backend cerrado** (12/10); pantallas sin PR | backend ~88 | api #109 | C-8, DU-11, subbloques, parámetros, permiso de enmienda; pantallas D-d y D-g |
+| F7 Economía del MVP | **Cerrada salvo decisiones** (13/10) | ~94 | api #108 | RF-M21-003, débito parcial, permisos, adjunto binario, arancel 0; QA manual |
+| F8 Cierre del MVP | **Gate no pasa** (13/10) | ~80 | api #106 | QA manual, aprobación y deploy, cuatro decisiones de seguridad, SLO de escrituras (en curso) |
+| F9 Segunda entrega | Congelada (DP-07) | ~23 (01/10) | — | Espera el gate de F8 y DU-12 |
+| F10 Consolidación final | No empezada | 0 | — | Depende de F9 |
+
+El % de F4 y F6 es el **promedio simple** de los % por etapa que da cada ficha (04.01–04.05: 95,
+100, 90, 85, 100; 06.01–06.06: 80, 100, 80, 90, 90, 85). Las otras fichas dan su número.
+
+**Todas las decisiones pendientes del usuario están en una sola lista**,
+[`docs/fases/decisiones-pendientes.md`](../fases/decisiones-pendientes.md): 37 entradas
+deduplicadas (dos acciones y 35 decisiones), ordenadas por lo que cuesta postergarlas, con la
+opción que recomienda cada ficha.
+
+## F0–F1 — Fundación y plataforma
+
+- **Qué quedó:** las seis etapas cumplidas. Todo lo que era código está en `main` con PR: retry de
+  notificaciones (A-3, api #15 · web #32), bootstrap del `PLATFORM_ADMIN` (DP-14 / A-4, api #51),
+  slice tests (A-5, api #25), los E2E de cuenta contra el backend real (A-6, web #36 y #37, en CI
+  por web #30), imagen y SBOM (G-3, api #29 · web #18), observabilidad (G-4, api #62),
+  Dependabot / OWASP (G-6, api #83 · web #41), protección de `main` (L-0, verificada por la API el
+  12/10) y cobertura por módulo crítico (api #94).
+- **Corrección a la ficha:** la ficha da el **escenario 7b** como la única deuda con código
+  pendiente. Lo cerró el **PR #104 el 13/10/2026** (`V87`, `request_hash` en `onboarding_registro`).
+- **PR del cierre:** api #99 (sólo la ficha). **~98 %.**
+- **Para el usuario:** cargar `SONAR_TOKEN` y `SONAR_HOST_URL`; el QA manual; decidir el cambio de
+  email (fuera de alcance del MVP para la ficha) y la contradicción de la matriz sobre editar la
+  propia organización.
+
+## F2 — Operación del consultorio
+
+- **Qué quedó:** las cuatro sondas de impacto contra turnos reales (E-1, api #38), el puente
+  Oferta↔Práctica (DP-11 / A-9, `V75`, api #46 · web #32), alta de sede en un acto (A-8 / A-8b,
+  `V83`, api #60 y #73 · web #22 y #39), rol de plataforma y consola de solicitudes (A-7, api #53
+  · web #13), impacto de desvinculación y de disponibilidad (A-10 / A-11, web #17, api #64 · web
+  #29), unitarios de los cuatro servicios (api #26) y un E2E por pantalla (web #64, #68 y #72).
+- **PR del cierre:** api #102 (ficha) y web #72 (E2E de sedes y desvinculación; el CI lo corrió
+  contra el backend real: 82 passed). **~95 %.**
+- **Para el usuario:** uso de `nomenclador_item`, aprobar `catalogo:read` / `catalogo:manage`,
+  validar o no la disciplina al habilitar, y el QA manual (`docs/qa/02`, `03` y parte de `05`).
+
+## F3 — Personas y cobertura
+
+- **Qué quedó:** las seis etapas con backend y pantalla. Búsqueda por afiliado (B-1), cobertura
+  aplicable por oferta y arancel por oferta (B-3, `V80`), importación de aranceles (B-7),
+  historial de la autorización y situación de la orden (B-4 / DP-23, `V85`), coberturas en el 360
+  (B-5, A-11), `paciente:read` (DP-22), y la cobertura que viaja a la recepción (E-4) y a la
+  obligación (F-4). El hallazgo central del 01/10 —F3 aislada— ya no es cierto.
+- **Lo que hizo el cierre:** `AdjuntoMultipartIT` (subida multipart real, idempotencia, descarga y
+  rechazo por contenido), la **fe de erratas** de los registros de 03.02–03.06 —decían "sin
+  frontend" y el frontend estaba en `appKine-web` antes del 19/09— y el índice de *Diseño vigente*
+  de 03.03, 03.05 y 03.06, declarado como reconstrucción.
+- **PR del cierre:** api #103. **~96 %.** Sin migración ni contrato.
+- **Para el usuario:** DU-13, requisitos por financiador o prestación, clonación de convenio,
+  `convenio:read` y el QA manual (`docs/qa/04`).
+
+## F4 — Dominio clínico
+
+- **Qué quedó (backend):** 04.01 95 % (C-2, C-3, `asegurar` idempotente en api #97 y la lectura
+  limitada del `ADMINISTRATIVO`), 04.02 100 %, 04.03 90 %, 04.04 85 %, 04.05 100 % de lo que tiene
+  RF (C-4, DP-12, DP-13, `consumosARevisar` en api #98).
+- **Lo que hizo el cierre:** `cambiarEquipo` medido con un IT en rojo primero —la respuesta traía
+  la versión leída y dos cambios concurrentes daban deadlock— y pasado al `UPDATE … WHERE version`;
+  y `verDatosAdministrativosDeHistoriaClinica` con `paciente:read` (matriz §4). Contrato
+  **0.97.0**, sin migración.
+- **PR del cierre:** api #109 (compartido con F6). **Backend ~94 %.**
+- **Pantallas:** D-a, D-b y D-c en web #4, abierto desde el 06/10; D-e sin PR; D-f en web #58
+  (11/10). Las cinco pantallas con E2E siguen siendo el faltante grande de la fase.
+- **Para el usuario:** C-9 (caso obligatorio), plan por práctica u oferta, `caso:create`, y si los
+  datos administrativos de la HC se auditan.
+
+## F5 — Agenda y recepción
+
+- **Qué quedó:** series con alcance (E-3, `V74`; DP-20), recepción con máquina propia y
+  elegibilidad (E-4, `V78`, DP-16), Particular hasta la obligación (E-7, E-7b / DP-17), prepago
+  (E-6, `V81`; E-8), avisos de turno por outbox (E-5), el horario de la sede limita la agenda
+  (A-8b / DP-19), E2E reales de agenda, ciclo, recepción, series y prepago (E-2, web #26, #35,
+  #67) y la baja de sede contra reserva (api #96).
+- **Lo que hizo el cierre:** **cobertura elegida en la reserva** (`V93`, contrato 0.94.0 en su
+  rama): `coberturaId` opcional, validado por persona y vigencia, usado por la recepción como
+  default; QA `AGE-14`.
+- **PR del cierre:** api #107. **~92 %.**
+- **Pendiente técnico sin decisión:** el selector de cobertura en `reserva-de-turno` (espera
+  regenerar el cliente) y la cobertura en las series.
+- **Para el usuario:** autoservicio y `OWN` (post-MVP por DP-22), ventana de cancelación, vista
+  pública de slots, eventos que notifican, salida `RETIRADO` y Particular desde `EN_ESPERA`, alta
+  de serie todo o nada, y el QA manual (`docs/qa/05`).
+
+## F6 — Atención clínica
+
+- **Qué quedó (backend):** 06.01 80 %, 06.02 100 %, 06.03 80 %, 06.04 90 % (`NO_APLICA` corregido
+  en `V65`), 06.05 90 % (auditoría de la Sesión restituida en api #78, 409 `oferta-sin-precio`),
+  06.06 85 % (C-6, `V71`). `MatrizDePermisosIT` verifica que el `ADMINISTRATIVO` no ve el detalle
+  clínico.
+- **PR del cierre:** api #109 (no toca `encounter`). **Backend ~88 %.**
+- **Pantallas:** D-d (mediciones y tratamientos) y D-g (enmiendas, E2E de cierre → timeline), sin
+  PR. `atencion-page` cubre inicio, evaluación y cierre.
+- **Para el usuario:** atención sin turno y reemplazo del profesional (C-8), si un observador que
+  falla hace fallar el cierre (DU-11), subbloques ROM / fuerza / marcha, parámetros obligatorios
+  por práctica, permiso reforzado y ventana para enmendar, y la justificación de acceso en
+  `encounter`.
+
+## F7 — Economía del MVP
+
+- **Qué quedó:** 07.01 95 %, 07.02 100 %, 07.03 100 %, 07.04 90 %, 07.05 90 %. Obligación del
+  financiador con coseguro y snapshot (F-4, `V77`); anticipos, imputación, anulación y reintegro
+  (F-3, `V69` · web #33); pantallas de caja, presentaciones y egresos (web #7, #9, #63); los
+  dieciséis escenarios diferidos 33–48 contra MySQL; auditoría del cobro y del devengo (api #86);
+  cobros concurrentes sin trabar el pool (api #91); el cobro anulado visible en el listado (api
+  #101).
+- **Lo que hizo el cierre:** el export del lote a CSV (`exportarPresentacion`, contrato **0.98.0**) y el escenario 47 (`AnulacionDePagoSinCajaIT`). Sin
+  migración. El botón "Exportar CSV" espera el cliente regenerado.
+- **PR del cierre:** api #108. **~94 %.**
+- **Para el usuario:** `egreso:manage` (DU-10) y el permiso de presentaciones, RF-M21-003 (reparo o
+  aviso), el débito parcial (necesita migración), arancel 0, liquidación a profesionales, adjunto
+  binario del egreso, crédito y bono de RF-M18-011, y el QA manual (`docs/qa/07`, `08`, `12`).
+
+## F8 — Cierre del MVP
+
+- **Qué quedó:** 07.06 90 %, 07.07 85 %, 07.08 75 %, 07.09 70 %. Reportes con permiso, tablero y
+  conciliación en cero contra el motor; SCA; a11y (contraste AA, 1.4.11, foco, 375 px); log,
+  métricas y trazas; carga medida; pool que no se traba (#91, #97); LCP bajo 2,5 s en laboratorio
+  (web #69); imágenes Docker; 30 specs E2E en CI; cobertura de línea 93,22 %; backup, restore,
+  rollback, smoke y runbooks.
+- **Lo que hizo el cierre:** `ReportesContraElMotorIT` (escenarios 49, 50, 51 y 53) y el tablero y
+  las alertas de Prometheus/Grafana en `ops/observabilidad/`, con `ObservabilidadIT`.
+- **PR del cierre:** api #106. **~80 %. El gate del MVP no pasa.**
+- **Lo que lo frena:** QA manual sin correr; aprobación clínica y legal (DP-08), deploy y
+  estabilización (DP-07); justificación en `encounter` y `caso:create`; Connector/J 9.7.0 bajo
+  excepción **hasta el 09/11/2026**; SAST / DAST sin elegir; el SLO de latencia con escrituras a
+  500 usuarios (p95 3.345–3.566 ms contra 300 ms, en curso en otro agente); y los E2E de la
+  vertical clínica (web #4).
+
+## Lo que este registro no resuelve
+
+- **Las pantallas clínicas** (web #4 y lo que sigue de D-*) son el faltante técnico más grande y
+  ninguna ficha las da por hechas.
+- **El QA manual del §6** sigue sin correr desde 02.02. Es la única acción que aparece en el
+  "pendiente del usuario" de todas las fichas.
