@@ -17,12 +17,14 @@ import com.akine.person.domain.port.PersonRepositoryPorts.AdjuntoRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.PersonaRepositoryPort;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.AlTerminarLaTransaccion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -90,6 +92,7 @@ public class AdjuntoService {
 	private final AuditTrail auditTrail;
 	private final PersonSupportAccessAuditor supportAccessAuditor;
 	private final AdjuntoEscrituraAparte escrituraAparte;
+	private final TransactionTemplate transaccion;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public AdjuntoService(
@@ -99,7 +102,8 @@ public class AdjuntoService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
 			PersonSupportAccessAuditor supportAccessAuditor,
-			AdjuntoEscrituraAparte escrituraAparte) {
+			AdjuntoEscrituraAparte escrituraAparte,
+			PlatformTransactionManager transactionManager) {
 
 		this.personas = personas;
 		this.adjuntos = adjuntos;
@@ -108,6 +112,7 @@ public class AdjuntoService {
 		this.auditTrail = auditTrail;
 		this.supportAccessAuditor = supportAccessAuditor;
 		this.escrituraAparte = escrituraAparte;
+		this.transaccion = new TransactionTemplate(transactionManager);
 	}
 
 	// =================================================================================
@@ -206,16 +211,78 @@ public class AdjuntoService {
 	/**
 	 * Sube un documento administrativo (RF-M25-001).
 	 *
-	 * <p><b>{@code READ_COMMITTED}</b>, por la misma causa que {@code AdjuntoClinicoService#subir}:
-	 * cuando dos subidas identicas chocan contra el unique, el perdedor relee la fila del ganador
-	 * para devolverla como reintento idempotente, y bajo {@code REPEATABLE READ} no la ve —la foto se
-	 * fijo antes de que el otro commiteara— y respondia 409 {@code conflict}. Lo destapo
-	 * {@code AdjuntoConcurrenteIT}.
+	 * <p><b>Sin transaccion de afuera</b>, por la misma causa y con los mismos cuatro pasos que
+	 * {@code AdjuntoClinicoService#subir} (docs/carga.md §8): una transaccion que autoriza, valida
+	 * y busca por checksum; el INSERT en la suya ({@link AdjuntoEscrituraAparte}); el binario sin
+	 * conexion tomada; y la auditoria en una transaccion final. Hasta el 11/10/2026 era una
+	 * transaccion en {@code READ_COMMITTED} que envolvia al INSERT en {@code REQUIRES_NEW} y retenia
+	 * dos conexiones por subida. La relectura del perdedor de la carrera es ahora una transaccion
+	 * nueva, que ve el commit del ganador sin necesitar {@code READ_COMMITTED} —el defecto que
+	 * destapo {@code AdjuntoConcurrenteIT} sigue cerrado por otro camino—.
 	 *
 	 * @return el adjunto creado, o el que ya existia si el contenido es identico (idempotencia)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public AdjuntoAlta subir(OperatingActor actor, long personaId, AdjuntoAltaCommand command) {
+		AlTerminarLaTransaccion.exigirSinTransaccion("La subida de un adjunto administrativo");
+		Subida subida = transaccion.execute(estado -> prepararSubida(actor, personaId, command));
+		if (subida.existente() != null) {
+			return new AdjuntoAlta(AdjuntoView.de(subida.existente()), false);
+		}
+
+		AdjuntoAdministrativo adjunto = subida.nuevo();
+		long organizationId = adjunto.getOrganizationId();
+
+		AdjuntoAdministrativo guardado;
+		try {
+			// Fila primero, con flush, para que el unique decida antes de tocar el disco. En una
+			// TRANSACCION PROPIA: si el flush choca contra el unique, Hibernate marca rollbackOnly
+			// antes de que la excepcion salga, y atraparla no des-marca nada (regla 2 del Paquete B).
+			guardado = escrituraAparte.insertar(adjunto);
+		} catch (DataIntegrityViolationException choque) {
+			// Murio la transaccion del INSERT y ninguna otra: la relectura abre una nueva.
+			log.info("Subida concurrente del mismo contenido resuelta como idempotente: "
+					+ "personaId={}", personaId);
+			return transaccion.execute(estado -> adjuntos.buscarVigentePorChecksum(
+							organizationId, personaId, adjunto.getChecksumSha256()))
+					.map(existente -> new AdjuntoAlta(AdjuntoView.de(existente), false))
+					.orElseThrow(() -> choque);
+		}
+
+		// Blob despues. El orden inverso produciria filas apuntando a nada, que es el unico de los
+		// dos errores que el usuario ve. Ver V40.
+		//
+		// Como la fila ya esta commiteada, un fallo del blob NO se revierte solo: la fila queda, y
+		// si se la dejara DISPONIBLE el listado afirmaria tener un documento que no se puede
+		// descargar. Se la marca NO_DISPONIBLE, que es la verdad, y se propaga el fallo.
+		try {
+			storage.guardar(adjunto.getStorageKey(), command.contenido());
+		} catch (RuntimeException falla) {
+			escrituraAparte.marcarNoDisponible(organizationId, personaId, guardado.getId());
+			throw falla;
+		}
+
+		transaccion.executeWithoutResult(estado -> {
+			Map<String, String> detalles = new LinkedHashMap<>();
+			detalles.put("categoria", guardado.getCategoria().name());
+			detalles.put("contentType", guardado.getContentType());
+			detalles.put("tamanoBytes", String.valueOf(command.contenido().length));
+			auditar(AuditEvents.ADJUNTO_UPLOADED, guardado, actor, detalles, null, subida.ahora());
+			registrarSoporte(subida.decision(), actor, guardado, subida.ahora(), "Subir adjunto");
+		});
+
+		log.info("Adjunto administrativo cargado: adjuntoId={} personaId={} organizationId={}",
+				guardado.getId(), personaId, organizationId);
+		return new AdjuntoAlta(AdjuntoView.de(guardado), true);
+	}
+
+	/** Lo que la primera transaccion de la subida decide: el existente, o el nuevo a insertar. */
+	private record Subida(
+			AdjuntoAdministrativo existente, AdjuntoAdministrativo nuevo,
+			PermissionDecision decision, Instant ahora) {
+	}
+
+	/** Paso 1 de {@link #subir}: autoriza, valida y busca por checksum. No escribe nada. */
+	private Subida prepararSubida(OperatingActor actor, long personaId, AdjuntoAltaCommand command) {
 		PermissionDecision decision =
 				AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, actor, "Subir adjunto");
 		long organizationId = actor.contextOrganizationId();
@@ -235,7 +302,7 @@ public class AdjuntoService {
 		if (yaExistente.isPresent()) {
 			log.debug("Subida idempotente resuelta con el adjunto existente: personaId={}",
 					personaId);
-			return new AdjuntoAlta(AdjuntoView.de(yaExistente.get()), false);
+			return new Subida(yaExistente.get(), null, decision, null);
 		}
 
 		Instant ahora = Instant.now();
@@ -254,50 +321,7 @@ public class AdjuntoService {
 				storageKey,
 				actor.accountId(),
 				ahora);
-
-		AdjuntoAdministrativo guardado;
-		try {
-			// Fila primero, con flush, para que el unique decida antes de tocar el disco. Y en una
-			// TRANSACCION PROPIA: si el flush choca contra el unique, Hibernate marca rollbackOnly
-			// antes de que la excepcion salga, y atraparla no des-marca nada. Con el INSERT adentro
-			// de esta transaccion, el catch de abajo correria sobre una sesion inutilizable y el
-			// commit terminaria en UnexpectedRollbackException: un 500 en vez de la idempotencia
-			// que el @Operation promete en mayusculas. Es la regla 2 del Paquete B, y el mismo
-			// arreglo que ya lleva AdjuntoClinicoService.
-			guardado = escrituraAparte.insertar(adjunto);
-		} catch (DataIntegrityViolationException choque) {
-			// La que murio fue la transaccion del INSERT, no esta: la consulta de abajo corre sobre
-			// una sesion sana.
-			log.info("Subida concurrente del mismo contenido resuelta como idempotente: "
-					+ "personaId={}", personaId);
-			return adjuntos.buscarVigentePorChecksum(organizationId, personaId, checksum)
-					.map(existente -> new AdjuntoAlta(AdjuntoView.de(existente), false))
-					.orElseThrow(() -> choque);
-		}
-
-		// Blob despues. El orden inverso produciria filas apuntando a nada, que es el unico de los
-		// dos errores que el usuario ve. Ver V40.
-		//
-		// Como la fila ya esta commiteada, un fallo del blob NO se revierte solo: la fila queda, y
-		// si se la dejara DISPONIBLE el listado afirmaria tener un documento que no se puede
-		// descargar. Se la marca NO_DISPONIBLE, que es la verdad, y se propaga el fallo.
-		try {
-			storage.guardar(storageKey, contenido);
-		} catch (RuntimeException falla) {
-			escrituraAparte.marcarNoDisponible(organizationId, personaId, guardado.getId());
-			throw falla;
-		}
-
-		Map<String, String> detalles = new LinkedHashMap<>();
-		detalles.put("categoria", guardado.getCategoria().name());
-		detalles.put("contentType", contentType);
-		detalles.put("tamanoBytes", String.valueOf(contenido.length));
-		auditar(AuditEvents.ADJUNTO_UPLOADED, guardado, actor, detalles, null, ahora);
-		registrarSoporte(decision, actor, guardado, ahora, "Subir adjunto");
-
-		log.info("Adjunto administrativo cargado: adjuntoId={} personaId={} organizationId={}",
-				guardado.getId(), personaId, organizationId);
-		return new AdjuntoAlta(AdjuntoView.de(guardado), true);
+		return new Subida(null, adjunto, decision, ahora);
 	}
 
 	/**

@@ -154,7 +154,7 @@ final class AuditEvents {
 	 * entro cada fila — que es justo lo que la auditoria existe para no tener que adivinar.
 	 *
 	 * <p><b>Esta clase decide QUE se registra; cada llamador decide DONDE.</b> Una lectura la
-	 * escribe por {@code SupportAccessReadAuditor} ({@code REQUIRES_NEW}, porque su transaccion
+	 * escribe por {@code SupportAccessReadAuditor} (transaccion propia, porque la suya
 	 * es {@code readOnly} y ademas puede terminar en rollback por 404); una mutacion la escribe
 	 * con el {@code AuditTrail} dentro de su propia transaccion (regla T-2). Esa diferencia NO
 	 * se puede esconder aca adentro: depende de la transaccion del llamador, no del evento.

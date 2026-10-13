@@ -220,6 +220,17 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	@DisplayName("Un deadlock o un lock que no llega a tiempo es 409 concurrent-modification, no 500")
+	void lock_de_la_base_es_concurrent_modification() throws Exception {
+		String cuerpo = mockMvc.perform(post("/test/deadlock"))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/concurrent-modification"))
+				.andReturn().getResponse().getContentAsString();
+
+		org.assertj.core.api.Assertions.assertThat(cuerpo).doesNotContain("historia_clinica");
+	}
+
+	@Test
 	@DisplayName("DP-21: el @Version de JPA sale con el MISMO type que la version comparada a mano")
 	void version_de_jpa_es_concurrent_modification() throws Exception {
 		String cuerpo = mockMvc.perform(post("/test/version-jpa"))
@@ -286,6 +297,12 @@ class GlobalExceptionHandlerTest {
 		String versionJpa() {
 			throw new org.springframework.orm.ObjectOptimisticLockingFailureException(
 					"com.akine.Turno", 7L);
+		}
+
+		@PostMapping("/deadlock")
+		String deadlock() {
+			throw new org.springframework.dao.CannotAcquireLockException(
+					"Deadlock found when trying to get lock on historia_clinica");
 		}
 
 		@PostMapping("/unique")

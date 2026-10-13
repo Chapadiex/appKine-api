@@ -1,10 +1,8 @@
 package com.akine.resource.application;
 
 import com.akine.platform.spi.audit.AuditEntry;
-import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.audit.AuditoriaAparte;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Escribe {@code SUPPORT_ACCESS_USED} en una transaccion PROPIA.
@@ -25,10 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
  *       para hacer trazable exactamente eso.</li>
  * </ol>
  *
- * <p>{@code REQUIRES_NEW} resuelve los dos: la fila se confirma en su propia transaccion, viva
+ * <p>{@link AuditoriaAparte} resuelve los dos: la fila se confirma en su propia transaccion, viva
  * o muera la del negocio.
  *
- * <p><b>Esto NO habilita {@code REQUIRES_NEW} en ningun otro lugar de este modulo.</b> Las
+ * <p><b>Esto NO habilita la auditoria aparte en ningun otro lugar de este modulo.</b> Las
  * mutaciones auditan dentro de su propia transaccion, y tiene que ser asi: una mutacion
  * confirmada cuya auditoria se revirtio por separado es peor que ninguna de las dos. Es la
  * misma regla, y la misma excepcion acotada, que {@code organization.SupportAccessReadAuditor}.
@@ -36,14 +34,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SupportAccessAuditor {
 
-	private final AuditTrail auditTrail;
+	private final AuditoriaAparte auditoria;
 
-	public SupportAccessAuditor(AuditTrail auditTrail) {
-		this.auditTrail = auditTrail;
+	public SupportAccessAuditor(AuditoriaAparte auditoria) {
+		this.auditoria = auditoria;
 	}
 
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void record(AuditEntry entry) {
-		auditTrail.record(entry);
+		auditoria.registrarAccesoDeSoporte(entry);
 	}
 }
