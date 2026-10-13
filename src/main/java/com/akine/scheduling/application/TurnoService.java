@@ -164,7 +164,7 @@ public class TurnoService {
 			ConsultorioSnapshot sede, long consultorioId, long ofertaId, ReservaCommand command) {
 
 		// PASO 1. Antes de leer nada. Ver la cabecera.
-		BloqueoDeAgenda.tomar(agendas, organizationId, consultorioId);
+		BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
 
 		// PASO 2. Bajo el lock, para que dos peticiones con la misma clave no creen dos turnos.
 		// Fuera del lock las dos leerian "no existe" antes de que ninguna inserte.

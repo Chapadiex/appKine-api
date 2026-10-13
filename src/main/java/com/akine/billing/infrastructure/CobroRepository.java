@@ -90,13 +90,23 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 			@Param("organizationId") long organizationId,
 			@Param("idempotencyKey") String idempotencyKey);
 
+	/**
+	 * Sin filtro de baja logica, y a proposito: anular un cobro llena {@code deleted_at} (F-3), pero
+	 * el cobro anulado sigue siendo un hecho de la cuenta del paciente —su numero de comprobante
+	 * queda usado— y el listado tiene que mostrarlo con su estado {@code ANULADO}. Con el filtro, la
+	 * pantalla decia "no tiene ningun cobro" despues de anular el unico, mientras el cobro se leia
+	 * por id. Es el mismo defecto que el indicador "Cancelados" del reporte de turnos (#86).
+	 *
+	 * <p>No suma nada: es una lista para mostrar. Lo que calcula importes —el reporte, los prepagos
+	 * vigentes— excluye los anulados en sus propias consultas, y el saldo del paciente sale de las
+	 * obligaciones, no de esta lista.
+	 */
 	@Override
 	@Query("""
 			SELECT c FROM Cobro c
 			 WHERE c.organizationId = :organizationId
 			   AND c.personaId = :personaId
-			   AND c.deletedAt IS NULL
-			 ORDER BY c.cobradoEn DESC
+			 ORDER BY c.cobradoEn DESC, c.id DESC
 			""")
 	List<Cobro> findDeLaPersona(
 			@Param("organizationId") long organizationId,

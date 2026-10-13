@@ -9,6 +9,9 @@ import com.akine.encounter.domain.CierreDeSesion;
 import com.akine.person.application.AlertaDeAutorizacionView;
 import com.akine.person.application.AutorizacionAltaCommand;
 import com.akine.person.application.AutorizacionService;
+import com.akine.person.application.AutorizacionView;
+import com.akine.person.application.DocumentoEstadoFiltro;
+import com.akine.person.application.SaldoDeAutorizacionView;
 import com.akine.person.application.ConsumoDeAutorizacionService;
 import com.akine.person.application.OperatingActor;
 import com.akine.person.application.ReversionCommand;
@@ -170,6 +173,7 @@ class ConsumoPorAutorizacionIT {
 	void anular_la_obligacion_alerta_y_no_toca_el_saldo() {
 		Fixture f = crearFixture();
 		long kinesio = autorizar(f, f.coberturaId(), f.practica1(), "K-4", 10, 0);
+		long fono = autorizar(f, f.coberturaId(), f.practica2(), "F-4", 5, 0);
 		long sesion = insertarSesion(f, null);
 		tratar(f, sesion, f.practica1());
 		cerrar(f, sesion);
@@ -192,6 +196,7 @@ class ConsumoPorAutorizacionIT {
 		assertThat(alerta.motivoOrigen()).isEqualTo("Cortesia del centro");
 		assertThat(alerta.pendiente()).isTrue();
 		assertThat(consumo.saldo(f.admin(), kinesio, null).consumosARevisar()).isEqualTo(1);
+		assertListadoIgualAlSaldo(f, kinesio, fono);
 
 		// Idempotente: el mismo hecho otra vez —F-4 va a anular dos obligaciones por sesion— no
 		// repite la alerta.
@@ -207,6 +212,7 @@ class ConsumoPorAutorizacionIT {
 		assertThat(resuelta.pendiente()).isFalse();
 		assertThat(resuelta.resolucion()).isEqualTo("REVERTIDO");
 		assertThat(consumo.saldo(f.admin(), kinesio, null).consumosARevisar()).isZero();
+		assertListadoIgualAlSaldo(f, kinesio, fono);
 		assertThat(consumida(kinesio)).isZero();
 		assertLedgerCoherente(kinesio);
 	}
@@ -338,6 +344,25 @@ class ConsumoPorAutorizacionIT {
 		return consumo.consumirPorSesion(new ConsumoPorSesion(
 				f.organizationId(), f.personaId(), f.consultorioId(), sesionId, hoy(), 1,
 				f.adminCuentaId(), practicas));
+	}
+
+	/**
+	 * El listado de autorizaciones del paciente y el saldo de cada una dicen lo mismo: los
+	 * consumos a revisar y el saldo disponible no pueden divergir entre las dos pantallas.
+	 */
+	private void assertListadoIgualAlSaldo(Fixture f, long... autorizacionIds) {
+		Map<Long, AutorizacionView> listado = autorizaciones
+				.listar(f.admin(), f.personaId(), DocumentoEstadoFiltro.TODAS, null).stream()
+				.collect(java.util.stream.Collectors.toMap(AutorizacionView::id, v -> v));
+		for (long id : autorizacionIds) {
+			SaldoDeAutorizacionView saldo = consumo.saldo(f.admin(), id, null);
+			assertThat(listado.get(id).consumosARevisar())
+					.as("consumosARevisar del listado vs saldo, autorizacion %d", id)
+					.isEqualTo(saldo.consumosARevisar());
+			assertThat(listado.get(id).saldo())
+					.as("saldo del listado vs saldo, autorizacion %d", id)
+					.isEqualTo(saldo.saldo());
+		}
 	}
 
 	private long autorizar(

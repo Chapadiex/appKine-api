@@ -172,7 +172,7 @@ public class SerieDeTurnosService {
 			OperatingActor actor, long consultorioId, AltaDeSerieCommand command,
 			long organizationId, ConsultorioSnapshot sede) {
 
-		BloqueoDeAgenda.tomar(agendas, organizationId, consultorioId);
+		BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
 
 		// Bajo el lock, como en la reserva: fuera de el dos peticiones con la misma clave leerian
 		// "no existe" las dos.
@@ -432,7 +432,7 @@ public class SerieDeTurnosService {
 			OperatingActor actor, long consultorioId, long serieId,
 			OperacionDeSerieCommand command, long organizationId, ConsultorioSnapshot sede) {
 
-		BloqueoDeAgenda.tomar(agendas, organizationId, consultorioId);
+		BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
 
 		TurnoSerie serie = exigirSerie(organizationId, consultorioId, serieId);
 		Instant ahora = Instant.now();

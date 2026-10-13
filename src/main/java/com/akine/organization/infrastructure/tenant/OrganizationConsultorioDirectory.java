@@ -3,6 +3,7 @@ package com.akine.organization.infrastructure.tenant;
 import java.util.Optional;
 
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.akine.organization.infrastructure.ConsultorioRepository;
@@ -38,5 +39,15 @@ public class OrganizationConsultorioDirectory implements ConsultorioDirectory {
 						consultorio.getName(),
 						consultorio.getTimezone(),
 						consultorio.isActive()));
+	}
+
+	/**
+	 * {@code MANDATORY}: el lock compartido tiene que quedar en la transaccion del llamador. En una
+	 * propia se soltaria al volver de este metodo y no serializaria nada contra la baja.
+	 */
+	@Override
+	@Transactional(propagation = Propagation.MANDATORY)
+	public boolean inactivaBajoLockCompartido(long organizationId, long consultorioId) {
+		return consultorioRepository.countActivaForShare(consultorioId, organizationId) == 0;
 	}
 }

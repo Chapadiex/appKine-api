@@ -19,13 +19,15 @@ import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.transaccion.AlTerminarLaTransaccion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -109,6 +111,7 @@ public class AdjuntoClinicoService {
 	private final AuditTrail auditTrail;
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
 	private final AdjuntoClinicoEscrituraAparte escrituraAparte;
+	private final TransactionTemplate transaccion;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public AdjuntoClinicoService(
@@ -120,7 +123,8 @@ public class AdjuntoClinicoService {
 			RelacionAsistencialProbe relaciones,
 			AuditTrail auditTrail,
 			ClinicalSupportAccessAuditor supportAccessAuditor,
-			AdjuntoClinicoEscrituraAparte escrituraAparte) {
+			AdjuntoClinicoEscrituraAparte escrituraAparte,
+			PlatformTransactionManager transactionManager) {
 
 		this.historias = historias;
 		this.entradas = entradas;
@@ -131,6 +135,7 @@ public class AdjuntoClinicoService {
 		this.auditTrail = auditTrail;
 		this.supportAccessAuditor = supportAccessAuditor;
 		this.escrituraAparte = escrituraAparte;
+		this.transaccion = new TransactionTemplate(transactionManager);
 	}
 
 	// =================================================================================
@@ -249,22 +254,100 @@ public class AdjuntoClinicoService {
 	/**
 	 * Sube un documento clinico (RF-M25-001).
 	 *
-	 * <p><b>{@code READ_COMMITTED}, y sin eso la idempotencia de la subida concurrente NO funciona.</b>
-	 * El INSERT corre en una transaccion propia y el perdedor de la carrera resuelve el choque
-	 * releyendo por checksum la fila que gano. Con {@code REPEATABLE READ} —el default de MySQL— esa
-	 * relectura no la encuentra: InnoDB fija la foto en la primera lectura consistente, que ocurrio
-	 * antes de que el ganador commiteara, asi que el {@code orElseThrow} vuelve a lanzar el choque y
-	 * lo que el {@code @Operation} promete como reintento idempotente termina en un 500.
+	 * <p><b>Sin transaccion de afuera, a proposito</b> (docs/carga.md §8). La subida son cuatro
+	 * pasos y cada uno usa una conexion por vez:
 	 *
-	 * <p>Es la misma regla que 05.02 dejo fijada para la reserva de turnos: lo que serializa va en
-	 * {@code READ_COMMITTED}, porque el lock —o el unique— no alcanza si la transaccion mira una foto
-	 * anterior. Lo destapo {@code AdjuntoClinicoIT#la_subida_concurrente_se_resuelve_como_idempotente}
-	 * en la primera corrida real: el test existia desde 04.02 y nunca se habia ejecutado.
+	 * <ol>
+	 *   <li>una transaccion que autoriza, valida y busca el contenido por checksum;</li>
+	 *   <li>el INSERT, en la suya ({@link AdjuntoClinicoEscrituraAparte}): si choca contra el
+	 *       unique muere sola, y la relectura del ganador corre en otra transaccion nueva, que ve
+	 *       su commit;</li>
+	 *   <li>el binario, sin ninguna conexion tomada;</li>
+	 *   <li>la auditoria, en una transaccion final.</li>
+	 * </ol>
+	 *
+	 * <p>Hasta el 11/10/2026 los pasos 1 y 4 eran una sola transaccion en {@code READ_COMMITTED}
+	 * que envolvia al INSERT en {@code REQUIRES_NEW}: cada subida retenia una conexion y pedia otra,
+	 * y muchas subidas a la vez trababan el pool. La fila ya se commiteaba sola antes de la
+	 * auditoria, asi que separar la transaccion de afuera no le quita ninguna atomicidad que
+	 * tuviera. Y el {@code READ_COMMITTED} ya no hace falta: la relectura del perdedor es una
+	 * transaccion nueva, cuya foto es posterior al commit del ganador.
 	 *
 	 * @return el adjunto creado, o el que ya existia si el contenido es identico (idempotencia)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public AdjuntoClinicoAlta subir(
+			OperatingActor actor,
+			long historiaClinicaId,
+			AdjuntoClinicoAltaCommand command,
+			String justificacion) {
+
+		AlTerminarLaTransaccion.exigirSinTransaccion("La subida de un adjunto clinico");
+		Subida subida = transaccion.execute(
+				estado -> prepararSubida(actor, historiaClinicaId, command, justificacion));
+		if (subida.existente() != null) {
+			return new AdjuntoClinicoAlta(AdjuntoClinicoView.de(subida.existente()), false);
+		}
+
+		AdjuntoClinico adjunto = subida.nuevo();
+		long organizationId = adjunto.getOrganizationId();
+		long historiaId = adjunto.getHistoriaClinicaId();
+
+		AdjuntoClinico guardado;
+		try {
+			// Fila primero, con flush, para que el unique decida antes de tocar el disco. En una
+			// TRANSACCION PROPIA: si el flush choca contra el unique, Hibernate marca rollbackOnly
+			// antes de que la excepcion salga, y atraparla no des-marca nada (regla 2 del Paquete B).
+			guardado = escrituraAparte.insertar(adjunto);
+		} catch (DataIntegrityViolationException choque) {
+			// Murio la transaccion del INSERT y ninguna otra: la relectura abre una nueva.
+			log.info("Subida clinica concurrente del mismo contenido resuelta como idempotente: "
+					+ "historiaClinicaId={}", historiaId);
+			return transaccion.execute(estado -> adjuntos.buscarVigentePorChecksum(
+							organizationId, historiaId, adjunto.getChecksumSha256()))
+					.map(existente -> new AdjuntoClinicoAlta(AdjuntoClinicoView.de(existente), false))
+					.orElseThrow(() -> choque);
+		}
+
+		// Blob despues. Ver la cabecera de la clase y la de V46: el orden inverso produciria filas
+		// apuntando a nada, que es el unico de los dos errores que el usuario ve.
+		//
+		// Como la fila ya esta commiteada, un fallo del blob NO se revierte solo: la fila queda, y
+		// si se la dejara DISPONIBLE el listado afirmaria tener un estudio que no se puede
+		// descargar. Se la marca NO_DISPONIBLE, que es la verdad, y se propaga el fallo.
+		try {
+			storage.guardar(adjunto.getStorageKey(), command.contenido());
+		} catch (RuntimeException falla) {
+			escrituraAparte.marcarNoDisponible(organizationId, historiaId, guardado.getId());
+			throw falla;
+		}
+
+		transaccion.executeWithoutResult(estado -> {
+			Map<String, String> detalles = new LinkedHashMap<>();
+			detalles.put("historiaClinicaId", String.valueOf(historiaId));
+			detalles.put("categoria", guardado.getCategoria().name());
+			detalles.put("contentType", guardado.getContentType());
+			detalles.put("tamanoBytes", String.valueOf(command.contenido().length));
+			if (guardado.getEntradaClinicaId() != null) {
+				detalles.put("entradaClinicaId", String.valueOf(guardado.getEntradaClinicaId()));
+			}
+			auditar(AuditEvents.ADJUNTO_CLINICO_UPLOADED, guardado.getId(),
+					actor, subida.acceso(), null, "VIGENTE", detalles, subida.ahora());
+			registrarSoporte(subida.acceso(), actor, guardado, "Subir adjunto clinico",
+					subida.ahora());
+		});
+
+		log.info("Adjunto clinico cargado: adjuntoId={} historiaClinicaId={} organizationId={}",
+				guardado.getId(), historiaId, organizationId);
+		return new AdjuntoClinicoAlta(AdjuntoClinicoView.de(guardado), true);
+	}
+
+	/** Lo que la primera transaccion de la subida decide: el existente, o el nuevo a insertar. */
+	private record Subida(
+			AdjuntoClinico existente, AdjuntoClinico nuevo, AccesoClinico acceso, Instant ahora) {
+	}
+
+	/** Paso 1 de {@link #subir}: autoriza, valida y busca por checksum. No escribe nada. */
+	private Subida prepararSubida(
 			OperatingActor actor,
 			long historiaClinicaId,
 			AdjuntoClinicoAltaCommand command,
@@ -289,7 +372,7 @@ public class AdjuntoClinicoService {
 		if (yaExistente.isPresent()) {
 			log.debug("Subida clinica idempotente resuelta con el adjunto existente: "
 					+ "historiaClinicaId={}", historia.getId());
-			return new AdjuntoClinicoAlta(AdjuntoClinicoView.de(yaExistente.get()), false);
+			return new Subida(yaExistente.get(), null, acceso, null);
 		}
 
 		Instant ahora = Instant.now();
@@ -309,57 +392,7 @@ public class AdjuntoClinicoService {
 				storageKey,
 				actor.accountId(),
 				ahora);
-
-		AdjuntoClinico guardado;
-		try {
-			// Fila primero, con flush, para que el unique decida antes de tocar el disco. Y en una
-			// TRANSACCION PROPIA: si el flush choca contra el unique, Hibernate marca rollbackOnly
-			// antes de que la excepcion salga, y atraparla no des-marca nada. Con el INSERT adentro
-			// de esta transaccion, el catch de abajo correria sobre una sesion inutilizable y el
-			// commit terminaria en UnexpectedRollbackException: un 500 en vez de la idempotencia
-			// que el @Operation promete en mayusculas. Es la regla 2 del Paquete B.
-			guardado = escrituraAparte.insertar(adjunto);
-		} catch (DataIntegrityViolationException choque) {
-			// La que murio fue la transaccion del INSERT, no esta: la consulta de abajo corre sobre
-			// una sesion sana.
-			log.info("Subida clinica concurrente del mismo contenido resuelta como idempotente: "
-					+ "historiaClinicaId={}", historia.getId());
-			return adjuntos.buscarVigentePorChecksum(organizationId, historia.getId(), checksum)
-					.map(existente -> new AdjuntoClinicoAlta(
-							AdjuntoClinicoView.de(existente), false))
-					.orElseThrow(() -> choque);
-		}
-
-		// Blob despues. Ver la cabecera de la clase y la de V46: el orden inverso produciria filas
-		// apuntando a nada, que es el unico de los dos errores que el usuario ve.
-		//
-		// Como la fila ya esta commiteada, un fallo del blob NO se revierte solo: la fila queda, y
-		// si se la dejara DISPONIBLE el listado afirmaria tener un estudio que no se puede
-		// descargar. Se la marca NO_DISPONIBLE, que es la verdad, y se propaga el fallo.
-		try {
-			storage.guardar(storageKey, contenido);
-		} catch (RuntimeException falla) {
-			escrituraAparte.marcarNoDisponible(
-					organizationId, historia.getId(), guardado.getId());
-			throw falla;
-		}
-
-		Map<String, String> detalles = new LinkedHashMap<>();
-		detalles.put("historiaClinicaId", String.valueOf(historia.getId()));
-		detalles.put("categoria", guardado.getCategoria().name());
-		detalles.put("contentType", contentType);
-		detalles.put("tamanoBytes", String.valueOf(contenido.length));
-		if (entradaId != null) {
-			detalles.put("entradaClinicaId", String.valueOf(entradaId));
-		}
-
-		auditar(AuditEvents.ADJUNTO_CLINICO_UPLOADED, guardado.getId(),
-				actor, acceso, null, "VIGENTE", detalles, ahora);
-		registrarSoporte(acceso, actor, guardado, "Subir adjunto clinico", ahora);
-
-		log.info("Adjunto clinico cargado: adjuntoId={} historiaClinicaId={} organizationId={}",
-				guardado.getId(), historia.getId(), organizationId);
-		return new AdjuntoClinicoAlta(AdjuntoClinicoView.de(guardado), true);
+		return new Subida(null, adjunto, acceso, ahora);
 	}
 
 	/**
@@ -521,7 +554,9 @@ public class AdjuntoClinicoService {
 	 * se quedaria en {@code DISPONIBLE} para siempre y el listado seguiria afirmando que el
 	 * estudio esta, contra lo que prometen el {@code @Operation} del controller y la cabecera de
 	 * {@code V46}. Por eso va por {@link AdjuntoClinicoEscrituraAparte}, en una transaccion
-	 * propia que commitea sola.
+	 * propia que corre cuando la de la descarga ya termino y devolvio su conexion
+	 * ({@link AlTerminarLaTransaccion}): hasta el 11/10/2026 era un {@code REQUIRES_NEW} anidado,
+	 * que retenia dos conexiones por descarga (docs/carga.md §8).
 	 */
 	private byte[] contenidoDe(
 			long organizationId, long historiaClinicaId, AdjuntoClinico adjunto, long adjuntoId) {
@@ -533,7 +568,8 @@ public class AdjuntoClinicoService {
 		if (bytes.isEmpty()) {
 			log.error("El almacenamiento clinico no tiene el contenido de un adjunto que la base "
 					+ "referencia: adjuntoId={}", adjuntoId);
-			escrituraAparte.marcarNoDisponible(organizationId, historiaClinicaId, adjuntoId);
+			AlTerminarLaTransaccion.ejecutar(() ->
+					escrituraAparte.marcarNoDisponible(organizationId, historiaClinicaId, adjuntoId));
 			throw new AdjuntoClinicoNoDisponibleException(adjuntoId);
 		}
 		return bytes.get();

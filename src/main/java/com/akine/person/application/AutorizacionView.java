@@ -55,9 +55,16 @@ public record AutorizacionView(
 		String estado,
 		Instant deletedAt,
 		String deactivationReason,
-		long version) {
+		long version,
+		int consumosARevisar) {
 
-	public static AutorizacionView de(Autorizacion autorizacion, LocalDate fecha) {
+	/**
+	 * @param consumosARevisar alertas "consumo a revisar" pendientes, contadas con
+	 *                         {@code AutorizacionAlertaRepositoryPort#pendientesPorAutorizacion},
+	 *                         la misma definicion que usa el saldo (DP-13)
+	 */
+	public static AutorizacionView de(
+			Autorizacion autorizacion, LocalDate fecha, int consumosARevisar) {
 		return new AutorizacionView(
 				autorizacion.getId(),
 				autorizacion.getPersonaId(),
@@ -90,6 +97,7 @@ public record AutorizacionView(
 				autorizacion.isActive() ? "ACTIVA" : "INACTIVA",
 				autorizacion.getDeletedAt(),
 				autorizacion.getDeactivationReason(),
-				autorizacion.getVersion());
+				autorizacion.getVersion(),
+				consumosARevisar);
 	}
 }
