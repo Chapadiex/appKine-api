@@ -122,7 +122,20 @@ await registrar(correo('admin-b'), `Centro QA B ${sufijo}`);
 const a = await entrar(correo('admin-a'));
 e.org_a = a.organizationId;
 e.sede_a = a.consultorioId;
-zona = (await pedir('GET', `/api/v1/organizations/${e.org_a}/consultorios/${e.sede_a}`, { token: a.token })).timezone;
+let sedeA = await pedir('GET', `/api/v1/organizations/${e.org_a}/consultorios/${e.sede_a}`, { token: a.token });
+// De noche en la sede no quedan 4 slots de hoy: QA_ZONA_SEDE mueve la sede A a otra zona (p. ej.
+// Pacific/Honolulu, UTC-10) con la misma edicion que ORG-02. Sin la variable, la sede queda como nace.
+if (process.env.QA_ZONA_SEDE) {
+	sedeA = await pedir('PATCH', `/api/v1/organizations/${e.org_a}/consultorios/${e.sede_a}`, {
+		token: a.token, json: { timezone: process.env.QA_ZONA_SEDE, version: sedeA.version },
+	});
+}
+zona = sedeA.timezone;
+// Un feriado nacional (el 12/10, por ejemplo) deja la agenda de hoy sin slots: QA_SIN_FERIADOS=1
+// apaga el cierre por feriado de la sede A, como lo haria su administrador.
+if (process.env.QA_SIN_FERIADOS) {
+	await pedir('PUT', `/api/v1/consultorios/${e.sede_a}/calendario`, { token: a.token, json: { cierraPorFeriado: false } });
+}
 const b = await entrar(correo('admin-b'));
 e.org_b = b.organizationId;
 e.sede_b = b.consultorioId;
@@ -206,7 +219,7 @@ e.autorizacion = aut.id;
 paso('turnos de hoy, recepcion, sesion cerrada (obra social y particular)');
 const agenda = await pedir('GET', `/api/v1/consultorios/${e.sede_a}/ofertas/${e.oferta}/agenda?desde=${hoy()}&hasta=${hoy(1)}`, { token: a.token });
 const futuros = agenda.dias.flatMap((d) => d.slots).filter((s) => new Date(s.desde).getTime() > Date.now() + 120000);
-if (futuros.length < 4) throw new Error('quedan menos de 4 slots hoy: correr el sembrado antes de las 22 de la sede');
+if (futuros.length < 4) throw new Error(`quedan menos de 4 slots hoy (zona ${zona}, hoy ${hoy()}, dias ${JSON.stringify(agenda.dias.map((d) => [d.fecha, d.slots.length, d.slots[0]?.desde, d.slots.at(-1)?.desde]))}): correr el sembrado antes de las 22 de la sede o con QA_ZONA_SEDE`);
 const reservar = (personaId, slot) => pedir('POST', `/api/v1/consultorios/${e.sede_a}/turnos/ofertas/${e.oferta}`, {
 	token: a.token, json: { inicio: slot.desde, personaId, profesionalId: e.membership_profesional, idempotencyKey: randomUUID() },
 });
@@ -372,6 +385,30 @@ paso('lecturas que deben quedar auditadas / denegadas');
 const pac = await entrar(correo('paciente'), e.org_a);
 await http('GET', `/api/v1/personas?size=5`, { token: pac.token, esperado: [403] });
 await http('GET', `/api/v1/personas/${e.persona_b}`, { token: a.token, esperado: [404] });
+
+paso('pantallas posteriores a G-12: honorarios de un colaborador, egreso anulado, pago por transferencia');
+// La caja ya cerro arriba: lo que sigue va por transferencia (no exige caja abierta).
+const honorarios = await pedir('POST', `/api/v1/consultorios/${e.sede_a}/egresos`, {
+	token: a.token,
+	json: { categoria: 'HONORARIOS_PROFESIONALES', tipoBeneficiario: 'COLABORADOR', beneficiarioMembershipId: e.membership_profesional, concepto: 'Honorarios QA', periodoDesde: hoy(-30), periodoHasta: hoy(), importeTotal: 4000, moneda: 'ARS', comprobanteTipo: 'RECIBO', comprobanteNumero: `R-${sufijo}`, comprobanteFecha: hoy(), idempotencyKey: randomUUID() },
+});
+e.egreso_honorarios = honorarios.id;
+await pedir('POST', `/api/v1/consultorios/${e.sede_a}/egresos/${honorarios.id}/confirmacion`, { token: a.token });
+await pedir('POST', `/api/v1/consultorios/${e.sede_a}/egresos/${honorarios.id}/pagos`, { token: a.token, json: { importe: 1500, medio: 'TRANSFERENCIA', referencia: 'TRF-QA2', idempotencyKey: randomUUID() } });
+const descartado = await pedir('POST', `/api/v1/consultorios/${e.sede_a}/egresos`, {
+	token: a.token,
+	json: { categoria: 'SERVICIOS', tipoBeneficiario: 'EXTERNO', beneficiarioNombre: 'Proveedor QA2', concepto: 'Egreso a anular QA2', importeTotal: 700, moneda: 'ARS', comprobanteTipo: 'FACTURA_C', comprobanteNumero: `C-${sufijo}`, comprobanteFecha: hoy(), idempotencyKey: randomUUID() },
+});
+e.egreso_anulado = descartado.id;
+await pedir('POST', `/api/v1/consultorios/${e.sede_a}/egresos/${descartado.id}/anulacion`, { token: a.token, json: { motivo: 'Anulacion sintetica QA2' } });
+
+paso('importacion de aranceles: preview y confirmacion de un arancel general de la practica');
+const lote = { filas: [{ codigoPractica: `QA-P-${sufijo}`, importeTotal: 9000, importeFinanciador: 7000, coseguro: 2000, vigenciaDesde: '2026-01-01' }] };
+await pedir('POST', `/api/v1/consultorios/${e.sede_a}/convenios/${e.convenio}/aranceles/importacion`, { token: a.token, json: { modo: 'PREVIEW', ...lote } });
+await pedir('POST', `/api/v1/consultorios/${e.sede_a}/convenios/${e.convenio}/aranceles/importacion`, { token: a.token, json: { modo: 'CONFIRMAR', ...lote } });
+
+paso('permisos otorgables por rol');
+await pedir('GET', `/api/v1/organizations/${e.org_a}/roles/PROFESIONAL/permisos-otorgables`, { token: a.token });
 
 writeFileSync(archivo, JSON.stringify({ ...e, sufijo, cuentas: Object.fromEntries(['admin-a', 'profesional', 'administrativo', 'paciente', 'admin-b'].map((r) => [r, correo(r)])) }, null, 2));
 console.log(`[sembrado] listo: ${archivo}`);

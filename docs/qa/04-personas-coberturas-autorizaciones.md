@@ -5,8 +5,11 @@ paga**: un error acá no rompe la pantalla, rompe la deuda que nace al cerrar la
 y lo que se presenta al financiador ([08](08-presentaciones-facturacion-pagos.md)).
 
 `[E2E cobertura-autorizacion]` recorre persona → perfil → cobertura → orden → autorización y el
-vencimiento por pantalla. **No mira la base, ni el historial de la autorización (DP-23), ni el
-consumo, ni la alerta, ni la reversión.**
+vencimiento por pantalla. **No mira la base, ni el historial de la autorización (DP-23).**
+Desde `appKine-web` #58 el saldo, el ledger, la alerta y la reversión **tienen pantalla** (panel
+"Saldo y consumos" en `/pacientes/<id>/autorizaciones`), y `[E2E flujo-autorizaciones]` recorre
+consumo → anulación de la deuda → alerta → reversión por pantalla contra el backend real; tampoco
+mira la base. `[E2E flujo-practicas-y-aranceles]` cubre la importación de aranceles (PER-06b).
 
 Tablas: `persona`, `perfil_paciente`, `adjunto_administrativo`, `financiador`, `plan_cobertura`,
 `convenio`, `convenio_arancel`, `cobertura_paciente`, `orden_medica`, `autorizacion`,
@@ -135,6 +138,41 @@ misma práctica y oferta es rechazo (lo hace cumplir `convenio_lock`, **ningún 
 
 ---
 
+### PER-06b · Importar aranceles con vista previa (B-7, web #28) — `[E2E flujo-practicas-y-aranceles]`
+
+**Pantalla:** `/contratacion/convenios/<convenio>/aranceles` → "Importar aranceles" (ruta
+`.../aranceles/importar`). Pegá (o subí como CSV) una planilla con dos filas:
+
+```text
+codigoPractica;ofertaId;importeTotal;importeFinanciador;coseguro;vigenciaDesde
+<código de la práctica de CAT-02>;;9000;7000;2000;2026-01-01
+<código de la práctica de CAT-02>;<id de la oferta de CAT-04>;8000;6000;2000;2026-01-01
+```
+
+**Esperado:** "Vista previa" no escribe nada y marca cada fila: la primera **ALTA** (arancel
+general de la práctica, sin oferta); la segunda **RECHAZADA** con el mismo `problemType` que daría
+el alta unitaria —`arancel-solapado`, "Se pisa con el arancel vigente <id>"—, porque se pisa con el
+arancel por oferta de PER-06. "Confirmar" con una fila
+rechazada es **todo o nada**: 409 `importacion-aranceles-rechazada` y **ninguna** fila escrita.
+Quitá la segunda fila, volvé a previsualizar y confirmá: entra. Confirmar otra vez el mismo lote es
+409 (sus filas chocan contra lo que ella misma creó), no duplica. Más de 500 filas o un lote vacío,
+400.
+
+Antes y después de confirmar:
+
+```sql
+SELECT id, practica_id, oferta_id, importe_total, importe_financiador, coseguro, vigencia_desde, vigencia_hasta,
+       active, created_at
+FROM convenio_arancel WHERE convenio_id = @convenio ORDER BY id;
+```
+
+Esperado: tras el 409, la misma cantidad de filas que antes; tras confirmar, **una** fila nueva con
+`oferta_id` NULL y `importe_total = importe_financiador + coseguro`. **Auditoría:** un solo
+`ARANCELES_IMPORTADOS` sobre el convenio (`entity_type = 'Convenio'`) con `details.cantidad`,
+`details.practicas` y `details.rango` —no un `ARANCEL_CREATED` por fila—; el 409 no deja nada.
+
+---
+
 ### PER-07 · Cobertura del paciente — `[E2E cobertura-autorizacion]`
 
 **Pantalla:** `/pacientes/<id>/coberturas` → cobertura financiada con el plan de PER-05, número de
@@ -247,14 +285,28 @@ Esperado: **cero filas**. Una fila es hallazgo crítico (el saldo dice una cosa 
 
 ---
 
-### PER-12 · Anular la deuda deja una alerta; la reversión es manual (DP-13)
+### PER-12 · Anular la deuda deja una alerta; la reversión es manual (DP-13) — `[E2E flujo-autorizaciones]`
 
 Se corre después de [ECO-06](07-obligaciones-cobros-caja.md) (anulación de la obligación de esa
 sesión).
 
 **Esperado:** anular la deuda **no** devuelve la unidad: genera una alerta "consumo a revisar" sobre
-la autorización. Revertir es un acto aparte, con motivo. **No hay pantalla** de alertas ni de
-reversión (C-4 / D-f): por la API.
+la autorización. Revertir es un acto aparte, con motivo.
+
+**Pantalla (web #58) — `[E2E flujo-autorizaciones]`:** `/pacientes/<id>/autorizaciones` → en la
+fila de la autorización, "Saldo y consumos". El panel muestra **Saldo** (otorgadas, consumidas,
+disponibles y consumos a revisar), el **ledger** (consumo y reversión, con origen —sesión o
+manual—, efecto y motivo; marca los consumos ya revertidos) y **Alertas**, cada una con su texto y
+un solo botón: "Revertir el consumo #<movimiento>" con motivo obligatorio. **No hay botón de
+descartar** la alerta (C-4 §9.1, criterio provisorio en [90](90-conocido-y-aceptado.md)). Revertir
+sin motivo lo rechaza la pantalla y, por la API, 400 `reversion-sin-motivo`; revertir dos veces el
+mismo consumo, 409 `movimiento-ya-revertido`.
+
+Si el saldo de la columna y la suma del ledger no coinciden, el panel muestra una **advertencia**
+(`coherente = false`) y **no** corrige nada: eso es un hallazgo crítico, igual que una fila en la
+consulta del ledger de PER-11.
+
+Por la API, lo mismo:
 
 ```powershell
 Api GET "/api/v1/autorizaciones/<autorizacion>/alertas" $A
@@ -295,3 +347,30 @@ WHERE p.organization_id = @org_a AND p.active = 0;
 
 Esperado: persona **y** perfil dados de baja lógica (la baja de la persona da de baja su perfil,
 03.02); nada se borra. **Auditoría:** `PERSONA_DEACTIVATED`, `PERFIL_PACIENTE_DEACTIVATED`.
+
+---
+
+### PER-14 · Selector explicable: de qué autorización se descontaría (RF-M17-007, web #58)
+
+**Pantalla:** `/pacientes/<persona>/autorizaciones` → sección del selector ("de qué autorización se
+descontaría"): elegí una fecha y una práctica. Para que tenga sentido, cargá antes una **segunda**
+autorización aprobada de la misma persona y práctica que venza **antes** que la de PER-10, y una
+tercera de **otra** práctica.
+
+**Esperado:** las candidatas del día, en el orden del backend; arriba "la que se usaría" (la de la
+misma práctica que vence antes, con saldo), y para cada una de las otras el **por qué no** (otra
+práctica, sin saldo, vencida o fuera de vigencia, no aprobada). La pantalla avisa que la cobertura
+vigente y el caso **no** los evalúa esta consulta sino el cierre. Es una **consulta**: no consume ni
+escribe nada (`GET /api/v1/personas/<id>/autorizaciones/elegibles?fecha=…`).
+
+```sql
+SELECT id, practica_id, numero, estado, cantidad_autorizada, cantidad_consumida,
+       cantidad_autorizada - cantidad_consumida AS disponibles, vigencia_desde, vigencia_hasta, active
+FROM autorizacion WHERE persona_id = @persona ORDER BY vigencia_hasta, id;
+```
+
+Esperado: la que la pantalla dice que "se usaría" es, entre las `APROBADA` vigentes en la fecha, de
+la práctica elegida y con `disponibles > 0`, la de `vigencia_hasta` más próxima. Cerrá después
+una sesión de esa práctica (CLI-05) y comprobá con la consulta de PER-11 que el `CONSUMO` cayó
+**en esa misma** autorización: si el cierre elige otra, es hallazgo (el defecto de 06.04 que
+imputaba a la autorización equivocada). **Auditoría:** nada (es una lectura).

@@ -24,6 +24,7 @@ import com.akine.person.domain.exception.CoberturaInactivaException;
 import com.akine.person.domain.exception.OrdenNotAccessibleException;
 import com.akine.person.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.person.domain.port.PersonRepositoryPorts.AdjuntoRepositoryPort;
+import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionAlertaRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionEventoRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionPersonaLockRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionRepositoryPort;
@@ -47,6 +48,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -100,6 +102,7 @@ class OrdenYAutorizacionServiceTest {
 	private PermissionGuard permissionGuard;
 	private AuditTrail auditTrail;
 	private AutorizacionEventoRepositoryPort eventos;
+	private AutorizacionAlertaRepositoryPort alertas;
 
 	private OrdenMedicaService ordenService;
 	private AutorizacionService autorizacionService;
@@ -118,13 +121,15 @@ class OrdenYAutorizacionServiceTest {
 		permissionGuard = mock(PermissionGuard.class);
 		auditTrail = mock(AuditTrail.class);
 		eventos = mock(AutorizacionEventoRepositoryPort.class);
+		alertas = mock(AutorizacionAlertaRepositoryPort.class);
 
 		ordenService = new OrdenMedicaService(
 				ordenes, coberturas, adjuntos, personas, perfiles, permissionGuard, auditTrail,
 				autorizaciones);
 		autorizacionService = new AutorizacionService(
 				autorizaciones, candados, iniciador, ordenes, coberturas, adjuntos, personas,
-				perfiles, aranceles, permissionGuard, auditTrail, eventos, mock(PlatformTransactionManager.class));
+				perfiles, aranceles, permissionGuard, auditTrail, eventos, alertas,
+				mock(PlatformTransactionManager.class));
 
 		given(personas.findByIdAndOrganizationId(anyLong(), anyLong()))
 				.willReturn(Optional.of(persona()));
@@ -310,6 +315,24 @@ class OrdenYAutorizacionServiceTest {
 					.extracting(error -> ((AutorizacionSuperpuestaException) error)
 							.getAutorizacionExistenteId())
 					.isEqualTo(70L);
+		}
+
+		@Test
+		@DisplayName("el listado trae consumosARevisar por fila con UNA consulta agrupada, sin N+1")
+		void listado_con_consumos_a_revisar_sin_n_mas_1() {
+			Autorizacion conAlertas = conId(autorizacion(EstadoAutorizacion.APROBADA), 77L);
+			Autorizacion sinAlertas = conId(autorizacion(EstadoAutorizacion.APROBADA), 78L);
+			given(autorizaciones.historial(ORG, PERSONA))
+					.willReturn(List.of(conAlertas, sinAlertas));
+			given(alertas.pendientesPorAutorizacion(ORG, PERSONA)).willReturn(Map.of(77L, 2));
+
+			List<AutorizacionView> listado = autorizacionService.listar(
+					ACTOR, PERSONA, DocumentoEstadoFiltro.TODAS, DICIEMBRE);
+
+			assertThat(listado).extracting(AutorizacionView::consumosARevisar)
+					.containsExactly(2, 0);
+			verify(alertas).pendientesPorAutorizacion(ORG, PERSONA);
+			verify(alertas, never()).listarDeAutorizacion(anyLong(), anyLong());
 		}
 
 		@Test
