@@ -127,7 +127,7 @@ coseguro como obligaciones separadas.
 
 # Registro de cierre — 12/10/2026
 
-> Verificado entre el 12 y el 13/10/2026, rama `akine-cierre-F7` sobre `main` `8979519`.
+> Verificado entre el 12 y el 13/10/2026, rama `akine-cierre-F7` sobre `main` `7112e1f` (contrato 0.91.0).
 
 ## Evidencia
 
@@ -195,8 +195,8 @@ base después de cada escritura.
 
 ## Lo que dejó este paquete
 
-- **Contrato 0.95.0** (aditivo, una operación nueva: 310). `main` estaba en 0.90.0 y los PR
-  abiertos #104 y #105 toman 0.91.0; 0.95.0 no choca con ninguno.
+- **Contrato 0.95.0** (aditivo, una operación nueva: 310). `main` está en 0.91.0 (#104) y el PR
+  abierto #105 también toma 0.91.0; 0.95.0 no choca con ninguno.
 - **Sin migración.**
 - **Frontend:** regenerar el cliente contra 0.95.0 cuando entre y agregar el botón "Exportar CSV"
   en `presentacion-detalle-page`.
