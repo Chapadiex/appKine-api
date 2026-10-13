@@ -1,9 +1,16 @@
 # QA manual del §6 — guía de ejecución (G-12)
 
 > Escrita el **11/10/2026** sobre `main` = `5bbf065` (contrato **0.80.0**, última migración
-> **`V85`**) y `appKine-web` `main` = `502a094`. **Ejecución pendiente del usuario.** Las consultas
-> SQL de esta guía se validaron contra el esquema real (§8): corren, pero nadie corrió todavía los
-> pasos contra la pantalla.
+> **`V85`**) y `appKine-web` `main` = `502a094`. **Actualizada el 12/10/2026** sobre `main` =
+> `5b4ef93` (contrato **0.85.0**, sin migraciones nuevas: sigue `V85`) y `appKine-web` `main` =
+> `7af0110`, con las pantallas y cambios que entraron después: egresos y pagos (web #63, circuito
+> nuevo [12](12-egresos-y-pagos.md)), saldo explicable, alertas y selector de autorización (web #58),
+> permisos otorgables (api #85, web #48), aviso 503 sin deslogueo (api #91, web #62), fecha de la
+> sede en todas las pantallas (web #60), IP de cliente en la sesión (api #93), auditoría de cobro,
+> devengo y anulación (api #86), notificaciones fallidas (web #46), importación de aranceles
+> (web #28) y los E2E nuevos de web #64. **Ejecución pendiente del usuario.** Las consultas SQL de
+> esta guía se validaron contra el esquema real (§8): corren, pero nadie corrió todavía los pasos
+> contra la pantalla.
 
 El QA manual del §6 de [`CLAUDE.md`](../../CLAUDE.md) no corre desde 02.02 y está declarado
 **bloqueante para deploy** (F8, gate del MVP). Esta guía lo convierte en pasos que una persona puede
@@ -174,9 +181,9 @@ Lo que vale para toda la tabla:
 
 ## 5. Las operaciones sin pantalla
 
-Historia clínica, entradas, casos, planes de tratamiento, egresos, soporte y roles de plataforma,
-bloqueo de cuentas, cambio de plan y alta de organización por plataforma **no tienen pantalla en
-`appKine-web` `main`** (la historia clínica está en el PR #4 de `appKine-web`, sin mergear). Se
+Historia clínica, entradas, casos, planes de tratamiento, soporte y roles de plataforma, bloqueo de
+cuentas, cambio de plan y alta de organización por plataforma **no tienen pantalla en
+`appKine-web` `main`** (egresos y alertas de consumo sí la tienen desde el 11/10) (la historia clínica está en el PR #4 de `appKine-web`, sin mergear). Se
 prueban por la API con [`qa-api.ps1`](qa-api.ps1):
 
 ```powershell
@@ -234,9 +241,9 @@ producto.
 
 Ninguna consulta se escribió de memoria: los nombres de tabla, columna y valores de estado salen
 del esquema que dejan `V1`…`V85` y de una corrida real. `validacion/` levanta un stack **aislado**
-—prefijo `g12-`, MySQL en 3329, backend en 8099, Mailpit en 8049— que no toca `akine-mysql` ni los
-puertos 8080/4200, siembra un mínimo **por la API** y corre cada bloque ```` ```sql ```` de esta
-carpeta:
+—por defecto prefijo `g12-`, MySQL en 3329, backend en 8099, Mailpit en 8049— que no toca
+`akine-mysql` ni los puertos 8080/4200, siembra un mínimo **por la API** y corre cada bloque
+```` ```sql ```` de esta carpeta:
 
 ```bash
 docs/qa/validacion/stack.sh build && docs/qa/validacion/stack.sh up
@@ -245,6 +252,24 @@ QA_API_URL=http://localhost:8099 QA_MAILPIT_URL=http://localhost:8049 \
 node docs/qa/validacion/validar-consultas.mjs /tmp/estado-g12.json   # 0 errores = todas corren
 docs/qa/validacion/stack.sh down --imagen                            # borra contenedores, red e imagen
 ```
+
+Si esos puertos están tomados (`perf/stack.sh` usa 3329 y 8099), `stack.sh` acepta prefijo y
+puertos por entorno, y `validar-consultas.mjs` recibe el contenedor como segundo argumento. Así se
+revalidó el 12/10:
+
+```bash
+export QA_PREFIJO=qa2 QA_PUERTO_MYSQL=3339 QA_PUERTO_API=8109 QA_PUERTO_MAILPIT=8059 QA_PUERTO_SMTP=1059
+docs/qa/validacion/stack.sh build && docs/qa/validacion/stack.sh up
+QA_SIN_FERIADOS=1 QA_API_URL=http://localhost:8109 QA_MAILPIT_URL=http://localhost:8059 \
+  node docs/qa/validacion/sembrar.mjs /tmp/estado-qa2.json
+node docs/qa/validacion/validar-consultas.mjs /tmp/estado-qa2.json qa2-mysql
+docs/qa/validacion/stack.sh down --imagen
+```
+
+El sembrado reserva turnos **de hoy**: en un feriado nacional (el 12/10 lo es) la agenda no tiene
+slots, y `QA_SIN_FERIADOS=1` apaga el cierre por feriado de la sede A, como lo haría su
+administrador. Después de las 22 de la sede, `QA_ZONA_SEDE=Pacific/Honolulu` la mueve a una zona
+donde todavía es temprano.
 
 **Cuándo revalidar:** cada migración nueva que toque una tabla que la guía consulta. El script
 falla si un bloque tiene un error de sintaxis, de tabla o de columna, o si escribe en la base. Que
@@ -264,25 +289,34 @@ que ya cubre un test en CI, para no repetirlo entero a mano:
 
 | # | Circuito | Prioridad | Pasos | Lo que ningún test cubre |
 |---|---|---|---|---|
-| [01](01-onboarding-y-cuentas.md) | Onboarding y cuentas | P2 | 10 | El correo de "ya registrado", el reenvío que invalida el enlace, las sesiones que revoca el reset |
-| [02](02-organizacion-sedes-colaboradores.md) | Organización, sedes, colaboradores, permisos | **P1** | 15 | Grants prohibidos por pantalla, último admin, invitación aceptada, tope de plan |
-| [03](03-catalogo-servicios-ofertas.md) | Catálogo, servicios, ofertas, prácticas, precios | P2 | 10 | Prácticas de la oferta (A-9), precio particular, horario de sede (DP-19) |
-| [04](04-personas-coberturas-autorizaciones.md) | Personas, coberturas, órdenes, autorizaciones | **P1** | 13 | Historial de la autorización (DP-23), consumo, alerta, reversión |
-| [05](05-agenda-turnos-recepcion.md) | Agenda, turnos, series, recepción, prepago | P2 | 12 | Ausente, reprogramar una serie, anular una recepción |
+| [01](01-onboarding-y-cuentas.md) | Onboarding y cuentas | P2 | 12 | El correo de "ya registrado", el reenvío que invalida el enlace, las sesiones que revoca el reset, la IP de la sesión, el 503 sin deslogueo |
+| [02](02-organizacion-sedes-colaboradores.md) | Organización, sedes, colaboradores, permisos | **P1** | 16 | Grants prohibidos por pantalla, último admin, invitación aceptada, tope de plan, notificación agotada por un correo caído de verdad |
+| [03](03-catalogo-servicios-ofertas.md) | Catálogo, servicios, ofertas, prácticas, precios | P2 | 10 | Precio particular, horario de sede (DP-19) |
+| [04](04-personas-coberturas-autorizaciones.md) | Personas, coberturas, órdenes, autorizaciones | **P1** | 15 | Historial de la autorización (DP-23), selector explicable contra el consumo real, la base detrás del saldo |
+| [05](05-agenda-turnos-recepcion.md) | Agenda, turnos, series, recepción, prepago | P2 | 13 | Ausente, reprogramar una serie, anular una recepción, el día de la sede en agenda y recepción |
 | [06](06-atencion-clinica.md) | Sesión, historia clínica, casos, plan, enmiendas | **P1** | 15 | **Todo**: no hay E2E de la vertical clínica |
-| [07](07-obligaciones-cobros-caja.md) | Obligaciones, cobros, anulación, reintegro, caja | **P1** | 13 | Coseguro, DP-17, anulación, reintegro, imputación posterior, egresos |
+| [07](07-obligaciones-cobros-caja.md) | Obligaciones, cobros, anulación, reintegro, caja | **P1** | 14 | Coseguro, DP-17, anulación de una deuda, lo posterior al cobro en efectivo, la auditoría de devengo y cobro |
 | [08](08-presentaciones-facturacion-pagos.md) | Presentaciones, facturación, pagos | **P1** | 9 | Débito persistido, anulación del lote, cuenta corriente del financiador |
 | [09](09-reportes.md) | Reportes | P2 | 6 | Recorte por rol (DP-15), export CSV |
 | [10](10-plataforma.md) | Plataforma | P2 | 9 | Soporte con rastro, rol de plataforma, cambio de plan, suspensión |
 | [11](11-aislamiento-y-rol-paciente.md) | Aislamiento entre organizaciones y rol PACIENTE | **P1** | 8 | La cuenta en dos organizaciones por pantalla (#70), DP-22 por pantalla |
+| [12](12-egresos-y-pagos.md) | Egresos y pagos de la sede | **P1** | 8 | Honorarios a un colaborador, pago parcial por transferencia, borrador sin comprobante, anular el egreso, filtros |
 | [90](90-conocido-y-aceptado.md) | Conocido y aceptado | — | — | Lo que **no** se reporta como bug |
 
-**120 pasos** en total. Al armar la guía, la validación contra el stack aislado destapó **dos defectos
-sin corregir y una pregunta para el dueño del producto**: están en [90](90-conocido-y-aceptado.md)
-§4 y §5, para que el QA los vincule en vez de reportarlos como nuevos.
+**135 pasos** en total (120 del 11/10 y 15 del 12/10). Al armar la guía, la validación contra el
+stack aislado destapó **dos defectos sin corregir y una pregunta para el dueño del producto**; la
+revalidación del 12/10, **tres defectos más** (el filtro de egresos por día UTC, el cobro anulado
+que desaparece del listado y el correo de una invitación cancelada que sale igual). Están en
+[90](90-conocido-y-aceptado.md) §4 y §5, para que el QA los vincule en vez de reportarlos como
+nuevos.
+
+**E2E nuevos del 12/10** (web #64, contra el backend real): `flujo-autorizaciones`,
+`flujo-cobros-posteriores`, `flujo-colaboradores`, `flujo-dia-de-la-sede`, `flujo-notificaciones`
+y `flujo-practicas-y-aranceles`, más el tercer test de `flujo-caja` (egreso en efectivo). Ninguno
+mira la base: la consulta de persistencia de cada paso sigue siendo manual.
 
 **Orden sugerido:** 10 (PLA-01 y PLA-02, para tener el servicio global) → 01 → 02 → 03 → 04 → 05 →
-06 → 07 → 08 → 09 → resto de 10 → 11 → 90 al final, para descartar hallazgos que ya son decisión
+06 → 07 → 12 → 08 → 09 → resto de 10 → 11 → 90 al final, para descartar hallazgos que ya son decisión
 tomada. Una corrida completa son **dos jornadas**; si hay que recortar, los circuitos P1 primero.
 
 ## 10. Archivos
@@ -290,10 +324,10 @@ tomada. Una corrida completa son **dos jornadas**; si hay que recortar, los circ
 | Archivo | Para qué |
 |---|---|
 | `README.md` | Esto |
-| `01-…` a `11-…` | Un checklist por circuito |
+| `01-…` a `12-…` | Un checklist por circuito |
 | `90-conocido-y-aceptado.md` | Criterios provisorios y decisiones abiertas: lo que no es bug |
 | `qa-api.ps1` | `Entrar` y `Api` en PowerShell, para lo que no tiene pantalla |
 | `qa-config.ejemplo.md` | Plantilla del `qa-config.md` personal, ya con lo de AKINE |
-| `validacion/stack.sh` | Stack aislado `g12-*` para validar las consultas |
+| `validacion/stack.sh` | Stack aislado (`g12-*` o el prefijo de `QA_PREFIJO`) para validar las consultas |
 | `validacion/sembrar.mjs` | Sembrado mínimo por la API sobre ese stack |
 | `validacion/validar-consultas.mjs` | Corre cada bloque SQL de la guía y falla ante un error |
