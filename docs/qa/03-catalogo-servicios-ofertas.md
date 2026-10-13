@@ -115,7 +115,7 @@ Esperado: la habilitación activa; la `version` de la oferta avanzó **una** vez
 
 ---
 
-### CAT-06 · Prácticas de la oferta (A-9, DP-11)
+### CAT-06 · Prácticas de la oferta (A-9, DP-11) — `[E2E flujo-practicas-y-aranceles]`
 
 **Pantalla:** `/servicios/ofertas/<id>/practicas` → agregar la práctica de CAT-02 y marcarla
 principal.
