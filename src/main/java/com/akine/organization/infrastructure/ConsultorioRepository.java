@@ -72,4 +72,27 @@ public interface ConsultorioRepository extends JpaRepository<Consultorio, Long>,
 	long countActiveForShare(
 			@Param("organizationId") Long organizationId,
 			@Param("excludedConsultorioId") Long excludedConsultorioId);
+
+	/** La sede con lock EXCLUSIVO. Primera lectura de la fila en la baja: ver el puerto. */
+	@Query(value = """
+			SELECT * FROM consultorio
+			 WHERE id = :id
+			   AND organization_id = :organizationId
+			 FOR UPDATE
+			""", nativeQuery = true)
+	Optional<Consultorio> findByIdAndOrganizationIdForUpdate(
+			@Param("id") Long id,
+			@Param("organizationId") Long organizationId);
+
+	/** 1 si la sede esta activa, 0 si no, con lock COMPARTIDO sobre la fila. Ver el puerto. */
+	@Query(value = """
+			SELECT COUNT(*) FROM consultorio
+			 WHERE id = :id
+			   AND organization_id = :organizationId
+			   AND active = 1
+			 FOR SHARE
+			""", nativeQuery = true)
+	long countActivaForShare(
+			@Param("id") Long id,
+			@Param("organizationId") Long organizationId);
 }

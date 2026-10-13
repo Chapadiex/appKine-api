@@ -189,6 +189,7 @@ public class ConsultorioService {
 			OperatingActor actor, long organizationId, ConsultorioAltaCommand command) {
 
 		exigirClave(command.idempotencyKey());
+		exigirComplementoAdmitido(command.complemento());
 
 		// Camino feliz del reintento por timeout de red: la clave ya se uso, se devuelve lo
 		// mismo de antes. Va ANTES del gate a proposito: un replay no consume cupo de plan ni
@@ -286,8 +287,8 @@ public class ConsultorioService {
 	 * <p>Los escribe {@code resource} por {@link AltaDeSedeExtension}: son tablas suyas. Una
 	 * excepcion de cualquiera de ellos revierte la sede y el cupo de plan (CA-M03-002-04).
 	 *
-	 * <p>Si el alta trae complemento y no hay ninguna extension registrada, falla ruidoso: seguir
-	 * crearia la sede y descartaria en silencio el box y el horario que el cliente pidio.
+	 * <p>Que haya una extension para el complemento ya lo controlo
+	 * {@link #exigirComplementoAdmitido}, antes de abrir la transaccion.
 	 */
 	private void completarAlta(
 			long organizationId, long consultorioId, long accountId, ConsultorioAltaCommand command) {
@@ -295,10 +296,6 @@ public class ConsultorioService {
 		AltaDeSedeExtension.Complemento complemento = command.complemento();
 		if (complemento.vacio()) {
 			return;
-		}
-		if (altaExtensions.isEmpty()) {
-			throw new IllegalStateException(
-					"El alta trae primer box u horario general y ningun modulo los implementa");
 		}
 		for (AltaDeSedeExtension extension : altaExtensions) {
 			extension.completarAlta(organizationId, consultorioId, accountId, complemento);
@@ -459,8 +456,12 @@ public class ConsultorioService {
 				null,
 				Instant.now()));
 
-		// 3.
-		Consultorio consultorio = cargar(organizationId, consultorioId);
+		// 3. Con lock EXCLUSIVO y antes de las sondas del paso 6: las escrituras de agenda leen
+		//    esta fila con lock compartido bajo el suyo de agenda_sede, y es lo que impide que un
+		//    turno se cuele entre la sonda y el commit de la baja. Ver el puerto.
+		Consultorio consultorio = consultorioRepository
+				.findByIdAndOrganizationIdForUpdate(consultorioId, organizationId)
+				.orElseThrow(() -> new ConsultorioNotAccessibleException(consultorioId));
 		if (!consultorio.isOperable()) {
 			throw new ConsultorioInactiveException(
 					consultorioId, ConsultorioInactiveException.Operacion.BAJA);
@@ -667,6 +668,25 @@ public class ConsultorioService {
 			throw new IllegalArgumentException(
 					"Se exige un motivo declarado para la baja de una sede: sin el, la auditoria "
 							+ "no responde por que seis meses despues");
+		}
+	}
+
+	/**
+	 * Rechaza con 400 {@code validation-error} un alta que trae primer box u horario general
+	 * cuando ningun modulo implementa {@link AltaDeSedeExtension} (decision pendiente 13c).
+	 *
+	 * <p><b>Rechazar y no descartar.</b> Descartar crearia la sede sin lo que el cliente pidio, y
+	 * ADR-0008 y CA-M03-002-04 dicen lo contrario: el alta compuesta es todo o nada, sin estados
+	 * intermedios observables. Un 500 tampoco servia: no le dice al cliente que el mismo pedido sin
+	 * complemento si pasa. Se evalua antes del gate de plan, asi que no bloquea la suscripcion ni
+	 * consume cupo. En un despliegue completo no ocurre: {@code resource} siempre la registra.
+	 */
+	private void exigirComplementoAdmitido(AltaDeSedeExtension.Complemento complemento) {
+		if (!complemento.vacio() && altaExtensions.isEmpty()) {
+			throw new IllegalArgumentException(
+					"Este despliegue no admite primer box ni horario general en el alta de una sede:"
+							+ " dala de alta sin ellos y cargalos despues por espacios y por el"
+							+ " calendario de la sede");
 		}
 	}
 
