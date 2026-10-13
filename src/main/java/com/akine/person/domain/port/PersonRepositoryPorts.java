@@ -17,6 +17,7 @@ import com.akine.person.domain.TipoDocumento;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -503,6 +504,17 @@ public final class PersonRepositoryPorts {
 
 		/** Las alertas de una autorizacion, de la mas vieja a la mas nueva. */
 		List<AutorizacionAlerta> listarDeAutorizacion(long organizationId, long autorizacionId);
+
+		/**
+		 * Los "consumos a revisar" PENDIENTES de cada autorizacion de una persona, en una sola
+		 * consulta agrupada (DP-13, AKINE C-4).
+		 *
+		 * <p><b>Es la unica definicion de ese numero.</b> La usan el saldo de una autorizacion
+		 * ({@code GET /autorizaciones/{id}/saldo}) y el listado de autorizaciones del paciente,
+		 * para que las dos pantallas no puedan decir cosas distintas. Pendiente = sin
+		 * {@code resuelta_en}. Las autorizaciones sin alertas pendientes no aparecen en el mapa.
+		 */
+		Map<Long, Integer> pendientesPorAutorizacion(long organizationId, long personaId);
 	}
 
 	/**
