@@ -45,7 +45,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * y la idempotencia termina en un error. Ningun unitario lo reproduce: la foto de InnoDB y el
  * choque contra el unique los pone el motor.
  *
- * <h2>Resultado de la primera corrida (08/10/2026, sobre {@code main} 9c15b95): DEFECTO</h2>
+ * <h2>Resultado de la primera corrida (08/10/2026, sobre {@code main} 9c15b95): DEFECTO, ya corregido</h2>
+ *
+ * <p><b>Estado actual:</b> el arreglo entro en el mismo PR (#68): {@code AdjuntoService.subir}
+ * corre en {@code READ_COMMITTED} y los tres escenarios pasan. Lo que sigue es el acta de la
+ * primera corrida.
  *
  * <p>Los dos escenarios de contenido identico FALLAN, y es el mismo defecto que ya se corrigio en
  * {@code clinical.AdjuntoClinicoService}: {@code subir} corre con el aislamiento por defecto
