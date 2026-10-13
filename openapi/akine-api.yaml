@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.89.0
+  version: 0.90.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -4256,7 +4256,9 @@ paths:
   /api/v1/consultorios/{consultorioId}/cobros:
     get:
       description: "Los cobros de un paciente en toda la organizacion, del mas reciente\
-        \ al mas viejo. Junto con las obligaciones forma su cuenta corriente."
+        \ al mas viejo, anulados incluidos: un cobro anulado se lista con estado ANULADO,\
+        \ porque su comprobante queda usado. Junto con las obligaciones forma su cuenta\
+        \ corriente."
       operationId: cobrosDeLaPersona
       parameters:
       - in: path
