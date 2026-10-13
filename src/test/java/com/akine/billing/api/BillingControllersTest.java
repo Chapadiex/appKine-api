@@ -4,6 +4,7 @@ import com.akine.billing.api.dto.AbrirCajaRequest;
 import com.akine.billing.api.dto.AgregarItemRequest;
 import com.akine.billing.api.dto.AnularCobroRequest;
 import com.akine.billing.api.dto.AnularEgresoRequest;
+import com.akine.billing.api.dto.EditarEgresoRequest;
 import com.akine.billing.api.dto.AnularObligacionRequest;
 import com.akine.billing.api.dto.AnularPresentacionRequest;
 import com.akine.billing.api.dto.CerrarCajaRequest;
@@ -128,7 +129,7 @@ class BillingControllersTest extends SliceRestDeModulo {
 				op("GET", "/cobros?personaId=128", null, 200),
 				// egresos
 				op("POST", "/egresos", RegistrarEgresoRequest.class, 201),
-				op("PUT", "/egresos/6", RegistrarEgresoRequest.class, 200),
+				op("PUT", "/egresos/6", EditarEgresoRequest.class, 200),
 				op("POST", "/egresos/6/confirmacion", null, 200),
 				op("POST", "/egresos/6/anulacion", AnularEgresoRequest.class, 200),
 				op("GET", "/egresos/6", null, 200),

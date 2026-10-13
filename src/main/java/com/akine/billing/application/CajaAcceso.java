@@ -72,4 +72,22 @@ class CajaAcceso {
 	static LocalDate fechaDeNegocio(ConsultorioSnapshot sede, Instant instante) {
 		return instante.atZone(ZoneId.of(sede.timezone())).toLocalDate();
 	}
+
+	/**
+	 * El primer instante del dia {@code fecha} en la sede, o {@code null} si no hay filtro.
+	 *
+	 * <p>Los filtros {@code desde}/{@code hasta} de las bandejas son dias de la sede y las columnas
+	 * son instantes UTC. Filtrar con {@code DATE(columna)} compara contra el dia UTC: entre las 21 y
+	 * las 24 de Cordoba un registro de esa noche cae en el dia siguiente y desaparece de
+	 * {@code hasta = hoy}. Se filtra por el rango {@code [inicioDelDia(desde), inicioDelDia(hasta+1))},
+	 * que ademas usa el indice — cosa que {@code DATE(columna)} y {@code CONVERT_TZ} por fila no.
+	 */
+	static Instant inicioDelDia(ConsultorioSnapshot sede, LocalDate fecha) {
+		return fecha == null ? null : fecha.atStartOfDay(ZoneId.of(sede.timezone())).toInstant();
+	}
+
+	/** El fin <b>exclusivo</b> del dia {@code fecha} en la sede, o {@code null} si no hay filtro. */
+	static Instant finDelDia(ConsultorioSnapshot sede, LocalDate fecha) {
+		return fecha == null ? null : inicioDelDia(sede, fecha.plusDays(1));
+	}
 }
