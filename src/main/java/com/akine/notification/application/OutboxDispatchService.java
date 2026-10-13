@@ -105,7 +105,9 @@ public class OutboxDispatchService {
 					entry.getDestinatario(),
 					payload,
 					entry.getReferenciaTokenId(),
-					entry.getIntentos()));
+					entry.getIntentos(),
+					entry.getOrganizationId(),
+					entry.getClaveIdempotente()));
 		}
 		if (!pendientes.isEmpty()) {
 			log.debug("Notificaciones reclamadas por el worker: {}", pendientes.size());
@@ -184,6 +186,20 @@ public class OutboxDispatchService {
 			entry.registrarFalloPermanente(motivo);
 			repository.save(entry);
 			log.warn("Notificacion fallida sin reintento: id={} tipo={} motivo={}",
+					id, entry.getTipo(), entry.getErrorSanitizado());
+		});
+	}
+
+	/**
+	 * El hecho que origino la notificacion se deshizo mientras esperaba: no se envia y la fila
+	 * termina AGOTADA con el motivo ({@code VigenciaDeNotificacion}).
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void registrarOrigenNoVigente(long id, String motivo) {
+		enProceso(id).ifPresent(entry -> {
+			entry.descartarPorOrigenNoVigente(motivo);
+			repository.save(entry);
+			log.info("Notificacion descartada sin enviar: id={} tipo={} motivo={}",
 					id, entry.getTipo(), entry.getErrorSanitizado());
 		});
 	}

@@ -106,7 +106,8 @@ class AdjuntoClinicoServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AdjuntoClinicoService(historias, entradas, adjuntos, storage,
-				permissionGuard, relaciones, auditTrail, supportAccessAuditor, escrituraAparte);
+				permissionGuard, relaciones, auditTrail, supportAccessAuditor, escrituraAparte,
+				org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
@@ -264,7 +265,7 @@ class AdjuntoClinicoServiceTest {
 
 		// La marca NO se escribe en la transaccion de la descarga: la excepcion de arriba la
 		// revierte y se la llevaria puesta, dejando la columna en DISPONIBLE para siempre. Va por
-		// el colaborador con REQUIRES_NEW, que commitea aparte.
+		// el colaborador, que commitea aparte cuando la transaccion de la descarga ya termino.
 		verify(escrituraAparte).marcarNoDisponible(ORG_ID, HC_ID, ADJUNTO_ID);
 		verify(adjuntos, never()).save(any());
 	}

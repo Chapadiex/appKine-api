@@ -21,7 +21,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -36,7 +35,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -80,9 +78,6 @@ class HistoriaClinicaServiceTest {
 	@Mock
 	private ClinicalSupportAccessAuditor supportAccessAuditor;
 
-	@Mock
-	private HistoriaClinicaEscrituraAparte escrituraAparte;
-
 	private HistoriaClinicaService service;
 
 	private final OperatingActor profesional = new OperatingActor(ACCOUNT_ID, false, ORG_ID, SEDE_ID);
@@ -90,7 +85,7 @@ class HistoriaClinicaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new HistoriaClinicaService(historias, antecedentes, pacientes, permissionGuard,
-				relaciones, List.of(), auditTrail, supportAccessAuditor, escrituraAparte);
+				relaciones, List.of(), auditTrail, supportAccessAuditor);
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
@@ -98,10 +93,11 @@ class HistoriaClinicaServiceTest {
 				.willReturn(true);
 		given(pacientes.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(paciente(true, true)));
 		given(historias.buscarVigentePorPersona(ORG_ID, PERSONA_ID)).willReturn(Optional.empty());
-		// El INSERT ya no lo hace el servicio: lo hace el colaborador que corre en su propia
-		// transaccion, porque un choque contra el unique marca rollbackOnly la transaccion en la
-		// que ocurre y atraparlo ahi no la des-marca.
-		given(escrituraAparte.insertar(any())).willAnswer(i -> conId(i.getArgument(0)));
+		// El INSERT no lanza nunca (INSERT IGNORE): dice si inserto, y la relectura con lock
+		// compartido devuelve la vigente.
+		given(historias.abrirSiFalta(ORG_ID, PERSONA_ID, ACCOUNT_ID)).willReturn(1);
+		given(historias.releerVigenteBloqueando(ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(historiaExistente()));
 		given(historias.save(any())).willAnswer(i -> i.getArgument(0));
 		given(antecedentes.buscarDeHistoria(anyLong(), anyLong(), any(), anyBoolean()))
 				.willReturn(List.of());
@@ -137,7 +133,7 @@ class HistoriaClinicaServiceTest {
 		HistoriaClinicaView vista = service.abrirOObtener(profesional, PERSONA_ID, null);
 
 		assertThat(vista.id()).isEqualTo(HC_ID);
-		verify(escrituraAparte, never()).insertar(any());
+		verify(historias, never()).abrirSiFalta(anyLong(), anyLong(), anyLong());
 		verify(auditTrail, never()).record(any());
 	}
 
@@ -147,20 +143,18 @@ class HistoriaClinicaServiceTest {
 		// La segunda capa de idempotencia, la unica que de verdad protege: el pre-chequeo tiene
 		// ventana de carrera y el unique de V32 no.
 		given(historias.buscarVigentePorPersona(ORG_ID, PERSONA_ID)).willReturn(Optional.empty());
-		given(escrituraAparte.releerVigente(ORG_ID, PERSONA_ID))
-				.willReturn(Optional.of(historiaExistente()));
-		willThrow(new DataIntegrityViolationException("uk_historia_clinica_persona_vigente"))
-				.given(escrituraAparte).insertar(any());
+		// La otra apertura ya inserto: el INSERT IGNORE no inserta nada, y la relectura con lock
+		// compartido ve a la ganadora aunque la foto de la transaccion sea anterior.
+		given(historias.abrirSiFalta(ORG_ID, PERSONA_ID, ACCOUNT_ID)).willReturn(0);
 
 		HistoriaClinicaView vista = service.abrirOObtener(profesional, PERSONA_ID, null);
 
 		assertThat(vista.id()).isEqualTo(HC_ID);
 		verify(auditTrail, never()).record(any());
-		// Y el INSERT NO sale de la transaccion de negocio: si saliera de ahi, el choque contra el
-		// unique la marcaria rollbackOnly y la relectura de la ganadora correria sobre una sesion
-		// muerta — 500 en vez de idempotencia. Ver HistoriaClinicaEscrituraAparte.
-		verify(escrituraAparte).insertar(any());
-		verify(historias, never()).saveAndFlush(any());
+		// La perdedora no lanza ni abre otra transaccion: un choque como excepcion marcaria la de
+		// negocio rollbackOnly, y una transaccion aparte retendria dos conexiones (docs/carga.md §8).
+		verify(historias).abrirSiFalta(ORG_ID, PERSONA_ID, ACCOUNT_ID);
+		verify(historias).releerVigenteBloqueando(ORG_ID, PERSONA_ID);
 	}
 
 	// =================================================================================
@@ -177,7 +171,7 @@ class HistoriaClinicaServiceTest {
 		assertThatThrownBy(() -> service.abrirOObtener(profesional, PERSONA_ID, null))
 				.isInstanceOf(PacienteSinPerfilVigenteException.class);
 
-		verify(escrituraAparte, never()).insertar(any());
+		verify(historias, never()).abrirSiFalta(anyLong(), anyLong(), anyLong());
 	}
 
 	@Test

@@ -2,7 +2,7 @@ package com.akine.organization.application;
 
 import com.akine.organization.spi.LimitCode;
 import com.akine.platform.spi.audit.AuditEntry;
-import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.audit.AuditoriaAparte;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,10 +10,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.lang.reflect.Method;
 
 import static com.akine.organization.application.Fixtures.ORG_ID;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,17 +17,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Registro de los rechazos por limite de plan (RF-M01-004).
  *
- * <p>Esta clase existe separada de {@code PlanGateService} por una razon estructural, y
- * {@link #el_registro_corre_en_una_transaccion_propia()} la fija: si el metodo volviera a
- * vivir en el gate, la llamada interna saltearia el proxy y {@code REQUIRES_NEW} no haria
- * nada. El rechazo quedaria escrito en el codigo y ausente en la base tras el rollback del
- * alta, que es el peor de los dos mundos.
+ * <p>El rechazo va por {@link AuditoriaAparte} y no por el {@code AuditTrail} de la transaccion:
+ * el rollback del alta rechazada se lo llevaria puesto. Que efectivamente sobreviva lo prueba
+ * {@code PoolDeConexionesIT} con el rechazo por permiso, que usa el mismo mecanismo.
  */
 @ExtendWith(MockitoExtension.class)
 class PlanLimitRejectionAuditorTest {
 
 	@Mock
-	private AuditTrail auditTrail;
+	private AuditoriaAparte auditoria;
 
 	@InjectMocks
 	private PlanLimitRejectionAuditor auditor;
@@ -39,7 +33,7 @@ class PlanLimitRejectionAuditorTest {
 	private AuditEntry registrar(Integer tope, long uso) {
 		auditor.recordRejection(ORG_ID, LimitCode.MAX_CONSULTORIOS, tope, uso);
 		ArgumentCaptor<AuditEntry> entrada = ArgumentCaptor.forClass(AuditEntry.class);
-		org.mockito.Mockito.verify(auditTrail).record(entrada.capture());
+		org.mockito.Mockito.verify(auditoria).registrar(entrada.capture());
 		return entrada.getValue();
 	}
 
@@ -77,18 +71,5 @@ class PlanLimitRejectionAuditorTest {
 
 		assertThat(evento.details()).containsOnlyKeys("limitCode", "limitValue", "currentUsage");
 		assertThat(evento.details()).containsEntry("limitValue", "null");
-	}
-
-	@Test
-	@DisplayName("El registro corre en una transaccion propia y sobrevive al rollback del alta")
-	void el_registro_corre_en_una_transaccion_propia() throws NoSuchMethodException {
-		// REQUIRES_NEW aca es la excepcion documentada a T-2, no una licencia general: sin
-		// ella el rollback del alta rechazada se llevaria puesta la fila de auditoria.
-		Method metodo = PlanLimitRejectionAuditor.class.getMethod(
-				"recordRejection", long.class, LimitCode.class, Integer.class, long.class);
-
-		assertThat(metodo.getAnnotation(Transactional.class)).isNotNull();
-		assertThat(metodo.getAnnotation(Transactional.class).propagation())
-				.isEqualTo(Propagation.REQUIRES_NEW);
 	}
 }

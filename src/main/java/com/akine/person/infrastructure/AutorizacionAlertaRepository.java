@@ -8,7 +8,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Alertas sobre autorizaciones (DP-13, AKINE C-4). Ver el javadoc del puerto.
@@ -76,4 +78,25 @@ public interface AutorizacionAlertaRepository
 	List<AutorizacionAlerta> listarDeAutorizacion(
 			@Param("organizationId") long organizationId,
 			@Param("autorizacionId") long autorizacionId);
+
+	/** Va por {@code ix_autorizacion_alerta_persona (organization_id, persona_id, ...)}. */
+	@Query("""
+			SELECT a.autorizacionId, COUNT(a) FROM AutorizacionAlerta a
+			 WHERE a.organizationId = :organizationId
+			   AND a.personaId = :personaId
+			   AND a.resueltaEn IS NULL
+			 GROUP BY a.autorizacionId
+			""")
+	List<Object[]> contarPendientesPorAutorizacion(
+			@Param("organizationId") long organizationId,
+			@Param("personaId") long personaId);
+
+	@Override
+	default Map<Long, Integer> pendientesPorAutorizacion(long organizationId, long personaId) {
+		Map<Long, Integer> pendientes = new HashMap<>();
+		for (Object[] fila : contarPendientesPorAutorizacion(organizationId, personaId)) {
+			pendientes.put(((Number) fila[0]).longValue(), ((Number) fila[1]).intValue());
+		}
+		return pendientes;
+	}
 }
