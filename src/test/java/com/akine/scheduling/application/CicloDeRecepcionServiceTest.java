@@ -211,6 +211,22 @@ class CicloDeRecepcionServiceTest {
 	}
 
 	@Test
+	@DisplayName("05.02: sin eleccion del operador vale la cobertura elegida al reservar, no la principal")
+	void validar_usa_la_cobertura_del_turno() {
+		ReflectionTestUtils.setField(turno, "coberturaId", 413L);
+		conAbierta();
+		conPractica();
+		conCoberturas(412L, 413L);
+		given(elegibilidad.evaluar(ORG, SEDE, PERSONA, 413L, PRACTICA, diaDelTurno))
+				.willReturn(new VeredictoDeElegibilidad(true, null, 9L, List.of()));
+
+		RecepcionView vista = service.validar(actor, SEDE, TURNO, null, 0L);
+
+		assertThat(vista.estado()).isEqualTo("VALIDADA");
+		assertThat(vista.coberturaId()).isEqualTo(413L);
+	}
+
+	@Test
 	@DisplayName("elegible: VALIDADA con la cobertura elegida (o la principal) y el convenio")
 	void validar_elegible() {
 		conAbierta();

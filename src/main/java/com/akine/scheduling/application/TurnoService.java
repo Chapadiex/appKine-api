@@ -6,6 +6,7 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.person.spi.CoberturasAplicablesDirectory;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
@@ -14,6 +15,7 @@ import com.akine.scheduling.domain.PermissionCodes;
 import com.akine.scheduling.domain.TipoEventoTurno;
 import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.TurnoEvento;
+import com.akine.scheduling.domain.exception.CoberturaNoAccesibleException;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
@@ -94,6 +96,7 @@ public class TurnoService {
 	private final AgendaSedeRepositoryPort agendas;
 	private final OfertaDirectory ofertas;
 	private final PacienteDirectory pacientes;
+	private final CoberturasAplicablesDirectory coberturas;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final AgendaSedeIniciador iniciador;
@@ -107,6 +110,7 @@ public class TurnoService {
 			AgendaSedeRepositoryPort agendas,
 			OfertaDirectory ofertas,
 			PacienteDirectory pacientes,
+			CoberturasAplicablesDirectory coberturas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
 			AgendaSedeIniciador iniciador,
@@ -119,6 +123,7 @@ public class TurnoService {
 		this.agendas = agendas;
 		this.ofertas = ofertas;
 		this.pacientes = pacientes;
+		this.coberturas = coberturas;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.iniciador = iniciador;
@@ -136,6 +141,8 @@ public class TurnoService {
 	 * @throws PersonaNotAccessibleException        persona inexistente en el tenant (404)
 	 * @throws OfertaNoAgendableException           oferta de baja o fuera de vigencia (409)
 	 * @throws PersonaSinPerfilPacienteException    la persona no es paciente (409)
+	 * @throws CoberturaNoAccesibleException        cobertura elegida que no es de la persona o no
+	 *                                              esta vigente el dia del turno (404)
 	 * @throws SlotNoDisponibleException            el hueco dejo de existir (409)
 	 * @throws SlotCompletoException                sin cupo (409)
 	 * @throws RecursoOcupadoException              profesional o espacio ya tomados (409)
@@ -201,6 +208,14 @@ public class TurnoService {
 
 		exigirPacienteVigente(organizationId, command.personaId());
 
+		// AKINE-05.02, "cobertura elegida". Solo pertenencia y vigencia ese dia: si aplica a la
+		// practica lo decide la recepcion (RF-M13-003), que observa sin bloquear (RN-M13-003).
+		// Rechazarlo aca por convenio haria que un arancel cargado tarde impida reservar.
+		if (command.coberturaId() != null && !coberturas.vigenteDeLaPersona(
+				organizationId, command.personaId(), command.coberturaId(), fecha)) {
+			throw new CoberturaNoAccesibleException(command.coberturaId());
+		}
+
 		// PASO 4. Los mismos controles que aplica una reprogramacion, y en el mismo lugar: las dos
 		// son escrituras de agenda. Ver RevalidadorDeSlot.
 		RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(new RevalidadorDeSlot.Pedido(
@@ -208,12 +223,13 @@ public class TurnoService {
 				command.profesionalId(), null));
 
 		Instant ahora = Instant.now();
-		Turno turno = turnos.save(new Turno(
+		Turno turno = turnos.save(conCobertura(new Turno(
 				organizationId, consultorioId, ofertaId, command.personaId(),
 				asignacion.profesionalId(), asignacion.espacioId(), inicio, fin,
 				actor.accountId(), ahora,
 				command.idempotencyKey(),
-				command.idempotencyKey() == null ? null : command.huella(consultorioId, ofertaId)));
+				command.idempotencyKey() == null ? null : command.huella(consultorioId, ofertaId)),
+				command.coberturaId()));
 
 		eventos.registrar(TurnoEvento.de(
 				turno, TipoEventoTurno.RESERVA, null, null, actor.accountId(), ahora));
@@ -332,5 +348,12 @@ public class TurnoService {
 				consultorioId,
 				null,
 				Instant.now()));
+	}
+
+	private static Turno conCobertura(Turno turno, Long coberturaId) {
+		if (coberturaId != null) {
+			turno.elegirCobertura(coberturaId);
+		}
+		return turno;
 	}
 }

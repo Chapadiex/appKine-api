@@ -9,6 +9,7 @@ import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.application.IdempotencyKeyConflictException;
 import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
+import com.akine.scheduling.domain.exception.CoberturaNoAccesibleException;
 import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
 import com.akine.scheduling.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.scheduling.domain.exception.RecepcionNotAccessibleException;
@@ -144,6 +145,12 @@ public class SchedulingProblemHandler {
 	public ProblemDetail handleTurnoNoAccesible(TurnoNotAccessibleException exception) {
 		log.debug("Turno no accesible: turnoId={}", exception.getTurnoId());
 		return noEncontrado("El turno no existe.");
+	}
+
+	@ExceptionHandler(CoberturaNoAccesibleException.class)
+	public ProblemDetail handleCoberturaNoAccesible(CoberturaNoAccesibleException exception) {
+		log.debug("Cobertura elegida no accesible: coberturaId={}", exception.getCoberturaId());
+		return noEncontrado("La cobertura no existe para esta persona o no esta vigente ese dia.");
 	}
 
 	@ExceptionHandler(PersonaNotAccessibleException.class)

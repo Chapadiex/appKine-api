@@ -36,6 +36,15 @@ public record ReservarTurnoRequest(
 		@Positive Long profesionalId,
 
 		@Schema(
+				description = "Cobertura del paciente con la que se piensa atender. Opcional: "
+						+ "omitirla es no elegir, y la recepcion usa la primera que aplique. Tiene que "
+						+ "ser una cobertura financiada, activa y vigente el dia del turno de ESA "
+						+ "persona; si no, 404 `not-found`. Si aplica a la practica lo decide la "
+						+ "recepcion, que la usa por defecto al validar.",
+				example = "412")
+		@Positive Long coberturaId,
+
+		@Schema(
 				description = "Clave del cliente para que un reintento no cree un segundo turno. "
 						+ "Reusarla con **otro** contenido devuelve 409 `idempotency-key-conflict`, "
 						+ "no el turno anterior. Omitirla desactiva la proteccion, que es legitimo "

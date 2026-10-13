@@ -23,6 +23,7 @@ public record TurnoView(
 		long ofertaId,
 		long personaId,
 		Long serieId,
+		Long coberturaId,
 		Long profesionalId,
 		Long espacioId,
 		Instant inicio,
@@ -44,6 +45,7 @@ public record TurnoView(
 				turno.getOfertaId(),
 				turno.getPersonaId(),
 				turno.getSerieId(),
+				turno.getCoberturaId(),
 				turno.getProfesionalMembershipId(),
 				turno.getEspacioId(),
 				turno.getInicio(),
@@ -61,7 +63,8 @@ public record TurnoView(
 
 	/** La misma vista con la hora de llegada de la recepcion, para el check-in deprecado de 05.04. */
 	public TurnoView conLlegada(Instant llegada) {
-		return new TurnoView(id, consultorioId, ofertaId, personaId, serieId, profesionalId, espacioId,
+		return new TurnoView(id, consultorioId, ofertaId, personaId, serieId, coberturaId, profesionalId,
+				espacioId,
 				inicio, fin, estado, reservadoEn, confirmadoEn, motivoCancelacion, canceladoEn,
 				ausenteEn, reprogramadoEn, llegada, version);
 	}

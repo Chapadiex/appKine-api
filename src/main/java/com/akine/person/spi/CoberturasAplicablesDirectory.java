@@ -50,4 +50,13 @@ public interface CoberturasAplicablesDirectory {
 	List<CoberturaNoAplicable> noAplicables(
 			long organizationId, long consultorioId, long personaId, long practicaId,
 			Long ofertaId, LocalDate fecha);
+
+	/**
+	 * {@code true} si {@code coberturaId} es una cobertura FINANCIADA, activa y vigente en
+	 * {@code fecha} de ESA persona en ESE tenant. No mira convenio ni arancel: lo usa la reserva de
+	 * un turno para aceptar la cobertura elegida (AKINE-05.02); si aplica a la practica lo decide la
+	 * recepcion el dia de la prestacion. Una cobertura de otra persona o de otro tenant da
+	 * {@code false}, igual que una inexistente.
+	 */
+	boolean vigenteDeLaPersona(long organizationId, long personaId, long coberturaId, LocalDate fecha);
 }
