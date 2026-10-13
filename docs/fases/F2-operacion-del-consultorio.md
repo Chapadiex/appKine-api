@@ -121,8 +121,8 @@ en `scheduling` (turnos) y en `activity` (clases, cuando F9 se retome).
 
 **Lo que hizo este cierre:** dos E2E contra el backend real, `e2e/flujo-sedes.spec.ts` y
 `e2e/flujo-desvinculacion.spec.ts` (web #72), que eran las dos pantallas del tramo sin E2E. Sin
-migración ni cambio de contrato. Tipados, lint y formato limpios; **no se corrieron localmente** —no
-se levantan backend ni frontend en esta máquina—, los corre el job E2E del CI.
+migración ni cambio de contrato. Tipados, lint y formato limpios. No se corrieron localmente; **el job E2E del CI de web #72 los
+corrió contra el backend real: 82 passed, 0 skipped, 0 flaky** (13/10/2026).
 
 ### Pendiente del usuario
 
