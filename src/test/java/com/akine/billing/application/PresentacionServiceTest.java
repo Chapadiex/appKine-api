@@ -884,7 +884,9 @@ class PresentacionServiceTest {
 		// Un limite de cero devolveria siempre vacio y pareceria que no hay nada que presentar, que
 		// es exactamente el sintoma mas caro de diagnosticar en esta pantalla.
 		verify(obligaciones).findElegiblesParaPresentar(
-				ORG_ID, SEDE_ID, FINANCIADOR_ID, desde, hasta, 1, 0);
+				ORG_ID, SEDE_ID, FINANCIADOR_ID,
+				// El periodo son dias de la sede (Cordoba, UTC-3), no dias UTC.
+				Instant.parse("2026-08-01T03:00:00Z"), Instant.parse("2026-09-01T03:00:00Z"), 1, 0);
 	}
 
 	@Test

@@ -262,7 +262,7 @@ class EgresoServiceTest {
 				.willReturn(Optional.of(confirmado));
 
 		assertThatThrownBy(() ->
-				service.editar(actor, CONSULTORIO_ID, EGRESO_ID, comando(null)))
+				service.editar(actor, CONSULTORIO_ID, EGRESO_ID, comando(null), confirmado.getVersion()))
 				.isInstanceOf(EgresoNoEditableException.class);
 	}
 

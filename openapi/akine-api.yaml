@@ -5355,6 +5355,8 @@ paths:
       description: |-
         Lista y filtra por fecha, categoria, beneficiario y estado (RF-M22-004).
 
+        `desde` y `hasta` son **dias de la sede**, inclusivos: se comparan contra el instante de registro en la zona horaria de la sede, asi que un egreso cargado a las 22:30 de Cordoba es de ese dia y no del siguiente.
+
         **Sin los pagos de cada fila**: traerlos seria el N+1 del primer listado que lo use. El detalle los tiene.
 
         **Los periodos superpuestos no se impiden, se muestran.** Dos liquidaciones del mismo profesional para el mismo mes son legitimas —una correccion, un segundo concepto—, y un unique sobre el periodo convertiria un caso normal en un error. Filtrar por beneficiario las pone una al lado de la otra, que es la unica respuesta honesta.
@@ -5550,6 +5552,8 @@ paths:
         **El beneficiario no se edita**: cambiarlo seria otro egreso, no una correccion de este.
 
         Una vez confirmado, 409 `egreso-no-editable`. Un importe que cambiara debajo de pagos ya asentados haria que el saldo dejara de reconciliar con el ledger de caja **sin que nada fallara**, que es la peor forma de romperse.
+
+        **Control optimista (cambio incompatible desde 0.91.0).** El cuerpo es `EditarEgreso` y lleva la `version` leida, **requerida**: si otro la cambio antes, 409 `concurrent-modification` y hay que releer. Antes el cuerpo era `RegistrarEgreso`, sin version, y dos correcciones simultaneas se pisaban en silencio. La respuesta trae la version nueva para encadenar la siguiente correccion.
       operationId: editar
       parameters:
       - in: path
@@ -5568,7 +5572,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RegistrarEgreso"
+              $ref: "#/components/schemas/EditarEgreso"
         required: true
       responses:
         "200":
@@ -5580,6 +5584,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/Egreso"
           description: Borrador corregido
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Cuerpo invalido, incluida la falta de `version`"
         "404":
           content:
             application/json:
@@ -5597,7 +5610,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: '`egreso-no-editable` o `egreso-comprobante-duplicado`'
+          description: "`egreso-no-editable`, `egreso-comprobante-duplicado` o `concurrent-modification`\
+            \ (la version quedo vieja)"
       summary: Corregir el borrador
       tags:
       - Egresos
@@ -8361,6 +8375,8 @@ paths:
         Lista las deudas de financiador pendientes de un periodo (RF-M21-001).
 
         Ya vienen filtradas: deja afuera las anuladas, las sin saldo y **las que ya estan vivas en otro lote**, de modo que armar el reclamo no pueda duplicar una prestacion (RN-M21-003).
+
+        `desde` y `hasta` son **dias de la sede**, inclusivos: el devengamiento se compara en la zona horaria de la sede, la misma con la que se congela la fecha de prestacion del item.
 
         Desde AKINE F-4 el cierre de una sesion con cobertura devenga, ademas de la del paciente, la obligacion del financiador con el convenio congelado, y es esa la que aparece aca. La lista vacia significa que en el periodo no hubo prestaciones con cobertura de ese financiador pendientes de reclamar.
       operationId: elegibles
@@ -25015,6 +25031,72 @@ components:
       required:
       - diagnosticoPresuntivo
       - expectedVersion
+    EditarEgreso:
+      type: object
+      description: "Correccion del borrador. Lleva la `version` que el cliente leyo:\
+        \ si otro la cambio antes, 409 `concurrent-modification`."
+      properties:
+        categoria:
+          type: string
+          description: En que se fue la plata. Filtra y totaliza (RF-M22-004).
+          enum:
+          - HONORARIOS_PROFESIONALES
+          - SUELDOS
+          - ALQUILER
+          - SERVICIOS
+          - INSUMOS
+          - IMPUESTOS
+          - MANTENIMIENTO
+          - OTRO
+          example: HONORARIOS_PROFESIONALES
+        comprobanteFecha:
+          type: string
+          format: date
+          example: 2026-10-03
+        comprobanteNumero:
+          type: string
+          description: "El mismo comprobante del mismo beneficiario no se carga dos\
+            \ veces: 409 `egreso-comprobante-duplicado`."
+          example: 0001-00000123
+          maxLength: 40
+          minLength: 0
+        comprobanteTipo:
+          type: string
+          description: Tipo de comprobante. **Opcional en borrador y obligatorio para
+            confirmar**.
+          example: FACTURA_C
+          maxLength: 24
+          minLength: 0
+        concepto:
+          type: string
+          example: Honorarios de septiembre 2026
+          maxLength: 280
+          minLength: 0
+        importeTotal:
+          type: number
+          description: "Decimal exacto, nunca float."
+          example: 185000.0
+          minimum: 0.01
+        periodoDesde:
+          type: string
+          format: date
+          description: Periodo liquidado. Los dos o ninguno.
+          example: 2026-09-01
+        periodoHasta:
+          type: string
+          format: date
+          example: 2026-09-30
+        version:
+          type: integer
+          format: int64
+          description: Version que el cliente leyo. **Requerida.**
+          example: 0
+          minimum: 0
+      required:
+      - categoria
+      - concepto
+      - importeTotal
+      - version
     EffectivePermissionsResponse:
       type: object
       description: Permisos efectivos de la cuenta en su contexto de trabajo activo
