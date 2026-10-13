@@ -97,6 +97,10 @@ public class PresentacionController {
 					estan vivas en otro lote**, de modo que armar el reclamo no pueda duplicar una \
 					prestacion (RN-M21-003).
 
+					`desde` y `hasta` son **dias de la sede**, inclusivos: el devengamiento se \
+					compara en la zona horaria de la sede, la misma con la que se congela la \
+					fecha de prestacion del item.
+
 					Desde AKINE F-4 el cierre de una sesion con cobertura devenga, ademas de la \
 					del paciente, la obligacion del financiador con el convenio congelado, y es \
 					esa la que aparece aca. La lista vacia significa que en el periodo no hubo \

@@ -3,7 +3,7 @@ package com.akine.billing.domain.port;
 import com.akine.billing.domain.Egreso;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,6 +21,13 @@ import java.util.Optional;
 public interface EgresoRepositoryPort {
 
 	Egreso save(Egreso egreso);
+
+	/**
+	 * Empuja la edicion pendiente para que {@code @Version} avance <b>antes</b> de armar la
+	 * respuesta: sin esto la correccion del borrador devolveria la version leida y la siguiente
+	 * correccion de la misma pantalla moriria en un 409 que no culpa a nadie.
+	 */
+	void flush();
 
 	Optional<Egreso> findByIdInScope(long organizationId, long consultorioId, long egresoId);
 
@@ -43,12 +50,14 @@ public interface EgresoRepositoryPort {
 	 * @param estado             {@code null} no filtra
 	 * @param categoria          {@code null} no filtra
 	 * @param beneficiarioClave  {@code null} no filtra
-	 * @param desde / hasta      recorte por {@code registrado_en}; {@code null} no filtra
+	 * @param desde / hasta      recorte por {@code registrado_en} en el rango semiabierto
+	 *                           {@code [desde, hasta)}: el dia de la sede ya convertido a
+	 *                           instantes ({@code CajaAcceso.inicioDelDia}); {@code null} no filtra
 	 */
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	List<Egreso> buscar(
 			long organizationId, long consultorioId, String estado, String categoria,
-			String beneficiarioClave, LocalDate desde, LocalDate hasta,
+			String beneficiarioClave, Instant desde, Instant hasta,
 			int limite, int desplazamiento);
 
 	/**

@@ -266,6 +266,46 @@ class ObligacionDelFinanciadorIT {
 				f.financiador(), null, null, 50, 0)).isEmpty();
 	}
 
+	/**
+	 * El periodo de la bandeja son dias de la sede, no dias UTC. Una prestacion devengada a las
+	 * 22:30 de Cordoba del 9/10 es 01:30Z del 10/10: con {@code DATE(devengada_en)} caia en el 10 y
+	 * desaparecia del periodo que termina el 9, que es justo el corte de fin de mes de un reclamo.
+	 */
+	@Test
+	@DisplayName("la bandeja de elegibles corta el periodo en el dia de la sede, no en el UTC")
+	void elegibles_por_dia_de_la_sede() {
+		Fixture f = crearFixture(true);
+		long sesion = insertarSesion(f);
+		tratar(f, sesion, f.kine());
+		cerrar(f, sesion);
+		long financiadorObligacion = ((Number) obligacionesDe(sesion).get(0).get("id")).longValue();
+		LocalDate dia = LocalDate.of(2026, 10, 9);
+		Instant nocheDeCordoba = dia.atTime(22, 30).atZone(ZoneId.of(ZONA)).toInstant();
+		// Como texto UTC y no como Timestamp: sin depender de la zona de la JVM ni del driver.
+		jdbc.update("UPDATE obligacion SET devengada_en = ? WHERE id = ?",
+				nocheDeCordoba.toString().replace("T", " ").replace("Z", ""), financiadorObligacion);
+		assertThat(jdbc.queryForObject(
+				"SELECT DATE_FORMAT(devengada_en, '%Y-%m-%d %H:%i') FROM obligacion WHERE id = ?",
+				String.class, financiadorObligacion))
+				.as("la columna guarda UTC: el dia UTC ya es el siguiente")
+				.isEqualTo("2026-10-10 01:30");
+
+		assertThat(presentacionService.elegibles(
+				f.administrativo(), f.consultorioId(), f.financiador(), null, dia, 50, 0))
+				.extracting(ObligacionView::id)
+				.as("hasta = ese dia la incluye")
+				.containsExactly(financiadorObligacion);
+		assertThat(presentacionService.elegibles(
+				f.administrativo(), f.consultorioId(), f.financiador(), dia, dia, 50, 0))
+				.extracting(ObligacionView::id)
+				.containsExactly(financiadorObligacion);
+		assertThat(presentacionService.elegibles(
+				f.administrativo(), f.consultorioId(), f.financiador(),
+				dia.plusDays(1), null, 50, 0))
+				.as("y desde = el dia siguiente ya no")
+				.isEmpty();
+	}
+
 	@Test
 	@DisplayName("el reporte de financiadores suma lo prestado y apaga la advertencia")
 	void aparece_en_el_reporte_de_financiadores() {

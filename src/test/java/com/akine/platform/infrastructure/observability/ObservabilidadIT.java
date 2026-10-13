@@ -1,6 +1,14 @@
 package com.akine.platform.infrastructure.observability;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -84,6 +92,39 @@ class ObservabilidadIT {
 				.contains("uri=\"/api/v1/version\"")
 				.contains("application=\"akine-api\"")
 				.doesNotContain("organizationId", "requestId", "it-correlacion");
+	}
+
+	@Test
+	@DisplayName("toda metrica que usan las alertas y el tablero de ops/observabilidad existe en el scrape")
+	void las_alertas_y_el_tablero_leen_metricas_que_existen() throws IOException {
+		restTestClient.get().uri("/api/v1/version").exchange().expectStatus().isOk();
+		String scrape = restTestClient.get().uri("/actuator/prometheus")
+				.exchange()
+				.expectStatus().isOk()
+				.expectBody(String.class)
+				.returnResult()
+				.getResponseBody();
+
+		// Una regla sobre una metrica que no existe no dispara nunca: es el fallo silencioso que
+		// este test cierra. `up` lo genera Prometheus, no la aplicacion; los `akine:*` son las
+		// reglas de grabacion del mismo archivo.
+		Pattern metrica = Pattern.compile(
+				"\\b((?:http_server_requests_seconds|hikaricp|jvm|process|tomcat|logback)_[a-z_]+)\\b");
+		Set<String> usadas = new TreeSet<>();
+		for (String archivo : List.of("ops/observabilidad/alertas-akine-api.yml",
+				"ops/observabilidad/tablero-akine-api.json")) {
+			Matcher m = metrica.matcher(
+					Files.readString(Path.of(archivo)));
+			while (m.find()) {
+				usadas.add(m.group(1));
+			}
+		}
+
+		assertThat(usadas).as("el regex encontro las metricas de los dos archivos")
+				.contains("http_server_requests_seconds_bucket", "hikaricp_connections_pending");
+		assertThat(usadas).allSatisfy(nombre -> assertThat(scrape)
+				.as("la metrica %s no esta en /actuator/prometheus", nombre)
+				.containsPattern("(?m)^" + nombre + "[{ ]"));
 	}
 
 	@Test

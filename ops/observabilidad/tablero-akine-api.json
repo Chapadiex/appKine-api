@@ -1,0 +1,92 @@
+{
+  "title": "akine-api — RED, SLO y capacidad",
+  "uid": "akine-api",
+  "description": "Tablero de akine-api (cierre de F8, 07.08). Fuente: el scrape de docs/observabilidad.md §3. Umbrales de ADR-0016. Las alertas viven en alertas-akine-api.yml.",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus", "label": "Prometheus" }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Pedidos por segundo, por status",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{status}}",
+          "expr": "sum by (status) (rate(http_server_requests_seconds_count{application=\"akine-api\"}[5m]))" }
+      ]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Fracción de 5xx (alerta > 1 %)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit",
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.01 } ] } } },
+      "targets": [
+        { "refId": "A", "legendFormat": "5xx",
+          "expr": "sum(rate(http_server_requests_seconds_count{application=\"akine-api\", status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{application=\"akine-api\"}[5m])), 1e-9)" }
+      ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Latencia de la API interactiva: p50, p95 (SLO 300 ms), p99 (SLO 800 ms)",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s",
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.3 }, { "color": "red", "value": 0.8 } ] } } },
+      "targets": [
+        { "refId": "A", "legendFormat": "p50",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"akine-api\", uri!~\".*(/export|/contenido|/actuator/.*)\"}[5m])))" },
+        { "refId": "B", "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"akine-api\", uri!~\".*(/export|/contenido|/actuator/.*)\"}[5m])))" },
+        { "refId": "C", "legendFormat": "p99",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"akine-api\", uri!~\".*(/export|/contenido|/actuator/.*)\"}[5m])))" }
+      ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Pedidos dentro de 300 ms (última hora)",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" } },
+      "targets": [
+        { "refId": "A",
+          "expr": "sum(rate(http_server_requests_seconds_bucket{application=\"akine-api\", le=\"0.3\", uri!~\".*(/export|/contenido|/actuator/.*)\"}[1h])) / clamp_min(sum(rate(http_server_requests_seconds_count{application=\"akine-api\", uri!~\".*(/export|/contenido|/actuator/.*)\"}[1h])), 1e-9)" }
+      ]
+    },
+    {
+      "id": 5, "type": "table", "title": "Los diez endpoints más lentos (p95, 15 min)",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "refId": "A", "instant": true, "format": "table",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (le, method, uri) (rate(http_server_requests_seconds_bucket{application=\"akine-api\"}[15m]))))" }
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Pool de Hikari: activas, ociosas, en espera y máximo",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "activas", "expr": "sum(hikaricp_connections_active{application=\"akine-api\"})" },
+        { "refId": "B", "legendFormat": "ociosas", "expr": "sum(hikaricp_connections_idle{application=\"akine-api\"})" },
+        { "refId": "C", "legendFormat": "en espera", "expr": "sum(hikaricp_connections_pending{application=\"akine-api\"})" },
+        { "refId": "D", "legendFormat": "máximo", "expr": "sum(hikaricp_connections_max{application=\"akine-api\"})" }
+      ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "JVM: heap usado / máximo y CPU del proceso",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "heap usado / máx",
+          "expr": "sum(jvm_memory_used_bytes{application=\"akine-api\", area=\"heap\"}) / sum(jvm_memory_max_bytes{application=\"akine-api\", area=\"heap\"})" },
+        { "refId": "B", "legendFormat": "CPU del proceso", "expr": "max(process_cpu_usage{application=\"akine-api\"})" }
+      ]
+    }
+  ]
+}
