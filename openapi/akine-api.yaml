@@ -770,7 +770,7 @@ paths:
 
         La cuenta nace PENDIENTE_ACTIVACION. Hasta confirmar el enlace, el login responde 401 igual que con una contrasena incorrecta.
 
-        El header Idempotency-Key es obligatorio. Reintentar el alta con la misma clave devuelve el mismo desenlace sin crear una segunda cuenta ni mandar un segundo correo; el cliente debe generarlo una vez al abrir el formulario y reusarlo en cada reintento.
+        El header Idempotency-Key es obligatorio. Reintentar el alta con la misma clave devuelve el mismo desenlace sin crear una segunda cuenta ni mandar un segundo correo; el cliente debe generarlo una vez al abrir el formulario y reusarlo en cada reintento. Reusar la clave con OTRO contenido no es un reintento: responde 409 idempotency-key-conflict. La contrasena no entra en esa comparacion.
 
         Los rechazos posibles no dicen nada sobre el email: 400 por contrasena que no cumple la politica o por campos ausentes, 404 por un planCode que no existe o ya no se contrata, y 409 por un organizationSlug ya tomado. Los tres se evaluan ANTES de mirar si el email tiene cuenta, justamente para que la respuesta sea la misma en los dos casos: validarlos despues convertiria el endpoint en un verificador de direcciones de correo.
       operationId: registerAccount
@@ -815,8 +815,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El organizationSlug pedido ya lo usa otro tenant. Misma respuesta
-            exista o no la cuenta
+          description: "El organizationSlug pedido ya lo usa otro tenant (organization-slug-taken),\
+            \ o la Idempotency-Key ya se uso con otro contenido (idempotency-key-conflict).\
+            \ Misma respuesta exista o no la cuenta"
         "429":
           content:
             application/problem+json:
@@ -7891,60 +7892,6 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: '`presentacion-no-editable` o `presentacion-con-hallazgos`'
       summary: Confirmar el envio del lote
-      tags:
-      - Presentaciones
-  /api/v1/consultorios/{consultorioId}/presentaciones/{presentacionId}/export:
-    get:
-      description: |-
-        El detalle del lote —cabecera con los cuatro importes y una fila por prestacion— como archivo CSV (AKINE-07.04, listados exportables).
-
-        Serializa **la misma vista** que el detalle: no tiene consulta propia, asi que el archivo y la pantalla no pueden decir cosas distintas.
-
-        **PHI minima** (RNF-M21-001): cada fila lleva el `personaId` y el concepto congelado, no el nombre ni el documento del paciente. Una celda que una planilla tomaria por formula sale con un apostrofo delante.
-      operationId: exportarPresentacion
-      parameters:
-      - in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - in: path
-        name: presentacionId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      responses:
-        "200":
-          content:
-            application/problem+json:
-              schema:
-                type: string
-            text/csv:
-              schema:
-                type: string
-          description: El archivo CSV
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            text/csv:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin `cobro:register` en esa sede, o sin contexto de trabajo\
-            \ activo"
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            text/csv:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: La presentacion no existe
-      summary: Exportar un lote a CSV
       tags:
       - Presentaciones
   /api/v1/consultorios/{consultorioId}/presentaciones/{presentacionId}/factura:

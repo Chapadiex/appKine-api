@@ -5,6 +5,7 @@ import com.akine.identity.api.dto.ActivateAccountRequest;
 import com.akine.identity.api.dto.RegisterAccountRequest;
 import com.akine.identity.api.dto.ResendActivationRequest;
 import com.akine.identity.application.AccountActivationService;
+import com.akine.identity.application.HuellaDeRegistro;
 import com.akine.identity.application.OnboardingService;
 import com.akine.identity.application.RegistroCuentaCommand;
 import com.akine.identity.application.ResultadoRegistro;
@@ -104,7 +105,9 @@ public class AccountRegistrationController {
 					El header Idempotency-Key es obligatorio. Reintentar el alta con la misma \
 					clave devuelve el mismo desenlace sin crear una segunda cuenta ni mandar un \
 					segundo correo; el cliente debe generarlo una vez al abrir el formulario y \
-					reusarlo en cada reintento.
+					reusarlo en cada reintento. Reusar la clave con OTRO contenido no es un \
+					reintento: responde 409 idempotency-key-conflict. La contrasena no entra en \
+					esa comparacion.
 
 					Los rechazos posibles no dicen nada sobre el email: 400 por contrasena que \
 					no cumple la politica o por campos ausentes, 404 por un planCode que no \
@@ -135,8 +138,10 @@ public class AccountRegistrationController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "El organizationSlug pedido ya lo usa otro tenant. Misma "
-							+ "respuesta exista o no la cuenta",
+					description = "El organizationSlug pedido ya lo usa otro tenant "
+							+ "(organization-slug-taken), o la Idempotency-Key ya se uso con otro "
+							+ "contenido (idempotency-key-conflict). Misma respuesta exista o no "
+							+ "la cuenta",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -162,9 +167,16 @@ public class AccountRegistrationController {
 
 		ResultadoRegistro resultado = onboardingService.registrar(new RegistroCuentaCommand(
 				idempotencyKey,
-				// requestHash null: la deduplicacion por contenido no se implementa en 01.02.
-				// La clave sola ya impide el doble submit, que es el caso real.
-				null,
+				// Escenario 7b: sin el hash, la misma clave con otro contenido respondia el 202
+				// del pedido original. Sin la contrasena: ver HuellaDeRegistro.
+				HuellaDeRegistro.de(
+						request.email(),
+						request.firstName(),
+						request.lastName(),
+						request.organizationName(),
+						request.organizationSlug(),
+						request.consultorioName(),
+						request.planCode()),
 				request.email(),
 				request.password(),
 				request.firstName(),
