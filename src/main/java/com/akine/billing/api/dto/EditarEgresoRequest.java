@@ -15,7 +15,7 @@ import java.time.LocalDate;
 /**
  * Correccion de un egreso en {@code BORRADOR} (RF-M22-001).
  *
- * <p>Antes del contrato 0.87.0 la correccion reusaba {@link RegistrarEgresoRequest} y no pedia
+ * <p>Antes del contrato 0.91.0 la correccion reusaba {@link RegistrarEgresoRequest} y no pedia
  * {@code version}: dos administrativos editando el mismo borrador se pisaban y ganaba el ultimo,
  * sin 409. Este cuerpo lleva solo lo que la correccion efectivamente cambia —el beneficiario, la
  * moneda y la clave de idempotencia no se editan— mas la version leida.

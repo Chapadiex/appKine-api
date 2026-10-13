@@ -140,7 +140,7 @@ public class EgresoController {
 					pagos ya asentados haria que el saldo dejara de reconciliar con el ledger de \
 					caja **sin que nada fallara**, que es la peor forma de romperse.
 
-					**Control optimista (cambio incompatible desde 0.87.0).** El cuerpo es \
+					**Control optimista (cambio incompatible desde 0.91.0).** El cuerpo es \
 					`EditarEgreso` y lleva la `version` leida, **requerida**: si otro la cambio \
 					antes, 409 `concurrent-modification` y hay que releer. Antes el cuerpo era \
 					`RegistrarEgreso`, sin version, y dos correcciones simultaneas se pisaban en \
