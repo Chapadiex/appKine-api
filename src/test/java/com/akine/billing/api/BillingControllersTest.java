@@ -26,6 +26,7 @@ import com.akine.billing.application.FinanciadorPagoService;
 import com.akine.billing.application.MovimientoCajaService;
 import com.akine.billing.application.ObligacionService;
 import com.akine.billing.application.PagoEgresoService;
+import com.akine.billing.application.PresentacionCsv;
 import com.akine.billing.application.PresentacionService;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import com.akine.testsupport.Fixture;
@@ -71,7 +72,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest({CajaController.class, CobroController.class, EgresoController.class,
 		ObligacionController.class, PresentacionController.class})
-@Import({SliceDeController.Seguridad.class, BillingApiActor.class,
+@Import({SliceDeController.Seguridad.class, BillingApiActor.class, PresentacionCsv.class,
 		BillingControllersTest.Servicios.class})
 class BillingControllersTest extends SliceRestDeModulo {
 
@@ -154,6 +155,7 @@ class BillingControllersTest extends SliceRestDeModulo {
 				op("POST", "/presentaciones/11/anulacion", AnularPresentacionRequest.class, 200),
 				op("GET", "/presentaciones?financiadorId=3", null, 200),
 				op("GET", "/presentaciones/11", null, 200),
+				op("GET", "/presentaciones/11/export", null, 200),
 				op("GET", "/financiadores/3/cuenta-corriente", null, 200));
 	}
 
@@ -185,6 +187,18 @@ class BillingControllersTest extends SliceRestDeModulo {
 		verify(presentaciones).buscar(any(), eq(7L), eq("CONFIRMADA"), eq(3L),
 				eq(LocalDate.of(2026, 9, 1)), isNull(), eq(10), eq(20));
 		verify(presentaciones).elegibles(any(), eq(7L), eq(3L), isNull(), isNull(), eq(50), eq(0));
+	}
+
+	@Test
+	@DisplayName("el export de un lote es un CSV adjunto que serializa el mismo detalle")
+	void export_de_presentacion() throws Exception {
+		mockMvc.perform(get(SEDE + "/presentaciones/11/export").with(miembro()))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Content-Type", "text/csv;charset=UTF-8"))
+				.andExpect(header().string("Content-Disposition",
+						org.hamcrest.Matchers.startsWith("attachment; filename=\"presentacion-")));
+
+		verify(presentaciones).detalle(any(), eq(7L), eq(11L));
 	}
 
 	@Test

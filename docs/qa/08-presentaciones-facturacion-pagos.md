@@ -182,3 +182,29 @@ GROUP BY p.financiador_id;
 ```
 
 Esperado: los mismos totales que muestra la pantalla.
+
+---
+
+### PRE-10 · Exportar el lote a CSV — sólo API (contrato 0.95.0)
+
+**Todavía sin botón:** el cliente del frontend se regenera después de que este contrato entre a
+`main`. Mientras tanto, por API con el token del administrativo:
+
+```
+GET /api/v1/consultorios/{sede_a}/presentaciones/{presentacion}/export
+```
+
+Esperado: 200 `text/csv;charset=UTF-8` con `Content-Disposition: attachment;
+filename="presentacion-{financiadorId}-{numero}.csv"`. La cabecera repite los cuatro importes que
+devuelve `GET .../presentaciones/{presentacion}` y hay **una fila por ítem**, incluido el
+`DEBITADO` de PRE-06 con su motivo. **PHI mínima:** las filas llevan `personaId`, nunca nombre ni
+documento. Un concepto o motivo que empiece con `=`, `+`, `-` o `@` sale con un apóstrofo delante.
+Con el token del tenant B, el mismo pedido da **404**, nunca 403.
+
+```sql
+SELECT COUNT(*) AS items, SUM(importe_presentado) AS presentado FROM presentacion_item
+WHERE presentacion_id = @presentacion;
+```
+
+Esperado: tantas filas de detalle como `items`, y la suma de la columna "Importe presentado" igual a
+`presentado`.
