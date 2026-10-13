@@ -410,6 +410,23 @@ Así que lo que falta acá **es todo lo que hace que los números sean los núme
 leerlo como lo que es: sin estos escenarios, el reporte está verificado como mecanismo y **no como
 contador**.
 
+> **Corridos el 13/10/2026 (cierre de F8): 49, 50, 51 y 53 en verde**, en
+> `reporting/ReportesContraElMotorIT` (5 casos, MySQL de Testcontainers), entrando por
+> `ReporteService` con cobros registrados por `CobroService` sobre una caja abierta por
+> `CajaService`. **49:** dos tenants con turnos y cobros en el mismo periodo; cada uno ve sólo lo
+> suyo en turnos, devengado, cobrado, caja y conciliación (el 404 de la sede ajena ya lo prueba
+> `ReporteReadIT`). Cubre las secciones `turnos` y `economia`; `sesiones`, `casos` y
+> `financiadores` no tienen un caso de dos tenants. **50:** efectivo, mixto (efectivo + débito)
+> y crédito: cobrado 25.500, efectivo 13.500 en las dos puntas, diferencia **0**. **51:** el turno
+> de las 21:30 de Córdoba cae en su día, y el mismo instante en una sede de Tokio cae en el
+> siguiente; el caso degradado (motor sin tablas de zonas) **no** se corrió, porque vaciarlas
+> rompe el contenedor que comparten los ITs. **53:** con turnos a 00:00:00.000000 del `desde`,
+> 23:59:59.999999 del `hasta`, el microsegundo anterior y la medianoche siguiente, entran
+> exactamente los dos de adentro; la fecha de negocio de la caja entra por su día y no por el
+> siguiente. **52 sigue sin correr:** un `EXPLAIN` sobre las pocas filas de un IT elige `ALL`
+> aunque el índice exista; lo que hay es la corrida de carga de `docs/carga.md`, donde el reporte
+> cumple con 500 usuarios en lecturas (§5, corrida 2b).
+
 | # | Escenario | Por qué sólo se puede probar contra el motor | Etapa destino |
 |---|---|---|---|
 | 49 | **Aislamiento de tenant de las quince agregaciones.** Dos organizaciones con datos en el mismo rango de fechas: los totales del tenant A no pueden incluir una sola fila de B, en ninguno de los cinco reportes. Y la sede de otro tenant tiene que dar **404, nunca 403** | Es **la peor falla posible de un producto multi-tenant y la más silenciosa**: una agregación que se olvida del filtro no falla, devuelve un número más grande, y no hay forma de notarlo sin datos de dos tenants en la misma base. Un mock nunca lo va a mostrar. `AGENT.md` §6 lo exige en cada IT | **Primera sesión con Docker** |

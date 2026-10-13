@@ -1,0 +1,97 @@
+# Reglas de alerta de Prometheus para akine-api (cierre de F8, 07.08).
+#
+# Se cargan con `rule_files: [alertas-akine-api.yml]` en prometheus.yml, con el scrape de
+# docs/observabilidad.md §3. Los umbrales salen de ADR-0016 (p95 <= 300 ms, p99 <= 800 ms,
+# disponibilidad 99,5 % mensual) y de los hallazgos de carga de docs/carga.md (el pool de
+# Hikari es lo primero que se satura). Cada alerta lleva el runbook que la atiende en
+# docs/operaciones/runbooks.md.
+#
+# Los nombres de metricas los verifica ObservabilidadIT contra un /actuator/prometheus real:
+# una regla sobre una metrica que no existe no dispara nunca, y nadie se entera.
+#
+# Las exportaciones (`/reportes/{reporte}/export`) y la descarga de adjuntos quedan fuera de la latencia,
+# como pide ADR-0016: no son API interactiva.
+groups:
+  - name: akine-api-slo
+    rules:
+      - record: akine:http_interactivo:p95_5m
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{application="akine-api", uri!~".*(/export|/contenido|/actuator/.*)"}[5m])))
+      - record: akine:http_interactivo:p99_5m
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{application="akine-api", uri!~".*(/export|/contenido|/actuator/.*)"}[5m])))
+      - record: akine:http:fraccion_5xx_5m
+        expr: |
+          sum(rate(http_server_requests_seconds_count{application="akine-api", status=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_server_requests_seconds_count{application="akine-api"}[5m])), 1e-9)
+
+      - alert: AkineLatenciaP95FueraDeSlo
+        expr: akine:http_interactivo:p95_5m > 0.3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 de la API interactiva {{ $value | humanizeDuration }} (SLO 300 ms, ADR-0016)"
+          runbook: "docs/carga.md §8 (capacidad medida y qué queda abierto)"
+
+      - alert: AkineLatenciaP99FueraDeSlo
+        expr: akine:http_interactivo:p99_5m > 0.8
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "p99 de la API interactiva {{ $value | humanizeDuration }} (SLO 800 ms, ADR-0016)"
+          runbook: "docs/carga.md §8; volcado de hilos durante el pico"
+
+      - alert: AkineErrores5xx
+        expr: akine:http:fraccion_5xx_5m > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value | humanizePercentage }} de respuestas 5xx en 5 minutos"
+          runbook: "docs/operaciones/runbooks.md R5 (correlación por X-Request-Id / traceId)"
+
+  - name: akine-api-capacidad
+    rules:
+      - alert: AkinePoolDeConexionesConCola
+        expr: max(hikaricp_connections_pending{application="akine-api"}) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} pedidos esperando conexion del pool de Hikari"
+          runbook: "docs/carga.md §6.1 y §8: ráfagas cortas son esperables con 500 usuarios; sostenido es saturación"
+
+      - alert: AkinePoolDeConexionesAgotado
+        expr: |
+          max(hikaricp_connections_active{application="akine-api"})
+            >= max(hikaricp_connections_max{application="akine-api"})
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pool de Hikari al 100 % durante 5 minutos"
+          runbook: "docs/carga.md §6.1; volcado de hilos (kill -3) antes de reiniciar"
+
+      - alert: AkineHeapAlto
+        expr: |
+          sum(jvm_memory_used_bytes{application="akine-api", area="heap"})
+            / sum(jvm_memory_max_bytes{application="akine-api", area="heap"}) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Heap de la JVM sobre el 90 % durante 10 minutos"
+          runbook: "docs/operaciones/runbooks.md R5; heap dump antes de reiniciar"
+
+  - name: akine-api-disponibilidad
+    rules:
+      - alert: AkineApiCaida
+        expr: up{job="akine-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus no puede leer /actuator/prometheus de {{ $labels.instance }}"
+          runbook: "docs/operaciones/runbooks.md R1 y docs/operaciones/smoke-post-deploy.md"
