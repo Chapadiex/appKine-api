@@ -151,7 +151,7 @@ class RegistroUniformeIT extends BaseEscenarioDiferido {
 	// =================================================================================
 
 	@Test
-	@DisplayName("Misma Idempotency-Key con emails distintos y en paralelo: 202 a los dos, nunca 500")
+	@DisplayName("Misma Idempotency-Key con emails distintos y en paralelo: un 202 y un 409, nunca 500")
 	void la_misma_clave_con_emails_distintos_no_da_500() {
 		String clave = UUID.randomUUID().toString();
 
@@ -167,20 +167,17 @@ class RegistroUniformeIT extends BaseEscenarioDiferido {
 				Concurrencia.enParalelo(List.of(uno, otro));
 
 		assertThat(resultados.stream().map(r -> r.valor().status()).toList())
-				.as("el 202 uniforme de ADR-0018 vale tambien bajo concurrencia. Respuestas: %s",
+				.as("desde el 7b, la misma clave con otro contenido es conflicto tambien bajo "
+						+ "concurrencia: el ganador recibe 202 y el perdedor 409, nunca 500. Respuestas: %s",
 						describir(resultados))
-				.containsExactly(202, 202);
-		assertThat(resultados.stream().map(r -> r.valor().body()).distinct().count())
-				.as("y con el mismo cuerpo: %s", describir(resultados))
-				.isEqualTo(1);
-
+				.containsExactlyInAnyOrder(202, 409);
 		assertThat(contarOnboardingsDeOrganizacion(clave))
 				.as("una sola alta compuesta para esa clave")
 				.isEqualTo(1);
 	}
 
 	@Test
-	@DisplayName("Secuencial: la misma clave con otro email responde 202 y no crea un segundo tenant")
+	@DisplayName("Secuencial: la misma clave con otro email responde 409 y no crea un segundo tenant")
 	void la_misma_clave_secuencial_no_crea_un_segundo_tenant() {
 		String clave = UUID.randomUUID().toString();
 		long organizacionesAntes = contarFilas("organization");
@@ -192,8 +189,8 @@ class RegistroUniformeIT extends BaseEscenarioDiferido {
 
 		assertThat(primera.status()).isEqualTo(202);
 		assertThat(segunda.status())
-				.as("el replay por clave se acusa igual: %s", segunda.body())
-				.isEqualTo(202);
+				.as("misma clave con otro contenido no es un replay (escenario 7b): %s", segunda.body())
+				.isEqualTo(409);
 		assertThat(contarFilas("organization"))
 				.as("una sola organizacion para esa clave")
 				.isEqualTo(organizacionesAntes + 1);

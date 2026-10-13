@@ -11,6 +11,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.Objects;
 
 /**
  * Registro de idempotencia del alta self-service, del lado de {@code identity} (ADR-0008).
@@ -53,6 +54,13 @@ public class OnboardingRegistro {
 	@Column(name = "estado", nullable = false, length = 20, updatable = false)
 	private EstadoOnboarding estado;
 
+	/**
+	 * SHA-256 del payload canonico del alta, sin la contrasena (V87), o {@code null} si no es
+	 * comparable: filas anteriores a la columna, o un alta que no vino por HTTP.
+	 */
+	@Column(name = "request_hash", length = 64, updatable = false)
+	private String requestHash;
+
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -67,6 +75,7 @@ public class OnboardingRegistro {
 			Long organizationId,
 			Long consultorioId,
 			EstadoOnboarding estado,
+			String requestHash,
 			Instant createdAt) {
 		this.claveIdempotencia = claveIdempotencia;
 		this.emailNormalizado = emailNormalizado;
@@ -74,6 +83,7 @@ public class OnboardingRegistro {
 		this.organizationId = organizationId;
 		this.consultorioId = consultorioId;
 		this.estado = estado;
+		this.requestHash = requestHash;
 		this.createdAt = createdAt;
 	}
 
@@ -84,9 +94,10 @@ public class OnboardingRegistro {
 			Long cuentaId,
 			Long organizationId,
 			Long consultorioId,
+			String requestHash,
 			Instant ahora) {
 		return new OnboardingRegistro(claveIdempotencia, emailNormalizado, cuentaId,
-				organizationId, consultorioId, EstadoOnboarding.COMPLETADO, ahora);
+				organizationId, consultorioId, EstadoOnboarding.COMPLETADO, requestHash, ahora);
 	}
 
 	/**
@@ -95,9 +106,19 @@ public class OnboardingRegistro {
 	 * ajeno aca convertiria esta tabla en un indice de que direcciones estan registradas.
 	 */
 	public static OnboardingRegistro duplicado(
-			String claveIdempotencia, String emailNormalizado, Instant ahora) {
+			String claveIdempotencia, String emailNormalizado, String requestHash, Instant ahora) {
 		return new OnboardingRegistro(claveIdempotencia, emailNormalizado, null, null, null,
-				EstadoOnboarding.DUPLICADO, ahora);
+				EstadoOnboarding.DUPLICADO, requestHash, ahora);
+	}
+
+	/**
+	 * Si el pedido con hash {@code candidato} es el mismo que dejo este registro.
+	 *
+	 * <p>Sin hash de un lado o del otro no hay nada que comparar y se acepta el replay, como
+	 * antes de V87: inventar un conflicto ahi romperia el reintento de un alta vieja.
+	 */
+	public boolean matchesRequestHash(String candidato) {
+		return requestHash == null || candidato == null || Objects.equals(requestHash, candidato);
 	}
 
 	@PrePersist
@@ -133,6 +154,10 @@ public class OnboardingRegistro {
 
 	public EstadoOnboarding getEstado() {
 		return estado;
+	}
+
+	public String getRequestHash() {
+		return requestHash;
 	}
 
 	public Instant getCreatedAt() {

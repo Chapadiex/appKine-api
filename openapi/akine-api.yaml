@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.90.0
+  version: 0.91.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -770,7 +770,7 @@ paths:
 
         La cuenta nace PENDIENTE_ACTIVACION. Hasta confirmar el enlace, el login responde 401 igual que con una contrasena incorrecta.
 
-        El header Idempotency-Key es obligatorio. Reintentar el alta con la misma clave devuelve el mismo desenlace sin crear una segunda cuenta ni mandar un segundo correo; el cliente debe generarlo una vez al abrir el formulario y reusarlo en cada reintento.
+        El header Idempotency-Key es obligatorio. Reintentar el alta con la misma clave devuelve el mismo desenlace sin crear una segunda cuenta ni mandar un segundo correo; el cliente debe generarlo una vez al abrir el formulario y reusarlo en cada reintento. Reusar la clave con OTRO contenido no es un reintento: responde 409 idempotency-key-conflict. La contrasena no entra en esa comparacion.
 
         Los rechazos posibles no dicen nada sobre el email: 400 por contrasena que no cumple la politica o por campos ausentes, 404 por un planCode que no existe o ya no se contrata, y 409 por un organizationSlug ya tomado. Los tres se evaluan ANTES de mirar si el email tiene cuenta, justamente para que la respuesta sea la misma en los dos casos: validarlos despues convertiria el endpoint en un verificador de direcciones de correo.
       operationId: registerAccount
@@ -815,8 +815,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El organizationSlug pedido ya lo usa otro tenant. Misma respuesta
-            exista o no la cuenta
+          description: "El organizationSlug pedido ya lo usa otro tenant (organization-slug-taken),\
+            \ o la Idempotency-Key ya se uso con otro contenido (idempotency-key-conflict).\
+            \ Misma respuesta exista o no la cuenta"
         "429":
           content:
             application/problem+json:
