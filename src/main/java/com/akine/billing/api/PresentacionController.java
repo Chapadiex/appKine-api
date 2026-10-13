@@ -14,6 +14,7 @@ import com.akine.billing.api.dto.RegistrarPagoFinanciadorRequest;
 import com.akine.billing.api.dto.ValidacionPresentacionResponse;
 import com.akine.billing.application.FinanciadorPagoService;
 import com.akine.billing.application.PresentacionCommands;
+import com.akine.billing.application.PresentacionCsv;
 import com.akine.billing.application.PresentacionService;
 import com.akine.billing.application.PresentacionView;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,6 +25,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +39,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -66,15 +69,18 @@ public class PresentacionController {
 	private final PresentacionService presentaciones;
 	private final FinanciadorPagoService pagos;
 	private final BillingApiActor apiActor;
+	private final PresentacionCsv csv;
 
 	public PresentacionController(
 			PresentacionService presentaciones,
 			FinanciadorPagoService pagos,
-			BillingApiActor apiActor) {
+			BillingApiActor apiActor,
+			PresentacionCsv csv) {
 
 		this.presentaciones = presentaciones;
 		this.pagos = pagos;
 		this.apiActor = apiActor;
+		this.csv = csv;
 	}
 
 	// =================================================================================
@@ -635,6 +641,45 @@ public class PresentacionController {
 
 		return PresentacionResponse.de(
 				presentaciones.detalle(apiActor.current(), consultorioId, presentacionId));
+	}
+
+	@GetMapping(
+			path = "/presentaciones/{presentacionId}/export",
+			produces = {"text/csv", "application/problem+json"})
+	@Operation(
+			operationId = "exportarPresentacion",
+			summary = "Exportar un lote a CSV",
+			description = """
+					El detalle del lote —cabecera con los cuatro importes y una fila por \
+					prestacion— como archivo CSV (AKINE-07.04, listados exportables).
+
+					Serializa **la misma vista** que el detalle: no tiene consulta propia, asi que \
+					el archivo y la pantalla no pueden decir cosas distintas.
+
+					**PHI minima** (RNF-M21-001): cada fila lleva el `personaId` y el concepto \
+					congelado, no el nombre ni el documento del paciente. Una celda que una \
+					planilla tomaria por formula sale con un apostrofo delante.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "El archivo CSV"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `cobro:register` en esa sede, o sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La presentacion no existe",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<String> exportarPresentacion(
+			@PathVariable long consultorioId,
+			@PathVariable long presentacionId) {
+
+		PresentacionView lote = presentaciones.detalle(apiActor.current(), consultorioId, presentacionId);
+
+		return ResponseEntity.ok()
+				.header(HttpHeaders.CONTENT_DISPOSITION,
+						"attachment; filename=\"" + csv.nombreDeArchivo(lote) + "\"")
+				.contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+				.body(csv.aCsv(lote));
 	}
 
 	@GetMapping("/financiadores/{financiadorId}/cuenta-corriente")
