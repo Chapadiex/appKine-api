@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.89.0
+  version: 0.94.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -31333,6 +31333,16 @@ components:
         \ entre que la pantalla mostro la agenda y el usuario confirmo pudo cambiar\
         \ el horario del profesional, entrar un feriado o vencer la oferta."
       properties:
+        coberturaId:
+          type: integer
+          format: int64
+          description: "Cobertura del paciente con la que se piensa atender. Opcional:\
+            \ omitirla es no elegir, y la recepcion usa la primera que aplique. Tiene\
+            \ que ser una cobertura financiada, activa y vigente el dia del turno\
+            \ de ESA persona; si no, 404 `not-found`. Si aplica a la practica lo decide\
+            \ la recepcion, que la usa por defecto al validar."
+          example: 412
+          exclusiveMinimum: 0
         idempotencyKey:
           type: string
           description: "Clave del cliente para que un reintento no cree un segundo\
@@ -32880,6 +32890,14 @@ components:
           type: string
           format: date-time
           example: 2026-09-10T11:20:00Z
+        coberturaId:
+          type: integer
+          format: int64
+          description: "Cobertura del paciente elegida al reservar. Ausente si no\
+            \ se eligio: la recepcion usa entonces la primera que aplique. Es una\
+            \ preferencia, no un veredicto: si el dia del turno ya no aplica, la recepcion\
+            \ queda OBSERVADA."
+          example: 412
         confirmadoEn:
           type: string
           format: date-time
@@ -34009,8 +34027,8 @@ components:
           type: integer
           format: int64
           description: "Cobertura del paciente con la que se quiere atender. Si se\
-            \ omite, se usa la primera que aplique a la practica (la principal va\
-            \ primera)."
+            \ omite, se usa la elegida al reservar el turno y, si no se eligio ninguna,\
+            \ la primera que aplique a la practica (la principal va primera)."
           example: 412
           exclusiveMinimum: 0
         expectedVersion:

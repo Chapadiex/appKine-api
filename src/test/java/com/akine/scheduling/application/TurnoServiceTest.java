@@ -6,9 +6,12 @@ import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.person.spi.CoberturasAplicablesDirectory;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.scheduling.domain.AgendaSede;
+import com.akine.scheduling.domain.Turno;
+import com.akine.scheduling.domain.exception.CoberturaNoAccesibleException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.AgendaSedeRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoEventoRepositoryPort;
@@ -27,7 +30,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -56,6 +62,7 @@ class TurnoServiceTest {
 	@Mock private AgendaSedeRepositoryPort agendas;
 	@Mock private OfertaDirectory ofertas;
 	@Mock private PacienteDirectory pacientes;
+	@Mock private CoberturasAplicablesDirectory coberturas;
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private AgendaSedeIniciador iniciador;
@@ -67,7 +74,7 @@ class TurnoServiceTest {
 
 	@BeforeEach
 	void prepararServicio() {
-		service = new TurnoService(turnos, eventos, agendas, ofertas, pacientes, consultorios,
+		service = new TurnoService(turnos, eventos, agendas, ofertas, pacientes, coberturas, consultorios,
 				permissionGuard, iniciador, revalidador, avisos, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
@@ -91,5 +98,63 @@ class TurnoServiceTest {
 				.hasMessageContaining("ya paso");
 
 		verify(turnos, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("05.02: una cobertura elegida que no es de la persona o no esta vigente ese dia es 404 y no reserva")
+	void cobertura_elegida_ajena_no_reserva() {
+		Instant manana = Instant.now().plus(Duration.ofDays(1));
+		given(coberturas.vigenteDeLaPersona(eq(ORG_ID), eq(128L), eq(412L), any()))
+				.willReturn(false);
+
+		assertThatThrownBy(() -> service.reservar(actor, CONSULTORIO_ID, 42L,
+				new ReservaCommand(128L, manana, 31L, null, 412L)))
+				.isInstanceOf(CoberturaNoAccesibleException.class);
+
+		verify(turnos, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("05.02: la cobertura elegida y vigente queda en el turno; sin elegir no se consulta")
+	void cobertura_elegida_queda_en_el_turno() {
+		Instant manana = Instant.now().plus(Duration.ofDays(1));
+		given(coberturas.vigenteDeLaPersona(eq(ORG_ID), eq(128L), eq(412L), any()))
+				.willReturn(true);
+		given(revalidador.revalidar(any())).willReturn(new RevalidadorDeSlot.Asignacion(31L, null));
+		given(turnos.save(any(Turno.class))).willAnswer(inv -> {
+			Turno t = inv.getArgument(0);
+			org.springframework.test.util.ReflectionTestUtils.setField(t, "id", 900L);
+			return t;
+		});
+
+		var conCobertura = service.reservar(actor, CONSULTORIO_ID, 42L,
+				new ReservaCommand(128L, manana, 31L, null, 412L));
+		var sinCobertura = service.reservar(actor, CONSULTORIO_ID, 42L,
+				new ReservaCommand(128L, manana, 31L, null));
+
+		assertThat(conCobertura.turno().coberturaId()).isEqualTo(412L);
+		assertThat(sinCobertura.turno().coberturaId()).isNull();
+		verify(coberturas).vigenteDeLaPersona(anyLong(), anyLong(), anyLong(), any());
+	}
+
+	@Test
+	@DisplayName("05.02: sin cobertura la huella es la de antes; con cobertura cambia")
+	void la_huella_sin_cobertura_no_cambia() {
+		Instant inicio = Instant.parse("2026-11-02T12:00:00Z");
+		String sin = new ReservaCommand(128L, inicio, 31L, "k").huella(CONSULTORIO_ID, 42L);
+		String con = new ReservaCommand(128L, inicio, 31L, "k", 412L).huella(CONSULTORIO_ID, 42L);
+
+		// SHA-256 de "7|42|128|2026-11-02T12:00:00Z|31", el formato anterior a 05.02.
+		assertThat(sin).isEqualTo(sha256("7|42|128|2026-11-02T12:00:00Z|31"));
+		assertThat(con).isNotEqualTo(sin);
+	}
+
+	private static String sha256(String texto) {
+		try {
+			return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+					.digest(texto.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+		} catch (java.security.NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
 	}
 }

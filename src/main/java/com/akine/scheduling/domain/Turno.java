@@ -67,6 +67,14 @@ public class Turno {
 	@Column(name = "serie_id", updatable = false)
 	private Long serieId;
 
+	/**
+	 * Cobertura del paciente elegida al reservar (AKINE-05.02). Preferencia, no veredicto: la
+	 * recepcion la usa por defecto al validar y la observa si ese dia no aplica. {@code null} =
+	 * sin elegir. Se fija antes del INSERT y no cambia: reprogramar mueve este mismo turno.
+	 */
+	@Column(name = "cobertura_id", updatable = false)
+	private Long coberturaId;
+
 	@Column(name = "inicio", nullable = false)
 	private Instant inicio;
 
@@ -303,6 +311,14 @@ public class Turno {
 		this.serieId = serieId;
 	}
 
+	/** Fija la cobertura elegida al reservar. Solo antes de persistir el turno, y una sola vez. */
+	public void elegirCobertura(long coberturaId) {
+		if (id != null || this.coberturaId != null) {
+			throw new IllegalStateException("La cobertura elegida de un turno se fija al reservarlo");
+		}
+		this.coberturaId = coberturaId;
+	}
+
 	public boolean estaVivo() {
 		return deletedAt == null;
 	}
@@ -334,6 +350,10 @@ public class Turno {
 
 	public Long getSerieId() {
 		return serieId;
+	}
+
+	public Long getCoberturaId() {
+		return coberturaId;
 	}
 
 	public Long getProfesionalMembershipId() {
