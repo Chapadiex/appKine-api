@@ -485,7 +485,7 @@ La espera por conexión de esos ITs pasó de 3 a 10 s: sobre `main`, la segunda 
 de #91 falló una vez con 3 s sin ningún anidamiento —ocho cobros serializados en el numerador con
 dos conexiones pueden esperar más que eso en esta máquina—.
 
-## 9. CPU y latencia por pedido (12/10/2026, rama `akine-perf-por-request`)
+## 9. CPU y latencia por pedido (12–13/10/2026, rama `akine-perf-por-request`)
 
 Después de §8 el pool ya no se trababa, pero a 500 usuarios la CPU seguía entre 70 y 100 % de los
 4 núcleos y el p95 en 3,3–3,6 s. Esta rama ataca **lo que cuesta cada pedido**, sin tocar la
@@ -544,71 +544,88 @@ transacción de lectura, que es lo que destapó el defecto #14 del 11/10). Los
 
 ### Sentencias y transacciones por pedido
 
+Medido el 13/10 sobre `main` `36eee22` (ya con #97) y sobre esta rama mergeada con él, cada uno
+con base recién sembrada:
+
 | Endpoint | Sentencias antes → después | SELECT | SET | COMMIT |
 |---|---:|---:|---:|---:|
-| agenda del día | 26 → **19** | 10,9 → 8,9 | 12 → 8 | 3 → 2 |
-| búsqueda de slots | 39 → **32** | 23,9 → 21,9 | 12 → 8 | 3 → 2 |
-| recepción del día | 30 → **17** | 15 → 7 | 12 → 8 | 3 → 2 |
+| agenda del día | 26 → **19** | 11 → 9 | 12 → 8 | 3 → 2 |
+| búsqueda de slots | 39 → **32** | 24 → 22 | 12 → 8 | 3 → 2 |
+| recepción del día | 30 → **23** | 15 → 13 | 12 → 8 | 3 → 2 |
 | Paciente 360 | 31 → **22** | 16 → 12 | 12 → 8 | 3 → 2 |
 | cobro | 44 → **37** | 14 → 12 | 18 → 14 | 5 → 4 |
 | reporte | 38 → **33** | 25 → 25 | 10 → 6 | 3 → 2 |
-| reserva | 53 → **46** | 26 → 24 | 20 → 16 | 5 → 4 |
+| reserva | 54 → **47** | 27 → 25 | 20 → 16 | 5 → 4 |
 | login | 8,2 → 8,6 | 1,1 → 1,1 | 2 → 2,2 | 1 → 1,1 |
 
 Cada pedido autenticado hace **una transacción menos** (tres → dos en las lecturas) y deja de
 releer membership y rol. Las conexiones que pide al pool siguen siendo tres: la lectura del rol
-sin transacción también toma una, sólo que la devuelve después de una sentencia.
+sin transacción también toma una, sólo que la devuelve después de una sentencia. El índice `V87`
+no cambia cuántas sentencias hay: cambia cuántas filas recorre la del prepago (la recepción del
+día cuenta más o menos SELECT según cuántos turnos le queden al día cuando se mide).
 
 ### La mezcla completa, 500 usuarios, pool 10 — antes y después
 
-**La máquina no estuvo quieta.** Docker Desktop corría a la vez los stacks y los tests de otros
-agentes (hasta 36 contenedores), y la misma imagen de `main` dio 68 req/s en una corrida y 91 en
-otra. Por eso las comparaciones van **de a pares corridos uno detrás del otro**, y la que vale es la
-última, con la máquina más quieta. Una corrida con JFR de la versión nueva se descarta: coincidió
-con la máquina más cargada del día (37 req/s, 1,14 % de timeouts en k6) y su número no dice nada
-del cambio.
+**La máquina no estuvo quieta durante casi toda la medición.** Docker Desktop corría a la vez los
+stacks y los tests de otros agentes (hasta 36 contenedores), y la misma imagen dio 68 req/s en una
+corrida y 91 en otra. Por eso las comparaciones van **de a pares corridos uno detrás del otro**. El
+par que se reporta es el último: el 13/10, sobre `main` con #97, con la máquina casi quieta (7 a 9
+contenedores en total).
 
-**Par 2 (12/10, 15:40–16:05), el que se reporta:**
+**Par 3 (13/10, 10:50–11:20), `main` `36eee22` contra esta rama mergeada con él:**
 
 | Endpoint | Antes p50 / p95 / p99 ms | Después p50 / p95 / p99 ms |
 |---|---:|---:|
-| login | 457 / 2 439 / 3 902 | 175 / 3 405 / 7 339 |
-| agenda del día | 711 / 3 104 / 5 355 | **36** / 3 801 / 8 445 |
-| búsqueda de slots | 748 / 3 126 / 5 505 | **48** / 3 850 / 8 581 |
-| recepción del día | 743 / 3 042 / 5 268 | **38** / 3 831 / 7 616 |
-| Paciente 360 | 713 / 3 219 / 5 493 | **39** / 3 961 / 8 739 |
-| cobro | 1 620 / 5 535 / 7 413 | **466** / 6 402 / 11 997 |
-| reporte | 695 / 3 064 / 5 359 | **66** / 3 794 / 8 104 |
-| reserva | 1 163 / 5 206 / 7 714 | **55** / 5 811 / 11 195 |
-| **todo lo interactivo** | 786 / 3 812 / 6 033 | **66** / 4 310 / 8 951 |
-| pedidos · req/s | 34 197 · 90,7 | 37 244 · **99,0** |
-| CPU del proceso, media · p90 | 58 % · 82 % | **37 % · 54 %** |
-| pedidos ≤ 300 ms (servidor) | 28 % | **70 %** |
+| login | 891 / 2 206 / 2 578 | **149 / 387 / 694** |
+| agenda del día | 1 457 / 3 649 / 4 502 | **28 / 440 / 948** |
+| búsqueda de slots | 1 529 / 3 689 / 4 524 | **49 / 474 / 909** |
+| recepción del día | 1 491 / 3 644 / 4 584 | **38 / 470 / 899** |
+| Paciente 360 | 1 459 / 3 620 / 4 549 | **31 / 438 / 966** |
+| cobro | 2 740 / 5 766 / 7 158 | **140 / 971 / 1 750** |
+| reporte | 1 470 / 3 617 / 4 482 | **49 / 433 / 846** |
+| reserva | 2 067 / 5 335 / 6 502 | **64 / 911 / 2 007** |
+| **todo lo interactivo** | 1 585 / 4 233 / 5 660 | **44 / 535 / 1 183** |
+| pedidos · req/s | 30 447 · 78,3 | 44 320 · **114,4** (+46 %) |
+| CPU del proceso, media | 75 % | **62 %** |
+| muestras de 5 s con pedidos esperando conexión | 41 de 60 | **20 de 68** |
+| pedidos ≤ 300 ms (servidor), lecturas | 20–22 % | **91–92 %** |
+| pedidos ≤ 800 ms (servidor), lecturas | 34–36 % | **98,4–98,6 %** |
 | errores técnicos | 0,00 % | 0,00 % |
-| reservas 201 / 409 | 473 / 3 088 | 475 / 3 056 |
+| reservas 201 / 409 | 480 / 3 099 | 478 / 3 123 |
 
-Par 1 (11/10, 21:30–22:05, todavía sin el índice `V87`): antes 68,2 req/s, p50 1 093 ms, p95
-6 965 ms; después 75,3 req/s, p50 993 ms, p95 7 196 ms, con la CPU media de ~80 % a ~40 %.
+Integridad verificada contra la base al terminar: comprobantes **1 a 2 722** (antes) y
+**1 a 4 187** (después), sin huecos ni repetidos, y **0 turnos solapados** del mismo profesional.
 
-Integridad verificada contra la base al terminar cada corrida del par 2: comprobantes **1 a 3 160**
-(antes) y **1 a 3 511** (después) sin huecos ni repetidos, y **0 turnos solapados** del mismo
-profesional.
+Los dos pares anteriores, con la máquina cargada, van en la misma dirección y dicen menos:
+
+- **Par 2** (12/10, sobre `5b4ef93`, sin #97): 90,7 → 99,0 req/s, p50 786 → 66 ms, CPU media
+  58 → 37 %, pedidos ≤ 300 ms del 28 al 70 %; el p95 no bajó (3,8 → 4,3 s en k6), porque el
+  pool seguía en ráfagas de 10 activas y 190 pendientes con la CPU al 30–50 %.
+- **Par 1** (11/10, sin `V87`): 68,2 → 75,3 req/s, CPU media de ~80 % a ~40 %, p95 ~7 s en los
+  dos.
+- Una corrida con JFR de la versión nueva se descarta: coincidió con la máquina más cargada del día
+  (37 req/s, 1,14 % de timeouts en k6) y no dice nada del cambio.
 
 ### Lectura
 
-**La CPU dejó de ser el cuello de botella; la cola es el pool, y lo que lo llena es el numerador del
-comprobante.** Con 9 % más de pedidos la CPU bajó de 58 a 37 % de media, la mediana de las lecturas
-pasó de ~720 ms a ~40 ms y siete de cada diez pedidos ya entran en 300 ms. **El p95 no bajó**
-(~2 s en el servidor, ~4 s en k6; el p99 incluso subió, dentro del ruido de la máquina): son las
-mismas ráfagas de §8, con el pool en 10 activas y hasta 190 pendientes mientras la CPU está al
-30–50 %. En el digest de la corrida "después", el `UPDATE comprobante_numerador ... + 1` suma
-**1 061 s de espera de lock en 376 s** —casi tres de las diez conexiones, en promedio, esperando
-ese lock— y el `SELECT ... FROM agenda_sede FOR UPDATE` de las reservas otros 140 s. Mientras esas
-conexiones esperan, las lecturas hacen cola por una conexión libre.
+**El p95 de todo lo interactivo bajó de 4,2 s a 0,54 s y el p99 de 5,7 s a 1,2 s, con 46 % más
+pedidos.** Todavía no cumple el SLO de ADR-0016 (300 / 800 ms), pero las lecturas quedan a un
+paso: nueve de cada diez dentro de los 300 ms y el 98,5 % dentro de los 800.
 
-Es §6.2 otra vez, y ahora es lo que queda: el escenario pone 10 cobros por segundo **en una sola
-sede**, y el comprobante correlativo sin huecos serializa por sede por definición. Bajar el p95 a
-500 usuarios en una sede exige cambiar **cuándo** se pide el número o cuánto se retiene la
-conexión mientras se espera el lock, y eso toca la regla de numeración de 06.05 y la columna
-`NOT NULL` única del comprobante: no es un cambio acotado y no se hizo. Con la carga repartida
-entre sedes, como en un SaaS real, ese lock no se comparte.
+Lo que queda tiene dos nombres, y ninguno es CPU:
+
+1. **El numerador del comprobante (§6.2).** El cobro es el endpoint más lento (p95 971 ms) y el
+   `UPDATE comprobante_numerador ... + 1` sigue siendo la sentencia con más espera de lock del
+   digest: 339 s sumados en 387 s de corrida, 80 ms de promedio, contra 510 s y 191 ms en el
+   "antes" del mismo par. El escenario pone 10 cobros por segundo **en una sola sede**, y el comprobante
+   correlativo sin huecos serializa por sede por definición. Mientras esas conexiones esperan, las
+   lecturas hacen cola por una libre: casi un tercio de las muestras todavía tiene pedidos esperando
+   conexión. Bajarlo exige cambiar cuándo se pide el número o cuánto se retiene la conexión
+   esperando el lock, y eso toca la regla de numeración de 06.05 y la columna `NOT NULL` única del
+   comprobante: no es un cambio acotado y no se hizo. Con la carga repartida entre sedes ese lock
+   no se comparte.
+2. **El lock de `agenda_sede` de las reservas** (89 s de espera sumados, 286 s antes), por la misma
+   razón: 10 reservas por segundo sobre 40 horarios de una sola sede.
+
+La CPU media del 62 % con 114 req/s es ~22 ms de CPU por pedido sobre 4 núcleos, contra ~38 ms en
+el "antes" del mismo par.
