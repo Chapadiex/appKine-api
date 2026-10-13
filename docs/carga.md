@@ -443,10 +443,33 @@ transacciones que **no anidan**: `OutboxDispatchService` (el despachador corre s
 | `AdjuntoClinicoService.subir` y `person.AdjuntoService.subir` → `*EscrituraAparte` | Lo mismo para `uk_adjunto_*_contenido_vigente` | La transacción de afuera desapareció: autorizar y buscar por checksum, el INSERT (su transacción), el binario (sin conexión tomada) y la auditoría van en cuatro pasos de una conexión por vez. La relectura del perdedor es una transacción nueva, así que ya no necesita `READ_COMMITTED`. Las escrituras aparte fallan si alguien las llama con una transacción abierta |
 | `PresentacionService.crear` / `agregarItem` → `ObligacionOcupadaConsulta` | Leer el lote ganador con la sesión JPA del perdedor rota | El perdedor lanza una excepción interna, su transacción revierte y devuelve la conexión, y recién ahí se lee el lote para el 409 `obligacion-ya-presentada` |
 
-Lo que se pierde: si la auditoría diferida falla, ya no puede convertir el pedido en un 500 —la
-respuesta está decidida—, y se loguea en ERROR. La apertura concurrente de la **misma** historia
-ahora espera a la primera (la fila nueva queda bloqueada hasta su commit); si la primera revierte con
-dos o más esperando, InnoDB puede elegir una víctima de deadlock entre ellas.
+**Qué garantía tiene cada auditoría diferida** (corregido tras la revisión del PR #97, que
+encontró que la primera versión dejaba todo al mejor esfuerzo):
+
+- **Uso de acceso de soporte — obligatoria, regla 01.01.** En una transacción de escritura (toda
+  mutación por soporte: alta, edición o baja de persona, abrir o cerrar un caso, subir un
+  adjunto…) se escribe **adentro**, por `AuditTrail`: si falla, la mutación revierte; si la mutación
+  revierte por otra causa, el intento se escribe aparte al terminar. En una lectura `readOnly` se
+  escribe aparte y, si la transacción commiteó y la escritura falla, la falla sale del `commit`
+  —corre en `cleanupAfterCompletion`, antes de que el resultado deje el proxy— y **la lectura no se
+  entrega**. Si la lectura revirtió, su propia excepción no se tapa y la falla de la auditoría se
+  loguea.
+- **Rechazos (`PERMISSION_DENIED`, `PLAN_LIMIT_REJECTED`) y la marca `NO_DISPONIBLE` — al mejor
+  esfuerzo.** El pedido ya falla por su lado; si además falla la escritura, se loguea en ERROR y no
+  se convierte el 403 en un 500. Con el `REQUIRES_NEW` de antes una falla de esa escritura sí daba
+  500: es la única garantía que se relajó, y a propósito.
+
+La apertura concurrente de la **misma** historia ahora espera a la primera (la fila nueva queda
+bloqueada hasta su commit); si la primera revierte con dos o más esperando —realista:
+`SesionService.iniciar` revierte si el caso pedido no es asignable a la historia recién creada—,
+InnoDB elige una víctima. Esa `CannotAcquireLockException` (y cualquier
+`PessimisticLockingFailureException`: deadlock o lock que no llega a tiempo) responde **409
+`concurrent-modification`** desde `GlobalExceptionHandler`, como la versión vieja (DP-21), y no
+500: el reintento encuentra la historia abierta o la abre.
+
+El `afterCommit` alternativo de `PrepagoAlCierreDeSesion` (cierres fuera de la plantilla de
+negocio) también corre ahora la imputación por `AlTerminarLaTransaccion`, sin la conexión del
+cierre tomada.
 
 **Verificado con pool 2.** `PoolDeConexionesIT` suma cinco escenarios de ocho pedidos simultáneos
 (primera apertura de historia, dos por paciente; subida de adjuntos clínicos y administrativos, dos

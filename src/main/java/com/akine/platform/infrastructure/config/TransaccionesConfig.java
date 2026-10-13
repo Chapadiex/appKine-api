@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.DefaultTransactionStatus;
 
 /**
  * El transaction manager de la aplicacion: el de JPA que Spring Boot configuraria, mas el aviso a
@@ -42,6 +43,12 @@ public class TransaccionesConfig {
 		protected void doBegin(Object transaction, TransactionDefinition definition) {
 			super.doBegin(transaction, definition);
 			AlTerminarLaTransaccion.empezo();
+		}
+
+		@Override
+		protected void doCommit(DefaultTransactionStatus status) {
+			super.doCommit(status);
+			AlTerminarLaTransaccion.commiteo();
 		}
 
 		@Override

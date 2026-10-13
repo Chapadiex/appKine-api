@@ -25,21 +25,32 @@ import java.util.List;
  * los recursos de la transaccion, con la conexion todavia tomada. Lo unico que corre despues es la
  * limpieza misma, y por eso el transaction manager de la aplicacion
  * ({@code platform.infrastructure.config.TransaccionesConfig}) avisa aca cuando una transaccion
- * empieza ({@link #empezo}) y cuando termino de limpiarse ({@link #termino}). Cuando la ultima
- * transaccion del hilo se limpio, corre lo registrado: sin ninguna conexion tomada, en el mismo
- * hilo, antes de que la excepcion o el resultado salgan del proxy transaccional.
+ * fisica empieza ({@link #empezo}), cuando la de afuera commiteo ({@link #commiteo}) y cuando
+ * termino de limpiarse ({@link #termino}). Cuando la ultima del hilo se limpio, corre lo
+ * registrado: sin ninguna conexion tomada, en el mismo hilo, <b>antes</b> de que el resultado o la
+ * excepcion salgan del proxy transaccional.
+ *
+ * <h2>Tres modos, segun lo que cueste perder el hecho</h2>
+ *
+ * <ul>
+ *   <li>{@link #ejecutar}: <b>al mejor esfuerzo</b>. Si falla, se loguea en ERROR y el pedido sigue
+ *       como iba. Para los rechazos (403, limite de plan) y la marca {@code NO_DISPONIBLE}: el
+ *       pedido ya fallo por su lado.</li>
+ *   <li>{@link #ejecutarObligatorio}: si la transaccion <b>commiteo</b> y esto falla, la falla se
+ *       relanza: sale del {@code commit} y el llamador recibe la excepcion en vez del resultado. Es
+ *       la auditoria del acceso de soporte en una lectura: si no queda escrita, la lectura no se
+ *       entrega. Si la transaccion revirtio, el pedido ya falla con su propia excepcion; esa no se
+ *       tapa y la falla de aca se loguea.</li>
+ *   <li>{@link #ejecutarSiRevierte}: solo si la transaccion revirtio, al mejor esfuerzo. Para el
+ *       hecho que en el camino feliz ya se escribio adentro de la transaccion y que el rollback se
+ *       llevaria puesto.</li>
+ * </ul>
  *
  * <h2>Diferencia con {@link DespuesDeLaTransaccion}</h2>
  *
  * <p>{@link DespuesDeLaTransaccion} es "si la transaccion de negocio commiteo": lo registrado se
  * descarta en el rollback, y solo funciona dentro de la plantilla de {@link FilaLockPrevia}. Esto
- * es "termine como termine", y vale para cualquier transaccion, anotada o de plantilla.
- *
- * <h2>Lo que se pierde respecto del {@code REQUIRES_NEW}</h2>
- *
- * <p>Si lo registrado falla, ya no puede hacer fallar el pedido: la respuesta esta decidida. Se
- * loguea en ERROR y se sigue con lo proximo. Es la misma contrapartida que ya tenia la imputacion
- * de prepago.
+ * vale para cualquier transaccion, anotada o de plantilla.
  */
 public final class AlTerminarLaTransaccion {
 
@@ -52,21 +63,40 @@ public final class AlTerminarLaTransaccion {
 	}
 
 	/**
-	 * Corre el trabajo cuando termine la transaccion de este hilo, o ahora si no hay ninguna.
+	 * Al mejor esfuerzo: corre cuando termine la transaccion de este hilo, como termine, o ahora si
+	 * no hay ninguna. Si falla despues de la transaccion, solo se loguea.
 	 *
-	 * <p>Si hay varias anidadas —un {@code REQUIRES_NEW} que todavia quede— espera a la ultima:
-	 * mientras alguna siga abierta, el hilo tiene una conexion tomada.
-	 *
-	 * <p>Sin el transaction manager de la aplicacion —un slice de test con otro— no hay aviso de
-	 * cierre y el trabajo corre en el acto, que es la conducta de antes.
+	 * <p>Si hay varias anidadas espera a la ultima: mientras alguna siga abierta, el hilo tiene una
+	 * conexion tomada. Sin el transaction manager de la aplicacion —un slice de test con otro— no
+	 * hay aviso de cierre y el trabajo corre en el acto, que es la conducta de antes.
 	 */
 	public static void ejecutar(Runnable trabajo) {
+		registrar(trabajo, Modo.MEJOR_ESFUERZO);
+	}
+
+	/**
+	 * Obligatorio: como {@link #ejecutar}, pero si la transaccion commiteo y el trabajo falla, la
+	 * falla se relanza y el pedido no entrega su resultado.
+	 */
+	public static void ejecutarObligatorio(Runnable trabajo) {
+		registrar(trabajo, Modo.OBLIGATORIO);
+	}
+
+	/**
+	 * Solo si la transaccion de este hilo revierte, al mejor esfuerzo. Sin transaccion seguida por
+	 * este aviso no hace nada: el llamador ya escribio el hecho en la transaccion en curso.
+	 */
+	public static void ejecutarSiRevierte(Runnable trabajo) {
 		Estado estado = ESTADO.get();
-		if (estado == null || estado.abiertas == 0) {
-			trabajo.run();
-			return;
+		if (estado != null && estado.abiertas > 0) {
+			estado.pendientes.add(new Pendiente(trabajo, Modo.SI_REVIERTE));
 		}
-		estado.pendientes.add(trabajo);
+	}
+
+	/** Si este hilo esta dentro de una transaccion que este aviso sigue. */
+	public static boolean siguiendoUnaTransaccion() {
+		Estado estado = ESTADO.get();
+		return estado != null && estado.abiertas > 0;
 	}
 
 	/**
@@ -95,8 +125,22 @@ public final class AlTerminarLaTransaccion {
 	}
 
 	/**
+	 * Solo para el transaction manager: una transaccion fisica de este hilo commiteo. Cuenta solo la
+	 * de afuera; un {@code REQUIRES_NEW} que commitea adentro no dice nada del pedido.
+	 */
+	public static void commiteo() {
+		Estado estado = ESTADO.get();
+		if (estado != null && estado.abiertas == 1) {
+			estado.commiteo = true;
+		}
+	}
+
+	/**
 	 * Solo para el transaction manager: una transaccion fisica de este hilo termino y ya devolvio
 	 * su conexion. Si era la ultima, corre lo registrado.
+	 *
+	 * @throws RuntimeException la primera falla de un trabajo obligatorio, si la transaccion de
+	 *                          afuera commiteo; las demas van como suprimidas
 	 */
 	public static void termino() {
 		Estado estado = ESTADO.get();
@@ -110,18 +154,51 @@ public final class AlTerminarLaTransaccion {
 		// Se suelta el estado ANTES de correr: lo registrado abre sus propias transacciones, que
 		// arman un estado nuevo y lo sueltan al terminar.
 		ESTADO.remove();
-		for (Runnable trabajo : estado.pendientes) {
+		RuntimeException aRelanzar = null;
+		for (Pendiente pendiente : estado.pendientes) {
+			if (pendiente.modo() == Modo.SI_REVIERTE && estado.commiteo) {
+				continue;
+			}
 			try {
-				trabajo.run();
+				pendiente.trabajo().run();
 			} catch (RuntimeException falla) {
-				log.error("Fallo el trabajo registrado para despues de la transaccion", falla);
+				if (pendiente.modo() == Modo.OBLIGATORIO && estado.commiteo) {
+					if (aRelanzar == null) {
+						aRelanzar = falla;
+					} else {
+						aRelanzar.addSuppressed(falla);
+					}
+				} else {
+					log.error("Fallo el trabajo registrado para despues de la transaccion ({})",
+							estado.commiteo ? "commiteo" : "revirtio", falla);
+				}
 			}
 		}
+		if (aRelanzar != null) {
+			log.error("Fallo un trabajo obligatorio despues del commit: el pedido no se entrega",
+					aRelanzar);
+			throw aRelanzar;
+		}
+	}
+
+	private static void registrar(Runnable trabajo, Modo modo) {
+		Estado estado = ESTADO.get();
+		if (estado == null || estado.abiertas == 0) {
+			trabajo.run();
+			return;
+		}
+		estado.pendientes.add(new Pendiente(trabajo, modo));
+	}
+
+	private enum Modo { MEJOR_ESFUERZO, OBLIGATORIO, SI_REVIERTE }
+
+	private record Pendiente(Runnable trabajo, Modo modo) {
 	}
 
 	private static final class Estado {
 
 		private int abiertas;
-		private final List<Runnable> pendientes = new ArrayList<>();
+		private boolean commiteo;
+		private final List<Pendiente> pendientes = new ArrayList<>();
 	}
 }

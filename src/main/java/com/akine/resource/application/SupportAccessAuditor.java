@@ -41,6 +41,6 @@ public class SupportAccessAuditor {
 	}
 
 	public void record(AuditEntry entry) {
-		auditoria.registrar(entry);
+		auditoria.registrarAccesoDeSoporte(entry);
 	}
 }

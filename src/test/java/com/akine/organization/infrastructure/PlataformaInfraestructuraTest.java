@@ -8,6 +8,7 @@ import com.akine.organization.spi.DenialKind;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.audit.AuditoriaAparte;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -89,7 +90,7 @@ class PlataformaInfraestructuraTest {
 	@Test
 	@DisplayName("Un rechazo por permiso deja actor, tenant, permiso y motivo del rechazo")
 	void el_rechazo_deja_lo_necesario_para_investigarlo() {
-		new PermissionDenialAuditor(auditTrail::record).recordDenial(new PermissionQuery(
+		new PermissionDenialAuditor(aparte(auditTrail)).recordDenial(new PermissionQuery(
 				ACCOUNT_ID, "colaborador:manage", ORG_ID, 20L, 99L, AHORA),
 				DenialKind.NO_PERMISSION);
 
@@ -114,7 +115,7 @@ class PlataformaInfraestructuraTest {
 	@Test
 	@DisplayName("Sin sede en el contexto, el detalle no inventa una")
 	void sin_sede_no_se_inventa_una() {
-		new PermissionDenialAuditor(auditTrail::record).recordDenial(
+		new PermissionDenialAuditor(aparte(auditTrail)).recordDenial(
 				PermissionQuery.of(ACCOUNT_ID, "auditoria:read", ORG_ID, AHORA),
 				DenialKind.NO_PERMISSION);
 
@@ -156,4 +157,19 @@ class PlataformaInfraestructuraTest {
 	void el_aviso_tiene_donde_salir() {
 		assertThat(LoggerFactory.getLogger(PlatformAdminBootstrapCheck.class)).isNotNull();
 	}
+	/** La auditoria aparte, escribiendo en el doble del AuditTrail. */
+	private static AuditoriaAparte aparte(AuditTrail trail) {
+		return new AuditoriaAparte() {
+			@Override
+			public void registrar(AuditEntry entry) {
+				trail.record(entry);
+			}
+
+			@Override
+			public void registrarAccesoDeSoporte(AuditEntry entry) {
+				trail.record(entry);
+			}
+		};
+	}
+
 }

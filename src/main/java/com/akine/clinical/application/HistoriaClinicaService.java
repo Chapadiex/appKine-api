@@ -193,8 +193,16 @@ public class HistoriaClinicaService {
 	 * Y como contrapartida a nombrar: la fila nueva queda bloqueada hasta que la transaccion de
 	 * negocio termina, asi que una segunda apertura simultanea de la MISMA persona espera a la
 	 * primera. Si la primera revierte con dos o mas esperando, InnoDB puede elegir una victima de
-	 * deadlock entre ellas —el caso conocido del INSERT duplicado tras un rollback—, que responde
-	 * como cualquier otro conflicto de concurrencia.
+	 * deadlock entre ellas —el caso conocido del INSERT duplicado tras un rollback, y realista:
+	 * {@code SesionService.iniciar} revierte si el caso pedido no es asignable a la historia recien
+	 * creada—. La victima sale como {@code CannotAcquireLockException}, que
+	 * {@code GlobalExceptionHandler} responde 409 {@code concurrent-modification}: el reintento
+	 * encuentra la historia abierta o la abre.
+	 *
+	 * <p>Si despues del {@code INSERT IGNORE} la relectura no encuentra historia vigente, el IGNORE
+	 * se trago otro error que no era el unique —una FK, un {@code NOT NULL}— y es un defecto del
+	 * servidor, no un conflicto: sale como {@code IllegalStateException}, o sea 500, con el motivo
+	 * en el mensaje. La precondicion de paciente vigente se valida antes, asi que no deberia pasar.
 	 */
 	private Apertura abrirIdempotente(long organizationId, long personaId, long actorAccountId) {
 		var yaExistente = historias.buscarVigentePorPersona(organizationId, personaId);
@@ -206,7 +214,9 @@ public class HistoriaClinicaService {
 		boolean laAbrioEsta = historias.abrirSiFalta(organizationId, personaId, actorAccountId) == 1;
 		HistoriaClinica vigente = historias.releerVigenteBloqueando(organizationId, personaId)
 				.orElseThrow(() -> new IllegalStateException(
-						"La historia clinica no quedo abierta: personaId=" + personaId));
+						"La historia clinica no quedo abierta: el INSERT IGNORE no inserto y no hay"
+						+ " vigente que releer (un error degradado a advertencia que no es el unique)."
+						+ " personaId=" + personaId));
 		if (laAbrioEsta) {
 			log.info("Historia clinica abierta: id={} personaId={} organizationId={}",
 					vigente.getId(), personaId, organizationId);
