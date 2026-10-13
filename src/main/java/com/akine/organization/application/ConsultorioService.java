@@ -152,7 +152,7 @@ public class ConsultorioService {
 	// comentario que estaba aca describia correctamente solo la mitad del problema.
 	//
 	// La auditoria de esta lectura la escribe ahora SupportAccessReadAuditor en su propia
-	// transaccion (REQUIRES_NEW): sobrevive al readOnly y sobrevive al 404.
+	// transaccion, cuando esta ya termino (AuditoriaAparte): sobrevive al readOnly y al 404.
 	@Transactional(readOnly = true)
 	public ConsultorioView find(OperatingActor actor, long organizationId, long consultorioId) {
 		exigirSobreLaSedeEnLectura(actor, organizationId, consultorioId);

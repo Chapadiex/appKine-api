@@ -34,14 +34,27 @@ public final class ClinicalRepositoryPorts {
 		HistoriaClinica save(HistoriaClinica historia);
 
 		/**
-		 * Persiste y sincroniza con la base en el acto.
+		 * Abre la historia vigente de esa persona si todavia no tiene una. <b>Sin lanzar nunca</b>
+		 * por el unique {@code uk_historia_clinica_persona_vigente}.
 		 *
-		 * <p>Hace falta para que el choque contra {@code uk_historia_clinica_persona_vigente}
-		 * llegue <b>dentro</b> del try del servicio y no al cierre de la transaccion, que es donde
-		 * ya no se puede convertir en una respuesta idempotente. Mismo motivo por el que
-		 * {@code PerfilPacienteService} usa {@code saveAndFlush}.
+		 * <p>Corre en la transaccion del llamador. Si otra apertura de la misma persona esta en
+		 * curso, espera a que termine; si esa commitea, no inserta nada. Que no lance es lo que
+		 * permite quedarse en la transaccion de negocio: un choque del unique la dejaria marcada
+		 * para rollback aunque se lo atrape (regla 2 del Paquete B), y la salida de antes —un
+		 * {@code REQUIRES_NEW}— retenia dos conexiones por pedido (docs/carga.md §8).
+		 *
+		 * @return 1 si la inserto esta llamada, 0 si ya habia una vigente
 		 */
-		HistoriaClinica saveAndFlush(HistoriaClinica historia);
+		int abrirSiFalta(long organizationId, long personaId, long abiertaPor);
+
+		/**
+		 * La historia vigente leida con lock compartido, que ve lo ultimo commiteado.
+		 *
+		 * <p>Es la relectura despues de {@link #abrirSiFalta}: una lectura comun en
+		 * {@code REPEATABLE READ} seguiria viendo la foto de antes de que la otra apertura
+		 * commiteara, y no encontraria la historia que gano.
+		 */
+		Optional<HistoriaClinica> releerVigenteBloqueando(long organizationId, long personaId);
 
 		Optional<HistoriaClinica> findByIdAndOrganizationId(Long id, Long organizationId);
 

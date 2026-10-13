@@ -9,6 +9,7 @@ import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.AutorizacionEvento;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.TipoEventoAutorizacion;
+import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionAlertaRepositoryPort;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionEventoRepositoryPort;
 import com.akine.person.domain.EstadoAutorizacion;
 import com.akine.person.domain.OrdenMedica;
@@ -110,6 +111,7 @@ public class AutorizacionService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final AutorizacionEventoRepositoryPort eventos;
+	private final AutorizacionAlertaRepositoryPort alertas;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("java:S107")
@@ -126,8 +128,10 @@ public class AutorizacionService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
 			AutorizacionEventoRepositoryPort eventos,
+			AutorizacionAlertaRepositoryPort alertas,
 			PlatformTransactionManager transactionManager) {
 
+		this.alertas = alertas;
 		this.autorizaciones = autorizaciones;
 		this.candados = candados;
 		this.iniciador = iniciador;
@@ -170,13 +174,16 @@ public class AutorizacionService {
 		DocumentoEstadoFiltro filtro = estado == null ? DocumentoEstadoFiltro.TODAS : estado;
 		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
 
+		// Una sola consulta agrupada para todas las filas, no una por autorizacion.
+		Map<Long, Integer> pendientes = alertas.pendientesPorAutorizacion(organizationId, personaId);
 		return autorizaciones.historial(organizationId, personaId).stream()
 				.filter(autorizacion -> switch (filtro) {
 					case ACTIVA -> autorizacion.isActive();
 					case INACTIVA -> !autorizacion.isActive();
 					case TODAS -> true;
 				})
-				.map(autorizacion -> AutorizacionView.de(autorizacion, contra))
+				.map(autorizacion -> AutorizacionView.de(autorizacion, contra,
+						pendientes.getOrDefault(autorizacion.getId(), 0)))
 				.toList();
 	}
 
@@ -190,9 +197,17 @@ public class AutorizacionService {
 						permissionGuard, actor, "Consultar el saldo autorizado");
 		exigirPersonaDelTenant(organizationId, personaId);
 
-		return AutorizacionView.de(
-				cargar(organizationId, personaId, autorizacionId),
+		return vista(organizationId, cargar(organizationId, personaId, autorizacionId),
 				fecha == null ? LocalDate.now() : fecha);
+	}
+
+	/** La vista con sus consumos a revisar, contados con la misma consulta que el listado. */
+	private AutorizacionView vista(
+			long organizationId, Autorizacion autorizacion, LocalDate fecha) {
+		int pendientes = alertas
+				.pendientesPorAutorizacion(organizationId, autorizacion.getPersonaId())
+				.getOrDefault(autorizacion.getId(), 0);
+		return AutorizacionView.de(autorizacion, fecha, pendientes);
 	}
 
 	/**
@@ -327,7 +342,7 @@ public class AutorizacionService {
 
 		log.info("Autorizacion registrada: autorizacionId={} personaId={} estado={}",
 				creada.getId(), personaId, creada.getEstado());
-		return AutorizacionView.de(creada, LocalDate.now());
+		return AutorizacionView.de(creada, LocalDate.now(), 0); // recien nacida: sin consumos
 	}
 
 	/**
@@ -403,7 +418,7 @@ public class AutorizacionService {
 		antes.describirDiferencia(CambiosDeAutorizacion.de(guardada)).ifPresent(detalle ->
 				historiar(guardada, TipoEventoAutorizacion.MODIFICACION, guardada.getEstado(),
 						detalle, null, actor));
-		return AutorizacionView.de(guardada, LocalDate.now());
+		return vista(organizationId, guardada, LocalDate.now());
 	}
 
 	/**
@@ -499,7 +514,7 @@ public class AutorizacionService {
 
 		log.info("Autorizacion resuelta: autorizacionId={} {} -> {}",
 				autorizacionId, previo, guardada.getEstado());
-		return AutorizacionView.de(guardada, LocalDate.now());
+		return vista(organizationId, guardada, LocalDate.now());
 	}
 
 	/**
@@ -537,7 +552,7 @@ public class AutorizacionService {
 						: "Comprobante vinculado: adjunto " + adjuntoId,
 				null, actor);
 
-		return AutorizacionView.de(guardada, LocalDate.now());
+		return vista(organizationId, guardada, LocalDate.now());
 	}
 
 	/**
@@ -571,7 +586,7 @@ public class AutorizacionService {
 
 		log.info("Autorizacion dada de baja: autorizacionId={} personaId={}",
 				autorizacionId, personaId);
-		return AutorizacionView.de(guardada, LocalDate.now());
+		return vista(organizationId, guardada, LocalDate.now());
 	}
 
 	// =================================================================================

@@ -2,11 +2,12 @@ package com.akine.clinical.application;
 
 import com.akine.clinical.domain.AdjuntoClinico;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.AdjuntoClinicoRepositoryPort;
+import com.akine.platform.spi.transaccion.AlTerminarLaTransaccion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Las dos escrituras sobre {@code adjunto_clinico} que NO pueden vivir en la transaccion de
@@ -50,6 +51,14 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>La fila no esta bloqueada por la transaccion que llama: la descarga solo la leyo, y un
  * {@code SELECT} sin {@code FOR UPDATE} no toma locks en InnoDB. Por eso esta transaccion puede
  * escribirla sin esperar a la otra.
+ *
+ * <h2>Sin transaccion de afuera (docs/carga.md §8)</h2>
+ *
+ * <p>Hasta el 11/10/2026 las dos eran {@code REQUIRES_NEW} llamados desde adentro de la transaccion
+ * del servicio, que retenia su conexion y pedia otra: muchas subidas a la vez trababan el pool.
+ * Ahora cada una abre su transaccion con una plantilla y <b>falla si ya hay una abierta</b>: el
+ * servicio las llama entre sus propias transacciones ({@code subir}) o cuando la suya ya termino
+ * ({@code marcarNoDisponible} de la descarga, por {@code AlTerminarLaTransaccion}).
  */
 @Component
 public class AdjuntoClinicoEscrituraAparte {
@@ -59,8 +68,12 @@ public class AdjuntoClinicoEscrituraAparte {
 
 	private final AdjuntoClinicoRepositoryPort adjuntos;
 
-	public AdjuntoClinicoEscrituraAparte(AdjuntoClinicoRepositoryPort adjuntos) {
+	private final TransactionTemplate transaccion;
+
+	public AdjuntoClinicoEscrituraAparte(
+			AdjuntoClinicoRepositoryPort adjuntos, PlatformTransactionManager transactionManager) {
 		this.adjuntos = adjuntos;
+		this.transaccion = new TransactionTemplate(transactionManager);
 	}
 
 	/**
@@ -75,9 +88,9 @@ public class AdjuntoClinicoEscrituraAparte {
 	 *                                                                 checksum, con su propia
 	 *                                                                 transaccion intacta
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public AdjuntoClinico insertar(AdjuntoClinico adjunto) {
-		return adjuntos.saveAndFlush(adjunto);
+		AlTerminarLaTransaccion.exigirSinTransaccion("El INSERT del adjunto");
+		return transaccion.execute(estado -> adjuntos.saveAndFlush(adjunto));
 	}
 
 	/**
@@ -87,14 +100,14 @@ public class AdjuntoClinicoEscrituraAparte {
 	 * OTRA sesion, y mutarla ahi dejaria la marca dentro de la transaccion que esta por revertirse
 	 * —que es exactamente el defecto que esta clase existe para arreglar—.
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void marcarNoDisponible(long organizationId, long historiaClinicaId, long adjuntoId) {
-		adjuntos.buscarDeLaHistoria(organizationId, historiaClinicaId, adjuntoId)
+		AlTerminarLaTransaccion.exigirSinTransaccion("La marca NO_DISPONIBLE del adjunto");
+		transaccion.executeWithoutResult(estado -> adjuntos.buscarDeLaHistoria(organizationId, historiaClinicaId, adjuntoId)
 				.ifPresent(adjunto -> {
 					adjunto.marcarNoDisponible();
 					adjuntos.save(adjunto);
 					log.warn("Adjunto clinico marcado NO_DISPONIBLE: adjuntoId={} "
 							+ "historiaClinicaId={}", adjuntoId, historiaClinicaId);
-				});
+				}));
 	}
 }

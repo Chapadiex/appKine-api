@@ -1,10 +1,8 @@
 package com.akine.organization.application;
 
 import com.akine.platform.spi.audit.AuditEntry;
-import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.audit.AuditoriaAparte;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Registra {@code SUPPORT_ACCESS_USED} de las <b>lecturas</b> en una transaccion propia.
@@ -14,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>Las lecturas del modulo corren con {@code @Transactional(readOnly = true)}. En una
  * transaccion de solo lectura Hibernate deja el {@code FlushMode} en {@code MANUAL}, asi que un
  * {@code save} hecho ahi adentro nunca llega a la base: no falla, no loguea, simplemente no
- * existe la fila. Y {@link AuditTrail#record(AuditEntry)} es {@code MANDATORY}, o sea que se
+ * existe la fila. Y {@code AuditTrail.record} es {@code MANDATORY}, o sea que se
  * une justo a esa transaccion. El codigo decia que auditaba, el log decia que auditaba, y
  * {@code audit_event} quedaba vacia — el mismo modo de falla que se llevo puesta la revocacion
  * de familia de refresh en 01.02.
@@ -38,19 +36,20 @@ import org.springframework.transaction.annotation.Transactional;
  * negocio") es que ninguna <b>mutacion</b> quede confirmada sin rastro. En una lectura no hay
  * mutacion que confirmar, asi que ese motivo no aplica — es el mismo razonamiento y el mismo
  * alcance acotado de {@link PermissionDenialAuditor} y {@link PlanLimitRejectionAuditor}. Esto
- * NO habilita {@code REQUIRES_NEW} en ningun otro lugar del modulo.
+ * NO habilita la auditoria aparte en ningun otro lugar del modulo.
  *
- * <p>Esta en su propia clase porque {@code @Transactional} se aplica por proxy: si el metodo
- * viviera en el servicio que lo llama, la llamada interna lo saltearia y la anotacion no haria
- * absolutamente nada.
+ * <p><b>Como se escribe desde el 11/10/2026:</b> por {@link AuditoriaAparte}, que corre cuando
+ * la transaccion del pedido ya termino y devolvio su conexion. Hasta entonces era un
+ * {@code REQUIRES_NEW} llamado desde adentro de esa transaccion: retenia una conexion y pedia otra,
+ * y muchos rechazos simultaneos trababan el pool (docs/carga.md §8).
  */
 @Service
 public class SupportAccessReadAuditor {
 
-	private final AuditTrail auditTrail;
+	private final AuditoriaAparte auditoria;
 
-	public SupportAccessReadAuditor(AuditTrail auditTrail) {
-		this.auditTrail = auditTrail;
+	public SupportAccessReadAuditor(AuditoriaAparte auditoria) {
+		this.auditoria = auditoria;
 	}
 
 	/**
@@ -59,8 +58,7 @@ public class SupportAccessReadAuditor {
 	 * <p>Si la lectura termina en 404 la fila queda igual, y esta bien que quede: el acceso de
 	 * soporte se ejercio.
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void record(AuditEntry entry) {
-		auditTrail.record(entry);
+		auditoria.registrarAccesoDeSoporte(entry);
 	}
 }
