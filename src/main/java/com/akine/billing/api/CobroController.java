@@ -280,7 +280,9 @@ public class CobroController {
 	@Operation(
 			summary = "Cobros de un paciente",
 			description = "Los cobros de un paciente en toda la organizacion, del mas reciente al "
-					+ "mas viejo. Junto con las obligaciones forma su cuenta corriente.")
+					+ "mas viejo, anulados incluidos: un cobro anulado se lista con estado ANULADO, "
+					+ "porque su comprobante queda usado. Junto con las obligaciones forma su cuenta "
+					+ "corriente.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Cobros del paciente"),
 			@ApiResponse(

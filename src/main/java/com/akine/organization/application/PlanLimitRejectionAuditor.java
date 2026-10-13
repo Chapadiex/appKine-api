@@ -2,10 +2,8 @@ package com.akine.organization.application;
 
 import com.akine.organization.spi.LimitCode;
 import com.akine.platform.spi.audit.AuditEntry;
-import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.audit.AuditoriaAparte;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -14,7 +12,7 @@ import java.util.Map;
 /**
  * Registra los rechazos por limite de plan en una transaccion propia.
  *
- * <h2>Por que aca si se usa {@code REQUIRES_NEW}</h2>
+ * <h2>Por que aca si se usa una transaccion propia</h2>
  *
  * <p>La regla general del proyecto (T-2) es que la auditoria se escribe DENTRO de la
  * transaccion de negocio: si el registro falla, la operacion no se confirma. Esa regla existe
@@ -28,21 +26,22 @@ import java.util.Map;
  *
  * <p>Como aca no hay ninguna mutacion que confirmar —el alta se rechaza siempre—, el motivo de
  * T-2 no aplica y la transaccion separada es lo correcto: el rechazo sobrevive al rollback del
- * alta. Esto NO habilita {@code REQUIRES_NEW} en ningun otro lugar del modulo, y en particular
+ * alta. Esto NO habilita la auditoria aparte en ningun otro lugar del modulo, y en particular
  * queda prohibido en el onboarding compuesto (B-5), donde partir la transaccion romperia la
  * atomicidad exigida por ADR-0008.
  *
- * <p>Esta separado en su propia clase porque {@code @Transactional} se aplica por proxy: si el
- * metodo viviera en {@code PlanGateService}, la llamada interna lo saltearia y la anotacion no
- * haria absolutamente nada.
+ * <p><b>Como se escribe desde el 11/10/2026:</b> por {@link AuditoriaAparte}, que corre cuando
+ * la transaccion del pedido ya termino y devolvio su conexion. Hasta entonces era un
+ * {@code REQUIRES_NEW} llamado desde adentro de esa transaccion: retenia una conexion y pedia otra,
+ * y muchos rechazos simultaneos trababan el pool (docs/carga.md §8).
  */
 @Service
 public class PlanLimitRejectionAuditor {
 
-	private final AuditTrail auditTrail;
+	private final AuditoriaAparte auditoria;
 
-	public PlanLimitRejectionAuditor(AuditTrail auditTrail) {
-		this.auditTrail = auditTrail;
+	public PlanLimitRejectionAuditor(AuditoriaAparte auditoria) {
+		this.auditoria = auditoria;
 	}
 
 	/**
@@ -57,7 +56,6 @@ public class PlanLimitRejectionAuditor {
 	 * propague —con un olvido garantizado en el primero que se sume—. Quien hizo el intento se
 	 * reconstruye por {@code correlationId} contra el log del request, que si lo tiene.
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void recordRejection(
 			long organizationId, LimitCode limit, Integer limitValue, long currentUsage) {
 		Map<String, String> details = new LinkedHashMap<>();
@@ -65,7 +63,7 @@ public class PlanLimitRejectionAuditor {
 		details.put("limitValue", String.valueOf(limitValue));
 		details.put("currentUsage", String.valueOf(currentUsage));
 
-		auditTrail.record(new AuditEntry(
+		auditoria.registrar(new AuditEntry(
 				organizationId,
 				null,
 				null,

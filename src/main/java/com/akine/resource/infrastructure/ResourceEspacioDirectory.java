@@ -5,6 +5,7 @@ import com.akine.resource.domain.port.EspacioRepositoryPort;
 import com.akine.resource.spi.EspacioDirectory;
 import com.akine.resource.spi.EspacioSnapshot;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -75,5 +76,12 @@ public class ResourceEspacioDirectory implements EspacioDirectory {
 				espacio.getValidUntil(),
 				espacio.isActive(),
 				espacio.estaEnServicio(at));
+	}
+
+	/** {@code MANDATORY}: en una transaccion propia el lock se soltaria al volver. */
+	@Override
+	@Transactional(propagation = Propagation.MANDATORY)
+	public boolean inactivoBajoLockCompartido(long organizationId, long espacioId) {
+		return espacioRepository.countActivoForShare(espacioId, organizationId) == 0;
 	}
 }

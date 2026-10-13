@@ -257,6 +257,8 @@ class RevalidadorDeSlot {
 					// AKINE-08.01: un box tomado por una clase no es un box libre. Ver
 					// espacioLibreDeEventosExternos.
 					.filter(espacioId -> espacioLibreDeEventosExternos(pedido, espacioId))
+					// El ultimo filtro, y perezoso: toma lock compartido solo sobre el que se elige.
+					.filter(espacioId -> sigueActivoBajoLock(pedido, espacioId))
 					.findFirst()
 					.orElseThrow(() -> new RecursoOcupadoException("espacio"));
 		}
@@ -280,13 +282,28 @@ class RevalidadorDeSlot {
 							pedido.inicio(), pedido.fin())
 					.stream()
 					.allMatch(otro -> esElExcluido(otro, pedido));
-			if (libre && espacioLibreDeEventosExternos(pedido, habilitacion.recursoId())) {
+			if (libre && espacioLibreDeEventosExternos(pedido, habilitacion.recursoId())
+					&& sigueActivoBajoLock(pedido, habilitacion.recursoId())) {
 				return habilitacion.recursoId();
 			}
 		}
 		// Se distingue de SlotNoDisponible: el hueco existe y el profesional atiende; lo que falta
 		// es un box. La pantalla puede ofrecer otro horario en vez de mandar a recargar la agenda.
 		throw new RecursoOcupadoException("espacio");
+	}
+
+	/**
+	 * {@code true} si el espacio sigue activo, releido con <b>lock compartido</b> sobre su fila.
+	 *
+	 * <p>El {@code active} del snapshot se leyo sin lock, y la baja del box toma el exclusivo de la
+	 * fila antes de preguntar por turnos pendientes: sin esta relectura un turno se colaba en un box
+	 * entre la sonda y el commit de la baja. Es la misma carrera que la de la sede
+	 * ({@link BloqueoDeAgenda#tomarParaOcupar}) y se cierra igual. Orden de locks:
+	 * {@code agenda_sede}, {@code consultorio}, {@code espacio}; la baja del box no toma ninguno de
+	 * los dos primeros.
+	 */
+	private boolean sigueActivoBajoLock(Pedido pedido, long espacioId) {
+		return !espacios.inactivoBajoLockCompartido(pedido.organizationId(), espacioId);
 	}
 
 	/**

@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * El ciclo completo de un lote reclamado a un financiador (M21).
@@ -145,8 +146,13 @@ public class PresentacionService {
 	}
 
 	/** Abre el borrador, opcionalmente con las prestaciones que ya se eligieron (RF-M21-002). */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public PresentacionView crear(
+			OperatingActor actor, long consultorioId, PresentacionCommands.Alta alta) {
+		return conElLoteDelGanador(() -> transaccionReadCommitted.execute(
+				estado -> crearEnTransaccion(actor, consultorioId, alta)));
+	}
+
+	private PresentacionView crearEnTransaccion(
 			OperatingActor actor, long consultorioId, PresentacionCommands.Alta alta) {
 
 		long organizationId = PresentacionAcceso.exigirContexto(actor);
@@ -175,8 +181,13 @@ public class PresentacionService {
 	}
 
 	/** Agrega una prestacion al borrador (RF-M21-002). */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public PresentacionItemView agregarItem(
+			OperatingActor actor, long consultorioId, long presentacionId, long obligacionId) {
+		return conElLoteDelGanador(() -> transaccionReadCommitted.execute(
+				estado -> agregarItemEnTransaccion(actor, consultorioId, presentacionId, obligacionId)));
+	}
+
+	private PresentacionItemView agregarItemEnTransaccion(
 			OperatingActor actor, long consultorioId, long presentacionId, long obligacionId) {
 
 		long organizationId = PresentacionAcceso.exigirContexto(actor);
@@ -541,6 +552,25 @@ public class PresentacionService {
 	// =================================================================================
 
 	/**
+	 * Corre el alta o el agregado, y si perdio la carrera de RN-M21-003 responde con el lote que
+	 * gano.
+	 *
+	 * <p>El lote se lee <b>despues</b> de que la transaccion del perdedor revirtio y devolvio su
+	 * conexion: esa sesion JPA ya fallo un insert y no se vuelve a tocar. Hasta el 11/10/2026 la
+	 * lectura era un {@code REQUIRES_NEW} desde adentro del {@code catch}, con la conexion del
+	 * perdedor todavia tomada: dos conexiones por pedido, el traba del pool de docs/carga.md §8.
+	 */
+	private <T> T conElLoteDelGanador(Supplier<T> enTransaccion) {
+		try {
+			return enTransaccion.get();
+		} catch (ObligacionOcupadaEnCarrera carrera) {
+			long lote = ocupacion.loteQueLaOcupa(carrera.organizationId(), carrera.obligacionId())
+					.orElseThrow(carrera::choque);
+			throw new ObligacionYaPresentadaException(carrera.obligacionId(), lote);
+		}
+	}
+
+	/**
 	 * Incluye una obligacion en el lote, con todas sus comprobaciones.
 	 *
 	 * <p>La consulta previa a {@code findVivoDeLaObligacion} no es el mecanismo de RN-M21-003 —ese
@@ -576,14 +606,12 @@ public class PresentacionService {
 			// otro lote entre que leimos y escribimos, y el unique sobre la columna generada lo
 			// freno. Sin esta traduccion el perdedor recibia el 409 generico `conflict`, sin el lote
 			// que la tiene, en vez del `obligacion-ya-presentada` que el contrato promete. Lo
-			// encontro PresentacionItemConcurrenteIT. El lote se lee en una transaccion aparte:
-			// esta sesion JPA ya fallo un insert y no se vuelve a tocar.
+			// encontro PresentacionItemConcurrenteIT. El lote se lee cuando esta transaccion ya
+			// revirtio (conElLoteDelGanador): esta sesion JPA ya fallo un insert.
 			if (!indiceContiene(choque, "uk_presentacion_item_ocupa")) {
 				throw choque;
 			}
-			long lote = ocupacion.loteQueLaOcupa(organizationId, obligacionId)
-					.orElseThrow(() -> choque);
-			throw new ObligacionYaPresentadaException(obligacionId, lote);
+			throw new ObligacionOcupadaEnCarrera(organizationId, obligacionId, choque);
 		}
 	}
 

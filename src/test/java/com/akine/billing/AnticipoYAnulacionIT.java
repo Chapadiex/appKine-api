@@ -15,6 +15,8 @@ import com.akine.billing.domain.exception.CobroAnuladoException;
 import com.akine.billing.domain.exception.CobroConReintegrosException;
 import com.akine.billing.domain.exception.SaldoAFavorInsuficienteException;
 import com.akine.billing.domain.port.ObligacionRepositoryPort;
+import com.akine.billing.infrastructure.EconomiaEnElResumenDePersona;
+import com.akine.person.spi.ConsultaDeResumen;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,6 +70,7 @@ class AnticipoYAnulacionIT {
 	@Autowired private ObligacionRepositoryPort obligaciones;
 	@Autowired private TransactionTemplate transacciones;
 	@Autowired private JdbcTemplate jdbc;
+	@Autowired private EconomiaEnElResumenDePersona economia;
 
 	@Test
 	@DisplayName("V69 ejecuto: columnas nuevas de cobro y cobro_imputacion, y la tabla cobro_reintegro")
@@ -199,6 +202,46 @@ class AnticipoYAnulacionIT {
 				List.of(new CobroCommand.ImputacionPedida(fixture.obligacionId(), IMPORTE)),
 				null));
 		assertThat(estadoDeDeuda(fixture.obligacionId())).isEqualTo("PAGADA");
+	}
+
+	/**
+	 * El defecto que destapo el E2E de cobros posteriores (web #64): {@code findDeLaPersona} filtraba
+	 * {@code deleted_at IS NULL}, anular llena {@code deleted_at}, y despues de anular el listado
+	 * decia que la persona no tenia ningun cobro mientras el cobro se leia por id.
+	 *
+	 * <p>La segunda mitad cuida el otro lado: el anulado entra al listado, pero la deuda de la
+	 * persona —la que muestra el 360— sale de las obligaciones y no tiene que moverse por eso.
+	 */
+	@Test
+	@DisplayName("un cobro anulado sigue en el listado de la persona, como ANULADO, y no mueve su deuda")
+	void el_cobro_anulado_se_lista_y_no_mueve_la_deuda() {
+		Fixture fixture = crearFixture();
+		CobroView cobro = cobroService.registrar(fixture.actor(), fixture.consultorioId(), new CobroCommand(
+				fixture.personaId(), IMPORTE,
+				List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, IMPORTE, null)),
+				List.of(new CobroCommand.ImputacionPedida(fixture.obligacionId(), IMPORTE)),
+				null));
+		posteriorService.anular(fixture.actor(), fixture.consultorioId(), cobro.id(), "Cobrado dos veces");
+
+		assertThat(cobroService.deLaPersona(fixture.actor(), fixture.consultorioId(), fixture.personaId()))
+				.extracting(CobroView::id, CobroView::estado, CobroView::comprobanteNumero)
+				.containsExactly(tuple(cobro.id(), CobroView.ANULADO, cobro.comprobanteNumero()));
+		assertThat(deudaDelResumen(fixture)).as("la deuda vuelve entera: el cobro anulado no la salda")
+				.isEqualByComparingTo(IMPORTE);
+
+		// Se vuelve a cobrar: los dos se listan, el vigente primero, y la deuda queda en cero aunque
+		// el anulado tambien este en la lista.
+		CobroView nuevo = cobroService.registrar(fixture.actor(), fixture.consultorioId(), new CobroCommand(
+				fixture.personaId(), IMPORTE,
+				List.of(new CobroCommand.MedioPedido(MedioDePago.TRANSFERENCIA, IMPORTE, null)),
+				List.of(new CobroCommand.ImputacionPedida(fixture.obligacionId(), IMPORTE)),
+				null));
+
+		assertThat(cobroService.deLaPersona(fixture.actor(), fixture.consultorioId(), fixture.personaId()))
+				.extracting(CobroView::id, CobroView::estado)
+				.containsExactly(tuple(nuevo.id(), CobroView.VIGENTE), tuple(cobro.id(), CobroView.ANULADO));
+		assertThat(deudaDelResumen(fixture)).isEqualByComparingTo(BigDecimal.ZERO);
+		assertThat(saldoDeDeuda(fixture.obligacionId())).isEqualByComparingTo(BigDecimal.ZERO);
 	}
 
 	@Test
@@ -344,6 +387,16 @@ class AnticipoYAnulacionIT {
 
 	private BigDecimal saldoDeDeuda(long obligacionId) {
 		return jdbc.queryForObject("SELECT saldo FROM obligacion WHERE id = ?", BigDecimal.class, obligacionId);
+	}
+
+	/** La deuda de la persona tal como la publica el Paciente 360. */
+	private BigDecimal deudaDelResumen(Fixture fixture) {
+		return economia.aportar(new ConsultaDeResumen(
+						fixture.organizationId(), fixture.consultorioId(), fixture.personaId(), 10))
+				.indicadores().stream()
+				.filter(indicador -> indicador.clave().equals("deuda-total"))
+				.findFirst().orElseThrow()
+				.importe();
 	}
 
 	private String estadoDeDeuda(long obligacionId) {

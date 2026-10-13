@@ -6,8 +6,10 @@ import com.akine.notification.domain.ErrorSanitizer;
 import com.akine.notification.domain.exception.EmailDeliveryException;
 import com.akine.notification.domain.port.EmailSender;
 import com.akine.notification.spi.SecureLinkResolver;
+import com.akine.notification.spi.VigenciaDeNotificacion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -64,14 +66,29 @@ public class OutboxDispatcher {
 	private final OutboxDispatchService dispatchService;
 	private final EmailSender emailSender;
 	private final SecureLinkResolver linkResolver;
+	private final List<VigenciaDeNotificacion> vigencias;
 
+	/** Sin revalidacion de origen: lo usan los tests que no la ejercitan. */
 	public OutboxDispatcher(
 			OutboxDispatchService dispatchService,
 			EmailSender emailSender,
 			SecureLinkResolver linkResolver) {
+		this(dispatchService, emailSender, linkResolver, List.of());
+	}
+
+	/**
+	 * @param vigencias una por modulo dueno de hechos que se pueden deshacer; puede estar vacia
+	 */
+	@Autowired
+	public OutboxDispatcher(
+			OutboxDispatchService dispatchService,
+			EmailSender emailSender,
+			SecureLinkResolver linkResolver,
+			List<VigenciaDeNotificacion> vigencias) {
 		this.dispatchService = dispatchService;
 		this.emailSender = emailSender;
 		this.linkResolver = linkResolver;
+		this.vigencias = List.copyOf(vigencias);
 	}
 
 	/**
@@ -90,6 +107,15 @@ public class OutboxDispatcher {
 
 	private void entregar(PendingDelivery pendiente) {
 		try {
+			// Primero, si el hecho que la origino sigue en pie. La fila pudo esperar horas en
+			// REINTENTABLE con el relay caido, y en ese tiempo la invitacion pudo cancelarse:
+			// mandar el correo igual entregaba un enlace muerto (QA, PR #95).
+			Optional<String> noVigente = motivoDeNoVigencia(pendiente);
+			if (noVigente.isPresent()) {
+				dispatchService.registrarOrigenNoVigente(pendiente.id(), noVigente.get());
+				soltarEnlace(pendiente);
+				return;
+			}
 			String enlace = resolverEnlace(pendiente);
 			if (pendiente.tipo().requiereEnlaceSeguro() && enlace == null) {
 				// El token de un solo uso ya no sirve: fue consumido, revocado o vencio.
@@ -116,6 +142,27 @@ public class OutboxDispatcher {
 			// que reintentarla unas pocas veces mas antes de agotarla.
 			registrarFallo(pendiente, ErrorSanitizer.sanitize(e), true);
 		}
+	}
+
+	/**
+	 * El primer motivo que algun modulo dé para no enviar, o vacio si todos la dan por vigente.
+	 *
+	 * <p>Una excepcion de un implementador NO se atrapa aca: sube al catch generico de
+	 * {@link #entregar} y la fila vuelve a la cola como fallo transitorio. Ante la duda de si el
+	 * hecho sigue en pie, ni se envia ni se descarta.
+	 */
+	private Optional<String> motivoDeNoVigencia(PendingDelivery pendiente) {
+		VigenciaDeNotificacion.NotificacionEnCurso enCurso =
+				new VigenciaDeNotificacion.NotificacionEnCurso(
+						pendiente.tipo(), pendiente.organizationId(),
+						pendiente.claveIdempotente(), pendiente.referenciaTokenId());
+		for (VigenciaDeNotificacion vigencia : vigencias) {
+			Optional<String> motivo = vigencia.motivoDeNoVigencia(enCurso);
+			if (motivo.isPresent()) {
+				return motivo;
+			}
+		}
+		return Optional.empty();
 	}
 
 	private String resolverEnlace(PendingDelivery pendiente) {

@@ -6,6 +6,7 @@ import com.akine.notification.domain.exception.EmailDeliveryException;
 import com.akine.notification.domain.port.EmailSender;
 import com.akine.notification.spi.NotificationType;
 import com.akine.notification.spi.SecureLinkResolver;
+import com.akine.notification.spi.VigenciaDeNotificacion;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +27,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -98,6 +100,28 @@ class OutboxDispatcherTest {
 		ArgumentCaptor<String> motivo = ArgumentCaptor.forClass(String.class);
 		verify(dispatchService).registrarFalloPermanente(anyLong(), motivo.capture());
 		return motivo.getValue();
+	}
+
+	@Test
+	@DisplayName("si el origen ya no esta vigente no se redacta ni se envia: AGOTADA con el motivo "
+			+ "y el enlace se suelta")
+	void origen_no_vigente_no_envia() {
+		VigenciaDeNotificacion vigencia = enCurso -> enCurso.tipo() == NotificationType.ACTIVACION_CUENTA
+				? Optional.of("No se envia: anulada")
+				: Optional.empty();
+		OutboxDispatcher conVigencia =
+				new OutboxDispatcher(dispatchService, emailSender, linkResolver, List.of(vigencia));
+		lote(activacion(), aviso());
+
+		conVigencia.runOnce();
+
+		verify(dispatchService).registrarOrigenNoVigente(ID_ACTIVACION, "No se envia: anulada");
+		verify(linkResolver, never()).resolveLink(NotificationType.ACTIVACION_CUENTA, TOKEN_REF);
+		verify(linkResolver).consumeLink(NotificationType.ACTIVACION_CUENTA, TOKEN_REF);
+		verify(dispatchService, never()).registrarExito(ID_ACTIVACION);
+		// La vigente del mismo lote sale igual.
+		verify(dispatchService).registrarExito(ID_AVISO);
+		verify(emailSender, times(1)).send(any());
 	}
 
 	@Test

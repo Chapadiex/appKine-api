@@ -289,7 +289,7 @@ public class CicloDeTurnoService {
 			OperatingActor actor, long consultorioId, long turnoId,
 			ReprogramacionCommand command, long organizationId, ConsultorioSnapshot sede) {
 
-		BloqueoDeAgenda.tomar(agendas, organizationId, consultorioId);
+		BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
 
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
 		exigirVersion(turno, command.expectedVersion());
