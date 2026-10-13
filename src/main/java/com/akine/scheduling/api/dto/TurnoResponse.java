@@ -34,6 +34,13 @@ public record TurnoResponse(
 				example = "12")
 		Long serieId,
 
+		@Schema(
+				description = "Cobertura del paciente elegida al reservar. Ausente si no se eligio: "
+						+ "la recepcion usa entonces la primera que aplique. Es una preferencia, no un "
+						+ "veredicto: si el dia del turno ya no aplica, la recepcion queda OBSERVADA.",
+				example = "412")
+		Long coberturaId,
+
 		@Schema(description = "Membership del profesional. Ausente si la oferta no lo requiere.", example = "31")
 		Long profesionalId,
 
@@ -92,6 +99,7 @@ public record TurnoResponse(
 	public static TurnoResponse de(TurnoView vista) {
 		return new TurnoResponse(
 				vista.id(), vista.consultorioId(), vista.ofertaId(), vista.personaId(), vista.serieId(),
+				vista.coberturaId(),
 				vista.profesionalId(), vista.espacioId(), vista.inicio(), vista.fin(),
 				vista.estado(), vista.reservadoEn(), vista.confirmadoEn(),
 				vista.motivoCancelacion(), vista.canceladoEn(), vista.ausenteEn(),

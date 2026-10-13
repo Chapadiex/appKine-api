@@ -37,4 +37,11 @@ public class PersonCoberturasAplicablesDirectory implements CoberturasAplicables
 		return servicio.noAplicables(
 				organizationId, consultorioId, personaId, practicaId, ofertaId, fecha);
 	}
+
+	@Override
+	public boolean vigenteDeLaPersona(
+			long organizationId, long personaId, long coberturaId, LocalDate fecha) {
+		return servicio.vigentes(organizationId, personaId, fecha).stream()
+				.anyMatch(c -> c.getId() == coberturaId);
+	}
 }

@@ -1,6 +1,6 @@
 # F6 — Atención clínica
 
-> Auditoría del 01/10/2026 · backend `37ff201` · frontend `4c6ae8b` · **~62 %**
+> Auditoría del 01/10/2026 (~62 %), **reverificada el 12/10/2026**: ver el registro de cierre al final.
 > Etapas del plan: 06.01–06.06 (§13, líneas ~2823–3304). Insumo de diseño: `docs/producto/plan_sesiones.txt`.
 
 ## Estado por etapa
@@ -51,10 +51,10 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
   realizadas. Ver `docs/diseno/AKINE-C-6-enmiendas.md`.
 - [ ] 06.06: permiso reforzado y política temporal para enmendar (hoy usa el mismo `sesion:register`).
 - [ ] 06.05: el criterio pide "HC consistente aunque la economía falle y reintente"; hoy un
-  observador que falla hace fallar el cierre. Decidir si se mantiene como contrapartida (escribirla
-  como DP) o se desacopla.
+  observador que falla hace fallar el cierre. **Pendiente del usuario (DU-11)**: no hay arreglo
+  acotado que no sea decidir el desacople.
 
-### Frontend
+### Frontend — frente clínico de pantalla, **otro chat** (D-d, D-g; web #4 para la HC)
 - [ ] Mediciones (el cliente generado existe, ninguna pantalla lo usa).
 - [ ] Tratamientos realizados.
 - [ ] Enmiendas (no hay ruta en `clinical.routes.ts`).
@@ -64,7 +64,9 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 - [x] ITs de tratamientos (escenarios 39–43 de `docs/tests-diferidos.md`), mediciones y enmiendas.
 - [x] Test de permiso y de auditoría `SESION_AMENDED`.
 - [ ] E2E de sesión rápida y de cierre → timeline.
-- [ ] Verificar que el administrativo no ve el detalle clínico.
+- [x] ~~Verificar que el administrativo no ve el detalle clínico.~~ `MatrizDePermisosIT` (G-5, #78):
+  historia, timeline y casos dan 403 al `ADMINISTRATIVO`; desde el 12/10 además ve sólo los datos
+  administrativos (ver F4).
 
 > **En curso al 01/10:** la rama `akine-integracion-total` agregó `TratamientoServiceTest`,
 > `MedicionServiceTest` y `EncounterProblemHandlerTest` (unitarios). No cubren el CHECK de la base:
@@ -94,3 +96,37 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 - [ ] Enmiendas que versionen tratamientos y mediciones (**hecho en C-6**), con permiso reforzado (pendiente: decision del usuario).
 - [ ] Pantallas de mediciones, tratamientos y enmiendas con E2E.
 - [ ] Registros de 06.03, 06.04 y 06.06 promovidos a cierre.
+
+## Registro de cierre — 12/10/2026
+
+| Etapa | Backend | Pantalla (otro chat) |
+|---|---|---|
+| 06.01 Sesión, inicio, autosave | **80 %** — falta caso obligatorio (C-9), atención sin turno y reemplazo del profesional (C-8): decisiones | atención-page existente |
+| 06.02 Evaluación base | **100 %** | E2E pendiente (D-g) |
+| 06.03 Examen y mediciones | **80 %** — ITs (C-7), versionado en enmiendas (C-6 #43). Subbloques ROM/fuerza/marcha: decisión | D-d sin PR |
+| 06.04 Tratamientos realizados | **90 %** — `NO_APLICA` corregido (C-1 #6, `V65`), versión que avanza una vez (C-7), DP-12. Parámetros obligatorios por práctica: decisión | D-d sin PR |
+| 06.05 Cierre idempotente | **90 %** — auditoría de la Sesión restituida (#78), 409 `oferta-sin-precio` (#72). Desacople de la economía: decisión | D-g sin PR |
+| 06.06 Enmiendas | **85 %** — versionan tratamientos y mediciones (C-6, #43, `V71`). Permiso reforzado y ventana: decisión | D-g sin PR |
+
+**Backend, con evidencia:** C-1 (#6, 04/10), C-7 ITs de tratamientos, mediciones y enmiendas
+(#10, 04/10), C-6 (#43, 06/10), auditoría `SESION_*` restituida y matriz ejecutable (#78, 11/10),
+cobertura de `encounter` (#32). Esta rama no toca `encounter`: el "administrativo no ve el
+detalle clínico" queda verificado por `MatrizDePermisosIT` y la lectura limitada está en F4.
+
+**Pantalla:** frente clínico de pantalla — otro chat (D-d, D-g).
+
+**Pendiente del usuario:**
+
+1. **C-8 / DU-11: atención sin turno y reemplazo autorizado del profesional.** *Recomendado:*
+   `POST /sesiones` sin turno con `sesion:register` y motivo obligatorio; reemplazo sólo por
+   `CONSULTORIO_ADMIN` con auditoría.
+2. **DU-11: ¿un observador que falla debe hacer fallar el cierre?** *Recomendado:* mantenerlo
+   (la deuda se devenga en la transacción del cierre, regla 7) y escribirlo como DP.
+3. **Subbloques ROM, fuerza y marcha.** *Recomendado:* quedarse en la medición genérica con
+   catálogo de tipos y declarar el desvío.
+4. **Parámetros obligatorios por práctica.** *Recomendado:* configuración por práctica en
+   `offering`, en una etapa propia.
+5. **Permiso reforzado y ventana temporal para enmendar.** *Recomendado:* `sesion:amend` propio
+   y ventana de 30 días configurable por organización.
+6. **Justificación de acceso en `encounter`** (G-5). *Recomendado:* declarar que la propiedad de la
+   sesión ya es relación asistencial.

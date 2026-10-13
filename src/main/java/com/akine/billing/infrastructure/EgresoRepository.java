@@ -9,7 +9,6 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -74,7 +73,12 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 			@Param("comprobanteTipo") String comprobanteTipo,
 			@Param("comprobanteNumero") String comprobanteNumero);
 
-	/** RF-M22-004. Nativo por los filtros opcionales y el {@code LIMIT/OFFSET}. */
+	/**
+	 * RF-M22-004. Nativo por los filtros opcionales y el {@code LIMIT/OFFSET}.
+	 *
+	 * <p>El recorte por fecha es un rango semiabierto de instantes y no {@code DATE(registrado_en)}:
+	 * la columna es UTC y el dia que pide la bandeja es el de la sede.
+	 */
 	@Override
 	@Query(value = """
 			SELECT * FROM egreso
@@ -83,8 +87,8 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 			   AND (:estado IS NULL OR estado = :estado)
 			   AND (:categoria IS NULL OR categoria = :categoria)
 			   AND (:beneficiarioClave IS NULL OR beneficiario_clave = :beneficiarioClave)
-			   AND (:desde IS NULL OR DATE(registrado_en) >= :desde)
-			   AND (:hasta IS NULL OR DATE(registrado_en) <= :hasta)
+			   AND (:desde IS NULL OR registrado_en >= :desde)
+			   AND (:hasta IS NULL OR registrado_en < :hasta)
 			 ORDER BY registrado_en DESC, id DESC
 			 LIMIT :limite OFFSET :desplazamiento
 			""", nativeQuery = true)
@@ -95,8 +99,8 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 			@Param("estado") String estado,
 			@Param("categoria") String categoria,
 			@Param("beneficiarioClave") String beneficiarioClave,
-			@Param("desde") LocalDate desde,
-			@Param("hasta") LocalDate hasta,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
 			@Param("limite") int limite,
 			@Param("desplazamiento") int desplazamiento);
 

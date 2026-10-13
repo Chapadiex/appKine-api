@@ -185,7 +185,9 @@ public class CicloDeRecepcionService {
 
 		Instant ahora = Instant.now();
 		EstadoRecepcion anterior = recepcion.getEstado();
-		String motivo = aplicarValidacion(organizationId, sede, turno, recepcion, coberturaId,
+		// Sin eleccion del operador vale la del turno (AKINE-05.02); sin ninguna, la primera que aplique.
+		Long elegida = coberturaId != null ? coberturaId : turno.getCoberturaId();
+		String motivo = aplicarValidacion(organizationId, sede, turno, recepcion, elegida,
 				actor.accountId(), ahora);
 
 		Recepcion validada = registro.registrar(recepcion, TipoEventoRecepcion.VALIDACION,

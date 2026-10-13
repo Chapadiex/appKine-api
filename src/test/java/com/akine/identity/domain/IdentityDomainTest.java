@@ -390,9 +390,9 @@ class IdentityDomainTest {
 		@DisplayName("el registro de idempotencia distingue completado de duplicado")
 		void el_registro_de_idempotencia_distingue_los_dos_desenlaces() {
 			OnboardingRegistro completado = OnboardingRegistro.completado(
-					"clave-1", "ana@ejemplo.test", CUENTA_ID, 10L, 20L, AHORA);
+					"clave-1", "ana@ejemplo.test", CUENTA_ID, 10L, 20L, "h1", AHORA);
 			OnboardingRegistro duplicado = OnboardingRegistro.duplicado(
-					"clave-2", "ana@ejemplo.test", AHORA);
+					"clave-2", "ana@ejemplo.test", null, AHORA);
 
 			assertThat(completado.getEstado()).isEqualTo(EstadoOnboarding.COMPLETADO);
 			assertThat(completado.getCuentaId()).isEqualTo(CUENTA_ID);

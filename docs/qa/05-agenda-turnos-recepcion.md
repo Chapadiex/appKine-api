@@ -289,3 +289,26 @@ del navegador, es hallazgo (baja si solo es el valor inicial de un campo editabl
 filtro que decide qué se ve, como la recepción del día o el reporte). Los filtros que el
 **backend** aplica por día UTC son otro tema: ver el de egresos en [EGR-07](12-egresos-y-pagos.md).
 **Auditoría:** nada (son lecturas). Al terminar, sacá el override de zona en DevTools.
+
+---
+
+### AGE-14 · Cobertura elegida al reservar (cierre de F5, contrato 0.94.0) — sin pantalla todavía
+
+Solo por la API: la pantalla de reserva no la ofrece hasta que `appKine-web` regenere el cliente
+contra 0.94.0. Usá la persona y la cobertura de PER-07 (`@cobertura`).
+
+```powershell
+Api POST "/api/v1/consultorios/<sede_a>/turnos/ofertas/<oferta>" $A @{ inicio = '<mañana a una hora libre, ISO UTC>'; personaId = <persona>; profesionalId = <membership_profesional>; coberturaId = <cobertura>; idempotencyKey = (Nueva-Clave) }
+Api POST "/api/v1/consultorios/<sede_a>/turnos/ofertas/<oferta>" $A @{ inicio = '<otra hora libre>'; personaId = <persona>; profesionalId = <membership_profesional>; coberturaId = 999999; idempotencyKey = (Nueva-Clave) }
+```
+
+**Esperado:** el primero responde `201` con `coberturaId`; el segundo `404 not-found` y ningún
+turno. El día del turno, validá la recepción **sin** mandar `coberturaId`: tiene que quedar con la
+cobertura elegida, no con la principal.
+
+```sql
+SELECT id, persona_id, cobertura_id FROM turno WHERE consultorio_id = @sede_a AND created_at >= @desde ORDER BY id DESC LIMIT 3;
+SELECT turno_id, estado, modalidad, cobertura_id FROM recepcion WHERE turno_id = <turno del primero>;
+```
+
+**Auditoría:** nada nuevo; la reserva deja su `turno_evento` RESERVA como siempre.

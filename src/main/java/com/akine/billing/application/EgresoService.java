@@ -10,12 +10,14 @@ import com.akine.billing.domain.port.EgresoRepositoryPort;
 import com.akine.billing.domain.port.PagoEgresoRepositoryPort;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.identity.AccountIdentity;
 import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -137,17 +139,29 @@ public class EgresoService {
 	 * <p><b>Solo mientras sea borrador.</b> Un importe que cambiara debajo de pagos ya asentados
 	 * haria que el saldo dejara de reconciliar con el ledger de caja sin que nada fallara.
 	 *
+	 * <p><b>Con control optimista explicito.</b> Dos administrativos corrigiendo el mismo borrador
+	 * no pueden pisarse en silencio: el que trae una version distinta de la vigente recibe 409
+	 * {@code concurrent-modification} (DP-21). La comparacion es contra la version leida en esta
+	 * transaccion; si otro commitea en el medio, el {@code @Version} del UPDATE lo frena igual.
+	 *
 	 * @throws EgresoNoEditableException el egreso ya no es borrador (409)
+	 * @throws OptimisticLockingFailureException {@code expectedVersion} no es la vigente (409)
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public EgresoView editar(
-			OperatingActor actor, long consultorioId, long egresoId, EgresoCommand command) {
+			OperatingActor actor, long consultorioId, long egresoId, EgresoCommand command,
+			long expectedVersion) {
 
 		long organizationId = CajaAcceso.exigirContexto(actor);
 		acceso.exigirSedeDelTenant(organizationId, consultorioId);
 		acceso.exigirOperarCaja(actor, organizationId, consultorioId);
 
 		Egreso egreso = exigirEgreso(organizationId, consultorioId, egresoId);
+		if (egreso.getVersion() != expectedVersion) {
+			throw new OptimisticLockingFailureException(
+					"El egreso " + egresoId + " cambio desde que se leyo: version "
+							+ expectedVersion + " contra " + egreso.getVersion());
+		}
 		if (!egreso.getEstado().esEditable()) {
 			throw new EgresoNoEditableException(egresoId, egreso.getEstado().name());
 		}
@@ -164,6 +178,7 @@ public class EgresoService {
 		// El beneficiario NO se edita: cambiarlo seria otro egreso, no una correccion de este, y
 		// dejaria el comprobante ya validado colgando de una clave distinta.
 		Egreso guardado = egresos.save(egreso);
+		egresos.flush();
 		return EgresoView.de(guardado);
 	}
 
@@ -242,7 +257,7 @@ public class EgresoService {
 			int limite, int desplazamiento) {
 
 		long organizationId = CajaAcceso.exigirContexto(actor);
-		acceso.exigirSedeDelTenant(organizationId, consultorioId);
+		ConsultorioSnapshot sede = acceso.exigirSedeDelTenant(organizationId, consultorioId);
 		acceso.exigirOperarCaja(actor, organizationId, consultorioId);
 
 		String clave = beneficiarioMembershipId == null
@@ -250,7 +265,8 @@ public class EgresoService {
 				: claveDeColaborador(beneficiarioMembershipId);
 
 		return egresos.buscar(
-						organizationId, consultorioId, estado, categoria, clave, desde, hasta,
+						organizationId, consultorioId, estado, categoria, clave,
+						CajaAcceso.inicioDelDia(sede, desde), CajaAcceso.finDelDia(sede, hasta),
 						Math.min(Math.max(limite, 1), LIMITE_MAXIMO), Math.max(desplazamiento, 0))
 				.stream()
 				.map(EgresoView::de)

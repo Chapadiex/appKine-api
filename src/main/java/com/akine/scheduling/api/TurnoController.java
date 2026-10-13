@@ -123,7 +123,8 @@ public class TurnoController {
 						request.personaId(),
 						request.inicio(),
 						request.profesionalId(),
-						request.idempotencyKey()));
+						request.idempotencyKey(),
+						request.coberturaId()));
 
 		TurnoResponse cuerpo = TurnoResponse.de(resultado.turno());
 

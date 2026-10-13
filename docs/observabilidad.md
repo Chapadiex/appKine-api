@@ -5,6 +5,8 @@ que pide ADR-0016 —log estructurado, métricas Prometheus y trazas OpenTelemet
 correlación que los une.
 
 > **Fuera de alcance de G-4:** dashboards, alertas y la corrida de carga contra los SLO (G-10).
+> Las dos primeras están desde el cierre de F8 en `ops/observabilidad/` (§6); la carga, en
+> `docs/carga.md`.
 > Esto deja las señales listas para que esas piezas se monten encima.
 
 ## 1. Variables de entorno
@@ -168,3 +170,26 @@ docker run --rm -p 8080:8080 \
 
 Con `SPRING_PROFILES_ACTIVE=local` (el ejemplo de `AGENT.md`) el log sale en texto y el scrape
 queda abierto, como en desarrollo.
+
+## 6. Tablero y alertas (cierre de F8)
+
+Dos archivos en `ops/observabilidad/`, listos para cargar en un Prometheus y un Grafana que lean el
+scrape de §3. No hay Prometheus ni Grafana desplegados por este repo: montarlos es del despliegue
+(G-14).
+
+| Archivo | Qué es |
+|---|---|
+| `alertas-akine-api.yml` | `rule_files` de Prometheus. Tres reglas de grabación (p95 y p99 de la API interactiva, fracción de 5xx) y siete alertas: p95 > 300 ms y p99 > 800 ms sostenidos 10 min (ADR-0016), 5xx > 1 % en 5 min, pedidos esperando conexión del pool de Hikari durante 2 min, pool al 100 % durante 5 min, heap > 90 % durante 10 min y `up == 0` durante 2 min. Cada alerta nombra su runbook |
+| `tablero-akine-api.json` | Tablero de Grafana (importar con la fuente Prometheus): pedidos por status, fracción de 5xx, p50/p95/p99 con los umbrales del SLO, fracción dentro de 300 ms en la última hora, los diez endpoints más lentos, el pool de Hikari y JVM/CPU |
+
+La latencia excluye `/reportes/{reporte}/export`, las descargas de adjuntos (`/contenido`) y el
+actuator: ADR-0016 mide la API interactiva.
+
+**Lo verifica `ObservabilidadIT`:** lee los dos archivos y falla si alguno usa una métrica que no
+aparece en un `/actuator/prometheus` real. Es el fallo que ninguna otra cosa ve: una alerta sobre
+una métrica mal escrita no dispara nunca. La sintaxis PromQL **no** se valida en el build
+(`promtool check rules` no está en el CI); conviene correrlo al montar Prometheus.
+
+**Qué hay que esperar con la capacidad medida** (`docs/carga.md` §8): con 500 usuarios y el pool
+de 10, el p95 de lo interactivo da 3,3–3,6 s, así que `AkineLatenciaP95FueraDeSlo` dispararía bajo
+esa carga. Es la señal correcta mientras el rendimiento por pedido siga abierto.

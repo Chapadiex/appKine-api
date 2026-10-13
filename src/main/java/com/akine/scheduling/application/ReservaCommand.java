@@ -19,7 +19,13 @@ public record ReservaCommand(
 		long personaId,
 		Instant inicio,
 		Long profesionalId,
-		String idempotencyKey) {
+		String idempotencyKey,
+		Long coberturaId) {
+
+	/** Reserva sin cobertura elegida: la forma anterior a AKINE-05.02, que siguen usando las series. */
+	public ReservaCommand(long personaId, Instant inicio, Long profesionalId, String idempotencyKey) {
+		this(personaId, inicio, profesionalId, idempotencyKey, null);
+	}
 
 	/**
 	 * Huella del pedido, para distinguir un reintento de un reuso de clave con otro contenido.
@@ -40,7 +46,10 @@ public record ReservaCommand(
 	 */
 	public String huella(long consultorioId, long ofertaId) {
 		String canonico = consultorioId + "|" + ofertaId + "|" + personaId + "|" + inicio
-				+ "|" + profesionalId;
+				+ "|" + profesionalId
+				// Solo si se eligio: asi la huella de un pedido sin cobertura es la misma que antes de
+				// AKINE-05.02 y el reintento de una clave vieja no se vuelve un 409 por el despliegue.
+				+ (coberturaId == null ? "" : "|c" + coberturaId);
 		try {
 			byte[] digest = MessageDigest.getInstance("SHA-256")
 					.digest(canonico.getBytes(StandardCharsets.UTF_8));

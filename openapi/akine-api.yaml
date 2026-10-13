@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.89.0
+  version: 0.97.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -770,7 +770,7 @@ paths:
 
         La cuenta nace PENDIENTE_ACTIVACION. Hasta confirmar el enlace, el login responde 401 igual que con una contrasena incorrecta.
 
-        El header Idempotency-Key es obligatorio. Reintentar el alta con la misma clave devuelve el mismo desenlace sin crear una segunda cuenta ni mandar un segundo correo; el cliente debe generarlo una vez al abrir el formulario y reusarlo en cada reintento.
+        El header Idempotency-Key es obligatorio. Reintentar el alta con la misma clave devuelve el mismo desenlace sin crear una segunda cuenta ni mandar un segundo correo; el cliente debe generarlo una vez al abrir el formulario y reusarlo en cada reintento. Reusar la clave con OTRO contenido no es un reintento: responde 409 idempotency-key-conflict. La contrasena no entra en esa comparacion.
 
         Los rechazos posibles no dicen nada sobre el email: 400 por contrasena que no cumple la politica o por campos ausentes, 404 por un planCode que no existe o ya no se contrata, y 409 por un organizationSlug ya tomado. Los tres se evaluan ANTES de mirar si el email tiene cuenta, justamente para que la respuesta sea la misma en los dos casos: validarlos despues convertiria el endpoint en un verificador de direcciones de correo.
       operationId: registerAccount
@@ -815,8 +815,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El organizationSlug pedido ya lo usa otro tenant. Misma respuesta
-            exista o no la cuenta
+          description: "El organizationSlug pedido ya lo usa otro tenant (organization-slug-taken),\
+            \ o la Idempotency-Key ya se uso con otro contenido (idempotency-key-conflict).\
+            \ Misma respuesta exista o no la cuenta"
         "429":
           content:
             application/problem+json:
@@ -4256,7 +4257,9 @@ paths:
   /api/v1/consultorios/{consultorioId}/cobros:
     get:
       description: "Los cobros de un paciente en toda la organizacion, del mas reciente\
-        \ al mas viejo. Junto con las obligaciones forma su cuenta corriente."
+        \ al mas viejo, anulados incluidos: un cobro anulado se lista con estado ANULADO,\
+        \ porque su comprobante queda usado. Junto con las obligaciones forma su cuenta\
+        \ corriente."
       operationId: cobrosDeLaPersona
       parameters:
       - in: path
@@ -5352,6 +5355,8 @@ paths:
       description: |-
         Lista y filtra por fecha, categoria, beneficiario y estado (RF-M22-004).
 
+        `desde` y `hasta` son **dias de la sede**, inclusivos: se comparan contra el instante de registro en la zona horaria de la sede, asi que un egreso cargado a las 22:30 de Cordoba es de ese dia y no del siguiente.
+
         **Sin los pagos de cada fila**: traerlos seria el N+1 del primer listado que lo use. El detalle los tiene.
 
         **Los periodos superpuestos no se impiden, se muestran.** Dos liquidaciones del mismo profesional para el mismo mes son legitimas —una correccion, un segundo concepto—, y un unique sobre el periodo convertiria un caso normal en un error. Filtrar por beneficiario las pone una al lado de la otra, que es la unica respuesta honesta.
@@ -5547,6 +5552,8 @@ paths:
         **El beneficiario no se edita**: cambiarlo seria otro egreso, no una correccion de este.
 
         Una vez confirmado, 409 `egreso-no-editable`. Un importe que cambiara debajo de pagos ya asentados haria que el saldo dejara de reconciliar con el ledger de caja **sin que nada fallara**, que es la peor forma de romperse.
+
+        **Control optimista (cambio incompatible desde 0.91.0).** El cuerpo es `EditarEgreso` y lleva la `version` leida, **requerida**: si otro la cambio antes, 409 `concurrent-modification` y hay que releer. Antes el cuerpo era `RegistrarEgreso`, sin version, y dos correcciones simultaneas se pisaban en silencio. La respuesta trae la version nueva para encadenar la siguiente correccion.
       operationId: editar
       parameters:
       - in: path
@@ -5565,7 +5572,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RegistrarEgreso"
+              $ref: "#/components/schemas/EditarEgreso"
         required: true
       responses:
         "200":
@@ -5577,6 +5584,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/Egreso"
           description: Borrador corregido
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Cuerpo invalido, incluida la falta de `version`"
         "404":
           content:
             application/json:
@@ -5594,7 +5610,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: '`egreso-no-editable` o `egreso-comprobante-duplicado`'
+          description: "`egreso-no-editable`, `egreso-comprobante-duplicado` o `concurrent-modification`\
+            \ (la version quedo vieja)"
       summary: Corregir el borrador
       tags:
       - Egresos
@@ -8358,6 +8375,8 @@ paths:
         Lista las deudas de financiador pendientes de un periodo (RF-M21-001).
 
         Ya vienen filtradas: deja afuera las anuladas, las sin saldo y **las que ya estan vivas en otro lote**, de modo que armar el reclamo no pueda duplicar una prestacion (RN-M21-003).
+
+        `desde` y `hasta` son **dias de la sede**, inclusivos: el devengamiento se compara en la zona horaria de la sede, la misma con la que se congela la fecha de prestacion del item.
 
         Desde AKINE F-4 el cierre de una sesion con cobertura devenga, ademas de la del paciente, la obligacion del financiador con el convenio congelado, y es esa la que aparece aca. La lista vacia significa que en el periodo no hubo prestaciones con cobertura de ese financiador pendientes de reclamar.
       operationId: elegibles
@@ -12898,6 +12917,44 @@ paths:
           description: "La persona no tiene historia, el antecedente no es de ella,\
             \ o es de otra organizacion"
       summary: Dar de baja un antecedente clinico
+      tags:
+      - Historia clinica
+  /api/v1/historias-clinicas/por-persona/{personaId}/datos-administrativos:
+    get:
+      description: |-
+        Matriz de permisos §32, "Ver Historia Clinica" del ADMINISTRATIVO: Limitado, que la matriz define como solo metadatos administrativos y NUNCA contenido clinico. Devuelve si la persona tiene historia, cuando se abrio, sus casos (numero, estado, oferta, fechas) y el equipo tratante vigente de cada uno. No trae resumen, antecedentes, diagnostico, objetivo ni motivo de cierre.
+
+        Exige paciente:read (lo tiene el personal, no el rol PACIENTE). No pide justificacion de acceso y no se audita como acceso clinico: no expone contenido clinico. Una persona propia sin historia responde 200 con tieneHistoriaClinica = false; una persona de otra organizacion, o sin perfil de paciente vigente, 404.
+      operationId: verDatosAdministrativosDeHistoriaClinica
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatosAdministrativosDeHistoriaResponse"
+          description: Los datos administrativos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto o sin paciente:read
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona es de otra organizacion o no es paciente
+      summary: Ver los datos administrativos de la Historia Clinica de una persona
       tags:
       - Historia clinica
   /api/v1/historias-clinicas/por-persona/{personaId}/resumen:
@@ -21713,6 +21770,49 @@ components:
       required:
       - expectedVersion
       - motivo
+    CasoAdministrativoResponse:
+      type: object
+      description: "Caso clinico sin contenido clinico: numero, estado, fechas y equipo\
+        \ vigente"
+      properties:
+        abiertoEn:
+          type: string
+          format: date-time
+          description: Instante UTC de apertura
+        cerradoEn:
+          type: string
+          format: date-time
+          description: Instante UTC de cierre. Ausente mientras el caso siga activo
+        equipo:
+          type: array
+          description: Profesionales tratantes vigentes
+          items:
+            $ref: "#/components/schemas/CasoProfesional"
+        estado:
+          type: string
+          enum:
+          - ACTIVO
+          - CERRADO
+          example: ACTIVO
+        id:
+          type: integer
+          format: int64
+          example: 301
+        numeroCaso:
+          type: integer
+          format: int32
+          description: Correlativo del caso dentro de la historia
+          example: 2
+        ofertaConsultorioId:
+          type: integer
+          format: int64
+          description: Sede de esa oferta
+          example: 3
+        ofertaId:
+          type: integer
+          format: int64
+          description: Oferta por la que se abrio el caso
+          example: 14
     CasoClinico:
       type: object
       description: "Problema clinico concreto de un paciente, con su equipo tratante\
@@ -24622,6 +24722,33 @@ components:
       required:
       - motivo
       - version
+    DatosAdministrativosDeHistoriaResponse:
+      type: object
+      description: "Datos administrativos de la historia clinica de una persona: existencia,\
+        \ fechas y profesionales tratantes. Nunca contenido clinico"
+      properties:
+        abiertaEn:
+          type: string
+          format: date-time
+          description: Instante UTC de apertura. Ausente si la persona no tiene historia
+        casos:
+          type: array
+          description: "Casos de la historia: activos primero y luego cerrados"
+          items:
+            $ref: "#/components/schemas/CasoAdministrativoResponse"
+        historiaClinicaId:
+          type: integer
+          format: int64
+          description: Ausente si la persona no tiene historia
+          example: 88
+        personaId:
+          type: integer
+          format: int64
+          example: 12
+        tieneHistoriaClinica:
+          type: boolean
+          description: Falso si la persona todavia no tiene historia clinica
+          example: true
     DeactivateBloqueRequest:
       type: object
       description: Motivo de la baja logica del bloque de disponibilidad
@@ -25012,6 +25139,72 @@ components:
       required:
       - diagnosticoPresuntivo
       - expectedVersion
+    EditarEgreso:
+      type: object
+      description: "Correccion del borrador. Lleva la `version` que el cliente leyo:\
+        \ si otro la cambio antes, 409 `concurrent-modification`."
+      properties:
+        categoria:
+          type: string
+          description: En que se fue la plata. Filtra y totaliza (RF-M22-004).
+          enum:
+          - HONORARIOS_PROFESIONALES
+          - SUELDOS
+          - ALQUILER
+          - SERVICIOS
+          - INSUMOS
+          - IMPUESTOS
+          - MANTENIMIENTO
+          - OTRO
+          example: HONORARIOS_PROFESIONALES
+        comprobanteFecha:
+          type: string
+          format: date
+          example: 2026-10-03
+        comprobanteNumero:
+          type: string
+          description: "El mismo comprobante del mismo beneficiario no se carga dos\
+            \ veces: 409 `egreso-comprobante-duplicado`."
+          example: 0001-00000123
+          maxLength: 40
+          minLength: 0
+        comprobanteTipo:
+          type: string
+          description: Tipo de comprobante. **Opcional en borrador y obligatorio para
+            confirmar**.
+          example: FACTURA_C
+          maxLength: 24
+          minLength: 0
+        concepto:
+          type: string
+          example: Honorarios de septiembre 2026
+          maxLength: 280
+          minLength: 0
+        importeTotal:
+          type: number
+          description: "Decimal exacto, nunca float."
+          example: 185000.0
+          minimum: 0.01
+        periodoDesde:
+          type: string
+          format: date
+          description: Periodo liquidado. Los dos o ninguno.
+          example: 2026-09-01
+        periodoHasta:
+          type: string
+          format: date
+          example: 2026-09-30
+        version:
+          type: integer
+          format: int64
+          description: Version que el cliente leyo. **Requerida.**
+          example: 0
+          minimum: 0
+      required:
+      - categoria
+      - concepto
+      - importeTotal
+      - version
     EffectivePermissionsResponse:
       type: object
       description: Permisos efectivos de la cuenta en su contexto de trabajo activo
@@ -31333,6 +31526,16 @@ components:
         \ entre que la pantalla mostro la agenda y el usuario confirmo pudo cambiar\
         \ el horario del profesional, entrar un feriado o vencer la oferta."
       properties:
+        coberturaId:
+          type: integer
+          format: int64
+          description: "Cobertura del paciente con la que se piensa atender. Opcional:\
+            \ omitirla es no elegir, y la recepcion usa la primera que aplique. Tiene\
+            \ que ser una cobertura financiada, activa y vigente el dia del turno\
+            \ de ESA persona; si no, 404 `not-found`. Si aplica a la practica lo decide\
+            \ la recepcion, que la usa por defecto al validar."
+          example: 412
+          exclusiveMinimum: 0
         idempotencyKey:
           type: string
           description: "Clave del cliente para que un reintento no cree un segundo\
@@ -32880,6 +33083,14 @@ components:
           type: string
           format: date-time
           example: 2026-09-10T11:20:00Z
+        coberturaId:
+          type: integer
+          format: int64
+          description: "Cobertura del paciente elegida al reservar. Ausente si no\
+            \ se eligio: la recepcion usa entonces la primera que aplique. Es una\
+            \ preferencia, no un veredicto: si el dia del turno ya no aplica, la recepcion\
+            \ queda OBSERVADA."
+          example: 412
         confirmadoEn:
           type: string
           format: date-time
@@ -34009,8 +34220,8 @@ components:
           type: integer
           format: int64
           description: "Cobertura del paciente con la que se quiere atender. Si se\
-            \ omite, se usa la primera que aplique a la practica (la principal va\
-            \ primera)."
+            \ omite, se usa la elegida al reservar el turno y, si no se eligio ninguna,\
+            \ la primera que aplique a la practica (la principal va primera)."
           example: 412
           exclusiveMinimum: 0
         expectedVersion:

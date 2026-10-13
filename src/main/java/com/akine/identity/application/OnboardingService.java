@@ -140,9 +140,9 @@ public class OnboardingService {
 			// con un EntityManager limpio. Ver el JavaDoc de EmailTomadoPorOtroHilo.
 			return recuperarDeColisionDeEmail(command, colision);
 		} catch (ClaveTomadaPorOtroHilo colision) {
-			// El otro hilo ya registro el mismo pedido: lo nuestro se revirtio entero y no hay
-			// nada mas que hacer. El desenlace es indistinguible del suyo.
-			return ResultadoRegistro.sinAlta();
+			// El otro hilo ya registro la misma clave: lo nuestro se revirtio entero. Si era el
+			// mismo pedido el desenlace es indistinguible del suyo; si no, es el 409 del 7b.
+			return desenlaceDelGanador(command);
 		} catch (OnboardingKeyTakenException colision) {
 			// Lo mismo, pero detectado del lado de organization: su uk_onboarding_key llega
 			// ANTES que el nuestro, porque el alta del tenant corre en el medio de esta
@@ -152,7 +152,7 @@ public class OnboardingService {
 			// metodo. Sin esto la excepcion llegaba a HTTP como 500, alcanzable con la misma
 			// Idempotency-Key y dos emails distintos, rompiendo la uniformidad del 202.
 			log.info("Alta self-service concurrente: organization registro antes la misma clave");
-			return ResultadoRegistro.sinAlta();
+			return desenlaceDelGanador(command);
 		}
 	}
 
@@ -171,14 +171,33 @@ public class OnboardingService {
 				Optional<OnboardingRegistro> previo =
 						onboardingRepository.findByClaveIdempotencia(command.claveIdempotencia());
 				if (previo.isPresent()) {
-					return replayDe(previo.get());
+					return replayDe(previo.get(), command);
 				}
 				return registrarDuplicado(
 						command, colision.emailNormalizado(), colision.ahora());
 			});
 		} catch (ClaveTomadaPorOtroHilo yaEstaba) {
-			return ResultadoRegistro.sinAlta();
+			return desenlaceDelGanador(command);
 		}
+	}
+
+	/**
+	 * Desenlace de quien perdio la carrera por la misma clave contra otro hilo.
+	 *
+	 * <p>Se relee el registro del ganador en una transaccion nueva —la nuestra ya se revirtio y
+	 * su sesion quedo rota— y se compara el hash: dos pedidos simultaneos con la misma clave y
+	 * distinto contenido no son un reintento, y el perdedor recibe el mismo 409 que recibiria
+	 * llegando despues. Si el registro no aparece o no es comparable, el desenlace es el de
+	 * siempre: el 202 uniforme.
+	 */
+	private ResultadoRegistro desenlaceDelGanador(RegistroCuentaCommand command) {
+		Optional<OnboardingRegistro> ganador = transactionTemplate.execute(status ->
+				onboardingRepository.findByClaveIdempotencia(command.claveIdempotencia()));
+		if (ganador != null && ganador.isPresent()
+				&& !ganador.get().matchesRequestHash(command.requestHash())) {
+			throw new IdempotencyKeyConflictException(command.claveIdempotencia());
+		}
+		return ResultadoRegistro.sinAlta();
 	}
 
 	private ResultadoRegistro ejecutarAlta(RegistroCuentaCommand command, String passwordHash) {
@@ -189,7 +208,7 @@ public class OnboardingService {
 				onboardingRepository.findByClaveIdempotencia(command.claveIdempotencia());
 		if (previo.isPresent()) {
 			log.info("Alta self-service reintentada con la misma clave: no se repite ningun efecto");
-			return replayDe(previo.get());
+			return replayDe(previo.get(), command);
 		}
 
 		// 2. TODO lo que se pueda rechazar del pedido se rechaza ACA, ANTES de mirar el email.
@@ -295,7 +314,7 @@ public class OnboardingService {
 
 		registrarIdempotencia(OnboardingRegistro.completado(
 				command.claveIdempotencia(), emailNormalizado, cuenta.getId(),
-				tenant.organizationId(), tenant.consultorioId(), ahora));
+				tenant.organizationId(), tenant.consultorioId(), command.requestHash(), ahora));
 
 		Map<String, String> details = new LinkedHashMap<>();
 		details.put("origen", ORIGEN_REGISTRO);
@@ -361,7 +380,7 @@ public class OnboardingService {
 		// ya registro la misma clave, esta transaccion se revierte entera —el aviso encolado
 		// arriba incluido, que es lo correcto: el ganador ya mando el suyo—.
 		registrarIdempotencia(OnboardingRegistro.duplicado(
-				command.claveIdempotencia(), emailNormalizado, ahora));
+				command.claveIdempotencia(), emailNormalizado, command.requestHash(), ahora));
 
 		// Nada de auditoria de cuenta: no hubo hecho sobre ninguna cuenta. Auditar aca
 		// construiria justamente el indice de direcciones registradas que el 202 uniforme
@@ -390,7 +409,19 @@ public class OnboardingService {
 		}
 	}
 
-	private ResultadoRegistro replayDe(OnboardingRegistro registro) {
+	/**
+	 * Devuelve el desenlace del pedido original, si este es el mismo pedido.
+	 *
+	 * <p>La misma clave con otro contenido no es un reintento sino un error del cliente, y
+	 * devolverle el 202 del original lo dejaria esperando un correo para un alta que nunca se
+	 * hizo (escenario 7b). Se compara el hash ANTES de mirar el estado, asi que el desenlace no
+	 * depende de si el email ya tenia cuenta: {@code COMPLETADO} y {@code DUPLICADO} dan el
+	 * mismo 409.
+	 */
+	private ResultadoRegistro replayDe(OnboardingRegistro registro, RegistroCuentaCommand command) {
+		if (!registro.matchesRequestHash(command.requestHash())) {
+			throw new IdempotencyKeyConflictException(command.claveIdempotencia());
+		}
 		return switch (registro.getEstado()) {
 			case COMPLETADO -> new ResultadoRegistro(false, registro.getCuentaId(),
 					registro.getOrganizationId(), registro.getConsultorioId());

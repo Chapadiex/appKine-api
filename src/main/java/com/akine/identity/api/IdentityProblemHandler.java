@@ -2,6 +2,7 @@ package com.akine.identity.api;
 
 import com.akine.platform.spi.problem.ProblemType;
 import com.akine.identity.application.EmailSinCuentaException;
+import com.akine.identity.application.IdempotencyKeyConflictException;
 import com.akine.identity.domain.exception.AccountNotFoundException;
 import com.akine.identity.domain.exception.ColaboradorYaVinculadoException;
 import com.akine.identity.domain.exception.ContextNotAvailableException;
@@ -76,6 +77,7 @@ public class IdentityProblemHandler {
 	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
+	private static final URI IDEMPOTENCY_KEY_CONFLICT = ProblemType.IDEMPOTENCY_KEY_CONFLICT.uri();
 	private static final URI INVITACION_PENDIENTE_DUPLICADA =
 			ProblemType.INVITACION_PENDIENTE_DUPLICADA.uri();
 	private static final URI INVITACION_VENCIDA = ProblemType.INVITACION_VENCIDA.uri();
@@ -340,6 +342,27 @@ public class IdentityProblemHandler {
 				HttpStatus.NOT_FOUND, "El recurso solicitado no existe o no esta disponible.");
 		problem.setTitle("Recurso no encontrado");
 		problem.setType(NOT_FOUND);
+		return problem;
+	}
+
+	/**
+	 * Alta self-service reintentada con la misma {@code Idempotency-Key} y otro contenido
+	 * (escenario 7b).
+	 *
+	 * <p>409 {@code idempotency-key-conflict}, el mismo tipo transversal que el resto de los
+	 * modulos. No dice nada del email: el conflicto lo decide la clave del cliente y el hash de
+	 * su pedido, y sale igual exista o no la cuenta.
+	 */
+	@ExceptionHandler(IdempotencyKeyConflictException.class)
+	public ProblemDetail handleIdempotencyConflict(IdempotencyKeyConflictException exception) {
+		log.warn("Alta self-service con clave de idempotencia reusada y otro contenido: "
+				+ "idempotencyKey={}", exception.getIdempotencyKey());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT,
+				"La clave de idempotencia ya fue usada para una solicitud con otro contenido. "
+						+ "Use una clave nueva o reenvie la solicitud original.");
+		problem.setTitle("Clave de idempotencia en conflicto");
+		problem.setType(IDEMPOTENCY_KEY_CONFLICT);
 		return problem;
 	}
 }

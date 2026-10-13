@@ -26,12 +26,12 @@ este documento.
 | 5 | Onboarding con fallo parcial | `RollbackDeOnboardingIT` | 1 test, 0 fallos |
 | 6 | Onboarding con reintento concurrente | `IdempotenciaYUniquesIT` — casos 6 y 6-bis | 6 tests, 0 fallos, 1 saltado |
 | 9 | Uniques con alcance tenant | `IdempotenciaYUniquesIT` — caso 9 | ídem |
+| 7 | `Idempotency-Key` repetida por HTTP | `IdempotenciaYUniquesIT` — casos 7a, 7b y 7c | **7b cerrado el 11/10/2026** (rama `akine-7b-request-hash`): `V87` agrega `request_hash` a `onboarding_registro` —SHA-256 del payload canónico **sin la contraseña**, ver `HuellaDeRegistro`—, el controller lo calcula y `identity.OnboardingService` lo compara antes del replay. La misma clave con otro contenido responde `409 idempotency-key-conflict`, igual exista o no la cuenta, también cuando el conflicto se pierde en una carrera. Filas anteriores a V87 (hash `NULL`) siguen aceptándose como replay. El test dejó de estar `@Disabled` |
 
 ### Abiertos
 
 | # | Escenario | Estado | Motivo y etapa destino |
 |---|---|---|---|
-| 7 | `Idempotency-Key` repetida por HTTP | **parcial** — 7a (misma clave, mismo payload → replay) y 7c (el conflicto funciona en el alta compuesta de `organization`) pasan; **7b está `@Disabled`** en `IdempotenciaYUniquesIT:132` | La mitad "payload distinto" **no tiene camino HTTP**. `AccountRegistrationController:147` pasa `requestHash = null` por decisión documentada de 01.02, y la tabla `onboarding_registro` (migración V8) no tiene columna donde guardarlo. Como `identity` corta primero en el replay (`OnboardingService:137`), la comparación de hash que sí existe en `organization` nunca se ejecuta: la segunda alta responde `202` en vez de `409 idempotency-key-conflict`, o sea que le acusa recibo a un pedido que ignoró. El otro camino candidato, `POST /api/v1/organizations`, documenta explícitamente que su `Idempotency-Key` no registra idempotencia. Arreglarlo es una migración con `request_hash` más un cambio de API → **AKINE-01.03** |
 | 8 | Límite de plan bajo concurrencia | **rojo** — `LimiteDePlanConcurrenteIT` falla | Las dos altas simultáneas del recurso número límite entran las dos: `[exactamente un alta entra. Desenlaces: [OK 900000004, OK 900000005]] expected: 1L but was: 2L` (`LimiteDePlanConcurrenteIT:99`). Es un bug real de concurrencia, no del test: el bloqueo pesimista no está conteniendo la carrera. **Se corrige dentro de 01.02**, antes de cerrar la etapa |
 | 10 | E2E de cambio de contexto sin fuga | **sin test** | Crear organización, seleccionar contexto, ver solo sus datos; cambiar de organización y comprobar que no queda ningún dato residual. Requiere el frontend de 01.02 commiteado y un E2E de auth que hoy no existe (`e2e/smoke.spec.ts` no toca ningún flujo de sesión). Destino: **AKINE-01.03** |
 | 11 | E2E de errores sin internals | **sin test** | Ninguna respuesta de error contiene `com.akine`, `org.springframework` ni `stacktrace` (ADR-0005). Mismo bloqueo que el 10. Destino: **AKINE-01.03** |
@@ -409,6 +409,23 @@ error que este repositorio ya documentó cuando despachaba el evento que el temp
 Así que lo que falta acá **es todo lo que hace que los números sean los números**, y conviene
 leerlo como lo que es: sin estos escenarios, el reporte está verificado como mecanismo y **no como
 contador**.
+
+> **Corridos el 13/10/2026 (cierre de F8): 49, 50, 51 y 53 en verde**, en
+> `reporting/ReportesContraElMotorIT` (5 casos, MySQL de Testcontainers), entrando por
+> `ReporteService` con cobros registrados por `CobroService` sobre una caja abierta por
+> `CajaService`. **49:** dos tenants con turnos y cobros en el mismo periodo; cada uno ve sólo lo
+> suyo en turnos, devengado, cobrado, caja y conciliación (el 404 de la sede ajena ya lo prueba
+> `ReporteReadIT`). Cubre las secciones `turnos` y `economia`; `sesiones`, `casos` y
+> `financiadores` no tienen un caso de dos tenants. **50:** efectivo, mixto (efectivo + débito)
+> y crédito: cobrado 25.500, efectivo 13.500 en las dos puntas, diferencia **0**. **51:** el turno
+> de las 21:30 de Córdoba cae en su día, y el mismo instante en una sede de Tokio cae en el
+> siguiente; el caso degradado (motor sin tablas de zonas) **no** se corrió, porque vaciarlas
+> rompe el contenedor que comparten los ITs. **53:** con turnos a 00:00:00.000000 del `desde`,
+> 23:59:59.999999 del `hasta`, el microsegundo anterior y la medianoche siguiente, entran
+> exactamente los dos de adentro; la fecha de negocio de la caja entra por su día y no por el
+> siguiente. **52 sigue sin correr:** un `EXPLAIN` sobre las pocas filas de un IT elige `ALL`
+> aunque el índice exista; lo que hay es la corrida de carga de `docs/carga.md`, donde el reporte
+> cumple con 500 usuarios en lecturas (§5, corrida 2b).
 
 | # | Escenario | Por qué sólo se puede probar contra el motor | Etapa destino |
 |---|---|---|---|
