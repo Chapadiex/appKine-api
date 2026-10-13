@@ -66,7 +66,7 @@ La vista anuncia `expectedVersion + 1`. Escenario cubierto en `TratamientoRealiz
 
 | Módulo | Lectura con force-increment | Escritura que depende de ella |
 |---|---|---|
-| `clinical` | `CasoClinicoRepository#findWithLockByIdAndOrganizationId` | `CasoClinicoService#cambiarEquipo`: escribe en `caso_profesional` y hace `save(caso)` sin cambios |
+| ~~`clinical`~~ | ~~`CasoClinicoRepository#findWithLockByIdAndOrganizationId`~~ | ~~`CasoClinicoService#cambiarEquipo`~~ — **resuelto el 12/10/2026**: medido contra MySQL (`CasoClinicoConcurrenteIT` (e)), la versión avanzaba pero la respuesta traía la leída y dos cambios concurrentes daban deadlock; pasó al `UPDATE … WHERE version = :esperada` (`avanzarVersion`) |
 | ~~`offering`~~ | ~~`OfertaRepository#findWithLockByIdAndOrganizationIdAndConsultorioId`~~ | ~~`OfertaHabilitacionService` (reemplazo de habilitaciones)~~ — **no afectado**: medido contra MySQL el 06/10/2026, la versión avanza una vez por reemplazo (`HabilitacionesVersionForzadaIT`, ver la corrección de arriba) |
 
 No están afectados, porque sus comentarios lo descartan a propósito y la escritura ensucia la

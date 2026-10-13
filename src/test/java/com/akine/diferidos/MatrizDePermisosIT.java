@@ -110,6 +110,10 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 				"/api/v1/historias-clinicas/" + historia + "/timeline"));
 		matriz.add(clinica("clinica: casos",
 				"/api/v1/historias-clinicas/" + historia + "/casos"));
+		// El "Limitado" del ADMINISTRATIVO: solo datos administrativos, con paciente:read.
+		matriz.add(lectura("clinica: datos administrativos",
+				"/api/v1/historias-clinicas/por-persona/" + persona + "/datos-administrativos",
+				200, OA, CA, ADM, PROF));
 
 		// Registrar Sesion: solo PROFESIONAL. La sesion no existe: quien tiene el permiso pasa
 		// y recibe el 404 del dato; quien no, el 403 antes de mirarlo.
@@ -156,6 +160,34 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 			}
 		}
 		celdas.assertAll();
+	}
+
+	@Test
+	@DisplayName("el ADMINISTRATIVO ve que la historia existe y no ve contenido clinico")
+	void el_administrativo_ve_solo_datos_administrativos() {
+		// Matriz §32 "Ver Historia Clinica" del ADMINISTRATIVO: Limitado, que la matriz §4
+		// define como existencia, fechas y profesional tratante, nunca contenido clinico.
+		String base = "/api/v1/historias-clinicas/por-persona/" + persona;
+		long version = conJustificacion("GET", base, tokens.get(PROF), null).json()
+				.get("version").asLong();
+		Respuesta resumen = conJustificacion("PUT", base + "/resumen", tokens.get(PROF),
+				"{\"texto\":\"Contenido clinico sintetico G5\",\"expectedVersion\":" + version + "}");
+		assertThat(resumen.status()).as("el profesional carga un resumen: %s", resumen.body())
+				.isEqualTo(200);
+
+		Respuesta datos = get(base + "/datos-administrativos", tokens.get(ADM));
+
+		assertThat(datos.status()).as(datos.body()).isEqualTo(200);
+		assertThat(datos.json().get("tieneHistoriaClinica").asBoolean()).isTrue();
+		assertThat(datos.json().get("historiaClinicaId").asLong()).isEqualTo(historia);
+		assertThat(datos.body())
+				.as("ni el resumen ni ningun campo clinico viajan")
+				.doesNotContain("Contenido clinico sintetico G5")
+				.doesNotContain("resumen")
+				.doesNotContain("diagnostico");
+		assertThat(get(base, tokens.get(ADM)).status())
+				.as("y la historia completa le sigue cerrada")
+				.isEqualTo(403);
 	}
 
 	@Test

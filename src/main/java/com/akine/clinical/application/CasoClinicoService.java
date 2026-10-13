@@ -393,8 +393,21 @@ public class CasoClinicoService {
 	 * <p>Esta operacion <b>no toca ni una columna de {@code caso_clinico}</b>: escribe en
 	 * {@code caso_profesional}. Un {@code @Version} sobre el padre no protege una escritura que
 	 * solo toca tablas hijas —la leccion de 02.07, pagada con un 409 que no aparecia nunca— asi
-	 * que el caso se lee con {@code OPTIMISTIC_FORCE_INCREMENT} y su version avanza al commitear.
-	 * Dos cambios de equipo concurrentes no pueden commitear los dos.
+	 * que la version del caso se avanza con un {@code UPDATE ... WHERE version = :esperada} propio
+	 * ({@code CasoClinicoRepositoryPort#avanzarVersion}), <b>antes</b> de tocar el equipo: cero
+	 * filas es conflicto, y la fila del caso queda bloqueada hasta el commit, asi que dos cambios
+	 * concurrentes se serializan sobre el caso en vez de pelearse por las filas de
+	 * {@code caso_profesional}.
+	 *
+	 * <p>Hasta el 12/10/2026 se usaba {@code OPTIMISTIC_FORCE_INCREMENT} sobre la lectura.
+	 * {@code CasoClinicoConcurrenteIT} lo midio contra MySQL: la version de la fila si avanzaba,
+	 * pero (a) la respuesta anunciaba la version <b>leida</b>, porque el incremento ocurre al
+	 * commitear, y encadenar dos cambios daba 409; y (b) dos cambios concurrentes con la misma
+	 * version terminaban en <b>deadlock</b> sobre {@code caso_profesional} en vez de un conflicto
+	 * de version. Mismo arreglo que {@code TratamientoService} (fix de C-7).
+	 *
+	 * <p>Y la reciproca se respeta: esta operacion no ensucia el caso por ningun otro camino, asi
+	 * que la version avanza <b>una</b> vez y la respuesta devuelve {@code leida + 1}.
 	 */
 	@Transactional
 	public CasoClinicoView cambiarEquipo(
@@ -406,13 +419,18 @@ public class CasoClinicoService {
 
 		long organizationId = organizacionDe(actor);
 		CasoClinico caso = casos
-				.findWithLockByIdAndOrganizationId(casoClinicoId, organizationId)
+				.findByIdAndOrganizationId(casoClinicoId, organizationId)
 				.orElseThrow(() -> new CasoClinicoNotAccessibleException(casoClinicoId));
 		AccesoClinico acceso = autorizarSobre(actor, caso, PermissionCodes.HC_WRITE, justificacion,
 				"Cambiar el equipo de un caso clinico");
 
 		caso.exigirActivo();
 		exigirVersion(caso, expectedVersion);
+		if (casos.avanzarVersion(organizationId, caso.getId(), expectedVersion) == 0) {
+			throw new OptimisticLockingFailureException(
+					"El caso clinico " + caso.getId() + " cambio desde que se leyo: volve a "
+							+ "abrirlo antes de guardar");
+		}
 
 		Instant ahora = Instant.now();
 		Map<Long, RolEnCaso> pedidos = new LinkedHashMap<>();
@@ -442,22 +460,19 @@ public class CasoClinicoService {
 				.toList();
 		incorporar(caso, nuevos, ahora);
 
-		// El caso se guarda aunque no cambie ninguna de sus columnas: es lo que materializa el
-		// OPTIMISTIC_FORCE_INCREMENT de la lectura y hace avanzar su version.
-		CasoClinico guardado = casos.save(caso);
-
-		asentar(guardado, TipoEventoCaso.CAMBIO_DE_EQUIPO, guardado.getEstado(),
-				guardado.getEstado(), null,
+		asentar(caso, TipoEventoCaso.CAMBIO_DE_EQUIPO, caso.getEstado(),
+				caso.getEstado(), null,
 				"Entraron " + nuevos.size() + ", salieron " + salieron, ahora, actor);
 
-		auditar(AuditEvents.CASO_EQUIPO_CHANGED, guardado.getId(), actor, acceso, null, null,
-				Map.of("historiaClinicaId", String.valueOf(guardado.getHistoriaClinicaId()),
+		auditar(AuditEvents.CASO_EQUIPO_CHANGED, caso.getId(), actor, acceso, null, null,
+				Map.of("historiaClinicaId", String.valueOf(caso.getHistoriaClinicaId()),
 						"entraron", String.valueOf(nuevos.size()),
 						"salieron", String.valueOf(salieron)),
 				ahora);
-		registrarSoporte(acceso, actor, guardado, "Cambiar el equipo de un caso clinico", ahora);
+		registrarSoporte(acceso, actor, caso, "Cambiar el equipo de un caso clinico", ahora);
 
-		return CasoClinicoView.de(guardado, equipoVigenteDe(guardado));
+		// La version de la entidad sigue en la leida: el UPDATE condicionado no la toca.
+		return CasoClinicoView.de(caso, equipoVigenteDe(caso)).conVersion(expectedVersion + 1);
 	}
 
 	// =================================================================================

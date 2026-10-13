@@ -333,13 +333,13 @@ class CasoClinicoCicloIT {
 	}
 
 	@Test
-	@DisplayName("el cambio de equipo hace avanzar la version del caso aunque no toque sus columnas")
+	@DisplayName("el cambio de equipo avanza una vez la version del caso aunque no toque sus columnas")
 	void el_cambio_de_equipo_fuerza_el_incremento() {
 		// La leccion de 02.07, pagada con un 409 que no aparecia nunca: un @Version sobre el padre
-		// no protege una escritura que solo toca tablas hijas. El caso se lee con
-		// OPTIMISTIC_FORCE_INCREMENT para que dos cambios de equipo concurrentes no puedan
-		// commitear los dos — y que eso EFECTIVAMENTE ocurra lo decide Hibernate contra una base
-		// real, no un mock.
+		// no protege una escritura que solo toca tablas hijas. Desde el 12/10/2026 el servicio
+		// avanza la version con un UPDATE ... WHERE version = :esperada propio (antes era un
+		// OPTIMISTIC_FORCE_INCREMENT sobre la lectura, que incrementaba recien al commitear y
+		// dejaba la respuesta con la version leida). Lo decide la base real, no un mock.
 		Fixture fixture = crearFixture();
 		CasoClinicoView caso = abrirCaso(fixture);
 
@@ -347,21 +347,13 @@ class CasoClinicoCicloIT {
 				List.of(new IntegranteDelEquipo(fixture.membershipId(), RolEnCaso.TRATANTE)),
 				caso.version(), JUSTIFICACION);
 
-		// LA RESPUESTA DEVUELVE LA VERSION LEIDA, NO LA NUEVA, y es la consecuencia asumida del
-		// force-increment: Hibernate hace avanzar la version al COMMITEAR, despues de que el
-		// servicio ya armo la vista, asi que dentro de la misma transaccion no hay forma de
-		// conocerla. Es lo mismo que 02.07 dejo escrito para las habilitaciones de una oferta —"la
-		// pantalla tiene que repedir la oferta despues de guardar"— y la alternativa es peor:
-		// ensuciar tambien una columna del padre haria avanzar la version DOS veces y el cliente
-		// quedaria en un 409 del que no puede salir.
-		assertThat(despues.version())
-				.as("la vista se arma antes del commit, asi que trae la version que se leyo")
-				.isEqualTo(caso.version());
 		assertThat(jdbc.queryForObject(
 				"SELECT version FROM caso_clinico WHERE id = ?", Long.class, caso.id()))
-				.as("y la fila SI avanzo: es el force-increment de la lectura, que es lo que impide "
-						+ "que dos cambios de equipo concurrentes commiteen los dos")
-				.isGreaterThan(caso.version());
+				.as("la fila avanza exactamente una vez")
+				.isEqualTo(caso.version() + 1);
+		assertThat(despues.version())
+				.as("y la respuesta anuncia esa version, asi la pantalla encadena sin repedir")
+				.isEqualTo(caso.version() + 1);
 		assertThatThrownBy(() -> casos.cambiarEquipo(fixture.actorClinico(), caso.id(),
 				List.of(new IntegranteDelEquipo(fixture.membershipId(), RolEnCaso.RESPONSABLE)),
 				caso.version(), JUSTIFICACION))

@@ -2,9 +2,8 @@ package com.akine.clinical.infrastructure;
 
 import com.akine.clinical.domain.CasoClinico;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
-import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -35,15 +34,24 @@ public interface CasoClinicoRepository
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Es la MISMA consulta derivada que la de arriba y lo unico que la distingue es el
-	 * {@code OPTIMISTIC_FORCE_INCREMENT}. El nombre es derivable a proposito y no lleva
-	 * {@code @Query}: Spring Data ignora el texto entre {@code find} y {@code By}, asi que
-	 * {@code WithLock} documenta el metodo sin cambiar la consulta y sigue validandose contra el
-	 * esquema real. Mismo patron que {@link EntradaClinicaRepository}.
+	 * <p>{@code flushAutomatically} para que un cambio pendiente del caso salga antes y no pise
+	 * esta version; sin {@code clearAutomatically}, porque el servicio sigue usando la entidad
+	 * leida y despues escribe en {@code caso_profesional}. Mismo patron que
+	 * {@code SesionRepository#avanzarVersion}.
 	 */
 	@Override
-	@Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
-	Optional<CasoClinico> findWithLockByIdAndOrganizationId(Long id, Long organizationId);
+	@Modifying(flushAutomatically = true)
+	@Query("""
+			UPDATE CasoClinico c
+			   SET c.version = c.version + 1
+			 WHERE c.organizationId = :organizationId
+			   AND c.id = :casoClinicoId
+			   AND c.version = :versionEsperada
+			""")
+	int avanzarVersion(
+			@Param("organizationId") long organizationId,
+			@Param("casoClinicoId") long casoClinicoId,
+			@Param("versionEsperada") long versionEsperada);
 
 	@Override
 	@Query("""
