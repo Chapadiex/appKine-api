@@ -137,7 +137,14 @@ public record AutorizacionResponse(
 		String deactivationReason,
 
 		@Schema(description = "Version para el control optimista", example = "0")
-		long version) {
+		long version,
+
+		@Schema(description = "Alertas CONSUMO_A_REVISAR pendientes de esta autorizacion (DP-13, "
+				+ "AKINE C-4). Es el mismo numero que consumosARevisar de "
+				+ "GET /api/v1/autorizaciones/{autorizacionId}/saldo, calculado con la misma "
+				+ "consulta; en el listado sale de UNA consulta agrupada para todas las filas. "
+				+ "El saldo disponible ya viaja en saldo", example = "0")
+		int consumosARevisar) {
 
 	public static AutorizacionResponse de(AutorizacionView vista) {
 		return new AutorizacionResponse(
@@ -172,6 +179,7 @@ public record AutorizacionResponse(
 				vista.estado(),
 				vista.deletedAt(),
 				vista.deactivationReason(),
-				vista.version());
+				vista.version(),
+				vista.consumosARevisar());
 	}
 }
