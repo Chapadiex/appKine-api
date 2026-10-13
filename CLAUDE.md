@@ -870,7 +870,7 @@ Pendientes que arrastra el backend:
 - [ ] Cargar `NVD_API_KEY` en los secretos del repo: sin ella el job `vulnerabilidades` analiza contra OSV.dev en lugar de OWASP (el NVD da 429 a los runners sin clave)
 - [ ] Gate de `BRANCH` en JaCoCo, después de subir la cobertura de rama
 - [ ] Completar los `PENDIENTE(F1)` de `.claude/qa-config.md`
-- [x] ~~Escenario diferido 7b: `request_hash` en `onboarding_registro`~~ — `V87`, contrato 0.86.0 (11/10)
+- [x] ~~Escenario diferido 7b: `request_hash` en `onboarding_registro`~~ — `V87`, contrato 0.91.0 (13/10)
 
 ## 8. Checklist de cierre de tarea
 
