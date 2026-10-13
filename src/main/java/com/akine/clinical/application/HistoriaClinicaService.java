@@ -16,7 +16,6 @@ import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,7 +71,6 @@ public class HistoriaClinicaService {
 	private final List<EventoClinicoContributor> contribuyentes;
 	private final AuditTrail auditTrail;
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
-	private final HistoriaClinicaEscrituraAparte escrituraAparte;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public HistoriaClinicaService(
@@ -83,8 +81,7 @@ public class HistoriaClinicaService {
 			RelacionAsistencialProbe relaciones,
 			List<EventoClinicoContributor> contribuyentes,
 			AuditTrail auditTrail,
-			ClinicalSupportAccessAuditor supportAccessAuditor,
-			HistoriaClinicaEscrituraAparte escrituraAparte) {
+			ClinicalSupportAccessAuditor supportAccessAuditor) {
 
 		this.historias = historias;
 		this.antecedentes = antecedentes;
@@ -94,7 +91,6 @@ public class HistoriaClinicaService {
 		this.contribuyentes = List.copyOf(contribuyentes);
 		this.auditTrail = auditTrail;
 		this.supportAccessAuditor = supportAccessAuditor;
-		this.escrituraAparte = escrituraAparte;
 	}
 
 	// =================================================================================
@@ -183,13 +179,30 @@ public class HistoriaClinicaService {
 	 * historias, la segunda choca y se responde con la que gano. El pre-chequeo esta para ahorrar
 	 * el viaje en el caso comun, no como la proteccion.
 	 *
-	 * <p><b>El INSERT corre en una transaccion propia</b>, y no es un detalle: si viviera en esta,
-	 * el choque contra el unique la marcaria {@code rollbackOnly} antes de que el {@code catch}
-	 * corriera, y la relectura de abajo pasaria sobre una sesion inutilizable —
-	 * {@code UnexpectedRollbackException} o {@code AssertionFailure} al commitear, o sea un
-	 * <b>500 en la apertura concurrente de una historia clinica</b>, que es la ruta critica del
-	 * modulo. Ver {@link HistoriaClinicaEscrituraAparte}, que ademas explica por que la fila
-	 * commiteada de mas esta acotada.
+	 * <p><b>El INSERT no puede lanzar.</b> Si el choque contra el unique saliera como excepcion,
+	 * marcaria esta transaccion {@code rollbackOnly} aunque se la atrapara, y la apertura
+	 * concurrente terminaria en {@code UnexpectedRollbackException}: un 500 en la ruta critica del
+	 * modulo. Hasta el 11/10/2026 se evitaba con un INSERT en {@code REQUIRES_NEW}, que retenia la
+	 * conexion de esta transaccion y pedia otra: muchas primeras aperturas a la vez trababan el
+	 * pool (docs/carga.md §8). Ahora es un {@code INSERT IGNORE} en esta misma transaccion, y la
+	 * relectura con lock compartido ve a la ganadora aunque la foto de {@code REPEATABLE READ} sea
+	 * anterior.
+	 *
+	 * <p>Como contrapartida buena, la historia y su evento {@code HISTORIA_CLINICA_OPENED} se
+	 * confirman juntos: si la transaccion de negocio revierte, no queda una historia sin evento.
+	 * Y como contrapartida a nombrar: la fila nueva queda bloqueada hasta que la transaccion de
+	 * negocio termina, asi que una segunda apertura simultanea de la MISMA persona espera a la
+	 * primera. Si la primera revierte con dos o mas esperando, InnoDB puede elegir una victima de
+	 * deadlock entre ellas —el caso conocido del INSERT duplicado tras un rollback, y realista:
+	 * {@code SesionService.iniciar} revierte si el caso pedido no es asignable a la historia recien
+	 * creada—. La victima sale como {@code CannotAcquireLockException}, que
+	 * {@code GlobalExceptionHandler} responde 409 {@code concurrent-modification}: el reintento
+	 * encuentra la historia abierta o la abre.
+	 *
+	 * <p>Si despues del {@code INSERT IGNORE} la relectura no encuentra historia vigente, el IGNORE
+	 * se trago otro error que no era el unique —una FK, un {@code NOT NULL}— y es un defecto del
+	 * servidor, no un conflicto: sale como {@code IllegalStateException}, o sea 500, con el motivo
+	 * en el mensaje. La precondicion de paciente vigente se valida antes, asi que no deberia pasar.
 	 */
 	private Apertura abrirIdempotente(long organizationId, long personaId, long actorAccountId) {
 		var yaExistente = historias.buscarVigentePorPersona(organizationId, personaId);
@@ -198,25 +211,21 @@ public class HistoriaClinicaService {
 			return new Apertura(yaExistente.get(), false);
 		}
 
-		HistoriaClinica historia =
-				new HistoriaClinica(organizationId, personaId, Instant.now(), actorAccountId);
-		try {
-			HistoriaClinica guardada = escrituraAparte.insertar(historia);
+		boolean laAbrioEsta = historias.abrirSiFalta(organizationId, personaId, actorAccountId) == 1;
+		HistoriaClinica vigente = historias.releerVigenteBloqueando(organizationId, personaId)
+				.orElseThrow(() -> new IllegalStateException(
+						"La historia clinica no quedo abierta: el INSERT IGNORE no inserto y no hay"
+						+ " vigente que releer (un error degradado a advertencia que no es el unique)."
+						+ " personaId=" + personaId));
+		if (laAbrioEsta) {
 			log.info("Historia clinica abierta: id={} personaId={} organizationId={}",
-					guardada.getId(), personaId, organizationId);
-			return new Apertura(guardada, true);
-		}
-		catch (DataIntegrityViolationException choque) {
-			// Otro request gano la carrera contra el unique. No es un error del usuario: es el
-			// mismo pedido resuelto por el otro camino. La que murio fue la transaccion del
-			// INSERT, no esta. La relectura va en transaccion nueva: esta ya miro (y no vio nada)
-			// y con REPEATABLE READ seguiria sin ver la fila que la ganadora commiteo.
+					vigente.getId(), personaId, organizationId);
+		} else {
+			// Otro pedido gano la carrera: es el mismo pedido resuelto por el otro camino.
 			log.info("Apertura concurrente de historia clinica resuelta como idempotente: "
 					+ "personaId={}", personaId);
-			HistoriaClinica ganadora = escrituraAparte.releerVigente(organizationId, personaId)
-					.orElseThrow(() -> choque);
-			return new Apertura(ganadora, false);
 		}
+		return new Apertura(vigente, laAbrioEsta);
 	}
 
 	// =================================================================================

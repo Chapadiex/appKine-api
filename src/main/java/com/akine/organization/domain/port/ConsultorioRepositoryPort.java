@@ -88,4 +88,26 @@ public interface ConsultorioRepositoryPort {
 	 *                              imposible (-1) cuando no hay ninguna que excluir
 	 */
 	long countActiveForShare(Long organizationId, Long excludedConsultorioId);
+
+	/**
+	 * La sede dentro del tenant, <b>con lock exclusivo</b> sobre su fila.
+	 *
+	 * <p>Es la primera lectura de la fila en la baja (RF-M03-004), y el lock no es para la
+	 * escritura —esa lo tomaria igual al flush— sino para tenerlo ANTES de preguntarle a las
+	 * sondas. Las escrituras de agenda de {@code scheduling} leen la sede con lock compartido
+	 * ({@link #countActivaForShare}) bajo su lock de {@code agenda_sede}, asi que con el exclusivo
+	 * tomado primero hay dos desenlaces y ninguno deja un turno vivo en una sede de baja: o la
+	 * reserva commitea antes y la sonda ve su turno (409), o la baja commitea antes y la reserva ve
+	 * la sede inactiva (409). Con la lectura plana de antes, la reserva leia la sede activa
+	 * mientras la baja ya habia contado cero turnos, y las dos commiteaban.
+	 */
+	Optional<Consultorio> findByIdAndOrganizationIdForUpdate(Long id, Long organizationId);
+
+	/**
+	 * 1 si la sede esta activa y 0 si no —o si no es del tenant—, tomando <b>lock compartido</b>
+	 * sobre la fila hasta el fin de la transaccion del llamador. La contraparte de
+	 * {@link #findByIdAndOrganizationIdForUpdate}; una lectura con lock siempre ve la ultima
+	 * version confirmada, asi que no depende de la aislacion de quien llama.
+	 */
+	long countActivaForShare(Long id, Long organizationId);
 }

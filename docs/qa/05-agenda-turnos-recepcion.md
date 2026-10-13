@@ -252,3 +252,40 @@ imputa **solo** a la deuda de esa sesión: se verifica en [ECO-03](07-obligacion
 
 **Auditoría:** `OFERTA_POLITICA_PREPAGO_CHANGED`. El cobro deja `COBRO_REGISTRADO` (ver
 [07](07-obligaciones-cobros-caja.md)).
+
+---
+
+### AGE-13 · "Hoy" es el día de la sede, no el del navegador (web #60) — `[E2E flujo-dia-de-la-sede]`
+
+Desde `appKine-web` #60 toda fecha **por defecto** sale del día de la zona de la sede
+(`consultorio.timezone`), no del reloj del navegador. El E2E prueba el reporte y el filtro de
+convenios con el navegador en Kiritimati (UTC+14) a las 23:30 del último día del mes en Córdoba; lo
+demás no lo prueba nada automático.
+
+**Pantalla:** Chrome → DevTools → `⋮` → More tools → **Sensors** → Location → Timezone ID
+`Pacific/Kiritimati` (o cualquier zona en la que **ya sea otro día** que en la sede; si corrés a la
+mañana de Córdoba, `Pacific/Pago_Pago` queda en el día anterior). Recargá con DevTools abierto y
+recorré:
+
+| Pantalla | Fecha que propone |
+|---|---|
+| `/agenda` (buscador) y `/agenda/recepcion` | el día de la sede |
+| `/reportes` | el período arranca el 1 del **mes de la sede** y termina hoy de la sede |
+| `/egresos` | "Desde" = 1 del mes de la sede; la fecha del comprobante, hoy de la sede |
+| `/servicios/ofertas/<id>/precios` | "vigente desde" = hoy de la sede |
+| `/contratacion/convenios`, planes, aranceles, arancel efectivo | el filtro de vigencia consulta hoy de la sede |
+| Calendario de la sede, horario efectivo y excepciones del profesional | la ventana arranca hoy de la sede |
+| detalle de presentación (factura, pago) | hoy de la sede |
+
+```sql
+SELECT id, name, timezone,
+       DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', timezone)) AS hoy_de_la_sede,
+       UTC_DATE() AS hoy_utc
+FROM consultorio WHERE id = @sede_a;
+```
+
+**Esperado:** cada pantalla propone `hoy_de_la_sede`, nunca el día del navegador. Si una propone el
+del navegador, es hallazgo (baja si solo es el valor inicial de un campo editable; **alta** si es un
+filtro que decide qué se ve, como la recepción del día o el reporte). Los filtros que el
+**backend** aplica por día UTC son otro tema: ver el de egresos en [EGR-07](12-egresos-y-pagos.md).
+**Auditoría:** nada (son lecturas). Al terminar, sacá el override de zona en DevTools.

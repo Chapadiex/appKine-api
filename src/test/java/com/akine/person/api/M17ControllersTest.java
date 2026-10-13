@@ -570,6 +570,6 @@ class M17ControllersTest {
 				77L, 1204L, 20L, 412L, 51L, 33L, "AUT-1", estadoAutorizacion, null,
 				cantidad, 0, cantidad, ENERO, DICIEMBRE, true, false, false, habilita, 199L,
 				12L, "CONV-1", "Convenio Sintetico", true, true, false, null, 908L, null,
-				"ACTIVA", null, null, 0L);
+				"ACTIVA", null, null, 0L, 0);
 	}
 }

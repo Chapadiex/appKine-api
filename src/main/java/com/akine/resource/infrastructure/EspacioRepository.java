@@ -82,4 +82,17 @@ public interface EspacioRepository extends JpaRepository<Espacio, Long>, Espacio
 			@Param("consultorioId") Long consultorioId,
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta);
+
+	/** 1 si el espacio esta activo, 0 si no, con lock COMPARTIDO sobre la fila. Ver el puerto. */
+	@Override
+	@Query(value = """
+			SELECT COUNT(*) FROM espacio
+			 WHERE id = :id
+			   AND organization_id = :organizationId
+			   AND active = 1
+			 FOR SHARE
+			""", nativeQuery = true)
+	long countActivoForShare(
+			@Param("id") Long id,
+			@Param("organizationId") Long organizationId);
 }

@@ -70,4 +70,14 @@ public interface EspacioRepositoryPort {
 	 */
 	List<Espacio> findEnServicio(
 			Long organizationId, Long consultorioId, Instant desde, Instant hasta);
+
+	/**
+	 * 1 si el espacio esta activo y 0 si no —o si no es del tenant—, tomando <b>lock compartido</b>
+	 * sobre la fila hasta el fin de la transaccion del llamador.
+	 *
+	 * <p>La contraparte de {@link #findByIdForUpdate}, que la baja y la edicion del espacio toman
+	 * ANTES de preguntarle a {@code EspacioOccupancyProbe}: con los dos locks sobre la misma fila,
+	 * o la sonda ve el turno nuevo o la reserva ve el espacio de baja.
+	 */
+	long countActivoForShare(Long id, Long organizationId);
 }

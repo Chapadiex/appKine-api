@@ -39,4 +39,20 @@ public interface ConsultorioDirectory {
 	 * Filtrar aca las colapsaria en uno solo y borraria historia por la puerta de atras.
 	 */
 	Optional<ConsultorioSnapshot> find(long organizationId, long consultorioId);
+
+	/**
+	 * {@code true} si la sede esta dada de baja (o no es del tenant), leida con <b>lock
+	 * compartido</b> que dura hasta el fin de la transaccion del llamador. Exige una transaccion
+	 * abierta: sin ella el lock se soltaria al volver.
+	 *
+	 * <p>Es para las escrituras que crean hechos nuevos en la sede y compiten con su baja —hoy, las
+	 * de agenda de {@code scheduling}, bajo su lock de {@code agenda_sede}—. La baja toma el lock
+	 * exclusivo de la misma fila ANTES de preguntarle a las sondas, asi que la que llega segunda
+	 * espera a la otra y ve lo que dejo: o la sonda ve el turno, o la reserva ve la sede de baja.
+	 * Validar con {@link #find} fuera del lock dejaba colar un turno entre la sonda y el commit de
+	 * la baja (decision pendiente 8b).
+	 *
+	 * <p>Dice "dada de baja" y no "activa" a proposito: es la respuesta que corta la escritura.
+	 */
+	boolean inactivaBajoLockCompartido(long organizationId, long consultorioId);
 }

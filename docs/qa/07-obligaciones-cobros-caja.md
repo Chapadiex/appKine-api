@@ -1,11 +1,13 @@
 # 07 · Obligaciones, cobros, anulación, reintegro y caja — P1
 
-Módulo `billing` (M18 deuda, M19 cobro, M20 caja, M22 egresos). **Plata**: el circuito donde un
-`200` que no persistió hace más daño. `[E2E flujo-caja]` cubre abrir, movimiento manual, revertir,
-el 409 `caja-saldo-cambio`, cerrar con arqueo y un cobro en efectivo de una sesión cerrada.
-**Nada automático cubre por pantalla** el coseguro, DP-17, la anulación de una deuda, el cobro
-parcial, el anticipo con imputación posterior, el reintegro, la anulación de un cobro ni los
-egresos.
+Módulo `billing` (M18 deuda, M19 cobro, M20 caja). **Plata**: el circuito donde un `200` que no
+persistió hace más daño. `[E2E flujo-caja]` cubre abrir, movimiento manual, revertir, el 409
+`caja-saldo-cambio`, cerrar con arqueo y un cobro en efectivo de una sesión cerrada.
+`[E2E flujo-cobros-posteriores]` (web #64) cubre por pantalla, **todo por transferencia**, imputar
+el saldo a favor, anular un cobro y reintegrar parte de otro. **Nada automático cubre por
+pantalla** el coseguro, DP-17, la anulación de una deuda, el cobro parcial ni lo que esos pasos
+hacen **en efectivo** sobre la caja. Ninguno de los dos specs mira la base. Los egresos tienen
+circuito propio: [12](12-egresos-y-pagos.md).
 
 **Deuda, cobro y caja son tres cosas** (07.01). La deuda (`obligacion`) nace al cerrar la sesión;
 el cobro (`cobro` + `cobro_medio` + `cobro_imputacion`) la salda; la caja (`jornada_caja` +
@@ -171,7 +173,7 @@ entra al arqueo del efectivo).
 
 ---
 
-### ECO-08 · Anticipo e imputación posterior
+### ECO-08 · Anticipo e imputación posterior — `[E2E flujo-cobros-posteriores]`
 
 **Pantalla:** `/pacientes/<id>/cuenta-corriente/cobrar` → un anticipo de 3000 en efectivo sin
 imputar (queda a favor). Después, desde `/pacientes/<id>/cuenta-corriente/cobros`, imputar 3000 de
@@ -190,7 +192,7 @@ imputación y la deuda en `saldo = 3000`. Imputar más que el saldo a favor es 4
 
 ---
 
-### ECO-09 · Reintegrar saldo a favor
+### ECO-09 · Reintegrar saldo a favor — `[E2E flujo-cobros-posteriores]` (por transferencia)
 
 **Pantalla:** otro anticipo de 1000; reintegrar 400 en efectivo con motivo.
 
@@ -206,7 +208,7 @@ Esperado: `saldo_a_favor = 600`; un reintegro; un movimiento `EGRESO` con `tipo_
 
 ---
 
-### ECO-10 · Anular un cobro
+### ECO-10 · Anular un cobro — `[E2E flujo-cobros-posteriores]` (por transferencia)
 
 **Pantalla:** `/pacientes/<id>/cuenta-corriente/cobros` → anular el cobro de ECO-07 con motivo. Intentá
 también anular el de ECO-09 (tiene reintegro).
@@ -222,6 +224,19 @@ Esperado: el cobro con `deleted_at` y motivo (baja lógica); la deuda **vuelve**
 ese cobro había cancelado; una `REVERSION_DE_INGRESO` que apunta al movimiento original. El de ECO-09
 se rechaza con 409 `cobro-con-reintegros`. **Auditoría:** `COBRO_ANULADO` con
 `details.movimientosRevertidos` e `imputacionesRevertidas`.
+
+**El cobro anulado desaparece del listado** `/pacientes/<id>/cuenta-corriente/cobros`: el listado
+del backend filtra `deleted_at IS NULL`, y el comprobante anulado solo se ve abriéndolo por id
+(`GET .../cobros/<id>` sí trae `estado`, `anuladoEn` y `motivoAnulacion`). Es el defecto conocido de
+[90](90-conocido-y-aceptado.md) §4: vinculalo, no lo registres como nuevo. Compará:
+
+```sql
+SELECT id, comprobante_numero, total, deleted_at IS NOT NULL AS anulado, motivo_anulacion
+FROM cobro WHERE persona_id = @persona_part ORDER BY id;
+```
+
+Esperado por la base: todos los comprobantes, anulados incluidos (los números de comprobante no
+tienen huecos). Lo que hoy muestra la pantalla: solo los de `anulado = 0`.
 
 ---
 
@@ -269,7 +284,11 @@ mirabas, el cierre rebota con 409 `caja-saldo-cambio` (lo prueba el E2E). **Audi
 
 ---
 
-### ECO-13 · Egresos y pagos (sin pantalla)
+### ECO-13 · Egresos y pagos → circuito [12](12-egresos-y-pagos.md)
+
+Desde `appKine-web` #63 los egresos **tienen pantalla** (`/egresos`) y pasaron a su propio
+circuito, [12 · Egresos y pagos](12-egresos-y-pagos.md) (EGR-01 a EGR-08). Lo de abajo queda como
+camino por la API, para repetir un caso sin pasar por la pantalla.
 
 ```powershell
 $e = (Api POST "/api/v1/consultorios/<sede_a>/egresos" $A @{ categoria = 'INSUMOS'; tipoBeneficiario = 'EXTERNO'; beneficiarioNombre = 'Proveedor QA'; concepto = 'Vendas QA'; importeTotal = 1500; moneda = 'ARS'; comprobanteTipo = 'FACTURA_B'; comprobanteNumero = 'B-0001-QA'; comprobanteFecha = '<hoy>' }).Cuerpo
@@ -297,3 +316,48 @@ reversión. **Auditoría:** `EGRESO_REGISTRADO`, `EGRESO_CONFIRMADO`, `EGRESO_PA
 
 > El egreso reusa `caja:operate` (no hay `egreso:manage`) y el comprobante es una **referencia**
 > —tipo, número, fecha—, no un archivo adjunto. Las dos son decisiones abiertas, ver [90](90-conocido-y-aceptado.md).
+
+---
+
+### ECO-14 · Auditoría de devengo, cobro y anulación (api #86)
+
+Hasta `appKine-api` #86, registrar un cobro, devengar una deuda y anular una deuda **no escribían
+`audit_event`** (lo encontró la validación de esta guía). Se corre al final del circuito, cuando ya
+pasaron CLI-05/CLI-06 (devengo), ECO-05 y ECO-07 (cobros), ECO-06 (anulación de deuda) y ECO-10
+(anulación de cobro).
+
+```sql
+SELECT a.id, a.event_type, a.entity_type, a.entity_id, a.actor_account_id, a.reason,
+       LEFT(a.details, 220) AS details, a.occurred_at
+FROM audit_event a
+WHERE a.organization_id = @org_a AND a.occurred_at >= @desde
+  AND a.event_type IN ('OBLIGACION_DEVENGADA', 'OBLIGACION_ANULADA', 'COBRO_REGISTRADO', 'COBRO_ANULADO',
+                       'COBRO_SALDO_IMPUTADO', 'COBRO_REINTEGRADO')
+ORDER BY a.id;
+```
+
+Esperado:
+
+- **Un `OBLIGACION_DEVENGADA` por obligación** (`entity_type = 'Obligacion'`), a nombre de quien
+  **cerró la sesión** (el profesional, no el administrativo), con `details.concepto`,
+  `details.responsable`, `details.importe` y `details.sesionId`; la del financiador trae además
+  `details.financiadorId`. Una sesión con obra social deja **dos** (FINANCIADOR + COSEGURO); una
+  particular, **una** (PARTICULAR).
+- **Un `COBRO_REGISTRADO` por cobro** con `details.total`, `details.comprobanteNumero` y
+  `details.imputaciones` (y `details.anticipo` si fue anticipo). El reintento idempotente (doble
+  click) **no** deja un segundo evento.
+- `OBLIGACION_ANULADA` y `COBRO_ANULADO` con el motivo en `reason`.
+
+Que cada hecho tenga su evento, por aritmética:
+
+```sql
+SELECT (SELECT COUNT(*) FROM obligacion WHERE organization_id = @org_a AND devengada_en >= @desde) AS obligaciones,
+       (SELECT COUNT(*) FROM audit_event WHERE organization_id = @org_a AND occurred_at >= @desde
+          AND event_type = 'OBLIGACION_DEVENGADA') AS devengos_auditados,
+       (SELECT COUNT(*) FROM cobro WHERE organization_id = @org_a AND cobrado_en >= @desde) AS cobros,
+       (SELECT COUNT(*) FROM audit_event WHERE organization_id = @org_a AND occurred_at >= @desde
+          AND event_type = 'COBRO_REGISTRADO') AS cobros_auditados;
+```
+
+Esperado: `obligaciones = devengos_auditados` y `cobros = cobros_auditados` (los cobros anulados
+cuentan en los dos lados: la anulación es un evento aparte). Una diferencia es hallazgo **alto**.

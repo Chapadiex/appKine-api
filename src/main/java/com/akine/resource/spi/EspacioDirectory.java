@@ -44,4 +44,15 @@ public interface EspacioDirectory {
 	 */
 	List<EspacioSnapshot> enServicio(
 			long organizationId, long consultorioId, Instant desde, Instant hasta);
+
+	/**
+	 * {@code true} si el espacio esta dado de baja (o no es del tenant), leido con <b>lock
+	 * compartido</b> que dura hasta el fin de la transaccion del llamador, que tiene que existir.
+	 *
+	 * <p>Para quien asigna el espacio a un hecho nuevo —hoy la reserva de {@code scheduling}, bajo
+	 * su lock de {@code agenda_sede}—. La baja del espacio toma el exclusivo de la misma fila antes
+	 * de preguntar por turnos pendientes, asi que con esto un turno ya no puede colarse en un box
+	 * entre la sonda y el commit de la baja: es la misma carrera que la de la sede.
+	 */
+	boolean inactivoBajoLockCompartido(long organizationId, long espacioId);
 }

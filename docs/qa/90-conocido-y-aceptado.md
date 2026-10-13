@@ -42,6 +42,11 @@ Fuentes: `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` (DP-01 a DP-23), §7 del `
 | La deuda del financiador se salda al **conciliar** el lote, no al registrar el pago | Un pago es un importe global | 07.04 §8 |
 | Un pago del financiador por transferencia no entra al arqueo de la caja | Fue al banco, no al cajón | 07.03, 07.04 §9 |
 | La cuenta corriente del paciente no muestra la deuda del financiador | La debe la obra social | F-4 (#49) |
+| El selector de permisos adicionales ofrece a un rol permisos que **ya tiene por base** (`hc:read`/`hc:write` al profesional, `paciente:manage` al administrativo) | Redundantes e inocuos; rechazarlos rompería un grant previo a un cambio de rol. Lo que la matriz prohíbe sigue siendo 400 `permiso-no-otorgable-al-rol` | api #85, [ORG-07](02-organizacion-sedes-colaboradores.md) |
+| Con la base caída, el pedido tarda ~30 s y responde **503** `service-unavailable`; la sesión no se cierra | Es el `connection-timeout` del pool; 503 solo para fallas de **conexión** (un bug de base es 500), nunca 401 | api #91, web #62, [ON-12](01-onboarding-y-cuentas.md) |
+| Un egreso con un pago parcial sigue `CONFIRMADO` (no hay estado "parcial") | El pago parcial se ve en `saldo_pendiente`; `PAGADO` es saldo cero | 07.05, [EGR-04](12-egresos-y-pagos.md) |
+| Un pago de egreso por transferencia pasa con la caja cerrada y no deja movimiento de arqueo | Fue al banco, no al cajón (mismo criterio que el cobro) | 07.03, 07.05 |
+| Un egreso se registra sin comprobante (queda `BORRADOR`) pero no se confirma sin él (400 `egreso-sin-comprobante`) | El borrador es para cargar de a partes | 07.05, [EGR-02](12-egresos-y-pagos.md) |
 
 ## 2. Criterios provisorios: implementados así, **a confirmar** por el dueño del producto
 
@@ -85,8 +90,9 @@ defecto.
 | Ventana de hasta 10 minutos en la que una cuenta bloqueada conserva su access token | Riesgo R6, aceptado (ADR-0017) |
 | `caso:create` no se evalúa: abrir un caso se autoriza con `hc:write` | Riesgo R10 |
 | El OpenAPI no declara `securityScheme`: Swagger UI no tiene botón para el token | Hueco conocido |
-| **Pantallas que no existen en `main`**: historia clínica (PR #4 de `appKine-web`), casos, planes, tratamientos y mediciones de la sesión, enmiendas, alertas y reversión de consumo, egresos, soporte y roles de plataforma, bloqueo de cuentas, cambio de plan y suspensión | Se prueban por la API (README §5). Que falte la pantalla **no** es hallazgo del QA |
+| **Pantallas que no existen en `main`**: historia clínica (PR #4 de `appKine-web`), casos, planes, tratamientos y mediciones de la sesión, enmiendas, soporte y roles de plataforma, bloqueo de cuentas, cambio de plan y suspensión, y el listado de sesiones abiertas de una cuenta (la IP de cada sesión solo se ve en `refresh_token`). **Ya tienen pantalla** desde el 11/10: egresos y pagos (web #63), alertas y reversión de consumo (web #58), notificaciones fallidas (web #46) | Se prueban por la API (README §5). Que falte la pantalla **no** es hallazgo del QA |
 | El onboarding de la **primera** sede no crea box ni horario general (se cargan después) | A-8 (13 b) |
+| **El pago a profesionales no existe como liquidación.** "Honorarios profesionales" es un egreso cargado a mano con un colaborador como beneficiario: nada calcula lo que se le debe a partir de sus sesiones, ni lo concilia con lo cobrado, ni impide pagar dos veces el mismo período (dos egresos con distinto comprobante entran) | Hueco declarado (F-5, espera DU-10). Que no haya liquidación **no** es hallazgo; que el egreso a un colaborador no se pueda cargar, sí |
 | Escenario diferido **7b**: conflicto de `Idempotency-Key` del alta self-service con otro cuerpo | `docs/tests-diferidos.md` |
 
 ## 4. Cosas que **no** son decisión: defectos conocidos sin corregir
@@ -98,7 +104,10 @@ gate del MVP los cuente.
 |---|---|---|
 | ~~**Descargar un documento administrativo de una persona responde 500**~~ — **corregido en #82 (`a09a596`)**: `AdjuntoService.contenido` auditaba dentro de una transacción `readOnly` | [PER-04](04-personas-coberturas-autorizaciones.md) | Lo destapó G-13 (#77); se reprodujo sobre `5bbf065` al validar esta guía |
 | ~~**El indicador "Cancelados" del reporte de turnos da siempre 0**~~ — **corregido en #86**: la consulta filtraba `deleted_at IS NULL` y cancelar llena `deleted_at` | [REP-01](09-reportes.md) | Encontrado al validar esta guía |
-| Con reservas y cobros concurrentes, el pool de Hikari se traba (transacciones `REQUIRES_NEW` anidadas) | Solo bajo carga; no en el QA manual | G-10, `docs/carga.md` §6 |
+| ~~Con reservas y cobros concurrentes, el pool de Hikari se traba~~ — **corregido en #91**: las filas-lock se aseguran antes de abrir la transacción de negocio | Solo bajo carga | G-10, `docs/carga.md` §6.1 |
+| **El filtro "Desde"/"Hasta" de egresos compara el día UTC del registro, no el de la sede.** `EgresoRepository` filtra `DATE(registrado_en) >= :desde` y `DATE(registrado_en) <= :hasta` con `registrado_en` en UTC. En Córdoba (UTC−3), un egreso cargado entre las 21:00 y las 24:00 queda **afuera** de "Hasta = hoy" y **adentro** de "Desde = mañana"; el primer día del mes, los de la noche anterior del mes pasado entran en el mes nuevo. Reproducido al validar (12/10) con una sede en UTC+14: un egreso recién cargado no aparece con "Desde = Hasta = hoy de la sede" y sí con "Hasta = hoy". La pantalla manda bien el día de la sede (web #60); el corte lo hace el backend | [EGR-07](12-egresos-y-pagos.md) | Validación de esta guía; sin PR al 12/10 |
+| **Un cobro anulado desaparece del listado de cobros del paciente.** `CobroRepository.findDeLaPersona` filtra `deleted_at IS NULL`, así que `/pacientes/<id>/cuenta-corriente/cobros` no muestra los comprobantes anulados (deja huecos en la numeración visible y no hay forma de ver un anulado por pantalla). El detalle por id sí trae `estado`, `anuladoEn` y `motivoAnulacion` | [ECO-10](07-obligaciones-cobros-caja.md) | Validación de esta guía; sin PR al 12/10 |
+| ~~**El correo de una invitación cancelada sale igual si estaba en reintento.**~~ — **corregido en #100**: antes de cada intento el worker pregunta si el hecho sigue en pie (`notification.spi.VigenciaDeNotificacion`). Una invitación cancelada, aceptada, rechazada, vencida o reemplazada por un reenvío deja la fila **`AGOTADA`** con `error_sanitizado = 'No se envia: la invitacion fue cancelada'` (o el motivo que corresponda) y no sale ningún correo. Lo mismo para el aviso de reserva o de reprogramación de un turno que se canceló mientras esperaba. Además, una fila que termina `ENVIADA` ya no conserva el error del intento anterior | [ORG-15](02-organizacion-sedes-colaboradores.md) | Validación de esta guía (12/10) |
 
 ## 5. Preguntas abiertas que el QA puede encontrar
 

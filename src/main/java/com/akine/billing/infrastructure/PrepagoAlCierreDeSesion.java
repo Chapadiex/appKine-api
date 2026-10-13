@@ -4,6 +4,7 @@ import com.akine.billing.application.ImputacionDePrepago;
 import com.akine.billing.application.ImputacionDePrepago.CierreConTurno;
 import com.akine.encounter.spi.CierreDeSesionObserver;
 import com.akine.encounter.spi.SesionCerrada;
+import com.akine.platform.spi.transaccion.AlTerminarLaTransaccion;
 import com.akine.platform.spi.transaccion.DespuesDeLaTransaccion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,13 +50,14 @@ public class PrepagoAlCierreDeSesion implements CierreDeSesionObserver {
 		if (DespuesDeLaTransaccion.registrar(() -> imputar(hecho))) {
 			return;
 		}
-		// Sin la plantilla de negocio (un llamador que abrio su propia transaccion): el camino de
-		// antes, que sigue reteniendo la conexion durante la imputacion.
+		// Sin la plantilla de negocio (un llamador que abrio su propia transaccion): afterCommit
+		// decide que commiteo, y AlTerminarLaTransaccion corre la imputacion cuando la transaccion
+		// ya devolvio su conexion. Sin el transaction manager de la aplicacion corre en el acto.
 		if (TransactionSynchronizationManager.isSynchronizationActive()) {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
 				public void afterCommit() {
-					imputar(hecho);
+					AlTerminarLaTransaccion.ejecutar(() -> imputar(hecho));
 				}
 			});
 		} else {

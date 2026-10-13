@@ -2,7 +2,6 @@ package com.akine.person.application;
 
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.Autorizacion;
-import com.akine.person.domain.AutorizacionAlerta;
 import com.akine.person.domain.AutorizacionEvento;
 import com.akine.person.domain.TipoEventoAutorizacion;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionEventoRepositoryPort;
@@ -589,10 +588,10 @@ public class ConsumoDeAutorizacionService {
 				actor, "Consultar el saldo de una autorizacion");
 
 		Autorizacion autorizacion = cargar(organizationId, autorizacionId);
-		int consumosARevisar = (int) alertas.listarDeAutorizacion(organizationId, autorizacionId)
-				.stream()
-				.filter(AutorizacionAlerta::pendiente)
-				.count();
+		// Misma consulta que el listado de autorizaciones del paciente: los dos numeros no divergen.
+		int consumosARevisar = alertas
+				.pendientesPorAutorizacion(organizationId, autorizacion.getPersonaId())
+				.getOrDefault(autorizacionId, 0);
 		return SaldoDeAutorizacionView.de(
 				autorizacion,
 				movimientos.listarDeAutorizacion(organizationId, autorizacionId),

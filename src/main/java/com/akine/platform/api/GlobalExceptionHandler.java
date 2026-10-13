@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
@@ -295,6 +296,27 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(OptimisticLockingFailureException.class)
 	public ProblemDetail handleOptimisticLocking(OptimisticLockingFailureException exception) {
 		log.info("Modificacion concurrente: {}", exception.getMessage());
+
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, CONCURRENT_MODIFICATION_DETAIL);
+		problem.setTitle("Modificacion concurrente");
+		problem.setType(CONCURRENT_MODIFICATION);
+		return problem;
+	}
+
+	/**
+	 * InnoDB mato la transaccion por deadlock o porque no consiguio un lock a tiempo
+	 * ({@code CannotAcquireLockException}, {@code DeadlockLoserDataAccessException}).
+	 *
+	 * <p>Es el mismo hecho que la version vieja —dos operaciones concurrentes sobre lo mismo— y
+	 * tiene el mismo remedio: reintentar. Por eso responde {@code concurrent-modification} (DP-21) y
+	 * no un 500. El caso que lo hizo necesario: dos aperturas simultaneas de la misma historia
+	 * clinica esperan el lock de la primera, y si la primera revierte, InnoDB elige una victima
+	 * entre las que esperaban (docs/carga.md §8). El reintento la encuentra abierta o la abre.
+	 */
+	@ExceptionHandler(PessimisticLockingFailureException.class)
+	public ProblemDetail handlePessimisticLocking(PessimisticLockingFailureException exception) {
+		log.info("Conflicto de locks en la base: {}", exception.getMessage());
 
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
 				HttpStatus.CONFLICT, CONCURRENT_MODIFICATION_DETAIL);
