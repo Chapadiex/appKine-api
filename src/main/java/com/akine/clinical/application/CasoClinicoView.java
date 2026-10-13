@@ -53,4 +53,14 @@ public record CasoClinicoView(
 				List.copyOf(equipo),
 				caso.getVersion());
 	}
+
+	/**
+	 * La misma vista con otra version: la usa el cambio de equipo, que avanza la version con un
+	 * {@code UPDATE} condicionado y deja la entidad con la leida.
+	 */
+	public CasoClinicoView conVersion(long nuevaVersion) {
+		return new CasoClinicoView(id, historiaClinicaId, numeroCaso, ofertaId, ofertaConsultorioId,
+				diagnosticoPresuntivo, objetivoTerapeutico, estado, abiertoEn, abiertoPor, cerradoEn,
+				cerradoPor, motivoCierre, equipo, nuevaVersion);
+	}
 }

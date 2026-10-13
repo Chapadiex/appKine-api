@@ -20,6 +20,12 @@ public final class PermissionCodes {
 	/** Editar Historia Clinica: resumen y antecedentes. */
 	public static final String HC_WRITE = "hc:write";
 
+	/**
+	 * Ver el padron (DP-22). En {@code clinical} autoriza solo los datos ADMINISTRATIVOS de la historia
+	 * (el "Limitado" del ADMINISTRATIVO en la matriz §32): nunca contenido clinico.
+	 */
+	public static final String PACIENTE_READ = "paciente:read";
+
 	private PermissionCodes() {
 	}
 }
