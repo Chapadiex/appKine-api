@@ -21155,6 +21155,14 @@ components:
           description: Sede que la gestiono. El convenio que la respalda es de la
             sede
           example: 7
+        consumosARevisar:
+          type: integer
+          format: int32
+          description: "Alertas CONSUMO_A_REVISAR pendientes de esta autorizacion\
+            \ (DP-13, AKINE C-4). Es el mismo numero que consumosARevisar de GET /api/v1/autorizaciones/{autorizacionId}/saldo,\
+            \ calculado con la misma consulta; en el listado sale de UNA consulta\
+            \ agrupada para todas las filas. El saldo disponible ya viaja en saldo"
+          example: 0
         convenioCodigo:
           type: string
           description: COPIA del codigo del convenio al registrar

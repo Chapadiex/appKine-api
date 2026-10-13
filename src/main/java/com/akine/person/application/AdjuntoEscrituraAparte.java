@@ -2,11 +2,12 @@ package com.akine.person.application;
 
 import com.akine.person.domain.AdjuntoAdministrativo;
 import com.akine.person.domain.port.PersonRepositoryPorts.AdjuntoRepositoryPort;
+import com.akine.platform.spi.transaccion.AlTerminarLaTransaccion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Las dos escrituras sobre {@code adjunto_administrativo} que NO pueden vivir en la transaccion de
@@ -35,6 +36,14 @@ import org.springframework.transaction.annotation.Transactional;
  * contenido, visible como tal— en vez de mentir con {@code DISPONIBLE}; y si lo que falla es algo
  * posterior, el reintento del cliente encuentra esa misma fila por checksum y se resuelve como
  * idempotente. Dejar el INSERT adentro no evita el problema: lo cambia por el 500.
+ *
+ * <h2>Sin transaccion de afuera (docs/carga.md §8)</h2>
+ *
+ * <p>Hasta el 11/10/2026 las dos eran {@code REQUIRES_NEW} llamados desde adentro de la transaccion
+ * del servicio, que retenia su conexion y pedia otra: muchas subidas a la vez trababan el pool.
+ * Ahora cada una abre su transaccion con una plantilla y <b>falla si ya hay una abierta</b>: el
+ * servicio las llama entre sus propias transacciones ({@code subir}) o cuando la suya ya termino
+ * ({@code marcarNoDisponible} de la subida, por {@code AlTerminarLaTransaccion}).
  */
 @Component
 public class AdjuntoEscrituraAparte {
@@ -43,8 +52,12 @@ public class AdjuntoEscrituraAparte {
 
 	private final AdjuntoRepositoryPort adjuntos;
 
-	public AdjuntoEscrituraAparte(AdjuntoRepositoryPort adjuntos) {
+	private final TransactionTemplate transaccion;
+
+	public AdjuntoEscrituraAparte(
+			AdjuntoRepositoryPort adjuntos, PlatformTransactionManager transactionManager) {
 		this.adjuntos = adjuntos;
+		this.transaccion = new TransactionTemplate(transactionManager);
 	}
 
 	/**
@@ -59,9 +72,9 @@ public class AdjuntoEscrituraAparte {
 	 *                                                                 checksum, con su propia
 	 *                                                                 transaccion intacta
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public AdjuntoAdministrativo insertar(AdjuntoAdministrativo adjunto) {
-		return adjuntos.saveAndFlush(adjunto);
+		AlTerminarLaTransaccion.exigirSinTransaccion("El INSERT del adjunto");
+		return transaccion.execute(estado -> adjuntos.saveAndFlush(adjunto));
 	}
 
 	/**
@@ -71,14 +84,14 @@ public class AdjuntoEscrituraAparte {
 	 * OTRA sesion, y mutarla ahi dejaria la marca dentro de la transaccion que esta por revertirse
 	 * —que es el defecto que esta clase existe para evitar—.
 	 */
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void marcarNoDisponible(long organizationId, long personaId, long adjuntoId) {
-		adjuntos.buscarDeLaPersona(organizationId, personaId, adjuntoId)
+		AlTerminarLaTransaccion.exigirSinTransaccion("La marca NO_DISPONIBLE del adjunto");
+		transaccion.executeWithoutResult(estado -> adjuntos.buscarDeLaPersona(organizationId, personaId, adjuntoId)
 				.ifPresent(adjunto -> {
 					adjunto.marcarNoDisponible();
 					adjuntos.save(adjunto);
 					log.warn("Adjunto administrativo marcado NO_DISPONIBLE: adjuntoId={} "
 							+ "personaId={}", adjuntoId, personaId);
-				});
+				}));
 	}
 }

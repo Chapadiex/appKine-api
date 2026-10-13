@@ -393,7 +393,11 @@ FROM notification_outbox WHERE organization_id = @org_a ORDER BY id DESC LIMIT 5
 Esperado: `intentos` sube con cada falla y `proxima_ejecucion_en` respeta el backoff;
 `error_sanitizado` **no** trae host, credenciales ni el enlace (solo la clase de error, p. ej.
 `UnknownHostException`); al llegar a `max_intentos`, `AGOTADA`. Tras "Reintentar": vuelve a la
-cola con el contador de intentos reiniciado y en segundos `ENVIADA`, con el correo en Mailpit.
+cola con el contador de intentos reiniciado y en segundos `ENVIADA`, con el correo en Mailpit y
+`error_sanitizado` en `NULL` (una fila enviada no arrastra el error del intento anterior).
+**Variante:** si en el paso 3 cancelás la invitación mientras la fila espera, en el próximo
+intento —con el correo arriba o abajo— la fila queda `AGOTADA` con `error_sanitizado = 'No se envia: la invitacion fue cancelada'`, sin
+`enviado_en`, y Mailpit no recibe nada; "Reintentar" la vuelve a dejar igual.
 Reintentar una fila que no está `FALLIDA` ni `AGOTADA` es 409 `conflict`. **Auditoría:**
 `NOTIFICACION_REINTENTADA` (`entity_type = 'Notificacion'`).
 

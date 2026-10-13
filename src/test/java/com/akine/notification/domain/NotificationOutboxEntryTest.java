@@ -176,19 +176,6 @@ class NotificationOutboxEntryTest {
 		assertThat(entry.getIntentos()).isEqualTo(1);
 	}
 
-	@Test
-	@DisplayName("una entrega exitosa despues de fallar conserva el motivo del ultimo fallo")
-	void el_exito_no_borra_el_motivo_anterior() {
-		// Que una notificacion haya entrado despues de tres fallos es informacion util para
-		// diagnosticar, y el motivo ya viene sanitizado: borrarlo solo esconde el sintoma.
-		NotificationOutboxEntry entry = NotificationFixtures.en(OutboxStatus.REINTENTABLE);
-		entry.marcarEnProceso(AHORA.plusSeconds(60));
-
-		entry.marcarEnviada(AHORA.plusSeconds(61));
-
-		assertThat(entry.getErrorSanitizado()).isEqualTo("smtp caido");
-		assertThat(entry.getIntentos()).isEqualTo(2);
-	}
 
 	@Test
 	@DisplayName("un fallo transitorio con intentos disponibles reprograma con la espera dada")
@@ -276,6 +263,38 @@ class NotificationOutboxEntryTest {
 		assertThat(entry.getIntentos()).isEqualTo(intentosAntes);
 		assertThat(entry.getErrorSanitizado()).isEqualTo(errorAntes);
 		assertThat(entry.getProximaEjecucionEn()).isEqualTo(programadaAntes);
+	}
+
+	@Test
+	@DisplayName("enviada despues de un fallo transitorio, la fila no conserva el error viejo")
+	void enviada_limpia_el_error() {
+		// El listado publica error_sanitizado como ultimoError: ENVIADA con un error al lado se
+		// lee como un envio fallido (QA, PR #95). Cuantas veces hizo falta lo dice intentos.
+		NotificationOutboxEntry entry = NotificationFixtures.en(OutboxStatus.REINTENTABLE);
+		assertThat(entry.getErrorSanitizado()).isNotNull();
+		entry.marcarEnProceso(AHORA.plusSeconds(60));
+
+		entry.marcarEnviada(AHORA.plusSeconds(61));
+
+		assertThat(entry.getEstado()).isEqualTo(OutboxStatus.ENVIADA);
+		assertThat(entry.getErrorSanitizado()).isNull();
+		assertThat(entry.getIntentos()).isEqualTo(2);
+	}
+
+	@Test
+	@DisplayName("un origen que ya no esta vigente agota la fila con el motivo, sin gastar un intento")
+	void origen_no_vigente_agota_sin_intento() {
+		NotificationOutboxEntry entry = NotificationFixtures.en(OutboxStatus.REINTENTABLE);
+		entry.marcarEnProceso(AHORA.plusSeconds(60));
+		int intentosAntes = entry.getIntentos();
+
+		entry.descartarPorOrigenNoVigente("No se envia: la invitacion fue cancelada");
+
+		assertThat(entry.getEstado()).isEqualTo(OutboxStatus.AGOTADA);
+		assertThat(entry.getErrorSanitizado()).isEqualTo("No se envia: la invitacion fue cancelada");
+		assertThat(entry.getIntentos()).isEqualTo(intentosAntes);
+		assertThat(entry.getProcesandoDesde()).isNull();
+		assertThat(entry.getEstado().admiteReintentoManual()).isTrue();
 	}
 
 	@Test
