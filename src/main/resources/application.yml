@@ -22,6 +22,20 @@ spring:
     username: ${AKINE_DB_USER}
     password: ${AKINE_DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # Propiedades de Connector/J (docs/carga.md §9). Medido con JFR a 500 usuarios:
+      data-source-properties:
+        # Sin cache, el driver vuelve a analizar el texto de cada sentencia en cada
+        # prepareStatement (QueryInfo): ~10 % de la CPU del backend. La cache es por conexion y
+        # guarda el analisis, no resultados. El tamano cubre las consultas distintas del sistema.
+        cachePrepStmts: true
+        prepStmtCacheSize: 500
+        prepStmtCacheSqlLimit: 4096
+        # Connector/J 9 abre un span de OpenTelemetry por sentencia en cuanto encuentra la API en
+        # el classpath (PREFERRED): ~5 % de la CPU, para spans que no se exportan (el muestreo es
+        # 0,1 y por default no hay collector). El span del pedido HTTP sigue existiendo.
+        # AKINE_JDBC_OTEL=PREFERRED los vuelve a encender, p. ej. para diagnosticar con collector.
+        openTelemetry: ${AKINE_JDBC_OTEL:DISABLED}
 
   jpa:
     # Flyway es la unica autoridad sobre el esquema. Hibernate no crea ni altera tablas:
@@ -115,6 +129,14 @@ management:
         http.server.requests: 5ms
       maximum-expected-value:
         http.server.requests: 10s
+
+  observations:
+    enable:
+      # Spring Security abre una observacion —con su timer y su span— por cada uno de los ~15
+      # filtros de la cadena, en cada pedido: ~5 % de la CPU a 500 usuarios (docs/carga.md §9) y
+      # ninguna metrica que mire nadie. El pedido HTTP entero se sigue midiendo
+      # (http.server.requests) y trazando.
+      spring.security: false
 
   # ---- Trazas (G-4) --------------------------------------------------------------------------
   # Micrometer Tracing con el puente a OpenTelemetry. Cada request abre un span y publica

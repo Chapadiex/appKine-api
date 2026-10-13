@@ -24,6 +24,7 @@ qué no cumple. Los SLO son los de [ADR-0016](adr/0016-versiones-tecnicas-y-slo.
 |---|---|
 | `perf/stack.sh` | Levanta y borra el stack aislado, siembra, corre la carga y junta métricas |
 | `perf/k6/sembrado.js` | Siembra el centro **por la API** (nada por SQL) y escribe `perf/salida/sembrado.json` |
+| `perf/k6/por-pedido.js` | Un endpoint por vez, en serie: lo usa `perf/stack.sh por-pedido` para contar sentencias y transacciones por pedido (§9) |
 | `perf/k6/carga.js` | Los escenarios y los umbrales; escribe `perf/salida/carga-resumen.{md,json}` |
 | `perf/k6/lib.js` | Login con contexto, reintento por 429, fechas en la zona de la sede |
 | `perf/prometheus-latencia.mjs` | p50/p95/p99 **del lado del servidor** restando dos fotos de `/actuator/prometheus` |
@@ -34,7 +35,7 @@ qué no cumple. Los SLO son los de [ADR-0016](adr/0016-versiones-tecnicas-y-slo.
 
 ## 2. El stack aislado
 
-Todo lleva el prefijo `g10-` y puertos propios. **No toca `akine-mysql`, `akine-mailpit`, el 8080
+Todo lleva el prefijo `g10-` y puertos propios (`AKINE_CARGA_PREFIJO` y `AKINE_CARGA_PUERTO_*` los cambian, para correr un segundo stack sin pisar el primero; ver §9). **No toca `akine-mysql`, `akine-mailpit`, el 8080
 ni el 4200** de desarrollo.
 
 | Contenedor | Imagen | Puerto del host |
@@ -223,7 +224,7 @@ los 2,5 s en móvil.
 ## 6. Hallazgos
 
 Ninguno se corrige en este PR. Están ordenados por gravedad. **Lo que se corrigió después, y con qué
-números, está en §8.**
+números, está en §8 y §9.**
 
 ### 6.1 Crítico — el pool de conexiones se traba con transacciones anidadas
 
@@ -343,7 +344,7 @@ usuarios. "Antes" es `main` `2240971` medido el mismo día, que reproduce la cor
 | 6.2 | El cobro serializa en el numerador de la sede | **Mejorado, no eliminado.** El `asegurar` ya no toca la fila existente: el `INSERT ... ON DUPLICATE KEY UPDATE` desapareció del digest. El `+1` sigue serializando, y debe: ver abajo |
 | 6.3 | Un fallo de base en la autenticación responde 401 | **Corregido.** 503 `service-unavailable` (500 si no es la base), nunca 401. 401 en la carga: 120 → **0** |
 | 6.4 | N+1 en la agenda del día | **Corregido.** `OfertaDirectory.findTodas`: una consulta por día, no una por turno |
-| 6.5 | Tres transacciones y lecturas repetidas por pedido | **Sin cambios.** Ver abajo |
+| 6.5 | Tres transacciones y lecturas repetidas por pedido | **Sin cambios en esta rama.** Corregido después: ver §9 |
 | 6.6 | El backend no se recupera solo | **Desaparece con 6.1**: ya no se traba |
 | 6.7 | El primer arranque supera el `start-period` | **Corregido.** `start-period` de 600 s |
 
@@ -401,7 +402,7 @@ entre sedes.
 
 ### Lo que queda abierto
 
-- **6.5 sin cambios.** Las dos lecturas por pedido de `membership` (filtro y evaluación de permisos)
+- **6.5 sin cambios** (corregido después, en §9). Las dos lecturas por pedido de `membership` (filtro y evaluación de permisos)
   y las tres transacciones siguen. Cachearlas por pedido toca la evaluación de permisos de
   `organization` (ADR-0020, T-7) y no se hizo a ciegas. En el digest de la corrida: `SET autocommit`
   252 307 veces y `SET SESSION TRANSACTION READ ONLY/WRITE` 117 000 cada una, para 37 492 pedidos.
@@ -483,3 +484,160 @@ los ocho `PERMISSION_DENIED` y `NO_DISPONIBLE` escritos aunque los pedidos falle
 La espera por conexión de esos ITs pasó de 3 a 10 s: sobre `main`, la segunda ronda de cobros del IT
 de #91 falló una vez con 3 s sin ningún anidamiento —ocho cobros serializados en el numerador con
 dos conexiones pueden esperar más que eso en esta máquina—.
+
+## 9. CPU y latencia por pedido (12–13/10/2026, rama `akine-perf-por-request`)
+
+Después de §8 el pool ya no se trababa, pero a 500 usuarios la CPU seguía entre 70 y 100 % de los
+4 núcleos y el p95 en 3,3–3,6 s. Esta rama ataca **lo que cuesta cada pedido**, sin tocar la
+semántica de permisos: ADR-0020 y T-7 siguen igual —membership y rol de plataforma se revalidan
+contra la base **en cada pedido**—, lo que desaparece es leerlos varias veces **dentro** del mismo.
+
+Mismo método que §8: stack aislado con prefijo `perf2-` y puertos propios (MySQL 3329, Mailpit
+8046/1046, backend 8099), backend con 4 CPU, 2 GB y el pool por defecto (10). Cada corrida: base
+nueva, sembrado, conteo por pedido, reinicio del backend y la mezcla completa a 500 usuarios.
+
+### Cómo se midió
+
+- **Perfil.** JFR (`settings=profile`) durante la carga completa sobre `main` `5b4ef93`, con
+  `AKINE_CARGA_JAVA_OPTS="-XX:StartFlightRecording=settings=profile,dumponexit=true,filename=/app/var/carga.jfr"`
+  y `docker stop` para volcarlo. Se miraron las muestras de la meseta de 500 usuarios. **Ojo:** JFR
+  corta las pilas en 64 cuadros por defecto y las de Hibernate son más largas; para atribuir por
+  controller hace falta `-XX:FlightRecorderOptions=stackdepth=256`.
+- **Sentencias y transacciones por pedido.** `perf/stack.sh por-pedido`: un usuario, cien pedidos
+  en serie por endpoint, y la diferencia de los contadores de MySQL (`Questions`, `Com_*`) y de las
+  conexiones pedidas a Hikari, dividida por cien. Escribe `perf/salida/por-pedido.md`.
+
+### Dónde se iba la CPU (JFR, meseta de 500 usuarios, `main`)
+
+| Qué | % de las muestras de CPU |
+|---|---:|
+| Connector/J **analizando el texto de cada sentencia** en cada `prepareStatement` (`QueryInfo`), por no tener cache de sentencias | ~10 (13 todo `prepareStatement`) |
+| Lecturas de autorización: membership en el filtro de contexto (12), evaluación de permisos (8,5) y rol de plataforma (3); las dos primeras leen **las mismas filas** | ~24 |
+| `ReservaProbeSobreTurnos`: la búsqueda de slots cargaba **las entidades `Turno` completas** de cada día de la ventana sólo para contar cuántas hay por hora | 8,5 |
+| Observaciones de Micrometer de **cada filtro** de Spring Security (timer y span por filtro, ~15 por pedido) | ~5 |
+| Connector/J abriendo un **span de OpenTelemetry por sentencia** (PREFERRED por defecto con la API en el classpath), que nadie exporta | 4,8 |
+| Abrir y cerrar transacciones (`doBegin`, `commit`, limpieza) | ~7 |
+| Argon2 del login (1 cada 3 s) | 3,5 |
+
+Además, el digest de MySQL mostró una consulta **sin índice** en la recepción y la agenda: el
+prepago de cada turno se lee con `cobro WHERE organization_id = ? AND turno_id IN (...)`, y ningún
+índice empieza por `(organization_id, turno_id)`. Recorría todos los cobros de la organización en
+cada pedido —1 400 filas por consulta, 5,9 millones en una corrida— y crece con cada cobro.
+
+### Qué se cambió
+
+| Cambio | Dónde | Semántica |
+|---|---|---|
+| **Memoria del pedido**: membership, rol de plataforma y grants se leen una vez por pedido; el filtro lee y la evaluación de permisos del mismo pedido reutiliza la lectura | `platform.spi.pedido.MemoriaDelPedido`, `AlcanceDelPedidoFilter`, `organization.application.LecturasDeAcceso` | Sin cambios. No cruza pedidos (el filtro la abre y la descarta en un `finally`), no existe fuera de uno (jobs, outbox, tests) y **no se usa dentro de una transacción de escritura**: ahí se lee la base y la memoria se descarta, así que la mutación que evalúa después de tomar el bloqueo del tenant sigue viendo la base de ese momento. Se memorizan filas, no decisiones: vigencia y alcance se evalúan con el instante de cada llamada |
+| El rol de plataforma del filtro JWT se lee **sin transacción propia** (`SUPPORTS`): una sola sentencia en autocommit | `PlatformRoleRepository`, `OrganizationPlatformRoleDirectory` | Sin cambios: una sentencia no necesita transacción para ser consistente. Dentro de una transacción se une a ella como antes |
+| Cache de sentencias de Connector/J (`cachePrepStmts`, 500 sentencias, 4 096 caracteres) | `application.yml`, `spring.datasource.hikari.data-source-properties` | Cachea el análisis del texto, por conexión; no cachea resultados |
+| `openTelemetry=DISABLED` en Connector/J | ídem | Se pierden los spans por sentencia SQL, que no se exportaban (muestreo 0,1 y sin collector por defecto). El span del pedido sigue |
+| `management.observations.enable.spring.security: false` | `application.yml` | Se pierden los timers y spans por filtro de seguridad; `http.server.requests` y la traza del pedido siguen |
+| La sonda de reservas lee una **proyección** (inicio, profesional, espacio) en vez del `Turno` entero | `OcupacionDeTurno`, `TurnoRepositoryPort.findOcupacionDeLaOfertaEnVentana` | Sin cambios: misma ventana y mismo filtro |
+| Índice `ix_cobro_turno (organization_id, turno_id)` | `V94` | Sólo agrega un índice |
+
+**El límite de la memoria, dicho entero.** La lectura fresca cubre sólo lo que se evalúa
+**dentro** de una transacción de escritura, y al commitear cualquier escritura la memoria del pedido
+se descarta (`TransaccionesConfig`). Las mutaciones que desde #91 evalúan el permiso **antes** de
+abrir su transacción de negocio —p. ej. `CobroService.registrar`, que llama a `exigirGestion` antes
+del `execute`— deciden con lo que leyó el filtro de contexto del mismo pedido: una ventana de
+milisegundos, apenas mayor que antes, que nunca cruza al pedido siguiente.
+
+**Lo que no se hizo:** unir las dos transacciones de los filtros (la de membership sigue: son cuatro
+lecturas que conviene ver en una sola foto) ni `readOnlyPropagatesToServer=false` (quitaría los
+`SET SESSION TRANSACTION READ ONLY/WRITE`, pero también que MySQL rechace una escritura en una
+transacción de lectura, que es lo que destapó el defecto #14 del 11/10). Los
+`REQUIRES_NEW` que quedaban los resolvió #97 (sección anterior); esta rama se midió sobre él.
+
+### Sentencias y transacciones por pedido
+
+Medido el 13/10 sobre `main` `36eee22` (ya con #97) y sobre esta rama mergeada con él, cada uno
+con base recién sembrada:
+
+| Endpoint | Sentencias antes → después | SELECT | SET | COMMIT |
+|---|---:|---:|---:|---:|
+| agenda del día | 26 → **19** | 11 → 9 | 12 → 8 | 3 → 2 |
+| búsqueda de slots | 39 → **32** | 24 → 22 | 12 → 8 | 3 → 2 |
+| recepción del día | 30 → **23** | 15 → 13 | 12 → 8 | 3 → 2 |
+| Paciente 360 | 31 → **22** | 16 → 12 | 12 → 8 | 3 → 2 |
+| cobro | 44 → **37** | 14 → 12 | 18 → 14 | 5 → 4 |
+| reporte | 38 → **33** | 25 → 25 | 10 → 6 | 3 → 2 |
+| reserva | 54 → **47** | 27 → 25 | 20 → 16 | 5 → 4 |
+| login | 8,2 → 8,6 | 1,1 → 1,1 | 2 → 2,2 | 1 → 1,1 |
+
+Cada pedido autenticado hace **una transacción menos** (tres → dos en las lecturas) y deja de
+releer membership y rol. Las conexiones que pide al pool siguen siendo tres: la lectura del rol
+sin transacción también toma una, sólo que la devuelve después de una sentencia. El índice `V94`
+no cambia cuántas sentencias hay: cambia cuántas filas recorre la del prepago (la recepción del
+día cuenta más o menos SELECT según cuántos turnos le queden al día cuando se mide).
+
+### La mezcla completa, 500 usuarios, pool 10 — antes y después
+
+**La máquina no estuvo quieta durante casi toda la medición.** Docker Desktop corría a la vez los
+stacks y los tests de otros agentes (hasta 36 contenedores), y la misma imagen dio 68 req/s en una
+corrida y 91 en otra. Por eso las comparaciones van **de a pares corridos uno detrás del otro**. El
+par que se reporta es el último: el 13/10, sobre `main` con #97, con la máquina casi quieta (7 a 9
+contenedores en total).
+
+**Par 3 (13/10, 10:50–11:20), `main` `36eee22` contra esta rama mergeada con él:**
+
+| Endpoint | Antes p50 / p95 / p99 ms | Después p50 / p95 / p99 ms |
+|---|---:|---:|
+| login | 891 / 2 206 / 2 578 | **149 / 387 / 694** |
+| agenda del día | 1 457 / 3 649 / 4 502 | **28 / 440 / 948** |
+| búsqueda de slots | 1 529 / 3 689 / 4 524 | **49 / 474 / 909** |
+| recepción del día | 1 491 / 3 644 / 4 584 | **38 / 470 / 899** |
+| Paciente 360 | 1 459 / 3 620 / 4 549 | **31 / 438 / 966** |
+| cobro | 2 740 / 5 766 / 7 158 | **140 / 971 / 1 750** |
+| reporte | 1 470 / 3 617 / 4 482 | **49 / 433 / 846** |
+| reserva | 2 067 / 5 335 / 6 502 | **64 / 911 / 2 007** |
+| **todo lo interactivo** | 1 585 / 4 233 / 5 660 | **44 / 535 / 1 183** |
+| pedidos · req/s | 30 447 · 78,3 | 44 320 · **114,4** (+46 %) |
+| CPU del proceso, media | 75 % | **62 %** |
+| muestras de 5 s con pedidos esperando conexión | 41 de 60 | **20 de 68** |
+| pedidos ≤ 300 ms (servidor), lecturas | 20–22 % | **91–92 %** |
+| pedidos ≤ 800 ms (servidor), lecturas | 34–36 % | **98,4–98,6 %** |
+| errores técnicos | 0,00 % | 0,00 % |
+| reservas 201 / 409 | 480 / 3 099 | 478 / 3 123 |
+
+Después de este par la rama se mergeó otra vez con `main` (entraron hasta #109, entre ellos #107
+con cambios en reserva y agenda) y la migración pasó de `V87` a `V94` porque `main` tomó `V87`.
+Esa versión final **no se volvió a medir con k6**: pasaron los unitarios tocados y los ITs
+`AgendaDescuentaReservasIT`, `EsquemaMultiTenantIT`, `PoolDeConexionesIT` y `OpenApiContractIT`.
+
+Integridad verificada contra la base al terminar: comprobantes **1 a 2 722** (antes) y
+**1 a 4 187** (después), sin huecos ni repetidos, y **0 turnos solapados** del mismo profesional.
+
+Los dos pares anteriores, con la máquina cargada, van en la misma dirección y dicen menos:
+
+- **Par 2** (12/10, sobre `5b4ef93`, sin #97): 90,7 → 99,0 req/s, p50 786 → 66 ms, CPU media
+  58 → 37 %, pedidos ≤ 300 ms del 28 al 70 %; el p95 no bajó (3,8 → 4,3 s en k6), porque el
+  pool seguía en ráfagas de 10 activas y 190 pendientes con la CPU al 30–50 %.
+- **Par 1** (11/10, sin `V94`): 68,2 → 75,3 req/s, CPU media de ~80 % a ~40 %, p95 ~7 s en los
+  dos.
+- Una corrida con JFR de la versión nueva se descarta: coincidió con la máquina más cargada del día
+  (37 req/s, 1,14 % de timeouts en k6) y no dice nada del cambio.
+
+### Lectura
+
+**El p95 de todo lo interactivo bajó de 4,2 s a 0,54 s y el p99 de 5,7 s a 1,2 s, con 46 % más
+pedidos.** Todavía no cumple el SLO de ADR-0016 (300 / 800 ms), pero las lecturas quedan a un
+paso: nueve de cada diez dentro de los 300 ms y el 98,5 % dentro de los 800.
+
+Lo que queda tiene dos nombres, y ninguno es CPU:
+
+1. **El numerador del comprobante (§6.2).** El cobro es el endpoint más lento (p95 971 ms) y el
+   `UPDATE comprobante_numerador ... + 1` sigue siendo la sentencia con más espera de lock del
+   digest: 339 s sumados en 387 s de corrida, 80 ms de promedio, contra 510 s y 191 ms en el
+   "antes" del mismo par. El escenario pone 10 cobros por segundo **en una sola sede**, y el comprobante
+   correlativo sin huecos serializa por sede por definición. Mientras esas conexiones esperan, las
+   lecturas hacen cola por una libre: casi un tercio de las muestras todavía tiene pedidos esperando
+   conexión. Bajarlo exige cambiar cuándo se pide el número o cuánto se retiene la conexión
+   esperando el lock, y eso toca la regla de numeración de 06.05 y la columna `NOT NULL` única del
+   comprobante: no es un cambio acotado y no se hizo. Con la carga repartida entre sedes ese lock
+   no se comparte.
+2. **El lock de `agenda_sede` de las reservas** (89 s de espera sumados, 286 s antes), por la misma
+   razón: 10 reservas por segundo sobre 40 horarios de una sola sede.
+
+La CPU media del 62 % con 114 req/s es ~22 ms de CPU por pedido sobre 4 núcleos, contra ~38 ms en
+el "antes" del mismo par.

@@ -1,6 +1,6 @@
 package com.akine.scheduling.infrastructure;
 
-import com.akine.scheduling.domain.Turno;
+import com.akine.scheduling.domain.OcupacionDeTurno;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import com.akine.scheduling.spi.ReservaProbe;
 import org.springframework.stereotype.Component;
@@ -61,9 +61,10 @@ public class ReservaProbeSobreTurnos implements ReservaProbe {
 			Instant hasta) {
 
 		Map<Instant, Integer> porInicio = new HashMap<>();
-		for (Turno turno : turnos.findVivosDeLaOfertaEnVentana(organizationId, ofertaId, desde, hasta)) {
+		for (OcupacionDeTurno turno :
+				turnos.findOcupacionDeLaOfertaEnVentana(organizationId, ofertaId, desde, hasta)) {
 			if (ocupaAlgunRecurso(turno, recursoIds)) {
-				porInicio.merge(turno.getInicio(), 1, Integer::sum);
+				porInicio.merge(turno.inicio(), 1, Integer::sum);
 			}
 		}
 		return porInicio;
@@ -81,10 +82,10 @@ public class ReservaProbeSobreTurnos implements ReservaProbe {
 	 * nullables —una oferta puede no exigir profesional, o no exigir espacio— y {@code List.of()}
 	 * lanza {@code NullPointerException} al buscar un null, asi que el nulo se descarta antes.
 	 */
-	private static boolean ocupaAlgunRecurso(Turno turno, List<Long> recursoIds) {
+	private static boolean ocupaAlgunRecurso(OcupacionDeTurno turno, List<Long> recursoIds) {
 		return recursoIds.isEmpty()
-				|| contiene(recursoIds, turno.getProfesionalMembershipId())
-				|| contiene(recursoIds, turno.getEspacioId());
+				|| contiene(recursoIds, turno.profesionalMembershipId())
+				|| contiene(recursoIds, turno.espacioId());
 	}
 
 	private static boolean contiene(List<Long> recursoIds, Long recursoId) {

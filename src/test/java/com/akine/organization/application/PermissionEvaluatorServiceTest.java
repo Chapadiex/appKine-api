@@ -16,6 +16,7 @@ import com.akine.organization.domain.port.SupportAccessRepositoryPort;
 import com.akine.organization.spi.DenialKind;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.platform.spi.pedido.MemoriaDelPedido;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -789,5 +791,64 @@ class PermissionEvaluatorServiceTest {
 				.isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> new PermissionDecision(true, null, null, false))
 				.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	// =================================================================================
+	// Una lectura por pedido (docs/carga.md §9)
+	// =================================================================================
+
+	@Nested
+	@DisplayName("Lecturas por pedido")
+	class LecturasPorPedido {
+
+		@Test
+		@DisplayName("Dentro de un pedido, rol y membership se leen una vez aunque se evaluen varios permisos")
+		void una_lectura_por_pedido() {
+			sinRolDePlataforma();
+			memberships(Fixtures.membershipVigenteCon(RoleCode.ORG_ADMIN));
+
+			try (MemoriaDelPedido.Alcance pedido = MemoriaDelPedido.abrir()) {
+				assertThat(decidir(PermissionCode.COLABORADOR_MANAGE, CONSULTORIO_ID).granted()).isTrue();
+				assertThat(decidir(PermissionCode.TURNO_READ, CONSULTORIO_ID).granted()).isTrue();
+				evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID);
+			}
+
+			verify(platformRoleRepository, times(1)).findAllByAccountIdAndActiveTrue(ACCOUNT_ID);
+			verify(membershipRepository, times(1))
+					.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID);
+		}
+
+		@Test
+		@DisplayName("El pedido siguiente vuelve a leer: una membership revocada deja de habilitar")
+		void el_pedido_siguiente_relee() {
+			sinRolDePlataforma();
+			memberships(Fixtures.membershipVigenteCon(RoleCode.ORG_ADMIN));
+			try (MemoriaDelPedido.Alcance pedido = MemoriaDelPedido.abrir()) {
+				assertThat(decidir(PermissionCode.COLABORADOR_MANAGE, CONSULTORIO_ID).granted()).isTrue();
+			}
+
+			// Entre un pedido y otro se revoca la membership.
+			memberships();
+			try (MemoriaDelPedido.Alcance pedido = MemoriaDelPedido.abrir()) {
+				assertThat(decidir(PermissionCode.COLABORADOR_MANAGE, CONSULTORIO_ID).denial())
+						.isEqualTo(DenialKind.OUT_OF_SCOPE);
+			}
+
+			verify(membershipRepository, times(2))
+					.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID);
+		}
+
+		@Test
+		@DisplayName("Fuera de un pedido no hay memoria: cada evaluacion lee la base")
+		void fuera_de_un_pedido_siempre_lee() {
+			sinRolDePlataforma();
+			memberships(Fixtures.membershipVigenteCon(RoleCode.ORG_ADMIN));
+
+			decidir(PermissionCode.COLABORADOR_MANAGE, CONSULTORIO_ID);
+			decidir(PermissionCode.COLABORADOR_MANAGE, CONSULTORIO_ID);
+
+			verify(membershipRepository, times(2))
+					.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(ORG_ID, ACCOUNT_ID);
+		}
 	}
 }
