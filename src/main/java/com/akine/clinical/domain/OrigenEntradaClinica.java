@@ -1,8 +1,5 @@
 package com.akine.clinical.domain;
 
-import java.util.Arrays;
-import java.util.Optional;
-
 /**
  * Como nacio una entrada clinica.
  *
@@ -40,14 +37,5 @@ public enum OrigenEntradaClinica {
 	/** {@code true} si este origen exige declarar la fila de la que salio la entrada. */
 	public boolean exigeReferencia() {
 		return this != MANUAL;
-	}
-
-	/** El origen con ese nombre, o vacio si no existe: es un 400 del cliente, no un 500. */
-	public static Optional<OrigenEntradaClinica> desde(String nombre) {
-		if (nombre == null || nombre.isBlank()) {
-			return Optional.empty();
-		}
-		String normalizado = nombre.strip().toUpperCase();
-		return Arrays.stream(values()).filter(o -> o.name().equals(normalizado)).findFirst();
 	}
 }

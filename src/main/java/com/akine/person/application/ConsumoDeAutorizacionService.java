@@ -683,33 +683,6 @@ public class ConsumoDeAutorizacionService {
 		return porFecha != 0 ? porFecha : Long.compare(una.id(), otra.id());
 	}
 
-	/**
-	 * Si la autorizacion sirve para alguna practica que realmente se aplico (AKINE-06.04).
-	 *
-	 * <h2>El conjunto vacio devuelve {@code true}, y es la decision que hace viable la etapa</h2>
-	 *
-	 * <p>Vacio significa <b>"no se sabe que practicas fueron"</b>, no "ninguna". Son vacias
-	 * <b>todas</b> las sesiones anteriores a 06.04 —el registro de tratamientos no existia— y
-	 * tambien las de ofertas que no registran practicas, como una consulta o una evaluacion
-	 * inicial.
-	 *
-	 * <p>Si el filtro se aplicara igual, esas sesiones no matchearian con nada y el sistema
-	 * <b>dejaria de consumir autorizaciones por completo</b>. Una etapa que "arregla la
-	 * imputacion" y apaga el consumo entero es peor que el defecto que corrige.
-	 *
-	 * <p>Ante la ignorancia se conserva exactamente el comportamiento anterior: se elige la que
-	 * vence antes. El filtro se aplica <b>solo cuando hay dato con el cual filtrar</b>.
-	 */
-	private static boolean cubreAlgunaPracticaRealizada(
-			Autorizacion autorizacion, ConsumoPorSesion hecho) {
-
-		if (hecho.practicasRealizadas().isEmpty()) {
-			return true;
-		}
-		return autorizacion.getPracticaId() != null
-				&& hecho.practicasRealizadas().contains(autorizacion.getPracticaId());
-	}
-
 	private Autorizacion cargar(long organizationId, long autorizacionId) {
 		return autorizaciones.findByIdAndOrganizationId(autorizacionId, organizationId)
 				.orElseThrow(() -> new AutorizacionNotAccessibleException(autorizacionId));

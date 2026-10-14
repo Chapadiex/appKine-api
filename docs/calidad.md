@@ -196,9 +196,57 @@ Lo que se agregó, y por qué rinde tanto por test:
 > antecedente y un `Location` que da 404 es peor que no mandarlo. No apareció ningún defecto real
 > en los controllers: ninguna excepción de los cuatro módulos terminaba en 500.
 
-Lo que queda abajo en cada módulo ya no es la capa REST sino servicios: `PlanTratamientoService`
+Lo que quedaba abajo en cada módulo ya no era la capa REST sino servicios: `PlanTratamientoService`
 (60 líneas), `CoberturaPacienteService` (43), `AutorizacionService` (41) y `OrdenMedicaService`
-(33), y la **rama**, que sigue sin gate: `clinical` 71,61 %, `person` 74,68 %.
+(33), y la **rama**, que sigue sin gate: `clinical` 71,61 %, `person` 74,68 %. Lo saldó
+`akine-cobertura-de-ramas`, abajo.
+
+### La rama de `clinical` y `person`: `akine-cobertura-de-ramas` (14/10/2026)
+
+Medido **sólo con unitarios** (`./mvnw -o test -DskipITs jacoco:report`, `jacoco.exec` limpio)
+sobre `main` `57e8083` y sobre la rama. Los ITs sólo suman ramas (el reporte es la unión), así que
+el número de un `verify` completo queda **igual o arriba** de éste; no se corrió acá.
+
+| Módulo | Rama antes (unit) | Rama después (unit) | Ramas cubiertas |
+|---|---|---|---|
+| `clinical` | 67,47 % | **83,44 %** | 448/664 → 529/634 |
+| `person` | 69,20 % | **81,63 %** | 701/1013 → 822/1007 |
+| BUNDLE | 73,84 % | **76,45 %** | 6.474/8.768 → 6.676/8.732 |
+
+**3.889 unitarias, 0 fallos ni errores.** El gate de `BRANCH` sigue sin agregarse al `pom.xml`:
+es decisión del usuario. Con estos números un gate de 0,80 por módulo pasaría en `clinical` y
+`person`; el BUNDLE (76,45 % unit, ~78 % con ITs) todavía no, por `resource`, `offering`,
+`scheduling` y `contracting`.
+
+Lo que se agregó, ~70 casos, cada uno sobre un `if` de negocio y no sobre una llamada:
+
+- `PlanTratamientoServiceTest`: **RF-M11-007 no tenía un solo test** —vincular la autorización de
+  M17 al ítem: que la cantidad pase a ser la concedida, que una agotada sea 409 con su motivo y no
+  toque el ítem, que una ajena sea 404 sin distinguir, que no versione ni asiente evento—; activar
+  contra un plan SUSPENDIDO del caso (el defecto 4 de la integración del 29/09), caso cerrado,
+  historia dada de baja, acceso por soporte, listar/versiones y avance de una versión pedida.
+- `CoberturaPacienteServiceTest`: `marcarPrincipal` (sin test hasta acá), lo dado de baja es
+  terminal, el solapamiento al mover fechas excluyéndose a sí misma, el unique de afiliado que no
+  devuelve el id del **otro** paciente, la auditoría que registra *que* cambió el afiliado y nunca el
+  valor, filtros y la principal vigente del día.
+- `ConsumoDeAutorizacionServiceTest`: el orden de las elegibles (las que habilitan primero, la que
+  vence antes, las sin fin al final, desempate por id), el re-disparo con una práctica todavía sin
+  cubrir, la reversión que se corta si el ledger y la columna divergieron, el recorte del motivo.
+- `OrdenYAutorizacionServiceTest`: persona dada de baja, orden y adjunto dados de baja, datos
+  obligatorios, número repetido contra el unique, vincular/desvincular comprobante con su evento.
+- Invariantes de entidad: `PlanDeTratamientoInvariantesTest`, `InvariantesClinicasTest` (ninguna
+  baja clínica sin motivo, "vigente" exige `active` **y** `deleted_at` nulo, enmienda con motivo,
+  referencia de origen, ciclo del caso, rol en el equipo, tipo por firma de bytes), la edición
+  parcial de la orden médica, `ClinicalAutorizacionesDelCasoTest` (C-4) y
+  `PersonPacienteDirectoryTest` (Persona ≠ Paciente en el `spi`).
+
+**Código muerto borrado**, que inflaba el denominador sin ser una regla de nadie: el
+`cubreAlgunaPracticaRealizada` de `ConsumoDeAutorizacionService` (reemplazado por DP-12 y sin
+llamadores), los `desde(String)` de `TipoAntecedente`, `OrigenEntradaClinica` y
+`TipoEntradaClinica`, `EstadoPlan.exigeVersionar`, `HistoriaClinica.perteneceA`,
+`DerivacionClinica.perteneceA`/`perteneceACaso` y `EntradaClinicaVersion.esEnmienda`. Ninguno
+tenía un llamador en `src/`. No apareció ningún defecto de comportamiento: las ramas que no se
+ejercitaban hacían lo que su documentación dice.
 
 ### Fuera de las reglas por módulo
 

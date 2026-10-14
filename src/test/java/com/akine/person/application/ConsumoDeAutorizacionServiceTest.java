@@ -590,6 +590,163 @@ class ConsumoDeAutorizacionServiceTest {
 	}
 
 	// =================================================================================
+	// Bordes que deciden plata
+	// =================================================================================
+
+	@Nested
+	@DisplayName("Bordes del consumo, la reversion y las elegibles")
+	class Bordes {
+
+		@Test
+		@DisplayName("una cantidad no positiva consume UNA unidad, nunca cero ni negativa")
+		void cantidad_no_positiva_es_una() {
+			Autorizacion sinTope = new Autorizacion(
+					ORG, PERSONA, SEDE, COBERTURA, null, PRACTICA, "AUT-1",
+					EstadoAutorizacion.APROBADA, null, LocalDate.of(2020, 1, 1), null, null, null);
+			ReflectionTestUtils.setField(sinTope, "id", AUTORIZACION);
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA)).willReturn(List.of(sinTope));
+			given(movimientos.buscarPorOrigen(any(), any(), any(), any(), any()))
+					.willReturn(Optional.empty());
+			given(autorizaciones.descontarSaldo(ORG, AUTORIZACION, 1)).willReturn(1);
+			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9001L));
+
+			// Sin fecha: se evalua contra hoy. La autorizacion no vence y no tiene tope.
+			ResultadoDeConsumo resultado = unico(service.consumirPorSesion(
+					new ConsumoPorSesion(ORG, PERSONA, SEDE, SESION, null, 0, 42L, Set.of())));
+
+			assertThat(resultado.desenlace()).isEqualTo(ResultadoDeConsumo.CONSUMIDA);
+			assertThat(resultado.saldoRestante())
+					.as("sin cantidad autorizada no hay saldo que informar")
+					.isNull();
+			verify(autorizaciones).descontarSaldo(ORG, AUTORIZACION, 1);
+		}
+
+		@Test
+		@DisplayName("una reversion previa del origen no cuenta como consumo ya hecho")
+		void la_reversion_no_es_consumo_previo() {
+			// El ledger del origen tiene una REVERSION suelta: si se la tomara por consumo, el
+			// re-disparo devolveria YA_CONSUMIDA y la sesion quedaria sin descontar.
+			given(movimientos.listarDeOrigen(ORG, TipoOrigenMovimiento.SESION, SESION))
+					.willReturn(List.of(movimiento(9002L, TipoMovimientoAutorizacion.REVERSION)));
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA))
+					.willReturn(List.of(autorizacion(10, HOY.plusMonths(2))));
+			given(movimientos.buscarPorOrigen(any(), any(), any(), any(), any()))
+					.willReturn(Optional.empty());
+			given(autorizaciones.descontarSaldo(ORG, AUTORIZACION, 1)).willReturn(1);
+			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9003L));
+
+			assertThat(unico(service.consumirPorSesion(cierre())).desenlace())
+					.isEqualTo(ResultadoDeConsumo.CONSUMIDA);
+		}
+
+		@Test
+		@DisplayName("el re-disparo con una practica todavia sin cubrir consume SOLO esa")
+		void redisparo_con_practica_pendiente() {
+			// Primer cierre: consumio la de la practica 33. El re-disparo declara 33 y 44: la 33
+			// ya esta cubierta y no se vuelve a gastar; la 44 si.
+			Autorizacion de33 = autorizacionDe(AUTORIZACION, PRACTICA, HOY.plusMonths(2));
+			Autorizacion de44 = autorizacionDe(78L, 44L, HOY.plusMonths(2));
+			given(movimientos.listarDeOrigen(ORG, TipoOrigenMovimiento.SESION, SESION))
+					.willReturn(List.of(consumoDe(9001L, AUTORIZACION)));
+			given(autorizaciones.findByIdAndOrganizationId(AUTORIZACION, ORG))
+					.willReturn(Optional.of(de33));
+			given(autorizaciones.aprobadasDePersona(ORG, PERSONA)).willReturn(List.of(de33, de44));
+			given(movimientos.buscarPorOrigen(any(), any(), any(), any(), any()))
+					.willReturn(Optional.empty());
+			given(autorizaciones.descontarSaldo(ORG, 78L, 1)).willReturn(1);
+			given(movimientos.save(any())).willAnswer(invocacion -> conId(invocacion, 9004L));
+
+			List<ResultadoDeConsumo> resultados =
+					service.consumirPorSesion(cierreCon(Set.of(PRACTICA, 44L)));
+
+			assertThat(resultados).extracting(ResultadoDeConsumo::desenlace)
+					.containsExactly(ResultadoDeConsumo.YA_CONSUMIDA, ResultadoDeConsumo.CONSUMIDA);
+			verify(autorizaciones, never()).descontarSaldo(ORG, AUTORIZACION, 1);
+		}
+
+		@Test
+		@DisplayName("el motivo de la alerta se recorta al maximo del ledger, y en blanco viaja nulo")
+		void motivo_de_la_alerta() {
+			given(movimientos.listarDeOrigen(ORG, TipoOrigenMovimiento.SESION, SESION))
+					.willReturn(List.of(consumoDe(9003L, AUTORIZACION)));
+			String largo = "x".repeat(AutorizacionMovimiento.MOTIVO_MAXIMO + 40);
+
+			service.consumoARevisar(new ConsumoARevisar(ORG, SESION, 5120L, "  " + largo, null, 1L));
+			service.consumoARevisar(new ConsumoARevisar(ORG, SESION, 5120L, "   ", null, 1L));
+
+			verify(alertas).registrarSiFalta(anyLong(), anyLong(), anyLong(), anyLong(), any(),
+					anyLong(), anyLong(),
+					org.mockito.ArgumentMatchers.eq("x".repeat(AutorizacionMovimiento.MOTIVO_MAXIMO)),
+					any(), any());
+			verify(alertas).registrarSiFalta(anyLong(), anyLong(), anyLong(), anyLong(), any(),
+					anyLong(), anyLong(), org.mockito.ArgumentMatchers.isNull(), any(), any());
+		}
+
+		@Test
+		@DisplayName("si la columna no tiene que devolver, la reversion se corta: el ledger divergio")
+		void reversion_con_fuentes_divergentes() {
+			given(autorizaciones.findByIdAndOrganizationId(AUTORIZACION, ORG))
+					.willReturn(Optional.of(autorizacion(10, HOY.plusMonths(2))));
+			given(movimientos.buscarDeLaAutorizacion(ORG, AUTORIZACION, 9001L))
+					.willReturn(Optional.of(movimiento(9001L, TipoMovimientoAutorizacion.CONSUMO)));
+			given(movimientos.buscarPorOrigen(any(), any(), any(), any(), any()))
+					.willReturn(Optional.empty());
+			given(autorizaciones.devolverSaldo(ORG, AUTORIZACION, 1)).willReturn(0);
+
+			assertThatThrownBy(() -> service.revertir(
+					administrativo, AUTORIZACION, new ReversionCommand(9001L, "Sesion equivocada")))
+					.isInstanceOf(com.akine.person.domain.exception.AutorizacionSinSaldoException.class);
+			// Escribir la reversion dejaria la divergencia peor.
+			verify(movimientos, never()).save(any());
+			verifyNoInteractions(eventos);
+		}
+
+		@Test
+		@DisplayName("sin motivo nulo tambien es 400")
+		void reversion_sin_motivo_nulo() {
+			assertThatThrownBy(() -> service.revertir(
+					administrativo, AUTORIZACION, new ReversionCommand(9001L, null)))
+					.isInstanceOf(ReversionSinMotivoException.class);
+		}
+
+		@Test
+		@DisplayName("las elegibles: primero las que habilitan, y entre ellas la que vence antes")
+		void orden_de_las_elegibles() {
+			given(personas.findByIdAndOrganizationId(PERSONA, ORG))
+					.willReturn(Optional.of(mock(com.akine.person.domain.Persona.class)));
+			Autorizacion sinFin = autorizacionDe(1L, PRACTICA, null);
+			Autorizacion sinFinOtra = autorizacionDe(2L, PRACTICA, null);
+			Autorizacion venceEnMayo = autorizacionDe(3L, PRACTICA, LocalDate.of(2027, 5, 31));
+			Autorizacion venceEnAbril = autorizacionDe(4L, PRACTICA, LocalDate.of(2027, 4, 30));
+			Autorizacion venceEnAbrilOtra = autorizacionDe(5L, PRACTICA, LocalDate.of(2027, 4, 30));
+			Autorizacion vencida = autorizacionDe(6L, PRACTICA, LocalDate.of(2027, 2, 28));
+			Autorizacion dadaDeBaja = autorizacionDe(7L, PRACTICA, null);
+			dadaDeBaja.deactivate(Instant.now(), "carga duplicada");
+			given(autorizaciones.historial(ORG, PERSONA)).willReturn(List.of(
+					vencida, sinFinOtra, venceEnMayo, sinFin, dadaDeBaja, venceEnAbrilOtra,
+					venceEnAbril));
+
+			List<AutorizacionElegibleView> elegibles =
+					service.elegibles(administrativo, PERSONA, HOY);
+
+			assertThat(elegibles).extracting(AutorizacionElegibleView::id)
+					.as("la que vence antes se pierde antes; las que no vencen, al final; "
+							+ "a igual fecha decide el id; la dada de baja no aparece")
+					.containsExactly(4L, 5L, 3L, 1L, 2L, 6L);
+			assertThat(elegibles.get(elegibles.size() - 1).habilita()).isFalse();
+		}
+
+		@Test
+		@DisplayName("las elegibles de una persona ajena son 404")
+		void elegibles_de_persona_ajena() {
+			given(personas.findByIdAndOrganizationId(PERSONA, ORG)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> service.elegibles(administrativo, PERSONA, null))
+					.isInstanceOf(com.akine.person.domain.exception.PersonaNotAccessibleException.class);
+		}
+	}
+
+	// =================================================================================
 	// El saldo por las dos fuentes
 	// =================================================================================
 
