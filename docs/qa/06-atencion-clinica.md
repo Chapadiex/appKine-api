@@ -455,12 +455,12 @@ Api GET "/api/v1/historias-clinicas/por-persona/<persona>" $Adm                 
 Api GET "/api/v1/historias-clinicas/por-persona/<persona>/datos-administrativos" $Pac    # 403: el PACIENTE no tiene paciente:read
 Api GET "/api/v1/historias-clinicas/por-persona/<persona>/datos-administrativos" $B      # 404: otra organización
 Api GET "/api/v1/historias-clinicas/por-persona/<persona_sin_hc>/datos-administrativos" $Adm   # 200, tieneHistoriaClinica = false
-Api GET "/api/v1/historias-clinicas/por-persona/<persona sin perfil de paciente>/datos-administrativos" $Adm   # contrato: 404
+Api GET "/api/v1/historias-clinicas/por-persona/<persona sin perfil de paciente>/datos-administrativos" $Adm   # 404 (nunca paciente o perfil dado de baja)
 ```
 
-> **Defecto conocido (14/10):** la persona **sin perfil de paciente vigente** —nunca activado o dado
-> de baja— responde **200** y no el 404 que declara el contrato; con el perfil dado de baja devuelve
-> además la historia y sus casos. Está en [90](90-conocido-y-aceptado.md) §4: vinculalo, no lo
+> **Corregido en #115** (era defecto conocido el 14/10): la persona **sin perfil de paciente
+> vigente** —nunca activado o dado de baja— responde **404**, sin historia ni casos en el cuerpo.
+> Un 200 acá es hallazgo: vinculalo a [90](90-conocido-y-aceptado.md) §4, no lo
 > registres como nuevo.
 
 ```sql

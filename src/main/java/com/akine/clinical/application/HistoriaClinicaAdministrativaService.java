@@ -90,7 +90,13 @@ public class HistoriaClinicaAdministrativaService {
 				null,
 				Instant.now()));
 
-		if (pacientes.find(organizationId, personaId).isEmpty()) {
+		// El directorio devuelve a cualquier persona del tenant, sea o no paciente: lo que decide
+		// el 404 es el perfil vigente. Sin esto, una persona con el perfil dado de baja exponia su
+		// historia y sus casos, y una que nunca fue paciente respondia 200 vacio.
+		boolean esPacienteVigente = pacientes.find(organizationId, personaId)
+				.filter(paciente -> paciente.activa() && paciente.esPacienteVigente())
+				.isPresent();
+		if (!esPacienteVigente) {
 			throw new HistoriaClinicaNotAccessibleException(personaId);
 		}
 
