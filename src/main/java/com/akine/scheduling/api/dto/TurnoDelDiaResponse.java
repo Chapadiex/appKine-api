@@ -72,6 +72,14 @@ public record TurnoDelDiaResponse(
 		@Schema(description = "Serie que genero el turno (AKINE E-3). Ausente en un turno suelto: la pantalla lo usa para ofrecer el alcance al cancelar o mover.", example = "12")
 		Long serieId,
 
+		@Schema(
+				description = "Cobertura del paciente elegida al reservar (AKINE-05.02). Ausente si "
+						+ "no se eligio: la recepcion usa entonces la primera que aplique. Es la misma "
+						+ "que `Turno.coberturaId` y es una preferencia, no un veredicto: la que se "
+						+ "aplico la dice `recepcion.coberturaId`.",
+				example = "412")
+		Long coberturaId,
+
 		@Schema(description = "Version para el control optimista de las transiciones", example = "0")
 		long version,
 
@@ -92,7 +100,7 @@ public record TurnoDelDiaResponse(
 				vista.personaId(), vista.personaNombre(), vista.documento(),
 				vista.ofertaId(), vista.ofertaNombre(),
 				vista.profesionalId(), vista.espacioId(), vista.llegadaEn(),
-				vista.motivoCancelacion(), vista.serieId(), vista.version(),
+				vista.motivoCancelacion(), vista.serieId(), vista.coberturaId(), vista.version(),
 				vista.recepcion() == null ? null : RecepcionResponse.de(vista.recepcion()),
 				PrepagoDeRecepcionResponse.de(vista.prepago()));
 	}

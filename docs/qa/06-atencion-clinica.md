@@ -5,8 +5,10 @@ un solo E2E de la vertical clínica**, y la mitad no tiene pantalla en `main` (l
 está en el PR #4 de `appKine-web`, sin mergear). Es el circuito donde más vale el QA manual: datos
 de salud, justificación de acceso y auditoría de **lecturas**.
 
-Pantalla en `main`: solo **`/atencion/turnos/<turnoId>`** (iniciar, evaluar, guardar borrador,
-cerrar). Todo lo demás —tratamientos, mediciones, enmiendas, historia clínica, entradas, adjuntos
+Pantalla en `main`: **`/atencion/turnos/<turnoId>`** (iniciar, evaluar, guardar borrador,
+cerrar) y, desde web #74, la tarjeta de **datos administrativos** de la historia en la ficha de la
+persona (CLI-16),
+que no muestra contenido clínico. Todo lo demás —tratamientos, mediciones, enmiendas, historia clínica, entradas, adjuntos
 clínicos, timeline, casos, planes— va por la API con [`qa-api.ps1`](qa-api.ps1).
 
 Tablas: `sesion`, `sesion_version`, `sesion_version_tratamiento`, `sesion_medicion`,
@@ -331,8 +333,9 @@ Esperado: `numero_caso` correlativo por historia; eventos `APERTURA`, `CIERRE` (
 **Auditoría:** `CASO_CLINICO_OPENED`, `CASO_CLINICO_CLOSED`, `CASO_CLINICO_REOPENED`,
 `CASO_EQUIPO_CHANGED`.
 
-> **`cambiarEquipo` devuelve la versión leída, no la nueva**: encadenar otra escritura con esa
-> versión da 409 y hay que releer. Documentado, no se reporta.
+> **Desde #109 `cambiarEquipo` devuelve la versión nueva** (`leída + 1`) y encadenar otra escritura
+> con esa versión ya no da 409: se prueba en CLI-17.
+> Un 409 al encadenar con la versión de la respuesta **es hallazgo**.
 
 ---
 
@@ -414,3 +417,117 @@ WHERE a.organization_id = @org_a AND a.occurred_at >= @desde
 ```
 
 Esperado: **cero filas**.
+
+---
+
+### CLI-16 · Datos administrativos de la HC para el administrativo (api #109, web #74) — `[IT MatrizDePermisosIT]`
+
+La matriz §32 da al `ADMINISTRATIVO` "Ver Historia Clínica: **Limitado**" = solo metadatos, nunca
+contenido. Desde el contrato 0.97.0 existe `GET
+/api/v1/historias-clinicas/por-persona/{personaId}/datos-administrativos`: si la persona tiene
+historia, cuándo se abrió, sus casos (número, estado, oferta, fechas) y el equipo **vigente** de
+cada uno. Se autoriza con **`paciente:read`** (el del padrón, DP-22), **no** pide justificación y
+**no** se audita como acceso clínico. `MatrizDePermisosIT` prueba el permiso por rol; la pantalla
+no la recorre ningún E2E.
+
+**Pantalla:** administrativo → `/pacientes/<persona>` (la ficha). Para una persona con perfil de
+paciente aparece la tarjeta **"Historia clinica: datos administrativos"**:
+
+| Caso de la persona | Lo que muestra |
+|---|---|
+| Sin historia | "Esta persona todavia no tiene historia clinica." |
+| Con historia y sin casos | "Historia abierta el <fecha>" y "La historia no tiene casos abiertos ni cerrados." |
+| Con los casos de CLI-11 | Una tabla: N.º, Activo/Cerrado, oferta, abierto, cerrado (o "—"), equipo vigente con su rol; los activos primero |
+
+**Esperado:** en la tarjeta **no** hay resumen, antecedentes, diagnóstico presuntivo, objetivo ni
+motivo de cierre, ni en la pantalla ni en la respuesta (DevTools → Network → `datos-administrativos`:
+el cuerpo trae solo `personaId`, `tieneHistoriaClinica`, `historiaClinicaId`, `abiertaEn` y `casos`
+con `id`, `numeroCaso`, `estado`, `ofertaId`, `ofertaConsultorioId`, `abiertoEn`, `cerradoEn`,
+`equipo`). Quien salió del equipo en CLI-11 **no** figura. Una persona **sin** perfil de paciente no
+muestra la tarjeta (la pantalla la pide solo si la ficha dice que es paciente).
+
+**Por la API**, con cada rol (`$Adm` administrativo, `$P` profesional, `$Pac` paciente, `$B`
+admin-b):
+
+```powershell
+Api GET "/api/v1/historias-clinicas/por-persona/<persona>/datos-administrativos" $Adm    # 200
+Api GET "/api/v1/historias-clinicas/por-persona/<persona>" $Adm                          # 403: el contenido sigue cerrado (CLI-08)
+Api GET "/api/v1/historias-clinicas/por-persona/<persona>/datos-administrativos" $Pac    # 403: el PACIENTE no tiene paciente:read
+Api GET "/api/v1/historias-clinicas/por-persona/<persona>/datos-administrativos" $B      # 404: otra organización
+Api GET "/api/v1/historias-clinicas/por-persona/<persona_sin_hc>/datos-administrativos" $Adm   # 200, tieneHistoriaClinica = false
+Api GET "/api/v1/historias-clinicas/por-persona/<persona sin perfil de paciente>/datos-administrativos" $Adm   # 404 (nunca paciente o perfil dado de baja)
+```
+
+> **Corregido en #115** (era defecto conocido el 14/10): la persona **sin perfil de paciente
+> vigente** —nunca activado o dado de baja— responde **404**, sin historia ni casos en el cuerpo.
+> Un 200 acá es hallazgo: vinculalo a [90](90-conocido-y-aceptado.md) §4, no lo
+> registres como nuevo.
+
+```sql
+SELECT h.id AS historia, h.abierta_en, c.id AS caso, c.numero_caso, c.estado, c.oferta_id, c.abierto_en, c.cerrado_en
+FROM historia_clinica h LEFT JOIN caso_clinico c ON c.historia_clinica_id = h.id
+WHERE h.organization_id = @org_a AND h.persona_id = @persona
+ORDER BY c.estado <> 'ACTIVO', c.id;
+
+SELECT cp.caso_id, cp.profesional_membership_id, cp.rol, cp.desde, cp.hasta
+FROM caso_profesional cp JOIN caso_clinico c ON c.id = cp.caso_id
+WHERE c.historia_clinica_id = @historia AND cp.hasta IS NULL
+ORDER BY cp.caso_id, cp.id;
+```
+
+Esperado: la tarjeta y la respuesta coinciden con estas filas (solo los integrantes con `hasta`
+NULL). **Auditoría:** las lecturas del administrativo **no** dejan `HISTORIA_CLINICA_ACCESSED`;
+el 403 del paciente sí deja `PERMISSION_DENIED` con `permissionCode = paciente:read`:
+
+```sql
+SELECT a.event_type, c.email, JSON_UNQUOTE(JSON_EXTRACT(a.details, '$.permissionCode')) AS permiso, a.occurred_at
+FROM audit_event a JOIN cuenta c ON c.id = a.actor_account_id
+WHERE a.organization_id = @org_a AND a.occurred_at >= @desde
+  AND a.event_type IN ('HISTORIA_CLINICA_ACCESSED', 'PERMISSION_DENIED')
+  AND c.email_normalizado IN (@email_administrativo, @email_paciente)
+ORDER BY a.id DESC LIMIT 10;
+```
+
+Esperado: ningún `HISTORIA_CLINICA_ACCESSED` del administrativo; si aparece uno, el endpoint se
+está auditando como lectura clínica (hallazgo medio). Un dato clínico en la respuesta es **crítico**.
+
+> Validado sobre el stack aislado (14/10): administrativo, profesional y admin-a 200; el contenido
+> de la historia con el administrativo, 403; paciente 403; admin-b 404; una persona propia sin
+> historia, 200 con `tieneHistoriaClinica = false`. Ningún `HISTORIA_CLINICA_ACCESSED` del
+> administrativo; el 403 del paciente dejó `PERMISSION_DENIED`. Ahí apareció el defecto de la
+> persona sin perfil (arriba).
+
+---
+
+### CLI-17 · Cambiar el equipo de un caso devuelve la versión nueva (api #109, sin pantalla) — `[IT CasoClinicoConcurrenteIT]`
+
+Hasta el 12/10 `cambiarEquipo` respondía la versión **leída** y encadenar otra escritura daba 409
+(estaba en [90](90-conocido-y-aceptado.md) como criterio aceptado). Desde #109 avanza la versión
+del caso con un `UPDATE ... WHERE version = :esperada` propio **antes** de tocar el equipo, y la
+respuesta trae `leída + 1`. `CasoClinicoConcurrenteIT` prueba que dos cambios simultáneos con la
+misma versión dejan entrar a uno (antes terminaban en deadlock); a mano se prueba el encadenado.
+
+```powershell
+$c = (Api GET "/api/v1/casos-clinicos/<caso>" $P).Cuerpo
+$r1 = Api PUT "/api/v1/casos-clinicos/<caso>/equipo" $P @{ expectedVersion = $c.version; integrantes = @(@{ profesionalMembershipId = <membership_profesional>; rol = 'RESPONSABLE' }, @{ profesionalMembershipId = <otro profesional de la sede>; rol = 'TRATANTE' }) }
+$r1.Status; $r1.Cuerpo.version          # 200 y version = $c.version + 1
+$r2 = Api PUT "/api/v1/casos-clinicos/<caso>/equipo" $P @{ expectedVersion = $r1.Cuerpo.version; integrantes = @(@{ profesionalMembershipId = <membership_profesional>; rol = 'RESPONSABLE' }) }
+$r2.Status                               # 200: encadenar con la versión de la respuesta ya no choca
+Api PUT "/api/v1/casos-clinicos/<caso>/equipo" $P @{ expectedVersion = $c.version; integrantes = @(@{ profesionalMembershipId = <membership_profesional>; rol = 'RESPONSABLE' }) }   # 409 concurrent-modification
+```
+
+```sql
+SET @caso := (SELECT MAX(id) FROM caso_clinico WHERE historia_clinica_id = @historia AND estado = 'ACTIVO');
+SELECT id, estado, version FROM caso_clinico WHERE id = @caso;
+SELECT profesional_membership_id, rol, desde, hasta FROM caso_profesional WHERE caso_id = @caso ORDER BY id;
+SELECT tipo, detalle, ocurrio_en FROM caso_evento WHERE caso_id = @caso AND tipo = 'CAMBIO_DE_EQUIPO' ORDER BY id;
+```
+
+Esperado: `version` = la de `$r2` (avanzó **una** vez por cambio, nunca dos); el que salió en `$r2`
+con `hasta` puesto y nadie borrado; dos eventos `CAMBIO_DE_EQUIPO` ("Entraron …, salieron …"). El
+409 no deja evento ni cambia filas. Un caso cerrado responde 409 `caso-clinico-cerrado`. **Auditoría:** dos
+`CASO_EQUIPO_CHANGED` con `details.entraron`/`details.salieron`, ninguno por el 409.
+
+> Validado sobre el stack aislado (14/10): `r1` 200 con `version` 0 → 1, `r2` encadenado 200 con
+> 2, la versión vieja 409 `concurrent-modification`, y dos cambios simultáneos con la misma versión:
+> uno 200 y el otro 409, sin deadlock.

@@ -248,6 +248,11 @@ class RecepcionIT {
 				.isEqualTo(413L);
 		assertThat(validada.coberturaId()).isEqualTo(413L);
 		assertThat(validada.estado()).isEqualTo("VALIDADA");
+		// La lectura del turno por enlace directo y la agenda del dia la traen tambien.
+		assertThat(agendaDelDia.ver(fixture.actor(), fixture.consultorioId(), turno.id()).coberturaId())
+				.isEqualTo(413L);
+		assertThat(agendaDelDia.delDia(fixture.actor(), fixture.consultorioId(), LUNES).turnos())
+				.extracting(TurnoDelDiaView::coberturaId).containsExactly(413L);
 	}
 
 	@Test
@@ -462,6 +467,7 @@ class RecepcionIT {
 		assertThat(primero.llegadaEn()).isEqualTo(primero.recepcion().llegadaEn());
 		assertThat(agenda.get(1).recepcion()).isNull();
 		assertThat(agenda.get(1).llegadaEn()).isNull();
+		assertThat(agenda).extracting(TurnoDelDiaView::coberturaId).containsOnlyNulls();
 	}
 
 	@Test

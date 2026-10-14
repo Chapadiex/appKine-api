@@ -414,6 +414,25 @@ class ConvenioServiceTest {
 		});
 	}
 
+	@Test
+	@DisplayName("sin fecha, a las 22:30 de Cordoba un convenio que vence ESE dia se lee vigente")
+	void sin_fecha_hoy_es_el_de_la_sede() {
+		// 01:30 UTC del 01/07 son las 22:30 del 30/06 en Cordoba, la zona de la sede del setUp.
+		// Con LocalDate.now() de la JVM (UTC en la imagen) el convenio ya se leia vencido.
+		service = new ConvenioService(convenios, aranceles, locks, lockIniciador, financiadores,
+				planes, consultorios, permissionGuard, auditTrail, mock(PlatformTransactionManager.class),
+				java.time.Clock.fixed(java.time.Instant.parse("2026-07-01T01:30:00Z"),
+						java.time.ZoneOffset.UTC));
+		given(convenios.findAllByScopeOrderByNombreAsc(ORG_ID, SEDE_ID))
+				.willReturn(List.of(convenio(1L, ENERO, JUNIO_30)));
+		given(convenios.findByIdAndScope(1L, ORG_ID, SEDE_ID))
+				.willReturn(Optional.of(convenio(1L, ENERO, JUNIO_30)));
+
+		assertThat(service.listar(delMostrador, SEDE_ID, null, null))
+				.singleElement().satisfies(vista -> assertThat(vista.vigente()).isTrue());
+		assertThat(service.ver(delMostrador, SEDE_ID, 1L, null).vigente()).isTrue();
+	}
+
 	// =================================================================================
 	// Fixtures
 	// =================================================================================

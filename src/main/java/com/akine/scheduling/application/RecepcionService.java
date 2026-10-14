@@ -192,6 +192,7 @@ public class RecepcionService {
 						llegadaDe(recepcionDe.get(turno.getId())),
 						turno.getMotivoCancelacion(),
 						turno.getSerieId(),
+						turno.getCoberturaId(),
 						turno.getVersion(),
 						recepcionDe.containsKey(turno.getId())
 								? RecepcionView.de(recepcionDe.get(turno.getId()),

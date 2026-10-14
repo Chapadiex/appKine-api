@@ -3,7 +3,9 @@ package com.akine.person.application;
 import com.akine.contracting.spi.ArancelDirectory;
 import com.akine.contracting.spi.ArancelVigente;
 import com.akine.contracting.spi.ResolucionDeArancel;
+import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.OrdenMedica;
@@ -16,9 +18,11 @@ import com.akine.person.domain.port.PersonRepositoryPorts.OrdenMedicaRepositoryP
 import com.akine.person.domain.port.PersonRepositoryPorts.PersonaRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -98,15 +102,36 @@ public class ElegibilidadAdministrativaService {
 	private final PersonaRepositoryPort personas;
 	private final ArancelDirectory aranceles;
 	private final PermissionGuard permissionGuard;
+	private final ConsultorioDirectory consultorios;
+	private final Clock clock;
 
+	@Autowired
 	public ElegibilidadAdministrativaService(
 			CoberturaPacienteRepositoryPort coberturas,
 			OrdenMedicaRepositoryPort ordenes,
 			AutorizacionRepositoryPort autorizaciones,
 			PersonaRepositoryPort personas,
 			ArancelDirectory aranceles,
-			PermissionGuard permissionGuard) {
+			PermissionGuard permissionGuard,
+			ConsultorioDirectory consultorios) {
 
+		this(coberturas, ordenes, autorizaciones, personas, aranceles, permissionGuard, consultorios,
+				Clock.systemUTC());
+	}
+
+	/** Con reloj propio: "hoy" es el de la sede, y un test necesita fijar la hora. */
+	ElegibilidadAdministrativaService(
+			CoberturaPacienteRepositoryPort coberturas,
+			OrdenMedicaRepositoryPort ordenes,
+			AutorizacionRepositoryPort autorizaciones,
+			PersonaRepositoryPort personas,
+			ArancelDirectory aranceles,
+			PermissionGuard permissionGuard,
+			ConsultorioDirectory consultorios,
+			Clock clock) {
+
+		this.consultorios = consultorios;
+		this.clock = clock;
 		this.coberturas = coberturas;
 		this.ordenes = ordenes;
 		this.autorizaciones = autorizaciones;
@@ -146,7 +171,9 @@ public class ElegibilidadAdministrativaService {
 		personas.findByIdAndOrganizationId(personaId, organizationId)
 				.orElseThrow(() -> new PersonaNotAccessibleException(personaId));
 
-		LocalDate dia = fecha == null ? LocalDate.now() : fecha;
+		LocalDate dia = fecha == null
+				? ZonaDeSede.hoy(consultorios, organizationId, actor.consultorioId(), clock)
+				: fecha;
 		CoberturaPaciente cobertura = coberturas
 				.findByIdAndOrganizationIdAndPersonaId(coberturaId, organizationId, personaId)
 				.orElseThrow(() -> new CoberturaNotAccessibleException(coberturaId));
@@ -170,7 +197,9 @@ public class ElegibilidadAdministrativaService {
 		if (personas.findByIdAndOrganizationId(personaId, organizationId).isEmpty()) {
 			return Optional.empty();
 		}
-		LocalDate dia = fecha == null ? LocalDate.now() : fecha;
+		LocalDate dia = fecha == null
+				? ZonaDeSede.hoy(consultorios, organizationId, consultorioId, clock)
+				: fecha;
 		return coberturas
 				.findByIdAndOrganizationIdAndPersonaId(coberturaId, organizationId, personaId)
 				.map(cobertura -> evaluarCobertura(
