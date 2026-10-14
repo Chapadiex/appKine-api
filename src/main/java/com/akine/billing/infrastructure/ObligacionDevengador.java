@@ -15,7 +15,7 @@ import com.akine.encounter.spi.SesionCerrada;
 import com.akine.offering.spi.PracticaDeOferta;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
-import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.person.spi.CoberturaAplicable;
 import com.akine.person.spi.CoberturasAplicablesDirectory;
 import org.slf4j.Logger;
@@ -23,7 +23,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -337,24 +336,13 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	 */
 	private LocalDate diaLocalDeLaSede(SesionCerrada cierre) {
 		ZoneId zona = consultorios.find(cierre.organizationId(), cierre.consultorioId())
-				.map(ConsultorioSnapshot::timezone)
-				.map(declarada -> zonaDe(declarada, cierre))
+				.map(ZonaDeSede::de)
 				.orElseGet(() -> {
 					log.warn("Sede no resoluble al devengar: se usa UTC. sesionId={} "
 							+ "consultorioId={}", cierre.sesionId(), cierre.consultorioId());
 					return ZoneOffset.UTC;
 				});
 		return LocalDate.ofInstant(cierre.cerradaEn(), zona);
-	}
-
-	private static ZoneId zonaDe(String zona, SesionCerrada cierre) {
-		try {
-			return ZoneId.of(zona);
-		} catch (DateTimeException zonaInvalida) {
-			log.warn("Zona horaria invalida en la sede: se usa UTC. sesionId={} zona={}",
-					cierre.sesionId(), zona);
-			return ZoneOffset.UTC;
-		}
 	}
 
 	private static String nombre(SesionCerrada cierre) {
