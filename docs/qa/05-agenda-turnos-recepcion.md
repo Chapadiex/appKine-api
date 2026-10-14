@@ -292,23 +292,69 @@ filtro que decide qué se ve, como la recepción del día o el reporte). Los fil
 
 ---
 
-### AGE-14 · Cobertura elegida al reservar (cierre de F5, contrato 0.94.0) — sin pantalla todavía
+### AGE-14 · Cobertura elegida al reservar (api #107, web #74) — `[IT RecepcionIT]`
 
-Solo por la API: la pantalla de reserva no la ofrece hasta que `appKine-web` regenere el cliente
-contra 0.94.0. Usá la persona y la cobertura de PER-07 (`@cobertura`).
+Desde el contrato 0.94.0 la reserva puede llevar la cobertura **con la que se piensa atender**
+(`turno.cobertura_id`, `V93`). Es una **preferencia, no un veredicto**: la reserva solo controla
+que sea una cobertura financiada, activa y vigente ese día **de esa persona**; si aplica a la
+práctica lo decide la recepción (AGE-09),
+que observa sin bloquear. `RecepcionIT` prueba que la elegida llega a la recepción y que una
+cobertura ajena no reserva; **ningún E2E recorre el selector**.
 
-```powershell
-Api POST "/api/v1/consultorios/<sede_a>/turnos/ofertas/<oferta>" $A @{ inicio = '<mañana a una hora libre, ISO UTC>'; personaId = <persona>; profesionalId = <membership_profesional>; coberturaId = <cobertura>; idempotencyKey = (Nueva-Clave) }
-Api POST "/api/v1/consultorios/<sede_a>/turnos/ofertas/<oferta>" $A @{ inicio = '<otra hora libre>'; personaId = <persona>; profesionalId = <membership_profesional>; coberturaId = 999999; idempotencyKey = (Nueva-Clave) }
-```
+Preparación: a la persona de PER-07 cargale una **segunda** cobertura financiada vigente, **no
+principal** (sin eso no se distingue "la elegida" de "la principal").
 
-**Esperado:** el primero responde `201` con `coberturaId`; el segundo `404 not-found` y ningún
-turno. El día del turno, validá la recepción **sin** mandar `coberturaId`: tiene que quedar con la
-cobertura elegida, no con la principal.
+**Pantalla:** administrativo → `/agenda` → la oferta → un slot de **mañana** → "Reservar" → buscar
+la persona. Debajo aparece **"Cobertura con la que se piensa atender (opcional)"** con "Sin elegir"
+y una opción por cobertura vigente el día del turno (financiador — plan, la principal marcada
+"(principal)"; la particular no se ofrece). Elegí la **no principal** y reservá.
+
+**Esperado:** la confirmación dice "Cobertura elegida: <financiador — plan>". Volvé a reservar otro
+slot con "Sin elegir": la confirmación dice "Ninguna: la recepcion usa la que aplique". Con una
+persona **sin** coberturas el selector no aparece. Cambiar la cobertura después de un intento
+fallido sale con otra `idempotencyKey` (no da 409 `idempotency-key-conflict`).
 
 ```sql
-SELECT id, persona_id, cobertura_id FROM turno WHERE consultorio_id = @sede_a AND created_at >= @desde ORDER BY id DESC LIMIT 3;
-SELECT turno_id, estado, modalidad, cobertura_id FROM recepcion WHERE turno_id = <turno del primero>;
+SELECT t.id, t.persona_id, t.cobertura_id, c.principal, c.tipo, c.vigencia_desde, c.vigencia_hasta
+FROM turno t LEFT JOIN cobertura_paciente c ON c.id = t.cobertura_id
+WHERE t.consultorio_id = @sede_a AND t.created_at >= @desde
+ORDER BY t.id DESC LIMIT 5;
 ```
 
-**Auditoría:** nada nuevo; la reserva deja su `turno_evento` RESERVA como siempre.
+Esperado: el primero con `cobertura_id` = la no principal (`principal = 0`, `tipo = FINANCIADA`); el
+de "Sin elegir" con `cobertura_id` NULL. Reprogramar el primero **conserva** `cobertura_id`
+(es inmutable desde el alta).
+
+**Por la API, lo que la pantalla no deja hacer** (con `$A` del administrativo y `$B` de admin-b):
+
+```powershell
+Api POST "/api/v1/consultorios/<sede_a>/turnos/ofertas/<oferta>" $A @{ inicio = '<otra hora libre, ISO UTC>'; personaId = <persona>; profesionalId = <membership_profesional>; coberturaId = <cobertura de persona_part o de B>; idempotencyKey = (Nueva-Clave) }
+Api POST "/api/v1/consultorios/<sede_a>/turnos/ofertas/<oferta>" $A @{ inicio = '<otra hora libre, ISO UTC>'; personaId = <persona>; profesionalId = <membership_profesional>; coberturaId = 999999; idempotencyKey = (Nueva-Clave) }
+```
+
+Esperado: los dos **404 `not-found`** ("La cobertura no existe para esta persona o no esta vigente
+ese dia") y ningún turno nuevo: una cobertura de otra persona o de otro tenant es indistinguible de
+una inexistente. Una cobertura vencida el día del turno, también 404.
+
+**El día del turno:** en `/agenda/recepcion`, registrá la llegada y validá **sin tocar** la
+cobertura que propone la pantalla (por la API: `POST .../recepcion/validacion` sin `coberturaId`).
+
+```sql
+SET @turno_elegida := (SELECT MAX(id) FROM turno WHERE consultorio_id = @sede_a AND cobertura_id IS NOT NULL);
+SELECT r.turno_id, r.estado, r.modalidad, r.cobertura_id, t.cobertura_id AS elegida_al_reservar, r.observacion
+FROM recepcion r JOIN turno t ON t.id = r.turno_id
+WHERE r.turno_id = @turno_elegida;
+```
+
+Esperado: `recepcion.cobertura_id = elegida_al_reservar` (la no principal), no la principal. Si ese
+día la elegida no aplica a la práctica (sin arancel en el convenio, por ejemplo), la recepción queda
+**`OBSERVADA`** con su observación, **nunca** un 4xx. Elegir otra cobertura en la validación manda
+sobre la del turno.
+
+**Auditoría:** nada nuevo; la reserva deja su `turno_evento` `RESERVA` como siempre y la validación
+su `RECEPCION_VALIDACION`.
+
+> Validado sobre el stack aislado (14/10): el sembrado reserva el turno de obra social con
+> `coberturaId` y valida la recepción sin mandarla; la recepción quedó con la cobertura del turno.
+> Una cobertura de otra persona del mismo centro y una inexistente dieron 404 `not-found`, y
+> reprogramar el turno conservó `cobertura_id`.

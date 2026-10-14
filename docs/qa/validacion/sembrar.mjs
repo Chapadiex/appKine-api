@@ -220,10 +220,12 @@ paso('turnos de hoy, recepcion, sesion cerrada (obra social y particular)');
 const agenda = await pedir('GET', `/api/v1/consultorios/${e.sede_a}/ofertas/${e.oferta}/agenda?desde=${hoy()}&hasta=${hoy(1)}`, { token: a.token });
 const futuros = agenda.dias.flatMap((d) => d.slots).filter((s) => new Date(s.desde).getTime() > Date.now() + 120000);
 if (futuros.length < 4) throw new Error(`quedan menos de 4 slots hoy (zona ${zona}, hoy ${hoy()}, dias ${JSON.stringify(agenda.dias.map((d) => [d.fecha, d.slots.length, d.slots[0]?.desde, d.slots.at(-1)?.desde]))}): correr el sembrado antes de las 22 de la sede o con QA_ZONA_SEDE`);
-const reservar = (personaId, slot) => pedir('POST', `/api/v1/consultorios/${e.sede_a}/turnos/ofertas/${e.oferta}`, {
-	token: a.token, json: { inicio: slot.desde, personaId, profesionalId: e.membership_profesional, idempotencyKey: randomUUID() },
+const reservar = (personaId, slot, coberturaId) => pedir('POST', `/api/v1/consultorios/${e.sede_a}/turnos/ofertas/${e.oferta}`, {
+	token: a.token, json: { inicio: slot.desde, personaId, profesionalId: e.membership_profesional, coberturaId, idempotencyKey: randomUUID() },
 });
-const t1 = await reservar(e.persona, futuros[0]);
+// El turno de obra social nace con la cobertura elegida (AGE-14, V93) y su recepcion se valida SIN
+// mandarla: la recepcion tiene que tomar la del turno.
+const t1 = await reservar(e.persona, futuros[0], e.cobertura);
 const t2 = await reservar(e.persona_part, futuros[1]);
 const t3 = await reservar(e.persona_part, futuros[2]);
 e.turno = t1.id;
@@ -234,12 +236,12 @@ await pedir('POST', `/api/v1/consultorios/${e.sede_a}/turnos/${t3.id}/cancelacio
 const rec = async (turnoId, cobertura) => {
 	let r = await pedir('POST', `/api/v1/consultorios/${e.sede_a}/turnos/${turnoId}/recepcion`, { token: a.token });
 	r = cobertura
-		? await pedir('POST', `/api/v1/consultorios/${e.sede_a}/turnos/${turnoId}/recepcion/validacion`, { token: a.token, json: { coberturaId: cobertura, expectedVersion: r.version } })
+		? await pedir('POST', `/api/v1/consultorios/${e.sede_a}/turnos/${turnoId}/recepcion/validacion`, { token: a.token, json: { coberturaId: cobertura === 'del-turno' ? undefined : cobertura, expectedVersion: r.version } })
 		: await pedir('POST', `/api/v1/consultorios/${e.sede_a}/turnos/${turnoId}/recepcion/particular`, { token: a.token, json: { motivo: 'Particular sintetico QA', expectedVersion: r.version } });
 	r = await pedir('POST', `/api/v1/consultorios/${e.sede_a}/turnos/${turnoId}/recepcion/espera`, { token: a.token, json: { expectedVersion: r.version } });
 	await pedir('POST', `/api/v1/consultorios/${e.sede_a}/turnos/${turnoId}/recepcion/llamado`, { token: a.token, json: { expectedVersion: r.version } });
 };
-await rec(e.turno, e.cobertura);
+await rec(e.turno, 'del-turno');
 await rec(e.turno_part, null);
 
 const prof = await entrar(correo('profesional'), e.org_a);

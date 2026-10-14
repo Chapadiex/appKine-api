@@ -29,7 +29,9 @@ import com.akine.clinical.spi.RealizadoPorOferta;
 import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
+import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.person.spi.AutorizacionDirectory;
 import com.akine.person.spi.AutorizacionSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
@@ -37,6 +39,7 @@ import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -45,9 +48,9 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -128,7 +131,10 @@ public class PlanTratamientoService {
 	private final AuditTrail auditTrail;
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
 	private final TransactionTemplate transaccionReadCommitted;
+	private final ConsultorioDirectory consultorios;
+	private final Clock clock;
 
+	@Autowired
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public PlanTratamientoService(
 			HistoriaClinicaRepositoryPort historias,
@@ -146,8 +152,38 @@ public class PlanTratamientoService {
 			RelacionAsistencialProbe relaciones,
 			AuditTrail auditTrail,
 			ClinicalSupportAccessAuditor supportAccessAuditor,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			ConsultorioDirectory consultorios) {
 
+		this(historias, casos, planes, versiones, items, eventos, numerador, numeradorIniciador,
+				ofertas, realizado, autorizaciones, permissionGuard, relaciones, auditTrail,
+				supportAccessAuditor, transactionManager, consultorios, Clock.systemUTC());
+	}
+
+	/** Con reloj propio: "hoy" es el de la sede, y un test necesita fijar la hora. */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	PlanTratamientoService(
+			HistoriaClinicaRepositoryPort historias,
+			CasoClinicoRepositoryPort casos,
+			PlanTratamientoRepositoryPort planes,
+			PlanTratamientoVersionRepositoryPort versiones,
+			PlanItemRepositoryPort items,
+			PlanEventoRepositoryPort eventos,
+			PlanNumeradorPort numerador,
+			PlanNumeradorIniciador numeradorIniciador,
+			OfertaDirectory ofertas,
+			RealizadoEnElCasoProbe realizado,
+			AutorizacionDirectory autorizaciones,
+			PermissionGuard permissionGuard,
+			RelacionAsistencialProbe relaciones,
+			AuditTrail auditTrail,
+			ClinicalSupportAccessAuditor supportAccessAuditor,
+			PlatformTransactionManager transactionManager,
+			ConsultorioDirectory consultorios,
+			Clock clock) {
+
+		this.consultorios = consultorios;
+		this.clock = clock;
 		this.historias = historias;
 		this.casos = casos;
 		this.planes = planes;
@@ -600,7 +636,7 @@ public class PlanTratamientoService {
 				.orElseThrow(() -> new ReferenciaDelPlanNotAccessibleException("item del plan", command.planItemId()));
 
 		long personaId = personaDelPlan(plan);
-		LocalDate hoy = LocalDate.now();
+		LocalDate hoy = ZonaDeSede.hoy(consultorios, organizationId, actor.consultorioId(), clock);
 
 		AutorizacionSnapshot autorizacion = autorizaciones
 				.find(organizationId, personaId, command.autorizacionId(), hoy)
@@ -914,11 +950,8 @@ public class PlanTratamientoService {
 	 * <p>Se rechaza la primera que no este habilitada, con su id adentro: quien carga cinco
 	 * practicas tiene que poder ver cual de las cinco es la que no entra.
 	 *
-	 * <p>La vigencia se evalua contra la fecha de <b>hoy en UTC</b> y no contra la zona de la sede,
-	 * con la misma diferencia conocida y asumida que el alta de un Caso: una oferta que vence hoy
-	 * podria aceptarse unas horas de mas o de menos segun el huso. La alternativa —traer la zona
-	 * IANA de la sede para decidir si se puede planificar— acopla este servicio a
-	 * {@code organization} por un borde que no cambia ninguna decision clinica.
+	 * <p>La vigencia se evalua contra "hoy" en la sede del contexto, no en el servidor: con UTC,
+	 * entre las 21 y las 24 de Cordoba una oferta que vence ese dia se rechazaba como vencida.
 	 *
 	 * <p>Una misma oferta declarada dos veces se rechaza aca y no en el unique de la base: un 409
 	 * de integridad no le dice al profesional cual repitio.
@@ -928,7 +961,7 @@ public class PlanTratamientoService {
 
 		Map<Long, OfertaSnapshot> resueltas = new LinkedHashMap<>();
 		Set<Long> vistas = new LinkedHashSet<>();
-		LocalDate hoy = LocalDate.now(ZoneOffset.UTC);
+		LocalDate hoy = ZonaDeSede.hoy(consultorios, organizationId, consultorioId, clock);
 
 		for (PlanItemPlanificado item : planificados) {
 			if (!vistas.add(item.ofertaId())) {

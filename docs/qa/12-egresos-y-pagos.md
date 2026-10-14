@@ -163,13 +163,22 @@ anulado es 409 `egreso-no-pagable`. **Auditoría:** `EGRESO_ANULADO` con `reason
 
 ---
 
-### EGR-07 · Filtros del listado y el período por defecto
+### EGR-07 · Filtros del listado, el período por defecto y el día de la sede (api #105) — `[IT EgresoFechaYVersionIT]`
 
 **Pantalla:** `/egresos` sin tocar nada.
 
 **Esperado:** "Desde" arranca en el **primer día del mes de la sede** (no del navegador, web #60) y
 "Hasta" vacío; la lista trae los egresos del mes, del más nuevo al más viejo. Filtrá por estado
 `Anulado` y por categoría `Honorarios profesionales`: cada filtro lo aplica el servidor.
+
+Desde #105 "Desde" y "Hasta" son **días de la sede**, inclusivos: el backend compara el instante de
+registro contra `[00:00 de "Desde", 00:00 del día siguiente a "Hasta")` en la zona de la sede.
+Hasta el 12/10 comparaba el día **UTC** y un egreso cargado entre las 21 y las 24 de Córdoba
+quedaba afuera de "Hasta = hoy" (estaba en [90](90-conocido-y-aceptado.md) §4, ya corregido). Para
+probarlo sin esperar a la noche, mové la sede a una zona en la que **ya sea otro día** que en UTC
+(ORG-02: `Pacific/Kiritimati`, UTC+14, si corrés después de las 10 UTC —las 7 de Córdoba—; `Pacific/Pago_Pago`, UTC−11,
+si corrés antes de las 11 UTC) y cargá un egreso **después** del cambio; filtrá "Desde = Hasta = hoy de la sede". Volvé la zona a la
+original al terminar.
 
 ```sql
 SELECT id, estado, categoria, registrado_en,
@@ -178,11 +187,14 @@ SELECT id, estado, categoria, registrado_en,
 FROM egreso WHERE consultorio_id = @sede_a ORDER BY id DESC LIMIT 10;
 ```
 
-Esperado: lo listado coincide con estas filas para el período elegido. **Mirá `dia_utc` contra
-`dia_de_la_sede`**: el filtro hoy compara el día **UTC** del registro, no el de la sede. Un egreso
-cargado entre las 21:00 y las 24:00 de Córdoba queda afuera de "Hasta = hoy" y adentro de
-"Desde = mañana" — es el defecto conocido de [90](90-conocido-y-aceptado.md) §4: si lo ves,
-vinculalo, no lo registres como nuevo.
+Esperado: con "Desde = Hasta = X", la pantalla lista exactamente las filas con `dia_de_la_sede = X`,
+**también** las que tienen `dia_utc` distinto. Una fila que aparece o falta según `dia_utc` es
+regresión de #105. El mismo criterio vale para la bandeja de prestaciones elegibles de
+presentaciones ([PRE-11](08-presentaciones-facturacion-pagos.md)).
+
+> Validado sobre el stack aislado (14/10): con la sede en `Pacific/Kiritimati` (hoy de la sede
+> 15/10, hoy UTC 14/10), "Desde = Hasta = 15/10" trajo los cuatro egresos del día y
+> "Desde = Hasta = 14/10", ninguno.
 
 ---
 
@@ -203,3 +215,40 @@ ORDER BY id;
 Esperado: un `EGRESO_REGISTRADO` por alta, `EGRESO_CONFIRMADO`, `EGRESO_PAGADO` por pago,
 `EGRESO_PAGO_ANULADO` y `EGRESO_ANULADO` con `reason`; ninguno del profesional. El 403 deja un
 `PERMISSION_DENIED`.
+
+---
+
+### EGR-09 · Corregir un borrador con la versión leída (api #105, web #73) — `[IT EgresoFechaYVersionIT]`
+
+Hasta el contrato 0.91.0 `PUT .../egresos/{id}` no llevaba versión y **dos correcciones simultáneas
+del mismo borrador se pisaban en silencio**. Desde #105 el cuerpo es `EditarEgreso` con la
+`version` leída, **requerida**; si otro la cambió antes, 409 `concurrent-modification`, y la
+respuesta trae la versión nueva para encadenar la siguiente corrección. El beneficiario, la moneda
+y la clave ya no viajan en la corrección. El IT prueba la versión vieja; la pantalla, no.
+
+**Pantalla:** dos ventanas con el detalle del **mismo** borrador de EGR-02 (`/egresos/<id>`). En
+la primera, "Corregir el borrador" → cambiar el concepto → guardar. En la segunda (que leyó antes),
+cambiar el importe → guardar.
+
+**Esperado:** la primera guarda y el formulario queda con los datos nuevos (y su versión: una
+segunda corrección desde esa misma ventana también guarda). La segunda **no** pisa nada: muestra
+"Alguien cambio este egreso despues de que lo abriste, asi que no guardamos la correccion sobre
+datos viejos. No se piso nada: recarga el egreso y volve a corregirlo." y ofrece recargar. Recargada,
+la corrección entra.
+
+```sql
+SET @egreso_borrador := (SELECT MAX(id) FROM egreso WHERE consultorio_id = @sede_a AND estado = 'BORRADOR');
+SELECT id, estado, concepto, importe_total, moneda, tipo_beneficiario, beneficiario_nombre, version, updated_at
+FROM egreso WHERE id = @egreso_borrador;
+```
+
+Esperado: `concepto` de la primera ventana y el importe de la segunda **solo** después de recargar;
+`version` sube **una** vez por corrección que entró; moneda y beneficiario, los del alta. Por la
+API: sin `version`, **400 `validation-error`**; con una vieja, **409 `concurrent-modification`**;
+sobre un egreso ya confirmado con su versión vigente, **409 `egreso-no-editable`** (con una versión
+vieja gana el 409 de versión). **Auditoría:** la corrección no deja evento propio (EGR-02); el 409
+tampoco.
+
+> Validado sobre el stack aislado (14/10): versión leída 200 (`version` 0 → 1), la misma versión
+> otra vez 409, sin versión 400, encadenada con la de la respuesta 200, y dos correcciones
+> simultáneas con la misma versión: una 200 y otra 409.

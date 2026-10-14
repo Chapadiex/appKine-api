@@ -405,7 +405,9 @@ public class ArancelController {
 					+ "practica. Si se omite, solo el general", example = "77")
 			@RequestParam(required = false) Long ofertaId) {
 
-		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
+		LocalDate contra = fecha == null
+				? arancelService.hoyEnLaSede(apiActor.current(), consultorioId)
+				: fecha;
 		ResolucionDeArancel resolucion = arancelService.resolver(
 				apiActor.current(), consultorioId, financiadorId, planId, practicaId, ofertaId,
 				contra);

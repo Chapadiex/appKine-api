@@ -185,21 +185,28 @@ Esperado: los mismos totales que muestra la pantalla.
 
 ---
 
-### PRE-10 · Exportar el lote a CSV — sólo API (contrato 0.95.0)
+### PRE-10 · Exportar el lote a CSV (api #108, web #74)
 
-**Todavía sin botón:** el cliente del frontend se regenera después de que este contrato entre a
-`main`. Mientras tanto, por API con el token del administrativo:
+**Pantalla:** administrativo → `/presentaciones/<id>` (el lote de PRE-04 a PRE-08) → botón
+**"Exportar CSV"** debajo de los importes. Mientras baja dice "Exportando..." y queda deshabilitado.
+Lo mismo por la API:
 
 ```
 GET /api/v1/consultorios/{sede_a}/presentaciones/{presentacion}/export
 ```
 
-Esperado: 200 `text/csv;charset=UTF-8` con `Content-Disposition: attachment;
-filename="presentacion-{financiadorId}-{numero}.csv"`. La cabecera repite los cuatro importes que
-devuelve `GET .../presentaciones/{presentacion}` y hay **una fila por ítem**, incluido el
-`DEBITADO` de PRE-06 con su motivo. **PHI mínima:** las filas llevan `personaId`, nunca nombre ni
-documento. Un concepto o motivo que empiece con `=`, `+`, `-` o `@` sale con un apóstrofo delante.
-Con el token del tenant B, el mismo pedido da **404**, nunca 403.
+Esperado: el navegador guarda `presentacion-{financiadorId}-{numero}.csv` (el nombre sale del
+`Content-Disposition`; si el header no llega, `presentacion-{numero}.csv`). Por la API: 200
+`text/csv;charset=UTF-8` con `Content-Disposition: attachment; filename="presentacion-{financiadorId}-{numero}.csv"`.
+El archivo trae una **cabecera** clave-valor (presentación, número, sede, financiador, período,
+estado, moneda, los cuatro importes —presentado, debitado, cobrado y saldo—, factura y fecha de
+confirmación) y, después de una línea en blanco, **una fila por ítem**, incluido el `DEBITADO` de
+PRE-06 con su motivo. Los importes de la cabecera son los mismos que muestra la pantalla.
+**PHI mínima:** las filas llevan `personaId`, nunca nombre ni documento. Un concepto o motivo que
+empiece con `=`, `+`, `-` o `@` sale con un apóstrofo delante (probalo debitando con motivo
+`=1+1`: en la planilla se ve como texto, no como fórmula). Con el token del tenant B, **404**; con
+el del profesional, **403**; con un id inexistente, 404, y la pantalla muestra el error del
+problema, no un texto crudo (web #74 traduce el error de una descarga).
 
 ```sql
 SELECT COUNT(*) AS items, SUM(importe_presentado) AS presentado FROM presentacion_item
@@ -207,4 +214,38 @@ WHERE presentacion_id = @presentacion;
 ```
 
 Esperado: tantas filas de detalle como `items`, y la suma de la columna "Importe presentado" igual a
-`presentado`.
+`presentado`. **Auditoría:** nada (es una lectura); ningún E2E baja el archivo.
+
+> Validado sobre el stack aislado (14/10): 200 con `filename="presentacion-1-1.csv"`, 16 líneas de
+> cabecera y una fila de ítem `DEBITADO` con `"Persona","1"` como id; 404 con el token de B, 403
+> con el del profesional.
+
+---
+
+### PRE-11 · La bandeja de prestaciones elegibles filtra por día de la sede (api #105) — `[IT ObligacionDelFinanciadorIT]`
+
+**Pantalla:** `/presentaciones` → nuevo borrador para el financiador de PER-05 con período
+"Desde = Hasta = hoy de la sede" → en su detalle, la lista de obligaciones elegibles para agregar
+(la pantalla la pide con el período del borrador). Anulá el borrador al terminar (PRE-09).
+
+Desde #105 `desde` y `hasta` de `GET .../prestaciones-elegibles` son **días de la sede**,
+inclusivos: el devengamiento se compara en la zona de la sede, la misma con la que se congela la
+fecha de prestación del ítem. Hasta el 12/10 era `DATE(devengada_en)` en UTC: una sesión cerrada
+entre las 21 y las 24 de Córdoba aparecía en el día siguiente. Se prueba igual que
+[EGR-07](12-egresos-y-pagos.md): con la sede en una zona en la que ya es otro día que en UTC.
+
+```sql
+SELECT o.id, o.devengada_en,
+       DATE(o.devengada_en) AS dia_utc,
+       DATE(CONVERT_TZ(o.devengada_en, '+00:00', (SELECT timezone FROM consultorio WHERE id = @sede_a))) AS dia_de_la_sede
+FROM obligacion o
+WHERE o.organization_id = @org_a AND o.consultorio_id = @sede_a AND o.responsable = 'FINANCIADOR'
+  AND o.financiador_id = @financiador AND o.estado IN ('PENDIENTE', 'PARCIAL')
+ORDER BY o.id DESC LIMIT 10;
+```
+
+Esperado: con "Desde = Hasta = X" la bandeja trae las elegibles (PRE-01) con `dia_de_la_sede = X`,
+nunca las de `dia_utc = X` con otro día de la sede. Sin fechas, todas. **Auditoría:** nada.
+
+> Validado sobre el stack aislado (14/10): con la sede en `Pacific/Kiritimati`, la elegible
+> devengada el 14/10 UTC apareció con "Desde = Hasta = 15/10" y no con 14/10.

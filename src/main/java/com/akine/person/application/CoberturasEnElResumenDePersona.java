@@ -82,7 +82,9 @@ public class CoberturasEnElResumenDePersona implements ResumenDePersonaContribut
 
 	@Autowired
 	public CoberturasEnElResumenDePersona(CoberturaPacienteRepositoryPort coberturas) {
-		this(coberturas, Clock.systemDefaultZone());
+		// UTC explicito y no la zona de la JVM: "hoy" de la organizacion es decision pendiente
+		// (docs/zonas-horarias.md), pero no puede depender de donde corra el proceso.
+		this(coberturas, Clock.systemUTC());
 	}
 
 	CoberturasEnElResumenDePersona(CoberturaPacienteRepositoryPort coberturas, Clock clock) {

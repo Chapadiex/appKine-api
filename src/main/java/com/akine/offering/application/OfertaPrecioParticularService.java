@@ -11,16 +11,19 @@ import com.akine.offering.spi.PrecioDeOferta;
 import com.akine.organization.spi.AccountContextDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -58,7 +61,10 @@ public class OfertaPrecioParticularService {
 	private final OfertaPrecioParticularRepositoryPort precios;
 	private final AuditTrail auditTrail;
 	private final AccesoALaConfiguracionDeOferta acceso;
+	private final ConsultorioDirectory consultorios;
+	private final Clock clock;
 
+	@Autowired
 	public OfertaPrecioParticularService(
 			OfertaRepositoryPort ofertas,
 			OfertaPrecioParticularRepositoryPort precios,
@@ -67,11 +73,32 @@ public class OfertaPrecioParticularService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail) {
 
+		this(ofertas, precios, consultorioDirectory, accountContextDirectory, permissionGuard,
+				auditTrail, Clock.systemUTC());
+	}
+
+	/** Con reloj propio: "hoy" es el de la sede, y un test necesita fijar la hora. */
+	OfertaPrecioParticularService(
+			OfertaRepositoryPort ofertas,
+			OfertaPrecioParticularRepositoryPort precios,
+			ConsultorioDirectory consultorioDirectory,
+			AccountContextDirectory accountContextDirectory,
+			PermissionGuard permissionGuard,
+			AuditTrail auditTrail,
+			Clock clock) {
+
+		this.consultorios = consultorioDirectory;
+		this.clock = clock;
 		this.ofertas = ofertas;
 		this.precios = precios;
 		this.auditTrail = auditTrail;
 		this.acceso = new AccesoALaConfiguracionDeOferta(
 				ofertas, consultorioDirectory, accountContextDirectory, permissionGuard);
+	}
+
+	/** "Hoy" en la zona de la sede: la vigencia de un precio es una regla local. */
+	private LocalDate hoyEnLaSede(long organizationId, long consultorioId) {
+		return ZonaDeSede.hoy(consultorios, organizationId, consultorioId, clock);
 	}
 
 	// =================================================================================
@@ -85,7 +112,7 @@ public class OfertaPrecioParticularService {
 
 		acceso.exigirLectura(actor, organizationId, consultorioId);
 		acceso.cargar(organizationId, consultorioId, ofertaId);
-		LocalDate hoy = LocalDate.now();
+		LocalDate hoy = hoyEnLaSede(organizationId, consultorioId);
 		return precios
 				.findAllByOrganizationIdAndOfertaIdOrderByVigenciaDesdeDescIdDesc(
 						organizationId, ofertaId)
@@ -152,7 +179,7 @@ public class OfertaPrecioParticularService {
 		auditar(AuditEvents.OFERTA_PRECIO_PARTICULAR_CREATED, oferta, actor, null, detalle(creado));
 		log.info("Precio particular creado: precioId={} ofertaId={} periodo={}",
 				creado.getId(), ofertaId, creado.periodo());
-		return OfertaPrecioParticularView.de(creado, LocalDate.now());
+		return OfertaPrecioParticularView.de(creado, hoyEnLaSede(organizationId, consultorioId));
 	}
 
 	/**
@@ -188,7 +215,7 @@ public class OfertaPrecioParticularService {
 		Map<String, String> detalle = detalle(guardado);
 		detalle.put("periodoAnterior", anterior);
 		auditar(AuditEvents.OFERTA_PRECIO_PARTICULAR_UPDATED, oferta, actor, null, detalle);
-		return OfertaPrecioParticularView.de(guardado, LocalDate.now());
+		return OfertaPrecioParticularView.de(guardado, hoyEnLaSede(organizationId, consultorioId));
 	}
 
 	/** Baja logica con motivo. Libera el periodo; lo ya devengado guardo su importe. */
@@ -214,7 +241,7 @@ public class OfertaPrecioParticularService {
 		auditar(AuditEvents.OFERTA_PRECIO_PARTICULAR_DEACTIVATED, oferta, actor, motivo.strip(),
 				detalle(guardado));
 		log.info("Precio particular dado de baja: precioId={} ofertaId={}", precioId, ofertaId);
-		return OfertaPrecioParticularView.de(guardado, LocalDate.now());
+		return OfertaPrecioParticularView.de(guardado, hoyEnLaSede(organizationId, consultorioId));
 	}
 
 	// =================================================================================
