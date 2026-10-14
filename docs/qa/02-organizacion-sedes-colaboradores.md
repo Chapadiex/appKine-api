@@ -89,6 +89,57 @@ en la misma transacción. Doble click en "Abrir" no crea dos sedes (misma `Idemp
 
 ---
 
+### ORG-03c · Baja de la sede 2: turnos pendientes, y reservar en una sede de baja (api #96) — `[IT BajaDeSedeContraReservaIT]`
+
+Se corre al final de la corrida, o con una sede de prueba aparte: **la baja no tiene vuelta
+atrás** (no hay reactivación). Requiere la `Sede QA 2` de ORG-03b con una oferta, un profesional
+con horario y **un turno futuro reservado** (CAT-04 a CAT-08 y AGE-01 sobre esa sede).
+
+Desde #96 la baja toma la fila de la sede con lock exclusivo **antes** de contar los turnos
+pendientes, y reservar, reprogramar y crear o mover una serie la releen con lock compartido bajo el
+de la agenda: o la baja ve el turno, o la reserva ve la sede de baja. La carrera la prueba
+`BajaDeSedeContraReservaIT`; a mano, los dos desenlaces en secuencia.
+
+**Pantalla:** admin-a → `/organizacion/sedes` → `Sede QA 2` → "Dar de baja" con motivo →
+"Confirmar la baja".
+
+1. **Con el turno pendiente:** rechazo 409 `consultorio-has-active-references` con un mensaje que
+   habla de turnos y su cantidad (`referenceType = turnos-futuros`, `referenceCount`). La sede sigue
+   activa.
+2. Cancelá el turno (AGE-06) y repetí: **200**, la sede pasa a dada de baja y desaparece del
+   selector de contexto.
+3. **Reservar en la sede de baja**, por la API, con admin-a en contexto de la **sede A** (alcance de
+   organización) y con un token que tenía contexto en la sede 2:
+
+```powershell
+Api POST "/api/v1/consultorios/<sede_a2>/turnos/ofertas/<oferta de la sede 2>" $A @{ inicio = '<un slot futuro, ISO UTC>'; personaId = <persona>; profesionalId = <membership profesional en la sede 2>; idempotencyKey = (Nueva-Clave) }
+```
+
+Esperado: con contexto en la sede A, **409 `consultorio-inactive`** ("La sede … esta dada de baja:
+no admite turnos nuevos"); con el token viejo de contexto en la sede 2, **404** (el contexto de una
+sede de baja ya no vale). Ningún turno nuevo. Cancelar o marcar ausente un turno de una sede de baja
+**sí** funciona: liberar su agenda es justamente lo que hay que poder hacer.
+
+```sql
+SET @sede_a2 := (SELECT MAX(id) FROM consultorio WHERE organization_id = @org_a);
+SELECT id, name, active, deleted_at, deactivation_reason, version FROM consultorio WHERE id = @sede_a2;
+SELECT id, estado, inicio, deleted_at FROM turno WHERE consultorio_id = @sede_a2 ORDER BY id;
+SELECT COUNT(*) AS turnos_vivos_en_sede_de_baja
+FROM turno t JOIN consultorio c ON c.id = t.consultorio_id
+WHERE c.organization_id = @org_a AND c.active = 0 AND t.deleted_at IS NULL AND t.estado IN ('RESERVADO', 'CONFIRMADO');
+```
+
+Esperado: `active = 0` con `deleted_at` y el motivo; todos los turnos de la sede 2 cancelados
+(`deleted_at` lleno); **`turnos_vivos_en_sede_de_baja = 0`**: un turno vivo en una sede de baja es
+el defecto que #96 cerró y es hallazgo **alto**. **Auditoría:** `CONSULTORIO_DEACTIVATED` con
+`reason`; el 409 de la baja y el de la reserva no dejan fila.
+
+> Validado sobre el stack aislado (14/10): baja con dos turnos pendientes → 409 con
+> `referenceCount = 2`; cancelados los dos, 200; reservar después, 409 `consultorio-inactive` con
+> contexto en la sede A y 404 con el contexto de la sede 2.
+
+---
+
 ### ORG-04 · Vincular colaboradores por alta directa
 
 **Pantalla:** `/organizacion/colaboradores/nuevo` con admin-a. Vincular, en la sede de A:
@@ -105,11 +156,11 @@ FROM membership m JOIN cuenta c ON c.id = m.account_id
 WHERE m.organization_id = @org_a ORDER BY m.id;
 
 SET @membership_profesional    := (SELECT m.id FROM membership m JOIN cuenta c ON c.id = m.account_id
-                                   WHERE m.organization_id = @org_a AND c.email_normalizado = @email_profesional AND m.estado = 'ACTIVA');
+                                   WHERE m.organization_id = @org_a AND c.email_normalizado = @email_profesional AND m.estado = 'ACTIVA' AND m.consultorio_id = @sede_a);
 SET @membership_administrativo := (SELECT m.id FROM membership m JOIN cuenta c ON c.id = m.account_id
-                                   WHERE m.organization_id = @org_a AND c.email_normalizado = @email_administrativo AND m.estado = 'ACTIVA');
+                                   WHERE m.organization_id = @org_a AND c.email_normalizado = @email_administrativo AND m.estado = 'ACTIVA' AND m.consultorio_id = @sede_a);
 SET @membership_paciente       := (SELECT m.id FROM membership m JOIN cuenta c ON c.id = m.account_id
-                                   WHERE m.organization_id = @org_a AND c.email_normalizado = @email_paciente AND m.estado = 'ACTIVA');
+                                   WHERE m.organization_id = @org_a AND c.email_normalizado = @email_paciente AND m.estado = 'ACTIVA' AND m.consultorio_id = @sede_a);
 SELECT @membership_profesional, @membership_administrativo, @membership_paciente;
 ```
 
@@ -401,10 +452,85 @@ intento —con el correo arriba o abajo— la fila queda `AGOTADA` con `error_sa
 Reintentar una fila que no está `FALLIDA` ni `AGOTADA` es 409 `conflict`. **Auditoría:**
 `NOTIFICACION_REINTENTADA` (`entity_type = 'Notificacion'`).
 
-> Ojo: `error_sanitizado` **conserva el último error** aunque la fila termine `ENVIADA`; mirá
-> `estado` y `enviado_en`, no la columna de error.
->
-> **Defecto encontrado al validar (12/10):** si la invitación se **cancela** mientras su correo
-> está en reintento, cuando el servidor de correo vuelve el correo **sale igual** (`ENVIADA`), con
-> un enlace que ya no sirve (el preview del token responde 404). Está en
-> [90](90-conocido-y-aceptado.md) §4: vinculalo, no lo registres como nuevo.
+> Los dos defectos que la validación del 12/10 había encontrado acá —la fila `ENVIADA` que
+> conservaba el error del intento anterior y el correo de una invitación cancelada que salía igual
+> al volver el servidor— **están corregidos en #100** (`InvitacionAnuladaNoSeEnviaIT`). Si
+> cualquiera de los dos se reproduce, es **regresión**: registralo como hallazgo nuevo y citá #100.
+
+---
+
+### ORG-16 · Cada invitación con su propio enlace (api #111) — `[IT InvitacionesIT]`
+
+Hasta #111 la llave del enlace de una invitación en el `SecureLinkVault` era **solo el vencimiento
+en milisegundos** (el último segmento de `invitacion:<id>:<expiraEn ms>`): dos invitaciones
+emitidas en el mismo milisegundo compartían entrada y **el primer invitado recibía el enlace del
+segundo**. Desde #111 la referencia es la clave entera. `InvitacionesIT` lo prueba con dos
+invitaciones en el mismo instante; por pantalla no se llega al mismo milisegundo, así que a mano se
+verifica la forma de la referencia y que cada correo abra **su** invitación.
+
+**Pantalla:** admin-a → `/organizacion/colaboradores/invitaciones` → invitar seguido a
+`qa.inv1@ejemplo.test` y `qa.inv2@ejemplo.test` (administrativo, sede de A). Después reenviá la
+primera. En Mailpit abrí cada enlace en una ventana privada.
+
+**Esperado:** cada enlace muestra **su** email en la vista previa de la invitación; el enlace
+original de la primera, después del reenvío, ya no sirve (vista previa 404) y el nuevo sí.
+
+```sql
+SELECT n.id, n.estado, n.referencia_token_id, n.clave_idempotente,
+       n.referencia_token_id = n.clave_idempotente AS referencia_es_la_clave, n.enviado_en
+FROM notification_outbox n
+WHERE n.organization_id = @org_a AND n.tipo = 'INVITACION_COLABORADOR' AND n.created_at >= @desde
+ORDER BY n.id;
+```
+
+Esperado: `referencia_token_id` con la forma `invitacion:<id>:<ms>` e **igual** a
+`clave_idempotente`, distinta en cada fila (también la del reenvío, que lleva otro vencimiento).
+Una referencia que sea **solo un número** (el vencimiento) es regresión de #111. Las de activación
+y recuperación de contraseña siguen siendo el id de `token_verificacion`: no cambian.
+**Auditoría:** `INVITACION_EMITIDA` ×2 e `INVITACION_REENVIADA`.
+
+> Validado sobre el stack aislado (14/10): dos invitaciones emitidas en paralelo quedaron con
+> vencimientos a 1 ms de distancia (`…320763` y `…320764`) y cada enlace abrió la suya.
+
+---
+
+### ORG-17 · Una suspensión vale desde el pedido siguiente (api #112)
+
+Desde #112 las lecturas de `platform_role` y `membership` se **memorizan por pedido HTTP**: el
+filtro de contexto y la evaluación de permisos ya no releen las mismas filas varias veces en el
+mismo pedido. La regla de ADR-0020 —revalidar contra la base **en cada pedido**— no cambia, y la
+memoria se descarta al commitear cualquier escritura. La ventana aceptada es la de **un pedido**
+(ver [90](90-conocido-y-aceptado.md) §1): lo que hay que comprobar es que **nunca cruza al
+siguiente**. Hay unitarios (`MemoriaDelPedidoTest`, `TransaccionesConfigMemoriaTest`); ningún IT
+ni E2E prueba la revocación entre pedidos.
+
+**Pantalla:** dos navegadores (uno en ventana privada). En el primero, el administrativo con
+`/pacientes` abierto. En el segundo, admin-a lo **suspende** con motivo (ORG-10). Sin recargar el
+token, el administrativo: (1) busca en el padrón, (2) intenta dar de alta una persona.
+
+**Esperado:** las **dos** acciones fallan en el primer intento posterior a la suspensión, con
+**404 `not-found`** —la membership del contexto dejó de estar vigente, y el contexto vencido es 404,
+no 403 ni 401 (`TenantContextFilter`)—, y la sesión **no** se cierra. Ninguna escritura entra.
+Reactivá: el siguiente pedido del mismo token vuelve a responder 200. Repetí con un grant: otorgale
+`paciente:manage` al profesional, revocáselo y, sin cambiar de token, intentá un alta de persona
+como profesional: 403 desde el primer pedido después de la revocación.
+
+```sql
+SELECT id, estado, revoked_reason, version FROM membership WHERE id = @membership_administrativo;
+
+SELECT COUNT(*) AS altas_despues_de_suspender
+FROM persona p
+WHERE p.organization_id = @org_a
+  AND p.created_at >= (SELECT MAX(occurred_at) FROM audit_event
+                        WHERE organization_id = @org_a AND event_type = 'MEMBERSHIP_SUSPENDED');
+```
+
+Esperado: `SUSPENDIDA` (y `ACTIVA` al reactivar); `altas_despues_de_suspender = 0` si solo probaste
+con el administrativo suspendido. Un 200 en un pedido **posterior** a la respuesta de la suspensión
+es hallazgo **crítico** (la memoria cruzó pedidos). **Auditoría:** `MEMBERSHIP_SUSPENDED` y
+`MEMBERSHIP_REACTIVATED` con `reason`; los pedidos rechazados por contexto vencido no dejan fila.
+
+> Validado sobre el stack aislado (14/10): con el mismo token, `GET /personas` dio 200 antes de la
+> suspensión y 404 en el pedido siguiente; `POST /personas`, 404; reactivar, 200 otra vez. Con el
+> grant: alta de persona como profesional 201, `DELETE .../grants/paciente:manage` 204, y la
+> siguiente alta con el mismo token, 403.

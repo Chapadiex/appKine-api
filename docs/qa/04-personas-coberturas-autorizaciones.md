@@ -374,3 +374,39 @@ la práctica elegida y con `disponibles > 0`, la de `vigencia_hasta` más próxi
 una sesión de esa práctica (CLI-05) y comprobá con la consulta de PER-11 que el `CONSUMO` cayó
 **en esa misma** autorización: si el cierre elige otra, es hallazgo (el defecto de 06.04 que
 imputaba a la autorización equivocada). **Auditoría:** nada (es una lectura).
+
+---
+
+### PER-15 · "Consumos a revisar" en cada fila del listado (api #98, web #74) — `[IT ConsumoPorAutorizacionIT]`
+
+Hasta el contrato 0.89.0 el número de alertas `CONSUMO_A_REVISAR` pendientes solo estaba en el
+panel "Saldo y consumos" de una autorización (PER-12): para saber cuál revisar había que abrirlas
+una por una. Desde #98 cada fila del listado trae `consumosARevisar`, calculado con **una** consulta
+agrupada para todas las filas y con el mismo criterio que el saldo. El IT compara el listado contra
+el saldo; la pantalla no la recorre ningún E2E (`flujo-autorizaciones` mira el panel, no la
+columna).
+
+Se corre **entre** la anulación de la deuda de PER-12 y la reversión: es el único momento en que
+hay una alerta sin resolver.
+
+**Pantalla:** `/pacientes/<persona>/autorizaciones` → tabla de autorizaciones, columna **Saldo**.
+
+**Esperado:** la autorización con la alerta pendiente muestra, junto al saldo, la etiqueta **"1
+consumo a revisar"** (o "N consumos a revisar"); las demás no muestran nada (cero no se dice). El
+número coincide con "Consumos a revisar" del panel de esa autorización. Después de revertir el
+consumo (PER-12), recargá: la etiqueta desaparece.
+
+```sql
+SELECT a.id AS autorizacion, a.estado, a.cantidad_autorizada, a.cantidad_consumida,
+       (SELECT COUNT(*) FROM autorizacion_alerta al
+         WHERE al.autorizacion_id = a.id AND al.organization_id = a.organization_id
+           AND al.tipo = 'CONSUMO_A_REVISAR' AND al.resuelta_en IS NULL) AS consumos_a_revisar
+FROM autorizacion a
+WHERE a.organization_id = @org_a AND a.persona_id = @persona
+ORDER BY a.id;
+```
+
+Esperado: `consumos_a_revisar` de cada fila igual a la etiqueta de la pantalla y al
+`consumosARevisar` de `GET /api/v1/personas/<persona>/autorizaciones` (y de `GET
+/api/v1/autorizaciones/<id>/saldo`). Una alerta resuelta (`resolucion = REVERTIDO`) ya no cuenta.
+**Auditoría:** nada (es una lectura).
