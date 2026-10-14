@@ -20,13 +20,16 @@ import com.akine.contracting.spi.ResolucionDeArancel;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.spi.CatalogoDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -34,6 +37,7 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -85,7 +89,9 @@ public class ArancelService {
 	private final OfertaDirectory ofertas;
 	private final PracticasDeOfertaDirectory practicasDeOferta;
 	private final TransactionTemplate transaccionReadCommitted;
+	private final Clock clock;
 
+	@Autowired
 	@SuppressWarnings("java:S107")
 	public ArancelService(
 			ConvenioRepositoryPort convenios,
@@ -100,6 +106,27 @@ public class ArancelService {
 			PracticasDeOfertaDirectory practicasDeOferta,
 			PlatformTransactionManager transactionManager) {
 
+		this(convenios, aranceles, locks, lockIniciador, consultorios, catalogo, permissionGuard,
+				auditTrail, ofertas, practicasDeOferta, transactionManager, Clock.systemUTC());
+	}
+
+	/** Con reloj propio: "hoy" es el de la sede, y un test necesita fijar la hora. */
+	@SuppressWarnings("java:S107")
+	ArancelService(
+			ConvenioRepositoryPort convenios,
+			ConvenioArancelRepositoryPort aranceles,
+			ConvenioLockRepositoryPort locks,
+			ConvenioLockIniciador lockIniciador,
+			ConsultorioDirectory consultorios,
+			CatalogoDirectory catalogo,
+			PermissionGuard permissionGuard,
+			AuditTrail auditTrail,
+			OfertaDirectory ofertas,
+			PracticasDeOfertaDirectory practicasDeOferta,
+			PlatformTransactionManager transactionManager,
+			Clock clock) {
+
+		this.clock = clock;
 		this.convenios = convenios;
 		this.aranceles = aranceles;
 		this.locks = locks;
@@ -134,11 +161,11 @@ public class ArancelService {
 			LocalDate fecha) {
 
 		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Listar aranceles");
-		exigirSedeDelTenant(organizationId, consultorioId);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		cargarConvenio(organizationId, consultorioId, convenioId);
 
 		EstadoFiltro filtro = estado == null ? EstadoFiltro.ACTIVO : estado;
-		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
+		LocalDate contra = fecha == null ? ZonaDeSede.hoy(sede, clock) : fecha;
 
 		return aranceles.findAllByConvenio(organizationId, convenioId).stream()
 				.filter(arancel -> switch (filtro) {
@@ -191,8 +218,8 @@ public class ArancelService {
 			LocalDate fecha) {
 
 		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Resolver un arancel");
-		exigirSedeDelTenant(organizationId, consultorioId);
-		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
+		LocalDate contra = fecha == null ? ZonaDeSede.hoy(sede, clock) : fecha;
 
 		List<Convenio> candidatos =
 				convenios.findActivosPorAlcance(organizationId, consultorioId, financiadorId, planId);
@@ -286,7 +313,7 @@ public class ArancelService {
 
 		log.info("Arancel creado: arancelId={} convenioId={} practicaId={}",
 				creado.getId(), convenioId, command.practicaId());
-		return ArancelView.de(creado, LocalDate.now());
+		return ArancelView.de(creado, hoyEnLaSede(organizationId, consultorioId));
 	}
 
 	/**
@@ -344,7 +371,7 @@ public class ArancelService {
 		ConvenioArancel guardado = aranceles.saveAndFlush(arancel);
 
 		auditar(AuditEvents.ARANCEL_UPDATED, guardado, actor, null, null, null, detalles);
-		return ArancelView.de(guardado, LocalDate.now());
+		return ArancelView.de(guardado, hoyEnLaSede(organizationId, consultorioId));
 	}
 
 	/**
@@ -380,7 +407,7 @@ public class ArancelService {
 				Map.of("practicaId", String.valueOf(arancel.getPracticaId())));
 
 		log.info("Arancel dado de baja: arancelId={}", arancelId);
-		return ArancelView.de(guardado, LocalDate.now());
+		return ArancelView.de(guardado, hoyEnLaSede(organizationId, consultorioId));
 	}
 
 	// =================================================================================
@@ -431,8 +458,23 @@ public class ArancelService {
 				ofertas, practicasDeOferta, organizationId, consultorioId, ofertaId, practicaId);
 	}
 
-	private void exigirSedeDelTenant(long organizationId, long consultorioId) {
-		consultorios.find(organizationId, consultorioId)
+	/**
+	 * "Hoy" en la sede, para la consulta del arancel efectivo que no declara fecha. Sin contexto es
+	 * el mismo 403 que daria la resolucion.
+	 */
+	@Transactional(readOnly = true)
+	public LocalDate hoyEnLaSede(OperatingActor actor, long consultorioId) {
+		return hoyEnLaSede(
+				AutorizacionDeCatalogo.exigirContexto(actor, "Resolver un arancel"), consultorioId);
+	}
+
+	/** "Hoy" en la zona de la sede: un convenio y sus aranceles son de la sede. */
+	private LocalDate hoyEnLaSede(long organizationId, long consultorioId) {
+		return ZonaDeSede.hoy(consultorios, organizationId, consultorioId, clock);
+	}
+
+	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {
+		return consultorios.find(organizationId, consultorioId)
 				.orElseThrow(() -> new SedeNoAccesibleException(consultorioId));
 	}
 

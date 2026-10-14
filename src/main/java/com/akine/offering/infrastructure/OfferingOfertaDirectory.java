@@ -9,16 +9,11 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.offering.spi.PrecioDeOferta;
 import com.akine.organization.spi.ConsultorioDirectory;
-import com.akine.organization.spi.ConsultorioSnapshot;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.akine.organization.spi.ZonaDeSede;
 import org.springframework.stereotype.Component;
 
-import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -44,8 +39,6 @@ import java.util.stream.Collectors;
  */
 @Component
 public class OfferingOfertaDirectory implements OfertaDirectory {
-
-	private static final Logger log = LoggerFactory.getLogger(OfferingOfertaDirectory.class);
 
 	private final OfertaRepository ofertas;
 	private final OfertaProfesionalHabilitadoRepository profesionales;
@@ -105,23 +98,9 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 	public Optional<PrecioDeOferta> precioEn(
 			long organizationId, long consultorioId, long ofertaId, Instant momento) {
 		return precioVigenteEl(organizationId, consultorioId, ofertaId,
-				LocalDate.ofInstant(momento, zonaDeLaSede(organizationId, consultorioId)));
-	}
-
-	/** Si la sede no resuelve o su zona es invalida se cae a UTC, como el devengo de F-4. */
-	private ZoneId zonaDeLaSede(long organizationId, long consultorioId) {
-		return consultorios.find(organizationId, consultorioId)
-				.map(ConsultorioSnapshot::timezone)
-				.map(zona -> {
-					try {
-						return ZoneId.of(zona);
-					} catch (DateTimeException invalida) {
-						log.warn("Zona horaria invalida en la sede: se usa UTC. consultorioId={} "
-								+ "zona={}", consultorioId, zona);
-						return (ZoneId) ZoneOffset.UTC;
-					}
-				})
-				.orElse(ZoneOffset.UTC);
+				// Si la sede no resuelve o su zona es invalida se cae a UTC, como el devengo de F-4.
+				LocalDate.ofInstant(momento,
+						ZonaDeSede.de(consultorios, organizationId, consultorioId)));
 	}
 
 	@Override

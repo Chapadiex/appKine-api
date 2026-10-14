@@ -115,7 +115,8 @@ class CasoClinicoServiceTest {
 	void setUp() {
 		service = new CasoClinicoService(historias, casos, equipos, eventos, numerador,
 				numeradorIniciador, ofertas, permissionGuard, relaciones, auditTrail,
-				supportAccessAuditor, mock(PlatformTransactionManager.class));
+				supportAccessAuditor, mock(PlatformTransactionManager.class),
+				mock(com.akine.organization.spi.ConsultorioDirectory.class));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
@@ -198,6 +199,28 @@ class CasoClinicoServiceTest {
 
 		assertThatThrownBy(() -> service.abrir(profesional, alta(List.of(), false), null))
 				.isInstanceOf(OfertaNoVigenteException.class);
+	}
+
+	@Test
+	@DisplayName("a las 22:30 de Cordoba una oferta que vence ESE dia sigue vigente: hoy es el de la sede")
+	void oferta_que_vence_hoy_en_la_sede() {
+		// 01:30 UTC del 15/03 son las 22:30 del 14/03 en Cordoba. Con "hoy" en UTC la oferta que
+		// vence el 14 se leia vencida tres horas antes de tiempo.
+		com.akine.organization.spi.ConsultorioDirectory consultorios =
+				mock(com.akine.organization.spi.ConsultorioDirectory.class);
+		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(
+				new com.akine.organization.spi.ConsultorioSnapshot(
+						SEDE_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
+		service = new CasoClinicoService(historias, casos, equipos, eventos, numerador,
+				numeradorIniciador, ofertas, permissionGuard, relaciones, auditTrail,
+				supportAccessAuditor, mock(PlatformTransactionManager.class), consultorios,
+				java.time.Clock.fixed(Instant.parse("2026-03-15T01:30:00Z"), java.time.ZoneOffset.UTC));
+		given(ofertas.find(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(Optional.of(new OfertaSnapshot(
+				OFERTA_ID, ORG_ID, SEDE_ID, 1L, "Kinesiologia", 45, 1, false, true, false, true,
+				true, LocalDate.of(2020, 1, 1), LocalDate.of(2026, 3, 14), true)));
+
+		assertThat(service.abrir(profesional, alta(List.of(), false), null).numeroCaso())
+				.isEqualTo(3);
 	}
 
 	@Test
