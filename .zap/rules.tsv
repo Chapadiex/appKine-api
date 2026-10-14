@@ -1,0 +1,3 @@
+10049	IGNORE	(Non-Storable / Storable and Cacheable Content: informativa; la API responde no-store en lo autenticado y el resto es Swagger UI de desarrollo)
+10027	IGNORE	(Information Disclosure - Suspicious Comments: dispara sobre el bundle minificado de Swagger UI, que es de terceros y solo se publica con perfil local)
+10109	IGNORE	(Modern Web Application: informativa, solo avisa que la pagina usa JavaScript)
