@@ -251,7 +251,7 @@ revisar y cerrar (o descartar con motivo) lo que la primera corrida encuentre.
   Hoy ignora tres, todas sobre Swagger UI: 10049 y 10109 (informativas) y 10096 (literales
   numéricos dentro del bundle de terceros tomados por timestamps). Toda regla que se agregue lleva
   su motivo.
-- **Primera corrida (PR #119, 14/10/2026):** 13 URLs, **0 FAIL, 4 WARN, 61 PASS**. Los cuatro WARN
+- **Primera corrida (PR #119, 14/10/2026):** 13 URLs, **0 FAIL, 3 WARN, 61 PASS** con estas reglas (4 WARN antes de ignorar 10096). Los tres WARN
   caen sobre Swagger UI, que sólo se publica con perfil `local`, y **no se ignoran** porque son
   headers que faltan de verdad: CSP en `index.html` (10038), `Permissions-Policy` (10063) y
   `Cross-Origin-Embedder-Policy` (90004). El spider no pasó de Swagger: `/` responde 401.
