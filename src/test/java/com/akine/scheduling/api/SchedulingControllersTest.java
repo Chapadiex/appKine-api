@@ -11,6 +11,8 @@ import com.akine.scheduling.application.AgendaService;
 import com.akine.scheduling.application.AgendaUnificadaService;
 import com.akine.scheduling.application.CicloDeRecepcionService;
 import com.akine.scheduling.application.CicloDeTurnoService;
+import com.akine.scheduling.application.PrepagoView;
+import com.akine.scheduling.application.TurnoDelDiaView;
 import com.akine.scheduling.application.RecepcionService;
 import com.akine.scheduling.application.ResultadoDeReserva;
 import com.akine.scheduling.application.SerieDeTurnosService;
@@ -147,6 +149,27 @@ class SchedulingControllersTest extends SliceRestDeModulo {
 						.content(cuerpo(ReservarTurnoRequest.class)))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(1));
+	}
+
+	@Test
+	@DisplayName("05.02: el turno leido por enlace directo trae la cobertura elegida al reservar, y la omite si no hubo")
+	void ver_turno_trae_la_cobertura_elegida() throws Exception {
+		given(recepcion.ver(any(), eq(7L), eq(301L))).willReturn(turnoDelDia(301L, 412L));
+		given(recepcion.ver(any(), eq(7L), eq(302L))).willReturn(turnoDelDia(302L, null));
+
+		mockMvc.perform(get(SEDE + "/turnos/301").with(miembro()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.coberturaId").value(412));
+		mockMvc.perform(get(SEDE + "/turnos/302").with(miembro()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.coberturaId").doesNotExist());
+	}
+
+	private static TurnoDelDiaView turnoDelDia(long id, Long coberturaId) {
+		return new TurnoDelDiaView(id, Instant.parse("2026-10-05T12:00:00Z"),
+				Instant.parse("2026-10-05T12:45:00Z"), "RESERVADO", 128L, "Perez, Ana", "DNI 30111222",
+				4L, "Kinesiologia", 31L, null, null, null, null, coberturaId, 0L, null,
+				new PrepagoView(PrepagoView.NO_EXIGIDO, null, null, null, null, null));
 	}
 
 	@Test
