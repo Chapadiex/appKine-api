@@ -29,6 +29,8 @@ import com.akine.billing.domain.port.PresentacionNumeradorPort;
 import com.akine.billing.domain.port.PresentacionRepositoryPort;
 import com.akine.contracting.spi.FinanciadorSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.person.spi.RespaldoDocumentalDirectory;
+import com.akine.person.spi.RespaldoDocumentalDirectory.RespaldoDocumental;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.junit.jupiter.api.BeforeEach;
@@ -124,6 +126,9 @@ class PresentacionServiceTest {
 	@Mock
 	private AuditTrail auditTrail;
 
+	@Mock
+	private RespaldoDocumentalDirectory respaldos;
+
 	private PresentacionService service;
 
 	private final OperatingActor actor = new OperatingActor(ACCOUNT_ID, false, ORG_ID, SEDE_ID);
@@ -132,7 +137,7 @@ class PresentacionServiceTest {
 	void setUp() {
 		service = new PresentacionService(
 				presentaciones, items, obligaciones, cobros, numerador, numeradorIniciador, ocupacion,
-				acceso, auditTrail, mock(PlatformTransactionManager.class));
+				acceso, auditTrail, respaldos, mock(PlatformTransactionManager.class));
 
 		given(acceso.exigirSedeDelTenant(anyLong(), anyLong()))
 				.willReturn(new ConsultorioSnapshot(
@@ -551,6 +556,201 @@ class PresentacionServiceTest {
 		// El frontend nunca es autoridad: que la pantalla haya mostrado el lote como confirmable no
 		// prueba que siga siendolo cuando llega el POST.
 		verify(numerador, never()).incrementar(anyLong(), anyLong(), anyLong());
+	}
+
+	// =================================================================================
+	// RF-M21-003: orden, autorizacion y credencial (AKINE-07.04b)
+	// =================================================================================
+
+	@Test
+	@DisplayName("sin la orden ni la autorizacion que el convenio exigia, el lote tiene dos reparos")
+	void validarExigeOrdenYAutorizacion() {
+		loteDeUnItemConRequisitos(true, true, false, false);
+		given(respaldos.respaldo(ORG_ID, 128L, 310L, 55L, LocalDate.of(2026, 8, 14)))
+				.willReturn(new RespaldoDocumental(false, false, true));
+
+		ValidacionDePresentacion validacion = service.validar(actor, SEDE_ID, PRESENTACION_ID);
+
+		assertThat(validacion.confirmable()).isFalse();
+		assertThat(validacion.hallazgos())
+				.extracting(ValidacionDePresentacion.Reparo::hallazgo)
+				.containsExactly(HallazgoDeValidacion.SIN_ORDEN, HallazgoDeValidacion.SIN_AUTORIZACION);
+		assertThat(validacion.avisos()).isEmpty();
+		// Se pregunta por el dia CONGELADO del item, la cobertura y la practica del convenio.
+		verify(respaldos).respaldo(ORG_ID, 128L, 310L, 55L, LocalDate.of(2026, 8, 14));
+	}
+
+	@Test
+	@DisplayName("con la orden y la autorizacion cargadas el reparo se levanta")
+	void validarConRespaldoCompleto() {
+		loteDeUnItemConRequisitos(true, true, true, false);
+		given(respaldos.respaldo(ORG_ID, 128L, 310L, 55L, LocalDate.of(2026, 8, 14)))
+				.willReturn(new RespaldoDocumental(true, true, true));
+
+		ValidacionDePresentacion validacion = service.validar(actor, SEDE_ID, PRESENTACION_ID);
+
+		assertThat(validacion.confirmable()).isTrue();
+		assertThat(validacion.hallazgos()).isEmpty();
+		assertThat(validacion.avisos()).isEmpty();
+	}
+
+	@Test
+	@DisplayName("la credencial vencida el dia de la prestacion es un aviso: no impide confirmar")
+	void credencialVencidaEsAviso() {
+		loteDeUnItemConRequisitos(false, false, true, true);
+		given(respaldos.respaldo(ORG_ID, 128L, 310L, 55L, LocalDate.of(2026, 8, 14)))
+				.willReturn(new RespaldoDocumental(false, false, true));
+		given(items.sumarPresentado(PRESENTACION_ID)).willReturn(new BigDecimal("85000.00"));
+		given(numerador.leerUltimo(ORG_ID, SEDE_ID, FINANCIADOR_ID)).willReturn(7);
+
+		ValidacionDePresentacion validacion = service.validar(actor, SEDE_ID, PRESENTACION_ID);
+
+		assertThat(validacion.confirmable()).isTrue();
+		assertThat(validacion.hallazgos()).isEmpty();
+		assertThat(validacion.avisos())
+				.extracting(ValidacionDePresentacion.Reparo::hallazgo)
+				.containsExactly(HallazgoDeValidacion.CREDENCIAL_FALTANTE);
+
+		// Y confirmar, que revalida del lado del servidor, no la trata como reparo.
+		assertThat(service.confirmar(actor, SEDE_ID, PRESENTACION_ID).numero()).isEqualTo(7);
+	}
+
+	@Test
+	@DisplayName("una cobertura sin numero de afiliado tambien avisa por la credencial")
+	void sinNumeroDeAfiliadoEsAviso() {
+		loteDeUnItemConRequisitos(false, false, true, false);
+		given(respaldos.respaldo(ORG_ID, 128L, 310L, 55L, LocalDate.of(2026, 8, 14)))
+				.willReturn(new RespaldoDocumental(false, false, false));
+
+		ValidacionDePresentacion validacion = service.validar(actor, SEDE_ID, PRESENTACION_ID);
+
+		assertThat(validacion.confirmable()).isTrue();
+		assertThat(validacion.avisos())
+				.extracting(ValidacionDePresentacion.Reparo::hallazgo)
+				.containsExactly(HallazgoDeValidacion.CREDENCIAL_FALTANTE);
+	}
+
+	@Test
+	@DisplayName("confirmar sin la orden exigida se rechaza y no consume numero")
+	void confirmarSinOrden() {
+		loteDeUnItemConRequisitos(true, false, false, false);
+		given(respaldos.respaldo(ORG_ID, 128L, 310L, 55L, LocalDate.of(2026, 8, 14)))
+				.willReturn(new RespaldoDocumental(false, true, true));
+
+		PresentacionConHallazgosException error = catchThrowableOfType(
+				PresentacionConHallazgosException.class,
+				() -> service.confirmar(actor, SEDE_ID, PRESENTACION_ID));
+
+		assertThat(error.getHallazgos()).containsExactly("9001:SIN_ORDEN");
+		verify(numerador, never()).incrementar(anyLong(), anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("un convenio que no exigia nada no le pregunta nada a person")
+	void sinRequisitosNoConsulta() {
+		loteDeUnItemConRequisitos(false, false, false, false);
+
+		assertThat(service.validar(actor, SEDE_ID, PRESENTACION_ID).confirmable()).isTrue();
+
+		verify(respaldos, never()).respaldo(anyLong(), anyLong(), anyLong(), any(), any());
+	}
+
+	@Test
+	@DisplayName("incluir no evalua los requisitos documentales: el item entra y la validacion lo muestra")
+	void incluirNoEvaluaElRespaldo() {
+		Presentacion borrador = borrador();
+		given(presentaciones.findByIdInScope(ORG_ID, SEDE_ID, PRESENTACION_ID))
+				.willReturn(Optional.of(borrador));
+		Obligacion exigeTodo = conRequisitos(obligacionDeFinanciador(), true, true, true, true);
+		given(obligaciones.findByIdInScope(ORG_ID, SEDE_ID, 9001L)).willReturn(Optional.of(exigeTodo));
+		given(items.findVivoDeLaObligacion(ORG_ID, 9001L)).willReturn(Optional.empty());
+		given(items.save(any(PresentacionItem.class))).willAnswer(invocacion -> {
+			PresentacionItem guardado = invocacion.getArgument(0);
+			ReflectionTestUtils.setField(guardado, "id", 55010L);
+			return guardado;
+		});
+		given(items.sumarPresentado(PRESENTACION_ID)).willReturn(new BigDecimal("85000.00"));
+
+		service.agregarItem(actor, SEDE_ID, PRESENTACION_ID, 9001L);
+
+		verify(items).save(any(PresentacionItem.class));
+		verify(respaldos, never()).respaldo(anyLong(), anyLong(), anyLong(), any(), any());
+	}
+
+	// =================================================================================
+	// Debito parcial (AKINE-07.04b)
+	// =================================================================================
+
+	@Test
+	@DisplayName("un debito parcial deja el item DEBITADO_PARCIAL, que sigue ocupando la obligacion")
+	void debitoParcial() {
+		Presentacion lote = confirmada(new BigDecimal("6000.00"), new BigDecimal("6000.00"));
+		given(presentaciones.findByIdInScope(ORG_ID, SEDE_ID, PRESENTACION_ID))
+				.willReturn(Optional.of(lote));
+		PresentacionItem item = item(55010L, 9001L, new BigDecimal("6000.00"));
+		given(items.findByIdEnLaPresentacion(ORG_ID, PRESENTACION_ID, 55010L))
+				.willReturn(Optional.of(item));
+		given(presentaciones.registrarDebito(ORG_ID, PRESENTACION_ID, new BigDecimal("1000.00")))
+				.willReturn(1);
+
+		PresentacionItemView vista = service.debitar(
+				actor, SEDE_ID, PRESENTACION_ID, 55010L,
+				new PresentacionCommands.Debito(new BigDecimal("1000.00"), "Valor por encima del nomenclador"));
+
+		// Si lo liberara, otro lote podria reclamar la obligacion por 6000 mientras este va a cobrar
+		// 5000 de ella al conciliar.
+		assertThat(vista.estado()).isEqualTo(EstadoItemPresentacion.DEBITADO_PARCIAL);
+		assertThat(vista.estado().ocupa()).isTrue();
+		assertThat(vista.importeDebitado()).isEqualByComparingTo("1000.00");
+		verify(items).save(item);
+		verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
+	}
+
+	@Test
+	@DisplayName("conciliar con un debito parcial salda lo cobrado y deja pendiente solo lo debitado")
+	void conciliarConDebitoParcial() {
+		Presentacion lote = confirmada(new BigDecimal("21000.00"), BigDecimal.ZERO.setScale(2));
+		given(presentaciones.findByIdInScope(ORG_ID, SEDE_ID, PRESENTACION_ID))
+				.willReturn(Optional.of(lote));
+
+		PresentacionItem parcial = item(55010L, 9001L, new BigDecimal("6000.00"));
+		parcial.debitar(new BigDecimal("1000.00"), "Valor por encima del nomenclador",
+				Instant.now(), ACCOUNT_ID);
+		PresentacionItem total = item(55011L, 9002L, new BigDecimal("15000.00"));
+		total.debitar(new BigDecimal("15000.00"), "Falta autorizacion", Instant.now(), ACCOUNT_ID);
+		given(items.findDeLaPresentacion(PRESENTACION_ID)).willReturn(List.of(parcial, total));
+		given(cobros.descontarSaldo(ORG_ID, 9001L, new BigDecimal("5000.00"))).willReturn(1);
+
+		service.conciliar(actor, SEDE_ID, PRESENTACION_ID);
+
+		// Lo cobrado (6000 - 1000) se salda; los 1000 quedan pendientes y la fila libera la
+		// obligacion para re-presentarlos en otro lote.
+		assertThat(parcial.getEstado()).isEqualTo(EstadoItemPresentacion.ACEPTADO_PARCIAL);
+		assertThat(parcial.getEstado().ocupa()).isFalse();
+		verify(cobros).descontarSaldo(ORG_ID, 9001L, new BigDecimal("5000.00"));
+		verify(cobros).actualizarEstadoPorSaldo(ORG_ID, 9001L);
+
+		// El debito total sigue sin saldar nada.
+		assertThat(total.getEstado()).isEqualTo(EstadoItemPresentacion.DEBITADO);
+		verify(cobros, never()).descontarSaldo(anyLong(), org.mockito.ArgumentMatchers.eq(9002L), any());
+	}
+
+	@Test
+	@DisplayName("un item parcialmente debitado no se vuelve a debitar")
+	void parcialNoSeRedebita() {
+		Presentacion lote = confirmada(new BigDecimal("6000.00"), new BigDecimal("5000.00"));
+		given(presentaciones.findByIdInScope(ORG_ID, SEDE_ID, PRESENTACION_ID))
+				.willReturn(Optional.of(lote));
+		PresentacionItem item = item(55010L, 9001L, new BigDecimal("6000.00"));
+		item.debitar(new BigDecimal("1000.00"), "Primer debito", Instant.now(), ACCOUNT_ID);
+		given(items.findByIdEnLaPresentacion(ORG_ID, PRESENTACION_ID, 55010L))
+				.willReturn(Optional.of(item));
+
+		assertThatThrownBy(() -> service.debitar(
+				actor, SEDE_ID, PRESENTACION_ID, 55010L,
+				new PresentacionCommands.Debito(new BigDecimal("500.00"), "Segundo debito")))
+				.isInstanceOf(ItemNoDebitableException.class);
+		verify(presentaciones, never()).registrarDebito(anyLong(), anyLong(), any());
 	}
 
 	// =================================================================================
@@ -976,6 +1176,28 @@ class PresentacionServiceTest {
 		Presentacion presentacion = confirmada(new BigDecimal("100000.00"), BigDecimal.ZERO.setScale(2));
 		presentacion.conciliar(Instant.parse("2026-09-20T10:00:00Z"), ACCOUNT_ID);
 		return presentacion;
+	}
+
+	/** Un borrador con una sola prestacion cuyo convenio congelado exige lo indicado. */
+	private void loteDeUnItemConRequisitos(
+			boolean orden, boolean autorizacion, boolean credencial, boolean credencialVencida) {
+		given(presentaciones.findByIdInScope(ORG_ID, SEDE_ID, PRESENTACION_ID))
+				.willReturn(Optional.of(borrador()));
+		given(items.findDeLaPresentacion(PRESENTACION_ID))
+				.willReturn(List.of(item(55010L, 9001L, new BigDecimal("85000.00"))));
+		given(obligaciones.findByIdInScope(ORG_ID, SEDE_ID, 9001L)).willReturn(Optional.of(
+				conRequisitos(obligacionDeFinanciador(), orden, autorizacion, credencial,
+						credencialVencida)));
+	}
+
+	private static Obligacion conRequisitos(
+			Obligacion obligacion, boolean orden, boolean autorizacion, boolean credencial,
+			boolean credencialVencida) {
+		ReflectionTestUtils.setField(obligacion, "snapshotRequeriaOrden", orden);
+		ReflectionTestUtils.setField(obligacion, "snapshotRequeriaAutorizacion", autorizacion);
+		ReflectionTestUtils.setField(obligacion, "snapshotRequeriaCredencial", credencial);
+		ReflectionTestUtils.setField(obligacion, "snapshotCredencialVencida", credencialVencida);
+		return obligacion;
 	}
 
 	/** La obligacion canonica con UN campo cambiado, para aislar cada hallazgo de RF-M21-003. */

@@ -121,9 +121,11 @@ public class PresentacionItem {
 	/**
 	 * El financiador lo rechazo (RF-M21-006).
 	 *
-	 * <p><b>No borra la prestacion</b> (RN-M21-004) y <b>no perdona la deuda</b>: la obligacion
-	 * queda pendiente y liberada para otro lote. Que se hace con ella —re-presentarla, pasarla al
-	 * paciente— es una decision del centro que esta etapa no toma por el.
+	 * <p><b>No borra la prestacion</b> (RN-M21-004) y <b>no perdona la deuda</b>. Si el debito es
+	 * por el total, el item queda {@code DEBITADO} y libera la obligacion para otro lote. Si es
+	 * parcial, queda {@code DEBITADO_PARCIAL}: sigue ocupandola, y al conciliar se salda lo cobrado
+	 * y se libera lo debitado (AKINE-07.04b). Que se hace con lo debitado —re-presentarlo, pasarlo
+	 * al paciente— es una decision del centro que el sistema no toma por el.
 	 *
 	 * @throws ItemNoDebitableException ya fue debitado, aceptado o anulado (409)
 	 * @throws ImporteDeDebitoInvalidoException no va entre cero y lo presentado (400)
@@ -132,7 +134,11 @@ public class PresentacionItem {
 			BigDecimal importe, String motivo, Instant occurredAt, long actorCuentaId) {
 
 		exigirDebitable(importe);
-		this.estado = EstadoItemPresentacion.DEBITADO;
+		// Total libera la obligacion; parcial la sigue ocupando hasta conciliar, porque lo no
+		// debitado todavia se cobra en este lote (AKINE-07.04b).
+		this.estado = importe.compareTo(importePresentado) == 0
+				? EstadoItemPresentacion.DEBITADO
+				: EstadoItemPresentacion.DEBITADO_PARCIAL;
 		this.importeDebitado = importe;
 		this.motivoDebito = motivo;
 		this.debitadoEn = occurredAt;
@@ -156,9 +162,36 @@ public class PresentacionItem {
 		}
 	}
 
-	/** El financiador lo acepto. Solo lo invoca la conciliacion del lote. */
-	public void aceptar() {
-		this.estado = EstadoItemPresentacion.ACEPTADO;
+	/**
+	 * La conciliacion del lote resuelve el item y devuelve cuanto salda de su obligacion.
+	 *
+	 * <ul>
+	 *   <li>{@code INCLUIDO} pasa a {@code ACEPTADO} y salda todo lo presentado.
+	 *   <li>{@code DEBITADO_PARCIAL} pasa a {@code ACEPTADO_PARCIAL} y salda lo presentado menos lo
+	 *       debitado: lo debitado queda pendiente y la fila libera la obligacion para re-presentarlo
+	 *       (AKINE-07.04b).
+	 *   <li>Cualquier otro estado no cambia y no salda nada: un {@code DEBITADO} no se cobro.
+	 * </ul>
+	 *
+	 * @return el importe a descontar del saldo de la obligacion; cero si no corresponde descontar
+	 */
+	public BigDecimal conciliar() {
+		return switch (estado) {
+			case INCLUIDO -> {
+				this.estado = EstadoItemPresentacion.ACEPTADO;
+				yield importePresentado;
+			}
+			case DEBITADO_PARCIAL -> {
+				this.estado = EstadoItemPresentacion.ACEPTADO_PARCIAL;
+				yield importeAceptado();
+			}
+			default -> BigDecimal.ZERO;
+		};
+	}
+
+	/** Lo que el financiador no objeto: presentado menos debitado. */
+	public BigDecimal importeAceptado() {
+		return importePresentado.subtract(importeDebitado);
 	}
 
 	/** El borrador que lo contenia se descarto: libera la obligacion sin borrar la fila. */

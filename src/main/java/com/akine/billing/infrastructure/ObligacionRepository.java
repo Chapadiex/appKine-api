@@ -59,7 +59,8 @@ public interface ObligacionRepository
 	 * que es lo que deja afuera las que ya estan vivas en otro lote sin volver a consultar fila por
 	 * fila.
 	 *
-	 * <p>El {@code NOT EXISTS} espeja la columna generada {@code ocupa_marca} de V56 y no la usa
+	 * <p>El {@code NOT EXISTS} espeja la columna generada {@code ocupa_marca} (V56, redefinida en
+	 * V95) y no la usa
 	 * directamente: la marca vale 1 o NULL, y un predicado sobre ella se leeria peor que los dos
 	 * estados que la definen. Si algun dia divergen, el unique sigue siendo el que manda.
 	 */
@@ -77,7 +78,7 @@ public interface ObligacionRepository
 			   AND (:hasta IS NULL OR o.devengada_en < :hasta)
 			   AND NOT EXISTS (SELECT 1 FROM presentacion_item i
 			                    WHERE i.obligacion_id = o.id
-			                      AND i.estado IN ('INCLUIDO', 'ACEPTADO'))
+			                      AND i.estado IN ('INCLUIDO', 'ACEPTADO', 'DEBITADO_PARCIAL'))
 			 ORDER BY o.devengada_en ASC, o.id ASC
 			 LIMIT :limite OFFSET :desplazamiento
 			""", nativeQuery = true)

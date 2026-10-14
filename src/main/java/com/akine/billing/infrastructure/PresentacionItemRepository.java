@@ -34,7 +34,8 @@ public interface PresentacionItemRepository
 			@Param("itemId") long itemId);
 
 	/**
-	 * Espeja la columna generada {@code ocupa_marca} de V56: INCLUIDO y ACEPTADO ocupan.
+	 * Espeja la columna generada {@code ocupa_marca} de V95: INCLUIDO, ACEPTADO y DEBITADO_PARCIAL
+	 * ocupan.
 	 *
 	 * <p>El unique sigue siendo el mecanismo que garantiza RN-M21-003; esto existe para poder
 	 * explicarlo con un 409 legible que lleve el lote, en vez de dejar reventar una constraint —que
@@ -46,7 +47,8 @@ public interface PresentacionItemRepository
 			 WHERE i.organizationId = :organizationId
 			   AND i.obligacionId = :obligacionId
 			   AND i.estado IN (com.akine.billing.domain.EstadoItemPresentacion.INCLUIDO,
-			                    com.akine.billing.domain.EstadoItemPresentacion.ACEPTADO)
+			                    com.akine.billing.domain.EstadoItemPresentacion.ACEPTADO,
+			                    com.akine.billing.domain.EstadoItemPresentacion.DEBITADO_PARCIAL)
 			""")
 	Optional<PresentacionItem> findVivoDeLaObligacion(
 			@Param("organizationId") long organizationId,
