@@ -200,16 +200,6 @@ public class DerivacionClinica {
 		return true;
 	}
 
-	/** {@code true} si la derivacion es de esa organizacion. */
-	public boolean perteneceA(long organizationId) {
-		return this.organizationId != null && this.organizationId == organizationId;
-	}
-
-	/** {@code true} si cuelga de ese Caso. */
-	public boolean perteneceACaso(long casoClinicoId) {
-		return this.casoClinicoId != null && this.casoClinicoId == casoClinicoId;
-	}
-
 	private static String recortar(String texto) {
 		if (texto == null || texto.isBlank()) {
 			return null;

@@ -156,6 +156,40 @@ class AutorizacionYOrdenTest {
 			assertThat(orden.getAdjuntoId()).isNull();
 		}
 
+		@Test
+		@DisplayName("la edicion es parcial: lo nulo no se toca, lo blanco se vacia y el emisor no queda vacio")
+		void edicion_parcial() {
+			OrdenMedica orden = orden(ENERO, ENERO, JUNIO);
+
+			orden.updateDatos("  ", null, " ", null, "  Fisiokinesioterapia ", 12, null, DICIEMBRE,
+					" Trajo la original ");
+
+			assertThat(orden.getNumero()).as("un numero en blanco es una orden sin numero").isNull();
+			assertThat(orden.getProfesionalEmisor()).isEqualTo("Dra. Sintetica");
+			assertThat(orden.getMatriculaEmisor()).isNull();
+			assertThat(orden.getIndicacion()).isEqualTo("Fisiokinesioterapia");
+			assertThat(orden.getSesionesPrescriptas()).isEqualTo(12);
+			assertThat(orden.getVigenciaDesde()).as("solo llego el fin: el inicio se conserva")
+					.isEqualTo(ENERO);
+			assertThat(orden.getVigenciaHasta()).isEqualTo(DICIEMBRE);
+			assertThat(orden.getObservaciones()).isEqualTo("Trajo la original");
+
+			orden.updateDatos(null, null, null, null, null, null, JUNIO, null, null);
+			assertThat(orden.getVigenciaDesde()).isEqualTo(JUNIO);
+			assertThat(orden.getVigenciaHasta()).isEqualTo(DICIEMBRE);
+
+			assertThatThrownBy(() -> orden.updateDatos(
+					null, "  ", null, null, null, null, null, null, null))
+					.isInstanceOf(IllegalArgumentException.class);
+			assertThatThrownBy(() -> orden.updateDatos(
+					null, null, null, null, null, 0, null, null, null))
+					.isInstanceOf(IllegalArgumentException.class);
+			assertThatThrownBy(() -> orden.updateDatos(
+					null, null, null, null, null, null, null, ENERO, null))
+					.as("una vigencia que termina antes de empezar")
+					.isInstanceOf(IllegalArgumentException.class);
+		}
+
 		private OrdenMedica orden(LocalDate emision, LocalDate desde, LocalDate hasta) {
 			return new OrdenMedica(7L, 1204L, 20L, null, "OM-1", "Dra. Sintetica", "MP 1",
 					emision, "Kinesiologia", 10, desde, hasta, null);
