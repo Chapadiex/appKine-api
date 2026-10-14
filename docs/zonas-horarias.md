@@ -53,8 +53,15 @@ y `offering.infrastructure.OfferingOfertaDirectory#precioEn` delegan en `ZonaDeS
 Ya estaban bien y no se tocaron: `OfertaService#hoyEn` y `OfertaHabilitacionService` (usan
 `sede.timezone()`), `CajaAcceso.fechaDeNegocio`/`inicioDelDia` en `billing`, la agenda, la
 disponibilidad, el simulador de impacto, el devengo (`ObligacionDevengador`) y el consumo en el
-cierre (`ConsumoDeAutorizacionEnCierre`). Estos tres últimos tienen su propia copia de la política
-de caída a UTC, con el `sesionId` en el log; unificarlos es un refactor aparte.
+cierre (`ConsumoDeAutorizacionEnCierre`). El devengo y el consumo en el cierre
+resuelven la zona con `ZonaDeSede.de(sede)` desde la rama `akine-zona-de-sede-unica`; conservan
+sólo su WARN propio, con el `sesionId`, para la sede que no resuelve.
+
+**No se unificaron, y es a propósito:** `OfertaService#hoyEn`, `OfertaHabilitacionService` y
+`CajaAcceso` (`fechaDeNegocio`, `inicioDelDia`, `finDelDia`) hacen `ZoneId.of(sede.timezone())` a
+secas: ante una zona nula o inválida **fallan** en vez de caer a UTC. Delegarlos en `ZonaDeSede`
+cambiaría ese comportamiento —en la caja, un movimiento imputado en silencio al día UTC—, y es una
+decisión que queda abierta.
 
 ## (b) De la organización, sin sede — pendientes de U-38
 
