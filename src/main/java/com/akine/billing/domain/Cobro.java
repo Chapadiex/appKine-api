@@ -132,13 +132,18 @@ public class Cobro {
 	 * <p>Son parte del mismo hecho: un cobro sin medios no dice como entro la plata y uno sin
 	 * imputaciones no dice que paga. No tienen ciclo de vida propio ni se consultan sin el cobro,
 	 * asi que la cascada es correcta — es el caso en que un agregado JPA se justifica.
+	 *
+	 * <p>{@code updatable = false}, igual que en {@code SesionVersion}: sin el, Hibernate inserta
+	 * cada hijo con su {@code cobro_id} y despues lo vuelve a escribir con un {@code UPDATE} propio,
+	 * una sentencia por medio y por imputacion. En el alta del cobro esas sentencias corrian con el
+	 * lock del numerador tomado (docs/carga.md §10). Un hijo nunca cambia de cobro.
 	 */
 	@OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
-	@JoinColumn(name = "cobro_id", nullable = false)
+	@JoinColumn(name = "cobro_id", nullable = false, updatable = false)
 	private List<CobroMedio> medios = new ArrayList<>();
 
 	@OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
-	@JoinColumn(name = "cobro_id", nullable = false)
+	@JoinColumn(name = "cobro_id", nullable = false, updatable = false)
 	private List<CobroImputacion> imputaciones = new ArrayList<>();
 
 	protected Cobro() {

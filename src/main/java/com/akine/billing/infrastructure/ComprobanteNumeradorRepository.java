@@ -13,9 +13,13 @@ import org.springframework.data.repository.query.Param;
  * <p>Mismo patron que {@code SesionNumeradorRepository} y por la misma razon: un
  * {@code SELECT MAX + 1} deja una ventana entre leer y escribir, y dos cobros concurrentes se
  * llevan el mismo numero. <b>Un comprobante repetido es un problema fiscal, no un detalle.</b>
+ *
+ * <p>El incremento vive en {@link ComprobanteNumeradorSiguiente}: devuelve el numero en la misma
+ * sentencia que lo asigna, y eso Spring Data no lo expresa.
  */
 public interface ComprobanteNumeradorRepository
-		extends JpaRepository<ComprobanteNumerador, Long>, ComprobanteNumeradorPort {
+		extends JpaRepository<ComprobanteNumerador, Long>, ComprobanteNumeradorPort,
+		ComprobanteNumeradorSiguiente {
 
 	@Modifying
 	@Query(value = """
@@ -42,26 +46,4 @@ public interface ComprobanteNumeradorRepository
 	default boolean existeFila(long organizationId, long consultorioId) {
 		return contarFila(organizationId, consultorioId) > 0;
 	}
-
-	@Modifying
-	@Query(value = """
-			UPDATE comprobante_numerador
-			   SET ultimo_numero = ultimo_numero + 1
-			 WHERE organization_id = :organizationId
-			   AND consultorio_id = :consultorioId
-			""", nativeQuery = true)
-	@Override
-	void incrementar(
-			@Param("organizationId") long organizationId,
-			@Param("consultorioId") long consultorioId);
-
-	@Query(value = """
-			SELECT ultimo_numero FROM comprobante_numerador
-			 WHERE organization_id = :organizationId
-			   AND consultorio_id = :consultorioId
-			""", nativeQuery = true)
-	@Override
-	Integer leerUltimo(
-			@Param("organizationId") long organizationId,
-			@Param("consultorioId") long consultorioId);
 }

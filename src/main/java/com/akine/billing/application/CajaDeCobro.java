@@ -59,6 +59,29 @@ public class CajaDeCobro {
 	}
 
 	/**
+	 * La jornada abierta de la sede, leida <b>antes</b> de que el cobro tome el numerador.
+	 *
+	 * <p>Es una lectura consistente y no necesita el lock del comprobante: el cobro corre en
+	 * {@code REPEATABLE READ} y su foto ya quedo fijada por la primera lectura de la transaccion
+	 * —la de idempotencia—, asi que leerla antes o despues del {@code UPDATE} del numerador devuelve
+	 * lo mismo. Leerla despues era una sentencia mas dentro de la seccion que serializa los cobros
+	 * de la sede (docs/carga.md §10). Lo que decide si la jornada sigue abierta es la suma
+	 * condicional de {@link MovimientoCajaService#asentar}, que no cambio de lugar.
+	 *
+	 * <p><b>No rechaza nada.</b> El efectivo sin jornada se sigue rechazando en
+	 * {@link #registrarIngresos(Destino, long, String, List, Instant, long)}, en el mismo punto que
+	 * antes: rechazarlo aca haria que un cobro con dos errores contestara el otro.
+	 */
+	public Destino destino(long organizationId, ConsultorioSnapshot sede) {
+		return new Destino(organizationId, sede,
+				jornadas.findAbierta(organizationId, sede.id()).orElse(null));
+	}
+
+	/** Lo que {@link #destino} leyo: la sede y su jornada abierta, o {@code null} si no hay. */
+	public record Destino(long organizationId, ConsultorioSnapshot sede, JornadaCaja jornada) {
+	}
+
+	/**
 	 * Un movimiento de ingreso por cada medio del cobro.
 	 *
 	 * @throws CajaNoAbiertaException el cobro incluye efectivo y la sede no tiene caja abierta (409)
@@ -67,9 +90,23 @@ public class CajaDeCobro {
 			long organizationId, ConsultorioSnapshot sede, long cobroId, String moneda,
 			List<CobroMedio> medios, Instant cuando, long actorCuentaId) {
 
+		registrarIngresos(destino(organizationId, sede), cobroId, moneda, medios, cuando, actorCuentaId);
+	}
+
+	/**
+	 * Lo mismo, con la jornada que {@link #destino} ya leyo.
+	 *
+	 * @throws CajaNoAbiertaException el cobro incluye efectivo y la sede no tiene caja abierta (409)
+	 */
+	public void registrarIngresos(
+			Destino destino, long cobroId, String moneda,
+			List<CobroMedio> medios, Instant cuando, long actorCuentaId) {
+
+		long organizationId = destino.organizationId();
+		ConsultorioSnapshot sede = destino.sede();
+		JornadaCaja jornada = destino.jornada();
 		Map<MedioDePago, BigDecimal> porMedio = agrupar(medios);
 
-		JornadaCaja jornada = jornadas.findAbierta(organizationId, sede.id()).orElse(null);
 		if (jornada == null && porMedio.containsKey(MedioDePago.EFECTIVO)) {
 			throw new CajaNoAbiertaException(sede.id());
 		}

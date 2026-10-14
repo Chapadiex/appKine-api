@@ -7,6 +7,7 @@
 #   perf/stack.sh sembrar   # k6 sembrado.js  -> perf/salida/sembrado.json
 #   perf/stack.sh carga     # k6 carga.js     -> perf/salida/carga-resumen.{md,json} + latencia-servidor.md
 #   perf/stack.sh metricas  # digest del performance_schema -> perf/salida/digest.tsv
+#   perf/stack.sh historia  # sentencias recientes por conexion (`historia on` antes de la carga)
 #   perf/stack.sh down      # baja y BORRA todo lo <P>-* (contenedores, volumenes, red; imagenes con --imagenes)
 #
 # Todo lleva el prefijo <P>- (g10 por defecto) y puertos propios: no toca akine-mysql,
@@ -188,6 +189,21 @@ por-pedido)
 	done
 	} | tee "$PERF/salida/por-pedido.md"
 	;;
+historia)
+	# Las ultimas 10 000 sentencias de todas las conexiones (events_statements_history_long), para
+	# medir que corre bajo un lock con perf/seccion-critica.mjs (docs/carga.md §10). `historia on`
+	# habilita el consumidor (antes de la carga); sin argumento, vuelca una foto con la hora en el nombre.
+	mkdir -p "$PERF/salida"
+	if [ "${2:-}" = "on" ]; then
+		docker exec "$P-mysql" mysql -uroot -proot -e "UPDATE performance_schema.setup_consumers
+			SET ENABLED = 'YES' WHERE NAME = 'events_statements_history_long'" 2>/dev/null
+		exit 0
+	fi
+	docker exec "$P-mysql" mysql -uroot -proot -N -e "
+		SELECT THREAD_ID, EVENT_ID, TIMER_START, TIMER_END, LEFT(REPLACE(DIGEST_TEXT, CHAR(9), ' '), 90)
+		FROM performance_schema.events_statements_history_long ORDER BY THREAD_ID, EVENT_ID" 2>/dev/null \
+		>"$PERF/salida/historia-$(date +%H%M%S).tsv"
+	;;
 metricas)
 	mkdir -p "$PERF/salida"
 	docker exec "$P-mysql" mysql -uroot -proot -e "
@@ -210,7 +226,7 @@ down)
 	echo "stack $P borrado"
 	;;
 *)
-	sed -n '2,13p' "$0"
+	sed -n '2,14p' "$0"
 	exit 1
 	;;
 esac
