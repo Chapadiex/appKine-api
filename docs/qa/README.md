@@ -8,9 +8,18 @@
 > permisos otorgables (api #85, web #48), aviso 503 sin deslogueo (api #91, web #62), fecha de la
 > sede en todas las pantallas (web #60), IP de cliente en la sesión (api #93), auditoría de cobro,
 > devengo y anulación (api #86), notificaciones fallidas (web #46), importación de aranceles
-> (web #28) y los E2E nuevos de web #64. **Ejecución pendiente del usuario.** Las consultas SQL de
-> esta guía se validaron contra el esquema real (§8): corren, pero nadie corrió todavía los pasos
-> contra la pantalla.
+> (web #28) y los E2E nuevos de web #64. **Actualizada otra vez el 14/10/2026** sobre `main` =
+> `c827c72` (contrato **0.98.0**, 311 operaciones; migraciones nuevas `V87`, `V93` y `V94`) y
+> `appKine-web` `main` = `575c640` (cliente 0.98.0), con lo que entró del 13/10 en adelante:
+> cobertura elegida al reservar y su selector (api #107, web #74), export CSV del lote (api #108,
+> web #74), datos administrativos de la historia para el administrativo y `cambiarEquipo` con la
+> versión nueva (api #109, web #74), consumos a revisar por fila (api #98, web #74), filtros por día
+> de la sede y versión al corregir un egreso (api #105, web #73), cobros anulados en el listado
+> (api #101, web #73), el 409 `idempotency-key-conflict` del alta (api #104, web #73), la invitación
+> anulada que no se envía y el enlace propio de cada invitación (api #100, #111), la memoria de
+> permisos por pedido (api #112) y la baja de sede contra la reserva (api #96). **Ejecución
+> pendiente del usuario.** Las consultas SQL de esta guía se validaron contra el esquema real (§8):
+> corren, pero nadie corrió todavía los pasos contra la pantalla.
 
 El QA manual del §6 de [`CLAUDE.md`](../../CLAUDE.md) no corre desde 02.02 y está declarado
 **bloqueante para deploy** (F8, gate del MVP). Esta guía lo convierte en pasos que una persona puede
@@ -68,7 +77,7 @@ $env:AKINE_BOOTSTRAP_ADMIN_EMAIL = 'qa.plataforma@ejemplo.test'
 .\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=local"
 ```
 
-- Flyway aplica `V1`…`V85` en el primer arranque (un par de minutos). Listo cuando
+- Flyway aplica `V1`…`V94` en el primer arranque (un par de minutos). Listo cuando
   `http://localhost:8080/actuator/health` responde `{"status":"UP"}`.
 - `AKINE_BOOTSTRAP_ADMIN_EMAIL` es **DP-14**: al arrancar, si no hay ningún admin de plataforma con
   contraseña, la cuenta sembrada por `V15` pasa a esa casilla y recibe un enlace de activación en
@@ -183,7 +192,9 @@ Lo que vale para toda la tabla:
 
 Historia clínica, entradas, casos, planes de tratamiento, soporte y roles de plataforma, bloqueo de
 cuentas, cambio de plan y alta de organización por plataforma **no tienen pantalla en
-`appKine-web` `main`** (egresos y alertas de consumo sí la tienen desde el 11/10) (la historia clínica está en el PR #4 de `appKine-web`, sin mergear). Se
+`appKine-web` `main`** (egresos y alertas de consumo sí la tienen desde el 11/10; los datos
+administrativos de la historia en la ficha, el selector de cobertura al reservar y el export CSV
+del lote, desde el 13/10) (la historia clínica está en el PR #4 de `appKine-web`, sin mergear). Se
 prueban por la API con [`qa-api.ps1`](qa-api.ps1):
 
 ```powershell
@@ -240,7 +251,7 @@ producto.
 ## 8. Cómo se validaron las consultas (y cómo revalidarlas)
 
 Ninguna consulta se escribió de memoria: los nombres de tabla, columna y valores de estado salen
-del esquema que dejan `V1`…`V85` y de una corrida real. `validacion/` levanta un stack **aislado**
+del esquema que dejan `V1`…`V94` y de una corrida real. `validacion/` levanta un stack **aislado**
 —por defecto prefijo `g12-`, MySQL en 3329, backend en 8099, Mailpit en 8049— que no toca
 `akine-mysql` ni los puertos 8080/4200, siembra un mínimo **por la API** y corre cada bloque
 ```` ```sql ```` de esta carpeta:
@@ -255,16 +266,21 @@ docs/qa/validacion/stack.sh down --imagen                            # borra con
 
 Si esos puertos están tomados (`perf/stack.sh` usa 3329 y 8099), `stack.sh` acepta prefijo y
 puertos por entorno, y `validar-consultas.mjs` recibe el contenedor como segundo argumento. Así se
-revalidó el 12/10:
+revalidó el 12/10 (prefijo `qa2`) y el 14/10, sobre `c827c72`:
 
 ```bash
-export QA_PREFIJO=qa2 QA_PUERTO_MYSQL=3339 QA_PUERTO_API=8109 QA_PUERTO_MAILPIT=8059 QA_PUERTO_SMTP=1059
+export QA_PREFIJO=qa3 QA_PUERTO_MYSQL=3349 QA_PUERTO_API=8119 QA_PUERTO_MAILPIT=8069 QA_PUERTO_SMTP=1069
 docs/qa/validacion/stack.sh build && docs/qa/validacion/stack.sh up
-QA_SIN_FERIADOS=1 QA_API_URL=http://localhost:8109 QA_MAILPIT_URL=http://localhost:8059 \
-  node docs/qa/validacion/sembrar.mjs /tmp/estado-qa2.json
-node docs/qa/validacion/validar-consultas.mjs /tmp/estado-qa2.json qa2-mysql
+QA_SIN_FERIADOS=1 QA_API_URL=http://localhost:8119 QA_MAILPIT_URL=http://localhost:8069 \
+  node docs/qa/validacion/sembrar.mjs /tmp/estado-qa3.json
+node docs/qa/validacion/validar-consultas.mjs /tmp/estado-qa3.json qa3-mysql   # 14/10: 157 bloques, 0 errores
 docs/qa/validacion/stack.sh down --imagen
 ```
+
+Desde el 14/10 el sembrado reserva el turno de obra social **con la cobertura elegida** (AGE-14) y
+valida su recepción sin mandarla, así que `turno.cobertura_id` tiene al menos una fila. Además de
+las consultas, el 14/10 se ejercitó cada paso nuevo por la API contra ese stack (las notas
+"Validado sobre el stack aislado" de cada paso dicen qué se vio).
 
 El sembrado reserva turnos **de hoy**: en un feriado nacional (el 12/10 lo es) la agenda no tiene
 slots, y `QA_SIN_FERIADOS=1` apaga el cierre por feriado de la sede A, como lo haría su
@@ -289,25 +305,30 @@ que ya cubre un test en CI, para no repetirlo entero a mano:
 
 | # | Circuito | Prioridad | Pasos | Lo que ningún test cubre |
 |---|---|---|---|---|
-| [01](01-onboarding-y-cuentas.md) | Onboarding y cuentas | P2 | 12 | El correo de "ya registrado", el reenvío que invalida el enlace, las sesiones que revoca el reset, la IP de la sesión, el 503 sin deslogueo |
-| [02](02-organizacion-sedes-colaboradores.md) | Organización, sedes, colaboradores, permisos | **P1** | 16 | Grants prohibidos por pantalla, último admin, invitación aceptada, tope de plan, notificación agotada por un correo caído de verdad |
+| [01](01-onboarding-y-cuentas.md) | Onboarding y cuentas | P2 | 13 | El correo de "ya registrado", el reenvío que invalida el enlace, las sesiones que revoca el reset, la IP de la sesión, el 503 sin deslogueo, el 409 de la clave del alta contra la base |
+| [02](02-organizacion-sedes-colaboradores.md) | Organización, sedes, colaboradores, permisos | **P1** | 19 | Grants prohibidos por pantalla, último admin, invitación aceptada, tope de plan, notificación agotada por un correo caído de verdad, baja de sede por pantalla, la suspensión entre pedidos |
 | [03](03-catalogo-servicios-ofertas.md) | Catálogo, servicios, ofertas, prácticas, precios | P2 | 10 | Precio particular, horario de sede (DP-19) |
-| [04](04-personas-coberturas-autorizaciones.md) | Personas, coberturas, órdenes, autorizaciones | **P1** | 15 | Historial de la autorización (DP-23), selector explicable contra el consumo real, la base detrás del saldo |
-| [05](05-agenda-turnos-recepcion.md) | Agenda, turnos, series, recepción, prepago | P2 | 13 | Ausente, reprogramar una serie, anular una recepción, el día de la sede en agenda y recepción |
-| [06](06-atencion-clinica.md) | Sesión, historia clínica, casos, plan, enmiendas | **P1** | 15 | **Todo**: no hay E2E de la vertical clínica |
+| [04](04-personas-coberturas-autorizaciones.md) | Personas, coberturas, órdenes, autorizaciones | **P1** | 16 | Historial de la autorización (DP-23), selector explicable contra el consumo real, la base detrás del saldo, los consumos a revisar por fila |
+| [05](05-agenda-turnos-recepcion.md) | Agenda, turnos, series, recepción, prepago | P2 | 14 | Ausente, reprogramar una serie, anular una recepción, el día de la sede en agenda y recepción, el selector de cobertura al reservar |
+| [06](06-atencion-clinica.md) | Sesión, historia clínica, casos, plan, enmiendas | **P1** | 17 | **Todo**: no hay E2E de la vertical clínica (tampoco de los datos administrativos de la ficha) |
 | [07](07-obligaciones-cobros-caja.md) | Obligaciones, cobros, anulación, reintegro, caja | **P1** | 14 | Coseguro, DP-17, anulación de una deuda, lo posterior al cobro en efectivo, la auditoría de devengo y cobro |
-| [08](08-presentaciones-facturacion-pagos.md) | Presentaciones, facturación, pagos | **P1** | 9 | Débito persistido, anulación del lote, cuenta corriente del financiador |
+| [08](08-presentaciones-facturacion-pagos.md) | Presentaciones, facturación, pagos | **P1** | 11 | Débito persistido, anulación del lote, cuenta corriente del financiador, el archivo CSV |
 | [09](09-reportes.md) | Reportes | P2 | 6 | Recorte por rol (DP-15), export CSV |
 | [10](10-plataforma.md) | Plataforma | P2 | 9 | Soporte con rastro, rol de plataforma, cambio de plan, suspensión |
 | [11](11-aislamiento-y-rol-paciente.md) | Aislamiento entre organizaciones y rol PACIENTE | **P1** | 8 | La cuenta en dos organizaciones por pantalla (#70), DP-22 por pantalla |
-| [12](12-egresos-y-pagos.md) | Egresos y pagos de la sede | **P1** | 8 | Honorarios a un colaborador, pago parcial por transferencia, borrador sin comprobante, anular el egreso, filtros |
+| [12](12-egresos-y-pagos.md) | Egresos y pagos de la sede | **P1** | 9 | Honorarios a un colaborador, pago parcial por transferencia, borrador sin comprobante, anular el egreso, filtros por día de la sede, dos correcciones del mismo borrador |
 | [90](90-conocido-y-aceptado.md) | Conocido y aceptado | — | — | Lo que **no** se reporta como bug |
 
-**135 pasos** en total (120 del 11/10 y 15 del 12/10). Al armar la guía, la validación contra el
-stack aislado destapó **dos defectos sin corregir y una pregunta para el dueño del producto**; la
-revalidación del 12/10, **tres defectos más** (el filtro de egresos por día UTC, el cobro anulado
-que desaparece del listado y el correo de una invitación cancelada que sale igual). Están en
-[90](90-conocido-y-aceptado.md) §4 y §5, para que el QA los vincule en vez de reportarlos como
+**146 pasos** en total: 120 del 11/10, 15 del 12/10, dos que sumaron los cierres de F5 y F7
+(AGE-14 y PRE-10, reescritos el 14/10 ahora que tienen pantalla) y **nueve del 14/10**: ON-13,
+ORG-03c, ORG-16, ORG-17, PER-15, CLI-16, CLI-17, PRE-11 y EGR-09. El 14/10 se reescribieron además
+ECO-10 y EGR-07 (sus defectos están corregidos) y el cierre de ORG-15 y de CLI-11. Al armar la guía,
+la validación contra el stack aislado destapó **dos defectos sin corregir y una pregunta para el
+dueño del producto**; la revalidación del 12/10, **tres defectos más** (el filtro de egresos por
+día UTC, el cobro anulado que desaparece del listado y el correo de una invitación cancelada que
+sale igual), los tres corregidos desde entonces (#105, #101, #100); y la del 14/10, **uno más**: los
+datos administrativos de la historia responden 200 para una persona sin perfil de paciente. Están
+en [90](90-conocido-y-aceptado.md) §4 y §5, para que el QA los vincule en vez de reportarlos como
 nuevos.
 
 **E2E nuevos del 12/10** (web #64, contra el backend real): `flujo-autorizaciones`,

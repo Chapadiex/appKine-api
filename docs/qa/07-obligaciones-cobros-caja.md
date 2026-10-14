@@ -225,18 +225,23 @@ ese cobro había cancelado; una `REVERSION_DE_INGRESO` que apunta al movimiento 
 se rechaza con 409 `cobro-con-reintegros`. **Auditoría:** `COBRO_ANULADO` con
 `details.movimientosRevertidos` e `imputacionesRevertidas`.
 
-**El cobro anulado desaparece del listado** `/pacientes/<id>/cuenta-corriente/cobros`: el listado
-del backend filtra `deleted_at IS NULL`, y el comprobante anulado solo se ve abriéndolo por id
-(`GET .../cobros/<id>` sí trae `estado`, `anuladoEn` y `motivoAnulacion`). Es el defecto conocido de
-[90](90-conocido-y-aceptado.md) §4: vinculalo, no lo registres como nuevo. Compará:
+**El cobro anulado sigue en el listado** (api #101, contrato 0.90.0; web #73) —
+`[E2E flujo-cobros-posteriores]`: `/pacientes/<id>/cuenta-corriente/cobros` tiene una columna
+**Estado** con "Vigente" o la marca **"Anulado"**, y en la fila anulada el botón "Anular" queda
+deshabilitado con "No se puede anular: ya esta anulado.". Hasta el 12/10 el anulado desaparecía de
+la lista y dejaba huecos en la numeración visible (estaba en [90](90-conocido-y-aceptado.md) §4,
+ya corregido). El E2E mira la fila; la base, no:
 
 ```sql
-SELECT id, comprobante_numero, total, deleted_at IS NOT NULL AS anulado, motivo_anulacion
-FROM cobro WHERE persona_id = @persona_part ORDER BY id;
+SELECT id, comprobante_numero, total, deleted_at IS NOT NULL AS anulado, motivo_anulacion, cobrado_en
+FROM cobro WHERE persona_id = @persona_part ORDER BY cobrado_en DESC, id DESC;
 ```
 
-Esperado por la base: todos los comprobantes, anulados incluidos (los números de comprobante no
-tienen huecos). Lo que hoy muestra la pantalla: solo los de `anulado = 0`.
+Esperado: la pantalla muestra **todas** estas filas, en este orden (el más nuevo primero), y la
+columna Estado dice "Anulado" exactamente donde `anulado = 1`; los números de comprobante no tienen
+huecos. El listado **no suma**: el saldo del paciente sale de las obligaciones, así que un anulado
+visible no cambia ningún importe de la cuenta corriente. Si un anulado falta del listado, es
+regresión de #101.
 
 ---
 

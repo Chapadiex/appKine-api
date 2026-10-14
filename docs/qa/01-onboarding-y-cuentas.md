@@ -372,3 +372,52 @@ nada nuevo (el 503 no es un hecho de negocio).
 
 > Validado sobre el stack aislado: con la base pausada, `GET /api/v1/personas` respondió 503
 > `service-unavailable` a los 30,7 s; después del `unpause`, el mismo token respondió 200.
+
+---
+
+### ON-13 · La misma `Idempotency-Key` con otros datos es 409 (api #104, web #73) — `[IT IdempotenciaYUniquesIT]`
+
+Hasta el 13/10 el alta self-service reconocía el reintento **solo** por la clave: la misma
+`Idempotency-Key` con otro email u otra organización respondía el 202 del pedido original y la
+persona esperaba un correo que nunca llegaba (escenario diferido 7b). Desde `V87` el registro
+guarda el SHA-256 del pedido canónico (`onboarding_registro.request_hash`, **sin** la contraseña) y
+la misma clave con otro contenido es **409 `idempotency-key-conflict`**. El IT prueba el replay y
+el conflicto; la pantalla y la base, no.
+
+**Pantalla:** `/auth/registro` genera una clave por contenido: si cambiás un campo y volvés a
+enviar, sale con clave nueva. El 409 por pantalla solo aparece si el backend ya tiene esa clave con
+otros datos; si aparece, el mensaje es "Ya hay un registro en curso con otros datos. Recarga la
+pagina e intenta de nuevo." y el próximo envío sale con otra clave. Lo que se prueba es la API
+(sin token, es público):
+
+```powershell
+$k = Nueva-Clave
+$alta = @{ email = 'qa.idem@ejemplo.test'; password = '<contraseña de qa-config>'; firstName = 'QA'; lastName = 'Idem'; organizationName = 'Centro QA Idem' }
+(Api POST '/api/v1/auth/register' $null $alta @{ 'Idempotency-Key' = $k }).Status                                   # 202
+(Api POST '/api/v1/auth/register' $null $alta @{ 'Idempotency-Key' = $k }).Status                                   # 202: replay
+$otra = $alta.Clone(); $otra.password = '<otra contraseña válida>'
+(Api POST '/api/v1/auth/register' $null $otra @{ 'Idempotency-Key' = $k }).Status                                   # 202: la contraseña no entra al hash
+$otra = $alta.Clone(); $otra.organizationName = 'Otro nombre QA'
+Api POST '/api/v1/auth/register' $null $otra @{ 'Idempotency-Key' = $k }                                            # 409 idempotency-key-conflict
+$otra = $alta.Clone(); $otra.email = 'qa.admin-a@ejemplo.test'
+(Api POST '/api/v1/auth/register' $null $otra @{ 'Idempotency-Key' = $k }).Tipo                                     # idempotency-key-conflict, igual con un email existente
+```
+
+**Esperado:** el 409 dice "La clave de idempotencia ya fue usada para una solicitud con otro
+contenido" y **no** dice nada de la cuenta ni del email (la respuesta es la misma exista o no). Un
+solo correo de activación en Mailpit para `qa.idem@ejemplo.test`; ninguno por los 409.
+
+```sql
+SELECT id, estado, email_normalizado, organization_id IS NOT NULL AS creo_organizacion,
+       LENGTH(request_hash) AS largo_hash, created_at
+FROM onboarding_registro WHERE email_normalizado = 'qa.idem@ejemplo.test' ORDER BY id;
+
+SELECT COUNT(*) AS organizaciones_del_conflicto FROM organization WHERE name = 'Otro nombre QA';
+```
+
+Esperado: **una** fila `COMPLETADO` con `largo_hash = 64` (las filas anteriores a `V87` lo tienen
+NULL y su reintento se acepta como replay); cero organizaciones "Otro nombre QA". **Auditoría:**
+nada nuevo: el 409 no es un hecho de negocio y la identidad no tiene `organization_id`.
+
+> Validado sobre el stack aislado (14/10): replay 202, solo otra contraseña 202, otro nombre de
+> organización 409, otro email 409, y con un email ya registrado (fila `DUPLICADO`) también 409.
