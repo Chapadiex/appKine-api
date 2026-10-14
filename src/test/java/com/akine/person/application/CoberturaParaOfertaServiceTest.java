@@ -74,7 +74,8 @@ class CoberturaParaOfertaServiceTest {
 				.willReturn(Optional.of(mock(Persona.class)));
 		servicio = new CoberturaParaOfertaService(personas,
 				new CoberturasAplicablesService(coberturas, aranceles), ofertas, practicas,
-				mock(com.akine.organization.spi.PermissionGuard.class));
+				mock(com.akine.organization.spi.PermissionGuard.class),
+				mock(com.akine.organization.spi.ConsultorioDirectory.class));
 
 		given(ofertas.find(ORG, SEDE, OFERTA)).willReturn(Optional.of(new OfertaSnapshot(
 				OFERTA, ORG, SEDE, 5L, "Kinesio", 45, 1, false, true, false, false, true,

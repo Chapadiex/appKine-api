@@ -141,7 +141,8 @@ class PlanTratamientoServiceTest {
 	void setUp() {
 		service = new PlanTratamientoService(historias, casos, planes, versiones, items, eventos,
 				numerador, numeradorIniciador, ofertas, realizado, autorizaciones,
-				permissionGuard, relaciones, auditTrail, supportAccessAuditor, mock(PlatformTransactionManager.class));
+				permissionGuard, relaciones, auditTrail, supportAccessAuditor, mock(PlatformTransactionManager.class),
+				mock(com.akine.organization.spi.ConsultorioDirectory.class));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));

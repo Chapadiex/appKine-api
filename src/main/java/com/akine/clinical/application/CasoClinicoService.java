@@ -20,12 +20,15 @@ import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRep
 import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
+import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -34,9 +37,8 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -100,7 +102,10 @@ public class CasoClinicoService {
 	private final AuditTrail auditTrail;
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
 	private final TransactionTemplate transaccionReadCommitted;
+	private final ConsultorioDirectory consultorios;
+	private final Clock clock;
 
+	@Autowired
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public CasoClinicoService(
 			HistoriaClinicaRepositoryPort historias,
@@ -114,8 +119,34 @@ public class CasoClinicoService {
 			RelacionAsistencialProbe relaciones,
 			AuditTrail auditTrail,
 			ClinicalSupportAccessAuditor supportAccessAuditor,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			ConsultorioDirectory consultorios) {
 
+		this(historias, casos, equipos, eventos, numerador, numeradorIniciador, ofertas,
+				permissionGuard, relaciones, auditTrail, supportAccessAuditor, transactionManager,
+				consultorios, Clock.systemUTC());
+	}
+
+	/** Con reloj propio: "hoy" es el de la sede, y un test necesita fijar la hora. */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	CasoClinicoService(
+			HistoriaClinicaRepositoryPort historias,
+			CasoClinicoRepositoryPort casos,
+			CasoProfesionalRepositoryPort equipos,
+			CasoEventoRepositoryPort eventos,
+			CasoNumeradorPort numerador,
+			CasoNumeradorIniciador numeradorIniciador,
+			OfertaDirectory ofertas,
+			PermissionGuard permissionGuard,
+			RelacionAsistencialProbe relaciones,
+			AuditTrail auditTrail,
+			ClinicalSupportAccessAuditor supportAccessAuditor,
+			PlatformTransactionManager transactionManager,
+			ConsultorioDirectory consultorios,
+			Clock clock) {
+
+		this.consultorios = consultorios;
+		this.clock = clock;
 		this.historias = historias;
 		this.casos = casos;
 		this.equipos = equipos;
@@ -622,16 +653,13 @@ public class CasoClinicoService {
 	/**
 	 * La oferta que motiva el caso tiene que existir en la sede y estar vigente hoy (RN-M10-006).
 	 *
-	 * <p>Se evalua contra la fecha de <b>hoy en UTC</b> y no contra la zona de la sede, y la
-	 * diferencia es conocida: una oferta que vence hoy podria aceptarse unas horas de mas o de
-	 * menos segun el huso. Se asume porque la alternativa —traer la zona IANA de la sede para
-	 * decidir el alta de un caso— acopla este servicio a {@code organization} por un borde que no
-	 * cambia ninguna decision clinica. Donde la zona SI importa es en la agenda, y ahi ya se usa.
+	 * <p>"Hoy" es el de la sede del contexto, no el del servidor: con UTC, entre las 21 y las 24 de
+	 * Cordoba una oferta que vence ese dia se rechazaba como vencida.
 	 */
 	private void exigirOfertaVigente(long organizationId, long consultorioId, long ofertaId) {
 		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, ofertaId)
 				.orElseThrow(() -> new OfertaNoVigenteException(ofertaId));
-		if (!oferta.vigenteEl(LocalDate.now(ZoneOffset.UTC))) {
+		if (!oferta.vigenteEl(ZonaDeSede.hoy(consultorios, organizationId, consultorioId, clock))) {
 			throw new OfertaNoVigenteException(ofertaId);
 		}
 	}

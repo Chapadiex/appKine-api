@@ -24,10 +24,10 @@
 | Bloque | Cantidad |
 |---|---|
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
-| B. Se encarecen al postergarlas (U-07 a U-14) | 8 |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 9 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
 | D. No bloquean nada (U-35 a U-37) | 3 |
-| **Total** | **37** |
+| **Total** | **38** |
 
 Ya resueltas y fuera de la lista (las fichas las mencionan): el **escenario 7b** (`request_hash`
 en `onboarding_registro`), que la ficha de F0–F1 daba abierto y cerró el PR #104 el 13/10/2026
@@ -185,6 +185,20 @@ fila nueva.
   escribirlo como DP (F6 n.º 2).
 - **Fase / RF:** F6 (06.05).
 - **Destraba:** el 10 % de 06.05. Desacoplar después obliga a reconciliar cierres sin deuda.
+
+### U-38 · Qué es "hoy" para una operación de la organización sin sede
+
+- **Pregunta:** la JVM corre en UTC y entre las 21 y las 24 de Córdoba una vigencia que vence ese
+  día se lee vencida. Las operaciones **con sede** ya usan la zona de la sede (rama
+  `akine-hoy-en-la-zona-de-la-sede`, `organization.spi.ZonaDeSede`). Las **de la organización sin
+  sede** —padrón, coberturas de la persona, autorizaciones, órdenes, planes del financiador— no
+  tienen zona: ¿zona por organización (migración en `organization`), la de la sede del contexto
+  cuando la hay, o que el cliente mande siempre `fecha`?
+- **Recomendado:** ninguna ficha recomienda; no se decidió en la rama que corrigió las de sede.
+- **Sitios:** 28, listados uno por uno en [`../zonas-horarias.md`](../zonas-horarias.md) §(b).
+- **Fase / RF:** transversal (F3, F4; AKINE-02.01 fija la zona de la sede).
+- **Destraba:** que una cobertura, autorización u orden que vence hoy no se lea vencida a la noche.
+  Se encarece con cada sitio nuevo que copie `LocalDate.now()`.
 
 ---
 

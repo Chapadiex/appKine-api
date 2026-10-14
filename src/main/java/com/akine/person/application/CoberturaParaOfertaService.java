@@ -3,9 +3,11 @@ package com.akine.person.application;
 import com.akine.contracting.spi.ResolucionDeArancel;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.offering.spi.PracticaDeOferta;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.offering.spi.PrecioDeOferta;
+import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.person.application.CoberturaParaOferta.Aplicable;
 import com.akine.person.application.CoberturaParaOferta.Condicion;
 import com.akine.person.application.CoberturaParaOferta.Motivo;
@@ -15,10 +17,12 @@ import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.exception.OfertaNoAccesibleEnSedeException;
 import com.akine.person.domain.exception.PersonaNotAccessibleException;
 import com.akine.person.domain.port.PersonRepositoryPorts.PersonaRepositoryPort;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -63,14 +67,34 @@ public class CoberturaParaOfertaService {
 	private final OfertaDirectory ofertas;
 	private final PracticasDeOfertaDirectory practicasDeOferta;
 	private final PermissionGuard permissionGuard;
+	private final ConsultorioDirectory consultorios;
+	private final Clock clock;
 
+	@Autowired
 	public CoberturaParaOfertaService(
 			PersonaRepositoryPort personas,
 			CoberturasAplicablesService coberturas,
 			OfertaDirectory ofertas,
 			PracticasDeOfertaDirectory practicasDeOferta,
-			PermissionGuard permissionGuard) {
+			PermissionGuard permissionGuard,
+			ConsultorioDirectory consultorios) {
 
+		this(personas, coberturas, ofertas, practicasDeOferta, permissionGuard, consultorios,
+				Clock.systemUTC());
+	}
+
+	/** Con reloj propio: "hoy" es el de la sede, y un test necesita fijar la hora. */
+	CoberturaParaOfertaService(
+			PersonaRepositoryPort personas,
+			CoberturasAplicablesService coberturas,
+			OfertaDirectory ofertas,
+			PracticasDeOfertaDirectory practicasDeOferta,
+			PermissionGuard permissionGuard,
+			ConsultorioDirectory consultorios,
+			Clock clock) {
+
+		this.consultorios = consultorios;
+		this.clock = clock;
 		this.personas = personas;
 		this.coberturas = coberturas;
 		this.ofertas = ofertas;
@@ -96,7 +120,9 @@ public class CoberturaParaOfertaService {
 		ofertas.find(organizationId, consultorioId, ofertaId)
 				.orElseThrow(() -> new OfertaNoAccesibleEnSedeException(ofertaId));
 
-		LocalDate dia = fecha == null ? LocalDate.now() : fecha;
+		LocalDate dia = fecha == null
+				? ZonaDeSede.hoy(consultorios, organizationId, consultorioId, clock)
+				: fecha;
 		Optional<PrecioDeOferta> precio =
 				ofertas.precioVigenteEl(organizationId, consultorioId, ofertaId, dia);
 		boolean admiteObraSocial = precio.map(PrecioDeOferta::admiteObraSocial).orElse(false);

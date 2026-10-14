@@ -18,12 +18,15 @@ import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioArancel
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioLockRepositoryPort;
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
@@ -32,6 +35,7 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -101,7 +105,9 @@ public class ConvenioService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final TransactionTemplate transaccionReadCommitted;
+	private final Clock clock;
 
+	@Autowired
 	@SuppressWarnings("java:S107")
 	public ConvenioService(
 			ConvenioRepositoryPort convenios,
@@ -115,6 +121,26 @@ public class ConvenioService {
 			AuditTrail auditTrail,
 			PlatformTransactionManager transactionManager) {
 
+		this(convenios, aranceles, locks, lockIniciador, financiadores, planes, consultorios,
+				permissionGuard, auditTrail, transactionManager, Clock.systemUTC());
+	}
+
+	/** Con reloj propio: "hoy" es el de la sede, y un test necesita fijar la hora. */
+	@SuppressWarnings("java:S107")
+	ConvenioService(
+			ConvenioRepositoryPort convenios,
+			ConvenioArancelRepositoryPort aranceles,
+			ConvenioLockRepositoryPort locks,
+			ConvenioLockIniciador lockIniciador,
+			FinanciadorRepositoryPort financiadores,
+			PlanCoberturaRepositoryPort planes,
+			ConsultorioDirectory consultorios,
+			PermissionGuard permissionGuard,
+			AuditTrail auditTrail,
+			PlatformTransactionManager transactionManager,
+			Clock clock) {
+
+		this.clock = clock;
 		this.convenios = convenios;
 		this.aranceles = aranceles;
 		this.locks = locks;
@@ -145,10 +171,10 @@ public class ConvenioService {
 			OperatingActor actor, long consultorioId, EstadoFiltro estado, LocalDate fecha) {
 
 		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Listar convenios");
-		exigirSedeDelTenant(organizationId, consultorioId);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 
 		EstadoFiltro filtro = estado == null ? EstadoFiltro.ACTIVO : estado;
-		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
+		LocalDate contra = fecha == null ? ZonaDeSede.hoy(sede, clock) : fecha;
 
 		return convenios.findAllByScopeOrderByNombreAsc(organizationId, consultorioId).stream()
 				.filter(convenio -> switch (filtro) {
@@ -166,11 +192,11 @@ public class ConvenioService {
 			OperatingActor actor, long consultorioId, long convenioId, LocalDate fecha) {
 
 		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Ver un convenio");
-		exigirSedeDelTenant(organizationId, consultorioId);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 
 		return ConvenioView.de(
 				cargar(organizationId, consultorioId, convenioId),
-				fecha == null ? LocalDate.now() : fecha);
+				fecha == null ? ZonaDeSede.hoy(sede, clock) : fecha);
 	}
 
 	// =================================================================================
@@ -253,7 +279,7 @@ public class ConvenioService {
 		auditar(AuditEvents.CONVENIO_CREATED, creado, actor, null, "ACTIVO", null, detalles);
 
 		log.info("Convenio creado: convenioId={} consultorioId={}", creado.getId(), consultorioId);
-		return ConvenioView.de(creado, LocalDate.now());
+		return ConvenioView.de(creado, hoyEnLaSede(organizationId, consultorioId));
 	}
 
 	/**
@@ -331,7 +357,7 @@ public class ConvenioService {
 		}
 
 		auditar(AuditEvents.CONVENIO_UPDATED, guardado, actor, null, null, null, detalles);
-		return ConvenioView.de(guardado, LocalDate.now());
+		return ConvenioView.de(guardado, hoyEnLaSede(organizationId, consultorioId));
 	}
 
 	/**
@@ -374,7 +400,7 @@ public class ConvenioService {
 
 		log.info("Convenio dado de baja: convenioId={} arancelesActivos={}",
 				convenioId, arancelesActivos);
-		return ConvenioView.de(guardado, LocalDate.now());
+		return ConvenioView.de(guardado, hoyEnLaSede(organizationId, consultorioId));
 	}
 
 	// =================================================================================
@@ -411,8 +437,13 @@ public class ConvenioService {
 				});
 	}
 
-	private void exigirSedeDelTenant(long organizationId, long consultorioId) {
-		consultorios.find(organizationId, consultorioId)
+	/** "Hoy" en la zona de la sede: un convenio es de la sede. */
+	private LocalDate hoyEnLaSede(long organizationId, long consultorioId) {
+		return ZonaDeSede.hoy(consultorios, organizationId, consultorioId, clock);
+	}
+
+	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {
+		return consultorios.find(organizationId, consultorioId)
 				.orElseThrow(() -> new SedeNoAccesibleException(consultorioId));
 	}
 
