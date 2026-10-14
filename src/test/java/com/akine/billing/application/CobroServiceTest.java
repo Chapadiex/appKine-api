@@ -142,6 +142,7 @@ class CobroServiceTest {
 	@Mock private com.akine.platform.spi.audit.AuditTrail auditTrail;
 
 	private CobroService service;
+	private CajaDeCobro.Destino destino;
 
 	private final ConsultorioSnapshot sede =
 			new ConsultorioSnapshot(SEDE, ORG, "Sede Centro", "America/Argentina/Cordoba", true);
@@ -156,7 +157,9 @@ class CobroServiceTest {
 		given(consultorios.find(ORG, SEDE)).willReturn(Optional.of(sede));
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
-		given(numerador.leerUltimo(ORG, SEDE)).willReturn(COMPROBANTE);
+		given(numerador.siguiente(ORG, SEDE)).willReturn(COMPROBANTE);
+		destino = new CajaDeCobro.Destino(ORG, sede, null);
+		given(caja.destino(ORG, sede)).willReturn(destino);
 		// Por defecto el descuento alcanza. El camino de cero filas se stubea por test, porque es
 		// un desenlace y no el caso normal.
 		given(cobros.descontarSaldo(anyLong(), anyLong(), any())).willReturn(1);
@@ -226,10 +229,12 @@ class CobroServiceTest {
 			// primeros cobros concurrentes de una sede, y el try/catch no salva: atrapar una
 			// excepcion de persistencia no des-marca la transaccion. Es la tercera vez que este
 			// patron aparece en el proyecto y siempre por lo mismo.
-			InOrder orden = inOrder(iniciador, numerador, cobros);
+			InOrder orden = inOrder(iniciador, caja, numerador, cobros);
 			orden.verify(iniciador).asegurar(ORG, SEDE);
-			orden.verify(numerador).incrementar(ORG, SEDE);
-			orden.verify(numerador).leerUltimo(ORG, SEDE);
+			// La jornada se lee ANTES del numerador: es lectura, y despues del incremento correria con
+			// los demas cobros de la sede esperando el lock (docs/carga.md §10).
+			orden.verify(caja).destino(ORG, sede);
+			orden.verify(numerador).siguiente(ORG, SEDE);
 			orden.verify(cobros).save(any());
 		}
 
@@ -244,7 +249,7 @@ class CobroServiceTest {
 			// El id es lo que hace idempotente el reintento del asiento: sin el, dos ejecuciones
 			// del mismo cobro produciria dos movimientos de caja que inflan el arqueo del dia.
 			verify(caja).registrarIngresos(
-					eq(ORG), eq(sede), eq(COBRO), eq(MONEDA), any(), any(), eq(CUENTA));
+					eq(destino), eq(COBRO), eq(MONEDA), any(), any(), eq(CUENTA));
 		}
 
 		@Test
@@ -253,7 +258,7 @@ class CobroServiceTest {
 			given(obligaciones.findByIdInScope(ORG, SEDE, OBLIGACION))
 					.willReturn(Optional.of(deuda(OBLIGACION, PERSONA, "8500.00", MONEDA)));
 			willThrow(new CajaNoAbiertaException(SEDE)).given(caja).registrarIngresos(
-					anyLong(), any(), anyLong(), anyString(), any(), any(), anyLong());
+					any(CajaDeCobro.Destino.class), anyLong(), anyString(), any(), any(), anyLong());
 
 			// Es la contrapartida asumida del asiento automatico: un cobro en efectivo sin jornada
 			// abierta no se confirma. La alternativa —asentar despues— deja caja y cobros
@@ -311,7 +316,7 @@ class CobroServiceTest {
 			// comprobante consumido por un reintento que despues nadie usa es un hueco fiscal, y
 			// un hueco no se puede explicar seis meses despues.
 			// (La fila del numerador si se asegura: va antes de la transaccion y no consume numero.)
-			verify(numerador, never()).incrementar(anyLong(), anyLong());
+			verify(numerador, never()).siguiente(anyLong(), anyLong());
 			// Y tampoco se vuelve a descontar: eso dejaria la deuda saldada dos veces.
 			verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
 			verify(cobros, never()).save(any());
@@ -330,7 +335,7 @@ class CobroServiceTest {
 					service.registrar(administrativo, SEDE, cobroSimple("9000.00", CLAVE)))
 					.isInstanceOf(IdempotencyKeyConflictException.class);
 
-			verify(numerador, never()).incrementar(anyLong(), anyLong());
+			verify(numerador, never()).siguiente(anyLong(), anyLong());
 		}
 
 		@Test
@@ -375,7 +380,7 @@ class CobroServiceTest {
 					.isEqualTo(OBLIGACION);
 
 			// Y el rechazo ocurre antes del numerador: un pedido que no cobra no gasta un numero.
-			verify(numerador, never()).incrementar(anyLong(), anyLong());
+			verify(numerador, never()).siguiente(anyLong(), anyLong());
 			verify(cobros, never()).save(any());
 		}
 
@@ -516,7 +521,7 @@ class CobroServiceTest {
 
 			// Cross-tenant es 404 y nunca 403: un 403 confirma que la sede existe.
 			verify(permissionGuard, never()).requirePermission(any());
-			verify(numerador, never()).incrementar(anyLong(), anyLong());
+			verify(numerador, never()).siguiente(anyLong(), anyLong());
 		}
 
 		@Test
@@ -546,7 +551,7 @@ class CobroServiceTest {
 			// volver a registrar el cobro, que es justo lo que la idempotencia trata de evitar.
 			assertThat(service.ver(administrativo, SEDE, COBRO).comprobanteNumero())
 					.isEqualTo(COMPROBANTE);
-			verify(numerador, never()).incrementar(anyLong(), anyLong());
+			verify(numerador, never()).siguiente(anyLong(), anyLong());
 		}
 
 		@Test
@@ -594,7 +599,7 @@ class CobroServiceTest {
 			verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
 			// La plata entra a la caja AHORA, una vez: es lo que hace honesto al anticipo (DP-06).
 			verify(caja).registrarIngresos(
-					eq(ORG), eq(sede), eq(COBRO), eq(MONEDA), any(), any(), eq(CUENTA));
+					eq(destino), eq(COBRO), eq(MONEDA), any(), any(), eq(CUENTA));
 		}
 
 		@Test
@@ -604,7 +609,7 @@ class CobroServiceTest {
 
 			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, anticipoPuro("5000.00", MONEDA)))
 					.isInstanceOf(PersonaNoAccesibleException.class);
-			verify(numerador, never()).incrementar(anyLong(), anyLong());
+			verify(numerador, never()).siguiente(anyLong(), anyLong());
 		}
 
 		@Test
@@ -704,7 +709,7 @@ class CobroServiceTest {
 			assertThat(vista.saldoAFavor()).isEqualByComparingTo("8500.00");
 			verify(cobros, never()).descontarSaldo(anyLong(), anyLong(), any());
 			verify(caja).registrarIngresos(
-					eq(ORG), eq(sede), eq(COBRO), eq(MONEDA), any(), any(), eq(CUENTA));
+					eq(destino), eq(COBRO), eq(MONEDA), any(), any(), eq(CUENTA));
 		}
 
 		@Test
@@ -714,7 +719,7 @@ class CobroServiceTest {
 
 			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, prepago("8500.00")))
 					.isInstanceOf(TurnoNoAccesibleException.class);
-			verify(numerador, never()).incrementar(anyLong(), anyLong());
+			verify(numerador, never()).siguiente(anyLong(), anyLong());
 		}
 
 		@Test
@@ -746,7 +751,7 @@ class CobroServiceTest {
 			assertThatThrownBy(() -> service.registrar(administrativo, SEDE, prepago("8500.00")))
 					.isInstanceOf(PrepagoYaRegistradoException.class)
 					.satisfies(e -> assertThat(((PrepagoYaRegistradoException) e).getCobroId()).isEqualTo(77L));
-			verify(numerador, never()).incrementar(anyLong(), anyLong());
+			verify(numerador, never()).siguiente(anyLong(), anyLong());
 		}
 
 		@Test

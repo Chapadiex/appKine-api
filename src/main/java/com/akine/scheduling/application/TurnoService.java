@@ -6,6 +6,7 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.person.spi.ContactoDePersona;
 import com.akine.person.spi.CoberturasAplicablesDirectory;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
@@ -57,12 +58,22 @@ import java.util.Optional;
  * la validacion de esta clase, y lo que la hace confiable es el orden:
  *
  * <pre>
+ *   0. oferta, persona, cobertura,     &lt;- ANTES del lock: no leen turnos (docs/carga.md §10).
+ *      habilitacion, franja, contacto     Sus rechazos se GUARDAN y se lanzan en el paso 3
  *   1. LOCK de agenda_sede            &lt;- ANTES de leer un solo turno
  *   2. idempotencia
- *   3. oferta, persona, slot
+ *   3. rechazos del paso 0, en el orden de siempre
  *   4. cupo y solapamiento
  *   5. INSERT
  * </pre>
+ *
+ * <p><b>El paso 0 no debilita nada que el lock protegia.</b> El lock de {@code agenda_sede} lo
+ * toman quienes ocupan la agenda —reservas, reprogramaciones, series y clases—; nadie que cambie
+ * una oferta, una persona, una cobertura, una habilitacion o una disponibilidad lo toma. En
+ * {@code READ_COMMITTED} esas lecturas ven lo ultimo commiteado al momento de leer, bajo el lock o
+ * antes, y ninguna quedaba protegida hasta el commit. Moverlas afuera saca diez sentencias de la
+ * seccion que serializa todas las reservas de la sede. Sus rechazos se lanzan despues de la
+ * idempotencia para que un reintento de un turno ya creado siga devolviendo ese turno.
  *
  * <p><b>El paso 1 va primero y no es negociable.</b> Leer los turnos y despues tomar el lock es una
  * escalada S -&gt; X sobre las mismas filas: dos transacciones concurrentes se quedan cada una con
@@ -163,14 +174,103 @@ public class TurnoService {
 		// y abrirla anidada retiene dos conexiones por pedido y traba el pool (FilaLockPrevia).
 		iniciador.asegurar(organizationId, consultorioId);
 
-		return transaccionDeReserva.execute(estado -> reservarBajoLock(
+		ResultadoDeReserva resultado = transaccionDeReserva.execute(estado -> reservarBajoLock(
 				actor, organizationId, sede, consultorioId, ofertaId, command));
+
+		// Despues del commit y no adentro: el log escribe en la consola, y adentro lo hacia con el
+		// lock de la agenda tomado. El reintento idempotente no loguea, como antes.
+		if (resultado.creado()) {
+			log.info("Turno reservado: turnoId={} consultorioId={} ofertaId={} personaId={} inicio={}",
+					resultado.turno().id(), consultorioId, ofertaId, command.personaId(), command.inicio());
+		}
+		return resultado;
 	}
 
-	private ResultadoDeReserva reservarBajoLock(OperatingActor actor, long organizationId,
-			ConsultorioSnapshot sede, long consultorioId, long ofertaId, ReservaCommand command) {
+	/**
+	 * Lo que la reserva lee ANTES del lock (paso 0 de la cabecera).
+	 *
+	 * <p>Los rechazos de negocio no se lanzan al leer: se guardan en {@link #rechazo} y se lanzan bajo
+	 * el lock, despues de la idempotencia y en el orden de siempre. La oferta va aparte porque su 404
+	 * sale antes del control de horario pasado y los demas despues.
+	 */
+	private static final class Preparacion {
 
-		// PASO 1. Antes de leer nada. Ver la cabecera.
+		/** {@code null}: la oferta no existe en la sede. */
+		private OfertaSnapshot oferta;
+		private RevalidadorDeSlot.Previa previa;
+		private ContactoDePersona contacto;
+		/** El primer rechazo de negocio, o {@code null}. */
+		private RuntimeException rechazo;
+	}
+
+	/**
+	 * Las lecturas que no tocan turnos, en la transaccion de la reserva y antes del lock.
+	 *
+	 * <p>En la misma transaccion y no en una propia: es {@code READ_COMMITTED}, asi que cada
+	 * sentencia ve lo ultimo commiteado igual que bajo el lock, y una transaccion aparte costaria
+	 * otra vuelta al pool. Ninguna es una lectura con lock: nada de esto puede quedar esperando a
+	 * otra reserva ni escalar a un deadlock con ella.
+	 *
+	 * <p><b>Solo se guardan los rechazos de negocio</b>, que lanza este mismo codigo y no un metodo
+	 * transaccional: no marcan la transaccion ni rompen la sesion de Hibernate. Un error tecnico
+	 * —{@code DataAccessException}, conexion caida, deadlock— se propaga en el acto: seguir con una
+	 * sesion que ya lanzo no esta soportado, y en el camino idempotente terminaria en un 200 despues
+	 * de un error.
+	 */
+	private Preparacion preparar(long organizationId, ConsultorioSnapshot sede, long consultorioId,
+			long ofertaId, ReservaCommand command) {
+
+		Preparacion preparacion = new Preparacion();
+		preparacion.oferta = ofertas.find(organizationId, consultorioId, ofertaId).orElse(null);
+		if (preparacion.oferta == null) {
+			return preparacion;
+		}
+		OfertaSnapshot oferta = preparacion.oferta;
+		Instant inicio = command.inicio();
+		Instant fin = inicio.plusSeconds(oferta.duracionMinutos() * 60L);
+		LocalDate fecha = inicio.atZone(ZoneId.of(sede.timezone())).toLocalDate();
+
+		try {
+			if (!oferta.vigenteEl(fecha)) {
+				throw new OfertaNoAgendableException(ofertaId, oferta.active()
+						? "no esta vigente el " + fecha
+						: "esta dada de baja");
+			}
+
+			exigirPacienteVigente(organizationId, command.personaId());
+
+			// AKINE-05.02, "cobertura elegida". Solo pertenencia y vigencia ese dia: si aplica a la
+			// practica lo decide la recepcion (RF-M13-003), que observa sin bloquear (RN-M13-003).
+			// Rechazarlo aca por convenio haria que un arancel cargado tarde impida reservar.
+			if (command.coberturaId() != null && !coberturas.vigenteDeLaPersona(
+					organizationId, command.personaId(), command.coberturaId(), fecha)) {
+				throw new CoberturaNoAccesibleException(command.coberturaId());
+			}
+
+			// La mitad de la revalidacion que no lee turnos: habilitacion y franja del profesional,
+			// u horario de la sede. Ver RevalidadorDeSlot#prevalidar.
+			preparacion.previa = revalidador.prevalidar(new RevalidadorDeSlot.Pedido(
+					organizationId, consultorioId, sede, oferta, inicio, fin,
+					command.profesionalId(), null));
+		} catch (OfertaNoAgendableException | PersonaNotAccessibleException
+				| PersonaSinPerfilPacienteException | CoberturaNoAccesibleException
+				| SlotNoDisponibleException rechazo) {
+			preparacion.rechazo = rechazo;
+			return preparacion;
+		}
+
+		preparacion.contacto = avisos.contactoDe(organizationId, command.personaId());
+		return preparacion;
+	}
+
+	private ResultadoDeReserva reservarBajoLock(OperatingActor actor,
+			long organizationId, ConsultorioSnapshot sede, long consultorioId, long ofertaId,
+			ReservaCommand command) {
+
+		// PASO 0. Antes del lock: no lee turnos. Ver la cabecera.
+		Preparacion preparacion = preparar(organizationId, sede, consultorioId, ofertaId, command);
+
+		// PASO 1. Antes de leer un solo turno. Ver la cabecera.
 		BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
 
 		// PASO 2. Bajo el lock, para que dos peticiones con la misma clave no creen dos turnos.
@@ -183,13 +283,14 @@ public class TurnoService {
 					resolverReintento(yaCreado.get(), command, consultorioId, ofertaId), false);
 		}
 
-		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, ofertaId)
-				.orElseThrow(() -> new OfertaNotAccessibleException(ofertaId));
+		// PASO 3. Los rechazos del paso 0, en el orden en que se evaluaban bajo el lock.
+		OfertaSnapshot oferta = preparacion.oferta;
+		if (oferta == null) {
+			throw new OfertaNotAccessibleException(ofertaId);
+		}
 
-		ZoneId zona = ZoneId.of(sede.timezone());
 		Instant inicio = command.inicio();
 		Instant fin = inicio.plusSeconds(oferta.duracionMinutos() * 60L);
-		LocalDate fecha = inicio.atZone(zona).toLocalDate();
 
 		// Defecto encontrado en E-3. Reprogramar ya rechazaba un destino pasado y la reserva no: el
 		// motor de 05.01 dibuja tambien los slots de hoy que ya pasaron, y el revalidador solo mira
@@ -200,27 +301,18 @@ public class TurnoService {
 			throw new SlotNoDisponibleException("el horario ya paso: un turno se reserva hacia adelante");
 		}
 
-		if (!oferta.vigenteEl(fecha)) {
-			throw new OfertaNoAgendableException(ofertaId, oferta.active()
-					? "no esta vigente el " + fecha
-					: "esta dada de baja");
-		}
-
-		exigirPacienteVigente(organizationId, command.personaId());
-
-		// AKINE-05.02, "cobertura elegida". Solo pertenencia y vigencia ese dia: si aplica a la
-		// practica lo decide la recepcion (RF-M13-003), que observa sin bloquear (RN-M13-003).
-		// Rechazarlo aca por convenio haria que un arancel cargado tarde impida reservar.
-		if (command.coberturaId() != null && !coberturas.vigenteDeLaPersona(
-				organizationId, command.personaId(), command.coberturaId(), fecha)) {
-			throw new CoberturaNoAccesibleException(command.coberturaId());
+		// Vigencia de la oferta, paciente, cobertura y la mitad de la revalidacion sin turnos.
+		if (preparacion.rechazo != null) {
+			throw preparacion.rechazo;
 		}
 
 		// PASO 4. Los mismos controles que aplica una reprogramacion, y en el mismo lugar: las dos
 		// son escrituras de agenda. Ver RevalidadorDeSlot.
-		RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(new RevalidadorDeSlot.Pedido(
-				organizationId, consultorioId, sede, oferta, inicio, fin,
-				command.profesionalId(), null));
+		RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidarBajoLock(
+				new RevalidadorDeSlot.Pedido(
+						organizationId, consultorioId, sede, oferta, inicio, fin,
+						command.profesionalId(), null),
+				preparacion.previa);
 
 		Instant ahora = Instant.now();
 		Turno turno = turnos.save(conCobertura(new Turno(
@@ -235,10 +327,7 @@ public class TurnoService {
 				turno, TipoEventoTurno.RESERVA, null, null, actor.accountId(), ahora));
 		// RF-M26-002. En esta misma transaccion: si la reserva hace rollback, el aviso tambien.
 		// El reintento idempotente de arriba retorna antes y no encola de nuevo.
-		avisos.avisarReserva(turno, sede, oferta.nombreComercial());
-
-		log.info("Turno reservado: turnoId={} consultorioId={} ofertaId={} personaId={} inicio={}",
-				turno.getId(), consultorioId, ofertaId, command.personaId(), inicio);
+		avisos.avisarReserva(turno, sede, oferta.nombreComercial(), preparacion.contacto);
 
 		return new ResultadoDeReserva(TurnoView.de(turno), true);
 	}

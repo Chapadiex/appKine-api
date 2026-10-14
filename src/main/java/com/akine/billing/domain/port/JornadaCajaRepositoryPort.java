@@ -45,6 +45,17 @@ public interface JornadaCajaRepositoryPort {
 	int sumarAlSaldo(long organizationId, long jornadaId, BigDecimal importe);
 
 	/**
+	 * Si la jornada sigue abierta, leida con <b>lock exclusivo</b> sobre su fila (lectura actual, no la
+	 * foto de la transaccion).
+	 *
+	 * <p>Para los medios que no son efectivo y por eso no pasan por {@link #sumarAlSaldo}: sin esto un
+	 * cobro con tarjeta que pierde la carrera contra el cierre asentaba su movimiento en una jornada ya
+	 * cerrada. Exclusivo y no compartido para no escalar S -&gt; X cuando el mismo cobro tambien trae
+	 * efectivo; el cierre espera a que el asiento commitee, o el asiento ve la jornada cerrada.
+	 */
+	boolean abiertaBajoLock(long organizationId, long jornadaId);
+
+	/**
 	 * Resta del saldo arqueable, si la jornada sigue abierta <b>y alcanza la plata</b>.
 	 *
 	 * <p>{@code ... WHERE estado = 'ABIERTA' AND saldo_arqueo >= :importe}. Un egreso no puede dejar

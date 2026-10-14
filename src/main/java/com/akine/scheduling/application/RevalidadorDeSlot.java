@@ -24,8 +24,9 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Revalida que un intervalo se pueda ocupar, y elige el espacio. <b>Se ejecuta siempre bajo el lock
- * de {@code agenda_sede}</b>, dentro de la transaccion que escribe.
+ * Revalida que un intervalo se pueda ocupar, y elige el espacio. <b>Lo que lee turnos se ejecuta
+ * siempre bajo el lock de {@code agenda_sede}</b>, dentro de la transaccion que escribe
+ * ({@link #revalidarBajoLock}); lo que no los lee puede ir antes ({@link #prevalidar}).
  *
  * <h2>Por que existe como clase aparte</h2>
  *
@@ -95,7 +96,40 @@ class RevalidadorDeSlot {
 	 * @throws RecursoOcupadoException   el profesional o todos los espacios estan tomados
 	 */
 	Asignacion revalidar(Pedido pedido) {
-		Long profesionalId = resolverProfesional(pedido);
+		return revalidarBajoLock(pedido, prevalidar(pedido));
+	}
+
+	/** Lo que {@link #prevalidar} resolvio sin mirar turnos. */
+	record Previa(Long profesionalId) {
+	}
+
+	/**
+	 * La mitad de la revalidacion que <b>no lee turnos</b>: que el profesional siga habilitado para
+	 * la oferta y atienda en ese horario, o que la sede atienda si la oferta no lleva profesional.
+	 *
+	 * <p>Puede correr <b>antes</b> del lock de {@code agenda_sede}, y la reserva la corre ahi
+	 * (docs/carga.md §10). Ese lock serializa a quienes ocupan la agenda —turnos y clases—, no a
+	 * quienes cambian disponibilidad, habilitaciones o el horario de la sede: esas escrituras toman
+	 * sus propios locks y nunca este. Bajo el lock o antes, en {@code READ_COMMITTED} estas lecturas
+	 * ven lo ultimo commiteado al momento de leer y ninguna queda protegida hasta el commit de la
+	 * reserva: la ventana es la misma clase de ventana, unos milisegundos mas larga. Lo que el lock
+	 * si protege —cupo y solapamiento— sigue en {@link #revalidarBajoLock}.
+	 *
+	 * @throws SlotNoDisponibleException el hueco dejo de existir
+	 */
+	Previa prevalidar(Pedido pedido) {
+		return new Previa(resolverProfesional(pedido));
+	}
+
+	/**
+	 * La mitad que <b>tiene que correr bajo el lock</b>: cupo, solapamiento con turnos y clases, y
+	 * eleccion del espacio.
+	 *
+	 * @throws SlotCompletoException   no queda cupo
+	 * @throws RecursoOcupadoException el profesional o todos los espacios estan tomados
+	 */
+	Asignacion revalidarBajoLock(Pedido pedido, Previa previa) {
+		Long profesionalId = previa.profesionalId();
 
 		// Cupo primero: es una sola consulta y descarta el caso mas frecuente —el slot grupal
 		// lleno— sin recorrer habilitaciones ni espacios.

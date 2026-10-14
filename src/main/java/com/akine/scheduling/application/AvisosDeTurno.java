@@ -78,16 +78,36 @@ public class AvisosDeTurno {
 
 	/** RF-M26-002. */
 	public void avisarReserva(Turno turno, ConsultorioSnapshot sede, String servicioNombre) {
+		avisarReserva(turno, sede, servicioNombre, contactoDe(turno.getOrganizationId(), turno.getPersonaId()));
+	}
+
+	/**
+	 * RF-M26-002, con el contacto ya leido por {@link #contactoDe}.
+	 *
+	 * <p>Existe para la reserva, que lee el contacto ANTES de tomar el lock de {@code agenda_sede}:
+	 * es una lectura de {@code person} que ninguna escritura de agenda modifica, y bajo el lock era
+	 * una sentencia mas con las demas reservas de la sede esperando (docs/carga.md §10).
+	 *
+	 * @param contacto el de la persona del turno, o {@code null} si no tiene
+	 */
+	public void avisarReserva(
+			Turno turno, ConsultorioSnapshot sede, String servicioNombre, ContactoDePersona contacto) {
 		encolar(NotificationType.TURNO_RESERVADO,
 				"turno-reservado:" + turno.getId(),
-				turno, sede, servicioNombre, null);
+				turno, sede, servicioNombre, null, contacto);
+	}
+
+	/** El contacto de una persona, o {@code null} si no tiene. */
+	public ContactoDePersona contactoDe(long organizationId, long personaId) {
+		return contactos.findAll(organizationId, List.of(personaId)).get(personaId);
 	}
 
 	/** RF-M26-003, cancelacion. */
 	public void avisarCancelacion(Turno turno, ConsultorioSnapshot sede, String servicioNombre) {
 		encolar(NotificationType.TURNO_CANCELADO,
 				"turno-cancelado:" + turno.getId(),
-				turno, sede, servicioNombre, null);
+				turno, sede, servicioNombre, null,
+				contactoDe(turno.getOrganizationId(), turno.getPersonaId()));
 	}
 
 	/**
@@ -100,20 +120,20 @@ public class AvisosDeTurno {
 			Turno turno, ConsultorioSnapshot sede, String servicioNombre, Instant inicioAnterior) {
 		encolar(NotificationType.TURNO_REPROGRAMADO,
 				"turno-reprogramado:" + turno.getId() + ":v" + turno.getVersion(),
-				turno, sede, servicioNombre, inicioAnterior);
+				turno, sede, servicioNombre, inicioAnterior,
+				contactoDe(turno.getOrganizationId(), turno.getPersonaId()));
 	}
 
+	@SuppressWarnings("checkstyle:ParameterNumber")
 	private void encolar(
 			NotificationType tipo,
 			String claveIdempotente,
 			Turno turno,
 			ConsultorioSnapshot sede,
 			String servicioNombre,
-			Instant inicioAnterior) {
+			Instant inicioAnterior,
+			ContactoDePersona contacto) {
 
-		ContactoDePersona contacto = contactos
-				.findAll(turno.getOrganizationId(), List.of(turno.getPersonaId()))
-				.get(turno.getPersonaId());
 		if (contacto == null || !contacto.notificable()) {
 			// Ni el id de la persona ni nada que la identifique: el turno alcanza para rastrearlo.
 			log.info("Sin correo para notificar {}: turnoId={}", tipo, turno.getId());

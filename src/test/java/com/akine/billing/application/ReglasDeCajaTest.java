@@ -6,6 +6,7 @@ import com.akine.billing.domain.MedioDePago;
 import com.akine.billing.domain.MovimientoCaja;
 import com.akine.billing.domain.TipoMovimiento;
 import com.akine.billing.domain.exception.CajaDiferenciaSinMotivoException;
+import com.akine.billing.domain.exception.CajaCerradaException;
 import com.akine.billing.domain.exception.CajaNoAbiertaException;
 import com.akine.billing.domain.exception.CajaSaldoInsuficienteException;
 import com.akine.billing.domain.port.JornadaCajaRepositoryPort;
@@ -110,6 +111,7 @@ class ReglasDeCajaTest {
 	void el_cobro_no_es_la_caja() {
 		given(jornadas.findAbierta(ORG, SEDE)).willReturn(Optional.of(jornadaAbierta()));
 		given(jornadas.sumarAlSaldo(anyLong(), anyLong(), any())).willReturn(1);
+		given(jornadas.abiertaBajoLock(ORG, JORNADA)).willReturn(true);
 
 		cajaDeCobro.registrarIngresos(ORG, sede, COBRO, MONEDA, List.of(
 						medio(MedioDePago.EFECTIVO, "4000.00"),
@@ -130,6 +132,22 @@ class ReglasDeCajaTest {
 		// Pero el cajon se mueve UNA sola vez y por los 4.000 en billetes. Los 6.000 de tarjeta
 		// liquidan en 18 dias a una cuenta que nadie va a contar al arquear.
 		verify(jornadas).sumarAlSaldo(ORG, JORNADA, new BigDecimal("4000.00"));
+	}
+
+	@Test
+	@DisplayName("un cobro con tarjeta que pierde la carrera contra el cierre se rechaza: no se asienta en una jornada cerrada")
+	void la_tarjeta_no_se_asienta_en_una_jornada_cerrada() {
+		// La jornada se leyo abierta en la foto del cobro, y el cierre commiteo antes del asiento. La
+		// tarjeta no pasa por la suma condicional del saldo: lo frena la relectura con lock.
+		given(jornadas.findAbierta(ORG, SEDE)).willReturn(Optional.of(jornadaAbierta()));
+		given(jornadas.abiertaBajoLock(ORG, JORNADA)).willReturn(false);
+
+		assertThatThrownBy(() -> cajaDeCobro.registrarIngresos(ORG, sede, COBRO, MONEDA,
+				List.of(medio(MedioDePago.TARJETA_DEBITO, "9500.00")),
+				Instant.now(), administrativo.accountId()))
+				.isInstanceOf(CajaCerradaException.class);
+
+		verify(movimientos, never()).save(any());
 	}
 
 	@Test

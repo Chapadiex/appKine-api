@@ -28,6 +28,7 @@ qué no cumple. Los SLO son los de [ADR-0016](adr/0016-versiones-tecnicas-y-slo.
 | `perf/k6/carga.js` | Los escenarios y los umbrales; escribe `perf/salida/carga-resumen.{md,json}` |
 | `perf/k6/lib.js` | Login con contexto, reintento por 429, fechas en la zona de la sede |
 | `perf/prometheus-latencia.mjs` | p50/p95/p99 **del lado del servidor** restando dos fotos de `/actuator/prometheus` |
+| `perf/seccion-critica.mjs` | Qué corre bajo el lock del numerador y el de `agenda_sede`, desde las fotos de `perf/stack.sh historia` (§10) |
 | `perf/lcp/lcp.mjs` | LCP de siete pantallas con Playwright y la Performance API |
 | `.github/workflows/carga.yml` | Workflow **manual** (`workflow_dispatch`), solo backend. No corre en push ni en PR |
 
@@ -641,3 +642,211 @@ Lo que queda tiene dos nombres, y ninguno es CPU:
 
 La CPU media del 62 % con 114 req/s es ~22 ms de CPU por pedido sobre 4 núcleos, contra ~38 ms en
 el "antes" del mismo par.
+
+## 10. Lo que corre bajo los locks de escritura (14/10/2026, rama `akine-perf-escrituras`)
+
+Después de §9 las lecturas quedaron cerca del SLO y las escrituras no: el cobro serializa en el
+numerador de comprobantes de la sede y la reserva en `agenda_sede`. Esta rama **achica lo que corre
+mientras esos dos locks están tomados, sin cambiar ninguna regla**: la numeración sigue correlativa
+y sin huecos por sede (06.05), la agenda sigue serializada por sede (05.02), y no cambian el orden
+de los locks, las aislaciones, el contrato ni el esquema.
+
+Mismo método que §8 y §9: stack aislado con prefijo `perf3-` y puertos propios (MySQL 3331,
+Mailpit 8048/1048, backend 8101), backend con 4 CPU, 2 GB y el pool por defecto (10). Cada corrida:
+base nueva, sembrado, reinicio del backend y la mezcla completa a 500 usuarios, más el digest, la
+integridad contra la base y —nuevo— **una foto de las últimas sentencias de cada conexión** a los
+250 s (`perf/stack.sh historia`), que `perf/seccion-critica.mjs` convierte en lo que pasa entre que
+una transacción obtiene el lock y lo suelta en el `COMMIT` o el `ROLLBACK`.
+
+### `main` medido (`c827c72`, con #91, #97 y #112)
+
+Tres corridas de la mezcla completa, cada una con base nueva, intercaladas con las de la rama
+(abajo). Una cuarta, la primera del día, dio p95 2 896 ms y p99 11 954 ms con dos stacks de otros
+agentes y un `docker build` corriendo a la vez: se descarta.
+
+| Endpoint | Corrida 1 p95 / p99 ms | Corrida 2 p95 / p99 ms | Corrida 3 p95 / p99 ms |
+|---|---:|---:|---:|
+| login | 375 / 789 | 550 / 1 360 | 268 / 566 |
+| agenda del día | 331 / 1 223 | 937 / 2 319 | 235 / 893 |
+| búsqueda de slots | 339 / 1 564 | 988 / 2 288 | 274 / 1 026 |
+| recepción del día | 341 / 1 496 | 944 / 2 367 | 219 / 942 |
+| Paciente 360 | 331 / 1 339 | 995 / 2 361 | 267 / 940 |
+| cobro | 965 / 2 605 | 2 056 / 4 136 | 526 / 1 636 |
+| reporte | 331 / 1 137 | 1 093 / 2 500 | 309 / 921 |
+| reserva | 1 233 / 6 269 | 1 450 / 3 632 | 326 / 1 400 |
+| **todo lo interactivo** (p50) | **464 / 1 760** (31) | **1 160 / 2 579** (33) | **288 / 1 062** (28) |
+| pedidos · req/s | 44 343 · 115,3 | 43 209 · 112,7 | 44 808 · 116,8 |
+| errores técnicos · 401 | 0,00 % · 0 | 0,00 % · 0 | 0,00 % · 0 |
+| reservas 201 / 409 | 478 / 3 089 | 480 / 3 112 | 480 / 3 121 |
+| comprobantes (30 son del sembrado) | 1 a 4 111, sin huecos ni repetidos | 1 a 3 968, ídem | 1 a 4 184, ídem |
+| turnos vivos · solapados | 635 · 0 | 637 · 0 | 636 · 0 |
+
+La misma imagen da p95 entre 288 y 1 160 ms según la corrida: **la variación entre corridas es más grande
+que cualquier cambio de esta rama**, y por eso abajo se compara lo que pasa bajo el lock, que se
+mide por transacción y casi no varía.
+
+### Qué corría bajo cada lock en `main`
+
+**Cobro, 8,6 sentencias** desde el `UPDATE` del numerador hasta el `COMMIT`:
+
+```
+SELECT ultimo_numero · INSERT cobro · INSERT cobro_medio · SELECT jornada_caja ·
+UPDATE cobro_medio SET cobro_id · UPDATE jornada_caja (efectivo) · INSERT movimiento_caja ·
+INSERT audit_event · COMMIT
+```
+
+Tres no necesitan el lock: el `SELECT` que relee el número que el `UPDATE` acaba de asignar, la
+lectura de la jornada de caja —es de la misma foto `REPEATABLE READ`— y el `UPDATE cobro_medio`, que
+Hibernate emite por cada hijo de un `@OneToMany` unidireccional aunque el `INSERT` ya llevó el
+`cobro_id`. **Y el `COMMIT` es el 80–90 % del tiempo retenido**: 22 a 52 ms de promedio según la
+corrida (el `fsync` del redo log y del binlog en el volumen de Docker Desktop), contra 4–5 ms de
+todo lo demás junto. El `COMMIT` no puede salir: el lock se suelta ahí, y que un cobro que revierte
+devuelva su número es lo que hace que no haya huecos.
+
+**Reserva, 14–15 sentencias** desde el `SELECT ... FOR UPDATE` de `agenda_sede` hasta el cierre
+(casi siempre `ROLLBACK`: el escenario hace chocar 10 reservas por segundo sobre 40 horarios, y 87 %
+termina en 409): la sede con `FOR SHARE`, la idempotencia, la oferta, la persona y su perfil de
+paciente, las habilitaciones, el calendario de la sede, los feriados, la membership, los bloques y
+las excepciones de disponibilidad, el horario general, y recién ahí el cupo y el solapamiento.
+**Diez de esas sentencias no leen turnos** y nadie que las cambie toma ese lock.
+
+### Qué se cambió
+
+| Cambio | Dónde | Por qué no cambia ninguna regla |
+|---|---|---|
+| El numerador asigna y devuelve el número **en una sentencia**: `SET ultimo_numero = LAST_INSERT_ID(ultimo_numero + 1)`, y el número llega en la respuesta del `UPDATE` (`getGeneratedKeys`) | `ComprobanteNumeradorPort.siguiente`, `ComprobanteNumeradorSiguienteImpl` | El mismo `UPDATE ... + 1` sobre la misma fila y con el mismo lock hasta el commit; si el cobro revierte, el incremento también. Sale el `SELECT` de relectura |
+| La jornada de caja se lee **antes** del numerador | `CajaDeCobro.destino` | Es una lectura de la foto que ya fijó la primera lectura de la transacción (`REPEATABLE READ`): devuelve lo mismo antes o después. El rechazo de efectivo sin caja (`caja-no-abierta`) se sigue lanzando en el mismo punto, y lo que decide si la jornada sigue abierta es la suma condicional de siempre |
+| `updatable = false` en el `@JoinColumn` de `Cobro.medios` y `Cobro.imputaciones` | `Cobro` | Hibernate deja de reescribir el `cobro_id` que el `INSERT` ya puso: una sentencia menos por medio y por imputación. Un hijo nunca cambia de cobro. Es lo que ya hace `SesionVersion` |
+| Los logs de "Cobro registrado" y "Turno reservado" se escriben **después del commit** | `CobroService`, `TurnoService` | Escribían en la consola con el lock tomado. El reintento idempotente sigue sin loguear |
+| **Paso 0 de la reserva**: oferta y su vigencia, persona y perfil de paciente, cobertura elegida, habilitación y franja del profesional (u horario de la sede) y el contacto del aviso se leen **antes** de tomar `agenda_sede`, en la misma transacción `READ_COMMITTED` | `TurnoService.preparar`, `RevalidadorDeSlot.prevalidar`, `AvisosDeTurno.contactoDe` | `agenda_sede` lo toman reservas, reprogramaciones, series y clases: **nadie que cambie una oferta, una persona, una cobertura, una habilitación o una disponibilidad lo toma**, así que ninguna de esas lecturas estaba protegida hasta el commit; en `READ_COMMITTED` ven lo último commiteado al leer, bajo el lock o antes. Sus rechazos **se guardan y se lanzan bajo el lock, después de la idempotencia y en el orden de siempre**: un reintento de un turno ya creado sigue devolviéndolo aunque la persona haya dejado de ser paciente. Bajo el lock quedan la sede con `FOR SHARE`, la idempotencia, el horario pasado, el cupo, el solapamiento con turnos y con clases, el espacio y las escrituras |
+
+`reprogramar` y las series siguen usando `RevalidadorDeSlot.revalidar` entero, bajo el lock: no
+están en la carga y no se tocaron.
+
+**Después de la revisión del PR #117**, dos ajustes que no cambian lo medido arriba: el paso 0 de la
+reserva guarda sólo los rechazos de negocio (oferta no agendable, persona inaccesible o sin perfil,
+cobertura, slot no disponible) y deja que un error técnico se propague en el acto; y un medio que no
+es efectivo relee la jornada con `FOR UPDATE` antes de asentarse en ella
+(`JornadaCajaRepositoryPort.abiertaBajoLock`): antes, un cobro con tarjeta o transferencia que perdía
+la carrera contra el cierre quedaba asentado en una jornada ya cerrada. Es una sentencia más bajo el
+numerador para esos cobros, y `CierreDeCajaConcurrenteIT` suma la carrera (falla sin el arreglo).
+
+**Índices de lo que corre bajo los locks.** Después del cambio, todo lo que queda adentro va por
+`PRIMARY KEY`, un `UNIQUE` o un índice que empieza por las columnas de igualdad: `agenda_sede` y
+`comprobante_numerador` por `(organization_id, consultorio_id)`, la idempotencia por
+`(organization_id, idempotency_key)`, el cupo por `ix_turno_oferta_inicio`, el solapamiento por
+`ix_turno_profesional_intervalo` y el de clases por `ix_clase_profesional_intervalo`. Ninguna
+sentencia del digest con `sin_indice` corre bajo un lock. Dos observaciones que no se tocaron: el
+solapamiento filtra `deleted_at IS NULL` y el índice lleva `deleted_key`, así que el rango usa sólo
+`(organization_id, profesional_membership_id)` y el resto se evalúa sobre el índice (0,7 ms acá,
+crece con la historia del profesional); y las consultas que a veces van sin índice son las sumas del
+reporte (`cobro`, `cobro_medio` y `movimiento_caja`, hasta 2 millones de filas examinadas en una
+corrida) y la del prepago por turno de la recepción, todas fuera de los locks.
+
+**Tests.** `CobroConcurrenteIT`, `TurnoConcurrenteIT` y `PoolDeConexionesIT` en verde (14 de 14,
+`./mvnw verify -Dit.test=...`), y los 3 811 unitarios. `CobroServiceTest` verifica el orden nuevo
+(jornada antes del numerador) y `TurnoServiceTest` suma tres casos: lo que no lee turnos va antes del
+lock, el rechazo previo no tapa el reintento idempotente y sin reintento se lanza bajo el lock.
+
+### Antes y después, de a pares
+
+Cuatro pares, cada corrida con base nueva y una detrás de la otra; el par 3 en orden inverso
+(rama primero) para no confundir el efecto con una deriva de la máquina. El par 4 corrió con
+**durabilidad relajada en MySQL** (`innodb_flush_log_at_trx_commit = 2`, `sync_binlog = 0`) para
+aislar el `fsync` del commit: **es una medición, no una propuesta** (ver la opción 5).
+
+Lo que pasa bajo el lock, de `perf/seccion-critica.mjs` (promedios en ms; la "foto" son tres vuelcos de
+`events_statements_history_long` a los 250, 270 y 290 s, con 90–120 cobros y 60–80 reservas por
+corrida):
+
+| | Par 1 antes → después | Par 2 | Par 3 | Par 4 (durabilidad relajada) |
+|---|---|---|---|---|
+| **cobro**: sentencias bajo el lock, con el commit | 8,5 → **5,7** | 8,7 → **5,5** | 8,6 → **5,6** | 8,7 → **5,7** |
+| cobro: bajo el lock sin el commit | 4,7 → 5,8 | 4,3 → **2,4** | 4,1 → **2,2** | 6,5 → **2,3** |
+| cobro: el commit | 34,4 → 51,7 | 41,0 → 25,0 | 22,0 → 26,2 | 1,3 → 0,6 |
+| cobro: espera del lock, en la foto | 54 → 173 | 153 → **18** | 49 → 76 | 6,8 → **0,9** |
+| cobro: espera del lock, toda la corrida (digest) | 103 → 130 | 110 → **42** | 32 → 32 | 5 → 3 |
+| **reserva**: sentencias bajo el lock, con el cierre | 14,0 → **4,4** | 14,9 → **5,4** | 15,1 → **4,9** | 14,4 → **4,8** |
+| reserva: bajo el lock sin el cierre | 7,9 → **3,6** | 7,1 → **1,8** | 5,5 → **2,2** | 8,0 → **1,6** |
+| reserva: espera del lock, en la foto | 2,0 → 6,2 | 17,6 → **0,4** | 1,6 → 1,3 | 1,8 → **0,3** |
+| reserva: espera del lock, toda la corrida (digest) | 54,0 → **10,8** | 16,7 → fuera de las 40 primeras | 2,5 → 12,4 | 31,9 → **8,7** |
+
+Y la carga entera, de k6:
+
+| | Par 1 antes → después | Par 2 | Par 3 | Par 4 (durabilidad relajada) |
+|---|---|---|---|---|
+| todo lo interactivo p95 / p99 ms | 464 / 1 760 → 2 702 / 4 311 | 1 160 / 2 579 → **430 / 1 297** | 288 / 1 062 → 526 / 1 558 | 959 / 2 316 → 1 064 / 2 269 |
+| cobro p95 / p99 ms | 965 / 2 605 → 4 160 / 5 607 | 2 056 / 4 136 → **753 / 1 674** | 526 / 1 636 → 825 / 1 967 | 1 286 / 2 605 → 1 344 / 2 697 |
+| reserva p95 / p99 ms | 1 233 / 6 269 → 3 804 / 5 220 | 1 450 / 3 632 → **477 / 1 478** | 326 / 1 400 → 1 361 / 2 669 | 2 186 / 3 453 → 1 832 / 3 213 |
+| req/s | 115,3 → 98,3 | 112,7 → 116,2 | 116,8 → 116,9 | 114,9 → 114,1 |
+| CPU media del backend · muestras con pedidos esperando conexión | 51 % · 13/65 → 65 % · 30/64 | 51 % · 15/61 → 49 % · 11/68 | 49 % · 10/68 → 56 % · 8/67 | 56 % · 15/67 → 56 % · 14/67 |
+| errores técnicos | 0,00 % en las ocho | | | |
+| comprobantes · turnos solapados | sin huecos ni repetidos · 0 en las ocho | | | |
+
+### Lectura
+
+**Las secciones críticas se achicaron y el SLO no se alcanzó.**
+
+1. **Bajo el lock de agenda, de 14–15 sentencias a 4–5**, y el tiempo sin el cierre de 5,5–8,0 ms a
+   1,6–3,6 ms. Bajo el numerador, de 8,6 sentencias a 5,6, y en tres de los cuatro pares el tiempo
+   sin el commit bajó a la mitad (de 4,1–6,5 ms a 2,2–2,4). Es lo que se puede sacar sin tocar la
+   regla: lo que queda adentro necesita el número, el id del cobro o leer turnos.
+2. **En k6 no se distingue.** Con durabilidad normal, la rama ganó un par (1 160 → 430 ms de p95) y
+   perdió dos (464 → 2 702 y 288 → 526); la misma imagen va de 288 a 1 160 ms entre corridas. El par
+   1 "después" es el más lento de todos, con la CPU más alta y el commit más lento (51,7 ms), sin
+   ninguna diferencia en lo que corre bajo los locks: es la máquina. Ninguno de los números de k6 de
+   esta sección sirve para afirmar que la rama mejora o empeora la latencia de punta a punta.
+3. **El cobro espera al commit, no a las sentencias.** Con durabilidad normal, la espera del
+   numerador sigue al tiempo del commit (22–52 ms de promedio, 50–100 ms de p95), y el commit no puede
+   salir del lock sin aceptar huecos. Por eso sacar tres sentencias de 1 ms no mueve la espera.
+4. **Con el commit barato, los locks dejan de importar y el p95 sigue arriba.** En el par 4 la espera
+   del numerador cae de 6,8 a 0,9 ms y la de la agenda de 1,8 a 0,3 ms, y aun así el p95 es de ~1 s: en la meseta
+   el backend llega al 100 % de sus 4 CPU en ráfagas de 10 a 15 s con hasta 187 pedidos esperando
+   conexión, mientras la mediana sigue en 28 ms. **El límite siguiente es la capacidad de CPU frente
+   a 500 usuarios que llegan en ráfagas**, no un lock.
+
+### Lo que requiere decisión del usuario
+
+No se implementó ninguna. Las tres primeras tocan la regla de numeración de 06.05; la cuarta, la
+serialización de la agenda.
+
+1. **Numeración por punto de venta** (un talonario por caja u operador, cada uno correlativo y sin
+   huecos). *Costo:* una etapa — tabla de puntos de venta, el numerador pasa a
+   `(organization_id, consultorio_id, punto_de_venta)`, el unique del comprobante suma la columna,
+   `puntoDeVenta` en el contrato del cobro (aditivo) y en la pantalla, y asignar punto a cada
+   operadora o caja. *Beneficio:* la contención se divide por la cantidad de puntos (con las 3
+   operadoras de la carga, un tercio). *Riesgo:* el comprobante deja de ser correlativo por sede, y
+   los reportes y el arqueo que lo asuman hay que revisarlos. Es el modelo de la facturación
+   argentina (punto de venta de AFIP), así que encaja con una facturación electrónica futura.
+2. **Numerar después del commit, en lote.** El cobro se confirma sin número y un paso serializado
+   numera en orden los pendientes de la sede, varios por commit (un `fsync` para muchos). *Costo:*
+   migración (`comprobante_numero` nullable y actualizable, mismo unique), contrato (el `POST`
+   devuelve el cobro sin número o espera a que se lo asignen), y reimpresión y anulación tienen que
+   tolerar un cobro todavía sin número. *Riesgo:* el orden de los números pasa a ser el de los
+   commits; si el paso de numeración falla queda un cobro sin número que alguien tiene que reintentar
+   (job o bandeja). Sin huecos se mantiene.
+3. **Numerar al cerrar la caja** (número provisorio durante la jornada, definitivo al cierre).
+   *Costo:* alto — el paciente se va sin número definitivo, "comprobante recuperable" cambia de
+   significado y el cierre de caja pasa a ser un proceso pesado que puede fallar a mitad. *Riesgo:*
+   el más alto de los tres. Sólo si un requisito fiscal lo pide.
+4. **Lock por profesional en vez de por sede** para la agenda. *Costo:* filas-lock por profesional y
+   por espacio (los boxes se comparten entre profesionales), un orden fijo profesional → espacio
+   para no deadlockear, el cupo grupal por `(oferta, inicio)`, y migrar las clases (`AgendaDeSede`) y
+   las series al mismo esquema. *Riesgo:* es la parte del sistema donde la concurrencia decide la
+   correctitud (05.02); un orden de locks mal elegido da deadlocks o turnos solapados sin error.
+   *Beneficio en esta carga: ninguno* —el escenario tiene un solo profesional y la espera de la
+   agenda ya quedó en 0,3–12 ms—. En una sede con varios profesionales, sí.
+5. **No es código: medir en el entorno de destino.** El commit durable cuesta acá 22–52 ms porque es
+   Docker Desktop sobre Windows; en un MySQL sobre Linux con disco SSD o administrado debería ser
+   mucho menos (no se midió: la corrida con durabilidad relajada, 0,6–1,3 ms, es sólo la cota
+   inferior). Antes de elegir entre 1 y 3 conviene repetir esta carga en una máquina parecida a la de
+   producción. **Relajar la durabilidad no es una opción para la numeración**: una caída del sistema
+   operativo puede perder cobros ya confirmados y con el comprobante en la mano del paciente, que es
+   un hueco.
+6. **Capacidad.** Con los locks fuera del camino (par 4) el p95 lo marca la CPU en ráfagas: más CPU
+   o más instancias del backend (hay que revisar lo que vive en memoria por instancia, como el rate
+   limit), o bajar más el costo por pedido (~22 ms de CPU, §9). Un pool más grande no ayuda sin CPU:
+   ver la corrida 4 de §5.
+
+**Lo que conviene primero:** la opción 5 —medir dónde va a correr— y, si el commit sigue arriba de
+~10 ms, la 1, que es la más barata, no toca la garantía de huecos y tiene precedente fiscal.

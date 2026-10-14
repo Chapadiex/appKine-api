@@ -68,9 +68,14 @@ import java.util.Optional;
  *   2. validar las obligaciones
  *   3. descontar cada saldo       &lt;- atomico; si una falla, revierte todo
  *   4. asegurar el numerador      &lt;- en su PROPIA transaccion
- *   5. incrementar y leer
+ *   5. incrementar y leer         &lt;- UNA sentencia; toma el lock hasta el commit
  *   6. guardar el cobro
  * </pre>
+ *
+ * <p>Desde el paso 5 hasta el commit los demas cobros de la sede esperan este lock, asi que despues
+ * de el solo va lo que necesita el numero o el id del cobro: guardarlo, asentar la caja y auditar.
+ * Lo que es lectura —la jornada de caja— va antes, y el log va despues del commit
+ * (docs/carga.md §10).
  *
  * <p>El paso 1 va primero para que un reintento no consuma un numero de comprobante que despues
  * nadie usa: la numeracion fiscal con huecos es peor que un cobro repetido, porque nadie puede
@@ -160,11 +165,27 @@ public class CobroService {
 		// pedido retenia dos conexiones y diez cobros simultaneos trababan el pool (FilaLockPrevia).
 		iniciador.asegurar(organizationId, consultorioId);
 
-		return transaccionDeNegocio.execute(estado -> registrarEnTransaccion(
+		Registro registro = transaccionDeNegocio.execute(estado -> registrarEnTransaccion(
 				actor, consultorioId, command, organizationId, sede));
+		CobroView vista = registro.vista();
+		if (!registro.nuevo()) {
+			return vista;
+		}
+
+		// Despues del commit y no adentro: el log escribe en la consola, y adentro lo hacia con el
+		// lock del numerador tomado (docs/carga.md §10). El reintento idempotente no loguea, como antes.
+		log.info("Cobro registrado: cobroId={} comprobante={} personaId={} total={} {} imputaciones={} "
+						+ "anticipo={}",
+				vista.id(), vista.comprobanteNumero(), command.personaId(), command.total(), vista.moneda(),
+				command.imputaciones().size(), command.anticipo());
+		return vista;
 	}
 
-	private CobroView registrarEnTransaccion(
+	/** Lo que devuelve la transaccion: el cobro y si es nuevo o el de un reintento idempotente. */
+	private record Registro(CobroView vista, boolean nuevo) {
+	}
+
+	private Registro registrarEnTransaccion(
 			OperatingActor actor, long consultorioId, CobroCommand command,
 			long organizationId, ConsultorioSnapshot sede) {
 
@@ -177,7 +198,7 @@ public class CobroService {
 			if (!command.huella(consultorioId).equals(existente.getRequestHash())) {
 				throw new IdempotencyKeyConflictException(command.idempotencyKey());
 			}
-			return CobroView.de(existente);
+			return new Registro(CobroView.de(existente), false);
 		}
 
 		// F-3. Un anticipo puro no tiene deudas que validen a la persona ni de donde tomar la moneda:
@@ -217,13 +238,18 @@ public class CobroService {
 			imputaciones.add(new CobroImputacion(organizationId, obligacion.getId(), pedido.importe()));
 		}
 
-		// PASO 4 y 5. La fila se asegura afuera; el incremento toma el lock y serializa.
-		numerador.incrementar(organizationId, consultorioId);
-		int comprobante = numerador.leerUltimo(organizationId, consultorioId);
-
 		List<CobroMedio> medios = command.medios().stream()
 				.map(medio -> new CobroMedio(organizationId, medio.medio(), medio.importe(), medio.referencia()))
 				.toList();
+
+		// La jornada de caja se lee ANTES del numerador: es una lectura de la misma foto (REPEATABLE
+		// READ, fijada por la primera lectura de arriba) y no necesita el lock. Ver CajaDeCobro#destino.
+		CajaDeCobro.Destino destino = caja.destino(organizationId, sede);
+
+		// PASO 4 y 5. La fila se asegura afuera; el incremento toma el lock y serializa, y devuelve el
+		// numero en la misma sentencia. DESDE ACA HASTA EL COMMIT los demas cobros de la sede esperan:
+		// solo va lo que necesita el numero o el id del cobro (docs/carga.md §10).
+		int comprobante = numerador.siguiente(organizationId, consultorioId);
 
 		Instant cobradoEn = Instant.now();
 
@@ -246,8 +272,7 @@ public class CobroService {
 		// transaccion porque un asiento posterior puede no ocurrir: si falla, el cobro no se
 		// confirma. Con efectivo y sin jornada abierta, esto lanza y el cobro entero se rechaza.
 		CobroView vista = CobroView.de(cobro);
-		caja.registrarIngresos(
-				organizationId, sede, cobro.getId(), moneda, medios, cobradoEn, actor.accountId());
+		caja.registrarIngresos(destino, cobro.getId(), moneda, medios, cobradoEn, actor.accountId());
 
 		// RN-M19-003. En la misma transaccion (regla de 01.01): sin cobro no hay fila, y sin fila
 		// no hay cobro. El reintento idempotente sale antes y no audita: no hay hecho nuevo.
@@ -267,12 +292,7 @@ public class CobroService {
 				AuditEvents.COBRO_REGISTRADO, AuditEvents.ENTITY_COBRO, cobro.getId(),
 				null, null, detalles, null, AuditEvents.correlationId(), cobradoEn));
 
-		log.info("Cobro registrado: cobroId={} comprobante={} personaId={} total={} {} imputaciones={} "
-						+ "anticipo={}",
-				vista.id(), comprobante, command.personaId(), command.total(), moneda,
-				imputaciones.size(), command.anticipo());
-
-		return vista;
+		return new Registro(vista, true);
 	}
 
 	/**
