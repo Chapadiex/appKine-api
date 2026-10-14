@@ -98,6 +98,12 @@ depende del usuario".
   el DAST, como job no bloqueante contra la imagen (G-5 opción (c)). SCA ya está (G-6).
 - **Fase / RF:** F8 (07.07) y F0–F1 (§2–§3). CLAUDE §7 n.º 20.
 - **Destraba:** el criterio "SAST y DAST" del gate y el 5 % que le falta a F0–F1.
+- **Estado (14/10/2026): propuesta en PR #119** (y appKine-web #77), en borrador y sin mergear.
+  SAST = **GitHub CodeQL** (`java-kotlin` y `actions` acá; `javascript-typescript` y `actions` en
+  el web), gratis porque los dos repos son públicos. DAST = **OWASP ZAP baseline** pasivo contra el
+  backend levantado en el CI, con el reporte como artifact. Los dos **no bloqueantes**; cómo
+  volverlos bloqueantes en `docs/calidad.md` §5. Lo que queda del usuario: aceptar o cambiar la
+  elección, y cargar los secretos de Sonar y NVD (eso no cambia con el PR).
 
 ---
 
