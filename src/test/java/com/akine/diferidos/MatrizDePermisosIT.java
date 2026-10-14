@@ -191,6 +191,37 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 	}
 
 	@Test
+	@DisplayName("datos administrativos: sin perfil de paciente vigente es 404, nunca 200")
+	void datos_administrativos_sin_perfil_vigente_es_404() {
+		CoberturaFixtures datos = new CoberturaFixtures(jdbc);
+		long contacto = datos.persona(tenant.organizationId(), "Sintetica", "Contacto", "39555222");
+
+		Respuesta nunca = get("/api/v1/historias-clinicas/por-persona/" + contacto
+				+ "/datos-administrativos", tokens.get(ADM));
+		assertThat(nunca.status()).as("persona que nunca fue paciente: %s", nunca.body())
+				.isEqualTo(404);
+
+		// La persona del @BeforeEach tiene historia abierta; se le da de baja el perfil (la
+		// baja de perfil sola no tiene endpoint: la de la persona cascadea y deja activa=false).
+		int bajas = jdbc.update("""
+				UPDATE perfil_paciente
+				   SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				       deactivation_reason = 'baja sintetica', updated_at = UTC_TIMESTAMP(6)
+				 WHERE organization_id = ? AND persona_id = ? AND active = 1
+				""", tenant.organizationId(), persona);
+		assertThat(bajas).isEqualTo(1);
+
+		Respuesta baja = get("/api/v1/historias-clinicas/por-persona/" + persona
+				+ "/datos-administrativos", tokens.get(ADM));
+		assertThat(baja.status()).as("perfil dado de baja: %s", baja.body()).isEqualTo(404);
+		assertThat(baja.body())
+				.as("no expone la historia ni sus casos")
+				.doesNotContain("historiaClinicaId")
+				.doesNotContain("abiertaEn")
+				.doesNotContain("casos");
+	}
+
+	@Test
 	@DisplayName("G5-M2 gestionar colaboradores: solo ORG_ADMIN y CONSULTORIO_ADMIN otorgan permisos")
 	void solo_los_administradores_otorgan() {
 		String grants = "/api/v1/organizations/" + tenant.organizationId()

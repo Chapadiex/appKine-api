@@ -56,8 +56,7 @@ class HistoriaClinicaAdministrativaServiceTest {
 	void armar() {
 		servicio = new HistoriaClinicaAdministrativaService(
 				permissionGuard, pacientes, historias, casos, equipos);
-		given(pacientes.find(ORG_ID, PERSONA_ID))
-				.willReturn(Optional.of(mock(PacienteSnapshot.class)));
+		given(pacientes.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(snapshot(true, true)));
 	}
 
 	@Test
@@ -88,6 +87,27 @@ class HistoriaClinicaAdministrativaServiceTest {
 		assertThatThrownBy(() -> servicio.datosAdministrativos(actor, PERSONA_ID))
 				.isInstanceOf(HistoriaClinicaNotAccessibleException.class);
 		verifyNoInteractions(historias);
+	}
+
+	@Test
+	@DisplayName("una persona del tenant sin perfil de paciente vigente es 404, tenga o no historia")
+	void persona_sin_perfil_vigente_es_404() {
+		// Lo que el directorio real devuelve: la persona es del tenant y no es paciente.
+		given(pacientes.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(snapshot(true, false)));
+
+		assertThatThrownBy(() -> servicio.datosAdministrativos(actor, PERSONA_ID))
+				.isInstanceOf(HistoriaClinicaNotAccessibleException.class);
+		verifyNoInteractions(historias, casos);
+	}
+
+	@Test
+	@DisplayName("una persona con la ficha dada de baja es 404")
+	void persona_dada_de_baja_es_404() {
+		given(pacientes.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(snapshot(false, true)));
+
+		assertThatThrownBy(() -> servicio.datosAdministrativos(actor, PERSONA_ID))
+				.isInstanceOf(HistoriaClinicaNotAccessibleException.class);
+		verifyNoInteractions(historias, casos);
 	}
 
 	@Test
@@ -134,6 +154,12 @@ class HistoriaClinicaAdministrativaServiceTest {
 				.doesNotContain("Diagnostico sintetico")
 				.doesNotContain("Alta");
 		verify(permissionGuard).requirePermission(any());
+	}
+
+	private static PacienteSnapshot snapshot(boolean activa, boolean esPacienteVigente) {
+		return new PacienteSnapshot(PERSONA_ID, ORG_ID, "Sintetico", "Paciente", "DNI", "30111222",
+				null, activa, esPacienteVigente, esPacienteVigente ? 7L : null,
+				esPacienteVigente ? Instant.EPOCH : null);
 	}
 
 	private static CasoClinico caso(long id, int numero) {
