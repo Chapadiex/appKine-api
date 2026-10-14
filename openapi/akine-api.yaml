@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.98.0
+  version: 0.99.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -33270,6 +33270,14 @@ components:
       description: "Turno de la agenda del dia de una sede, con el paciente resuelto.\
         \ PHI minima: no lleva ningun dato clinico."
       properties:
+        coberturaId:
+          type: integer
+          format: int64
+          description: "Cobertura del paciente elegida al reservar (AKINE-05.02).\
+            \ Ausente si no se eligio: la recepcion usa entonces la primera que aplique.\
+            \ Es la misma que `Turno.coberturaId` y es una preferencia, no un veredicto:\
+            \ la que se aplico la dice `recepcion.coberturaId`."
+          example: 412
         documento:
           type: string
           description: "Tipo y numero, para desambiguar homonimos. Ausente si la ficha\
