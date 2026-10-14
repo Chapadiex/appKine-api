@@ -258,6 +258,12 @@ public class MovimientoCajaService {
 				throw new CajaMonedaDistintaException(jornada.getMoneda(), moneda);
 			}
 			moverSaldo(organizationId, consultorioId, jornada, tipo, importe);
+		} else if (jornada != null && !jornadas.abiertaBajoLock(organizationId, jornada.getId())) {
+			// Un medio que no es efectivo no mueve el saldo, asi que la suma condicional no lo frena:
+			// sin esto, un cobro con tarjeta que pierde la carrera contra el cierre quedaba asentado
+			// en una jornada ya cerrada. La jornada se leyo de la foto; aca se relee con lock. Mismo
+			// rechazo que el efectivo. Sin jornada no hay nada que cerrar: el asiento queda suelto.
+			throw new CajaCerradaException(jornada.getId());
 		}
 
 		return movimientos.save(new MovimientoCaja(

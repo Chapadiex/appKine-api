@@ -723,6 +723,14 @@ las excepciones de disponibilidad, el horario general, y recién ahí el cupo y 
 `reprogramar` y las series siguen usando `RevalidadorDeSlot.revalidar` entero, bajo el lock: no
 están en la carga y no se tocaron.
 
+**Después de la revisión del PR #117**, dos ajustes que no cambian lo medido arriba: el paso 0 de la
+reserva guarda sólo los rechazos de negocio (oferta no agendable, persona inaccesible o sin perfil,
+cobertura, slot no disponible) y deja que un error técnico se propague en el acto; y un medio que no
+es efectivo relee la jornada con `FOR UPDATE` antes de asentarse en ella
+(`JornadaCajaRepositoryPort.abiertaBajoLock`): antes, un cobro con tarjeta o transferencia que perdía
+la carrera contra el cierre quedaba asentado en una jornada ya cerrada. Es una sentencia más bajo el
+numerador para esos cobros, y `CierreDeCajaConcurrenteIT` suma la carrera (falla sin el arreglo).
+
 **Índices de lo que corre bajo los locks.** Después del cambio, todo lo que queda adentro va por
 `PRIMARY KEY`, un `UNIQUE` o un índice que empieza por las columnas de igualdad: `agenda_sede` y
 `comprobante_numerador` por `(organization_id, consultorio_id)`, la idempotencia por

@@ -195,12 +195,65 @@ class CierreDeCajaConcurrenteIT {
 		}
 	}
 
+	@Test
+	@DisplayName("34 · un cobro por transferencia y el cierre a la vez: el movimiento nunca queda en la jornada ya cerrada")
+	void cobro_no_efectivo_y_cierre_simultaneos_no_asientan_en_jornada_cerrada() {
+		// La transferencia no mueve el saldo, asi que el cierre siempre puede cerrar y la suma
+		// condicional del arqueo no frena al cobro. Antes, el cobro que llegaba despues del cierre
+		// asentaba su movimiento en la jornada ya cerrada (la habia leido abierta en su foto). Ahora la
+		// relee con lock: o asienta antes y el cierre lo espera, o ve la caja cerrada y se rechaza.
+		for (int ronda = 0; ronda < 5; ronda++) {
+			Fixture fixture = crearFixture();
+
+			List<Desenlace> desenlaces = enParalelo(List.of(
+					() -> {
+						cobrar(fixture, MedioDePago.TRANSFERENCIA);
+						return null;
+					},
+					() -> cajaService.cerrar(fixture.actor(), fixture.consultorioId(),
+							fixture.jornadaId(), INICIAL, INICIAL, null)));
+			Desenlace cobro = desenlaces.get(0);
+			Desenlace cierre = desenlaces.get(1);
+
+			assertThat(cierre.fallo()).as("ronda %d: el cierre cierra. Cierre=%s", ronda, cierre).isFalse();
+			assertThat(jornada(fixture).get("estado")).isEqualTo("CERRADA");
+			// La hora la pone el motor en las dos filas: el INSERT del movimiento y el UPDATE del
+			// cierre. Un movimiento posterior al cierre es exactamente el defecto.
+			assertThat(jdbc.queryForObject("""
+					SELECT COUNT(*) FROM movimiento_caja m JOIN jornada_caja j ON j.id = m.jornada_caja_id
+					 WHERE j.id = ? AND m.created_at > j.updated_at
+					""", Integer.class, fixture.jornadaId()))
+					.as("ronda %d: ningun movimiento entro a la jornada despues del cierre", ronda)
+					.isZero();
+			if (cobro.fallo()) {
+				assertThat(causaEs(cobro.error(), CajaCerradaException.class))
+						.as("ronda %d: el cobro pierde con caja-cerrada. Cobro=%s", ronda, cobro)
+						.isTrue();
+				assertThat(saldoDeuda(fixture)).isEqualByComparingTo(COBRO);
+			} else {
+				// Entro una vez: en la jornada si llego antes del cierre, o suelto (sin jornada) si su foto
+				// ya la vio cerrada, que es lo que se admite para un medio que no toca el cajon.
+				assertThat(jdbc.queryForObject("""
+						SELECT COUNT(*) FROM movimiento_caja
+						 WHERE consultorio_id = ? AND tipo_origen = 'COBRO'
+						   AND (jornada_caja_id = ? OR jornada_caja_id IS NULL)
+						""", Integer.class, fixture.consultorioId(), fixture.jornadaId()))
+						.as("ronda %d: el cobro asento un solo movimiento", ronda)
+						.isEqualTo(1);
+			}
+		}
+	}
+
 	// =================================================================================
 
 	private void cobrar(Fixture fixture) {
+		cobrar(fixture, MedioDePago.EFECTIVO);
+	}
+
+	private void cobrar(Fixture fixture, MedioDePago medio) {
 		cobroService.registrar(fixture.actor(), fixture.consultorioId(), new CobroCommand(
 				fixture.personaId(), COBRO,
-				List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, COBRO, null)),
+				List.of(new CobroCommand.MedioPedido(medio, COBRO, null)),
 				List.of(new CobroCommand.ImputacionPedida(fixture.obligacionId(), COBRO)),
 				null));
 	}

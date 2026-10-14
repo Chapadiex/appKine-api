@@ -208,6 +208,24 @@ class TurnoServiceTest {
 	}
 
 	@Test
+	@DisplayName("carga §10: un error tecnico antes del lock se propaga en el acto, aunque la clave ya exista")
+	void el_error_tecnico_previo_no_se_guarda() {
+		Instant manana = Instant.now().plus(Duration.ofDays(1));
+		ReservaCommand command = new ReservaCommand(128L, manana, 31L, "clave-1");
+		given(pacientes.find(ORG_ID, 128L))
+				.willThrow(new org.springframework.dao.DataAccessResourceFailureException("conexion caida"));
+
+		// Guardarlo y seguir seria trabajar con una sesion de Hibernate que ya lanzo, y con la clave
+		// repetida terminaria en un 200 despues de un error.
+		assertThatThrownBy(() -> service.reservar(actor, CONSULTORIO_ID, 42L, command))
+				.isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+
+		verify(agendas, never()).lockByScope(anyLong(), anyLong());
+		verify(turnos, never()).findByIdempotencyKey(anyLong(), any());
+		verify(turnos, never()).save(any());
+	}
+
+	@Test
 	@DisplayName("05.02: sin cobertura la huella es la de antes; con cobertura cambia")
 	void la_huella_sin_cobertura_no_cambia() {
 		Instant inicio = Instant.parse("2026-11-02T12:00:00Z");

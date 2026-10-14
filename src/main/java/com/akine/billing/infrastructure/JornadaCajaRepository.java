@@ -83,6 +83,23 @@ public interface JornadaCajaRepository
 			@Param("limite") int limite,
 			@Param("desplazamiento") int desplazamiento);
 
+	@Query(value = """
+			SELECT COUNT(*) FROM jornada_caja
+			 WHERE id = :jornadaId
+			   AND organization_id = :organizationId
+			   AND estado = 'ABIERTA'
+			   FOR UPDATE
+			""", nativeQuery = true)
+	long contarAbiertaBajoLock(
+			@Param("organizationId") long organizationId,
+			@Param("jornadaId") long jornadaId);
+
+	/** Ver el puerto. Nativo para que el {@code FOR UPDATE} quede a la vista. */
+	@Override
+	default boolean abiertaBajoLock(long organizationId, long jornadaId) {
+		return contarAbiertaBajoLock(organizationId, jornadaId) > 0;
+	}
+
 	/** Cero filas = la jornada se cerro entre medio. Ver el puerto. */
 	@Modifying(flushAutomatically = true, clearAutomatically = true)
 	@Query(value = """

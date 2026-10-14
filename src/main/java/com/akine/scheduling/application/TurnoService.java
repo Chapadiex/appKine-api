@@ -34,7 +34,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -176,7 +175,7 @@ public class TurnoService {
 		iniciador.asegurar(organizationId, consultorioId);
 
 		ResultadoDeReserva resultado = transaccionDeReserva.execute(estado -> reservarBajoLock(
-				estado, actor, organizationId, sede, consultorioId, ofertaId, command));
+				actor, organizationId, sede, consultorioId, ofertaId, command));
 
 		// Despues del commit y no adentro: el log escribe en la consola, y adentro lo hacia con el
 		// lock de la agenda tomado. El reintento idempotente no loguea, como antes.
@@ -190,17 +189,17 @@ public class TurnoService {
 	/**
 	 * Lo que la reserva lee ANTES del lock (paso 0 de la cabecera).
 	 *
-	 * <p>Los rechazos no se lanzan al leer: se guardan en {@link #rechazo} y se lanzan bajo el lock,
-	 * despues de la idempotencia y en el orden de siempre. La oferta va aparte porque su 404 sale
-	 * antes del control de horario pasado y los demas despues.
+	 * <p>Los rechazos de negocio no se lanzan al leer: se guardan en {@link #rechazo} y se lanzan bajo
+	 * el lock, despues de la idempotencia y en el orden de siempre. La oferta va aparte porque su 404
+	 * sale antes del control de horario pasado y los demas despues.
 	 */
 	private static final class Preparacion {
 
-		/** {@code null}: la oferta no existe en la sede, o la lectura fallo antes de encontrarla. */
+		/** {@code null}: la oferta no existe en la sede. */
 		private OfertaSnapshot oferta;
 		private RevalidadorDeSlot.Previa previa;
 		private ContactoDePersona contacto;
-		/** El primer rechazo, o {@code null}. */
+		/** El primer rechazo de negocio, o {@code null}. */
 		private RuntimeException rechazo;
 	}
 
@@ -211,21 +210,27 @@ public class TurnoService {
 	 * sentencia ve lo ultimo commiteado igual que bajo el lock, y una transaccion aparte costaria
 	 * otra vuelta al pool. Ninguna es una lectura con lock: nada de esto puede quedar esperando a
 	 * otra reserva ni escalar a un deadlock con ella.
+	 *
+	 * <p><b>Solo se guardan los rechazos de negocio</b>, que lanza este mismo codigo y no un metodo
+	 * transaccional: no marcan la transaccion ni rompen la sesion de Hibernate. Un error tecnico
+	 * —{@code DataAccessException}, conexion caida, deadlock— se propaga en el acto: seguir con una
+	 * sesion que ya lanzo no esta soportado, y en el camino idempotente terminaria en un 200 despues
+	 * de un error.
 	 */
 	private Preparacion preparar(long organizationId, ConsultorioSnapshot sede, long consultorioId,
 			long ofertaId, ReservaCommand command) {
 
 		Preparacion preparacion = new Preparacion();
-		try {
-			preparacion.oferta = ofertas.find(organizationId, consultorioId, ofertaId).orElse(null);
-			if (preparacion.oferta == null) {
-				return preparacion;
-			}
-			OfertaSnapshot oferta = preparacion.oferta;
-			Instant inicio = command.inicio();
-			Instant fin = inicio.plusSeconds(oferta.duracionMinutos() * 60L);
-			LocalDate fecha = inicio.atZone(ZoneId.of(sede.timezone())).toLocalDate();
+		preparacion.oferta = ofertas.find(organizationId, consultorioId, ofertaId).orElse(null);
+		if (preparacion.oferta == null) {
+			return preparacion;
+		}
+		OfertaSnapshot oferta = preparacion.oferta;
+		Instant inicio = command.inicio();
+		Instant fin = inicio.plusSeconds(oferta.duracionMinutos() * 60L);
+		LocalDate fecha = inicio.atZone(ZoneId.of(sede.timezone())).toLocalDate();
 
+		try {
 			if (!oferta.vigenteEl(fecha)) {
 				throw new OfertaNoAgendableException(ofertaId, oferta.active()
 						? "no esta vigente el " + fecha
@@ -247,15 +252,18 @@ public class TurnoService {
 			preparacion.previa = revalidador.prevalidar(new RevalidadorDeSlot.Pedido(
 					organizationId, consultorioId, sede, oferta, inicio, fin,
 					command.profesionalId(), null));
-
-			preparacion.contacto = avisos.contactoDe(organizationId, command.personaId());
-		} catch (RuntimeException rechazo) {
+		} catch (OfertaNoAgendableException | PersonaNotAccessibleException
+				| PersonaSinPerfilPacienteException | CoberturaNoAccesibleException
+				| SlotNoDisponibleException rechazo) {
 			preparacion.rechazo = rechazo;
+			return preparacion;
 		}
+
+		preparacion.contacto = avisos.contactoDe(organizationId, command.personaId());
 		return preparacion;
 	}
 
-	private ResultadoDeReserva reservarBajoLock(TransactionStatus estado, OperatingActor actor,
+	private ResultadoDeReserva reservarBajoLock(OperatingActor actor,
 			long organizationId, ConsultorioSnapshot sede, long consultorioId, long ofertaId,
 			ReservaCommand command) {
 
@@ -271,13 +279,6 @@ public class TurnoService {
 				? Optional.empty()
 				: turnos.findByIdempotencyKey(organizationId, command.idempotencyKey());
 		if (yaCreado.isPresent()) {
-			if (preparacion.rechazo != null) {
-				// Un rechazo del paso 0 que salio de un metodo transaccional dejo la transaccion
-				// marcada, y commitearla daria UnexpectedRollbackException en vez del turno. El
-				// reintento no escribio nada: revertir localmente es lo mismo que commitear, y
-				// TransactionTemplate lo hace sin lanzar.
-				estado.setRollbackOnly();
-			}
 			return new ResultadoDeReserva(
 					resolverReintento(yaCreado.get(), command, consultorioId, ofertaId), false);
 		}
@@ -285,9 +286,7 @@ public class TurnoService {
 		// PASO 3. Los rechazos del paso 0, en el orden en que se evaluaban bajo el lock.
 		OfertaSnapshot oferta = preparacion.oferta;
 		if (oferta == null) {
-			throw preparacion.rechazo != null
-					? preparacion.rechazo
-					: new OfertaNotAccessibleException(ofertaId);
+			throw new OfertaNotAccessibleException(ofertaId);
 		}
 
 		Instant inicio = command.inicio();
