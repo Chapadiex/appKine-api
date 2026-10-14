@@ -248,8 +248,15 @@ revisar y cerrar (o descartar con motivo) lo que la primera corrida encuentre.
 - **Reporte:** artifact `zap-baseline` (HTML, Markdown y JSON) y el log del backend en
   `zap-backend-log`. `allow_issue_writing: false`: no abre issues.
 - **Falsos positivos:** `.zap/rules.tsv`, una regla por línea (`id<TAB>IGNORE|WARN|FAIL<TAB>(motivo)`).
-  Hoy ignora tres informativas que disparan sobre Swagger UI (10049, 10027, 10109). Toda regla que
-  se agregue lleva su motivo.
+  Hoy ignora tres, todas sobre Swagger UI: 10049 y 10109 (informativas) y 10096 (literales
+  numéricos dentro del bundle de terceros tomados por timestamps). Toda regla que se agregue lleva
+  su motivo.
+- **Primera corrida (PR #119, 14/10/2026):** 13 URLs, **0 FAIL, 4 WARN, 61 PASS**. Los cuatro WARN
+  caen sobre Swagger UI, que sólo se publica con perfil `local`, y **no se ignoran** porque son
+  headers que faltan de verdad: CSP en `index.html` (10038), `Permissions-Policy` (10063) y
+  `Cross-Origin-Embedder-Policy` (90004). El spider no pasó de Swagger: `/` responde 401.
+- **Actions de terceros fijadas por SHA** (`docker/*`, `zaproxy/*`), con la versión en comentario:
+  CodeQL `actions` lo marca como `actions/unpinned-tag`. Dependabot las sigue actualizando.
 
 **Volverlo bloqueante:** en el paso `ZAP baseline`, sacar `-I` de `cmd_options` y poner
 `fail_action: true`; con eso el job falla ante cualquier `WARN` o `FAIL`. Para fallar sólo por lo
