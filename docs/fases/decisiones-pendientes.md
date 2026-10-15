@@ -24,10 +24,10 @@
 | Bloque | Cantidad |
 |---|---|
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 9 |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39) | 10 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
 | D. No bloquean nada (U-35 a U-37) | 3 |
-| **Total** | **38** |
+| **Total** | **39** |
 
 Ya resueltas y fuera de la lista (las fichas las mencionan): el **escenario 7b** (`request_hash`
 en `onboarding_registro`), que la ficha de F0–F1 daba abierto y cerró el PR #104 el 13/10/2026
@@ -199,6 +199,25 @@ fila nueva.
 - **Fase / RF:** transversal (F3, F4; AKINE-02.01 fija la zona de la sede).
 - **Destraba:** que una cobertura, autorización u orden que vence hoy no se lea vencida a la noche.
   Se encarece con cada sitio nuevo que copie `LocalDate.now()`.
+
+### U-39 · Cuándo se devenga una clase `POR_CLASE`, y qué pasa sin pase en `POR_PACK`
+
+- **Pregunta:** (a) en una oferta `POR_CLASE`, ¿la deuda nace con la **asistencia** o con la
+  **inscripción**, y el no-show cobra? (b) en una oferta `POR_PACK`, ¿qué se hace con quien asiste
+  **sin pase vigente**: sólo se informa (hoy), se bloquea la asistencia, o se devenga una clase
+  suelta?
+- **Hoy (rama `akine-f9-pases-abonos`):** (a) declarar `POR_CLASE` en la oferta responde 400, porque
+  `ck_oferta_politica_devengo` (V64) exige elegir el momento y elegirlo es esta decisión; RF-M18-008
+  queda sin disparador. (b) la asistencia se registra igual y la respuesta trae
+  `consumoDeCredito.efecto = SIN_PASE_ELEGIBLE`, auditado como `PASE_SIN_CREDITO_ELEGIBLE`
+  (RN-M29-005, CA-M19-009-06). Ningún RF pide devengar ahí.
+- **Recomendado:** (a) asistencia, sin no-show por defecto (`devenga_no_show = 0`, ya en V64).
+  (b) informar, como hoy.
+- **Fase / RF:** F9 (08.03, 08.07); RF-M18-008, RN-M29-005. Diseño en
+  [`../diseno/AKINE-08.06-pases.md`](../diseno/AKINE-08.06-pases.md) §4 y §9.
+- **Destraba:** el devengo de la asistencia (RF-M18-008 / RF-M19-009). Agregarlo después no
+  cambia esquema: `obligacion` necesita un origen nuevo (`ck_obligacion_origen`), que es un
+  `DROP CHECK` cuidadoso.
 
 ---
 

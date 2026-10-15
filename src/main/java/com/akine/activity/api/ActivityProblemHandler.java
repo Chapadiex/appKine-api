@@ -11,7 +11,14 @@ import com.akine.activity.domain.exception.HorarioNoDisponibleException;
 import com.akine.activity.domain.exception.InscripcionDuplicadaException;
 import com.akine.activity.domain.exception.InscripcionNotAccessibleException;
 import com.akine.activity.domain.exception.OfertaNotAccessibleException;
+import com.akine.activity.domain.exception.OfertaNoAdmitePackException;
+import com.akine.activity.domain.exception.PaseNotAccessibleException;
+import com.akine.activity.domain.exception.PersonaDadaDeBajaException;
 import com.akine.activity.domain.exception.PersonaNoAccesibleException;
+import com.akine.activity.domain.exception.ProductoDadoDeBajaException;
+import com.akine.activity.domain.exception.ProductoNoVendibleException;
+import com.akine.activity.domain.exception.ProductoNombreEnUsoException;
+import com.akine.activity.domain.exception.ProductoNotAccessibleException;
 import com.akine.activity.domain.exception.RecursoOcupadoException;
 import com.akine.activity.domain.exception.TransicionDeClaseNoPermitidaException;
 import com.akine.activity.domain.exception.TransicionDeInscripcionNoPermitidaException;
@@ -228,6 +235,59 @@ public class ActivityProblemHandler {
 	public ProblemDetail handleAsistenciaNoAccesible(AsistenciaNotAccessibleException exception) {
 		log.debug("Asistencia no accesible: asistenciaId={}", exception.getAsistenciaId());
 		return noEncontrado("La asistencia no existe.");
+	}
+
+	// =================================================================================
+	// Productos y pases (AKINE-08.06)
+	// =================================================================================
+
+	@ExceptionHandler(ProductoNotAccessibleException.class)
+	public ProblemDetail handleProductoNoAccesible(ProductoNotAccessibleException exception) {
+		log.debug("Producto no accesible: productoId={}", exception.getProductoId());
+		return noEncontrado("El producto no existe en esta sede.");
+	}
+
+	@ExceptionHandler(PaseNotAccessibleException.class)
+	public ProblemDetail handlePaseNoAccesible(PaseNotAccessibleException exception) {
+		log.debug("Pase no accesible: paseId={}", exception.getPaseId());
+		return noEncontrado("El pase no existe en esta sede.");
+	}
+
+	@ExceptionHandler(ProductoNoVendibleException.class)
+	public ProblemDetail handleProductoNoVendible(ProductoNoVendibleException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.PRODUCTO_NO_VENDIBLE.uri());
+		problem.setTitle("El producto no se puede vender");
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	@ExceptionHandler(ProductoNombreEnUsoException.class)
+	public ProblemDetail handleProductoNombreEnUso(ProductoNombreEnUsoException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.PRODUCTO_NOMBRE_EN_USO.uri());
+		problem.setTitle("Ya hay un producto con ese nombre");
+		return problem;
+	}
+
+	@ExceptionHandler(OfertaNoAdmitePackException.class)
+	public ProblemDetail handleOfertaNoAdmitePack(OfertaNoAdmitePackException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), CONFLICT);
+		problem.setTitle("La oferta no admite productos de pack");
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	@ExceptionHandler(ProductoDadoDeBajaException.class)
+	public ProblemDetail handleProductoDadoDeBaja(ProductoDadoDeBajaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), CONFLICT);
+		problem.setTitle("El producto esta dado de baja");
+		return problem;
+	}
+
+	@ExceptionHandler(PersonaDadaDeBajaException.class)
+	public ProblemDetail handlePersonaDadaDeBaja(PersonaDadaDeBajaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), CONFLICT);
+		problem.setTitle("La ficha de la persona esta dada de baja");
+		return problem;
 	}
 
 	@ExceptionHandler(IdempotencyKeyConflictException.class)

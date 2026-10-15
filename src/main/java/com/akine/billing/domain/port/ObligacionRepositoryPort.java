@@ -27,6 +27,14 @@ public interface ObligacionRepositoryPort {
 	List<Obligacion> findDeLaSesion(long sesionId);
 
 	/**
+	 * La obligacion viva devengada por la venta de ese pase (AKINE-08.06). Es la idempotencia de
+	 * RF-M18-009 del lado de {@code billing}: un reintento de la venta no devenga dos veces.
+	 */
+	Optional<Obligacion> findDeLaVenta(long organizationId, long paseId);
+
+	Obligacion saveAndFlush(Obligacion obligacion);
+
+	/**
 	 * La cuenta corriente <b>del paciente</b> en la organizacion (RF-M18-003): solo lo que debe el
 	 * paciente, de la mas reciente a la mas vieja.
 	 *

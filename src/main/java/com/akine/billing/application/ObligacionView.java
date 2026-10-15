@@ -23,11 +23,14 @@ import java.time.LocalDate;
  *                        arancel manana no cambia esto: seria reescribir una cuenta corriente
  * @param concepto        {@code PARTICULAR}, {@code FINANCIADOR} o {@code COSEGURO} (AKINE F-4)
  * @param convenio        el convenio aplicado, congelado; {@code null} en las particulares
+ * @param sesionId        la atencion que la genero; {@code null} si nacio de una venta (08.06)
+ * @param origen          {@code SESION} o {@code VENTA_PASE} (V64)
+ * @param paseId          el pase vendido que la genero; {@code null} si nacio de una sesion
  */
 public record ObligacionView(
 		long id,
 		long consultorioId,
-		long sesionId,
+		Long sesionId,
 		long personaId,
 		String responsable,
 		Long financiadorId,
@@ -45,7 +48,9 @@ public record ObligacionView(
 		String concepto,
 		Long practicaId,
 		boolean alertaPracticaNoHabilitada,
-		ConvenioAplicado convenio) {
+		ConvenioAplicado convenio,
+		String origen,
+		Long paseId) {
 
 	/**
 	 * El snapshot del convenio de una obligacion, para mostrarlo y para RF-M21-003.
@@ -100,6 +105,8 @@ public record ObligacionView(
 				obligacion.getConcepto().name(),
 				obligacion.getPracticaId(),
 				obligacion.isAlertaPracticaNoHabilitada(),
-				obligacion.getSnapshotDeConvenio().map(ConvenioAplicado::de).orElse(null));
+				obligacion.getSnapshotDeConvenio().map(ConvenioAplicado::de).orElse(null),
+				obligacion.getOrigen().name(),
+				obligacion.getPaseId());
 	}
 }

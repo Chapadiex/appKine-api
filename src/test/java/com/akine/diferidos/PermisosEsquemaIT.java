@@ -239,6 +239,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						"clase:read", "clase:manage",
 						"inscripcion:read", "inscripcion:manage",
 						"asistencia:manage",
+						// AKINE-08.06: productos de pack y venta de pases.
+						"producto:read", "producto:manage", "pase:read", "pase:manage",
 						// `reporte:read` lo sumo G-1 (DP-15): la matriz da "Si" al ORG_ADMIN en Ver Reportes.
 						"reporte:read");
 	}
@@ -268,6 +270,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						"clase:read", "clase:manage",
 						"inscripcion:read", "inscripcion:manage",
 						"asistencia:manage",
+						// AKINE-08.06: productos de pack y venta de pases.
+						"producto:read", "producto:manage", "pase:read", "pase:manage",
 						// `reporte:read` lo sumo G-1 (DP-15) con alcance ACTIVIDAD_PROPIA: el profesional
 						// ve solo su propia actividad en los reportes.
 						"reporte:read");

@@ -5,8 +5,12 @@ import com.akine.activity.domain.AsistenciaEvento;
 import com.akine.activity.domain.ClaseEvento;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.InscripcionClase;
+import com.akine.activity.domain.MovimientoPase;
+import com.akine.activity.domain.PaseServicio;
+import com.akine.activity.domain.ProductoServicio;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -331,6 +335,80 @@ public final class ActivityRepositoryPorts {
 	 * unica garantia real de que el historial sea inmutable. Misma decision que
 	 * {@code TurnoEventoRepositoryPort} y que {@code platform.spi.audit.AuditTrail}.
 	 */
+	// =================================================================================
+	// Productos, pases y ledger de creditos (AKINE-08.06 / 08.07, M29)
+	// =================================================================================
+
+	public interface ProductoServicioRepositoryPort {
+
+		ProductoServicio saveAndFlush(ProductoServicio producto);
+
+		Optional<ProductoServicio> findByIdInScope(
+				long organizationId, long consultorioId, long productoId);
+
+		/** Los productos de la sede, vigentes primero. Con {@code incluirBajas} tambien los dados de baja. */
+		List<ProductoServicio> findDeLaSede(long organizationId, long consultorioId, boolean incluirBajas);
+
+		/**
+		 * {@code true} si ya hay otro producto VIGENTE con ese nombre en la sede. Da el 409
+		 * explicable; {@code uk_producto_sede_nombre} cubre la carrera.
+		 */
+		boolean existeVigenteConNombre(
+				long organizationId, long consultorioId, String nombre, long excluirProductoId);
+	}
+
+	public interface PaseServicioRepositoryPort {
+
+		PaseServicio saveAndFlush(PaseServicio pase);
+
+		Optional<PaseServicio> findByIdInScope(long organizationId, long consultorioId, long paseId);
+
+		Optional<PaseServicio> findByIdempotencyKey(long organizationId, String idempotencyKey);
+
+		List<PaseServicio> findDePersona(long organizationId, long personaId);
+
+		/**
+		 * Los pases de la persona que podrian cubrir una asistencia a esa oferta ese dia, en el orden
+		 * en que se consumen —el que vence antes primero— y <b>bloqueados</b> ({@code FOR UPDATE}):
+		 * es una lectura actual, no la foto de {@code REPEATABLE READ}, y serializa dos consumos
+		 * simultaneos de la misma persona.
+		 */
+		List<Long> lockElegibles(long organizationId, long personaId, long ofertaId, LocalDate fecha);
+
+		/**
+		 * Descuenta un credito si y solo si el pase sigue activo, vigente ese dia y con saldo. Una
+		 * fila = consumido; cero = no habia. Pasa a {@code AGOTADO} al tomar el ultimo y sube
+		 * {@code version}.
+		 */
+		int consumirUno(long organizationId, long paseId, LocalDate fecha);
+
+		/** Devuelve un credito si no supera los iniciales; un {@code AGOTADO} vuelve a {@code ACTIVO}. */
+		int devolverUno(long organizationId, long paseId);
+
+		/** El saldo actual leido del motor, para el {@code saldo_resultante} del ledger. */
+		int saldoActual(long organizationId, long paseId);
+	}
+
+	public interface MovimientoPaseRepositoryPort {
+
+		MovimientoPase registrar(MovimientoPase movimiento);
+
+		List<MovimientoPase> historial(long organizationId, long paseId);
+
+		/**
+		 * El credito neto que tiene tomado una asistencia, por pase: {@code SUM(cantidad)} de sus
+		 * movimientos. Solo filas con neto distinto de cero. Vale -1 o nada.
+		 */
+		List<NetoDeAsistencia> netoDeAsistencia(long organizationId, long asistenciaId);
+
+		/** Suma del ledger del pase: tiene que coincidir con {@code creditos_disponibles}. */
+		int sumaDelLedger(long organizationId, long paseId);
+	}
+
+	/** Lo que una asistencia tiene tomado de un pase. */
+	public record NetoDeAsistencia(long paseId, long neto) {
+	}
+
 	public interface ClaseEventoRepositoryPort {
 
 		ClaseEvento registrar(ClaseEvento evento);

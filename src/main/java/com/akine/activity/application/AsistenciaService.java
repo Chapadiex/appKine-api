@@ -71,6 +71,10 @@ import java.util.stream.Collectors;
  * lista cerrada, y la politica no existe en ninguna tabla—. El devengo es 08.06/08.07/08.09 y
  * cuelga de la referencia economica unica que esta etapa deja.
  *
+ * <p><b>Desde AKINE-08.07 si mueve creditos</b>, que no son deuda: en una oferta {@code POR_PACK}
+ * la asistencia consume un credito del pase de la persona y la correccion a ausente lo devuelve,
+ * en esta misma transaccion ({@link ConsumoDePaseService}). Un credito no es plata (RN-M29-006).
+ *
  * <h2>El cupo no se mueve, salvo en una operacion</h2>
  *
  * <p>{@code RESERVADA}, {@code CONFIRMADA}, {@code ASISTIO} y {@code AUSENTE} consumen lugar los
@@ -113,6 +117,7 @@ public class AsistenciaService {
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final ConsumoDePaseService consumoDePases;
 
 	/**
 	 * La transaccion de cada item del lote. <b>No alcanza con que {@link #registrar} este
@@ -135,6 +140,7 @@ public class AsistenciaService {
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
+			ConsumoDePaseService consumoDePases,
 			PlatformTransactionManager transactionManager) {
 
 		this.asistencias = asistencias;
@@ -147,6 +153,7 @@ public class AsistenciaService {
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.consumoDePases = consumoDePases;
 		this.transaccionPorItem = new TransactionTemplate(transactionManager);
 	}
 
@@ -323,7 +330,7 @@ public class AsistenciaService {
 				return new ResultadoDeAsistencia(
 						AsistenciaView.de(existente), InscripcionView.de(inscripcion), false, false);
 			}
-			return corregir(actor, sede, inscripcion, existente, command, ahora);
+			return corregir(actor, sede, clase, inscripcion, existente, command, ahora);
 		}
 		return crear(actor, sede, clase, inscripcion, command, ahora);
 	}
@@ -344,14 +351,18 @@ public class AsistenciaService {
 				proyectada, command.resultado(), command.origen(),
 				clase.getProfesionalMembershipId(), command.observaciones(),
 				actor.accountId(), ahora));
-		eventos.registrar(AsistenciaEvento.registro(guardada, actor.accountId(), ahora));
+		AsistenciaEvento evento =
+				eventos.registrar(AsistenciaEvento.registro(guardada, actor.accountId(), ahora));
 
 		auditar(actor, guardada, sede, "ASISTENCIA_REGISTRADA", anterior.name(), null, ahora);
+		// AKINE-08.07: la asistencia consume credito de un pase si la oferta cobra por pack.
+		ConsumoDeCredito consumo = consumoDePases.aplicar(
+				clase, guardada, evento, actor.accountId(), null, ahora);
 		log.info("Asistencia registrada: asistenciaId={} claseId={} resultado={} origen={}",
 				guardada.getId(), guardada.getClaseId(), command.resultado(), command.origen());
 
 		return new ResultadoDeAsistencia(
-				AsistenciaView.de(guardada), InscripcionView.de(proyectada), true, false);
+				AsistenciaView.de(guardada), InscripcionView.de(proyectada), true, false, consumo);
 	}
 
 	/**
@@ -361,6 +372,7 @@ public class AsistenciaService {
 	private ResultadoDeAsistencia corregir(
 			OperatingActor actor,
 			ConsultorioSnapshot sede,
+			ClaseProgramada clase,
 			InscripcionClase inscripcion,
 			AsistenciaActividad existente,
 			RegistrarAsistenciaCommand command,
@@ -370,7 +382,7 @@ public class AsistenciaService {
 				command.resultado(), command.observaciones(), command.motivo(),
 				actor.accountId(), ahora);
 		AsistenciaActividad corregida = asistencias.saveAndFlush(existente);
-		eventos.registrar(AsistenciaEvento.correccion(
+		AsistenciaEvento evento = eventos.registrar(AsistenciaEvento.correccion(
 				corregida, anterior, command.motivo(), actor.accountId(), ahora));
 
 		inscripcion.marcarAsistencia(command.resultado().estadoDeInscripcion(), ahora);
@@ -378,11 +390,14 @@ public class AsistenciaService {
 
 		auditar(actor, corregida, sede, "ASISTENCIA_CORREGIDA", anterior.name(), command.motivo(),
 				ahora);
+		// AKINE-08.07: una correccion a ausente devuelve el credito; de vuelta a presente lo toma.
+		ConsumoDeCredito consumo = consumoDePases.aplicar(
+				clase, corregida, evento, actor.accountId(), command.motivo(), ahora);
 		log.info("Asistencia corregida: asistenciaId={} de={} a={}",
 				corregida.getId(), anterior, command.resultado());
 
 		return new ResultadoDeAsistencia(
-				AsistenciaView.de(corregida), InscripcionView.de(proyectada), false, true);
+				AsistenciaView.de(corregida), InscripcionView.de(proyectada), false, true, consumo);
 	}
 
 	// =================================================================================
