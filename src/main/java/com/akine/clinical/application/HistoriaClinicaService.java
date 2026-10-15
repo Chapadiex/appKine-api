@@ -109,7 +109,7 @@ public class HistoriaClinicaService {
 			OperatingActor actor, long personaId, String justificacion) {
 
 		AccesoClinico acceso = AutorizacionClinica.exigirSobrePersona(permissionGuard, relaciones,
-				pacientes, actor,
+				supportAccessAuditor, pacientes, actor,
 				PermissionCodes.HC_WRITE, personaId, justificacion, "Abrir historia clinica");
 		long organizationId = actor.contextOrganizationId();
 
@@ -243,7 +243,7 @@ public class HistoriaClinicaService {
 	@Transactional
 	public HistoriaClinicaView ver(OperatingActor actor, long personaId, String justificacion) {
 		AccesoClinico acceso = AutorizacionClinica.exigirSobrePersona(permissionGuard, relaciones,
-				pacientes, actor,
+				supportAccessAuditor, pacientes, actor,
 				PermissionCodes.HC_READ, personaId, justificacion, "Ver historia clinica");
 		long organizationId = actor.contextOrganizationId();
 
@@ -281,7 +281,7 @@ public class HistoriaClinicaService {
 			String justificacion) {
 
 		AccesoClinico acceso = AutorizacionClinica.exigirSobrePersona(permissionGuard, relaciones,
-				pacientes, actor,
+				supportAccessAuditor, pacientes, actor,
 				PermissionCodes.HC_WRITE, personaId, justificacion, "Actualizar resumen clinico");
 		long organizationId = actor.contextOrganizationId();
 

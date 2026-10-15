@@ -8,10 +8,9 @@ import java.time.Instant;
 /**
  * Un integrante del equipo tratante, tal como sale por la API.
  *
- * <p>Viaja el {@code profesionalMembershipId} y <b>no el nombre</b>: el nombre vive en
- * {@code person} y en {@code organization}, y duplicarlo aca produciria dos verdades que divergen
- * en cuanto alguien corrija un apellido mal tipeado (RN-M09-003). La pantalla lo resuelve con la
- * lista de colaboradores que ya tiene cargada.
+ * <p>Viaja el {@code profesionalMembershipId} y, desde 0.107.0, el nombre de la cuenta
+ * <b>resuelto al leer</b> (pedido de appKine-web #83). No se guarda en el caso: el nombre vive en
+ * la cuenta, y copiarlo produciria dos verdades que divergen en cuanto alguien corrija un apellido.
  */
 @Schema(name = "CasoProfesional",
 		description = "Participacion de un profesional en un caso, vigente o historica")
@@ -34,7 +33,13 @@ public record CasoProfesionalResponse(
 		Instant hasta,
 
 		@Schema(example = "true")
-		boolean vigente) {
+		boolean vigente,
+
+		@Schema(description = "Nombre del profesional, resuelto al leer por su membership en la "
+				+ "organizacion (0.107.0): sirve aunque el caso sea de otra sede o el profesional ya "
+				+ "no este habilitado. Ausente si no resuelve o en la vista administrativa de la "
+				+ "historia; ahi la pantalla muestra el id", example = "Lucia Fernandez")
+		String profesionalNombre) {
 
 	public static CasoProfesionalResponse from(CasoProfesionalView view) {
 		return new CasoProfesionalResponse(
@@ -43,6 +48,7 @@ public record CasoProfesionalResponse(
 				view.rol(),
 				view.desde(),
 				view.hasta(),
-				view.vigente());
+				view.vigente(),
+				view.profesionalNombre());
 	}
 }

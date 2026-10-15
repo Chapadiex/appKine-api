@@ -21,7 +21,8 @@ public record CasoProfesionalView(
 		String rol,
 		Instant desde,
 		Instant hasta,
-		boolean vigente) {
+		boolean vigente,
+		String profesionalNombre) {
 
 	public static CasoProfesionalView de(CasoProfesional participacion) {
 		return new CasoProfesionalView(
@@ -30,6 +31,15 @@ public record CasoProfesionalView(
 				participacion.getRol().name(),
 				participacion.getDesde(),
 				participacion.getHasta(),
-				participacion.estaVigente());
+				participacion.estaVigente(),
+				null);
+	}
+
+	/**
+	 * La misma participacion con el nombre del profesional resuelto al leer (0.107.0).
+	 * {@code null} si la membership o su cuenta no resuelven: la pantalla muestra el id.
+	 */
+	public CasoProfesionalView conNombre(String nombre) {
+		return new CasoProfesionalView(id, profesionalMembershipId, rol, desde, hasta, vigente, nombre);
 	}
 }
