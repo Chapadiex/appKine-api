@@ -1,5 +1,6 @@
 package com.akine.encounter.api;
 
+import com.akine.encounter.domain.exception.BorradorNoEsJsonException;
 import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.CierreIncompletoException;
@@ -34,6 +35,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.net.URI;
+import java.util.Map;
 
 /**
  * Traduce las excepciones de {@code encounter} a Problem Details (RFC 7807, ADR-0005).
@@ -159,6 +161,22 @@ public class EncounterProblemHandler {
 				HttpStatus.BAD_REQUEST, exception.getMessage());
 		problem.setType(VALIDATION_ERROR);
 		problem.setTitle("La evaluacion tiene un dato invalido");
+		return problem;
+	}
+
+	/**
+	 * <b>400 {@code validation-error}</b> con el campo en {@code errors}, igual que una violacion
+	 * de Bean Validation: el borrador no es JSON y reintentar el mismo cuerpo falla igual. Antes
+	 * llegaba a la columna {@code JSON} y salia como 409 generico.
+	 */
+	@ExceptionHandler(BorradorNoEsJsonException.class)
+	public ProblemDetail handleBorradorNoEsJson(BorradorNoEsJsonException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, "La solicitud contiene campos invalidos");
+		problem.setType(VALIDATION_ERROR);
+		problem.setTitle("Error de validacion");
+		problem.setProperty("errors",
+				Map.of(BorradorNoEsJsonException.CAMPO, exception.getMessage()));
 		return problem;
 	}
 

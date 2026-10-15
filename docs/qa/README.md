@@ -352,3 +352,4 @@ tomada. Una corrida completa son **dos jornadas**; si hay que recortar, los circ
 | `validacion/stack.sh` | Stack aislado (`g12-*` o el prefijo de `QA_PREFIJO`) para validar las consultas |
 | `validacion/sembrar.mjs` | Sembrado mínimo por la API sobre ese stack |
 | `validacion/validar-consultas.mjs` | Corre cada bloque SQL de la guía y falla ante un error |
+| `validacion/pre-qa.mjs` + `validacion/pre-qa/` | **Pre-QA automatizado**: recorre los 146 pasos por la API sobre el stack aislado (después de `sembrar.mjs`), corre la SQL de cada paso y escribe una tabla OK / FALLA / MANUAL / BLOQUEADO. No reemplaza la corrida manual: lo que es de pantalla queda anotado como MANUAL. Uso en la cabecera de `pre-qa.mjs`; primera corrida en [`corridas/2026-10-14-pre-qa.md`](corridas/2026-10-14-pre-qa.md) |

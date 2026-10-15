@@ -67,6 +67,9 @@ public final class AuditEvents {
 	/** Se cerro la atencion, con su numero de sesion (RF-M14-009). */
 	static final String SESION_CERRADA = "SESION_CERRADA";
 
+	/** Se asocio, cambio o quito el Caso Clinico de una sesion abierta. */
+	static final String SESION_CASO_CAMBIADO = "SESION_CASO_CAMBIADO";
+
 	/** Se escribio una version nueva de una sesion cerrada (RF-M14-010). */
 	public static final String SESION_AMENDED = "SESION_AMENDED";
 

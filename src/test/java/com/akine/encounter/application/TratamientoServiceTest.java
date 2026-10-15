@@ -443,7 +443,13 @@ class TratamientoServiceTest {
 		given(tratamientos.findEnSesion(ORG_ID, SESION_ID, TRATAMIENTO_ID))
 				.willReturn(Optional.of(tratamientoVigente()));
 
-		service.darDeBaja(actor, CONSULTORIO_ID, SESION_ID, TRATAMIENTO_ID, "Se cargo mal", 0L);
+		TratamientoView vista = service.darDeBaja(
+				actor, CONSULTORIO_ID, SESION_ID, TRATAMIENTO_ID, "Se cargo mal", 0L);
+
+		// Como el alta y el reemplazo: la respuesta anuncia la version de la sesion ya avanzada,
+		// para que la pantalla no tenga que releerla.
+		assertThat(vista.sesionVersion()).isEqualTo(1L);
+		assertThat(vista.vigente()).isFalse();
 
 		ArgumentCaptor<TratamientoRealizado> guardado =
 				ArgumentCaptor.forClass(TratamientoRealizado.class);
