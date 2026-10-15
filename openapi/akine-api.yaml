@@ -117,6 +117,9 @@ tags:
   name: Consultorios
 - description: "Egresos, liquidaciones y pagos a profesionales (M22)"
   name: Egresos
+- description: "Vinculo entre la asistencia a una clase y un Caso Clinico (M28, M09,\
+    \ M10)"
+  name: Derivacion clinica de participantes
 - description: "Catalogo de que se mide en el examen fisico, en que unidad y con que\
     \ rango (M06, RF-M14-004)"
   name: Definiciones de medicion
@@ -4185,6 +4188,319 @@ paths:
       summary: Confirmar una inscripcion
       tags:
       - Inscripciones
+  /api/v1/consultorios/{consultorioId}/clases/{claseId}/inscripciones/{inscripcionId}/derivaciones:
+    get:
+      description: "Vigentes y revertidas, mas nueva primero, y si la persona ya tiene\
+        \ historia clinica. **Es una lectura clinica**: exige `hc:read` con relacion\
+        \ asistencial o justificacion, y queda auditada. Sin asistencia registrada\
+        \ la lista es vacia."
+      operationId: listarDerivacionesDeParticipante
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: inscripcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso clinico (DP-03). Lo exige la politica\
+          \ clinica cuando no hay relacion asistencial; si hacia falta y no vino,\
+          \ 403 con `requiereJustificacion`."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivacionesDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/DerivacionesDeParticipante"
+          description: Las derivaciones
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` en la sede, sin `hc:read`, o sin justificacion\
+            \ cuando hacia falta"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la clase o la inscripcion no existen en este alcance"
+      summary: Derivaciones del participante
+      tags:
+      - Derivacion clinica de participantes
+    post:
+      description: |-
+        Vincula la **asistencia** a un Caso Clinico existente y activo de esa persona (RF-M28-008, RF-M10-008, RF-M11-007). **Derivar no es atender**: no crea Sesion, no numera nada dentro del Caso, no consume autorizacion y no devenga.
+
+        Orden de los gates: la oferta tiene que generar registro clinico (`oferta-no-clinica`); la persona tiene que haber estado (`participacion-sin-asistencia`); si no es paciente, hace falta `activarPerfilPaciente = true` (`persona-sin-perfil-paciente`), que exige `paciente:manage`; despues, lo clinico: `hc:write` con relacion asistencial o justificacion, Caso activo de esa historia (`caso-no-activo`), Plan del Caso y autorizacion que habilite (`autorizacion-no-elegible`).
+
+        **Idempotente por destino**: repetir al mismo Caso devuelve 200 con la derivacion existente y `yaExistia = true`. A otro Caso crea otra.
+      operationId: derivarParticipante
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: inscripcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso clinico (DP-03). Lo exige la politica\
+          \ clinica cuando no hay relacion asistencial; si hacia falta y no vino,\
+          \ 403 con `requiereJustificacion`."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DerivarParticipante"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+          description: "Ya estaba derivada a ese Caso: se devuelve la existente"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+          description: Derivacion creada
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` en la sede, sin `hc:write`, sin justificacion\
+            \ cuando hacia falta, o sin `paciente:manage` al activar el perfil"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la clase, la inscripcion, la persona, el Caso, el\
+            \ Plan o la autorizacion no existen en este alcance"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Oferta no clinica, participante ausente o sin asistencia,\
+            \ persona sin perfil de paciente, Caso no activo o autorizacion que no\
+            \ habilita"
+      summary: Derivar al participante a un Caso Clinico
+      tags:
+      - Derivacion clinica de participantes
+  /api/v1/consultorios/{consultorioId}/clases/{claseId}/inscripciones/{inscripcionId}/derivaciones/{derivacionId}/reversion:
+    post:
+      description: "Deshace el vinculo con motivo obligatorio. **La fila queda** (RF-M28-008:\
+        \ los historicos permanecen consultables) y se puede volver a derivar al mismo\
+        \ Caso. Revertir dos veces devuelve la misma derivacion sin tocar nada."
+      operationId: revertirDerivacionDeParticipante
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: inscripcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: derivacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso clinico (DP-03). Lo exige la politica\
+          \ clinica cuando no hay relacion asistencial; si hacia falta y no vino,\
+          \ 403 con `requiereJustificacion`."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevertirDerivacion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+          description: Derivacion revertida
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` en la sede, sin `hc:write`, o sin justificacion\
+            \ cuando hacia falta"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La derivacion no existe o no cuelga de esta participacion
+      summary: Revertir una derivacion
+      tags:
+      - Derivacion clinica de participantes
+  /api/v1/consultorios/{consultorioId}/clases/{claseId}/inscripciones/{inscripcionId}/elegibilidad-clinica:
+    get:
+      description: "Veredicto **grupal y sin efectos**: la oferta genera registro\
+        \ clinico, la persona estuvo (`PRESENTE` o `PRESENTE_TARDE`) y si ya es paciente.\
+        \ **No lee nada clinico** y no se audita: el Caso, el Plan, la autorizacion\
+        \ y el permiso clinico los decide la derivacion misma."
+      operationId: verElegibilidadClinicaDeParticipante
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: inscripcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElegibilidadClinicaDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ElegibilidadClinicaDeParticipante"
+          description: El veredicto
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la clase, la inscripcion, la oferta o la persona\
+            \ no existen en este alcance"
+      summary: "Si el participante se puede derivar, y por que no"
+      tags:
+      - Derivacion clinica de participantes
   /api/v1/consultorios/{consultorioId}/clases/{claseId}/reprogramacion:
     post:
       description: |-
@@ -25068,6 +25384,130 @@ components:
           minLength: 0
       required:
       - token
+    DerivacionDeParticipante:
+      type: object
+      description: Vinculo entre una participacion de clase y un Caso Clinico (AKINE-08.04).
+      properties:
+        asistenciaId:
+          type: integer
+          format: int64
+          description: La asistencia de la que cuelga el vinculo
+          example: 981
+        autorizacionId:
+          type: integer
+          format: int64
+        casoClinicoId:
+          type: integer
+          format: int64
+          example: 88
+        derivadaEn:
+          type: string
+          format: date-time
+        derivadaPorCuentaId:
+          type: integer
+          format: int64
+        estado:
+          type: string
+          enum:
+          - VIGENTE
+          - REVERTIDA
+          example: VIGENTE
+        historiaClinicaId:
+          type: integer
+          format: int64
+          example: 40
+        id:
+          type: integer
+          format: int64
+          example: 501
+        inscripcionId:
+          type: integer
+          format: int64
+          example: 301
+        motivo:
+          type: string
+        motivoReversion:
+          type: string
+        ofertaId:
+          type: integer
+          format: int64
+          description: "Oferta clinica que justifico la derivacion, congelada"
+          example: 45
+        personaId:
+          type: integer
+          format: int64
+          example: 512
+        planTratamientoId:
+          type: integer
+          format: int64
+        requiereCasoClinico:
+          type: boolean
+          description: "Copia congelada de la oferta: si la atencion va a exigir Caso"
+        revertidaEn:
+          type: string
+          format: date-time
+        revertidaPorCuentaId:
+          type: integer
+          format: int64
+        version:
+          type: integer
+          format: int64
+          example: 0
+        yaExistia:
+          type: boolean
+          description: true si el pedido no creo nada porque el vinculo ya existia
+    DerivacionesDeParticipante:
+      type: object
+      description: "Las derivaciones de una participacion, vigentes y revertidas,\
+        \ mas nueva primero. Lectura clinica: se autoriza y se audita."
+      properties:
+        derivaciones:
+          type: array
+          items:
+            $ref: "#/components/schemas/DerivacionDeParticipante"
+        historiaClinicaId:
+          type: integer
+          format: int64
+          description: "null si la persona todavia no tiene historia: la derivacion\
+            \ la abre"
+    DerivarParticipante:
+      type: object
+      description: "Vincula la participacion (la asistencia) a un Caso Clinico existente\
+        \ y activo de esa persona. No crea Sesion, no consume autorizacion y no devenga."
+      properties:
+        activarPerfilPaciente:
+          type: boolean
+          default: false
+          description: "true activa el perfil de paciente si la persona no lo tiene\
+            \ (exige paciente:manage). Si falta o es false, una persona sin perfil\
+            \ es 409 persona-sin-perfil-paciente."
+          example: false
+        autorizacionId:
+          type: integer
+          format: int64
+          description: "Autorizacion declarada. Opcional (RF-M11-008); si viene, tiene\
+            \ que habilitar el dia de la clase. No se consume"
+          example: 7
+          exclusiveMinimum: 0
+        casoClinicoId:
+          type: integer
+          format: int64
+          description: "Caso Clinico destino, activo y de la historia de esa persona"
+          example: 88
+          exclusiveMinimum: 0
+        motivo:
+          type: string
+          description: "Por que se deriva. Opcional: el motivo clinico vive en el\
+            \ Caso"
+          example: Indicacion del kinesiologo tras la clase
+          maxLength: 300
+          minLength: 0
+        planTratamientoId:
+          type: integer
+          format: int64
+          description: Plan de Tratamiento del Caso. Opcional (RF-M11-007)
+          example: 12
+          exclusiveMinimum: 0
     DesvinculacionImpactoResponse:
       type: object
       description: Trabajo pendiente que quedaria sin dueño al desvincular
@@ -25498,6 +25938,44 @@ components:
           description: "Control optimista del **borrador**. El saldo no lo mueve:\
             \ se toca en fases distintas y nunca corren la misma carrera."
           example: 2
+    ElegibilidadClinicaDeParticipante:
+      type: object
+      description: "Veredicto GRUPAL, sin efectos y sin leer nada clinico: si la oferta\
+        \ es clinica, si la persona estuvo y si ya es paciente. Caso, Plan, autorizacion\
+        \ y permiso clinico se deciden al derivar."
+      properties:
+        asistenciaId:
+          type: integer
+          format: int64
+          description: null si no hay asistencia registrada
+        derivable:
+          type: boolean
+        esPacienteVigente:
+          type: boolean
+        inscripcionId:
+          type: integer
+          format: int64
+          example: 301
+        motivos:
+          type: array
+          description: "Bloqueos: OFERTA_NO_CLINICA, SIN_ASISTENCIA, AUSENTE"
+          items:
+            type: string
+        ofertaClinica:
+          type: boolean
+        personaId:
+          type: integer
+          format: int64
+          example: 512
+        requiereActivarPerfil:
+          type: boolean
+          description: Derivar exige activarPerfilPaciente = true. No bloquea por
+            si solo
+        requiereCasoClinico:
+          type: boolean
+        resultadoAsistencia:
+          type: string
+          description: "PRESENTE, PRESENTE_TARDE, AUSENTE o null"
     ElegibilidadResponse:
       type: object
       description: Requisitos administrativos que el convenio exige y su veredicto
@@ -27431,8 +27909,9 @@ components:
       properties:
         aceptaListaEspera:
           type: boolean
+          default: false
           description: "Si no hay lugar: true la deja en la lista de espera, false\
-            \ responde clase-completa sin anotarla."
+            \ responde clase-completa sin anotarla. Opcional: si no viene, vale false."
           example: true
         idempotencyKey:
           type: string
@@ -31974,6 +32453,19 @@ components:
       required:
       - motivo
       - movimientoId
+    RevertirDerivacion:
+      type: object
+      description: "Deshace el vinculo con motivo. La fila queda: los historicos permanecen\
+        \ consultables. Revertir dos veces devuelve la misma derivacion."
+      properties:
+        motivo:
+          type: string
+          description: Por que se deshace el vinculo
+          example: Se derivo al caso equivocado
+          maxLength: 300
+          minLength: 0
+      required:
+      - motivo
     RevertirMovimientoDeCaja:
       type: object
       description: "Compensa un movimiento con otro de signo opuesto. **No borra nada**\
