@@ -27,7 +27,7 @@ public record ObligacionResponse(
 		@Schema(
 				description = "Atencion que la genero, cuando `origen` es `SESION`. **Ausente** "
 						+ "cuando la deuda nace de la venta de un pase (`origen = VENTA_PASE`, "
-						+ "desde 0.101.0).",
+						+ "desde 0.102.0).",
 				example = "501")
 		Long sesionId,
 

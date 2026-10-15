@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.99.0
+  version: 0.102.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -137,6 +137,8 @@ tags:
   name: Financiadores y planes
 - description: "Catalogo comercial: que incluye cada plan"
   name: Planes
+- description: "Productos de pack, venta de pases y ledger de creditos (M29)"
+  name: Pases
 - description: "Alta, edicion, baja y disponibilidad de los espacios fisicos de una\
     \ sede"
   name: Espacios
@@ -7490,6 +7492,192 @@ paths:
       summary: "Saber si esa combinacion puede prestarse, y por que no"
       tags:
       - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/pases:
+    post:
+      description: |-
+        Crea el pase con el snapshot del producto y su saldo inicial, el movimiento `COMPRA` del ledger y **una obligacion** a nombre de la persona, en una sola transaccion (RF-M29-002, RF-M18-009). **No cobra** (DP-06): la deuda se paga con `POST /cobros`. La persona no se convierte en paciente.
+
+        Con `idempotencyKey`, un reintento con el mismo pedido devuelve la venta existente con 200 sin duplicar pase, creditos ni deuda (CA-M29-002-06).
+      operationId: venderPase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenderPase"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeVenta"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeVenta"
+          description: "Reintento con la misma clave y el mismo pedido: se devuelve\
+            \ la venta ya hecha"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeVenta"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeVenta"
+          description: Pase vendido
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:manage` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El producto esta dado de baja o fuera de su ventana (`producto-no-vendible`),\
+            \ la ficha de la persona esta de baja (`conflict`), o la clave se reuso\
+            \ con otro pedido (`idempotency-key-conflict`)"
+      summary: Vender un pase a una persona
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/pases/{paseId}:
+    get:
+      description: "Saldo, vigencia y todos los movimientos, del mas viejo al mas\
+        \ nuevo (RF-M29-009)."
+      operationId: verPase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: paseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaseDetalle"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PaseDetalle"
+          description: El pase y su ledger
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: Ver un pase con su ledger
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/personas/{personaId}/pases:
+    get:
+      description: "Los que compro en esta sede, el que vence mas tarde primero. Una\
+        \ persona de otro tenant es 404."
+      operationId: listarPasesDePersona
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pase"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pase"
+          description: Los pases
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: Pases de una persona en la sede
+      tags:
+      - Pases
   /api/v1/consultorios/{consultorioId}/presentaciones:
     get:
       description: |-
@@ -8509,6 +8697,318 @@ paths:
       summary: Prestaciones que se le pueden reclamar a un financiador
       tags:
       - Presentaciones
+  /api/v1/consultorios/{consultorioId}/productos:
+    get:
+      description: Los vigentes primero. Con `incluirBajas=true` tambien los dados
+        de baja.
+      operationId: listarProductos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: incluirBajas
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Producto"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Producto"
+          description: Catalogo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `producto:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: Catalogo de productos de pack de la sede
+      tags:
+      - Pases
+    post:
+      description: "Define un pack de creditos sobre una oferta de la sede: cantidad,\
+        \ precio y vigencia en dias. La oferta tiene que declarar `esquemaCobro =\
+        \ POR_PACK`, que es la politica que despues hace que una asistencia consuma\
+        \ credito (RN-M29-005). **No crea saldo a nadie** (CA-M29-001-06)."
+      operationId: crearProducto
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearProducto"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+          description: Producto creado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `producto:manage` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta esta de baja o no cobra POR_PACK (`conflict`), o\
+            \ ya hay un producto vigente con ese nombre (`producto-nombre-en-uso`)"
+      summary: Crear un producto de pack
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/productos/{productoId}:
+    get:
+      operationId: verProducto
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: productoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+          description: El producto
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `producto:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: Ver un producto de pack
+      tags:
+      - Pases
+    put:
+      description: "Los campos ausentes se conservan. **Los pases ya vendidos no cambian**:\
+        \ llevan su propio snapshot. La oferta y el tipo no se editan."
+      operationId: editarProducto
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: productoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EditarProducto"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+          description: Producto editado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `producto:manage` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version vieja (`concurrent-modification`), producto dado de\
+            \ baja (`conflict`) o nombre en uso (`producto-nombre-en-uso`)"
+      summary: Editar un producto de pack
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/productos/{productoId}/baja:
+    post:
+      description: "Baja logica con motivo: el producto no se vende mas. **No cascadea**:\
+        \ los pases vendidos conservan saldo y vigencia, y sus clases los siguen consumiendo.\
+        \ Idempotente."
+      operationId: darDeBajaProducto
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: productoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BajaDeProducto"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+          description: Producto dado de baja
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `producto:manage` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: Dar de baja un producto de pack
+      tags:
+      - Pases
   /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad:
     get:
       description: |-
@@ -21568,6 +22068,19 @@ components:
       required:
       - expectedVersion
       - motivo
+    BajaDeProducto:
+      type: object
+      description: "Baja logica con motivo. **No cascadea**: los pases vendidos conservan\
+        \ saldo y vigencia."
+      properties:
+        motivo:
+          type: string
+          description: Obligatorio
+          example: Se discontinua el pack de 8
+          maxLength: 280
+          minLength: 0
+      required:
+      - motivo
     BloqueResponse:
       type: object
       description: Bloque recurrente de disponibilidad de un profesional en una sede
@@ -23093,6 +23606,35 @@ components:
           description: "Version para el control de concurrencia optimista. Hay que\
             \ reenviarla al editar: sin ella dos ediciones simultaneas se pisan"
           example: 0
+    ConsumoDeCredito:
+      type: object
+      description: "Que le hizo una asistencia al saldo de pases. **Un credito no\
+        \ es plata**: consumirlo no mueve caja ni crea deuda (RN-M29-006, CA-M18-009-06)."
+      properties:
+        efecto:
+          type: string
+          description: "`CONSUMIDO`: se desconto un credito. `DEVUELTO`: una correccion\
+            \ a ausente devolvio el credito tomado. `SIN_CAMBIO`: la asistencia ya\
+            \ tenia su credito tomado. `SIN_PASE_ELEGIBLE`: la oferta cobra por pack\
+            \ y la persona no tiene pase vigente con saldo; la asistencia queda registrada\
+            \ igual. `NO_APLICA`: la oferta no cobra por pack."
+          enum:
+          - CONSUMIDO
+          - DEVUELTO
+          - SIN_CAMBIO
+          - SIN_PASE_ELEGIBLE
+          - NO_APLICA
+          example: CONSUMIDO
+        paseId:
+          type: integer
+          format: int64
+          description: El pase afectado. Ausente si no hubo movimiento.
+          example: 77
+        saldo:
+          type: integer
+          format: int32
+          description: Saldo del pase despues del movimiento.
+          example: 7
     ConvenioAplicado:
       type: object
       description: "Convenio y arancel aplicados a la prestacion, **congelados al\
@@ -23344,6 +23886,66 @@ components:
       - moneda
       - periodoDesde
       - periodoHasta
+    CrearProducto:
+      type: object
+      description: Alta de un producto de pack sobre una oferta de la sede que declara
+        `esquemaCobro = POR_PACK`. **No crea saldo a nadie** (CA-M29-001-06).
+      properties:
+        creditos:
+          type: integer
+          format: int32
+          description: Creditos que otorga la compra
+          example: 8
+          exclusiveMinimum: 0
+        descripcion:
+          type: string
+          description: Descripcion comercial. Nunca contenido clinico.
+          maxLength: 500
+          minLength: 0
+        moneda:
+          type: string
+          description: ISO 4217
+          example: ARS
+          maxLength: 3
+          minLength: 3
+        nombre:
+          type: string
+          description: Unico entre los productos vigentes de la sede
+          example: Pack Pilates 8 clases
+          maxLength: 160
+          minLength: 0
+        ofertaId:
+          type: integer
+          format: int64
+          description: Oferta de la sede cuyos creditos vende el producto
+          example: 42
+          exclusiveMinimum: 0
+        precio:
+          type: number
+          description: "Precio de venta, decimal exacto"
+          example: 40000.0
+          exclusiveMinimum: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Desde cuando se puede vender
+          example: 2026-10-01
+        vigenciaDias:
+          type: integer
+          format: int32
+          description: "Dias corridos que vale el pase desde la compra, contando el\
+            \ dia de la compra"
+          example: 60
+          exclusiveMinimum: 0
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Hasta cuando se puede vender, inclusive. Ausente: sin fin."
+      required:
+      - moneda
+      - nombre
+      - precio
+      - vigenciaDesde
     CrearSerieDeTurnos:
       type: object
       description: "Alta de una serie semanal de turnos (DP-04). Se reservan TODAS\
@@ -25049,6 +25651,32 @@ components:
           type: integer
           format: int32
           example: 1
+    DeudaDeVenta:
+      type: object
+      description: "La obligacion que devengo la venta (RF-M18-009). **No es un cobro**:\
+        \ se paga con `POST /cobros`."
+      properties:
+        estado:
+          type: string
+          enum:
+          - PENDIENTE
+          - PARCIAL
+          - PAGADA
+          - ANULADA
+          example: PENDIENTE
+        importe:
+          type: number
+          example: 40000.0
+        moneda:
+          type: string
+          example: ARS
+        obligacionId:
+          type: integer
+          format: int64
+          example: 9001
+        saldo:
+          type: number
+          example: 40000.0
     DiaDeAgenda:
       type: object
       description: "Un dia resuelto: o tiene slots, o tiene motivo"
@@ -25258,6 +25886,52 @@ components:
       - categoria
       - concepto
       - importeTotal
+      - version
+    EditarProducto:
+      type: object
+      description: "Edita el producto. Los campos ausentes se conservan. **Los pases\
+        \ ya vendidos no cambian**: llevan su propio snapshot."
+      properties:
+        creditos:
+          type: integer
+          format: int32
+          exclusiveMinimum: 0
+        descripcion:
+          type: string
+          maxLength: 500
+          minLength: 0
+        limpiarVigenciaHasta:
+          type: boolean
+          description: true deja la ventana comercial sin fin
+          example: false
+        moneda:
+          type: string
+          maxLength: 3
+          minLength: 3
+        nombre:
+          type: string
+          maxLength: 160
+          minLength: 0
+        precio:
+          type: number
+          exclusiveMinimum: 0
+        version:
+          type: integer
+          format: int64
+          description: Version que el cliente leyo
+          example: 0
+          minimum: 0
+        vigenciaDesde:
+          type: string
+          format: date
+        vigenciaDias:
+          type: integer
+          format: int32
+          exclusiveMinimum: 0
+        vigenciaHasta:
+          type: string
+          format: date
+      required:
       - version
     EffectivePermissionsResponse:
       type: object
@@ -28320,6 +28994,59 @@ components:
           - MANUAL
           - REVERSION
           example: COBRO
+    MovimientoPase:
+      type: object
+      description: Movimiento inmutable del ledger de creditos (RN-M29-003). `cantidad`
+        lleva signo; la suma del ledger es el saldo.
+      properties:
+        actorCuentaId:
+          type: integer
+          format: int64
+        asistenciaId:
+          type: integer
+          format: int64
+          description: "La asistencia que lo produjo, si la hay"
+          example: 455
+        cantidad:
+          type: integer
+          format: int32
+          example: -1
+        id:
+          type: integer
+          format: int64
+          example: 301
+        motivo:
+          type: string
+        ocurridoEn:
+          type: string
+          format: date-time
+        origenId:
+          type: integer
+          format: int64
+          description: "Para VENTA, el pase; para ASISTENCIA, el evento de asistencia"
+          example: 901
+        origenTipo:
+          type: string
+          enum:
+          - VENTA
+          - ASISTENCIA
+          - CANCELACION
+          - AJUSTE_MANUAL
+          - VENCIMIENTO
+          example: ASISTENCIA
+        saldoResultante:
+          type: integer
+          format: int32
+          example: 7
+        tipo:
+          type: string
+          enum:
+          - COMPRA
+          - CONSUMO
+          - AJUSTE
+          - DEVOLUCION
+          - VENCIMIENTO
+          example: CONSUMO
     MovimientoResponse:
       type: object
       description: Un movimiento del ledger de saldo de una autorizacion
@@ -28581,6 +29308,21 @@ components:
           type: integer
           format: int64
           example: 42
+        origen:
+          type: string
+          description: "Que hecho devengo la deuda: una atencion (`SESION`) o la venta\
+            \ de un pack o pase (`VENTA_PASE`, RF-M18-009). Devengar no es cobrar:\
+            \ la deuda de una venta se paga con `POST /cobros` como cualquier otra."
+          enum:
+          - SESION
+          - VENTA_PASE
+          - VENTA_ABONO
+          example: SESION
+        paseId:
+          type: integer
+          format: int64
+          description: Pase vendido que la genero. Presente solo con `origen = VENTA_PASE`.
+          example: 77
         personaId:
           type: integer
           format: int64
@@ -28607,7 +29349,9 @@ components:
         sesionId:
           type: integer
           format: int64
-          description: Atencion que la genero. Es lo que la hace trazable.
+          description: "Atencion que la genero, cuando `origen` es `SESION`. **Ausente**\
+            \ cuando la deuda nace de la venta de un pase (`origen = VENTA_PASE`,\
+            \ desde 0.102.0)."
           example: 501
         snapshotNombre:
           type: string
@@ -29121,6 +29865,92 @@ components:
           type: string
         tipoDocumento:
           type: string
+    Pase:
+      type: object
+      description: "Pase comprado por una Persona (RF-M29-002). Nombre, precio, moneda,\
+        \ creditos y oferta son el **snapshot de la venta**: editar el producto no\
+        \ los cambia."
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        creditosDisponibles:
+          type: integer
+          format: int32
+          description: Saldo vigente. Nunca negativo (RN-M29-008)
+          example: 7
+        creditosIniciales:
+          type: integer
+          format: int32
+          example: 8
+        estado:
+          type: string
+          enum:
+          - ACTIVO
+          - AGOTADO
+          - VENCIDO
+          - ANULADO
+          example: ACTIVO
+        id:
+          type: integer
+          format: int64
+          example: 77
+        moneda:
+          type: string
+          example: ARS
+        nombre:
+          type: string
+          example: Pack Pilates 8 clases
+        ofertaId:
+          type: integer
+          format: int64
+          description: La oferta cuyas clases consumen estos creditos
+          example: 42
+        personaId:
+          type: integer
+          format: int64
+          example: 512
+        precio:
+          type: number
+          example: 40000.0
+        productoId:
+          type: integer
+          format: int64
+          example: 12
+        vendidoEn:
+          type: string
+          format: date-time
+        vendidoPorCuentaId:
+          type: integer
+          format: int64
+          example: 3
+        version:
+          type: integer
+          format: int64
+          example: 1
+        vigenciaDesde:
+          type: string
+          format: date
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia en que vale, inclusive"
+        vigente:
+          type: boolean
+          description: "true si hoy, en la zona de la sede, puede cubrir una asistencia:\
+            \ activo, con saldo y dentro de su vigencia"
+          example: true
+    PaseDetalle:
+      type: object
+      description: "Un pase con su ledger, del movimiento mas viejo al mas nuevo."
+      properties:
+        movimientos:
+          type: array
+          items:
+            $ref: "#/components/schemas/MovimientoPase"
+        pase:
+          $ref: "#/components/schemas/Pase"
     PasswordResetConfirmRequest:
       type: object
       description: Token del enlace de restablecimiento y contrasena nueva
@@ -30267,11 +31097,78 @@ components:
       - https://akine.app/problems/clase-capacidad-no-admitida
       - https://akine.app/problems/clase-completa
       - https://akine.app/problems/inscripcion-transicion-no-permitida
+      - https://akine.app/problems/producto-no-vendible
+      - https://akine.app/problems/producto-nombre-en-uso
       - https://akine.app/problems/oferta-no-clinica
       - https://akine.app/problems/participacion-sin-asistencia
       - https://akine.app/problems/autorizacion-no-elegible
       - https://akine.app/problems/derivacion-no-accesible
       - https://akine.app/problems/oferta-sin-precio
+    Producto:
+      type: object
+      description: Producto de pack del catalogo de una sede (RF-M29-001).
+      properties:
+        active:
+          type: boolean
+          description: "false tras la baja: no se vende mas"
+          example: true
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        creditos:
+          type: integer
+          format: int32
+          example: 8
+        deactivationReason:
+          type: string
+        deletedAt:
+          type: string
+          format: date-time
+        descripcion:
+          type: string
+        id:
+          type: integer
+          format: int64
+          example: 12
+        moneda:
+          type: string
+          example: ARS
+        nombre:
+          type: string
+          example: Pack Pilates 8 clases
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        precio:
+          type: number
+          example: 40000.0
+        tipo:
+          type: string
+          description: Hoy solo `PACK`; `ABONO` es de 08.08
+          enum:
+          - PACK
+          - ABONO
+          example: PACK
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Desde cuando se vende
+        vigenciaDias:
+          type: integer
+          format: int32
+          description: Dias corridos que vale un pase desde la compra
+          example: 60
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Hasta cuando se vende, inclusive. Ausente: sin fin"
     ProfesionalHabilitado:
       type: object
       description: Profesional habilitado para prestar la oferta
@@ -31726,6 +32623,10 @@ components:
       properties:
         asistencia:
           $ref: "#/components/schemas/Asistencia"
+        consumoDeCredito:
+          $ref: "#/components/schemas/ConsumoDeCredito"
+          description: Que le hizo este registro al saldo de pases de la persona (AKINE-08.07).
+            Ausente si el pedido repetia lo ya registrado y no se escribio nada.
         corregida:
           type: boolean
           description: true si esta llamada corrigio un hecho previo
@@ -31798,6 +32699,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ItemDeLoteDeAsistencia"
+    ResultadoDeVenta:
+      type: object
+      description: "El pase vendido y su deuda, sin cobro."
+      properties:
+        creada:
+          type: boolean
+          description: false si fue un reintento con la misma clave
+          example: true
+        deuda:
+          $ref: "#/components/schemas/DeudaDeVenta"
+        pase:
+          $ref: "#/components/schemas/Pase"
     ResumenDePersonaResponse:
       type: object
       description: "Ficha administrativa consolidada de una persona, recortada por\
@@ -34294,6 +35207,31 @@ components:
           minimum: 0
       required:
       - expectedVersion
+    VenderPase:
+      type: object
+      description: "Vende un pase a una Persona: crea el pase con su saldo inicial\
+        \ y **una obligacion**, sin cobrar (DP-06). La persona no se convierte en\
+        \ paciente."
+      properties:
+        idempotencyKey:
+          type: string
+          description: Clave del cliente para que un reintento no venda dos veces.
+            Reusarla con otro pedido es un 409.
+          example: c0a8-venta-512
+          maxLength: 80
+          minLength: 0
+        personaId:
+          type: integer
+          format: int64
+          description: "Titular, del padron de la organizacion"
+          example: 512
+          exclusiveMinimum: 0
+        productoId:
+          type: integer
+          format: int64
+          description: Producto vigente de la sede
+          example: 12
+          exclusiveMinimum: 0
     VersionResponse:
       type: object
       description: Identidad tecnica del backend y version del contrato OpenAPI publicado

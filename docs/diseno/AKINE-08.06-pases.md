@@ -89,10 +89,10 @@ El consumo **no tiene permiso propio**: lo dispara el registro de asistencia, qu
 `asistencia:manage`. El diseño del 20/09 daba `producto:read` al profesional; se dejó afuera porque
 no lo necesita para operar y el precio es dato comercial.
 
-## 7. Contrato — 0.101.0, aditivo salvo un punto declarado
+## 7. Contrato — 0.102.0, aditivo salvo un punto declarado
 
-> `V95` y `0.100.0` los tienen reservados los borradores #122 y #123 (no están en `main`): por eso
-> esta rama usa `V96` y `0.101.0`. Si alguno no entra, el número queda vacío y no se reusa.
+> `V95` y `0.100.0` los reservan los borradores #122 y #123, y `0.101.0` el #125 (ninguno en `main`): por eso
+> esta rama usa `V96` y `0.102.0`. Si alguno no entra, el número queda vacío y no se reusa.
 
 Ocho operaciones nuevas en `/api/v1/consultorios/{consultorioId}`: `crearProducto`,
 `listarProductos`, `verProducto`, `editarProducto`, `darDeBajaProducto`, `venderPase`, `verPase`,
@@ -122,7 +122,7 @@ haya una venta, ninguna respuesta real lo trae vacío. El otro cambio de forma e
    economía: la falta de pase no impide registrar la asistencia.
 5. **Baja lógica.** El producto la tiene y no cascadea. El pase no se borra ni se da de baja. El
    ledger no tiene update ni delete en el puerto; la devolución compensa, no borra.
-6. **Contrato.** 0.99.0 → 0.101.0, minor. El único cambio de forma es `sesionId` opcional (§7).
+6. **Contrato.** 0.99.0 → 0.102.0, minor. El único cambio de forma es `sesionId` opcional (§7).
 7. **Ruta crítica.** Cimientos presentes: oferta, persona, asistencia (08.03), obligación y cobro.
    Caja (07.03) existe, pero la venta no la toca: se paga por `POST /cobros`. F9 sigue abierta sin
    el gate del MVP (decisión pendiente 8, DU-12); esto se hizo porque el usuario abrió F9.
