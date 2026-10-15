@@ -22,13 +22,23 @@ public record InscribirRequest(
 
 		@Schema(
 				description = "Si no hay lugar: true la deja en la lista de espera, false "
-						+ "responde clase-completa sin anotarla.",
-				example = "true")
-		boolean aceptaListaEspera,
+						+ "responde clase-completa sin anotarla. Opcional: si no viene, vale false.",
+				example = "true",
+				defaultValue = "false")
+		Boolean aceptaListaEspera,
 
 		@Schema(
 				description = "Clave del cliente para que un reintento no inscriba dos veces. "
 						+ "Reusarla con otra persona es un 409, no un reintento.",
 				example = "9f1c2b7e-inscripcion-512")
 		@Size(max = 80) String idempotencyKey) {
+
+	/**
+	 * Ausente se lee como {@code false}: la omision nunca encola. Es {@link Boolean} y no
+	 * {@code boolean} porque Jackson 3 rechaza un primitivo ausente con 400 mientras el contrato lo
+	 * publica opcional — el mismo defecto que tuvo {@code ChangeMembershipRequest.changeScope}.
+	 */
+	public boolean aceptaListaEsperaEfectiva() {
+		return Boolean.TRUE.equals(aceptaListaEspera);
+	}
 }
