@@ -15,7 +15,7 @@ public class OfertaNoAdmitePackException extends RuntimeException {
 	private final String motivo;
 
 	public OfertaNoAdmitePackException(long ofertaId, String motivo) {
-		super("La oferta " + ofertaId + " no admite productos de pack: " + motivo);
+		super("La oferta " + ofertaId + " no admite ese producto: " + motivo);
 		this.ofertaId = ofertaId;
 		this.motivo = motivo;
 	}

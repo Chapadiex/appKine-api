@@ -2,6 +2,7 @@ package com.akine.activity.application;
 
 import com.akine.activity.domain.PermissionCodes;
 import com.akine.activity.domain.ProductoServicio;
+import com.akine.activity.domain.TipoProducto;
 import com.akine.activity.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.activity.domain.exception.OfertaNoAdmitePackException;
 import com.akine.activity.domain.exception.OfertaNotAccessibleException;
@@ -35,8 +36,9 @@ import java.util.Map;
  * <p>Crear un producto <b>no crea saldo a nadie</b> (CA-M29-001-06): el saldo nace con la venta,
  * en {@link VentaDePaseService}.
  *
- * <p>El producto cuelga de una oferta de la sede que declara {@code esquema_cobro = POR_PACK}:
- * esa es la politica que despues decide si una asistencia consume credito (RN-M29-005).
+ * <p>El producto cuelga de una oferta de la sede que declara {@code esquema_cobro = POR_PACK} (un
+ * pack) o {@code POR_ABONO} (un abono, 08.08): esa es la politica que despues decide si una
+ * asistencia consume credito (RN-M29-005).
  */
 @Service
 public class ProductoService {
@@ -67,7 +69,7 @@ public class ProductoService {
 
 	/**
 	 * @throws OfertaNotAccessibleException  la oferta no existe en la sede (404)
-	 * @throws OfertaNoAdmitePackException   la oferta esta de baja o no cobra POR_PACK (409)
+	 * @throws OfertaNoAdmitePackException   la oferta esta de baja o no cobra POR_PACK / POR_ABONO (409)
 	 * @throws ProductoNombreEnUsoException  ya hay un producto vigente con ese nombre (409)
 	 */
 	@Transactional
@@ -76,12 +78,18 @@ public class ProductoService {
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigir(actor, organizationId, consultorioId, PermissionCodes.PRODUCTO_MANAGE);
 
-		exigirOfertaQueAdmitePack(organizationId, consultorioId, command.ofertaId());
+		TipoProducto tipo = command.tipoEfectivo();
+		exigirOfertaQueAdmite(organizationId, consultorioId, command.ofertaId(), tipo);
 
-		ProductoServicio nuevo = ProductoServicio.pack(
-				organizationId, consultorioId, command.ofertaId(), command.nombre(),
-				command.descripcion(), command.creditos(), command.precio(), command.moneda(),
-				command.vigenciaDias(), command.vigenciaDesde(), command.vigenciaHasta());
+		ProductoServicio nuevo = tipo == TipoProducto.ABONO
+				? ProductoServicio.abono(
+						organizationId, consultorioId, command.ofertaId(), command.nombre(),
+						command.descripcion(), command.creditos(), command.precio(), command.moneda(),
+						command.vigenciaDias(), command.vigenciaDesde(), command.vigenciaHasta())
+				: ProductoServicio.pack(
+						organizationId, consultorioId, command.ofertaId(), command.nombre(),
+						command.descripcion(), command.creditos(), command.precio(), command.moneda(),
+						command.vigenciaDias(), command.vigenciaDesde(), command.vigenciaHasta());
 		exigirNombreLibre(organizationId, consultorioId, nuevo.getNombre(), 0L);
 
 		ProductoServicio guardado = productos.saveAndFlush(nuevo);
@@ -153,18 +161,26 @@ public class ProductoService {
 
 	// =================================================================================
 
-	private void exigirOfertaQueAdmitePack(long organizationId, long consultorioId, long ofertaId) {
+	/**
+	 * Un pack exige una oferta {@code POR_PACK} y un abono una {@code POR_ABONO}: el esquema de la
+	 * oferta es la politica que despues decide que una asistencia consume credito (RN-M29-005) y que
+	 * no devenga por asistencia (RN-M29-007). Cruzarlos dejaria un credito que ninguna asistencia
+	 * consume o, peor, uno que conviva con el devengo por atencion.
+	 */
+	private void exigirOfertaQueAdmite(
+			long organizationId, long consultorioId, long ofertaId, TipoProducto tipo) {
 		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, ofertaId)
 				.orElseThrow(() -> new OfertaNotAccessibleException(ofertaId));
 		if (!oferta.active()) {
 			throw new OfertaNoAdmitePackException(ofertaId, "esta dada de baja");
 		}
-		boolean porPack = ofertas.esquemaDeCobro(organizationId, consultorioId, ofertaId)
-				.filter(EsquemaDeCobro.POR_PACK::equals)
+		EsquemaDeCobro exigido = tipo == TipoProducto.ABONO ? EsquemaDeCobro.POR_ABONO : EsquemaDeCobro.POR_PACK;
+		boolean admite = ofertas.esquemaDeCobro(organizationId, consultorioId, ofertaId)
+				.filter(exigido::equals)
 				.isPresent();
-		if (!porPack) {
+		if (!admite) {
 			throw new OfertaNoAdmitePackException(
-					ofertaId, "no declara el esquema de cobro POR_PACK");
+					ofertaId, "no declara el esquema de cobro " + exigido.name());
 		}
 	}
 

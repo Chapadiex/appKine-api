@@ -101,6 +101,7 @@ class ClaseServiceTest {
 	@Mock private AuditTrail auditTrail;
 	@Mock private ConsultorioMembershipDirectory memberships;
 	@Mock private AccountIdentityDirectory identidades;
+	@Mock private ConsumoDePaseService consumoDePases;
 
 	private ClaseService service;
 
@@ -109,6 +110,7 @@ class ClaseServiceTest {
 		service = new ClaseService(clases, eventos, inscripciones, avisos, agenda, ofertas, disponibilidad, espacios,
 				consultorios, permissionGuard, auditTrail,
 				new ProyeccionDeClase(ofertas, espacios, memberships, identidades),
+				consumoDePases,
 				mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
@@ -243,6 +245,9 @@ class ClaseServiceTest {
 		var segunda = service.cancelar(actor(), SEDE_ID, 77L, "otro motivo distinto");
 
 		org.mockito.Mockito.verify(eventos, org.mockito.Mockito.times(1)).registrar(any());
+		// AKINE-08.07 (CA-M29-004-06): los creditos se devuelven una sola vez, en la que cancela.
+		org.mockito.Mockito.verify(consumoDePases, org.mockito.Mockito.times(1))
+				.devolverPorCancelacion(any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
 		assertThat(segunda.estado()).isEqualTo("CANCELADA");
 		// El motivo es el de la PRIMERA cancelacion: la segunda no reescribio la historia.
 		assertThat(segunda.motivoCancelacion()).isEqualTo("El instructor se reporto enfermo");

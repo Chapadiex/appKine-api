@@ -116,6 +116,7 @@ public class ClaseService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final ProyeccionDeClase proyeccion;
+	private final ConsumoDePaseService consumoDePases;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public ClaseService(
@@ -131,6 +132,7 @@ public class ClaseService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
 			ProyeccionDeClase proyeccion,
+			ConsumoDePaseService consumoDePases,
 			PlatformTransactionManager transactionManager) {
 
 		this.clases = clases;
@@ -145,6 +147,7 @@ public class ClaseService {
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 		this.proyeccion = proyeccion;
+		this.consumoDePases = consumoDePases;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -351,8 +354,14 @@ public class ClaseService {
 	 * operacion la devolucion de creditos y las reversas economicas, una segunda ejecucion que no
 	 * fuera idempotente devolveria plata dos veces. La regla se fija aca, antes que el dinero que
 	 * protege.
+	 *
+	 * <p><b>Devuelve los creditos</b> que tomaron sus asistencias (AKINE-08.07, RF-M29-004), solo
+	 * en la llamada que cancela. {@code READ_COMMITTED} por eso: con la clase bloqueada en
+	 * exclusivo, la lectura de los consumos tiene que ver lo que las asistencias commitearon
+	 * mientras esta transaccion esperaba el lock, y bajo {@code REPEATABLE READ} la foto ya estaba
+	 * fijada antes (la primera lectura es la de la sede).
 	 */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ClaseView cancelar(
 			OperatingActor actor, long consultorioId, long claseId, String motivo) {
 
@@ -381,6 +390,9 @@ public class ClaseService {
 					cancelada, TipoEventoClase.CANCELACION, anterior, motivo,
 					actor.accountId(), ahora));
 			auditar(actor, cancelada, "CLASE_CANCELADA", anterior, motivo, ahora);
+			// AKINE-08.07 (RF-M29-004): los creditos que tomaron las asistencias de esta clase
+			// vuelven a sus pases. Antes de resolver las inscripciones, que limpian el contexto.
+			consumoDePases.devolverPorCancelacion(cancelada, actor.accountId(), motivo, ahora);
 			resolverInscripcionesDeClaseCancelada(
 					actor, sede, cancelada, claseId, motivo, ahora);
 			log.info("Clase cancelada: claseId={} consultorioId={}", claseId, consultorioId);
@@ -396,9 +408,9 @@ public class ClaseService {
 	 * <p>Cancela a todos —los que tenian lugar y los que esperaban—, pone el contador en cero para
 	 * que el invariante siga cerrando, y avisa a cada uno por separado (RF-M26-006).
 	 *
-	 * <p><b>No promueve a nadie</b>: no hay clase a la que promover. Y <b>no devuelve creditos ni
-	 * plata</b> —paso 7 de RF-M28-006—: eso es 08.07, y lo que esta etapa le deja es una operacion
-	 * idempotente de la que colgarlo sin devolver dos veces.
+	 * <p><b>No promueve a nadie</b>: no hay clase a la que promover. Los creditos los devuelve
+	 * {@code cancelar} antes de llegar aca (08.07); la plata no se devuelve sola: un reintegro es un
+	 * acto de caja con su propio registro (RF-M19-010).
 	 *
 	 * <p>La lista de afectados se lee ANTES del {@code UPDATE} masivo, que es lo unico que permite
 	 * saber a quien avisarle: despues ya estan todos en {@code CANCELADA} y son indistinguibles de

@@ -2,6 +2,8 @@ package com.akine.activity.api;
 
 import com.akine.activity.api.dto.PaseResponses;
 import com.akine.activity.api.dto.ProductoRequests;
+import com.akine.activity.application.AjustarSaldoCommand;
+import com.akine.activity.application.AjusteDePaseService;
 import com.akine.activity.application.CrearProductoCommand;
 import com.akine.activity.application.EditarProductoCommand;
 import com.akine.activity.application.ProductoService;
@@ -9,6 +11,7 @@ import com.akine.activity.application.ProductoView;
 import com.akine.activity.application.ResultadoDeVenta;
 import com.akine.activity.application.VenderPaseCommand;
 import com.akine.activity.application.VentaDePaseService;
+import com.akine.activity.domain.TipoProducto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -49,16 +52,20 @@ import java.util.List;
 public class PaseController {
 
 	private static final String P403_PRODUCTO = "Sin `producto:manage` en esa sede, o sin contexto activo";
+	private static final String P403_AJUSTE = "Sin `pase:adjust` en esa sede, o sin contexto activo";
 	private static final String P404 = "La sede, el recurso o la persona no existen, o son de otro tenant";
 
 	private final ProductoService productoService;
 	private final VentaDePaseService ventaService;
+	private final AjusteDePaseService ajusteService;
 	private final ActivityApiActor apiActor;
 
 	public PaseController(
-			ProductoService productoService, VentaDePaseService ventaService, ActivityApiActor apiActor) {
+			ProductoService productoService, VentaDePaseService ventaService,
+			AjusteDePaseService ajusteService, ActivityApiActor apiActor) {
 		this.productoService = productoService;
 		this.ventaService = ventaService;
+		this.ajusteService = ajusteService;
 		this.apiActor = apiActor;
 	}
 
@@ -69,12 +76,16 @@ public class PaseController {
 	@PostMapping("/productos")
 	@Operation(
 			operationId = "crearProducto",
-			summary = "Crear un producto de pack",
+			summary = "Crear un producto de pack o de abono",
 			description = """
 					Define un pack de creditos sobre una oferta de la sede: cantidad, precio y \
 					vigencia en dias. La oferta tiene que declarar `esquemaCobro = POR_PACK`, que es \
 					la politica que despues hace que una asistencia consuma credito (RN-M29-005). \
-					**No crea saldo a nadie** (CA-M29-001-06).""")
+					**No crea saldo a nadie** (CA-M29-001-06).
+
+					Con `tipo = ABONO` (desde 0.109.0, RF-M29-007) define un abono: la oferta tiene \
+					que declarar `POR_ABONO`, `creditos` son las asistencias que permite cada periodo \
+					y `vigenciaDias` la duracion maxima del periodo, que se elige al vender.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201", description = "Producto creado"),
 			@ApiResponse(responseCode = "400", description = "Datos invalidos",
@@ -84,8 +95,8 @@ public class PaseController {
 			@ApiResponse(responseCode = "404", description = P404,
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "409", description = "La oferta esta de baja o no cobra "
-					+ "POR_PACK (`conflict`), o ya hay un producto vigente con ese nombre "
-					+ "(`producto-nombre-en-uso`)",
+					+ "POR_PACK (o POR_ABONO para un abono) (`conflict`), o ya hay un producto vigente "
+					+ "con ese nombre (`producto-nombre-en-uso`)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<PaseResponses.Producto> crearProducto(
 			@PathVariable long consultorioId, @RequestBody @Valid ProductoRequests.Crear request) {
@@ -93,7 +104,7 @@ public class PaseController {
 		ProductoView creado = productoService.crear(apiActor.current(), consultorioId,
 				new CrearProductoCommand(request.ofertaId(), request.nombre(), request.descripcion(),
 						request.creditos(), request.precio(), request.moneda(), request.vigenciaDias(),
-						request.vigenciaDesde(), request.vigenciaHasta()));
+						request.vigenciaDesde(), request.vigenciaHasta(), tipo(request.tipo())));
 		return ResponseEntity
 				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/productos/" + creado.id()))
 				.body(PaseResponses.Producto.de(creado));
@@ -202,7 +213,13 @@ public class PaseController {
 					`POST /cobros`. La persona no se convierte en paciente.
 
 					Con `idempotencyKey`, un reintento con el mismo pedido devuelve la venta \
-					existente con 200 sin duplicar pase, creditos ni deuda (CA-M29-002-06).""")
+					existente con 200 sin duplicar pase, creditos ni deuda (CA-M29-002-06).
+
+					**Abono** (desde 0.109.0, RF-M29-007, RF-M18-010): si el producto es `ABONO`, \
+					`periodoDesde` es obligatorio y el pase cubre ese periodo; la obligacion nace con \
+					`origen = VENTA_ABONO`. Un periodo, una obligacion: un abono del mismo producto \
+					para la misma persona con periodo superpuesto es 409 `abono-periodo-superpuesto`. \
+					Renovar es vender el periodo siguiente.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201", description = "Pase vendido"),
 			@ApiResponse(responseCode = "200", description = "Reintento con la misma clave y el "
@@ -214,14 +231,17 @@ public class PaseController {
 			@ApiResponse(responseCode = "404", description = P404,
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "409", description = "El producto esta dado de baja o fuera "
-					+ "de su ventana (`producto-no-vendible`), la ficha de la persona esta de baja "
-					+ "(`conflict`), o la clave se reuso con otro pedido (`idempotency-key-conflict`)",
+					+ "de su ventana, o el periodo del abono ya termino o es mas largo que el producto "
+					+ "(`producto-no-vendible`), la ficha de la persona esta de baja (`conflict`), la "
+					+ "clave se reuso con otro pedido (`idempotency-key-conflict`) o la persona ya "
+					+ "tiene ese abono en un periodo superpuesto (`abono-periodo-superpuesto`)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<PaseResponses.ResultadoVenta> venderPase(
 			@PathVariable long consultorioId, @RequestBody @Valid ProductoRequests.Vender request) {
 
 		ResultadoDeVenta resultado = ventaService.vender(apiActor.current(), consultorioId,
-				new VenderPaseCommand(request.productoId(), request.personaId(), request.idempotencyKey()));
+				new VenderPaseCommand(request.productoId(), request.personaId(), request.idempotencyKey(),
+						request.periodoDesde(), request.periodoHasta()));
 		PaseResponses.ResultadoVenta cuerpo = PaseResponses.ResultadoVenta.de(resultado);
 		if (!resultado.creada()) {
 			return ResponseEntity.ok(cuerpo);
@@ -264,5 +284,91 @@ public class PaseController {
 		return ventaService.deLaPersona(apiActor.current(), consultorioId, personaId).stream()
 				.map(PaseResponses.Pase::de)
 				.toList();
+	}
+
+	// =================================================================================
+	// Ajuste y anulacion (RF-M29-005, AKINE-08.07)
+	// =================================================================================
+
+	@PostMapping("/pases/{paseId}/ajustes")
+	@Operation(
+			operationId = "ajustarSaldoDePase",
+			summary = "Ajustar a mano el saldo de un pase",
+			description = """
+					Suma o resta creditos con motivo obligatorio (RF-M29-005). Deja un movimiento \
+					`AJUSTE` en el ledger con actor y motivo y lo audita (CA-M29-005-06). **No toca la \
+					deuda ni la caja**: un credito no es plata (RN-M29-006).
+
+					El saldo final no puede ser negativo (RN-M29-008) ni superar los creditos \
+					comprados, y el pase tiene que estar `ACTIVO` o `AGOTADO` y dentro de su vigencia. \
+					`version` es la que el cliente leyo: un consumo que entro en el medio la movio y la \
+					respuesta es 409 `concurrent-modification`. Reenviar el mismo ajuste con la misma \
+					version devuelve el estado actual sin ajustar dos veces.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "El pase ajustado, con su ledger"),
+			@ApiResponse(responseCode = "400", description = "Cantidad cero, sin motivo o datos invalidos",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = P403_AJUSTE,
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = P404,
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "Version vieja "
+					+ "(`concurrent-modification`), o pase anulado, vencido o saldo final fuera de "
+					+ "rango (`pase-no-ajustable`, con `motivo`)",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public PaseResponses.Detalle ajustarSaldoDePase(
+			@PathVariable long consultorioId,
+			@PathVariable long paseId,
+			@RequestBody @Valid ProductoRequests.Ajustar request) {
+
+		return PaseResponses.Detalle.de(ajusteService.ajustar(apiActor.current(), consultorioId, paseId,
+				new AjustarSaldoCommand(request.cantidad(), request.motivo(), request.version())));
+	}
+
+	@PostMapping("/pases/{paseId}/anulacion")
+	@Operation(
+			operationId = "anularPase",
+			summary = "Anular un pase vendido por error",
+			description = """
+					Pasa el pase a `ANULADO` con motivo, descarta su saldo con un movimiento \
+					`AJUSTE` y **anula la deuda de la venta** en la misma transaccion: la obligacion \
+					no se borra, queda `ANULADA` con su motivo. Idempotente: anular uno anulado \
+					devuelve 200 sin escribir (`anulado = false`).
+
+					Solo un pase **sin creditos usados** —con consumos, anularlo regalaria las clases \
+					tomadas; para descartar el resto se ajusta el saldo— y con una deuda **sin \
+					cobros**: con plata imputada primero se anula o reintegra el cobro (RF-M19-010). En \
+					los dos casos no se escribe nada.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "El pase anulado y su deuda"),
+			@ApiResponse(responseCode = "400", description = "Sin motivo o datos invalidos",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = P403_AJUSTE,
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = P404,
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "Version vieja "
+					+ "(`concurrent-modification`), creditos usados (`pase-no-ajustable`) o deuda con "
+					+ "cobros imputados (`pase-con-cobros`, con `obligacionId` y `cobrado`)",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public PaseResponses.ResultadoAnulacion anularPase(
+			@PathVariable long consultorioId,
+			@PathVariable long paseId,
+			@RequestBody @Valid ProductoRequests.Anular request) {
+
+		return PaseResponses.ResultadoAnulacion.de(ajusteService.anular(
+				apiActor.current(), consultorioId, paseId, request.motivo(), request.version()));
+	}
+
+	/** {@code null} es {@code PACK}, lo que la API aceptaba antes de 0.109.0. */
+	private static TipoProducto tipo(String valor) {
+		if (valor == null || valor.isBlank()) {
+			return TipoProducto.PACK;
+		}
+		try {
+			return TipoProducto.valueOf(valor.strip());
+		} catch (IllegalArgumentException e) {
+			throw new IllegalArgumentException("El tipo de producto es PACK o ABONO");
+		}
 	}
 }

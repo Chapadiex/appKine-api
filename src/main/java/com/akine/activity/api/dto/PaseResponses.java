@@ -4,6 +4,7 @@ import com.akine.activity.application.MovimientoPaseView;
 import com.akine.activity.application.PaseDetalleView;
 import com.akine.activity.application.PaseView;
 import com.akine.activity.application.ProductoView;
+import com.akine.activity.application.ResultadoDeAnulacion;
 import com.akine.activity.application.ResultadoDeVenta;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -25,8 +26,10 @@ public final class PaseResponses {
 			@Schema(example = "42") long ofertaId,
 			@Schema(example = "Pack Pilates 8 clases") String nombre,
 			String descripcion,
-			@Schema(description = "Hoy solo `PACK`; `ABONO` es de 08.08", allowableValues = {"PACK", "ABONO"},
-					example = "PACK") String tipo,
+			@Schema(description = "`PACK`: creditos que valen `vigenciaDias` desde la compra. `ABONO` "
+					+ "(desde 0.109.0): `creditos` son las asistencias que permite cada periodo y "
+					+ "`vigenciaDias` la duracion maxima de un periodo, que se elige al vender",
+					allowableValues = {"PACK", "ABONO"}, example = "PACK") String tipo,
 			@Schema(example = "8") int creditos,
 			@Schema(example = "40000.00") BigDecimal precio,
 			@Schema(example = "ARS") String moneda,
@@ -56,6 +59,9 @@ public final class PaseResponses {
 			@Schema(example = "7") long consultorioId,
 			@Schema(example = "512") long personaId,
 			@Schema(example = "12") long productoId,
+			@Schema(description = "`PACK` o `ABONO` (desde 0.109.0). Un abono cubre el periodo "
+					+ "`vigenciaDesde`..`vigenciaHasta` elegido al venderlo",
+					allowableValues = {"PACK", "ABONO"}, example = "PACK") String tipo,
 			@Schema(example = "Pack Pilates 8 clases") String nombre,
 			@Schema(example = "40000.00") BigDecimal precio,
 			@Schema(example = "ARS") String moneda,
@@ -70,13 +76,18 @@ public final class PaseResponses {
 					+ "activo, con saldo y dentro de su vigencia", example = "true") boolean vigente,
 			Instant vendidoEn,
 			@Schema(example = "3") long vendidoPorCuentaId,
-			@Schema(example = "1") long version) {
+			@Schema(description = "Cuando se anulo. Presente solo con `estado = ANULADO`") Instant anuladoEn,
+			@Schema(description = "Quien lo anulo") Long anuladoPorCuentaId,
+			@Schema(description = "Por que se anulo") String motivoAnulacion,
+			@Schema(description = "Version para el control optimista del ajuste y la anulacion",
+					example = "1") long version) {
 
 		public static Pase de(PaseView v) {
-			return new Pase(v.id(), v.consultorioId(), v.personaId(), v.productoId(), v.nombre(),
-					v.precio(), v.moneda(), v.ofertaId(), v.creditosIniciales(),
+			return new Pase(v.id(), v.consultorioId(), v.personaId(), v.productoId(), v.tipo(),
+					v.nombre(), v.precio(), v.moneda(), v.ofertaId(), v.creditosIniciales(),
 					v.creditosDisponibles(), v.vigenciaDesde(), v.vigenciaHasta(), v.estado(),
-					v.vigente(), v.vendidoEn(), v.vendidoPorCuentaId(), v.version());
+					v.vigente(), v.vendidoEn(), v.vendidoPorCuentaId(), v.anuladoEn(),
+					v.anuladoPorCuentaId(), v.motivoAnulacion(), v.version());
 		}
 	}
 
@@ -92,8 +103,9 @@ public final class PaseResponses {
 			@Schema(example = "7") int saldoResultante,
 			@Schema(allowableValues = {"VENTA", "ASISTENCIA", "CANCELACION", "AJUSTE_MANUAL", "VENCIMIENTO"},
 					example = "ASISTENCIA") String origenTipo,
-			@Schema(description = "Para VENTA, el pase; para ASISTENCIA, el evento de asistencia",
-					example = "901") long origenId,
+			@Schema(description = "Para VENTA, el pase; para ASISTENCIA, el evento de asistencia; para "
+					+ "CANCELACION, la clase cancelada; para AJUSTE_MANUAL y VENCIMIENTO, la version del "
+					+ "pase sobre la que se aplico", example = "901") long origenId,
 			@Schema(description = "La asistencia que lo produjo, si la hay", example = "455") Long asistenciaId,
 			Long actorCuentaId,
 			String motivo,
@@ -124,6 +136,24 @@ public final class PaseResponses {
 			@Schema(example = "ARS") String moneda,
 			@Schema(allowableValues = {"PENDIENTE", "PARCIAL", "PAGADA", "ANULADA"}, example = "PENDIENTE")
 			String estado) {
+	}
+
+	@Schema(
+			name = "ResultadoDeAnulacionDePase",
+			description = "El pase ANULADO y la deuda de su venta, tambien anulada (no borrada).")
+	public record ResultadoAnulacion(
+			Pase pase,
+			@Schema(description = "La obligacion de la venta despues de anularla. Ausente si la venta "
+					+ "no tenia deuda") Deuda deuda,
+			@Schema(description = "false si el pase ya estaba anulado y no se escribio nada", example = "true")
+			boolean anulado) {
+
+		public static ResultadoAnulacion de(ResultadoDeAnulacion r) {
+			ResultadoDeVenta.Deuda d = r.deuda();
+			return new ResultadoAnulacion(Pase.de(r.pase()),
+					d == null ? null : new Deuda(d.obligacionId(), d.importe(), d.saldo(), d.moneda(), d.estado()),
+					r.anulado());
+		}
 	}
 
 	@Schema(name = "ResultadoDeVenta", description = "El pase vendido y su deuda, sin cobro.")

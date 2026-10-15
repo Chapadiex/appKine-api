@@ -4,6 +4,7 @@ import com.akine.activity.domain.AsistenciaActividad;
 import com.akine.activity.domain.AsistenciaEvento;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.MovimientoPase;
+import com.akine.activity.domain.port.ActivityRepositoryPorts.ConsumoDeClase;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.MovimientoPaseRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.NetoDeAsistencia;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseServicioRepositoryPort;
@@ -113,14 +114,68 @@ public class ConsumoDePaseService {
 		if (!debeConsumir) {
 			return ConsumoDeCredito.noAplica();
 		}
-		boolean porPack = ofertas
+		// AKINE-08.08 (RF-M29-008): una oferta POR_ABONO se cubre igual que una POR_PACK, con el
+		// abono vigente el dia de la clase. "Cubierta sin obligacion unitaria" es exactamente esto:
+		// el credito del periodo se toma y ninguna deuda nace (RN-M29-007).
+		boolean consumeCredito = ofertas
 				.esquemaDeCobro(organizationId, clase.getConsultorioId(), clase.getOfertaId())
-				.filter(EsquemaDeCobro.POR_PACK::equals)
+				.filter(esquema -> esquema == EsquemaDeCobro.POR_PACK || esquema == EsquemaDeCobro.POR_ABONO)
 				.isPresent();
-		if (!porPack) {
+		if (!consumeCredito) {
 			return ConsumoDeCredito.noAplica();
 		}
 		return consumir(clase, asistencia, eventoId, actorCuentaId, ahora);
+	}
+
+	/**
+	 * Devuelve los creditos que tomaron las asistencias de una clase que se acaba de cancelar
+	 * (RF-M29-004, RF-M28-006 paso 7, RN-M29-009).
+	 *
+	 * <p>Lo llama {@code ClaseService.cancelar} <b>solo cuando hubo transicion</b> y con la clase
+	 * bloqueada en exclusivo, en {@code READ_COMMITTED}: el registro de asistencia toma la clase en
+	 * compartido antes de tocar un pase, asi que ningun consumo de esta clase puede estar a mitad de
+	 * camino y todos los commiteados se ven.
+	 *
+	 * <p><b>Nunca devuelve dos veces</b> (CA-M29-004-06), por tres capas: la cancelacion es
+	 * idempotente y solo la primera llega aca; solo se devuelve lo que tiene neto distinto de cero;
+	 * y {@code uk_movimiento_origen} sobre {@code (pase, CANCELACION, clase)}. La devolucion lleva la
+	 * asistencia, asi su neto vuelve a cero. <b>No borra el consumo</b>: lo compensa.
+	 *
+	 * <p>Un pase {@code ANULADO} no recibe nada: no se puede anular uno con consumos (ver
+	 * {@code AjusteDePaseService}), asi que el caso no ocurre, y si ocurriera no se inventa un
+	 * movimiento que el saldo no refleja.
+	 *
+	 * @return cuantos creditos se devolvieron
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public int devolverPorCancelacion(
+			ClaseProgramada clase, long actorCuentaId, String motivo, Instant ahora) {
+
+		long organizationId = clase.getOrganizationId();
+		int devueltos = 0;
+		for (ConsumoDeClase consumo : movimientos.consumosDeLaClase(organizationId, clase.getId())) {
+			if (consumo.neto() >= 0 || pases.devolverUno(organizationId, consumo.paseId()) != 1) {
+				continue;
+			}
+			int saldo = pases.saldoActual(organizationId, consumo.paseId());
+			movimientos.registrar(MovimientoPase.devolucionPorCancelacion(
+					organizationId, consumo.paseId(), saldo, clase.getId(), consumo.asistenciaId(),
+					actorCuentaId, motivo, ahora));
+			Map<String, String> detalles = new LinkedHashMap<>();
+			detalles.put("claseId", String.valueOf(clase.getId()));
+			detalles.put("asistenciaId", String.valueOf(consumo.asistenciaId()));
+			detalles.put("saldo", String.valueOf(saldo));
+			auditTrail.record(new AuditEntry(
+					organizationId, clase.getConsultorioId(), actorCuentaId,
+					"PASE_CREDITO_DEVUELTO_POR_CANCELACION", ENTIDAD, consumo.paseId(),
+					null, null, detalles, motivo, null, ahora));
+			devueltos++;
+		}
+		if (devueltos > 0) {
+			log.info("Creditos devueltos por cancelacion de clase: claseId={} devueltos={}",
+					clase.getId(), devueltos);
+		}
+		return devueltos;
 	}
 
 	private ConsumoDeCredito consumir(

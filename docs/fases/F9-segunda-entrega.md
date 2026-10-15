@@ -23,8 +23,8 @@ la DP que lo habilite. Lo que ya está en `main` se queda (no se revierte), pero
 | 08.04 Derivación al circuito clínico | PARCIAL | 30 | **Sin API**: solo el lado clínico, sin consumidor |
 | 08.05 Atención clínica grupal | NO IMPLEMENTADA | 0 | Todo |
 | 08.06 Productos, packs, venta | PARCIAL | 15 | **Solo esquema `V64`**, cero código Java |
-| 08.07 Ledger de créditos | NO IMPLEMENTADA | 0 | Solo existe la tabla `movimiento_pase` |
-| 08.08 Abonos | NO IMPLEMENTADA | 0 | Todo |
+| 08.07 Ledger de créditos | PARCIAL (15/10) | 80 | Consumo (#129), devolución por cancelación, ajuste, anulación y vencimiento programado entraron; falta la consulta paginada del ledger y el frontend. Ver `docs/diseno/AKINE-08.07-08.08-ledger-y-abonos.md` |
+| 08.08 Abonos | PARCIAL (15/10) | 50 | Venta por periodo, obligación `VENTA_ABONO` y cobertura de la asistencia entraron; faltan renovación automática, aviso de vencimiento (RF-M26-008) y frontend |
 | 08.09 Integración económica | NO IMPLEMENTADA | 0 | Todo |
 
 **Cero frontend de F9.** El `CLAUDE.md` dice que F9 cubre "derivación y productos": **no es así**.

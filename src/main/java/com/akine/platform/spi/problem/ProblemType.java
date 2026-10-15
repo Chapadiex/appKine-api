@@ -1200,6 +1200,21 @@ public enum ProblemType {
 	PRODUCTO_NO_VENDIBLE("producto-no-vendible"),
 	/** Ya hay un producto vigente con ese nombre en la sede (409). */
 	PRODUCTO_NOMBRE_EN_USO("producto-nombre-en-uso"),
+	/**
+	 * La persona ya tiene ese abono, no anulado, en un periodo que se superpone con el pedido (409,
+	 * AKINE-08.08): un periodo genera como maximo una obligacion.
+	 */
+	ABONO_PERIODO_SUPERPUESTO("abono-periodo-superpuesto"),
+	/**
+	 * El pase no admite el ajuste o la anulacion (409, AKINE-08.07): anulado, vencido, saldo final
+	 * fuera de [0, creditos comprados] o, para anular, creditos ya usados. Lleva {@code motivo}.
+	 */
+	PASE_NO_AJUSTABLE("pase-no-ajustable"),
+	/**
+	 * La deuda de la venta tiene cobros imputados y el pase no se anula (409, AKINE-08.07): primero
+	 * se anula o reintegra el cobro. Lleva {@code obligacionId} y {@code cobrado}.
+	 */
+	PASE_CON_COBROS("pase-con-cobros"),
 
 	// --- Derivacion al circuito clinico (M28/M09/M10/M11, AKINE-08.04) ----------------------
 

@@ -122,7 +122,61 @@ public class MovimientoPase {
 		return new MovimientoPase(
 				organizationId, paseId, TipoMovimientoPase.DEVOLUCION, 1, saldoResultante,
 				OrigenMovimientoPase.ASISTENCIA, eventoId, asistenciaId, actorCuentaId,
-				motivo == null || motivo.length() <= 280 ? motivo : motivo.substring(0, 280), ahora);
+				recortar(motivo), ahora);
+	}
+
+	/**
+	 * La devolucion del credito que una asistencia tomo de una clase que despues se cancelo
+	 * (RF-M29-004). {@code origen_id} es la clase: una persona tiene una sola asistencia por clase,
+	 * asi que {@code uk_movimiento_origen} garantiza una sola devolucion por pase y por cancelacion
+	 * (CA-M29-004-06). Lleva la asistencia para que su neto vuelva a cero.
+	 */
+	public static MovimientoPase devolucionPorCancelacion(
+			long organizationId, long paseId, int saldoResultante, long claseId, long asistenciaId,
+			long actorCuentaId, String motivo, Instant ahora) {
+		return new MovimientoPase(
+				organizationId, paseId, TipoMovimientoPase.DEVOLUCION, 1, saldoResultante,
+				OrigenMovimientoPase.CANCELACION, claseId, asistenciaId, actorCuentaId,
+				recortar(motivo), ahora);
+	}
+
+	/**
+	 * Un ajuste manual del saldo (RF-M29-005), con motivo obligatorio (CA-M29-005-06).
+	 *
+	 * <p>{@code origen_id} es la <b>version del pase sobre la que se aplico</b>. Cada escritura del
+	 * saldo mueve la version, asi que dos ajustes nunca comparten una, y el reintento del mismo
+	 * ajuste —misma version leida— choca contra {@code uk_movimiento_origen} en vez de ajustar dos
+	 * veces. Es la clave natural del comando: no hace falta una columna de idempotencia.
+	 *
+	 * <p>La anulacion (que descarta el saldo remanente) usa el mismo movimiento: es un acto manual
+	 * con motivo, y un origen propio exigia reescribir el CHECK de V64 (ver V101).
+	 */
+	public static MovimientoPase ajusteManual(
+			long organizationId, long paseId, int cantidad, int saldoResultante, long versionLeida,
+			long actorCuentaId, String motivo, Instant ahora) {
+		if (motivo == null || motivo.isBlank()) {
+			throw new IllegalArgumentException("Un ajuste de saldo exige motivo (RF-M29-005)");
+		}
+		return new MovimientoPase(
+				organizationId, paseId, TipoMovimientoPase.AJUSTE, cantidad, saldoResultante,
+				OrigenMovimientoPase.AJUSTE_MANUAL, versionLeida, null, actorCuentaId,
+				recortar(motivo.strip()), ahora);
+	}
+
+	/**
+	 * Los creditos que el vencimiento descarta (RF-M29-006, CA-M29-006-06). Sin actor: lo produce
+	 * el sistema. {@code origen_id} es la version del pase al vencer, por el mismo motivo que el
+	 * ajuste: un pase que se reactiva por una devolucion tardia puede volver a vencer.
+	 */
+	public static MovimientoPase vencimiento(
+			long organizationId, long paseId, int descartados, long versionLeida, Instant ahora) {
+		return new MovimientoPase(
+				organizationId, paseId, TipoMovimientoPase.VENCIMIENTO, -descartados, 0,
+				OrigenMovimientoPase.VENCIMIENTO, versionLeida, null, null, null, ahora);
+	}
+
+	private static String recortar(String motivo) {
+		return motivo == null || motivo.length() <= 280 ? motivo : motivo.substring(0, 280);
 	}
 
 	public Long getId() {

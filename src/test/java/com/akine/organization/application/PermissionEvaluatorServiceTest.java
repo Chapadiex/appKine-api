@@ -591,6 +591,8 @@ class PermissionEvaluatorServiceTest {
 							"asistencia:manage",
 							// AKINE-08.06: productos de pack y venta de pases, dos ejes separados.
 							"producto:read", "producto:manage", "pase:read", "pase:manage",
+							// AKINE-08.07: ajustar y anular pases, permiso reforzado fuera del mostrador.
+							"pase:adjust",
 							// AKINE-G-1 (DP-15): "Si" en Ver Reportes.
 							"reporte:read");
 		}

@@ -4,6 +4,8 @@ import com.akine.activity.domain.MovimientoPase;
 import com.akine.activity.domain.PaseServicio;
 import com.akine.activity.domain.PermissionCodes;
 import com.akine.activity.domain.ProductoServicio;
+import com.akine.activity.domain.TipoProducto;
+import com.akine.activity.domain.exception.AbonoPeriodoSuperpuestoException;
 import com.akine.activity.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.activity.domain.exception.PaseNotAccessibleException;
 import com.akine.activity.domain.exception.PersonaDadaDeBajaException;
@@ -117,7 +119,10 @@ public class VentaDePaseService {
 
 	/**
 	 * @throws ProductoNotAccessibleException  producto inexistente o de otra sede (404)
-	 * @throws ProductoNoVendibleException     dado de baja o fuera de su ventana comercial (409)
+	 * @throws ProductoNoVendibleException     dado de baja, fuera de su ventana comercial o, en un
+	 *                                         abono, con un periodo incoherente (409)
+	 * @throws AbonoPeriodoSuperpuestoException la persona ya tiene ese abono en un periodo que se
+	 *                                         superpone (409)
 	 * @throws PersonaNoAccesibleException     persona fuera del padron del tenant (404)
 	 * @throws PersonaDadaDeBajaException      ficha de baja (409)
 	 * @throws IdempotencyKeyConflictException misma clave, otro pedido (409)
@@ -139,24 +144,35 @@ public class VentaDePaseService {
 				throw new IdempotencyKeyConflictException(command.idempotencyKey());
 			}
 			// El devengo es idempotente por pase: devuelve la deuda que ya existe sin escribir.
-			DeudaDeVenta deuda = devengo.devengarPorVentaDePase(venta(existente, actor));
+			DeudaDeVenta deuda = devengar(existente, actor);
 			return new ResultadoDeVenta(PaseView.de(existente, hoy), deuda(deuda), false);
 		}
 
+		// El producto se lee BLOQUEADO (AKINE-08.08): lectura actual —una baja que commiteo recien
+		// se ve— y, en un abono, serializa las ventas del mismo producto, que es lo que hace cumplir
+		// "un periodo, una obligacion": dos periodos superpuestos vendidos a la vez no comparten un
+		// valor de columna que un unique pueda ver. Orden: producto_servicio -> pase_servicio.
 		ProductoServicio producto = productos
-				.findByIdInScope(organizationId, consultorioId, command.productoId())
+				.lockByIdInScope(organizationId, consultorioId, command.productoId())
 				.orElseThrow(() -> new ProductoNotAccessibleException(command.productoId()));
+		boolean abono = producto.getTipo() == TipoProducto.ABONO;
+		if (!abono && (command.periodoDesde() != null || command.periodoHasta() != null)) {
+			throw new IllegalArgumentException(
+					"Un pack vale desde la compra: el periodo es solo para abonos");
+		}
 		producto.impedimentoParaVenderEl(hoy).ifPresent(motivo -> {
 			throw new ProductoNoVendibleException(command.productoId(), motivo);
 		});
 		exigirPersonaDelPadron(organizationId, command.personaId());
 
 		Instant ahora = clock.instant();
-		PaseServicio pase = pases.saveAndFlush(PaseServicio.vender(
-				producto, command.personaId(), hoy, command.idempotencyKey(), huella,
-				actor.accountId(), ahora));
+		PaseServicio nuevo = abono
+				? venderAbono(organizationId, producto, command, hoy, huella, actor, ahora)
+				: PaseServicio.vender(producto, command.personaId(), hoy, command.idempotencyKey(), huella,
+						actor.accountId(), ahora);
+		PaseServicio pase = pases.saveAndFlush(nuevo);
 		movimientos.registrar(MovimientoPase.compra(pase, actor.accountId(), ahora));
-		DeudaDeVenta deuda = devengo.devengarPorVentaDePase(venta(pase, actor));
+		DeudaDeVenta deuda = devengar(pase, actor);
 
 		auditar(actor, pase, sede, deuda, ahora);
 		log.info("Pase vendido: paseId={} productoId={} personaId={} creditos={} obligacionId={}",
@@ -201,6 +217,40 @@ public class VentaDePaseService {
 	}
 
 	// =================================================================================
+
+	/**
+	 * El periodo de un abono (RF-M29-007 paso 5): desde obligatorio, hasta por defecto el que da la
+	 * duracion del producto. Coherencia temporal y <b>no superposicion</b> con otro periodo vivo del
+	 * mismo producto para la misma persona, con el producto ya bloqueado.
+	 */
+	private PaseServicio venderAbono(
+			long organizationId, ProductoServicio producto, VenderPaseCommand command, LocalDate hoy,
+			String huella, OperatingActor actor, Instant ahora) {
+
+		if (command.periodoDesde() == null) {
+			throw new IllegalArgumentException("Un abono se vende con su periodo: falta periodoDesde");
+		}
+		LocalDate desde = command.periodoDesde();
+		LocalDate hasta = command.periodoHasta() != null
+				? command.periodoHasta()
+				: desde.plusDays(producto.getVigenciaDias() - 1L);
+		PaseServicio.impedimentoDelPeriodo(producto, desde, hasta, hoy).ifPresent(motivo -> {
+			throw new ProductoNoVendibleException(producto.getId(), motivo);
+		});
+		if (pases.existeAbonoSuperpuesto(
+				organizationId, command.personaId(), producto.getId(), desde, hasta)) {
+			throw new AbonoPeriodoSuperpuestoException(producto.getId(), command.personaId(), desde, hasta);
+		}
+		return PaseServicio.venderAbono(producto, command.personaId(), desde, hasta,
+				command.idempotencyKey(), huella, actor.accountId(), ahora);
+	}
+
+	private DeudaDeVenta devengar(PaseServicio pase, OperatingActor actor) {
+		VentaDePase venta = venta(pase, actor);
+		return pase.getTipo() == TipoProducto.ABONO
+				? devengo.devengarPorVentaDeAbono(venta)
+				: devengo.devengarPorVentaDePase(venta);
+	}
 
 	private static VentaDePase venta(PaseServicio pase, OperatingActor actor) {
 		return new VentaDePase(

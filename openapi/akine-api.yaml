@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.107.0
+  version: 0.109.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -7818,6 +7818,8 @@ paths:
         Crea el pase con el snapshot del producto y su saldo inicial, el movimiento `COMPRA` del ledger y **una obligacion** a nombre de la persona, en una sola transaccion (RF-M29-002, RF-M18-009). **No cobra** (DP-06): la deuda se paga con `POST /cobros`. La persona no se convierte en paciente.
 
         Con `idempotencyKey`, un reintento con el mismo pedido devuelve la venta existente con 200 sin duplicar pase, creditos ni deuda (CA-M29-002-06).
+
+        **Abono** (desde 0.109.0, RF-M29-007, RF-M18-010): si el producto es `ABONO`, `periodoDesde` es obligatorio y el pase cubre ese periodo; la obligacion nace con `origen = VENTA_ABONO`. Un periodo, una obligacion: un abono del mismo producto para la misma persona con periodo superpuesto es 409 `abono-periodo-superpuesto`. Renovar es vender el periodo siguiente.
       operationId: venderPase
       parameters:
       - in: path
@@ -7888,9 +7890,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "El producto esta dado de baja o fuera de su ventana (`producto-no-vendible`),\
-            \ la ficha de la persona esta de baja (`conflict`), o la clave se reuso\
-            \ con otro pedido (`idempotency-key-conflict`)"
+          description: "El producto esta dado de baja o fuera de su ventana, o el\
+            \ periodo del abono ya termino o es mas largo que el producto (`producto-no-vendible`),\
+            \ la ficha de la persona esta de baja (`conflict`), la clave se reuso\
+            \ con otro pedido (`idempotency-key-conflict`) o la persona ya tiene ese\
+            \ abono en un periodo superpuesto (`abono-periodo-superpuesto`)"
       summary: Vender un pase a una persona
       tags:
       - Pases
@@ -7942,6 +7946,161 @@ paths:
           description: "La sede, el recurso o la persona no existen, o son de otro\
             \ tenant"
       summary: Ver un pase con su ledger
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/pases/{paseId}/ajustes:
+    post:
+      description: |-
+        Suma o resta creditos con motivo obligatorio (RF-M29-005). Deja un movimiento `AJUSTE` en el ledger con actor y motivo y lo audita (CA-M29-005-06). **No toca la deuda ni la caja**: un credito no es plata (RN-M29-006).
+
+        El saldo final no puede ser negativo (RN-M29-008) ni superar los creditos comprados, y el pase tiene que estar `ACTIVO` o `AGOTADO` y dentro de su vigencia. `version` es la que el cliente leyo: un consumo que entro en el medio la movio y la respuesta es 409 `concurrent-modification`. Reenviar el mismo ajuste con la misma version devuelve el estado actual sin ajustar dos veces.
+      operationId: ajustarSaldoDePase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: paseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AjusteDeSaldoDePase"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaseDetalle"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PaseDetalle"
+          description: "El pase ajustado, con su ledger"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Cantidad cero, sin motivo o datos invalidos"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:adjust` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version vieja (`concurrent-modification`), o pase anulado,\
+            \ vencido o saldo final fuera de rango (`pase-no-ajustable`, con `motivo`)"
+      summary: Ajustar a mano el saldo de un pase
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/pases/{paseId}/anulacion:
+    post:
+      description: |-
+        Pasa el pase a `ANULADO` con motivo, descarta su saldo con un movimiento `AJUSTE` y **anula la deuda de la venta** en la misma transaccion: la obligacion no se borra, queda `ANULADA` con su motivo. Idempotente: anular uno anulado devuelve 200 sin escribir (`anulado = false`).
+
+        Solo un pase **sin creditos usados** —con consumos, anularlo regalaria las clases tomadas; para descartar el resto se ajusta el saldo— y con una deuda **sin cobros**: con plata imputada primero se anula o reintegra el cobro (RF-M19-010). En los dos casos no se escribe nada.
+      operationId: anularPase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: paseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnulacionDePase"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeAnulacionDePase"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeAnulacionDePase"
+          description: El pase anulado y su deuda
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin motivo o datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:adjust` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version vieja (`concurrent-modification`), creditos usados\
+            \ (`pase-no-ajustable`) o deuda con cobros imputados (`pase-con-cobros`,\
+            \ con `obligacionId` y `cobrado`)"
+      summary: Anular un pase vendido por error
       tags:
       - Pases
   /api/v1/consultorios/{consultorioId}/personas/{personaId}/pases:
@@ -9072,10 +9231,10 @@ paths:
       tags:
       - Pases
     post:
-      description: "Define un pack de creditos sobre una oferta de la sede: cantidad,\
-        \ precio y vigencia en dias. La oferta tiene que declarar `esquemaCobro =\
-        \ POR_PACK`, que es la politica que despues hace que una asistencia consuma\
-        \ credito (RN-M29-005). **No crea saldo a nadie** (CA-M29-001-06)."
+      description: |-
+        Define un pack de creditos sobre una oferta de la sede: cantidad, precio y vigencia en dias. La oferta tiene que declarar `esquemaCobro = POR_PACK`, que es la politica que despues hace que una asistencia consuma credito (RN-M29-005). **No crea saldo a nadie** (CA-M29-001-06).
+
+        Con `tipo = ABONO` (desde 0.109.0, RF-M29-007) define un abono: la oferta tiene que declarar `POR_ABONO`, `creditos` son las asistencias que permite cada periodo y `vigenciaDias` la duracion maxima del periodo, que se elige al vender.
       operationId: crearProducto
       parameters:
       - in: path
@@ -9136,9 +9295,10 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "La oferta esta de baja o no cobra POR_PACK (`conflict`), o\
-            \ ya hay un producto vigente con ese nombre (`producto-nombre-en-uso`)"
-      summary: Crear un producto de pack
+          description: "La oferta esta de baja o no cobra POR_PACK (o POR_ABONO para\
+            \ un abono) (`conflict`), o ya hay un producto vigente con ese nombre\
+            \ (`producto-nombre-en-uso`)"
+      summary: Crear un producto de pack o de abono
       tags:
       - Pases
   /api/v1/consultorios/{consultorioId}/productos/{productoId}:
@@ -21475,6 +21635,31 @@ components:
           example: 9001
       required:
       - obligacionId
+    AjusteDeSaldoDePase:
+      type: object
+      description: Ajuste manual del saldo (RF-M29-005). Exige `pase:adjust` y motivo.
+        El saldo final no puede ser negativo ni superar los creditos comprados.
+      properties:
+        cantidad:
+          type: integer
+          format: int32
+          description: "Creditos con signo: positivo suma, negativo resta. Nunca cero"
+          example: -1
+        motivo:
+          type: string
+          description: "Obligatorio: queda en el ledger y en la auditoria (CA-M29-005-06)"
+          example: Clase de cortesia descontada por error
+          maxLength: 280
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: Version del pase que el cliente leyo
+          example: 3
+          minimum: 0
+      required:
+      - motivo
+      - version
     AlcanceDeSerie:
       type: object
       description: "Que turnos toca una operacion con alcance y cuales deja como estan.\
@@ -21673,6 +21858,26 @@ components:
           type: boolean
           description: Si el antecedente sigue vigente
           example: true
+    AnulacionDePase:
+      type: object
+      description: "Anula un pase vendido por error, con su deuda. Solo si no se uso\
+        \ ningun credito y la deuda no tiene cobros. Exige `pase:adjust`."
+      properties:
+        motivo:
+          type: string
+          description: Obligatorio
+          example: Se vendio a la persona equivocada
+          maxLength: 280
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: Version del pase que el cliente leyo
+          example: 1
+          minimum: 0
+      required:
+      - motivo
+      - version
     AnularCobro:
       type: object
       description: "Anula un cobro con motivo obligatorio. **Anular no significa borrar**:\
@@ -24445,8 +24650,9 @@ components:
       - periodoHasta
     CrearProducto:
       type: object
-      description: Alta de un producto de pack sobre una oferta de la sede que declara
-        `esquemaCobro = POR_PACK`. **No crea saldo a nadie** (CA-M29-001-06).
+      description: "Alta de un producto sobre una oferta de la sede: un pack exige\
+        \ `esquemaCobro = POR_PACK` y un abono `POR_ABONO`. **No crea saldo a nadie**\
+        \ (CA-M29-001-06)."
       properties:
         creditos:
           type: integer
@@ -24482,6 +24688,15 @@ components:
           description: "Precio de venta, decimal exacto"
           example: 40000.0
           exclusiveMinimum: 0
+        tipo:
+          type: string
+          description: "`PACK` (por defecto) o `ABONO` (desde 0.109.0, RF-M29-007).\
+            \ En un abono `creditos` son las asistencias que permite cada periodo\
+            \ y `vigenciaDias` la duracion maxima del periodo"
+          enum:
+          - PACK
+          - ABONO
+          example: PACK
         vigenciaDesde:
           type: string
           format: date
@@ -25399,9 +25614,16 @@ components:
           exclusiveMinimum: 0
         esquemaCobro:
           type: string
-          description: "Esquema de cobro declarado, texto libre acotado. Se guarda\
-            \ sin resolverse: los modulos que lo interpretarian no existen todavia"
-          example: SESION_SUELTA
+          description: "Esquema de cobro (RN-M27-006): `POR_SESION` devenga por atencion,\
+            \ `POR_PACK` y `POR_ABONO` consumen el credito de un pase o abono y la\
+            \ deuda nace al venderlo. Vocabulario cerrado: otro valor es 400. `POR_CLASE`\
+            \ existe en el esquema pero hoy responde 400, hasta decidir cuando se\
+            \ devenga (U-39). Ausente: sin esquema declarado"
+          enum:
+          - POR_SESION
+          - POR_PACK
+          - POR_ABONO
+          example: POR_SESION
           maxLength: 32
           minLength: 0
         generaRegistroClinico:
@@ -29743,7 +29965,9 @@ components:
         origenId:
           type: integer
           format: int64
-          description: "Para VENTA, el pase; para ASISTENCIA, el evento de asistencia"
+          description: "Para VENTA, el pase; para ASISTENCIA, el evento de asistencia;\
+            \ para CANCELACION, la clase cancelada; para AJUSTE_MANUAL y VENCIMIENTO,\
+            \ la version del pase sobre la que se aplico"
           example: 901
         origenTipo:
           type: string
@@ -30031,8 +30255,9 @@ components:
         origen:
           type: string
           description: "Que hecho devengo la deuda: una atencion (`SESION`) o la venta\
-            \ de un pack o pase (`VENTA_PASE`, RF-M18-009). Devengar no es cobrar:\
-            \ la deuda de una venta se paga con `POST /cobros` como cualquier otra."
+            \ de un pack o pase (`VENTA_PASE`, RF-M18-009) o de un periodo de abono\
+            \ (`VENTA_ABONO`, RF-M18-010). Devengar no es cobrar: la deuda de una\
+            \ venta se paga con `POST /cobros` como cualquier otra."
           enum:
           - SESION
           - VENTA_PASE
@@ -30041,7 +30266,8 @@ components:
         paseId:
           type: integer
           format: int64
-          description: Pase vendido que la genero. Presente solo con `origen = VENTA_PASE`.
+          description: Pase vendido que la genero. Presente con `origen = VENTA_PASE`
+            o `VENTA_ABONO`.
           example: 77
         personaId:
           type: integer
@@ -30070,8 +30296,8 @@ components:
           type: integer
           format: int64
           description: "Atencion que la genero, cuando `origen` es `SESION`. **Ausente**\
-            \ cuando la deuda nace de la venta de un pase (`origen = VENTA_PASE`,\
-            \ desde 0.102.0)."
+            \ cuando la deuda nace de la venta de un pase o de un abono (`origen =\
+            \ VENTA_PASE` o `VENTA_ABONO`, desde 0.102.0)."
           example: 501
         snapshotNombre:
           type: string
@@ -30124,10 +30350,15 @@ components:
           example: 45
         esquemaCobro:
           type: string
-          description: "Esquema de cobro DECLARADO, texto libre acotado. No lo resuelve\
-            \ nadie todavia: los modulos de facturacion y cobros no existen (RN-M27-006).\
-            \ Se guarda para no perder el dato, no para ramificar"
-          example: SESION_SUELTA
+          description: "Esquema de cobro de la oferta (RN-M27-006), o ausente si no\
+            \ declara ninguno. `POR_CLASE` esta en la lista porque el esquema lo admite,\
+            \ aunque hoy no se puede declarar (U-39)"
+          enum:
+          - POR_SESION
+          - POR_CLASE
+          - POR_PACK
+          - POR_ABONO
+          example: POR_SESION
         estado:
           type: string
           description: "Ciclo de vida administrativo. Una oferta INACTIVA se sigue\
@@ -30591,6 +30822,14 @@ components:
         \ creditos y oferta son el **snapshot de la venta**: editar el producto no\
         \ los cambia."
       properties:
+        anuladoEn:
+          type: string
+          format: date-time
+          description: Cuando se anulo. Presente solo con `estado = ANULADO`
+        anuladoPorCuentaId:
+          type: integer
+          format: int64
+          description: Quien lo anulo
         consultorioId:
           type: integer
           format: int64
@@ -30619,6 +30858,9 @@ components:
         moneda:
           type: string
           example: ARS
+        motivoAnulacion:
+          type: string
+          description: Por que se anulo
         nombre:
           type: string
           example: Pack Pilates 8 clases
@@ -30638,6 +30880,14 @@ components:
           type: integer
           format: int64
           example: 12
+        tipo:
+          type: string
+          description: '`PACK` o `ABONO` (desde 0.109.0). Un abono cubre el periodo
+            `vigenciaDesde`..`vigenciaHasta` elegido al venderlo'
+          enum:
+          - PACK
+          - ABONO
+          example: PACK
         vendidoEn:
           type: string
           format: date-time
@@ -30648,6 +30898,7 @@ components:
         version:
           type: integer
           format: int64
+          description: Version para el control optimista del ajuste y la anulacion
           example: 1
         vigenciaDesde:
           type: string
@@ -31891,6 +32142,9 @@ components:
       - https://akine.app/problems/inscripcion-transicion-no-permitida
       - https://akine.app/problems/producto-no-vendible
       - https://akine.app/problems/producto-nombre-en-uso
+      - https://akine.app/problems/abono-periodo-superpuesto
+      - https://akine.app/problems/pase-no-ajustable
+      - https://akine.app/problems/pase-con-cobros
       - https://akine.app/problems/oferta-no-clinica
       - https://akine.app/problems/participacion-sin-asistencia
       - https://akine.app/problems/autorizacion-no-elegible
@@ -31938,7 +32192,10 @@ components:
           example: 40000.0
         tipo:
           type: string
-          description: Hoy solo `PACK`; `ABONO` es de 08.08
+          description: "`PACK`: creditos que valen `vigenciaDias` desde la compra.\
+            \ `ABONO` (desde 0.109.0): `creditos` son las asistencias que permite\
+            \ cada periodo y `vigenciaDias` la duracion maxima de un periodo, que\
+            \ se elige al vender"
           enum:
           - PACK
           - ABONO
@@ -33429,6 +33686,20 @@ components:
       required:
       - accion
       - expectedVersion
+    ResultadoDeAnulacionDePase:
+      type: object
+      description: "El pase ANULADO y la deuda de su venta, tambien anulada (no borrada)."
+      properties:
+        anulado:
+          type: boolean
+          description: false si el pase ya estaba anulado y no se escribio nada
+          example: true
+        deuda:
+          $ref: "#/components/schemas/DeudaDeVenta"
+          description: La obligacion de la venta despues de anularla. Ausente si la
+            venta no tenia deuda
+        pase:
+          $ref: "#/components/schemas/Pase"
     ResultadoDeAsistencia:
       type: object
       description: La asistencia y como quedo la inscripcion. `registrada` y `corregida`
@@ -35661,7 +35932,13 @@ components:
           exclusiveMinimum: 0
         esquemaCobro:
           type: string
-          description: Esquema de cobro nuevo. Null deja el actual
+          description: "Esquema de cobro nuevo. Null deja el actual. Mismo vocabulario\
+            \ que el alta: `POR_CLASE` responde 400 hasta decidir U-39"
+          enum:
+          - POR_SESION
+          - POR_PACK
+          - POR_ABONO
+          example: POR_PACK
           maxLength: 32
           minLength: 0
         expectedVersion:
@@ -36052,6 +36329,19 @@ components:
           example: c0a8-venta-512
           maxLength: 80
           minLength: 0
+        periodoDesde:
+          type: string
+          format: date
+          description: "Solo abonos (desde 0.109.0): primer dia del periodo que cubre.\
+            \ Obligatorio para un abono y prohibido para un pack"
+          example: 2026-11-01
+        periodoHasta:
+          type: string
+          format: date
+          description: "Solo abonos: ultimo dia del periodo, inclusive. Ausente: el\
+            \ periodo dura los `vigenciaDias` del producto. No puede durar mas que\
+            \ eso ni haber terminado"
+          example: 2026-11-30
         personaId:
           type: integer
           format: int64

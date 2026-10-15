@@ -3,6 +3,7 @@ package com.akine.activity.api;
 import com.akine.activity.application.IdempotencyKeyConflictException;
 import com.akine.activity.domain.exception.AsistenciaNotAccessibleException;
 import com.akine.activity.domain.exception.CapacidadNoAdmitidaException;
+import com.akine.activity.domain.exception.AbonoPeriodoSuperpuestoException;
 import com.akine.activity.domain.exception.ClaseCompletaException;
 import com.akine.activity.domain.exception.ClaseNoProgramableException;
 import com.akine.activity.domain.exception.ClaseNotAccessibleException;
@@ -15,6 +16,8 @@ import com.akine.activity.domain.exception.OfertaNoClinicaException;
 import com.akine.activity.domain.exception.OfertaNotAccessibleException;
 import com.akine.activity.domain.exception.OfertaNoAdmitePackException;
 import com.akine.activity.domain.exception.ParticipacionSinAsistenciaException;
+import com.akine.activity.domain.exception.PaseConCobrosException;
+import com.akine.activity.domain.exception.PaseNoAjustableException;
 import com.akine.activity.domain.exception.PaseNotAccessibleException;
 import com.akine.activity.domain.exception.PersonaDadaDeBajaException;
 import com.akine.activity.domain.exception.PersonaNoAccesibleException;
@@ -297,6 +300,34 @@ public class ActivityProblemHandler {
 	public ProblemDetail handlePersonaDadaDeBaja(PersonaDadaDeBajaException exception) {
 		ProblemDetail problem = conflicto(exception.getMessage(), CONFLICT);
 		problem.setTitle("La ficha de la persona esta dada de baja");
+		return problem;
+	}
+
+	// =================================================================================
+	// Abonos, ajuste y anulacion de pases (AKINE-08.07 / 08.08)
+	// =================================================================================
+
+	@ExceptionHandler(AbonoPeriodoSuperpuestoException.class)
+	public ProblemDetail handleAbonoPeriodoSuperpuesto(AbonoPeriodoSuperpuestoException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.ABONO_PERIODO_SUPERPUESTO.uri());
+		problem.setTitle("La persona ya tiene ese abono en el periodo");
+		return problem;
+	}
+
+	@ExceptionHandler(PaseNoAjustableException.class)
+	public ProblemDetail handlePaseNoAjustable(PaseNoAjustableException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.PASE_NO_AJUSTABLE.uri());
+		problem.setTitle("El pase no admite la operacion");
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	@ExceptionHandler(PaseConCobrosException.class)
+	public ProblemDetail handlePaseConCobros(PaseConCobrosException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.PASE_CON_COBROS.uri());
+		problem.setTitle("La deuda del pase tiene cobros");
+		problem.setProperty("obligacionId", exception.getObligacionId());
+		problem.setProperty("cobrado", exception.getCobrado());
 		return problem;
 	}
 
