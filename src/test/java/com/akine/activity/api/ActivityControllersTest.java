@@ -299,6 +299,22 @@ class ActivityControllersTest {
 			assertThat(comando.getValue()).isEqualTo(new InscribirCommand(512L, true, "k"));
 		}
 
+		/** El contrato lo publica opcional: un primitivo ausente era 400 validation-error. */
+		@Test
+		@DisplayName("Sin aceptaListaEspera inscribe igual y la omision vale false")
+		void sin_acepta_lista_espera_vale_false() throws Exception {
+			given(inscripcionService.inscribir(any(), anyLong(), anyLong(), any()))
+					.willReturn(new ResultadoDeInscripcion(inscripcion("RESERVADA"), cupos(), true));
+
+			autenticado(post(CLASE + "/inscripciones").contentType(MediaType.APPLICATION_JSON)
+					.content("{\"personaId\":512}"))
+					.andExpect(status().isCreated());
+
+			ArgumentCaptor<InscribirCommand> comando = ArgumentCaptor.forClass(InscribirCommand.class);
+			verify(inscripcionService).inscribir(any(), eq(SEDE_ID), eq(CLASE_ID), comando.capture());
+			assertThat(comando.getValue()).isEqualTo(new InscribirCommand(512L, false, null));
+		}
+
 		/** El 409 lleva los dos numeros para que la pantalla ofrezca la espera sin otra vuelta. */
 		@Test
 		@DisplayName("Sin lugar y sin aceptar la espera es 409 clase-completa")
