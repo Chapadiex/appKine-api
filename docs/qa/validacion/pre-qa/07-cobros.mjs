@@ -299,7 +299,7 @@ async function c12() {
 		ok(n(f[0].beneficiario_membership_id) === C.mprof && f[0].beneficiario_nombre && f[0].estado === 'CONFIRMADO' && Number(f[0].saldo_pendiente) === 2500, 'del profesional, nombre resuelto por el backend, CONFIRMADO con saldo 2500', f);
 		const m = q(`SELECT m.jornada_caja_id, m.medio, m.afecta_arqueo FROM movimiento_caja m JOIN pago_egreso p ON p.id = m.referencia_origen WHERE m.tipo_origen = 'PAGO_EGRESO' AND p.egreso_id = ${e.id}`);
 		ok(m.every((x) => x.medio === 'TRANSFERENCIA' && x.afecta_arqueo === '0'), 'el movimiento de transferencia no afecta el arqueo', m);
-		if (m.some((x) => x.jornada_caja_id !== null)) guia('EGR-04 espera el movimiento de la transferencia con jornada_caja_id NULL; con la caja abierta queda asociado a la jornada (afecta_arqueo = 0, no entra al arqueo)');
+		nota('EGR-04: con la caja abierta el movimiento de la transferencia queda en la jornada (afecta_arqueo = 0); jornada_caja_id es NULL solo con la caja cerrada');
 		const mb = n(q1('SELECT id FROM membership WHERE organization_id = @org_b AND is_founder = 1').id);
 		tipo(await api('POST', cs('/egresos'), { s, json: { categoria: 'HONORARIOS_PROFESIONALES', tipoBeneficiario: 'COLABORADOR', beneficiarioMembershipId: mb, concepto: 'QA: ajeno', importeTotal: 10, moneda: 'ARS', idempotencyKey: randomUUID() } }), 'beneficiario-no-vinculado', 'un colaborador de otra organizacion');
 	});

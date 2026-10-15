@@ -80,7 +80,7 @@ export async function c06() {
 		const au = auditDesde(d0, 'AND organization_id = @org_a');
 		ok(tiene(au, 'SESION_CERRADA', (x) => x.entity_type === 'Sesion' && x.new_state === 'CERRADA'), 'SESION_CERRADA de la Sesion', au);
 		ok(tiene(au, 'AUTORIZACION_CONSUMIDA'), 'AUTORIZACION_CONSUMIDA', au);
-		if (tiene(au, 'OBLIGACION_DEVENGADA')) guia('CLI-05 dice "El devengo no escribe audit_event"; desde #86 deja OBLIGACION_DEVENGADA (lo que ECO-14 espera)');
+		ok(tiene(au, 'OBLIGACION_DEVENGADA'), 'el devengo deja OBLIGACION_DEVENGADA (desde #86)', au);
 	});
 	await paso('PER-11', 'Consumo de la autorizacion al cerrar la sesion (DP-12)', async () => {
 		need(C.sesion, C.autorizacion);
@@ -256,7 +256,7 @@ export async function c06() {
 		const otro = await api('POST', `/api/v1/casos-clinicos/${C.caso}/planes`, { s, json: cuerpo });
 		if (otro.status === 201) st(await api('POST', `/api/v1/planes-tratamiento/${otro.cuerpo.id}/activacion`, { s, json: { expectedVersion: otro.cuerpo.version } }), 409, 'un suspendido ocupa el lugar del activo: activar otro es rechazo (defecto 4 del 29/09)');
 		else st(otro, 409, 'otro plan mientras el suspendido vive');
-		guia('CLI-13 dice que crear y activar otro plan mientras el activo vive es rechazo; el producto finaliza solo el ACTIVO anterior al activar uno nuevo ("Finalizado automaticamente al activar el plan N") y rechaza solo si el anterior esta SUSPENDIDO (PlanTratamientoService.finalizarElVigente)');
+		// CLI-13: activar otro plan con el activo vivo lo finaliza solo; el rechazo es solo con un SUSPENDIDO (lo verificado arriba).
 		p = must(await api('POST', `/api/v1/planes-tratamiento/${pid}/reanudacion`, { s, json: { expectedVersion: p.version } }), 200, 'reanudar');
 		st(await api('GET', `/api/v1/planes-tratamiento/${pid}/avance`, { s }), 200, 'avance');
 		must(await api('PATCH', `/api/v1/planes-tratamiento/${pid}`, { s, json: { ...cuerpo, objetivos: 'Recuperar movilidad y fuerza', motivo: 'Ajuste QA', expectedVersion: p.version } }), 200, 'modificar con motivo');

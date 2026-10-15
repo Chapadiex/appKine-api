@@ -18,7 +18,7 @@ export async function c04() {
 		const dup = await nuevaPersona(s, 'Beatriz', 'Duplicada', '30111222');
 		st(dup, 409, 'mismo DNI con otro nombre: rechazo');
 		const conf = await nuevaPersona(s, 'Beatriz', 'Duplicada', '30111222', { confirmaPosibleDuplicado: true });
-		if (conf.status === 409 && conf.tipo === 'persona-documento-taken') guia('PER-01 dice que el mismo DNI "avisa posible duplicado y solo sigue si lo confirmas"; el producto lo rechaza siempre con 409 persona-documento-taken (el documento es unico en la organizacion), aun confirmando');
+		tipo(conf, 'persona-documento-taken', 'mismo DNI: se rechaza siempre, aun confirmando (el documento es unico en la organizacion)');
 		const pd = await nuevaPersona(s, 'Ana', 'QA', '30999888', { fechaNacimiento: '1990-05-10' });
 		ok(pd.status === 409 && /duplicad/i.test(`${pd.tipo} ${pd.cuerpo?.detail}`), 'mismo nombre y nacimiento con otro DNI: avisa posible duplicado', pd);
 		C.persona_dup = must(await nuevaPersona(s, 'Ana', 'QA', '30999888', { fechaNacimiento: '1990-05-10', confirmaPosibleDuplicado: true }), 201, 'confirmado, sigue').id;
