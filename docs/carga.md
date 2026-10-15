@@ -850,3 +850,36 @@ serialización de la agenda.
 
 **Lo que conviene primero:** la opción 5 —medir dónde va a correr— y, si el commit sigue arriba de
 ~10 ms, la 1, que es la más barata, no toca la garantía de huecos y tiene precedente fiscal.
+
+## 11. Los cuatro sobrantes de §6 y del #82, verificados (15/10/2026, rama `akine-g10-sobrantes`)
+
+Cuatro problemas seguían anotados como abiertos en `CLAUDE.md` §7. Se revisó cada uno contra
+`origin/main` `a707f3d` antes de tocar código.
+
+| Problema | Estado en `main` | Evidencia |
+|---|---|---|
+| Un fallo de base en la autenticación responde 401 (§6.3) | **Ya estaba resuelto** por #91 (`f6e6494`) | `FallaEnFiltro`: `JwtAuthenticationFilter` y `TenantContextFilter` responden 503 `service-unavailable` ante una falla de conexión y 500 ante cualquier otra, nunca 401; `JwtAuthenticationFilterTest` y `TenantContextFilterTest` lo cubren. 401 en la carga de §8: 120 → 0 |
+| `start-period` del healthcheck más corto que el primer arranque (§6.7) | **Ya estaba resuelto** por #91 (`fb52718`) | `Dockerfile`: `--start-period=600s`. `compose.yaml` no tiene servicio del backend; `perf/stack.sh` y `ops/simulacro-restore.sh` esperan hasta 15 min la readiness |
+| `AuthSessionController` guarda `getRemoteAddr()` como IP de la sesión (#82) | **Ya estaba resuelto** por #93 (`5fd504b`) | El helper compartido existe: `platform.spi.security.IpDeCliente`, implementado por `ResolutorDeIpDeCliente`, el mismo bean que usa `RateLimitFilter`, configurado por `AKINE_TRUSTED_PROXIES`. Ningún otro sitio de `src/main` lee `getRemoteAddr()` |
+| N+1 en la agenda del día (§6.4) | **La agenda unificada ya estaba resuelta** por #91 (`c76aa41`); **la recepción del día, no** | Ver abajo |
+
+### La recepción del día: dos consultas por oferta distinta
+
+#91 corrigió `AgendaUnificadaService` con `OfertaDirectory.findTodas`. `RecepcionService.componer`
+—que arma `TurnoDelDia` para la recepción del día y para `GET .../turnos/{t}`— seguía cacheando la
+oferta por id dentro de la llamada, y `PrepagoDeRecepcion` hacía lo mismo con el precio: **dos
+sentencias por oferta distinta del día**. Con una oferta por profesional crece con los
+profesionales de la sede. En la carga no se veía porque el sembrado tiene una sola oferta.
+
+`AgendaDelDiaSentenciasIT` lo mide: envuelve el `DataSource` y cuenta los
+`prepareStatement`/`createStatement` **del hilo del test** (el outbox usa la misma base), el mismo
+día con una oferta y con seis, un turno por oferta.
+
+| Lectura | Antes: 1 oferta → 6 ofertas | Después: 1 oferta → 6 ofertas |
+|---|---:|---:|
+| recepción del día (`RecepcionService.delDia`) | 10 → **20** | DESPUES_RECEPCION |
+| agenda unificada (`AgendaUnificadaService.delDia`) | 6 → 6 | DESPUES_AGENDA |
+
+El arreglo: `RecepcionService` pide las ofertas del lote con `findTodas` y `PrepagoDeRecepcion`
+pide los precios con `OfertaDirectory.preciosDe`, nuevo, en una consulta para todas. Sin cambio de
+contrato ni migración.

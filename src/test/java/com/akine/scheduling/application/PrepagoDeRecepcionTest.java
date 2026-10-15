@@ -19,9 +19,11 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -116,11 +118,11 @@ class PrepagoDeRecepcionTest {
 	}
 
 	@Test
-	@DisplayName("lote de la agenda (E-8): un turno con y otro sin recepcion, una sola pregunta a billing y una por oferta")
+	@DisplayName("lote de la agenda (E-8): un turno con y otro sin recepcion, una sola pregunta a billing y una sola por los precios")
 	void lote_con_y_sin_recepcion() {
 		OfertaDirectory ofertas = mock(OfertaDirectory.class);
 		PrepagoDeTurnoProbe prepagos = mock(PrepagoDeTurnoProbe.class);
-		given(ofertas.precioDe(1L, 7L, 42L)).willReturn(EXIGE);
+		given(ofertas.preciosDe(1L, 7L, List.of(42L))).willReturn(Map.of(42L, EXIGE.orElseThrow()));
 		given(prepagos.prepagosDe(eq(1L), any())).willReturn(Map.of());
 
 		Turno sinLlegada = turno();
@@ -137,7 +139,8 @@ class PrepagoDeRecepcionTest {
 				.as("con recepcion manda la regla de E-6: con cobertura no se exige")
 				.isEqualTo(PrepagoView.NO_EXIGIDO);
 		verify(prepagos, times(1)).prepagosDe(eq(1L), any());
-		verify(ofertas, times(1)).precioDe(1L, 7L, 42L);
+		verify(ofertas, times(1)).preciosDe(1L, 7L, List.of(42L));
+		verify(ofertas, never()).precioDe(anyLong(), anyLong(), anyLong());
 	}
 
 	private static Turno turno() {
