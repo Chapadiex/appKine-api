@@ -27,9 +27,12 @@ public record PresentacionItemResponse(
 		long obligacionId,
 
 		@Schema(
-				description = "`INCLUIDO` y `ACEPTADO` mantienen tomada la obligacion; `DEBITADO` "
-						+ "y `ANULADO` la liberan para otro lote.",
-				allowableValues = {"INCLUIDO", "ACEPTADO", "DEBITADO", "ANULADO"},
+				description = "`INCLUIDO`, `ACEPTADO` y `DEBITADO_PARCIAL` mantienen tomada la "
+						+ "obligacion; `DEBITADO` (debito total), `ACEPTADO_PARCIAL` (conciliado "
+						+ "con debito parcial: lo debitado queda pendiente y re-presentable) y "
+						+ "`ANULADO` la liberan para otro lote.",
+				allowableValues = {"INCLUIDO", "ACEPTADO", "DEBITADO", "ANULADO",
+						"DEBITADO_PARCIAL", "ACEPTADO_PARCIAL"},
 				example = "INCLUIDO")
 		String estado,
 

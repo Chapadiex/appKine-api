@@ -155,6 +155,10 @@ fila nueva.
   sistema. **Necesita migración** (F7 n.º 4).
 - **Fase / RF:** F7 (07.04). CLAUDE §7 n.º 24; `docs/qa/90-conocido-y-aceptado.md` §5.
 - **Destraba:** el saldo correcto del financiador después de cada conciliación con débito.
+- **Estado:** **implementada en PR #122, pendiente de aprobación** (borrador, sin mergear). La
+  recomendada, con `V95` y contrato 0.100.0: estados de ítem `DEBITADO_PARCIAL` (ocupa hasta
+  conciliar) y `ACEPTADO_PARCIAL` (libera lo debitado). Diseño y design challenge en
+  `docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md` §3.
 
 ### U-12 · DU-13 — catálogo global de financiadores
 
@@ -320,6 +324,10 @@ fuera del MVP. Ordenadas por fase.
   credencial vencida. Es un valor nuevo en `HallazgoDeValidacion`: contrato aditivo (F7 n.º 3).
 - **Fase / RF:** F7 (07.04).
 - **Destraba:** parte del 10 % de 07.04 y menos débitos del financiador.
+- **Estado:** **implementada en PR #122, pendiente de aprobación** (borrador, sin mergear). La
+  recomendada, contrato 0.100.0: `SIN_ORDEN` y `SIN_AUTORIZACION` en `hallazgos` (bloquean
+  confirmar), `CREDENCIAL_FALTANTE` en la lista nueva `avisos` (no bloquea). Se evalúan al validar y
+  confirmar, no al incluir. Diseño en `docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md` §2.
 
 ### U-29 · Ventana de cancelación del paciente *(depende de `OWN`, post-MVP por DP-22)*
 

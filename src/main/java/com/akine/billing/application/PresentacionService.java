@@ -1,10 +1,10 @@
 package com.akine.billing.application;
 
-import com.akine.billing.domain.EstadoItemPresentacion;
 import com.akine.billing.domain.Obligacion;
 import com.akine.billing.domain.Presentacion;
 import com.akine.billing.domain.PresentacionItem;
 import com.akine.billing.domain.Responsable;
+import com.akine.billing.domain.SnapshotDeConvenio;
 import com.akine.billing.domain.exception.FacturaDuplicadaException;
 import com.akine.billing.domain.exception.ObligacionNoPresentableException;
 import com.akine.billing.domain.exception.ObligacionNotAccessibleException;
@@ -24,6 +24,8 @@ import com.akine.billing.domain.port.PresentacionNumeradorPort;
 import com.akine.billing.domain.port.PresentacionRepositoryPort;
 import com.akine.contracting.spi.FinanciadorSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.person.spi.RespaldoDocumentalDirectory;
+import com.akine.person.spi.RespaldoDocumentalDirectory.RespaldoDocumental;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
@@ -86,6 +88,7 @@ public class PresentacionService {
 	private final ObligacionOcupadaConsulta ocupacion;
 	private final PresentacionAcceso acceso;
 	private final AuditTrail auditTrail;
+	private final RespaldoDocumentalDirectory respaldos;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
@@ -99,6 +102,7 @@ public class PresentacionService {
 			ObligacionOcupadaConsulta ocupacion,
 			PresentacionAcceso acceso,
 			AuditTrail auditTrail,
+			RespaldoDocumentalDirectory respaldos,
 			PlatformTransactionManager transactionManager) {
 
 		this.presentaciones = presentaciones;
@@ -110,6 +114,7 @@ public class PresentacionService {
 		this.ocupacion = ocupacion;
 		this.acceso = acceso;
 		this.auditTrail = auditTrail;
+		this.respaldos = respaldos;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -254,12 +259,19 @@ public class PresentacionService {
 		acceso.exigirOperar(actor, organizationId, consultorioId);
 
 		Presentacion presentacion = exigirPresentacion(organizationId, consultorioId, presentacionId);
-		List<ValidacionDePresentacion.Reparo> reparos = reparosDe(organizationId, presentacion);
+		List<ValidacionDePresentacion.Reparo> todos = reparosDe(organizationId, presentacion);
+		List<ValidacionDePresentacion.Reparo> reparos = bloqueantes(todos);
 
 		return new ValidacionDePresentacion(
 				presentacionId,
 				reparos.isEmpty() && !items.findDeLaPresentacion(presentacionId).isEmpty(),
-				reparos);
+				reparos,
+				todos.stream().filter(reparo -> !reparo.hallazgo().bloquea()).toList());
+	}
+
+	private static List<ValidacionDePresentacion.Reparo> bloqueantes(
+			List<ValidacionDePresentacion.Reparo> todos) {
+		return todos.stream().filter(reparo -> reparo.hallazgo().bloquea()).toList();
 	}
 
 	/**
@@ -297,7 +309,9 @@ public class PresentacionService {
 		if (incluidos.isEmpty()) {
 			throw new PresentacionVaciaException(presentacionId);
 		}
-		List<ValidacionDePresentacion.Reparo> reparos = reparosDe(organizationId, presentacion);
+		// Los avisos (la credencial) no frenan el envio: ver HallazgoDeValidacion#bloquea.
+		List<ValidacionDePresentacion.Reparo> reparos =
+				bloqueantes(reparosDe(organizationId, presentacion));
 		if (!reparos.isEmpty()) {
 			throw new PresentacionConHallazgosException(presentacionId, reparos.stream()
 					.map(reparo -> reparo.obligacionId() + ":" + reparo.hallazgo().name())
@@ -362,10 +376,12 @@ public class PresentacionService {
 	/**
 	 * Registra el debito que el financiador informo sobre una prestacion (RF-M21-006).
 	 *
-	 * <p><b>No borra la prestacion ni perdona la deuda</b> (RN-M21-004): la obligacion queda
-	 * pendiente y <b>liberada</b> para otro lote, porque el estado {@code DEBITADO} pone la columna
-	 * generada {@code ocupa_marca} en NULL. Que se hace con esa deuda —re-presentarla, pasarla al
-	 * paciente— es una decision del centro que esta etapa no toma por el.
+	 * <p><b>No borra la prestacion ni perdona la deuda</b> (RN-M21-004). Un debito por el total
+	 * deja el item {@code DEBITADO}: la obligacion queda pendiente y <b>liberada</b> para otro lote,
+	 * porque ese estado pone la columna generada {@code ocupa_marca} en NULL. Un debito parcial lo
+	 * deja {@code DEBITADO_PARCIAL}, que <b>sigue ocupando</b> la obligacion hasta conciliar: lo no
+	 * debitado todavia se cobra en este lote (AKINE-07.04b). Que se hace con lo debitado
+	 * —re-presentarlo, pasarlo al paciente— es una decision del centro que el sistema no toma.
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public PresentacionItemView debitar(
@@ -424,7 +440,10 @@ public class PresentacionService {
 	 * <h2>Y recien aca se salda la deuda</h2>
 	 *
 	 * <p>Cada item que sigue {@code INCLUIDO} pasa a {@code ACEPTADO} y su obligacion se descuenta
-	 * por el importe exacto que se presento. <b>No se hace al recibir el pago</b> porque un pago es
+	 * por el importe exacto que se presento. Cada {@code DEBITADO_PARCIAL} pasa a
+	 * {@code ACEPTADO_PARCIAL} y su obligacion se descuenta por lo presentado menos lo debitado:
+	 * queda pendiente solo lo debitado, re-presentable en otro lote (AKINE-07.04b). Un
+	 * {@code DEBITADO} no salda nada. <b>No se hace al recibir el pago</b> porque un pago es
 	 * un importe global: repartirlo entre los items exigiria una regla de imputacion que el
 	 * financiador no informo, y produciria obligaciones marcadas como pagadas que el nunca acepto.
 	 */
@@ -445,20 +464,22 @@ public class PresentacionService {
 
 		int aceptados = 0;
 		for (PresentacionItem item : items.findDeLaPresentacion(presentacionId)) {
-			if (item.getEstado() != EstadoItemPresentacion.INCLUIDO) {
+			// INCLUIDO salda lo presentado; DEBITADO_PARCIAL salda lo presentado menos lo debitado
+			// y deja pendiente —y liberado para otro lote— solo lo debitado (AKINE-07.04b). El
+			// resto no salda nada.
+			BigDecimal aSaldar = item.conciliar();
+			if (aSaldar.signum() <= 0) {
 				continue;
 			}
-			item.aceptar();
 			// El mismo UPDATE condicional que 07.02 usa para imputar. Cero filas significa que la
 			// deuda ya se salde por otra via —un cobro al paciente, por ejemplo—; no es un error y
 			// no puede hacer fallar el cierre del lote, que ya esta explicado por completo.
-			if (cobros.descontarSaldo(
-					organizationId, item.getObligacionId(), item.getImportePresentado()) > 0) {
+			if (cobros.descontarSaldo(organizationId, item.getObligacionId(), aSaldar) > 0) {
 				cobros.actualizarEstadoPorSaldo(organizationId, item.getObligacionId());
 			} else {
-				log.warn("La obligacion {} ya no tenia el saldo presentado al conciliar la "
+				log.warn("La obligacion {} ya no tenia el saldo aceptado ({}) al conciliar la "
 						+ "presentacion {}: se acepta el item y no se descuenta nada",
-						item.getObligacionId(), presentacionId);
+						item.getObligacionId(), aSaldar, presentacionId);
 			}
 			aceptados++;
 		}
@@ -624,10 +645,10 @@ public class PresentacionService {
 	/**
 	 * Las comprobaciones de RF-M21-003 que el sistema puede hacer hoy.
 	 *
-	 * <p>Los tres requisitos documentales del convenio —orden, autorizacion y credencial— estan
-	 * congelados en la obligacion desde AKINE F-4 y viajan en la respuesta, pero todavia no son
-	 * hallazgo: decidir si cada faltante bloquea el lote o solo avisa es una decision de M21 que
-	 * sigue abierta. Ver {@link HallazgoDeValidacion}.
+	 * <p>Los tres requisitos documentales del convenio —orden, autorizacion y credencial— no se
+	 * miran aca sino en {@link #revisarRespaldo}, que solo corre al validar y confirmar: esto lo usa
+	 * tambien {@code incluir}, y una orden faltante no debe impedir que el item entre al lote, donde
+	 * la validacion lo puede mostrar (AKINE-07.04b).
 	 */
 	private Optional<HallazgoDeValidacion> revisar(
 			Presentacion presentacion, Obligacion obligacion) {
@@ -653,7 +674,11 @@ public class PresentacionService {
 		return Optional.empty();
 	}
 
-	/** Las mismas comprobaciones, sobre todos los items vivos del lote, mas el periodo. */
+	/**
+	 * Las mismas comprobaciones, sobre todos los items vivos del lote, mas el periodo y los
+	 * requisitos documentales del convenio congelado. Devuelve reparos y avisos juntos: quien llama
+	 * los separa por {@link HallazgoDeValidacion#bloquea()}.
+	 */
 	private List<ValidacionDePresentacion.Reparo> reparosDe(
 			long organizationId, Presentacion presentacion) {
 
@@ -663,12 +688,15 @@ public class PresentacionService {
 			if (!item.getEstado().ocupa()) {
 				continue;
 			}
-			obligaciones
-					.findByIdInScope(organizationId, presentacion.getConsultorioId(),
-							item.getObligacionId())
-					.flatMap(obligacion -> revisar(presentacion, obligacion))
+			Optional<Obligacion> obligacion = obligaciones.findByIdInScope(
+					organizationId, presentacion.getConsultorioId(), item.getObligacionId());
+			obligacion
+					.flatMap(o -> revisar(presentacion, o))
 					.ifPresent(hallazgo -> reparos.add(new ValidacionDePresentacion.Reparo(
 							item.getId(), item.getObligacionId(), hallazgo)));
+			obligacion.ifPresent(o -> revisarRespaldo(organizationId, item, o)
+					.forEach(hallazgo -> reparos.add(new ValidacionDePresentacion.Reparo(
+							item.getId(), item.getObligacionId(), hallazgo))));
 
 			// El periodo se evalua contra la fecha CONGELADA del item, no contra la obligacion:
 			// es la que el lote va a imprimir, y evaluarla en la zona de la sede es lo que impide
@@ -682,6 +710,47 @@ public class PresentacionService {
 			}
 		}
 		return reparos;
+	}
+
+	/**
+	 * Orden, autorizacion y credencial (RF-M21-003, AKINE-07.04b).
+	 *
+	 * <p>Mira <b>lo que el convenio exigia el dia de la prestacion</b>, congelado en la obligacion
+	 * por F-4, y no el convenio de hoy: un lote de agosto se juzga con las reglas de agosto. Un
+	 * {@code null} —obligacion anterior a F-4, o sin convenio— no exige nada (RN-M17-005/006).
+	 *
+	 * <p>A {@code person} se le pregunta solo si algo se exige: un lote de doscientas prestaciones
+	 * de un convenio que no pide papeles no hace doscientas lecturas para nada.
+	 */
+	private List<HallazgoDeValidacion> revisarRespaldo(
+			long organizationId, PresentacionItem item, Obligacion obligacion) {
+
+		Optional<SnapshotDeConvenio> congelado = obligacion.getSnapshotDeConvenio();
+		if (congelado.isEmpty()) {
+			return List.of();
+		}
+		SnapshotDeConvenio convenio = congelado.get();
+		if (!convenio.requeriaOrden() && !convenio.requeriaAutorizacion()
+				&& !convenio.requeriaCredencial()) {
+			return List.of();
+		}
+
+		RespaldoDocumental respaldo = respaldos.respaldo(
+				organizationId, obligacion.getPersonaId(), convenio.coberturaId(),
+				convenio.practicaId(), item.getSnapshotFechaPrestacion());
+
+		List<HallazgoDeValidacion> hallazgos = new ArrayList<>(3);
+		if (convenio.requeriaOrden() && !respaldo.orden()) {
+			hallazgos.add(HallazgoDeValidacion.SIN_ORDEN);
+		}
+		if (convenio.requeriaAutorizacion() && !respaldo.autorizacion()) {
+			hallazgos.add(HallazgoDeValidacion.SIN_AUTORIZACION);
+		}
+		if (convenio.requeriaCredencial()
+				&& (convenio.credencialVencida() || !respaldo.numeroAfiliado())) {
+			hallazgos.add(HallazgoDeValidacion.CREDENCIAL_FALTANTE);
+		}
+		return hallazgos;
 	}
 
 	/**

@@ -76,7 +76,9 @@ coseguro como obligaciones separadas.
   la pantalla espera el cliente 0.95.0**, que se regenera cuando este contrato entre a `main`.
 - [ ] 07.04: permiso propio (hoy reusa `cobro:register`) — **pendiente del usuario**, ver abajo.
 - [ ] 07.04: hallazgos de orden, autorización y credencial (RF-M21-003) — **pendiente del usuario**.
-- [ ] 07.04: débito parcial de una presentación — **pendiente del usuario**.
+  La recomendada está **implementada en PR #122 (borrador), pendiente de aprobación** (U-28).
+- [ ] 07.04: débito parcial de una presentación — **pendiente del usuario**. La recomendada está
+  **implementada en PR #122 (borrador), pendiente de aprobación** (U-11, `V95`).
 - [ ] 07.05: adjunto binario del comprobante (RF-M22-003) — **pendiente del usuario**.
 - [ ] 07.05: `egreso:manage` propio o seguir con `caja:operate` (DU-10) — **pendiente del usuario**.
 - [x] ~~07.05: `totalPagadoVigente` no tiene uso.~~ → api #19 (06/10), `SaldoDeEgresoConfrontadoIT`,
