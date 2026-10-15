@@ -48,6 +48,7 @@ public record SesionVersionView(
 		String motivoEnmienda,
 		Instant registradaEn,
 		long registradaPor,
+		String registradaPorNombre,
 		List<TratamientoEnVersion> tratamientos,
 		List<MedicionEnVersion> mediciones) {
 
@@ -132,6 +133,14 @@ public record SesionVersionView(
 	}
 
 	public static SesionVersionView de(SesionVersion version) {
+		return de(version, null);
+	}
+
+	/**
+	 * La version con el nombre visible de quien la escribio, resuelto por quien llama (no por esta
+	 * clase: el nombre vive en {@code identity} y se pide en lote para todo el historial).
+	 */
+	public static SesionVersionView de(SesionVersion version, String registradaPorNombre) {
 		return new SesionVersionView(
 				version.getNumeroVersion(),
 				version.getMotivoClinico(),
@@ -149,6 +158,7 @@ public record SesionVersionView(
 				version.getMotivoEnmienda(),
 				version.getRegistradaEn(),
 				version.getRegistradaPor(),
+				registradaPorNombre,
 				version.getTratamientos().stream().map(TratamientoEnVersion::de).toList(),
 				version.getMediciones().stream().map(MedicionEnVersion::de).toList());
 	}

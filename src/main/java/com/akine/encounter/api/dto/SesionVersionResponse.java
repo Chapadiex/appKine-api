@@ -56,6 +56,12 @@ public record SesionVersionResponse(
 				+ "ser quien cerro", example = "8")
 		long registradaPor,
 
+		@Schema(description = "Nombre visible de la cuenta que la escribio, para mostrar sin "
+				+ "resolver el id. Solo el nombre: ni el email ni ningun dato del paciente. "
+				+ "Ausente si la cuenta ya no se puede resolver",
+				example = "Laura Gomez")
+		String registradaPorNombre,
+
 		@Schema(description = "Los tratamientos **vigentes en esta version**, en orden cronologico. "
 				+ "Foto inmutable: una enmienda posterior que los corrija no cambia lo que dice "
 				+ "esta version (C-6)")
@@ -160,6 +166,7 @@ public record SesionVersionResponse(
 				vista.motivoEnmienda(),
 				vista.registradaEn(),
 				vista.registradaPor(),
+				vista.registradaPorNombre(),
 				vista.tratamientos().stream().map(TratamientoEnVersionResponse::de).toList(),
 				vista.mediciones().stream().map(MedicionEnVersionResponse::de).toList());
 	}
