@@ -22,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -151,10 +150,11 @@ public class RecepcionService {
 	/**
 	 * Resuelve nombres para un lote de turnos.
 	 *
-	 * <p><b>Dos consultas y no dos por turno.</b> Los pacientes se piden todos juntos —para eso
-	 * nacio {@code PacienteDirectory.findAll}— y las ofertas se cachean por id dentro de la
-	 * llamada: un dia de agenda suele repetir la misma oferta decenas de veces, y pedirla una vez
-	 * por turno seria N consultas para N respuestas identicas.
+	 * <p><b>Una consulta por fuente, no una por turno ni por oferta.</b> Los pacientes se piden
+	 * todos juntos —para eso nacio {@code PacienteDirectory.findAll}— y las ofertas del lote
+	 * tambien, con {@code OfertaDirectory.findTodas}. Antes se cacheaban por id dentro de la
+	 * llamada: no se repetia la misma oferta, pero una sede con una oferta por profesional pagaba
+	 * una consulta por cada una, y otra por su precio en el prepago (docs/carga.md §6.4).
 	 */
 	private List<TurnoDelDiaView> componer(
 			long organizationId, long consultorioId, List<Turno> lote) {
@@ -173,7 +173,8 @@ public class RecepcionService {
 		// el lote y una por oferta distinta.
 		Map<Long, PrepagoView> prepagoDe = prepago.de(organizationId, consultorioId, lote, recepcionDe);
 
-		Map<Long, String> nombreDeOferta = new HashMap<>();
+		Map<Long, OfertaSnapshot> ofertaDe = ofertas.findTodas(organizationId, consultorioId,
+				lote.stream().map(Turno::getOfertaId).distinct().toList());
 		return lote.stream()
 				.map(turno -> new TurnoDelDiaView(
 						turno.getId(),
@@ -184,9 +185,7 @@ public class RecepcionService {
 						nombreDe(personas.get(turno.getPersonaId())),
 						documentoDe(personas.get(turno.getPersonaId())),
 						turno.getOfertaId(),
-						nombreDeOferta.computeIfAbsent(
-								turno.getOfertaId(),
-								ofertaId -> nombreComercialDe(organizationId, consultorioId, ofertaId)),
+						nombreComercialDe(ofertaDe.get(turno.getOfertaId())),
 						turno.getProfesionalMembershipId(),
 						turno.getEspacioId(),
 						llegadaDe(recepcionDe.get(turno.getId())),
@@ -227,10 +226,8 @@ public class RecepcionService {
 				: paciente.tipoDocumento() + " " + paciente.numeroDocumento();
 	}
 
-	private String nombreComercialDe(long organizationId, long consultorioId, long ofertaId) {
-		return ofertas.find(organizationId, consultorioId, ofertaId)
-				.map(OfertaSnapshot::nombreComercial)
-				.orElse("(oferta no disponible)");
+	private static String nombreComercialDe(OfertaSnapshot oferta) {
+		return oferta == null ? "(oferta no disponible)" : oferta.nombreComercial();
 	}
 
 	private static long exigirContexto(OperatingActor actor) {
