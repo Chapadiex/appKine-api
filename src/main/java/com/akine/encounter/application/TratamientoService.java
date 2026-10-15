@@ -272,9 +272,13 @@ public class TratamientoService {
 	 * uno, y por eso {@code uk_tratamiento_orden} lleva {@code deleted_key}.
 	 *
 	 * <p>Es idempotente: dar de baja dos veces no cambia el motivo ni el instante originales.
+	 *
+	 * <p>Devuelve la intervencion ya dada de baja con la {@code sesionVersion} nueva, igual que el
+	 * alta y el reemplazo: la baja tambien hace avanzar la version de la sesion, y sin devolverla
+	 * la pantalla tenia que releer la sesion para no comer un 409 en su proxima escritura.
 	 */
 	@Transactional
-	public void darDeBaja(
+	public TratamientoView darDeBaja(
 			OperatingActor actor,
 			long consultorioId,
 			long sesionId,
@@ -283,7 +287,8 @@ public class TratamientoService {
 			long expectedVersion) {
 
 		long organizationId = exigirContexto(actor);
-		sesionParaEscribir(actor, organizationId, consultorioId, sesionId, expectedVersion);
+		Sesion sesion = sesionParaEscribir(actor, organizationId, consultorioId, sesionId,
+				expectedVersion);
 
 		String razon = motivo == null || motivo.isBlank() ? null : motivo.strip();
 		if (razon == null) {
@@ -301,11 +306,14 @@ public class TratamientoService {
 				.orElseThrow(() -> new TratamientoNoAccesibleException(tratamientoId));
 
 		tratamiento.darDeBaja(razon, Instant.now());
-		tratamientos.save(tratamiento);
+		TratamientoRealizado guardado = tratamientos.save(tratamiento);
 
-		auditar(actor, tratamiento, AuditEvents.TRATAMIENTO_DADO_DE_BAJA, razon);
+		auditar(actor, guardado, AuditEvents.TRATAMIENTO_DADO_DE_BAJA, razon);
 
 		log.info("Tratamiento dado de baja: sesionId={} tratamientoId={}", sesionId, tratamientoId);
+
+		return TratamientoView.de(
+				guardado, parametros.listarDe(organizationId, tratamientoId), versionDe(sesion));
 	}
 
 	// =================================================================================

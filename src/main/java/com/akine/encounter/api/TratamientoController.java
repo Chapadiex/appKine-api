@@ -215,9 +215,16 @@ public class TratamientoController {
 
 					**El `orden` no se libera**: la proxima intervencion sigue tomando el siguiente \
 					numero. Es idempotente: dar de baja dos veces no cambia el motivo ni el \
-					instante originales.""")
+					instante originales.
+
+					**Responde 200 con la intervencion dada de baja** (`vigente: false`) y la \
+					`sesionVersion` nueva, igual que el alta y el reemplazo: la baja hace avanzar \
+					la version de la sesion y la pantalla no necesita releerla. Hasta el contrato \
+					0.99.0 respondia 204 sin cuerpo; un cliente que ignore el cuerpo sigue \
+					funcionando igual.""")
 	@ApiResponses({
-			@ApiResponse(responseCode = "204", description = "Intervencion dada de baja"),
+			@ApiResponse(responseCode = "200", description = "Intervencion dada de baja, con la "
+					+ "version nueva de la sesion"),
 			@ApiResponse(
 					responseCode = "400",
 					description = "Falta el motivo",
@@ -231,14 +238,14 @@ public class TratamientoController {
 					description = "La sesion esta cerrada o es de otro profesional, o la version "
 							+ "quedo vieja",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
-	public ResponseEntity<Void> darDeBaja(
+	public ResponseEntity<TratamientoResponse> darDeBaja(
 			@PathVariable long consultorioId,
 			@PathVariable long sesionId,
 			@PathVariable long tratamientoId,
 			@Valid @RequestBody DarDeBajaTratamientoRequest request) {
 
-		tratamientoService.darDeBaja(apiActor.current(), consultorioId, sesionId, tratamientoId,
-				request.motivo(), request.version());
-		return ResponseEntity.noContent().build();
+		return ResponseEntity.ok(TratamientoResponse.de(tratamientoService.darDeBaja(
+				apiActor.current(), consultorioId, sesionId, tratamientoId,
+				request.motivo(), request.version())));
 	}
 }
