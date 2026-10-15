@@ -31,6 +31,8 @@ import com.akine.encounter.domain.port.SesionRepositoryPort;
 import com.akine.encounter.domain.port.SesionVersionRepositoryPort;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.identity.AccountIdentity;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import com.akine.encounter.domain.port.TratamientoRepositoryPorts.TratamientoRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
@@ -136,6 +138,9 @@ public class SesionService {
 	private final List<PrecioParticularDelCierre> requisitosDePrecio;
 	private final TransactionTemplate transaccionReadCommitted;
 
+	/** Nombre visible de quien escribio cada version (solo nombre, por id de cuenta). */
+	private final AccountIdentityDirectory identidades;
+
 	@SuppressWarnings("java:S107")
 	public SesionService(
 			SesionRepositoryPort sesiones,
@@ -157,6 +162,7 @@ public class SesionService {
 			MedicionService medicionService,
 			List<CierreDeSesionObserver> observadores,
 			List<PrecioParticularDelCierre> requisitosDePrecio,
+			AccountIdentityDirectory identidades,
 			PlatformTransactionManager transactionManager) {
 
 		this.sesiones = sesiones;
@@ -178,6 +184,7 @@ public class SesionService {
 		this.medicionService = medicionService;
 		this.observadores = List.copyOf(observadores);
 		this.requisitosDePrecio = List.copyOf(requisitosDePrecio);
+		this.identidades = identidades;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -201,7 +208,7 @@ public class SesionService {
 	 *
 	 * <p><b>La idempotencia manda sobre el caso.</b> Si la sesion del turno ya existe se devuelve
 	 * tal cual, con el caso que tenga, aunque esta llamada traiga otro: reasignar el caso de una
-	 * atencion ya empezada no es "iniciar", y por eso {@code caso_id} es {@code updatable = false}.
+	 * atencion ya empezada no es "iniciar": es {@link #cambiarCaso}, con su version y su auditoria.
 	 *
 	 * @throws AccessDeniedException           sin {@code sesion:register} o sin contexto (403)
 	 * @throws CasoNoAsignableException        si el caso no existe, es de otra historia o esta
@@ -293,6 +300,7 @@ public class SesionService {
 		sesion.exigirPropiedadDe(membershipDe(actor, organizationId, consultorioId));
 
 		exigirVersion(sesion, expectedVersion);
+		ContenidoJson.exigirValido(contenido);
 
 		sesion.guardarBorrador(contenido, Instant.now());
 		return conPrevia(sesiones.saveAndFlush(sesion), organizationId);
@@ -365,8 +373,8 @@ public class SesionService {
 	 * devolverle un 409 al profesional. <b>Si alguna vez hay un tercer numerador, entra al final
 	 * de esta lista, no en el medio.</b>
 	 *
-	 * <p>El caso ya fue validado al <b>iniciar</b> la sesion y {@code caso_id} no se puede cambiar
-	 * despues, asi que el cierre no lo vuelve a validar: un caso que se cerro mientras la atencion
+	 * <p>El caso ya fue validado al <b>iniciar</b> la sesion o al cambiarlo ({@link #cambiarCaso}),
+	 * asi que el cierre no lo vuelve a validar: un caso que se cerro mientras la atencion
 	 * transcurria <b>no</b> impide cerrarla. La atencion ocurrio, y negarle el cierre obligaria a
 	 * elegir entre perder el registro clinico o reabrir el caso para poder guardarlo.
 	 *
@@ -714,9 +722,88 @@ public class SesionService {
 				.filter(Sesion::estaViva)
 				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
 
-		return versiones.buscarPorSesion(organizationId, sesion.getId()).stream()
-				.map(SesionVersionView::de)
+		List<SesionVersion> historial = versiones.buscarPorSesion(organizationId, sesion.getId());
+
+		// En lote y solo el nombre: la pantalla muestra "quien" sin tener que resolver ids, y el
+		// contrato de platform.spi no devuelve nada del paciente. Una cuenta que ya no resuelve
+		// deja el nombre ausente, no inventado.
+		Map<Long, AccountIdentity> autores = identidades.identidadesDe(
+				historial.stream().map(SesionVersion::getRegistradaPor).distinct().toList());
+
+		return historial.stream()
+				.map(version -> SesionVersionView.de(version,
+						java.util.Optional.ofNullable(autores.get(version.getRegistradaPor()))
+								.map(AccountIdentity::nombreCompleto)
+								.orElse(null)))
 				.toList();
+	}
+
+	// =================================================================================
+	// Caso de una atencion ya iniciada
+	// =================================================================================
+
+	/**
+	 * Asocia, cambia o quita el Caso Clinico de una sesion abierta.
+	 *
+	 * <p>Iniciar la atencion admite el caso, pero la idempotencia del inicio manda sobre el: una
+	 * sesion que ya existe se devuelve con el caso que tenga. Sin esta operacion, un profesional
+	 * que abrio la atencion sin caso —o con el equivocado— no tenia como corregirlo antes de
+	 * cerrar, y el cierre numera dentro del caso que la sesion tenga en ese momento.
+	 *
+	 * <p>Las reglas son las del inicio mas las de toda escritura sobre la atencion:
+	 * <ul>
+	 *   <li><b>Abierta.</b> Una sesion cerrada ya tiene su {@code numeroEnCaso}: cambiarle el caso
+	 *       seria renumerar historia clinica (409 {@code sesion-cerrada}).</li>
+	 *   <li><b>Propiedad, no permiso</b>: escribir en la atencion ajena es 409.</li>
+	 *   <li><b>Version</b>: el caso cambia una columna de la sesion, asi que el flush emite el
+	 *       {@code UPDATE ... WHERE version = N} y avanza la version una sola vez; sin
+	 *       force-increment.</li>
+	 *   <li><b>Caso activo de la misma historia</b>: uno de otro paciente es 404 indistinguible de
+	 *       "no existe", y uno cerrado es 409.</li>
+	 * </ul>
+	 *
+	 * <p>{@code casoId} nulo quita el caso: RF-M14-002 admite atencion sin caso, y exigirlo es
+	 * RF-M10-007 (C-9), que esta operacion <b>no</b> enciende. Pedir el caso que ya tiene es un
+	 * no-op: no escribe, no audita y no avanza la version.
+	 */
+	@Transactional
+	public SesionView cambiarCaso(
+			OperatingActor actor, long consultorioId, long sesionId, Long casoId,
+			long expectedVersion) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirRegistro(actor, organizationId, consultorioId);
+
+		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
+				.filter(Sesion::estaViva)
+				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
+
+		sesion.exigirPropiedadDe(membershipDe(actor, organizationId, consultorioId));
+		exigirVersion(sesion, expectedVersion);
+
+		Long anterior = sesion.getCasoId();
+		if (java.util.Objects.equals(anterior, casoId)) {
+			// Aun asi, una sesion cerrada no admite "asignar caso": el no-op no puede tapar eso.
+			sesion.asignarCaso(casoId);
+			return conPrevia(sesion, organizationId);
+		}
+
+		exigirCasoAsignable(organizationId, sesion.getHistoriaClinicaId(), casoId);
+		sesion.asignarCaso(casoId);
+		Sesion guardada = sesiones.saveAndFlush(sesion);
+
+		auditar(organizationId, consultorioId, actor, AuditEvents.SESION_CASO_CAMBIADO,
+				guardada.getId(), "CASO_" + anterior, "CASO_" + casoId,
+				Map.of("historiaClinicaId", String.valueOf(guardada.getHistoriaClinicaId()),
+						"casoAnteriorId", String.valueOf(anterior),
+						"casoId", String.valueOf(casoId)),
+				Instant.now());
+
+		log.info("Caso de la sesion cambiado: sesionId={} casoAnterior={} casoNuevo={}",
+				sesionId, anterior, casoId);
+
+		return conPrevia(guardada, organizationId);
 	}
 
 	/**

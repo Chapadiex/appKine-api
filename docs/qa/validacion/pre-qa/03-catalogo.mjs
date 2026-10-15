@@ -1,0 +1,181 @@
+import { randomUUID } from 'node:crypto';
+import { APIC, MAILC, RED, API, MAILPIT, P, MYSQL, DB, PLATAFORMA, AQUI, PASSWORD, PASSWORD2, SALIDA, SALIDA_JSON, SOLO, suf, dormir, UA, inicioCorrida, Corte, Bloqueo, R, cur, CIRC, paso, ultimaSql, ok, eq, st, tipo, must, need, nota, manual, soloManual, n, SECRETO, limpiar, descr, api, galletas, cookieRt, V, lit, unesc, q, q1, fmtSql, ahoraDb, maxAudit, auditDesde, tiene, cuenta, det, docker, correos, textoCorreo, esperarCorreos, tokenDe, tokenCorreo, ES_ACTIVACION, ES_INVITACION, pw, correo, registrar, activar, login, entrar, CU, SES, S, Splat, hoy, horaLocal, fechaLocal, instanteLocal, C, usados, agenda, slot, reservar, recepcionHastaLlamado, ses, iniciarSesion, tratar, cerrarSesion, atencionCompleta, PNG, multipart, sha256, J, ORIGEN, GUIA, guia, ZONA, setZona, AUDIT_RANGO } from './lib.mjs';
+
+// 03 · Catalogo, servicios, ofertas, practicas y precios (+ PLA-04, que resuelve la solicitud de CAT-03)
+const of = (p = '') => `/api/v1/consultorios/${C.sede_a}/ofertas/${C.oferta}${p}`;
+const espacios = (sede = C.sede_a) => `/api/v1/organizations/${C.org_a}/consultorios/${sede}/espacios`;
+
+export async function c03() {
+	await paso('CAT-01', 'Espacios: alta y baja de un box', async () => {
+		need(C.sede_a);
+		const d0 = maxAudit();
+		const s = await S('admin');
+		const b = must(await api('POST', espacios(), { s, json: { name: `Box QA ${suf}`, tipo: 'BOX', capacidad: 1 } }), 201, 'alta del box');
+		must(await api('POST', `${espacios()}/${b.id}/deactivate`, { s, json: { reason: 'Baja pre-QA' } }), 200, 'baja con motivo');
+		const f = q(`SELECT id, name, tipo, capacidad, active, deleted_at, deactivation_reason, deleted_key, version FROM espacio WHERE id = ${b.id}`);
+		ok(f.length === 1 && f[0].active === '0' && f[0].deleted_at && f[0].deactivation_reason === 'Baja pre-QA', 'la fila sigue con active = 0, deleted_at y motivo', f);
+		const au = auditDesde(d0, 'AND organization_id = @org_a');
+		ok(tiene(au, 'ESPACIO_CREATED') && tiene(au, 'ESPACIO_DEACTIVATED'), 'ESPACIO_CREATED y ESPACIO_DEACTIVATED', au);
+		C.box = must(await api('POST', espacios(), { s, json: { name: `Box QA activo ${suf}`, tipo: 'BOX', capacidad: 1 } }), 201, 'otro box activo').id;
+		manual('"mostrar dados de baja" en /espacios');
+	});
+	await paso('CAT-02', 'Especialidad y practica propias de la organizacion', async () => {
+		const d0 = maxAudit();
+		const s = await S('admin');
+		const esp = must(await api('POST', '/api/v1/catalogos/especialidades', { s, json: { codigo: `KQA-${suf}`, name: 'Kinesiología QA', alcance: 'ORGANIZACION' } }), 201, 'especialidad');
+		C.especialidad = esp.id;
+		st(await api('POST', '/api/v1/catalogos/practicas', { s, json: { codigo: `SINESP-${suf}`, name: 'Practica sin especialidad', alcance: 'ORGANIZACION' } }), 400, 'la especialidad es obligatoria');
+		const pr = must(await api('POST', '/api/v1/catalogos/practicas', { s, json: { codigo: `FRQA-${suf}`, name: 'Fisioterapia de rodilla QA', alcance: 'ORGANIZACION', especialidadId: esp.id } }), 201, 'practica');
+		C.practica = V.practica = pr.id;
+		C.codigoPractica = `FRQA-${suf}`;
+		C.practica2 = must(await api('POST', '/api/v1/catalogos/practicas', { s, json: { codigo: `OTRA-${suf}`, name: 'Electroterapia QA', alcance: 'ORGANIZACION', especialidadId: esp.id } }), 201, 'segunda practica').id;
+		st(await api('POST', '/api/v1/catalogos/practicas', { s, json: { codigo: `FRQA-${suf}`, name: 'Repetida', alcance: 'ORGANIZACION', especialidadId: esp.id } }), 409, 'codigo repetido en la organizacion');
+		const b = await S('b');
+		const espB = must(await api('POST', '/api/v1/catalogos/especialidades', { s: b, json: { codigo: `KQA-${suf}`, name: 'Kinesiología B', alcance: 'ORGANIZACION' } }), 201, 'el mismo codigo de especialidad en B');
+		st(await api('POST', '/api/v1/catalogos/practicas', { s: b, json: { codigo: `FRQA-${suf}`, name: 'Rodilla B', alcance: 'ORGANIZACION', especialidadId: espB.id } }), 201, 'el mismo codigo de practica en B no choca');
+		const f = q(`SELECT id, owner_key, especialidad_id, codigo, name, active FROM practica WHERE id = ${pr.id}`);
+		const e = q(`SELECT id, owner_key FROM especialidad WHERE id = ${esp.id}`);
+		ok(n(f[0]?.owner_key) === C.org_a && n(e[0]?.owner_key) === C.org_a, 'owner_key = org A en las dos', f, e);
+		ok(cuenta(auditDesde(d0, 'AND organization_id = @org_a'), 'CATALOGO_CREATED') >= 2, 'CATALOGO_CREATED');
+	});
+	await paso('CAT-03', 'Pedir un concepto al catalogo de plataforma', async () => {
+		const d0 = maxAudit();
+		const r = await api('POST', '/api/v1/catalogo-solicitudes', { s: await S('admin'), json: { tipo: 'PRACTICA', nombrePropuesto: `Magnetoterapia QA ${suf}`, codigoPropuesto: `MAG-${suf}`, justificacion: 'Pre-QA sintetico' } });
+		C.solicitud = V.solicitud = must(r, 201, 'solicitud').id;
+		const f = q('SELECT id, tipo, estado, solicitada_por_account_id, concepto_id FROM catalogo_solicitud WHERE id = @solicitud');
+		ok(f[0]?.estado === 'PENDIENTE' && f[0].concepto_id === null, 'PENDIENTE sin concepto', f);
+		ok(tiene(auditDesde(d0, 'AND organization_id = @org_a'), 'CATALOGO_SOLICITUD_CREATED'), 'CATALOGO_SOLICITUD_CREATED');
+	});
+	await paso('PLA-04', 'Resolver una solicitud de catalogo: aprobar publica (DP-18)', async () => {
+		need(C.solicitud);
+		const d0 = maxAudit();
+		const p = await Splat();
+		const a = await S('admin');
+		const eg = must(await api('POST', '/api/v1/catalogos/especialidades', { s: p, json: { codigo: `EG-${suf}`, name: `Especialidad global ${suf}`, alcance: 'GLOBAL' } }), 201, 'especialidad global');
+		const res = (id, body) => api('POST', `/api/v1/catalogo-solicitudes/${id}/resolve`, { s: p, json: body });
+		st(await res(C.solicitud, { estado: 'APROBADA', nota: 'Aprobada pre-QA', version: 0, especialidadId: C.especialidad }), 404, 'con la especialidad propia de A');
+		const ap = await res(C.solicitud, { estado: 'APROBADA', nota: 'Aprobada pre-QA', version: 0, especialidadId: eg.id });
+		must(ap, 200, 'aprobar');
+		const s2 = must(await api('POST', '/api/v1/catalogo-solicitudes', { s: a, json: { tipo: 'PRACTICA', nombrePropuesto: `Rechazable ${suf}`, codigoPropuesto: `REC-${suf}`, justificacion: 'Pre-QA' } }), 201, 'segunda solicitud');
+		must(await res(s2.id, { estado: 'RECHAZADA', nota: 'Rechazada pre-QA', version: s2.version ?? 0 }), 200, 'rechazar');
+		const s3 = await api('POST', '/api/v1/catalogo-solicitudes', { s: a, json: { tipo: 'PRACTICA', nombrePropuesto: `Sin codigo ${suf}`, justificacion: 'Pre-QA' } });
+		if (s3.status === 201) st(await res(s3.cuerpo.id, { estado: 'APROBADA', nota: 'sin codigo', version: s3.cuerpo.version ?? 0, especialidadId: eg.id }), 400, 'aprobar sin ningun codigo posible');
+		else nota(`una solicitud sin codigo propuesto no se pudo crear (HTTP ${s3.status}); el 400 de aprobar sin codigo no se probo`);
+		const f = q(`SELECT id, estado, resuelta_por_account_id, resolucion_nota, concepto_id FROM catalogo_solicitud WHERE id IN (${C.solicitud}, ${s2.id}) ORDER BY id`);
+		ok(f[0]?.estado === 'APROBADA' && f[0].concepto_id && f[1]?.estado === 'RECHAZADA' && f[1].concepto_id === null, 'la aprobada con concepto, la rechazada sin', f);
+		const g = q(`SELECT p.id, p.owner_key, p.organization_id, p.codigo FROM practica p WHERE p.id = ${n(f[0]?.concepto_id) ?? 0}`);
+		ok(g[0]?.owner_key === '0' && g[0].organization_id === null, 'la practica creada es global (owner_key 0, sin organizacion)', g);
+		const lista = (await api('GET', `/api/v1/catalogos/practicas?alcance=GLOBAL&size=200&q=${encodeURIComponent('Magnetoterapia')}`, { s: a })).cuerpo;
+		ok((lista?.content ?? []).some((x) => x.id === n(f[0]?.concepto_id)), 'desde A, la practica nueva aparece como global', JSON.stringify(lista).slice(0, 300));
+		const au = auditDesde(d0);
+		ok(tiene(au, 'CATALOGO_SOLICITUD_RESOLVED', (x) => n(x.organization_id) === C.org_a), 'CATALOGO_SOLICITUD_RESOLVED en la organizacion que pidio', au);
+		ok(tiene(au, 'CATALOGO_CREATED', (x) => x.organization_id === null && n(x.entity_id) === n(f[0]?.concepto_id)), 'CATALOGO_CREATED sin organizacion', au);
+		manual('la pantalla /plataforma/solicitudes');
+	});
+	await paso('CAT-04', 'Oferta de la sede sobre un servicio global', async () => {
+		need(C.servicio);
+		const d0 = maxAudit();
+		const r = await api('POST', `/api/v1/consultorios/${C.sede_a}/ofertas`, { s: await S('admin'), json: { servicioId: C.servicio, nombreComercial: `Kinesio QA ${suf}`, capacidad: 1, duracionMinutos: 30, requiereProfesional: true, requiereEspacio: false, admiteObraSocial: true } });
+		C.oferta = V.oferta = must(r, 201, 'alta de la oferta').id;
+		const f = q(`SELECT o.id, o.organization_id, o.consultorio_id, o.servicio_id, o.duracion_minutos, o.capacidad, o.admite_obra_social, o.exige_prepago, o.requiere_profesional, o.active, o.version
+			FROM oferta_servicio_consultorio o JOIN servicio s ON s.id = o.servicio_id WHERE o.id = @oferta`);
+		ok(n(f[0]?.organization_id) === C.org_a && n(f[0].consultorio_id) === C.sede_a && f[0].admite_obra_social === '1' && f[0].exige_prepago === '0', 'de A, admite obra social, sin prepago', f);
+		ok(tiene(auditDesde(d0, 'AND organization_id = @org_a'), 'OFERTA_CREATED'), 'OFERTA_CREATED');
+	});
+	await paso('CAT-05', 'Habilitar al profesional en la oferta', async () => {
+		need(C.oferta, C.mprof);
+		const d0 = maxAudit();
+		const s = await S('admin');
+		const h = must(await api('GET', of('/habilitaciones'), { s }), 200, 'leer habilitaciones');
+		const v0 = h.ofertaVersion;
+		const r1 = await api('PUT', of('/habilitaciones/profesionales'), { s, json: { expectedVersion: v0, ids: [C.mprof] } });
+		must(r1, 200, 'primera pestana');
+		const r2 = await api('PUT', of('/habilitaciones/profesionales'), { s, json: { expectedVersion: v0, ids: [C.mprof] } });
+		st(r2, 409, 'segunda pestana con la version vieja');
+		tipo(r2, 'concurrent-modification', 'segunda pestana');
+		const ver = q('SELECT version FROM oferta_servicio_consultorio WHERE id = @oferta');
+		ok(n(ver[0].version) === n(v0) + 1 && n(r1.cuerpo.ofertaVersion) === n(v0) + 1, 'la version avanzo una vez y la respuesta la publica', ver, r1);
+		const f = q('SELECT membership_id, active FROM oferta_profesional_habilitado WHERE oferta_id = @oferta');
+		ok(f.length === 1 && n(f[0].membership_id) === C.mprof && f[0].active === '1', 'habilitacion activa', f);
+		ok(tiene(auditDesde(d0, 'AND organization_id = @org_a'), 'HABILITACION_PROFESIONAL_GRANTED'), 'HABILITACION_PROFESIONAL_GRANTED');
+	});
+	await paso('CAT-06', 'Practicas de la oferta (A-9, DP-11)', async () => {
+		need(C.oferta, C.practica, C.practica2);
+		const d0 = maxAudit();
+		const s = await S('admin');
+		const v = (await api('GET', of('/practicas'), { s })).cuerpo.ofertaVersion;
+		const r = must(await api('PUT', of('/practicas'), { s, json: { expectedVersion: v, practicaIds: [C.practica, C.practica2], practicaPrincipalId: C.practica } }), 200, 'agregar dos practicas');
+		must(await api('PUT', of('/practicas'), { s, json: { expectedVersion: r.ofertaVersion, practicaIds: [C.practica], practicaPrincipalId: C.practica } }), 200, 'quitar la segunda');
+		const f = q('SELECT op.practica_id, op.principal, op.active, op.deleted_at FROM oferta_practica op WHERE op.oferta_id = @oferta ORDER BY op.id');
+		const p1 = f.find((x) => n(x.practica_id) === C.practica && x.active === '1'), p2 = f.find((x) => n(x.practica_id) === C.practica2);
+		ok(p1?.principal === '1' && p2 && p2.active === '0', 'la principal activa; la quitada queda con active = 0, no se borra', f);
+		const au = auditDesde(d0, 'AND organization_id = @org_a');
+		ok(tiene(au, 'OFERTA_PRACTICA_ADDED') && tiene(au, 'OFERTA_PRACTICA_PRINCIPAL_CHANGED'), 'OFERTA_PRACTICA_ADDED y OFERTA_PRACTICA_PRINCIPAL_CHANGED', au);
+	});
+	await paso('CAT-07', 'Precio particular vigente', async () => {
+		need(C.oferta);
+		const d0 = maxAudit();
+		const s = await S('admin');
+		const p0 = must(await api('POST', of('/precios-particulares'), { s, json: { importe: 9000, moneda: 'ARS', vigenciaDesde: '2026-01-01' } }), 201, 'precio anterior');
+		must(await api('PUT', of(`/precios-particulares/${p0.id}`), { s, json: { expectedVersion: p0.version, vigenciaHasta: hoy(-1) } }), 200, 'cerrar la vigencia del anterior');
+		C.precio = must(await api('POST', of('/precios-particulares'), { s, json: { importe: 10000, moneda: 'ARS', vigenciaDesde: hoy() } }), 201, 'precio 10000 desde hoy').id;
+		const sol = await api('POST', of('/precios-particulares'), { s, json: { importe: 11000, moneda: 'ARS', vigenciaDesde: hoy(10) } });
+		st(sol, 409, 'dos precios que se solapan');
+		tipo(sol, 'precio-particular-solapado', 'solapado');
+		const f = q(`SELECT id, importe, vigencia_desde, vigencia_hasta, active FROM oferta_precio_particular WHERE oferta_id = @oferta ORDER BY vigencia_desde`);
+		const vig = f.filter((x) => x.active === '1' && x.vigencia_desde <= hoy() && (!x.vigencia_hasta || x.vigencia_hasta >= hoy()));
+		ok(vig.length === 1 && Number(vig[0].importe) === 10000, 'un solo precio vigente hoy, de 10000', f);
+		const au = auditDesde(d0, 'AND organization_id = @org_a');
+		ok(tiene(au, 'OFERTA_PRECIO_PARTICULAR_CREATED') && tiene(au, 'OFERTA_PRECIO_PARTICULAR_UPDATED'), 'CREATED y UPDATED', au);
+	});
+	await paso('CAT-08', 'Horario semanal del profesional', async () => {
+		need(C.mprof);
+		const d0 = maxAudit();
+		const s = await S('admin');
+		const base = `/api/v1/consultorios/${C.sede_a}/profesionales/${C.mprof}/disponibilidad`;
+		const bloques = [];
+		for (let d = 1; d <= 7; d++) bloques.push(must(await api('POST', base, { s, json: { diaSemana: d, horaDesde: '00:00', horaHasta: '23:45' } }), [200, 201], `bloque del dia ${d}`));
+		nota('bloques 00:00-23:45 todos los dias (la guia dice 08:00-20:00 L-V): asi la corrida tiene slots de hoy a cualquier hora');
+		const b7 = bloques[6];
+		const imp = await api('POST', `${base}/${b7.id}/impacto-de-edicion`, { s, json: { diaSemana: 7, horaDesde: '00:00', horaHasta: '23:30' } });
+		ok(imp.status === 200 && imp.cuerpo.turnosAfectados !== undefined, 'la consulta de impacto antes de editar', imp);
+		must(await api('PUT', `${base}/${b7.id}`, { s, json: { diaSemana: 7, horaDesde: '00:00', horaHasta: '23:30', version: b7.version } }), 200, 'editar el bloque');
+		const f = q('SELECT dia_semana, hora_desde, hora_hasta, active FROM profesional_disponibilidad WHERE consultorio_id = @sede_a AND membership_id = @membership_profesional ORDER BY dia_semana, hora_desde');
+		ok(f.filter((x) => x.active === '1').length === 7 && f.some((x) => x.dia_semana === '7' && x.hora_hasta.startsWith('23:30')), 'siete bloques activos, el domingo editado', f);
+		const au = auditDesde(d0, 'AND organization_id = @org_a');
+		ok(tiene(au, 'DISPONIBILIDAD_BLOQUE_CREATED') && tiene(au, 'DISPONIBILIDAD_BLOQUE_UPDATED'), 'CREATED y UPDATED', au);
+	});
+	await paso('CAT-09', 'Cierre por ausencia', async () => {
+		need(C.mprof, C.oferta);
+		const d0 = maxAudit();
+		const s = await S('admin');
+		const ex = must(await api('POST', `/api/v1/consultorios/${C.sede_a}/excepciones`, { s, json: { membershipId: C.mprof, tipo: 'CIERRE', motivo: 'LICENCIA', fechaDesde: hoy(1), fechaHasta: hoy(2) } }), [200, 201], 'cierre por licencia de manana');
+		const ag = await agenda(s, C.sede_a, C.oferta, hoy(1), hoy(2));
+		const dia = ag.cuerpo?.dias?.[0];
+		ok(dia && dia.slots.length === 0 && dia.motivoSinSlots, 'ese dia no tiene slots y dice el motivo', JSON.stringify(dia));
+		const f = q(`SELECT tipo, motivo, fecha_desde, fecha_hasta, active FROM disponibilidad_excepcion WHERE id = ${ex.id}`);
+		ok(f[0]?.tipo === 'CIERRE' && f[0].motivo === 'LICENCIA', 'CIERRE por LICENCIA', f);
+		must(await api('DELETE', `/api/v1/consultorios/${C.sede_a}/excepciones/${ex.id}`, { s, json: { reason: 'Fin de la prueba' } }), 200, 'darla de baja');
+		const au = auditDesde(d0, 'AND organization_id = @org_a');
+		ok(tiene(au, 'DISPONIBILIDAD_EXCEPCION_CREATED') && tiene(au, 'DISPONIBILIDAD_EXCEPCION_DEACTIVATED'), 'CREATED y DEACTIVATED', au);
+	});
+	await paso('CAT-10', 'El horario general de la sede limita la agenda (DP-19)', async () => {
+		need(C.oferta);
+		const d0 = maxAudit();
+		const s = await S('admin');
+		const cal = `/api/v1/consultorios/${C.sede_a}/calendario`;
+		must(await api('PUT', cal, { s, json: { cierraPorFeriado: false, horarioGeneral: [1, 2, 3, 4, 5].map((d) => ({ diaSemana: d, horaDesde: '09:00', horaHasta: '18:00' })) } }), 200, 'horario general L-V 09-18');
+		let k = 1;
+		while ([0, 6].includes(new Date(`${hoy(k)}T12:00:00Z`).getUTCDay())) k++;
+		const ag = await agenda(s, C.sede_a, C.oferta, hoy(k), hoy(k + 1));
+		const horas = (ag.cuerpo?.dias?.[0]?.slots ?? []).map((x) => horaLocal(x.desde));
+		ok(horas.length > 0 && horas.every((h) => h >= '09:00' && h < '18:00'), `el ${hoy(k)} solo hay slots entre 09:00 y 18:00 (profesional 00:00-23:45)`, `horas: ${horas.join(',')}`);
+		const h = q('SELECT dia_semana, hora_desde, hora_hasta, active FROM consultorio_horario WHERE consultorio_id = @sede_a AND deleted_at IS NULL ORDER BY dia_semana');
+		eq(h.length, 5, 'cinco franjas', h);
+		eq(q1('SELECT cierra_por_feriado c FROM consultorio_calendario WHERE consultorio_id = @sede_a').c, 0, 'sin cierre por feriado');
+		must(await api('PUT', cal, { s, json: { cierraPorFeriado: false, horarioGeneral: [] } }), 200, 'quitar el horario general (la guia pide dejarlo amplio para los circuitos 05 a 07)');
+		const ag2 = await agenda(s, C.sede_a, C.oferta, hoy(k), hoy(k + 1));
+		ok((ag2.cuerpo?.dias?.[0]?.slots ?? []).some((x) => horaLocal(x.desde) < '09:00'), 'sin horario general no se limita nada');
+		ok(tiene(auditDesde(d0, 'AND organization_id = @org_a'), 'HORARIO_GENERAL_UPDATED'), 'HORARIO_GENERAL_UPDATED');
+	});
+}

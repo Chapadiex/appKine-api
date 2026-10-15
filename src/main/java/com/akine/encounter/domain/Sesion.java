@@ -63,8 +63,11 @@ public class Sesion {
 	 * <p>Es un {@code Long} y no una relacion JPA: {@code caso_clinico} es de {@code clinical} y una
 	 * relacion hacia su entity seria justamente el acceso directo que AGENT.md seccion 4 regla 1
 	 * prohibe. Lo que este modulo puede hacer con un caso lo dice {@code clinical.spi.CasoDirectory}.
+	 *
+	 * <p>Se puede cambiar <b>mientras la sesion esta abierta</b> ({@link #asignarCaso}); al cerrar
+	 * queda fijo, porque el cierre numera dentro de el.
 	 */
-	@Column(name = "caso_id", updatable = false)
+	@Column(name = "caso_id")
 	private Long casoId;
 
 	@Column(name = "turno_id", updatable = false)
@@ -242,6 +245,18 @@ public class Sesion {
 		exigirAbierta();
 		this.borrador = contenido;
 		this.borradorGuardadoEn = occurredAt;
+	}
+
+	/**
+	 * Asocia, cambia o quita ({@code null}) el caso de una sesion abierta.
+	 *
+	 * <p>Que el caso sea asignable —existe, es de esta historia, esta activo— lo valida el servicio
+	 * contra {@code clinical.spi}; la entidad hace cumplir lo que es suyo: una sesion cerrada ya
+	 * tiene su numero dentro del caso, y cambiarle el caso seria renumerar historia clinica.
+	 */
+	public void asignarCaso(Long nuevoCasoId) {
+		exigirAbierta();
+		this.casoId = nuevoCasoId;
 	}
 
 	/**

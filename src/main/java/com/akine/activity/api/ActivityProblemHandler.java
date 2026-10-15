@@ -7,14 +7,18 @@ import com.akine.activity.domain.exception.ClaseCompletaException;
 import com.akine.activity.domain.exception.ClaseNoProgramableException;
 import com.akine.activity.domain.exception.ClaseNotAccessibleException;
 import com.akine.activity.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.activity.domain.exception.DerivacionNoAccesibleException;
 import com.akine.activity.domain.exception.HorarioNoDisponibleException;
 import com.akine.activity.domain.exception.InscripcionDuplicadaException;
 import com.akine.activity.domain.exception.InscripcionNotAccessibleException;
+import com.akine.activity.domain.exception.OfertaNoClinicaException;
 import com.akine.activity.domain.exception.OfertaNotAccessibleException;
 import com.akine.activity.domain.exception.OfertaNoAdmitePackException;
+import com.akine.activity.domain.exception.ParticipacionSinAsistenciaException;
 import com.akine.activity.domain.exception.PaseNotAccessibleException;
 import com.akine.activity.domain.exception.PersonaDadaDeBajaException;
 import com.akine.activity.domain.exception.PersonaNoAccesibleException;
+import com.akine.activity.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.activity.domain.exception.ProductoDadoDeBajaException;
 import com.akine.activity.domain.exception.ProductoNoVendibleException;
 import com.akine.activity.domain.exception.ProductoNombreEnUsoException;
@@ -70,6 +74,12 @@ public class ActivityProblemHandler {
 	private static final URI INSCRIPCION_TRANSICION =
 			ProblemType.INSCRIPCION_TRANSICION_NO_PERMITIDA.uri();
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
+	private static final URI OFERTA_NO_CLINICA = ProblemType.OFERTA_NO_CLINICA.uri();
+	private static final URI PARTICIPACION_SIN_ASISTENCIA =
+			ProblemType.PARTICIPACION_SIN_ASISTENCIA.uri();
+	private static final URI PERSONA_SIN_PERFIL_PACIENTE =
+			ProblemType.PERSONA_SIN_PERFIL_PACIENTE.uri();
+	private static final URI DERIVACION_NO_ACCESIBLE = ProblemType.DERIVACION_NO_ACCESIBLE.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -294,6 +304,52 @@ public class ActivityProblemHandler {
 	public ProblemDetail handleIdempotencyConflict(IdempotencyKeyConflictException exception) {
 		ProblemDetail problem = conflicto(exception.getMessage(), IDEMPOTENCY_KEY_CONFLICT);
 		problem.setTitle("La clave de idempotencia se reuso con otro pedido");
+		return problem;
+	}
+
+	// =================================================================================
+	// Derivacion clinica (AKINE-08.04)
+	//
+	// Los tipos los declaro 08.04 en ProblemType y no tenian emisor: la operacion no estaba
+	// expuesta. Los de lo clinico —caso-no-activo, autorizacion-no-elegible, el 403 con
+	// requiereJustificacion— los emite ClinicalProblemHandler, porque las excepciones nacen en
+	// clinical y cruzan por el spi.
+	// =================================================================================
+
+	@ExceptionHandler(OfertaNoClinicaException.class)
+	public ProblemDetail handleOfertaNoClinica(OfertaNoClinicaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), OFERTA_NO_CLINICA);
+		problem.setTitle("La oferta de la clase no genera registro clinico");
+		problem.setProperty("ofertaId", exception.getOfertaId());
+		return problem;
+	}
+
+	/** Lleva {@code resultado} cuando hay asistencia: la salida es corregirla, no forzar. */
+	@ExceptionHandler(ParticipacionSinAsistenciaException.class)
+	public ProblemDetail handleSinAsistencia(ParticipacionSinAsistenciaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), PARTICIPACION_SIN_ASISTENCIA);
+		problem.setTitle("El participante no estuvo en la clase");
+		problem.setProperty("inscripcionId", exception.getInscripcionId());
+		problem.setProperty("resultado", exception.getResultado());
+		return problem;
+	}
+
+	/** Lleva el {@code personaId} para que la pantalla ofrezca activar el perfil como paso propio. */
+	@ExceptionHandler(PersonaSinPerfilPacienteException.class)
+	public ProblemDetail handlePersonaSinPerfil(PersonaSinPerfilPacienteException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), PERSONA_SIN_PERFIL_PACIENTE);
+		problem.setTitle("La persona no tiene perfil de paciente vigente");
+		problem.setProperty("personaId", exception.getPersonaId());
+		return problem;
+	}
+
+	@ExceptionHandler(DerivacionNoAccesibleException.class)
+	public ProblemDetail handleDerivacionNoAccesible(DerivacionNoAccesibleException exception) {
+		log.debug("Derivacion no accesible: derivacionId={}", exception.getDerivacionId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.NOT_FOUND, "La derivacion no existe.");
+		problem.setType(DERIVACION_NO_ACCESIBLE);
+		problem.setTitle("Derivacion no encontrada");
 		return problem;
 	}
 
