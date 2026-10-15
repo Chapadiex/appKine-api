@@ -73,7 +73,7 @@ depende del usuario".
 
 ### U-04 · `caso:create`
 
-> **Implementada en PR #PRNUM, pendiente de aprobación** (borrador): opción recomendada, `caso:create`
+> **Implementada en PR #123, pendiente de aprobación** (borrador): opción recomendada, `caso:create`
 > absorbido en `hc:write` y retirado del catálogo; matriz §17.3. Sin cambio de respuestas.
 
 - **Pregunta:** ¿se cablea como permiso propio o se absorbe en `hc:write` enmendando la matriz?
@@ -111,7 +111,7 @@ fila nueva.
 
 ### U-07 · `convenio:read`
 
-> **Implementada en PR #PRNUM, pendiente de aprobación** (borrador): opción recomendada, sin
+> **Implementada en PR #123, pendiente de aprobación** (borrador): opción recomendada, sin
 > migración, contrato 0.100.0 solo con descripciones; matriz §17.1.
 
 - **Pregunta:** ¿las lecturas de `contracting` (financiadores, planes, convenios, aranceles) pasan
@@ -125,7 +125,7 @@ fila nueva.
 
 ### U-08 · `catalogo:read` / `catalogo:manage`
 
-> **Implementada en PR #PRNUM, pendiente de aprobación** (borrador): la propuesta de §11.1 tal
+> **Implementada en PR #123, pendiente de aprobación** (borrador): la propuesta de §11.1 tal
 > cual, también para los tipos de medición y las solicitudes de alta; matriz §17.2.
 
 - **Pregunta:** ¿se aprueban como están propuestos en `docs/seguridad/matriz-permisos-minima.md`

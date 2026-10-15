@@ -763,7 +763,7 @@ contrato, sin una segunda lista que mantener:
 ## 17. Enmiendas — propuesta de permisos recomendados (U-04, U-07, U-08)
 
 > **Pendiente de aprobación.** Esta sección implementa las opciones **recomendadas** de
-> `docs/fases/decisiones-pendientes.md` U-04, U-07 y U-08 en un PR en borrador. El dueño del
+> `docs/fases/decisiones-pendientes.md` U-04, U-07 y U-08 en el PR #123, en borrador. El dueño del
 > producto decide mergeándolo; si lo descarta, esta sección no existe. Al aprobarse, cada una se
 > escribe como DP en `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` §7.
 
