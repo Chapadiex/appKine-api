@@ -51,6 +51,14 @@ import java.time.LocalDate;
  * {@code CONFIRMADO}, donde el egreso ya no se edita. Un borrador no tiene pagos y un confirmado no
  * se edita, asi que la version y el saldo nunca corren la misma carrera.
  *
+ * <p><b>Salvo la anulacion, y por eso el razonamiento de arriba estaba incompleto.</b> Anular es una
+ * escritura por JPA sobre un egreso {@code CONFIRMADO}, la misma fase que el pago. Con un
+ * {@code descontarSaldo} que no tocaba la version, un pago que commiteaba entre la lectura y el flush
+ * de la anulacion dejaba pasar su {@code WHERE version = N} y el egreso quedaba {@code ANULADO} con
+ * un pago vigente (web #94). Desde entonces los dos UPDATE nativos del saldo hacen
+ * {@code version = version + 1} y la anulacion lee con {@code FOR UPDATE}
+ * ({@code EgresoRepositoryPort.findByIdInScopeParaEscribir}).
+ *
  * <p>Y <b>no hay {@code OPTIMISTIC_FORCE_INCREMENT}</b>: la reciproca que 04.02 pago —si el padre
  * ademas queda sucio, la version avanza dos veces y el cliente come un 409 del que no puede salir—
  * pasaria exactamente eso, porque las escrituras del saldo tocan columnas de esta misma tabla.

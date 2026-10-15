@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -56,9 +57,20 @@ import java.time.LocalDate;
  * mueven el saldo son SQL nativo y <b>no la incrementan</b>: su proteccion es la condicion del
  * {@code WHERE}, que es mas fuerte que un token optimista porque no depende de que el cliente lo
  * haya leido antes.
+ *
+ * <p><b>Y por eso la entidad lleva {@code @DynamicUpdate}.</b> Sin el, registrar la factura —una
+ * escritura por JPA sobre un lote {@code PRESENTADA}, la misma fase en que entran pagos y debitos—
+ * reescribia {@code saldo}, {@code total_cobrado} y {@code total_debitado} con lo que habia leido:
+ * su {@code WHERE version = N} pasaba intacto porque el UPDATE nativo no toca la version, y un pago
+ * del financiador que commiteaba en el medio desaparecia del lote con la plata ya asentada en la
+ * caja. Es el defecto 5 de la integracion del 29/09. Con {@code @DynamicUpdate} el flush escribe
+ * solo las columnas que cambio, y ninguna escritura por JPA posterior al borrador toca el saldo —
+ * {@link #recalcularTotal} es del borrador, donde no hay pagos ni debitos—, asi que factura y pago
+ * conviven sin que ninguno pierda.
  */
 @Entity
 @Table(name = "presentacion")
+@DynamicUpdate
 public class Presentacion {
 
 	@Id

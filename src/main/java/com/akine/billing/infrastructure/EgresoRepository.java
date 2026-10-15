@@ -2,7 +2,9 @@ package com.akine.billing.infrastructure;
 
 import com.akine.billing.domain.Egreso;
 import com.akine.billing.domain.port.EgresoRepositoryPort;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -26,6 +28,10 @@ import java.util.Optional;
  * justamente la relectura que decide si el rechazo fue "no lo admite el estado" o "no alcanza el
  * saldo".
  *
+ * <p><b>Las dos avanzan {@code version}</b> (carrera pago contra anulacion, web #94): un UPDATE
+ * nativo que no la toca deja pasar intacto el {@code WHERE version = N} de cualquier escritura por
+ * JPA que haya leido el egreso antes, y esa escritura pisa el saldo sin que nada falle.
+ *
  * <p><b>No hay delete</b>: RN-M22-002, anular no significa borrar.
  */
 public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRepositoryPort {
@@ -38,6 +44,20 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 			   AND e.id = :egresoId
 			""")
 	Optional<Egreso> findByIdInScope(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("egresoId") long egresoId);
+
+	/** El lock de fila de la anulacion. Ver el javadoc del puerto. */
+	@Override
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+			SELECT e FROM Egreso e
+			 WHERE e.organizationId = :organizationId
+			   AND e.consultorioId = :consultorioId
+			   AND e.id = :egresoId
+			""")
+	Optional<Egreso> findByIdInScopeParaEscribir(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("egresoId") long egresoId);
@@ -116,7 +136,8 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 	@Modifying(flushAutomatically = true, clearAutomatically = true)
 	@Query(value = """
 			UPDATE egreso
-			   SET saldo_pendiente = saldo_pendiente - :importe
+			   SET saldo_pendiente = saldo_pendiente - :importe,
+			       version = version + 1
 			 WHERE id = :egresoId
 			   AND organization_id = :organizationId
 			   AND estado = 'CONFIRMADO'
@@ -139,7 +160,8 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 	@Modifying(flushAutomatically = true, clearAutomatically = true)
 	@Query(value = """
 			UPDATE egreso
-			   SET saldo_pendiente = saldo_pendiente + :importe
+			   SET saldo_pendiente = saldo_pendiente + :importe,
+			       version = version + 1
 			 WHERE id = :egresoId
 			   AND organization_id = :organizationId
 			   AND estado IN ('CONFIRMADO', 'PAGADO')
