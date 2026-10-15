@@ -89,6 +89,9 @@ class EgresoServiceTest {
 				.willReturn(Optional.empty());
 		given(egresos.findByIdInScope(ORG_ID, CONSULTORIO_ID, EGRESO_ID))
 				.willReturn(Optional.of(borrador()));
+		// La anulacion lee con lock de fila (carrera contra el pago, web #94).
+		given(egresos.findByIdInScopeParaEscribir(ORG_ID, CONSULTORIO_ID, EGRESO_ID))
+				.willReturn(Optional.of(borrador()));
 		given(pagos.findDelEgreso(anyLong(), anyLong())).willReturn(List.of());
 	}
 
@@ -280,7 +283,7 @@ class EgresoServiceTest {
 	void anular_lo_anulado() {
 		Egreso anulado = borrador();
 		anulado.anular("Se cargo dos veces", Instant.EPOCH, CUENTA);
-		given(egresos.findByIdInScope(ORG_ID, CONSULTORIO_ID, EGRESO_ID))
+		given(egresos.findByIdInScopeParaEscribir(ORG_ID, CONSULTORIO_ID, EGRESO_ID))
 				.willReturn(Optional.of(anulado));
 
 		assertThatThrownBy(() ->
@@ -294,7 +297,7 @@ class EgresoServiceTest {
 		// Sin ese orden, la plata ya salio del cajon y el egreso que la justificaba desaparece.
 		Egreso conPagos = borrador();
 		ReflectionTestUtils.setField(conPagos, "saldoPendiente", new BigDecimal("5000.00"));
-		given(egresos.findByIdInScope(ORG_ID, CONSULTORIO_ID, EGRESO_ID))
+		given(egresos.findByIdInScopeParaEscribir(ORG_ID, CONSULTORIO_ID, EGRESO_ID))
 				.willReturn(Optional.of(conPagos));
 
 		assertThatThrownBy(() ->
