@@ -144,6 +144,32 @@ class CatalogoServiceTest {
 	}
 
 	@Test
+	@DisplayName("U-08: leer evalua catalogo:read con la organizacion y la sede del contexto")
+	void leer_evalua_catalogo_read() {
+		given(especialidades.findVisible(CONCEPTO_ID, OWNERS_TENANT))
+				.willReturn(Optional.of(especialidad(ORG_ID)));
+
+		service.find(tenant, CatalogoTipo.ESPECIALIDAD, CONCEPTO_ID);
+
+		ArgumentCaptor<PermissionQuery> consulta = ArgumentCaptor.forClass(PermissionQuery.class);
+		verify(permissionGuard).requirePermission(consulta.capture());
+		assertThat(consulta.getValue().permissionCode()).isEqualTo(PermissionCodes.CATALOGO_READ);
+		assertThat(consulta.getValue().organizationId()).isEqualTo(ORG_ID);
+		assertThat(consulta.getValue().consultorioId()).isEqualTo(CONSULTORIO_ID);
+	}
+
+	@Test
+	@DisplayName("U-08: sin catalogo:read (el rol PACIENTE) leer es 403 y no toca la base")
+	void sin_catalogo_read_es_403() {
+		given(permissionGuard.requirePermission(any()))
+				.willThrow(new AccessDeniedException("sin catalogo:read"));
+
+		assertThatThrownBy(() -> service.find(tenant, CatalogoTipo.ESPECIALIDAD, CONCEPTO_ID))
+				.isInstanceOf(AccessDeniedException.class);
+		verifyNoInteractions(especialidades);
+	}
+
+	@Test
 	@DisplayName("Sin contexto de trabajo, ni siquiera se puede leer el catalogo: 403")
 	void sin_contexto_es_403() {
 		OperatingActor sinContexto = new OperatingActor(ACCOUNT_ID, false, null, null);
@@ -153,7 +179,7 @@ class CatalogoServiceTest {
 	}
 
 	@Test
-	@DisplayName("El alta por default es del tenant del contexto, exige consultorio:manage y se audita")
+	@DisplayName("El alta por default es del tenant del contexto, exige catalogo:manage y se audita")
 	void el_alta_de_tenant_es_del_contexto_y_se_audita() {
 		CatalogoConceptoView vista = service.crear(tenant, CatalogoTipo.ESPECIALIDAD,
 				new CatalogoAltaCommand(null, " KINE   01 ", "Kinesiologia", null, null, null, null, null));
@@ -164,7 +190,7 @@ class CatalogoServiceTest {
 
 		ArgumentCaptor<PermissionQuery> consulta = ArgumentCaptor.forClass(PermissionQuery.class);
 		verify(permissionGuard).requirePermission(consulta.capture());
-		assertThat(consulta.getValue().permissionCode()).isEqualTo(PermissionCodes.CONSULTORIO_MANAGE);
+		assertThat(consulta.getValue().permissionCode()).isEqualTo(PermissionCodes.CATALOGO_MANAGE);
 		assertThat(consulta.getValue().organizationId()).isEqualTo(ORG_ID);
 
 		ArgumentCaptor<AuditEntry> auditoria = ArgumentCaptor.forClass(AuditEntry.class);
@@ -177,13 +203,16 @@ class CatalogoServiceTest {
 	}
 
 	@Test
-	@DisplayName("Un concepto global lo crea la plataforma sin pasar por el evaluador de tenant, y se audita sin tenant")
+	@DisplayName("Un concepto global lo crea la plataforma con catalogo:manage sin tenant, y se audita sin tenant")
 	void la_plataforma_crea_globales_y_se_auditan_sin_tenant() {
 		CatalogoConceptoView vista = service.crear(plataforma, CatalogoTipo.ESPECIALIDAD,
 				alta(CatalogoAlcance.GLOBAL, null));
 
 		assertThat(vista.alcance()).isEqualTo(CatalogoAlcance.GLOBAL.name());
-		verifyNoInteractions(permissionGuard);
+		ArgumentCaptor<PermissionQuery> consulta = ArgumentCaptor.forClass(PermissionQuery.class);
+		verify(permissionGuard).requirePermission(consulta.capture());
+		assertThat(consulta.getValue().permissionCode()).isEqualTo(PermissionCodes.CATALOGO_MANAGE);
+		assertThat(consulta.getValue().organizationId()).isNull();
 		ArgumentCaptor<AuditEntry> auditoria = ArgumentCaptor.forClass(AuditEntry.class);
 		verify(auditTrail).record(auditoria.capture());
 		assertThat(auditoria.getValue().organizationId()).isNull();

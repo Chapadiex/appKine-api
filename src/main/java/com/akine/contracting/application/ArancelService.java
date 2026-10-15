@@ -160,7 +160,8 @@ public class ArancelService {
 			EstadoFiltro estado,
 			LocalDate fecha) {
 
-		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Listar aranceles");
+		long organizationId =
+				AutorizacionDeCatalogo.exigirLectura(permissionGuard, actor, "Listar aranceles");
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		cargarConvenio(organizationId, consultorioId, convenioId);
 
@@ -217,7 +218,8 @@ public class ArancelService {
 			Long ofertaId,
 			LocalDate fecha) {
 
-		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Resolver un arancel");
+		long organizationId =
+				AutorizacionDeCatalogo.exigirLectura(permissionGuard, actor, "Resolver un arancel");
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		LocalDate contra = fecha == null ? ZonaDeSede.hoy(sede, clock) : fecha;
 

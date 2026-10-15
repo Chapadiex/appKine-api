@@ -103,7 +103,7 @@ public class ConvenioController {
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							array = @ArraySchema(
 									schema = @Schema(implementation = ConvenioResponse.class)))),
-			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo",
+			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo o sin convenio:read (el rol PACIENTE no lo tiene)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",
@@ -142,7 +142,7 @@ public class ConvenioController {
 			@ApiResponse(responseCode = "200", description = "El convenio",
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = ConvenioResponse.class))),
-			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo",
+			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo o sin convenio:read (el rol PACIENTE no lo tiene)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",

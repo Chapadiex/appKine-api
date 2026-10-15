@@ -106,9 +106,12 @@ Códigos `<dominio>:<acción>`. Estable, en minúsculas, sin significado de UI. 
 | `paciente:manage` | Gestionar paciente | F3 |
 | `paciente:read` | Ver el padrón y los datos administrativos de las personas (DP-22, §15) | F3 (DU-6) |
 | `hc:read` / `hc:write` | Ver / Editar Historia Clínica | F4 |
-| `caso:create` | Crear Caso Clínico | F4 |
+| ~~`caso:create`~~ | ~~Crear Caso Clínico~~ — **absorbido en `hc:write`** (U-04, §17.3, pendiente de aprobación) | F4 |
 | `sesion:register` | Registrar Sesión | F6 |
 | `convenio:manage` | Administrar Convenios | F3 |
+| `convenio:read` | Ver financiadores, planes, convenios y aranceles (U-07, §17.1, pendiente de aprobación) | F3 |
+| `catalogo:read` | Consultar el catálogo clínico, global y propio (U-08, §11.1 y §17.2, pendiente de aprobación) | F2 |
+| `catalogo:manage` | Administrar el catálogo clínico y las solicitudes de alta (U-08, §11.1 y §17.2, pendiente de aprobación) | F2 |
 | `cobro:register` | Registrar Cobro | F7 |
 | `caja:operate` | Operar Caja | F7 |
 | `reporte:read` | Ver Reportes | F8 |
@@ -379,7 +382,7 @@ matriz pide y el motivo por el que la enmienda hacía falta.
 Mismo criterio que las secciones 9 y 10: nada se aplicó en silencio. Cada punto es una diferencia
 real entre lo que dicen las secciones 1–8 y lo que el código hace, con su motivo y su alcance.
 
-### 11.1 `catalogo:read` y `catalogo:manage` — **PROPUESTOS, sin aplicar**
+### 11.1 `catalogo:read` y `catalogo:manage` — **PROPUESTOS; implementados tal cual en la propuesta U-08 (§17.2), pendiente de aprobación**
 
 **El hueco que los origina, en una línea.** M06 introduce cuatro tablas de catálogo clínico
 —especialidad, práctica, nomenclador y sus vigencias— y el catálogo de la sección 5 **no tiene
@@ -593,6 +596,9 @@ a esa sede — sigue siendo de la organización.
 
 ### 13.4 Las lecturas se autorizan por pertenencia, y eso concede de más
 
+> **Lo cierra la propuesta U-07 (§17.1), pendiente de aprobación:** `convenio:read` solo para el
+> personal, con el mismo criterio que DP-22 aplicó al padrón (§15). Lo que sigue es la historia.
+
 **No existe `convenio:read`** y esta etapa no lo crea. Leer el catálogo de financiadores y planes
 exige solo tener contexto de organización activo.
 
@@ -726,7 +732,8 @@ borra —baja lógica, y además es historia— y sigue apareciendo en `GET .../
 quien puede abrir un caso es exactamente quien la fila "Crear Caso Clínico" de §2 habilita: el
 `PROFESIONAL` por base y el `CONSULTORIO_ADMIN` por grant ("Según rol clínico"). Si `caso:create`
 se cablea como código propio o se enmienda la matriz para absorberlo en `hc:write` sigue siendo una
-decisión del dueño del producto.
+decisión del dueño del producto. **La propuesta U-04 (§17.3) lo absorbe en `hc:write`**, pendiente de
+aprobación.
 
 ### 16.2 La matriz, ejecutable
 
@@ -752,3 +759,71 @@ contrato, sin una segunda lista que mantener:
 - **400 `permiso-no-otorgable-al-rol`**, con `roleCode` y `permissionCode` en propiedades, cuando el
   código existe pero la matriz no lo admite para el rol del vínculo (incluido el que no es otorgable
   a ningún rol). Un código inexistente sigue siendo `validation-error`.
+
+## 17. Enmiendas — propuesta de permisos recomendados (U-04, U-07, U-08)
+
+> **Pendiente de aprobación.** Esta sección implementa las opciones **recomendadas** de
+> `docs/fases/decisiones-pendientes.md` U-04, U-07 y U-08 en el PR #123, en borrador. El dueño del
+> producto decide mergeándolo; si lo descarta, esta sección no existe. Al aprobarse, cada una se
+> escribe como DP en `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` §7.
+
+Hay **tres códigos nuevos** (`convenio:read`, `catalogo:read`, `catalogo:manage`) y **uno que sale
+del catálogo** (`caso:create`). Sin migración: el catálogo de permisos y la asignación base viven en
+código (`organization.domain.PermissionCode` y `RolePermissions`). Ninguno es otorgable por grant.
+
+### 17.1 `convenio:read` (U-07) — DP-22 repetido para `contracting`
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `convenio:read` | — | Org | Consultorio | Consultorio | Consultorio | **—** |
+
+- Gobierna **todas** las lecturas de `contracting`: búsqueda y detalle de financiadores, planes de un
+  financiador, convenios de la sede (lista y detalle), aranceles de un convenio y el arancel
+  efectivo. Cierra el hueco de §13.4.
+- Se evalúa con **la sede del contexto**, igual que `paciente:read` (§15.2): sin sede los alcances de
+  consultorio no cubren la consulta. No se usa la sede de la ruta para no cerrarle al personal los
+  convenios de otra sede de su organización, que leía hasta ahora: el único cambio de
+  comportamiento buscado es el del `PACIENTE`.
+- Pertenecer sin el permiso es **403**; un recurso de otra organización sigue siendo **404**.
+- `PLATFORM_ADMIN` sin nada: el catálogo global de financiadores no existe (§13.2) y no tiene
+  contexto de tenant en `contracting`.
+- Las lecturas de otros módulos que muestran coberturas (padrón, Paciente 360, cobertura aplicable)
+  ya pedían `paciente:read` y no cambian. Las de `contracting.spi` (`congelar`, resolución de
+  arancel desde `billing` o `person`) no pasan por un actor y tampoco cambian.
+
+### 17.2 `catalogo:read` y `catalogo:manage` (U-08) — la propuesta de §11.1, aprobada tal cual
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `catalogo:read` | Global | Org | Consultorio | Consultorio | Consultorio | **—** |
+| `catalogo:manage` | Global | Org | Consultorio | — | — | — |
+
+| Operación | Antes (interino de 02.05) | Ahora |
+|---|---|---|
+| Leer especialidades, prácticas, nomencladores, vigencias y **tipos de medición** | Pertenencia | `catalogo:read` con la sede del contexto |
+| Listar solicitudes de alta | Pertenencia (tenant) / rol de plataforma | `catalogo:read` (la plataforma, con alcance Global) |
+| Crear, editar y dar de baja un concepto contextual | `consultorio:manage` | `catalogo:manage` con la sede del contexto |
+| Solicitar el alta de un concepto global | `consultorio:manage` | `catalogo:manage` con la sede del contexto |
+| Crear, editar y dar de baja un concepto global; resolver una solicitud | Rol de plataforma | Rol de plataforma **y** `catalogo:manage` Global |
+
+- Los **tipos de medición** (`mediciones/definiciones`, 06.03) son el sexto catálogo de `resource` y
+  comparten la política de `AlcanceDelCatalogo`: entran en los mismos dos códigos.
+- Los roles que mutan no cambian (`consultorio:manage` y `catalogo:manage` los tienen los mismos), y
+  la plataforma sigue sin ver ni mutar conceptos contextuales de un tenant. **Los códigos HTTP de
+  rechazo son los mismos**; lo que cambia es que el `PACIENTE` recibe 403 al leer.
+
+### 17.3 `caso:create` (U-04) — absorbido en `hc:write`
+
+Opción (b) de G-5, la recomendada. Abrir un Caso Clínico siempre se autorizó con `hc:write`, y desde
+G-5 (§16.1) eso da exactamente las celdas de la fila "Crear Caso Clínico" de §2: `PROFESIONAL` por
+base y `CONSULTORIO_ADMIN` por grant ("Según rol clínico"); el resto, "No". La fila de §5 queda
+tachada y el código sale de `PermissionCode`: un permiso que ningún endpoint evalúa y ningún rol tiene
+solo servía para que alguien creyera que existía un control que no existe. **No cambia ninguna
+respuesta.** `MatrizDePermisosIT` lo fija: sin `hc:write` abrir un caso es 403, y con el grant el
+`CONSULTORIO_ADMIN` pasa.
+
+### 17.4 Contrato 0.100.0
+
+Solo descripciones: los 403 de las lecturas de `contracting` y del catálogo nombran el permiso que
+falta, y las mutaciones del catálogo nombran `catalogo:manage` en lugar de `consultorio:manage`. Sin
+operaciones, schemas ni `problemType` nuevos.

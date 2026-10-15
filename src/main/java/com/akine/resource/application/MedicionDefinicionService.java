@@ -110,6 +110,7 @@ public class MedicionDefinicionService {
 	 */
 	@Transactional(readOnly = true)
 	public List<MedicionDefinicionView> listar(OperatingActor actor, CatalogoBusqueda filtros) {
+		alcances.exigirLectura(actor);
 		List<Long> owners = alcances.ownersSegunFiltro(actor, filtros.alcance());
 		return definiciones.buscar(owners, filtros.patron(), filtros.activoFiltro()).stream()
 				.map(MedicionDefinicionView::de)

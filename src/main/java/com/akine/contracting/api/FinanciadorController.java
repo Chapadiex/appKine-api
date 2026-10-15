@@ -55,8 +55,9 @@ import java.util.List;
  * <h2>Autorizacion</h2>
  *
  * <ul>
- *   <li><b>Leer</b>: contexto de organizacion activo. No hay {@code convenio:read} en la matriz y
- *       esta etapa no lo inventa; el hueco que eso deja esta declarado en la matriz §13.4.</li>
+ *   <li><b>Leer</b>: {@code convenio:read} con la sede del contexto (U-07, matriz §17.1). Hasta
+ *       U-07 alcanzaba el contexto de organizacion y el rol {@code PACIENTE} leia el catalogo
+ *       entero (el hueco que declaraba la matriz §13.4).</li>
  *   <li><b>Mutar</b>: {@code convenio:manage}, evaluado con la <b>sede</b> del contexto. Que lleve
  *       sede aunque el financiador sea de la organizacion no es obvio: sin ella el evaluador deja
  *       afuera al {@code CONSULTORIO_ADMIN}, a quien la matriz §2 le dice "Si". Matriz §13.3.</li>
@@ -135,7 +136,7 @@ public class FinanciadorController {
 									schema = @Schema(implementation = FinanciadorResponse.class)))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin sesion o sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo o sin convenio:read (el rol PACIENTE no lo tiene)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
@@ -181,7 +182,7 @@ public class FinanciadorController {
 							schema = @Schema(implementation = FinanciadorResponse.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo o sin convenio:read (el rol PACIENTE no lo tiene)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

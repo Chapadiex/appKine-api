@@ -170,7 +170,8 @@ public class ConvenioService {
 	public List<ConvenioView> listar(
 			OperatingActor actor, long consultorioId, EstadoFiltro estado, LocalDate fecha) {
 
-		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Listar convenios");
+		long organizationId =
+				AutorizacionDeCatalogo.exigirLectura(permissionGuard, actor, "Listar convenios");
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 
 		EstadoFiltro filtro = estado == null ? EstadoFiltro.ACTIVO : estado;
@@ -191,7 +192,8 @@ public class ConvenioService {
 	public ConvenioView ver(
 			OperatingActor actor, long consultorioId, long convenioId, LocalDate fecha) {
 
-		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Ver un convenio");
+		long organizationId =
+				AutorizacionDeCatalogo.exigirLectura(permissionGuard, actor, "Ver un convenio");
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 
 		return ConvenioView.de(

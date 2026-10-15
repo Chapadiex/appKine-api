@@ -73,6 +73,9 @@ depende del usuario".
 
 ### U-04 · `caso:create`
 
+> **Implementada en PR #123, pendiente de aprobación** (borrador): opción recomendada, `caso:create`
+> absorbido en `hc:write` y retirado del catálogo; matriz §17.3. Sin cambio de respuestas.
+
 - **Pregunta:** ¿se cablea como permiso propio o se absorbe en `hc:write` enmendando la matriz?
 - **Recomendado:** enmendar la matriz y absorberlo en `hc:write` (F4 n.º 3; G-5 opción (b), "la
   más barata"; desde G-5 las dos dan el mismo resultado observable).
@@ -108,6 +111,9 @@ fila nueva.
 
 ### U-07 · `convenio:read`
 
+> **Implementada en PR #123, pendiente de aprobación** (borrador): opción recomendada, sin
+> migración, contrato 0.100.0 solo con descripciones; matriz §17.1.
+
 - **Pregunta:** ¿las lecturas de `contracting` (financiadores, planes, convenios, aranceles) pasan
   a exigir un permiso? Hoy se autorizan por pertenencia y una membership `PACIENTE` lee la
   configuración económica del centro.
@@ -118,6 +124,9 @@ fila nueva.
 - **Destraba:** cerrar el mismo hueco que DP-22 cerró para el padrón.
 
 ### U-08 · `catalogo:read` / `catalogo:manage`
+
+> **Implementada en PR #123, pendiente de aprobación** (borrador): la propuesta de §11.1 tal
+> cual, también para los tipos de medición y las solicitudes de alta; matriz §17.2.
 
 - **Pregunta:** ¿se aprueban como están propuestos en `docs/seguridad/matriz-permisos-minima.md`
   §11.1? Hoy rige la autorización interina por pertenencia / `ORG_ADMIN`.

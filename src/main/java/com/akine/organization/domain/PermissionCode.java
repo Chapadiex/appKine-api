@@ -141,14 +141,49 @@ public enum PermissionCode {
 	/** Editar Historia Clinica. F4. Sin asignacion base todavia: deniega. */
 	HC_WRITE("hc:write"),
 
-	/** Crear Caso Clinico. F4. Sin asignacion base todavia: deniega. */
-	CASO_CREATE("caso:create"),
+	// `caso:create` (Crear Caso Clinico, F4) YA NO ES UN CODIGO: se absorbio en `hc:write` (U-04,
+	// matriz §17.3). Abrir un caso siempre se autorizo con `hc:write`, y desde G-5 eso da
+	// exactamente las celdas de la fila "Crear Caso Clinico": PROFESIONAL por base y
+	// CONSULTORIO_ADMIN por grant. Un codigo que ningun endpoint evalua y ningun rol tiene solo
+	// servia para que alguien creyera que existe un control que no existe.
 
 	/** Registrar Sesion. F6. Sin asignacion base todavia: deniega. */
 	SESION_REGISTER("sesion:register"),
 
 	/** Administrar Convenios. F3. Sin asignacion base todavia: deniega. */
 	CONVENIO_MANAGE("convenio:manage"),
+
+	/**
+	 * Ver financiadores, planes, convenios y aranceles. <b>U-07, mismo criterio que DP-22.</b>
+	 *
+	 * <p>Hasta U-07 las lecturas de {@code contracting} se autorizaban por pertenencia al tenant, y
+	 * una membership con rol {@code PACIENTE} leia la configuracion economica entera del centro.
+	 * Asignacion base: ORGANIZACION para {@code ORG_ADMIN}; CONSULTORIO para
+	 * {@code CONSULTORIO_ADMIN}, {@code PROFESIONAL} y {@code ADMINISTRATIVO}. {@code PACIENTE} y
+	 * {@code PLATFORM_ADMIN} no lo tienen (el catalogo global de financiadores no existe, matriz
+	 * §13.2). No es otorgable por grant. Matriz §17.1.
+	 */
+	CONVENIO_READ("convenio:read"),
+
+	/**
+	 * Consultar el catalogo clinico —especialidades, practicas, nomencladores, vigencias y tipos de
+	 * medicion—, global y propio. <b>U-08: la propuesta de la matriz §11.1, aprobada tal cual.</b>
+	 *
+	 * <p>GLOBAL para {@code PLATFORM_ADMIN} (solo ve el catalogo comun, que no es dato de ningun
+	 * tenant), ORGANIZACION para {@code ORG_ADMIN}, CONSULTORIO para {@code CONSULTORIO_ADMIN},
+	 * {@code PROFESIONAL} y {@code ADMINISTRATIVO}. {@code PACIENTE} no. Matriz §17.2.
+	 */
+	CATALOGO_READ("catalogo:read"),
+
+	/**
+	 * Administrar los conceptos del catalogo clinico y las solicitudes de alta. <b>U-08.</b>
+	 *
+	 * <p>GLOBAL para {@code PLATFORM_ADMIN} —y solo sobre conceptos globales: la plataforma no
+	 * crea conceptos de un tenant—, ORGANIZACION para {@code ORG_ADMIN}, CONSULTORIO para
+	 * {@code CONSULTORIO_ADMIN}. Reemplaza la autorizacion interina con {@code consultorio:manage}
+	 * de 02.05. Matriz §17.2.
+	 */
+	CATALOGO_MANAGE("catalogo:manage"),
 
 	/** Registrar Cobro. F7. Sin asignacion base todavia: deniega. */
 	COBRO_REGISTER("cobro:register"),

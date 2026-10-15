@@ -571,6 +571,8 @@ class PermissionEvaluatorServiceTest {
 							// el modulo que lo evalua. La matriz §2 se lo da al ORG_ADMIN en la fila
 							// Administrar Convenios y la enmienda esta en la matriz §13.
 							"convenio:manage",
+							// U-07 y U-08: lecturas de contracting y el catalogo clinico.
+							"convenio:read", "catalogo:read", "catalogo:manage",
 							// `caja:operate` se sumo en AKINE-07.03, la etapa que crea la caja. La
 							// matriz §2 se lo da al ORG_ADMIN en la fila Operar Caja, con alcance
 							// ORGANIZACION. Es un permiso DISTINTO de `cobro:register` y no un
@@ -663,6 +665,8 @@ class PermissionEvaluatorServiceTest {
 							"hc:read", "hc:write",
 							// AKINE-DU-6 (DP-22): por base, no por grant.
 							"paciente:read",
+							// U-07 y U-08: ve coberturas y aranceles, y elige practicas del catalogo.
+							"convenio:read", "catalogo:read",
 							// `clase:read` y `clase:manage` entran en AKINE-08.01: M28 §2 lo nombra
 							// como "Profesional / Instructor", y es quien dicta la clase.
 							"clase:read", "clase:manage",

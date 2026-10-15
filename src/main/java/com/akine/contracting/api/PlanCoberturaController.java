@@ -110,7 +110,7 @@ public class PlanCoberturaController {
 									schema = @Schema(implementation = PlanCoberturaResponse.class)))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo activo",
+					description = "Sin contexto de trabajo activo o sin convenio:read (el rol PACIENTE no lo tiene)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

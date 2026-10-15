@@ -73,9 +73,9 @@ import java.util.List;
  * <h2>Autorizacion</h2>
  *
  * <ul>
- *   <li><b>Leer</b>: cualquier membership vigente en la organizacion del contexto. Devuelve el
+ *   <li><b>Leer</b>: {@code catalogo:read} con la sede del contexto (U-08). Devuelve el
  *       catalogo de plataforma MAS el propio del centro.</li>
- *   <li><b>Mutar un concepto CONTEXTUAL</b>: exige {@code consultorio:manage} sobre la sede del
+ *   <li><b>Mutar un concepto CONTEXTUAL</b>: exige {@code catalogo:manage} sobre la sede del
  *       contexto. Pasan {@code ORG_ADMIN} y {@code CONSULTORIO_ADMIN}.</li>
  *   <li><b>Mutar un concepto GLOBAL</b>: exige rol de plataforma. Un administrador de tenant lo
  *       VE y no lo puede tocar: recibe 403, y su camino es
@@ -85,12 +85,10 @@ import java.util.List;
  *       ninguna operacion de rescate que exija tocarlo.</li>
  * </ul>
  *
- * <p>Los dos codigos de lectura y escritura que M06 necesita —{@code catalogo:read} y
- * {@code catalogo:manage}— <b>no existen todavia en el catalogo de permisos</b>. Esta etapa no
- * los inventa: quedan propuestos en {@code docs/seguridad/matriz-permisos-minima.md} §11 y
- * mientras tanto se autoriza como se describe arriba. <b>Los codigos HTTP no van a cambiar
- * cuando se aprueben</b>; lo que puede cambiar es que un {@code PACIENTE}, que hoy lee el
- * catalogo por pertenencia, pase a recibir 403.
+ * <p>{@code catalogo:read} y {@code catalogo:manage} los aprobo U-08 tal como 02.05 los habia
+ * propuesto en {@code docs/seguridad/matriz-permisos-minima.md} §11.1 (registro en §17.2). Los
+ * codigos HTTP no cambiaron; lo que cambio es que un {@code PACIENTE}, que hasta entonces leia el
+ * catalogo por pertenencia, recibe 403.
  *
  * <h2>Codigos, y por que no son intercambiables</h2>
  *
@@ -150,7 +148,7 @@ public class CatalogoController {
 					Crea una especialidad, una practica o un nomenclador (RF-M06-001..003).
 
 					El campo alcance del cuerpo decide el duenio y quien puede crearlo: \
-					ORGANIZACION exige consultorio:manage sobre la sede del contexto —pasan \
+					ORGANIZACION exige catalogo:manage sobre la sede del contexto —pasan \
 					ORG_ADMIN y CONSULTORIO_ADMIN—; GLOBAL exige rol de plataforma. Si se omite, \
 					ORGANIZACION.
 
@@ -184,7 +182,7 @@ public class CatalogoController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo, sin consultorio:manage para un "
+					description = "Sin contexto de trabajo, sin catalogo:manage para un "
 							+ "concepto contextual, o sin rol de plataforma para uno global",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -286,7 +284,7 @@ public class CatalogoController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "No hay sesion autenticada o no hay contexto de trabajo",
+					description = "Sin contexto de trabajo, o sin catalogo:read (el rol PACIENTE no lo tiene). Nunca 401",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
@@ -352,7 +350,7 @@ public class CatalogoController {
 							schema = @Schema(implementation = CatalogoConceptoResponse.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "No hay sesion autenticada o no hay contexto de trabajo",
+					description = "Sin contexto de trabajo, o sin catalogo:read (el rol PACIENTE no lo tiene). Nunca 401",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -413,7 +411,7 @@ public class CatalogoController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto, sin consultorio:manage sobre un concepto "
+					description = "Sin contexto, sin catalogo:manage sobre un concepto "
 							+ "propio, o sin rol de plataforma sobre uno global",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -496,7 +494,7 @@ public class CatalogoController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto, sin consultorio:manage sobre un concepto "
+					description = "Sin contexto, sin catalogo:manage sobre un concepto "
 							+ "propio, o sin rol de plataforma sobre uno global",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -558,7 +556,7 @@ public class CatalogoController {
 					no hay campo alcance. Un nomenclador GLOBAL solo puede codificar practicas \
 					GLOBALES (409 catalogo-scope-mismatch).
 
-					Exige poder mutar el nomenclador: consultorio:manage si es del tenant, rol \
+					Exige poder mutar el nomenclador: catalogo:manage si es del tenant, rol \
 					de plataforma si es global.""")
 	@ApiResponses({
 			@ApiResponse(
@@ -645,7 +643,7 @@ public class CatalogoController {
 									implementation = CatalogoConceptoResponse.class)))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "No hay sesion autenticada o no hay contexto de trabajo",
+					description = "Sin contexto de trabajo, o sin catalogo:read (el rol PACIENTE no lo tiene). Nunca 401",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

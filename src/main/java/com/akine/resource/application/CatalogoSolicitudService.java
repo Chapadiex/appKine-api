@@ -41,11 +41,10 @@ import java.util.Map;
  * <h2>Quien hace que</h2>
  *
  * <ul>
- *   <li><b>Crear</b>: un administrador del tenant, con contexto elegido. Interinamente exige
- *       {@code consultorio:manage}, por el mismo motivo que las mutaciones contextuales del
- *       catalogo — ver {@code CatalogoService}.</li>
- *   <li><b>Listar</b>: el tenant ve <b>las suyas</b>; el administrador de plataforma ve la
- *       bandeja completa. Es la unica consulta cross-tenant del modulo, y por eso el rol se
+ *   <li><b>Crear</b>: un administrador del tenant, con contexto elegido. Exige
+ *       {@code catalogo:manage} (U-08; hasta entonces, interinamente, {@code consultorio:manage}).</li>
+ *   <li><b>Listar</b>: exige {@code catalogo:read} (U-08). El tenant ve <b>las suyas</b>; el
+ *       administrador de plataforma ve la bandeja completa. Es la unica consulta cross-tenant del modulo, y por eso el rol se
  *       verifica antes de elegir la consulta y no despues de filtrar el resultado.</li>
  *   <li><b>Resolver</b>: solamente la plataforma. Aprobar publica el concepto global en el
  *       mismo acto (AKINE-A-7).</li>
@@ -136,9 +135,17 @@ public class CatalogoSolicitudService {
 	@Transactional(readOnly = true)
 	public List<CatalogoSolicitudView> listar(OperatingActor actor, SolicitudEstado estado) {
 		String filtro = estado == null ? SIN_FILTRO : estado.name();
-		List<CatalogoSolicitud> encontradas = actor.platformAdmin()
+		Long organizationId = actor.platformAdmin() ? null : exigirContexto(actor);
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.CATALOGO_READ,
+				organizationId,
+				actor.platformAdmin() ? null : actor.consultorioId(),
+				null,
+				Instant.now()));
+		List<CatalogoSolicitud> encontradas = organizationId == null
 				? solicitudes.listarTodas(filtro)
-				: solicitudes.listarPorTenant(exigirContexto(actor), filtro);
+				: solicitudes.listarPorTenant(organizationId, filtro);
 
 		return encontradas.stream().map(CatalogoSolicitudView::de).toList();
 	}
@@ -259,7 +266,7 @@ public class CatalogoSolicitudService {
 		long organizationId = exigirContexto(actor);
 		permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(),
-				PermissionCodes.CONSULTORIO_MANAGE,
+				PermissionCodes.CATALOGO_MANAGE,
 				organizationId,
 				actor.consultorioId(),
 				null,
@@ -273,6 +280,10 @@ public class CatalogoSolicitudService {
 			throw new AccessDeniedException(
 					"Solo la administracion de plataforma resuelve solicitudes de catalogo");
 		}
+		// catalogo:manage con alcance GLOBAL (U-08), sin organizacion en la consulta.
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(), PermissionCodes.CATALOGO_MANAGE, null, null, null,
+				Instant.now()));
 	}
 
 	/** 403 y jamas 401: un 401 haria que el frontend borre el token y entre en bucle de login. */
