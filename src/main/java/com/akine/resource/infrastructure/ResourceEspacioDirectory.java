@@ -9,7 +9,11 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.Optional;
 
 /**
@@ -46,6 +50,24 @@ public class ResourceEspacioDirectory implements EspacioDirectory {
 		return espacioRepository.findById(espacioId)
 				.filter(espacio -> espacio.getOrganizationId() == organizationId)
 				.map(espacio -> snapshot(espacio, at));
+	}
+
+	/** Una sola consulta {@code WHERE id IN (...)}; el tenant se filtra igual que en {@link #find}. */
+	@Override
+	@Transactional(readOnly = true)
+	public Map<Long, EspacioSnapshot> findTodos(
+			long organizationId, Collection<Long> espacioIds, Instant at) {
+
+		if (espacioIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<Long, EspacioSnapshot> porId = new LinkedHashMap<>();
+		for (Espacio espacio : espacioRepository.findAllById(Set.copyOf(espacioIds))) {
+			if (espacio.getOrganizationId() == organizationId) {
+				porId.put(espacio.getId(), snapshot(espacio, at));
+			}
+		}
+		return porId;
 	}
 
 	@Override

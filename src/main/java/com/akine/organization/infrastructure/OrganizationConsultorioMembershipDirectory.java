@@ -6,8 +6,12 @@ import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Implementacion de {@link ConsultorioMembershipDirectory}: el borde por donde
@@ -48,6 +52,23 @@ public class OrganizationConsultorioMembershipDirectory implements ConsultorioMe
 	public Optional<ConsultorioMembershipSnapshot> find(long organizationId, long membershipId) {
 		return membershipRepository.findByIdAndOrganizationId(membershipId, organizationId)
 				.map(OrganizationConsultorioMembershipDirectory::snapshot);
+	}
+
+	/** Una sola consulta; el filtro de tenant va en el {@code WHERE}, como en {@link #find}. */
+	@Override
+	@Transactional(readOnly = true)
+	public Map<Long, ConsultorioMembershipSnapshot> findTodas(
+			long organizationId, Collection<Long> membershipIds) {
+
+		if (membershipIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<Long, ConsultorioMembershipSnapshot> porId = new LinkedHashMap<>();
+		for (Membership membership : membershipRepository
+				.findAllByOrganizationIdAndIdIn(organizationId, Set.copyOf(membershipIds))) {
+			porId.put(membership.getId(), snapshot(membership));
+		}
+		return porId;
 	}
 
 	@Override

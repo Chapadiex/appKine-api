@@ -15,8 +15,14 @@ import java.time.Instant;
  *                          (RN-M28-002). <b>Se calcula al leer</b> y no se persiste: si se
  *                          guardara, cambiar el box dejaria clases prometiendo lugares que ya no
  *                          existen
- * @param ocupados          cuantos lugares consumen inscripciones. <b>Siempre 0 en 08.01</b>: las
- *                          inscripciones son de 08.02
+ * @param ocupados          cuantos lugares consumen inscripciones: la columna que otorga el lugar
+ *                          (08.02)
+ * @param ofertaNombre      nombre comercial de la oferta, leido al proyectar. {@code null} si la
+ *                          oferta ya no resuelve
+ * @param profesionalNombre nombre de la cuenta del profesional. {@code null} si la clase no tiene
+ *                          profesional o su membership ya no resuelve. Solo el nombre: nunca el
+ *                          correo
+ * @param espacioNombre     nombre del box. {@code null} si la clase no tiene box o ya no resuelve
  */
 public record ClaseView(
 		long id,
@@ -33,9 +39,22 @@ public record ClaseView(
 		int ocupados,
 		String motivoCancelacion,
 		Instant canceladoEn,
-		long version) {
+		long version,
+		String ofertaNombre,
+		String profesionalNombre,
+		String espacioNombre) {
 
-	public static ClaseView de(ClaseProgramada clase, int capacidadEfectiva, int ocupados) {
+	/**
+	 * Arma la vista con los nombres ya resueltos. Quien proyecta es {@link ProyeccionDeClase}, que
+	 * los pide agrupados para no hacer una consulta por fila.
+	 */
+	public static ClaseView de(
+			ClaseProgramada clase,
+			int capacidadEfectiva,
+			int ocupados,
+			String ofertaNombre,
+			String profesionalNombre,
+			String espacioNombre) {
 		return new ClaseView(
 				clase.getId(),
 				clase.getConsultorioId(),
@@ -51,6 +70,9 @@ public record ClaseView(
 				ocupados,
 				clase.getMotivoCancelacion(),
 				clase.getCanceladoEn(),
-				clase.getVersion());
+				clase.getVersion(),
+				ofertaNombre,
+				profesionalNombre,
+				espacioNombre);
 	}
 }
