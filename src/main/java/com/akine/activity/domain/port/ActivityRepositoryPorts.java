@@ -105,6 +105,19 @@ public final class ActivityRepositoryPorts {
 				long organizationId, long consultorioId, long claseId);
 
 		/**
+		 * La clase en modo <b>compartido</b> ({@code FOR SHARE}): lo que toma el registro de
+		 * asistencia antes de tocar la inscripcion o un pase (AKINE-08.07). Varias asistencias de la
+		 * misma clase no se estorban entre si, pero ninguna corre a la vez que la cancelacion —que
+		 * toma {@link #lockByIdInScope}— y por eso la devolucion de creditos de la cancelacion ve
+		 * todo consumo de esa clase, y ningun consumo entra sobre una clase ya cancelada.
+		 *
+		 * <p>No sirve para quien despues escribe la fila de la clase (ingreso sin inscripcion, que
+		 * toma cupo): dos S que piden X son un deadlock. Ese camino toma el exclusivo de entrada.
+		 */
+		Optional<ClaseProgramada> lockCompartidoByIdInScope(
+				long organizationId, long consultorioId, long claseId);
+
+		/**
 		 * <b>Otorga un lugar.</b> Esta es la operacion que hace cumplir el cupo, y no hay otra.
 		 *
 		 * <p>Una fila afectada es "tenes el lugar"; <b>cero filas es "no hay lugar"</b>. Una sola
@@ -355,6 +368,13 @@ public final class ActivityRepositoryPorts {
 		 */
 		boolean existeVigenteConNombre(
 				long organizationId, long consultorioId, String nombre, long excluirProductoId);
+
+		/**
+		 * El producto bloqueado ({@code FOR UPDATE}). Serializa las ventas de abonos del mismo
+		 * producto, que es lo que hace cumplir "un periodo, una obligacion": dos ventas simultaneas
+		 * de periodos superpuestos no comparten un valor de columna que un unique pueda ver.
+		 */
+		Optional<ProductoServicio> lockByIdInScope(long organizationId, long consultorioId, long productoId);
 	}
 
 	public interface PaseServicioRepositoryPort {
@@ -382,11 +402,64 @@ public final class ActivityRepositoryPorts {
 		 */
 		int consumirUno(long organizationId, long paseId, LocalDate fecha);
 
-		/** Devuelve un credito si no supera los iniciales; un {@code AGOTADO} vuelve a {@code ACTIVO}. */
+		/**
+		 * Devuelve un credito si no supera los iniciales. Un {@code AGOTADO} o un {@code VENCIDO}
+		 * vuelven a {@code ACTIVO}: el vencido lo vuelve a vencer el job, con su movimiento, y asi el
+		 * credito devuelto queda explicado en el ledger. Un {@code ANULADO} no recibe nada.
+		 */
 		int devolverUno(long organizationId, long paseId);
 
 		/** El saldo actual leido del motor, para el {@code saldo_resultante} del ledger. */
 		int saldoActual(long organizationId, long paseId);
+
+		/**
+		 * El pase bloqueado ({@code FOR UPDATE}): lectura actual, para los comandos que comparan la
+		 * version que el cliente leyo (ajuste y anulacion). Tiene que ser la primera carga del pase
+		 * en la transaccion.
+		 */
+		Optional<PaseServicio> lockByIdInScope(long organizationId, long consultorioId, long paseId);
+
+		/**
+		 * Suma {@code delta} al saldo si la version es la leida, el pase esta {@code ACTIVO} o
+		 * {@code AGOTADO} y el saldo final queda entre 0 y los creditos iniciales. Deriva
+		 * {@code ACTIVO}/{@code AGOTADO} y sube la version.
+		 */
+		int ajustar(long organizationId, long paseId, int delta, long versionLeida);
+
+		/** {@code ANULADO} con saldo cero, instante, actor y motivo, si la version es la leida. */
+		int anular(long organizationId, long paseId, long versionLeida, long actorCuentaId,
+				   String motivo, Instant ahora);
+
+		/**
+		 * {@code VENCIDO} con saldo cero si sigue {@code ACTIVO} y su vigencia termino antes de
+		 * {@code hoy}. La condicion la evalua el motor: dos instancias del job no vencen dos veces.
+		 */
+		int vencer(long organizationId, long paseId, LocalDate hoy);
+
+		/** Saldo, estado y version leidos del motor despues de un UPDATE nativo. */
+		EstadoDePase estadoActual(long organizationId, long paseId);
+
+		/**
+		 * Pases {@code ACTIVO} de todos los tenants cuya vigencia termino antes de {@code limite},
+		 * los mas viejos primero. Lo lee el job de vencimiento, sin contexto de organizacion.
+		 */
+		List<CandidatoAVencer> candidatosAVencer(LocalDate limite, int maximo);
+
+		/**
+		 * {@code true} si la persona ya tiene un abono vivo (no anulado) de ese producto cuyo
+		 * periodo se superpone con el pedido. Un periodo genera como maximo una obligacion.
+		 */
+		boolean existeAbonoSuperpuesto(
+				long organizationId, long personaId, long productoId, LocalDate desde, LocalDate hasta);
+	}
+
+	/** Saldo, estado y version del pase leidos del motor. */
+	public record EstadoDePase(int saldo, String estado, long version) {
+	}
+
+	/** Un pase que el job de vencimiento tiene que mirar. */
+	public record CandidatoAVencer(long paseId, long organizationId, long consultorioId,
+								   LocalDate vigenciaHasta) {
 	}
 
 	public interface MovimientoPaseRepositoryPort {
@@ -403,6 +476,22 @@ public final class ActivityRepositoryPorts {
 
 		/** Suma del ledger del pase: tiene que coincidir con {@code creditos_disponibles}. */
 		int sumaDelLedger(long organizationId, long paseId);
+
+		/**
+		 * Los creditos que el pase tiene usados por asistencias: {@code SUM(cantidad)} de sus
+		 * {@code CONSUMO} y {@code DEVOLUCION}. Cero si nunca se uso o todo se devolvio.
+		 */
+		int consumoNeto(long organizationId, long paseId);
+
+		/** El ajuste manual aplicado sobre esa version del pase, si existe (reintento). */
+		Optional<MovimientoPase> ajusteSobreVersion(long organizationId, long paseId, long versionLeida);
+
+		/** Lo que tiene tomado cada asistencia de una clase: solo las de neto distinto de cero. */
+		List<ConsumoDeClase> consumosDeLaClase(long organizationId, long claseId);
+	}
+
+	/** El credito que una asistencia de una clase tiene tomado de un pase. */
+	public record ConsumoDeClase(long asistenciaId, long paseId, long neto) {
 	}
 
 	/** Lo que una asistencia tiene tomado de un pase. */

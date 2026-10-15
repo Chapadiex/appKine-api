@@ -297,6 +297,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.PRODUCTO_MANAGE, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.PASE_READ, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.PASE_MANAGE, PermissionScope.ORGANIZACION),
+				// AKINE-08.07. Ajustar y anular pases: permiso reforzado, fuera del mostrador.
+				Map.entry(PermissionCode.PASE_ADJUST, PermissionScope.ORGANIZACION),
 				// AKINE-G-1 (DP-15). La matriz §2 le dice "Si" en Ver Reportes. Lo que ve de cada
 				// seccion lo decide el permiso de su fuente: sin hc:read ni sesion:register, lo
 				// clinico se omite y se declara en las secciones omitidas.
@@ -332,6 +334,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.PRODUCTO_MANAGE, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.PASE_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.PASE_MANAGE, PermissionScope.CONSULTORIO),
+				// AKINE-08.07. Ver el comentario del ORG_ADMIN.
+				Map.entry(PermissionCode.PASE_ADJUST, PermissionScope.CONSULTORIO),
 				// AKINE-03.03. La matriz Â§2 le dice "Si" en Administrar Convenios, igual que al
 				// ORG_ADMIN. El alcance es su sede, que es el de su membership: que el financiador
 				// sea de la ORGANIZACION no lo convierte en un permiso de organizacion â el

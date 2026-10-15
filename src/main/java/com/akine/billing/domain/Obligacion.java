@@ -332,10 +332,49 @@ public class Obligacion {
 			String snapshotNombre,
 			Instant devengadaEn) {
 
+		return porVenta(OrigenObligacion.VENTA_PASE, organizationId, consultorioId, paseId, personaId,
+				importe, moneda, ofertaId, snapshotNombre, devengadaEn);
+	}
+
+	/**
+	 * La deuda de un periodo de abono (AKINE-08.08, RF-M18-010, RF-M29-007 paso 6). Misma forma que
+	 * la de un pack: el abono es un pase con periodo, y cada periodo es una venta con su obligacion.
+	 * <b>Una sola por periodo</b>, por {@code uk_obligacion_venta}. RN-M29-007: es esta, y ninguna
+	 * por cada asistencia que el abono cubre.
+	 */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public static Obligacion porVentaDeAbono(
+			long organizationId,
+			long consultorioId,
+			long paseId,
+			long personaId,
+			BigDecimal importe,
+			String moneda,
+			long ofertaId,
+			String snapshotNombre,
+			Instant devengadaEn) {
+
+		return porVenta(OrigenObligacion.VENTA_ABONO, organizationId, consultorioId, paseId, personaId,
+				importe, moneda, ofertaId, snapshotNombre, devengadaEn);
+	}
+
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	private static Obligacion porVenta(
+			OrigenObligacion origen,
+			long organizationId,
+			long consultorioId,
+			long paseId,
+			long personaId,
+			BigDecimal importe,
+			String moneda,
+			long ofertaId,
+			String snapshotNombre,
+			Instant devengadaEn) {
+
 		Obligacion o = new Obligacion();
 		o.organizationId = organizationId;
 		o.consultorioId = consultorioId;
-		o.origen = OrigenObligacion.VENTA_PASE;
+		o.origen = origen;
 		o.paseId = paseId;
 		o.personaId = personaId;
 		o.responsable = Responsable.PACIENTE;

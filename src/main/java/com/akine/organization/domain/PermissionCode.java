@@ -268,7 +268,16 @@ public enum PermissionCode {
 	 * Vender un pase. F9, M29 (AKINE-08.06). Mismo reparto que {@code cobro:register}: vender un
 	 * pack es trabajo del mostrador. {@code PLATFORM_ADMIN} no lo recibe.
 	 */
-	PASE_MANAGE("pase:manage");
+	PASE_MANAGE("pase:manage"),
+
+	/**
+	 * Ajustar el saldo de un pase y anularlo. F9, M29 (AKINE-08.07, RF-M29-005).
+	 *
+	 * <p>RF-M29-005 pide "permiso especifico" y el plan de 08.07 "permiso reforzado": corregir lo
+	 * vendido no es venderlo. Sin fila en la matriz §32; lo tienen {@code ORG_ADMIN} y
+	 * {@code CONSULTORIO_ADMIN}, no el mostrador, con el mismo criterio que {@code producto:manage}.
+	 */
+	PASE_ADJUST("pase:adjust");
 
 	private final String code;
 

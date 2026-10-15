@@ -241,6 +241,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						"asistencia:manage",
 						// AKINE-08.06: productos de pack y venta de pases.
 						"producto:read", "producto:manage", "pase:read", "pase:manage",
+						// AKINE-08.07: ajustar y anular pases, permiso reforzado.
+						"pase:adjust",
 						// `reporte:read` lo sumo G-1 (DP-15): la matriz da "Si" al ORG_ADMIN en Ver Reportes.
 						"reporte:read");
 	}

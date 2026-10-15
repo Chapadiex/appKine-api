@@ -303,7 +303,7 @@ public class AsistenciaService {
 		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
 
 		ClaseProgramada clase = exigirClaseQueAdmiteAsistencia(
-				organizationId, consultorioId, claseId);
+				organizationId, consultorioId, claseId, false);
 		InscripcionClase inscripcion = inscripciones
 				.findByIdInScope(organizationId, claseId, command.inscripcionId())
 				.orElseThrow(() ->
@@ -519,7 +519,7 @@ public class AsistenciaService {
 		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
 
 		ClaseProgramada clase = exigirClaseQueAdmiteAsistencia(
-				organizationId, consultorioId, claseId);
+				organizationId, consultorioId, claseId, true);
 		if (clase.getEstado().estaCerrada()) {
 			throw new TransicionDeClaseNoPermitidaException(
 					claseId, "ya cerro su operacion y no admite ingresos");
@@ -655,9 +655,18 @@ public class AsistenciaService {
 	 * porque las correcciones llegan despues de que la clase termino, que es cuando se descubren.
 	 */
 	private ClaseProgramada exigirClaseQueAdmiteAsistencia(
-			long organizationId, long consultorioId, long claseId) {
+			long organizationId, long consultorioId, long claseId, boolean ocupaCupo) {
 
-		ClaseProgramada clase = exigirClaseDelTenant(organizationId, consultorioId, claseId);
+		// AKINE-08.07: la clase se lee BLOQUEADA, antes de tocar la inscripcion o un pase. En modo
+		// compartido varias asistencias conviven, pero ninguna corre a la vez que la cancelacion
+		// (que la toma exclusiva): asi la cancelacion devuelve todo credito consumido en la clase y
+		// ningun consumo entra sobre una clase ya cancelada. El ingreso sin inscripcion la toma
+		// exclusiva porque despues escribe el cupo, y un S que pide X es un deadlock.
+		// Orden de locks: clase_programada -> inscripcion_clase -> pase_servicio.
+		ClaseProgramada clase = (ocupaCupo
+				? clases.lockByIdInScope(organizationId, consultorioId, claseId)
+				: clases.lockCompartidoByIdInScope(organizationId, consultorioId, claseId))
+				.orElseThrow(() -> new ClaseNotAccessibleException(claseId));
 		if (!clase.getEstado().admiteAsistencia()) {
 			throw new TransicionDeClaseNoPermitidaException(
 					claseId,

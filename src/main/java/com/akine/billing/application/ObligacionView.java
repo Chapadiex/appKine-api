@@ -24,7 +24,7 @@ import java.time.LocalDate;
  * @param concepto        {@code PARTICULAR}, {@code FINANCIADOR} o {@code COSEGURO} (AKINE F-4)
  * @param convenio        el convenio aplicado, congelado; {@code null} en las particulares
  * @param sesionId        la atencion que la genero; {@code null} si nacio de una venta (08.06)
- * @param origen          {@code SESION} o {@code VENTA_PASE} (V64)
+ * @param origen          {@code SESION}, {@code VENTA_PASE} o {@code VENTA_ABONO} (V64)
  * @param paseId          el pase vendido que la genero; {@code null} si nacio de una sesion
  */
 public record ObligacionView(

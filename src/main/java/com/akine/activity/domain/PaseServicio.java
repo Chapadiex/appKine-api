@@ -14,6 +14,8 @@ import org.hibernate.annotations.DynamicUpdate;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 
 /**
  * Lo que una persona compro (RF-M29-002, RN-M29-002): creditos con vigencia, sobre la oferta del
@@ -36,7 +38,14 @@ import java.time.LocalDate;
  *
  * <h2>Sin baja logica</h2>
  *
- * <p>Un pase no se da de baja: se anula (estado con motivo, 08.07). Ver V64.
+ * <p>Un pase no se da de baja: se anula ({@code ANULADO} con instante, actor y motivo, V101), y la
+ * anulacion la escribe el UPDATE nativo del repositorio, igual que el saldo.
+ *
+ * <h2>Pack y abono</h2>
+ *
+ * <p>Las dos cosas son esta fila (V64 ya lo previo). El pack vale {@code vigencia_dias} desde la
+ * compra; el abono cubre el periodo elegido al vender (RF-M29-007). Los dos se consumen igual: un
+ * credito por asistencia a una clase de su oferta, dentro de su vigencia.
  */
 @Entity
 @Table(name = "pase_servicio")
@@ -58,6 +67,11 @@ public class PaseServicio {
 
 	@Column(name = "producto_id", nullable = false, updatable = false)
 	private Long productoId;
+
+	/** {@code PACK} o {@code ABONO} (V101), copiado del producto al vender. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "tipo", nullable = false, length = 16, updatable = false)
+	private TipoProducto tipo;
 
 	@Column(name = "snapshot_nombre", nullable = false, length = 160, updatable = false)
 	private String snapshotNombre;
@@ -102,6 +116,16 @@ public class PaseServicio {
 	@Column(name = "vendido_en", nullable = false, updatable = false)
 	private Instant vendidoEn;
 
+	/** La anulacion (V101). La escribe solo el UPDATE nativo de {@code anular}, como el saldo. */
+	@Column(name = "anulado_en", insertable = false, updatable = false)
+	private Instant anuladoEn;
+
+	@Column(name = "anulado_por_cuenta_id", insertable = false, updatable = false)
+	private Long anuladoPorCuentaId;
+
+	@Column(name = "motivo_anulacion", length = 280, insertable = false, updatable = false)
+	private String motivoAnulacion;
+
 	@Version
 	@Column(name = "version", nullable = false)
 	private long version;
@@ -128,11 +152,75 @@ public class PaseServicio {
 			long vendidoPorCuentaId,
 			Instant ahora) {
 
+		if (producto.getTipo() != TipoProducto.PACK) {
+			throw new IllegalArgumentException("Un abono se vende con su periodo: venderAbono");
+		}
+		PaseServicio p = nuevo(producto, personaId, idempotencyKey, requestHash, vendidoPorCuentaId, ahora);
+		p.vigenciaDesde = hoy;
+		p.vigenciaHasta = hoy.plusDays(producto.getVigenciaDias() - 1L);
+		return p;
+	}
+
+	/**
+	 * La venta de un abono (RF-M29-007): la vigencia es el <b>periodo</b> elegido al vender, no un
+	 * plazo desde la compra, y los creditos son las asistencias que ese periodo permite
+	 * (CA-M29-007-06). El periodo ya viene validado por {@link #impedimentoDelPeriodo}.
+	 */
+	public static PaseServicio venderAbono(
+			ProductoServicio producto,
+			long personaId,
+			LocalDate periodoDesde,
+			LocalDate periodoHasta,
+			String idempotencyKey,
+			String requestHash,
+			long vendidoPorCuentaId,
+			Instant ahora) {
+
+		if (producto.getTipo() != TipoProducto.ABONO) {
+			throw new IllegalArgumentException("Un pack no tiene periodo: vender");
+		}
+		PaseServicio p = nuevo(producto, personaId, idempotencyKey, requestHash, vendidoPorCuentaId, ahora);
+		p.vigenciaDesde = periodoDesde;
+		p.vigenciaHasta = periodoHasta;
+		return p;
+	}
+
+	/**
+	 * Por que el periodo pedido para un abono no se puede vender, o vacio si se puede.
+	 *
+	 * <p>Coherencia temporal de RF-M29-007: el periodo no termino ya
+	 * ({@code hoy} en la zona de la sede) y no es mas largo que la duracion del producto —un abono
+	 * de 31 dias no cubre dos meses—. Que empiece antes de hoy esta permitido: el abono de agosto
+	 * se vende el 5 de agosto. Un fin anterior al inicio no es una regla de negocio sino un dato
+	 * invalido, y es 400.
+	 */
+	public static Optional<String> impedimentoDelPeriodo(
+			ProductoServicio producto, LocalDate desde, LocalDate hasta, LocalDate hoy) {
+
+		if (hasta.isBefore(desde)) {
+			throw new IllegalArgumentException("El periodo del abono termina antes de empezar");
+		}
+		if (hasta.isBefore(hoy)) {
+			return Optional.of("el periodo ya termino");
+		}
+		long dias = ChronoUnit.DAYS.between(desde, hasta) + 1;
+		if (dias > producto.getVigenciaDias()) {
+			return Optional.of("el periodo dura " + dias + " dias y el producto cubre hasta "
+					+ producto.getVigenciaDias());
+		}
+		return Optional.empty();
+	}
+
+	private static PaseServicio nuevo(
+			ProductoServicio producto, long personaId, String idempotencyKey, String requestHash,
+			long vendidoPorCuentaId, Instant ahora) {
+
 		if ((idempotencyKey == null) != (requestHash == null)) {
 			// ck_pase_idempotencia_completa lo impide igual; aca se dice cual es el problema.
 			throw new IllegalArgumentException("La clave de idempotencia viaja con su huella");
 		}
 		PaseServicio p = new PaseServicio();
+		p.tipo = producto.getTipo();
 		p.organizationId = producto.getOrganizationId();
 		p.consultorioId = producto.getConsultorioId();
 		p.personaId = personaId;
@@ -144,8 +232,6 @@ public class PaseServicio {
 		p.snapshotOfertaId = producto.getOfertaId();
 		p.creditosIniciales = producto.getCreditos();
 		p.creditosDisponibles = producto.getCreditos();
-		p.vigenciaDesde = hoy;
-		p.vigenciaHasta = hoy.plusDays(producto.getVigenciaDias() - 1L);
 		p.estado = EstadoPase.ACTIVO;
 		p.idempotencyKey = idempotencyKey;
 		p.requestHash = requestHash;
@@ -177,6 +263,22 @@ public class PaseServicio {
 
 	public Long getProductoId() {
 		return productoId;
+	}
+
+	public TipoProducto getTipo() {
+		return tipo;
+	}
+
+	public Instant getAnuladoEn() {
+		return anuladoEn;
+	}
+
+	public Long getAnuladoPorCuentaId() {
+		return anuladoPorCuentaId;
+	}
+
+	public String getMotivoAnulacion() {
+		return motivoAnulacion;
 	}
 
 	public String getSnapshotNombre() {

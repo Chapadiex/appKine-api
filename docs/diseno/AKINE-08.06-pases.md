@@ -138,6 +138,11 @@ haya una venta, ninguna respuesta real lo trae vacío. El otro cambio de forma e
 
 ## 9. Lo que queda fuera, con su dueño
 
+> **15/10/2026:** la devolución por cancelación, el ajuste, la anulación, el job de vencimiento y
+> los abonos entraron en la rama `akine-m29-abonos-y-ajustes`
+> ([`AKINE-08.07-08.08-ledger-y-abonos.md`](AKINE-08.07-08.08-ledger-y-abonos.md)). Siguen fuera la
+> consulta paginada del ledger, la renovación automática y el aviso de vencimiento.
+
 - **08.07:** devolución por cancelación de clase (RF-M29-004), ajuste manual (RF-M29-005), job de
   vencimiento que escriba `VENCIDO` (RF-M29-006; hoy el vencimiento se evalúa por fecha), anulación
   del pase, consulta paginada del ledger, si el no-show consume crédito.

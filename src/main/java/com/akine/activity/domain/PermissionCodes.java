@@ -54,6 +54,9 @@ public final class PermissionCodes {
 
 	public static final String PASE_MANAGE = "pase:manage";
 
+	/** Ajustar el saldo de un pase y anularlo (AKINE-08.07, RF-M29-005). Permiso reforzado. */
+	public static final String PASE_ADJUST = "pase:adjust";
+
 	private PermissionCodes() {
 	}
 }

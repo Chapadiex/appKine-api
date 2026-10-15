@@ -26,8 +26,8 @@
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
 | B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39) | 10 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
-| D. No bloquean nada (U-35 a U-37) | 3 |
-| **Total** | **39** |
+| D. No bloquean nada (U-35 a U-37, U-40) | 4 |
+| **Total** | **40** |
 
 Ya resueltas y fuera de la lista (las fichas las mencionan): el **escenario 7b** (`request_hash`
 en `onboarding_registro`), que la ficha de F0–F1 daba abierto y cerró el PR #104 el 13/10/2026
@@ -423,6 +423,23 @@ dejar el MVP como está:
   la imagen (api #87)?
 - **Recomendado:** la ficha no recomienda; no se mergean en el cierre.
 - **Fase / RF:** F8.
+- **Destraba:** nada del MVP.
+
+### U-40 · Las políticas de pases y abonos que M29 no define
+
+- **Pregunta:** cinco, todas de producto: (a) ¿un abono puede no tener tope de asistencias por
+  periodo? (b) ¿el abono se activa al vender o al cobrarse ("según política de pago",
+  RF-M29-007 paso 7)? (c) ¿se puede anular un pase ya usado, prorrateando la deuda? (d) ¿un ajuste
+  manual puede dejar el saldo por encima de lo comprado (bonificación)? (e) ¿hay ventana de gracia
+  para consumir un pase que el job ya venció, si la clase fue dentro de su vigencia?
+- **Hoy (rama `akine-m29-abonos-y-ajustes`):** (a) el abono lleva tope (`creditos > 0`, V64); uno
+  "libre" se modela con un tope alto. (b) se activa al vender, como el pack. (c) 409
+  `pase-no-ajustable`: se ajusta el saldo en su lugar. (d) no: el saldo final queda en
+  `[0, creditos comprados]`. (e) no: RF-M29-006 dice "no consumir créditos luego del vencimiento".
+- **Recomendado:** dejar las cinco como están hasta que un centro lo pida; (a) y (d) cambian
+  CHECKs de V64, (b) depende de la política de prepago (ADR-0013).
+- **Fase / RF:** F9 (08.07, 08.08); RF-M29-005, RF-M29-006, RF-M29-007, RN-M29-009. Diseño en
+  [`../diseno/AKINE-08.07-08.08-ledger-y-abonos.md`](../diseno/AKINE-08.07-08.08-ledger-y-abonos.md) §9.
 - **Destraba:** nada del MVP.
 
 ---

@@ -52,4 +52,17 @@ public interface ProductoServicioRepository
 			@Param("consultorioId") long consultorioId,
 			@Param("nombre") String nombre,
 			@Param("excluirProductoId") long excluirProductoId);
+
+	@Override
+	@Query(value = """
+			SELECT * FROM producto_servicio
+			 WHERE id = :productoId
+			   AND organization_id = :organizationId
+			   AND consultorio_id = :consultorioId
+			 FOR UPDATE
+			""", nativeQuery = true)
+	Optional<ProductoServicio> lockByIdInScope(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("productoId") long productoId);
 }

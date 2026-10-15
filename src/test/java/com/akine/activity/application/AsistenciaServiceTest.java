@@ -110,6 +110,13 @@ class AsistenciaServiceTest {
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
 		given(clases.findByIdInScope(ORG_ID, SEDE_ID, CLASE_ID))
 				.willReturn(Optional.of(clase(EstadoClase.EN_CURSO, 8, 6)));
+		// AKINE-08.07: tomar lista lee la clase bloqueada (compartida; exclusiva en el ingreso sin
+		// inscripcion). Los tests que preparan la clase con findByIdInScope siguen valiendo: los
+		// locks devuelven lo mismo, salvo que el test los prepare por su cuenta.
+		given(clases.lockCompartidoByIdInScope(anyLong(), anyLong(), anyLong())).willAnswer(llamada ->
+				clases.findByIdInScope(llamada.getArgument(0), llamada.getArgument(1), llamada.getArgument(2)));
+		given(clases.lockByIdInScope(anyLong(), anyLong(), anyLong())).willAnswer(llamada ->
+				clases.findByIdInScope(llamada.getArgument(0), llamada.getArgument(1), llamada.getArgument(2)));
 		given(capacidad.efectiva(anyLong(), anyLong(), any())).willReturn(8);
 		given(proyeccion.de(anyLong(), anyLong(), any(ClaseProgramada.class))).willAnswer(llamada -> {
 			ClaseProgramada clase = llamada.getArgument(2);

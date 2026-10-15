@@ -97,9 +97,51 @@ public class ProductoServicio {
 		// Requerido por JPA.
 	}
 
-	/** Alta de un pack (RF-M29-001). Esta etapa solo emite {@link TipoProducto#PACK}. */
+	/** Alta de un pack (RF-M29-001). */
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public static ProductoServicio pack(
+			long organizationId,
+			long consultorioId,
+			long ofertaId,
+			String nombre,
+			String descripcion,
+			int creditos,
+			BigDecimal precio,
+			String moneda,
+			int vigenciaDias,
+			LocalDate vigenciaDesde,
+			LocalDate vigenciaHasta) {
+
+		return nuevo(TipoProducto.PACK, organizationId, consultorioId, ofertaId, nombre, descripcion,
+				creditos, precio, moneda, vigenciaDias, vigenciaDesde, vigenciaHasta);
+	}
+
+	/**
+	 * Alta de un abono (RF-M29-007, AKINE-08.08). Mismas columnas que el pack con otra lectura:
+	 * {@code creditos} son las asistencias que permite <b>cada periodo</b> (CA-M29-007-06) y
+	 * {@code vigenciaDias} la duracion maxima de un periodo. El periodo concreto se elige al vender.
+	 */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public static ProductoServicio abono(
+			long organizationId,
+			long consultorioId,
+			long ofertaId,
+			String nombre,
+			String descripcion,
+			int creditos,
+			BigDecimal precio,
+			String moneda,
+			int vigenciaDias,
+			LocalDate vigenciaDesde,
+			LocalDate vigenciaHasta) {
+
+		return nuevo(TipoProducto.ABONO, organizationId, consultorioId, ofertaId, nombre, descripcion,
+				creditos, precio, moneda, vigenciaDias, vigenciaDesde, vigenciaHasta);
+	}
+
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	private static ProductoServicio nuevo(
+			TipoProducto tipo,
 			long organizationId,
 			long consultorioId,
 			long ofertaId,
@@ -116,7 +158,7 @@ public class ProductoServicio {
 		p.organizationId = organizationId;
 		p.consultorioId = consultorioId;
 		p.ofertaId = ofertaId;
-		p.tipo = TipoProducto.PACK;
+		p.tipo = tipo;
 		p.active = true;
 		p.aplicar(nombre, descripcion, creditos, precio, moneda, vigenciaDias,
 				exigir(vigenciaDesde, "El inicio de la ventana comercial es obligatorio"),

@@ -64,10 +64,11 @@ public record OfertaResponse(
 		String moneda,
 
 		@Schema(
-				description = "Esquema de cobro DECLARADO, texto libre acotado. No lo resuelve "
-						+ "nadie todavia: los modulos de facturacion y cobros no existen "
-						+ "(RN-M27-006). Se guarda para no perder el dato, no para ramificar",
-				example = "SESION_SUELTA")
+				description = "Esquema de cobro de la oferta (RN-M27-006), o ausente si no declara "
+						+ "ninguno. `POR_CLASE` esta en la lista porque el esquema lo admite, aunque "
+						+ "hoy no se puede declarar (U-39)",
+				allowableValues = {"POR_SESION", "POR_CLASE", "POR_PACK", "POR_ABONO"},
+				example = "POR_SESION")
 		String esquemaCobro,
 
 		@Schema(description = "Si la oferta se puede presentar a un financiador")

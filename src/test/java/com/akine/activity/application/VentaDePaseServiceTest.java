@@ -72,7 +72,7 @@ class VentaDePaseServiceTest {
 				permissionGuard, auditTrail, RELOJ);
 		given(consultorios.find(ORG, SEDE)).willReturn(Optional.of(
 				new ConsultorioSnapshot(SEDE, ORG, "Sede", "UTC", true)));
-		given(productos.findByIdInScope(ORG, SEDE, PRODUCTO)).willReturn(Optional.of(producto()));
+		given(productos.lockByIdInScope(ORG, SEDE, PRODUCTO)).willReturn(Optional.of(producto()));
 		given(personas.find(ORG, PERSONA)).willReturn(Optional.of(persona(true)));
 		given(pases.saveAndFlush(any())).willAnswer(llamada -> {
 			PaseServicio pase = llamada.getArgument(0);
@@ -139,7 +139,7 @@ class VentaDePaseServiceTest {
 	void producto_de_baja() {
 		ProductoServicio deBaja = producto();
 		deBaja.darDeBaja("Se discontinua", Instant.now());
-		given(productos.findByIdInScope(ORG, SEDE, PRODUCTO)).willReturn(Optional.of(deBaja));
+		given(productos.lockByIdInScope(ORG, SEDE, PRODUCTO)).willReturn(Optional.of(deBaja));
 
 		assertThatThrownBy(() -> service.vender(ACTOR, SEDE, new VenderPaseCommand(PRODUCTO, PERSONA, null)))
 				.isInstanceOf(ProductoNoVendibleException.class);
