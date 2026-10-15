@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -37,6 +38,9 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 			Long organizationId, Long accountId);
 
 	List<Membership> findAllByOrganizationIdAndActiveTrue(Long organizationId);
+
+	/** Por id dentro del tenant, activas o no: para resolver nombres de una lista en una consulta. */
+	List<Membership> findAllByOrganizationIdAndIdIn(Long organizationId, Collection<Long> ids);
 
 	/**
 	 * Conteo de uso para el limite MAX_MIEMBROS_ACTIVOS. Mismas condiciones que

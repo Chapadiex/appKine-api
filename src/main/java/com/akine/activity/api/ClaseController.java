@@ -73,6 +73,9 @@ public class ClaseController {
 					pedido entre en la oferta y en el box, y que **ni el profesional ni el espacio \
 					tengan un turno o una clase que se cruce**.
 
+					**El box** lo elige quien programa con `espacioId`; si no lo manda y la oferta \
+					exige espacio, lo elige el servidor (el primer box apto y libre).
+
 					Esa ultima revalidacion es el punto de la etapa. Una clase y un turno **se \
 					disputan la misma fila de bloqueo de la sede**, asi que dos escrituras \
 					concurrentes se serializan y una sola gana: no se puede reservar un turno \
@@ -111,7 +114,8 @@ public class ClaseController {
 						request.profesionalId(),
 						request.capacidad(),
 						request.titulo(),
-						request.idempotencyKey()));
+						request.idempotencyKey(),
+						request.espacioId()));
 
 		ClaseResponse cuerpo = ClaseResponse.de(resultado.clase());
 
@@ -131,9 +135,15 @@ public class ClaseController {
 			operationId = "reprogramarClase",
 			summary = "Reprogramar una clase",
 			description = """
-					Mueve horario, profesional, espacio o capacidad. **Conserva la clase y sus \
-					participantes**: es la misma fila, con el mismo id, y las inscripciones cuelgan \
-					de el (CA-M28-005-06).
+					Cambia horario, profesional, capacidad y, si se indica `espacioId`, el box. \
+					**Conserva la clase y sus participantes**: es la misma fila, con el mismo id, y \
+					las inscripciones cuelgan de el (CA-M28-005-06).
+
+					**El box:** con `espacioId` se valida ese box (activo, de la sede, habilitado \
+					para la oferta y libre en la franja). **Sin `espacioId`**, si la oferta exige \
+					espacio el servidor elige el primer box apto y libre, que **puede no ser el \
+					actual**; si la oferta no lo exige, la clase queda sin box. Para conservar el \
+					box actual, manda su `espacioId`.
 
 					Revalida lo mismo que programar, excluyendose a si misma del control de \
 					solapamiento — una clase que se corre media hora chocaria contra si misma.
@@ -167,7 +177,8 @@ public class ClaseController {
 						request.fin(),
 						request.profesionalId(),
 						request.capacidad(),
-						request.version()))));
+						request.version(),
+						request.espacioId()))));
 	}
 
 	@PostMapping("/{claseId}/cancelacion")

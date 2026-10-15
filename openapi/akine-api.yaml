@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.102.0
+  version: 0.104.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -3146,6 +3146,8 @@ paths:
 
         **El servidor revalida todo**: que la oferta sea grupal y siga vigente ese dia, que el profesional siga habilitado y atendiendo en ese horario, que el cupo pedido entre en la oferta y en el box, y que **ni el profesional ni el espacio tengan un turno o una clase que se cruce**.
 
+        **El box** lo elige quien programa con `espacioId`; si no lo manda y la oferta exige espacio, lo elige el servidor (el primer box apto y libre).
+
         Esa ultima revalidacion es el punto de la etapa. Una clase y un turno **se disputan la misma fila de bloqueo de la sede**, asi que dos escrituras concurrentes se serializan y una sola gana: no se puede reservar un turno encima de una clase.
       operationId: programar
       parameters:
@@ -4506,7 +4508,9 @@ paths:
   /api/v1/consultorios/{consultorioId}/clases/{claseId}/reprogramacion:
     post:
       description: |-
-        Mueve horario, profesional, espacio o capacidad. **Conserva la clase y sus participantes**: es la misma fila, con el mismo id, y las inscripciones cuelgan de el (CA-M28-005-06).
+        Cambia horario, profesional, capacidad y, si se indica `espacioId`, el box. **Conserva la clase y sus participantes**: es la misma fila, con el mismo id, y las inscripciones cuelgan de el (CA-M28-005-06).
+
+        **El box:** con `espacioId` se valida ese box (activo, de la sede, habilitado para la oferta y libre en la franja). **Sin `espacioId`**, si la oferta exige espacio el servidor elige el primer box apto y libre, que **puede no ser el actual**; si la oferta no lo exige, la clase queda sin box. Para conservar el box actual, manda su `espacioId`.
 
         Revalida lo mismo que programar, excluyendose a si misma del control de solapamiento — una clase que se corre media hora chocaria contra si misma.
 
@@ -23395,6 +23399,11 @@ components:
           type: integer
           format: int64
           example: 8
+        espacioNombre:
+          type: string
+          description: "Nombre del box, leido al responder. Ausente si la clase no\
+            \ tiene box o ya no se puede resolver."
+          example: Salon 1
         estado:
           type: string
           description: PROGRAMADA o CANCELADA
@@ -23425,10 +23434,20 @@ components:
           type: integer
           format: int64
           example: 45
+        ofertaNombre:
+          type: string
+          description: "Nombre comercial de la oferta, leido al responder. Ausente\
+            \ si la oferta ya no se puede resolver."
+          example: Pilates reformer
         profesionalId:
           type: integer
           format: int64
           example: 31
+        profesionalNombre:
+          type: string
+          description: "Nombre del profesional o instructor, leido al responder. Ausente\
+            \ si la clase no tiene profesional o su vinculo ya no se puede resolver."
+          example: Laura Gomez
         titulo:
           type: string
           example: Pilates - grupo avanzado
@@ -31840,6 +31859,18 @@ components:
             \ de capacidad 1 es un turno individual mal rotulado."
           example: 8
           minimum: 2
+        espacioId:
+          type: integer
+          format: int64
+          description: "Box elegido. **Opcional**: sin el, el servidor elige el primer\
+            \ box apto y libre (solo si la oferta exige espacio). Con el, se valida\
+            \ ese y solo ese: activo, de esta sede, en servicio toda la franja, habilitado\
+            \ para la oferta y libre de turnos y de otras clases. No se cae a otro\
+            \ box: si no sirve es 409 `slot-no-disponible`, y si esta ocupado 409\
+            \ `recurso-ocupado` con `recurso = espacio`. Se admite aunque la oferta\
+            \ no exija espacio."
+          example: 8
+          exclusiveMinimum: 0
         fin:
           type: string
           format: date-time
@@ -32898,6 +32929,15 @@ components:
             ya confirmados** (RF-M12-012).
           example: 10
           minimum: 2
+        espacioId:
+          type: integer
+          format: int64
+          description: "Box elegido. **Opcional**, pero sin el el servidor vuelve\
+            \ a elegir el primer box apto y libre, que **puede no ser el actual**:\
+            \ para conservar el box, manda el `espacioId` que tiene la clase. Con\
+            \ el, se valida igual que al programar."
+          example: 8
+          exclusiveMinimum: 0
         fin:
           type: string
           format: date-time

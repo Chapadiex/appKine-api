@@ -113,6 +113,7 @@ public class AsistenciaService {
 	private final ClaseProgramadaRepositoryPort clases;
 	private final ClaseEventoRepositoryPort eventosDeClase;
 	private final CapacidadDeClase capacidad;
+	private final ProyeccionDeClase proyeccion;
 	private final PacienteDirectory personas;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
@@ -136,6 +137,7 @@ public class AsistenciaService {
 			ClaseProgramadaRepositoryPort clases,
 			ClaseEventoRepositoryPort eventosDeClase,
 			CapacidadDeClase capacidad,
+			ProyeccionDeClase proyeccion,
 			PacienteDirectory personas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
@@ -149,6 +151,7 @@ public class AsistenciaService {
 		this.clases = clases;
 		this.eventosDeClase = eventosDeClase;
 		this.capacidad = capacidad;
+		this.proyeccion = proyeccion;
 		this.personas = personas;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
@@ -685,11 +688,9 @@ public class AsistenciaService {
 		}
 	}
 
+	/** La misma proyeccion que {@code ClaseService}: el schema Clase sale igual de los dos. */
 	private ClaseView vista(long organizationId, long consultorioId, ClaseProgramada clase) {
-		return ClaseView.de(
-				clase,
-				capacidad.efectiva(organizationId, consultorioId, clase),
-				clase.getCupoOcupado());
+		return proyeccion.de(organizationId, consultorioId, clase);
 	}
 
 	private CuposView cupos(long organizationId, long consultorioId, long claseId) {

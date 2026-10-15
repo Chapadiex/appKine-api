@@ -91,6 +91,7 @@ class AsistenciaServiceTest {
 	@Mock private ClaseProgramadaRepositoryPort clases;
 	@Mock private ClaseEventoRepositoryPort eventosDeClase;
 	@Mock private CapacidadDeClase capacidad;
+	@Mock private ProyeccionDeClase proyeccion;
 	@Mock private PacienteDirectory personas;
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
@@ -103,13 +104,17 @@ class AsistenciaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AsistenciaService(asistencias, eventos, inscripciones, clases, eventosDeClase,
-				capacidad, personas, consultorios, permissionGuard, auditTrail, consumoDePases,
+				capacidad, proyeccion, personas, consultorios, permissionGuard, auditTrail, consumoDePases,
 				transactionManager);
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
 		given(clases.findByIdInScope(ORG_ID, SEDE_ID, CLASE_ID))
 				.willReturn(Optional.of(clase(EstadoClase.EN_CURSO, 8, 6)));
 		given(capacidad.efectiva(anyLong(), anyLong(), any())).willReturn(8);
+		given(proyeccion.de(anyLong(), anyLong(), any(ClaseProgramada.class))).willAnswer(llamada -> {
+			ClaseProgramada clase = llamada.getArgument(2);
+			return ClaseView.de(clase, 8, clase.getCupoOcupado(), "Pilates", null, null);
+		});
 		given(inscripciones.contarEnEspera(ORG_ID, CLASE_ID)).willReturn(0);
 		given(inscripciones.findByIdInScope(ORG_ID, CLASE_ID, INSCRIPCION_ID))
 				.willReturn(Optional.of(reservada(INSCRIPCION_ID)));
