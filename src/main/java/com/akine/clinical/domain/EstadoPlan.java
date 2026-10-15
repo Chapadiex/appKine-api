@@ -62,9 +62,4 @@ public enum EstadoPlan {
 	public boolean admiteCambios() {
 		return this != FINALIZADO;
 	}
-
-	/** {@code true} si una modificacion de contenido tiene que crear una version nueva. */
-	public boolean exigeVersionar() {
-		return this == ACTIVO || this == SUSPENDIDO;
-	}
 }

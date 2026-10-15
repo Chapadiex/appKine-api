@@ -148,11 +148,6 @@ public class HistoriaClinica extends MarcaTemporal {
 		return active && deletedAt == null;
 	}
 
-	/** {@code true} si la historia pertenece a esa organizacion. Cross-tenant se trata como inexistente. */
-	public boolean perteneceA(long organizationId) {
-		return this.organizationId != null && this.organizationId == organizationId;
-	}
-
 	private static <T> T exigirNoNulo(T valor, String mensaje) {
 		if (valor == null) {
 			throw new IllegalArgumentException(mensaje);
