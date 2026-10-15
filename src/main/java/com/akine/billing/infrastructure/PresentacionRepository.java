@@ -109,6 +109,11 @@ public interface PresentacionRepository
 	 * Sin filtrar por sede a proposito, igual que {@link #existeFactura}: la relacion comercial con
 	 * el financiador es de la organizacion. La sirve {@code ix_presentacion_cuenta_corriente} de
 	 * V56, que tampoco lleva la sede.
+	 *
+	 * <p><b>El lote anulado se excluye por estado, no por {@code deleted_at}.</b> Anular un borrador
+	 * no es una baja logica: V56 lo declara "estado ANULADA con motivo", la fila no se borra y sigue
+	 * en la bandeja de anulados. Filtrar solo por {@code deleted_at} sumaba esos lotes y la pantalla
+	 * mostraba una deuda del financiador que no existe (pre-QA D1, 14/10/2026).
 	 */
 	@Override
 	@Query("""
@@ -118,6 +123,7 @@ public interface PresentacionRepository
 			  FROM Presentacion p
 			 WHERE p.organizationId = :organizationId
 			   AND p.financiadorId = :financiadorId
+			   AND p.estado <> com.akine.billing.domain.EstadoPresentacion.ANULADA
 			   AND p.deletedAt IS NULL
 			""")
 	TotalesDeCuentaCorriente sumarCuentaCorriente(

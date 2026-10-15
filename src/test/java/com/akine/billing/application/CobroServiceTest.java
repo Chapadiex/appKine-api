@@ -339,6 +339,25 @@ class CobroServiceTest {
 		}
 
 		@Test
+		@DisplayName("el perdedor del doble click que se queda sin saldo devuelve el cobro del ganador (pre-QA D2)")
+		void el_perdedor_del_doble_click_devuelve_el_cobro_del_ganador() {
+			// La primera busqueda no ve nada —el ganador no commiteo—, el descuento afecta cero
+			// filas y, despues del rollback, la relectura encuentra el cobro con la misma huella.
+			CobroCommand pedido = cobroSimple("8500.00", CLAVE);
+			given(cobros.findByIdempotencyKey(ORG, CLAVE))
+					.willReturn(Optional.empty(), Optional.of(cobroYaRegistrado(pedido)));
+			given(obligaciones.findByIdInScope(ORG, SEDE, OBLIGACION))
+					.willReturn(Optional.of(deuda(OBLIGACION, PERSONA, "8500.00", MONEDA)));
+			given(cobros.descontarSaldo(ORG, OBLIGACION, new BigDecimal("8500.00"))).willReturn(0);
+
+			CobroView vista = service.registrar(administrativo, SEDE, pedido);
+
+			assertThat(vista.id()).isEqualTo(COBRO);
+			verify(numerador, never()).siguiente(anyLong(), anyLong());
+			verify(cobros, never()).save(any());
+		}
+
+		@Test
 		@DisplayName("sin clave de idempotencia no se consulta el indice y el cobro no guarda huella")
 		void sin_clave_no_hay_consulta() {
 			given(obligaciones.findByIdInScope(ORG, SEDE, OBLIGACION))
