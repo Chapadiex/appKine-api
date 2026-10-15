@@ -877,9 +877,13 @@ día con una oferta y con seis, un turno por oferta.
 
 | Lectura | Antes: 1 oferta → 6 ofertas | Después: 1 oferta → 6 ofertas |
 |---|---:|---:|
-| recepción del día (`RecepcionService.delDia`) | 10 → **20** | DESPUES_RECEPCION |
-| agenda unificada (`AgendaUnificadaService.delDia`) | 6 → 6 | DESPUES_AGENDA |
+| recepción del día (`RecepcionService.delDia`) | 10 → **20** | **10 → 10** |
+| agenda unificada (`AgendaUnificadaService.delDia`) | 6 → 6 | 6 → 6 |
 
 El arreglo: `RecepcionService` pide las ofertas del lote con `findTodas` y `PrepagoDeRecepcion`
 pide los precios con `OfertaDirectory.preciosDe`, nuevo, en una consulta para todas. Sin cambio de
 contrato ni migración.
+
+Medido en el CI de #134 (la suite completa: 3.949 unitarias y 853 de integración, 0 fallos). Con una
+sola oferta la cuenta no cambia —una consulta por lista reemplaza a una por oferta—; con seis, la
+recepción hace las mismas diez sentencias que con una.
