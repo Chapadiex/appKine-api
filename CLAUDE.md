@@ -415,7 +415,9 @@ contra la fecha de la sede); el mismo patrón en la pantalla de agenda lo corrig
   traban todo (89,8 % de errores). Además: el cobro serializa en `comprobante_numerador` (~330 ms
   de espera de lock), un fallo de base en la autenticación responde 401, N+1 en la agenda del día y
   un primer arranque más largo que el `start-period` del healthcheck. **Ninguno corregido en
-  `main` al 11/10.**
+  `main` al 11/10.** *(15/10: corregidos todos salvo el SLO de escrituras —traba del pool, 401 y
+  `start-period` en #91, IP de la sesión en #93, el N+1 que quedaba en la recepción del día en
+  `akine-g10-sobrantes`—; ver `docs/carga.md` §8 a §11.)*
 - **G-6: `mysql-connector-j` 9.7.0 tiene cuatro CVE sin versión corregida** en Maven Central
   (CVE-2026-60586, 7,7, la más alta). Excepción temporal **hasta el 09/11/2026** en
   `dependency-check-suppressions.xml`: esperar la corrección o bajar a 9.6.0. Los overrides de
@@ -423,8 +425,8 @@ contra la fecha de la sede); el mismo patrón en la pantalla de agenda lo corrig
   mayores.
 - **G-6: cuatro módulos críticos debajo de 0,90 de línea** —`billing` 87,56 %, `person` 86,54 %,
   `scheduling` 86,47 %, `clinical` 82,56 %—, todos por la capa REST, que los ITs no ejercitan.
-- **#82:** `AuthSessionController` sigue guardando `getRemoteAddr()` como IP de la sesión: detrás
-  del nginx registra la del proxy.
+- ~~**#82:** `AuthSessionController` sigue guardando `getRemoteAddr()` como IP de la sesión: detrás
+  del nginx registra la del proxy.~~ Corregido en #93 con `platform.spi.security.IpDeCliente`.
 - **G-12:** la guía está; **el QA manual del §6 sigue sin correr desde 02.02**.
 
 ### Estado al 07/10/2026, sobre `8fe1fae` (histórico)
@@ -946,7 +948,7 @@ Pendientes que arrastra el backend:
 
 - [x] ~~Protección de rama en `main`~~ — hecha: checks obligatorios "Build, test y contrato" e "Imagen Docker y SBOM", y `main` es la rama por defecto (API de GitHub, 11/10)
 - [ ] Activar SonarQube: el job `sonar` del CI ya corre y se saltea limpio; falta cargar `SONAR_TOKEN` y `SONAR_HOST_URL` (G-6, `docs/calidad.md` §3)
-- [ ] Corregir los hallazgos de G-10 (`docs/carga.md` §6): traba del pool por `REQUIRES_NEW` anidado, lock de `comprobante_numerador`, 401 ante fallo de base, N+1 de la agenda del día y `start-period` del healthcheck
+- [x] ~~Corregir los hallazgos de G-10 (`docs/carga.md` §6)~~ — traba del pool, 401, `start-period` (#91), N+1 de la agenda y de la recepción del día (#91 y `akine-g10-sobrantes`, §11). Sigue abierto sólo el SLO de escrituras a 500 usuarios (§10, decisión del usuario)
 - [ ] Tests de controller para `billing`, `person`, `scheduling` y `clinical`, los cuatro módulos críticos debajo de 0,90
 - [ ] Revisar los cuatro PR de Dependabot abiertos el 11/10 (#87–#90; uno propone Temurin 25 en la imagen, que es un salto de Java)
 - [x] ~~Observabilidad: logging JSON, Prometheus, OpenTelemetry~~ — G-4, `docs/observabilidad.md`

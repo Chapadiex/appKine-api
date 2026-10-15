@@ -30,6 +30,7 @@ import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -128,7 +129,7 @@ public class DerivacionClinicaService {
 
 		OperatingActor actor = traducir(actorExterno);
 		AccesoClinico acceso = AutorizacionClinica.exigir(
-				permissionGuard, relaciones, actor, PermissionCodes.HC_READ, personaId,
+				permissionGuard, relaciones, supportAccessAuditor, actor, PermissionCodes.HC_READ, personaId,
 				actorExterno.justificacion(), "Consultar derivaciones de una participacion");
 
 		long organizationId = actor.contextOrganizationId();
@@ -173,7 +174,7 @@ public class DerivacionClinicaService {
 
 		OperatingActor actor = traducir(actorExterno);
 		AccesoClinico acceso = AutorizacionClinica.exigir(
-				permissionGuard, relaciones, actor, PermissionCodes.HC_WRITE,
+				permissionGuard, relaciones, supportAccessAuditor, actor, PermissionCodes.HC_WRITE,
 				participacion.personaId(), actorExterno.justificacion(),
 				"Derivar participante al circuito clinico");
 
@@ -234,15 +235,23 @@ public class DerivacionClinicaService {
 		try {
 			guardada = derivaciones.saveAndFlush(derivacion);
 		} catch (DataIntegrityViolationException choque) {
-			// Segunda capa: otro request gano la carrera entre el pre-chequeo y este INSERT. Es la
-			// ventana que ningun SELECT previo cierra, y por eso las dos capas hacen falta.
-			log.info("Derivacion concurrente resuelta por el unique: participacionId={} casoId={}",
+			// Segunda capa: otro request gano la carrera entre el pre-chequeo y este INSERT. NO se
+			// relee aca: la excepcion ya dejo la sesion de Hibernate rota —la entidad quedo con id
+			// nulo y cualquier flush posterior falla con AssertionFailure— y la transaccion marcada
+			// para rollback, asi que "devolver la del ganador" terminaba en 500
+			// (DerivacionConcurrenteIT). El que llega por la ruta de clases no deberia ver nunca
+			// esto: activity serializa sobre la asistencia antes de llamar. Si igual pasa, 409
+			// concurrent-modification, que es honesto: reintentar encuentra la existente. Cualquier
+			// otra violacion (una FK, un CHECK) sigue su camino: no es una carrera.
+			if (!String.valueOf(choque.getMostSpecificCause().getMessage())
+					.contains("uk_derivacion_destino")) {
+				throw choque;
+			}
+			log.info("Derivacion concurrente detectada por el unique: participacionId={} casoId={}",
 					participacion.participacionId(), caso.getId());
-			return derivaciones.findVigenteAlCaso(
-							organizationId, participacion.origen(),
-							participacion.participacionId(), caso.getId())
-					.map(fila -> proyectar(fila, true))
-					.orElseThrow(() -> choque);
+			throw new OptimisticLockingFailureException(
+					"Otra derivacion del mismo participante al mismo caso se registro a la vez",
+					choque);
 		}
 
 		auditTrail.record(entrada(
@@ -269,7 +278,7 @@ public class DerivacionClinicaService {
 		// preguntar por la relacion asistencial. Un 404 por tenant ya salio arriba, asi que nadie
 		// llega aca con una derivacion ajena.
 		AccesoClinico acceso = AutorizacionClinica.exigir(
-				permissionGuard, relaciones, actor, PermissionCodes.HC_WRITE,
+				permissionGuard, relaciones, supportAccessAuditor, actor, PermissionCodes.HC_WRITE,
 				derivacion.getPersonaId(), reversion.actor().justificacion(),
 				"Revertir una derivacion clinica");
 

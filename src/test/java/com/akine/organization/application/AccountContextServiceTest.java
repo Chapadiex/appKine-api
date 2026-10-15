@@ -38,6 +38,7 @@ import static com.akine.organization.application.Fixtures.PLAN_BASICO_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -353,7 +354,7 @@ class AccountContextServiceTest {
 				accountContextService.selectContext(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID);
 
 		assertThat(contexto).isEqualTo(new ActiveContext(ORG_ID, CONSULTORIO_ID));
-		verify(activeContextRepository).save(any(AccountActiveContext.class));
+		verify(activeContextRepository).apuntar(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID);
 
 		ArgumentCaptor<AuditEntry> entrada = ArgumentCaptor.forClass(AuditEntry.class);
 		verify(auditTrail).record(entrada.capture());
@@ -415,7 +416,7 @@ class AccountContextServiceTest {
 				accountContextService.selectContext(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 				.isInstanceOf(ContextNotAuthorizedException.class);
 
-		verify(activeContextRepository, never()).save(any());
+		verify(activeContextRepository, never()).apuntar(anyLong(), anyLong(), anyLong());
 		verifyNoInteractions(auditTrail);
 	}
 

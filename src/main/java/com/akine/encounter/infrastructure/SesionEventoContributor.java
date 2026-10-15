@@ -47,6 +47,12 @@ public class SesionEventoContributor implements EventoClinicoContributor {
 	/** Como se identifica esta fuente en el orden total del timeline y en el cursor. */
 	static final String ORIGEN = "SESION";
 
+	/** Todos los eventos de esta fuente tienen el mismo origen: el filtro la saltea entera. */
+	@Override
+	public String origen() {
+		return ORIGEN;
+	}
+
 	/** Unico tipo que este contribuyente emite: no hay otro estado que sea un hecho clinico. */
 	static final String TIPO_SESION_CERRADA = "SESION_CERRADA";
 

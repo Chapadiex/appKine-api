@@ -697,8 +697,14 @@ class PlanTratamientoServiceTest {
 			given(autorizaciones.find(any(Long.class), any(Long.class), any(Long.class), any()))
 					.willReturn(Optional.of(autorizacion(true, null)));
 
-			service.vincularAutorizacion(profesional, PLAN_ID,
+			PlanTratamientoView vista = service.vincularAutorizacion(profesional, PLAN_ID,
 					new VincularAutorizacionCommand(301L, AUTORIZACION_ID, 0L), "Control");
+
+			// 0.107.0: la vista trae la vigencia de la autorizacion, leida de M17 en vivo.
+			assertThat(vista.versionVigente().items()).singleElement().satisfies(vinculado -> {
+				assertThat(vinculado.autorizacionVigenciaDesde()).isEqualTo(LocalDate.of(2026, 1, 1));
+				assertThat(vinculado.autorizacionVigenciaHasta()).isNull();
+			});
 
 			ArgumentCaptor<List<PlanItem>> guardados = ArgumentCaptor.forClass(List.class);
 			verify(items).saveAll(guardados.capture());
@@ -708,7 +714,8 @@ class PlanTratamientoServiceTest {
 					.as("lo que vale es lo que concedio el financiador, no lo declarado (10)")
 					.isEqualTo(12);
 			// La autorizacion se busca para la persona DEL PLAN: plan -> caso -> historia.
-			verify(autorizaciones).find(any(Long.class), org.mockito.ArgumentMatchers.eq(PERSONA_ID),
+			verify(autorizaciones, org.mockito.Mockito.atLeastOnce()).find(any(Long.class),
+					org.mockito.ArgumentMatchers.eq(PERSONA_ID),
 					org.mockito.ArgumentMatchers.eq(AUTORIZACION_ID), any());
 			verify(versiones, never()).saveAndFlush(any());
 			verify(eventos, never()).save(any());

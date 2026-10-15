@@ -581,6 +581,19 @@ public enum ProblemType {
 	 */
 	ENMIENDA_SIN_MOTIVO("enmienda-sin-motivo"),
 	/**
+	 * El acceso clinico exige declarar un motivo y el pedido no lo trajo (403). DP-03.
+	 *
+	 * <p>Quien opera <b>si</b> tiene {@code hc:read} o {@code hc:write}: lo que falta es relacion
+	 * asistencial con el paciente o un motivo en la cabecera {@code X-Justificacion-Acceso}. Es un
+	 * {@code type} propio y no {@link #FORBIDDEN} porque el remedio es el opuesto: con
+	 * {@code forbidden} no hay nada que el usuario pueda hacer salvo pedir un permiso; con este, la
+	 * pantalla pide el motivo y reintenta el mismo pedido. Antes del contrato 0.107.0 viajaba como
+	 * {@code forbidden} con la extension {@code requiereJustificacion}, que se sigue enviando para
+	 * no romper a quien la lea. 403 y nunca 401: el interceptor del frontend borra el token ante
+	 * un 401.
+	 */
+	JUSTIFICACION_DE_ACCESO_REQUERIDA("justificacion-de-acceso-requerida"),
+	/**
 	 * El adjunto clinico no existe, es de otro tenant, o es de otra historia (404).
 	 *
 	 * <p>Mismo criterio y mismo motivo que {@link #ENTRADA_CLINICA_NO_ACCESIBLE}. Tambien lo

@@ -19,4 +19,14 @@ public interface AccountActiveContextRepositoryPort {
 	AccountActiveContext save(AccountActiveContext context);
 
 	Optional<AccountActiveContext> findByAccountId(Long accountId);
+
+	/**
+	 * Crea o reapunta el puntero de la cuenta en una sola sentencia.
+	 *
+	 * <p>Leer y despues crear deja una carrera: dos selecciones simultaneas de una cuenta sin
+	 * puntero insertan las dos y la segunda choca contra {@code uk_active_context_account}, con
+	 * 500 en el request que iba a entregar el token. La sentencia unica no tiene ventana: el
+	 * segundo espera el lock de la fila y la reapunta.
+	 */
+	void apuntar(long accountId, long organizationId, long consultorioId);
 }

@@ -42,6 +42,12 @@ public record CasoClinicoResponse(
 				+ "organizacion", example = "7")
 		long ofertaConsultorioId,
 
+		@Schema(description = "Nombre comercial de la oferta, resuelto al leer contra su sede "
+				+ "(0.107.0). No se guarda en el caso: si la oferta se renombra, el caso muestra el "
+				+ "nombre nuevo. Ausente si la oferta ya no resuelve; ahi la pantalla muestra el id",
+				example = "Kinesiologia traumatologica")
+		String ofertaNombre,
+
 		@Schema(description = "Lo que se esta tratando. Es contenido clinico",
 				example = "Gonalgia derecha post-artroscopia")
 		String diagnosticoPresuntivo,
@@ -85,6 +91,7 @@ public record CasoClinicoResponse(
 				view.numeroCaso(),
 				view.ofertaId(),
 				view.ofertaConsultorioId(),
+				view.ofertaNombre(),
 				view.diagnosticoPresuntivo(),
 				view.objetivoTerapeutico(),
 				view.estado(),

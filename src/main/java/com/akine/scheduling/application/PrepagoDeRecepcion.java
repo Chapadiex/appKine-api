@@ -57,7 +57,8 @@ public class PrepagoDeRecepcion {
 	/**
 	 * El prepago de CADA turno de un lote, por id de turno, haya llegado el paciente o no (E-6 para
 	 * los que tienen recepcion, E-8 para los que todavia no). Una consulta a billing para todo el
-	 * lote y una por oferta distinta, no una por turno.
+	 * lote y una para los precios de todas sus ofertas: ni una por turno ni una por oferta distinta
+	 * (docs/carga.md §6.4).
 	 *
 	 * <p>Para un turno con recepcion vigente el resultado es exactamente el de
 	 * {@link #calcular(Optional, Recepcion, PrepagoDeTurno)}: la agenda del dia y
@@ -72,11 +73,11 @@ public class PrepagoDeRecepcion {
 		}
 		Map<Long, PrepagoDeTurno> registrados = prepagos.prepagosDe(
 				organizationId, turnos.stream().map(Turno::getId).toList());
-		Map<Long, Optional<PrecioDeOferta>> precios = new HashMap<>();
+		Map<Long, PrecioDeOferta> precios = ofertas.preciosDe(organizationId, consultorioId,
+				turnos.stream().map(Turno::getOfertaId).distinct().toList());
 		Map<Long, PrepagoView> resultado = new HashMap<>();
 		for (Turno turno : turnos) {
-			Optional<PrecioDeOferta> precio = precios.computeIfAbsent(turno.getOfertaId(),
-					ofertaId -> ofertas.precioDe(organizationId, consultorioId, ofertaId));
+			Optional<PrecioDeOferta> precio = Optional.ofNullable(precios.get(turno.getOfertaId()));
 			Recepcion recepcion = recepcionDe.get(turno.getId());
 			PrepagoDeTurno registrado = registrados.get(turno.getId());
 			resultado.put(turno.getId(), recepcion != null

@@ -27,6 +27,12 @@ public class AdjuntoClinicoContributor implements EventoClinicoContributor {
 	/** Como se identifica esta fuente en el orden total del timeline y en el cursor. */
 	static final String ORIGEN = "ADJUNTO_CLINICO";
 
+	/** Todos los eventos de esta fuente tienen el mismo origen: el filtro la saltea entera. */
+	@Override
+	public String origen() {
+		return ORIGEN;
+	}
+
 	private final AdjuntoClinicoRepositoryPort adjuntos;
 
 	public AdjuntoClinicoContributor(AdjuntoClinicoRepositoryPort adjuntos) {

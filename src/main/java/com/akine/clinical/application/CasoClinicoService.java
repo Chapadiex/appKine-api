@@ -104,6 +104,7 @@ public class CasoClinicoService {
 	private final TransactionTemplate transaccionReadCommitted;
 	private final ConsultorioDirectory consultorios;
 	private final Clock clock;
+	private final NombresDeProfesionales nombres;
 
 	@Autowired
 	@SuppressWarnings("checkstyle:ParameterNumber")
@@ -120,11 +121,12 @@ public class CasoClinicoService {
 			AuditTrail auditTrail,
 			ClinicalSupportAccessAuditor supportAccessAuditor,
 			PlatformTransactionManager transactionManager,
-			ConsultorioDirectory consultorios) {
+			ConsultorioDirectory consultorios,
+			NombresDeProfesionales nombres) {
 
 		this(historias, casos, equipos, eventos, numerador, numeradorIniciador, ofertas,
 				permissionGuard, relaciones, auditTrail, supportAccessAuditor, transactionManager,
-				consultorios, Clock.systemUTC());
+				consultorios, nombres, Clock.systemUTC());
 	}
 
 	/** Con reloj propio: "hoy" es el de la sede, y un test necesita fijar la hora. */
@@ -143,9 +145,11 @@ public class CasoClinicoService {
 			ClinicalSupportAccessAuditor supportAccessAuditor,
 			PlatformTransactionManager transactionManager,
 			ConsultorioDirectory consultorios,
+			NombresDeProfesionales nombres,
 			Clock clock) {
 
 		this.consultorios = consultorios;
+		this.nombres = nombres;
 		this.clock = clock;
 		this.historias = historias;
 		this.casos = casos;
@@ -206,7 +210,7 @@ public class CasoClinicoService {
 
 		HistoriaClinica historia = exigirHistoria(organizationId, command.historiaClinicaId());
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_WRITE, historia.getPersonaId(), justificacion,
 				"Abrir caso clinico");
 
@@ -257,8 +261,7 @@ public class CasoClinicoService {
 
 		log.info("Caso clinico abierto: casoId={} historiaClinicaId={} numeroCaso={}",
 				caso.getId(), historia.getId(), numero);
-		return CasoClinicoView.de(caso,
-				equipo.stream().map(CasoProfesionalView::de).toList());
+		return vista(caso, equipo.stream().map(CasoProfesionalView::de).toList());
 	}
 
 	// =================================================================================
@@ -305,7 +308,7 @@ public class CasoClinicoService {
 						String.valueOf(guardado.getHistoriaClinicaId())), ahora);
 		registrarSoporte(acceso, actor, guardado, "Editar caso clinico", ahora);
 
-		return CasoClinicoView.de(guardado, equipoVigenteDe(guardado));
+		return vista(guardado, equipoVigenteDe(guardado));
 	}
 
 	// =================================================================================
@@ -341,7 +344,7 @@ public class CasoClinicoService {
 		Instant ahora = Instant.now();
 		if (!caso.estaActivo()) {
 			log.debug("Caso clinico ya cerrado: casoId={}", casoClinicoId);
-			return CasoClinicoView.de(caso, equipoVigenteDe(caso));
+			return vista(caso, equipoVigenteDe(caso));
 		}
 		exigirVersion(caso, expectedVersion);
 
@@ -357,7 +360,7 @@ public class CasoClinicoService {
 		registrarSoporte(acceso, actor, guardado, "Cerrar caso clinico", ahora);
 
 		log.info("Caso clinico cerrado: casoId={}", guardado.getId());
-		return CasoClinicoView.de(guardado, equipoVigenteDe(guardado));
+		return vista(guardado, equipoVigenteDe(guardado));
 	}
 
 	/**
@@ -386,7 +389,7 @@ public class CasoClinicoService {
 		Instant ahora = Instant.now();
 		if (caso.estaActivo()) {
 			log.debug("Caso clinico ya activo: casoId={}", casoClinicoId);
-			return CasoClinicoView.de(caso, equipoVigenteDe(caso));
+			return vista(caso, equipoVigenteDe(caso));
 		}
 		exigirVersion(caso, expectedVersion);
 
@@ -402,7 +405,7 @@ public class CasoClinicoService {
 		registrarSoporte(acceso, actor, guardado, "Reabrir caso clinico", ahora);
 
 		log.info("Caso clinico reabierto: casoId={}", guardado.getId());
-		return CasoClinicoView.de(guardado, equipoVigenteDe(guardado));
+		return vista(guardado, equipoVigenteDe(guardado));
 	}
 
 	// =================================================================================
@@ -503,7 +506,7 @@ public class CasoClinicoService {
 		registrarSoporte(acceso, actor, caso, "Cambiar el equipo de un caso clinico", ahora);
 
 		// La version de la entidad sigue en la leida: el UPDATE condicionado no la toca.
-		return CasoClinicoView.de(caso, equipoVigenteDe(caso)).conVersion(expectedVersion + 1);
+		return vista(caso, equipoVigenteDe(caso)).conVersion(expectedVersion + 1);
 	}
 
 	// =================================================================================
@@ -522,7 +525,7 @@ public class CasoClinicoService {
 		auditarLectura(actor, acceso, caso, "CASO", ahora);
 		registrarSoporte(acceso, actor, caso, "Ver caso clinico", ahora);
 
-		return CasoClinicoView.de(caso, equipoVigenteDe(caso));
+		return vista(caso, equipoVigenteDe(caso));
 	}
 
 	/**
@@ -542,7 +545,7 @@ public class CasoClinicoService {
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_READ, historia.getPersonaId(), justificacion,
 				"Listar casos clinicos");
 
@@ -555,7 +558,7 @@ public class CasoClinicoService {
 				ahora));
 
 		return casos.buscarDeHistoria(organizationId, historia.getId(), soloActivos).stream()
-				.map(caso -> CasoClinicoView.de(caso, equipoVigenteDe(caso)))
+				.map(caso -> vista(caso, equipoVigenteDe(caso)))
 				.toList();
 	}
 
@@ -646,7 +649,7 @@ public class CasoClinicoService {
 				.filter(HistoriaClinica::isVigente)
 				.orElseThrow(() -> new CasoClinicoNotAccessibleException(caso.getId()));
 
-		return AutorizacionClinica.exigir(permissionGuard, relaciones, actor, permissionCode,
+		return AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor, permissionCode,
 				historia.getPersonaId(), justificacion, operacion);
 	}
 
@@ -676,6 +679,26 @@ public class CasoClinicoService {
 						integrante.rol(),
 						ahora))
 				.toList());
+	}
+
+	/**
+	 * La vista del caso con los nombres resueltos al leer (0.107.0, pedido de appKine-web #83): el
+	 * de la oferta, contra la sede de la OFERTA y no la del actor, y el de cada integrante, por su
+	 * membership en la organizacion. Tres consultas por caso, nunca una por integrante. Lo que no
+	 * resuelve viaja ausente y la pantalla muestra el id.
+	 */
+	private CasoClinicoView vista(CasoClinico caso, List<CasoProfesionalView> equipo) {
+		Map<Long, String> nombresDelEquipo = nombres.de(caso.getOrganizationId(),
+				equipo.stream().map(CasoProfesionalView::profesionalMembershipId).toList());
+		String ofertaNombre = ofertas
+				.find(caso.getOrganizationId(), caso.getOfertaConsultorioId(), caso.getOfertaId())
+				.map(OfertaSnapshot::nombreComercial)
+				.orElse(null);
+		return CasoClinicoView.de(caso,
+				equipo.stream()
+						.map(p -> p.conNombre(nombresDelEquipo.get(p.profesionalMembershipId())))
+						.toList(),
+				ofertaNombre);
 	}
 
 	private List<CasoProfesionalView> equipoVigenteDe(CasoClinico caso) {

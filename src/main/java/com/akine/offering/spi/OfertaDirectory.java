@@ -38,6 +38,13 @@ public interface OfertaDirectory {
 	Optional<PrecioDeOferta> precioDe(long organizationId, long consultorioId, long ofertaId);
 
 	/**
+	 * {@link #precioDe} para varias ofertas de esa sede en UNA consulta, indexado por id. Las que no
+	 * existen o son de otro tenant/sede no aparecen en el mapa. Para listas: la recepcion del dia
+	 * pedia el precio de cada oferta distinta por separado (docs/carga.md §6.4).
+	 */
+	Map<Long, PrecioDeOferta> preciosDe(long organizationId, long consultorioId, Collection<Long> ofertaIds);
+
+	/**
 	 * B-3 (RF-M16-009): lo que cuesta la oferta ESE dia local. El precio particular activo que
 	 * cubre la fecha manda sobre el precio de lista; sin precio particular, es {@link #precioDe}.
 	 *
