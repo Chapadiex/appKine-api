@@ -9,7 +9,7 @@ export async function cfinal() {
 		const s = await S('admin');
 		const nueva = async (practicaId, numero, hasta) => must(await api('POST', `/api/v1/personas/${C.persona}/autorizaciones`, { s, json: { coberturaId: C.cobertura, ordenMedicaId: C.orden, practicaId, numero, cantidadAutorizada: 5, estadoInicial: 'APROBADA', vigenciaDesde: hasta > '2027' ? '2027-01-01' : '2026-01-01', vigenciaHasta: hasta } }), 201, `autorizacion ${numero}`).id;
 		const sup = await api('POST', `/api/v1/personas/${C.persona}/autorizaciones`, { s, json: { coberturaId: C.cobertura, ordenMedicaId: C.orden, practicaId: C.practica, numero: 'AUT-QA-002', cantidadAutorizada: 5, estadoInicial: 'APROBADA', vigenciaDesde: '2026-01-01', vigenciaHasta: hoy(20) } });
-		if (sup.tipo === 'autorizacion-superpuesta') guia('PER-14 pide una segunda autorizacion APROBADA de la misma practica que venza antes que la de PER-10; el producto rechaza dos aprobadas que se pisan (409 autorizacion-superpuesta). Solo conviven consecutivas, asi que el desempate "la que vence antes" no se puede armar con dos vigentes el mismo dia');
+		tipo(sup, 'autorizacion-superpuesta', 'dos aprobadas de la misma practica que se pisan: 409 (solo conviven consecutivas)');
 		const antes = C.autorizacion;
 		const futura = await nueva(C.practica, 'AUT-QA-002b', '2027-06-30').catch(() => null);
 		const otra = await nueva(C.practica2, 'AUT-QA-003', hoy(10));
@@ -39,8 +39,7 @@ export async function cfinal() {
 		ok(f[0]?.active === '0' && f[0].deleted_at && f[0].deactivation_reason && f[0].perfil_activo === '0' && f[0].perfil_baja, 'persona y perfil dados de baja logica', f);
 		const au = auditDesde(d0, 'AND organization_id = @org_a');
 		ok(tiene(au, 'PERSONA_DEACTIVATED', (x) => x.reason), 'PERSONA_DEACTIVATED con el motivo', au);
-		if (!tiene(au, 'PERFIL_PACIENTE_DEACTIVATED') && tiene(au, 'PERSONA_DEACTIVATED', (x) => det(x).perfilPacienteDadoDeBaja)) guia('PER-13 espera PERFIL_PACIENTE_DEACTIVATED aparte; la baja del perfil queda en el mismo PERSONA_DEACTIVATED (details.perfilPacienteDadoDeBaja)');
-		else ok(tiene(au, 'PERFIL_PACIENTE_DEACTIVATED'), 'la baja del perfil queda auditada', au);
+		ok(tiene(au, 'PERSONA_DEACTIVATED', (x) => det(x).perfilPacienteDadoDeBaja), 'la baja del perfil va dentro de PERSONA_DEACTIVATED (details.perfilPacienteDadoDeBaja)', au);
 	});
 	await paso('AGE-05', 'Marcar ausente no libera el lugar', async () => {
 		need(C.turno_ausente);

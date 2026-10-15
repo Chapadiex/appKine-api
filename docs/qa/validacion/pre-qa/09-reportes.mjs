@@ -55,7 +55,7 @@ export async function c09() {
 		const con = must(await api('GET', rep('CLINICO'), { s: a }), 200, 'clinico con el grant hc:read (CLI-08)');
 		nota(`ORG_ADMIN con hc:read: omitidas = [${omit(con)}]`);
 		ok(!omit(con).includes('casos'), 'con el grant, la seccion de casos viene', JSON.stringify(con.omitidas));
-		if (omit(con).includes('sesiones')) guia('REP-04/REP-05 dicen que el ORG_ADMIN con hc:read ve casos y sesiones; la seccion sesiones exige sesion:register, que el ORG_ADMIN no tiene ni puede recibir por grant, asi que sigue omitida');
+		ok(omit(con).includes('sesiones'), 'sesiones sigue omitida para el ORG_ADMIN (exige sesion:register, que no tiene ni puede recibir por grant)', JSON.stringify(con.omitidas));
 		const prof = must(await api('GET', rep('CLINICO'), { s: await S('prof') }), 200, 'clinico del profesional');
 		ok((prof.advertencias ?? []).some((x) => x.codigo === 'alcance-actividad-propia'), 'el profesional ve solo lo suyo, con la advertencia', JSON.stringify(prof.advertencias));
 		const au = auditDesde(d0, "AND organization_id = @org_a AND event_type = 'REPORTE_CONSULTADO'");

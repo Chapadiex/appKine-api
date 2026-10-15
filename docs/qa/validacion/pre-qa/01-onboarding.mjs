@@ -154,7 +154,7 @@ export async function c01() {
 		const sin = q(`SELECT id FROM cuenta WHERE email_normalizado = ${lit(CU.sinact.email)}`);
 		const au = auditDesde(d0, "AND event_type IN ('LOGIN_FALLIDO','LOGIN_RECHAZADO_ESTADO')");
 		ok(tiene(au, 'LOGIN_FALLIDO', (x) => n(x.entity_id) === C.cuenta_admin && x.organization_id === null), 'LOGIN_FALLIDO de admin-a sin organizacion', au);
-		if (!tiene(au, 'LOGIN_FALLIDO', (x) => det(x).intentosFallidos !== undefined)) guia('ON-04 dice que LOGIN_FALLIDO lleva details.intentosFallidos; el codigo lo pone solo en ACTIVIDAD_SOSPECHOSA (LOGIN_FALLIDO trae details.motivo)');
+		ok(tiene(au, 'LOGIN_FALLIDO', (x) => det(x).motivo === 'CREDENCIALES'), 'LOGIN_FALLIDO lleva details.motivo = CREDENCIALES (intentosFallidos va solo en ACTIVIDAD_SOSPECHOSA)', au);
 		ok(tiene(au, 'LOGIN_RECHAZADO_ESTADO', (x) => n(x.entity_id) === n(sin[0]?.id)), 'LOGIN_RECHAZADO_ESTADO para la cuenta sin activar', au);
 	});
 	await paso('ON-05', 'Registrarse con un email que ya existe', async () => {
@@ -211,7 +211,7 @@ export async function c01() {
 		ok(n(rev[0].n) >= 1, 'refresh revocados con RESET_PASSWORD', rev);
 		const ob = await esperarOutbox("destinatario = @email_admin_a AND tipo IN ('RESET_PASSWORD','RECUPERACION_PASSWORD')", 'ENVIADA', 40);
 		ok(ob[0]?.estado === 'ENVIADA', 'notificacion de recuperacion ENVIADA', ob);
-		if (ob[0]?.tipo === 'RECUPERACION_PASSWORD') guia("ON-07 consulta notification_outbox con tipo = 'RESET_PASSWORD'; el tipo real es RECUPERACION_PASSWORD (la consulta de la guia devuelve cero filas)");
+		ok(ob[0]?.tipo === 'RECUPERACION_PASSWORD', 'la notificacion es de tipo RECUPERACION_PASSWORD', ob);
 		const au = auditDesde(d0, "AND event_type IN ('RESET_SOLICITADO','RESET_COMPLETADO')");
 		ok(tiene(au, 'RESET_SOLICITADO') && tiene(au, 'RESET_COMPLETADO'), 'RESET_SOLICITADO y RESET_COMPLETADO', au);
 	});

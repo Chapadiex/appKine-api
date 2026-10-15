@@ -109,8 +109,7 @@ export async function c05() {
 		ok(ts.slice(4).every((x) => x.estado === 'CANCELADO') && ts.slice(0, 4).every((x) => x.estado !== 'CANCELADO'), 'los 5 y 6 cancelados', ts);
 		const bandeja = must(await api('GET', `/api/v1/consultorios/${C.sede_a}/series-de-turnos`, { s: adm }), 200, 'la bandeja de series');
 		const sr = (Array.isArray(bandeja) ? bandeja : bandeja.content ?? []).find((x) => x.id === C.serie);
-		if (sr?.estado === 'VIGENTE') guia('AGE-08 espera la serie CANCELADA en la bandeja despues de cancelar los turnos 5 y 6; con los turnos 1 a 4 todavia pendientes el producto la muestra VIGENTE (EstadoDeSerie: VIGENTE mientras quede un turno pendiente; CANCELADA solo cuando no queda ninguno y el ultimo se cancelo)');
-		else eq(sr?.estado, 'CANCELADA', 'la bandeja muestra la serie CANCELADA (DP-20)');
+		ok(sr?.estado === 'VIGENTE', 'la serie sigue VIGENTE: quedan los turnos 1 a 4 pendientes (CANCELADA solo sin ninguno pendiente)', sr);
 		const au = auditDesde(d0, 'AND organization_id = @org_a');
 		ok(tiene(au, 'TURNO_SERIE_REPROGRAMADA') && tiene(au, 'TURNO_SERIE_CANCELADA'), 'TURNO_SERIE_REPROGRAMADA y TURNO_SERIE_CANCELADA', au);
 	});
