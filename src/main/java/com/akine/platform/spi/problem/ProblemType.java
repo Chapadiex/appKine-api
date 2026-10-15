@@ -1177,6 +1177,17 @@ public enum ProblemType {
 	 */
 	INSCRIPCION_TRANSICION_NO_PERMITIDA("inscripcion-transicion-no-permitida"),
 
+	// --- Productos de pack y pases (M29, AKINE-08.06) ---------------------------------------
+
+	/**
+	 * El producto no se puede vender hoy: esta dado de baja o fuera de su ventana comercial (409).
+	 * Lleva {@code motivo}. Es el caso borde "producto inactivo durante el checkout": se revalida
+	 * dentro de la transaccion de la venta.
+	 */
+	PRODUCTO_NO_VENDIBLE("producto-no-vendible"),
+	/** Ya hay un producto vigente con ese nombre en la sede (409). */
+	PRODUCTO_NOMBRE_EN_USO("producto-nombre-en-uso"),
+
 	// --- Derivacion al circuito clinico (M28/M09/M10/M11, AKINE-08.04) ----------------------
 
 	/**

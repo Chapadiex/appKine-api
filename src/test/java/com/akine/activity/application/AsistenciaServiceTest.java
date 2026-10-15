@@ -97,13 +97,15 @@ class AsistenciaServiceTest {
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private AuditTrail auditTrail;
 	@Mock private PlatformTransactionManager transactionManager;
+	@Mock private ConsumoDePaseService consumoDePases;
 
 	private AsistenciaService service;
 
 	@BeforeEach
 	void setUp() {
 		service = new AsistenciaService(asistencias, eventos, inscripciones, clases, eventosDeClase,
-				capacidad, proyeccion, personas, consultorios, permissionGuard, auditTrail, transactionManager);
+				capacidad, proyeccion, personas, consultorios, permissionGuard, auditTrail, consumoDePases,
+				transactionManager);
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
 		given(clases.findByIdInScope(ORG_ID, SEDE_ID, CLASE_ID))

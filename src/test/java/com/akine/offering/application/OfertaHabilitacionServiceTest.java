@@ -521,7 +521,7 @@ class OfertaHabilitacionServiceTest {
 	private static OfertaServicioConsultorio ofertaCapacidad(int capacidad) {
 		OfertaServicioConsultorio oferta = new OfertaServicioConsultorio(
 				ORG, SEDE, 1L, "Kinesiologia", null, Modalidad.GRUPAL, 45, capacidad,
-				new BigDecimal("18000.00"), "ARS", new EsquemaCobro("SESION_SUELTA"),
+				new BigDecimal("18000.00"), "ARS", new EsquemaCobro("POR_SESION"),
 				false, false, true, true, true,
 				LocalDate.now().minusDays(1), null);
 		ReflectionTestUtils.setField(oferta, "id", OFERTA_ID);

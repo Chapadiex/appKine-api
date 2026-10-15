@@ -25,13 +25,18 @@ public record ResultadoDeAsistenciaResponse(
 		boolean registrada,
 
 		@Schema(description = "true si esta llamada corrigio un hecho previo", example = "false")
-		boolean corregida) {
+		boolean corregida,
+
+		@Schema(description = "Que le hizo este registro al saldo de pases de la persona "
+				+ "(AKINE-08.07). Ausente si el pedido repetia lo ya registrado y no se escribio nada.")
+		ConsumoDeCreditoResponse consumoDeCredito) {
 
 	public static ResultadoDeAsistenciaResponse de(ResultadoDeAsistencia resultado) {
 		return new ResultadoDeAsistenciaResponse(
 				AsistenciaResponse.de(resultado.asistencia()),
 				InscripcionResponse.de(resultado.inscripcion()),
 				resultado.registrada(),
-				resultado.corregida());
+				resultado.corregida(),
+				ConsumoDeCreditoResponse.de(resultado.consumo()));
 	}
 }

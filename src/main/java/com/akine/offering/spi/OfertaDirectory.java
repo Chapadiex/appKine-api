@@ -68,4 +68,11 @@ public interface OfertaDirectory {
 	/** Espacios habilitados para la oferta, con su vigencia. Ver {@link #profesionalesHabilitados}. */
 	List<HabilitacionSnapshot> espaciosHabilitados(
 			long organizationId, long consultorioId, long ofertaId);
+
+	/**
+	 * El esquema economico declarado por la oferta (RN-M27-006). Vacio si la oferta no existe en
+	 * esa sede o no declaro esquema. Lo lee {@code activity} para decidir si una asistencia consume
+	 * credito de un pase (RN-M29-005).
+	 */
+	Optional<EsquemaDeCobro> esquemaDeCobro(long organizationId, long consultorioId, long ofertaId);
 }

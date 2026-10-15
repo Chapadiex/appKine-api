@@ -45,6 +45,17 @@ public interface ObligacionRepository
 	@Query("""
 			SELECT o FROM Obligacion o
 			 WHERE o.organizationId = :organizationId
+			   AND o.paseId = :paseId
+			   AND o.deletedAt IS NULL
+			""")
+	Optional<Obligacion> findDeLaVenta(
+			@Param("organizationId") long organizationId,
+			@Param("paseId") long paseId);
+
+	@Override
+	@Query("""
+			SELECT o FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
 			   AND o.personaId = :personaId
 			   AND o.responsable = com.akine.billing.domain.Responsable.PACIENTE
 			   AND o.deletedAt IS NULL
