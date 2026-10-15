@@ -171,8 +171,8 @@ y `PACIENTE` por 2000 (concepto `COSEGURO`), las dos con el convenio **congelado
 El consumo de la autorización se verifica en [PER-11](04-personas-coberturas-autorizaciones.md).
 
 **Auditoría:** `SESION_CERRADA` (`ABIERTA → CERRADA`, `entity_type = 'Sesion'`),
-`AUTORIZACION_CONSUMIDA`. **El devengo no escribe `audit_event`**: el rastro es la obligación con
-`devengada_en`.
+`AUTORIZACION_CONSUMIDA`. El devengo escribe además `OBLIGACION_DEVENGADA` (desde #86; es lo que ECO-14 espera) y la
+obligación queda con `devengada_en`.
 
 > Cerrar **no cobra** (DP-06): la deuda queda `PENDIENTE` hasta [07](07-obligaciones-cobros-caja.md).
 
@@ -376,8 +376,10 @@ WHERE v.plan_tratamiento_id = @plan_tratamiento ORDER BY v.numero_version;
 ```
 
 Esperado: eventos `CREACION` → `ACTIVACION` → `SUSPENSION` (con motivo) → `REANUDACION`. **Un solo
-plan vivo por caso**: un suspendido ocupa el lugar del activo (defecto 4 del 29/09); crear y activar
-otro mientras éste vive es rechazo. El avance cuenta **por oferta**, no por práctica (conocido).
+plan vivo por caso**: un suspendido ocupa el lugar del activo (defecto 4 del 29/09); activar otro plan
+del caso mientras el activo vive **finaliza al activo solo** (motivo "Finalizado automaticamente al
+activar el plan N del caso"); el rechazo (409, plan vivo en el caso) es solo si el vigente está
+**SUSPENDIDO**: ese se finaliza a mano. El avance cuenta **por oferta**, no por práctica (conocido).
 Modificar el plan (PATCH con motivo) crea la versión 2 y deja la 1.
 
 **Auditoría:** `PLAN_TRATAMIENTO_CREATED`, `_ACTIVATED`, `_SUSPENDED`, `_RESUMED` (y `_AMENDED`,

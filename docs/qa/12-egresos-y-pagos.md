@@ -116,7 +116,8 @@ WHERE m.tipo_origen = 'PAGO_EGRESO' AND p.egreso_id = @egreso_honorarios;
 
 Esperado: `beneficiario_membership_id = @membership_profesional`; estado **`CONFIRMADO`** (no hay
 estado "parcial": el pago parcial se ve en `saldo_pendiente = 2500`); el movimiento `TRANSFERENCIA`
-con `jornada_caja_id` NULL y `afecta_arqueo = 0`.
+con `afecta_arqueo = 0` (no entra al arqueo). Con la caja abierta queda asociado a la jornada
+(`jornada_caja_id` con valor); es NULL solo si se pagó con la caja cerrada.
 
 Un colaborador **de otra organización** (o con el vínculo revocado) se rechaza con 409
 `beneficiario-no-vinculado`; por la API, con el `membershipId` de admin-a en el centro B:

@@ -60,6 +60,34 @@ class CuentaCorrienteDeFinanciadorIT {
 	}
 
 	@Test
+	@DisplayName("deja afuera el lote ANULADO, que no tiene deleted_at (pre-QA D1)")
+	void deja_afuera_el_anulado() {
+		// Anular un borrador lo pasa a ANULADA con motivo y NO llena deleted_at: la fila sigue en
+		// la bandeja de anulados. La consulta filtraba solo por deleted_at y lo sumaba.
+		String sufijo = UUID.randomUUID().toString().substring(0, 8);
+		long organizationId = insertarOrganizacion(sufijo);
+		long sede = insertarSede(organizationId, "A " + sufijo);
+		long cuentaId = insertarCuenta(sufijo);
+		long financiadorId = insertarFinanciador(organizationId, sufijo);
+
+		insertarLotes(organizationId, sede, financiadorId, cuentaId, 2, false);
+		jdbc.update("""
+				UPDATE presentacion
+				   SET estado = 'ANULADA', anulada_en = UTC_TIMESTAMP(6), anulada_por_cuenta_id = ?,
+				       motivo_anulacion = 'Periodo mal elegido'
+				 WHERE organization_id = ? AND financiador_id = ?
+				 ORDER BY id LIMIT 1
+				""", cuentaId, organizationId, financiadorId);
+
+		TotalesDeCuentaCorriente totales =
+				presentaciones.sumarCuentaCorriente(organizationId, financiadorId);
+
+		assertThat(totales.lotes()).isEqualTo(1);
+		assertThat(totales.presentado()).isEqualByComparingTo("100.00");
+		assertThat(totales.saldo()).isEqualByComparingTo("70.00");
+	}
+
+	@Test
 	@DisplayName("un financiador sin lotes tiene la cuenta en cero, no en null")
 	void sin_lotes_da_cero() {
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);

@@ -22,7 +22,7 @@ export async function c10resto() {
 		const cuerpo = { name: `Centro QA C ${suf}`, slug, planCode: 'BASICO' };
 		const r1 = must(await api('POST', '/api/v1/organizations', { s, json: cuerpo, headers: { 'Idempotency-Key': k } }), 201, 'alta');
 		const r2 = await api('POST', '/api/v1/organizations', { s, json: cuerpo, headers: { 'Idempotency-Key': k } });
-		ok([200, 201].includes(r2.status) && r2.cuerpo?.id === r1.id, 'la misma clave y el mismo cuerpo: la misma respuesta', r2);
+		ok(r2.status === 409 && r2.tipo === 'organization-slug-taken', 'la misma clave y el mismo cuerpo: 409 organization-slug-taken (este camino no registra idempotencia)', r2);
 		const r3 = await api('POST', '/api/v1/organizations', { s, json: cuerpo, headers: { 'Idempotency-Key': randomUUID() } });
 		ok(r3.status === 409 && r3.tipo, 'el mismo slug con otra clave: 409 tipado', r3);
 		const f = q(`SELECT o.id, o.slug, o.timezone, s.status, p.code FROM organization o JOIN subscription s ON s.organization_id = o.id JOIN plan p ON p.id = s.plan_id WHERE o.slug = ${lit(slug)}`);

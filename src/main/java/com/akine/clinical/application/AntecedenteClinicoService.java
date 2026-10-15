@@ -10,6 +10,7 @@ import com.akine.clinical.domain.port.ClinicalRepositoryPorts.AntecedenteClinico
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRepositoryPort;
 import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.person.spi.PacienteDirectory;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
@@ -49,6 +50,7 @@ public class AntecedenteClinicoService {
 
 	private final HistoriaClinicaRepositoryPort historias;
 	private final AntecedenteClinicoRepositoryPort antecedentes;
+	private final PacienteDirectory pacientes;
 	private final PermissionGuard permissionGuard;
 	private final RelacionAsistencialProbe relaciones;
 	private final AuditTrail auditTrail;
@@ -57,6 +59,7 @@ public class AntecedenteClinicoService {
 	public AntecedenteClinicoService(
 			HistoriaClinicaRepositoryPort historias,
 			AntecedenteClinicoRepositoryPort antecedentes,
+			PacienteDirectory pacientes,
 			PermissionGuard permissionGuard,
 			RelacionAsistencialProbe relaciones,
 			AuditTrail auditTrail,
@@ -64,6 +67,7 @@ public class AntecedenteClinicoService {
 
 		this.historias = historias;
 		this.antecedentes = antecedentes;
+		this.pacientes = pacientes;
 		this.permissionGuard = permissionGuard;
 		this.relaciones = relaciones;
 		this.auditTrail = auditTrail;
@@ -79,7 +83,8 @@ public class AntecedenteClinicoService {
 			String descripcion,
 			String justificacion) {
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigirSobrePersona(permissionGuard, relaciones,
+				supportAccessAuditor, pacientes, actor,
 				PermissionCodes.HC_WRITE, personaId, justificacion, "Registrar antecedente clinico");
 		long organizationId = actor.contextOrganizationId();
 
@@ -119,7 +124,8 @@ public class AntecedenteClinicoService {
 			String motivo,
 			String justificacion) {
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigirSobrePersona(permissionGuard, relaciones,
+				supportAccessAuditor, pacientes, actor,
 				PermissionCodes.HC_WRITE, personaId, justificacion, "Dar de baja un antecedente");
 		long organizationId = actor.contextOrganizationId();
 
@@ -166,7 +172,8 @@ public class AntecedenteClinicoService {
 			boolean soloVigentes,
 			String justificacion) {
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigirSobrePersona(permissionGuard, relaciones,
+				supportAccessAuditor, pacientes, actor,
 				PermissionCodes.HC_READ, personaId, justificacion, "Listar antecedentes clinicos");
 		long organizationId = actor.contextOrganizationId();
 
