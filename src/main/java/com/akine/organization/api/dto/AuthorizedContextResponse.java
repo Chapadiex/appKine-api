@@ -1,7 +1,10 @@
 package com.akine.organization.api.dto;
 
+import com.akine.organization.spi.ActiveContext;
 import com.akine.organization.spi.AuthorizedContext;
 import io.swagger.v3.oas.annotations.media.Schema;
+
+import java.util.Optional;
 
 /**
  * Un contexto de trabajo que la cuenta autenticada tiene habilitado.
@@ -32,13 +35,27 @@ public record AuthorizedContextResponse(
 		long consultorioId,
 
 		@Schema(description = "Nombre del consultorio", example = "Sede Central")
-		String consultorioName) {
+		String consultorioName,
 
-	public static AuthorizedContextResponse from(AuthorizedContext context) {
+		@Schema(
+				description = "true en el ultimo contexto que la cuenta eligio con POST "
+						+ "/api/v1/auth/context, si sigue habilitado: es el que conviene "
+						+ "preseleccionar al volver a entrar. A lo sumo un elemento lo trae en true; "
+						+ "ninguno si la cuenta nunca eligio o si el elegido dejo de estar habilitado",
+				example = "true")
+		boolean lastSelected) {
+
+	public static AuthorizedContextResponse from(
+			AuthorizedContext context, Optional<ActiveContext> ultimo) {
+		boolean esElUltimo = ultimo
+				.filter(activo -> activo.organizationId() == context.organizationId()
+						&& activo.consultorioId() == context.consultorioId())
+				.isPresent();
 		return new AuthorizedContextResponse(
 				context.organizationId(),
 				context.organizationName(),
 				context.consultorioId(),
-				context.consultorioName());
+				context.consultorioName(),
+				esElUltimo);
 	}
 }

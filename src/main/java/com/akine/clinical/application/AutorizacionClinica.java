@@ -1,10 +1,12 @@
 package com.akine.clinical.application;
 
 import com.akine.clinical.domain.exception.AccesoClinicoNoJustificadoException;
+import com.akine.clinical.domain.exception.HistoriaClinicaNotAccessibleException;
 import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.person.spi.PacienteDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
@@ -80,10 +82,7 @@ final class AutorizacionClinica {
 			String justificacion,
 			String operacion) {
 
-		if (actor.contextOrganizationId() == null || actor.consultorioId() == null) {
-			log.info("{} sin contexto validado: accountId={}", operacion, actor.accountId());
-			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
-		}
+		exigirContexto(actor, operacion);
 
 		long organizationId = actor.contextOrganizationId();
 		long consultorioId = actor.consultorioId();
@@ -110,6 +109,51 @@ final class AutorizacionClinica {
 		}
 
 		return new AccesoClinico(decision, conRelacion, conRelacion ? null : motivo);
+	}
+
+	/**
+	 * {@link #exigir} para una persona que llega <b>por id pelado</b> —de la ruta— y no de una
+	 * fila ya leida dentro de la organizacion.
+	 *
+	 * <p><b>Pertenencia antes que permiso</b> (threat model §2.4). Evaluar el permiso primero hacia
+	 * que una persona de OTRA organizacion se respondiera 403 a quien no tiene {@code hc:read} en
+	 * la suya, contra la regla de 01.01: fuera de alcance es 404, porque un 403 dice que hay algo
+	 * ahi. Una persona que no es del padron de la organizacion del contexto se responde igual que
+	 * una historia inexistente, y no deja fila de auditoria: no se accedio a nada.
+	 *
+	 * <p>Cuando la persona sale de una historia, un caso o una entrada ya leidos con la
+	 * organizacion en el filtro, ese 404 ya ocurrio antes: por eso esos llamadores siguen con
+	 * {@link #exigir}.
+	 *
+	 * @throws HistoriaClinicaNotAccessibleException si la persona no es de la organizacion del
+	 *                                               contexto (404)
+	 */
+	@SuppressWarnings("java:S107")
+	static AccesoClinico exigirSobrePersona(
+			PermissionGuard permissionGuard,
+			RelacionAsistencialProbe relaciones,
+			PacienteDirectory pacientes,
+			OperatingActor actor,
+			String permissionCode,
+			long personaId,
+			String justificacion,
+			String operacion) {
+
+		exigirContexto(actor, operacion);
+		if (pacientes.find(actor.contextOrganizationId(), personaId).isEmpty()) {
+			log.info("{} sobre una persona fuera de la organizacion: accountId={} personaId={}",
+					operacion, actor.accountId(), personaId);
+			throw new HistoriaClinicaNotAccessibleException(personaId);
+		}
+		return exigir(permissionGuard, relaciones, actor, permissionCode, personaId,
+				justificacion, operacion);
+	}
+
+	private static void exigirContexto(OperatingActor actor, String operacion) {
+		if (actor.contextOrganizationId() == null || actor.consultorioId() == null) {
+			log.info("{} sin contexto validado: accountId={}", operacion, actor.accountId());
+			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");
+		}
 	}
 
 	private static String vacioEsNulo(String valor) {

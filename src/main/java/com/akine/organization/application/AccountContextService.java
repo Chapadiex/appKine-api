@@ -171,26 +171,25 @@ public class AccountContextService implements AccountContextDirectory {
 			throw new ContextNotAuthorizedException(accountId, organizationId, consultorioId);
 		}
 
+		// Se lee el anterior solo para auditar de donde venia; la escritura es una sentencia
+		// unica (ver AccountActiveContextRepositoryPort#apuntar) y el managed que se acaba de leer
+		// no se toca, asi que el flush no la pisa.
 		Optional<AccountActiveContext> existente =
 				activeContextRepository.findByAccountId(accountId);
+		Long organizacionAnterior = existente.map(AccountActiveContext::getOrganizationId)
+				.orElse(null);
+		Long consultorioAnterior = existente.map(AccountActiveContext::getConsultorioId)
+				.orElse(null);
+		boolean cambio = organizacionAnterior == null
+				|| organizacionAnterior != organizationId
+				|| consultorioAnterior != consultorioId;
 
-		AccountActiveContext puntero;
-		boolean cambio;
-		Long organizacionAnterior = null;
-		Long consultorioAnterior = null;
-
-		if (existente.isPresent()) {
-			puntero = existente.get();
-			organizacionAnterior = puntero.getOrganizationId();
-			consultorioAnterior = puntero.getConsultorioId();
-			cambio = puntero.pointTo(organizationId, consultorioId);
-		} else {
-			puntero = new AccountActiveContext(accountId, organizationId, consultorioId);
-			cambio = true;
-		}
-		activeContextRepository.save(puntero);
+		activeContextRepository.apuntar(accountId, organizationId, consultorioId);
 
 		if (cambio) {
+			Long punteroId = existente.or(() -> activeContextRepository.findByAccountId(accountId))
+					.map(AccountActiveContext::getId)
+					.orElse(null);
 			Map<String, String> details = new LinkedHashMap<>();
 			details.put("toOrganizationId", String.valueOf(organizationId));
 			details.put("toConsultorioId", String.valueOf(consultorioId));
@@ -204,7 +203,7 @@ public class AccountContextService implements AccountContextDirectory {
 					accountId,
 					AuditEvents.CONTEXT_SELECTED,
 					AuditEvents.ENTITY_ACTIVE_CONTEXT,
-					puntero.getId(),
+					punteroId,
 					organizacionAnterior == null ? null : String.valueOf(organizacionAnterior),
 					String.valueOf(organizationId),
 					details,

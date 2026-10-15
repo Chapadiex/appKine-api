@@ -46,6 +46,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Importacion masiva de aranceles de UN convenio, con vista previa (B-7, RF-M16-007).
@@ -192,12 +193,13 @@ public class ImportacionArancelesService {
 		}
 
 		List<ResultadoFila> creadas = new ArrayList<>(evaluadas.size());
+		List<Long> ids = new ArrayList<>(evaluadas.size());
 		for (Evaluada evaluada : evaluadas) {
 			ConvenioArancel creado = aranceles.saveAndFlush(evaluada.candidato());
-			auditarAlta(creado, actor);
 			creadas.add(evaluada.resultado().creada(creado.getId()));
+			ids.add(creado.getId());
 		}
-		auditarLote(convenio, actor, evaluadas);
+		auditarLote(convenio, actor, evaluadas, ids);
 
 		log.info("Importacion de aranceles aplicada: convenioId={} filas={}",
 				convenioId, creadas.size());
@@ -489,24 +491,17 @@ public class ImportacionArancelesService {
 	// Auditoria
 	// =================================================================================
 
-	/** El mismo {@code ARANCEL_CREATED} del alta unitaria, con el origen declarado. */
-	private void auditarAlta(ConvenioArancel creado, OperatingActor actor) {
-		Map<String, String> detalles = new LinkedHashMap<>();
-		detalles.put("origen", "IMPORTACION");
-		detalles.put("practicaId", String.valueOf(creado.getPracticaId()));
-		if (creado.getOfertaId() != null) {
-			detalles.put("ofertaId", String.valueOf(creado.getOfertaId()));
-		}
-		detalles.put("vigencia", creado.vigencia().toString());
-		detalles.put("importeTotal", creado.getImporteTotal() + " " + creado.getMoneda());
-		detalles.put("importeFinanciador", creado.getImporteFinanciador().toString());
-		detalles.put("coseguro", creado.getCoseguro().toString());
-		registrar(AuditEvents.ARANCEL_CREATED, AuditEvents.ENTITY_ARANCEL, creado.getId(),
-				creado.getOrganizationId(), creado.getConsultorioId(), actor, "ACTIVO", detalles);
-	}
-
-	/** Un evento por lote, sobre el convenio: cuantas filas y que rango de fechas cubrieron. */
-	private void auditarLote(Convenio convenio, OperatingActor actor, List<Evaluada> evaluadas) {
+	/**
+	 * Un evento por lote, sobre el convenio: cuantas filas y que rango de fechas cubrieron.
+	 *
+	 * <p><b>Es el unico evento de la importacion</b>, y no uno por fila mas este (pre-QA del 14/10,
+	 * PER-06b). Lo auditable es el acto —quien aplico la planilla, sobre que convenio, cuando—, y
+	 * quinientas filas de {@code ARANCEL_CREATED} lo entierran en el historial. Lo que se perderia
+	 * sacandolas —que arancel entro por esta importacion— viaja en {@code arancelIds}: la tabla de
+	 * aranceles no guarda autor, asi que sin eso no quedaria rastro de donde salio cada fila.
+	 */
+	private void auditarLote(
+			Convenio convenio, OperatingActor actor, List<Evaluada> evaluadas, List<Long> ids) {
 		List<Vigencia> vigencias = evaluadas.stream().map(e -> e.candidato().vigencia()).toList();
 		LocalDate desde = vigencias.stream().map(Vigencia::desde)
 				.min(Comparator.naturalOrder()).orElseThrow();
@@ -521,6 +516,8 @@ public class ImportacionArancelesService {
 		detalles.put("practicas", String.valueOf(
 				evaluadas.stream().map(e -> e.candidato().getPracticaId()).distinct().count()));
 		detalles.put("rango", desde + " a " + hasta);
+		detalles.put("arancelIds", ids.stream().map(String::valueOf)
+				.collect(Collectors.joining(",")));
 		registrar(AuditEvents.ARANCELES_IMPORTADOS, AuditEvents.ENTITY_CONVENIO, convenio.getId(),
 				convenio.getOrganizationId(), convenio.getConsultorioId(), actor, null, detalles);
 	}

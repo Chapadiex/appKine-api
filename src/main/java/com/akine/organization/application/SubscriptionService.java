@@ -74,6 +74,24 @@ public class SubscriptionService {
 	}
 
 	/**
+	 * La suscripcion vista como <b>contrato</b>, para la administracion de plataforma: plan,
+	 * estado, version y transiciones posibles, sin el consumo de los limites.
+	 *
+	 * <p>Existe porque el cambio de plan y las transiciones son de plataforma con
+	 * {@code tenant:manage} (alcance global, sin soporte) y exigen la version vigente, mientras
+	 * que {@link #find} va detras de {@code tenant:read}, que para el {@code PLATFORM_ADMIN} es de
+	 * alcance soporte: sin un acceso de soporte abierto, la version solo salia de la base (pre-QA
+	 * del 14/10, PLA-06). Lo que esta lectura devuelve es lo mismo que el propio administrador
+	 * escribe —que plan contrato el centro y en que estado esta—, no datos del tenant: el
+	 * consumo de limites cuenta sedes y miembros del centro y por eso queda afuera.
+	 */
+	@Transactional(readOnly = true)
+	public SubscriptionView findContract(long organizationId) {
+		organizationService.requireActive(organizationId);
+		return toView(require(organizationId), false);
+	}
+
+	/**
 	 * Aplica una transicion de estado.
 	 *
 	 * <p><b>Orden de las operaciones.</b> Se valida todo —version esperada, motivo, transicion
@@ -296,13 +314,19 @@ public class SubscriptionService {
 	}
 
 	private SubscriptionView toView(Subscription subscription) {
+		return toView(subscription, true);
+	}
+
+	private SubscriptionView toView(Subscription subscription, boolean conConsumo) {
 		Plan plan = planCatalogService.requireById(subscription.getPlanId());
-		List<LimitUsageView> limits = planCatalogService.limitsOf(plan.getId()).stream()
-				.map(limit -> new LimitUsageView(
-						limit.code(),
-						limit.value(),
-						usageCounter.count(limit.code(), subscription.getOrganizationId())))
-				.toList();
+		List<LimitUsageView> limits = !conConsumo
+				? List.of()
+				: planCatalogService.limitsOf(plan.getId()).stream()
+						.map(limit -> new LimitUsageView(
+								limit.code(),
+								limit.value(),
+								usageCounter.count(limit.code(), subscription.getOrganizationId())))
+						.toList();
 		return new SubscriptionView(
 				subscription.getId(),
 				subscription.getOrganizationId(),
