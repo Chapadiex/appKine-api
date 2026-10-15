@@ -17,6 +17,8 @@ import java.util.HexFormat;
  * @param capacidad      capacidad propia de la clase (RN-M28-002). Se valida contra la efectiva
  * @param idempotencyKey clave del cliente para que un reintento no programe dos clases.
  *                       {@code null} la desactiva, y eso es legitimo
+ * @param espacioId      box elegido por quien programa. {@code null} deja que el servidor elija el
+ *                       primero apto y libre, que era el unico comportamiento antes de web #81
  */
 public record ProgramarClaseCommand(
 		Instant inicio,
@@ -24,7 +26,8 @@ public record ProgramarClaseCommand(
 		Long profesionalId,
 		int capacidad,
 		String titulo,
-		String idempotencyKey) {
+		String idempotencyKey,
+		Long espacioId) {
 
 	/**
 	 * Huella del pedido, para distinguir un reintento de un reuso de clave con otro contenido.
@@ -38,8 +41,11 @@ public record ProgramarClaseCommand(
 	 * {@code capacidad=12} con {@code profesionalId=3} producirian la misma cadena.
 	 */
 	public String huella(long consultorioId, long ofertaId) {
+		// El box entra SOLO si se eligio: sumarlo siempre cambiaria la huella de toda clase
+		// programada antes de que existiera el campo, y su reintento pasaria a ser un 409.
 		String canonico = consultorioId + "|" + ofertaId + "|" + inicio + "|" + fin
-				+ "|" + profesionalId + "|" + capacidad;
+				+ "|" + profesionalId + "|" + capacidad
+				+ (espacioId == null ? "" : "|e" + espacioId);
 		try {
 			byte[] digest = MessageDigest.getInstance("SHA-256")
 					.digest(canonico.getBytes(StandardCharsets.UTF_8));

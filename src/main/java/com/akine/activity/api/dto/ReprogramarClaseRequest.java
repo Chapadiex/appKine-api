@@ -36,5 +36,13 @@ public record ReprogramarClaseRequest(
 		@NotNull @Min(2) Integer capacidad,
 
 		@Schema(description = "Version leida de la clase, para el control optimista", example = "3")
-		@NotNull @PositiveOrZero Long version) {
+		@NotNull @PositiveOrZero Long version,
+
+		@Schema(
+				description = "Box elegido. **Opcional**, pero sin el el servidor vuelve a elegir el "
+						+ "primer box apto y libre, que **puede no ser el actual**: para conservar "
+						+ "el box, manda el `espacioId` que tiene la clase. Con el, se valida igual "
+						+ "que al programar.",
+				example = "8")
+		@Positive Long espacioId) {
 }
