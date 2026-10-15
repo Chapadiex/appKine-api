@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.104.0
+  version: 0.106.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -14798,6 +14798,8 @@ paths:
 
         No requiere contexto de tenant: es el endpoint con el que se averigua que contextos hay. Devuelve una lista vacia —no un error— cuando la cuenta todavia no tiene ninguno; el frontend distingue 'no elegiste' de 'no tenes donde'.
 
+        lastSelected marca el ultimo contexto elegido, revalidado: si dejo de estar habilitado no lo trae ninguno.
+
         Este endpoint no cambia el contexto activo. Seleccionarlo renueva el token, y eso lo publica el modulo de identidad en 01.02 como POST /api/v1/auth/context.
       operationId: listMyContexts
       responses:
@@ -20332,6 +20334,46 @@ paths:
       summary: Catalogo de planes contratables
       tags:
       - Planes
+  /api/v1/platform/organizations/{orgId}/subscription:
+    get:
+      description: |-
+        Devuelve el plan contratado, el estado, la version y las transiciones posibles de la suscripcion del centro. La version es la expectedVersion que pide el cambio de plan.
+
+        No trae el consumo de los limites: eso es dato del centro y sigue en GET /organizations/{orgId}/subscription, que para la plataforma exige un acceso de soporte vigente.
+
+        Reservado a la administracion de plataforma, igual que el cambio de plan y las transiciones. Una organizacion inexistente o dada de baja es 404.
+      operationId: getPlatformSubscription
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformSubscriptionResponse"
+          description: "Plan, estado, version y transiciones posibles"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La operacion esta reservada a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion no existe o esta dada de baja
+      summary: "Suscripcion de un centro, para la administracion de plataforma"
+      tags:
+      - Plataforma
   /api/v1/platform/organizations/{orgId}/support-access:
     get:
       description: |-
@@ -22052,6 +22094,13 @@ components:
           type: string
           description: Nombre del consultorio
           example: Sede Central
+        lastSelected:
+          type: boolean
+          description: "true en el ultimo contexto que la cuenta eligio con POST /api/v1/auth/context,\
+            \ si sigue habilitado: es el que conviene preseleccionar al volver a entrar.\
+            \ A lo sumo un elemento lo trae en true; ninguno si la cuenta nunca eligio\
+            \ o si el elegido dejo de estar habilitado"
+          example: true
         organizationId:
           type: integer
           format: int64
@@ -31145,6 +31194,62 @@ components:
           type: string
           format: date-time
           description: "Vencimiento, o null si no vence"
+    PlatformSubscriptionResponse:
+      type: object
+      description: "Suscripcion de un centro para la administracion de plataforma:\
+        \ plan, estado y version, sin el consumo de limites"
+      properties:
+        allowedTargets:
+          type: array
+          description: Estados a los que se puede transicionar desde el actual. Vacio
+            cuando el estado es terminal
+          example:
+          - SUSPENDIDA
+          - CANCELADA
+          items:
+            type: string
+            enum:
+            - ACTIVA
+            - SUSPENDIDA
+            - CANCELADA
+          uniqueItems: true
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la suscripcion
+          example: 1
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion titular de la suscripcion
+          example: 1
+        planCode:
+          type: string
+          description: Codigo del plan contratado
+          example: BASICO
+        planName:
+          type: string
+          description: Nombre comercial del plan contratado
+          example: Basico
+        startedAt:
+          type: string
+          format: date-time
+          description: Instante de alta de la suscripcion
+          example: 2026-01-15T13:45:00Z
+        status:
+          type: string
+          description: Estado de la suscripcion
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - CANCELADA
+          example: ACTIVA
+        version:
+          type: integer
+          format: int64
+          description: Version para bloqueo optimista. Es la expectedVersion del cambio
+            de plan
+          example: 0
     PoliticaDePrepagoRequest:
       type: object
       description: Politica de prepago de una oferta

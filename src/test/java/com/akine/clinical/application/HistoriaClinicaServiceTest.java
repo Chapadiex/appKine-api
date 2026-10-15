@@ -194,6 +194,20 @@ class HistoriaClinicaServiceTest {
 				.isInstanceOf(HistoriaClinicaNotAccessibleException.class);
 	}
 
+	@Test
+	@DisplayName("La pertenencia se mira antes que el permiso: sin hc:read, la persona ajena es 404")
+	void la_pertenencia_va_antes_que_el_permiso() {
+		// Pre-QA del 14/10, CLI-15: evaluando el permiso primero, quien no tiene hc:read recibia
+		// 403 por una persona de otra organizacion.
+		given(pacientes.find(ORG_ID, PERSONA_ID)).willReturn(Optional.empty());
+		given(permissionGuard.requirePermission(any()))
+				.willThrow(new org.springframework.security.access.AccessDeniedException("hc:read"));
+
+		assertThatThrownBy(() -> service.ver(profesional, PERSONA_ID, null))
+				.isInstanceOf(HistoriaClinicaNotAccessibleException.class);
+		verify(permissionGuard, never()).requirePermission(any());
+	}
+
 	// =================================================================================
 	// Lectura
 	// =================================================================================

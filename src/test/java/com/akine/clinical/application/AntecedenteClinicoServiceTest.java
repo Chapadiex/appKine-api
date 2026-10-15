@@ -9,6 +9,8 @@ import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRep
 import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.person.spi.PacienteDirectory;
+import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +25,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,6 +61,9 @@ class AntecedenteClinicoServiceTest {
 	private AntecedenteClinicoRepositoryPort antecedentes;
 
 	@Mock
+	private PacienteDirectory pacientes;
+
+	@Mock
 	private PermissionGuard permissionGuard;
 
 	@Mock
@@ -75,8 +81,12 @@ class AntecedenteClinicoServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new AntecedenteClinicoService(historias, antecedentes, permissionGuard, relaciones,
-				auditTrail, supportAccessAuditor);
+		service = new AntecedenteClinicoService(historias, antecedentes, pacientes, permissionGuard,
+				relaciones, auditTrail, supportAccessAuditor);
+
+		given(pacientes.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(new PacienteSnapshot(
+				PERSONA_ID, ORG_ID, "Perez", "Ana", "DNI", "30111222", LocalDate.of(1990, 1, 1),
+				true, true, 900L, Instant.now())));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));

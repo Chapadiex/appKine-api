@@ -13,6 +13,7 @@ import com.akine.identity.domain.port.CuentaRepositoryPort;
 import com.akine.identity.domain.port.IdentityClock;
 import com.akine.identity.domain.port.RefreshTokenRepositoryPort;
 import com.akine.identity.domain.port.TokenGenerator;
+import com.akine.organization.spi.AccountContextDirectory;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.security.AccessTokenIssuer;
@@ -100,6 +101,9 @@ class SessionServiceTest {
 	private MembershipDirectory membershipDirectory;
 
 	@Mock
+	private AccountContextDirectory accountContextDirectory;
+
+	@Mock
 	private AuditTrail auditTrail;
 
 	private SessionService service;
@@ -115,7 +119,8 @@ class SessionServiceTest {
 		IdentityClock clock = () -> AHORA;
 		service = new SessionService(
 				authenticationService, cuentaRepository, refreshTokenRepository, tokenGenerator,
-				accessTokenIssuer, membershipDirectory, new SessionSettings(TTL), clock,
+				accessTokenIssuer, membershipDirectory, accountContextDirectory,
+				new SessionSettings(TTL), clock,
 				auditTrail);
 
 		given(tokenGenerator.nuevaFamilia()).willReturn(FAMILIA);
@@ -504,6 +509,17 @@ class SessionServiceTest {
 		}
 
 		@Test
+		@DisplayName("el contexto elegido queda como puntero de la cuenta, no solo en la familia")
+		void el_contexto_queda_como_puntero_de_la_cuenta() {
+			// Pre-QA del 14/10, ON-03: account_active_context no se escribia nunca.
+			elContextoEsAccesible();
+
+			service.cambiarContexto(CUENTA_ID, null, ORG_ID, CONSULTORIO_ID);
+
+			verify(accountContextDirectory).selectContext(CUENTA_ID, ORG_ID, CONSULTORIO_ID);
+		}
+
+		@Test
 		@DisplayName("un contexto no autorizado es 404: no existe, jamas 403")
 		void un_contexto_ajeno_no_existe() {
 			given(membershipDirectory.resolveMembership(CUENTA_ID, ORG_ID, 999L, AHORA))
@@ -514,6 +530,7 @@ class SessionServiceTest {
 					.isInstanceOf(ContextNotAvailableException.class);
 
 			assertThat(seAudito("CONTEXTO_RECHAZADO")).isTrue();
+			verify(accountContextDirectory, never()).selectContext(anyLong(), anyLong(), anyLong());
 			verify(accessTokenIssuer, never())
 					.issue(anyLong(), any(), any(), any(), any(), any());
 		}
