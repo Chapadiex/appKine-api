@@ -38,6 +38,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -161,8 +162,16 @@ public class DerivacionService {
 	 * —una clase no clinica no deja rastro clinico—, despues la asistencia, despues la persona, y
 	 * recien al final {@code clinical}. Todo en una transaccion: si {@code clinical} rechaza, la
 	 * activacion del perfil que se haya hecho en este pedido se revierte con ella.
+	 *
+	 * <p><b>Dos derivaciones simultaneas del mismo participante se serializan</b> sobre la fila de
+	 * su asistencia, que se lee con {@code FOR UPDATE}, y la transaccion corre en
+	 * {@code READ_COMMITTED}: la segunda espera a la primera y su pre-chequeo de idempotencia ya ve
+	 * la fila que la primera commiteo, asi que devuelve la existente con {@code yaExistia = true}.
+	 * Bajo {@code REPEATABLE READ} el lock no alcanza —la foto se fijo en la primera lectura, antes
+	 * del lock— y sin el lock las dos llegaban al INSERT: el perdedor chocaba contra el unique y
+	 * recibia un 500 ({@code DerivacionConcurrenteIT}, 15/10/2026). Es la regla de 05.02.
 	 */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public DerivacionView derivar(
 			OperatingActor actor,
 			long consultorioId,
@@ -177,7 +186,8 @@ public class DerivacionService {
 			throw new OfertaNoClinicaException(oferta.id());
 		}
 
-		AsistenciaActividad asistencia = asistencias.findDeInscripcion(p.organizationId(), inscripcionId)
+		AsistenciaActividad asistencia = asistencias
+				.findDeInscripcionParaDerivar(p.organizationId(), inscripcionId)
 				.orElseThrow(() -> new ParticipacionSinAsistenciaException(inscripcionId, null));
 		if (!asistencia.getResultado().estuvo()) {
 			throw new ParticipacionSinAsistenciaException(

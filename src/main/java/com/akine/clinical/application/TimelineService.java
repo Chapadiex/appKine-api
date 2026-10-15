@@ -20,8 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * El timeline longitudinal de una Historia Clinica (RF-M09-004).
@@ -148,13 +152,60 @@ public class TimelineService {
 			Long casoId,
 			String justificacion) {
 
+		return ver(actor, historiaClinicaId, cursorCrudo, limite, casoId, null, null, null,
+				justificacion);
+	}
+
+	/**
+	 * {@link #ver} con los filtros de origen y de fecha (contrato 0.107.0, pedido de appKine-web
+	 * #83; plan de implementacion 04.02: "consulta paginada/filtrada").
+	 *
+	 * <h2>Por que los filtros no rompen el keyset</h2>
+	 *
+	 * <p>Ninguno viaja dentro del cursor ni cambia el orden: el cursor sigue marcando una
+	 * <b>posicion</b> en el orden total, y los filtros recortan que eventos se miran a partir de
+	 * ella. Cada uno se aplica donde no puede comerse el lookahead:
+	 * <ul>
+	 *   <li><b>origen</b>: se saltea la FUENTE entera, no sus eventos uno por uno (ver
+	 *       {@link EventoClinicoContributor#origen()}).</li>
+	 *   <li><b>hasta</b>: baja el tope que ya recibe cada fuente —el menor entre el del cursor y el
+	 *       del filtro—, asi que lo que vuelve ya esta adentro.</li>
+	 *   <li><b>desde</b>: se descarta despues. Cada fuente devuelve sus mas nuevos primero, asi que
+	 *       lo que queda antes de {@code desde} es siempre la cola: si despues de descartarla sobran
+	 *       mas de {@code tamano}, habia pagina siguiente; si no, no la hay, y no puede haber un
+	 *       evento posterior a {@code desde} que la fuente no trajo.</li>
+	 * </ul>
+	 *
+	 * <p>Quien pagina tiene que reenviar los MISMOS filtros con cada cursor. Si los cambia, la
+	 * respuesta sigue siendo correcta para los filtros nuevos desde esa posicion.
+	 *
+	 * @param origenes origenes a incluir ({@code ENTRADA_CLINICA}, {@code ADJUNTO_CLINICO},
+	 *                 {@code ANTECEDENTE_CLINICO}, {@code SESION}). Vacio o {@code null} no filtra.
+	 *                 Uno que ninguna fuente declara es 400: un filtro mal escrito que devolviera
+	 *                 una pagina vacia diria "no hay hechos" cuando no es cierto
+	 * @param desde    instante minimo inclusivo de {@code ocurrioEn}, o {@code null}
+	 * @param hasta    instante maximo inclusivo de {@code ocurrioEn}, o {@code null}. Posterior a
+	 *                 {@code desde} o igual; si no, 400
+	 */
+	@Transactional
+	public TimelinePagina ver(
+			OperatingActor actor,
+			long historiaClinicaId,
+			String cursorCrudo,
+			Integer limite,
+			Long casoId,
+			Set<String> origenes,
+			Instant desde,
+			Instant hasta,
+			String justificacion) {
+
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = historias
 				.findByIdAndOrganizationId(historiaClinicaId, organizationId)
 				.filter(HistoriaClinica::isVigente)
 				.orElseThrow(() -> new HistoriaClinicaNotAccessibleException(historiaClinicaId));
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_READ, historia.getPersonaId(), justificacion,
 				"Ver timeline clinico");
 
@@ -165,8 +216,17 @@ public class TimelineService {
 		// El cursor se decodifica DESPUES de autorizar: un 400 por cursor roto antes de evaluar el
 		// permiso le confirmaria a cualquiera que esa historia existe en este tenant.
 		TimelineCursor cursor = TimelineCursor.decodificar(cursorCrudo);
+		// Los filtros tambien se validan DESPUES de autorizar, por lo mismo que el cursor.
+		Set<String> incluidos = origenesValidos(origenes);
+		if (desde != null && hasta != null && desde.isAfter(hasta)) {
+			throw new IllegalArgumentException(
+					"El filtro 'desde' no puede ser posterior a 'hasta'");
+		}
 		int tamano = tamanoDePagina(limite);
-		Instant hasta = cursor == null ? Instant.now() : cursor.ocurrioEn();
+		Instant tope = cursor == null ? Instant.now() : cursor.ocurrioEn();
+		if (hasta != null && hasta.isBefore(tope)) {
+			tope = hasta;
+		}
 
 		// tamano + 2 Y NO tamano + 1, Y SIN ESE UNO DE MAS LA PAGINACION PIERDE EVENTOS.
 		//
@@ -184,10 +244,16 @@ public class TimelineService {
 
 		List<EventoClinico> mezcla = new ArrayList<>();
 		for (EventoClinicoContributor contribuyente : contribuyentes) {
+			if (!incluidos.isEmpty() && contribuyente.origen() != null
+					&& !incluidos.contains(contribuyente.origen())) {
+				continue;
+			}
 			for (EventoClinico evento : contribuyente.eventosDe(
-					organizationId, historia.getId(), hasta, conLookahead, casoId)) {
+					organizationId, historia.getId(), tope, conLookahead, casoId)) {
 
-				if (cursor == null || cursor.precedeA(evento)) {
+				if ((cursor == null || cursor.precedeA(evento))
+						&& (desde == null || !evento.ocurrioEn().isBefore(desde))
+						&& (incluidos.isEmpty() || incluidos.contains(evento.origen()))) {
 					mezcla.add(evento);
 				}
 			}
@@ -200,7 +266,8 @@ public class TimelineService {
 				? TimelineCursor.de(pagina.get(pagina.size() - 1)).codificar()
 				: null;
 
-		auditar(actor, acceso, historia, pagina.size(), cursor != null, Instant.now());
+		auditar(actor, acceso, historia, pagina.size(), cursor != null,
+				filtrosAuditables(incluidos, desde, hasta), Instant.now());
 		registrarSoporte(acceso, actor, historia, Instant.now());
 
 		log.debug("Timeline leido: historiaClinicaId={} eventos={} fuentes={}",
@@ -247,6 +314,50 @@ public class TimelineService {
 				.orElseThrow(() -> new CasoClinicoNotAccessibleException(casoId));
 	}
 
+	/**
+	 * Los origenes pedidos, validados contra los que las fuentes declaran. Vacio = sin filtro.
+	 *
+	 * @throws IllegalArgumentException si alguno no lo declara ninguna fuente (400)
+	 */
+	private Set<String> origenesValidos(Set<String> pedidos) {
+		if (pedidos == null || pedidos.isEmpty()) {
+			return Set.of();
+		}
+		Set<String> conocidos = new TreeSet<>();
+		for (EventoClinicoContributor contribuyente : contribuyentes) {
+			if (contribuyente.origen() != null) {
+				conocidos.add(contribuyente.origen());
+			}
+		}
+		Set<String> normalizados = new LinkedHashSet<>();
+		for (String pedido : pedidos) {
+			String origen = pedido == null ? "" : pedido.strip();
+			if (!conocidos.contains(origen)) {
+				throw new IllegalArgumentException("Origen de timeline desconocido: '" + origen
+						+ "'. Los validos son " + conocidos);
+			}
+			normalizados.add(origen);
+		}
+		return Set.copyOf(normalizados);
+	}
+
+	/** Lo que se filtro, para que la auditoria diga que se miro y que no. Vacio sin filtros. */
+	private static Map<String, String> filtrosAuditables(
+			Set<String> origenes, Instant desde, Instant hasta) {
+
+		Map<String, String> filtros = new LinkedHashMap<>();
+		if (!origenes.isEmpty()) {
+			filtros.put("filtroOrigen", String.join(",", new TreeSet<>(origenes)));
+		}
+		if (desde != null) {
+			filtros.put("filtroDesde", desde.toString());
+		}
+		if (hasta != null) {
+			filtros.put("filtroHasta", hasta.toString());
+		}
+		return filtros;
+	}
+
 	private static int tamanoDePagina(Integer limite) {
 		if (limite == null || limite < 1) {
 			return LIMITE_POR_DEFECTO;
@@ -269,7 +380,15 @@ public class TimelineService {
 			HistoriaClinica historia,
 			int eventos,
 			boolean paginado,
+			Map<String, String> filtros,
 			Instant ahora) {
+
+		Map<String, String> detalles = new LinkedHashMap<>();
+		detalles.put("personaId", String.valueOf(historia.getPersonaId()));
+		detalles.put("eventos", String.valueOf(eventos));
+		detalles.put("pagina", paginado ? "SIGUIENTE" : "PRIMERA");
+		detalles.put("viaDeAcceso", acceso.via());
+		detalles.putAll(filtros);
 
 		auditTrail.record(new AuditEntry(
 				actor.contextOrganizationId(),
@@ -280,10 +399,7 @@ public class TimelineService {
 				historia.getId(),
 				null,
 				null,
-				Map.of("personaId", String.valueOf(historia.getPersonaId()),
-						"eventos", String.valueOf(eventos),
-						"pagina", paginado ? "SIGUIENTE" : "PRIMERA",
-						"viaDeAcceso", acceso.via()),
+				detalles,
 				acceso.justificacion(),
 				AuditEvents.correlationId(),
 				ahora));

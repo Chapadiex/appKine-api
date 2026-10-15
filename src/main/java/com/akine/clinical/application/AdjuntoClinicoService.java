@@ -172,7 +172,7 @@ public class AdjuntoClinicoService {
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_READ, historia.getPersonaId(), justificacion,
 				"Listar adjuntos clinicos");
 
@@ -212,7 +212,7 @@ public class AdjuntoClinicoService {
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_READ, historia.getPersonaId(), justificacion,
 				"Descargar adjunto clinico");
 
@@ -356,7 +356,7 @@ public class AdjuntoClinicoService {
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_WRITE, historia.getPersonaId(), justificacion,
 				"Subir adjunto clinico");
 
@@ -416,7 +416,7 @@ public class AdjuntoClinicoService {
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_WRITE, historia.getPersonaId(), justificacion,
 				"Reclasificar adjunto clinico");
 
@@ -477,7 +477,7 @@ public class AdjuntoClinicoService {
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_WRITE, historia.getPersonaId(), justificacion,
 				"Dar de baja un adjunto clinico");
 

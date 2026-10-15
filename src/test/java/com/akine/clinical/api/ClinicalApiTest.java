@@ -42,6 +42,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -106,11 +107,11 @@ class ClinicalApiTest {
 		@Test
 		@DisplayName("un proximoCursor nulo significa fin de la linea, no error")
 		void sin_proximo_cursor_es_fin() {
-			given(timelineService.ver(any(), anyLong(), any(), any(), any(), any()))
+			given(timelineService.ver(any(), anyLong(), any(), any(), any(), any(), any(), any(), any()))
 					.willReturn(new TimelinePagina(List.of(unEvento()), null));
 
 			TimelineResponse respuesta =
-					timeline.ver(HISTORIA_ID, null, null, null, MOTIVO);
+					timeline.ver(HISTORIA_ID, null, null, null, null, null, null, MOTIVO);
 
 			assertThat(respuesta.proximoCursor()).isNull();
 			assertThat(respuesta.eventos()).singleElement()
@@ -123,13 +124,14 @@ class ClinicalApiTest {
 		@Test
 		@DisplayName("la justificacion llega desde la cabecera y no desde la query string")
 		void la_justificacion_viaja_por_cabecera() {
-			given(timelineService.ver(any(), anyLong(), any(), any(), any(), any()))
+			given(timelineService.ver(any(), anyLong(), any(), any(), any(), any(), any(), any(), any()))
 					.willReturn(new TimelinePagina(List.of(), null));
 
-			timeline.ver(HISTORIA_ID, "cursor-opaco", 500, null, MOTIVO);
+			timeline.ver(HISTORIA_ID, "cursor-opaco", 500, null, List.of("SESION"), null, null, MOTIVO);
 
 			verify(timelineService).ver(
-					any(), eq(HISTORIA_ID), eq("cursor-opaco"), eq(500), isNull(), eq(MOTIVO));
+					any(), eq(HISTORIA_ID), eq("cursor-opaco"), eq(500), isNull(),
+					eq(Set.of("SESION")), isNull(), isNull(), eq(MOTIVO));
 		}
 	}
 

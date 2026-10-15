@@ -4,11 +4,13 @@ import com.akine.clinical.api.dto.TimelineResponse;
 import com.akine.clinical.application.TimelineService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +19,10 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.List;
 
 /**
  * El timeline longitudinal de una Historia Clinica (RF-M09-004).
@@ -86,7 +92,9 @@ public class TimelineController {
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = TimelineResponse.class))),
 			@ApiResponse(responseCode = "400",
-					description = "El cursor no se pudo decodificar (cursor-invalido)",
+					description = "El cursor no se pudo decodificar (cursor-invalido), o los filtros "
+							+ "no son validos: origen desconocido, desde posterior a hasta "
+							+ "(validation-error)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403",
@@ -121,11 +129,35 @@ public class TimelineController {
 					+ "no una pagina vacia: son dos situaciones distintas", example = "17")
 			@RequestParam(required = false) Long casoId,
 
+			@Parameter(description = "Filtro OPCIONAL por origen del hecho (0.107.0). Se repite "
+					+ "para pedir varios: origen=ENTRADA_CLINICA&origen=SESION. Sin el, todos. Un "
+					+ "valor desconocido es 400 validation-error, no una pagina vacia. Con cursor "
+					+ "hay que reenviar los mismos filtros: el cursor marca una posicion y no los "
+					+ "lleva adentro",
+					array = @ArraySchema(schema = @Schema(type = "string", allowableValues = {
+							"ENTRADA_CLINICA", "ADJUNTO_CLINICO", "ANTECEDENTE_CLINICO",
+							"SESION"})))
+			@RequestParam(name = "origen", required = false) List<String> origenes,
+
+			@Parameter(description = "Filtro OPCIONAL: solo hechos con ocurrioEn igual o posterior "
+					+ "a este instante UTC, ISO-8601 (0.107.0). Posterior a hasta es 400",
+					example = "2026-09-01T03:00:00Z")
+			@RequestParam(required = false)
+			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant desde,
+
+			@Parameter(description = "Filtro OPCIONAL: solo hechos con ocurrioEn igual o anterior "
+					+ "a este instante UTC, ISO-8601 (0.107.0). Inclusivo, igual que desde",
+					example = "2026-10-01T02:59:59Z")
+			@RequestParam(required = false)
+			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant hasta,
+
 			@Parameter(description = AccesoClinicoHeaders.JUSTIFICACION_DOC)
 			@RequestHeader(name = AccesoClinicoHeaders.JUSTIFICACION, required = false)
 			String justificacion) {
 
 		return TimelineResponse.from(timelineService.ver(
-				apiActor.current(), historiaClinicaId, cursor, limite, casoId, justificacion));
+				apiActor.current(), historiaClinicaId, cursor, limite, casoId,
+				origenes == null ? null : new LinkedHashSet<>(origenes), desde, hasta,
+				justificacion));
 	}
 }

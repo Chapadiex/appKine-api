@@ -5,11 +5,13 @@ import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.platform.spi.audit.AuditEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * La politica de acceso clinico de DP-03, en un solo lugar.
@@ -58,6 +60,9 @@ final class AutorizacionClinica {
 
 	private static final Logger log = LoggerFactory.getLogger(AutorizacionClinica.class);
 
+	/** El unico motivo que hoy se audita desde aca. "Sin permiso" lo audita organization. */
+	static final String MOTIVO_SIN_JUSTIFICACION = "SIN_JUSTIFICACION";
+
 	private AutorizacionClinica() {
 	}
 
@@ -68,12 +73,16 @@ final class AutorizacionClinica {
 	 * @param justificacion  motivo declarado por el actor. Se ignora si hay relacion asistencial;
 	 *                       se exige si no la hay
 	 * @throws AccessDeniedException                 sin contexto de trabajo activo
+	 * @param rechazos       donde se audita el rechazo por falta de motivo, aparte de la
+	 *                       transaccion del pedido
 	 * @throws AccesoClinicoNoJustificadoException   con permiso, pero sin relacion asistencial ni
-	 *                                               justificacion
+	 *                                               justificacion. Antes de lanzarla deja
+	 *                                               {@code HISTORIA_CLINICA_ACCESS_DENIED}
 	 */
 	static AccesoClinico exigir(
 			PermissionGuard permissionGuard,
 			RelacionAsistencialProbe relaciones,
+			ClinicalSupportAccessAuditor rechazos,
 			OperatingActor actor,
 			String permissionCode,
 			long personaId,
@@ -101,11 +110,29 @@ final class AutorizacionClinica {
 		String motivo = vacioEsNulo(justificacion);
 
 		if (!conRelacion && motivo == null) {
-			// No se registra el rechazo aca: la excepcion no distingue "no atiende a esta persona"
-			// de "no declaro motivo", y el llamador reintenta declarandolo. Lo que si queda
-			// auditado es el acceso cuando ocurre, con la via por la que entro.
+			// El rechazo SE AUDITA (pedido de appKine-web #83, DP-03: todo intento de acceso
+			// clinico deja rastro). Aparte y despues de la transaccion, porque la del pedido
+			// revierte con esta excepcion y se llevaria la fila puesta. Lo de "sin permiso" no se
+			// registra aca: ya lo deja PERMISSION_DENIED el evaluador de organization, adentro de
+			// requirePermission. Sin justificacion que guardar: es justamente lo que falto.
 			log.info("{} sin relacion asistencial ni justificacion: accountId={} personaId={}",
 					operacion, actor.accountId(), personaId);
+			rechazos.registrarRechazo(new AuditEntry(
+					organizationId,
+					consultorioId,
+					actor.accountId(),
+					AuditEvents.HISTORIA_CLINICA_ACCESS_DENIED,
+					AuditEvents.ENTITY_PERSONA,
+					personaId,
+					null,
+					null,
+					Map.of("operacion", operacion,
+							"permissionCode", permissionCode,
+							"motivoDelRechazo", MOTIVO_SIN_JUSTIFICACION,
+							"viaSupportAccess", String.valueOf(decision.viaSupportAccess())),
+					null,
+					AuditEvents.correlationId(),
+					Instant.now()));
 			throw new AccesoClinicoNoJustificadoException(personaId);
 		}
 

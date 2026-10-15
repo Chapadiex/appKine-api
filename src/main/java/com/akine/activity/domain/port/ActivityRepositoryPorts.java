@@ -300,6 +300,17 @@ public final class ActivityRepositoryPorts {
 		 */
 		Optional<AsistenciaActividad> findDeInscripcion(long organizationId, long inscripcionId);
 
+		/**
+		 * La misma asistencia, <b>bloqueada</b> ({@code FOR UPDATE}) hasta el fin de la transaccion.
+		 *
+		 * <p>Es el lock que serializa dos derivaciones simultaneas del mismo participante
+		 * (AKINE-08.04, {@code DerivacionConcurrenteIT}). Sin el, las dos pasaban el pre-chequeo de
+		 * {@code clinical}, las dos intentaban el INSERT y el perdedor chocaba contra el unique con
+		 * la sesion de Hibernate ya rota: un 500. Con el, la segunda espera a la primera y, en
+		 * {@code READ_COMMITTED}, su pre-chequeo ya ve la fila de la ganadora y la devuelve.
+		 */
+		Optional<AsistenciaActividad> findDeInscripcionParaDerivar(long organizationId, long inscripcionId);
+
 		/** Todas las de una clase, en orden de id. Alimenta el detalle operativo. */
 		List<AsistenciaActividad> findDeLaClase(long organizationId, long claseId);
 

@@ -37,6 +37,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -219,22 +220,26 @@ class DerivacionClinicaServiceTest {
 		}
 
 		@Test
-		@DisplayName("la carrera perdida contra el unique devuelve la fila ganadora sin auditar")
+		@DisplayName("la carrera perdida contra el unique es 409 concurrent-modification, sin releer ni auditar")
 		void carrera_perdida() {
-			DataIntegrityViolationException choque = new DataIntegrityViolationException("uk");
+			DataIntegrityViolationException choque = new DataIntegrityViolationException(
+					"Duplicate entry for key 'derivacion_clinica.uk_derivacion_destino'");
 			willThrow(choque).given(derivaciones).saveAndFlush(any());
 			given(derivaciones.findVigenteAlCaso(ORG_ID, OrigenDeParticipacion.CLASE_PROGRAMADA,
 					ASISTENCIA_ID, CASO_ID))
-					.willReturn(Optional.empty(), Optional.of(derivacion()));
+					.willReturn(Optional.empty());
 
-			DerivacionSnapshot respuesta = service.registrar(registro(null, null, null));
-
-			assertThat(respuesta.yaExistia()).isTrue();
+			assertThatThrownBy(() -> service.registrar(registro(null, null, null)))
+					.isInstanceOf(OptimisticLockingFailureException.class)
+					.hasCause(choque);
+			// Una sola lectura, la del pre-chequeo: la sesion rota no se vuelve a consultar.
+			verify(derivaciones).findVigenteAlCaso(ORG_ID, OrigenDeParticipacion.CLASE_PROGRAMADA,
+					ASISTENCIA_ID, CASO_ID);
 			verifyNoInteractions(auditTrail);
 		}
 
 		@Test
-		@DisplayName("si el unique salto y no hay ganadora, el choque se propaga: no se inventa nada")
+		@DisplayName("una violacion que no es el unique de destino se propaga: no se inventa nada")
 		void choque_sin_ganadora() {
 			DataIntegrityViolationException choque = new DataIntegrityViolationException("fk");
 			willThrow(choque).given(derivaciones).saveAndFlush(any());

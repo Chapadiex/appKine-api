@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.104.0
+  version: 0.107.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -14748,6 +14748,41 @@ paths:
         schema:
           type: integer
           format: int64
+      - description: "Filtro OPCIONAL por origen del hecho (0.107.0). Se repite para\
+          \ pedir varios: origen=ENTRADA_CLINICA&origen=SESION. Sin el, todos. Un\
+          \ valor desconocido es 400 validation-error, no una pagina vacia. Con cursor\
+          \ hay que reenviar los mismos filtros: el cursor marca una posicion y no\
+          \ los lleva adentro"
+        in: query
+        name: origen
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - ENTRADA_CLINICA
+            - ADJUNTO_CLINICO
+            - ANTECEDENTE_CLINICO
+            - SESION
+      - description: "Filtro OPCIONAL: solo hechos con ocurrioEn igual o posterior\
+          \ a este instante UTC, ISO-8601 (0.107.0). Posterior a hasta es 400"
+        example: 2026-09-01T03:00:00Z
+        in: query
+        name: desde
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - description: "Filtro OPCIONAL: solo hechos con ocurrioEn igual o anterior\
+          \ a este instante UTC, ISO-8601 (0.107.0). Inclusivo, igual que desde"
+        example: 2026-10-01T02:59:59Z
+        in: query
+        name: hasta
+        required: false
+        schema:
+          type: string
+          format: date-time
       - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
           \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
           \ porque la sonda de relacion asistencial todavia no tiene implementacion\
@@ -14771,7 +14806,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El cursor no se pudo decodificar (cursor-invalido)
+          description: "El cursor no se pudo decodificar (cursor-invalido), o los\
+            \ filtros no son validos: origen desconocido, desde posterior a hasta\
+            \ (validation-error)"
         "403":
           content:
             application/problem+json:
@@ -22900,6 +22937,13 @@ components:
           description: "Oferta que motiva el caso (RN-M10-006). No se edita: cambiarla\
             \ convertiria el caso en otro caso con el mismo numero y el mismo historial"
           example: 42
+        ofertaNombre:
+          type: string
+          description: "Nombre comercial de la oferta, resuelto al leer contra su\
+            \ sede (0.107.0). No se guarda en el caso: si la oferta se renombra, el\
+            \ caso muestra el nombre nuevo. Ausente si la oferta ya no resuelve; ahi\
+            \ la pantalla muestra el id"
+          example: Kinesiologia traumatologica
         version:
           type: integer
           format: int64
@@ -22978,6 +23022,13 @@ components:
           format: int64
           description: Membership del profesional en este centro
           example: 31
+        profesionalNombre:
+          type: string
+          description: "Nombre del profesional, resuelto al leer por su membership\
+            \ en la organizacion (0.107.0): sirve aunque el caso sea de otra sede\
+            \ o el profesional ya no este habilitado. Ausente si no resuelve o en\
+            \ la vista administrativa de la historia; ahi la pantalla muestra el id"
+          example: Lucia Fernandez
         rol:
           type: string
           enum:
@@ -30885,6 +30936,21 @@ components:
           format: int64
           description: Autorizacion de M17 que respalda la cantidad. Siempre ausente
             mientras el origen sea DECLARADA
+        autorizacionVigenciaDesde:
+          type: string
+          format: date
+          description: "Primer dia de vigencia de esa autorizacion, leido en vivo\
+            \ de M17 (0.107.0). Ausente si el item no tiene autorizacion o si esta\
+            \ ya no resuelve (dada de baja). Fecha local, sin hora"
+          example: 2026-09-01
+        autorizacionVigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia de vigencia de esa autorizacion, INCLUSIVO, leido\
+            \ en vivo de M17 (0.107.0). Ausente si no tiene autorizacion, si no resuelve\
+            \ o si la autorizacion no tiene fin. Sirve para avisar que vence antes\
+            \ del fin estimado del plan sin pedir otro permiso"
+          example: 2026-12-31
         cantidadAutorizada:
           type: integer
           format: int32
@@ -31655,6 +31721,7 @@ components:
       - https://akine.app/problems/entrada-clinica-no-accesible
       - https://akine.app/problems/entrada-clinica-inactiva
       - https://akine.app/problems/enmienda-sin-motivo
+      - https://akine.app/problems/justificacion-de-acceso-requerida
       - https://akine.app/problems/adjunto-clinico-no-accesible
       - https://akine.app/problems/adjunto-clinico-inactivo
       - https://akine.app/problems/adjunto-clinico-no-disponible

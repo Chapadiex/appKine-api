@@ -79,7 +79,7 @@ public class AntecedenteClinicoService {
 			String descripcion,
 			String justificacion) {
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_WRITE, personaId, justificacion, "Registrar antecedente clinico");
 		long organizationId = actor.contextOrganizationId();
 
@@ -119,7 +119,7 @@ public class AntecedenteClinicoService {
 			String motivo,
 			String justificacion) {
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_WRITE, personaId, justificacion, "Dar de baja un antecedente");
 		long organizationId = actor.contextOrganizationId();
 
@@ -166,7 +166,7 @@ public class AntecedenteClinicoService {
 			boolean soloVigentes,
 			String justificacion) {
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_READ, personaId, justificacion, "Listar antecedentes clinicos");
 		long organizationId = actor.contextOrganizationId();
 

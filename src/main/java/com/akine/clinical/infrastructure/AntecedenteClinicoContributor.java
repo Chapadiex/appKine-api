@@ -29,6 +29,12 @@ public class AntecedenteClinicoContributor implements EventoClinicoContributor {
 	/** Como se identifica esta fuente en el orden total del timeline y en el cursor. */
 	static final String ORIGEN = "ANTECEDENTE_CLINICO";
 
+	/** Todos los eventos de esta fuente tienen el mismo origen: el filtro la saltea entera. */
+	@Override
+	public String origen() {
+		return ORIGEN;
+	}
+
 	private final AntecedenteClinicoRepositoryPort antecedentes;
 
 	public AntecedenteClinicoContributor(AntecedenteClinicoRepositoryPort antecedentes) {

@@ -3,6 +3,8 @@ package com.akine.clinical.api.dto;
 import com.akine.clinical.application.PlanItemView;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.time.LocalDate;
+
 /**
  * Una practica planificada, tal como sale por la API.
  *
@@ -47,7 +49,18 @@ public record PlanItemResponse(
 
 		@Schema(description = "Autorizacion de M17 que respalda la cantidad. Siempre ausente "
 				+ "mientras el origen sea DECLARADA")
-		Long autorizacionId) {
+		Long autorizacionId,
+
+		@Schema(description = "Primer dia de vigencia de esa autorizacion, leido en vivo de M17 "
+				+ "(0.107.0). Ausente si el item no tiene autorizacion o si esta ya no resuelve "
+				+ "(dada de baja). Fecha local, sin hora", example = "2026-09-01")
+		LocalDate autorizacionVigenciaDesde,
+
+		@Schema(description = "Ultimo dia de vigencia de esa autorizacion, INCLUSIVO, leido en vivo "
+				+ "de M17 (0.107.0). Ausente si no tiene autorizacion, si no resuelve o si la "
+				+ "autorizacion no tiene fin. Sirve para avisar que vence antes del fin estimado del "
+				+ "plan sin pedir otro permiso", example = "2026-12-31")
+		LocalDate autorizacionVigenciaHasta) {
 
 	public static PlanItemResponse from(PlanItemView view) {
 		return new PlanItemResponse(
@@ -59,6 +72,8 @@ public record PlanItemResponse(
 				view.cantidadPlanificada(),
 				view.cantidadAutorizada(),
 				view.origenAutorizacion(),
-				view.autorizacionId());
+				view.autorizacionId(),
+				view.autorizacionVigenciaDesde(),
+				view.autorizacionVigenciaHasta());
 	}
 }
