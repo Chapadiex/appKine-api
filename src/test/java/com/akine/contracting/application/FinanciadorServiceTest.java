@@ -139,16 +139,19 @@ class FinanciadorServiceTest {
 		}
 
 		@Test
-		@DisplayName("Leer NO evalua ningun permiso: se autoriza por pertenencia al tenant")
-		void leer_no_evalua_permiso() {
-			// No existe convenio:read y esta etapa no lo inventa. El hueco que eso deja esta
-			// declarado en la matriz §13.4.
+		@DisplayName("U-07: leer evalua convenio:read con la organizacion y la sede del contexto")
+		void leer_evalua_convenio_read() {
+			// Hasta U-07 leer no evaluaba ningun permiso y el rol PACIENTE leia el catalogo.
 			given(financiadores.buscar(anyLong(), any(), org.mockito.ArgumentMatchers.anyInt(), any()))
 					.willReturn(List.of());
 
 			service.buscar(delMostrador, busquedaVacia());
 
-			verifyNoInteractions(permissionGuard);
+			ArgumentCaptor<PermissionQuery> captor = ArgumentCaptor.forClass(PermissionQuery.class);
+			verify(permissionGuard).requirePermission(captor.capture());
+			assertThat(captor.getValue().permissionCode()).isEqualTo("convenio:read");
+			assertThat(captor.getValue().organizationId()).isEqualTo(ORG_ID);
+			assertThat(captor.getValue().consultorioId()).isEqualTo(SEDE_ID);
 		}
 
 		@Test

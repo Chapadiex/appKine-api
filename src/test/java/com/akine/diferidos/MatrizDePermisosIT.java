@@ -142,6 +142,30 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 		// auditoria:read: ORG_ADMIN (organizacion) y CONSULTORIO_ADMIN (su sede).
 		matriz.add(lectura("auditoria", o + "/audit-events" + periodo, 200, OA, CA));
 
+		// convenio:read (U-07, mismo criterio que DP-22): todo el personal; PACIENTE no. Los ids
+		// inexistentes prueban que el permiso se evalua ANTES de buscar el dato: quien lo tiene
+		// recibe el 404 del recurso, quien no, el 403.
+		matriz.add(lectura("convenios: financiadores", "/api/v1/financiadores", 200,
+				OA, CA, ADM, PROF));
+		matriz.add(lectura("convenios: un financiador", "/api/v1/financiadores/" + INEXISTENTE,
+				404, OA, CA, ADM, PROF));
+		matriz.add(lectura("convenios: planes", "/api/v1/financiadores/" + INEXISTENTE + "/planes",
+				404, OA, CA, ADM, PROF));
+		matriz.add(lectura("convenios: convenios de la sede", c + "/convenios", 200,
+				OA, CA, ADM, PROF));
+		matriz.add(lectura("convenios: aranceles", c + "/convenios/" + INEXISTENTE + "/aranceles",
+				404, OA, CA, ADM, PROF));
+
+		// catalogo:read (U-08, matriz §11.1): todo el personal; PACIENTE no.
+		matriz.add(lectura("catalogo: especialidades", "/api/v1/catalogos/especialidades", 200,
+				OA, CA, ADM, PROF));
+		matriz.add(lectura("catalogo: un concepto", "/api/v1/catalogos/practicas/" + INEXISTENTE,
+				404, OA, CA, ADM, PROF));
+		matriz.add(lectura("catalogo: tipos de medicion", "/api/v1/mediciones/definiciones", 200,
+				OA, CA, ADM, PROF));
+		matriz.add(lectura("catalogo: solicitudes", "/api/v1/catalogo-solicitudes", 200,
+				OA, CA, ADM, PROF));
+
 		SoftAssertions celdas = new SoftAssertions();
 		for (Celda celda : matriz) {
 			for (Map.Entry<String, String> rol : tokens.entrySet()) {
@@ -160,6 +184,59 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 			}
 		}
 		celdas.assertAll();
+	}
+
+	@Test
+	@DisplayName("U-08 catalogo:manage: solo ORG_ADMIN y CONSULTORIO_ADMIN crean conceptos del tenant")
+	void solo_los_administradores_crean_conceptos_del_catalogo() {
+		SoftAssertions celdas = new SoftAssertions();
+		for (Map.Entry<String, String> rol : tokens.entrySet()) {
+			String codigo = "G5-" + rol.getKey();
+			Respuesta respuesta = post("/api/v1/catalogos/especialidades", rol.getValue(),
+					"{\"codigo\":\"" + codigo + "\",\"name\":\"Especialidad sintetica " + codigo
+							+ "\"}");
+			int esperado = List.of(OA, CA).contains(rol.getKey()) ? 201 : 403;
+			celdas.assertThat(respuesta.status())
+					.as("[%s] crear un concepto contextual: %s", rol.getKey(), respuesta.body())
+					.isEqualTo(esperado);
+		}
+		// Uno global lo administra solo la plataforma: un administrador de tenant recibe 403.
+		Respuesta global = post("/api/v1/catalogos/especialidades", tokens.get(OA),
+				"{\"alcance\":\"GLOBAL\",\"codigo\":\"G5-GLOBAL\",\"name\":\"Global sintetica\"}");
+		celdas.assertThat(global.status()).as("[ORG_ADMIN] global: %s", global.body())
+				.isEqualTo(403);
+		celdas.assertAll();
+	}
+
+	@Test
+	@DisplayName("U-04 caso:create absorbido en hc:write: solo el PROFESIONAL abre un caso por base")
+	void abrir_un_caso_exige_hc_write() {
+		String ruta = "/api/v1/historias-clinicas/" + historia + "/casos";
+		String cuerpo = "{\"ofertaId\":" + INEXISTENTE + ",\"diagnosticoPresuntivo\":\"Sintetico\"}";
+
+		SoftAssertions celdas = new SoftAssertions();
+		for (Map.Entry<String, String> rol : tokens.entrySet()) {
+			Respuesta respuesta = conJustificacion("POST", ruta, rol.getValue(), cuerpo);
+			if (PROF.equals(rol.getKey())) {
+				// Tiene hc:write y pasa la autorizacion; la oferta inexistente lo frena despues.
+				celdas.assertThat(respuesta.status())
+						.as("[PROFESIONAL] pasa la autorizacion: %s", respuesta.body())
+						.isNotEqualTo(403)
+						.isLessThan(500);
+			} else {
+				celdas.assertThat(respuesta.status())
+						.as("[%s] abrir un caso sin hc:write: %s", rol.getKey(), respuesta.body())
+						.isEqualTo(403);
+			}
+		}
+		celdas.assertAll();
+
+		// El CONSULTORIO_ADMIN lo recibe por grant ("Segun rol clinico"), y con el pasa.
+		Respuesta otorgado = post("/api/v1/organizations/" + tenant.organizationId()
+				+ "/memberships/" + memberships.get(CA) + "/grants", tokens.get(OA), grant("hc:write"));
+		assertThat(otorgado.status()).as(otorgado.body()).isEqualTo(201);
+		Respuesta conGrant = conJustificacion("POST", ruta, tokens.get(CA), cuerpo);
+		assertThat(conGrant.status()).as(conGrant.body()).isNotEqualTo(403).isLessThan(500);
 	}
 
 	@Test

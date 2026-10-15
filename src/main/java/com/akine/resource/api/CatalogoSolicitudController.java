@@ -60,9 +60,8 @@ import java.util.List;
  *       resuelve. Es la unica consulta cross-tenant de todo el modulo.</li>
  * </ul>
  *
- * <p>Interinamente crear exige {@code consultorio:manage}; el codigo propio,
- * {@code catalogo:manage}, esta propuesto en {@code docs/seguridad/matriz-permisos-minima.md}
- * §11 y todavia no aprobado. Los codigos HTTP no cambian cuando se apruebe.
+ * <p>Crear exige {@code catalogo:manage} y listar {@code catalogo:read} (U-08, matriz §17.2);
+ * hasta U-08 crear exigia {@code consultorio:manage} y listar alcanzaba con pertenecer.
  */
 @RestController
 @RequestMapping(path = "/api/v1/catalogo-solicitudes",
@@ -102,7 +101,7 @@ public class CatalogoSolicitudController {
 					La administracion de plataforma no puede usar este endpoint: no se pide \
 					conceptos a si misma, los crea.
 
-					Exige consultorio:manage sobre la sede del contexto.""")
+					Exige catalogo:manage sobre la sede del contexto.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "201",
@@ -118,7 +117,7 @@ public class CatalogoSolicitudController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo, sin consultorio:manage, o es un "
+					description = "Sin contexto de trabajo, sin catalogo:manage, o es un "
 							+ "administrador de plataforma",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -177,7 +176,7 @@ public class CatalogoSolicitudController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "No hay sesion autenticada o no hay contexto de trabajo",
+					description = "Sin contexto de trabajo, o sin catalogo:read (el rol PACIENTE no lo tiene). Nunca 401",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})

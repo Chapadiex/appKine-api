@@ -97,7 +97,8 @@ public class FinanciadorService {
 	 */
 	@Transactional(readOnly = true)
 	public List<FinanciadorView> buscar(OperatingActor actor, FinanciadorBusqueda filtros) {
-		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Buscar financiadores");
+		long organizationId =
+				AutorizacionDeCatalogo.exigirLectura(permissionGuard, actor, "Buscar financiadores");
 		return financiadores
 				.buscar(organizationId, filtros.patron(), filtros.activoFiltro(), filtros.tipoFiltro())
 				.stream()
@@ -108,7 +109,8 @@ public class FinanciadorService {
 	/** Un financiador de la organizacion, activo o no. 404 si no existe o es de otro tenant. */
 	@Transactional(readOnly = true)
 	public FinanciadorView ver(OperatingActor actor, long financiadorId) {
-		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Ver un financiador");
+		long organizationId =
+				AutorizacionDeCatalogo.exigirLectura(permissionGuard, actor, "Ver un financiador");
 		return FinanciadorView.de(cargar(organizationId, financiadorId));
 	}
 

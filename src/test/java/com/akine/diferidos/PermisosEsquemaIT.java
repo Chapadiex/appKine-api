@@ -230,6 +230,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`.
 						// Matriz §2 y enmienda §13.
 						"convenio:manage",
+						// U-07 y U-08: convenio:read, catalogo:read y catalogo:manage, del personal.
+						"convenio:read", "catalogo:read", "catalogo:manage",
 						// `caja:operate` lo sumo AKINE-07.03: la matriz se lo da al ORG_ADMIN en la fila
 						// Operar Caja, y es distinto de `cobro:register` —cobrar es un acto comercial,
 						// arquear y cerrar una caja es responsabilidad sobre dinero fisico—.
@@ -263,6 +265,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						"hc:read", "hc:write",
 						// AKINE-DU-6 (DP-22): por base y no por grant, a diferencia de paciente:manage.
 						"paciente:read",
+						// U-07 y U-08: ve coberturas y aranceles, y elige practicas del catalogo.
+						"convenio:read", "catalogo:read",
 						// 08.01 a 08.03: el profesional ES quien dicta la clase, necesita saber a quien
 						// tiene enfrente y marcar quien vino. `caja:operate` NO esta: su celda dice No.
 						"clase:read", "clase:manage",

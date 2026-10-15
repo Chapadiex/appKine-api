@@ -56,27 +56,22 @@ import java.util.Map;
  * que ven todos los demas. La FK no puede expresarlo —compara ids, no alcances— asi que lo
  * sostiene {@link #exigirAlcanceCompatible}.
  *
- * <h2>Autorizacion: lo que esta etapa usa y lo que corresponderia</h2>
+ * <h2>Autorizacion: {@code catalogo:read} y {@code catalogo:manage} (U-08)</h2>
  *
- * <p><b>El catalogo de permisos es vinculante y una etapa no le agrega filas</b> (matriz
- * §5). M06 necesita dos codigos que hoy no existen —{@code catalogo:read} y
- * {@code catalogo:manage}— y esta etapa <b>no los inventa</b>: quedan PROPUESTOS en la seccion
- * 11 de {@code docs/seguridad/matriz-permisos-minima.md}, exactamente como 02.02 dejo propuesto
- * {@code espacio:read} antes de que se aprobara. Mientras tanto:
+ * <p>02.05 dejo los dos codigos PROPUESTOS en la §11.1 de
+ * {@code docs/seguridad/matriz-permisos-minima.md} y autorizo por pertenencia (lecturas) y
+ * {@code consultorio:manage} (mutaciones) mientras tanto. La decision U-08 los aprueba tal como
+ * estaban propuestos (matriz §17.2):
  *
  * <ul>
- *   <li><b>Lecturas</b>: autorizadas por <b>pertenencia</b>. Cualquier membership vigente en la
- *       organizacion del contexto puede consultar el catalogo —global y propio—. Es lo que hizo
- *       02.02 con las lecturas de espacios durante toda su vigencia, y el efecto practico es el
- *       mismo que tendria {@code catalogo:read} salvo por {@code PACIENTE}, que hoy pasa y con
- *       el codigo aprobado no pasaria.</li>
- *   <li><b>Mutaciones contextuales</b>: exigen {@code consultorio:manage} sobre la sede del
- *       contexto, que es el permiso que la matriz §5 le asigna a la administracion del centro.
- *       Pasan {@code ORG_ADMIN} y {@code CONSULTORIO_ADMIN}, que es literalmente lo que la
- *       etapa pide ("admin consultorio para conceptos contextuales/solicitudes").</li>
- *   <li><b>Mutaciones globales</b>: exigen rol de plataforma, sin ningun permiso de tenant de
- *       por medio. Es el mismo tratamiento que el catalogo de planes: no es dato de un tenant,
- *       es la oferta comun.</li>
+ *   <li><b>Lecturas</b>: {@code catalogo:read}, evaluado con la sede del contexto. Lo tiene todo
+ *       el personal; el rol {@code PACIENTE}, que por pertenencia leia el catalogo, recibe 403.</li>
+ *   <li><b>Mutaciones contextuales</b>: {@code catalogo:manage} sobre la sede del contexto.
+ *       Pasan {@code ORG_ADMIN} y {@code CONSULTORIO_ADMIN}, los mismos que con
+ *       {@code consultorio:manage}.</li>
+ *   <li><b>Mutaciones globales</b>: rol de plataforma <b>y</b> {@code catalogo:manage} con
+ *       alcance GLOBAL. Es el mismo tratamiento que el catalogo de planes: no es dato de un
+ *       tenant, es la oferta comun.</li>
  * </ul>
  *
  * <p><b>Y lo que deliberadamente NO se concede:</b> un {@code PLATFORM_ADMIN} <b>no ve ni muta
@@ -157,6 +152,7 @@ public class CatalogoService {
 	 */
 	@Transactional(readOnly = true)
 	public CatalogoConceptoView find(OperatingActor actor, CatalogoTipo tipo, long conceptoId) {
+		exigirLectura(actor);
 		List<Long> owners = ownersVisibles(actor);
 		Instant ahora = Instant.now();
 		return switch (tipo) {
@@ -180,6 +176,7 @@ public class CatalogoService {
 	public List<CatalogoConceptoView> buscar(
 			OperatingActor actor, CatalogoTipo tipo, CatalogoBusqueda filtros) {
 
+		exigirLectura(actor);
 		List<Long> owners = ownersSegunFiltro(actor, filtros.alcance());
 		Instant ahora = Instant.now();
 		String patron = filtros.patron();
@@ -210,6 +207,7 @@ public class CatalogoService {
 	public List<CatalogoConceptoView> listarVigencias(
 			OperatingActor actor, long nomencladorId, CatalogoBusqueda filtros, String codigo) {
 
+		exigirLectura(actor);
 		List<Long> owners = ownersVisibles(actor);
 		cargarNomenclador(nomencladorId, owners);
 		Instant ahora = Instant.now();
@@ -533,6 +531,11 @@ public class CatalogoService {
 	private Long exigirGestionDe(OperatingActor actor, CatalogoAlcance alcance) {
 		if (alcance == CatalogoAlcance.GLOBAL) {
 			exigirPlataforma(actor);
+			// catalogo:manage con alcance GLOBAL (U-08). Sin organizacion en la consulta: el
+			// catalogo comun no es de ningun tenant, y un rol de tenant nunca llega aca.
+			permissionGuard.requirePermission(new PermissionQuery(
+					actor.accountId(), PermissionCodes.CATALOGO_MANAGE, null, null, null,
+					Instant.now()));
 			return null;
 		}
 		if (actor.platformAdmin()) {
@@ -544,12 +547,31 @@ public class CatalogoService {
 		long organizationId = exigirContexto(actor);
 		permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(),
-				PermissionCodes.CONSULTORIO_MANAGE,
+				PermissionCodes.CATALOGO_MANAGE,
 				organizationId,
 				actor.consultorioId(),
 				null,
 				Instant.now()));
 		return organizationId;
+	}
+
+	/**
+	 * Exige {@code catalogo:read} (U-08). Es el control de las LECTURAS, que hasta U-08 se
+	 * autorizaban por pertenencia y dejaban pasar al rol {@code PACIENTE}.
+	 *
+	 * <p>Para la plataforma se evalua sin organizacion —su alcance es GLOBAL y solo ve el
+	 * catalogo comun—; para un tenant, con la organizacion y la sede del contexto, porque sin
+	 * sede los alcances de consultorio no cubren la consulta.
+	 */
+	private void exigirLectura(OperatingActor actor) {
+		Long organizationId = actor.platformAdmin() ? null : exigirContexto(actor);
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.CATALOGO_READ,
+				organizationId,
+				actor.platformAdmin() ? null : actor.consultorioId(),
+				null,
+				Instant.now()));
 	}
 
 	/** Autoriza mutar un concepto que ya existe, cuyo alcance decide quien puede tocarlo. */

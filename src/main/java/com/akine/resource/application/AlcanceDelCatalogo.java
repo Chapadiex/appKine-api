@@ -30,7 +30,8 @@ import java.util.List;
  *
  * <pre>
  *   QUIEN LO VE      global: todos los tenants        contextual: solo su duenio
- *   QUIEN LO MUTA    global: PLATFORM_ADMIN           contextual: consultorio:manage
+ *   QUIEN LO LEE     catalogo:read (U-08): el personal y la plataforma; PACIENTE no
+ *   QUIEN LO MUTA    global: PLATFORM_ADMIN           contextual: catalogo:manage (U-08)
  *   DE QUE DEPENDE   global: solo de otros globales   contextual: de globales o propios
  * </pre>
  *
@@ -109,6 +110,10 @@ public class AlcanceDelCatalogo {
 				throw new AccessDeniedException(
 						"El catalogo global lo administra unicamente la plataforma");
 			}
+			// catalogo:manage con alcance GLOBAL (U-08), sin organizacion en la consulta.
+			permissionGuard.requirePermission(new PermissionQuery(
+					actor.accountId(), PermissionCodes.CATALOGO_MANAGE, null, null, null,
+					Instant.now()));
 			return null;
 		}
 		if (actor.platformAdmin()) {
@@ -118,12 +123,29 @@ public class AlcanceDelCatalogo {
 		long organizationId = exigirContexto(actor);
 		permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(),
-				PermissionCodes.CONSULTORIO_MANAGE,
+				PermissionCodes.CATALOGO_MANAGE,
 				organizationId,
 				actor.consultorioId(),
 				null,
 				Instant.now()));
 		return organizationId;
+	}
+
+	/**
+	 * Exige {@code catalogo:read} (U-08): el control de las LECTURAS, que hasta U-08 se autorizaban
+	 * por pertenencia y dejaban pasar al rol {@code PACIENTE}. Para la plataforma se evalua sin
+	 * organizacion (alcance GLOBAL, solo ve el catalogo comun); para un tenant, con la
+	 * organizacion y la sede del contexto.
+	 */
+	public void exigirLectura(OperatingActor actor) {
+		Long organizationId = actor.platformAdmin() ? null : exigirContexto(actor);
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.CATALOGO_READ,
+				organizationId,
+				actor.platformAdmin() ? null : actor.consultorioId(),
+				null,
+				Instant.now()));
 	}
 
 	/** La misma autorizacion, cuando el concepto ya existe y su duenio decide quien lo toca. */
