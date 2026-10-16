@@ -122,7 +122,12 @@ public final class ProductoRequests {
 			@Schema(description = "Solo abonos: ultimo dia del periodo, inclusive. Ausente: el periodo "
 					+ "dura los `vigenciaDias` del producto. No puede durar mas que eso ni haber "
 					+ "terminado", example = "2026-11-30")
-			LocalDate periodoHasta) {
+			LocalDate periodoHasta,
+
+			@Schema(description = "Solo abonos (desde 0.116.0): que el sistema venda solo el periodo "
+					+ "siguiente, con su obligacion, cuando este se acerque a su fin. Ausente o false: no "
+					+ "se renueva. En un pack es 400", example = "false")
+			Boolean renovacionAutomatica) {
 	}
 
 	@Schema(
@@ -151,6 +156,19 @@ public final class ProductoRequests {
 
 			@Schema(description = "Obligatorio", example = "Se vendio a la persona equivocada")
 			@NotBlank @Size(max = 280) String motivo,
+
+			@Schema(description = "Version del pase que el cliente leyo", example = "1")
+			@NotNull @PositiveOrZero Long version) {
+	}
+
+	@Schema(name = "ConfiguracionDeRenovacionDeAbono",
+			description = "Prende o apaga la renovacion automatica de un abono (desde 0.116.0).")
+	public record ConfigurarRenovacion(
+
+			@Schema(description = "true: el sistema vende el periodo siguiente, con su obligacion, al "
+					+ "acercarse el fin de este, a nombre de quien la prende. false: no se renueva",
+					example = "true")
+			@NotNull Boolean activa,
 
 			@Schema(description = "Version del pase que el cliente leyo", example = "1")
 			@NotNull @PositiveOrZero Long version) {

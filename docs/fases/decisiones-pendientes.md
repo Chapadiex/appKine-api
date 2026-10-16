@@ -460,6 +460,10 @@ dejar el MVP como está:
   `[0, creditos comprados]`. (e) no: RF-M29-006 dice "no consumir créditos luego del vencimiento".
 - **Recomendado:** dejar las cinco como están hasta que un centro lo pida; (a) y (d) cambian
   CHECKs de V64, (b) depende de la política de prepago (ADR-0013).
+- **Desde 08.08 (rama `akine-08.08-renovacion-y-avisos`, 16/10/2026), (b) alcanza también a la
+  renovación automática:** el período renovado se activa al venderse y la renovación **no mira si
+  el anterior se pagó**, por la misma regla. Decidir "al cobrarse" cambia la venta y la renovación
+  juntas (diseño §10.1 y §10.8).
 - **Fase / RF:** F9 (08.07, 08.08); RF-M29-005, RF-M29-006, RF-M29-007, RN-M29-009. Diseño en
   [`../diseno/AKINE-08.07-08.08-ledger-y-abonos.md`](../diseno/AKINE-08.07-08.08-ledger-y-abonos.md) §9.
 - **Destraba:** nada del MVP.

@@ -23,6 +23,9 @@ import java.util.Set;
  * @param creditosUsados los creditos tomados por asistencias: {@code -SUM(cantidad)} de los
  *                       {@code CONSUMO} y {@code DEVOLUCION} del ledger. Los ajustes manuales no
  *                       cuentan. Se calcula al leer
+ * @param renovacionAutomatica solo abonos (AKINE-08.08): si el job va a vender el periodo siguiente
+ * @param renuevaPaseId  el periodo de abono que este renueva, o {@code null} si lo vendio una persona
+ * @param renovacionOmitidaMotivo por que el job no pudo renovar este periodo, o {@code null}
  * @param anulable       si la anulacion lo aceptaria hoy: no anulado, sin creditos usados y con la
  *                       deuda de la venta sin cobros. Es la misma regla con la que
  *                       {@link AjusteDePaseService#anular} rechaza, calculada al leer
@@ -50,6 +53,9 @@ public record PaseView(
 		Instant anuladoEn,
 		Long anuladoPorCuentaId,
 		String motivoAnulacion,
+		boolean renovacionAutomatica,
+		Long renuevaPaseId,
+		String renovacionOmitidaMotivo,
 		long version) {
 
 	/**
@@ -96,7 +102,8 @@ public record PaseView(
 				p.getSnapshotOfertaId(), p.getCreditosIniciales(), saldo, p.getVigenciaDesde(),
 				p.getVigenciaHasta(), estado, vigente, uso.creditosUsados(), anulable, p.getVendidoEn(),
 				p.getVendidoPorCuentaId(), p.getAnuladoEn(), p.getAnuladoPorCuentaId(),
-				p.getMotivoAnulacion(), version);
+				p.getMotivoAnulacion(), p.isRenovacionAutomatica(), p.getRenuevaPaseId(),
+				p.getRenovacionOmitidaMotivo(), version);
 	}
 
 	/** La misma vista con la anulacion que acaba de escribir un UPDATE nativo. */
@@ -104,6 +111,14 @@ public record PaseView(
 		return new PaseView(id, consultorioId, personaId, productoId, tipo, nombre, precio, moneda,
 				ofertaId, creditosIniciales, creditosDisponibles, vigenciaDesde, vigenciaHasta, estado,
 				vigente, creditosUsados, false, vendidoEn, vendidoPorCuentaId, en, porCuentaId, motivo,
-				version);
+				renovacionAutomatica, renuevaPaseId, renovacionOmitidaMotivo, version);
+	}
+
+	/** La misma vista con la renovacion que acaba de escribir un UPDATE nativo (AKINE-08.08). */
+	public PaseView conRenovacion(boolean activa, long nuevaVersion) {
+		return new PaseView(id, consultorioId, personaId, productoId, tipo, nombre, precio, moneda,
+				ofertaId, creditosIniciales, creditosDisponibles, vigenciaDesde, vigenciaHasta, estado,
+				vigente, creditosUsados, anulable, vendidoEn, vendidoPorCuentaId, anuladoEn,
+				anuladoPorCuentaId, motivoAnulacion, activa, renuevaPaseId, null, nuevaVersion);
 	}
 }

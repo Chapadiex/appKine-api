@@ -13,6 +13,7 @@ import com.akine.activity.application.VenderPaseCommand;
 import com.akine.activity.application.VentaDePaseService;
 import com.akine.activity.domain.TipoProducto;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -53,6 +54,8 @@ public class PaseController {
 
 	private static final String P403_PRODUCTO = "Sin `producto:manage` en esa sede, o sin contexto activo";
 	private static final String P403_AJUSTE = "Sin `pase:adjust` en esa sede, o sin contexto activo";
+	/** Tope duro por request del ledger paginado, el mismo de todos los listados de la API. */
+	private static final int TAMANO_MAXIMO = 100;
 	private static final String P404 = "La sede, el recurso o la persona no existen, o son de otro tenant";
 
 	private final ProductoService productoService;
@@ -219,7 +222,12 @@ public class PaseController {
 					`periodoDesde` es obligatorio y el pase cubre ese periodo; la obligacion nace con \
 					`origen = VENTA_ABONO`. Un periodo, una obligacion: un abono del mismo producto \
 					para la misma persona con periodo superpuesto es 409 `abono-periodo-superpuesto`. \
-					Renovar es vender el periodo siguiente.""")
+					Renovar es vender el periodo siguiente.
+
+					**Renovacion automatica** (desde 0.116.0): con `renovacionAutomatica = true` en un \
+					abono, el sistema vende solo el periodo siguiente —con el precio del producto de ese \
+					momento y su propia obligacion— al acercarse el fin de este, a nombre de quien \
+					vendio. En un pack es 400.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201", description = "Pase vendido"),
 			@ApiResponse(responseCode = "200", description = "Reintento con la misma clave y el "
@@ -241,7 +249,8 @@ public class PaseController {
 
 		ResultadoDeVenta resultado = ventaService.vender(apiActor.current(), consultorioId,
 				new VenderPaseCommand(request.productoId(), request.personaId(), request.idempotencyKey(),
-						request.periodoDesde(), request.periodoHasta()));
+						request.periodoDesde(), request.periodoHasta(),
+						Boolean.TRUE.equals(request.renovacionAutomatica())));
 		PaseResponses.ResultadoVenta cuerpo = PaseResponses.ResultadoVenta.de(resultado);
 		if (!resultado.creada()) {
 			return ResponseEntity.ok(cuerpo);
@@ -264,6 +273,69 @@ public class PaseController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public PaseResponses.Detalle verPase(@PathVariable long consultorioId, @PathVariable long paseId) {
 		return PaseResponses.Detalle.de(ventaService.find(apiActor.current(), consultorioId, paseId));
+	}
+
+	@GetMapping("/pases/{paseId}/movimientos")
+	@Operation(
+			operationId = "listarMovimientosDePase",
+			summary = "Ledger de un pase, paginado",
+			description = """
+					Los movimientos del pase del mas viejo al mas nuevo, de a paginas (RF-M29-009, \
+					desde 0.116.0): el orden en que se lee `saldoResultante`. `size` se acota a 100 por \
+					request. Para un pase con historia larga reemplaza al ledger entero que trae \
+					`verPase`, que no cambia.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Una pagina del ledger"),
+			@ApiResponse(responseCode = "403", description = "Sin `pase:read` en esa sede, o sin contexto activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = P404,
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public PaseResponses.PaginaDeMovimientos listarMovimientosDePase(
+			@PathVariable long consultorioId,
+			@PathVariable long paseId,
+			@Parameter(description = "Numero de pagina, base cero", example = "0")
+			@RequestParam(defaultValue = "0") int page,
+			@Parameter(description = "Elementos por pagina. Se acota a 100", example = "20")
+			@RequestParam(defaultValue = "20") int size) {
+
+		return PaseResponses.PaginaDeMovimientos.de(ventaService.movimientos(apiActor.current(), consultorioId,
+				paseId, Math.max(page, 0), Math.min(Math.max(size, 1), TAMANO_MAXIMO)));
+	}
+
+	@PutMapping("/pases/{paseId}/renovacion")
+	@Operation(
+			operationId = "configurarRenovacionDeAbono",
+			summary = "Prender o apagar la renovacion automatica de un abono",
+			description = """
+					Con `activa = true` el sistema vende el periodo siguiente del abono cuando este se \
+					acerca a su fin (desde 0.116.0): una venta mas, con el precio del producto de ese \
+					momento, su movimiento `COMPRA` y **su propia obligacion** `VENTA_ABONO`, a nombre de \
+					quien la prende. **No cobra** (DP-06). El periodo nuevo hereda la renovacion; el \
+					viejo queda con `renovacionAutomatica = false` y el nuevo con `renuevaPaseId`. Si el \
+					periodo siguiente no se puede vender (producto de baja, persona de baja, periodo ya \
+					ocupado), la renovacion se apaga y el motivo queda en `renovacionOmitidaMotivo`.
+
+					Apagarla no anula un periodo ya renovado: para eso, `anularPase` sobre el nuevo. \
+					Idempotente: pedir lo que ya esta devuelve 200 sin escribir. Solo abonos.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "El abono con la renovacion configurada"),
+			@ApiResponse(responseCode = "400", description = "Es un pack, o datos invalidos",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "Sin `pase:manage` en esa sede, o sin contexto activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = P404,
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "Version vieja (`concurrent-modification`), "
+					+ "abono anulado (`pase-no-ajustable`, `causa = ESTADO`) o ya renovado "
+					+ "(`pase-no-ajustable`, `causa = YA_RENOVADO`: se configura sobre el periodo nuevo)",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public PaseResponses.Pase configurarRenovacionDeAbono(
+			@PathVariable long consultorioId,
+			@PathVariable long paseId,
+			@RequestBody @Valid ProductoRequests.ConfigurarRenovacion request) {
+
+		return PaseResponses.Pase.de(ventaService.configurarRenovacion(apiActor.current(), consultorioId,
+				paseId, request.activa(), request.version()));
 	}
 
 	@GetMapping("/personas/{personaId}/pases")

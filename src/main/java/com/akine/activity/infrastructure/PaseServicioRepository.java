@@ -1,6 +1,8 @@
 package com.akine.activity.infrastructure;
 
 import com.akine.activity.domain.PaseServicio;
+import com.akine.activity.domain.port.ActivityRepositoryPorts.CandidatoAAvisar;
+import com.akine.activity.domain.port.ActivityRepositoryPorts.CandidatoARenovar;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.CandidatoAVencer;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.EstadoDePase;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseServicioRepositoryPort;
@@ -258,4 +260,174 @@ public interface PaseServicioRepository
 			@Param("productoId") long productoId,
 			@Param("desde") LocalDate desde,
 			@Param("hasta") LocalDate hasta);
+
+	// =================================================================================
+	// Renovacion de abonos (AKINE-08.08). Los tres UPDATE suben version, como los del saldo.
+	// =================================================================================
+
+	@Override
+	default int configurarRenovacion(
+			long organizationId, long paseId, boolean activa, long actorCuentaId, long versionLeida) {
+		return actualizarRenovacion(organizationId, paseId, activa ? 1 : 0, actorCuentaId, versionLeida);
+	}
+
+	/** Prenderla fija quien la autorizo; apagarla conserva el ultimo que la autorizo (historia). */
+	@Modifying(flushAutomatically = true)
+	@Query(value = """
+			UPDATE pase_servicio
+			   SET renovacion_autorizada_por_cuenta_id = CASE WHEN :activa = 1 THEN :actorCuentaId
+			                                                  ELSE renovacion_autorizada_por_cuenta_id END,
+			       renovacion_automatica = :activa,
+			       renovacion_omitida_motivo = NULL,
+			       version = version + 1
+			 WHERE id = :paseId
+			   AND organization_id = :organizationId
+			   AND version = :versionLeida
+			   AND tipo = 'ABONO'
+			   AND estado <> 'ANULADO'
+			""", nativeQuery = true)
+	int actualizarRenovacion(
+			@Param("organizationId") long organizationId,
+			@Param("paseId") long paseId,
+			@Param("activa") int activa,
+			@Param("actorCuentaId") long actorCuentaId,
+			@Param("versionLeida") long versionLeida);
+
+	@Override
+	@Modifying(flushAutomatically = true)
+	@Query(value = """
+			UPDATE pase_servicio
+			   SET renovacion_automatica = 0,
+			       renovacion_omitida_motivo = NULL,
+			       version = version + 1
+			 WHERE id = :paseId
+			   AND organization_id = :organizationId
+			   AND renovacion_automatica = 1
+			""", nativeQuery = true)
+	int marcarRenovado(
+			@Param("organizationId") long organizationId,
+			@Param("paseId") long paseId);
+
+	@Override
+	@Modifying(flushAutomatically = true)
+	@Query(value = """
+			UPDATE pase_servicio
+			   SET renovacion_automatica = 0,
+			       renovacion_omitida_motivo = :motivo,
+			       version = version + 1
+			 WHERE id = :paseId
+			   AND organization_id = :organizationId
+			   AND renovacion_automatica = 1
+			""", nativeQuery = true)
+	int omitirRenovacion(
+			@Param("organizationId") long organizationId,
+			@Param("paseId") long paseId,
+			@Param("motivo") String motivo);
+
+	@Override
+	@Query("""
+			SELECT p.id FROM PaseServicio p
+			 WHERE p.organizationId = :organizationId
+			   AND p.renuevaPaseId = :paseId
+			""")
+	Optional<Long> renovacionDe(
+			@Param("organizationId") long organizationId,
+			@Param("paseId") long paseId);
+
+	@Override
+	default List<CandidatoARenovar> candidatosARenovar(LocalDate limite, int maximo) {
+		return filasARenovar(limite, PageRequest.of(0, maximo)).stream()
+				.map(fila -> new CandidatoARenovar(
+						(Long) fila[0], (Long) fila[1], (Long) fila[2], (Long) fila[3], (LocalDate) fila[4]))
+				.toList();
+	}
+
+	@Query("""
+			SELECT p.id, p.organizationId, p.consultorioId, p.productoId, p.vigenciaHasta FROM PaseServicio p
+			 WHERE p.renovacionAutomatica = true
+			   AND p.vigenciaHasta <= :limite
+			   AND p.tipo = com.akine.activity.domain.TipoProducto.ABONO
+			   AND p.estado <> com.akine.activity.domain.EstadoPase.ANULADO
+			 ORDER BY p.vigenciaHasta ASC, p.id ASC
+			""")
+	List<Object[]> filasARenovar(@Param("limite") LocalDate limite, Pageable pagina);
+
+	// =================================================================================
+	// Avisos (RF-M26-008, AKINE-08.08). La marca es la idempotencia: el UPDATE la pone una sola vez.
+	// =================================================================================
+
+	@Override
+	@Modifying(flushAutomatically = true)
+	@Query(value = """
+			UPDATE pase_servicio
+			   SET aviso_vencimiento_en = :ahora,
+			       version = version + 1
+			 WHERE id = :paseId
+			   AND organization_id = :organizationId
+			   AND aviso_vencimiento_en IS NULL
+			   AND estado = 'ACTIVO'
+			""", nativeQuery = true)
+	int marcarAvisoDeVencimiento(
+			@Param("organizationId") long organizationId,
+			@Param("paseId") long paseId,
+			@Param("ahora") Instant ahora);
+
+	@Override
+	@Modifying(flushAutomatically = true)
+	@Query(value = """
+			UPDATE pase_servicio
+			   SET aviso_saldo_bajo_en = :ahora,
+			       version = version + 1
+			 WHERE id = :paseId
+			   AND organization_id = :organizationId
+			   AND aviso_saldo_bajo_en IS NULL
+			   AND estado = 'ACTIVO'
+			   AND creditos_disponibles BETWEEN 1 AND :umbral
+			   AND creditos_disponibles < creditos_iniciales
+			""", nativeQuery = true)
+	int marcarAvisoDeSaldoBajo(
+			@Param("organizationId") long organizationId,
+			@Param("paseId") long paseId,
+			@Param("umbral") int umbral,
+			@Param("ahora") Instant ahora);
+
+	@Override
+	default List<CandidatoAAvisar> candidatosAvisoDeVencimiento(LocalDate desde, LocalDate hasta, int maximo) {
+		return aCandidatos(filasAvisoDeVencimiento(desde, hasta, PageRequest.of(0, maximo)));
+	}
+
+	@Override
+	default List<CandidatoAAvisar> candidatosAvisoDeSaldoBajo(int umbral, int maximo) {
+		return aCandidatos(filasAvisoDeSaldoBajo(umbral, PageRequest.of(0, maximo)));
+	}
+
+	private static List<CandidatoAAvisar> aCandidatos(List<Object[]> filas) {
+		return filas.stream()
+				.map(fila -> new CandidatoAAvisar(
+						(Long) fila[0], (Long) fila[1], (Long) fila[2], (LocalDate) fila[3]))
+				.toList();
+	}
+
+	@Query("""
+			SELECT p.id, p.organizationId, p.consultorioId, p.vigenciaHasta FROM PaseServicio p
+			 WHERE p.estado = com.akine.activity.domain.EstadoPase.ACTIVO
+			   AND p.vigenciaHasta BETWEEN :desde AND :hasta
+			   AND p.creditosDisponibles > 0
+			   AND p.avisoVencimientoEn IS NULL
+			 ORDER BY p.vigenciaHasta ASC, p.id ASC
+			""")
+	List<Object[]> filasAvisoDeVencimiento(
+			@Param("desde") LocalDate desde,
+			@Param("hasta") LocalDate hasta,
+			Pageable pagina);
+
+	@Query("""
+			SELECT p.id, p.organizationId, p.consultorioId, p.vigenciaHasta FROM PaseServicio p
+			 WHERE p.estado = com.akine.activity.domain.EstadoPase.ACTIVO
+			   AND p.creditosDisponibles BETWEEN 1 AND :umbral
+			   AND p.creditosDisponibles < p.creditosIniciales
+			   AND p.avisoSaldoBajoEn IS NULL
+			 ORDER BY p.id ASC
+			""")
+	List<Object[]> filasAvisoDeSaldoBajo(@Param("umbral") int umbral, Pageable pagina);
 }

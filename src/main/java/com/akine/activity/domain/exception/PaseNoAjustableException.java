@@ -17,7 +17,12 @@ public class PaseNoAjustableException extends RuntimeException {
 		/** El saldo final quedaria negativo o por encima de lo comprado (ajuste, RN-M29-008). */
 		FUERA_DE_RANGO,
 		/** Tiene creditos usados por asistencias (anulacion). */
-		CREDITOS_USADOS
+		CREDITOS_USADOS,
+		/**
+		 * El abono ya se renovo: la renovacion automatica se configura sobre el periodo nuevo
+		 * (AKINE-08.08).
+		 */
+		YA_RENOVADO
 	}
 
 	private final long paseId;

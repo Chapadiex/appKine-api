@@ -126,6 +126,34 @@ public class PaseServicio {
 	@Column(name = "motivo_anulacion", length = 280, insertable = false, updatable = false)
 	private String motivoAnulacion;
 
+	/**
+	 * La renovacion automatica de un abono (V103, AKINE-08.08). La escribe el INSERT de la venta y
+	 * despues solo la mueven los UPDATE nativos del repositorio ({@code configurarRenovacion},
+	 * {@code marcarRenovado}, {@code omitirRenovacion}), que suben la version, igual que el saldo.
+	 */
+	@Column(name = "renovacion_automatica", nullable = false, updatable = false)
+	private boolean renovacionAutomatica;
+
+	@Column(name = "renovacion_autorizada_por_cuenta_id", updatable = false)
+	private Long renovacionAutorizadaPorCuentaId;
+
+	@Column(name = "renovacion_omitida_motivo", length = 280, insertable = false, updatable = false)
+	private String renovacionOmitidaMotivo;
+
+	/** El periodo de abono que este renueva; {@code null} en una venta hecha por una persona. */
+	@Column(name = "renueva_pase_id", updatable = false)
+	private Long renuevaPaseId;
+
+	/**
+	 * Las marcas de los avisos de RF-M26-008 (V103). Solo lectura para JPA: las pone el UPDATE
+	 * nativo de {@code marcarAvisoDe*}, y mapeadas asi las consultas de candidatos son JPQL.
+	 */
+	@Column(name = "aviso_vencimiento_en", insertable = false, updatable = false)
+	private Instant avisoVencimientoEn;
+
+	@Column(name = "aviso_saldo_bajo_en", insertable = false, updatable = false)
+	private Instant avisoSaldoBajoEn;
+
 	@Version
 	@Column(name = "version", nullable = false)
 	private long version;
@@ -211,6 +239,60 @@ public class PaseServicio {
 		return Optional.empty();
 	}
 
+	/**
+	 * El periodo siguiente de un abono con renovacion automatica (AKINE-08.08): una venta mas, con el
+	 * snapshot del producto <b>de hoy</b> —un cambio de precio vale para el periodo nuevo y no toca
+	 * los vendidos— y a nombre de quien autorizo la renovacion, porque el job no es una persona y la
+	 * deuda tiene que tener a alguien que la haya pedido. Hereda la renovacion automatica: el periodo
+	 * siguiente tambien se renueva, hasta que alguien la apague.
+	 */
+	public static PaseServicio renovar(
+			ProductoServicio producto, PaseServicio anterior, LocalDate periodoDesde,
+			LocalDate periodoHasta, Instant ahora) {
+
+		if (anterior.tipo != TipoProducto.ABONO || !anterior.renovacionAutomatica
+				|| anterior.renovacionAutorizadaPorCuentaId == null) {
+			throw new IllegalArgumentException("Solo se renueva un abono con renovacion automatica");
+		}
+		long autorizadaPor = anterior.renovacionAutorizadaPorCuentaId;
+		PaseServicio p = venderAbono(producto, anterior.personaId, periodoDesde, periodoHasta, null, null,
+				autorizadaPor, ahora);
+		p.renuevaPaseId = anterior.id;
+		p.renovacionAutomatica = true;
+		p.renovacionAutorizadaPorCuentaId = autorizadaPor;
+		return p;
+	}
+
+	/** Pide la renovacion automatica al vender un abono, antes del INSERT. */
+	public void pedirRenovacionAutomatica(long autorizadaPorCuentaId) {
+		if (tipo != TipoProducto.ABONO) {
+			throw new IllegalArgumentException("Solo un abono se renueva: un pack no tiene periodo");
+		}
+		this.renovacionAutomatica = true;
+		this.renovacionAutorizadaPorCuentaId = autorizadaPorCuentaId;
+	}
+
+	/**
+	 * El periodo que sigue a {@code desdeAnterior..hastaAnterior} (AKINE-08.08). Empieza el dia
+	 * siguiente, sin hueco ni superposicion. <b>Un mes calendario completo se renueva por el mes
+	 * calendario siguiente</b> —el abono de noviembre por diciembre, no por "31 dias"— si el producto
+	 * lo cubre; cualquier otro periodo dura lo que el producto ({@code vigenciaDias}), igual que una
+	 * venta sin {@code periodoHasta}.
+	 *
+	 * @return {@code [desde, hasta]}, los dos inclusive
+	 */
+	public static LocalDate[] periodoSiguiente(
+			LocalDate desdeAnterior, LocalDate hastaAnterior, int vigenciaDias) {
+
+		LocalDate desde = hastaAnterior.plusDays(1);
+		boolean mesCompleto = desdeAnterior.getDayOfMonth() == 1
+				&& hastaAnterior.equals(desdeAnterior.withDayOfMonth(desdeAnterior.lengthOfMonth()));
+		if (mesCompleto && desde.lengthOfMonth() <= vigenciaDias) {
+			return new LocalDate[] {desde, desde.withDayOfMonth(desde.lengthOfMonth())};
+		}
+		return new LocalDate[] {desde, desde.plusDays(vigenciaDias - 1L)};
+	}
+
 	private static PaseServicio nuevo(
 			ProductoServicio producto, long personaId, String idempotencyKey, String requestHash,
 			long vendidoPorCuentaId, Instant ahora) {
@@ -279,6 +361,22 @@ public class PaseServicio {
 
 	public String getMotivoAnulacion() {
 		return motivoAnulacion;
+	}
+
+	public boolean isRenovacionAutomatica() {
+		return renovacionAutomatica;
+	}
+
+	public Long getRenovacionAutorizadaPorCuentaId() {
+		return renovacionAutorizadaPorCuentaId;
+	}
+
+	public String getRenovacionOmitidaMotivo() {
+		return renovacionOmitidaMotivo;
+	}
+
+	public Long getRenuevaPaseId() {
+		return renuevaPaseId;
 	}
 
 	public String getSnapshotNombre() {

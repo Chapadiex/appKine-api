@@ -8,6 +8,8 @@ import com.akine.activity.domain.InscripcionClase;
 import com.akine.activity.domain.MovimientoPase;
 import com.akine.activity.domain.PaseServicio;
 import com.akine.activity.domain.ProductoServicio;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -464,6 +466,55 @@ public final class ActivityRepositoryPorts {
 		 */
 		boolean existeAbonoSuperpuesto(
 				long organizationId, long personaId, long productoId, LocalDate desde, LocalDate hasta);
+
+		// ---- Renovacion de abonos (AKINE-08.08) -------------------------------------------
+
+		/**
+		 * Prende o apaga la renovacion automatica si la version es la leida, el pase es un abono y no
+		 * esta anulado. Prenderla fija quien la autorizo; las dos limpian el motivo de una omision
+		 * anterior. Sube la version.
+		 */
+		int configurarRenovacion(
+				long organizationId, long paseId, boolean activa, long actorCuentaId, long versionLeida);
+
+		/**
+		 * Apaga la renovacion del periodo que se acaba de renovar (el nuevo la hereda). Solo si seguia
+		 * prendida: es lo que hace que una segunda pasada del job no encuentre nada. Sube la version.
+		 */
+		int marcarRenovado(long organizationId, long paseId);
+
+		/** Apaga la renovacion que no se pudo hacer y deja el motivo. Sube la version. */
+		int omitirRenovacion(long organizationId, long paseId, String motivo);
+
+		/** El periodo que renueva a este, si existe ({@code uk_pase_servicio_renovacion}). */
+		Optional<Long> renovacionDe(long organizationId, long paseId);
+
+		/**
+		 * Abonos de todos los tenants con la renovacion prendida y el periodo terminando antes de
+		 * {@code limite} (inclusive), los que terminan antes primero. Lo lee el job, sin contexto.
+		 */
+		List<CandidatoARenovar> candidatosARenovar(LocalDate limite, int maximo);
+
+		// ---- Avisos (RF-M26-008, AKINE-08.08) ---------------------------------------------
+
+		/**
+		 * Marca resuelto el aviso de vencimiento si todavia no lo estaba y el pase sigue
+		 * {@code ACTIVO}. Una fila = este llamador avisa; cero = ya se aviso o ya no corresponde.
+		 * Sube la version.
+		 */
+		int marcarAvisoDeVencimiento(long organizationId, long paseId, Instant ahora);
+
+		/** Igual, para el saldo reducido: exige saldo positivo y no mayor que {@code umbral}. */
+		int marcarAvisoDeSaldoBajo(long organizationId, long paseId, int umbral, Instant ahora);
+
+		/**
+		 * Pases {@code ACTIVO} de todos los tenants, con saldo, sin aviso de vencimiento y cuya
+		 * vigencia termina entre {@code desde} y {@code hasta} (inclusive).
+		 */
+		List<CandidatoAAvisar> candidatosAvisoDeVencimiento(LocalDate desde, LocalDate hasta, int maximo);
+
+		/** Pases {@code ACTIVO} de todos los tenants con saldo entre 1 y {@code umbral}, sin aviso. */
+		List<CandidatoAAvisar> candidatosAvisoDeSaldoBajo(int umbral, int maximo);
 	}
 
 	/** Saldo, estado y version del pase leidos del motor. */
@@ -475,11 +526,28 @@ public final class ActivityRepositoryPorts {
 								   LocalDate vigenciaHasta) {
 	}
 
+	/** Un abono que el job de renovacion tiene que mirar. */
+	public record CandidatoARenovar(long paseId, long organizationId, long consultorioId, long productoId,
+									LocalDate vigenciaHasta) {
+	}
+
+	/** Un pase al que el job de avisos tiene que mirar. */
+	public record CandidatoAAvisar(long paseId, long organizationId, long consultorioId,
+								   LocalDate vigenciaHasta) {
+	}
+
 	public interface MovimientoPaseRepositoryPort {
 
 		MovimientoPase registrar(MovimientoPase movimiento);
 
 		List<MovimientoPase> historial(long organizationId, long paseId);
+
+		/**
+		 * Una pagina del ledger, del movimiento mas viejo al mas nuevo (AKINE-08.08, RF-M29-009):
+		 * el orden en que se lee {@code saldoResultante}. El desempate por id hace estable el corte
+		 * entre paginas aunque dos movimientos compartan instante.
+		 */
+		Page<MovimientoPase> historial(long organizationId, long paseId, Pageable pagina);
 
 		/**
 		 * El credito neto que tiene tomado una asistencia, por pase: {@code SUM(cantidad)} de sus
