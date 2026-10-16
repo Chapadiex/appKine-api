@@ -1,5 +1,8 @@
 package com.akine.encounter.domain.exception;
 
+import com.akine.platform.spi.problem.ConTipoDeProblema;
+import com.akine.platform.spi.problem.ProblemType;
+
 /**
  * El Caso al que se quiere colgar la atencion no sirve para eso (04.03).
  *
@@ -23,7 +26,8 @@ package com.akine.encounter.domain.exception;
  * porque lleva a otra accion: el caso existe, es del paciente, y lo que corresponde es reabrirlo
  * con motivo — no buscar otro.
  */
-public class CasoNoAsignableException extends RuntimeException {
+public class CasoNoAsignableException extends RuntimeException
+		implements ConTipoDeProblema {
 
 	/** Por que ese caso no habilita esta atencion. */
 	public enum Motivo {
@@ -36,6 +40,14 @@ public class CasoNoAsignableException extends RuntimeException {
 	}
 
 	private final long casoId;
+
+	/** El mismo {@code type} que pone {@code EncounterProblemHandler}; el lote de 08.05 lo usa. */
+	@Override
+	public ProblemType tipoDeProblema() {
+		return motivo == Motivo.CERRADO
+				? ProblemType.CASO_CLINICO_CERRADO
+				: ProblemType.CASO_CLINICO_NO_ACCESIBLE;
+	}
 	private final Motivo motivo;
 
 	public CasoNoAsignableException(long casoId, Motivo motivo) {

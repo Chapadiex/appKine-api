@@ -223,6 +223,12 @@ public class DerivacionController {
 			@ApiResponse(
 					responseCode = "404",
 					description = "La derivacion no existe o no cuelga de esta participacion",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "De la derivacion ya cuelga una atencion clinica "
+							+ "(`derivacion-con-sesion`, AKINE-08.05): la Sesion no se borra y el "
+							+ "vinculo que explica de donde vino el paciente tampoco",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public DerivacionResponse revertir(
 			@PathVariable long consultorioId,

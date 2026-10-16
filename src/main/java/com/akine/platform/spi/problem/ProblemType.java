@@ -1284,7 +1284,42 @@ public enum ProblemType {
 	 * {@code SIN_COBERTURA_APLICABLE}). La sesion sigue abierta y sin numero: se carga el precio en
 	 * la oferta y se reintenta el cierre tal cual.
 	 */
-	OFERTA_SIN_PRECIO("oferta-sin-precio");
+	OFERTA_SIN_PRECIO("oferta-sin-precio"),
+
+	/**
+	 * La participacion no tiene ninguna derivacion clinica vigente, o la que se nombro no esta
+	 * vigente o no es de esa participacion (409). AKINE-08.05.
+	 *
+	 * <p><b>Derivar es la puerta y atender es entrar</b>: una Sesion de origen grupal cuelga de
+	 * una derivacion vigente (08.04) y de ninguna otra cosa. El remedio es derivar primero.
+	 */
+	PARTICIPACION_SIN_DERIVACION("participacion-sin-derivacion"),
+
+	/**
+	 * La participacion tiene mas de una derivacion vigente —a Casos distintos— y el pedido no dijo
+	 * a cual corresponde la atencion (409). AKINE-08.05. Lleva {@code derivacionIds}.
+	 *
+	 * <p>No se elige por el cliente: elegir el Caso equivocado numera la Sesion dentro de otro
+	 * tratamiento, y eso no se corrige sin reescribir historia clinica.
+	 */
+	DERIVACION_AMBIGUA("derivacion-ambigua"),
+
+	/**
+	 * La derivacion no se puede revertir porque ya cuelga de ella una Sesion (409). AKINE-08.05.
+	 *
+	 * <p>Revertirla dejaria una atencion clinica documentada sin el vinculo que explica de donde
+	 * vino el paciente. Es el cerrojo que 08.04 dejo anunciado para cuando existiera la tabla.
+	 */
+	DERIVACION_CON_SESION("derivacion-con-sesion"),
+
+	/**
+	 * Se intento cambiar o quitar el Caso de una Sesion de origen grupal (409). AKINE-08.05.
+	 *
+	 * <p>El Caso de esa atencion lo fijo la derivacion de la que salio: cambiarlo aca dejaria una
+	 * Sesion numerada en un Caso distinto del que la derivacion declara. El camino es atender
+	 * desde la derivacion al otro Caso.
+	 */
+	CASO_DE_ATENCION_GRUPAL("caso-de-atencion-grupal");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
