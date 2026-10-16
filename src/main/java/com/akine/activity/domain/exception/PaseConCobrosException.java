@@ -13,13 +13,16 @@ public class PaseConCobrosException extends RuntimeException {
 	private final long paseId;
 	private final long obligacionId;
 	private final BigDecimal cobrado;
+	private final String moneda;
 
-	public PaseConCobrosException(long paseId, long obligacionId, BigDecimal cobrado) {
+	/** @param moneda la de la obligacion (ISO 4217): la del importe {@code cobrado} */
+	public PaseConCobrosException(long paseId, long obligacionId, BigDecimal cobrado, String moneda) {
 		super("El pase " + paseId + " no se puede anular: su deuda " + obligacionId
-				+ " tiene cobros imputados por " + cobrado.toPlainString());
+				+ " tiene cobros imputados por " + cobrado.toPlainString() + " " + moneda);
 		this.paseId = paseId;
 		this.obligacionId = obligacionId;
 		this.cobrado = cobrado;
+		this.moneda = moneda;
 	}
 
 	public long getPaseId() {
@@ -32,5 +35,9 @@ public class PaseConCobrosException extends RuntimeException {
 
 	public BigDecimal getCobrado() {
 		return cobrado;
+	}
+
+	public String getMoneda() {
+		return moneda;
 	}
 }

@@ -314,7 +314,9 @@ public class PaseController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "409", description = "Version vieja "
 					+ "(`concurrent-modification`), o pase anulado, vencido o saldo final fuera de "
-					+ "rango (`pase-no-ajustable`, con `motivo`)",
+					+ "rango (`pase-no-ajustable`, con `motivo` en texto y, desde 0.111.0, `causa`: `ESTADO` "
+					+ "si esta anulado o vencido, `FUERA_DE_VIGENCIA` si su vigencia ya termino o "
+					+ "`FUERA_DE_RANGO` si el saldo final sale de 0..creditosIniciales; aditivo)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public PaseResponses.Detalle ajustarSaldoDePase(
 			@PathVariable long consultorioId,
@@ -348,8 +350,10 @@ public class PaseController {
 			@ApiResponse(responseCode = "404", description = P404,
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "409", description = "Version vieja "
-					+ "(`concurrent-modification`), creditos usados (`pase-no-ajustable`) o deuda con "
-					+ "cobros imputados (`pase-con-cobros`, con `obligacionId` y `cobrado`)",
+					+ "(`concurrent-modification`), creditos usados (`pase-no-ajustable` con `motivo` y, desde "
+					+ "0.111.0, `causa = CREDITOS_USADOS`) o deuda con cobros imputados (`pase-con-cobros`, con "
+					+ "`obligacionId`, `cobrado` y, desde 0.111.0, `moneda` ISO 4217 de la obligacion). Lo de "
+					+ "0.111.0 es aditivo",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public PaseResponses.ResultadoAnulacion anularPase(
 			@PathVariable long consultorioId,

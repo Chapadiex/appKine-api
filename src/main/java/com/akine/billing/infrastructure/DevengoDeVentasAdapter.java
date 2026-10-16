@@ -12,7 +12,10 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * La deuda de la venta de un pase (RF-M18-009), escrita por el dueno de {@code obligacion}.
@@ -76,6 +79,14 @@ class DevengoDeVentasAdapter implements DevengoDeVentas {
 		log.info("Obligacion anulada por anulacion de venta: obligacionId={} paseId={}",
 				anulada.getId(), paseId);
 		return anulacion(AnulacionDeDeuda.Efecto.ANULADA, anulada);
+	}
+
+	@Override
+	public Set<Long> ventasConCobros(long organizationId, Collection<Long> paseIds) {
+		if (paseIds.isEmpty()) {
+			return Set.of();
+		}
+		return new HashSet<>(obligaciones.ventasConCobros(organizationId, paseIds));
 	}
 
 	private DeudaDeVenta devengar(VentaDePase venta, boolean abono) {

@@ -145,7 +145,10 @@ public class VentaDePaseService {
 			}
 			// El devengo es idempotente por pase: devuelve la deuda que ya existe sin escribir.
 			DeudaDeVenta deuda = devengar(existente, actor);
-			return new ResultadoDeVenta(PaseView.de(existente, hoy), deuda(deuda), false);
+			return new ResultadoDeVenta(
+					PaseView.de(existente, hoy,
+							PaseView.Uso.de(movimientos, devengo, organizationId, existente.getId())),
+					deuda(deuda), false);
 		}
 
 		// El producto se lee BLOQUEADO (AKINE-08.08): lectura actual —una baja que commiteo recien
@@ -178,7 +181,7 @@ public class VentaDePaseService {
 		log.info("Pase vendido: paseId={} productoId={} personaId={} creditos={} obligacionId={}",
 				pase.getId(), producto.getId(), command.personaId(), pase.getCreditosIniciales(),
 				deuda.obligacionId());
-		return new ResultadoDeVenta(PaseView.de(pase, hoy), deuda(deuda), true);
+		return new ResultadoDeVenta(PaseView.de(pase, hoy, PaseView.Uso.SIN_USO), deuda(deuda), true);
 	}
 
 	/** El pase con su ledger completo (RF-M29-009). */
@@ -190,7 +193,8 @@ public class VentaDePaseService {
 		PaseServicio pase = pases.findByIdInScope(organizationId, consultorioId, paseId)
 				.orElseThrow(() -> new PaseNotAccessibleException(paseId));
 		return new PaseDetalleView(
-				PaseView.de(pase, ZonaDeSede.hoy(sede, clock)),
+				PaseView.de(pase, ZonaDeSede.hoy(sede, clock),
+						PaseView.Uso.de(movimientos, devengo, organizationId, paseId)),
 				movimientos.historial(organizationId, paseId).stream()
 						.map(MovimientoPaseView::de)
 						.toList());
@@ -210,9 +214,13 @@ public class VentaDePaseService {
 		personas.find(organizationId, personaId)
 				.orElseThrow(() -> new PersonaNoAccesibleException(personaId));
 		LocalDate hoy = ZonaDeSede.hoy(sede, clock);
-		return pases.findDePersona(organizationId, personaId).stream()
+		List<PaseServicio> deLaSede = pases.findDePersona(organizationId, personaId).stream()
 				.filter(pase -> pase.getConsultorioId() == consultorioId)
-				.map(pase -> PaseView.de(pase, hoy))
+				.toList();
+		Map<Long, PaseView.Uso> usos = PaseView.Uso.de(movimientos, devengo, organizationId,
+				deLaSede.stream().map(PaseServicio::getId).toList());
+		return deLaSede.stream()
+				.map(pase -> PaseView.de(pase, hoy, usos.get(pase.getId())))
 				.toList();
 	}
 

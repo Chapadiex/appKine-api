@@ -8,7 +8,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -84,6 +87,32 @@ public interface MovimientoPaseRepository
 	long consumoNetoComoLong(
 			@Param("organizationId") long organizationId,
 			@Param("paseId") long paseId);
+
+	@Override
+	default Map<Long, Integer> consumoNetoPorPase(long organizationId, Collection<Long> paseIds) {
+		if (paseIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<Long, Integer> neto = new HashMap<>();
+		for (Object[] fila : filasDeConsumoNetoPorPase(organizationId, paseIds)) {
+			neto.put(((Number) fila[0]).longValue(), Math.toIntExact(((Number) fila[1]).longValue()));
+		}
+		return neto;
+	}
+
+	@Query("""
+			SELECT m.paseId, SUM(m.cantidad)
+			  FROM MovimientoPase m
+			 WHERE m.organizationId = :organizationId
+			   AND m.paseId IN :paseIds
+			   AND m.tipo IN (com.akine.activity.domain.TipoMovimientoPase.CONSUMO,
+			                  com.akine.activity.domain.TipoMovimientoPase.DEVOLUCION)
+			 GROUP BY m.paseId
+			HAVING SUM(m.cantidad) <> 0
+			""")
+	List<Object[]> filasDeConsumoNetoPorPase(
+			@Param("organizationId") long organizationId,
+			@Param("paseIds") Collection<Long> paseIds);
 
 	@Override
 	@Query("""

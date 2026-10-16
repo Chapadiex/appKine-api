@@ -138,17 +138,20 @@ public class AjusteDePaseService {
 		}
 		exigirVersion(pase, command.version());
 		if (pase.getEstado() == EstadoPase.ANULADO || pase.getEstado() == EstadoPase.VENCIDO) {
-			throw new PaseNoAjustableException(paseId, "esta " + pase.getEstado().name().toLowerCase());
+			throw new PaseNoAjustableException(paseId, PaseNoAjustableException.Causa.ESTADO,
+					"esta " + pase.getEstado().name().toLowerCase());
 		}
 		if (pase.getVigenciaHasta().isBefore(hoy)) {
 			// Vencido por fecha aunque el job todavia no lo haya escrito: un credito sumado hoy no
 			// lo podria usar nadie, y uno restado cambia lo que el vencimiento va a explicar.
-			throw new PaseNoAjustableException(paseId, "su vigencia termino el " + pase.getVigenciaHasta());
+			throw new PaseNoAjustableException(paseId, PaseNoAjustableException.Causa.FUERA_DE_VIGENCIA,
+					"su vigencia termino el " + pase.getVigenciaHasta());
 		}
 		int saldoAnterior = pase.getCreditosDisponibles();
 		int saldoFinal = saldoAnterior + command.cantidad();
 		if (saldoFinal < 0 || saldoFinal > pase.getCreditosIniciales()) {
-			throw new PaseNoAjustableException(paseId, "el saldo quedaria en " + saldoFinal
+			throw new PaseNoAjustableException(paseId, PaseNoAjustableException.Causa.FUERA_DE_RANGO,
+					"el saldo quedaria en " + saldoFinal
 					+ " y tiene que estar entre 0 y los " + pase.getCreditosIniciales() + " creditos comprados");
 		}
 		if (pases.ajustar(organizationId, paseId, command.cantidad(), command.version()) != 1) {
@@ -171,7 +174,8 @@ public class AjusteDePaseService {
 				paseId, command.cantidad(), actual.saldo());
 
 		return new PaseDetalleView(
-				PaseView.de(pase, actual.saldo(), actual.estado(), actual.version(), hoy),
+				PaseView.de(pase, actual.saldo(), actual.estado(), actual.version(), hoy,
+						PaseView.Uso.de(movimientos, ventas, organizationId, paseId)),
 				historial(organizationId, paseId));
 	}
 
@@ -210,12 +214,15 @@ public class AjusteDePaseService {
 			// Idempotente: la deuda ya quedo anulada con el pase; billing lo informa sin escribir.
 			AnulacionDeDeuda deuda = ventas.anularDeudaDeVenta(
 					organizationId, paseId, actor.accountId(), motivoLimpio, ahora);
-			return new ResultadoDeAnulacion(PaseView.de(pase, hoy), deuda(deuda), false);
+			return new ResultadoDeAnulacion(
+					PaseView.de(pase, hoy, PaseView.Uso.de(movimientos, ventas, organizationId, paseId)),
+					deuda(deuda), false);
 		}
 		exigirVersion(pase, version);
 		int usados = -movimientos.consumoNeto(organizationId, paseId);
 		if (usados > 0) {
-			throw new PaseNoAjustableException(paseId, "tiene " + usados
+			throw new PaseNoAjustableException(paseId, PaseNoAjustableException.Causa.CREDITOS_USADOS,
+					"tiene " + usados
 					+ " creditos usados por asistencias; para descartar el resto se ajusta el saldo");
 		}
 
@@ -223,7 +230,7 @@ public class AjusteDePaseService {
 				organizationId, paseId, actor.accountId(), motivoLimpio, ahora);
 		if (deuda.efecto() == AnulacionDeDeuda.Efecto.CON_COBROS) {
 			throw new PaseConCobrosException(
-					paseId, deuda.obligacionId(), deuda.importe().subtract(deuda.saldo()));
+					paseId, deuda.obligacionId(), deuda.importe().subtract(deuda.saldo()), deuda.moneda());
 		}
 
 		int descartados = pase.getCreditosDisponibles();
@@ -248,7 +255,8 @@ public class AjusteDePaseService {
 		log.info("Pase anulado: paseId={} descartados={} deuda={}", paseId, descartados, deuda.efecto());
 
 		return new ResultadoDeAnulacion(
-				PaseView.de(pase, actual.saldo(), actual.estado(), actual.version(), hoy)
+				PaseView.de(pase, actual.saldo(), actual.estado(), actual.version(), hoy,
+						new PaseView.Uso(usados, false))
 						.anulado(ahora, actor.accountId(), motivoLimpio),
 				deuda(deuda), true);
 	}
@@ -256,7 +264,9 @@ public class AjusteDePaseService {
 	// =================================================================================
 
 	private PaseDetalleView detalle(PaseServicio pase, long organizationId, LocalDate hoy) {
-		return new PaseDetalleView(PaseView.de(pase, hoy), historial(organizationId, pase.getId()));
+		return new PaseDetalleView(
+				PaseView.de(pase, hoy, PaseView.Uso.de(movimientos, ventas, organizationId, pase.getId())),
+				historial(organizationId, pase.getId()));
 	}
 
 	private java.util.List<MovimientoPaseView> historial(long organizationId, long paseId) {

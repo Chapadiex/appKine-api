@@ -74,6 +74,14 @@ public final class PaseResponses {
 			String estado,
 			@Schema(description = "true si hoy, en la zona de la sede, puede cubrir una asistencia: "
 					+ "activo, con saldo y dentro de su vigencia", example = "true") boolean vigente,
+			@Schema(description = "Creditos tomados por asistencias: el neto de los `CONSUMO` y `DEVOLUCION` "
+					+ "del ledger; los ajustes manuales no cuentan. Calculado al leer. Aditivo desde 0.111.0",
+					example = "1") int creditosUsados,
+			@Schema(description = "true si `POST .../anulacion` lo aceptaria hoy: no esta `ANULADO`, no tiene "
+					+ "creditos usados y la deuda de su venta no tiene cobros imputados. Es la misma regla con "
+					+ "la que la anulacion responde `pase-no-ajustable` (`causa = CREDITOS_USADOS`) o "
+					+ "`pase-con-cobros`, calculada al leer. Aditivo desde 0.111.0", example = "false")
+			boolean anulable,
 			Instant vendidoEn,
 			@Schema(example = "3") long vendidoPorCuentaId,
 			@Schema(description = "Cuando se anulo. Presente solo con `estado = ANULADO`") Instant anuladoEn,
@@ -86,7 +94,8 @@ public final class PaseResponses {
 			return new Pase(v.id(), v.consultorioId(), v.personaId(), v.productoId(), v.tipo(),
 					v.nombre(), v.precio(), v.moneda(), v.ofertaId(), v.creditosIniciales(),
 					v.creditosDisponibles(), v.vigenciaDesde(), v.vigenciaHasta(), v.estado(),
-					v.vigente(), v.vendidoEn(), v.vendidoPorCuentaId(), v.anuladoEn(),
+					v.vigente(), v.creditosUsados(), v.anulable(), v.vendidoEn(), v.vendidoPorCuentaId(),
+					v.anuladoEn(),
 					v.anuladoPorCuentaId(), v.motivoAnulacion(), v.version());
 		}
 	}

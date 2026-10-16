@@ -2,6 +2,8 @@ package com.akine.billing.spi;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Set;
 
 /**
  * Devengo de la deuda de una venta (AKINE-08.06, RF-M18-009). Es el primer contrato publico de
@@ -50,6 +52,14 @@ public interface DevengoDeVentas {
 	 */
 	AnulacionDeDeuda anularDeudaDeVenta(
 			long organizationId, long paseId, long actorCuentaId, String motivo, Instant ahora);
+
+	/**
+	 * De esos pases, los que tienen la deuda de su venta <b>viva y con cobros imputados</b>: la misma
+	 * condicion por la que {@link #anularDeudaDeVenta} responde {@link AnulacionDeDeuda.Efecto#CON_COBROS}
+	 * (saldo distinto del importe original en una obligacion no anulada). Solo lee: es lo que deja a
+	 * {@code activity} calcular al leer si un pase es anulable, sin persistirlo (desde 0.111.0).
+	 */
+	Set<Long> ventasConCobros(long organizationId, Collection<Long> paseIds);
 
 	/**
 	 * La venta de un pase, con el precio congelado en el pase.

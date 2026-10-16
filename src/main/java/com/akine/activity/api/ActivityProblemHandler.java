@@ -319,6 +319,7 @@ public class ActivityProblemHandler {
 		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.PASE_NO_AJUSTABLE.uri());
 		problem.setTitle("El pase no admite la operacion");
 		problem.setProperty("motivo", exception.getMotivo());
+		problem.setProperty("causa", exception.getCausa().name());
 		return problem;
 	}
 
@@ -328,6 +329,7 @@ public class ActivityProblemHandler {
 		problem.setTitle("La deuda del pase tiene cobros");
 		problem.setProperty("obligacionId", exception.getObligacionId());
 		problem.setProperty("cobrado", exception.getCobrado());
+		problem.setProperty("moneda", exception.getMoneda());
 		return problem;
 	}
 
