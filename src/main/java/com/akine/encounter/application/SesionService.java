@@ -14,6 +14,7 @@ import com.akine.encounter.domain.CierreDeSesion;
 import com.akine.encounter.domain.EvaluacionBase;
 import com.akine.encounter.domain.PermissionCodes;
 import com.akine.encounter.domain.Sesion;
+import com.akine.encounter.domain.exception.CasoDeAtencionGrupalException;
 import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
@@ -789,6 +790,11 @@ public class SesionService {
 			return conPrevia(sesion, organizationId);
 		}
 
+		// AKINE-08.05: antes de validar el caso nuevo. Una atencion grupal no cambia de Caso, sea
+		// cual sea el pedido: su Caso lo fijo la derivacion.
+		if (sesion.esDeOrigenGrupal()) {
+			throw new CasoDeAtencionGrupalException(sesion.getId());
+		}
 		exigirCasoAsignable(organizationId, sesion.getHistoriaClinicaId(), casoId);
 		sesion.asignarCaso(casoId);
 		Sesion guardada = sesiones.saveAndFlush(sesion);
@@ -871,7 +877,9 @@ public class SesionService {
 				// manda sobre la cobertura. Se lee ACA, una vez, por el mismo motivo que el precio:
 				// el devengo y el consumo tienen que ver la misma decision.
 				sesion.getTurnoId() != null && turnos.atendidoComoParticular(
-						organizationId, sesion.getConsultorioId(), sesion.getTurnoId()));
+						organizationId, sesion.getConsultorioId(), sesion.getTurnoId()),
+				// AKINE-08.05: el origen grupal viaja para que el devengo no cobre dos veces la clase.
+				sesion.getClaseId());
 	}
 
 	/**

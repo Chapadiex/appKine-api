@@ -70,6 +70,12 @@ public final class AuditEvents {
 	/** Se asocio, cambio o quito el Caso Clinico de una sesion abierta. */
 	static final String SESION_CASO_CAMBIADO = "SESION_CASO_CAMBIADO";
 
+	/**
+	 * Alguien listo las atenciones de una clase (AKINE-08.05). Sin contenido clinico, pero dice
+	 * quienes estan en tratamiento: DP-03 no distingue entre leer poco y leer mucho.
+	 */
+	static final String SESION_GRUPAL_CONSULTADA = "SESION_GRUPAL_CONSULTADA";
+
 	/** Se escribio una version nueva de una sesion cerrada (RF-M14-010). */
 	public static final String SESION_AMENDED = "SESION_AMENDED";
 

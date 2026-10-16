@@ -24,10 +24,10 @@
 | Bloque | Cantidad |
 |---|---|
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39) | 10 |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42) | 11 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
 | D. No bloquean nada (U-35 a U-37, U-40, U-41) | 5 |
-| **Total** | **41** |
+| **Total** | **42** |
 
 Ya resueltas y fuera de la lista (las fichas las mencionan): el **escenario 7b** (`request_hash`
 en `onboarding_registro`), que la ficha de F0–F1 daba abierto y cerró el PR #104 el 13/10/2026
@@ -218,6 +218,28 @@ fila nueva.
 - **Destraba:** el devengo de la asistencia (RF-M18-008 / RF-M19-009). Agregarlo después no
   cambia esquema: `obligacion` necesita un origen nuevo (`ck_obligacion_origen`), que es un
   `DROP CHECK` cuidadoso.
+
+### U-42 · Qué consecuencia económica tiene la atención clínica de un participante de clase
+
+- **Pregunta:** la Sesión de un participante de una clase clínica (08.05) se cierra como cualquier
+  Sesión. ¿Qué devenga? (a) **sólo lo del convenio** cuando hay cobertura (financiador + coseguro,
+  y así entra a la presentación, RF-M21-009), y **nada particular**: la clase se cobra por su
+  esquema —pase, abono, clase— sobre la asistencia; (b) **también el particular** al precio de la
+  oferta, como una atención de turno (DP-17), y entonces la asistencia a esa clase no debería
+  consumir pase ni devengar; (c) **nada**, ni siquiera por convenio. Y una sub-pregunta: con
+  cobertura, ¿el coseguro se suma a lo que el paciente ya paga por la clase?
+- **Hoy (rama `akine-08.05-atencion-grupal`):** (a). `SesionCerrada.claseId` marca el origen;
+  `billing.ObligacionDevengador` devenga por convenio igual que siempre (cada participante con
+  cobertura deja su renglón en la bandeja, CA-M21-009-06) y **sin cobertura no devenga ni exige
+  precio** (el 409 `oferta-sin-precio` no bloquea un cierre clínico por una deuda que no
+  corresponde). El consumo de autorizaciones corre por Caso, como dejó escrito 08.04 §6. El coseguro
+  se devenga como dice el convenio.
+- **Recomendado:** (a), que es lo que está; revisar el coseguro si un centro cobra la clase aparte.
+- **Fase / RF:** F9 (08.05, 08.09); RF-M14-014 paso 6, RF-M21-009, RF-M18-008, RF-M19-009, DP-17.
+  Diseño en [`../diseno/AKINE-08.05-atencion-grupal.md`](../diseno/AKINE-08.05-atencion-grupal.md) §7.
+- **Destraba:** el cobro particular de una prestación clínica grupal sin pase. Se encarece con cada
+  Sesión grupal cerrada sin deuda: un backfill tendría que decidir a posteriori qué se cobró por la
+  clase.
 
 ---
 

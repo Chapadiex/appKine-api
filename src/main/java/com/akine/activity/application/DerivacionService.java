@@ -270,8 +270,15 @@ public class DerivacionService {
 	 * <p>La derivacion tiene que colgar de <b>esta</b> participacion: una de otra clase de la misma
 	 * organizacion es 404 aunque exista. Se comprueba despues de revertir porque {@code clinical} no
 	 * expone una lectura sin auditar, y la excepcion revierte la transaccion entera.
+	 *
+	 * <p><b>AKINE-08.05: serializa sobre la fila de la asistencia</b>, como derivar y como abrir la
+	 * atencion del participante, y en {@code READ_COMMITTED}. Sin el lock, una reversion se colaba
+	 * entre la lectura de la derivacion vigente y el INSERT de la Sesion: las dos commiteaban y la
+	 * atencion quedaba colgada de una derivacion revertida. Con el lock, la que llega segunda ve lo
+	 * que la primera commiteo: o la Sesion (409 {@code derivacion-con-sesion}) o la reversion (409
+	 * {@code participacion-sin-derivacion}).
 	 */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public DerivacionView revertir(
 			OperatingActor actor,
 			long consultorioId,
@@ -282,7 +289,8 @@ public class DerivacionService {
 			String justificacion) {
 
 		Participacion p = resolver(actor, consultorioId, claseId, inscripcionId);
-		AsistenciaActividad asistencia = asistencias.findDeInscripcion(p.organizationId(), inscripcionId)
+		AsistenciaActividad asistencia = asistencias
+				.findDeInscripcionParaDerivar(p.organizationId(), inscripcionId)
 				.orElseThrow(() -> new DerivacionNoAccesibleException(derivacionId));
 
 		DerivacionSnapshot revertida = registro.revertir(new ReversionDeDerivacion(

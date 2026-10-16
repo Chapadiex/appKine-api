@@ -6,7 +6,10 @@ import com.akine.clinical.domain.exception.AdjuntoClinicoNoDisponibleException;
 import com.akine.clinical.domain.exception.AdjuntoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.AntecedenteNotAccessibleException;
 import com.akine.clinical.domain.exception.AutorizacionNoElegibleException;
+import com.akine.clinical.domain.exception.DerivacionAmbiguaException;
+import com.akine.clinical.domain.exception.DerivacionConSesionException;
 import com.akine.clinical.domain.exception.DerivacionNotAccessibleException;
+import com.akine.clinical.domain.exception.ParticipacionSinDerivacionException;
 import com.akine.clinical.domain.exception.ArchivoClinicoNoAceptadoException;
 import com.akine.clinical.domain.exception.CasoClinicoCerradoException;
 import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
@@ -603,6 +606,43 @@ public class ClinicalProblemHandler {
 		problem.setTitle("La autorizacion no habilita");
 		problem.setProperty("autorizacionId", ex.getAutorizacionId());
 		problem.setProperty("motivo", ex.getMotivo());
+		return problem;
+	}
+
+	// =================================================================================
+	// Atencion clinica desde una derivacion (AKINE-08.05)
+	// =================================================================================
+
+	/** 409: no hay derivacion vigente de la que colgar la atencion. El remedio es derivar. */
+	@ExceptionHandler(ParticipacionSinDerivacionException.class)
+	public ProblemDetail handleParticipacionSinDerivacion(ParticipacionSinDerivacionException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(ex.tipoDeProblema().uri());
+		problem.setTitle("La participacion no tiene derivacion vigente");
+		problem.setProperty("participacionId", ex.getParticipacionId());
+		if (ex.getDerivacionId() != null) {
+			problem.setProperty("derivacionId", ex.getDerivacionId());
+		}
+		return problem;
+	}
+
+	/** 409 con las derivaciones vigentes, para que la pantalla ofrezca elegir el Caso. */
+	@ExceptionHandler(DerivacionAmbiguaException.class)
+	public ProblemDetail handleDerivacionAmbigua(DerivacionAmbiguaException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(ex.tipoDeProblema().uri());
+		problem.setTitle("Hay que elegir la derivacion");
+		problem.setProperty("derivacionIds", ex.getDerivacionIds());
+		return problem;
+	}
+
+	/** 409: de la derivacion cuelga una Sesion, y la Sesion no se borra (regla maestra 10). */
+	@ExceptionHandler(DerivacionConSesionException.class)
+	public ProblemDetail handleDerivacionConSesion(DerivacionConSesionException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(ex.tipoDeProblema().uri());
+		problem.setTitle("La derivacion ya tiene una atencion");
+		problem.setProperty("derivacionId", ex.getDerivacionId());
 		return problem;
 	}
 
