@@ -96,7 +96,7 @@ class AbonoRenovacionYAvisosIT {
 		assertThat(fechaDe(nuevoId, "vigencia_hasta")).isEqualTo(hoy.plusDays(32));
 		assertThat((BigDecimal) nuevo.get("snapshot_precio")).isEqualByComparingTo("36000.00");
 		assertThat(nuevo.get("estado")).isEqualTo("ACTIVO");
-		assertThat(((Number) nuevo.get("renovacion_automatica")).intValue()).isEqualTo(1);
+		assertThat(nuevo.get("renovacion_automatica")).isEqualTo(Boolean.TRUE);
 		assertThat(((Number) nuevo.get("vendido_por_cuenta_id")).longValue()).isEqualTo(tenant.actor().accountId());
 		// El periodo viejo no se vuelve a renovar: su marca se apago en la misma transaccion.
 		assertThat(jdbc.queryForObject("SELECT renovacion_automatica FROM pase_servicio WHERE id = ?",
@@ -174,7 +174,7 @@ class AbonoRenovacionYAvisosIT {
 
 		Map<String, Object> fila = jdbc.queryForMap(
 				"SELECT renovacion_automatica, renovacion_omitida_motivo FROM pase_servicio WHERE id = ?", ocupado);
-		assertThat(((Number) fila.get("renovacion_automatica")).intValue()).isZero();
+		assertThat(fila.get("renovacion_automatica")).isEqualTo(Boolean.FALSE);
 		assertThat((String) fila.get("renovacion_omitida_motivo")).contains("se superpone");
 		assertThat(contar("SELECT COUNT(*) FROM pase_servicio WHERE renueva_pase_id = ?", ocupado)).isZero();
 
