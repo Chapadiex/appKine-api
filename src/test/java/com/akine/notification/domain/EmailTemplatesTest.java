@@ -179,6 +179,25 @@ class EmailTemplatesTest {
 		assertThat(mensaje.cuerpo()).doesNotContain("null").startsWith("Hola,");
 	}
 
+	@Test
+	@DisplayName("AKINE-08.08: el aviso de vencimiento dice producto, fecha y saldo, y si se renueva solo")
+	void el_aviso_de_vencimiento_de_pase() {
+		EmailMessage renovable = EmailTemplates.render(NotificationType.PASE_POR_VENCER, DESTINATARIO,
+				SanitizedPayload.of(java.util.Map.of("nombre", "Ana", "productoNombre", "Abono Pilates",
+						"paseVencimiento", "30/11/2026", "creditosDisponibles", "3",
+						"renovacionAutomatica", "si")), null);
+		EmailMessage sinDatos = EmailTemplates.render(NotificationType.PASE_POR_VENCER, DESTINATARIO,
+				SanitizedPayload.vacio(), null);
+		EmailMessage saldo = EmailTemplates.render(NotificationType.PASE_SALDO_BAJO, DESTINATARIO,
+				SanitizedPayload.vacio(), null);
+
+		assertThat(renovable.asunto()).isEqualTo("Tu Abono Pilates vence pronto");
+		assertThat(renovable.cuerpo()).contains("vale hasta el 30/11/2026, con 3 clase(s)")
+				.contains("Se va a renovar automaticamente");
+		assertThat(sinDatos.cuerpo()).doesNotContain("null").contains("comunicate con el centro para renovarlo");
+		assertThat(saldo.cuerpo()).doesNotContain("null").startsWith("Hola,");
+	}
+
 	@ParameterizedTest
 	@EnumSource(NotificationType.class)
 	@DisplayName("ningun template deja el cuerpo o el asunto vacios")

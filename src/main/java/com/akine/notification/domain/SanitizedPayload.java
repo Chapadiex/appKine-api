@@ -50,7 +50,13 @@ public final class SanitizedPayload {
 			// practica ni un diagnostico. Ni profesional, ni motivo, ni ningun identificador.
 			"turnoInicio",
 			"turnoInicioAnterior",
-			"servicioNombre");
+			"servicioNombre",
+			// AKINE-08.08 (RF-M26-008): el aviso de un pase dice que producto es, cuando vence y
+			// cuanto saldo le queda. El nombre comercial del producto, no un dato clinico ni un id.
+			"productoNombre",
+			"paseVencimiento",
+			"creditosDisponibles",
+			"renovacionAutomatica");
 
 	/** Un nombre propio no llega ni cerca de este limite; un secreto pegado, si. */
 	private static final int LARGO_MAXIMO_VALOR = 200;

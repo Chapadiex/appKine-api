@@ -7,6 +7,7 @@ import com.akine.activity.application.ProductoView;
 import com.akine.activity.application.ResultadoDeAnulacion;
 import com.akine.activity.application.ResultadoDeVenta;
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.springframework.data.domain.Page;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -87,8 +88,17 @@ public final class PaseResponses {
 			@Schema(description = "Cuando se anulo. Presente solo con `estado = ANULADO`") Instant anuladoEn,
 			@Schema(description = "Quien lo anulo") Long anuladoPorCuentaId,
 			@Schema(description = "Por que se anulo") String motivoAnulacion,
-			@Schema(description = "Version para el control optimista del ajuste y la anulacion",
-					example = "1") long version) {
+			@Schema(description = "Solo abonos (desde 0.113.0): true si el sistema va a vender el periodo "
+					+ "siguiente al acercarse el fin de este. Se apaga cuando se renueva (el periodo nuevo "
+					+ "la hereda) o cuando no se pudo renovar (`renovacionOmitidaMotivo`). Aditivo",
+					example = "false") boolean renovacionAutomatica,
+			@Schema(description = "El periodo de abono que este renueva; ausente si lo vendio una "
+					+ "persona. Aditivo desde 0.113.0", example = "76") Long renuevaPaseId,
+			@Schema(description = "Por que el sistema no pudo renovar este periodo (producto de baja, "
+					+ "persona de baja, periodo ocupado). Ausente si no se intento o se renovo. Aditivo "
+					+ "desde 0.113.0") String renovacionOmitidaMotivo,
+			@Schema(description = "Version para el control optimista del ajuste, la anulacion y la "
+					+ "renovacion", example = "1") long version) {
 
 		public static Pase de(PaseView v) {
 			return new Pase(v.id(), v.consultorioId(), v.personaId(), v.productoId(), v.tipo(),
@@ -96,7 +106,26 @@ public final class PaseResponses {
 					v.creditosDisponibles(), v.vigenciaDesde(), v.vigenciaHasta(), v.estado(),
 					v.vigente(), v.creditosUsados(), v.anulable(), v.vendidoEn(), v.vendidoPorCuentaId(),
 					v.anuladoEn(),
-					v.anuladoPorCuentaId(), v.motivoAnulacion(), v.version());
+					v.anuladoPorCuentaId(), v.motivoAnulacion(), v.renovacionAutomatica(), v.renuevaPaseId(),
+					v.renovacionOmitidaMotivo(), v.version());
+		}
+	}
+
+	@Schema(
+			name = "PaginaDeMovimientosDePase",
+			description = "Una pagina del ledger de un pase, del movimiento mas viejo al mas nuevo "
+					+ "(desde 0.113.0). Misma forma que el resto de los listados paginados de la API.")
+	public record PaginaDeMovimientos(
+			@Schema(description = "Movimientos de esta pagina") List<Movimiento> content,
+			@Schema(description = "Numero de pagina devuelta, base cero", example = "0") int page,
+			@Schema(description = "Cantidad de elementos por pagina", example = "20") int size,
+			@Schema(description = "Cantidad total de movimientos del pase", example = "3") long totalElements,
+			@Schema(description = "Cantidad total de paginas disponibles", example = "1") int totalPages) {
+
+		public static PaginaDeMovimientos de(Page<MovimientoPaseView> pagina) {
+			return new PaginaDeMovimientos(
+					pagina.getContent().stream().map(Movimiento::de).toList(),
+					pagina.getNumber(), pagina.getSize(), pagina.getTotalElements(), pagina.getTotalPages());
 		}
 	}
 

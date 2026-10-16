@@ -109,7 +109,33 @@ public final class EmailTemplates {
 							+ sede(payload)
 							+ ".\n\nSi el nuevo horario no te queda bien, comunicate con el centro."
 							+ FIRMA);
+			// AKINE-08.08 (RF-M26-008). Producto, fecha y saldo. CA-M26-008-06: el aviso no renueva
+			// ni consume nada, asi que el texto no ofrece ninguna accion que lo haga.
+			case PASE_POR_VENCER -> new EmailMessage(
+					destinatario,
+					"Tu " + payload.getOrDefault("productoNombre", "pase") + " vence pronto",
+					saludo + ",\n\nTu " + payload.getOrDefault("productoNombre", "pase")
+							+ sede(payload) + " vale hasta el "
+							+ payload.getOrDefault("paseVencimiento", "dia de su vencimiento")
+							+ creditos(payload) + "."
+							+ ("si".equals(payload.getOrDefault("renovacionAutomatica", null))
+									? "\n\nSe va a renovar automaticamente por el periodo siguiente."
+									: "\n\nSi queres seguir, comunicate con el centro para renovarlo.")
+							+ FIRMA);
+			case PASE_SALDO_BAJO -> new EmailMessage(
+					destinatario,
+					"Te quedan pocas clases en tu " + payload.getOrDefault("productoNombre", "pase"),
+					saludo + ",\n\nTe quedan " + payload.getOrDefault("creditosDisponibles", "pocas")
+							+ " clase(s) en tu " + payload.getOrDefault("productoNombre", "pase")
+							+ sede(payload) + ", que vale hasta el "
+							+ payload.getOrDefault("paseVencimiento", "dia de su vencimiento")
+							+ ".\n\nSi queres seguir despues, comunicate con el centro." + FIRMA);
 		};
+	}
+
+	private static String creditos(SanitizedPayload payload) {
+		String creditos = payload.getOrDefault("creditosDisponibles", null);
+		return creditos == null ? "" : ", con " + creditos + " clase(s) disponible(s)";
 	}
 
 	private static String servicio(SanitizedPayload payload) {

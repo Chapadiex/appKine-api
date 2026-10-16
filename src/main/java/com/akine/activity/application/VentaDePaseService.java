@@ -1,5 +1,6 @@
 package com.akine.activity.application;
 
+import com.akine.activity.domain.EstadoPase;
 import com.akine.activity.domain.MovimientoPase;
 import com.akine.activity.domain.PaseServicio;
 import com.akine.activity.domain.PermissionCodes;
@@ -7,6 +8,7 @@ import com.akine.activity.domain.ProductoServicio;
 import com.akine.activity.domain.TipoProducto;
 import com.akine.activity.domain.exception.AbonoPeriodoSuperpuestoException;
 import com.akine.activity.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.activity.domain.exception.PaseNoAjustableException;
 import com.akine.activity.domain.exception.PaseNotAccessibleException;
 import com.akine.activity.domain.exception.PersonaDadaDeBajaException;
 import com.akine.activity.domain.exception.PersonaNoAccesibleException;
@@ -30,6 +32,9 @@ import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -163,6 +168,10 @@ public class VentaDePaseService {
 			throw new IllegalArgumentException(
 					"Un pack vale desde la compra: el periodo es solo para abonos");
 		}
+		if (!abono && command.renovacionAutomatica()) {
+			throw new IllegalArgumentException(
+					"Un pack no se renueva: la renovacion automatica es solo para abonos");
+		}
 		producto.impedimentoParaVenderEl(hoy).ifPresent(motivo -> {
 			throw new ProductoNoVendibleException(command.productoId(), motivo);
 		});
@@ -173,6 +182,9 @@ public class VentaDePaseService {
 				? venderAbono(organizationId, producto, command, hoy, huella, actor, ahora)
 				: PaseServicio.vender(producto, command.personaId(), hoy, command.idempotencyKey(), huella,
 						actor.accountId(), ahora);
+		if (command.renovacionAutomatica()) {
+			nuevo.pedirRenovacionAutomatica(actor.accountId());
+		}
 		PaseServicio pase = pases.saveAndFlush(nuevo);
 		movimientos.registrar(MovimientoPase.compra(pase, actor.accountId(), ahora));
 		DeudaDeVenta deuda = devengar(pase, actor);
@@ -198,6 +210,87 @@ public class VentaDePaseService {
 				movimientos.historial(organizationId, paseId).stream()
 						.map(MovimientoPaseView::de)
 						.toList());
+	}
+
+	/**
+	 * Una pagina del ledger del pase, del movimiento mas viejo al mas nuevo (AKINE-08.08,
+	 * RF-M29-009, RNF-M26-010). Para un pase con historia larga reemplaza al ledger entero de
+	 * {@link #find}, que sigue igual por compatibilidad.
+	 *
+	 * @param pagina base cero, ya normalizada por la capa HTTP
+	 * @param tamano ya acotado por la capa HTTP
+	 */
+	@Transactional(readOnly = true)
+	public Page<MovimientoPaseView> movimientos(
+			OperatingActor actor, long consultorioId, long paseId, int pagina, int tamano) {
+
+		long organizationId = ProductoService.exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigir(actor, organizationId, consultorioId, PermissionCodes.PASE_READ);
+		pases.findByIdInScope(organizationId, consultorioId, paseId)
+				.orElseThrow(() -> new PaseNotAccessibleException(paseId));
+		return movimientos.historial(organizationId, paseId, PageRequest.of(pagina, tamano))
+				.map(MovimientoPaseView::de);
+	}
+
+	/**
+	 * Prende o apaga la renovacion automatica de un abono (AKINE-08.08). Prenderla es <b>autorizar
+	 * que el job venda los periodos siguientes</b> a nombre de quien la prende, con su obligacion
+	 * cada uno: por eso pide {@code pase:manage}, el permiso de vender. Apagarla no anula un periodo
+	 * que ya se renovo (para eso, {@code anularPase} sobre el periodo nuevo).
+	 *
+	 * <p>Idempotente por estado: pedir lo que ya esta no escribe ni compara version. Lo demas, con el
+	 * pase bloqueado y la version que el cliente leyo, como el ajuste.
+	 *
+	 * @throws PaseNotAccessibleException el pase no existe en la sede (404)
+	 * @throws IllegalArgumentException   es un pack: no tiene periodo que renovar (400)
+	 * @throws PaseNoAjustableException   anulado ({@code ESTADO}) o ya renovado ({@code YA_RENOVADO}) (409)
+	 * @throws OptimisticLockingFailureException la version no es la leida (409)
+	 */
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public PaseView configurarRenovacion(
+			OperatingActor actor, long consultorioId, long paseId, boolean activa, long version) {
+
+		long organizationId = ProductoService.exigirContexto(actor);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
+		exigir(actor, organizationId, consultorioId, PermissionCodes.PASE_MANAGE);
+		LocalDate hoy = ZonaDeSede.hoy(sede, clock);
+		PaseServicio pase = pases.lockByIdInScope(organizationId, consultorioId, paseId)
+				.orElseThrow(() -> new PaseNotAccessibleException(paseId));
+		if (pase.getTipo() != TipoProducto.ABONO) {
+			throw new IllegalArgumentException("Un pack no se renueva: la renovacion automatica es solo para abonos");
+		}
+		PaseView actual = PaseView.de(pase, hoy, PaseView.Uso.de(movimientos, devengo, organizationId, paseId));
+		if (pase.isRenovacionAutomatica() == activa && pase.getRenovacionOmitidaMotivo() == null) {
+			return actual;
+		}
+		if (pase.getVersion() != version) {
+			throw new OptimisticLockingFailureException(
+					"El pase " + paseId + " cambio desde que se leyo (version " + version + ")");
+		}
+		if (pase.getEstado() == EstadoPase.ANULADO) {
+			throw new PaseNoAjustableException(paseId, PaseNoAjustableException.Causa.ESTADO, "esta anulado");
+		}
+		if (activa) {
+			Optional<Long> siguiente = pases.renovacionDe(organizationId, paseId);
+			if (siguiente.isPresent()) {
+				throw new PaseNoAjustableException(paseId, PaseNoAjustableException.Causa.YA_RENOVADO,
+						"ya se renovo: el periodo siguiente es el pase " + siguiente.get()
+						+ ", y la renovacion se configura sobre ese");
+			}
+		}
+		if (pases.configurarRenovacion(organizationId, paseId, activa, actor.accountId(), version) != 1) {
+			throw new OptimisticLockingFailureException(
+					"El pase " + paseId + " cambio desde que se leyo (version " + version + ")");
+		}
+		Instant ahora = clock.instant();
+		auditTrail.record(new AuditEntry(
+				organizationId, sede.id(), actor.accountId(), "ABONO_RENOVACION_CONFIGURADA", ENTIDAD, paseId,
+				pase.isRenovacionAutomatica() ? "RENOVACION_ACTIVA" : "RENOVACION_INACTIVA",
+				activa ? "RENOVACION_ACTIVA" : "RENOVACION_INACTIVA",
+				Map.of("vigenciaHasta", pase.getVigenciaHasta().toString()), null, null, ahora));
+		log.info("Renovacion de abono configurada: paseId={} activa={}", paseId, activa);
+		return actual.conRenovacion(activa, version + 1);
 	}
 
 	/**
@@ -292,6 +385,9 @@ public class VentaDePaseService {
 		detalles.put("precio", pase.getSnapshotPrecio().toPlainString());
 		detalles.put("moneda", pase.getSnapshotMoneda());
 		detalles.put("obligacionId", String.valueOf(deuda.obligacionId()));
+		if (pase.isRenovacionAutomatica()) {
+			detalles.put("renovacionAutomatica", "true");
+		}
 		auditTrail.record(new AuditEntry(
 				pase.getOrganizationId(), sede.id(), actor.accountId(), "PASE_VENDIDO", ENTIDAD,
 				pase.getId(), null, pase.getEstado().name(), detalles, null, null, ahora));

@@ -4,6 +4,8 @@ import com.akine.activity.domain.MovimientoPase;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ConsumoDeClase;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.MovimientoPaseRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.NetoDeAsistencia;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -37,6 +39,23 @@ public interface MovimientoPaseRepository
 	List<MovimientoPase> historial(
 			@Param("organizationId") long organizationId,
 			@Param("paseId") long paseId);
+
+	@Override
+	@Query(value = """
+			SELECT m FROM MovimientoPase m
+			 WHERE m.organizationId = :organizationId
+			   AND m.paseId = :paseId
+			 ORDER BY m.ocurridoEn ASC, m.id ASC
+			""",
+			countQuery = """
+			SELECT COUNT(m) FROM MovimientoPase m
+			 WHERE m.organizationId = :organizationId
+			   AND m.paseId = :paseId
+			""")
+	Page<MovimientoPase> historial(
+			@Param("organizationId") long organizationId,
+			@Param("paseId") long paseId,
+			Pageable pagina);
 
 	@Override
 	default List<NetoDeAsistencia> netoDeAsistencia(long organizationId, long asistenciaId) {

@@ -79,6 +79,23 @@ class ProductoYPaseTest {
 		assertThatThrownBy(() -> new EsquemaCobro("POR_CLASE")).isInstanceOf(IllegalArgumentException.class);
 	}
 
+	@Test
+	@DisplayName("AKINE-08.08: un mes calendario se renueva por el mes siguiente; cualquier otro periodo, por la duracion del producto")
+	void periodo_siguiente_de_un_abono() {
+		// Noviembre entero -> diciembre entero, no "31 dias desde el 1".
+		assertThat(PaseServicio.periodoSiguiente(LocalDate.parse("2026-11-01"), LocalDate.parse("2026-11-30"), 31))
+				.containsExactly(LocalDate.parse("2026-12-01"), LocalDate.parse("2026-12-31"));
+		// Enero entero -> febrero entero, aunque dure 28.
+		assertThat(PaseServicio.periodoSiguiente(LocalDate.parse("2027-01-01"), LocalDate.parse("2027-01-31"), 31))
+				.containsExactly(LocalDate.parse("2027-02-01"), LocalDate.parse("2027-02-28"));
+		// Si el producto no cubre el mes siguiente, la duracion del producto.
+		assertThat(PaseServicio.periodoSiguiente(LocalDate.parse("2026-11-01"), LocalDate.parse("2026-11-30"), 30))
+				.containsExactly(LocalDate.parse("2026-12-01"), LocalDate.parse("2026-12-30"));
+		// Un periodo que no es un mes calendario: sin hueco y con la duracion del producto.
+		assertThat(PaseServicio.periodoSiguiente(LocalDate.parse("2026-11-05"), LocalDate.parse("2026-12-04"), 30))
+				.containsExactly(LocalDate.parse("2026-12-05"), LocalDate.parse("2027-01-03"));
+	}
+
 	private static ProductoServicio pack(int creditos, String precio, String moneda) {
 		return ProductoServicio.pack(1L, 2L, 3L, "Pack Pilates", null, creditos, new BigDecimal(precio),
 				moneda, 30, DESDE, null);
