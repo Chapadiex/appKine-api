@@ -186,7 +186,8 @@ class VentaDePaseEnElCircuitoEconomicoIT {
 						new BigDecimal("30000.00"), "ARS", 30, LocalDate.now().minusDays(10), null,
 						TipoProducto.ABONO)).id();
 		ResultadoDeVenta abono = ventaService.vender(conAbono.actor(), conAbono.consultorioId(),
-				new VenderPaseCommand(productoAbono, conAbono.persona(0), null));
+				new VenderPaseCommand(productoAbono, conAbono.persona(0), null,
+						LocalDate.now(ZoneId.of(ActividadItFixture.ZONA)), null));
 		assertThat(jdbc.queryForObject("SELECT origen FROM obligacion WHERE id = ?", String.class,
 				abono.deuda().obligacionId())).isEqualTo("VENTA_ABONO");
 		cobrar(conAbono, cajaAbono, 0, abono.deuda().obligacionId(), new BigDecimal("30000.00"));
