@@ -133,7 +133,7 @@ class DevolucionYAjusteConcurrenteIT {
 						new RegistrarAsistenciaCommand(
 								inscripcion, ResultadoAsistencia.PRESENTE, OrigenAsistencia.MOSTRADOR, null, null)),
 				() -> ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), pase,
-						new AjustarSaldoCommand(-2, "Baja del taller", 0)));
+						new AjustarSaldoCommand(-2, "Baja del taller", 0), true));
 		List<Desenlace<Object>> desenlaces = ActividadItFixture.enParalelo(carrera);
 
 		Desenlace<Object> asistencia = desenlaces.get(0);

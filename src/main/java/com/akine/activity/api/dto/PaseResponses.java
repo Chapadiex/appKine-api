@@ -97,6 +97,13 @@ public final class PaseResponses {
 			@Schema(description = "Por que el sistema no pudo renovar este periodo (producto de baja, "
 					+ "persona de baja, periodo ocupado). Ausente si no se intento o se renovo. Aditivo "
 					+ "desde 0.116.0") String renovacionOmitidaMotivo,
+			@Schema(description = "Solo abonos: nombre de quien activo por ultima vez la renovacion "
+					+ "automatica. Se conserva al apagarla y el periodo que vende el job lo hereda. Resuelto "
+					+ "al leer (el nombre de hoy); ausente si nunca se activo o la cuenta no resuelve. "
+					+ "Aditivo desde 0.117.0", example = "Ana Gomez") String renovacionAutorizadaPor,
+			@Schema(description = "El periodo de abono siguiente que renovo a este (la reciproca de "
+					+ "`renuevaPaseId`); ausente si no se renovo. Calculado al leer. Puede estar `ANULADO`. "
+					+ "Aditivo desde 0.117.0", example = "78") Long renovadoPorPaseId,
 			@Schema(description = "Version para el control optimista del ajuste, la anulacion y la "
 					+ "renovacion", example = "1") long version) {
 
@@ -107,7 +114,8 @@ public final class PaseResponses {
 					v.vigente(), v.creditosUsados(), v.anulable(), v.vendidoEn(), v.vendidoPorCuentaId(),
 					v.anuladoEn(),
 					v.anuladoPorCuentaId(), v.motivoAnulacion(), v.renovacionAutomatica(), v.renuevaPaseId(),
-					v.renovacionOmitidaMotivo(), v.version());
+					v.renovacionOmitidaMotivo(), v.renovacionAutorizadaPor(), v.renovadoPorPaseId(),
+					v.version());
 		}
 	}
 

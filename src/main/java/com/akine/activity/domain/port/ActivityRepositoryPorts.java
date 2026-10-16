@@ -490,6 +490,13 @@ public final class ActivityRepositoryPorts {
 		Optional<Long> renovacionDe(long organizationId, long paseId);
 
 		/**
+		 * {@link #renovacionDe} para varios pases en UNA consulta: periodo renovado -> periodo que lo
+		 * renueva. Los que no se renovaron no aparecen. Para listas: {@link #renovacionDe} por fila
+		 * es N+1.
+		 */
+		java.util.Map<Long, Long> renovacionesDe(long organizationId, java.util.Collection<Long> paseIds);
+
+		/**
 		 * Abonos de todos los tenants con la renovacion prendida y el periodo terminando antes de
 		 * {@code limite} (inclusive), los que terminan antes primero. Lo lee el job, sin contexto.
 		 */

@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.116.0
+  version: 0.117.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -8212,6 +8212,8 @@ paths:
         Suma o resta creditos con motivo obligatorio (RF-M29-005). Deja un movimiento `AJUSTE` en el ledger con actor y motivo y lo audita (CA-M29-005-06). **No toca la deuda ni la caja**: un credito no es plata (RN-M29-006).
 
         El saldo final no puede ser negativo (RN-M29-008) ni superar los creditos comprados, y el pase tiene que estar `ACTIVO` o `AGOTADO` y dentro de su vigencia. `version` es la que el cliente leyo: un consumo que entro en el medio la movio y la respuesta es 409 `concurrent-modification`. Reenviar el mismo ajuste con la misma version devuelve el estado actual sin ajustar dos veces.
+
+        La respuesta trae el ledger **entero**. Desde 0.117.0, con `sinMovimientos=true` trae el pase con `movimientos` vacio y sin leer el ledger: es para la pantalla que ya lo pagina con `listarMovimientosDePase`. Una lista vacia con ese parametro **no** significa que el pase no tenga movimientos. Aditivo: sin el parametro la respuesta es la de siempre.
       operationId: ajustarSaldoDePase
       parameters:
       - in: path
@@ -8226,6 +8228,15 @@ paths:
         schema:
           type: integer
           format: int64
+      - description: "true: devuelve el pase con `movimientos` vacio, sin el ledger.\
+          \ Aditivo desde 0.117.0"
+        example: true
+        in: query
+        name: sinMovimientos
+        required: false
+        schema:
+          type: boolean
+          default: false
       requestBody:
         content:
           application/json:
@@ -8241,7 +8252,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/PaseDetalle"
-          description: "El pase ajustado, con su ledger"
+          description: "El pase ajustado, con su ledger (vacio con `sinMovimientos=true`)"
         "400":
           content:
             application/json:
@@ -31619,11 +31630,25 @@ components:
             \ renueva (el periodo nuevo la hereda) o cuando no se pudo renovar (`renovacionOmitidaMotivo`).\
             \ Aditivo"
           example: false
+        renovacionAutorizadaPor:
+          type: string
+          description: "Solo abonos: nombre de quien activo por ultima vez la renovacion\
+            \ automatica. Se conserva al apagarla y el periodo que vende el job lo\
+            \ hereda. Resuelto al leer (el nombre de hoy); ausente si nunca se activo\
+            \ o la cuenta no resuelve. Aditivo desde 0.117.0"
+          example: Ana Gomez
         renovacionOmitidaMotivo:
           type: string
           description: "Por que el sistema no pudo renovar este periodo (producto\
             \ de baja, persona de baja, periodo ocupado). Ausente si no se intento\
             \ o se renovo. Aditivo desde 0.116.0"
+        renovadoPorPaseId:
+          type: integer
+          format: int64
+          description: El periodo de abono siguiente que renovo a este (la reciproca
+            de `renuevaPaseId`); ausente si no se renovo. Calculado al leer. Puede
+            estar `ANULADO`. Aditivo desde 0.117.0
+          example: 78
         renuevaPaseId:
           type: integer
           format: int64

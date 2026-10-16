@@ -4,6 +4,7 @@ import com.akine.activity.domain.PaseServicio;
 import com.akine.activity.domain.ProductoServicio;
 import com.akine.activity.domain.exception.PaseConCobrosException;
 import com.akine.activity.domain.exception.PaseNoAjustableException;
+import com.akine.activity.domain.port.ActivityRepositoryPorts.EstadoDePase;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.MovimientoPaseRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseServicioRepositoryPort;
 import com.akine.billing.spi.DevengoDeVentas;
@@ -12,6 +13,7 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -62,13 +65,14 @@ class AjusteDePaseServiceTest {
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private AuditTrail auditTrail;
+	@Mock private AccountIdentityDirectory identidades;
 
 	private AjusteDePaseService service;
 
 	@BeforeEach
 	void setUp() {
 		service = new AjusteDePaseService(pases, movimientos, ventas, consultorios, permissionGuard,
-				auditTrail, RELOJ);
+				auditTrail, new LecturaDePases(pases, movimientos, ventas, identidades), RELOJ);
 		given(consultorios.find(ORG, SEDE)).willReturn(Optional.of(
 				new ConsultorioSnapshot(SEDE, ORG, "Sede", "UTC", true)));
 		given(pases.lockByIdInScope(ORG, SEDE, PASE)).willReturn(Optional.of(pase()));
@@ -80,7 +84,7 @@ class AjusteDePaseServiceTest {
 	void sin_permiso() {
 		willThrow(new AccessDeniedException("no")).given(permissionGuard).requirePermission(any());
 
-		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(-1, "x", 0)))
+		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(-1, "x", 0), true))
 				.isInstanceOf(AccessDeniedException.class);
 		assertThatThrownBy(() -> service.anular(ACTOR, SEDE, PASE, "x", 0))
 				.isInstanceOf(AccessDeniedException.class);
@@ -90,9 +94,9 @@ class AjusteDePaseServiceTest {
 	@Test
 	@DisplayName("Un ajuste de cero o sin motivo es 400 y no toca el pase")
 	void ajuste_invalido() {
-		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(0, "x", 0)))
+		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(0, "x", 0), true))
 				.isInstanceOf(IllegalArgumentException.class);
-		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(1, " ", 0)))
+		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(1, " ", 0), true))
 				.isInstanceOf(IllegalArgumentException.class);
 		verify(pases, never()).ajustar(anyLong(), anyLong(), anyInt(), anyLong());
 	}
@@ -100,10 +104,10 @@ class AjusteDePaseServiceTest {
 	@Test
 	@DisplayName("Un saldo final fuera de rango no llega al UPDATE")
 	void fuera_de_rango() {
-		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(-9, "x", 0)))
+		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(-9, "x", 0), true))
 				.isInstanceOf(PaseNoAjustableException.class)
 				.hasFieldOrPropertyWithValue("causa", PaseNoAjustableException.Causa.FUERA_DE_RANGO);
-		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(1, "x", 0)))
+		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(1, "x", 0), true))
 				.isInstanceOf(PaseNoAjustableException.class)
 				.hasFieldOrPropertyWithValue("causa", PaseNoAjustableException.Causa.FUERA_DE_RANGO);
 		verify(pases, never()).ajustar(anyLong(), anyLong(), anyInt(), anyLong());
@@ -127,6 +131,23 @@ class AjusteDePaseServiceTest {
 				.hasFieldOrPropertyWithValue("cobrado", new BigDecimal("10000.00"))
 				.hasFieldOrPropertyWithValue("moneda", "ARS");
 		verify(pases, never()).anular(anyLong(), anyLong(), anyLong(), anyLong(), any(), any());
+	}
+
+	@Test
+	@DisplayName("sinMovimientos: el ajuste devuelve el pase sin leer el ledger; sin el parametro, con el ledger")
+	void ajuste_sin_movimientos() {
+		given(pases.ajustar(ORG, PASE, -1, 0)).willReturn(1);
+		given(pases.estadoActual(ORG, PASE)).willReturn(new EstadoDePase(7, "ACTIVO", 1));
+
+		PaseDetalleView sinLedger = service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(-1, "x", 0), false);
+
+		assertThat(sinLedger.movimientos()).isEmpty();
+		assertThat(sinLedger.pase().creditosDisponibles()).isEqualTo(7);
+		assertThat(sinLedger.pase().version()).isEqualTo(1);
+		verify(movimientos, never()).historial(ORG, PASE);
+
+		service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(-1, "x", 0), true);
+		verify(movimientos).historial(ORG, PASE);
 	}
 
 	/** Un pack de 8 creditos recien vendido, version 0. */

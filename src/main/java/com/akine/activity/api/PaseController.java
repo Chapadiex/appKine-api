@@ -375,9 +375,16 @@ public class PaseController {
 					comprados, y el pase tiene que estar `ACTIVO` o `AGOTADO` y dentro de su vigencia. \
 					`version` es la que el cliente leyo: un consumo que entro en el medio la movio y la \
 					respuesta es 409 `concurrent-modification`. Reenviar el mismo ajuste con la misma \
-					version devuelve el estado actual sin ajustar dos veces.""")
+					version devuelve el estado actual sin ajustar dos veces.
+
+					La respuesta trae el ledger **entero**. Desde 0.117.0, con `sinMovimientos=true` \
+					trae el pase con `movimientos` vacio y sin leer el ledger: es para la pantalla que \
+					ya lo pagina con `listarMovimientosDePase`. Una lista vacia con ese parametro **no** \
+					significa que el pase no tenga movimientos. Aditivo: sin el parametro la respuesta \
+					es la de siempre.""")
 	@ApiResponses({
-			@ApiResponse(responseCode = "200", description = "El pase ajustado, con su ledger"),
+			@ApiResponse(responseCode = "200", description = "El pase ajustado, con su ledger (vacio con "
+					+ "`sinMovimientos=true`)"),
 			@ApiResponse(responseCode = "400", description = "Cantidad cero, sin motivo o datos invalidos",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403", description = P403_AJUSTE,
@@ -393,10 +400,14 @@ public class PaseController {
 	public PaseResponses.Detalle ajustarSaldoDePase(
 			@PathVariable long consultorioId,
 			@PathVariable long paseId,
-			@RequestBody @Valid ProductoRequests.Ajustar request) {
+			@RequestBody @Valid ProductoRequests.Ajustar request,
+			@Parameter(description = "true: devuelve el pase con `movimientos` vacio, sin el ledger. "
+					+ "Aditivo desde 0.117.0", example = "true")
+			@RequestParam(name = "sinMovimientos", defaultValue = "false") boolean sinMovimientos) {
 
 		return PaseResponses.Detalle.de(ajusteService.ajustar(apiActor.current(), consultorioId, paseId,
-				new AjustarSaldoCommand(request.cantidad(), request.motivo(), request.version())));
+				new AjustarSaldoCommand(request.cantidad(), request.motivo(), request.version()),
+				!sinMovimientos));
 	}
 
 	@PostMapping("/pases/{paseId}/anulacion")

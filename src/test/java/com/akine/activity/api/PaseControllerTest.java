@@ -2,6 +2,7 @@ package com.akine.activity.api;
 
 import com.akine.activity.application.AjusteDePaseService;
 import com.akine.activity.application.MovimientoPaseView;
+import com.akine.activity.application.PaseDetalleView;
 import com.akine.activity.application.PaseView;
 import com.akine.activity.application.ProductoService;
 import com.akine.activity.application.VentaDePaseService;
@@ -40,6 +41,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -100,7 +102,27 @@ class PaseControllerTest {
 				.content("{\"activa\": true, \"version\": 3}"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.renovacionAutomatica").value(true))
+				.andExpect(jsonPath("$.renovacionAutorizadaPor").value("Ana Gomez"))
 				.andExpect(jsonPath("$.version").value(4));
+	}
+
+	@Test
+	@DisplayName("sinMovimientos=true llega al servicio como sin ledger; sin el parametro, con el ledger")
+	void ajuste_sin_movimientos() throws Exception {
+		given(ajusteService.ajustar(any(), eq(SEDE_ID), eq(77L), any(), anyBoolean()))
+				.willReturn(new PaseDetalleView(abono(false, 2L), List.of()));
+		String cuerpo = "{\"cantidad\": -1, \"motivo\": \"Correccion\", \"version\": 1}";
+
+		autenticado(post(PASE + "/ajustes").param("sinMovimientos", "true")
+				.contentType(MediaType.APPLICATION_JSON).content(cuerpo))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.pase.version").value(2))
+				.andExpect(jsonPath("$.movimientos").isEmpty());
+		verify(ajusteService).ajustar(any(), eq(SEDE_ID), eq(77L), any(), eq(false));
+
+		autenticado(post(PASE + "/ajustes").contentType(MediaType.APPLICATION_JSON).content(cuerpo))
+				.andExpect(status().isOk());
+		verify(ajusteService).ajustar(any(), eq(SEDE_ID), eq(77L), any(), eq(true));
 	}
 
 	@Test
@@ -133,7 +155,7 @@ class PaseControllerTest {
 		return new PaseView(77L, SEDE_ID, 512L, 12L, "ABONO", "Abono mensual", new BigDecimal("30000.00"),
 				"ARS", 42L, 8, 8, LocalDate.parse("2026-11-01"), LocalDate.parse("2026-11-30"), "ACTIVO",
 				true, 0, true, Instant.parse("2026-10-30T12:00:00Z"), CUENTA, null, null, null,
-				renovacion, null, null, version);
+				renovacion, null, null, renovacion ? "Ana Gomez" : null, null, version);
 	}
 
 	private ResultActions autenticado(MockHttpServletRequestBuilder peticion) throws Exception {

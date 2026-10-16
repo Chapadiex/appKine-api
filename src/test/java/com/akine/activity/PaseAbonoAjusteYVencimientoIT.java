@@ -138,37 +138,37 @@ class PaseAbonoAjusteYVencimientoIT {
 		long paseId = venderPack(tenant, 8);
 
 		PaseDetalleView menos = ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
-				new AjustarSaldoCommand(-3, "Tres clases tomadas antes de cargar el sistema", 0));
+				new AjustarSaldoCommand(-3, "Tres clases tomadas antes de cargar el sistema", 0), true);
 		assertThat(menos.pase().creditosDisponibles()).isEqualTo(5);
 		long version = menos.pase().version();
 
 		// El reintento del mismo ajuste (misma version leida) no resta otra vez.
 		PaseDetalleView reintento = ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
-				new AjustarSaldoCommand(-3, "Tres clases tomadas antes de cargar el sistema", 0));
+				new AjustarSaldoCommand(-3, "Tres clases tomadas antes de cargar el sistema", 0), true);
 		assertThat(reintento.pase().creditosDisponibles()).isEqualTo(5);
 		assertThat(contar("SELECT COUNT(*) FROM movimiento_pase WHERE pase_id = ? AND tipo = 'AJUSTE'", paseId))
 				.isEqualTo(1);
 
 		// Otro ajuste con la version vieja es una version vieja.
 		assertThatThrownBy(() -> ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
-				new AjustarSaldoCommand(1, "Otro motivo", 0)))
+				new AjustarSaldoCommand(1, "Otro motivo", 0), true))
 				.isInstanceOf(OptimisticLockingFailureException.class);
 
 		// RN-M29-008 y el techo de lo comprado.
 		assertThatThrownBy(() -> ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
-				new AjustarSaldoCommand(-6, "Demasiado", version)))
+				new AjustarSaldoCommand(-6, "Demasiado", version), true))
 				.isInstanceOf(PaseNoAjustableException.class)
 				.hasFieldOrPropertyWithValue("causa", PaseNoAjustableException.Causa.FUERA_DE_RANGO);
 		assertThatThrownBy(() -> ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
-				new AjustarSaldoCommand(4, "Demasiado", version)))
+				new AjustarSaldoCommand(4, "Demasiado", version), true))
 				.isInstanceOf(PaseNoAjustableException.class)
 				.hasFieldOrPropertyWithValue("causa", PaseNoAjustableException.Causa.FUERA_DE_RANGO);
 
 		PaseDetalleView aCero = ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
-				new AjustarSaldoCommand(-5, "Se dio de baja del taller", version));
+				new AjustarSaldoCommand(-5, "Se dio de baja del taller", version), true);
 		assertThat(aCero.pase().estado()).isEqualTo("AGOTADO");
 		PaseDetalleView vuelve = ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
-				new AjustarSaldoCommand(2, "Volvio al taller", aCero.pase().version()));
+				new AjustarSaldoCommand(2, "Volvio al taller", aCero.pase().version()), true);
 		assertThat(vuelve.pase().estado()).isEqualTo("ACTIVO");
 		// Los ajustes manuales no son creditos usados: el pase sigue anulable (0.111.0).
 		assertThat(vuelve.pase().creditosUsados()).isZero();
@@ -193,7 +193,7 @@ class PaseAbonoAjusteYVencimientoIT {
 		// Cross-tenant: el pase de otro centro no existe.
 		Tenant otro = fx.crearTenant(10, 1);
 		assertThatThrownBy(() -> ajusteService.ajustar(otro.actor(), otro.consultorioId(), paseId,
-				new AjustarSaldoCommand(1, "x", vuelve.pase().version())))
+				new AjustarSaldoCommand(1, "x", vuelve.pase().version()), true))
 				.isInstanceOf(PaseNotAccessibleException.class);
 	}
 
@@ -285,7 +285,7 @@ class PaseAbonoAjusteYVencimientoIT {
 		Tenant tenant = tenantPorPack();
 		long paseId = venderPack(tenant, 8);
 		ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
-				new AjustarSaldoCommand(-3, "Usadas antes del sistema", 0));
+				new AjustarSaldoCommand(-3, "Usadas antes del sistema", 0), true);
 		long vigente = venderPack(tenant, 8);
 		// La vigencia no se puede esperar: se corre hacia atras como dato de prueba.
 		jdbc.update("UPDATE pase_servicio SET vigencia_desde = DATE_SUB(vigencia_desde, INTERVAL 90 DAY), "
@@ -305,7 +305,7 @@ class PaseAbonoAjusteYVencimientoIT {
 		// RF-M29-006: vencido no se ajusta. Y la deuda no se toca: un credito no es plata.
 		long version = version(paseId);
 		assertThatThrownBy(() -> ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
-				new AjustarSaldoCommand(1, "x", version)))
+				new AjustarSaldoCommand(1, "x", version), true))
 				.isInstanceOf(PaseNoAjustableException.class);
 		assertThat(jdbc.queryForObject("SELECT estado FROM obligacion WHERE pase_id = ?", String.class, paseId))
 				.isEqualTo("PENDIENTE");
