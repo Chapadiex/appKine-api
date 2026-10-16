@@ -6,8 +6,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 
 /**
- * Una derivacion de participante: ids, estado, actores e instantes. <b>Nada clinico</b>: ni
- * diagnostico, ni objetivo, ni el numero de Caso que un profesional dice en voz alta.
+ * Una derivacion de participante: ids, estado, actores, instantes y el numero visible del Caso.
+ * <b>Nada clinico</b>: ni diagnostico ni objetivo.
  */
 @Schema(name = "DerivacionDeParticipante",
 		description = "Vinculo entre una participacion de clase y un Caso Clinico (AKINE-08.04).")
@@ -19,6 +19,12 @@ public record DerivacionResponse(
 		@Schema(example = "512") long personaId,
 		@Schema(example = "40") long historiaClinicaId,
 		@Schema(example = "88") long casoClinicoId,
+		@Schema(
+				description = "Numero visible del Caso dentro de la historia (\"caso 3\"), el que la "
+						+ "pantalla muestra en lugar del id. Ausente solo si el Caso no se pudo "
+						+ "resolver",
+				example = "3")
+		Integer numeroCaso,
 		Long planTratamientoId,
 		@Schema(description = "Oferta clinica que justifico la derivacion, congelada", example = "45")
 		long ofertaId,
@@ -39,7 +45,8 @@ public record DerivacionResponse(
 	public static DerivacionResponse de(DerivacionView v) {
 		return new DerivacionResponse(
 				v.id(), v.inscripcionId(), v.asistenciaId(), v.personaId(), v.historiaClinicaId(),
-				v.casoClinicoId(), v.planTratamientoId(), v.ofertaId(), v.requiereCasoClinico(),
+				v.casoClinicoId(), v.numeroCaso(), v.planTratamientoId(), v.ofertaId(),
+				v.requiereCasoClinico(),
 				v.autorizacionId(), v.estado(), v.motivo(), v.derivadaEn(), v.derivadaPorCuentaId(),
 				v.revertidaEn(), v.revertidaPorCuentaId(), v.motivoReversion(), v.version(),
 				v.yaExistia());

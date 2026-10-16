@@ -290,3 +290,14 @@ Un segundo caso adverso, más cotidiano: *el mostrador marca ausente por error, 
 quiere atender.* Es 409 `participacion-sin-asistencia`; el camino es corregir la asistencia (08.03
 dejó la corrección con motivo), no forzar la atención. La corrección en el sentido contrario —a
 `AUSENTE` después de abrir la Sesión— queda fuera (§8.4).
+
+## 11. Pedidos de la pantalla (web #104) — contrato `0.118.0`, aditivo
+
+Cuatro campos, todos calculados al leer, sin migración:
+
+| Dónde | Campo | De dónde sale |
+|---|---|---|
+| `ParticipanteEnAtencionGrupal` (`verAtencionGrupal`) | `nombre`, `apellido` | `person.spi.PacienteDirectory.findAll`, **una** consulta para toda la clase y **después** de los gates (si `encounter` niega el panel, no se resuelve ningún nombre). Ni documento ni contacto |
+| `Sesion` | `claseTitulo` | El título de la clase, o el nombre comercial de su oferta si no tiene. `encounter.spi.TituloDeClaseGrupal`, implementada por `activity.infrastructure.TituloDeClaseParaLaSesion`: la arista sigue siendo sólo `activity → encounter.spi`. Ausente si la Sesión no es grupal |
+| `DerivacionDeParticipante` | `numeroCaso` | `DerivacionSnapshot.numeroCaso`, que `clinical` resuelve con una consulta por historia (no por derivación) en `consultar`. Es el mismo dato que `CasoSnapshot` ya publicaba: no es contenido clínico |
+| `ItemDeAtencionGrupal` (`iniciarAtencionGrupal`) | `derivacionIds` | Sólo con `derivacion-ambigua`. `ConTipoDeProblema.propiedadesDelProblema()` lleva al ítem lo mismo que el `ProblemHandler` pone en el Problem Detail individual |

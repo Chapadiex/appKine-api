@@ -40,6 +40,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -164,7 +165,7 @@ public class DerivacionClinicaService {
 				Instant.now()));
 
 		return new EstadoClinicoDeParticipacion(
-				historiaClinicaId, filas.stream().map(f -> proyectar(f, false)).toList());
+				historiaClinicaId, proyectarConNumeros(organizationId, filas));
 	}
 
 	/**
@@ -201,7 +202,7 @@ public class DerivacionClinicaService {
 		if (yaExistente.isPresent()) {
 			log.debug("Derivacion ya vigente: participacionId={} casoId={}",
 					participacion.participacionId(), registro.casoClinicoId());
-			return proyectar(yaExistente.get(), true);
+			return proyectar(organizationId, yaExistente.get(), true);
 		}
 
 		CasoClinico caso = casos.findByIdAndOrganizationId(registro.casoClinicoId(), organizationId)
@@ -275,7 +276,7 @@ public class DerivacionClinicaService {
 				ahora));
 		registrarSoporte(acceso, actor, guardada, "derivar", ahora);
 
-		return proyectar(guardada, false);
+		return proyectar(guardada, false, caso.getNumeroCaso());
 	}
 
 	/** Deshace el vinculo, con motivo obligatorio. La fila queda. */
@@ -309,7 +310,7 @@ public class DerivacionClinicaService {
 		if (!derivacion.revertir(reversion.motivo(), ahora, actor.accountId())) {
 			// Ya estaba revertida: el reintento tras un timeout no es un error, y el segundo
 			// motivo no pisa al primero. Tampoco se audita de nuevo: no ocurrio ningun hecho.
-			return proyectar(derivacion, true);
+			return proyectar(organizationId, derivacion, true);
 		}
 
 		DerivacionClinica guardada = derivaciones.saveAndFlush(derivacion);
@@ -322,7 +323,7 @@ public class DerivacionClinicaService {
 				ahora));
 		registrarSoporte(acceso, actor, guardada, "revertir", ahora);
 
-		return proyectar(guardada, false);
+		return proyectar(organizationId, guardada, false);
 	}
 
 	/**
@@ -384,7 +385,7 @@ public class DerivacionClinicaService {
 				ahora));
 		registrarSoporte(acceso, actor, elegida, "atender", ahora);
 
-		return proyectar(elegida, false);
+		return proyectar(organizationId, elegida, false);
 	}
 
 	private boolean tieneAtencion(long organizationId, long derivacionId) {
@@ -504,7 +505,36 @@ public class DerivacionClinicaService {
 				ahora));
 	}
 
-	private static DerivacionSnapshot proyectar(DerivacionClinica d, boolean yaExistia) {
+	/**
+	 * Las derivaciones de una participacion con el numero visible de su Caso, en <b>una</b>
+	 * consulta por historia y no una por derivacion. Todas las de una participacion son de la
+	 * misma persona, asi que en la practica es una sola: los casos de su historia, cerrados
+	 * incluidos (una derivacion revertida puede apuntar a un Caso ya cerrado).
+	 */
+	private List<DerivacionSnapshot> proyectarConNumeros(
+			long organizationId, List<DerivacionClinica> filas) {
+
+		Map<Long, Integer> numeros = new HashMap<>();
+		filas.stream()
+				.map(DerivacionClinica::getHistoriaClinicaId)
+				.distinct()
+				.forEach(historiaId -> casos.buscarDeHistoria(organizationId, historiaId, false)
+						.forEach(caso -> numeros.put(caso.getId(), caso.getNumeroCaso())));
+		return filas.stream()
+				.map(f -> proyectar(f, false, numeros.get(f.getCasoClinicoId())))
+				.toList();
+	}
+
+	/** Una derivacion con el numero visible de su Caso, leido por id. */
+	private DerivacionSnapshot proyectar(long organizationId, DerivacionClinica d, boolean yaExistia) {
+		Integer numeroCaso = casos.findByIdAndOrganizationId(d.getCasoClinicoId(), organizationId)
+				.map(CasoClinico::getNumeroCaso)
+				.orElse(null);
+		return proyectar(d, yaExistia, numeroCaso);
+	}
+
+	private static DerivacionSnapshot proyectar(
+			DerivacionClinica d, boolean yaExistia, Integer numeroCaso) {
 		return new DerivacionSnapshot(
 				d.getId(),
 				d.getOrganizationId(),
@@ -514,6 +544,7 @@ public class DerivacionClinicaService {
 				d.getPersonaId(),
 				d.getHistoriaClinicaId(),
 				d.getCasoClinicoId(),
+				numeroCaso,
 				d.getPlanTratamientoId(),
 				d.getOfertaId(),
 				d.isRequiereCasoClinico(),

@@ -30,7 +30,14 @@ public record ResultadoDeAtencionGrupalResponse(
 					description = "URI del tipo de problema, la misma del Problem Detail individual",
 					example = "https://akine.app/problems/participacion-sin-derivacion")
 			String problemType,
-			@Schema(description = "Explicacion del fallo de este participante") String detalle) {
+			@Schema(description = "Explicacion del fallo de este participante") String detalle,
+			@Schema(
+					description = "Solo con `derivacion-ambigua`: las derivaciones vigentes entre "
+							+ "las que hay que elegir, las mismas que trae el Problem Detail de la "
+							+ "operacion individual. Se reintenta el item con una de ellas como "
+							+ "`derivacionId`. Ausente en cualquier otro caso",
+					example = "[88, 91]")
+			List<Long> derivacionIds) {
 
 		static Item de(ItemDeAtencionGrupal item) {
 			return new Item(
@@ -38,7 +45,8 @@ public record ResultadoDeAtencionGrupalResponse(
 					item.atencion() == null ? null
 							: AtencionDeParticipanteResponse.de(item.inscripcionId(), item.atencion()),
 					item.problemType(),
-					item.detalle());
+					item.detalle(),
+					item.derivacionIds());
 		}
 	}
 

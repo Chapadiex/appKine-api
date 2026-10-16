@@ -6,6 +6,7 @@ import com.akine.activity.application.AsistenciaService;
 import com.akine.activity.application.AtencionDeParticipanteView;
 import com.akine.activity.application.AtencionDeParticipantesService;
 import com.akine.activity.application.DerivacionService;
+import com.akine.activity.application.DerivacionView;
 import com.akine.activity.application.DerivarParticipanteCommand;
 import com.akine.activity.application.InscribirCommand;
 import com.akine.activity.application.InscripcionService;
@@ -219,7 +220,77 @@ class AtencionGrupalIT {
 				.isEqualTo(1);
 	}
 
+	@Test
+	@DisplayName("web #104: nombres en el panel, numeroCaso en la derivacion, claseTitulo en la Sesion y derivacionIds en el lote")
+	void pedidos_de_la_pantalla() {
+		long oferta = crearOfertaGrupal(true);
+		long claseConTitulo = crearClase(oferta);
+		long inscripcion = inscribir(claseConTitulo, maria);
+		marcar(claseConTitulo, inscripcion);
+		long casoRodilla = abrirCaso(historiaDeMaria, oferta);
+		long casoHombro = abrirCaso(historiaDeMaria, oferta);
+		long derivacionRodilla = derivar(claseConTitulo, inscripcion, casoRodilla);
+		long derivacionHombro = derivar(claseConTitulo, inscripcion, casoHombro);
+
+		// numeroCaso: el numero visible del Caso, no el id, en la lectura de las derivaciones.
+		Map<Long, Integer> numerosEnBase = Map.of(
+				casoRodilla, numeroCaso(casoRodilla), casoHombro, numeroCaso(casoHombro));
+		List<DerivacionView> leidas = derivaciones.consultar(actor, mundo.consultorioId(),
+				claseConTitulo, inscripcion, JUSTIFICACION).derivaciones();
+		assertThat(leidas).hasSize(2).allSatisfy(d -> assertThat(d.numeroCaso())
+				.isEqualTo(numerosEnBase.get(d.casoClinicoId())));
+		assertThat(numerosEnBase.values()).as("dos Casos de la misma historia, dos numeros")
+				.doesNotHaveDuplicates();
+
+		// derivacionIds: el lote dice entre cuales elegir, como el 409 individual.
+		ResultadoDeAtencionGrupal ambiguo = atenciones.iniciarLote(actor, mundo.consultorioId(),
+				claseConTitulo, List.of(new PedidoDeAtencionDeParticipante(inscripcion, null)),
+				JUSTIFICACION);
+		assertThat(ambiguo.items().get(0).problemType())
+				.isEqualTo(ProblemType.DERIVACION_AMBIGUA.value());
+		assertThat(ambiguo.items().get(0).derivacionIds())
+				.containsExactlyInAnyOrder(derivacionRodilla, derivacionHombro);
+
+		// claseTitulo: el titulo propio de la clase.
+		long sesionId = atenciones.iniciar(actor, mundo.consultorioId(), claseConTitulo, inscripcion,
+				derivacionRodilla, JUSTIFICACION).atencion().sesionId();
+		assertThat(sesiones.ver(mundo.actor(), mundo.consultorioId(), sesionId).claseTitulo())
+				.isEqualTo("Clase sintetica");
+
+		// nombre y apellido en el panel, los del padron.
+		Map<String, Object> persona = jdbc.queryForMap(
+				"SELECT nombre, apellido FROM persona WHERE id = ?", maria);
+		PanelDeAtencionGrupalView panel = atenciones.panel(actor, mundo.consultorioId(), claseConTitulo);
+		assertThat(panel.participantes()).singleElement().satisfies(p -> {
+			assertThat(p.nombre()).isEqualTo(persona.get("nombre"));
+			assertThat(p.apellido()).isEqualTo(persona.get("apellido"));
+		});
+	}
+
+	@Test
+	@DisplayName("web #104: una clase sin titulo nombra a la Sesion con el nombre comercial de la oferta")
+	void clase_sin_titulo_usa_la_oferta() {
+		long oferta = crearOfertaGrupal(true);
+		long claseSinTitulo = crearClase(oferta, null);
+		long inscripcion = inscribir(claseSinTitulo, maria);
+		marcar(claseSinTitulo, inscripcion);
+		derivar(claseSinTitulo, inscripcion, abrirCaso(historiaDeMaria, oferta));
+
+		long sesionId = atenciones.iniciar(actor, mundo.consultorioId(), claseSinTitulo, inscripcion,
+				null, JUSTIFICACION).atencion().sesionId();
+
+		assertThat(sesiones.ver(mundo.actor(), mundo.consultorioId(), sesionId).claseTitulo())
+				.isEqualTo(jdbc.queryForObject(
+						"SELECT nombre_comercial FROM oferta_servicio_consultorio WHERE id = ?",
+						String.class, oferta));
+	}
+
 	// =================================================================================
+
+	private int numeroCaso(long casoId) {
+		return jdbc.queryForObject("SELECT numero_caso FROM caso_clinico WHERE id = ?",
+				Integer.class, casoId);
+	}
 
 	private SesionView cerrar(long sesionId) {
 		long version = jdbc.queryForObject("SELECT version FROM sesion WHERE id = ?", Long.class, sesionId);
@@ -285,15 +356,19 @@ class AtencionGrupalIT {
 	}
 
 	private long crearClase(long ofertaId) {
+		return crearClase(ofertaId, "Clase sintetica");
+	}
+
+	private long crearClase(long ofertaId, String titulo) {
 		jdbc.update("""
 				INSERT INTO clase_programada (organization_id, consultorio_id, oferta_id, titulo,
 				                              inicio, fin, capacidad, estado,
 				                              programado_por_cuenta_id, programado_en, version)
-				VALUES (?, ?, ?, 'Clase sintetica',
+				VALUES (?, ?, ?, ?,
 				        DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 7 DAY),
 				        DATE_ADD(DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 7 DAY), INTERVAL 1 HOUR),
 				        8, 'PROGRAMADA', ?, UTC_TIMESTAMP(6), 0)
-				""", mundo.organizationId(), mundo.consultorioId(), ofertaId, actor.accountId());
+				""", mundo.organizationId(), mundo.consultorioId(), ofertaId, titulo, actor.accountId());
 		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
