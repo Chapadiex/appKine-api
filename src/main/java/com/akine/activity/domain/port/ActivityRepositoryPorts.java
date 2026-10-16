@@ -11,7 +11,9 @@ import com.akine.activity.domain.ProductoServicio;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -493,6 +495,12 @@ public final class ActivityRepositoryPorts {
 		 * {@code CONSUMO} y {@code DEVOLUCION}. Cero si nunca se uso o todo se devolvio.
 		 */
 		int consumoNeto(long organizationId, long paseId);
+
+		/**
+		 * {@link #consumoNeto} de varios pases en una consulta: solo los pases con neto distinto de
+		 * cero (el que falta, vale cero).
+		 */
+		Map<Long, Integer> consumoNetoPorPase(long organizationId, Collection<Long> paseIds);
 
 		/** El ajuste manual aplicado sobre esa version del pase, si existe (reintento). */
 		Optional<MovimientoPase> ajusteSobreVersion(long organizationId, long paseId, long versionLeida);

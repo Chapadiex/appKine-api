@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.110.0
+  version: 0.111.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -8021,7 +8021,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Version vieja (`concurrent-modification`), o pase anulado,\
-            \ vencido o saldo final fuera de rango (`pase-no-ajustable`, con `motivo`)"
+            \ vencido o saldo final fuera de rango (`pase-no-ajustable`, con `motivo`\
+            \ en texto y, desde 0.111.0, `causa`: `ESTADO` si esta anulado o vencido,\
+            \ `FUERA_DE_VIGENCIA` si su vigencia ya termino o `FUERA_DE_RANGO` si\
+            \ el saldo final sale de 0..creditosIniciales; aditivo)"
       summary: Ajustar a mano el saldo de un pase
       tags:
       - Pases
@@ -8098,8 +8101,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Version vieja (`concurrent-modification`), creditos usados\
-            \ (`pase-no-ajustable`) o deuda con cobros imputados (`pase-con-cobros`,\
-            \ con `obligacionId` y `cobrado`)"
+            \ (`pase-no-ajustable` con `motivo` y, desde 0.111.0, `causa = CREDITOS_USADOS`)\
+            \ o deuda con cobros imputados (`pase-con-cobros`, con `obligacionId`,\
+            \ `cobrado` y, desde 0.111.0, `moneda` ISO 4217 de la obligacion). Lo\
+            \ de 0.111.0 es aditivo"
       summary: Anular un pase vendido por error
       tags:
       - Pases
@@ -30891,6 +30896,14 @@ components:
         \ creditos y oferta son el **snapshot de la venta**: editar el producto no\
         \ los cambia."
       properties:
+        anulable:
+          type: boolean
+          description: "true si `POST .../anulacion` lo aceptaria hoy: no esta `ANULADO`,\
+            \ no tiene creditos usados y la deuda de su venta no tiene cobros imputados.\
+            \ Es la misma regla con la que la anulacion responde `pase-no-ajustable`\
+            \ (`causa = CREDITOS_USADOS`) o `pase-con-cobros`, calculada al leer.\
+            \ Aditivo desde 0.111.0"
+          example: false
         anuladoEn:
           type: string
           format: date-time
@@ -30912,6 +30925,13 @@ components:
           type: integer
           format: int32
           example: 8
+        creditosUsados:
+          type: integer
+          format: int32
+          description: "Creditos tomados por asistencias: el neto de los `CONSUMO`\
+            \ y `DEVOLUCION` del ledger; los ajustes manuales no cuentan. Calculado\
+            \ al leer. Aditivo desde 0.111.0"
+          example: 1
         estado:
           type: string
           enum:

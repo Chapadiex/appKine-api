@@ -3,6 +3,7 @@ package com.akine.billing.domain.port;
 import com.akine.billing.domain.Obligacion;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,6 +32,12 @@ public interface ObligacionRepositoryPort {
 	 * RF-M18-009 del lado de {@code billing}: un reintento de la venta no devenga dos veces.
 	 */
 	Optional<Obligacion> findDeLaVenta(long organizationId, long paseId);
+
+	/**
+	 * De esos pases, los que tienen la obligacion viva de su venta con cobros imputados: no anulada
+	 * y con saldo distinto del importe original.
+	 */
+	List<Long> ventasConCobros(long organizationId, Collection<Long> paseIds);
 
 	Obligacion saveAndFlush(Obligacion obligacion);
 

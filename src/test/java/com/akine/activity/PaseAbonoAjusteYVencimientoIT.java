@@ -10,6 +10,7 @@ import com.akine.activity.application.ConsumoDeCredito.Efecto;
 import com.akine.activity.application.CrearProductoCommand;
 import com.akine.activity.application.InscripcionService;
 import com.akine.activity.application.PaseDetalleView;
+import com.akine.activity.application.PaseView;
 import com.akine.activity.application.ProductoService;
 import com.akine.activity.application.RegistrarAsistenciaCommand;
 import com.akine.activity.application.ResultadoDeAnulacion;
@@ -44,6 +45,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * AKINE-08.07 / 08.08 contra MySQL real: <b>abono, ajuste manual, anulacion, vencimiento y
@@ -155,10 +157,12 @@ class PaseAbonoAjusteYVencimientoIT {
 		// RN-M29-008 y el techo de lo comprado.
 		assertThatThrownBy(() -> ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
 				new AjustarSaldoCommand(-6, "Demasiado", version)))
-				.isInstanceOf(PaseNoAjustableException.class);
+				.isInstanceOf(PaseNoAjustableException.class)
+				.hasFieldOrPropertyWithValue("causa", PaseNoAjustableException.Causa.FUERA_DE_RANGO);
 		assertThatThrownBy(() -> ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
 				new AjustarSaldoCommand(4, "Demasiado", version)))
-				.isInstanceOf(PaseNoAjustableException.class);
+				.isInstanceOf(PaseNoAjustableException.class)
+				.hasFieldOrPropertyWithValue("causa", PaseNoAjustableException.Causa.FUERA_DE_RANGO);
 
 		PaseDetalleView aCero = ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
 				new AjustarSaldoCommand(-5, "Se dio de baja del taller", version));
@@ -166,6 +170,9 @@ class PaseAbonoAjusteYVencimientoIT {
 		PaseDetalleView vuelve = ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
 				new AjustarSaldoCommand(2, "Volvio al taller", aCero.pase().version()));
 		assertThat(vuelve.pase().estado()).isEqualTo("ACTIVO");
+		// Los ajustes manuales no son creditos usados: el pase sigue anulable (0.111.0).
+		assertThat(vuelve.pase().creditosUsados()).isZero();
+		assertThat(vuelve.pase().anulable()).isTrue();
 		assertThat(saldo(paseId)).isEqualTo(2);
 		assertThat(sumaDelLedger(paseId)).isEqualTo(2);
 
@@ -195,11 +202,15 @@ class PaseAbonoAjusteYVencimientoIT {
 	void anulacion() {
 		Tenant tenant = tenantPorPack();
 		long paseId = venderPack(tenant, 8);
+		PaseDetalleView antes = ventaService.find(tenant.actor(), tenant.consultorioId(), paseId);
+		assertThat(antes.pase().creditosUsados()).isZero();
+		assertThat(antes.pase().anulable()).isTrue();
 
 		ResultadoDeAnulacion anulada = ajusteService.anular(
 				tenant.actor(), tenant.consultorioId(), paseId, "Se vendio a la persona equivocada", 0);
 		assertThat(anulada.anulado()).isTrue();
 		assertThat(anulada.pase().estado()).isEqualTo("ANULADO");
+		assertThat(anulada.pase().anulable()).isFalse();
 		assertThat(anulada.pase().motivoAnulacion()).isEqualTo("Se vendio a la persona equivocada");
 		assertThat(anulada.deuda().estado()).isEqualTo("ANULADA");
 
@@ -230,8 +241,12 @@ class PaseAbonoAjusteYVencimientoIT {
 		long versionUsado = version(usado);
 		assertThatThrownBy(() -> ajusteService.anular(
 				tenant.actor(), tenant.consultorioId(), usado, "No", versionUsado))
-				.isInstanceOf(PaseNoAjustableException.class);
+				.isInstanceOf(PaseNoAjustableException.class)
+				.hasFieldOrPropertyWithValue("causa", PaseNoAjustableException.Causa.CREDITOS_USADOS);
 		assertThat(estado(usado)).isEqualTo("ACTIVO");
+		PaseDetalleView leidoUsado = ventaService.find(tenant.actor(), tenant.consultorioId(), usado);
+		assertThat(leidoUsado.pase().creditosUsados()).isEqualTo(1);
+		assertThat(leidoUsado.pase().anulable()).isFalse();
 
 		// Con cobros imputados no se anula: primero se anula o reintegra el cobro. El UPDATE es el
 		// mismo que hace CobroRepository.descontarSaldo al imputar.
@@ -241,10 +256,27 @@ class PaseAbonoAjusteYVencimientoIT {
 				+ "WHERE pase_id = ?", cobrado);
 		assertThatThrownBy(() -> ajusteService.anular(
 				tenant.actor(), tenant.consultorioId(), cobrado, "No", 0))
-				.isInstanceOf(PaseConCobrosException.class);
+				.isInstanceOfSatisfying(PaseConCobrosException.class, e -> {
+					assertThat(e.getCobrado()).isEqualByComparingTo("1000");
+					assertThat(e.getMoneda()).isEqualTo("ARS");
+				});
 		assertThat(estado(cobrado)).isEqualTo("ACTIVO");
 		assertThat(jdbc.queryForObject("SELECT estado FROM obligacion WHERE pase_id = ?", String.class, cobrado))
 				.isEqualTo("PARCIAL");
+
+		// Lo mismo leido en lote por el listado de la persona: sin consumos, pero con cobros.
+		assertThat(ventaService.deLaPersona(tenant.actor(), tenant.consultorioId(), tenant.persona(1)))
+				.singleElement()
+				.satisfies(p -> {
+					assertThat(p.id()).isEqualTo(cobrado);
+					assertThat(p.creditosUsados()).isZero();
+					assertThat(p.anulable()).isFalse();
+				});
+		assertThat(ventaService.deLaPersona(tenant.actor(), tenant.consultorioId(), tenant.persona(0)))
+				.extracting(PaseView::id, PaseView::creditosUsados, PaseView::anulable)
+				.containsExactlyInAnyOrder(
+						tuple(paseId, 0, false),
+						tuple(usado, 1, false));
 	}
 
 	@Test

@@ -101,9 +101,11 @@ class AjusteDePaseServiceTest {
 	@DisplayName("Un saldo final fuera de rango no llega al UPDATE")
 	void fuera_de_rango() {
 		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(-9, "x", 0)))
-				.isInstanceOf(PaseNoAjustableException.class);
+				.isInstanceOf(PaseNoAjustableException.class)
+				.hasFieldOrPropertyWithValue("causa", PaseNoAjustableException.Causa.FUERA_DE_RANGO);
 		assertThatThrownBy(() -> service.ajustar(ACTOR, SEDE, PASE, new AjustarSaldoCommand(1, "x", 0)))
-				.isInstanceOf(PaseNoAjustableException.class);
+				.isInstanceOf(PaseNoAjustableException.class)
+				.hasFieldOrPropertyWithValue("causa", PaseNoAjustableException.Causa.FUERA_DE_RANGO);
 		verify(pases, never()).ajustar(anyLong(), anyLong(), anyInt(), anyLong());
 	}
 
@@ -112,7 +114,8 @@ class AjusteDePaseServiceTest {
 	void anulacion_rechazada() {
 		given(movimientos.consumoNeto(ORG, PASE)).willReturn(-1);
 		assertThatThrownBy(() -> service.anular(ACTOR, SEDE, PASE, "x", 0))
-				.isInstanceOf(PaseNoAjustableException.class);
+				.isInstanceOf(PaseNoAjustableException.class)
+				.hasFieldOrPropertyWithValue("causa", PaseNoAjustableException.Causa.CREDITOS_USADOS);
 		verifyNoInteractions(ventas);
 
 		given(movimientos.consumoNeto(ORG, PASE)).willReturn(0);
@@ -120,7 +123,9 @@ class AjusteDePaseServiceTest {
 				new AnulacionDeDeuda(AnulacionDeDeuda.Efecto.CON_COBROS, 9001L, new BigDecimal("40000.00"),
 						new BigDecimal("30000.00"), "ARS", "PARCIAL"));
 		assertThatThrownBy(() -> service.anular(ACTOR, SEDE, PASE, "x", 0))
-				.isInstanceOf(PaseConCobrosException.class);
+				.isInstanceOf(PaseConCobrosException.class)
+				.hasFieldOrPropertyWithValue("cobrado", new BigDecimal("10000.00"))
+				.hasFieldOrPropertyWithValue("moneda", "ARS");
 		verify(pases, never()).anular(anyLong(), anyLong(), anyLong(), anyLong(), any(), any());
 	}
 
