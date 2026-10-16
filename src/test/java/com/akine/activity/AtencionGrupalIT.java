@@ -56,7 +56,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * inscripcion, asistencia, Caso, derivacion, atencion, cierre y reversion pasan por los servicios
  * reales. Lo que mide es lo que ningun unitario puede: que {@code V102} ejecute y sus CHECK acepten
  * la fila, que dos pacientes de la misma clase tengan Sesiones y numeros independientes
- * (CA-M14-012-06, CA-M14-013-06), que el cierre grupal no devengue (U-41), que el lote no esconda
+ * (CA-M14-012-06, CA-M14-013-06), que el cierre grupal sin cobertura no devengue (U-42), que el lote no esconda
  * a nadie, que la reversion con Sesion choque, y que N inicios simultaneos dejen una sola Sesion.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -150,7 +150,7 @@ class AtencionGrupalIT {
 		assertThat(jdbc.queryForObject(
 				"SELECT COUNT(*) FROM obligacion WHERE sesion_id IN (?, ?)",
 				Integer.class, sesionMaria, sesionJuan))
-				.as("U-41: la atencion grupal no devenga; la clase se cobra por su esquema")
+				.as("U-42: sin cobertura la atencion grupal no devenga; la clase se cobra por su esquema")
 				.isZero();
 
 		assertThatThrownBy(() -> derivaciones.revertir(actor, mundo.consultorioId(), claseId,

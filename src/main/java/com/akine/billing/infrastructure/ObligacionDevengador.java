@@ -115,16 +115,6 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 			log.info("Sesion cerrada sin asistencia: no se devenga deuda. sesionId={}", cierre.sesionId());
 			return;
 		}
-		// AKINE-08.05 (U-41): la atencion de un participante de clase no devenga. La economia de la
-		// clase la resuelve su esquema de cobro —pase, abono, clase— sobre la ASISTENCIA (08.06 a
-		// 08.08), y devengar tambien aca cobraria dos veces la misma clase. Lo conservador mientras
-		// el usuario no decida U-41 y 08.09 integre la economia de servicios.
-		if (cierre.esDeOrigenGrupal()) {
-			log.info("Sesion de origen grupal: no se devenga deuda (U-41). sesionId={} claseId={}",
-					cierre.sesionId(), cierre.claseId());
-			return;
-		}
-
 		// Cualquier responsable, no solo el paciente: ver ObligacionRepositoryPort#findDeLaSesion.
 		if (!obligaciones.findDeLaSesion(cierre.sesionId()).isEmpty()) {
 			return;
@@ -132,7 +122,15 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 
 		Optional<Cubierta> cubierta = cubiertaQueCorresponde(cierre);
 		if (cubierta.isPresent()) {
+			// AKINE-08.05 + RF-M21-009: tambien la atencion de un participante de clase, que asi
+			// entra sola a la bandeja de presentaciones con su renglon por paciente (CA-M21-009-06).
 			devengarPorConvenio(cierre, cubierta.get());
+		} else if (cierre.esDeOrigenGrupal()) {
+			// AKINE-08.05 (U-42): sin cobertura, la atencion grupal NO devenga particular. La clase
+			// se cobra por su esquema —pase, abono, clase— sobre la ASISTENCIA (08.06 a 08.08), y
+			// devengar tambien aca cobraria dos veces la misma clase.
+			log.info("Sesion de origen grupal sin cobertura: no se devenga particular (U-42). "
+					+ "sesionId={} claseId={}", cierre.sesionId(), cierre.claseId());
 		} else {
 			devengarParticular(cierre);
 		}

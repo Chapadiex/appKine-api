@@ -24,10 +24,10 @@
 | Bloque | Cantidad |
 |---|---|
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-41) | 11 |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42) | 11 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
-| D. No bloquean nada (U-35 a U-37, U-40) | 4 |
-| **Total** | **41** |
+| D. No bloquean nada (U-35 a U-37, U-40, U-41) | 5 |
+| **Total** | **42** |
 
 Ya resueltas y fuera de la lista (las fichas las mencionan): el **escenario 7b** (`request_hash`
 en `onboarding_registro`), que la ficha de F0–F1 daba abierto y cerró el PR #104 el 13/10/2026
@@ -219,25 +219,27 @@ fila nueva.
   cambia esquema: `obligacion` necesita un origen nuevo (`ck_obligacion_origen`), que es un
   `DROP CHECK` cuidadoso.
 
-### U-41 · Qué consecuencia económica tiene la atención clínica de un participante de clase
+### U-42 · Qué consecuencia económica tiene la atención clínica de un participante de clase
 
 - **Pregunta:** la Sesión de un participante de una clase clínica (08.05) se cierra como cualquier
-  Sesión. ¿Devenga deuda? (a) **no**: la clase se cobra por su esquema —pase, abono, clase— sobre
-  la asistencia, y la Sesión sólo documenta; (b) **sí, al precio de la oferta**, como una atención
-  de turno (DP-17), y entonces la asistencia de esa clase no debería consumir pase ni devengar; (c)
-  **sí, por convenio** cuando hay cobertura que la cubra (la obra social paga la prestación clínica)
-  y la clase sólo por su esquema en lo particular.
-- **Hoy (rama `akine-08.05-atencion-grupal`):** (a). `SesionCerrada.claseId` marca el origen y
-  `billing.ObligacionDevengador` no devenga ni exige precio (el 409 `oferta-sin-precio` no bloquea
-  un cierre clínico por una deuda que no corresponde). El **consumo de autorizaciones sí corre**, por
-  Caso, como dejó escrito 08.04 §6.
-- **Recomendado:** (a) hasta 08.09; (c) si un centro factura a obras sociales prestaciones grupales
-  clínicas, que es lo que 08.09 (integración económica de servicios) tiene que resolver.
-- **Fase / RF:** F9 (08.05, 08.09); RF-M14-014 paso 6, RF-M18-008, RF-M19-009, DP-17. Diseño en
-  [`../diseno/AKINE-08.05-atencion-grupal.md`](../diseno/AKINE-08.05-atencion-grupal.md) §7.
-- **Destraba:** que una atención grupal con cobertura llegue a la bandeja de presentaciones. Se
-  encarece con cada Sesión grupal cerrada sin deuda: un backfill tendría que decidir a posteriori
-  qué se cobró por la clase.
+  Sesión. ¿Qué devenga? (a) **sólo lo del convenio** cuando hay cobertura (financiador + coseguro,
+  y así entra a la presentación, RF-M21-009), y **nada particular**: la clase se cobra por su
+  esquema —pase, abono, clase— sobre la asistencia; (b) **también el particular** al precio de la
+  oferta, como una atención de turno (DP-17), y entonces la asistencia a esa clase no debería
+  consumir pase ni devengar; (c) **nada**, ni siquiera por convenio. Y una sub-pregunta: con
+  cobertura, ¿el coseguro se suma a lo que el paciente ya paga por la clase?
+- **Hoy (rama `akine-08.05-atencion-grupal`):** (a). `SesionCerrada.claseId` marca el origen;
+  `billing.ObligacionDevengador` devenga por convenio igual que siempre (cada participante con
+  cobertura deja su renglón en la bandeja, CA-M21-009-06) y **sin cobertura no devenga ni exige
+  precio** (el 409 `oferta-sin-precio` no bloquea un cierre clínico por una deuda que no
+  corresponde). El consumo de autorizaciones corre por Caso, como dejó escrito 08.04 §6. El coseguro
+  se devenga como dice el convenio.
+- **Recomendado:** (a), que es lo que está; revisar el coseguro si un centro cobra la clase aparte.
+- **Fase / RF:** F9 (08.05, 08.09); RF-M14-014 paso 6, RF-M21-009, RF-M18-008, RF-M19-009, DP-17.
+  Diseño en [`../diseno/AKINE-08.05-atencion-grupal.md`](../diseno/AKINE-08.05-atencion-grupal.md) §7.
+- **Destraba:** el cobro particular de una prestación clínica grupal sin pase. Se encarece con cada
+  Sesión grupal cerrada sin deuda: un backfill tendría que decidir a posteriori qué se cobró por la
+  clase.
 
 ---
 
@@ -461,6 +463,25 @@ dejar el MVP como está:
 - **Fase / RF:** F9 (08.07, 08.08); RF-M29-005, RF-M29-006, RF-M29-007, RN-M29-009. Diseño en
   [`../diseno/AKINE-08.07-08.08-ledger-y-abonos.md`](../diseno/AKINE-08.07-08.08-ledger-y-abonos.md) §9.
 - **Destraba:** nada del MVP.
+
+### U-41 · El esquema de honorarios que RF-M22-006 da por configurado
+
+- **Pregunta:** RF-M22-006 dice *"aplica esquema de honorario configurado: por clase, hora,
+  participante u otro soportado"*, y ese esquema **no existe** en el modelo ni en la especificación.
+  Hay que fijar: (a) qué esquemas entran (por clase, por hora, por participante presente); (b) dónde
+  se declaran —en la oferta, en el vínculo del profesional, o en una regla por profesional y oferta—
+  y con qué vigencia; (c) si una clase con dos instructores se reparte o se paga entera a cada uno
+  (caso borde "instructor múltiple" del plan); (d) si la liquidación es un **borrador calculado** que
+  la persona confirma como egreso, o un egreso automático.
+- **Hoy:** el egreso de M22 (07.05) lleva beneficiario `COLABORADOR`, categoría
+  `HONORARIOS_PROFESIONALES` y período, con el importe **declarado por una persona** y sin vínculo
+  con clases ni sesiones (RN-M22-003). U-34 ya confirmó que la liquidación es de la segunda entrega.
+- **Recomendado:** ninguna ficha recomienda. La forma técnica que no cierra ciclos está escrita en
+  [`../diseno/AKINE-08.09-integracion-economica.md`](../diseno/AKINE-08.09-integracion-economica.md)
+  §5: la base se calcula en `activity` y entra a `billing` por `spi` como detalle del egreso, con
+  snapshot de los importes (CA-M22-007-06).
+- **Fase / RF:** F9 (08.09); RF-M22-006, RF-M22-007.
+- **Destraba:** RF-M22-006/007, la mitad de 08.09.
 
 ---
 

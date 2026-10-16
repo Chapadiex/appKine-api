@@ -334,6 +334,12 @@ public enum ProblemType {
 	 * el arqueo del dia no cerraria. Lo que corresponde es una devolucion, que es M19.
 	 */
 	OBLIGACION_CON_COBROS("obligacion-con-cobros"),
+	/**
+	 * Se intenta anular desde la cuenta corriente la deuda de la venta de un pase o de un abono
+	 * (409, AKINE-08.09). Esa deuda se anula anulando el pase, que anula las dos cosas juntas: sola
+	 * dejaria el pase vivo y sin pagar. Lleva {@code obligacionId}, {@code paseId} y {@code origen}.
+	 */
+	OBLIGACION_DE_VENTA("obligacion-de-venta"),
 
 	// --- Cobros (M19) ----------------------------------------------------------------------
 	/**

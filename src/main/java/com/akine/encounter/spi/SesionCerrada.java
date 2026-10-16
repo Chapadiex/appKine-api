@@ -45,7 +45,7 @@ import java.util.Set;
  * @param claseId            clase programada de la que salio la atencion, o {@code null} si no es
  *                           de origen grupal (AKINE-08.05). Es un id administrativo, no dato
  *                           clinico. Lo necesita {@code billing}: la economia de una clase la
- *                           resuelve su esquema de cobro (pase, abono, clase), y devengar en el
+ *                           resuelve su esquema de cobro (pase, abono, clase), y devengar el particular en el
  *                           cierre de cada Sesion cobraria dos veces la misma clase. Ver
  *                           {@link #esDeOrigenGrupal()}
  */
@@ -105,8 +105,8 @@ public record SesionCerrada(
 
 	/**
 	 * {@code true} si la atencion salio de una clase grupal (AKINE-08.05). Hoy decide que el
-	 * cierre NO devengue deuda: ver {@link #claseId} y U-41 en
-	 * {@code docs/fases/decisiones-pendientes.md}.
+	 * cierre sin cobertura NO devengue particular (con cobertura devenga por convenio): ver
+	 * {@link #claseId} y U-42 en {@code docs/fases/decisiones-pendientes.md}.
 	 */
 	public boolean esDeOrigenGrupal() {
 		return claseId != null;

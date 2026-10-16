@@ -21,11 +21,11 @@ la DP que lo habilite. Lo que ya está en `main` se queda (no se revierte), pero
 | 08.02 Inscripciones, cupos, espera | PARCIAL | 55 | ITs de concurrencia (criterio central); frontend |
 | 08.03 Asistencia | PARCIAL | 45 | **No devenga obligación**; ITs; frontend |
 | 08.04 Derivación al circuito clínico | PARCIAL | 30 | **Sin API**: solo el lado clínico, sin consumidor |
-| 08.05 Atención clínica grupal | BACKEND (16/10) | 85 | Backend, contrato 0.112.0 y `V102` en `akine-08.05-atencion-grupal`: una Sesión por participante y Caso desde la derivación, lote y panel. Falta el frontend y decidir U-41 (economía). Ver `docs/diseno/AKINE-08.05-atencion-grupal.md` |
+| 08.05 Atención clínica grupal | BACKEND (16/10) | 85 | Backend, contrato 0.115.0 y `V102` en `akine-08.05-atencion-grupal`: una Sesión por participante y Caso desde la derivación, lote y panel. Falta el frontend y decidir U-42 (economía). Ver `docs/diseno/AKINE-08.05-atencion-grupal.md` |
 | 08.06 Productos, packs, venta | PARCIAL | 15 | **Solo esquema `V64`**, cero código Java |
 | 08.07 Ledger de créditos | PARCIAL (15/10) | 80 | Consumo (#129), devolución por cancelación, ajuste, anulación y vencimiento programado entraron; falta la consulta paginada del ledger y el frontend. Ver `docs/diseno/AKINE-08.07-08.08-ledger-y-abonos.md` |
 | 08.08 Abonos | PARCIAL (15/10) | 50 | Venta por periodo, obligación `VENTA_ABONO` y cobertura de la asistencia entraron; faltan renovación automática, aviso de vencimiento (RF-M26-008) y frontend |
-| 08.09 Integración económica | NO IMPLEMENTADA | 0 | Todo |
+| 08.09 Integración económica | PARCIAL (16/10) | 50 | Inventario y diseño en `docs/diseno/AKINE-08.09-integracion-economica.md`: venta→deuda→cobro→caja→anulación probado contra MySQL, la deuda de una venta ya no se anula sola (409 `obligacion-de-venta`, 0.114.0) y RF-M21-010 verificado. RF-M21-009 lo cubre 08.05 (una Sesión por participante devenga por convenio y entra sola a la bandeja). Faltan RF-M22-006/007 (espera **U-41**: no existe esquema de honorarios) |
 
 **Cero frontend de F9.** El `CLAUDE.md` dice que F9 cubre "derivación y productos": **no es así**.
 

@@ -204,17 +204,27 @@ class ObligacionDevengadorTest {
 	}
 
 	@Test
-	@DisplayName("08.05 (U-41): la atencion de un participante de clase no devenga ni exige precio")
-	void origen_grupal_no_devenga() {
-		cubre(KINE, "12000.00", "10500.00", "1500.00");
+	@DisplayName("08.05 (U-42): la atencion grupal sin cobertura no devenga particular ni exige precio")
+	void origen_grupal_sin_cobertura_no_devenga() {
 		SesionCerrada grupal = new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
-				99L, null, null, Set.of(KINE), 55L, true, null, false, 640L);
+				99L, null, null, Set.of(KINE), 55L, false, null, false, 640L);
 
 		devengador.alCerrar(grupal);
 
 		assertThat(devengador.exigePrecioParticular(grupal)).isFalse();
 		verify(obligaciones, never()).save(any());
-		verifyNoInteractions(coberturas, aranceles);
+	}
+
+	@Test
+	@DisplayName("08.05 + RF-M21-009: la atencion grupal con cobertura devenga por convenio, renglon por paciente")
+	void origen_grupal_con_cobertura_devenga_convenio() {
+		cubre(KINE, "12000.00", "10500.00", "1500.00");
+
+		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
+				99L, null, null, Set.of(KINE), 55L, true, null, false, 640L));
+
+		assertThat(guardadas(2)).extracting(Obligacion::getConcepto)
+				.containsExactly(ConceptoObligacion.FINANCIADOR, ConceptoObligacion.COSEGURO);
 	}
 
 	@Test

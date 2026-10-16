@@ -32,7 +32,7 @@
 --     V63 punto 4 con `derivacion_clinica.participacion_id`).
 --   * `clase_id` — la clase programada, sin FK por el mismo motivo. Es el filtro del panel y
 --     lo que el hecho del cierre lleva para que `billing` sepa que la atencion es de origen
---     grupal (ver el diseño §7: hoy no devenga).
+--     grupal (ver el diseño §7: sin cobertura no devenga particular).
 --
 -- ---------------------------------------------------------------------------------------
 -- UNA SESION POR DERIVACION, O SEA POR PARTICIPANTE Y CASO

@@ -152,7 +152,7 @@ Consecuencia que hay que saber: **la Sesión no se borra** (regla maestra 10) y 
 de Sesión en M14, así que una atención abierta por error deja la derivación fija. Se corrige
 cerrándola con lo que pasó —`AUSENTE` si no hubo atención— o enmendando la nota.
 
-## 6. API — contrato `0.112.0`, aditivo
+## 6. API — contrato `0.115.0`, aditivo
 
 Tres operaciones nuevas, todas colgando de la clase de la sede:
 
@@ -186,19 +186,26 @@ Aditivo en lo existente:
 varios pacientes —la "evolución clínica global" que RF-M14-013 prohíbe— e invita a la misma nota
 para todos. Cada cierre lleva lo de su paciente y va por la Sesión.
 
-## 7. Economía: la atención grupal no devenga (U-41)
+## 7. Economía: convenio sí, particular no (U-42, RF-M21-009)
 
-El cierre de una Sesión dispara `billing.ObligacionDevengador`, que devenga al precio de la oferta
-(DP-17) y, si no lo hay, **bloquea el cierre** con 409 `oferta-sin-precio`. Para una atención
-grupal eso está mal dos veces: la clase ya se cobra por su esquema —pase, abono o clase, sobre la
-**asistencia** (08.06–08.08)— y devengar también en cada Sesión **cobraría dos veces la misma
-clase**; y bloquear el cierre clínico por el precio de una deuda que no corresponde es DP-06 al
-revés.
+El cierre de una Sesión dispara `billing.ObligacionDevengador` (F-4): con cobertura aplicable
+devenga la parte del **financiador** y el **coseguro** desde el arancel congelado; sin cobertura,
+el **particular** al precio de la oferta (DP-17), y si no hay precio **bloquea el cierre** con 409
+`oferta-sin-precio`.
 
-Lo implementado, que es lo conservador: `SesionCerrada` lleva `claseId` y el devengador **no
-devenga ni exige precio** cuando la Sesión es de origen grupal. El consumo de autorizaciones
-**sigue igual** (lo dispara el cierre, por Caso: 08.04 §6 lo dejó a esta etapa). Qué debe pasar
-económicamente con una atención clínica grupal es **U-41** y es de 08.09.
+- **Con cobertura, igual que siempre.** RF-M21-009 pide que las atenciones de Ofertas cubiertas
+  entren al circuito de presentación, y CA-M21-009-06 un renglón por paciente. Con una Sesión por
+  participante eso sale solo: cada una devenga su obligación del financiador y aparece en la bandeja
+  de prestaciones elegibles de 07.04. **08.09 lo dejó afuera esperando este modelo**; queda cubierto
+  sin código en `billing` más allá de no romperlo.
+- **Sin cobertura, no se devenga particular.** La clase ya se cobra por su esquema —pase, abono o
+  clase, sobre la **asistencia** (08.06–08.08)— y devengar también en cada Sesión **cobraría dos
+  veces la misma clase**. Y bloquear el cierre clínico por el precio de una deuda que no corresponde
+  es DP-06 al revés: `exigePrecioParticular` responde `false` para una Sesión grupal.
+
+`SesionCerrada` lleva `claseId` para que `billing` lo sepa. El consumo de autorizaciones **sigue
+igual** (por Caso: 08.04 §6 lo dejó a esta etapa). Si el particular sin pase debería cobrarse, y si
+el coseguro se suma a lo que el paciente paga por la clase, es **U-42**.
 
 ## 8. Lo que esta etapa NO hace
 
@@ -220,9 +227,10 @@ económicamente con una atención clínica grupal es **U-41** y es de 08.09.
   idempotencia; Caso cerrado; Caso fijo; panel auditado.
 - `DerivacionClinicaServiceTest` (clinical): `paraAtender` elige, rechaza y audita; la reversión con
   Sesión es 409.
-- `ObligacionDevengadorTest`: el cierre grupal no devenga ni exige precio.
+- `ObligacionDevengadorTest`: el cierre grupal sin cobertura no devenga ni exige precio; con
+  cobertura devenga financiador y coseguro.
 - **`AtencionGrupalIT`** (MySQL, corre en el CI): V102 y sus CHECK, dos pacientes con Sesiones y
-  números independientes, cierre de uno sin tocar al otro, cero obligaciones, lote con un fallo,
+  números independientes, cierre de uno sin tocar al otro, cero obligaciones particulares, lote con un fallo,
   reversión con Sesión, `cambiarCaso`, clase no clínica, otro tenant, y **N inicios simultáneos con
   una sola Sesión**.
 
@@ -248,7 +256,7 @@ panel). Un actor de otro tenant recibe 404 en la sede antes de tocar nada (`Aten
 **4. Reglas maestras.** HC ≠ Caso ≠ Sesión: la Sesión cuelga de la HC, se numera en el Caso, y el
 Caso lo eligió la derivación. Turno ≠ Sesión ≠ Clase: `turno_id` es `NULL` y el CHECK lo exige; la
 clase es un id de origen, no un estado. Ninguna transición administrativa prueba la prestación:
-abrir no prueba nada, cerrar sí. Obligación ≠ Cobro ≠ Caja: el cierre grupal no devenga (§7) y
+abrir no prueba nada, cerrar sí. Obligación ≠ Cobro ≠ Caja: el cierre grupal devenga sólo por convenio (§7) y
 no se toca ni cobro ni caja. La HC es de la organización y todo acceso se justifica y se audita:
 `paraAtender` exige `hc:write` con relación o justificación y audita; la Sesión audita su inicio y
 el panel audita su lectura. El profesional dueño: 409 `sesion-ajena`, no 403.
@@ -258,11 +266,11 @@ se niega si hay Sesión, justamente para no dejar una atención huérfana. La Se
 
 **6. Contrato.** Aditivo: tres operaciones nuevas, dos campos nullables en `Sesion`, cuatro problem
 types nuevos y dos 409 nuevos en operaciones existentes que antes no podían ocurrir (no había
-Sesiones grupales). Minor: `0.112.0`. Sin `operationId` repetido.
+Sesiones grupales). Minor: `0.115.0`. Sin `operationId` repetido.
 
 **7. Ruta crítica.** Los cimientos están: Sesión completa (06.01–06.06), Caso y numeración (04.03),
 derivación con su API (08.04, `DerivacionService` en `main`), asistencia (08.03). Lo que **no**
-está es la integración económica de servicios (08.09) —por eso §7 elige no devengar y lo eleva— y
+está es la integración económica de servicios (08.09) —por eso §7 no devenga particular y lo eleva— y
 la DP formal que abre F9 sin el gate del MVP (F9 ficha, "fase congelada"), que no es de esta etapa.
 
 **8. El caso que rompe el diseño.** *Una participante derivada a dos Casos —rodilla y hombro— en
