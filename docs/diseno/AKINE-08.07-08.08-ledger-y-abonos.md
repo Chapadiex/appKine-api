@@ -205,7 +205,7 @@ Sin fila en la matriz §32; el reparto es el de `producto:manage`. Vender sigue 
 
 ## 10. Lo que faltaba de 08.08 — renovación, avisos y ledger paginado (16/10/2026)
 
-> Rama `akine-08.08-renovacion-y-avisos`, migración **`V103`**, contrato **0.113.0**. Trazabilidad:
+> Rama `akine-08.08-renovacion-y-avisos`, migración **`V103`**, contrato **0.116.0**. Trazabilidad:
 > plan 08.08 ("renovación idempotente", "un período genera como máximo una obligación", "fallo de
 > notificación no revierte renovación", "jobs no expuestos públicamente"), RF-M29-007, RF-M29-009,
 > RF-M18-010, RF-M26-008 (CA-M26-008-06), RNF-M26-010, RNF-M29-002.
@@ -312,7 +312,7 @@ solo en abonos y con autorizante) e `ix_pase_renovacion (renovacion_automatica, 
 organization_id)`. No reescribe ningún CHECK. Las dos marcas de aviso no se mapean en la entidad:
 solo las escribe el `UPDATE` nativo.
 
-### 10.6 Contrato 0.113.0 — para el frontend
+### 10.6 Contrato 0.116.0 — para el frontend
 
 - **Operaciones nuevas (2):** `listarMovimientosDePase` (`GET .../pases/{p}/movimientos`, responde
   `PaginaDeMovimientosDePase`) y `configurarRenovacionDeAbono` (`PUT .../pases/{p}/renovacion`, body
@@ -339,7 +339,7 @@ solo las escribe el `UPDATE` nativo.
    cambia créditos (CA-M26-008-06) ni deuda. Crédito ≠ plata sigue igual.
 5. **Baja lógica.** Nada se borra: apagar la renovación deja el último autorizante, la omisión deja
    el motivo, cada período es una fila con su obligación y la cadena se lee por `renueva_pase_id`.
-6. **Contrato.** 0.111.0 → **0.113.0** (0.112.0 es de 08.05), minor y aditivo.
+6. **Contrato.** 0.114.0 (08.09, #139) → **0.116.0** (0.115.0 es de 08.05), minor y aditivo.
 7. **Ruta crítica.** Cimientos presentes: venta de abono, ledger, obligación `VENTA_ABONO`, outbox,
    job de vencimiento. F9 sigue abierta sin el gate del MVP (DU-12): se hizo porque el usuario la
    abrió.

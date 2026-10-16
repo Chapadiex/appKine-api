@@ -26,8 +26,8 @@
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
 | B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39) | 10 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
-| D. No bloquean nada (U-35 a U-37, U-40) | 4 |
-| **Total** | **40** |
+| D. No bloquean nada (U-35 a U-37, U-40, U-41) | 5 |
+| **Total** | **41** |
 
 Ya resueltas y fuera de la lista (las fichas las mencionan): el **escenario 7b** (`request_hash`
 en `onboarding_registro`), que la ficha de F0–F1 daba abierto y cerró el PR #104 el 13/10/2026
@@ -445,6 +445,25 @@ dejar el MVP como está:
 - **Fase / RF:** F9 (08.07, 08.08); RF-M29-005, RF-M29-006, RF-M29-007, RN-M29-009. Diseño en
   [`../diseno/AKINE-08.07-08.08-ledger-y-abonos.md`](../diseno/AKINE-08.07-08.08-ledger-y-abonos.md) §9.
 - **Destraba:** nada del MVP.
+
+### U-41 · El esquema de honorarios que RF-M22-006 da por configurado
+
+- **Pregunta:** RF-M22-006 dice *"aplica esquema de honorario configurado: por clase, hora,
+  participante u otro soportado"*, y ese esquema **no existe** en el modelo ni en la especificación.
+  Hay que fijar: (a) qué esquemas entran (por clase, por hora, por participante presente); (b) dónde
+  se declaran —en la oferta, en el vínculo del profesional, o en una regla por profesional y oferta—
+  y con qué vigencia; (c) si una clase con dos instructores se reparte o se paga entera a cada uno
+  (caso borde "instructor múltiple" del plan); (d) si la liquidación es un **borrador calculado** que
+  la persona confirma como egreso, o un egreso automático.
+- **Hoy:** el egreso de M22 (07.05) lleva beneficiario `COLABORADOR`, categoría
+  `HONORARIOS_PROFESIONALES` y período, con el importe **declarado por una persona** y sin vínculo
+  con clases ni sesiones (RN-M22-003). U-34 ya confirmó que la liquidación es de la segunda entrega.
+- **Recomendado:** ninguna ficha recomienda. La forma técnica que no cierra ciclos está escrita en
+  [`../diseno/AKINE-08.09-integracion-economica.md`](../diseno/AKINE-08.09-integracion-economica.md)
+  §5: la base se calcula en `activity` y entra a `billing` por `spi` como detalle del egreso, con
+  snapshot de los importes (CA-M22-007-06).
+- **Fase / RF:** F9 (08.09); RF-M22-006, RF-M22-007.
+- **Destraba:** RF-M22-006/007, la mitad de 08.09.
 
 ---
 

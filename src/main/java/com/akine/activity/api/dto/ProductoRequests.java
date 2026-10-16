@@ -124,7 +124,7 @@ public final class ProductoRequests {
 					+ "terminado", example = "2026-11-30")
 			LocalDate periodoHasta,
 
-			@Schema(description = "Solo abonos (desde 0.113.0): que el sistema venda solo el periodo "
+			@Schema(description = "Solo abonos (desde 0.116.0): que el sistema venda solo el periodo "
 					+ "siguiente, con su obligacion, cuando este se acerque a su fin. Ausente o false: no "
 					+ "se renueva. En un pack es 400", example = "false")
 			Boolean renovacionAutomatica) {
@@ -162,7 +162,7 @@ public final class ProductoRequests {
 	}
 
 	@Schema(name = "ConfiguracionDeRenovacionDeAbono",
-			description = "Prende o apaga la renovacion automatica de un abono (desde 0.113.0).")
+			description = "Prende o apaga la renovacion automatica de un abono (desde 0.116.0).")
 	public record ConfigurarRenovacion(
 
 			@Schema(description = "true: el sistema vende el periodo siguiente, con su obligacion, al "

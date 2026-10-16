@@ -224,7 +224,7 @@ public class PaseController {
 					para la misma persona con periodo superpuesto es 409 `abono-periodo-superpuesto`. \
 					Renovar es vender el periodo siguiente.
 
-					**Renovacion automatica** (desde 0.113.0): con `renovacionAutomatica = true` en un \
+					**Renovacion automatica** (desde 0.116.0): con `renovacionAutomatica = true` en un \
 					abono, el sistema vende solo el periodo siguiente —con el precio del producto de ese \
 					momento y su propia obligacion— al acercarse el fin de este, a nombre de quien \
 					vendio. En un pack es 400.""")
@@ -281,7 +281,7 @@ public class PaseController {
 			summary = "Ledger de un pase, paginado",
 			description = """
 					Los movimientos del pase del mas viejo al mas nuevo, de a paginas (RF-M29-009, \
-					desde 0.113.0): el orden en que se lee `saldoResultante`. `size` se acota a 100 por \
+					desde 0.116.0): el orden en que se lee `saldoResultante`. `size` se acota a 100 por \
 					request. Para un pase con historia larga reemplaza al ledger entero que trae \
 					`verPase`, que no cambia.""")
 	@ApiResponses({
@@ -308,7 +308,7 @@ public class PaseController {
 			summary = "Prender o apagar la renovacion automatica de un abono",
 			description = """
 					Con `activa = true` el sistema vende el periodo siguiente del abono cuando este se \
-					acerca a su fin (desde 0.113.0): una venta mas, con el precio del producto de ese \
+					acerca a su fin (desde 0.116.0): una venta mas, con el precio del producto de ese \
 					momento, su movimiento `COMPRA` y **su propia obligacion** `VENTA_ABONO`, a nombre de \
 					quien la prende. **No cobra** (DP-06). El periodo nuevo hereda la renovacion; el \
 					viejo queda con `renovacionAutomatica = false` y el nuevo con `renuevaPaseId`. Si el \

@@ -88,15 +88,15 @@ public final class PaseResponses {
 			@Schema(description = "Cuando se anulo. Presente solo con `estado = ANULADO`") Instant anuladoEn,
 			@Schema(description = "Quien lo anulo") Long anuladoPorCuentaId,
 			@Schema(description = "Por que se anulo") String motivoAnulacion,
-			@Schema(description = "Solo abonos (desde 0.113.0): true si el sistema va a vender el periodo "
+			@Schema(description = "Solo abonos (desde 0.116.0): true si el sistema va a vender el periodo "
 					+ "siguiente al acercarse el fin de este. Se apaga cuando se renueva (el periodo nuevo "
 					+ "la hereda) o cuando no se pudo renovar (`renovacionOmitidaMotivo`). Aditivo",
 					example = "false") boolean renovacionAutomatica,
 			@Schema(description = "El periodo de abono que este renueva; ausente si lo vendio una "
-					+ "persona. Aditivo desde 0.113.0", example = "76") Long renuevaPaseId,
+					+ "persona. Aditivo desde 0.116.0", example = "76") Long renuevaPaseId,
 			@Schema(description = "Por que el sistema no pudo renovar este periodo (producto de baja, "
 					+ "persona de baja, periodo ocupado). Ausente si no se intento o se renovo. Aditivo "
-					+ "desde 0.113.0") String renovacionOmitidaMotivo,
+					+ "desde 0.116.0") String renovacionOmitidaMotivo,
 			@Schema(description = "Version para el control optimista del ajuste, la anulacion y la "
 					+ "renovacion", example = "1") long version) {
 
@@ -114,7 +114,7 @@ public final class PaseResponses {
 	@Schema(
 			name = "PaginaDeMovimientosDePase",
 			description = "Una pagina del ledger de un pase, del movimiento mas viejo al mas nuevo "
-					+ "(desde 0.113.0). Misma forma que el resto de los listados paginados de la API.")
+					+ "(desde 0.116.0). Misma forma que el resto de los listados paginados de la API.")
 	public record PaginaDeMovimientos(
 			@Schema(description = "Movimientos de esta pagina") List<Movimiento> content,
 			@Schema(description = "Numero de pagina devuelta, base cero", example = "0") int page,

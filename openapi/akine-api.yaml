@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.111.0
+  version: 0.114.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -6660,6 +6660,8 @@ paths:
 
         **Una obligacion con cobros imputados no se anula.** Anular lo que ya se cobro dejaria plata en la caja sin ninguna deuda que la justifique, y el arqueo del dia no cerraria. Lo que corresponde en ese caso es una devolucion, que es M19 y tiene su propio registro.
 
+        **La deuda de una venta no se anula por aca** (`origen = VENTA_PASE` o `VENTA_ABONO`, desde 0.114.0): responde 409 `obligacion-de-venta` con el `paseId`. Anularla sola dejaria el pase vivo y consumible sin pagar; se anula con `POST /pases/{paseId}/anulacion`, que anula pase y deuda juntos.
+
         Devuelve la obligacion anulada y no un 204, porque el cuerpo trae el estado y la version nueva que la pantalla necesita para seguir operando.
       operationId: anularObligacion
       parameters:
@@ -6717,8 +6719,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Ya estaba anulada, tiene cobros imputados, o la version quedo\
-            \ vieja"
+          description: "Ya estaba anulada, tiene cobros imputados, es la deuda de\
+            \ una venta (`obligacion-de-venta`), o la version quedo vieja"
       summary: Anular una obligacion
       tags:
       - Obligaciones
@@ -32186,6 +32188,7 @@ components:
       - https://akine.app/problems/enmienda-cambia-practicas
       - https://akine.app/problems/obligacion-already-anulada
       - https://akine.app/problems/obligacion-con-cobros
+      - https://akine.app/problems/obligacion-de-venta
       - https://akine.app/problems/cobro-no-cuadra
       - https://akine.app/problems/saldo-insuficiente
       - https://akine.app/problems/obligacion-no-cobrable
