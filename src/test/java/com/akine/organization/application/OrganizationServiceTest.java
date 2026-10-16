@@ -74,6 +74,20 @@ class OrganizationServiceTest {
 
 	private final Plan planBasico = Fixtures.plan(PLAN_BASICO_ID, "BASICO");
 
+	@Test
+	@DisplayName("El listado de plataforma escapa los comodines del cliente y sin texto busca todo")
+	void listado_de_plataforma_escapa_los_comodines() {
+		org.springframework.data.domain.PageRequest pagina =
+				org.springframework.data.domain.PageRequest.of(0, 20);
+
+		organizationService.listForPlatform("  50%_a\\b ", SubscriptionStatus.ACTIVA, pagina);
+		organizationService.listForPlatform("   ", null, pagina);
+
+		verify(organizationRepository)
+				.listForPlatform("%50\\%\\_a\\\\b%", SubscriptionStatus.ACTIVA, pagina);
+		verify(organizationRepository).listForPlatform("%", null, pagina);
+	}
+
 	/** Devuelve las entidades ya con id, como haria la base al insertarlas. */
 	private void altaEnCurso() {
 		given(planCatalogService.requireContractable(any())).willReturn(planBasico);
