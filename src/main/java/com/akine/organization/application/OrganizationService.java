@@ -2,6 +2,8 @@ package com.akine.organization.application;
 
 import com.akine.organization.domain.Consultorio;
 import com.akine.organization.domain.Organization;
+import com.akine.organization.domain.OrganizationListing;
+import com.akine.organization.domain.SubscriptionStatus;
 import com.akine.organization.domain.OperationalStatus;
 import com.akine.organization.domain.Plan;
 import com.akine.organization.domain.Subscription;
@@ -18,6 +20,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -243,6 +247,42 @@ public class OrganizationService {
 	public OrganizationView find(long organizationId) {
 		Organization organization = requireActive(organizationId);
 		return toView(organization, subscriptionOf(organizationId));
+	}
+
+	/**
+	 * Listado de organizaciones vigentes para la administracion de plataforma (RF-M01-003,
+	 * RNF-M01-004, RNF-M01-005): el insumo para elegir el centro cuya suscripcion se opera, sin
+	 * obligar a tipear un identificador tecnico.
+	 *
+	 * <p>Las dadas de baja no aparecen: la lectura del contrato y sus transiciones responden 404
+	 * para ellas, asi que listarlas ofreceria centros que no se pueden operar.
+	 *
+	 * <p>La autorizacion vive en el controller ({@code AuthorizationGuard.requirePlatformAdmin}),
+	 * igual que en {@code getPlatformSubscription}: este metodo no recibe actor.
+	 *
+	 * @param q      texto libre contra nombre y slug, o {@code null}/en blanco para no filtrar
+	 * @param status estado de la suscripcion, o {@code null} para no filtrar
+	 */
+	@Transactional(readOnly = true)
+	public Page<OrganizationListing> listForPlatform(
+			String q, SubscriptionStatus status, Pageable pageable) {
+		return organizationRepository.listForPlatform(patronDeBusqueda(q), status, pageable);
+	}
+
+	/**
+	 * Patron de {@code LIKE} con los comodines puestos por el servidor. Los metacaracteres del
+	 * cliente se escapan: sin eso, un {@code %} tipeado devuelve todos los centros y un {@code _}
+	 * hace de comodin. Mismo escape que {@code FinanciadorBusqueda.patron()}.
+	 */
+	static String patronDeBusqueda(String q) {
+		if (q == null || q.isBlank()) {
+			return "%";
+		}
+		String escapado = q.strip()
+				.replace("\\", "\\\\")
+				.replace("%", "\\%")
+				.replace("_", "\\_");
+		return "%" + escapado + "%";
 	}
 
 	/**

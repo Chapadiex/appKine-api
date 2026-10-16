@@ -1,6 +1,10 @@
 package com.akine.organization.domain.port;
 
 import com.akine.organization.domain.Organization;
+import com.akine.organization.domain.OrganizationListing;
+import com.akine.organization.domain.SubscriptionStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.Optional;
 
@@ -33,4 +37,15 @@ public interface OrganizationRepositoryPort {
 	 * para garantizar unicidad.
 	 */
 	boolean existsBySlug(String slug);
+
+	/**
+	 * Organizaciones vigentes con su suscripcion y su plan, para la administracion de
+	 * plataforma, ordenadas por nombre y desempatadas por id.
+	 *
+	 * @param patron patron de {@code LIKE} con los comodines del cliente ya escapados, comparado
+	 *               contra el nombre y el slug
+	 * @param status estado de la suscripcion, o {@code null} para no filtrar
+	 */
+	Page<OrganizationListing> listForPlatform(
+			String patron, SubscriptionStatus status, Pageable pageable);
 }

@@ -2,7 +2,13 @@ package com.akine.organization.infrastructure;
 
 import com.akine.organization.domain.Organization;
 import com.akine.organization.domain.port.OrganizationRepositoryPort;
+import com.akine.organization.domain.OrganizationListing;
+import com.akine.organization.domain.SubscriptionStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
@@ -34,4 +40,39 @@ public interface OrganizationRepository extends JpaRepository<Organization, Long
 	 * ventana, y quien cierra la carrera es la restriccion.
 	 */
 	boolean existsBySlug(String slug);
+
+	/**
+	 * Una sola consulta con dos joins de entidad, porque {@code Subscription} y {@code Plan} se
+	 * referencian por id y no por asociacion: sin el join explicito, armar cada fila costaria
+	 * dos lecturas mas (N+1 sobre todos los tenants).
+	 *
+	 * <p>El {@code LIKE} no lleva clausula {@code ESCAPE}: el patron llega escapado con barra
+	 * invertida, que es el escape por defecto de MySQL, igual que en
+	 * {@code FinanciadorRepository.buscar}. La comparacion no distingue mayusculas porque la
+	 * collation de las columnas tampoco.
+	 */
+	@Override
+	@Query(value = """
+			select new com.akine.organization.domain.OrganizationListing(
+			         o.id, o.name, o.slug, s.status, p.code, p.name, o.createdAt)
+			  from Organization o
+			  join Subscription s on s.organizationId = o.id
+			  join Plan p on p.id = s.planId
+			 where o.active = true
+			   and (:status is null or s.status = :status)
+			   and (o.name like :patron or o.slug like :patron)
+			 order by o.name asc, o.id asc
+			""",
+			countQuery = """
+			select count(o)
+			  from Organization o
+			  join Subscription s on s.organizationId = o.id
+			 where o.active = true
+			   and (:status is null or s.status = :status)
+			   and (o.name like :patron or o.slug like :patron)
+			""")
+	Page<OrganizationListing> listForPlatform(
+			@Param("patron") String patron,
+			@Param("status") SubscriptionStatus status,
+			Pageable pageable);
 }
