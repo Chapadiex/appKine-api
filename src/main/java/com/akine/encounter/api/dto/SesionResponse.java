@@ -105,7 +105,21 @@ public record SesionResponse(
 						+ "clinico este corregido es un hecho que quien lo lee tiene derecho a ver "
 						+ "sin pedir el historial.",
 				example = "true")
-		boolean fueEnmendada) {
+		boolean fueEnmendada,
+
+		@Schema(
+				description = "AKINE-08.05. Derivacion clinica de la que salio una atencion de "
+						+ "**origen grupal** (participante de una clase clinica). Ausente en una "
+						+ "atencion de turno o sin turno. Si viene, el caso no se puede cambiar "
+						+ "(409 `caso-de-atencion-grupal`).",
+				example = "88")
+		Long derivacionId,
+
+		@Schema(
+				description = "AKINE-08.05. Clase programada de la que salio una atencion de origen "
+						+ "grupal. Ausente en las demas.",
+				example = "640")
+		Long claseId) {
 
 	@Schema(name = "CierreDeSesion", description = "Resultado y proxima conducta")
 	public record CierreResponse(
@@ -165,7 +179,9 @@ public record SesionResponse(
 						nombre(vista.cierre().proximaConducta())),
 				vista.cerradaEn(),
 				vista.ultimoNumeroVersion(),
-				vista.fueEnmendada());
+				vista.fueEnmendada(),
+				vista.derivacionId(),
+				vista.claseId());
 	}
 
 	/** Los enums viajan como texto para que el cliente no dependa del enum de este modulo. */

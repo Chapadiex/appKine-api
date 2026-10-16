@@ -46,4 +46,11 @@ public class ClinicalDerivacionRegistry implements DerivacionClinicaRegistry {
 	public DerivacionSnapshot revertir(ReversionDeDerivacion reversion) {
 		return derivaciones.revertir(reversion);
 	}
+
+	@Override
+	public DerivacionSnapshot paraAtender(
+			ActorDeDerivacion actor, OrigenDeParticipacion origen, long participacionId,
+			long personaId, Long derivacionId) {
+		return derivaciones.paraAtender(actor, origen, participacionId, personaId, derivacionId);
+	}
 }

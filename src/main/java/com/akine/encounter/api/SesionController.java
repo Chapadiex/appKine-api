@@ -217,7 +217,9 @@ public class SesionController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "La sesion esta cerrada, la atiende otro profesional, la version "
-							+ "quedo vieja (`concurrent-modification`) o el caso esta cerrado",
+							+ "quedo vieja (`concurrent-modification`), el caso esta cerrado, o la "
+							+ "sesion es de origen grupal y su caso lo fija la derivacion "
+							+ "(`caso-de-atencion-grupal`, AKINE-08.05)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<SesionResponse> cambiarCaso(
 			@PathVariable long consultorioId,

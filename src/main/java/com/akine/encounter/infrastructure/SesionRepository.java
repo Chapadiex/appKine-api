@@ -334,4 +334,30 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("limite") int limite,
 			@Param("recortar") boolean recortar,
 			@Param("memberships") Collection<Long> memberships);
+
+	@Override
+	@Query("""
+			SELECT s FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.derivacionId = :derivacionId
+			   AND s.deletedAt IS NULL
+			""")
+	Optional<Sesion> findVivaPorDerivacion(
+			@Param("organizationId") long organizationId,
+			@Param("derivacionId") long derivacionId);
+
+	/** Calza con {@code ix_sesion_clase} de V102. */
+	@Override
+	@Query("""
+			SELECT s FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.consultorioId = :consultorioId
+			   AND s.claseId = :claseId
+			   AND s.deletedAt IS NULL
+			 ORDER BY s.id
+			""")
+	List<Sesion> findVivasDeLaClase(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("claseId") long claseId);
 }

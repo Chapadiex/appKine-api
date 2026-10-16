@@ -7,6 +7,9 @@ import com.akine.clinical.domain.PlanTratamiento;
 import com.akine.clinical.domain.exception.AutorizacionNoElegibleException;
 import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.CasoNoActivoException;
+import com.akine.clinical.domain.exception.DerivacionAmbiguaException;
+import com.akine.clinical.domain.exception.DerivacionConSesionException;
+import com.akine.clinical.domain.exception.ParticipacionSinDerivacionException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRepositoryPort;
@@ -96,6 +99,9 @@ class DerivacionClinicaServiceTest {
 
 	private DerivacionClinicaService service;
 
+	/** Lo que responde la sonda de encounter (08.05): si de la derivacion cuelga una Sesion. */
+	private boolean conAtencion;
+
 	private final ActorDeDerivacion profesional =
 			new ActorDeDerivacion(ACCOUNT_ID, false, ORG_ID, SEDE_ID, null);
 
@@ -103,7 +109,7 @@ class DerivacionClinicaServiceTest {
 	void setUp() {
 		service = new DerivacionClinicaService(derivaciones, casos, planes, historias,
 				historiaClinicaService, autorizaciones, permissionGuard, relaciones, auditTrail,
-				supportAccessAuditor);
+				supportAccessAuditor, List.of((org, derivacionId) -> conAtencion));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
@@ -289,6 +295,20 @@ class DerivacionClinicaServiceTest {
 		}
 
 		@Test
+		@DisplayName("08.05: con una Sesion colgando es 409 y la fila sigue vigente")
+		void con_sesion_no_se_revierte() {
+			DerivacionClinica fila = derivacion();
+			given(derivaciones.findByIdInScope(ORG_ID, DERIVACION_ID)).willReturn(Optional.of(fila));
+			conAtencion = true;
+
+			assertThatThrownBy(() -> service.revertir(
+					new ReversionDeDerivacion(profesional, DERIVACION_ID, "Caso equivocado")))
+					.isInstanceOf(DerivacionConSesionException.class);
+			assertThat(fila.getEstado().name()).isEqualTo("VIGENTE");
+			verify(derivaciones, never()).saveAndFlush(any());
+		}
+
+		@Test
 		@DisplayName("sin motivo no se revierte")
 		void sin_motivo() {
 			given(derivaciones.findByIdInScope(ORG_ID, DERIVACION_ID))
@@ -328,6 +348,63 @@ class DerivacionClinicaServiceTest {
 		AuditEntry auditada = auditada();
 		assertThat(auditada.eventType()).isEqualTo(AuditEvents.DERIVACION_CLINICA_ACCESSED);
 		assertThat(auditada.details()).containsEntry("derivaciones", "1");
+	}
+
+	@Nested
+	@DisplayName("paraAtender (08.05)")
+	class ParaAtender {
+
+		@Test
+		@DisplayName("con una sola vigente la elige, exige hc:write y audita el acceso para atender")
+		void elige_la_unica() {
+			given(derivaciones.findDeLaParticipacion(ORG_ID, OrigenDeParticipacion.CLASE_PROGRAMADA,
+					ASISTENCIA_ID)).willReturn(List.of(derivacion()));
+
+			DerivacionSnapshot elegida = service.paraAtender(profesional,
+					OrigenDeParticipacion.CLASE_PROGRAMADA, ASISTENCIA_ID, PERSONA_ID, null);
+
+			assertThat(elegida.id()).isEqualTo(DERIVACION_ID);
+			assertThat(elegida.casoClinicoId()).isEqualTo(CASO_ID);
+			ArgumentCaptor<com.akine.organization.spi.PermissionQuery> consulta =
+					ArgumentCaptor.forClass(com.akine.organization.spi.PermissionQuery.class);
+			verify(permissionGuard).requirePermission(consulta.capture());
+			assertThat(consulta.getValue().permissionCode()).isEqualTo("hc:write");
+			AuditEntry auditada = auditada();
+			assertThat(auditada.eventType()).isEqualTo(AuditEvents.DERIVACION_CLINICA_ACCESSED);
+			assertThat(auditada.details()).containsEntry("para", "ATENDER");
+		}
+
+		@Test
+		@DisplayName("sin vigentes —o con la nombrada revertida— es participacion-sin-derivacion")
+		void sin_vigente() {
+			DerivacionClinica revertida = derivacion();
+			revertida.revertir("x", Instant.EPOCH, ACCOUNT_ID);
+			given(derivaciones.findDeLaParticipacion(ORG_ID, OrigenDeParticipacion.CLASE_PROGRAMADA,
+					ASISTENCIA_ID)).willReturn(List.of(revertida));
+
+			assertThatThrownBy(() -> service.paraAtender(profesional,
+					OrigenDeParticipacion.CLASE_PROGRAMADA, ASISTENCIA_ID, PERSONA_ID, null))
+					.isInstanceOf(ParticipacionSinDerivacionException.class);
+			assertThatThrownBy(() -> service.paraAtender(profesional,
+					OrigenDeParticipacion.CLASE_PROGRAMADA, ASISTENCIA_ID, PERSONA_ID, DERIVACION_ID))
+					.isInstanceOf(ParticipacionSinDerivacionException.class);
+			verifyNoInteractions(auditTrail);
+		}
+
+		@Test
+		@DisplayName("con dos vigentes y ninguna nombrada es derivacion-ambigua; nombrada, la elige")
+		void ambigua() {
+			DerivacionClinica otra = derivacion();
+			ReflectionTestUtils.setField(otra, "id", DERIVACION_ID + 1);
+			given(derivaciones.findDeLaParticipacion(ORG_ID, OrigenDeParticipacion.CLASE_PROGRAMADA,
+					ASISTENCIA_ID)).willReturn(List.of(derivacion(), otra));
+
+			assertThatThrownBy(() -> service.paraAtender(profesional,
+					OrigenDeParticipacion.CLASE_PROGRAMADA, ASISTENCIA_ID, PERSONA_ID, null))
+					.isInstanceOf(DerivacionAmbiguaException.class);
+			assertThat(service.paraAtender(profesional, OrigenDeParticipacion.CLASE_PROGRAMADA,
+					ASISTENCIA_ID, PERSONA_ID, DERIVACION_ID + 1).id()).isEqualTo(DERIVACION_ID + 1);
+		}
 	}
 
 	// =================================================================================

@@ -115,6 +115,15 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 			log.info("Sesion cerrada sin asistencia: no se devenga deuda. sesionId={}", cierre.sesionId());
 			return;
 		}
+		// AKINE-08.05 (U-41): la atencion de un participante de clase no devenga. La economia de la
+		// clase la resuelve su esquema de cobro —pase, abono, clase— sobre la ASISTENCIA (08.06 a
+		// 08.08), y devengar tambien aca cobraria dos veces la misma clase. Lo conservador mientras
+		// el usuario no decida U-41 y 08.09 integre la economia de servicios.
+		if (cierre.esDeOrigenGrupal()) {
+			log.info("Sesion de origen grupal: no se devenga deuda (U-41). sesionId={} claseId={}",
+					cierre.sesionId(), cierre.claseId());
+			return;
+		}
 
 		// Cualquier responsable, no solo el paciente: ver ObligacionRepositoryPort#findDeLaSesion.
 		if (!obligaciones.findDeLaSesion(cierre.sesionId()).isEmpty()) {
@@ -140,7 +149,10 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	 */
 	@Override
 	public boolean exigePrecioParticular(SesionCerrada cierreSinNumero) {
-		return cierreSinNumero.asistio() && cubiertaQueCorresponde(cierreSinNumero).isEmpty();
+		// AKINE-08.05: sin deuda no hay precio que exigir. Bloquear el cierre clinico de una atencion
+		// grupal por el precio de una deuda que no se va a devengar seria DP-06 al reves.
+		return cierreSinNumero.asistio() && !cierreSinNumero.esDeOrigenGrupal()
+				&& cubiertaQueCorresponde(cierreSinNumero).isEmpty();
 	}
 
 	/**

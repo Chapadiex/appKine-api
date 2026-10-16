@@ -1,6 +1,7 @@
 package com.akine.encounter.api;
 
 import com.akine.encounter.domain.exception.BorradorNoEsJsonException;
+import com.akine.encounter.domain.exception.CasoDeAtencionGrupalException;
 import com.akine.encounter.domain.exception.CasoNoAsignableException;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.CierreIncompletoException;
@@ -146,6 +147,16 @@ public class EncounterProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(SESION_AJENA);
 		problem.setTitle("La atencion la registra otro profesional");
+		return problem;
+	}
+
+	/** 409: el Caso de una atencion grupal lo fijo su derivacion (AKINE-08.05). */
+	@ExceptionHandler(CasoDeAtencionGrupalException.class)
+	public ProblemDetail handleCasoDeAtencionGrupal(CasoDeAtencionGrupalException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(exception.tipoDeProblema().uri());
+		problem.setTitle("El caso lo fija la derivacion");
 		return problem;
 	}
 
