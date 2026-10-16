@@ -73,6 +73,7 @@ public class AjusteDePaseService {
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final LecturaDePases lectura;
 	private final Clock clock;
 
 	@Autowired
@@ -82,9 +83,10 @@ public class AjusteDePaseService {
 			DevengoDeVentas ventas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			LecturaDePases lectura) {
 
-		this(pases, movimientos, ventas, consultorios, permissionGuard, auditTrail, Clock.systemUTC());
+		this(pases, movimientos, ventas, consultorios, permissionGuard, auditTrail, lectura, Clock.systemUTC());
 	}
 
 	AjusteDePaseService(
@@ -94,6 +96,7 @@ public class AjusteDePaseService {
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
+			LecturaDePases lectura,
 			Clock clock) {
 
 		this.pases = pases;
@@ -102,19 +105,24 @@ public class AjusteDePaseService {
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.lectura = lectura;
 		this.clock = clock;
 	}
 
 	/**
 	 * Suma o resta creditos con motivo (RF-M29-005). Devuelve el pase con su ledger.
 	 *
+	 * @param conMovimientos {@code false} devuelve el pase con la lista de movimientos vacia y no lee
+	 *                       el ledger (0.117.0, {@code ?sinMovimientos=true}): la pantalla que ya pagina
+	 *                       el ledger con {@code listarMovimientosDePase} no necesita el entero
 	 * @throws PaseNotAccessibleException el pase no existe en la sede (404)
 	 * @throws PaseNoAjustableException   anulado, vencido o saldo final fuera de [0, iniciales] (409)
 	 * @throws OptimisticLockingFailureException la version no es la leida (409)
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public PaseDetalleView ajustar(
-			OperatingActor actor, long consultorioId, long paseId, AjustarSaldoCommand command) {
+			OperatingActor actor, long consultorioId, long paseId, AjustarSaldoCommand command,
+			boolean conMovimientos) {
 
 		long organizationId = ProductoService.exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
@@ -134,7 +142,7 @@ public class AjusteDePaseService {
 				movimientos.ajusteSobreVersion(organizationId, paseId, command.version());
 		if (previo.isPresent() && previo.get().getCantidad() == command.cantidad()
 				&& command.motivo().strip().equals(previo.get().getMotivo())) {
-			return detalle(pase, organizationId, hoy);
+			return detalle(pase, organizationId, hoy, conMovimientos);
 		}
 		exigirVersion(pase, command.version());
 		if (pase.getEstado() == EstadoPase.ANULADO || pase.getEstado() == EstadoPase.VENCIDO) {
@@ -175,8 +183,8 @@ public class AjusteDePaseService {
 
 		return new PaseDetalleView(
 				PaseView.de(pase, actual.saldo(), actual.estado(), actual.version(), hoy,
-						PaseView.Uso.de(movimientos, ventas, organizationId, paseId)),
-				historial(organizationId, paseId));
+						lectura.uso(organizationId, pase)),
+				conMovimientos ? historial(organizationId, paseId) : java.util.List.of());
 	}
 
 	/**
@@ -215,7 +223,7 @@ public class AjusteDePaseService {
 			AnulacionDeDeuda deuda = ventas.anularDeudaDeVenta(
 					organizationId, paseId, actor.accountId(), motivoLimpio, ahora);
 			return new ResultadoDeAnulacion(
-					PaseView.de(pase, hoy, PaseView.Uso.de(movimientos, ventas, organizationId, paseId)),
+					PaseView.de(pase, hoy, lectura.uso(organizationId, pase)),
 					deuda(deuda), false);
 		}
 		exigirVersion(pase, version);
@@ -256,17 +264,18 @@ public class AjusteDePaseService {
 
 		return new ResultadoDeAnulacion(
 				PaseView.de(pase, actual.saldo(), actual.estado(), actual.version(), hoy,
-						new PaseView.Uso(usados, false))
+						lectura.uso(organizationId, pase, usados, false))
 						.anulado(ahora, actor.accountId(), motivoLimpio),
 				deuda(deuda), true);
 	}
 
 	// =================================================================================
 
-	private PaseDetalleView detalle(PaseServicio pase, long organizationId, LocalDate hoy) {
+	private PaseDetalleView detalle(
+			PaseServicio pase, long organizationId, LocalDate hoy, boolean conMovimientos) {
 		return new PaseDetalleView(
-				PaseView.de(pase, hoy, PaseView.Uso.de(movimientos, ventas, organizationId, pase.getId())),
-				historial(organizationId, pase.getId()));
+				PaseView.de(pase, hoy, lectura.uso(organizationId, pase)),
+				conMovimientos ? historial(organizationId, pase.getId()) : java.util.List.of());
 	}
 
 	private java.util.List<MovimientoPaseView> historial(long organizationId, long paseId) {

@@ -83,6 +83,7 @@ public class VentaDePaseService {
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final LecturaDePases lectura;
 	private final Clock clock;
 
 	@Autowired
@@ -94,10 +95,11 @@ public class VentaDePaseService {
 			PacienteDirectory personas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			LecturaDePases lectura) {
 
 		this(pases, productos, movimientos, devengo, personas, consultorios, permissionGuard,
-				auditTrail, Clock.systemUTC());
+				auditTrail, lectura, Clock.systemUTC());
 	}
 
 	VentaDePaseService(
@@ -109,6 +111,7 @@ public class VentaDePaseService {
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
+			LecturaDePases lectura,
 			Clock clock) {
 
 		this.pases = pases;
@@ -119,6 +122,7 @@ public class VentaDePaseService {
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.lectura = lectura;
 		this.clock = clock;
 	}
 
@@ -152,7 +156,7 @@ public class VentaDePaseService {
 			DeudaDeVenta deuda = devengar(existente, actor);
 			return new ResultadoDeVenta(
 					PaseView.de(existente, hoy,
-							PaseView.Uso.de(movimientos, devengo, organizationId, existente.getId())),
+							lectura.uso(organizationId, existente)),
 					deuda(deuda), false);
 		}
 
@@ -193,7 +197,7 @@ public class VentaDePaseService {
 		log.info("Pase vendido: paseId={} productoId={} personaId={} creditos={} obligacionId={}",
 				pase.getId(), producto.getId(), command.personaId(), pase.getCreditosIniciales(),
 				deuda.obligacionId());
-		return new ResultadoDeVenta(PaseView.de(pase, hoy, PaseView.Uso.SIN_USO), deuda(deuda), true);
+		return new ResultadoDeVenta(PaseView.de(pase, hoy, lectura.uso(organizationId, pase, 0, false)), deuda(deuda), true);
 	}
 
 	/** El pase con su ledger completo (RF-M29-009). */
@@ -206,7 +210,7 @@ public class VentaDePaseService {
 				.orElseThrow(() -> new PaseNotAccessibleException(paseId));
 		return new PaseDetalleView(
 				PaseView.de(pase, ZonaDeSede.hoy(sede, clock),
-						PaseView.Uso.de(movimientos, devengo, organizationId, paseId)),
+						lectura.uso(organizationId, pase)),
 				movimientos.historial(organizationId, paseId).stream()
 						.map(MovimientoPaseView::de)
 						.toList());
@@ -260,7 +264,7 @@ public class VentaDePaseService {
 		if (pase.getTipo() != TipoProducto.ABONO) {
 			throw new IllegalArgumentException("Un pack no se renueva: la renovacion automatica es solo para abonos");
 		}
-		PaseView actual = PaseView.de(pase, hoy, PaseView.Uso.de(movimientos, devengo, organizationId, paseId));
+		PaseView actual = PaseView.de(pase, hoy, lectura.uso(organizationId, pase));
 		if (pase.isRenovacionAutomatica() == activa && pase.getRenovacionOmitidaMotivo() == null) {
 			return actual;
 		}
@@ -290,7 +294,8 @@ public class VentaDePaseService {
 				activa ? "RENOVACION_ACTIVA" : "RENOVACION_INACTIVA",
 				Map.of("vigenciaHasta", pase.getVigenciaHasta().toString()), null, null, ahora));
 		log.info("Renovacion de abono configurada: paseId={} activa={}", paseId, activa);
-		return actual.conRenovacion(activa, version + 1);
+		return actual.conRenovacion(activa, version + 1,
+				activa ? lectura.nombreDe(actor.accountId()) : actual.renovacionAutorizadaPor());
 	}
 
 	/**
@@ -310,8 +315,7 @@ public class VentaDePaseService {
 		List<PaseServicio> deLaSede = pases.findDePersona(organizationId, personaId).stream()
 				.filter(pase -> pase.getConsultorioId() == consultorioId)
 				.toList();
-		Map<Long, PaseView.Uso> usos = PaseView.Uso.de(movimientos, devengo, organizationId,
-				deLaSede.stream().map(PaseServicio::getId).toList());
+		Map<Long, PaseView.Uso> usos = lectura.usos(organizationId, deLaSede);
 		return deLaSede.stream()
 				.map(pase -> PaseView.de(pase, hoy, usos.get(pase.getId())))
 				.toList();

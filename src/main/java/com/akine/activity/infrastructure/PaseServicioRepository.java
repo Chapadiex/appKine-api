@@ -15,7 +15,10 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -333,6 +336,28 @@ public interface PaseServicioRepository
 	Optional<Long> renovacionDe(
 			@Param("organizationId") long organizationId,
 			@Param("paseId") long paseId);
+
+	@Override
+	default Map<Long, Long> renovacionesDe(long organizationId, Collection<Long> paseIds) {
+		if (paseIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<Long, Long> renovaciones = new HashMap<>();
+		for (Object[] fila : filasDeRenovacion(organizationId, paseIds)) {
+			renovaciones.put((Long) fila[0], (Long) fila[1]);
+		}
+		return renovaciones;
+	}
+
+	/** Usa {@code uk_pase_servicio_renovacion (organization_id, renueva_pase_id)}: sin indice nuevo. */
+	@Query("""
+			SELECT p.renuevaPaseId, p.id FROM PaseServicio p
+			 WHERE p.organizationId = :organizationId
+			   AND p.renuevaPaseId IN :paseIds
+			""")
+	List<Object[]> filasDeRenovacion(
+			@Param("organizationId") long organizationId,
+			@Param("paseIds") Collection<Long> paseIds);
 
 	@Override
 	default List<CandidatoARenovar> candidatosARenovar(LocalDate limite, int maximo) {

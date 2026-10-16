@@ -1,16 +1,10 @@
 package com.akine.activity.application;
 
 import com.akine.activity.domain.PaseServicio;
-import com.akine.activity.domain.port.ActivityRepositoryPorts.MovimientoPaseRepositoryPort;
-import com.akine.billing.spi.DevengoDeVentas;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * Un pase vendido, con su snapshot congelado.
@@ -26,6 +20,11 @@ import java.util.Set;
  * @param renovacionAutomatica solo abonos (AKINE-08.08): si el job va a vender el periodo siguiente
  * @param renuevaPaseId  el periodo de abono que este renueva, o {@code null} si lo vendio una persona
  * @param renovacionOmitidaMotivo por que el job no pudo renovar este periodo, o {@code null}
+ * @param renovacionAutorizadaPor nombre de quien activo por ultima vez la renovacion automatica
+ *                       (0.117.0). Apagarla lo conserva y el periodo renovado lo hereda. Se resuelve
+ *                       al leer; {@code null} si nunca se activo o la cuenta no resuelve
+ * @param renovadoPorPaseId el periodo siguiente que renovo a este, o {@code null} (0.117.0). Se
+ *                       calcula al leer, por {@code uk_pase_servicio_renovacion}
  * @param anulable       si la anulacion lo aceptaria hoy: no anulado, sin creditos usados y con la
  *                       deuda de la venta sin cobros. Es la misma regla con la que
  *                       {@link AjusteDePaseService#anular} rechaza, calculada al leer
@@ -56,36 +55,18 @@ public record PaseView(
 		boolean renovacionAutomatica,
 		Long renuevaPaseId,
 		String renovacionOmitidaMotivo,
+		String renovacionAutorizadaPor,
+		Long renovadoPorPaseId,
 		long version) {
 
 	/**
-	 * Lo que se lee del ledger y de {@code billing} para derivar {@code creditosUsados} y
-	 * {@code anulable}. No se persiste: es derivable.
+	 * Lo que se lee al armar la vista y no se persiste, porque es derivable: del ledger y de
+	 * {@code billing} ({@code creditosUsados}, {@code anulable}), del propio pase
+	 * ({@code renovadoPorPaseId}) y de {@code platform.spi.identity} ({@code renovacionAutorizadaPor}).
+	 * Lo arma {@link LecturaDePases}, en lote.
 	 */
-	public record Uso(int creditosUsados, boolean conCobros) {
-
-		/** Un pase recien vendido: nada consumido y la deuda recien devengada. */
-		public static final Uso SIN_USO = new Uso(0, false);
-
-		/** El uso de varios pases, con una consulta al ledger y una a {@code billing}. */
-		static Map<Long, Uso> de(MovimientoPaseRepositoryPort movimientos, DevengoDeVentas ventas,
-				long organizationId, Collection<Long> paseIds) {
-
-			Map<Long, Integer> neto = movimientos.consumoNetoPorPase(organizationId, paseIds);
-			Set<Long> conCobros = ventas.ventasConCobros(organizationId, paseIds);
-			Map<Long, Uso> usos = new HashMap<>();
-			for (Long paseId : paseIds) {
-				usos.put(paseId, new Uso(-neto.getOrDefault(paseId, 0), conCobros.contains(paseId)));
-			}
-			return usos;
-		}
-
-		/** El uso de un pase. */
-		static Uso de(MovimientoPaseRepositoryPort movimientos, DevengoDeVentas ventas,
-				long organizationId, long paseId) {
-
-			return de(movimientos, ventas, organizationId, Set.of(paseId)).get(paseId);
-		}
+	public record Uso(int creditosUsados, boolean conCobros, Long renovadoPorPaseId,
+			String renovacionAutorizadaPor) {
 	}
 
 	public static PaseView de(PaseServicio p, LocalDate hoy, Uso uso) {
@@ -103,7 +84,8 @@ public record PaseView(
 				p.getVigenciaHasta(), estado, vigente, uso.creditosUsados(), anulable, p.getVendidoEn(),
 				p.getVendidoPorCuentaId(), p.getAnuladoEn(), p.getAnuladoPorCuentaId(),
 				p.getMotivoAnulacion(), p.isRenovacionAutomatica(), p.getRenuevaPaseId(),
-				p.getRenovacionOmitidaMotivo(), version);
+				p.getRenovacionOmitidaMotivo(), uso.renovacionAutorizadaPor(), uso.renovadoPorPaseId(),
+				version);
 	}
 
 	/** La misma vista con la anulacion que acaba de escribir un UPDATE nativo. */
@@ -111,14 +93,21 @@ public record PaseView(
 		return new PaseView(id, consultorioId, personaId, productoId, tipo, nombre, precio, moneda,
 				ofertaId, creditosIniciales, creditosDisponibles, vigenciaDesde, vigenciaHasta, estado,
 				vigente, creditosUsados, false, vendidoEn, vendidoPorCuentaId, en, porCuentaId, motivo,
-				renovacionAutomatica, renuevaPaseId, renovacionOmitidaMotivo, version);
+				renovacionAutomatica, renuevaPaseId, renovacionOmitidaMotivo, renovacionAutorizadaPor,
+				renovadoPorPaseId, version);
 	}
 
-	/** La misma vista con la renovacion que acaba de escribir un UPDATE nativo (AKINE-08.08). */
-	public PaseView conRenovacion(boolean activa, long nuevaVersion) {
+	/**
+	 * La misma vista con la renovacion que acaba de escribir un UPDATE nativo (AKINE-08.08).
+	 *
+	 * @param autorizadaPor el nombre de quien la autorizo despues del UPDATE: quien la prende, o el
+	 *                      ultimo que la habia prendido si se apaga
+	 */
+	public PaseView conRenovacion(boolean activa, long nuevaVersion, String autorizadaPor) {
 		return new PaseView(id, consultorioId, personaId, productoId, tipo, nombre, precio, moneda,
 				ofertaId, creditosIniciales, creditosDisponibles, vigenciaDesde, vigenciaHasta, estado,
 				vigente, creditosUsados, anulable, vendidoEn, vendidoPorCuentaId, anuladoEn,
-				anuladoPorCuentaId, motivoAnulacion, activa, renuevaPaseId, null, nuevaVersion);
+				anuladoPorCuentaId, motivoAnulacion, activa, renuevaPaseId, null, autorizadaPor,
+				renovadoPorPaseId, nuevaVersion);
 	}
 }

@@ -10,6 +10,7 @@ import com.akine.activity.application.CrearProductoCommand;
 import com.akine.activity.application.EditarProductoCommand;
 import com.akine.activity.application.InscripcionService;
 import com.akine.activity.application.MovimientoPaseView;
+import com.akine.activity.application.PaseDetalleView;
 import com.akine.activity.application.PaseView;
 import com.akine.activity.application.ProductoService;
 import com.akine.activity.application.RenovacionDeAbonos;
@@ -34,6 +35,8 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -112,6 +115,27 @@ class AbonoRenovacionYAvisosIT {
 		assertThat(contar("SELECT COUNT(*) FROM audit_event WHERE event_type = 'ABONO_RENOVADO' AND entity_id = ?",
 				nuevoId)).isEqualTo(1);
 
+		// 0.117.0: la cadena se lee desde los dos lados y con el nombre de quien autorizo, resuelto
+		// al leer desde la cuenta (la del fixture se llama "Sintetico DePrueba"), no su id.
+		Map<Long, PaseView> dePersona = ventaService.deLaPersona(
+						tenant.actor(), tenant.consultorioId(), tenant.persona(0)).stream()
+				.collect(Collectors.toMap(PaseView::id, Function.identity()));
+		assertThat(dePersona).containsOnlyKeys(anterior, nuevoId);
+		assertThat(dePersona.get(anterior).renovadoPorPaseId()).isEqualTo(nuevoId);
+		assertThat(dePersona.get(anterior).renovacionAutorizadaPor()).isEqualTo("Sintetico DePrueba");
+		assertThat(dePersona.get(nuevoId).renuevaPaseId()).isEqualTo(anterior);
+		assertThat(dePersona.get(nuevoId).renovadoPorPaseId()).isNull();
+		assertThat(dePersona.get(nuevoId).renovacionAutorizadaPor()).isEqualTo("Sintetico DePrueba");
+		assertThat(ventaService.find(tenant.actor(), tenant.consultorioId(), anterior).pase().renovadoPorPaseId())
+				.isEqualTo(nuevoId);
+		// Sin renovacion pedida nadie la autorizo y nadie lo renovo.
+		assertThat(ventaService.deLaPersona(tenant.actor(), tenant.consultorioId(), tenant.persona(1)))
+				.singleElement()
+				.satisfies(v -> {
+					assertThat(v.renovacionAutorizadaPor()).isNull();
+					assertThat(v.renovadoPorPaseId()).isNull();
+				});
+
 		// Prender la renovacion de un periodo ya renovado es 409: se configura sobre el nuevo.
 		long version = version(anterior);
 		assertThatThrownBy(() -> ventaService.configurarRenovacion(
@@ -123,6 +147,8 @@ class AbonoRenovacionYAvisosIT {
 				tenant.actor(), tenant.consultorioId(), nuevoId, false, version(nuevoId));
 		assertThat(apagado.renovacionAutomatica()).isFalse();
 		assertThat(apagado.version()).isEqualTo(version(nuevoId));
+		// Apagarla conserva quien la habia autorizado: es historia, no el estado.
+		assertThat(apagado.renovacionAutorizadaPor()).isEqualTo("Sintetico DePrueba");
 		terminaEn(nuevoId, hoy);
 		renovacion.renovarLosQueTerminan(3, 500);
 		assertThat(contar("SELECT COUNT(*) FROM pase_servicio WHERE renueva_pase_id = ?", nuevoId)).isZero();
@@ -210,7 +236,7 @@ class AbonoRenovacionYAvisosIT {
 				new VenderPaseCommand(productoId, tenant.persona(1), null)).pase().id();
 		jdbc.update("UPDATE pase_servicio SET vigencia_hasta = ? WHERE id IN (?, ?)", hoy().plusDays(2), conCorreo, sinCorreo);
 		ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), conCorreo,
-				new AjustarSaldoCommand(-3, "Tres clases antes del sistema", version(conCorreo)));
+				new AjustarSaldoCommand(-3, "Tres clases antes del sistema", version(conCorreo)), true);
 
 		avisos.avisarVencimientos(3, 500);
 		avisos.avisarVencimientos(3, 500);
@@ -245,10 +271,9 @@ class AbonoRenovacionYAvisosIT {
 				PaseVentaYConsumoIT.comando(tenant.ofertaId(), "Pack", 8)).id();
 		long paseId = ventaService.vender(tenant.actor(), tenant.consultorioId(),
 				new VenderPaseCommand(productoId, tenant.persona(0), null)).pase().id();
-		ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId, new AjustarSaldoCommand(-1, "uno", 0));
+		ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId, new AjustarSaldoCommand(-1, "uno", 0), true);
 		ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
-				new AjustarSaldoCommand(-2, "dos", version(paseId)));
-
+				new AjustarSaldoCommand(-2, "dos", version(paseId)), true);
 		Page<MovimientoPaseView> primera = ventaService.movimientos(tenant.actor(), tenant.consultorioId(), paseId, 0, 2);
 		Page<MovimientoPaseView> segunda = ventaService.movimientos(tenant.actor(), tenant.consultorioId(), paseId, 1, 2);
 
@@ -256,6 +281,18 @@ class AbonoRenovacionYAvisosIT {
 		assertThat(primera.getTotalPages()).isEqualTo(2);
 		assertThat(primera.getContent()).extracting(MovimientoPaseView::tipo).containsExactly("COMPRA", "AJUSTE");
 		assertThat(segunda.getContent()).extracting(MovimientoPaseView::saldoResultante).containsExactly(5);
+
+		// 0.117.0, sinMovimientos: el ajuste devuelve el pase al dia y la lista vacia aunque el
+		// ledger tenga cinco movimientos; sin el parametro, el ledger entero.
+		PaseDetalleView sinLedger = ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
+				new AjustarSaldoCommand(-1, "tres", version(paseId)), false);
+		assertThat(sinLedger.movimientos()).isEmpty();
+		assertThat(sinLedger.pase().creditosDisponibles()).isEqualTo(4);
+		assertThat(sinLedger.pase().version()).isEqualTo(version(paseId));
+		PaseDetalleView conLedger = ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), paseId,
+				new AjustarSaldoCommand(1, "cuatro", version(paseId)), true);
+		assertThat(conLedger.movimientos()).hasSize(5);
+		assertThat(conLedger.pase().creditosDisponibles()).isEqualTo(5);
 
 		Tenant otro = fx.crearTenant(10, 1);
 		assertThatThrownBy(() -> ventaService.movimientos(otro.actor(), otro.consultorioId(), paseId, 0, 20))

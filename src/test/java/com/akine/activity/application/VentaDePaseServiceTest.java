@@ -18,6 +18,8 @@ import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.identity.AccountIdentity;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,13 +36,19 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -63,13 +71,14 @@ class VentaDePaseServiceTest {
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private AuditTrail auditTrail;
+	@Mock private AccountIdentityDirectory identidades;
 
 	private VentaDePaseService service;
 
 	@BeforeEach
 	void setUp() {
 		service = new VentaDePaseService(pases, productos, movimientos, devengo, personas, consultorios,
-				permissionGuard, auditTrail, RELOJ);
+				permissionGuard, auditTrail, new LecturaDePases(pases, movimientos, devengo, identidades), RELOJ);
 		given(consultorios.find(ORG, SEDE)).willReturn(Optional.of(
 				new ConsultorioSnapshot(SEDE, ORG, "Sede", "UTC", true)));
 		given(productos.lockByIdInScope(ORG, SEDE, PRODUCTO)).willReturn(Optional.of(producto()));
@@ -153,6 +162,51 @@ class VentaDePaseServiceTest {
 
 		assertThatThrownBy(() -> service.vender(ACTOR, SEDE, new VenderPaseCommand(PRODUCTO, PERSONA, null)))
 				.isInstanceOf(PersonaDadaDeBajaException.class);
+	}
+
+	@Test
+	@DisplayName("El listado resuelve renovadoPorPaseId y el nombre de quien autorizo en una consulta cada uno, no una por pase")
+	void listado_con_renovacion_en_lote() {
+		PaseServicio viejo = vendido(77L);
+		PaseServicio nuevo = vendido(78L);
+		PaseServicio sinRenovacion = vendido(79L);
+		ReflectionTestUtils.setField(viejo, "renovacionAutorizadaPorCuentaId", 99L);
+		ReflectionTestUtils.setField(nuevo, "renovacionAutorizadaPorCuentaId", 99L);
+		given(pases.findDePersona(ORG, PERSONA)).willReturn(List.of(nuevo, viejo, sinRenovacion));
+		given(pases.renovacionesDe(eq(ORG), any())).willReturn(Map.of(77L, 78L));
+		given(identidades.identidadesDe(any())).willReturn(
+				Map.of(99L, new AccountIdentity(99L, "Ana Gomez", "ana@example.test")));
+
+		List<PaseView> lista = service.deLaPersona(ACTOR, SEDE, PERSONA);
+
+		assertThat(lista).extracting(PaseView::id, PaseView::renovadoPorPaseId, PaseView::renovacionAutorizadaPor)
+				.containsExactly(
+						tuple(78L, null, "Ana Gomez"),
+						tuple(77L, 78L, "Ana Gomez"),
+						tuple(79L, null, null));
+		verify(pases, times(1)).renovacionesDe(eq(ORG), any());
+		verify(identidades, times(1)).identidadesDe(List.of(99L));
+		verify(pases, never()).renovacionDe(anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("Una cuenta que no resuelve deja el nombre ausente, no inventado")
+	void autorizador_que_no_resuelve() {
+		PaseServicio pase = vendido(77L);
+		ReflectionTestUtils.setField(pase, "renovacionAutorizadaPorCuentaId", 404L);
+		given(pases.findDePersona(ORG, PERSONA)).willReturn(List.of(pase));
+		given(identidades.identidadesDe(any())).willReturn(Map.of());
+
+		assertThat(service.deLaPersona(ACTOR, SEDE, PERSONA))
+				.singleElement()
+				.satisfies(v -> assertThat(v.renovacionAutorizadaPor()).isNull());
+	}
+
+	private static PaseServicio vendido(long id) {
+		PaseServicio pase = PaseServicio.vender(producto(), PERSONA, LocalDate.of(2026, 10, 14), null, null,
+				99L, Instant.parse("2026-10-14T12:00:00Z"));
+		ReflectionTestUtils.setField(pase, "id", id);
+		return pase;
 	}
 
 	private static ProductoServicio producto() {
