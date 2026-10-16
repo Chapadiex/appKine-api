@@ -220,7 +220,7 @@ class AtencionGrupalServiceTest {
 
 	private static DerivacionSnapshot derivacion() {
 		return new DerivacionSnapshot(DERIVACION_ID, ORG_ID, SEDE_ID,
-				OrigenDeParticipacion.CLASE_PROGRAMADA, ASISTENCIA_ID, PERSONA_ID, HC_ID, CASO_ID,
+				OrigenDeParticipacion.CLASE_PROGRAMADA, ASISTENCIA_ID, PERSONA_ID, HC_ID, CASO_ID, 1,
 				null, OFERTA_ID, true, null, "VIGENTE", "Motivo", Instant.EPOCH, CUENTA_ID, null,
 				null, null, 0L, false);
 	}

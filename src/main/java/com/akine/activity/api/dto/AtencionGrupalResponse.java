@@ -25,6 +25,15 @@ public record AtencionGrupalResponse(
 	public record Participante(
 			@Schema(example = "412") long inscripcionId,
 			@Schema(example = "77") long personaId,
+			@Schema(
+					description = "Del padron, resuelto al leer. Ausente si la ficha no se "
+							+ "resolvio. Junto con `apellido` es lo unico de la persona que viaja: "
+							+ "ni documento ni contacto",
+					example = "Ana")
+			String nombre,
+			@Schema(description = "Del padron, resuelto al leer. Ausente si la ficha no se resolvio",
+					example = "Perez")
+			String apellido,
 			@Schema(example = "933") long asistenciaId,
 			@Schema(allowableValues = {"PRESENTE", "PRESENTE_TARDE", "AUSENTE"})
 			String resultadoAsistencia,
@@ -34,7 +43,8 @@ public record AtencionGrupalResponse(
 			List<AtencionDeParticipanteResponse> atenciones) {
 
 		static Participante de(ParticipanteEnAtencionView p) {
-			return new Participante(p.inscripcionId(), p.personaId(), p.asistenciaId(),
+			return new Participante(p.inscripcionId(), p.personaId(), p.nombre(), p.apellido(),
+					p.asistenciaId(),
 					p.resultadoAsistencia(), p.estuvo(),
 					p.atenciones().stream()
 							.map(a -> AtencionDeParticipanteResponse.de(p.inscripcionId(), a))

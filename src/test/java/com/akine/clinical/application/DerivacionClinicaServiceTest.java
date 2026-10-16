@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -148,6 +149,7 @@ class DerivacionClinicaServiceTest {
 			assertThat(creada.planTratamientoId()).isEqualTo(PLAN_ID);
 			assertThat(creada.autorizacionId()).isEqualTo(AUTORIZACION_ID);
 			assertThat(creada.motivo()).isEqualTo("Dolor lumbar al flexionar");
+			assertThat(creada.numeroCaso()).as("el numero visible, no el id").isEqualTo(3);
 
 			AuditEntry auditada = auditada();
 			assertThat(auditada.eventType()).isEqualTo(AuditEvents.DERIVACION_CLINICA_CREATED);
@@ -168,6 +170,7 @@ class DerivacionClinicaServiceTest {
 
 			assertThat(respuesta.yaExistia()).isTrue();
 			assertThat(respuesta.id()).isEqualTo(DERIVACION_ID);
+			assertThat(respuesta.numeroCaso()).isEqualTo(3);
 			verify(historiaClinicaService, never()).asegurar(anyLong(), anyLong(), anyLong());
 			verify(derivaciones, never()).saveAndFlush(any());
 			verifyNoInteractions(auditTrail);
@@ -348,6 +351,25 @@ class DerivacionClinicaServiceTest {
 		AuditEntry auditada = auditada();
 		assertThat(auditada.eventType()).isEqualTo(AuditEvents.DERIVACION_CLINICA_ACCESSED);
 		assertThat(auditada.details()).containsEntry("derivaciones", "1");
+	}
+
+	@Test
+	@DisplayName("consultar trae el numero visible de cada Caso, con una consulta por historia y no por derivacion")
+	void consultar_con_numero_de_caso() {
+		DerivacionClinica primera = derivacion();
+		DerivacionClinica segunda = derivacion();
+		ReflectionTestUtils.setField(segunda, "id", DERIVACION_ID + 1);
+		given(derivaciones.findDeLaParticipacion(ORG_ID, OrigenDeParticipacion.CLASE_PROGRAMADA,
+				ASISTENCIA_ID)).willReturn(List.of(primera, segunda));
+		given(casos.buscarDeHistoria(ORG_ID, HC_ID, false)).willReturn(List.of(caso(HC_ID, false)));
+
+		EstadoClinicoDeParticipacion estado = service.consultar(
+				profesional, OrigenDeParticipacion.CLASE_PROGRAMADA, ASISTENCIA_ID, PERSONA_ID);
+
+		assertThat(estado.derivaciones()).extracting(DerivacionSnapshot::numeroCaso)
+				.containsExactly(3, 3);
+		verify(casos, times(1)).buscarDeHistoria(ORG_ID, HC_ID, false);
+		verify(casos, never()).findByIdAndOrganizationId(anyLong(), anyLong());
 	}
 
 	@Nested

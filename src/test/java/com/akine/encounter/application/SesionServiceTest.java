@@ -139,6 +139,8 @@ class SesionServiceTest {
 
 	/** DP-17 (E-7b): billing decide si la deuda del paciente es el precio particular. */
 	@Mock private PrecioParticularDelCierre requisitoDePrecio;
+	/** AKINE-08.05: el nombre de la clase de una Sesion grupal, que responde activity. */
+	@Mock private com.akine.encounter.spi.TituloDeClaseGrupal tituloDeClase;
 	@Mock private com.akine.platform.spi.identity.AccountIdentityDirectory identidades;
 
 	private SesionService service;
@@ -152,7 +154,7 @@ class SesionServiceTest {
 				sesiones, versiones, auditTrail, turnos, historias, casos, consultorios,
 				memberships, permissionGuard, numerador, numeradorIniciador, ofertas,
 				tratamientos, parametros, mediciones, tratamientoService, medicionService,
-				List.of(observador), List.of(requisitoDePrecio), identidades,
+				List.of(observador), List.of(requisitoDePrecio), List.of(tituloDeClase), identidades,
 				mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
@@ -200,6 +202,34 @@ class SesionServiceTest {
 				profesionalMembershipId, Instant.EPOCH, CUENTA_PROPIA);
 		ReflectionTestUtils.setField(sesion, "id", 1L);
 		return sesion;
+	}
+
+	@Test
+	@DisplayName("08.05: una Sesion grupal viaja con el nombre de su clase, que responde activity")
+	void sesion_grupal_con_titulo_de_clase() {
+		Sesion grupal = Sesion.desdeParticipacion(ORG_ID, CONSULTORIO_ID, HISTORIA_ID, 17L, OFERTA_ID,
+				MEMBERSHIP_PROPIA, Instant.EPOCH, CUENTA_PROPIA, 88L, 931L, 640L);
+		ReflectionTestUtils.setField(grupal, "id", 1L);
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(grupal));
+		given(tituloDeClase.de(ORG_ID, CONSULTORIO_ID, 640L))
+				.willReturn(Optional.of("Pilates terapeutico"));
+
+		SesionView vista = service.ver(actor, CONSULTORIO_ID, 1L);
+
+		assertThat(vista.claseId()).isEqualTo(640L);
+		assertThat(vista.claseTitulo()).isEqualTo("Pilates terapeutico");
+	}
+
+	@Test
+	@DisplayName("08.05: una Sesion de turno no tiene clase y no se pregunta por ninguna")
+	void sesion_de_turno_sin_titulo_de_clase() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		SesionView vista = service.ver(actor, CONSULTORIO_ID, 1L);
+
+		assertThat(vista.claseTitulo()).isNull();
+		org.mockito.Mockito.verifyNoInteractions(tituloDeClase);
 	}
 
 	@Test

@@ -3,24 +3,37 @@ package com.akine.activity.application;
 import com.akine.encounter.spi.AtencionDeParticipante;
 import com.akine.platform.spi.problem.ProblemType;
 
+import java.util.List;
+
 /**
  * El resultado de <b>un</b> participante dentro de un lote de atencion grupal (AKINE-08.05).
  *
  * <p>O trae la atencion, o trae el error de ese participante; nunca los dos, nunca ninguno. El
  * {@code problemType} es el mismo que habria viajado en el Problem Detail individual.
+ *
+ * @param derivacionIds solo en {@code derivacion-ambigua}: las derivaciones vigentes entre las que
+ *                      hay que elegir, las mismas que trae el Problem Detail individual. {@code null}
+ *                      en cualquier otro caso
  */
 public record ItemDeAtencionGrupal(
 		long inscripcionId,
 		AtencionDeParticipante atencion,
 		String problemType,
-		String detalle) {
+		String detalle,
+		List<Long> derivacionIds) {
 
 	public static ItemDeAtencionGrupal ok(long inscripcionId, AtencionDeParticipante atencion) {
-		return new ItemDeAtencionGrupal(inscripcionId, atencion, null, null);
+		return new ItemDeAtencionGrupal(inscripcionId, atencion, null, null, null);
 	}
 
 	public static ItemDeAtencionGrupal error(long inscripcionId, ProblemType tipo, String detalle) {
-		return new ItemDeAtencionGrupal(inscripcionId, null, tipo.value(), detalle);
+		return error(inscripcionId, tipo, detalle, null);
+	}
+
+	public static ItemDeAtencionGrupal error(
+			long inscripcionId, ProblemType tipo, String detalle, List<Long> derivacionIds) {
+		return new ItemDeAtencionGrupal(inscripcionId, null, tipo.value(), detalle,
+				derivacionIds == null ? null : List.copyOf(derivacionIds));
 	}
 
 	public boolean exitoso() {

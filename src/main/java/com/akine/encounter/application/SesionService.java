@@ -9,6 +9,7 @@ import com.akine.encounter.spi.CierreDeSesionObserver;
 import com.akine.encounter.spi.OfertaSinPrecioException;
 import com.akine.encounter.spi.PrecioParticularDelCierre;
 import com.akine.encounter.spi.SesionCerrada;
+import com.akine.encounter.spi.TituloDeClaseGrupal;
 import com.akine.clinical.spi.HistoriaClinicaSnapshot;
 import com.akine.encounter.domain.CierreDeSesion;
 import com.akine.encounter.domain.EvaluacionBase;
@@ -61,6 +62,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Inicio de la atencion y autosave del borrador (M14, RF-M14-001, RF-M14-002 y RF-M14-009).
@@ -137,6 +139,13 @@ public class SesionService {
 	 * precio particular. Hoy es billing; {@code encounter} no sabe quien.
 	 */
 	private final List<PrecioParticularDelCierre> requisitosDePrecio;
+
+	/**
+	 * AKINE-08.05: como se llama la clase de una Sesion grupal. Lista porque la implementa
+	 * {@code activity} y este modulo no puede exigir que exista: sin implementacion, la Sesion viaja
+	 * sin {@code claseTitulo} y nada mas.
+	 */
+	private final List<TituloDeClaseGrupal> titulosDeClase;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	/** Nombre visible de quien escribio cada version (solo nombre, por id de cuenta). */
@@ -163,6 +172,7 @@ public class SesionService {
 			MedicionService medicionService,
 			List<CierreDeSesionObserver> observadores,
 			List<PrecioParticularDelCierre> requisitosDePrecio,
+			List<TituloDeClaseGrupal> titulosDeClase,
 			AccountIdentityDirectory identidades,
 			PlatformTransactionManager transactionManager) {
 
@@ -185,6 +195,7 @@ public class SesionService {
 		this.medicionService = medicionService;
 		this.observadores = List.copyOf(observadores);
 		this.requisitosDePrecio = List.copyOf(requisitosDePrecio);
+		this.titulosDeClase = List.copyOf(titulosDeClase);
 		this.identidades = identidades;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
@@ -961,7 +972,21 @@ public class SesionService {
 						previa.getIniciadaEn(),
 						previa.getDolorEva(),
 						previa.getEvolucion() == null ? null : previa.getEvolucion().name()))
-				.orElse(null));
+				.orElse(null),
+				claseTitulo(sesion, organizationId));
+	}
+
+	/** El nombre de la clase de una Sesion grupal (08.05), calculado al leer. {@code null} si no es. */
+	private String claseTitulo(Sesion sesion, long organizationId) {
+		Long claseId = sesion.getClaseId();
+		if (claseId == null) {
+			return null;
+		}
+		return titulosDeClase.stream()
+				.map(titulo -> titulo.de(organizationId, sesion.getConsultorioId(), claseId))
+				.flatMap(Optional::stream)
+				.findFirst()
+				.orElse(null);
 	}
 
 	/**

@@ -119,7 +119,15 @@ public record SesionResponse(
 				description = "AKINE-08.05. Clase programada de la que salio una atencion de origen "
 						+ "grupal. Ausente en las demas.",
 				example = "640")
-		Long claseId) {
+		Long claseId,
+
+		@Schema(
+				description = "AKINE-08.05. Como se llama la clase de una atencion de origen grupal: "
+						+ "su titulo, o el nombre comercial de la oferta si la clase no tiene "
+						+ "titulo (el mismo criterio de la semana de clases). Calculado al leer. "
+						+ "Ausente si la atencion no es grupal.",
+				example = "Pilates terapeutico")
+		String claseTitulo) {
 
 	@Schema(name = "CierreDeSesion", description = "Resultado y proxima conducta")
 	public record CierreResponse(
@@ -181,7 +189,8 @@ public record SesionResponse(
 				vista.ultimoNumeroVersion(),
 				vista.fueEnmendada(),
 				vista.derivacionId(),
-				vista.claseId());
+				vista.claseId(),
+				vista.claseTitulo());
 	}
 
 	/** Los enums viajan como texto para que el cliente no dependa del enum de este modulo. */

@@ -4,6 +4,7 @@ import com.akine.platform.spi.problem.ConTipoDeProblema;
 import com.akine.platform.spi.problem.ProblemType;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * La participacion esta derivada a mas de un Caso y el pedido no dijo a cual (409). AKINE-08.05.
@@ -25,6 +26,12 @@ public class DerivacionAmbiguaException extends RuntimeException implements ConT
 	@Override
 	public ProblemType tipoDeProblema() {
 		return ProblemType.DERIVACION_AMBIGUA;
+	}
+
+	/** Lo mismo que agrega {@code ClinicalProblemHandler}: el lote de 08.05 lo copia al item. */
+	@Override
+	public Map<String, Object> propiedadesDelProblema() {
+		return Map.of("derivacionIds", derivacionIds);
 	}
 
 	public List<Long> getDerivacionIds() {

@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.117.0
+  version: 0.118.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -26977,6 +26977,13 @@ components:
           type: string
         motivoReversion:
           type: string
+        numeroCaso:
+          type: integer
+          format: int32
+          description: "Numero visible del Caso dentro de la historia (\"caso 3\"\
+            ), el que la pantalla muestra en lugar del id. Ausente solo si el Caso\
+            \ no se pudo resolver"
+          example: 3
         ofertaId:
           type: integer
           format: int64
@@ -29757,6 +29764,18 @@ components:
         atencion:
           $ref: "#/components/schemas/AtencionDeParticipante"
           description: Presente cuando el item salio bien
+        derivacionIds:
+          type: array
+          description: "Solo con `derivacion-ambigua`: las derivaciones vigentes entre\
+            \ las que hay que elegir, las mismas que trae el Problem Detail de la\
+            \ operacion individual. Se reintenta el item con una de ellas como `derivacionId`.\
+            \ Ausente en cualquier otro caso"
+          example:
+          - 88
+          - 91
+          items:
+            type: integer
+            format: int64
         detalle:
           type: string
           description: Explicacion del fallo de este participante
@@ -31500,6 +31519,10 @@ components:
       type: object
       description: Un participante con asistencia
       properties:
+        apellido:
+          type: string
+          description: "Del padron, resuelto al leer. Ausente si la ficha no se resolvio"
+          example: Perez
         asistenciaId:
           type: integer
           format: int64
@@ -31516,6 +31539,12 @@ components:
           type: integer
           format: int64
           example: 412
+        nombre:
+          type: string
+          description: "Del padron, resuelto al leer. Ausente si la ficha no se resolvio.\
+            \ Junto con `apellido` es lo unico de la persona que viaja: ni documento\
+            \ ni contacto"
+          example: Ana
         personaId:
           type: integer
           format: int64
@@ -35254,6 +35283,13 @@ components:
           description: AKINE-08.05. Clase programada de la que salio una atencion
             de origen grupal. Ausente en las demas.
           example: 640
+        claseTitulo:
+          type: string
+          description: "AKINE-08.05. Como se llama la clase de una atencion de origen\
+            \ grupal: su titulo, o el nombre comercial de la oferta si la clase no\
+            \ tiene titulo (el mismo criterio de la semana de clases). Calculado al\
+            \ leer. Ausente si la atencion no es grupal."
+          example: Pilates terapeutico
         consultorioId:
           type: integer
           format: int64

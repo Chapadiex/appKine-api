@@ -217,7 +217,7 @@ class DerivacionControllerTest {
 	}
 
 	private static DerivacionView derivacion(boolean yaExistia) {
-		return new DerivacionView(501L, INSCRIPCION_ID, 981L, 512L, 40L, 88L, null, 45L, false,
+		return new DerivacionView(501L, INSCRIPCION_ID, 981L, 512L, 40L, 88L, 3, null, 45L, false,
 				null, "VIGENTE", "Indicacion", Instant.parse("2026-10-14T13:00:00Z"), CUENTA, null,
 				null, null, 0L, yaExistia);
 	}

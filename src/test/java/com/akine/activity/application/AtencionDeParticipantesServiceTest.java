@@ -18,6 +18,8 @@ import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.person.spi.PacienteDirectory;
+import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.problem.ConTipoDeProblema;
 import com.akine.platform.spi.problem.ProblemType;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +38,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -71,6 +76,7 @@ class AtencionDeParticipantesServiceTest {
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private AtencionGrupal atenciones;
+	@Mock private PacienteDirectory pacientes;
 	@Mock private PlatformTransactionManager transactionManager;
 
 	private AtencionDeParticipantesService service;
@@ -78,7 +84,7 @@ class AtencionDeParticipantesServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AtencionDeParticipantesService(clases, inscripciones, asistencias, ofertas,
-				consultorios, permissionGuard, atenciones, transactionManager);
+				consultorios, permissionGuard, atenciones, pacientes, transactionManager);
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(SEDE_ID, ORG_ID, "Sede Centro", "UTC", true)));
 		given(clases.findByIdInScope(ORG_ID, SEDE_ID, CLASE_ID)).willReturn(Optional.of(clase()));
@@ -183,6 +189,64 @@ class AtencionDeParticipantesServiceTest {
 		assertThat(panel.participantes().get(1).atenciones()).isEmpty();
 	}
 
+	@Test
+	@DisplayName("el panel trae nombre y apellido resueltos en UNA consulta, y nada mas de la persona")
+	void panel_con_nombres_en_lote() {
+		AsistenciaActividad ana = asistencia(inscripcion(1L, PERSONA_ID), 931L, ResultadoAsistencia.PRESENTE);
+		AsistenciaActividad juan = asistencia(inscripcion(2L, OTRA_PERSONA_ID), 932L,
+				ResultadoAsistencia.PRESENTE);
+		AsistenciaActividad sinFicha = asistencia(inscripcion(3L, 79L), 933L, ResultadoAsistencia.PRESENTE);
+		given(asistencias.findDeLaClase(ORG_ID, CLASE_ID)).willReturn(List.of(ana, juan, sinFicha));
+		given(atenciones.deLaClase(any(), anyLong())).willReturn(List.of());
+		given(pacientes.findAll(ORG_ID, Set.of(PERSONA_ID, OTRA_PERSONA_ID, 79L))).willReturn(Map.of(
+				PERSONA_ID, persona(PERSONA_ID, "Ana", "Sintetica"),
+				OTRA_PERSONA_ID, persona(OTRA_PERSONA_ID, "Juan", "Ficticio")));
+
+		PanelDeAtencionGrupalView panel = service.panel(actor(), SEDE_ID, CLASE_ID);
+
+		assertThat(panel.participantes()).extracting(ParticipanteEnAtencionView::nombre)
+				.containsExactly("Ana", "Juan", null);
+		assertThat(panel.participantes()).extracting(ParticipanteEnAtencionView::apellido)
+				.containsExactly("Sintetica", "Ficticio", null);
+		verify(pacientes, times(1)).findAll(anyLong(), any());
+	}
+
+	@Test
+	@DisplayName("si encounter niega el panel no se resuelve ningun nombre")
+	void panel_negado_no_lee_nombres() {
+		given(asistencias.findDeLaClase(ORG_ID, CLASE_ID)).willReturn(List.of(
+				asistencia(inscripcion(1L, PERSONA_ID), 931L, ResultadoAsistencia.PRESENTE)));
+		given(atenciones.deLaClase(any(), anyLong()))
+				.willThrow(new org.springframework.security.access.AccessDeniedException("sin sesion:register"));
+
+		assertThatThrownBy(() -> service.panel(actor(), SEDE_ID, CLASE_ID))
+				.isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+		verifyNoInteractions(pacientes);
+	}
+
+	@Test
+	@DisplayName("en el lote, derivacion-ambigua trae los derivacionIds como la operacion individual")
+	void lote_ambiguo_con_derivacion_ids() {
+		participante(1L, PERSONA_ID, 931L, ResultadoAsistencia.PRESENTE);
+		participante(2L, OTRA_PERSONA_ID, 932L, ResultadoAsistencia.PRESENTE);
+		given(atenciones.iniciar(any())).willAnswer(invocacion -> {
+			PedidoDeAtencion pedido = invocacion.getArgument(0);
+			if (pedido.participacionId() == 931L) {
+				throw new Ambigua(List.of(88L, 91L));
+			}
+			throw new SinDerivacion();
+		});
+
+		ResultadoDeAtencionGrupal resultado = service.iniciarLote(actor(), SEDE_ID, CLASE_ID, List.of(
+				new PedidoDeAtencionDeParticipante(1L, null),
+				new PedidoDeAtencionDeParticipante(2L, null)), null);
+
+		assertThat(resultado.items().get(0).problemType())
+				.isEqualTo(ProblemType.DERIVACION_AMBIGUA.value());
+		assertThat(resultado.items().get(0).derivacionIds()).containsExactly(88L, 91L);
+		assertThat(resultado.items().get(1).derivacionIds()).isNull();
+	}
+
 	// =================================================================================
 
 	/** Una excepcion de otro modulo que el lote no puede importar: se reconoce por su tipo. */
@@ -195,6 +259,31 @@ class AtencionDeParticipantesServiceTest {
 		public ProblemType tipoDeProblema() {
 			return ProblemType.PARTICIPACION_SIN_DERIVACION;
 		}
+	}
+
+	/** Como {@code DerivacionAmbiguaException}: declara sus ids por la interfaz, sin importarse. */
+	private static final class Ambigua extends RuntimeException implements ConTipoDeProblema {
+		private final List<Long> ids;
+
+		Ambigua(List<Long> ids) {
+			super("varias derivaciones vigentes");
+			this.ids = ids;
+		}
+
+		@Override
+		public ProblemType tipoDeProblema() {
+			return ProblemType.DERIVACION_AMBIGUA;
+		}
+
+		@Override
+		public Map<String, Object> propiedadesDelProblema() {
+			return Map.of("derivacionIds", ids);
+		}
+	}
+
+	private static PacienteSnapshot persona(long id, String nombre, String apellido) {
+		return new PacienteSnapshot(id, ORG_ID, apellido, nombre, "DNI", "00000000",
+				LocalDate.of(1990, 1, 1), true, true, null, null);
 	}
 
 	private static OperatingActor actor() {

@@ -22,6 +22,8 @@ import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.person.spi.PacienteDirectory;
+import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.problem.ConTipoDeProblema;
 import com.akine.platform.spi.problem.ProblemType;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
@@ -90,6 +92,7 @@ public class AtencionDeParticipantesService {
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final AtencionGrupal atenciones;
+	private final PacienteDirectory pacientes;
 
 	/**
 	 * La transaccion de cada item del lote, en {@code READ_COMMITTED} como {@link #iniciar}: la
@@ -106,6 +109,7 @@ public class AtencionDeParticipantesService {
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
 			AtencionGrupal atenciones,
+			PacienteDirectory pacientes,
 			PlatformTransactionManager transactionManager) {
 
 		this.clases = clases;
@@ -115,6 +119,7 @@ public class AtencionDeParticipantesService {
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.atenciones = atenciones;
+		this.pacientes = pacientes;
 		this.transaccionPorItem =
 				FilaLockPrevia.transaccionDeNegocio(transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -207,14 +212,29 @@ public class AtencionDeParticipantesService {
 				: atenciones.deLaClase(actorDeAtencion(actor, c, null), claseId).stream()
 						.collect(Collectors.groupingBy(AtencionDeParticipante::participacionId));
 
+		// Nombre y apellido en UNA consulta para toda la clase, y despues de los gates: si
+		// encounter nego el panel, no se resolvio ningun nombre. Solo esos dos campos salen de
+		// aca —ni documento ni contacto—, lo mismo que ya muestra la lista de participantes con
+		// inscripcion:read. Que falte la ficha es un dato, no un error.
+		Map<Long, PacienteSnapshot> personas = presentes.isEmpty()
+				? Map.of()
+				: pacientes.findAll(c.organizationId(), presentes.stream()
+						.map(AsistenciaActividad::getPersonaId)
+						.collect(Collectors.toSet()));
+
 		List<ParticipanteEnAtencionView> participantes = presentes.stream()
-				.map(asistencia -> new ParticipanteEnAtencionView(
-						asistencia.getInscripcionId(),
-						asistencia.getPersonaId(),
-						asistencia.getId(),
-						asistencia.getResultado().name(),
-						asistencia.getResultado().estuvo(),
-						porParticipacion.getOrDefault(asistencia.getId(), List.of())))
+				.map(asistencia -> {
+					PacienteSnapshot persona = personas.get(asistencia.getPersonaId());
+					return new ParticipanteEnAtencionView(
+							asistencia.getInscripcionId(),
+							asistencia.getPersonaId(),
+							persona == null ? null : persona.apellido(),
+							persona == null ? null : persona.nombre(),
+							asistencia.getId(),
+							asistencia.getResultado().name(),
+							asistencia.getResultado().estuvo(),
+							porParticipacion.getOrDefault(asistencia.getId(), List.of()));
+				})
 				.toList();
 		return new PanelDeAtencionGrupalView(claseId, oferta.generaRegistroClinico(), participantes);
 	}
@@ -288,7 +308,8 @@ public class AtencionDeParticipantesService {
 		} catch (RuntimeException excepcion) {
 			if (excepcion instanceof ConTipoDeProblema tipada) {
 				return ItemDeAtencionGrupal.error(
-						inscripcionId, tipada.tipoDeProblema(), excepcion.getMessage());
+						inscripcionId, tipada.tipoDeProblema(), excepcion.getMessage(),
+						derivacionIds(tipada));
 			}
 			// Un fallo no previsto no puede ocultar a los demas, y tampoco puede filtrar su
 			// mensaje: se registra con su causa y viaja generico.
@@ -297,6 +318,20 @@ public class AtencionDeParticipantesService {
 			return ItemDeAtencionGrupal.error(inscripcionId, ProblemType.INTERNAL_ERROR,
 					"Error no previsto al abrir esta atencion.");
 		}
+	}
+
+	/**
+	 * Los {@code derivacionIds} que trae {@code derivacion-ambigua} en el Problem Detail
+	 * individual, para que el item del lote ofrezca la misma eleccion. {@code null} si no hay.
+	 */
+	private static List<Long> derivacionIds(ConTipoDeProblema tipada) {
+		if (!(tipada.propiedadesDelProblema().get("derivacionIds") instanceof List<?> ids)) {
+			return null;
+		}
+		return ids.stream()
+				.filter(Number.class::isInstance)
+				.map(id -> ((Number) id).longValue())
+				.toList();
 	}
 
 	private Clase resolverClase(OperatingActor actor, long consultorioId, long claseId) {
