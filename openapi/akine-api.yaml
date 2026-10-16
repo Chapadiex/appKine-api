@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.114.0
+  version: 0.116.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -7822,6 +7822,8 @@ paths:
         Con `idempotencyKey`, un reintento con el mismo pedido devuelve la venta existente con 200 sin duplicar pase, creditos ni deuda (CA-M29-002-06).
 
         **Abono** (desde 0.109.0, RF-M29-007, RF-M18-010): si el producto es `ABONO`, `periodoDesde` es obligatorio y el pase cubre ese periodo; la obligacion nace con `origen = VENTA_ABONO`. Un periodo, una obligacion: un abono del mismo producto para la misma persona con periodo superpuesto es 409 `abono-periodo-superpuesto`. Renovar es vender el periodo siguiente.
+
+        **Renovacion automatica** (desde 0.116.0): con `renovacionAutomatica = true` en un abono, el sistema vende solo el periodo siguiente —con el precio del producto de ese momento y su propia obligacion— al acercarse el fin de este, a nombre de quien vendio. En un pack es 400.
       operationId: venderPase
       parameters:
       - in: path
@@ -8108,6 +8110,154 @@ paths:
             \ `cobrado` y, desde 0.111.0, `moneda` ISO 4217 de la obligacion). Lo\
             \ de 0.111.0 es aditivo"
       summary: Anular un pase vendido por error
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/pases/{paseId}/movimientos:
+    get:
+      description: "Los movimientos del pase del mas viejo al mas nuevo, de a paginas\
+        \ (RF-M29-009, desde 0.116.0): el orden en que se lee `saldoResultante`. `size`\
+        \ se acota a 100 por request. Para un pase con historia larga reemplaza al\
+        \ ledger entero que trae `verPase`, que no cambia."
+      operationId: listarMovimientosDePase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: paseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Numero de pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: Elementos por pagina. Se acota a 100
+        example: 20
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginaDeMovimientosDePase"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PaginaDeMovimientosDePase"
+          description: Una pagina del ledger
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: "Ledger de un pase, paginado"
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/pases/{paseId}/renovacion:
+    put:
+      description: |-
+        Con `activa = true` el sistema vende el periodo siguiente del abono cuando este se acerca a su fin (desde 0.116.0): una venta mas, con el precio del producto de ese momento, su movimiento `COMPRA` y **su propia obligacion** `VENTA_ABONO`, a nombre de quien la prende. **No cobra** (DP-06). El periodo nuevo hereda la renovacion; el viejo queda con `renovacionAutomatica = false` y el nuevo con `renuevaPaseId`. Si el periodo siguiente no se puede vender (producto de baja, persona de baja, periodo ya ocupado), la renovacion se apaga y el motivo queda en `renovacionOmitidaMotivo`.
+
+        Apagarla no anula un periodo ya renovado: para eso, `anularPase` sobre el nuevo. Idempotente: pedir lo que ya esta devuelve 200 sin escribir. Solo abonos.
+      operationId: configurarRenovacionDeAbono
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: paseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfiguracionDeRenovacionDeAbono"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pase"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Pase"
+          description: El abono con la renovacion configurada
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Es un pack, o datos invalidos"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:manage` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version vieja (`concurrent-modification`), abono anulado (`pase-no-ajustable`,\
+            \ `causa = ESTADO`) o ya renovado (`pase-no-ajustable`, `causa = YA_RENOVADO`:\
+            \ se configura sobre el periodo nuevo)"
+      summary: Prender o apagar la renovacion automatica de un abono
       tags:
       - Pases
   /api/v1/consultorios/{consultorioId}/personas/{personaId}/pases:
@@ -24344,6 +24494,25 @@ components:
           description: "La sesion que hace de baseline. **Ausente si no hay ninguna**,\
             \ y eso no es un error"
           example: 488
+    ConfiguracionDeRenovacionDeAbono:
+      type: object
+      description: Prende o apaga la renovacion automatica de un abono (desde 0.116.0).
+      properties:
+        activa:
+          type: boolean
+          description: "true: el sistema vende el periodo siguiente, con su obligacion,\
+            \ al acercarse el fin de este, a nombre de quien la prende. false: no\
+            \ se renueva"
+          example: true
+        version:
+          type: integer
+          format: int64
+          description: Version del pase que el cliente leyo
+          example: 1
+          minimum: 0
+      required:
+      - activa
+      - version
     ConsultorioPageResponse:
       type: object
       description: "Pagina de sedes de la organizacion, segun el filtro de estado\
@@ -30251,6 +30420,8 @@ components:
           - TURNO_RESERVADO
           - TURNO_CANCELADO
           - TURNO_REPROGRAMADO
+          - PASE_POR_VENCER
+          - PASE_SALDO_BAJO
           example: INVITACION_COLABORADOR
         ultimoError:
           type: string
@@ -30680,6 +30851,37 @@ components:
           format: int64
           description: Version para bloqueo optimista. Devolverla tal cual en el PATCH
           example: 0
+    PaginaDeMovimientosDePase:
+      type: object
+      description: "Una pagina del ledger de un pase, del movimiento mas viejo al\
+        \ mas nuevo (desde 0.116.0). Misma forma que el resto de los listados paginados\
+        \ de la API."
+      properties:
+        content:
+          type: array
+          description: Movimientos de esta pagina
+          items:
+            $ref: "#/components/schemas/MovimientoPase"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de movimientos del pase
+          example: 3
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 1
     PagoDeEgreso:
       type: object
       description: "El acto de saldar un egreso. Anular no lo borra: lo deja en `ANULADO`\
@@ -30971,6 +31173,24 @@ components:
           type: integer
           format: int64
           example: 12
+        renovacionAutomatica:
+          type: boolean
+          description: "Solo abonos (desde 0.116.0): true si el sistema va a vender\
+            \ el periodo siguiente al acercarse el fin de este. Se apaga cuando se\
+            \ renueva (el periodo nuevo la hereda) o cuando no se pudo renovar (`renovacionOmitidaMotivo`).\
+            \ Aditivo"
+          example: false
+        renovacionOmitidaMotivo:
+          type: string
+          description: "Por que el sistema no pudo renovar este periodo (producto\
+            \ de baja, persona de baja, periodo ocupado). Ausente si no se intento\
+            \ o se renovo. Aditivo desde 0.116.0"
+        renuevaPaseId:
+          type: integer
+          format: int64
+          description: El periodo de abono que este renueva; ausente si lo vendio
+            una persona. Aditivo desde 0.116.0
+          example: 76
         tipo:
           type: string
           description: '`PACK` o `ABONO` (desde 0.109.0). Un abono cubre el periodo
@@ -30989,7 +31209,8 @@ components:
         version:
           type: integer
           format: int64
-          description: Version para el control optimista del ajuste y la anulacion
+          description: "Version para el control optimista del ajuste, la anulacion\
+            \ y la renovacion"
           example: 1
         vigenciaDesde:
           type: string
@@ -36515,6 +36736,12 @@ components:
           description: Producto vigente de la sede
           example: 12
           exclusiveMinimum: 0
+        renovacionAutomatica:
+          type: boolean
+          description: "Solo abonos (desde 0.116.0): que el sistema venda solo el\
+            \ periodo siguiente, con su obligacion, cuando este se acerque a su fin.\
+            \ Ausente o false: no se renueva. En un pack es 400"
+          example: false
     VersionResponse:
       type: object
       description: Identidad tecnica del backend y version del contrato OpenAPI publicado
