@@ -25,7 +25,7 @@ la DP que lo habilite. Lo que ya está en `main` se queda (no se revierte), pero
 | 08.06 Productos, packs, venta | PARCIAL | 15 | **Solo esquema `V64`**, cero código Java |
 | 08.07 Ledger de créditos | PARCIAL (15/10) | 80 | Consumo (#129), devolución por cancelación, ajuste, anulación y vencimiento programado entraron; falta la consulta paginada del ledger y el frontend. Ver `docs/diseno/AKINE-08.07-08.08-ledger-y-abonos.md` |
 | 08.08 Abonos | PARCIAL (15/10) | 50 | Venta por periodo, obligación `VENTA_ABONO` y cobertura de la asistencia entraron; faltan renovación automática, aviso de vencimiento (RF-M26-008) y frontend |
-| 08.09 Integración económica | NO IMPLEMENTADA | 0 | Todo |
+| 08.09 Integración económica | PARCIAL (16/10) | 50 | Inventario y diseño en `docs/diseno/AKINE-08.09-integracion-economica.md`: venta→deuda→cobro→caja→anulación probado contra MySQL, la deuda de una venta ya no se anula sola (409 `obligacion-de-venta`, 0.114.0) y RF-M21-010 verificado. Faltan RF-M21-009 (espera 08.05) y RF-M22-006/007 (espera **U-41**: no existe esquema de honorarios) |
 
 **Cero frontend de F9.** El `CLAUDE.md` dice que F9 cubre "derivación y productos": **no es así**.
 

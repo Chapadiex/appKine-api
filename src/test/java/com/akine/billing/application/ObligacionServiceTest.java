@@ -6,6 +6,7 @@ import com.akine.billing.domain.Responsable;
 import com.akine.billing.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.billing.domain.exception.ObligacionAnuladaException;
 import com.akine.billing.domain.exception.ObligacionConCobrosException;
+import com.akine.billing.domain.exception.ObligacionDeVentaException;
 import com.akine.billing.domain.exception.ObligacionNotAccessibleException;
 import com.akine.billing.domain.port.ObligacionRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
@@ -369,6 +370,35 @@ class ObligacionServiceTest {
 					.isEqualTo(new BigDecimal("2500.00"));
 
 			verify(obligaciones, never()).save(any());
+		}
+
+		@Test
+		@DisplayName("la deuda de una venta de pase o abono no se anula por aca: 409 con el pase y sin escribir (08.09)")
+		void deuda_de_venta_no_se_anula_sola() {
+			Obligacion pase = Obligacion.porVentaDePase(ORG, SEDE, 77L, PERSONA, new BigDecimal("24000.00"),
+					MONEDA, OFERTA, "Pilates 8 clases", Instant.parse("2026-10-01T12:00:00Z"));
+			ReflectionTestUtils.setField(pase, "id", OBLIGACION);
+			given(obligaciones.findByIdInScope(ORG, SEDE, OBLIGACION)).willReturn(Optional.of(pase));
+
+			// Anularla sola dejaria el pase con sus ocho creditos vivo y sin que nadie lo pague.
+			assertThatThrownBy(() -> service.anular(administrativo, SEDE, OBLIGACION, "Cortesia", 0L))
+					.isInstanceOfSatisfying(ObligacionDeVentaException.class, e -> {
+						assertThat(e.getPaseId()).isEqualTo(77L);
+						assertThat(e.getOrigen()).isEqualTo("VENTA_PASE");
+					});
+
+			Obligacion abono = Obligacion.porVentaDeAbono(ORG, SEDE, 78L, PERSONA, new BigDecimal("30000.00"),
+					MONEDA, OFERTA, "Abono mensual", Instant.parse("2026-10-01T12:00:00Z"));
+			ReflectionTestUtils.setField(abono, "id", OBLIGACION + 1);
+			given(obligaciones.findByIdInScope(ORG, SEDE, OBLIGACION + 1)).willReturn(Optional.of(abono));
+			assertThatThrownBy(() -> service.anular(administrativo, SEDE, OBLIGACION + 1, "Cortesia", 0L))
+					.isInstanceOfSatisfying(ObligacionDeVentaException.class,
+							e -> assertThat(e.getOrigen()).isEqualTo("VENTA_ABONO"));
+
+			assertThat(pase.getEstado()).isEqualTo(EstadoObligacion.PENDIENTE);
+			assertThat(abono.getEstado()).isEqualTo(EstadoObligacion.PENDIENTE);
+			verify(obligaciones, never()).save(any());
+			verifyNoInteractions(alertasDeConsumo, auditoria);
 		}
 
 		@Test
