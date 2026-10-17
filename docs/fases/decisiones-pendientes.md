@@ -560,7 +560,18 @@ dejar el MVP como está:
   3 de 18 sentencias, sin cambio de semántica; (b) agrupar ítems de a varios por transacción,
   manteniendo el resultado parcial por ítem —cambia "independiente"—; (c) limitar los lotes
   concurrentes por sede.
-- **Recomendado:** (a) ya, (c) si el entorno de destino lo confirma; (b) sólo si un RF lo admite.
+- **(a) hecha el 17/10/2026** (rama `akine-asistencia-lote-costo`, `docs/carga.md` §12 "09.05"),
+  sin cambiar ninguna regla —misma transacción por ítem, mismos locks y en el mismo orden, mismas
+  auditorías—: **de 18 a 11 sentencias por participante en el alta, de 15 a 12 en la corrección a
+  ausente y de 18 a 12 en la corrección a presente** (contexto, sede y permiso una vez por pedido;
+  zona y esquema de cobro una vez por pedido; sin neto de una asistencia recién creada; saldo leído
+  bajo el lock). **Lo que no se ganó:** cada ítem sigue con su COMMIT durable, que en la máquina de
+  desarrollo cuesta 4–11 ms según la carga del disco, tanto como todas sus sentencias juntas. La
+  carga de `actividad.js` no distingue la mejora del ruido de la máquina (seis corridas de 5 min y
+  ocho de 2 min, intercaladas). Estimado: ~3 ms de conexión menos por ítem, ~70 ms por lote de 25.
+  **Los 25 commits por lote quedan**, y son lo que satura el pool: bajar de ahí es (b) o (c).
+- **Recomendado:** (c) si el entorno de destino lo confirma; (b) sólo si un RF lo admite. Con (a)
+  hecha, ése es el número con el que se decide.
 - **Fase / RF:** F10 (09.03); RF-M13-008, RF-M28-007.
 - **Destraba:** el SLO con asistencia en lote bajo carga.
 

@@ -998,3 +998,65 @@ mayor cambio: sacar del ítem lo que se repite igual en todos (sede, zona y esqu
 cambian la semántica de "transacción independiente" de RF-M13-008 y son decisión del usuario
 (**U-49**).
 Los números de una sola máquina de desarrollo no son los del entorno de destino (§7).
+
+### 09.05: el costo del lote sin cambiar ninguna regla (17/10/2026, rama `akine-asistencia-lote-costo`)
+
+Lo que U-49 llama opción (a), hecho: **misma transacción por ítem, mismos locks en el mismo orden
+(clase en compartido → inscripción → asistencia → pase), mismas auditorías**, mismo resultado
+observable y sin cambio de contrato ni migración.
+
+**Por qué eran 18.** `ContadorDeSentencias.capturar` (nuevo) devuelve el texto de cada sentencia.
+Un ítem de alta en una oferta `POR_PACK` hacía: sede, rol de plataforma y memberships (contexto y
+permiso, **dentro** de la transacción del ítem), lock de la clase, inscripción, asistencia previa,
+UPDATE de la inscripción, INSERT de asistencia, evento y auditoría, neto del ledger de esa
+asistencia, oferta (esquema de cobro), **sede otra vez** (zona horaria), lock de pases elegibles,
+UPDATE del pase, relectura del saldo, movimiento y auditoría. Cinco de esas lecturas eran
+idénticas en todos los ítems y dos eran innecesarias.
+
+| Qué se sacó del ítem | Por qué no cambia una regla |
+|---|---|
+| Sede, rol de plataforma y memberships: **una vez por pedido**, antes del primer ítem | Ninguna toma lock. Fallaban en el primer ítem con la misma excepción, que el lote no traduce a resultado parcial. El permiso se decide con lo leído en el pedido, como las mutaciones de #91; la revocación sigue sin cruzar al pedido siguiente. El `SUPPORT_ACCESS_USED` se sigue escribiendo una vez por ítem |
+| Zona de la sede: del snapshot que ya se leyó para validar el tenant | Es la misma fila |
+| Esquema de cobro de la oferta: una vez por pedido (`LecturasDeConsumo`) | Era una lectura consistente sin lock |
+| Neto del ledger de una asistencia **recién insertada** | Su id es nuevo: ningún movimiento puede tenerlo |
+| Relectura del saldo después de consumir | `lockElegibles` trae el saldo bajo su `FOR UPDATE`, que la transacción retiene: el UPDATE que tocó la fila restó exactamente uno |
+
+Sentencias por participante (`ListadosDeActividadSentenciasIT`, lote de 1 contra lote de 6; antes
+medido sobre `origin/main` con el mismo IT):
+
+| Pasada | Antes | Después |
+|---|---:|---:|
+| alta, presente (consume) | 18 | **11** |
+| corrección a ausente (devuelve) | 15 | **12** |
+| corrección a presente (vuelve a consumir) | 18 | **12** |
+
+El IT afirma esos tres techos: si algo vuelve a leer por ítem lo que es igual para todo el lote, se
+rompe. Lo que queda en el ítem es trabajo propio: lock de la clase, inscripción, asistencia, sus
+escrituras, evento, auditoría y el movimiento del crédito con su auditoría.
+
+**Carga.** Seis corridas completas de `actividad.js` (5 min, misma configuración que arriba, stack
+aislado `lote` en 3341/8101, imagen de `origin/main` contra imagen de esta rama, intercaladas):
+
+| Corrida | lote p50 / p95 / p99 | interactivo p95 / p99 | COMMIT promedio |
+|---|---|---|---:|
+| antes 1 | 868 / 1.458 / 2.858 | 133 / 1.030 | — |
+| antes 2 | 601 / 895 / 1.753 | 84 / 707 | 4,3 ms |
+| antes 3 | 663 / 985 / 1.277 | 84 / 682 | 4,2 ms |
+| después 1 | 873 / 12.055 / 19.517 | 1.875 / 3.799 | — |
+| después 2 | 821 / 1.600 / 2.971 | 124 / 1.052 | 7,6 ms |
+| después 3 | 773 / 1.256 / 2.092 | 106 / 805 | 6,9 ms |
+
+**La carga no distingue la mejora del ruido de esta máquina, y no hay que leerla como empeoramiento.**
+Las corridas "después" 2 y 3 coincidieron con tres a cuatro MySQL de Testcontainers de otros
+agentes corriendo en el mismo disco (registro de contenedores de la sesión), y el COMMIT promedio
+pasó de 4,2 a 7,6 ms sin que el código toque el commit. Ocho corridas cortas más (2 min, misma
+base, backend alternado) dieron el p95 del lote mejor con la rama en tres de cuatro pares y una
+dispersión de 3 a 28 s entre corridas iguales. El digest de MySQL sí confirma el efecto: ~15.000
+lecturas de memberships y ~18.000 de sede menos por corrida, con la misma cantidad de COMMIT.
+
+**Lo que el número dice para U-49.** Por ítem quedan 11–12 sentencias y **un COMMIT durable**, y en
+esta máquina el COMMIT (4–11 ms según la carga del disco) cuesta tanto como todas las sentencias
+juntas (~0,4 ms cada una). La opción (a) saca un tercio de las sentencias —estimado ~3 ms de
+conexión por ítem, ~70 ms por lote de 25— pero no toca los 25 commits del lote, que son lo que
+satura el pool. Bajar más exige (b) agrupar ítems por transacción o (c) limitar lotes concurrentes:
+las dos siguen siendo decisión del usuario.
