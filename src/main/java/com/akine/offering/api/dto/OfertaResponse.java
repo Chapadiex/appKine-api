@@ -65,8 +65,7 @@ public record OfertaResponse(
 
 		@Schema(
 				description = "Esquema de cobro de la oferta (RN-M27-006), o ausente si no declara "
-						+ "ninguno. `POR_CLASE` esta en la lista porque el esquema lo admite, aunque "
-						+ "hoy no se puede declarar (U-39)",
+						+ "ninguno. `POR_CLASE` devenga con la asistencia, sin no-show (U-39)",
 				allowableValues = {"POR_SESION", "POR_CLASE", "POR_PACK", "POR_ABONO"},
 				example = "POR_SESION")
 		String esquemaCobro,

@@ -33,7 +33,8 @@ class SanitizedPayloadTest {
 						// AKINE-08.02: lo minimo para que un aviso de clase diga de que clase
 						// habla. Que agregarlas obligue a tocar este test es exactamente lo que el
 						// test existe para conseguir.
-						"claseTitulo", "claseInicio", "consultorioNombre",
+						// U-46 (d): sin "claseTitulo"; el aviso dice fecha, hora y sede.
+						"claseInicio", "consultorioNombre",
 						// AKINE E-5: los avisos de turno. Fecha, hora y servicio; nada clinico.
 						"turnoInicio", "turnoInicioAnterior", "servicioNombre",
 						// AKINE-08.08: los avisos de pases (RF-M26-008). Producto, vencimiento y saldo.
@@ -190,6 +191,25 @@ class SanitizedPayloadTest {
 
 		assertThat(releido.get("nombre")).isEqualTo("Perez, Ana");
 		assertThat(releido.get("invitadoPor")).isEqualTo("Dr. Ruiz");
+	}
+
+	/**
+	 * U-46 (d). Un aviso de clase encolado antes del cambio trae {@code claseTitulo}: tiene que
+	 * salir igual, sin el titulo. Encolar uno nuevo con esa clave, en cambio, falla.
+	 */
+	@Test
+	@DisplayName("Una clave retirada se descarta al releer y se rechaza al encolar")
+	void clave_retirada() {
+		SanitizedPayload releido = SanitizedPayload.fromJson(
+				"{\"nombre\":\"Ana\",\"claseTitulo\":\"Rehabilitacion post-ACV\","
+						+ "\"claseInicio\":\"20/10/2026 a las 18:00\"}");
+
+		assertThat(releido.asMap())
+				.doesNotContainKey("claseTitulo")
+				.containsEntry("nombre", "Ana")
+				.containsEntry("claseInicio", "20/10/2026 a las 18:00");
+		assertThatThrownBy(() -> SanitizedPayload.of(Map.of("claseTitulo", "Pilates")))
+				.isInstanceOf(SensitiveContentException.class);
 	}
 
 	@Test

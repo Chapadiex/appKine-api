@@ -65,6 +65,14 @@ public class Obligacion {
 	@Column(name = "pase_id", updatable = false)
 	private Long paseId;
 
+	/** La asistencia a clase que la devengo (U-39, RF-M18-008, V107). {@code null} en otro origen. */
+	@Column(name = "asistencia_id", updatable = false)
+	private Long asistenciaId;
+
+	/** La clase de esa asistencia (V107). {@code null} en otro origen. */
+	@Column(name = "clase_id", updatable = false)
+	private Long claseId;
+
 	@Column(name = "persona_id", nullable = false, updatable = false)
 	private Long personaId;
 
@@ -358,6 +366,46 @@ public class Obligacion {
 				importe, moneda, ofertaId, snapshotNombre, devengadaEn);
 	}
 
+	/**
+	 * La deuda de una clase asistida en una oferta {@code POR_CLASE} (U-39, RF-M18-008).
+	 *
+	 * <p><b>Una sola viva por asistencia</b>: la idempotencia la evalua quien devenga y la
+	 * garantiza {@code uk_obligacion_asistencia_viva} (V107), que mira solo las no anuladas. Asi una
+	 * correccion {@code AUSENTE -> PRESENTE} puede devengar otra despues de que la anterior se anulo.
+	 * El importe es el precio vigente de la oferta el dia de la clase, congelado aca. Siempre
+	 * {@code PARTICULAR} a cargo del paciente (el CHECK de V107 lo exige): la clase grupal no se
+	 * presenta a un financiador por esta via (la atencion clinica del participante es U-42).
+	 */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public static Obligacion porAsistenciaAClase(
+			long organizationId,
+			long consultorioId,
+			long asistenciaId,
+			long claseId,
+			long personaId,
+			BigDecimal importe,
+			String moneda,
+			long ofertaId,
+			String snapshotNombre,
+			Instant devengadaEn) {
+
+		Obligacion o = new Obligacion();
+		o.organizationId = organizationId;
+		o.consultorioId = consultorioId;
+		o.origen = OrigenObligacion.ASISTENCIA_CLASE;
+		o.asistenciaId = asistenciaId;
+		o.claseId = claseId;
+		o.personaId = personaId;
+		o.responsable = Responsable.PACIENTE;
+		o.concepto = ConceptoObligacion.PARTICULAR;
+		o.moneda = moneda;
+		o.ofertaId = ofertaId;
+		o.snapshotNombre = snapshotNombre;
+		o.devengadaEn = devengadaEn;
+		o.inicializarImporte(importe);
+		return o;
+	}
+
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	private static Obligacion porVenta(
 			OrigenObligacion origen,
@@ -452,6 +500,19 @@ public class Obligacion {
 
 	public Long getPaseId() {
 		return paseId;
+	}
+
+	public Long getAsistenciaId() {
+		return asistenciaId;
+	}
+
+	public Long getClaseId() {
+		return claseId;
+	}
+
+	/** {@code true} si tiene cobros imputados: el saldo ya no es el importe original. */
+	public boolean tieneCobros() {
+		return saldo.compareTo(importeOriginal) != 0;
 	}
 
 	public Long getPersonaId() {

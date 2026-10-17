@@ -68,8 +68,8 @@ public record UpdateOfertaRequest(
 		Boolean limpiarPrecio,
 
 		@Schema(description = "Esquema de cobro nuevo. Null deja el actual. Mismo vocabulario que el "
-						+ "alta: `POR_CLASE` responde 400 hasta decidir U-39",
-				allowableValues = {"POR_SESION", "POR_PACK", "POR_ABONO"},
+						+ "alta",
+				allowableValues = {"POR_SESION", "POR_CLASE", "POR_PACK", "POR_ABONO"},
 				example = "POR_PACK",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		@Size(max = 32, message = "El esquema de cobro no puede superar los 32 caracteres")

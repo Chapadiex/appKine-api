@@ -24,8 +24,11 @@ import java.time.LocalDate;
  * @param concepto        {@code PARTICULAR}, {@code FINANCIADOR} o {@code COSEGURO} (AKINE F-4)
  * @param convenio        el convenio aplicado, congelado; {@code null} en las particulares
  * @param sesionId        la atencion que la genero; {@code null} si nacio de una venta (08.06)
- * @param origen          {@code SESION}, {@code VENTA_PASE} o {@code VENTA_ABONO} (V64)
+ * @param origen          {@code SESION}, {@code VENTA_PASE}, {@code VENTA_ABONO} (V64) o
+ *                        {@code ASISTENCIA_CLASE} (V107, U-39)
  * @param paseId          el pase vendido que la genero; {@code null} si nacio de una sesion
+ * @param asistenciaId    la asistencia a clase que la genero (U-39); {@code null} en otro origen
+ * @param claseId         la clase de esa asistencia; {@code null} en otro origen
  */
 public record ObligacionView(
 		long id,
@@ -50,7 +53,9 @@ public record ObligacionView(
 		boolean alertaPracticaNoHabilitada,
 		ConvenioAplicado convenio,
 		String origen,
-		Long paseId) {
+		Long paseId,
+		Long asistenciaId,
+		Long claseId) {
 
 	/**
 	 * El snapshot del convenio de una obligacion, para mostrarlo y para RF-M21-003.
@@ -107,6 +112,8 @@ public record ObligacionView(
 				obligacion.isAlertaPracticaNoHabilitada(),
 				obligacion.getSnapshotDeConvenio().map(ConvenioAplicado::de).orElse(null),
 				obligacion.getOrigen().name(),
-				obligacion.getPaseId());
+				obligacion.getPaseId(),
+				obligacion.getAsistenciaId(),
+				obligacion.getClaseId());
 	}
 }

@@ -105,6 +105,7 @@ class ClaseServiceTest {
 	@Mock private ConsultorioMembershipDirectory memberships;
 	@Mock private AccountIdentityDirectory identidades;
 	@Mock private ConsumoDePaseService consumoDePases;
+	@Mock private DevengoPorClaseService devengoPorClase;
 
 	private ClaseService service;
 
@@ -114,7 +115,7 @@ class ClaseServiceTest {
 				consultorios, permissionGuard,
 				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail,
 				new ProyeccionDeClase(ofertas, espacios, memberships, identidades),
-				consumoDePases,
+				consumoDePases, devengoPorClase,
 				mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
