@@ -6,28 +6,19 @@ import com.akine.scheduling.application.AgendaUnificadaService;
 import com.akine.scheduling.application.RecepcionService;
 import com.akine.scheduling.application.ReservaCommand;
 import com.akine.scheduling.application.TurnoService;
+import com.akine.testsupport.ContadorDeSentencias;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DelegatingDataSource;
 import org.springframework.test.context.ActiveProfiles;
 
-import javax.sql.DataSource;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
-import java.sql.Connection;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Set;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("local")
-@Import({TestcontainersConfiguration.class, AgendaDelDiaSentenciasIT.ContadorConfig.class})
+@Import({TestcontainersConfiguration.class, ContadorDeSentencias.Config.class})
 class AgendaDelDiaSentenciasIT {
 
 	private static final LocalDate LUNES = LocalDate.of(2027, 3, 8);
@@ -109,81 +100,14 @@ class AgendaDelDiaSentenciasIT {
 	}
 
 	private static int contar(Supplier<?> lectura) {
-		int[] cuenta = new int[1];
-		contarConResultado(cuenta, () -> {
-			lectura.get();
-			return 0;
-		});
-		return cuenta[0];
+		return ContadorDeSentencias.contar(() -> lectura.get());
 	}
 
 	private static int contarConResultado(int[] cuenta, Supplier<Integer> lectura) {
-		ContadorDeSentencias.EN_ESTE_HILO.set(new int[1]);
-		try {
-			int resultado = lectura.get();
-			cuenta[0] = ContadorDeSentencias.EN_ESTE_HILO.get()[0];
-			return resultado;
-		} finally {
-			ContadorDeSentencias.EN_ESTE_HILO.remove();
-		}
+		return ContadorDeSentencias.contar(cuenta, lectura);
 	}
 
 	private static Instant hora(int hora) {
 		return LUNES.atTime(hora, 0).atZone(ZONA).toInstant();
-	}
-
-	/** Cuenta las sentencias que prepara el hilo que lo activo, y ninguna otra. */
-	static final class ContadorDeSentencias extends DelegatingDataSource {
-
-		static final ThreadLocal<int[]> EN_ESTE_HILO = new ThreadLocal<>();
-
-		private static final Set<String> SENTENCIAS = Set.of("prepareStatement", "prepareCall", "createStatement");
-
-		ContadorDeSentencias(DataSource destino) {
-			super(destino);
-		}
-
-		@Override
-		public Connection getConnection() throws SQLException {
-			return contando(super.getConnection());
-		}
-
-		@Override
-		public Connection getConnection(String username, String password) throws SQLException {
-			return contando(super.getConnection(username, password));
-		}
-
-		private static Connection contando(Connection real) {
-			return (Connection) Proxy.newProxyInstance(
-					ContadorDeSentencias.class.getClassLoader(),
-					new Class<?>[] {Connection.class},
-					(proxy, metodo, args) -> {
-						int[] cuenta = EN_ESTE_HILO.get();
-						if (cuenta != null && SENTENCIAS.contains(metodo.getName())) {
-							cuenta[0]++;
-						}
-						try {
-							return metodo.invoke(real, args);
-						} catch (InvocationTargetException e) {
-							throw e.getCause();
-						}
-					});
-		}
-	}
-
-	@TestConfiguration(proxyBeanMethods = false)
-	static class ContadorConfig {
-
-		@Bean
-		static BeanPostProcessor contadorDeSentencias() {
-			return new BeanPostProcessor() {
-				@Override
-				public Object postProcessAfterInitialization(Object bean, String beanName) {
-					return bean instanceof DataSource ds && !(bean instanceof ContadorDeSentencias)
-							? new ContadorDeSentencias(ds)
-							: bean;
-				}
-			};
-		}
 	}
 }

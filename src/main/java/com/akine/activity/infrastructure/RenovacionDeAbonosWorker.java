@@ -31,15 +31,18 @@ public class RenovacionDeAbonosWorker {
 	static final int LOTES_POR_TICK = 10;
 
 	private final RenovacionDeAbonos renovacion;
+	private final ObservacionDeJobs observacion;
 	private final int anticipacionDias;
 
 	public RenovacionDeAbonosWorker(
 			RenovacionDeAbonos renovacion,
+			ObservacionDeJobs observacion,
 			@Value("${akine.activity.abonos.renovacion.anticipacion-dias:3}") int anticipacionDias) {
 		if (anticipacionDias < 0) {
 			throw new IllegalArgumentException("La anticipacion de la renovacion no puede ser negativa");
 		}
 		this.renovacion = renovacion;
+		this.observacion = observacion;
 		this.anticipacionDias = anticipacionDias;
 	}
 
@@ -49,7 +52,8 @@ public class RenovacionDeAbonosWorker {
 	public void tick() {
 		try {
 			for (int i = 0; i < LOTES_POR_TICK; i++) {
-				if (renovacion.renovarLosQueTerminan(anticipacionDias, LOTE) < LOTE) {
+				if (observacion.observar(ObservacionDeJobs.RENOVACION_DE_ABONOS,
+						() -> renovacion.renovarLosQueTerminan(anticipacionDias, LOTE)).procesados() < LOTE) {
 					return;
 				}
 			}

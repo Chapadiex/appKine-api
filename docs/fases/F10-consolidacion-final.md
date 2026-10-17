@@ -9,7 +9,7 @@ Ninguna etapa empezó. Depende de [F9](F9-segunda-entrega.md) completa.
 |---|---|---|
 | 09.01 Reportes para clases y productos | NO IMPLEMENTADA | `reporting` crece por contribuyentes (`ReporteContributor`): hoy hay de turnos, sesiones, casos, economía y financiadores. Falta el de `activity` |
 | 09.02 Hardening final | NO IMPLEMENTADA | Hereda lo de 07.07 ([F8](F8-cierre-del-mvp.md)) más la superficie de F9 |
-| 09.03 Concurrencia, rendimiento, observabilidad | NO IMPLEMENTADA | Hereda 07.08. k6 elegido y sin ejecutar |
+| 09.03 Concurrencia, rendimiento, observabilidad | **F9 hecho el 16/10/2026** (rama `akine-09.03-concurrencia-f9`) | Carreras de F9 con IT (dos defectos corregidos), métricas, traza y log de los jobs de pases y abonos, N+1 de los listados medido y carga de F9 con k6: `docs/carga.md` §12 y `docs/observabilidad.md` §7. Lo de 07.08 (G-10) sigue en `docs/carga.md` §5–§11 |
 | 09.04 Release candidate, E2E, CI/CD, docs | NO IMPLEMENTADA | Hereda 07.09. `ci.yml` existe; Sonar comentado; sin backup/restore ni aprobación clínico-legal |
 
 Si F8 se cierra bien, buena parte de 09.02–09.04 es repetir sus gates sobre la superficie de F9.

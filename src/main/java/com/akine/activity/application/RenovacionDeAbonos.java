@@ -31,7 +31,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -143,31 +142,30 @@ public class RenovacionDeAbonos {
 	 * Renueva hasta {@code maximo} abonos cuyo periodo termina dentro de {@code anticipacionDias}.
 	 * <b>No es transaccional</b>: cada abono abre y cierra la suya.
 	 *
-	 * @return cuantos renovo esta llamada
+	 * @return la pasada: procesados son los que renovo esta llamada; omitidos, los que no tocaba
+	 *         renovar todavia, los que resolvio otra instancia y los que se apagaron con su motivo
 	 */
-	public int renovarLosQueTerminan(int anticipacionDias, int maximo) {
+	public PasadaDeJob renovarLosQueTerminan(int anticipacionDias, int maximo) {
 		Instant ahora = clock.instant();
 		// El dia mas adelantado del planeta es, como mucho, el de UTC mas uno: todo abono que en su
 		// sede ya entro en la ventana tiene vigencia_hasta hasta ese limite. Los que todavia no, se
 		// descartan abajo uno por uno.
 		LocalDate limite = LocalDate.ofInstant(ahora, ZoneOffset.UTC).plusDays(1L + anticipacionDias);
-		List<CandidatoARenovar> candidatos = pases.candidatosARenovar(limite, maximo);
-		int renovados = 0;
-		for (CandidatoARenovar candidato : candidatos) {
+		PasadaDeJob.Cuenta cuenta = new PasadaDeJob.Cuenta();
+		for (CandidatoARenovar candidato : pases.candidatosARenovar(limite, maximo)) {
 			try {
-				if (renovarUno(candidato, anticipacionDias, ahora) == Resultado.RENOVADO) {
-					renovados++;
-				}
+				cuenta.contar(renovarUno(candidato, anticipacionDias, ahora) == Resultado.RENOVADO);
 			} catch (RuntimeException e) {
 				// Un abono que falla no detiene el lote: sigue con la renovacion prendida y lo
 				// reintenta el proximo tick.
-				log.error("No se pudo renovar el abono {}", candidato.paseId(), e);
+				cuenta.fallo();
+				log.atError().addKeyValue("paseId", candidato.paseId())
+						.addKeyValue("error", e.getClass().getSimpleName())
+						.setCause(e)
+						.log("No se pudo renovar el abono {}", candidato.paseId());
 			}
 		}
-		if (renovados > 0) {
-			log.info("Abonos renovados: {} de {} candidatos", renovados, candidatos.size());
-		}
-		return renovados;
+		return cuenta.resumen();
 	}
 
 	Resultado renovarUno(CandidatoARenovar candidato, int anticipacionDias, Instant ahora) {
