@@ -148,6 +148,17 @@ public final class ActivityRepositoryPorts {
 		int tomarCupo(long organizationId, long claseId, int capacidadEfectiva);
 
 		/**
+		 * {@link #tomarCupo} para una clase {@code EN_CURSO}: el lugar del ingreso sin inscripcion
+		 * (RF-M13-007, AKINE-08.03). Mismo {@code UPDATE} condicional y mismo techo; lo unico que
+		 * cambia es el estado que exige el {@code WHERE}. Con el de {@link #tomarCupo}
+		 * —{@code PROGRAMADA}— el ingreso devolvia cero filas siempre y respondia
+		 * {@code clase-completa} con lugares libres (escenario 56 de {@code docs/tests-diferidos.md}).
+		 *
+		 * @return 1 si se otorgo el lugar, 0 si no habia
+		 */
+		int tomarCupoEnCurso(long organizationId, long claseId, int capacidadEfectiva);
+
+		/**
 		 * Devuelve un lugar. Condicional por el mismo motivo que {@link #tomarCupo}: un cupo
 		 * ocupado negativo es tan imposible como un saldo negativo.
 		 *
