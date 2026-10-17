@@ -85,9 +85,13 @@ public class ClasesEnElReporte implements ReporteContributor {
 		this.espacios = espacios;
 	}
 
+	/**
+	 * Tambien en {@code SERVICIOS} (AKINE-09.01b): CA-M23-009-06 pide ver la ocupacion de Pilates al
+	 * lado de sus ventas de packs. La misma seccion y la misma formula, no una segunda.
+	 */
 	@Override
 	public Set<ReporteCode> reportes() {
-		return Set.of(ReporteCode.CLASES);
+		return Set.of(ReporteCode.CLASES, ReporteCode.SERVICIOS);
 	}
 
 	@Override

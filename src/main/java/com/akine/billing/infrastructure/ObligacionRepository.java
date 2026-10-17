@@ -220,4 +220,66 @@ public interface ObligacionRepository
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta,
 			@Param("limite") int limite);
+
+	// =================================================================================
+	// M23 — ingresos por servicio (AKINE-09.01b, RF-M23-009)
+	// =================================================================================
+
+	/**
+	 * Lo devengado del periodo por oferta y por origen ({@code SESION}, {@code VENTA_PASE},
+	 * {@code VENTA_ABONO}), con el mismo criterio que {@link #sumarDevengadoEnElReporte}: sin
+	 * {@code ANULADA} ni la baja logica. La suma de todas las filas es ese mismo producido.
+	 *
+	 * <p>Columnas: oferta_id, origen, importe.
+	 */
+	@Query(value = """
+			SELECT o.oferta_id, o.origen, SUM(o.importe_original) AS devengado
+			  FROM obligacion o
+			 WHERE o.organization_id = :organizationId
+			   AND o.consultorio_id = :consultorioId
+			   AND o.estado <> 'ANULADA'
+			   AND o.deleted_at IS NULL
+			   AND o.devengada_en >= :desde
+			   AND o.devengada_en < :hasta
+			 GROUP BY o.oferta_id, o.origen
+			""", nativeQuery = true)
+	List<Object[]> sumarDevengadoPorOfertaEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/**
+	 * Lo cobrado que se aplico en el periodo a deudas de la sede, por oferta y origen de la deuda.
+	 *
+	 * <p>Corta por {@code imputada_en} —cuando la plata se aplico a esa deuda—, no por
+	 * {@code cobrado_en}: un anticipo cobrado en septiembre e imputado en octubre es ingreso de ese
+	 * servicio en octubre, y en septiembre todavia no era de ningun servicio. Excluye los cobros
+	 * anulados (V69: la anulacion devuelve el saldo a la deuda y conserva la fila de imputacion).
+	 * La sede es la de la deuda, no la del cobro.
+	 *
+	 * <p>Llega por {@code ix_cobro_imputacion_fecha} (V106). Columnas: oferta_id, origen, importe.
+	 */
+	@Query(value = """
+			SELECT o.oferta_id, o.origen, SUM(ci.importe) AS cobrado
+			  FROM cobro_imputacion ci
+			  JOIN cobro c
+			    ON c.id = ci.cobro_id
+			   AND c.organization_id = ci.organization_id
+			  JOIN obligacion o
+			    ON o.id = ci.obligacion_id
+			   AND o.organization_id = ci.organization_id
+			 WHERE ci.organization_id = :organizationId
+			   AND o.consultorio_id = :consultorioId
+			   AND c.deleted_at IS NULL
+			   AND o.deleted_at IS NULL
+			   AND ci.imputada_en >= :desde
+			   AND ci.imputada_en < :hasta
+			 GROUP BY o.oferta_id, o.origen
+			""", nativeQuery = true)
+	List<Object[]> sumarCobradoImputadoPorOfertaEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
 }

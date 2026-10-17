@@ -336,4 +336,66 @@ public interface ActividadEnElReporteRepository extends Repository<ClasePrograma
 	long pasesConSaldoDivergente(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId);
+
+	// =================================================================================
+	// Continuidad del circuito (RF-M23-008) e ingresos por servicio (RF-M23-009), 09.01b
+	// =================================================================================
+
+	/**
+	 * Las clases de la sede a las que esas personas <b>asistieron</b> ({@code ASISTIO}: presente o
+	 * presente tarde, con la correccion ya aplicada) y que empezaron despues de {@code desde}.
+	 *
+	 * <p>La asistencia es lo que prueba que la persona recibio el servicio. Una inscripcion sin
+	 * asistencia o la compra de un pase no lo prueban: "pasar a un servicio" se mide por lo
+	 * prestado, igual que la sesion cuenta cuando se cierra y no cuando se reserva el turno.
+	 *
+	 * <p>Llega por {@code ix_inscripcion_persona} (V60). Columnas: persona_id, oferta_id, inicio en
+	 * microsegundos UTC.
+	 */
+	@Query(value = """
+			SELECT i.persona_id,
+			       c.oferta_id,
+			       TIMESTAMPDIFF(MICROSECOND, '1970-01-01', c.inicio) AS inicio_micros
+			  FROM inscripcion_clase i
+			  JOIN clase_programada c
+			    ON c.id = i.clase_id
+			   AND c.organization_id = i.organization_id
+			 WHERE i.organization_id = :organizationId
+			   AND i.persona_id IN (:personas)
+			   AND i.consultorio_id = :consultorioId
+			   AND i.estado = 'ASISTIO'
+			   AND c.inicio > :desde
+			""", nativeQuery = true)
+	List<Object[]> asistenciasDespuesDe(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("personas") Collection<Long> personas,
+			@Param("desde") Instant desde);
+
+	/**
+	 * Los movimientos de credito del periodo por oferta del pase, tipo de producto y tipo de
+	 * movimiento. Sede de la venta, como el reporte de pases.
+	 *
+	 * <p>Columnas: snapshot_oferta_id, tipo de producto, tipo de movimiento, creditos (con signo).
+	 */
+	@Query(value = """
+			SELECT p.snapshot_oferta_id,
+			       p.tipo,
+			       m.tipo,
+			       SUM(m.cantidad) AS creditos
+			  FROM movimiento_pase m
+			  JOIN pase_servicio p
+			    ON p.id = m.pase_id
+			   AND p.organization_id = m.organization_id
+			 WHERE m.organization_id = :organizationId
+			   AND p.consultorio_id = :consultorioId
+			   AND m.ocurrido_en >= :desde
+			   AND m.ocurrido_en < :hasta
+			 GROUP BY p.snapshot_oferta_id, p.tipo, m.tipo
+			""", nativeQuery = true)
+	List<Object[]> creditosPorOfertaYTipo(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
 }

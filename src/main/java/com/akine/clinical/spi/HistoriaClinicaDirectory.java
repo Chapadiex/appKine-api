@@ -1,5 +1,7 @@
 package com.akine.clinical.spi;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -38,6 +40,13 @@ public interface HistoriaClinicaDirectory {
 	 * dos discrepen, y ninguna consulta lo justifica.
 	 */
 	Optional<HistoriaClinicaSnapshot> findPorId(long organizationId, long historiaClinicaId);
+
+	/**
+	 * A que persona pertenece cada una de esas historias, vigentes o no, en una consulta
+	 * (AKINE-09.01b). Las de otro tenant no aparecen. Solo ids: ningun contenido clinico sale por
+	 * aca, y quien la use para un reporte tiene que haberse autorizado con {@code hc:read}.
+	 */
+	Map<Long, Long> personasDe(long organizationId, Collection<Long> historiaClinicaIds);
 
 	/**
 	 * La historia vigente de esa persona, abriendola si todavia no existe.
