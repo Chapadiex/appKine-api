@@ -12,7 +12,7 @@ que hay en `main` y lo que heredan de F8 y del carril G.
 
 | Etapa | Estado | % | Qué hay en `main` | Lo que falta |
 |---|---|---|---|---|
-| 09.01 Reportes para clases y productos | EN CURSO (rama `akine-09.01-reportes-activity`, sin commits) | 10 | `reporting` crece por contribuyentes (`ReporteContributor`): turnos, sesiones, casos, economía y financiadores. `ReporteCode` ya se está tocando en la rama | El contribuyente de `activity`: clases, ocupación, asistencia, pases vendidos, consumidos, vencidos y anulados, abonos renovados |
+| 09.01 Reportes para clases y productos | IMPLEMENTADA en el backend (PR #145) | 10 | `reporting` crece por contribuyentes (`ReporteContributor`): turnos, sesiones, casos, economía y financiadores. `ReporteCode` ya se está tocando en la rama | El contribuyente de `activity`: clases, ocupación, asistencia, pases vendidos, consumidos, vencidos y anulados, abonos renovados |
 | 09.02 Hardening de seguridad, privacidad y accesibilidad | EN CURSO: **superficie de F9 hecha** (rama `akine-09.02-hardening-f9`, contrato 0.120.0; registro abajo) | 60 | G-5 (threat model, #78), G-7 (a11y, web #24), aislamiento de tenant por IT en los módulos del MVP, pre-QA de 146 pasos con D1–D7 corregidos (#126, #131, #133) | ~~Aislamiento de tenant de la superficie de F9~~ (09.02, `ActividadAislamientoIT`); U-46; SAST/DAST (**U-06**, propuesta abierta en #119); `caso:create` y la justificación en `encounter` (U-03, U-04) |
 | 09.03 Concurrencia, rendimiento y observabilidad | EN CURSO (rama `akine-09.03-concurrencia-f9`, un archivo de soporte sin commitear) | 30 | G-4 observabilidad, G-10 carga con k6 (`docs/carga.md` §6–§11), N+1 de agenda y recepción cerrados (#91, #134), concurrencia de pases, cupos, derivación y atención grupal con ITs (ver F9) | Escenarios diferidos de concurrencia de 08.01–08.03 (39, 46, 55, 57); carga de F9; **el SLO de escrituras a 500 usuarios sigue sin cumplirse** y espera decisión (`docs/carga.md` §10) |
 | 09.04 Release candidate, E2E, CI/CD y documentación | EN CURSO (este documento, rama `akine-09.04-docs-rc`) | 30 | CI con cuatro checks en verde sobre `eef0c87` (4.009 unitarias + 880 de integración); imagen Docker y SBOM (G-3); backup, restore, rollback, smoke y runbooks (G-13, `docs/operaciones/`); E2E contra el backend real en el CI de `appKine-web`, con specs de clases, asistencia, pases y atención grupal; notas del RC en [`../release/RC-1.md`](../release/RC-1.md); runbook de los jobs de F9 (`docs/operaciones/runbooks.md` R7) | **QA manual** (U-01), **aprobación clínica y legal** y deploy con ventana de estabilización (U-02), ensayo de migración `V96`–`V103` contra una copia de datos, tag del RC |
@@ -32,7 +32,7 @@ El porcentaje de la fase es el promedio simple de las cuatro.
 
 ## Para cerrar la fase
 
-- [ ] Contribuyente de `activity` al reporting (09.01).
+- [x] ~~Contribuyente de `activity` al reporting (09.01).~~ AKINE-09.01 (`V104`): reportes `CLASES` (RF-M23-007, secciones `clases` y `participacion`) y `PASES` (RF-M23-010, seccion `pases`). RF-M23-008 y RF-M23-009 siguen sin cimiento; la atencion grupal ya la cuenta `encounter` como sesion y no se duplica.
 - [ ] Gates de F8 repetidos con M28–M29 adentro (09.02, 09.03).
 - [ ] QA manual corrido con los circuitos de F9 incluidos (los doce circuitos de `docs/qa/` son del MVP:
   no hay uno de clases, pases y abonos).
