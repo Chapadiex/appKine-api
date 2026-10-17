@@ -22,6 +22,8 @@ import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseProgramadaRep
 import com.akine.activity.domain.port.ActivityRepositoryPorts.InscripcionClaseRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
+import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
@@ -98,6 +100,7 @@ class AsistenciaServiceTest {
 	@Mock private PacienteDirectory personas;
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
+	@Mock private PermissionEvaluator permissionEvaluator;
 	@Mock private AuditTrail auditTrail;
 	@Mock private PlatformTransactionManager transactionManager;
 	@Mock private ConsumoDePaseService consumoDePases;
@@ -107,7 +110,7 @@ class AsistenciaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AsistenciaService(asistencias, eventos, inscripciones, clases, eventosDeClase,
-				capacidad, proyeccion, personas, consultorios, permissionGuard,
+				capacidad, proyeccion, personas, consultorios, permissionGuard, permissionEvaluator,
 				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail, consumoDePases,
 				transactionManager);
 
@@ -122,6 +125,8 @@ class AsistenciaServiceTest {
 		given(clases.lockByIdInScope(anyLong(), anyLong(), anyLong())).willAnswer(llamada ->
 				clases.findByIdInScope(llamada.getArgument(0), llamada.getArgument(1), llamada.getArgument(2)));
 		given(capacidad.efectiva(anyLong(), anyLong(), any())).willReturn(8);
+		given(permissionEvaluator.evaluate(any()))
+				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
 		given(proyeccion.de(anyLong(), anyLong(), any(ClaseProgramada.class))).willAnswer(llamada -> {
 			ClaseProgramada clase = llamada.getArgument(2);
 			return ClaseView.de(clase, 8, clase.getCupoOcupado(), "Pilates", null, null);

@@ -37,7 +37,9 @@ public record AsistenciaResponse(
 		@Schema(description = "Instructor congelado al momento del hecho", example = "55")
 		Long profesionalMembershipId,
 
-		@Schema(description = "Nota operativa, **nunca clinica**") String observaciones,
+		@Schema(description = "Nota **operativa, nunca clinica**: la ve cualquiera con "
+				+ "`inscripcion:read` y no debe llevar datos de salud (U-46 d).")
+		String observaciones,
 
 		Instant registradaEn,
 

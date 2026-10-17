@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.123.0
+  version: 0.125.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -3284,6 +3284,8 @@ paths:
         **La idempotencia sale del hecho, no de una clave**: repetir el mismo resultado devuelve 200 sin escribir nada; mandar otro resultado es una **correccion**, que exige `motivo` y **apendea** el valor anterior en el historial en vez de borrarlo.
 
         **El cupo no se mueve**: los cuatro estados involucrados consumen lugar.
+
+        **Sin `pase:read` en la sede**, `consumoDeCredito` viaja solo con su `efecto`: quien toma lista sabe si consumio un credito, pero no que pase era ni cuanto le queda (U-46 c). Vale igual para el lote y para el ingreso sin inscripcion.
       operationId: registrarAsistencia
       parameters:
       - in: path
@@ -22663,7 +22665,8 @@ components:
           example: 412
         observaciones:
           type: string
-          description: "Nota operativa, **nunca clinica**"
+          description: "Nota **operativa, nunca clinica**: la ve cualquiera con `inscripcion:read`\
+            \ y no debe llevar datos de salud (U-46 d)."
         origen:
           type: string
           description: "MOSTRADOR, LOTE, CIERRE o INGRESO_SIN_INSCRIPCION. Distingue\
@@ -25014,12 +25017,16 @@ components:
         paseId:
           type: integer
           format: int64
-          description: El pase afectado. Ausente si no hubo movimiento.
+          description: "El pase afectado. Ausente si no hubo movimiento, **y siempre\
+            \ ausente si quien registra no tiene `pase:read` en la sede** (U-46 c):\
+            \ el `efecto` le dice si consumio, pero no que pase era."
           example: 77
         saldo:
           type: integer
           format: int32
-          description: Saldo del pase despues del movimiento.
+          description: Saldo del pase despues del movimiento. **Solo con `pase:read`**
+            en la sede; sin el permiso viaja ausente aunque haya habido movimiento
+            (U-46 c).
           example: 7
     ConvenioAplicado:
       type: object
@@ -29529,7 +29536,8 @@ components:
       properties:
         observaciones:
           type: string
-          description: "Nota operativa, no clinica"
+          description: "Nota **operativa, no clinica**: la ve cualquiera con `inscripcion:read`,\
+            \ asi que **no debe llevar datos de salud** (U-46 d)."
           example: Se sumo sin anotarse
           maxLength: 500
           minLength: 0
@@ -33532,7 +33540,9 @@ components:
         observaciones:
           type: string
           description: "Nota **operativa, no clinica**. La ve cualquiera con `inscripcion:read`,\
-            \ asi que no puede llevar informacion de salud."
+            \ asi que **no debe llevar datos de salud** (U-46 d): ni diagnosticos,\
+            \ ni sintomas, ni el motivo de una ausencia medica. El servidor no puede\
+            \ verificarlo; la pantalla lo avisa al cargarla."
           example: Llego a los 10 minutos
           maxLength: 500
           minLength: 0

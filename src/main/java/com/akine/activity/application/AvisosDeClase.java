@@ -129,9 +129,12 @@ public class AvisosDeClase {
 				claveIdempotente,
 				clase.getOrganizationId(),
 				null,
+				// U-46 (d), decidida el 17/10/2026: el TITULO de la clase no viaja. Es texto libre
+				// del centro —"Rehabilitacion post-ACV"— y le cuenta un dato de salud a quien lea la
+				// casilla. Fecha, hora y sede alcanzan para que el inscripto sepa de que clase se
+				// habla; el detalle esta en el centro.
 				depurar(tipo, clase, Map.of(
 						"nombre", contacto.nombre() == null ? "" : contacto.nombre(),
-						"claseTitulo", clase.getTitulo() == null ? "" : clase.getTitulo(),
 						"claseInicio", FORMATO.format(
 								clase.getInicio().atZone(ZoneId.of(zonaHoraria))),
 						"consultorioNombre", sedeNombre == null ? "" : sedeNombre))));
