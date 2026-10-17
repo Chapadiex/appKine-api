@@ -157,6 +157,7 @@ class AsistenciaServiceTest {
 		// NI UN LLAMADO AL ASIGNADOR. Si esta linea alguna vez falla, alguien reintrodujo una
 		// escritura de cupo donde no hay ningun lugar que otorgar.
 		verify(clases, never()).tomarCupo(anyLong(), anyLong(), anyInt());
+		verify(clases, never()).tomarCupoEnCurso(anyLong(), anyLong(), anyInt());
 		verify(clases, never()).liberarCupo(anyLong(), anyLong());
 	}
 
@@ -229,7 +230,7 @@ class AsistenciaServiceTest {
 		given(personas.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(persona()));
 		given(inscripciones.findVivaDePersona(ORG_ID, CLASE_ID, PERSONA_ID))
 				.willReturn(Optional.empty());
-		given(clases.tomarCupo(ORG_ID, CLASE_ID, 8)).willReturn(0);
+		given(clases.tomarCupoEnCurso(ORG_ID, CLASE_ID, 8)).willReturn(0);
 
 		assertThatThrownBy(() -> service.registrarIngresoSinInscripcion(
 				actor(), SEDE_ID, CLASE_ID,
@@ -456,7 +457,7 @@ class AsistenciaServiceTest {
 		given(personas.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(persona()));
 		given(inscripciones.findVivaDePersona(ORG_ID, CLASE_ID, PERSONA_ID))
 				.willReturn(Optional.empty());
-		given(clases.tomarCupo(ORG_ID, CLASE_ID, 8)).willReturn(1);
+		given(clases.tomarCupoEnCurso(ORG_ID, CLASE_ID, 8)).willReturn(1);
 		given(inscripciones.saveAndFlush(any())).willAnswer(llamada -> {
 			InscripcionClase nueva = llamada.getArgument(0);
 			if (nueva.getId() == null) {
@@ -500,7 +501,7 @@ class AsistenciaServiceTest {
 		assertThatThrownBy(() -> service.registrarIngresoSinInscripcion(
 				actor(), SEDE_ID, CLASE_ID, ingreso))
 				.isInstanceOf(InscripcionDuplicadaException.class);
-		verify(clases, never()).tomarCupo(anyLong(), anyLong(), anyInt());
+		verify(clases, never()).tomarCupoEnCurso(anyLong(), anyLong(), anyInt());
 	}
 
 	@Test

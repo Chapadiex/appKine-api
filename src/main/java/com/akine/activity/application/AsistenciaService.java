@@ -211,8 +211,17 @@ public class AsistenciaService {
 	 * {@code estado}.
 	 *
 	 * <p><b>Cerrar no cobra.</b> Ver la cabecera.
+	 *
+	 * <p><b>La clase se toma {@code FOR UPDATE} antes de buscar pendientes, en
+	 * {@code READ_COMMITTED}</b> (escenario 55 de {@code docs/tests-diferidos.md}). Sin el lock, dos
+	 * cierres simultaneos leian la misma lista de pendientes, el primero insertaba las asistencias y
+	 * los demas chocaban contra {@code uk_asistencia_clase_persona}: el dato quedaba bien y el
+	 * operador recibia un 500 por un cierre "idempotente". Con el lock el segundo espera, y con
+	 * {@code READ_COMMITTED} su consulta de pendientes ve lo que el primero commiteo: no encuentra
+	 * ninguno y devuelve la clase ya realizada. Mismo orden que el resto del modulo:
+	 * {@code clase_programada -> inscripcion_clase}.
 	 */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ResultadoDeCierre cerrar(OperatingActor actor, long consultorioId, long claseId) {
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
@@ -223,7 +232,8 @@ public class AsistenciaService {
 		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
 		exigir(actor, organizationId, consultorioId, PermissionCodes.INSCRIPCION_MANAGE);
 
-		ClaseProgramada clase = exigirClaseDelTenant(organizationId, consultorioId, claseId);
+		ClaseProgramada clase = clases.lockByIdInScope(organizationId, consultorioId, claseId)
+				.orElseThrow(() -> new ClaseNotAccessibleException(claseId));
 		EstadoClase anterior = clase.getEstado();
 		Instant ahora = Instant.now();
 
@@ -543,8 +553,10 @@ public class AsistenciaService {
 		Instant ahora = Instant.now();
 
 		// EL MISMO UPDATE CONDICIONAL DE 08.02. El techo `capacidad` esta en el WHERE como columna,
-		// asi que esta operacion —escrita en otra etapa— tampoco puede sobrevender.
-		if (clases.tomarCupo(organizationId, claseId, capacidadEfectiva) != 1) {
+		// asi que esta operacion —escrita en otra etapa— tampoco puede sobrevender. Es la variante
+		// EN_CURSO: la de 08.02 exige PROGRAMADA y aca la clase ya empezo, asi que devolvia cero
+		// filas siempre y el ingreso respondia clase-completa con lugares libres (escenario 56).
+		if (clases.tomarCupoEnCurso(organizationId, claseId, capacidadEfectiva) != 1) {
 			throw new ClaseCompletaException(
 					claseId, capacidadEfectiva, clase.getCupoOcupado());
 		}

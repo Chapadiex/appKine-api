@@ -53,6 +53,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       no delate ningun id. Pasarlo a 404 es la decision U-46 (a).</li>
  * </ul>
  *
+ * <p>La agenda unificada de la sede (escenario 41 de {@code docs/tests-diferidos.md}) entra en la
+ * misma regla: la de A no se lee desde afuera, y la propia de cada atacante no trae la clase de A.
+ *
  * <p>Y al final nada de A se movio.
  */
 class ActividadAislamientoIT extends BaseEscenarioDiferido {
@@ -84,6 +87,11 @@ class ActividadAislamientoIT extends BaseEscenarioDiferido {
 				""".formatted(inicio, inicio.plus(1, ChronoUnit.HOURS)));
 		assertThat(clase.status()).as("A programa su clase: %s", clase.body()).isEqualTo(201);
 		long claseId = ultimoId("clase_programada", a.organizationId());
+		LocalDate fechaDeLaClase = inicio.atZone(java.time.ZoneId.of(jdbc.queryForObject(
+				"SELECT timezone FROM consultorio WHERE id = ?", String.class, sedeA))).toLocalDate();
+		Respuesta agendaDeA = get(cA + "/agenda?fecha=" + fechaDeLaClase, a.token());
+		assertThat(agendaDeA.body()).as("control positivo: el duenio ve su clase en la agenda unificada")
+				.contains("Clase de aislamiento");
 
 		Respuesta inscripcion = post(cA + "/clases/" + claseId + "/inscripciones", a.token(),
 				"{\"personaId\":" + persona + "}");
@@ -152,6 +160,11 @@ class ActividadAislamientoIT extends BaseEscenarioDiferido {
 						"{\"items\":[{\"inscripcionId\":" + inscripcionId + ",\"resultado\":\"PRESENTE\"}]}"));
 				pedidos.add(Pedido.post(k + "/ingresos",
 						"{\"personaId\":" + persona + ",\"resultado\":\"PRESENTE\"}"));
+				if (sede == sedeA) {
+					// La agenda unificada de la sede de A (escenario 41): por la propia sede es
+					// una lectura legitima y se mira abajo.
+					pedidos.add(Pedido.get(c + "/agenda?fecha=" + fechaDeLaClase));
+				}
 				if (!atacante.administrativo()) {
 					// Lo clinico de la clase: el profesional tiene hc:read/hc:write por base.
 					pedidos.add(Pedido.clinico("GET", i + "/elegibilidad-clinica", null));
@@ -221,6 +234,12 @@ class ActividadAislamientoIT extends BaseEscenarioDiferido {
 					.isEqualTo(200);
 			celdas.assertThat(grilla.body()).as("[%s] la grilla propia no trae la clase de A", atacante.nombre())
 					.doesNotContain("Clase de aislamiento");
+			Respuesta agenda = get(propia + "/agenda?fecha=" + fechaDeLaClase, atacante.token());
+			celdas.assertThat(agenda.status()).as("[%s] agenda unificada propia: %s", atacante.nombre(),
+					agenda.body()).isEqualTo(200);
+			celdas.assertThat(agenda.body()).as("[%s] la agenda propia no trae la clase de A", atacante.nombre())
+					.doesNotContain("Clase de aislamiento")
+					.doesNotContain("\"eventoId\":" + claseId + ",");
 			if (atacante.administrativo()) {
 				Respuesta catalogo = get(propia + "/productos", atacante.token());
 				celdas.assertThat(catalogo.status()).as("[%s] catalogo propio", atacante.nombre()).isEqualTo(200);

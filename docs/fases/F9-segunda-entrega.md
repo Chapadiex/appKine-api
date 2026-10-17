@@ -3,6 +3,8 @@
 > **Reverificada el 16/10/2026** · backend `main` `eef0c87` (contrato **0.118.0**, 333 operaciones,
 > última migración **`V103`**) · frontend `main` `c5d803d` (cliente **0.118.0**, web #105) · **~82 %**.
 > Auditoría original del 01/10/2026 sobre backend `37ff201` / frontend `4c6ae8b` (~23 %).
+> **17/10/2026:** los escenarios diferidos 39–42, 46–48 y 54–59 tienen IT y corrieron contra MySQL
+> (`akine-f9-escenarios-diferidos`); dos defectos de 08.03 corregidos. La fase pasa a **~86 %**.
 > Etapas del plan: 08.01–08.09 (§13). Leer DP-07 y DP-10 (§7).
 
 ## La fase dejó de estar congelada, y la DP que lo registre no existe
@@ -21,9 +23,9 @@ así). No frena código: es trazabilidad para la tesis.
 
 | Etapa | Estado | % | Qué entró | Lo que falta |
 |---|---|---|---|---|
-| 08.01 Clases y agenda unificada | HECHA salvo ITs | 85 | Backend desde 20/09; nombres de oferta, profesional y box y **box elegido** al programar y reprogramar (#128, 0.102.0 → 0.103.0 en `main`). Pantalla web #81 y #91; E2E `flujo-clases` | Escenarios diferidos 39 (clase contra turno con dos transacciones reales), 40, 41 (tenant) y 42 (REST) de `docs/tests-diferidos.md`. `ClaseEspacioElegidoIT` cubre cuatro programaciones simultáneas sobre el mismo box, no la carrera contra un turno |
-| 08.02 Inscripciones, cupos, espera | HECHA salvo ITs | 85 | `UltimaVacanteConcurrenteIT`, `PromocionDesdeEsperaConcurrenteIT`, `CupoOcupadoInvarianteIT` verdes desde el 06/10; `aceptaListaEspera` opcional (#125). Pantalla web #81 | Escenarios 46 (bajar la capacidad contra una inscripción), 47 y 48 |
-| 08.03 Asistencia | PARCIAL | 70 | Consumo de crédito por asistencia (#129), la asistencia toma la clase `FOR SHARE` contra la cancelación (#135). Pantalla web #79; E2E `flujo-asistencia` | **El devengo `POR_CLASE` (RF-M18-008/RF-M19-009) espera U-39**: declarar `POR_CLASE` responde 400. Escenarios 54–59 sin IT propio, entre ellos el unique de asistencia, el cierre concurrente y el lote con transacciones independientes |
+| 08.01 Clases y agenda unificada | HECHA | 95 | Backend desde 20/09; nombres de oferta, profesional y box y **box elegido** al programar y reprogramar (#128, 0.102.0 → 0.103.0 en `main`). Pantalla web #81 y #91; E2E `flujo-clases` ; escenarios 39–42 con IT el 17/10 (`ClaseContraTurnoConcurrenteIT`, `MigracionesF9IT`, `ActividadAislamientoIT`, `ActividadRestIT`) | — |
+| 08.02 Inscripciones, cupos, espera | HECHA | 95 | `UltimaVacanteConcurrenteIT`, `PromocionDesdeEsperaConcurrenteIT`, `CupoOcupadoInvarianteIT` verdes desde el 06/10; `aceptaListaEspera` opcional (#125). Pantalla web #81 ; escenarios 46–48 con IT el 17/10 (`CapacidadContraInscripcionIT`, `MigracionesF9IT`, `ActividadRestIT`) | — |
+| 08.03 Asistencia | PARCIAL | 80 | Consumo de crédito por asistencia (#129), la asistencia toma la clase `FOR SHARE` contra la cancelación (#135). Pantalla web #79; E2E `flujo-asistencia`. Escenarios 54–59 con IT el 17/10 (`AsistenciaConcurrenteIT`, `MigracionesF9IT`, `ActividadRestIT`), que destaparon el ingreso sin inscripción roto y el cierre concurrente en 500 | **El devengo `POR_CLASE` (RF-M18-008/RF-M19-009) espera U-39**: declarar `POR_CLASE` responde 400 |
 | 08.04 Derivación al circuito clínico | HECHA en backend | 80 | API de cuatro operaciones (#125, 0.101.0); carrera de la derivación concurrente confirmada y corregida (#132, `DerivacionConcurrenteIT`). `DerivacionParticipanteIT`, `LecturaAuditadaIT` | **Pantalla para derivar**: el frontend llama `listarDerivacionesDeParticipante` y `revertirDerivacionDeParticipante`, pero no `derivarParticipante` ni `verElegibilidadClinicaDeParticipante` (medido en `appKine-web` `main`). Sin ella, la atención grupal no tiene cómo empezar desde la pantalla |
 | 08.05 Atención clínica grupal | HECHA | 90 | Una `Sesion` por participante y Caso desde su derivación, lote y panel (#141, 0.115.0, `V102`); nombres, título de clase, número de caso y `derivacionIds` (#143, 0.118.0). Pantalla web #104/#105; E2E `flujo-atencion-grupal` | **U-42** (consecuencia económica). Reemplazo de profesional sigue en U-24 |
 | 08.06 Productos, packs, venta | HECHA | 90 | Catálogo de productos, venta idempotente con obligación `VENTA_PASE` (#129, `V96`). Pantalla web #92; E2E `flujo-pases` | `POR_CLASE` (U-39) |
@@ -51,16 +53,20 @@ El porcentaje de la fase es el promedio simple de las nueve etapas.
   `DevolucionYAjusteConcurrenteIT`, `PaseAbonoAjusteYVencimientoIT`, `PaseVentaYConsumoIT`,
   `PromocionDesdeEsperaConcurrenteIT`, `UltimaVacanteConcurrenteIT`,
   `VentaDePaseEnElCircuitoEconomicoIT`. El CI de `eef0c87` corrió **4.009 unitarias + 880 de
-  integración, 0 fallos**.
+  integración, 0 fallos**. Después entraron los de 09.01–09.03 (#145–#147) y, el 17/10, los de los
+  escenarios diferidos: `ClaseContraTurnoConcurrenteIT`, `CapacidadContraInscripcionIT`,
+  `AsistenciaConcurrenteIT`, `MigracionesF9IT` y, en `diferidos`, `ActividadRestIT`.
 
-## Defectos que F9 destapó y corrigió (14–16/10)
+## Defectos que F9 destapó y corrigió (14–17/10)
 
-| PR | Defecto |
+| PR o fecha | Defecto |
 |---|---|
 | #129 | Declarar cualquier `esquemaCobro` en una oferta violaba `ck_oferta_politica_devengo` (V64) y respondía 500 |
 | #132 | Cuatro derivaciones simultáneas del mismo participante: tres terminaban en 500 (`null identifier` en una sesión de Hibernate rota) |
 | #135 | Una asistencia que consumía crédito mientras otro cancelaba la clase perdía el crédito sin error |
 | #139 | `DELETE /obligaciones/{id}` anulaba la deuda de una venta y dejaba el pase `ACTIVO` con sus créditos |
+| 17/10 (escenario 56) | **El ingreso sin inscripción no funcionó nunca desde 08.03**: pedía el lugar con el `tomarCupo` de 08.02, que exige `PROGRAMADA`, sobre una clase que tiene que estar `EN_CURSO`. Respondía `clase-completa` con lugares libres. Ahora `tomarCupoEnCurso` |
+| 17/10 (escenario 55) | Dos cierres simultáneos de la misma clase: los perdedores chocaban contra `uk_asistencia_clase_persona` y respondían 500. Ahora `cerrar` toma la clase `FOR UPDATE` en `READ_COMMITTED` y el segundo es idempotente de verdad |
 
 ## Ramas estacionadas
 
@@ -72,8 +78,8 @@ El porcentaje de la fase es el promedio simple de las nueve etapas.
 
 1. [ ] **Pantalla de derivación** (08.04): `derivarParticipante` y `verElegibilidadClinicaDeParticipante`
    en el frontend. Es lo único que impide recorrer 08.04 → 08.05 entero desde la pantalla.
-2. [ ] **ITs diferidos de 08.01–08.03** (escenarios 39–42, 46–48, 54–59). Los de concurrencia los
-   está escribiendo 09.03 y los de aislamiento 09.02 (F10, en curso el 16/10).
+2. [x] ~~**ITs diferidos de 08.01–08.03** (escenarios 39–42, 46–48, 54–59)~~ — corridos el 17/10 contra MySQL, con el aislamiento
+   de 09.02 (`ActividadAislamientoIT`) reutilizado para 41, 48 y 59. Ver `docs/tests-diferidos.md`.
 3. [ ] **U-39** → devengo `POR_CLASE` (08.03). Sin decisión no hay código que escribir.
 4. [ ] **U-41** → liquidación de honorarios por clase (08.09).
 5. [ ] U-40, U-42, U-43, U-44, U-45: confirmar lo que hoy hace el código (no bloquean).
@@ -95,5 +101,5 @@ El porcentaje de la fase es el promedio simple de las nueve etapas.
 
 - [ ] DP formal de la apertura de F9 (o DU-12 cerrada).
 - [ ] Pantalla de derivación.
-- [ ] Escenarios diferidos 39–59 con IT o descartados con motivo.
+- [x] Escenarios diferidos 39–59 con IT o descartados con motivo (17/10).
 - [ ] U-39 y U-41 decididas e implementadas, o declaradas fuera de la entrega.
