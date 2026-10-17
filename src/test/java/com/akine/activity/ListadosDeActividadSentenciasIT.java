@@ -49,6 +49,12 @@ class ListadosDeActividadSentenciasIT {
 
 	private static final int MUCHAS = 6;
 
+	// U-39, medidos el 17/10/2026 (ver asistencia_en_lote_por_clase): 9, 11 y 11 por participante,
+	// por debajo o igual que POR_PACK (11, 12, 12), porque una clase POR_CLASE no toca pases.
+	private static final int TECHO_ALTA_POR_CLASE = 9;
+	private static final int TECHO_ANULA_POR_CLASE = 11;
+	private static final int TECHO_REDEVENGA_POR_CLASE = 11;
+
 	@Autowired private ClaseService claseService;
 	@Autowired private InscripcionService inscripcionService;
 	@Autowired private AsistenciaService asistenciaService;
@@ -118,6 +124,49 @@ class ListadosDeActividadSentenciasIT {
 		assertThat(porParticipante.get("alta, presente (consume)")).isLessThanOrEqualTo(11);
 		assertThat(porParticipante.get("correccion a ausente (devuelve)")).isLessThanOrEqualTo(12);
 		assertThat(porParticipante.get("correccion a presente (vuelve a consumir)")).isLessThanOrEqualTo(12);
+	}
+
+	@Test
+	@DisplayName("Medicion U-39: la asistencia en lote a una clase POR_CLASE, que devenga y anula deuda")
+	void asistencia_en_lote_por_clase() {
+		Escenario una = escenarioDeLotePorClase(1);
+		Escenario seis = escenarioDeLotePorClase(MUCHAS);
+
+		Map<String, Integer> porParticipante = new LinkedHashMap<>();
+		porParticipante.put("alta, presente (devenga)",
+				medirLote(una, seis, ResultadoAsistencia.PRESENTE, null));
+		porParticipante.put("correccion a ausente (anula)",
+				medirLote(una, seis, ResultadoAsistencia.AUSENTE, "Se marco por error"));
+		porParticipante.put("correccion a presente (devenga otra)",
+				medirLote(una, seis, ResultadoAsistencia.PRESENTE, "Llego tarde"));
+
+		// Techo propio de POR_CLASE (U-39): no comparte el de POR_PACK, que no cambia. El precio, el
+		// nombre y el esquema de la oferta se leen una vez por pedido (LecturasDeConsumo), asi que lo
+		// unico que el devengo suma por item es su propia escritura: el INSERT de la obligacion y su
+		// audit_event al devengar; el SELECT ... FOR UPDATE de la viva, su UPDATE y su audit_event al
+		// anular; y la busqueda de la viva antes de re-devengar. A cambio, no toca pases.
+		assertThat(porParticipante.get("alta, presente (devenga)")).isLessThanOrEqualTo(TECHO_ALTA_POR_CLASE);
+		assertThat(porParticipante.get("correccion a ausente (anula)")).isLessThanOrEqualTo(TECHO_ANULA_POR_CLASE);
+		assertThat(porParticipante.get("correccion a presente (devenga otra)"))
+				.isLessThanOrEqualTo(TECHO_REDEVENGA_POR_CLASE);
+	}
+
+	private Escenario escenarioDeLotePorClase(int participantes) {
+		Tenant tenant = fx.crearTenant(10, participantes);
+		jdbc.update("""
+				UPDATE oferta_servicio_consultorio
+				   SET esquema_cobro = 'POR_CLASE', momento_devengo = 'ASISTENCIA',
+				       precio_base = 6000.00, moneda = 'ARS'
+				 WHERE id = ?
+				""", tenant.ofertaId());
+		long clase = fx.programarClase(tenant, 10, 1);
+		List<Long> inscripciones = new ArrayList<>();
+		for (Long persona : tenant.personas()) {
+			fx.inscribir(tenant, clase, persona, false);
+			inscripciones.add(fx.inscripcionDe(clase, persona));
+		}
+		asistenciaService.iniciar(tenant.actor(), tenant.consultorioId(), clase);
+		return new Escenario(tenant, clase, 0, inscripciones);
 	}
 
 	/** Sentencias por participante de un lote, midiendo el de uno y el de seis. */
