@@ -4,8 +4,6 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
-import com.akine.organization.spi.PermissionGuard;
-import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.scheduling.domain.PermissionCodes;
@@ -66,7 +64,7 @@ public class RecepcionService {
 	private final ConsultorioDirectory consultorios;
 	private final PacienteDirectory pacientes;
 	private final OfertaDirectory ofertas;
-	private final PermissionGuard permissionGuard;
+	private final SoporteEnAgenda soporte;
 	private final PrepagoDeRecepcion prepago;
 
 	public RecepcionService(
@@ -75,7 +73,7 @@ public class RecepcionService {
 			ConsultorioDirectory consultorios,
 			PacienteDirectory pacientes,
 			OfertaDirectory ofertas,
-			PermissionGuard permissionGuard,
+			SoporteEnAgenda soporte,
 			PrepagoDeRecepcion prepago) {
 
 		this.turnos = turnos;
@@ -83,7 +81,7 @@ public class RecepcionService {
 		this.consultorios = consultorios;
 		this.pacientes = pacientes;
 		this.ofertas = ofertas;
-		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.prepago = prepago;
 	}
 
@@ -103,9 +101,7 @@ public class RecepcionService {
 	public AgendaDelDiaView delDia(OperatingActor actor, long consultorioId, LocalDate fecha) {
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSede(organizationId, consultorioId);
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), PermissionCodes.TURNO_READ,
-				organizationId, consultorioId, null, Instant.now()));
+		soporte.exigir(actor, PermissionCodes.TURNO_READ, organizationId, consultorioId);
 
 		ZoneId zona = ZoneId.of(sede.timezone());
 		Instant desde = fecha.atStartOfDay(zona).toInstant();
@@ -137,9 +133,7 @@ public class RecepcionService {
 	public TurnoDelDiaView ver(OperatingActor actor, long consultorioId, long turnoId) {
 		long organizationId = exigirContexto(actor);
 		exigirSede(organizationId, consultorioId);
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), PermissionCodes.TURNO_READ,
-				organizationId, consultorioId, null, Instant.now()));
+		soporte.exigir(actor, PermissionCodes.TURNO_READ, organizationId, consultorioId);
 
 		Turno turno = turnos.findByIdInScope(organizationId, consultorioId, turnoId)
 				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));

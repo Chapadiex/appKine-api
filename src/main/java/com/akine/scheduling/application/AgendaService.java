@@ -6,8 +6,6 @@ import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
-import com.akine.organization.spi.PermissionGuard;
-import com.akine.organization.spi.PermissionQuery;
 
 import com.akine.resource.spi.DisponibilidadDirectory;
 import com.akine.resource.spi.DisponibilidadDirectory.DiaDisponible;
@@ -107,7 +105,7 @@ public class AgendaService {
 	private final EspacioDirectory espacios;
 	private final ConsultorioDirectory consultorios;
 	private final ConsultorioMembershipDirectory memberships;
-	private final PermissionGuard permissionGuard;
+	private final SoporteEnAgenda soporte;
 	private final ReservaProbe reservas;
 	private final Clock clock;
 
@@ -118,10 +116,10 @@ public class AgendaService {
 			EspacioDirectory espacios,
 			ConsultorioDirectory consultorios,
 			ConsultorioMembershipDirectory memberships,
-			PermissionGuard permissionGuard,
+			SoporteEnAgenda soporte,
 			ReservaProbe reservas) {
 
-		this(ofertas, disponibilidad, espacios, consultorios, memberships, permissionGuard, reservas,
+		this(ofertas, disponibilidad, espacios, consultorios, memberships, soporte, reservas,
 				Clock.systemUTC());
 	}
 
@@ -132,7 +130,7 @@ public class AgendaService {
 			EspacioDirectory espacios,
 			ConsultorioDirectory consultorios,
 			ConsultorioMembershipDirectory memberships,
-			PermissionGuard permissionGuard,
+			SoporteEnAgenda soporte,
 			ReservaProbe reservas,
 			Clock clock) {
 
@@ -142,7 +140,7 @@ public class AgendaService {
 		this.espacios = espacios;
 		this.consultorios = consultorios;
 		this.memberships = memberships;
-		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.reservas = reservas;
 	}
 
@@ -668,12 +666,6 @@ public class AgendaService {
 	 * donde equivocarse. Mismo criterio que {@code DisponibilidadEfectivaService}.
 	 */
 	private void exigirLectura(OperatingActor actor, long organizationId, long consultorioId) {
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.TURNO_READ,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
+		soporte.exigir(actor, PermissionCodes.TURNO_READ, organizationId, consultorioId);
 	}
 }

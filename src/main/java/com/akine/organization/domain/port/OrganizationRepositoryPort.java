@@ -6,6 +6,7 @@ import com.akine.organization.domain.SubscriptionStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -28,6 +29,13 @@ public interface OrganizationRepositoryPort {
 	 * quien pregunta es indistinguible de una inexistente.
 	 */
 	Optional<Organization> findByIdAndActiveTrue(Long id);
+
+	/**
+	 * Varias organizaciones en una consulta. La firma es literalmente la de
+	 * {@code ListCrudRepository#findAllById}: con otra, Spring Data la tomaria por consulta derivada
+	 * y el contexto no arrancaria (la trampa del {@code saveAll} del 29/09).
+	 */
+	List<Organization> findAllById(Iterable<Long> ids);
 
 	/**
 	 * Chequeo previo de disponibilidad del slug.

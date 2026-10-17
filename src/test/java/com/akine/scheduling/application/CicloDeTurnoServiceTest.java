@@ -1,5 +1,6 @@
 package com.akine.scheduling.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
 import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
@@ -77,7 +78,7 @@ class CicloDeTurnoServiceTest {
 	@BeforeEach
 	void prepararServicio() {
 		service = new CicloDeTurnoService(turnos, eventos, agendas, ofertas, consultorios,
-				permissionGuard, iniciador, revalidador, atenciones, auditTrail, avisos, recepciones, mock(PlatformTransactionManager.class));
+				new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), iniciador, revalidador, atenciones, auditTrail, avisos, recepciones, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));

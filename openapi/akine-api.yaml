@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.121.0
+  version: 0.122.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -24069,6 +24069,14 @@ components:
           format: int64
           description: Organizacion que solicita
           example: 1
+        organizationName:
+          type:
+          - string
+          - "null"
+          description: "Nombre de la organizacion que solicita, resuelto al leer:\
+            \ si el centro cambia de nombre, la solicitud muestra el actual. null\
+            \ solo si la organizacion ya no se encuentra"
+          example: Centro Kinesico del Parque
         resolucionNota:
           type: string
           description: "Motivo de la aprobacion o del rechazo, o null"

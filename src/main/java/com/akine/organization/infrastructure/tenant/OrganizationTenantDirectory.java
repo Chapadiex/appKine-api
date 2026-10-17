@@ -1,6 +1,11 @@
 package com.akine.organization.infrastructure.tenant;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,5 +40,17 @@ public class OrganizationTenantDirectory implements OrganizationDirectory {
 		return organizationRepository.findById(organizationId)
 				.map(organizacion -> new OrganizationSnapshot(
 						organizacion.getId(), organizacion.getName(), organizacion.isActive()));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Map<Long, OrganizationSnapshot> findAll(Collection<Long> organizationIds) {
+		if (organizationIds.isEmpty()) {
+			return Map.of();
+		}
+		return organizationRepository.findAllById(Set.copyOf(organizationIds)).stream()
+				.map(organizacion -> new OrganizationSnapshot(
+						organizacion.getId(), organizacion.getName(), organizacion.isActive()))
+				.collect(Collectors.toMap(OrganizationSnapshot::id, Function.identity()));
 	}
 }
