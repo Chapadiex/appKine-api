@@ -80,9 +80,9 @@ El porcentaje de la fase es el promedio simple de las nueve etapas.
    en el frontend. Es lo único que impide recorrer 08.04 → 08.05 entero desde la pantalla.
 2. [x] ~~**ITs diferidos de 08.01–08.03** (escenarios 39–42, 46–48, 54–59)~~ — corridos el 17/10 contra MySQL, con el aislamiento
    de 09.02 (`ActividadAislamientoIT`) reutilizado para 41, 48 y 59. Ver `docs/tests-diferidos.md`.
-3. [ ] **U-39** → devengo `POR_CLASE` (08.03). Sin decisión no hay código que escribir.
-4. [ ] **U-41** → liquidación de honorarios por clase (08.09).
-5. [ ] U-40, U-42, U-43, U-44, U-45: confirmar lo que hoy hace el código (no bloquean).
+3. [ ] **U-39** → devengo `POR_CLASE` (08.03). **Decidida el 17/10/2026 (DP-24)**: con la asistencia, sin no-show por defecto; en `POR_PACK`, sin pase solo se informa. Falta implementarla (PR en curso).
+4. [ ] ~~**U-41** → liquidación de honorarios por clase (08.09).~~ **Fuera del RC** (DP-31, 17/10/2026): mejora posterior.
+5. [x] U-40, U-42, U-44 **confirmadas el 17/10/2026** (DP-25, DP-26, DP-27); U-43 y U-45 **fuera del RC** (DP-31).
 6. [ ] Autoservicio del paciente: depende del alcance `OWN`, post-MVP por DP-22.
 
 ## Desvíos
@@ -91,9 +91,9 @@ El porcentaje de la fase es el promedio simple de las nueve etapas.
 |---|---|
 | F9 abierta sin el gate del MVP | Por instrucción del usuario el 14/10; diseño de 08.06 y 08.07; **sin DP formal** |
 | La vacante se impone al promover desde lista de espera (sin ventana de aceptación) | Sí |
-| `POR_CLASE` responde 400 hasta decidir U-39 | Sí, #129 y U-39 |
-| La atención grupal sin cobertura no devenga particular | Sí, U-42 |
-| Avisos de pases configurables por despliegue, no por centro | Sí, U-44 |
+| `POR_CLASE` responde 400 hasta implementar DP-24 (U-39 decidida) | Sí, #129 y DP-24 |
+| La atención grupal sin cobertura no devenga particular | Sí, U-42 (confirmado, DP-26) |
+| Avisos de pases configurables por despliegue, no por centro | Sí, U-44 (confirmado, DP-27) |
 | La derivación cuelga de `/inscripciones/{id}` y no de `/participantes/{id}` como dice el diseño §8 | Sí, #125 |
 | `clase:*` propios en vez de `turno:*` | Sí, decisión pendiente 9 |
 
@@ -102,4 +102,4 @@ El porcentaje de la fase es el promedio simple de las nueve etapas.
 - [ ] DP formal de la apertura de F9 (o DU-12 cerrada).
 - [ ] Pantalla de derivación.
 - [x] Escenarios diferidos 39–59 con IT o descartados con motivo (17/10).
-- [ ] U-39 y U-41 decididas e implementadas, o declaradas fuera de la entrega.
+- [ ] U-39 implementada (decidida, DP-24). U-41 declarada fuera de la entrega (DP-31, 17/10/2026).
