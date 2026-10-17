@@ -7,11 +7,10 @@ import com.akine.activity.domain.MovimientoPase;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ConsumoDeClase;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.MovimientoPaseRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.NetoDeAsistencia;
+import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseElegible;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseServicioRepositoryPort;
 import com.akine.offering.spi.EsquemaDeCobro;
 import com.akine.offering.spi.OfertaDirectory;
-import com.akine.organization.spi.ConsultorioDirectory;
-import com.akine.organization.spi.ZonaDeSede;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
@@ -22,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,38 +71,41 @@ public class ConsumoDePaseService {
 	private final PaseServicioRepositoryPort pases;
 	private final MovimientoPaseRepositoryPort movimientos;
 	private final OfertaDirectory ofertas;
-	private final ConsultorioDirectory consultorios;
 	private final AuditTrail auditTrail;
 
 	public ConsumoDePaseService(
 			PaseServicioRepositoryPort pases,
 			MovimientoPaseRepositoryPort movimientos,
 			OfertaDirectory ofertas,
-			ConsultorioDirectory consultorios,
 			AuditTrail auditTrail) {
 
 		this.pases = pases;
 		this.movimientos = movimientos;
 		this.ofertas = ofertas;
-		this.consultorios = consultorios;
 		this.auditTrail = auditTrail;
 	}
 
 	/**
 	 * Lleva el credito tomado por la asistencia a lo que su resultado actual pide.
 	 *
+	 * @param recienCreada true si la asistencia se inserto en esta misma transaccion: su id es
+	 *                 nuevo, ningun movimiento puede tenerlo todavia y el neto es cero sin preguntar
 	 * @param evento   el evento de asistencia (registro o correccion) que se acaba de escribir: su id
 	 *                 es el {@code origen_id} del movimiento
 	 * @param motivo   el de la correccion, si la hubo; viaja en la devolucion
+	 * @param lecturas la zona de la sede y el esquema de cobro, leidos una vez por pedido
 	 */
 	@Transactional(propagation = Propagation.MANDATORY)
 	public ConsumoDeCredito aplicar(
-			ClaseProgramada clase, AsistenciaActividad asistencia, AsistenciaEvento evento,
-			long actorCuentaId, String motivo, Instant ahora) {
+			ClaseProgramada clase, AsistenciaActividad asistencia, boolean recienCreada,
+			AsistenciaEvento evento, long actorCuentaId, String motivo, Instant ahora,
+			LecturasDeConsumo lecturas) {
 
 		long organizationId = asistencia.getOrganizationId();
 		long eventoId = evento.getId();
-		List<NetoDeAsistencia> tomado = movimientos.netoDeAsistencia(organizationId, asistencia.getId());
+		List<NetoDeAsistencia> tomado = recienCreada
+				? List.of()
+				: movimientos.netoDeAsistencia(organizationId, asistencia.getId());
 		boolean debeConsumir = asistencia.getResultado().estuvo();
 
 		if (!tomado.isEmpty()) {
@@ -117,14 +120,14 @@ public class ConsumoDePaseService {
 		// AKINE-08.08 (RF-M29-008): una oferta POR_ABONO se cubre igual que una POR_PACK, con el
 		// abono vigente el dia de la clase. "Cubierta sin obligacion unitaria" es exactamente esto:
 		// el credito del periodo se toma y ninguna deuda nace (RN-M29-007).
-		boolean consumeCredito = ofertas
-				.esquemaDeCobro(organizationId, clase.getConsultorioId(), clase.getOfertaId())
+		boolean consumeCredito = lecturas.consumeCredito(clase.getOfertaId(), ofertaId -> ofertas
+				.esquemaDeCobro(organizationId, clase.getConsultorioId(), ofertaId)
 				.filter(esquema -> esquema == EsquemaDeCobro.POR_PACK || esquema == EsquemaDeCobro.POR_ABONO)
-				.isPresent();
+				.isPresent());
 		if (!consumeCredito) {
 			return ConsumoDeCredito.noAplica();
 		}
-		return consumir(clase, asistencia, eventoId, actorCuentaId, ahora);
+		return consumir(clase, asistencia, eventoId, actorCuentaId, ahora, lecturas.zona());
 	}
 
 	/**
@@ -180,19 +183,21 @@ public class ConsumoDePaseService {
 
 	private ConsumoDeCredito consumir(
 			ClaseProgramada clase, AsistenciaActividad asistencia, long eventoId, long actorCuentaId,
-			Instant ahora) {
+			Instant ahora, ZoneId zonaDeLaSede) {
 
 		long organizationId = asistencia.getOrganizationId();
 		// La vigencia se evalua el DIA DE LA CLASE en la zona de la sede, no el dia en que alguien
 		// marca la lista: tomar asistencia el lunes de una clase del viernes no puede dejar afuera
 		// un pase que vencia el sabado.
-		LocalDate dia = LocalDate.ofInstant(clase.getInicio(),
-				ZonaDeSede.de(consultorios, organizationId, clase.getConsultorioId()));
+		LocalDate dia = LocalDate.ofInstant(clase.getInicio(), zonaDeLaSede);
 
-		for (Long paseId : pases.lockElegibles(
+		for (PaseElegible elegible : pases.lockElegibles(
 				organizationId, asistencia.getPersonaId(), clase.getOfertaId(), dia)) {
+			long paseId = elegible.paseId();
 			if (pases.consumirUno(organizationId, paseId, dia) == 1) {
-				int saldo = pases.saldoActual(organizationId, paseId);
+				// El saldo se leyo bajo el FOR UPDATE que esta transaccion todavia retiene, y el
+				// UPDATE que acaba de tocar la fila resto exactamente uno: no hace falta releerlo.
+				int saldo = elegible.creditosDisponibles() - 1;
 				movimientos.registrar(MovimientoPase.consumoPorAsistencia(
 						organizationId, paseId, saldo, eventoId, asistencia.getId(), actorCuentaId,
 						ahora));

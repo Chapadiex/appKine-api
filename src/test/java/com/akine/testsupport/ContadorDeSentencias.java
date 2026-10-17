@@ -10,6 +10,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -25,6 +27,8 @@ import java.util.function.Supplier;
 public final class ContadorDeSentencias extends DelegatingDataSource {
 
 	private static final ThreadLocal<int[]> EN_ESTE_HILO = new ThreadLocal<>();
+
+	private static final ThreadLocal<List<String>> TEXTOS = new ThreadLocal<>();
 
 	private static final Set<String> SENTENCIAS = Set.of("prepareStatement", "prepareCall", "createStatement");
 
@@ -54,6 +58,21 @@ public final class ContadorDeSentencias extends DelegatingDataSource {
 		}
 	}
 
+	/**
+	 * Corre la operacion y devuelve el texto de cada sentencia que preparo, en orden. Sirve para
+	 * explicar un numero, no para afirmarlo: el texto lo arma Hibernate y cambia con cada version.
+	 */
+	public static List<String> capturar(Runnable operacion) {
+		List<String> textos = new ArrayList<>();
+		TEXTOS.set(textos);
+		try {
+			contar(operacion);
+			return textos;
+		} finally {
+			TEXTOS.remove();
+		}
+	}
+
 	@Override
 	public Connection getConnection() throws SQLException {
 		return contando(super.getConnection());
@@ -72,6 +91,11 @@ public final class ContadorDeSentencias extends DelegatingDataSource {
 					int[] cuenta = EN_ESTE_HILO.get();
 					if (cuenta != null && SENTENCIAS.contains(metodo.getName())) {
 						cuenta[0]++;
+						List<String> textos = TEXTOS.get();
+						if (textos != null) {
+							textos.add(args != null && args.length > 0 && args[0] instanceof String sql
+									? sql : metodo.getName());
+						}
 					}
 					try {
 						return metodo.invoke(real, args);

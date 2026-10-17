@@ -11,10 +11,11 @@ import com.akine.activity.domain.ResultadoAsistencia;
 import com.akine.activity.domain.TipoMovimientoPase;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.MovimientoPaseRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.NetoDeAsistencia;
+import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseElegible;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseServicioRepositoryPort;
 import com.akine.offering.spi.EsquemaDeCobro;
 import com.akine.offering.spi.OfertaDirectory;
-import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -64,24 +65,23 @@ class ConsumoDePaseServiceTest {
 	@Mock private PaseServicioRepositoryPort pases;
 	@Mock private MovimientoPaseRepositoryPort movimientos;
 	@Mock private OfertaDirectory ofertas;
-	@Mock private ConsultorioDirectory consultorios;
 	@Mock private AuditTrail auditTrail;
 
 	private ConsumoDePaseService service;
 
 	@BeforeEach
 	void setUp() {
-		service = new ConsumoDePaseService(pases, movimientos, ofertas, consultorios, auditTrail);
+		service = new ConsumoDePaseService(pases, movimientos, ofertas, auditTrail);
 		given(ofertas.esquemaDeCobro(ORG, SEDE, OFERTA)).willReturn(Optional.of(EsquemaDeCobro.POR_PACK));
 		given(movimientos.netoDeAsistencia(ORG, ASISTENCIA)).willReturn(List.of());
 	}
 
 	@Test
-	@DisplayName("Presente en una oferta POR_PACK consume del pase que vence antes, con el saldo releido")
+	@DisplayName("Presente en una oferta POR_PACK consume del pase que vence antes, con el saldo leido bajo el lock")
 	void consume_el_primer_elegible() {
-		given(pases.lockElegibles(eq(ORG), eq(PERSONA), eq(OFERTA), any())).willReturn(List.of(7L, 8L));
+		given(pases.lockElegibles(eq(ORG), eq(PERSONA), eq(OFERTA), any())).willReturn(List.of(new PaseElegible(7L, 6), new PaseElegible(8L, 4)));
 		given(pases.consumirUno(eq(ORG), eq(7L), any())).willReturn(1);
-		given(pases.saldoActual(ORG, 7L)).willReturn(5);
+		// El saldo sale del lock (6 - 1), sin releerlo.
 
 		ConsumoDeCredito consumo = aplicar(ResultadoAsistencia.PRESENTE, null);
 
@@ -94,30 +94,54 @@ class ConsumoDePaseServiceTest {
 		assertThat(movimiento.getValue().getOrigenId()).isEqualTo(EVENTO);
 		assertThat(movimiento.getValue().getAsistenciaId()).isEqualTo(ASISTENCIA);
 		verify(pases, never()).consumirUno(eq(ORG), eq(8L), any());
+		verify(pases, never()).saldoActual(anyLong(), anyLong());
 	}
 
 	@Test
-	@DisplayName("La fecha de vigencia sale del inicio de la clase, no del reloj")
+	@DisplayName("La fecha de vigencia es el dia de la clase en la zona de la sede, no el del reloj")
 	void dia_de_la_clase_en_la_zona_de_la_sede() {
 		// 01:30 UTC del 15 es todavia el 14 en Cordoba.
 		ClaseProgramada clase = clase(Instant.parse("2026-10-15T01:30:00Z"));
-		given(consultorios.find(ORG, SEDE)).willReturn(Optional.empty());
 		given(pases.lockElegibles(anyLong(), anyLong(), anyLong(), any())).willReturn(List.of());
 
-		service.aplicar(clase, asistencia(ResultadoAsistencia.PRESENTE), evento(), CUENTA, null, Instant.now());
+		service.aplicar(clase, asistencia(ResultadoAsistencia.PRESENTE), true, evento(), CUENTA, null,
+				Instant.now(), lecturas("America/Argentina/Cordoba"));
 
-		// Sin sede resuelta ZonaDeSede cae a UTC: el 15. Con sede en Cordoba seria el 14; lo que
-		// importa aca es que la fecha sale del inicio de la clase, no del reloj.
-		verify(pases).lockElegibles(ORG, PERSONA, OFERTA, LocalDate.of(2026, 10, 15));
+		verify(pases).lockElegibles(ORG, PERSONA, OFERTA, LocalDate.of(2026, 10, 14));
+	}
+
+	@Test
+	@DisplayName("Una asistencia recien creada no pregunta el neto: ningun movimiento puede tener su id")
+	void recien_creada_no_lee_el_neto() {
+		given(pases.lockElegibles(anyLong(), anyLong(), anyLong(), any())).willReturn(List.of());
+
+		service.aplicar(clase(INICIO), asistencia(ResultadoAsistencia.PRESENTE), true, evento(), CUENTA,
+				null, Instant.now(), lecturas(null));
+
+		verify(movimientos, never()).netoDeAsistencia(anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("El esquema de cobro de la oferta se lee una sola vez por pedido")
+	void esquema_una_vez_por_pedido() {
+		given(pases.lockElegibles(anyLong(), anyLong(), anyLong(), any())).willReturn(List.of());
+		LecturasDeConsumo delPedido = lecturas(null);
+
+		for (int i = 0; i < 3; i++) {
+			service.aplicar(clase(INICIO), asistencia(ResultadoAsistencia.PRESENTE), false, evento(),
+					CUENTA, null, Instant.now(), delPedido);
+		}
+
+		verify(ofertas, org.mockito.Mockito.times(1)).esquemaDeCobro(ORG, SEDE, OFERTA);
+		verify(pases, org.mockito.Mockito.times(3)).lockElegibles(anyLong(), anyLong(), anyLong(), any());
 	}
 
 	@Test
 	@DisplayName("Si el primer candidato se agoto en carrera, prueba el siguiente")
 	void prueba_el_siguiente_si_el_update_no_toca_filas() {
-		given(pases.lockElegibles(eq(ORG), eq(PERSONA), eq(OFERTA), any())).willReturn(List.of(7L, 8L));
+		given(pases.lockElegibles(eq(ORG), eq(PERSONA), eq(OFERTA), any())).willReturn(List.of(new PaseElegible(7L, 6), new PaseElegible(8L, 4)));
 		given(pases.consumirUno(eq(ORG), eq(7L), any())).willReturn(0);
 		given(pases.consumirUno(eq(ORG), eq(8L), any())).willReturn(1);
-		given(pases.saldoActual(ORG, 8L)).willReturn(3);
 
 		assertThat(aplicar(ResultadoAsistencia.PRESENTE_TARDE, null))
 				.isEqualTo(new ConsumoDeCredito(Efecto.CONSUMIDO, 8L, 3));
@@ -194,7 +218,12 @@ class ConsumoDePaseServiceTest {
 	// =================================================================================
 
 	private ConsumoDeCredito aplicar(ResultadoAsistencia resultado, String motivo) {
-		return service.aplicar(clase(INICIO), asistencia(resultado), evento(), CUENTA, motivo, Instant.now());
+		return service.aplicar(clase(INICIO), asistencia(resultado), false, evento(), CUENTA, motivo,
+				Instant.now(), lecturas(null));
+	}
+
+	private static LecturasDeConsumo lecturas(String zona) {
+		return new LecturasDeConsumo(new ConsultorioSnapshot(SEDE, ORG, "Sede", zona, true));
 	}
 
 	private static ClaseProgramada clase(Instant inicio) {
