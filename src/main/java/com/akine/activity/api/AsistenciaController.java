@@ -159,7 +159,11 @@ public class AsistenciaController {
 					**correccion**, que exige `motivo` y **apendea** el valor anterior en el \
 					historial en vez de borrarlo.
 
-					**El cupo no se mueve**: los cuatro estados involucrados consumen lugar.""")
+					**El cupo no se mueve**: los cuatro estados involucrados consumen lugar.
+
+					**Sin `pase:read` en la sede**, `consumoDeCredito` viaja solo con su `efecto`: \
+					quien toma lista sabe si consumio un credito, pero no que pase era ni cuanto \
+					le queda (U-46 c). Vale igual para el lote y para el ingreso sin inscripcion.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201", description = "Se registro el hecho por primera vez"),
 			@ApiResponse(

@@ -42,7 +42,7 @@ public final class SanitizedPayload {
 			"invitadoPor",
 			// AKINE-08.02: lo minimo para que un aviso de clase diga de que clase habla. Ningun
 			// dato de otro participante, ningun dato clinico y ningun identificador interno.
-			"claseTitulo",
+			// U-46 (d), 17/10/2026: "claseTitulo" salio de la lista (ver CLAVES_RETIRADAS).
 			"claseInicio",
 			"consultorioNombre",
 			// AKINE E-5: lo minimo para que un aviso de turno diga de que turno habla (RF-M26-002:
@@ -57,6 +57,17 @@ public final class SanitizedPayload {
 			"paseVencimiento",
 			"creditosDisponibles",
 			"renovacionAutomatica");
+
+	/**
+	 * Claves que estuvieron en la lista blanca y salieron. {@link #of} las rechaza como a cualquier
+	 * otra, pero {@link #fromJson} <b>las descarta en silencio</b>: una fila del outbox encolada
+	 * antes del cambio y todavia pendiente tiene que salir —sin ese dato, con el texto neutro del
+	 * template— y no quedar rechazada por un dato que ya no se manda.
+	 *
+	 * <p>{@code claseTitulo}: U-46 (d), 17/10/2026. El titulo de una clase es texto libre y puede
+	 * nombrar una condicion de salud; el aviso dice fecha, hora y sede.
+	 */
+	static final Set<String> CLAVES_RETIRADAS = Set.of("claseTitulo");
 
 	/** Un nombre propio no llega ni cerca de este limite; un secreto pegado, si. */
 	private static final int LARGO_MAXIMO_VALOR = 200;
@@ -214,6 +225,9 @@ public final class SanitizedPayload {
 			String valor = par.substring(separador + 2).trim();
 			if (valor.length() < 2 || valor.charAt(0) != '"' || valor.charAt(valor.length() - 1) != '"') {
 				throw new IllegalArgumentException("El payload del outbox solo admite valores de texto");
+			}
+			if (CLAVES_RETIRADAS.contains(clave)) {
+				continue;
 			}
 			datos.put(clave, desescapar(valor.substring(1, valor.length() - 1)));
 		}
