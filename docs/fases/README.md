@@ -23,7 +23,7 @@ contra el código antes de actuar**.
 | [`F6-atencion-clinica.md`](F6-atencion-clinica.md) | Sesión, evaluación, examen, tratamientos, cierre, enmiendas |
 | [`F7-economia-del-mvp.md`](F7-economia-del-mvp.md) | Obligaciones, cobros, caja, presentaciones, egresos |
 | [`F8-cierre-del-mvp.md`](F8-cierre-del-mvp.md) | Reportes, hardening, observabilidad, release del MVP |
-| [`F9-segunda-entrega.md`](F9-segunda-entrega.md) | Clases, inscripciones, asistencia, derivación, pases y abonos — **congelada** |
+| [`F9-segunda-entrega.md`](F9-segunda-entrega.md) | Clases, inscripciones, asistencia, derivación, pases y abonos — abierta por el usuario el 14/10, ~82 % al 16/10 |
 | [`F10-consolidacion-final.md`](F10-consolidacion-final.md) | Reporting ampliado, hardening y release final |
 | [`decisiones-pendientes.md`](decisiones-pendientes.md) | **Lista única** de las decisiones del usuario que dejaron abiertas los cierres de fase, ordenadas por lo que cuesta postergarlas |
 
@@ -45,6 +45,11 @@ Medido sobre `main` `c791c7c`: contrato **0.98.0**, última migración **`V93`**
 | [F8](F8-cierre-del-mvp.md) | **El gate del MVP no pasa** | ~80 | api #106 | QA manual, aprobación y deploy, cuatro decisiones de seguridad; SLO de escrituras en curso; E2E clínicos |
 | [F9](F9-segunda-entrega.md) | Congelada (DP-07) | ~23 (01/10) | — | Espera el gate de F8 |
 | [F10](F10-consolidacion-final.md) | Sin empezar | 0 | — | Depende de F9 |
+
+> **16/10/2026:** F9 la abrió el usuario el 14/10 sin DP escrita y está en **~82 %** (api #125,
+> #127–#129, #135, #138–#143; web #79, #81, #91, #92, #98, #101–#105), con la derivación sin
+> pantalla y U-39/U-41 sin decidir. F10 arrancó el 16/10 con las cuatro etapas en paralelo, **~25 %**.
+> Ver cada ficha; la tabla de arriba queda como foto del 13/10.
 
 El % de F4 y F6 es el promedio simple de los % por etapa de su ficha. Las decisiones del usuario
 de todas las fases están en [`decisiones-pendientes.md`](decisiones-pendientes.md).

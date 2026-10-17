@@ -26,8 +26,14 @@
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
 | B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42) | 11 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
-| D. No bloquean nada (U-35 a U-37, U-40, U-41) | 5 |
-| **Total** | **42** |
+| D. No bloquean nada (U-35 a U-37, U-40, U-41, U-43 a U-45) | 8 |
+| **Total** | **45** |
+
+> **Revisado el 16/10/2026** (etapa 09.04): U-39 (#129), U-40 (#135), U-41 (#139) y U-42 (#141)
+> estaban; de las cuatro "Decisiones a confirmar" de #140 (08.08), la primera —renovar un abono
+> impago— ya vivía como U-40 (b) y las otras tres entran como **U-43, U-44 y U-45**. Ninguna de
+> las 45 se resolvió entre el 13 y el 16/10; seis tienen una propuesta en borrador, abierta y sin
+> mergear: U-06 (api #119, CodeQL y ZAP), U-11 y U-28 (api #122) y U-04, U-07 y U-08 (api #123).
 
 Ya resueltas y fuera de la lista (las fichas las mencionan): el **escenario 7b** (`request_hash`
 en `onboarding_registro`), que la ficha de F0–F1 daba abierto y cerró el PR #104 el 13/10/2026
@@ -486,6 +492,45 @@ dejar el MVP como está:
   snapshot de los importes (CA-M22-007-06).
 - **Fase / RF:** F9 (08.09); RF-M22-006, RF-M22-007.
 - **Destraba:** RF-M22-006/007, la mitad de 08.09.
+
+### U-43 · A nombre de quién se vende el período que renueva el job
+
+- **Pregunta:** la renovación automática de un abono (08.08) vende el período siguiente sin que
+  nadie apriete un botón. ¿Quién figura como vendedor: la cuenta que prendió la renovación, o una
+  cuenta técnica de sistema?
+- **Hoy (PR #140, `V103`):** la cuenta que autorizó la renovación
+  (`renovacion_autorizada_por_cuenta_id`), porque `vendido_por_cuenta_id` es `NOT NULL` y **no
+  existe cuenta técnica**. La auditoría `ABONO_RENOVADO` va con actor nulo (sistema) y el
+  autorizante en los detalles. Desde #142 la pantalla lo muestra (`Pase.renovacionAutorizadaPor`).
+- **Recomendado:** ninguna fuente recomienda; el diseño la deja a confirmar. Una cuenta técnica
+  pide una migración en `identity` y decidir qué rol tiene.
+- **Fase / RF:** F9 (08.08); RF-M29-007, RF-M18-010. Diseño
+  [`../diseno/AKINE-08.07-08.08-ledger-y-abonos.md`](../diseno/AKINE-08.07-08.08-ledger-y-abonos.md)
+  §10.2 y §10.8 n.º 7.
+- **Destraba:** nada del MVP. Importa si un colaborador que prendió renovaciones se desvincula: sus
+  abonos se siguen vendiendo a su nombre.
+
+### U-44 · Umbrales de aviso de pases por despliegue o por centro
+
+- **Pregunta:** los avisos de vencimiento próximo y de saldo bajo (RF-M26-008) se configuran con
+  `akine.activity.pases.avisos.dias-antes-del-vencimiento` (3) y `.saldo-bajo` (1), **iguales para
+  todos los centros del despliegue**. ¿Hace falta configurarlos por organización o por producto?
+- **Hoy (PR #140):** por despliegue. Un umbral por centro o producto pide una pantalla que ningún
+  RF describe, y el padrón no tiene preferencias de notificación (el único canal es el correo).
+- **Recomendado:** dejarlo por despliegue hasta que un centro lo pida (diseño §10.3).
+- **Fase / RF:** F9 (08.08); RF-M26-008, CA-M26-008-06. Diseño §10.3 y §10.8 n.º 8.
+- **Destraba:** nada del MVP. Cómo se operan hoy: [`../operaciones/runbooks.md`](../operaciones/runbooks.md) R7.
+
+### U-45 · Qué período sigue al renovar un abono que no es un mes calendario
+
+- **Pregunta:** el job renueva un mes calendario completo por el mes siguiente (noviembre →
+  diciembre). Cualquier otro período se renueva por `vigenciaDias` desde el día siguiente al fin, y
+  **se corre**: 30 días desde el 5 de noviembre terminan el 4 de diciembre. ¿Se admiten otras reglas
+  "naturales" (quincena, semana calendario) o se ancla al día de la primera venta?
+- **Hoy (PR #140):** mes calendario o `vigenciaDias`; nada más.
+- **Recomendado:** ninguna fuente recomienda (diseño §10.8 n.º 9).
+- **Fase / RF:** F9 (08.08); RF-M29-007. Diseño §10.2 paso 3.
+- **Destraba:** nada del MVP.
 
 ---
 

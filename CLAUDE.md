@@ -229,7 +229,99 @@ ArchUnit · Testcontainers.
 > `SerializationFeature` a `DateTimeFeature`, o sea `spring.jackson.datatype.datetime.*`.
 > Ante una duda de API, inspeccionar el jar antes de asumir la forma de 3.x.
 
-### Estado al 14/10/2026, sobre `57e8083`
+### Estado al 16/10/2026, sobre `eef0c87`
+
+> Esta subsección **supersede** a la del 14/10 en contrato, migraciones, tests, fases y defectos;
+> la del 14/10 queda como historia. Medido el 16/10 sobre `origin/main` y por la API de GitHub
+> (etapa AKINE-09.04).
+
+Desde `57e8083` entraron a `main` **23 PR**: #118, #120, #121 y #124 a #143. Siguen abiertos
+**#87** (Dependabot, Temurin 25) y tres propuestas en borrador que esperan decisión del usuario:
+**#119** (U-06, CodeQL y ZAP), **#122** (U-11 y U-28, reparos de RF-M21-003 y débito parcial) y
+**#123** (U-04, U-07 y U-08, permisos). En `appKine-web` entraron del #79 al #105 (menos los
+Dependabot abiertos #84 y #88) y el cliente quedó en **0.118.0** (web #105).
+
+| | Valor medido sobre `origin/main` `eef0c87` (16/10) |
+|---|---|
+| Contrato | `openapi/akine-api.yaml` y `akine.contract.version` **0.118.0**, **333 operaciones** (`grep -cE '^\s+operationId:'`), ningún `operationId` repetido. Cliente de `appKine-web` `main` (`c5d803d`) en **0.118.0** |
+| Migraciones | Última **`V103`** (renovación de abonos y avisos de pases, #140), 79 archivos. Desde el 14/10 entraron `V96` (#129), `V101` (#135), `V102` (#141) y `V103` (#140). `V95` la reserva el borrador #122; `V97` (#131), `V99` (#132) y `V104` (#139, #143) se reservaron y no se usaron, y `V98` y `V100` no existen. La próxima por encima de la última es **`V104`**: confirmarla con los agentes de F10 en curso antes de tomarla |
+| Commits | **767** en `main` |
+| Tests | CI de `eef0c87`: **4.009 unitarias + 880 de integración, 0 fallos**, todas las reglas de JaCoCo cumplidas; los cuatro checks en verde. No se volvieron a correr en local para este documento |
+| Fases | **F9 abierta por el usuario el 14/10 sin DP escrita, ~82 %** ([ficha](docs/fases/F9-segunda-entrega.md)): falta la pantalla para derivar un participante, U-39 (`POR_CLASE`) y U-41 (honorarios). **F10 arrancó el 16/10, ~25 %** ([ficha](docs/fases/F10-consolidacion-final.md)): 09.01–09.04 en worktrees paralelos, sin PR mergeado. F8: el gate del MVP sigue sin pasar |
+
+**Qué agregó cada minor del contrato de 0.99.0 a 0.118.0** (medido sobre los merges de primer padre
+que tocan el YAML). Los PR declaran otra versión en varios casos: la subieron al rebasear. **No
+llegaron a `main`: 0.100.0** (reservada por el borrador #122), **0.105.0** (reservada por #131, que
+no cambió el contrato), **0.108.0, 0.112.0 y 0.113.0**.
+
+| Minor | PR | Qué | Operaciones |
+|---|---|---|---|
+| 0.101.0 | #125 | API de la derivación clínica de participantes (08.04): elegibilidad, derivar, listar, revertir; `aceptaListaEspera` opcional | 315 |
+| 0.102.0 | #127 | Pantalla de atención: borrador que no es JSON → 400, `DELETE` de tratamiento con cuerpo, `registradaPorNombre`, `cambiarCasoDeSesion` | 316 |
+| 0.103.0 | #128 | Nombres de oferta, profesional y box en `Clase`; `espacioId` opcional al programar y reprogramar | 316 |
+| 0.104.0 | #129 | Productos de pack, venta de pases, consumo por asistencia (08.06/08.07). **No aditivo, declarado:** `Obligacion.sesionId` opcional y `esquemaCobro` fuera de vocabulario 400 | 324 |
+| 0.106.0 | #133 | `getPlatformSubscription` (D3) y `lastSelected` en los contextos (D4) | 325 |
+| 0.107.0 | #132 | Pedidos de web #83: filtros del timeline, nombres del Caso, vigencia de la autorización en el plan y problem type `justificacion-de-acceso-requerida` (**cambia el `type` del 403**) | 325 |
+| 0.109.0 | #135 | Abonos, ajuste y anulación de pases, vencimiento, devolución por cancelación; `esquemaCobro` como enum (**cambia el tipo generado**) | 327 |
+| 0.110.0 | #137 | `listPlatformOrganizations`: listado de centros para la consola | 328 |
+| 0.111.0 | #138 | `causa` en `pase-no-ajustable`, `moneda` en `pase-con-cobros`, `Pase.creditosUsados` y `anulable` | 328 |
+| 0.114.0 | #139 | Problem type `obligacion-de-venta` (**anular la deuda de una venta pasa de 200 a 409**) | 328 |
+| 0.115.0 | #141 | Atención clínica grupal (08.05): iniciar por participante, en lote y panel; `Sesion.derivacionId`/`claseId` | 331 |
+| 0.116.0 | #140 | Renovación automática de abonos, avisos de pases, `listarMovimientosDePase` paginado | 333 |
+| 0.117.0 | #142 | `Pase.renovacionAutorizadaPor`, `renovadoPorPaseId` y `?sinMovimientos` en el ajuste | 333 |
+| 0.118.0 | #143 | Nombres de participantes, `Sesion.claseTitulo`, `numeroCaso` en la derivación, `derivacionIds` en el lote | 333 |
+
+**Defectos corregidos del 14 al 16/10:**
+
+1. **D1 (alta) — la cuenta corriente del financiador sumaba los lotes anulados** (#131): anular un
+   borrador deja `estado = ANULADA` sin `deleted_at`, y la consulta filtraba sólo por `deleted_at`.
+2. **D2 — doble click en cobrar con la misma `Idempotency-Key`** (#131): el segundo recibía 409
+   `saldo-insuficiente`. Ahora relee la clave en `READ_COMMITTED` después del rollback y devuelve el
+   mismo cobro.
+3. **D3 — la plataforma no podía leer la versión de la suscripción** que el cambio de plan le exige
+   (#133).
+4. **D4 — `account_active_context` nunca se escribía** (#133), y crearlo con leer-y-crear daba 500
+   con dos selecciones simultáneas: ahora `INSERT ... ON DUPLICATE KEY UPDATE`.
+5. **D5 — la importación de aranceles auditaba un `ARANCEL_CREATED` por fila** (#133).
+6. **D6 — revertir un consumo sin motivo daba `validation-error`** en vez del `reversion-sin-motivo`
+   del contrato (#131).
+7. **D7 — la historia clínica de otra organización respondía 403 y no 404** (#133).
+8. **Carrera de la derivación concurrente** (#132): de cuatro derivaciones simultáneas del mismo
+   participante, tres terminaban en 500 (el `catch` releía en una sesión de Hibernate rota). La
+   asistencia se toma `FOR UPDATE` en `READ_COMMITTED`.
+9. **Pago y anulación de un egreso ganaban los dos** (#136): en 9 de 12 intentos del E2E de web
+   #94 el egreso quedaba `ANULADO` con un pago vigente. `descontarSaldo` no movía `version`; la
+   anulación lee `FOR UPDATE`.
+10. **`Presentacion` sin `@DynamicUpdate`** (#136): registrar la factura sobre un lote leído antes
+    de un pago del financiador borraba ese pago del lote, con la plata ya asentada en caja.
+11. **La deuda de una venta se anulaba sola** (#139): `DELETE /obligaciones/{id}` dejaba el pase
+    `ACTIVO` con sus créditos. Ahora 409 `obligacion-de-venta`; se anula con el pase.
+12. **N+1 en la recepción del día** (#134): de 10 a 20 sentencias con seis ofertas; ahora 10 fijas.
+
+Además, dentro de PR de F9: declarar cualquier `esquemaCobro` daba 500 contra el CHECK de `V64`
+(#129), y una asistencia que consumía mientras otro cancelaba la clase perdía el crédito sin error
+(#135, la clase se toma `FOR SHARE`).
+
+> **El patrón otra vez: un UPDATE nativo que no mueve `version`** (fila 9) y una entidad sin
+> `@DynamicUpdate` cuyas columnas mueve un UPDATE nativo (fila 10): el mismo mecanismo del
+> defecto 5 del 29/09 y de las filas 16 y 20 del 06/10. #136 revisó los demás sitios de `billing`: `obligacion` ya avanzaba la versión
+> desde #39, `jornada_caja` no tiene `@Version` y los numeradores son fila-lock.
+
+Punteros:
+
+- Release candidate: [`docs/release/RC-1.md`](docs/release/RC-1.md) — qué hace el sistema por
+  circuito, qué no, qué lo condiciona y la deuda que viaja con él.
+- Decisiones abiertas: [`docs/fases/decisiones-pendientes.md`](docs/fases/decisiones-pendientes.md),
+  **45 entradas** (U-01 a U-45). Desde el 14/10: U-39 (#129), U-40 (#135), U-41 (#139), U-42
+  (#141) y, de las cuatro que dejó #140, U-43 a U-45 (la cuarta ya era U-40 b).
+- Jobs programados de F9 (vencimiento, renovación, avisos): [`docs/operaciones/runbooks.md`](docs/operaciones/runbooks.md) R7.
+- Pre-QA automatizado: [`docs/qa/corridas/2026-10-14-pre-qa.md`](docs/qa/corridas/2026-10-14-pre-qa.md)
+  y el runner en `docs/qa/validacion/pre-qa/` (#126). **No es el QA manual del §6**, que sigue sin
+  correr.
+- Carga: [`docs/carga.md`](docs/carga.md) §10 y §11. **El SLO de escrituras a 500 usuarios sigue
+  sin cumplirse** y espera decisión.
+
+### Estado al 14/10/2026, sobre `57e8083` (histórico)
 
 > Esta subsección **supersede** a la del 13/10 en contrato, migraciones y defectos; la del 13/10
 > queda como historia. Medido el 14/10 sobre `origin/main` y por la API de GitHub.
