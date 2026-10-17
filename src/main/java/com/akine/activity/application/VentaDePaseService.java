@@ -62,8 +62,10 @@ import java.util.Optional;
  *
  * <p>Con {@code Idempotency-Key}, el reintento se resuelve <b>antes</b> de validar el producto y
  * sobre todo antes de devengar: misma huella devuelve la venta existente sin escribir; otra huella
- * es 409. {@code uk_pase_idempotency} cubre la carrera entre dos pedidos simultaneos, y
- * {@code uk_obligacion_venta} es el cinturon del lado de {@code billing}.
+ * es 409. Dos pedidos simultaneos con la misma clave los pone en fila el lock del producto, y el
+ * segundo vuelve a mirar la clave al despertar (AKINE-09.03): devuelve la venta del primero, como
+ * un reintento cualquiera. {@code uk_pase_idempotency} queda de cinturon, y
+ * {@code uk_obligacion_venta} es el del lado de {@code billing}.
  *
  * <p>{@code READ_COMMITTED}: el perdedor de una carrera sobre la clave tiene que poder ver la fila
  * del ganador, y bajo {@code REPEATABLE READ} no la ve.
@@ -144,20 +146,9 @@ public class VentaDePaseService {
 		LocalDate hoy = ZonaDeSede.hoy(sede, clock);
 
 		String huella = command.idempotencyKey() == null ? null : command.huella(consultorioId);
-		Optional<PaseServicio> yaVendido = command.idempotencyKey() == null
-				? Optional.empty()
-				: pases.findByIdempotencyKey(organizationId, command.idempotencyKey());
-		if (yaVendido.isPresent()) {
-			PaseServicio existente = yaVendido.get();
-			if (!huella.equals(existente.getRequestHash())) {
-				throw new IdempotencyKeyConflictException(command.idempotencyKey());
-			}
-			// El devengo es idempotente por pase: devuelve la deuda que ya existe sin escribir.
-			DeudaDeVenta deuda = devengar(existente, actor);
-			return new ResultadoDeVenta(
-					PaseView.de(existente, hoy,
-							lectura.uso(organizationId, existente)),
-					deuda(deuda), false);
+		Optional<ResultadoDeVenta> reintento = reintento(organizationId, command, huella, hoy, actor);
+		if (reintento.isPresent()) {
+			return reintento.get();
 		}
 
 		// El producto se lee BLOQUEADO (AKINE-08.08): lectura actual —una baja que commiteo recien
@@ -167,6 +158,15 @@ public class VentaDePaseService {
 		ProductoServicio producto = productos
 				.lockByIdInScope(organizationId, consultorioId, command.productoId())
 				.orElseThrow(() -> new ProductoNotAccessibleException(command.productoId()));
+		// SEGUNDA MIRADA A LA CLAVE, YA CON EL PRODUCTO BLOQUEADO (AKINE-09.03). Dos pedidos con la
+		// misma clave pasan los dos la primera mirada si ninguno commiteo todavia; el producto los
+		// pone en fila, y el segundo, al despertar, lee en READ_COMMITTED la venta del primero. Sin
+		// esto seguia hasta el INSERT, chocaba con uk_pase_idempotency y respondia 409 conflict en
+		// vez de la venta existente que el contrato de la clave promete.
+		reintento = reintento(organizationId, command, huella, hoy, actor);
+		if (reintento.isPresent()) {
+			return reintento.get();
+		}
 		boolean abono = producto.getTipo() == TipoProducto.ABONO;
 		if (!abono && (command.periodoDesde() != null || command.periodoHasta() != null)) {
 			throw new IllegalArgumentException(
@@ -322,6 +322,28 @@ public class VentaDePaseService {
 	}
 
 	// =================================================================================
+
+	/**
+	 * La venta que ya hizo un pedido con la misma clave: misma huella devuelve esa venta sin
+	 * escribir; otra huella es 409. Vacio si no hay clave o si nadie la uso todavia.
+	 */
+	private Optional<ResultadoDeVenta> reintento(
+			long organizationId, VenderPaseCommand command, String huella, LocalDate hoy, OperatingActor actor) {
+
+		if (command.idempotencyKey() == null) {
+			return Optional.empty();
+		}
+		return pases.findByIdempotencyKey(organizationId, command.idempotencyKey()).map(existente -> {
+			if (!huella.equals(existente.getRequestHash())) {
+				throw new IdempotencyKeyConflictException(command.idempotencyKey());
+			}
+			// El devengo es idempotente por pase: devuelve la deuda que ya existe sin escribir.
+			DeudaDeVenta deuda = devengar(existente, actor);
+			return new ResultadoDeVenta(
+					PaseView.de(existente, hoy, lectura.uso(organizationId, existente)),
+					deuda(deuda), false);
+		});
+	}
 
 	/**
 	 * El periodo de un abono (RF-M29-007 paso 5): desde obligatorio, hasta por defecto el que da la

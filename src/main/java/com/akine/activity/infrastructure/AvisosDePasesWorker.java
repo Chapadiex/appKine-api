@@ -30,17 +30,20 @@ public class AvisosDePasesWorker {
 	static final int LOTE = 200;
 
 	private final AvisosDePases avisos;
+	private final ObservacionDeJobs observacion;
 	private final int diasAntes;
 	private final int saldoBajo;
 
 	public AvisosDePasesWorker(
 			AvisosDePases avisos,
+			ObservacionDeJobs observacion,
 			@Value("${akine.activity.pases.avisos.dias-antes-del-vencimiento:3}") int diasAntes,
 			@Value("${akine.activity.pases.avisos.saldo-bajo:1}") int saldoBajo) {
 		if (diasAntes < 0 || saldoBajo < 0) {
 			throw new IllegalArgumentException("Los umbrales de aviso de pases no pueden ser negativos");
 		}
 		this.avisos = avisos;
+		this.observacion = observacion;
 		this.diasAntes = diasAntes;
 		this.saldoBajo = saldoBajo;
 	}
@@ -50,12 +53,14 @@ public class AvisosDePasesWorker {
 			initialDelayString = "${akine.activity.pases.avisos.initial-delay-ms:240000}")
 	public void tick() {
 		try {
-			avisos.avisarVencimientos(diasAntes, LOTE);
+			observacion.observar(ObservacionDeJobs.AVISO_DE_VENCIMIENTO,
+					() -> avisos.avisarVencimientos(diasAntes, LOTE));
 		} catch (RuntimeException e) {
 			log.error("El tick de avisos de vencimiento fallo; se reintenta en el proximo ciclo", e);
 		}
 		try {
-			avisos.avisarSaldosBajos(saldoBajo, LOTE);
+			observacion.observar(ObservacionDeJobs.AVISO_DE_SALDO_BAJO,
+					() -> avisos.avisarSaldosBajos(saldoBajo, LOTE));
 		} catch (RuntimeException e) {
 			log.error("El tick de avisos de saldo bajo fallo; se reintenta en el proximo ciclo", e);
 		}

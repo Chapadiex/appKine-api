@@ -24,10 +24,10 @@
 | Bloque | Cantidad |
 |---|---|
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42, U-46) | 12 |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42, U-46, U-48, U-49) | 14 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
 | D. No bloquean nada (U-35 a U-37, U-40, U-41, U-43 a U-45) | 8 |
-| **Total** | **46** |
+| **Total** | **48** |
 
 > **Revisado el 16/10/2026** (etapa 09.04): U-39 (#129), U-40 (#135), U-41 (#139) y U-42 (#141)
 > estaban; de las cuatro "Decisiones a confirmar" de #140 (08.08), la primera —renovar un abono
@@ -533,6 +533,36 @@ dejar el MVP como está:
   snapshot de los importes (CA-M22-007-06).
 - **Fase / RF:** F9 (08.09); RF-M22-006, RF-M22-007.
 - **Destraba:** RF-M22-006/007, la mitad de 08.09.
+
+### U-48 · El lock del producto en la venta de un pack
+
+- **Pregunta:** ¿la venta de un **pack** sigue tomando el producto con `FOR UPDATE`, o sólo la de
+  un abono?
+- **Hoy:** toda venta lo toma (08.08): en un abono serializa los períodos de la misma persona para
+  que no se superpongan; en un pack sólo sirve para leer una baja recién commiteada. Con un solo
+  producto, todas las ventas de la sede van en fila: p95 **723 ms** a 4,2 ventas/s
+  (`docs/carga.md` §12). 09.03 sumó una segunda razón para el lock: ahí se vuelve a mirar la
+  `Idempotency-Key` de dos ventas simultáneas.
+- **Recomendado:** bloquear sólo los abonos y, en un pack, resolver la carrera de la clave con el
+  unique `uk_pase_idempotency` (relectura en `READ_COMMITTED` al chocar). La baja recién
+  commiteada que se cuela es una venta del último instante, que el mostrador puede anular.
+- **Fase / RF:** F10 (09.03); RF-M29-002.
+- **Destraba:** el SLO de la venta de pases con varios mostradores.
+
+### U-49 · El costo de la asistencia en lote
+
+- **Pregunta:** ¿se cambia cómo se transacciona la asistencia en lote?
+- **Hoy:** cada ítem es su propia transacción (RF-M13-008, "actualización transaccional
+  independiente") con ~18 sentencias. Un lote de 25 tarda 1,5 s de mediana y, a 2 lotes por
+  segundo, satura el pool de 10 y arrastra a toda la API (`docs/carga.md` §12: p95 de lecturas de
+  ~95 ms a ~2,2 s).
+- **Opciones:** (a) sacar del ítem lo que se repite igual en todos —sede, zona, esquema de cobro—,
+  3 de 18 sentencias, sin cambio de semántica; (b) agrupar ítems de a varios por transacción,
+  manteniendo el resultado parcial por ítem —cambia "independiente"—; (c) limitar los lotes
+  concurrentes por sede.
+- **Recomendado:** (a) ya, (c) si el entorno de destino lo confirma; (b) sólo si un RF lo admite.
+- **Fase / RF:** F10 (09.03); RF-M13-008, RF-M28-007.
+- **Destraba:** el SLO con asistencia en lote bajo carga.
 
 ### U-43 · A nombre de quién se vende el período que renueva el job
 

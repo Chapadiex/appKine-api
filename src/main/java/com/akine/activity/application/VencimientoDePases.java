@@ -23,7 +23,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -100,30 +99,29 @@ public class VencimientoDePases {
 	 * Vence hasta {@code maximo} pases cuya vigencia termino. <b>No es transaccional</b>: cada pase
 	 * abre y cierra la suya.
 	 *
-	 * @return cuantos paso a {@code VENCIDO} esta llamada
+	 * @return la pasada: procesados son los que paso a {@code VENCIDO} esta llamada
 	 */
-	public int vencerLosVencidos(int maximo) {
+	public PasadaDeJob vencerLosVencidos(int maximo) {
 		Instant ahora = clock.instant();
 		// El dia mas adelantado del planeta es, como mucho, el de UTC mas uno: todo pase vencido en su
 		// sede tiene vigencia_hasta anterior a ese limite. Los que todavia no vencieron en su zona se
 		// descartan abajo, uno por uno.
 		LocalDate limite = LocalDate.ofInstant(ahora, ZoneOffset.UTC).plusDays(1);
-		List<CandidatoAVencer> candidatos = pases.candidatosAVencer(limite, maximo);
-		int vencidos = 0;
-		for (CandidatoAVencer candidato : candidatos) {
+		PasadaDeJob.Cuenta cuenta = new PasadaDeJob.Cuenta();
+		for (CandidatoAVencer candidato : pases.candidatosAVencer(limite, maximo)) {
 			try {
-				if (vencerUno(candidato, ahora)) {
-					vencidos++;
-				}
+				cuenta.contar(vencerUno(candidato, ahora));
 			} catch (RuntimeException e) {
 				// Un pase que falla no detiene el lote: queda ACTIVO y lo reintenta el proximo tick.
-				log.error("No se pudo vencer el pase {}", candidato.paseId(), e);
+				// El id y la clase del error van como campos, para filtrar sin parsear el mensaje.
+				cuenta.fallo();
+				log.atError().addKeyValue("paseId", candidato.paseId())
+						.addKeyValue("error", e.getClass().getSimpleName())
+						.setCause(e)
+						.log("No se pudo vencer el pase {}", candidato.paseId());
 			}
 		}
-		if (vencidos > 0) {
-			log.info("Pases vencidos: {} de {} candidatos", vencidos, candidatos.size());
-		}
-		return vencidos;
+		return cuenta.resumen();
 	}
 
 	private boolean vencerUno(CandidatoAVencer candidato, Instant ahora) {

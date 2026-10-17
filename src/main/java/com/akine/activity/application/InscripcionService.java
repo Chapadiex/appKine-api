@@ -173,6 +173,15 @@ public class InscripcionService {
 
 		// EL UNICO LUGAR DONDE SE DECIDE SI HAY CUPO. Una fila = el lugar es suyo; cero = no hay.
 		boolean conLugar = clases.tomarCupo(organizationId, claseId, capacidadEfectiva) == 1;
+		if (!conLugar) {
+			// CERO FILAS TIENE DOS LECTURAS, y solo una es "no hay lugar" (AKINE-09.03). La clase se
+			// valido arriba SIN lock: si la cancelacion commiteo entre esa lectura y el UPDATE, el
+			// cero es "ya no esta programada", y tomarlo por clase llena dejaba a la persona en la
+			// cola de una clase cancelada, viva para siempre. Se relee BLOQUEADA —la cancelacion,
+			// que la toma en exclusivo, ya no puede colarse— y se revalida con lo que de verdad hay.
+			exigirInscribible(clases.lockByIdInScope(organizationId, consultorioId, claseId)
+					.orElseThrow(() -> new ClaseNotAccessibleException(claseId)));
+		}
 
 		InscripcionClase nueva;
 		if (conLugar) {
@@ -402,7 +411,11 @@ public class InscripcionService {
 	private ClaseProgramada exigirClaseInscribible(
 			long organizationId, long consultorioId, long claseId) {
 
-		ClaseProgramada clase = exigirClaseDelTenant(organizationId, consultorioId, claseId);
+		return exigirInscribible(exigirClaseDelTenant(organizationId, consultorioId, claseId));
+	}
+
+	private static ClaseProgramada exigirInscribible(ClaseProgramada clase) {
+		long claseId = clase.getId();
 		if (clase.getEstado() != EstadoClase.PROGRAMADA || !clase.estaViva()) {
 			throw new TransicionDeClaseNoPermitidaException(
 					claseId, "esta cancelada y no admite inscripciones");

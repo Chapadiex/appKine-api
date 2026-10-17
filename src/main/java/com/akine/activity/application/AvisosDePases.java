@@ -110,31 +110,31 @@ public class AvisosDePases {
 	 * {@code diasAntes} dias (hoy inclusive, en la zona de cada sede). <b>No es transaccional</b>:
 	 * cada pase abre y cierra la suya.
 	 *
-	 * @return cuantos avisos encolo
+	 * @return la pasada: procesados son los avisos que encolo
 	 */
-	public int avisarVencimientos(int diasAntes, int maximo) {
+	public PasadaDeJob avisarVencimientos(int diasAntes, int maximo) {
 		Instant ahora = clock.instant();
 		LocalDate hoyUtc = LocalDate.ofInstant(ahora, ZoneOffset.UTC);
 		// Un dia de margen a cada lado cubre todas las zonas; el filtro exacto es por sede, abajo.
 		List<CandidatoAAvisar> candidatos =
 				pases.candidatosAvisoDeVencimiento(hoyUtc.minusDays(1), hoyUtc.plusDays(diasAntes + 1L), maximo);
-		int avisados = 0;
+		PasadaDeJob.Cuenta cuenta = new PasadaDeJob.Cuenta();
 		for (CandidatoAAvisar candidato : candidatos) {
 			try {
 				ConsultorioSnapshot sede = sede(candidato);
 				LocalDate hoy = LocalDate.ofInstant(ahora, ZonaDeSede.de(sede));
 				if (candidato.vigenciaHasta().isBefore(hoy) || candidato.vigenciaHasta().isAfter(hoy.plusDays(diasAntes))) {
+					cuenta.contar(false);
 					continue;
 				}
-				if (Boolean.TRUE.equals(transaccion.execute(estado -> avisar(
-						candidato, sede, Tipo.VENCIMIENTO, 0, ahora)))) {
-					avisados++;
-				}
+				cuenta.contar(Boolean.TRUE.equals(transaccion.execute(estado -> avisar(
+						candidato, sede, Tipo.VENCIMIENTO, 0, ahora))));
 			} catch (RuntimeException e) {
-				log.error("No se pudo avisar el vencimiento del pase {}", candidato.paseId(), e);
+				cuenta.fallo();
+				logFallo("No se pudo avisar el vencimiento del pase", candidato, e);
 			}
 		}
-		return avisados;
+		return cuenta.resumen();
 	}
 
 	/**
@@ -142,26 +142,32 @@ public class AvisosDePases {
 	 * {@code umbral}. Uno por pase: si una devolucion le sube el saldo y lo vuelve a gastar, no hay
 	 * un segundo aviso.
 	 *
-	 * @return cuantos avisos encolo
+	 * @return la pasada: procesados son los avisos que encolo
 	 */
-	public int avisarSaldosBajos(int umbral, int maximo) {
+	public PasadaDeJob avisarSaldosBajos(int umbral, int maximo) {
 		if (umbral <= 0) {
-			return 0;
+			return PasadaDeJob.VACIA;
 		}
 		Instant ahora = clock.instant();
-		int avisados = 0;
+		PasadaDeJob.Cuenta cuenta = new PasadaDeJob.Cuenta();
 		for (CandidatoAAvisar candidato : pases.candidatosAvisoDeSaldoBajo(umbral, maximo)) {
 			try {
 				ConsultorioSnapshot sede = sede(candidato);
-				if (Boolean.TRUE.equals(transaccion.execute(estado -> avisar(
-						candidato, sede, Tipo.SALDO_BAJO, umbral, ahora)))) {
-					avisados++;
-				}
+				cuenta.contar(Boolean.TRUE.equals(transaccion.execute(estado -> avisar(
+						candidato, sede, Tipo.SALDO_BAJO, umbral, ahora))));
 			} catch (RuntimeException e) {
-				log.error("No se pudo avisar el saldo bajo del pase {}", candidato.paseId(), e);
+				cuenta.fallo();
+				logFallo("No se pudo avisar el saldo bajo del pase", candidato, e);
 			}
 		}
-		return avisados;
+		return cuenta.resumen();
+	}
+
+	private static void logFallo(String mensaje, CandidatoAAvisar candidato, RuntimeException e) {
+		log.atError().addKeyValue("paseId", candidato.paseId())
+				.addKeyValue("error", e.getClass().getSimpleName())
+				.setCause(e)
+				.log(mensaje + " {}", candidato.paseId());
 	}
 
 	// =================================================================================

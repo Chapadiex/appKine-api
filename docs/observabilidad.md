@@ -193,3 +193,46 @@ una métrica mal escrita no dispara nunca. La sintaxis PromQL **no** se valida e
 **Qué hay que esperar con la capacidad medida** (`docs/carga.md` §8): con 500 usuarios y el pool
 de 10, el p95 de lo interactivo da 3,3–3,6 s, así que `AkineLatenciaP95FueraDeSlo` dispararía bajo
 esa carga. Es la señal correcta mientras el rendimiento por pedido siga abierto.
+
+## 7. Los jobs de F9 (AKINE-09.03)
+
+Cuatro pasadas corren en el scheduler, sin request: el vencimiento de pases
+(`VencimientoDePasesWorker`), la renovación automática de abonos (`RenovacionDeAbonosWorker`) y los
+dos avisos de pases (`AvisosDePasesWorker`: vencimiento próximo y saldo bajo). No pasan por
+`http_server_requests`, no tienen `requestId` ni traza de request: hasta 09.03, un job que fallaba
+todas las horas sólo se veía leyendo el log. `ObservacionDeJobs` envuelve cada pasada y publica:
+
+| Señal | Nombre | Etiquetas | Qué dice |
+|---|---|---|---|
+| Contador | `akine_job_items_total` | `job`, `resultado` = `procesado` \| `omitido` \| `fallido` | Candidatos de cada pasada. **Procesado**: se venció, se renovó o se encoló el aviso. **Omitido**: la pasada lo miró y no había nada que hacer (todavía no le tocaba en la zona de su sede, otra instancia lo resolvió, la renovación no era posible y se apagó con su motivo, la persona no tiene correo). **Fallido**: excepción; queda para el tick siguiente |
+| Timer | `akine_job_seconds_{count,sum,max}` y `akine_job_active_seconds` | `job`, `error` | Duración de cada pasada. Sale de la observación `akine.job`; `error` es la clase de la excepción si la pasada entera falló, `none` si no |
+| Traza | span `job <nombre>` | `job` | Raíz de su propia traza (la pasada no nace de un request), exportada con el muestreo de §4 |
+| Log | `Pasada de job terminada: …` | campos `job`, `procesados`, `omitidos`, `fallidos`, `duracionMs`, más `traceId`/`spanId` | INFO si hubo candidatos, DEBUG si no. Un candidato que falla deja además un ERROR con `paseId` y `error` (la clase) como campos, y la traza |
+
+Los nombres de `job` son fijos: `pases-vencimiento`, `abonos-renovacion`,
+`pases-aviso-vencimiento` y `pases-aviso-saldo-bajo`. **Los doce contadores se registran en cero
+al arrancar**, para que la alerta tenga serie antes del primer fallo; el timer aparece con la
+primera pasada (minutos después del arranque: `initial-delay-ms` de cada job).
+
+**Sin PHI y sin cardinalidad.** Ninguna etiqueta lleva ids; el resumen son sólo cuentas. El
+`paseId` de un candidato que falla va al log de error, nunca a una métrica. Los avisos no loguean
+el correo ni el nombre de nadie: los datos de render viajan al outbox, que tiene su sanitizador.
+
+**Alerta.** `AkineJobConFallos` (`ops/observabilidad/alertas-akine-api.yml`, grupo
+`akine-api-jobs`): más de dos candidatos fallidos de un mismo job en tres horas. Un fallo suelto se
+autocorrige en el tick siguiente; uno que se repite hora tras hora no. `ObservabilidadIT` verifica
+que la métrica exista en un scrape real, y `ObservacionDeJobsIT` que los cuatro workers estén
+cableados, que el timer aparezca y que la línea de resumen salga en JSON con sus campos y el
+`traceId`.
+
+Para saber si un job dejó de correr (no si falla), la consulta es sobre el timer, que se mueve
+aunque la pasada no encuentre candidatos:
+
+```promql
+# cero pasadas del vencimiento en tres horas (el job corre cada hora)
+sum by (job) (increase(akine_job_seconds_count{application="akine-api", job="pases-vencimiento"}[3h])) == 0
+```
+
+No está en el archivo de alertas porque el timer no existe hasta la primera pasada, y
+`ObservabilidadIT` exige que toda métrica de una alerta aparezca en el scrape de un contexto recién
+levantado.

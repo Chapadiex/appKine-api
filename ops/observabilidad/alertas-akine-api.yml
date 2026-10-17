@@ -95,3 +95,18 @@ groups:
         annotations:
           summary: "Prometheus no puede leer /actuator/prometheus de {{ $labels.instance }}"
           runbook: "docs/operaciones/runbooks.md R1 y docs/operaciones/smoke-post-deploy.md"
+
+  # Los jobs de F9 (AKINE-09.03): vencimiento de pases, renovacion de abonos y avisos. Corren en el
+  # scheduler, sin request: no aparecen en http_server_requests. Un candidato que falla queda para
+  # el tick siguiente, asi que un fallo suelto se autocorrige; uno que se repite hora tras hora no.
+  - name: akine-api-jobs
+    rules:
+      - alert: AkineJobConFallos
+        expr: |
+          sum by (job) (increase(akine_job_items_total{application="akine-api", resultado="fallido"}[3h])) > 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "El job {{ $labels.job }} fallo con {{ $value }} candidatos en las ultimas 3 horas"
+          runbook: "docs/observabilidad.md §7: el log de error del job lleva paseId y la clase del error"
