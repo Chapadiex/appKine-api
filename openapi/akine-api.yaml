@@ -24073,6 +24073,14 @@ components:
           format: int64
           description: Organizacion que solicita
           example: 1
+        organizationName:
+          type:
+          - string
+          - "null"
+          description: "Nombre de la organizacion que solicita, resuelto al leer:\
+            \ si el centro cambia de nombre, la solicitud muestra el actual. null\
+            \ solo si la organizacion ya no se encuentra"
+          example: Centro Kinesico del Parque
         resolucionNota:
           type: string
           description: "Motivo de la aprobacion o del rechazo, o null"

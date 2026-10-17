@@ -22,6 +22,11 @@ public record CatalogoSolicitudResponse(
 		@Schema(description = "Organizacion que solicita", example = "1")
 		long organizationId,
 
+		@Schema(description = "Nombre de la organizacion que solicita, resuelto al leer: si el centro "
+				+ "cambia de nombre, la solicitud muestra el actual. null solo si la organizacion ya no "
+				+ "se encuentra", example = "Centro Kinesico del Parque", nullable = true)
+		String organizationName,
+
 		@Schema(description = "Sede desde la que se pidio, o null. Es trazabilidad: la "
 				+ "solicitud es de la organizacion", example = "1")
 		Long consultorioId,
@@ -73,6 +78,7 @@ public record CatalogoSolicitudResponse(
 		return new CatalogoSolicitudResponse(
 				view.id(),
 				view.organizationId(),
+				view.organizationName(),
 				view.consultorioId(),
 				view.tipo(),
 				view.nombrePropuesto(),

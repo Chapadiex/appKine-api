@@ -128,6 +128,7 @@ public class ConsumoDeAutorizacionService {
 	private final AutorizacionMovimientoRepositoryPort movimientos;
 	private final PersonaRepositoryPort personas;
 	private final PermissionGuard permissionGuard;
+	private final PersonSupportAccessAuditor supportAccessAuditor;
 	private final AuditTrail auditTrail;
 	private final CoberturaPacienteRepositoryPort coberturas;
 	private final AutorizacionAlertaRepositoryPort alertas;
@@ -139,6 +140,7 @@ public class ConsumoDeAutorizacionService {
 			AutorizacionMovimientoRepositoryPort movimientos,
 			PersonaRepositoryPort personas,
 			PermissionGuard permissionGuard,
+			PersonSupportAccessAuditor supportAccessAuditor,
 			AuditTrail auditTrail,
 			CoberturaPacienteRepositoryPort coberturas,
 			AutorizacionAlertaRepositoryPort alertas,
@@ -148,6 +150,7 @@ public class ConsumoDeAutorizacionService {
 		this.movimientos = movimientos;
 		this.personas = personas;
 		this.permissionGuard = permissionGuard;
+		this.supportAccessAuditor = supportAccessAuditor;
 		this.auditTrail = auditTrail;
 		this.coberturas = coberturas;
 		this.alertas = alertas;
@@ -483,8 +486,8 @@ public class ConsumoDeAutorizacionService {
 	public MovimientoView revertir(
 			OperatingActor actor, long autorizacionId, ReversionCommand command) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Revertir un consumo de autorizacion");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Revertir un consumo de autorizacion", AuditEvents.ENTITY_AUTORIZACION, autorizacionId);
 		long organizationId = actor.contextOrganizationId();
 
 		String motivo = command.motivo() == null || command.motivo().isBlank()

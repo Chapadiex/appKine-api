@@ -72,6 +72,7 @@ public class OrdenMedicaService {
 	private final PersonaRepositoryPort personas;
 	private final PerfilPacienteRepositoryPort perfiles;
 	private final PermissionGuard permissionGuard;
+	private final PersonSupportAccessAuditor supportAccessAuditor;
 	private final AuditTrail auditTrail;
 	private final AutorizacionRepositoryPort autorizaciones;
 
@@ -83,6 +84,7 @@ public class OrdenMedicaService {
 			PersonaRepositoryPort personas,
 			PerfilPacienteRepositoryPort perfiles,
 			PermissionGuard permissionGuard,
+			PersonSupportAccessAuditor supportAccessAuditor,
 			AuditTrail auditTrail,
 			AutorizacionRepositoryPort autorizaciones) {
 
@@ -92,6 +94,7 @@ public class OrdenMedicaService {
 		this.personas = personas;
 		this.perfiles = perfiles;
 		this.permissionGuard = permissionGuard;
+		this.supportAccessAuditor = supportAccessAuditor;
 		this.auditTrail = auditTrail;
 		this.autorizaciones = autorizaciones;
 	}
@@ -142,8 +145,8 @@ public class OrdenMedicaService {
 	/** Registra la orden que el paciente presento (RF-M17-001). */
 	@Transactional
 	public OrdenView registrar(OperatingActor actor, long personaId, OrdenAltaCommand command) {
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Registrar una orden medica");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Registrar una orden medica", AuditEvents.ENTITY_PERSONA, personaId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPacienteVigente(organizationId, personaId, "cargar una orden medica");
@@ -191,8 +194,8 @@ public class OrdenMedicaService {
 	public OrdenView editar(
 			OperatingActor actor, long personaId, long ordenId, OrdenEdicionCommand command) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Editar una orden medica");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Editar una orden medica", AuditEvents.ENTITY_ORDEN, ordenId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPersonaDelTenant(organizationId, personaId);
@@ -230,8 +233,8 @@ public class OrdenMedicaService {
 	public OrdenView vincularDocumento(
 			OperatingActor actor, long personaId, long ordenId, Long adjuntoId) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Vincular el documento de una orden");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Vincular el documento de una orden", AuditEvents.ENTITY_ORDEN, ordenId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPersonaDelTenant(organizationId, personaId);
@@ -258,8 +261,8 @@ public class OrdenMedicaService {
 	public OrdenView darDeBaja(
 			OperatingActor actor, long personaId, long ordenId, String motivo) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Dar de baja una orden medica");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Dar de baja una orden medica", AuditEvents.ENTITY_ORDEN, ordenId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPersonaDelTenant(organizationId, personaId);

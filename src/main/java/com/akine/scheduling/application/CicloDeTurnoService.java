@@ -4,8 +4,6 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
-import com.akine.organization.spi.PermissionGuard;
-import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
@@ -95,7 +93,7 @@ public class CicloDeTurnoService {
 	private final AgendaSedeRepositoryPort agendas;
 	private final OfertaDirectory ofertas;
 	private final ConsultorioDirectory consultorios;
-	private final PermissionGuard permissionGuard;
+	private final SoporteEnAgenda soporte;
 	private final AgendaSedeIniciador iniciador;
 	private final RevalidadorDeSlot revalidador;
 	private final AtencionProbe atenciones;
@@ -110,7 +108,7 @@ public class CicloDeTurnoService {
 			AgendaSedeRepositoryPort agendas,
 			OfertaDirectory ofertas,
 			ConsultorioDirectory consultorios,
-			PermissionGuard permissionGuard,
+			SoporteEnAgenda soporte,
 			AgendaSedeIniciador iniciador,
 			RevalidadorDeSlot revalidador,
 			AtencionProbe atenciones,
@@ -124,7 +122,7 @@ public class CicloDeTurnoService {
 		this.agendas = agendas;
 		this.ofertas = ofertas;
 		this.consultorios = consultorios;
-		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.iniciador = iniciador;
 		this.revalidador = revalidador;
 		this.atenciones = atenciones;
@@ -377,9 +375,7 @@ public class CicloDeTurnoService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), PermissionCodes.TURNO_READ,
-				organizationId, consultorioId, null, Instant.now()));
+		soporte.exigir(actor, PermissionCodes.TURNO_READ, organizationId, consultorioId);
 
 		// Se exige que el turno exista y sea de esta sede ANTES de leer el historial: sin esto,
 		// pedir el historial de un turno de otro tenant devolveria una lista vacia con 200, que
@@ -482,12 +478,6 @@ public class CicloDeTurnoService {
 
 	/** Cancelar, mover y marcar ausencia comprometen un recurso del centro: {@code turno:manage}. */
 	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(),
-				PermissionCodes.TURNO_MANAGE,
-				organizationId,
-				consultorioId,
-				null,
-				Instant.now()));
+		soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
 	}
 }
