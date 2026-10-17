@@ -37,8 +37,7 @@ El porcentaje de la fase es el promedio simple de las cuatro.
 - [ ] QA manual corrido con los circuitos de F9 incluidos (los doce circuitos de `docs/qa/` son del MVP:
   no hay uno de clases, pases y abonos).
 - [ ] Release completo M01–M29: tag del RC, notas finales, aprobación.
-- [ ] Tabla de trazabilidad del plan (§ líneas ~5254–5312) actualizada: hoy marca las 56 etapas
-  como "NO IMPLEMENTADO".
+- [x] ~~Tabla de trazabilidad del plan actualizada~~ (17/10/2026): las 56 etapas del §23 llevan estado real y los PR que las cerraron, y el plan tiene el registro "F9 y F10 (17/10/2026)" al final.
 
 ## Registro — AKINE-09.02, hardening de la superficie de F9 (16/10/2026)
 
