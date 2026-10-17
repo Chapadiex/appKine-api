@@ -22,7 +22,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Los jobs de F9 contra el {@code /actuator/prometheus} y el log JSON de verdad (AKINE-09.03,
- * docs/observabilidad.md §7). Mismo contexto que {@code ObservabilidadIT}: mismas anotaciones.
+ * docs/observabilidad.md §7). Contexto PROPIO, no el de {@code ObservabilidadIT}: el formato
+ * del log es de logback, que es global; si los dos tests compartieran contexto, el que lo reusa
+ * despues de que otro contexto reconfiguro logback a texto leeria lineas que no son JSON. Los
+ * ticks programados se corren a una hora para que solo pasen las pasadas que el test dispara.
  *
  * <p>Lo que un unitario de {@link ObservacionDeJobs} no puede ver: que los cuatro workers esten
  * cableados, que Spring Boot convierta la observacion en el timer {@code akine_job_seconds}, que
@@ -30,7 +33,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * JSON con sus campos y el {@code traceId} de la pasada.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-		properties = "logging.structured.format.console=logstash")
+		properties = {
+			"logging.structured.format.console=logstash",
+			"akine.activity.pases.vencimiento.initial-delay-ms=3600000",
+			"akine.activity.abonos.renovacion.initial-delay-ms=3600000",
+			"akine.activity.pases.avisos.initial-delay-ms=3600000"})
 @ActiveProfiles("local")
 @AutoConfigureRestTestClient
 @AutoConfigureMetrics
