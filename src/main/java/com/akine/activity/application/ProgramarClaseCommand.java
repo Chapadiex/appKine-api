@@ -29,6 +29,12 @@ public record ProgramarClaseCommand(
 		String idempotencyKey,
 		Long espacioId) {
 
+	/** AKINE-09.02: una fecha fuera de rango es 400, no un 500 al pasarla a la zona de la sede. */
+	public ProgramarClaseCommand {
+		FechasAdmitidas.exigir(inicio, "inicio");
+		FechasAdmitidas.exigir(fin, "fin");
+	}
+
 	/**
 	 * Huella del pedido, para distinguir un reintento de un reuso de clave con otro contenido.
 	 *

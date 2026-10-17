@@ -1,5 +1,8 @@
 package com.akine.activity.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
+import org.mockito.Mockito;
+
 import com.akine.activity.domain.AsistenciaActividad;
 import com.akine.activity.domain.AsistenciaEvento;
 import com.akine.activity.domain.ClaseProgramada;
@@ -104,7 +107,8 @@ class AsistenciaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AsistenciaService(asistencias, eventos, inscripciones, clases, eventosDeClase,
-				capacidad, proyeccion, personas, consultorios, permissionGuard, auditTrail, consumoDePases,
+				capacidad, proyeccion, personas, consultorios, permissionGuard,
+				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail, consumoDePases,
 				transactionManager);
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));

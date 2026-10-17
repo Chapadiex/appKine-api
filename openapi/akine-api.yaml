@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.118.0
+  version: 0.120.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -22138,6 +22138,8 @@ components:
           format: int32
           description: "Creditos con signo: positivo suma, negativo resta. Nunca cero"
           example: -1
+          maximum: 10000
+          minimum: -10000
         motivo:
           type: string
           description: "Obligatorio: queda en el ledger y en la auditoria (CA-M29-005-06)"
@@ -25315,6 +25317,7 @@ components:
             \ dia de la compra"
           example: 60
           exclusiveMinimum: 0
+          maximum: 3660
         vigenciaHasta:
           type: string
           format: date
@@ -27444,6 +27447,7 @@ components:
           type: integer
           format: int32
           exclusiveMinimum: 0
+          maximum: 3660
         vigenciaHasta:
           type: string
           format: date

@@ -2,6 +2,7 @@ package com.akine.platform.api;
 
 import com.akine.platform.spi.problem.ProblemType;
 import java.net.URI;
+import java.time.DateTimeException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -249,6 +250,22 @@ public class GlobalExceptionHandler {
 	public ProblemDetail handleIllegalArgument(IllegalArgumentException exception) {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
 				HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setTitle("Solicitud invalida");
+		problem.setType(VALIDATION_ERROR);
+		return problem;
+	}
+
+	/**
+	 * Una fecha que Java representa pero no se puede llevar a una zona ni sumarle dias (AKINE-09.02).
+	 *
+	 * <p>Jackson acepta instantes hasta el anio mil millones; {@code atZone} o {@code plusDays}
+	 * sobre ellos lanzan {@link DateTimeException}, y sin este handler eso era un 500. Es siempre
+	 * una entrada fuera de rango. El mensaje del JDK no se propaga: no esta escrito para el usuario.
+	 */
+	@ExceptionHandler(DateTimeException.class)
+	public ProblemDetail handleDateTime(DateTimeException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, "Una fecha del pedido esta fuera del rango admitido.");
 		problem.setTitle("Solicitud invalida");
 		problem.setType(VALIDATION_ERROR);
 		return problem;

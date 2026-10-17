@@ -56,6 +56,12 @@ public class PaseController {
 	private static final String P403_AJUSTE = "Sin `pase:adjust` en esa sede, o sin contexto activo";
 	/** Tope duro por request del ledger paginado, el mismo de todos los listados de la API. */
 	private static final int TAMANO_MAXIMO = 100;
+	/**
+	 * Tope de pagina (AKINE-09.02): con {@code page} enorme el offset pasaba Integer.MAX_VALUE y
+	 * Spring Data respondia 500. Mas alla del tope la pagina sale vacia, como cualquier pagina
+	 * posterior a la ultima.
+	 */
+	private static final int PAGINA_MAXIMA = 100_000;
 	private static final String P404 = "La sede, el recurso o la persona no existen, o son de otro tenant";
 
 	private final ProductoService productoService;
@@ -172,7 +178,10 @@ public class PaseController {
 		return PaseResponses.Producto.de(productoService.editar(apiActor.current(), consultorioId, productoId,
 				new EditarProductoCommand(request.nombre(), request.descripcion(), request.creditos(),
 						request.precio(), request.moneda(), request.vigenciaDias(),
-						request.vigenciaDesde(), request.vigenciaHasta(), request.limpiarVigenciaHasta(),
+						request.vigenciaDesde(), request.vigenciaHasta(),
+						// AKINE-09.02: Boolean y no boolean. Con el primitivo, un PUT que omitia el
+						// campo —"los ausentes se conservan"— era 400 de cuerpo ilegible (Jackson 3).
+						Boolean.TRUE.equals(request.limpiarVigenciaHasta()),
 						request.version())));
 	}
 
@@ -299,7 +308,7 @@ public class PaseController {
 			@RequestParam(defaultValue = "20") int size) {
 
 		return PaseResponses.PaginaDeMovimientos.de(ventaService.movimientos(apiActor.current(), consultorioId,
-				paseId, Math.max(page, 0), Math.min(Math.max(size, 1), TAMANO_MAXIMO)));
+				paseId, Math.min(Math.max(page, 0), PAGINA_MAXIMA), Math.min(Math.max(size, 1), TAMANO_MAXIMO)));
 	}
 
 	@PutMapping("/pases/{paseId}/renovacion")

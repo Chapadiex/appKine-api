@@ -18,4 +18,10 @@ public record EditarProductoCommand(
 		LocalDate vigenciaHasta,
 		boolean limpiarVigenciaHasta,
 		long version) {
+
+	/** AKINE-09.02: ver {@link FechasAdmitidas}. */
+	public EditarProductoCommand {
+		FechasAdmitidas.exigir(vigenciaDesde, "vigenciaDesde");
+		FechasAdmitidas.exigir(vigenciaHasta, "vigenciaHasta");
+	}
 }
