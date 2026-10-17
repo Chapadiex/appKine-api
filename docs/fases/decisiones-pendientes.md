@@ -21,19 +21,46 @@
 
 ## Resumen
 
-| Bloque | Cantidad |
-|---|---|
-| A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42, U-46, U-48, U-49) | 14 |
-| C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
-| D. No bloquean nada (U-35 a U-37, U-40, U-41, U-43 a U-45, U-50) | 9 |
-| **Total** | **49** |
+> **Actualizado el 17/10/2026.** El usuario aceptó en bloque las recomendaciones de F9/F10: **7
+> resueltas** (U-39, U-40, U-42, U-44, U-46, U-48, U-49 → DP-24 a DP-30) y **4 postergadas** después
+> del release candidate (U-41, U-43, U-45, U-50 → DP-31). U-46 (e) sigue abierta junto con U-03.
+> U-47 no existe. Quedan **42 abiertas**, 4 de ellas postergadas.
+
+| Bloque | Abiertas | Resueltas el 17/10 |
+|---|---|---|
+| A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) | — |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 9 | U-39, U-42, U-46, U-48, U-49 |
+| C. Alcance del MVP, aditivas (U-15 a U-34) | 20 | — |
+| D. No bloquean nada (U-35 a U-37) + postergadas U-41, U-43, U-45, U-50 | 7 (4 postergadas) | U-40, U-44 |
+| **Total** | **42** (de 49) | **7** |
+
+### Resueltas el 17/10/2026
+
+| U | Resolución | DP |
+|---|---|---|
+| U-39 | (a) con la asistencia, sin no-show por defecto; (b) en `POR_PACK`, solo se informa. | DP-24 |
+| U-40 | las cinco quedan como están. | DP-25 |
+| U-42 | (a): solo por convenio; sin cobertura, nada particular. | DP-26 |
+| U-44 | por despliegue. | DP-27 |
+| U-46 | (a), (b), (f) como están; (c) el PROFESIONAL no ve `paseId`/`saldo`; (d) el título no viaja en el correo; (e) **sigue abierta junto con U-03**. | DP-28 |
+| U-48 | el lock solo en abonos; los packs resuelven la clave por el unique. | DP-29 |
+| U-49 | (a) hecha en #152; (c) solo si el entorno lo exige; (b) no. | DP-30 |
+
+### Postergadas después del RC (siguen abiertas)
+
+| U | Tema | Motivo |
+|---|---|---|
+| U-41 | Honorarios por clase | Mejora posterior; el egreso de honorarios se carga a mano |
+| U-43 | Cuenta técnica del job de renovación | Hoy vende a nombre de quien autorizó la renovación |
+| U-45 | Períodos de abono no calendario | Hoy: mes calendario o `vigenciaDias` |
+| U-50 | Rentabilidad y caja por servicio | Sin fuente de costos; el reporte no muestra margen |
+
+Decisión: DP-31.
 
 > **Revisado el 16/10/2026** (etapa 09.04): U-39 (#129), U-40 (#135), U-41 (#139) y U-42 (#141)
 > estaban; de las cuatro "Decisiones a confirmar" de #140 (08.08), la primera —renovar un abono
-> impago— ya vivía como U-40 (b) y las otras tres entran como **U-43, U-44 y U-45**. Ninguna de
-> las 45 se resolvió entre el 13 y el 16/10; seis tienen una propuesta en borrador, abierta y sin
-> mergear: U-06 (api #119, CodeQL y ZAP), U-11 y U-28 (api #122) y U-04, U-07 y U-08 (api #123).
+> impago— ya vivía como U-40 (b) y las otras tres entran como **U-43, U-44 y U-45**. Seis tenían una
+> propuesta en borrador: U-06 (api #119), U-11 y U-28 (api #122) y U-04, U-07 y U-08 (api #123).
 
 Ya resueltas y fuera de la lista (las fichas las mencionan): el **escenario 7b** (`request_hash`
 en `onboarding_registro`), que la ficha de F0–F1 daba abierto y cerró el PR #104 el 13/10/2026
@@ -206,7 +233,9 @@ fila nueva.
 - **Destraba:** que una cobertura, autorización u orden que vence hoy no se lea vencida a la noche.
   Se encarece con cada sitio nuevo que copie `LocalDate.now()`.
 
-### U-39 · Cuándo se devenga una clase `POR_CLASE`, y qué pasa sin pase en `POR_PACK`
+### ~~U-39 · Cuándo se devenga una clase `POR_CLASE`, y qué pasa sin pase en `POR_PACK`~~ — RESUELTA el 17/10/2026 (DP-24)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): (a) con la asistencia, sin no-show por defecto; (b) en `POR_PACK`, solo se informa. Ver DP-24 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 - **Pregunta:** (a) en una oferta `POR_CLASE`, ¿la deuda nace con la **asistencia** o con la
   **inscripción**, y el no-show cobra? (b) en una oferta `POR_PACK`, ¿qué se hace con quien asiste
@@ -225,7 +254,9 @@ fila nueva.
   cambia esquema: `obligacion` necesita un origen nuevo (`ck_obligacion_origen`), que es un
   `DROP CHECK` cuidadoso.
 
-### U-42 · Qué consecuencia económica tiene la atención clínica de un participante de clase
+### ~~U-42 · Qué consecuencia económica tiene la atención clínica de un participante de clase~~ — RESUELTA el 17/10/2026 (DP-26)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): (a): solo por convenio; sin cobertura, nada particular. Ver DP-26 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 - **Pregunta:** la Sesión de un participante de una clase clínica (08.05) se cierra como cualquier
   Sesión. ¿Qué devenga? (a) **sólo lo del convenio** cuando hay cobertura (financiador + coseguro,
@@ -247,7 +278,9 @@ fila nueva.
   Sesión grupal cerrada sin deuda: un backfill tendría que decidir a posteriori qué se cobró por la
   clase.
 
-### U-46 · Lo que el hardening de F9 (09.02) dejó para decidir
+### ~~U-46 · Lo que el hardening de F9 (09.02) dejó para decidir~~ — RESUELTA el 17/10/2026 (DP-28) (parcial: (e) abierta)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): (a), (b), (f) como están; (c) el PROFESIONAL no ve `paseId`/`saldo`; (d) el título no viaja en el correo; (e) **sigue abierta junto con U-03**. Ver DP-28 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 09.02 corrigió los defectos de aislamiento, auditoría y entradas de `activity` (registro en
 [`F10-consolidacion-final.md`](F10-consolidacion-final.md)). Estas seis no son defectos: son
@@ -494,7 +527,9 @@ dejar el MVP como está:
 - **Fase / RF:** F8.
 - **Destraba:** nada del MVP.
 
-### U-40 · Las políticas de pases y abonos que M29 no define
+### ~~U-40 · Las políticas de pases y abonos que M29 no define~~ — RESUELTA el 17/10/2026 (DP-25)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): las cinco quedan como están. Ver DP-25 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 - **Pregunta:** cinco, todas de producto: (a) ¿un abono puede no tener tope de asistencias por
   periodo? (b) ¿el abono se activa al vender o al cobrarse ("según política de pago",
@@ -515,7 +550,9 @@ dejar el MVP como está:
   [`../diseno/AKINE-08.07-08.08-ledger-y-abonos.md`](../diseno/AKINE-08.07-08.08-ledger-y-abonos.md) §9.
 - **Destraba:** nada del MVP.
 
-### U-41 · El esquema de honorarios que RF-M22-006 da por configurado
+### U-41 · El esquema de honorarios que RF-M22-006 da por configurado — POSTERGADA (después del RC, DP-31)
+
+> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (honorarios por clase); documentada y abierta. Ver DP-31.
 
 - **Pregunta:** RF-M22-006 dice *"aplica esquema de honorario configurado: por clase, hora,
   participante u otro soportado"*, y ese esquema **no existe** en el modelo ni en la especificación.
@@ -534,7 +571,9 @@ dejar el MVP como está:
 - **Fase / RF:** F9 (08.09); RF-M22-006, RF-M22-007.
 - **Destraba:** RF-M22-006/007, la mitad de 08.09.
 
-### U-48 · El lock del producto en la venta de un pack
+### ~~U-48 · El lock del producto en la venta de un pack~~ — RESUELTA el 17/10/2026 (DP-29)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): el lock solo en abonos; los packs resuelven la clave por el unique. Ver DP-29 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 - **Pregunta:** ¿la venta de un **pack** sigue tomando el producto con `FOR UPDATE`, o sólo la de
   un abono?
@@ -549,7 +588,9 @@ dejar el MVP como está:
 - **Fase / RF:** F10 (09.03); RF-M29-002.
 - **Destraba:** el SLO de la venta de pases con varios mostradores.
 
-### U-49 · El costo de la asistencia en lote
+### ~~U-49 · El costo de la asistencia en lote~~ — RESUELTA el 17/10/2026 (DP-30)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): (a) hecha en #152; (c) solo si el entorno lo exige; (b) no. Ver DP-30 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 - **Pregunta:** ¿se cambia cómo se transacciona la asistencia en lote?
 - **Hoy:** cada ítem es su propia transacción (RF-M13-008, "actualización transaccional
@@ -575,7 +616,9 @@ dejar el MVP como está:
 - **Fase / RF:** F10 (09.03); RF-M13-008, RF-M28-007.
 - **Destraba:** el SLO con asistencia en lote bajo carga.
 
-### U-43 · A nombre de quién se vende el período que renueva el job
+### U-43 · A nombre de quién se vende el período que renueva el job — POSTERGADA (después del RC, DP-31)
+
+> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (cuenta técnica del job de renovación); documentada y abierta. Ver DP-31.
 
 - **Pregunta:** la renovación automática de un abono (08.08) vende el período siguiente sin que
   nadie apriete un botón. ¿Quién figura como vendedor: la cuenta que prendió la renovación, o una
@@ -592,7 +635,9 @@ dejar el MVP como está:
 - **Destraba:** nada del MVP. Importa si un colaborador que prendió renovaciones se desvincula: sus
   abonos se siguen vendiendo a su nombre.
 
-### U-44 · Umbrales de aviso de pases por despliegue o por centro
+### ~~U-44 · Umbrales de aviso de pases por despliegue o por centro~~ — RESUELTA el 17/10/2026 (DP-27)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): por despliegue. Ver DP-27 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 - **Pregunta:** los avisos de vencimiento próximo y de saldo bajo (RF-M26-008) se configuran con
   `akine.activity.pases.avisos.dias-antes-del-vencimiento` (3) y `.saldo-bajo` (1), **iguales para
@@ -603,7 +648,9 @@ dejar el MVP como está:
 - **Fase / RF:** F9 (08.08); RF-M26-008, CA-M26-008-06. Diseño §10.3 y §10.8 n.º 8.
 - **Destraba:** nada del MVP. Cómo se operan hoy: [`../operaciones/runbooks.md`](../operaciones/runbooks.md) R7.
 
-### U-45 · Qué período sigue al renovar un abono que no es un mes calendario
+### U-45 · Qué período sigue al renovar un abono que no es un mes calendario — POSTERGADA (después del RC, DP-31)
+
+> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (períodos no calendario); documentada y abierta. Ver DP-31.
 
 - **Pregunta:** el job renueva un mes calendario completo por el mes siguiente (noviembre →
   diciembre). Cualquier otro período se renueva por `vigenciaDias` desde el día siguiente al fin, y
@@ -614,7 +661,9 @@ dejar el MVP como está:
 - **Fase / RF:** F9 (08.08); RF-M29-007. Diseño §10.2 paso 3.
 - **Destraba:** nada del MVP.
 
-### U-50 · Cómo se costea un servicio para medir su rentabilidad
+### U-50 · Cómo se costea un servicio para medir su rentabilidad — POSTERGADA (después del RC, DP-31)
+
+> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (rentabilidad y caja por servicio); documentada y abierta. Ver DP-31.
 
 - **Pregunta:** RF-M23-009 se titula *"rentabilidad e ingresos por servicio"* y pide *"consolidar
   obligaciones, cobros y caja por Oferta/Servicio"*. Los ingresos tienen fuente; **los costos no**.

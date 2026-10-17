@@ -678,6 +678,74 @@ un evento de auditoría no es un contrato de negocio).
 **Implementada en:** B-4 (`V85`, contrato 0.79.0, `docs/diseno/AKINE-B-4-historial-autorizacion.md`).
 El vencimiento no es un evento: se calcula al leer, como VENCIDA en la autorización.
 
+## DP-24 — `POR_CLASE` devenga con la asistencia; asistir sin pase en `POR_PACK` solo se informa (U-39)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** (a) En una oferta `POR_CLASE` la deuda nace con la **asistencia**, y el no-show **no** cobra por defecto (`devenga_no_show = 0`, ya en `V64`). (b) En una oferta `POR_PACK`, quien asiste **sin pase vigente** queda registrado e informado (`consumoDeCredito.efecto = SIN_PASE_ELEGIBLE`, auditado), sin bloqueo ni deuda suelta.
+
+**Alternativas descartadas.** devengar con la inscripción; bloquear la asistencia sin pase; devengar una clase suelta.
+
+**Implementada en:** un PR en curso (devengo `POR_CLASE`); hasta que entre, declarar `POR_CLASE` sigue respondiendo 400.
+
+## DP-25 — Las cinco políticas de pases y abonos quedan como están (U-40)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** (a) el abono lleva tope de asistencias por período; (b) se activa al vender, incluida la renovación automática, sin mirar si el anterior se pagó; (c) no se anula un pase ya usado (se ajusta el saldo); (d) el ajuste manual deja el saldo en `[0, créditos comprados]`; (e) sin ventana de gracia tras el vencimiento. Se revisa cuando un centro lo pida.
+
+**Implementada en:** el código vigente (08.07, 08.08); sin cambio.
+
+## DP-26 — La atención grupal devenga solo por convenio; sin cobertura, nada particular (U-42)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** (a) La Sesión de un participante de clase clínica devenga **solo lo del convenio** cuando hay cobertura (entra a la presentación) y **nada particular** sin ella: la clase se cobra por su esquema (pase, abono, clase) sobre la asistencia.
+
+**Alternativas descartadas.** cobrar también el particular al precio de la oferta; no devengar nada, ni por convenio.
+
+**Implementada en:** el código vigente (08.05); sin cambio.
+
+## DP-27 — Umbrales de aviso de pases por despliegue (U-44)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** Los umbrales de vencimiento próximo y saldo bajo (`akine.activity.pases.avisos.*`) son **por despliegue**, no por centro ni por producto, hasta que un centro lo pida.
+
+**Implementada en:** el código vigente (08.08); sin cambio.
+
+## DP-28 — Criterios que el hardening de F9 dejó para decidir (U-46)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** (a) una sede hermana responde 403, no 404; (b) ningún permiso de F9 es otorgable por grant; (f) las claves de idempotencia siguen siendo por organización, no por sede. (c) El `PROFESIONAL` **no ve** `paseId` ni `saldo` del pase en la respuesta de la asistencia (cambio aditivo de contrato, sin `pase:read`). (d) El **título de la clase no viaja** en el correo de cancelación o reprogramación. (e) El panel de atención grupal se resuelve **con la justificación en `encounter`**: sigue **abierta junto con U-03**.
+
+**Implementada en:** (a), (b) y (f) sin cambio. (c) y (d): un PR en curso. (e): pendiente de U-03.
+
+## DP-29 — El lock del producto solo en la venta de abonos (U-48)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** El `FOR UPDATE` del producto se toma **solo en la venta de abonos** (serializa los períodos de la misma persona). En un **pack**, la carrera de la `Idempotency-Key` se resuelve por el unique `uk_pase_idempotency`, con relectura en `READ_COMMITTED` al chocar.
+
+**Alternativas descartadas.** bloquear toda venta (p95 723 ms a 4,2 ventas/s en `docs/carga.md` §12).
+
+**Implementada en:** un PR en curso.
+
+## DP-30 — Costo de la asistencia en lote: (a) hecha; (c) solo si el entorno lo exige (U-49)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** (a) hecha en api #152 (de 18 a 11 sentencias por participante en el alta). (c) limitar los lotes concurrentes por sede **solo si el entorno de destino lo exige**. (b) agrupar ítems por transacción: **no**, porque cambiaría la actualización transaccional independiente de RF-M13-008.
+
+**Implementada en:** (a) api #152; (c) condicionada al entorno de destino.
+
+## DP-31 — Fuera del release candidate: honorarios por clase, cuenta técnica de renovación, períodos no calendario, rentabilidad (U-41, U-43, U-45, U-50)
+
+**Estado:** DECIDIDA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** Cuatro decisiones quedan **fuera del release candidate**, como mejoras posteriores: **U-41** (esquema de honorarios por clase, RF-M22-006/007), **U-43** (cuenta técnica de sistema para el job de renovación de abonos), **U-45** (períodos de abono que no son un mes calendario) y **U-50** (rentabilidad y caja por servicio, RF-M23-009). Siguen **documentadas y abiertas** en `decisiones-pendientes.md`, marcadas como postergadas, para después del RC. Hoy valen: el egreso de honorarios se carga a mano; el período renovado se vende a nombre de la cuenta que autorizó la renovación; se renueva por mes calendario o `vigenciaDias`; el reporte `SERVICIOS` no muestra margen (`rentabilidad-sin-costos`).
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional

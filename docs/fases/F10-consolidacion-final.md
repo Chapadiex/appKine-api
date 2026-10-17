@@ -71,5 +71,5 @@ Verificado sin cambios: la lista blanca de `SanitizedPayload` cubre todas las cl
 de F9; los logs de `activity` sólo llevan ids; todas las mutaciones de F9 se auditan en la
 transacción del negocio; los workers operan cada candidato con su organización y sede.
 
-Queda para el usuario: **U-46** (`decisiones-pendientes.md`). Fuera de F9 y anotado como R13 del
+**U-46 decidida el 17/10/2026 (DP-28)**: (a), (b) y (f) quedan; (c) el `PROFESIONAL` no ve `paseId`/`saldo`; (d) el título de la clase no viaja en el correo; (e) sigue abierta junto con U-03. Decididas también U-48 (DP-29, lock solo en abonos), U-49 (DP-30: (a) hecha, (c) solo si el entorno lo exige, (b) no) y, fuera del RC, U-50 (DP-31, rentabilidad y caja por servicio). Queda para el usuario: U-03 y, con ella, U-46 (e). Fuera de F9 y anotado como R13 del
 threat model: `scheduling` tampoco escribe `SUPPORT_ACCESS_USED` para `turno:read`.
