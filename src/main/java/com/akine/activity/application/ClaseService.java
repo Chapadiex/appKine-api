@@ -119,6 +119,7 @@ public class ClaseService {
 	private final AuditTrail auditTrail;
 	private final ProyeccionDeClase proyeccion;
 	private final ConsumoDePaseService consumoDePases;
+	private final DevengoPorClaseService devengoPorClase;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public ClaseService(
@@ -136,6 +137,7 @@ public class ClaseService {
 			AuditTrail auditTrail,
 			ProyeccionDeClase proyeccion,
 			ConsumoDePaseService consumoDePases,
+			DevengoPorClaseService devengoPorClase,
 			PlatformTransactionManager transactionManager) {
 
 		this.clases = clases;
@@ -152,6 +154,7 @@ public class ClaseService {
 		this.auditTrail = auditTrail;
 		this.proyeccion = proyeccion;
 		this.consumoDePases = consumoDePases;
+		this.devengoPorClase = devengoPorClase;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -397,6 +400,9 @@ public class ClaseService {
 			// AKINE-08.07 (RF-M29-004): los creditos que tomaron las asistencias de esta clase
 			// vuelven a sus pases. Antes de resolver las inscripciones, que limpian el contexto.
 			consumoDePases.devolverPorCancelacion(cancelada, actor.accountId(), motivo, ahora);
+			// U-39 (RF-M28-006 paso 7, RN-M28-009): y las deudas POR_CLASE de sus asistencias se
+			// anulan; las que ya tienen cobros quedan vivas y auditadas (se reintegra, RF-M19-010).
+			devengoPorClase.anularPorCancelacion(cancelada, actor.accountId(), motivo, ahora);
 			resolverInscripcionesDeClaseCancelada(
 					actor, sede, cancelada, claseId, motivo, ahora);
 			log.info("Clase cancelada: claseId={} consultorioId={}", claseId, consultorioId);

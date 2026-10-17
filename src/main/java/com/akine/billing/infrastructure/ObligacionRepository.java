@@ -2,7 +2,9 @@ package com.akine.billing.infrastructure;
 
 import com.akine.billing.domain.Obligacion;
 import com.akine.billing.domain.port.ObligacionRepositoryPort;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -52,6 +54,45 @@ public interface ObligacionRepository
 	Optional<Obligacion> findDeLaVenta(
 			@Param("organizationId") long organizationId,
 			@Param("paseId") long paseId);
+
+	@Override
+	@Query("""
+			SELECT o FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.asistenciaId = :asistenciaId
+			   AND o.deletedAt IS NULL
+			   AND o.estado <> com.akine.billing.domain.EstadoObligacion.ANULADA
+			""")
+	Optional<Obligacion> findVivaDeLaAsistencia(
+			@Param("organizationId") long organizationId,
+			@Param("asistenciaId") long asistenciaId);
+
+	@Override
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+			SELECT o FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.asistenciaId = :asistenciaId
+			   AND o.deletedAt IS NULL
+			   AND o.estado <> com.akine.billing.domain.EstadoObligacion.ANULADA
+			""")
+	Optional<Obligacion> lockVivaDeLaAsistencia(
+			@Param("organizationId") long organizationId,
+			@Param("asistenciaId") long asistenciaId);
+
+	@Override
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+			SELECT o FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.claseId = :claseId
+			   AND o.deletedAt IS NULL
+			   AND o.estado <> com.akine.billing.domain.EstadoObligacion.ANULADA
+			 ORDER BY o.id
+			""")
+	List<Obligacion> lockVivasDeLaClase(
+			@Param("organizationId") long organizationId,
+			@Param("claseId") long claseId);
 
 	@Override
 	@Query("""

@@ -70,13 +70,13 @@ class ProductoYPaseTest {
 	}
 
 	@Test
-	@DisplayName("El esquema de cobro tiene vocabulario cerrado y deriva su momento de devengo; POR_CLASE espera decision")
+	@DisplayName("El esquema de cobro tiene vocabulario cerrado y deriva su momento de devengo; POR_CLASE devenga con la asistencia (U-39)")
 	void esquema_de_cobro() {
 		assertThat(new EsquemaCobro("POR_SESION").momentoDevengo()).isEqualTo("ASISTENCIA");
 		assertThat(new EsquemaCobro("POR_PACK").momentoDevengo()).isEqualTo("VENTA");
 		assertThat(new EsquemaCobro("POR_ABONO").momentoDevengo()).isEqualTo("VENTA");
 		assertThatThrownBy(() -> new EsquemaCobro("SESION_SUELTA")).isInstanceOf(IllegalArgumentException.class);
-		assertThatThrownBy(() -> new EsquemaCobro("POR_CLASE")).isInstanceOf(IllegalArgumentException.class);
+		assertThat(new EsquemaCobro("POR_CLASE").momentoDevengo()).isEqualTo("ASISTENCIA");
 	}
 
 	@Test

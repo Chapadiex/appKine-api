@@ -101,6 +101,7 @@ class AsistenciaServiceTest {
 	@Mock private AuditTrail auditTrail;
 	@Mock private PlatformTransactionManager transactionManager;
 	@Mock private ConsumoDePaseService consumoDePases;
+	@Mock private DevengoPorClaseService devengoPorClase;
 
 	private AsistenciaService service;
 
@@ -108,7 +109,7 @@ class AsistenciaServiceTest {
 	void setUp() {
 		service = new AsistenciaService(asistencias, eventos, inscripciones, clases, eventosDeClase,
 				capacidad, proyeccion, personas, consultorios, permissionGuard,
-				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail, consumoDePases,
+				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail, consumoDePases, devengoPorClase,
 				transactionManager);
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));

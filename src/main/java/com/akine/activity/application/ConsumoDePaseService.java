@@ -48,8 +48,9 @@ import java.util.Map;
  * <p>La asistencia <b>se registra igual</b>: asistencia y economia son independientes
  * (CA-M19-009-06) y RN-M29-005 solo dice que no se consume. El resultado lo informa
  * ({@code SIN_PASE_ELEGIBLE}) y queda auditado para regularizar. Ningun RF pide devengar una clase
- * suelta en una oferta {@code POR_PACK}; el devengo por clase (RF-M18-008) es del esquema
- * {@code POR_CLASE}, que espera una decision del usuario.
+ * suelta en una oferta {@code POR_PACK} (U-39 (b), decidida el 17/10/2026: informar, como hasta
+ * ahora); el devengo por clase (RF-M18-008) es del esquema {@code POR_CLASE} y lo hace
+ * {@link DevengoPorClaseService}.
  *
  * <h2>Concurrencia</h2>
  *
@@ -120,10 +121,10 @@ public class ConsumoDePaseService {
 		// AKINE-08.08 (RF-M29-008): una oferta POR_ABONO se cubre igual que una POR_PACK, con el
 		// abono vigente el dia de la clase. "Cubierta sin obligacion unitaria" es exactamente esto:
 		// el credito del periodo se toma y ninguna deuda nace (RN-M29-007).
-		boolean consumeCredito = lecturas.consumeCredito(clase.getOfertaId(), ofertaId -> ofertas
-				.esquemaDeCobro(organizationId, clase.getConsultorioId(), ofertaId)
+		boolean consumeCredito = lecturas.esquema(clase.getOfertaId(), () -> ofertas
+						.esquemaDeCobro(organizationId, clase.getConsultorioId(), clase.getOfertaId()))
 				.filter(esquema -> esquema == EsquemaDeCobro.POR_PACK || esquema == EsquemaDeCobro.POR_ABONO)
-				.isPresent());
+				.isPresent();
 		if (!consumeCredito) {
 			return ConsumoDeCredito.noAplica();
 		}

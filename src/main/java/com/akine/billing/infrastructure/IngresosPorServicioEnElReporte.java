@@ -229,7 +229,7 @@ public class IngresosPorServicioEnElReporte implements ReporteContributor {
 	private static String origenDe(Concepto concepto) {
 		return switch (concepto) {
 			case PRESTACION -> "origen SESION, oferta individual";
-			case CLASE -> "origen SESION, oferta grupal";
+			case CLASE -> "origen SESION o ASISTENCIA_CLASE (POR_CLASE), oferta grupal";
 			case PACK -> "origen VENTA_PASE: ingreso anticipado, el consumo de creditos no suma";
 			case ABONO -> "origen VENTA_ABONO: ingreso anticipado, el consumo de creditos no suma";
 		};

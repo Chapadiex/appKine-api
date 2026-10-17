@@ -29,7 +29,12 @@ public record ResultadoDeAsistenciaResponse(
 
 		@Schema(description = "Que le hizo este registro al saldo de pases de la persona "
 				+ "(AKINE-08.07). Ausente si el pedido repetia lo ya registrado y no se escribio nada.")
-		ConsumoDeCreditoResponse consumoDeCredito) {
+		ConsumoDeCreditoResponse consumoDeCredito,
+
+		@Schema(description = "Que le hizo este registro a la deuda de la persona en una oferta "
+				+ "`POR_CLASE` (U-39, RF-M18-008, desde 0.124.0). Ausente si el pedido repetia lo ya "
+				+ "registrado y no se escribio nada.")
+		DevengoDeClaseResponse devengoDeClase) {
 
 	public static ResultadoDeAsistenciaResponse de(ResultadoDeAsistencia resultado) {
 		return new ResultadoDeAsistenciaResponse(
@@ -37,6 +42,7 @@ public record ResultadoDeAsistenciaResponse(
 				InscripcionResponse.de(resultado.inscripcion()),
 				resultado.registrada(),
 				resultado.corregida(),
-				ConsumoDeCreditoResponse.de(resultado.consumo()));
+				ConsumoDeCreditoResponse.de(resultado.consumo()),
+				DevengoDeClaseResponse.de(resultado.devengo()));
 	}
 }

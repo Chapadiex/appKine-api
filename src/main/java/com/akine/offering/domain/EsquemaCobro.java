@@ -18,11 +18,14 @@ import java.util.Set;
  * como {@code POR_SESION}— violaba el CHECK de V64 en el INSERT y la oferta terminaba en un 500.
  * Ahora el valor fuera de vocabulario es un 400 con mensaje, y el momento se deriva del esquema.
  *
- * <h2>{@code POR_CLASE} no se admite todavia</h2>
+ * <h2>{@code POR_CLASE} se devenga con la asistencia (U-39, decidida el 17/10/2026)</h2>
  *
- * <p>Es el unico esquema con dos momentos posibles —{@code ASISTENCIA} o {@code INSCRIPCION}— y
- * elegir entre ellos es la decision del usuario que 08.03 delego (decisiones pendientes, U-39).
- * Derivar uno por defecto seria tomarla por el. Hasta que se decida, declararlo es 400.
+ * <p>Es el unico esquema con dos momentos posibles en el CHECK de V64 —{@code ASISTENCIA} o
+ * {@code INSCRIPCION}—. Hasta el 17/10/2026 declararlo era 400 porque elegir era la decision del
+ * usuario que 08.03 delego (U-39). La decision fue <b>asistencia, sin no-show</b>: la deuda nace
+ * cuando la persona estuvo ({@code PRESENTE} o {@code PRESENTE_TARDE}) y {@code devenga_no_show}
+ * queda en su default {@code 0} (V64). El devengo lo hace {@code activity.DevengoPorClaseService}
+ * (RF-M18-008).
  */
 public record EsquemaCobro(String valor) {
 
@@ -45,18 +48,14 @@ public record EsquemaCobro(String valor) {
 			throw new IllegalArgumentException(
 					"El esquema de cobro debe ser POR_SESION, POR_CLASE, POR_PACK o POR_ABONO");
 		}
-		if (POR_CLASE.equals(valor)) {
-			throw new IllegalArgumentException(
-					"POR_CLASE exige decidir si la clase se devenga con la asistencia o con la "
-							+ "inscripcion, y esa politica todavia no es configurable");
-		}
 	}
 
 	/**
 	 * El {@code momento_devengo} que {@code ck_oferta_politica_devengo} exige para este esquema.
-	 * Para los tres admitidos hay exactamente uno posible.
+	 * {@code POR_SESION} y {@code POR_CLASE} devengan con la asistencia (la clase, por U-39);
+	 * {@code POR_PACK} y {@code POR_ABONO}, con la venta.
 	 */
 	public String momentoDevengo() {
-		return POR_SESION.equals(valor) ? "ASISTENCIA" : "VENTA";
+		return POR_SESION.equals(valor) || POR_CLASE.equals(valor) ? "ASISTENCIA" : "VENTA";
 	}
 }
