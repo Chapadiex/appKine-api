@@ -41,6 +41,24 @@ class EmailTemplatesTest {
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 
+	/** U-46 (d): el aviso de clase dice fecha, hora y sede; el titulo releido de una fila vieja no. */
+	@ParameterizedTest(name = "{0}")
+	@EnumSource(value = NotificationType.class, names = {"CLASE_MODIFICADA", "CUPO_LIBERADO"})
+	@DisplayName("los avisos de clase no nombran la clase")
+	void los_avisos_de_clase_no_nombran_la_clase(NotificationType tipo) {
+		SanitizedPayload filaVieja = SanitizedPayload.fromJson(
+				"{\"nombre\":\"Ana\",\"claseTitulo\":\"Rehabilitacion post-ACV\","
+						+ "\"claseInicio\":\"20/10/2026 a las 18:00\","
+						+ "\"consultorioNombre\":\"Sede Centro\"}");
+
+		EmailMessage mensaje = EmailTemplates.render(tipo, DESTINATARIO, filaVieja, null);
+
+		assertThat(mensaje.asunto() + mensaje.cuerpo()).doesNotContain("Rehabilitacion");
+		assertThat(mensaje.cuerpo())
+				.startsWith("Hola Ana,")
+				.contains("clase del 20/10/2026 a las 18:00 en Sede Centro.");
+	}
+
 	@Test
 	@DisplayName("la activacion lleva el enlace y avisa que se usa una sola vez")
 	void la_activacion_lleva_el_enlace() {

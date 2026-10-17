@@ -31,7 +31,9 @@ public record RegistrarAsistenciaRequest(
 
 		@Schema(
 				description = "Nota **operativa, no clinica**. La ve cualquiera con "
-						+ "`inscripcion:read`, asi que no puede llevar informacion de salud.",
+						+ "`inscripcion:read`, asi que **no debe llevar datos de salud** (U-46 d): ni "
+						+ "diagnosticos, ni sintomas, ni el motivo de una ausencia medica. El servidor "
+						+ "no puede verificarlo; la pantalla lo avisa al cargarla.",
 				example = "Llego a los 10 minutos")
 		@Size(max = 500) String observaciones,
 

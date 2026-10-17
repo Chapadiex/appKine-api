@@ -20,10 +20,17 @@ public record ConsumoDeCreditoResponse(
 				example = "CONSUMIDO")
 		String efecto,
 
-		@Schema(description = "El pase afectado. Ausente si no hubo movimiento.", example = "77")
+		@Schema(
+				description = "El pase afectado. Ausente si no hubo movimiento, **y siempre ausente "
+						+ "si quien registra no tiene `pase:read` en la sede** (U-46 c): el `efecto` "
+						+ "le dice si consumio, pero no que pase era.",
+				example = "77")
 		Long paseId,
 
-		@Schema(description = "Saldo del pase despues del movimiento.", example = "7")
+		@Schema(
+				description = "Saldo del pase despues del movimiento. **Solo con `pase:read`** en "
+						+ "la sede; sin el permiso viaja ausente aunque haya habido movimiento (U-46 c).",
+				example = "7")
 		Integer saldo) {
 
 	public static ConsumoDeCreditoResponse de(ConsumoDeCredito consumo) {

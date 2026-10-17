@@ -28,6 +28,7 @@ import com.akine.activity.domain.port.ActivityRepositoryPorts.InscripcionClaseRe
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionDecision;
+import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
@@ -117,6 +118,7 @@ public class AsistenciaService {
 	private final PacienteDirectory personas;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
+	private final PermissionEvaluator permissionEvaluator;
 	private final SoporteEnActividad soporte;
 	private final AuditTrail auditTrail;
 	private final ConsumoDePaseService consumoDePases;
@@ -143,6 +145,7 @@ public class AsistenciaService {
 			PacienteDirectory personas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
+			PermissionEvaluator permissionEvaluator,
 			SoporteEnActividad soporte,
 			AuditTrail auditTrail,
 			ConsumoDePaseService consumoDePases,
@@ -159,6 +162,7 @@ public class AsistenciaService {
 		this.personas = personas;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
+		this.permissionEvaluator = permissionEvaluator;
 		this.soporte = soporte;
 		this.auditTrail = auditTrail;
 		this.consumoDePases = consumoDePases;
@@ -323,7 +327,9 @@ public class AsistenciaService {
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
 
-		return registrarYaAutorizado(actor, sede, claseId, command, new LecturasDeConsumo(sede));
+		return paraQuienMira(
+				registrarYaAutorizado(actor, sede, claseId, command, new LecturasDeConsumo(sede)),
+				puedeVerPases(actor, organizationId, consultorioId));
 	}
 
 	/**
@@ -495,13 +501,17 @@ public class AsistenciaService {
 		PermissionDecision decision =
 				decidir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
 		LecturasDeConsumo lecturas = new LecturasDeConsumo(sede);
+		boolean veLosPases = puedeVerPases(actor, organizationId, consultorioId);
 
 		List<ItemDeLote> items = new ArrayList<>(comandos.size());
 		for (RegistrarAsistenciaCommand comando : comandos) {
 			// Un SUPPORT_ACCESS_USED por item, igual que cuando cada item evaluaba su permiso.
 			soporte.registrarSiCorresponde(decision, actor.accountId(), organizationId,
 					consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
-			items.add(ejecutarItem(actor, sede, claseId, comando, lecturas));
+			ItemDeLote item = ejecutarItem(actor, sede, claseId, comando, lecturas);
+			items.add(item.exitoso()
+					? ItemDeLote.ok(item.inscripcionId(), paraQuienMira(item.resultado(), veLosPases))
+					: item);
 		}
 
 		return ResultadoDeLote.de(items, cupos(organizationId, consultorioId, claseId));
@@ -615,9 +625,12 @@ public class AsistenciaService {
 		log.info("Ingreso sin inscripcion: claseId={} personaId={} inscripcionId={}",
 				claseId, command.personaId(), inscripcion.getId());
 
-		return aplicar(actor, sede, clase, inscripcion, new RegistrarAsistenciaCommand(
-				inscripcion.getId(), command.resultado(), OrigenAsistencia.INGRESO_SIN_INSCRIPCION,
-				command.observaciones(), null), ahora, new LecturasDeConsumo(sede));
+		return paraQuienMira(
+				aplicar(actor, sede, clase, inscripcion, new RegistrarAsistenciaCommand(
+						inscripcion.getId(), command.resultado(),
+						OrigenAsistencia.INGRESO_SIN_INSCRIPCION, command.observaciones(), null),
+						ahora, new LecturasDeConsumo(sede)),
+				puedeVerPases(actor, organizationId, consultorioId));
 	}
 
 	// =================================================================================
@@ -904,6 +917,41 @@ public class AsistenciaService {
 		// AKINE-09.02: la decision ya no se descarta; si vino por soporte queda auditada.
 		soporte.registrarSiCorresponde(decidir(actor, organizationId, consultorioId, permiso),
 				actor.accountId(), organizationId, consultorioId, permiso);
+	}
+
+	/**
+	 * Si quien toma lista puede ver los pases de la sede (U-46 (c), decidida el 17/10/2026).
+	 *
+	 * <p>Va por {@link PermissionEvaluator} y no por {@link PermissionGuard} porque no tenerlo no
+	 * es un rechazo: es recibir el resultado con el pase tapado. Tampoco registra
+	 * {@code SUPPORT_ACCESS_USED}: la operacion ya dejo su fila por {@code asistencia:manage}, y
+	 * esta segunda pregunta del mismo pedido no agrega un hecho nuevo.
+	 */
+	private boolean puedeVerPases(OperatingActor actor, long organizationId, long consultorioId) {
+		return permissionEvaluator.evaluate(new PermissionQuery(
+				actor.accountId(), PermissionCodes.PASE_READ, organizationId, consultorioId, null,
+				Instant.now())).granted();
+	}
+
+	/**
+	 * Tapa el pase y su saldo para quien no tiene {@code pase:read}. El {@code efecto} queda: quien
+	 * marco presente tiene que saber si eso consumio un credito o si la persona no tenia pase, y eso
+	 * lo dispara su propio acto. Que pase era y cuanto le queda es informacion economica de la
+	 * persona, la misma que {@code DetalleOperativoResponse} ya le niega a quien solo toma lista.
+	 */
+	private static ResultadoDeAsistencia paraQuienMira(
+			ResultadoDeAsistencia resultado, boolean veLosPases) {
+		if (veLosPases || (resultado.consumo() == null && resultado.devengo() == null)) {
+			return resultado;
+		}
+		// U-39: la deuda POR_CLASE pasa por el mismo filtro. El efecto queda (DEVENGADA, ANULADA,
+		// CON_COBROS...: lo dispara el propio acto de quien toma lista); que obligacion es, cuanto
+		// vale y cuanto falta pagar es la misma informacion economica de la persona que se tapa en el
+		// pase.
+		return new ResultadoDeAsistencia(resultado.asistencia(), resultado.inscripcion(),
+				resultado.registrada(), resultado.corregida(),
+				resultado.consumo() == null ? null : resultado.consumo().sinPase(),
+				resultado.devengo() == null ? null : resultado.devengo().sinImporte());
 	}
 
 	/** Exige el permiso y devuelve la decision, sin auditar el acceso de soporte. */

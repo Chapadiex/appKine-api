@@ -29,7 +29,8 @@ public record DevengoDeClaseResponse(
 				example = "DEVENGADA")
 		String efecto,
 
-		@Schema(description = "La deuda afectada. Ausente si no hay.", example = "9001")
+		@Schema(description = "La deuda afectada. Ausente si no hay, y ausentes los cinco datos de la "
+				+ "deuda para quien no tiene `pase:read` (mismo filtro que el pase, U-46 c).", example = "9001")
 		Long obligacionId,
 
 		@Schema(description = "Importe congelado de la deuda: el precio vigente de la oferta el dia "

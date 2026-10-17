@@ -41,6 +41,14 @@ public record DevengoDeClase(
 		NO_APLICA
 	}
 
+	/**
+	 * El mismo efecto, sin decir que deuda es ni cuanto vale (para quien no tiene {@code pase:read},
+	 * con el mismo criterio que {@link ConsumoDeCredito#sinPase()}, U-46 (c)).
+	 */
+	public DevengoDeClase sinImporte() {
+		return of(efecto);
+	}
+
 	public static DevengoDeClase noAplica() {
 		return of(Efecto.NO_APLICA);
 	}
