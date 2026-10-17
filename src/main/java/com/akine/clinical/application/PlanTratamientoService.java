@@ -52,6 +52,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -297,7 +298,7 @@ public class PlanTratamientoService {
 
 		log.info("Plan de tratamiento creado: planId={} casoClinicoId={} numeroPlan={}",
 				plan.getId(), casoClinicoId, numero);
-		return PlanTratamientoView.de(plan, version, vistaDe(escritos));
+		return PlanTratamientoView.de(plan, version, conVigencias(plan, vistaDe(escritos)));
 	}
 
 	// =================================================================================
@@ -411,7 +412,7 @@ public class PlanTratamientoService {
 				ahora);
 		registrarSoporte(acceso, actor, guardado, "Modificar plan de tratamiento", ahora);
 
-		return PlanTratamientoView.de(guardado, version, vistaDe(escritos));
+		return PlanTratamientoView.de(guardado, version, conVigencias(guardado, vistaDe(escritos)));
 	}
 
 	// =================================================================================
@@ -755,7 +756,7 @@ public class PlanTratamientoService {
 		registrarSoporte(acceso, actor, plan, "Ver el historico de versiones de un plan", ahora);
 
 		return versiones.buscarDePlan(organizationId, planId).stream()
-				.map(version -> PlanVersionView.de(version, itemsDe(version)))
+				.map(version -> PlanVersionView.de(version, conVigencias(plan, itemsDe(version))))
 				.toList();
 	}
 
@@ -1092,7 +1093,7 @@ public class PlanTratamientoService {
 				.filter(HistoriaClinica::isVigente)
 				.orElseThrow(() -> new CasoClinicoNotAccessibleException(caso.getId()));
 
-		return AutorizacionClinica.exigir(permissionGuard, relaciones, actor, permissionCode,
+		return AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor, permissionCode,
 				historia.getPersonaId(), justificacion, operacion);
 	}
 
@@ -1119,7 +1120,7 @@ public class PlanTratamientoService {
 				.filter(HistoriaClinica::isVigente)
 				.orElseThrow(() -> new PlanTratamientoNotAccessibleException(plan.getId()));
 
-		return AutorizacionClinica.exigir(permissionGuard, relaciones, actor, permissionCode,
+		return AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor, permissionCode,
 				historia.getPersonaId(), justificacion, operacion);
 	}
 
@@ -1128,7 +1129,31 @@ public class PlanTratamientoService {
 				.buscarVigente(plan.getOrganizationId(), plan.getId())
 				.orElse(null);
 		return PlanTratamientoView.de(plan, vigente,
-				vigente == null ? List.of() : itemsDe(vigente));
+				vigente == null ? List.of() : conVigencias(plan, itemsDe(vigente)));
+	}
+
+	/**
+	 * Los items con la vigencia de su autorizacion de M17, leida en vivo (0.107.0, pedido de
+	 * appKine-web #83: "la autorizacion vence antes del fin estimado" sin leer M17 con otro
+	 * permiso). Solo consulta {@code person} si algun item tiene autorizacion, y una vez por
+	 * autorizacion distinta. Una que ya no resuelve —dada de baja— deja la vigencia ausente: el
+	 * {@code autorizacionId} sigue, porque es historia del plan.
+	 */
+	private List<PlanItemView> conVigencias(PlanTratamiento plan, List<PlanItemView> vistas) {
+		if (vistas.stream().allMatch(item -> item.autorizacionId() == null)) {
+			return vistas;
+		}
+		long personaId = personaDelPlan(plan);
+		Map<Long, Optional<AutorizacionSnapshot>> leidas = new HashMap<>();
+		return vistas.stream()
+				.map(item -> item.autorizacionId() == null
+						? item
+						: leidas.computeIfAbsent(item.autorizacionId(), id -> autorizaciones
+										.find(plan.getOrganizationId(), personaId, id, null))
+								.map(a -> item.conVigenciaDeAutorizacion(
+										a.vigenciaDesde(), a.vigenciaHasta()))
+								.orElse(item))
+				.toList();
 	}
 
 	private List<PlanItemView> itemsDe(PlanTratamientoVersion version) {

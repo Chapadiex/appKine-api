@@ -26,4 +26,15 @@ public class ClinicalSupportAccessAuditor {
 	public void record(AuditEntry entry) {
 		auditoria.registrarAccesoDeSoporte(entry);
 	}
+
+	/**
+	 * Registra un acceso clinico RECHAZADO, aparte y cuando la transaccion del pedido ya termino.
+	 *
+	 * <p>Vive aca porque es el mismo problema que el acceso de soporte: un hecho que tiene que
+	 * quedar aunque la operacion revierta. Al mejor esfuerzo ({@link AuditoriaAparte#registrar}):
+	 * si la escritura falla, se loguea y el pedido sale con su 403 igual.
+	 */
+	public void registrarRechazo(AuditEntry entry) {
+		auditoria.registrar(entry);
+	}
 }

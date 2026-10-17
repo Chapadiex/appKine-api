@@ -99,6 +99,9 @@ class ImportacionArancelesIT {
 		assertThat(aplicado.aplicada()).isTrue();
 		assertThat(contarAranceles(convenioId)).isEqualTo(3);
 		assertThat(contarAuditoria(escenario, "ARANCELES_IMPORTADOS")).isEqualTo(1);
+		assertThat(contarAuditoria(escenario, "ARANCEL_CREATED"))
+				.as("la importacion audita el acto, no cada fila (pre-QA PER-06b)")
+				.isZero();
 
 		// Reintento del mismo lote (CA-M16-007-05): choca contra sus propias filas, nada se duplica.
 		assertThatThrownBy(() -> importacion.confirmar(

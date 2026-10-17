@@ -229,7 +229,63 @@ ArchUnit · Testcontainers.
 > `SerializationFeature` a `DateTimeFeature`, o sea `spring.jackson.datatype.datetime.*`.
 > Ante una duda de API, inspeccionar el jar antes de asumir la forma de 3.x.
 
-### Estado al 13/10/2026, sobre `c791c7c`
+### Estado al 14/10/2026, sobre `57e8083`
+
+> Esta subsección **supersede** a la del 13/10 en contrato, migraciones y defectos; la del 13/10
+> queda como historia. Medido el 14/10 sobre `origin/main` y por la API de GitHub.
+
+Desde `c791c7c` entraron a `main` los PR **#110 a #117**, los ocho. Sigue abierto sólo **#87**
+(Dependabot, Temurin 25). Los cuatro checks del último merge (build/test/contrato, imagen y SBOM,
+OWASP/OSV, Sonar) están en verde.
+
+| | Valor medido sobre `origin/main` `57e8083` (14/10) |
+|---|---|
+| Contrato | `openapi/akine-api.yaml` y `akine.contract.version` **0.99.0**, **311 operaciones** (`grep -cE '^\s+operationId:'`), ningún `operationId` repetido. El cliente de `appKine-web` `main` está en **0.99.0** (web #76) |
+| Migraciones | Última **`V94`** (`ix_cobro_turno`, #112), 75 archivos. La próxima libre es **`V95`** |
+| Commits | **689** en `main` |
+| Tests | **No se corrieron para este documento.** Cada PR corrió los suyos (ver su cuerpo); el CI de `57e8083` pasó |
+
+**Qué agregó cada minor del contrato de 0.92.0 a 0.99.0** (medido versión por versión sobre los
+merges de `main`). **0.93.0, 0.95.0 y 0.96.0 nunca llegaron a `main`**: se reservaron y los PR se
+renumeraron al rebasear.
+
+| Minor | PR | Qué |
+|---|---|---|
+| 0.92.0 | #105 | Filtros por fecha de egresos y de la bandeja de prestaciones elegibles en el **día de la sede**, y `version` obligatoria en `PUT /egresos` (control optimista). Sin operaciones nuevas (309) |
+| 0.94.0 | #107 | Cobertura elegida al reservar: `ReservarTurno.coberturaId` y `Turno.coberturaId` (`V93`). Cierre de F5 |
+| 0.97.0 | #109 | `verDatosAdministrativosDeHistoriaClinica` (lectura limitada de la HC con `paciente:read`) y `cambiarEquipo` versionado. 310 operaciones |
+| 0.98.0 | #108 | `exportarPresentacion`: el lote de una presentación como CSV, con PHI mínima. 311 operaciones |
+| 0.99.0 | #116 | `TurnoDelDia.coberturaId`, aditivo; lo destapó un E2E |
+
+**Defectos corregidos del 13 al 14/10:**
+
+1. **Dos invitaciones emitidas en el mismo milisegundo compartían el enlace** (#111): la llave del
+   `SecureLinkVault` era sólo el vencimiento, y el primer invitado recibía el enlace del segundo.
+2. **"Hoy" en UTC para las vigencias con sede** (#113): entre las 21 y las 24 de Córdoba una
+   vigencia que vencía ese día se leía vencida. 21 sitios corregidos con `organization.spi.ZonaDeSede`;
+   los 28 sin sede quedan para **U-38**.
+3. **`datos-administrativos` respondía 200 para una persona sin perfil de paciente vigente** (#115),
+   contra el 404 del contrato; con el perfil dado de baja exponía la historia y sus casos. Lo
+   encontró la validación de la guía de QA (#114).
+
+Rendimiento: #112 lee permisos una vez por pedido y saca hotspots del perfil (`docs/carga.md` §9);
+#117 achica lo que corre bajo el numerador de comprobantes y `agenda_sede` sin cambiar ninguna regla
+(`docs/carga.md` §10). **El SLO de escrituras a 500 usuarios no se alcanzó**: las secciones críticas
+bajaron (agenda de 14–15 sentencias a 4–5, numerador de 8,6 a 5,6), pero el cobro espera al commit
+durable y el límite siguiente es la CPU en ráfagas. Las cinco opciones —numeración por punto de
+venta, numerar en lote después del commit, al cerrar caja, lock por profesional, medir en el
+entorno de destino— esperan decisión del usuario en §10.
+
+Punteros:
+
+- Decisiones abiertas: [`docs/fases/decisiones-pendientes.md`](docs/fases/decisiones-pendientes.md),
+  **38 entradas** (U-01 a U-38; la U-38, zona de "hoy" para lo que no tiene sede, la abrió #113).
+- Zonas horarias: [`docs/zonas-horarias.md`](docs/zonas-horarias.md), inventario de los sitios con
+  sede (corregidos), sin sede (U-38) y relojes.
+- Carga: [`docs/carga.md`](docs/carga.md) §10, lo que corre bajo los locks de escritura y por qué el
+  SLO sigue sin cumplirse.
+
+### Estado al 13/10/2026, sobre `c791c7c` (histórico)
 
 > Esta subsección **supersede** a la del 11/10 en contrato, migraciones y fases; la del 11/10
 > queda como historia. El detalle **no** se repite acá: vive en el *Registro de cierre técnico de
@@ -359,7 +415,9 @@ contra la fecha de la sede); el mismo patrón en la pantalla de agenda lo corrig
   traban todo (89,8 % de errores). Además: el cobro serializa en `comprobante_numerador` (~330 ms
   de espera de lock), un fallo de base en la autenticación responde 401, N+1 en la agenda del día y
   un primer arranque más largo que el `start-period` del healthcheck. **Ninguno corregido en
-  `main` al 11/10.**
+  `main` al 11/10.** *(15/10: corregidos todos salvo el SLO de escrituras —traba del pool, 401 y
+  `start-period` en #91, IP de la sesión en #93, el N+1 que quedaba en la recepción del día en
+  `akine-g10-sobrantes`—; ver `docs/carga.md` §8 a §11.)*
 - **G-6: `mysql-connector-j` 9.7.0 tiene cuatro CVE sin versión corregida** en Maven Central
   (CVE-2026-60586, 7,7, la más alta). Excepción temporal **hasta el 09/11/2026** en
   `dependency-check-suppressions.xml`: esperar la corrección o bajar a 9.6.0. Los overrides de
@@ -367,8 +425,8 @@ contra la fecha de la sede); el mismo patrón en la pantalla de agenda lo corrig
   mayores.
 - **G-6: cuatro módulos críticos debajo de 0,90 de línea** —`billing` 87,56 %, `person` 86,54 %,
   `scheduling` 86,47 %, `clinical` 82,56 %—, todos por la capa REST, que los ITs no ejercitan.
-- **#82:** `AuthSessionController` sigue guardando `getRemoteAddr()` como IP de la sesión: detrás
-  del nginx registra la del proxy.
+- ~~**#82:** `AuthSessionController` sigue guardando `getRemoteAddr()` como IP de la sesión: detrás
+  del nginx registra la del proxy.~~ Corregido en #93 con `platform.spi.security.IpDeCliente`.
 - **G-12:** la guía está; **el QA manual del §6 sigue sin correr desde 02.02**.
 
 ### Estado al 07/10/2026, sobre `8fe1fae` (histórico)
@@ -890,7 +948,7 @@ Pendientes que arrastra el backend:
 
 - [x] ~~Protección de rama en `main`~~ — hecha: checks obligatorios "Build, test y contrato" e "Imagen Docker y SBOM", y `main` es la rama por defecto (API de GitHub, 11/10)
 - [ ] Activar SonarQube: el job `sonar` del CI ya corre y se saltea limpio; falta cargar `SONAR_TOKEN` y `SONAR_HOST_URL` (G-6, `docs/calidad.md` §3)
-- [ ] Corregir los hallazgos de G-10 (`docs/carga.md` §6): traba del pool por `REQUIRES_NEW` anidado, lock de `comprobante_numerador`, 401 ante fallo de base, N+1 de la agenda del día y `start-period` del healthcheck
+- [x] ~~Corregir los hallazgos de G-10 (`docs/carga.md` §6)~~ — traba del pool, 401, `start-period` (#91), N+1 de la agenda y de la recepción del día (#91 y `akine-g10-sobrantes`, §11). Sigue abierto sólo el SLO de escrituras a 500 usuarios (§10, decisión del usuario)
 - [ ] Tests de controller para `billing`, `person`, `scheduling` y `clinical`, los cuatro módulos críticos debajo de 0,90
 - [ ] Revisar los cuatro PR de Dependabot abiertos el 11/10 (#87–#90; uno propone Temurin 25 en la imagen, que es un salto de Java)
 - [x] ~~Observabilidad: logging JSON, Prometheus, OpenTelemetry~~ — G-4, `docs/observabilidad.md`

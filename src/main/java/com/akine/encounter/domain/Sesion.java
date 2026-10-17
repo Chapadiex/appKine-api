@@ -1,5 +1,6 @@
 package com.akine.encounter.domain;
 
+import com.akine.encounter.domain.exception.CasoDeAtencionGrupalException;
 import com.akine.encounter.domain.exception.SesionAjenaException;
 import com.akine.encounter.domain.exception.SesionNoCerradaException;
 import com.akine.encounter.domain.exception.SesionCerradaException;
@@ -63,12 +64,34 @@ public class Sesion {
 	 * <p>Es un {@code Long} y no una relacion JPA: {@code caso_clinico} es de {@code clinical} y una
 	 * relacion hacia su entity seria justamente el acceso directo que AGENT.md seccion 4 regla 1
 	 * prohibe. Lo que este modulo puede hacer con un caso lo dice {@code clinical.spi.CasoDirectory}.
+	 *
+	 * <p>Se puede cambiar <b>mientras la sesion esta abierta</b> ({@link #asignarCaso}); al cerrar
+	 * queda fijo, porque el cierre numera dentro de el.
 	 */
-	@Column(name = "caso_id", updatable = false)
+	@Column(name = "caso_id")
 	private Long casoId;
 
 	@Column(name = "turno_id", updatable = false)
 	private Long turnoId;
+
+	/**
+	 * Origen grupal (AKINE-08.05): la derivacion clinica de la que cuelga esta atencion, o
+	 * {@code null} si salio de un turno o de nada. Las tres columnas del origen van juntas —lo ata
+	 * {@code ck_sesion_origen_grupal_completo} de V102— y ninguna cambia despues de iniciar.
+	 *
+	 * <p>{@code Long} y no relacion JPA: {@code derivacion_clinica} es de {@code clinical}, mismo
+	 * argumento que {@link #casoId}.
+	 */
+	@Column(name = "derivacion_id", updatable = false)
+	private Long derivacionId;
+
+	/** {@code asistencia_actividad.id}, sin FK: es de {@code activity}. Ver V102. */
+	@Column(name = "participacion_id", updatable = false)
+	private Long participacionId;
+
+	/** {@code clase_programada.id}, sin FK: es de {@code activity}. Ver V102. */
+	@Column(name = "clase_id", updatable = false)
+	private Long claseId;
 
 	@Column(name = "oferta_id", nullable = false, updatable = false)
 	private Long ofertaId;
@@ -242,6 +265,70 @@ public class Sesion {
 		exigirAbierta();
 		this.borrador = contenido;
 		this.borradorGuardadoEn = occurredAt;
+	}
+
+	/**
+	 * Asocia, cambia o quita ({@code null}) el caso de una sesion abierta.
+	 *
+	 * <p>Que el caso sea asignable —existe, es de esta historia, esta activo— lo valida el servicio
+	 * contra {@code clinical.spi}; la entidad hace cumplir lo que es suyo: una sesion cerrada ya
+	 * tiene su numero dentro del caso, y cambiarle el caso seria renumerar historia clinica.
+	 */
+	public void asignarCaso(Long nuevoCasoId) {
+		exigirAbierta();
+		// AKINE-08.05: el Caso de una atencion grupal lo fijo su derivacion. Pedir el mismo es el
+		// no-op de cambiarCaso y pasa; cualquier otro —o quitarlo— es 409.
+		if (esDeOrigenGrupal() && !java.util.Objects.equals(casoId, nuevoCasoId)) {
+			throw new CasoDeAtencionGrupalException(id);
+		}
+		this.casoId = nuevoCasoId;
+	}
+
+	/**
+	 * Una atencion de un participante de clase clinica, desde su derivacion (AKINE-08.05,
+	 * RF-M14-012).
+	 *
+	 * <p><b>Es una Sesion como cualquier otra</b> —mismo borrador, evaluacion, tratamientos,
+	 * cierre con sus dos numeradores y enmienda—, con dos diferencias que fija el origen: no tiene
+	 * turno (Turno != Clase, DP-05) y tiene Caso siempre, el de la derivacion, que no cambia.
+	 */
+	@SuppressWarnings("java:S107")
+	public static Sesion desdeParticipacion(
+			long organizationId,
+			long consultorioId,
+			long historiaClinicaId,
+			long casoId,
+			long ofertaId,
+			long profesionalMembershipId,
+			Instant iniciadaEn,
+			long iniciadaPorCuentaId,
+			long derivacionId,
+			long participacionId,
+			long claseId) {
+
+		Sesion sesion = new Sesion(organizationId, consultorioId, historiaClinicaId, casoId, null,
+				ofertaId, profesionalMembershipId, iniciadaEn, iniciadaPorCuentaId);
+		sesion.derivacionId = derivacionId;
+		sesion.participacionId = participacionId;
+		sesion.claseId = claseId;
+		return sesion;
+	}
+
+	/** {@code true} si la atencion salio de una derivacion de clase (AKINE-08.05). */
+	public boolean esDeOrigenGrupal() {
+		return derivacionId != null;
+	}
+
+	public Long getDerivacionId() {
+		return derivacionId;
+	}
+
+	public Long getParticipacionId() {
+		return participacionId;
+	}
+
+	public Long getClaseId() {
+		return claseId;
 	}
 
 	/**

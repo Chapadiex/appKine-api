@@ -53,6 +53,7 @@ import com.akine.billing.domain.exception.ObligacionNoCobrableException;
 import com.akine.billing.domain.exception.SaldoInsuficienteException;
 import com.akine.billing.domain.exception.ObligacionAnuladaException;
 import com.akine.billing.domain.exception.ObligacionConCobrosException;
+import com.akine.billing.domain.exception.ObligacionDeVentaException;
 import com.akine.billing.domain.exception.ObligacionNotAccessibleException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
@@ -77,6 +78,7 @@ public class BillingProblemHandler {
 	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 	private static final URI OBLIGACION_ALREADY_ANULADA = ProblemType.OBLIGACION_ALREADY_ANULADA.uri();
 	private static final URI OBLIGACION_CON_COBROS = ProblemType.OBLIGACION_CON_COBROS.uri();
+	private static final URI OBLIGACION_DE_VENTA = ProblemType.OBLIGACION_DE_VENTA.uri();
 	private static final URI COBRO_NO_CUADRA = ProblemType.COBRO_NO_CUADRA.uri();
 	private static final URI SALDO_INSUFICIENTE = ProblemType.SALDO_INSUFICIENTE.uri();
 	private static final URI OBLIGACION_NO_COBRABLE = ProblemType.OBLIGACION_NO_COBRABLE.uri();
@@ -152,6 +154,23 @@ public class BillingProblemHandler {
 		problem.setProperty("yaCobrado", exception.getYaCobrado());
 		return problem;
 	}
+
+	/**
+	 * Lleva {@code paseId}: la pantalla ofrece anular el pase, que es la accion correcta
+	 * (AKINE-08.09).
+	 */
+	@ExceptionHandler(ObligacionDeVentaException.class)
+	public ProblemDetail handleDeVenta(ObligacionDeVentaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(OBLIGACION_DE_VENTA);
+		problem.setTitle("La deuda es de una venta: se anula anulando el pase");
+		problem.setProperty("obligacionId", exception.getObligacionId());
+		problem.setProperty("paseId", exception.getPaseId());
+		problem.setProperty("origen", exception.getOrigen());
+		return problem;
+	}
+
 	// =================================================================================
 	// Cobros — M19
 	// =================================================================================

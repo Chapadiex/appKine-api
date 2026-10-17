@@ -24,10 +24,10 @@
 | Bloque | Cantidad |
 |---|---|
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 9 |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42) | 11 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
-| D. No bloquean nada (U-35 a U-37) | 3 |
-| **Total** | **38** |
+| D. No bloquean nada (U-35 a U-37, U-40, U-41) | 5 |
+| **Total** | **42** |
 
 Ya resueltas y fuera de la lista (las fichas las mencionan): el **escenario 7b** (`request_hash`
 en `onboarding_registro`), que la ficha de F0–F1 daba abierto y cerró el PR #104 el 13/10/2026
@@ -205,6 +205,47 @@ fila nueva.
 - **Fase / RF:** transversal (F3, F4; AKINE-02.01 fija la zona de la sede).
 - **Destraba:** que una cobertura, autorización u orden que vence hoy no se lea vencida a la noche.
   Se encarece con cada sitio nuevo que copie `LocalDate.now()`.
+
+### U-39 · Cuándo se devenga una clase `POR_CLASE`, y qué pasa sin pase en `POR_PACK`
+
+- **Pregunta:** (a) en una oferta `POR_CLASE`, ¿la deuda nace con la **asistencia** o con la
+  **inscripción**, y el no-show cobra? (b) en una oferta `POR_PACK`, ¿qué se hace con quien asiste
+  **sin pase vigente**: sólo se informa (hoy), se bloquea la asistencia, o se devenga una clase
+  suelta?
+- **Hoy (rama `akine-f9-pases-abonos`):** (a) declarar `POR_CLASE` en la oferta responde 400, porque
+  `ck_oferta_politica_devengo` (V64) exige elegir el momento y elegirlo es esta decisión; RF-M18-008
+  queda sin disparador. (b) la asistencia se registra igual y la respuesta trae
+  `consumoDeCredito.efecto = SIN_PASE_ELEGIBLE`, auditado como `PASE_SIN_CREDITO_ELEGIBLE`
+  (RN-M29-005, CA-M19-009-06). Ningún RF pide devengar ahí.
+- **Recomendado:** (a) asistencia, sin no-show por defecto (`devenga_no_show = 0`, ya en V64).
+  (b) informar, como hoy.
+- **Fase / RF:** F9 (08.03, 08.07); RF-M18-008, RN-M29-005. Diseño en
+  [`../diseno/AKINE-08.06-pases.md`](../diseno/AKINE-08.06-pases.md) §4 y §9.
+- **Destraba:** el devengo de la asistencia (RF-M18-008 / RF-M19-009). Agregarlo después no
+  cambia esquema: `obligacion` necesita un origen nuevo (`ck_obligacion_origen`), que es un
+  `DROP CHECK` cuidadoso.
+
+### U-42 · Qué consecuencia económica tiene la atención clínica de un participante de clase
+
+- **Pregunta:** la Sesión de un participante de una clase clínica (08.05) se cierra como cualquier
+  Sesión. ¿Qué devenga? (a) **sólo lo del convenio** cuando hay cobertura (financiador + coseguro,
+  y así entra a la presentación, RF-M21-009), y **nada particular**: la clase se cobra por su
+  esquema —pase, abono, clase— sobre la asistencia; (b) **también el particular** al precio de la
+  oferta, como una atención de turno (DP-17), y entonces la asistencia a esa clase no debería
+  consumir pase ni devengar; (c) **nada**, ni siquiera por convenio. Y una sub-pregunta: con
+  cobertura, ¿el coseguro se suma a lo que el paciente ya paga por la clase?
+- **Hoy (rama `akine-08.05-atencion-grupal`):** (a). `SesionCerrada.claseId` marca el origen;
+  `billing.ObligacionDevengador` devenga por convenio igual que siempre (cada participante con
+  cobertura deja su renglón en la bandeja, CA-M21-009-06) y **sin cobertura no devenga ni exige
+  precio** (el 409 `oferta-sin-precio` no bloquea un cierre clínico por una deuda que no
+  corresponde). El consumo de autorizaciones corre por Caso, como dejó escrito 08.04 §6. El coseguro
+  se devenga como dice el convenio.
+- **Recomendado:** (a), que es lo que está; revisar el coseguro si un centro cobra la clase aparte.
+- **Fase / RF:** F9 (08.05, 08.09); RF-M14-014 paso 6, RF-M21-009, RF-M18-008, RF-M19-009, DP-17.
+  Diseño en [`../diseno/AKINE-08.05-atencion-grupal.md`](../diseno/AKINE-08.05-atencion-grupal.md) §7.
+- **Destraba:** el cobro particular de una prestación clínica grupal sin pase. Se encarece con cada
+  Sesión grupal cerrada sin deuda: un backfill tendría que decidir a posteriori qué se cobró por la
+  clase.
 
 ---
 
@@ -411,6 +452,46 @@ dejar el MVP como está:
 - **Recomendado:** la ficha no recomienda; no se mergean en el cierre.
 - **Fase / RF:** F8.
 - **Destraba:** nada del MVP.
+
+### U-40 · Las políticas de pases y abonos que M29 no define
+
+- **Pregunta:** cinco, todas de producto: (a) ¿un abono puede no tener tope de asistencias por
+  periodo? (b) ¿el abono se activa al vender o al cobrarse ("según política de pago",
+  RF-M29-007 paso 7)? (c) ¿se puede anular un pase ya usado, prorrateando la deuda? (d) ¿un ajuste
+  manual puede dejar el saldo por encima de lo comprado (bonificación)? (e) ¿hay ventana de gracia
+  para consumir un pase que el job ya venció, si la clase fue dentro de su vigencia?
+- **Hoy (rama `akine-m29-abonos-y-ajustes`):** (a) el abono lleva tope (`creditos > 0`, V64); uno
+  "libre" se modela con un tope alto. (b) se activa al vender, como el pack. (c) 409
+  `pase-no-ajustable`: se ajusta el saldo en su lugar. (d) no: el saldo final queda en
+  `[0, creditos comprados]`. (e) no: RF-M29-006 dice "no consumir créditos luego del vencimiento".
+- **Recomendado:** dejar las cinco como están hasta que un centro lo pida; (a) y (d) cambian
+  CHECKs de V64, (b) depende de la política de prepago (ADR-0013).
+- **Desde 08.08 (rama `akine-08.08-renovacion-y-avisos`, 16/10/2026), (b) alcanza también a la
+  renovación automática:** el período renovado se activa al venderse y la renovación **no mira si
+  el anterior se pagó**, por la misma regla. Decidir "al cobrarse" cambia la venta y la renovación
+  juntas (diseño §10.1 y §10.8).
+- **Fase / RF:** F9 (08.07, 08.08); RF-M29-005, RF-M29-006, RF-M29-007, RN-M29-009. Diseño en
+  [`../diseno/AKINE-08.07-08.08-ledger-y-abonos.md`](../diseno/AKINE-08.07-08.08-ledger-y-abonos.md) §9.
+- **Destraba:** nada del MVP.
+
+### U-41 · El esquema de honorarios que RF-M22-006 da por configurado
+
+- **Pregunta:** RF-M22-006 dice *"aplica esquema de honorario configurado: por clase, hora,
+  participante u otro soportado"*, y ese esquema **no existe** en el modelo ni en la especificación.
+  Hay que fijar: (a) qué esquemas entran (por clase, por hora, por participante presente); (b) dónde
+  se declaran —en la oferta, en el vínculo del profesional, o en una regla por profesional y oferta—
+  y con qué vigencia; (c) si una clase con dos instructores se reparte o se paga entera a cada uno
+  (caso borde "instructor múltiple" del plan); (d) si la liquidación es un **borrador calculado** que
+  la persona confirma como egreso, o un egreso automático.
+- **Hoy:** el egreso de M22 (07.05) lleva beneficiario `COLABORADOR`, categoría
+  `HONORARIOS_PROFESIONALES` y período, con el importe **declarado por una persona** y sin vínculo
+  con clases ni sesiones (RN-M22-003). U-34 ya confirmó que la liquidación es de la segunda entrega.
+- **Recomendado:** ninguna ficha recomienda. La forma técnica que no cierra ciclos está escrita en
+  [`../diseno/AKINE-08.09-integracion-economica.md`](../diseno/AKINE-08.09-integracion-economica.md)
+  §5: la base se calcula en `activity` y entra a `billing` por `spi` como detalle del egreso, con
+  snapshot de los importes (CA-M22-007-06).
+- **Fase / RF:** F9 (08.09); RF-M22-006, RF-M22-007.
+- **Destraba:** RF-M22-006/007, la mitad de 08.09.
 
 ---
 

@@ -52,8 +52,18 @@ public class Obligacion {
 	@Column(name = "consultorio_id", nullable = false, updatable = false)
 	private Long consultorioId;
 
-	@Column(name = "sesion_id", nullable = false, updatable = false)
+	/** La prestacion que origino la deuda. {@code null} cuando nace de una venta (V64). */
+	@Column(name = "sesion_id", updatable = false)
 	private Long sesionId;
+
+	/** Que hecho devengo la deuda (V64). Ver {@link OrigenObligacion}. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "origen", nullable = false, length = 16, updatable = false)
+	private OrigenObligacion origen = OrigenObligacion.SESION;
+
+	/** El pase vendido que origino la deuda (RF-M18-009). {@code null} si nacio de una sesion. */
+	@Column(name = "pase_id", updatable = false)
+	private Long paseId;
 
 	@Column(name = "persona_id", nullable = false, updatable = false)
 	private Long personaId;
@@ -299,6 +309,84 @@ public class Obligacion {
 		return o;
 	}
 
+	/**
+	 * La deuda por la compra de un pack o pase (AKINE-08.06, RF-M18-009).
+	 *
+	 * <p><b>Exactamente una por pase</b>: la idempotencia la evalua quien devenga y la garantiza
+	 * {@code uk_obligacion_venta (pase_id, responsable, deleted_key)}. El importe es el precio
+	 * congelado en el pase al vender, no el del producto hoy. Siempre {@code PARTICULAR} a cargo
+	 * del paciente: un pack no se presenta a un financiador.
+	 *
+	 * <p><b>Devengar no es cobrar</b> (DP-06): nace {@code PENDIENTE} y se paga con
+	 * {@code POST /cobros}, como cualquier otra deuda.
+	 */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public static Obligacion porVentaDePase(
+			long organizationId,
+			long consultorioId,
+			long paseId,
+			long personaId,
+			BigDecimal importe,
+			String moneda,
+			long ofertaId,
+			String snapshotNombre,
+			Instant devengadaEn) {
+
+		return porVenta(OrigenObligacion.VENTA_PASE, organizationId, consultorioId, paseId, personaId,
+				importe, moneda, ofertaId, snapshotNombre, devengadaEn);
+	}
+
+	/**
+	 * La deuda de un periodo de abono (AKINE-08.08, RF-M18-010, RF-M29-007 paso 6). Misma forma que
+	 * la de un pack: el abono es un pase con periodo, y cada periodo es una venta con su obligacion.
+	 * <b>Una sola por periodo</b>, por {@code uk_obligacion_venta}. RN-M29-007: es esta, y ninguna
+	 * por cada asistencia que el abono cubre.
+	 */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public static Obligacion porVentaDeAbono(
+			long organizationId,
+			long consultorioId,
+			long paseId,
+			long personaId,
+			BigDecimal importe,
+			String moneda,
+			long ofertaId,
+			String snapshotNombre,
+			Instant devengadaEn) {
+
+		return porVenta(OrigenObligacion.VENTA_ABONO, organizationId, consultorioId, paseId, personaId,
+				importe, moneda, ofertaId, snapshotNombre, devengadaEn);
+	}
+
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	private static Obligacion porVenta(
+			OrigenObligacion origen,
+			long organizationId,
+			long consultorioId,
+			long paseId,
+			long personaId,
+			BigDecimal importe,
+			String moneda,
+			long ofertaId,
+			String snapshotNombre,
+			Instant devengadaEn) {
+
+		Obligacion o = new Obligacion();
+		o.organizationId = organizationId;
+		o.consultorioId = consultorioId;
+		o.origen = origen;
+		o.paseId = paseId;
+		o.personaId = personaId;
+		o.responsable = Responsable.PACIENTE;
+		o.concepto = ConceptoObligacion.PARTICULAR;
+		o.moneda = moneda;
+		o.ofertaId = ofertaId;
+		o.snapshotNombre = snapshotNombre;
+		o.devengadaEn = devengadaEn;
+		o.inicializarImporte(importe);
+		return o;
+	}
+
 	private void inicializarImporte(BigDecimal importe) {
 		if (importe == null || importe.signum() <= 0) {
 			// "No cobrar saldo cero" es regla de la etapa. Una deuda de cero solo ensucia la
@@ -356,6 +444,14 @@ public class Obligacion {
 
 	public Long getSesionId() {
 		return sesionId;
+	}
+
+	public OrigenObligacion getOrigen() {
+		return origen;
+	}
+
+	public Long getPaseId() {
+		return paseId;
 	}
 
 	public Long getPersonaId() {

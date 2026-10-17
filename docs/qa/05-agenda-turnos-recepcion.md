@@ -161,8 +161,9 @@ FROM turno_evento e JOIN turno t ON t.id = e.turno_id
 WHERE t.serie_id = @serie AND e.tipo IN ('REPROGRAMACION', 'CANCELACION') ORDER BY e.id;
 ```
 
-Esperado: los turnos 3–6 movidos a las 11 (mismos ids), los 5–6 cancelados. La bandeja muestra la
-serie `CANCELADA` (su último turno está cancelado, DP-20). Si otra persona tocó la serie entre la
+Esperado: los turnos 3–6 movidos a las 11 (mismos ids), los 5–6 cancelados. La bandeja sigue mostrando la
+serie `VIGENTE`: le quedan los turnos 1 a 4 pendientes (`CANCELADA` es solo cuando no queda ningún
+turno pendiente y el último se canceló, DP-20; se ve cancelando también los restantes). Si otra persona tocó la serie entre la
 previsualización y la confirmación, el rechazo es 409 `conflict` con `afectados` y `confirmados`
 —hay que volver a previsualizar—, **no** `concurrent-modification` (DP-21).
 

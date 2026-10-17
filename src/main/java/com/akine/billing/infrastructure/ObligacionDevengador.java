@@ -15,7 +15,7 @@ import com.akine.encounter.spi.SesionCerrada;
 import com.akine.offering.spi.PracticaDeOferta;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
-import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.person.spi.CoberturaAplicable;
 import com.akine.person.spi.CoberturasAplicablesDirectory;
 import org.slf4j.Logger;
@@ -23,7 +23,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -116,7 +115,6 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 			log.info("Sesion cerrada sin asistencia: no se devenga deuda. sesionId={}", cierre.sesionId());
 			return;
 		}
-
 		// Cualquier responsable, no solo el paciente: ver ObligacionRepositoryPort#findDeLaSesion.
 		if (!obligaciones.findDeLaSesion(cierre.sesionId()).isEmpty()) {
 			return;
@@ -124,7 +122,15 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 
 		Optional<Cubierta> cubierta = cubiertaQueCorresponde(cierre);
 		if (cubierta.isPresent()) {
+			// AKINE-08.05 + RF-M21-009: tambien la atencion de un participante de clase, que asi
+			// entra sola a la bandeja de presentaciones con su renglon por paciente (CA-M21-009-06).
 			devengarPorConvenio(cierre, cubierta.get());
+		} else if (cierre.esDeOrigenGrupal()) {
+			// AKINE-08.05 (U-42): sin cobertura, la atencion grupal NO devenga particular. La clase
+			// se cobra por su esquema —pase, abono, clase— sobre la ASISTENCIA (08.06 a 08.08), y
+			// devengar tambien aca cobraria dos veces la misma clase.
+			log.info("Sesion de origen grupal sin cobertura: no se devenga particular (U-42). "
+					+ "sesionId={} claseId={}", cierre.sesionId(), cierre.claseId());
 		} else {
 			devengarParticular(cierre);
 		}
@@ -141,7 +147,10 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	 */
 	@Override
 	public boolean exigePrecioParticular(SesionCerrada cierreSinNumero) {
-		return cierreSinNumero.asistio() && cubiertaQueCorresponde(cierreSinNumero).isEmpty();
+		// AKINE-08.05: sin deuda no hay precio que exigir. Bloquear el cierre clinico de una atencion
+		// grupal por el precio de una deuda que no se va a devengar seria DP-06 al reves.
+		return cierreSinNumero.asistio() && !cierreSinNumero.esDeOrigenGrupal()
+				&& cubiertaQueCorresponde(cierreSinNumero).isEmpty();
 	}
 
 	/**
@@ -337,24 +346,13 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	 */
 	private LocalDate diaLocalDeLaSede(SesionCerrada cierre) {
 		ZoneId zona = consultorios.find(cierre.organizationId(), cierre.consultorioId())
-				.map(ConsultorioSnapshot::timezone)
-				.map(declarada -> zonaDe(declarada, cierre))
+				.map(ZonaDeSede::de)
 				.orElseGet(() -> {
 					log.warn("Sede no resoluble al devengar: se usa UTC. sesionId={} "
 							+ "consultorioId={}", cierre.sesionId(), cierre.consultorioId());
 					return ZoneOffset.UTC;
 				});
 		return LocalDate.ofInstant(cierre.cerradaEn(), zona);
-	}
-
-	private static ZoneId zonaDe(String zona, SesionCerrada cierre) {
-		try {
-			return ZoneId.of(zona);
-		} catch (DateTimeException zonaInvalida) {
-			log.warn("Zona horaria invalida en la sede: se usa UTC. sesionId={} zona={}",
-					cierre.sesionId(), zona);
-			return ZoneOffset.UTC;
-		}
 	}
 
 	private static String nombre(SesionCerrada cierre) {

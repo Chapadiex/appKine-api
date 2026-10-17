@@ -81,4 +81,24 @@ public interface DerivacionClinicaRegistry {
 	 * es un error y el segundo motivo no pisa al primero.
 	 */
 	DerivacionSnapshot revertir(ReversionDeDerivacion reversion);
+
+	/**
+	 * La derivacion vigente de la que va a colgar una atencion clinica (AKINE-08.05).
+	 *
+	 * <p><b>Autoriza como escritura clinica</b> —{@code hc:write} con relacion asistencial o
+	 * justificacion— y no como lectura: atender es escribir en la historia, y la Sesion que se abre
+	 * con esta respuesta es contenido clinico nuevo. Audita el acceso con la via por la que se
+	 * entro, igual que {@link #consultar}.
+	 *
+	 * <p><b>No crea nada.</b> Elige: si {@code derivacionId} viene, tiene que ser una vigente de esa
+	 * participacion; si no viene, tiene que haber exactamente una. Ninguna, o la nombrada no
+	 * vigente, es 409 {@code participacion-sin-derivacion}; mas de una sin nombrar es 409
+	 * {@code derivacion-ambigua}. No se elige por el cliente: la Sesion se numera dentro del Caso de
+	 * la derivacion (RN-M14-010).
+	 *
+	 * @param derivacionId la elegida, o {@code null} si el llamador espera que haya una sola
+	 */
+	DerivacionSnapshot paraAtender(
+			ActorDeDerivacion actor, OrigenDeParticipacion origen, long participacionId,
+			long personaId, Long derivacionId);
 }

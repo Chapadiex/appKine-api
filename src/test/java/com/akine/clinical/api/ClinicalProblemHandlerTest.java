@@ -65,7 +65,7 @@ class ClinicalProblemHandlerTest {
 				new AccesoClinicoNoJustificadoException(42L));
 
 		assertThat(problem.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
-		assertThat(problem.getType()).isEqualTo(ProblemType.FORBIDDEN.uri());
+		assertThat(problem.getType()).isEqualTo(ProblemType.JUSTIFICACION_DE_ACCESO_REQUERIDA.uri());
 		assertThat(problem.getProperties())
 				.containsEntry("requiereJustificacion", true)
 				.containsEntry("cabecera", "X-Justificacion-Acceso");

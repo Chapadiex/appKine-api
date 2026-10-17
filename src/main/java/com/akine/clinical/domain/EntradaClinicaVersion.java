@@ -114,11 +114,6 @@ public class EntradaClinicaVersion extends MarcaTemporal {
 		this.registradaPor = exigirNoNulo(registradaPor, "La version deja siempre a su autor");
 	}
 
-	/** {@code true} si esta version es una enmienda y no el original. */
-	public boolean esEnmienda() {
-		return numeroVersion > 1;
-	}
-
 	private static String motivoCoherente(
 			int numeroVersion, String motivoEnmienda, Long entradaClinicaId) {
 

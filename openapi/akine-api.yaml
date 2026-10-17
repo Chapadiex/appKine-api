@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.99.0
+  version: 0.118.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -117,6 +117,9 @@ tags:
   name: Consultorios
 - description: "Egresos, liquidaciones y pagos a profesionales (M22)"
   name: Egresos
+- description: "Vinculo entre la asistencia a una clase y un Caso Clinico (M28, M09,\
+    \ M10)"
+  name: Derivacion clinica de participantes
 - description: "Catalogo de que se mide en el examen fisico, en que unidad y con que\
     \ rango (M06, RF-M14-004)"
   name: Definiciones de medicion
@@ -137,6 +140,10 @@ tags:
   name: Financiadores y planes
 - description: "Catalogo comercial: que incluye cada plan"
   name: Planes
+- description: "La Sesion de cada participante de una clase clinica (M14, M28)"
+  name: Atencion clinica grupal
+- description: "Productos de pack, venta de pases y ledger de creditos (M29)"
+  name: Pases
 - description: "Alta, edicion, baja y disponibilidad de los espacios fisicos de una\
     \ sede"
   name: Espacios
@@ -3141,6 +3148,8 @@ paths:
 
         **El servidor revalida todo**: que la oferta sea grupal y siga vigente ese dia, que el profesional siga habilitado y atendiendo en ese horario, que el cupo pedido entre en la oferta y en el box, y que **ni el profesional ni el espacio tengan un turno o una clase que se cruce**.
 
+        **El box** lo elige quien programa con `espacioId`; si no lo manda y la oferta exige espacio, lo elige el servidor (el primer box apto y libre).
+
         Esa ultima revalidacion es el punto de la etapa. Una clase y un turno **se disputan la misma fila de bloqueo de la sede**, asi que dos escrituras concurrentes se serializan y una sola gana: no se puede reservar un turno encima de una clase.
       operationId: programar
       parameters:
@@ -3481,6 +3490,145 @@ paths:
       summary: Historial de una asistencia
       tags:
       - Asistencia de clases
+  /api/v1/consultorios/{consultorioId}/clases/{claseId}/atencion-clinica:
+    get:
+      description: "Cada participante con asistencia registrada, si estuvo, y sus\
+        \ atenciones clinicas con estado y numeros (RF-M14-011). **Sin contenido clinico**:\
+        \ cada ficha se abre por su Sesion. Exige `sesion:register` y queda auditada,\
+        \ porque decir quien esta en tratamiento ya es informacion clinica. En una\
+        \ clase no clinica (`clinica = false`) no hay atenciones y no se consulta\
+        \ nada clinico."
+      operationId: verAtencionGrupal
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AtencionGrupal"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/AtencionGrupal"
+          description: El panel
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` o `sesion:register` en la sede, o sin\
+            \ contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la clase o la oferta no existen en este alcance"
+      summary: Panel de atencion clinica de la clase
+      tags:
+      - Atencion clinica grupal
+  /api/v1/consultorios/{consultorioId}/clases/{claseId}/atencion-clinica/lote:
+    post:
+      description: |-
+        Lo mismo que la operacion individual, para varios participantes. **Cada item corre en su propia transaccion**: un fallo individual no revierte ni oculta a los demas, y trae el mismo `problemType` que la operacion individual.
+
+        **Responde 200 aunque haya fallos parciales.** Lo que vale para todo el lote —sede, clase, permiso de ver la clase y que la oferta sea clinica— se valida una vez y sale como error del pedido.
+
+        **Abre, no cierra**: cada cierre lleva la evolucion de su paciente y va por la Sesion (RF-M14-013, no hay evolucion global de la clase).
+      operationId: iniciarAtencionGrupal
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso clinico (DP-03). Lo exige la politica\
+          \ clinica cuando no hay relacion asistencial; si hacia falta y no vino,\
+          \ 403 `justificacion-de-acceso-requerida`."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IniciarAtencionGrupal"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeAtencionGrupal"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeAtencionGrupal"
+          description: Resultado por participante
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Lote vacio o por encima del tope
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` en la sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la clase o la oferta no existen en este alcance"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La oferta de la clase no genera registro clinico
+      summary: Abrir la atencion clinica de varios participantes
+      tags:
+      - Atencion clinica grupal
   /api/v1/consultorios/{consultorioId}/clases/{claseId}/cancelacion:
     post:
       description: |-
@@ -4041,6 +4189,108 @@ paths:
       summary: Inscribir una persona en una clase
       tags:
       - Inscripciones
+  /api/v1/consultorios/{consultorioId}/clases/{claseId}/inscripciones/{inscripcionId}/atencion-clinica:
+    post:
+      description: |-
+        Abre la **Sesion** del participante desde su derivacion clinica vigente (RF-M14-012). Es una Sesion como cualquier otra, sin turno y con el Caso de la derivacion, que no se puede cambiar; se numera dentro del Caso **al cerrar**.
+
+        Orden de los gates: la oferta de la clase genera registro clinico (`oferta-no-clinica`); la persona estuvo (`participacion-sin-asistencia`); `sesion:register` en la sede; `hc:write` con relacion asistencial o justificacion; una derivacion vigente (`participacion-sin-derivacion`, o `derivacion-ambigua` si hay varias y no se eligio); el Caso sigue activo (`caso-clinico-cerrado`).
+
+        **Idempotente por derivacion**: repetir devuelve 200 con la Sesion existente y `yaExistia = true`. Quien la abre es su profesional: escribir en ella es solo suyo (409 `sesion-ajena` para cualquier otro).
+      operationId: iniciarAtencionDeParticipante
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: inscripcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso clinico (DP-03). Lo exige la politica\
+          \ clinica cuando no hay relacion asistencial; si hacia falta y no vino,\
+          \ 403 `justificacion-de-acceso-requerida`."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IniciarAtencionDeParticipante"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AtencionDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/AtencionDeParticipante"
+          description: "Ya estaba abierta: se devuelve la existente"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AtencionDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/AtencionDeParticipante"
+          description: Atencion abierta
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` o `sesion:register` en la sede, sin\
+            \ `hc:write`, sin justificacion cuando hacia falta, o sin contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la clase, la inscripcion, la oferta o el Caso no\
+            \ existen en este alcance"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Oferta no clinica, participante ausente o sin asistencia,\
+            \ sin derivacion vigente, derivacion ambigua o Caso cerrado"
+      summary: Abrir la atencion clinica de un participante
+      tags:
+      - Atencion clinica grupal
   /api/v1/consultorios/{consultorioId}/clases/{claseId}/inscripciones/{inscripcionId}/cancelacion:
     post:
       description: |-
@@ -4185,10 +4435,336 @@ paths:
       summary: Confirmar una inscripcion
       tags:
       - Inscripciones
+  /api/v1/consultorios/{consultorioId}/clases/{claseId}/inscripciones/{inscripcionId}/derivaciones:
+    get:
+      description: "Vigentes y revertidas, mas nueva primero, y si la persona ya tiene\
+        \ historia clinica. **Es una lectura clinica**: exige `hc:read` con relacion\
+        \ asistencial o justificacion, y queda auditada. Sin asistencia registrada\
+        \ la lista es vacia."
+      operationId: listarDerivacionesDeParticipante
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: inscripcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso clinico (DP-03). Lo exige la politica\
+          \ clinica cuando no hay relacion asistencial; si hacia falta y no vino,\
+          \ 403 con `requiereJustificacion`."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivacionesDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/DerivacionesDeParticipante"
+          description: Las derivaciones
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` en la sede, sin `hc:read`, o sin justificacion\
+            \ cuando hacia falta"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la clase o la inscripcion no existen en este alcance"
+      summary: Derivaciones del participante
+      tags:
+      - Derivacion clinica de participantes
+    post:
+      description: |-
+        Vincula la **asistencia** a un Caso Clinico existente y activo de esa persona (RF-M28-008, RF-M10-008, RF-M11-007). **Derivar no es atender**: no crea Sesion, no numera nada dentro del Caso, no consume autorizacion y no devenga.
+
+        Orden de los gates: la oferta tiene que generar registro clinico (`oferta-no-clinica`); la persona tiene que haber estado (`participacion-sin-asistencia`); si no es paciente, hace falta `activarPerfilPaciente = true` (`persona-sin-perfil-paciente`), que exige `paciente:manage`; despues, lo clinico: `hc:write` con relacion asistencial o justificacion, Caso activo de esa historia (`caso-no-activo`), Plan del Caso y autorizacion que habilite (`autorizacion-no-elegible`).
+
+        **Idempotente por destino**: repetir al mismo Caso devuelve 200 con la derivacion existente y `yaExistia = true`. A otro Caso crea otra.
+      operationId: derivarParticipante
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: inscripcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso clinico (DP-03). Lo exige la politica\
+          \ clinica cuando no hay relacion asistencial; si hacia falta y no vino,\
+          \ 403 con `requiereJustificacion`."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DerivarParticipante"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+          description: "Ya estaba derivada a ese Caso: se devuelve la existente"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+          description: Derivacion creada
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` en la sede, sin `hc:write`, sin justificacion\
+            \ cuando hacia falta, o sin `paciente:manage` al activar el perfil"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la clase, la inscripcion, la persona, el Caso, el\
+            \ Plan o la autorizacion no existen en este alcance"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Oferta no clinica, participante ausente o sin asistencia,\
+            \ persona sin perfil de paciente, Caso no activo o autorizacion que no\
+            \ habilita"
+      summary: Derivar al participante a un Caso Clinico
+      tags:
+      - Derivacion clinica de participantes
+  /api/v1/consultorios/{consultorioId}/clases/{claseId}/inscripciones/{inscripcionId}/derivaciones/{derivacionId}/reversion:
+    post:
+      description: "Deshace el vinculo con motivo obligatorio. **La fila queda** (RF-M28-008:\
+        \ los historicos permanecen consultables) y se puede volver a derivar al mismo\
+        \ Caso. Revertir dos veces devuelve la misma derivacion sin tocar nada."
+      operationId: revertirDerivacionDeParticipante
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: inscripcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: derivacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso clinico (DP-03). Lo exige la politica\
+          \ clinica cuando no hay relacion asistencial; si hacia falta y no vino,\
+          \ 403 con `requiereJustificacion`."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevertirDerivacion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/DerivacionDeParticipante"
+          description: Derivacion revertida
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` en la sede, sin `hc:write`, o sin justificacion\
+            \ cuando hacia falta"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La derivacion no existe o no cuelga de esta participacion
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "De la derivacion ya cuelga una atencion clinica (`derivacion-con-sesion`,\
+            \ AKINE-08.05): la Sesion no se borra y el vinculo que explica de donde\
+            \ vino el paciente tampoco"
+      summary: Revertir una derivacion
+      tags:
+      - Derivacion clinica de participantes
+  /api/v1/consultorios/{consultorioId}/clases/{claseId}/inscripciones/{inscripcionId}/elegibilidad-clinica:
+    get:
+      description: "Veredicto **grupal y sin efectos**: la oferta genera registro\
+        \ clinico, la persona estuvo (`PRESENTE` o `PRESENTE_TARDE`) y si ya es paciente.\
+        \ **No lee nada clinico** y no se audita: el Caso, el Plan, la autorizacion\
+        \ y el permiso clinico los decide la derivacion misma."
+      operationId: verElegibilidadClinicaDeParticipante
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: inscripcionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElegibilidadClinicaDeParticipante"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ElegibilidadClinicaDeParticipante"
+          description: El veredicto
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `inscripcion:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la clase, la inscripcion, la oferta o la persona\
+            \ no existen en este alcance"
+      summary: "Si el participante se puede derivar, y por que no"
+      tags:
+      - Derivacion clinica de participantes
   /api/v1/consultorios/{consultorioId}/clases/{claseId}/reprogramacion:
     post:
       description: |-
-        Mueve horario, profesional, espacio o capacidad. **Conserva la clase y sus participantes**: es la misma fila, con el mismo id, y las inscripciones cuelgan de el (CA-M28-005-06).
+        Cambia horario, profesional, capacidad y, si se indica `espacioId`, el box. **Conserva la clase y sus participantes**: es la misma fila, con el mismo id, y las inscripciones cuelgan de el (CA-M28-005-06).
+
+        **El box:** con `espacioId` se valida ese box (activo, de la sede, habilitado para la oferta y libre en la franja). **Sin `espacioId`**, si la oferta exige espacio el servidor elige el primer box apto y libre, que **puede no ser el actual**; si la oferta no lo exige, la clase queda sin box. Para conservar el box actual, manda su `espacioId`.
 
         Revalida lo mismo que programar, excluyendose a si misma del control de solapamiento — una clase que se corre media hora chocaria contra si misma.
 
@@ -6338,6 +6914,8 @@ paths:
 
         **Una obligacion con cobros imputados no se anula.** Anular lo que ya se cobro dejaria plata en la caja sin ninguna deuda que la justifique, y el arqueo del dia no cerraria. Lo que corresponde en ese caso es una devolucion, que es M19 y tiene su propio registro.
 
+        **La deuda de una venta no se anula por aca** (`origen = VENTA_PASE` o `VENTA_ABONO`, desde 0.114.0): responde 409 `obligacion-de-venta` con el `paseId`. Anularla sola dejaria el pase vivo y consumible sin pagar; se anula con `POST /pases/{paseId}/anulacion`, que anula pase y deuda juntos.
+
         Devuelve la obligacion anulada y no un 204, porque el cuerpo trae el estado y la version nueva que la pantalla necesita para seguir operando.
       operationId: anularObligacion
       parameters:
@@ -6395,8 +6973,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Ya estaba anulada, tiene cobros imputados, o la version quedo\
-            \ vieja"
+          description: "Ya estaba anulada, tiene cobros imputados, es la deuda de\
+            \ una venta (`obligacion-de-venta`), o la version quedo vieja"
       summary: Anular una obligacion
       tags:
       - Obligaciones
@@ -7490,6 +8068,517 @@ paths:
       summary: "Saber si esa combinacion puede prestarse, y por que no"
       tags:
       - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/pases:
+    post:
+      description: |-
+        Crea el pase con el snapshot del producto y su saldo inicial, el movimiento `COMPRA` del ledger y **una obligacion** a nombre de la persona, en una sola transaccion (RF-M29-002, RF-M18-009). **No cobra** (DP-06): la deuda se paga con `POST /cobros`. La persona no se convierte en paciente.
+
+        Con `idempotencyKey`, un reintento con el mismo pedido devuelve la venta existente con 200 sin duplicar pase, creditos ni deuda (CA-M29-002-06).
+
+        **Abono** (desde 0.109.0, RF-M29-007, RF-M18-010): si el producto es `ABONO`, `periodoDesde` es obligatorio y el pase cubre ese periodo; la obligacion nace con `origen = VENTA_ABONO`. Un periodo, una obligacion: un abono del mismo producto para la misma persona con periodo superpuesto es 409 `abono-periodo-superpuesto`. Renovar es vender el periodo siguiente.
+
+        **Renovacion automatica** (desde 0.116.0): con `renovacionAutomatica = true` en un abono, el sistema vende solo el periodo siguiente —con el precio del producto de ese momento y su propia obligacion— al acercarse el fin de este, a nombre de quien vendio. En un pack es 400.
+      operationId: venderPase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenderPase"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeVenta"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeVenta"
+          description: "Reintento con la misma clave y el mismo pedido: se devuelve\
+            \ la venta ya hecha"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeVenta"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeVenta"
+          description: Pase vendido
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:manage` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El producto esta dado de baja o fuera de su ventana, o el\
+            \ periodo del abono ya termino o es mas largo que el producto (`producto-no-vendible`),\
+            \ la ficha de la persona esta de baja (`conflict`), la clave se reuso\
+            \ con otro pedido (`idempotency-key-conflict`) o la persona ya tiene ese\
+            \ abono en un periodo superpuesto (`abono-periodo-superpuesto`)"
+      summary: Vender un pase a una persona
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/pases/{paseId}:
+    get:
+      description: "Saldo, vigencia y todos los movimientos, del mas viejo al mas\
+        \ nuevo (RF-M29-009)."
+      operationId: verPase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: paseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaseDetalle"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PaseDetalle"
+          description: El pase y su ledger
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: Ver un pase con su ledger
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/pases/{paseId}/ajustes:
+    post:
+      description: |-
+        Suma o resta creditos con motivo obligatorio (RF-M29-005). Deja un movimiento `AJUSTE` en el ledger con actor y motivo y lo audita (CA-M29-005-06). **No toca la deuda ni la caja**: un credito no es plata (RN-M29-006).
+
+        El saldo final no puede ser negativo (RN-M29-008) ni superar los creditos comprados, y el pase tiene que estar `ACTIVO` o `AGOTADO` y dentro de su vigencia. `version` es la que el cliente leyo: un consumo que entro en el medio la movio y la respuesta es 409 `concurrent-modification`. Reenviar el mismo ajuste con la misma version devuelve el estado actual sin ajustar dos veces.
+
+        La respuesta trae el ledger **entero**. Desde 0.117.0, con `sinMovimientos=true` trae el pase con `movimientos` vacio y sin leer el ledger: es para la pantalla que ya lo pagina con `listarMovimientosDePase`. Una lista vacia con ese parametro **no** significa que el pase no tenga movimientos. Aditivo: sin el parametro la respuesta es la de siempre.
+      operationId: ajustarSaldoDePase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: paseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "true: devuelve el pase con `movimientos` vacio, sin el ledger.\
+          \ Aditivo desde 0.117.0"
+        example: true
+        in: query
+        name: sinMovimientos
+        required: false
+        schema:
+          type: boolean
+          default: false
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AjusteDeSaldoDePase"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaseDetalle"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PaseDetalle"
+          description: "El pase ajustado, con su ledger (vacio con `sinMovimientos=true`)"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Cantidad cero, sin motivo o datos invalidos"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:adjust` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version vieja (`concurrent-modification`), o pase anulado,\
+            \ vencido o saldo final fuera de rango (`pase-no-ajustable`, con `motivo`\
+            \ en texto y, desde 0.111.0, `causa`: `ESTADO` si esta anulado o vencido,\
+            \ `FUERA_DE_VIGENCIA` si su vigencia ya termino o `FUERA_DE_RANGO` si\
+            \ el saldo final sale de 0..creditosIniciales; aditivo)"
+      summary: Ajustar a mano el saldo de un pase
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/pases/{paseId}/anulacion:
+    post:
+      description: |-
+        Pasa el pase a `ANULADO` con motivo, descarta su saldo con un movimiento `AJUSTE` y **anula la deuda de la venta** en la misma transaccion: la obligacion no se borra, queda `ANULADA` con su motivo. Idempotente: anular uno anulado devuelve 200 sin escribir (`anulado = false`).
+
+        Solo un pase **sin creditos usados** —con consumos, anularlo regalaria las clases tomadas; para descartar el resto se ajusta el saldo— y con una deuda **sin cobros**: con plata imputada primero se anula o reintegra el cobro (RF-M19-010). En los dos casos no se escribe nada.
+      operationId: anularPase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: paseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnulacionDePase"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeAnulacionDePase"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeAnulacionDePase"
+          description: El pase anulado y su deuda
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin motivo o datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:adjust` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version vieja (`concurrent-modification`), creditos usados\
+            \ (`pase-no-ajustable` con `motivo` y, desde 0.111.0, `causa = CREDITOS_USADOS`)\
+            \ o deuda con cobros imputados (`pase-con-cobros`, con `obligacionId`,\
+            \ `cobrado` y, desde 0.111.0, `moneda` ISO 4217 de la obligacion). Lo\
+            \ de 0.111.0 es aditivo"
+      summary: Anular un pase vendido por error
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/pases/{paseId}/movimientos:
+    get:
+      description: "Los movimientos del pase del mas viejo al mas nuevo, de a paginas\
+        \ (RF-M29-009, desde 0.116.0): el orden en que se lee `saldoResultante`. `size`\
+        \ se acota a 100 por request. Para un pase con historia larga reemplaza al\
+        \ ledger entero que trae `verPase`, que no cambia."
+      operationId: listarMovimientosDePase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: paseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Numero de pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: Elementos por pagina. Se acota a 100
+        example: 20
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginaDeMovimientosDePase"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PaginaDeMovimientosDePase"
+          description: Una pagina del ledger
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: "Ledger de un pase, paginado"
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/pases/{paseId}/renovacion:
+    put:
+      description: |-
+        Con `activa = true` el sistema vende el periodo siguiente del abono cuando este se acerca a su fin (desde 0.116.0): una venta mas, con el precio del producto de ese momento, su movimiento `COMPRA` y **su propia obligacion** `VENTA_ABONO`, a nombre de quien la prende. **No cobra** (DP-06). El periodo nuevo hereda la renovacion; el viejo queda con `renovacionAutomatica = false` y el nuevo con `renuevaPaseId`. Si el periodo siguiente no se puede vender (producto de baja, persona de baja, periodo ya ocupado), la renovacion se apaga y el motivo queda en `renovacionOmitidaMotivo`.
+
+        Apagarla no anula un periodo ya renovado: para eso, `anularPase` sobre el nuevo. Idempotente: pedir lo que ya esta devuelve 200 sin escribir. Solo abonos.
+      operationId: configurarRenovacionDeAbono
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: paseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfiguracionDeRenovacionDeAbono"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pase"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Pase"
+          description: El abono con la renovacion configurada
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Es un pack, o datos invalidos"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:manage` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version vieja (`concurrent-modification`), abono anulado (`pase-no-ajustable`,\
+            \ `causa = ESTADO`) o ya renovado (`pase-no-ajustable`, `causa = YA_RENOVADO`:\
+            \ se configura sobre el periodo nuevo)"
+      summary: Prender o apagar la renovacion automatica de un abono
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/personas/{personaId}/pases:
+    get:
+      description: "Los que compro en esta sede, el que vence mas tarde primero. Una\
+        \ persona de otro tenant es 404."
+      operationId: listarPasesDePersona
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pase"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pase"
+          description: Los pases
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `pase:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: Pases de una persona en la sede
+      tags:
+      - Pases
   /api/v1/consultorios/{consultorioId}/presentaciones:
     get:
       description: |-
@@ -8509,6 +9598,319 @@ paths:
       summary: Prestaciones que se le pueden reclamar a un financiador
       tags:
       - Presentaciones
+  /api/v1/consultorios/{consultorioId}/productos:
+    get:
+      description: Los vigentes primero. Con `incluirBajas=true` tambien los dados
+        de baja.
+      operationId: listarProductos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: incluirBajas
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Producto"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Producto"
+          description: Catalogo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `producto:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: Catalogo de productos de pack de la sede
+      tags:
+      - Pases
+    post:
+      description: |-
+        Define un pack de creditos sobre una oferta de la sede: cantidad, precio y vigencia en dias. La oferta tiene que declarar `esquemaCobro = POR_PACK`, que es la politica que despues hace que una asistencia consuma credito (RN-M29-005). **No crea saldo a nadie** (CA-M29-001-06).
+
+        Con `tipo = ABONO` (desde 0.109.0, RF-M29-007) define un abono: la oferta tiene que declarar `POR_ABONO`, `creditos` son las asistencias que permite cada periodo y `vigenciaDias` la duracion maxima del periodo, que se elige al vender.
+      operationId: crearProducto
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearProducto"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+          description: Producto creado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `producto:manage` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta esta de baja o no cobra POR_PACK (o POR_ABONO para\
+            \ un abono) (`conflict`), o ya hay un producto vigente con ese nombre\
+            \ (`producto-nombre-en-uso`)"
+      summary: Crear un producto de pack o de abono
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/productos/{productoId}:
+    get:
+      operationId: verProducto
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: productoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+          description: El producto
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `producto:read` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: Ver un producto de pack
+      tags:
+      - Pases
+    put:
+      description: "Los campos ausentes se conservan. **Los pases ya vendidos no cambian**:\
+        \ llevan su propio snapshot. La oferta y el tipo no se editan."
+      operationId: editarProducto
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: productoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EditarProducto"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+          description: Producto editado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `producto:manage` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version vieja (`concurrent-modification`), producto dado de\
+            \ baja (`conflict`) o nombre en uso (`producto-nombre-en-uso`)"
+      summary: Editar un producto de pack
+      tags:
+      - Pases
+  /api/v1/consultorios/{consultorioId}/productos/{productoId}/baja:
+    post:
+      description: "Baja logica con motivo: el producto no se vende mas. **No cascadea**:\
+        \ los pases vendidos conservan saldo y vigencia, y sus clases los siguen consumiendo.\
+        \ Idempotente."
+      operationId: darDeBajaProducto
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: productoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BajaDeProducto"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+          description: Producto dado de baja
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `producto:manage` en esa sede, o sin contexto activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el recurso o la persona no existen, o son de otro\
+            \ tenant"
+      summary: Dar de baja un producto de pack
+      tags:
+      - Pases
   /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad:
     get:
       description: |-
@@ -9714,7 +11116,7 @@ paths:
 
         EL CASO CLINICO ES OPCIONAL (04.03). Sin casoId la atencion se registra igual: RF-M14-002 admite atencion sin caso y ninguna sesion anterior a 04.03 lo tiene. Exigirlo es RF-M10-007, que necesita su propia ventana de migracion. Cuando viene, tiene que ser un caso ACTIVO de la MISMA historia clinica: uno de otro paciente responde 404 —indistinguible de "no existe", para no poder censar casos ajenos probando ids— y uno cerrado responde 409, porque lleva a otra accion, que es reabrirlo.
 
-        LA IDEMPOTENCIA MANDA SOBRE EL CASO: si la sesion del turno ya existe se devuelve tal cual, con el caso que tenga, aunque esta llamada traiga otro. Reasignar el caso de una atencion ya empezada no es "iniciar".
+        LA IDEMPOTENCIA MANDA SOBRE EL CASO: si la sesion del turno ya existe se devuelve tal cual, con el caso que tenga, aunque esta llamada traiga otro. Reasignar el caso de una atencion ya empezada no es "iniciar": es `PUT .../sesiones/{sesionId}/caso`.
       operationId: iniciarSesion
       parameters:
       - in: path
@@ -9826,6 +11228,8 @@ paths:
         **Solo el profesional de la sesion puede guardar.** No es cuestion de permiso —dos profesionales de la misma sede tienen el mismo `sesion:register`— sino de propiedad de esa atencion, y por eso el rechazo es 409 y no 403.
 
         El contenido es **opaco**: que campos tiene una evaluacion lo define AKINE-06.02. Esta etapa garantiza que se guarda, se versiona y no se pierde.
+
+        **Lo unico que se exige es que sea JSON.** Un `contenido` que no parsea, vacio o anidado mas alla de 99 niveles responde **400 `validation-error`** con `errors.contenido`; reintentar el mismo cuerpo falla igual. `null` vacia el borrador.
       operationId: guardarBorrador
       parameters:
       - in: path
@@ -9856,6 +11260,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/Sesion"
           description: Borrador guardado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El contenido no es un documento JSON valido, o falta la version"
         "404":
           content:
             application/json:
@@ -9876,6 +11289,90 @@ paths:
           description: "La sesion la atiende otro profesional, o la version quedo\
             \ vieja"
       summary: Guardar el borrador de la atencion
+      tags:
+      - Sesiones
+  /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}/caso:
+    put:
+      description: |-
+        Deja en la sesion el caso que viene en `casoId`, o ninguno si viene nulo. Es la unica forma de corregir el caso despues de iniciar: el inicio es idempotente y devuelve la sesion con el caso que ya tenia.
+
+        **Solo con la sesion abierta.** Una sesion cerrada ya tiene su numero dentro del caso, y cambiarlo seria renumerar historia clinica (409 `sesion-cerrada`).
+
+        El caso tiene que ser **activo y de la misma historia clinica**: uno de otro paciente responde 404 —indistinguible de "no existe"— y uno cerrado 409 `caso-clinico-cerrado`. Quitar el caso siempre se puede: el caso no es obligatorio (RF-M14-002).
+
+        **Hay que mandar la `version` que se leyo**, y **solo el profesional de la sesion puede cambiarlo**: escribir en la atencion ajena es 409, no 403. Deja evento de auditoria. Pedir el caso que ya tiene no escribe ni avanza la version.
+      operationId: cambiarCasoDeSesion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: sesionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CambiarCasoDeSesion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+          description: Caso asignado. Devuelve la sesion con la version nueva
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta la version o el caso no es un id valido
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `sesion:register` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion, la sede o el caso no existen, son de otro tenant,\
+            \ o el caso es de otra historia clinica"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion esta cerrada, la atiende otro profesional, la version\
+            \ quedo vieja (`concurrent-modification`), el caso esta cerrado, o la\
+            \ sesion es de origen grupal y su caso lo fija la derivacion (`caso-de-atencion-grupal`,\
+            \ AKINE-08.05)"
+      summary: "Asociar, cambiar o quitar el caso clinico de una atencion abierta"
       tags:
       - Sesiones
   /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}/cierre:
@@ -10529,6 +12026,8 @@ paths:
         El motivo es el mismo un dato clinico —"se suspendio la electroterapia porque el paciente refirio molestia"— y sin el la auditoria no responde por que seis meses despues.
 
         **El `orden` no se libera**: la proxima intervencion sigue tomando el siguiente numero. Es idempotente: dar de baja dos veces no cambia el motivo ni el instante originales.
+
+        **Responde 200 con la intervencion dada de baja** (`vigente: false`) y la `sesionVersion` nueva, igual que el alta y el reemplazo: la baja hace avanzar la version de la sesion y la pantalla no necesita releerla. Hasta el contrato 0.99.0 respondia 204 sin cuerpo; un cliente que ignore el cuerpo sigue funcionando igual.
       operationId: darDeBaja
       parameters:
       - in: path
@@ -10556,8 +12055,15 @@ paths:
               $ref: "#/components/schemas/DarDeBajaTratamiento"
         required: true
       responses:
-        "204":
-          description: Intervencion dada de baja
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tratamiento"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Tratamiento"
+          description: "Intervencion dada de baja, con la version nueva de la sesion"
         "400":
           content:
             application/json:
@@ -13826,6 +15332,41 @@ paths:
         schema:
           type: integer
           format: int64
+      - description: "Filtro OPCIONAL por origen del hecho (0.107.0). Se repite para\
+          \ pedir varios: origen=ENTRADA_CLINICA&origen=SESION. Sin el, todos. Un\
+          \ valor desconocido es 400 validation-error, no una pagina vacia. Con cursor\
+          \ hay que reenviar los mismos filtros: el cursor marca una posicion y no\
+          \ los lleva adentro"
+        in: query
+        name: origen
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - ENTRADA_CLINICA
+            - ADJUNTO_CLINICO
+            - ANTECEDENTE_CLINICO
+            - SESION
+      - description: "Filtro OPCIONAL: solo hechos con ocurrioEn igual o posterior\
+          \ a este instante UTC, ISO-8601 (0.107.0). Posterior a hasta es 400"
+        example: 2026-09-01T03:00:00Z
+        in: query
+        name: desde
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - description: "Filtro OPCIONAL: solo hechos con ocurrioEn igual o anterior\
+          \ a este instante UTC, ISO-8601 (0.107.0). Inclusivo, igual que desde"
+        example: 2026-10-01T02:59:59Z
+        in: query
+        name: hasta
+        required: false
+        schema:
+          type: string
+          format: date-time
       - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
           \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
           \ porque la sonda de relacion asistencial todavia no tiene implementacion\
@@ -13849,7 +15390,9 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El cursor no se pudo decodificar (cursor-invalido)
+          description: "El cursor no se pudo decodificar (cursor-invalido), o los\
+            \ filtros no son validos: origen desconocido, desde posterior a hasta\
+            \ (validation-error)"
         "403":
           content:
             application/problem+json:
@@ -13875,6 +15418,8 @@ paths:
         Cada elemento trae los nombres junto a los ids porque este listado es exactamente lo que el usuario ve para elegir: resolverlos con llamadas adicionales exigiria pedir datos de organizaciones antes de tener contexto en ninguna.
 
         No requiere contexto de tenant: es el endpoint con el que se averigua que contextos hay. Devuelve una lista vacia —no un error— cuando la cuenta todavia no tiene ninguno; el frontend distingue 'no elegiste' de 'no tenes donde'.
+
+        lastSelected marca el ultimo contexto elegido, revalidado: si dejo de estar habilitado no lo trae ninguno.
 
         Este endpoint no cambia el contexto activo. Seleccionarlo renueva el token, y eso lo publica el modulo de identidad en 01.02 como POST /api/v1/auth/context.
       operationId: listMyContexts
@@ -19410,6 +20955,115 @@ paths:
       summary: Catalogo de planes contratables
       tags:
       - Planes
+  /api/v1/platform/organizations:
+    get:
+      description: "Listado paginado de las organizaciones vigentes con el estado\
+        \ y el plan de su suscripcion, ordenado por nombre. Es el insumo para elegir\
+        \ el centro cuya suscripcion se opera. Las dadas de baja no aparecen. No trae\
+        \ miembros, sedes, consumo de limites ni datos de pacientes. Reservado a la\
+        \ administracion de plataforma, igual que la lectura y el cambio del plan.\
+        \ El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un\
+        \ error."
+      operationId: listPlatformOrganizations
+      parameters:
+      - description: Texto a buscar en el nombre o el slug del centro
+        example: kinesio
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Estado de la suscripcion. Sin el, todos los estados"
+        example: ACTIVA
+        in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - CANCELADA
+      - description: "Numero de pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: "Elementos por pagina, acotado a 100"
+        example: 20
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformOrganizationPageResponse"
+          description: "Pagina de centros, ordenada por nombre"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El estado pedido no es un estado de suscripcion
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La operacion esta reservada a la administracion de plataforma
+      summary: "Listado de centros, para la administracion de plataforma"
+      tags:
+      - Plataforma
+  /api/v1/platform/organizations/{orgId}/subscription:
+    get:
+      description: |-
+        Devuelve el plan contratado, el estado, la version y las transiciones posibles de la suscripcion del centro. La version es la expectedVersion que pide el cambio de plan.
+
+        No trae el consumo de los limites: eso es dato del centro y sigue en GET /organizations/{orgId}/subscription, que para la plataforma exige un acceso de soporte vigente.
+
+        Reservado a la administracion de plataforma, igual que el cambio de plan y las transiciones. Una organizacion inexistente o dada de baja es 404.
+      operationId: getPlatformSubscription
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformSubscriptionResponse"
+          description: "Plan, estado, version y transiciones posibles"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La operacion esta reservada a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion no existe o esta dada de baja
+      summary: "Suscripcion de un centro, para la administracion de plataforma"
+      tags:
+      - Plataforma
   /api/v1/platform/organizations/{orgId}/support-access:
     get:
       description: |-
@@ -20474,6 +22128,31 @@ components:
           example: 9001
       required:
       - obligacionId
+    AjusteDeSaldoDePase:
+      type: object
+      description: Ajuste manual del saldo (RF-M29-005). Exige `pase:adjust` y motivo.
+        El saldo final no puede ser negativo ni superar los creditos comprados.
+      properties:
+        cantidad:
+          type: integer
+          format: int32
+          description: "Creditos con signo: positivo suma, negativo resta. Nunca cero"
+          example: -1
+        motivo:
+          type: string
+          description: "Obligatorio: queda en el ledger y en la auditoria (CA-M29-005-06)"
+          example: Clase de cortesia descontada por error
+          maxLength: 280
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: Version del pase que el cliente leyo
+          example: 3
+          minimum: 0
+      required:
+      - motivo
+      - version
     AlcanceDeSerie:
       type: object
       description: "Que turnos toca una operacion con alcance y cuales deja como estan.\
@@ -20672,6 +22351,26 @@ components:
           type: boolean
           description: Si el antecedente sigue vigente
           example: true
+    AnulacionDePase:
+      type: object
+      description: "Anula un pase vendido por error, con su deuda. Solo si no se uso\
+        \ ningun credito y la deuda no tiene cobros. Exige `pase:adjust`."
+      properties:
+        motivo:
+          type: string
+          description: Obligatorio
+          example: Se vendio a la persona equivocada
+          maxLength: 280
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: Version del pase que el cliente leyo
+          example: 1
+          minimum: 0
+      required:
+      - motivo
+      - version
     AnularCobro:
       type: object
       description: "Anula un cobro con motivo obligatorio. **Anular no significa borrar**:\
@@ -21005,6 +22704,100 @@ components:
       required:
       - permissionCode
       - reason
+    AtencionDeParticipante:
+      type: object
+      description: "La Sesion de un participante de una clase clinica. Es una Sesion\
+        \ como cualquier otra: borrador, evaluacion, tratamientos, cierre y enmienda\
+        \ van por las operaciones de Sesion de la sede. No lleva contenido clinico."
+      properties:
+        asistenciaId:
+          type: integer
+          format: int64
+          description: La asistencia de la que cuelga la derivacion
+          example: 933
+        casoId:
+          type: integer
+          format: int64
+          description: El Caso de la derivacion. No se puede cambiar
+          example: 55
+        cerradaEn:
+          type: string
+          format: date-time
+        claseId:
+          type: integer
+          format: int64
+          example: 640
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        derivacionId:
+          type: integer
+          format: int64
+          example: 88
+        estado:
+          type: string
+          enum:
+          - BORRADOR
+          - CERRADA
+        historiaClinicaId:
+          type: integer
+          format: int64
+          example: 301
+        iniciadaEn:
+          type: string
+          format: date-time
+        inscripcionId:
+          type: integer
+          format: int64
+          example: 412
+        numeroEnCaso:
+          type: integer
+          format: int32
+          description: Correlativo dentro del Caso (RN-M14-010). Ausente mientras
+            esta abierta
+          example: 3
+        numeroSesion:
+          type: integer
+          format: int32
+          description: Correlativo por Historia Clinica. Ausente mientras esta abierta
+          example: 14
+        profesionalId:
+          type: integer
+          format: int64
+          description: "Membership del profesional que la abrio: solo el escribe en\
+            \ ella"
+          example: 31
+        sesionId:
+          type: integer
+          format: int64
+          description: La Sesion. Con ella se abre la ficha del participante
+          example: 501
+        version:
+          type: integer
+          format: int64
+          description: "La version de la Sesion, para su primer guardado"
+          example: 0
+        yaExistia:
+          type: boolean
+          description: '`true` si este pedido no creo nada porque la atencion ya existia'
+    AtencionGrupal:
+      type: object
+      description: "Quien estuvo y que atencion clinica tiene cada participante. Sin\
+        \ contenido clinico: cada ficha se abre por su Sesion."
+      properties:
+        claseId:
+          type: integer
+          format: int64
+          example: 640
+        clinica:
+          type: boolean
+          description: "`false` si la oferta de la clase no genera registro clinico:\
+            \ no puede haber atenciones (RN-M14-008)"
+        participantes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParticipanteEnAtencionGrupal"
     AtenderComoParticular:
       type: object
       description: Continuar la recepcion como Particular. No modifica la cobertura
@@ -21130,6 +22923,13 @@ components:
           type: string
           description: Nombre del consultorio
           example: Sede Central
+        lastSelected:
+          type: boolean
+          description: "true en el ultimo contexto que la cuenta eligio con POST /api/v1/auth/context,\
+            \ si sigue habilitado: es el que conviene preseleccionar al volver a entrar.\
+            \ A lo sumo un elemento lo trae en true; ninguno si la cuenta nunca eligio\
+            \ o si el elegido dejo de estar habilitado"
+          example: true
         organizationId:
           type: integer
           format: int64
@@ -21568,6 +23368,19 @@ components:
       required:
       - expectedVersion
       - motivo
+    BajaDeProducto:
+      type: object
+      description: "Baja logica con motivo. **No cascadea**: los pases vendidos conservan\
+        \ saldo y vigencia."
+      properties:
+        motivo:
+          type: string
+          description: Obligatorio
+          example: Se discontinua el pack de 8
+          maxLength: 280
+          minLength: 0
+      required:
+      - motivo
     BloqueResponse:
       type: object
       description: Bloque recurrente de disponibilidad de un profesional en una sede
@@ -21710,6 +23523,26 @@ components:
             \ la exija: es lo que le permite a la pantalla detectar que alguien mas\
             \ la cambio"
           example: 0
+    CambiarCasoDeSesion:
+      type: object
+      description: Caso Clinico de una atencion abierta. `casoId` nulo quita el caso.
+      properties:
+        casoId:
+          type: integer
+          format: int64
+          description: "Caso activo de la misma historia clinica. **Nulo quita el\
+            \ caso**: la atencion sin caso es legitima (RF-M14-002)"
+          example: 12
+          exclusiveMinimum: 0
+        version:
+          type: integer
+          format: int64
+          description: Version de la sesion que el cliente leyo. Un 409 `concurrent-modification`
+            significa recargar.
+          example: 3
+          minimum: 0
+      required:
+      - version
     CambiarFinPrecioParticularRequest:
       type: object
       description: Nuevo fin de vigencia del precio particular
@@ -21945,6 +23778,13 @@ components:
           description: "Oferta que motiva el caso (RN-M10-006). No se edita: cambiarla\
             \ convertiria el caso en otro caso con el mismo numero y el mismo historial"
           example: 42
+        ofertaNombre:
+          type: string
+          description: "Nombre comercial de la oferta, resuelto al leer contra su\
+            \ sede (0.107.0). No se guarda en el caso: si la oferta se renombra, el\
+            \ caso muestra el nombre nuevo. Ausente si la oferta ya no resuelve; ahi\
+            \ la pantalla muestra el id"
+          example: Kinesiologia traumatologica
         version:
           type: integer
           format: int64
@@ -22023,6 +23863,13 @@ components:
           format: int64
           description: Membership del profesional en este centro
           example: 31
+        profesionalNombre:
+          type: string
+          description: "Nombre del profesional, resuelto al leer por su membership\
+            \ en la organizacion (0.107.0): sirve aunque el caso sea de otra sede\
+            \ o el profesional ya no este habilitado. Ausente si no resuelve o en\
+            \ la vista administrativa de la historia; ahi la pantalla muestra el id"
+          example: Lucia Fernandez
         rol:
           type: string
           enum:
@@ -22444,6 +24291,11 @@ components:
           type: integer
           format: int64
           example: 8
+        espacioNombre:
+          type: string
+          description: "Nombre del box, leido al responder. Ausente si la clase no\
+            \ tiene box o ya no se puede resolver."
+          example: Salon 1
         estado:
           type: string
           description: PROGRAMADA o CANCELADA
@@ -22474,10 +24326,20 @@ components:
           type: integer
           format: int64
           example: 45
+        ofertaNombre:
+          type: string
+          description: "Nombre comercial de la oferta, leido al responder. Ausente\
+            \ si la oferta ya no se puede resolver."
+          example: Pilates reformer
         profesionalId:
           type: integer
           format: int64
           example: 31
+        profesionalNombre:
+          type: string
+          description: "Nombre del profesional o instructor, leido al responder. Ausente\
+            \ si la clase no tiene profesional o su vinculo ya no se puede resolver."
+          example: Laura Gomez
         titulo:
           type: string
           example: Pilates - grupo avanzado
@@ -22993,6 +24855,25 @@ components:
           description: "La sesion que hace de baseline. **Ausente si no hay ninguna**,\
             \ y eso no es un error"
           example: 488
+    ConfiguracionDeRenovacionDeAbono:
+      type: object
+      description: Prende o apaga la renovacion automatica de un abono (desde 0.116.0).
+      properties:
+        activa:
+          type: boolean
+          description: "true: el sistema vende el periodo siguiente, con su obligacion,\
+            \ al acercarse el fin de este, a nombre de quien la prende. false: no\
+            \ se renueva"
+          example: true
+        version:
+          type: integer
+          format: int64
+          description: Version del pase que el cliente leyo
+          example: 1
+          minimum: 0
+      required:
+      - activa
+      - version
     ConsultorioPageResponse:
       type: object
       description: "Pagina de sedes de la organizacion, segun el filtro de estado\
@@ -23093,6 +24974,35 @@ components:
           description: "Version para el control de concurrencia optimista. Hay que\
             \ reenviarla al editar: sin ella dos ediciones simultaneas se pisan"
           example: 0
+    ConsumoDeCredito:
+      type: object
+      description: "Que le hizo una asistencia al saldo de pases. **Un credito no\
+        \ es plata**: consumirlo no mueve caja ni crea deuda (RN-M29-006, CA-M18-009-06)."
+      properties:
+        efecto:
+          type: string
+          description: "`CONSUMIDO`: se desconto un credito. `DEVUELTO`: una correccion\
+            \ a ausente devolvio el credito tomado. `SIN_CAMBIO`: la asistencia ya\
+            \ tenia su credito tomado. `SIN_PASE_ELEGIBLE`: la oferta cobra por pack\
+            \ y la persona no tiene pase vigente con saldo; la asistencia queda registrada\
+            \ igual. `NO_APLICA`: la oferta no cobra por pack."
+          enum:
+          - CONSUMIDO
+          - DEVUELTO
+          - SIN_CAMBIO
+          - SIN_PASE_ELEGIBLE
+          - NO_APLICA
+          example: CONSUMIDO
+        paseId:
+          type: integer
+          format: int64
+          description: El pase afectado. Ausente si no hubo movimiento.
+          example: 77
+        saldo:
+          type: integer
+          format: int32
+          description: Saldo del pase despues del movimiento.
+          example: 7
     ConvenioAplicado:
       type: object
       description: "Convenio y arancel aplicados a la prestacion, **congelados al\
@@ -23344,6 +25254,76 @@ components:
       - moneda
       - periodoDesde
       - periodoHasta
+    CrearProducto:
+      type: object
+      description: "Alta de un producto sobre una oferta de la sede: un pack exige\
+        \ `esquemaCobro = POR_PACK` y un abono `POR_ABONO`. **No crea saldo a nadie**\
+        \ (CA-M29-001-06)."
+      properties:
+        creditos:
+          type: integer
+          format: int32
+          description: Creditos que otorga la compra
+          example: 8
+          exclusiveMinimum: 0
+        descripcion:
+          type: string
+          description: Descripcion comercial. Nunca contenido clinico.
+          maxLength: 500
+          minLength: 0
+        moneda:
+          type: string
+          description: ISO 4217
+          example: ARS
+          maxLength: 3
+          minLength: 3
+        nombre:
+          type: string
+          description: Unico entre los productos vigentes de la sede
+          example: Pack Pilates 8 clases
+          maxLength: 160
+          minLength: 0
+        ofertaId:
+          type: integer
+          format: int64
+          description: Oferta de la sede cuyos creditos vende el producto
+          example: 42
+          exclusiveMinimum: 0
+        precio:
+          type: number
+          description: "Precio de venta, decimal exacto"
+          example: 40000.0
+          exclusiveMinimum: 0
+        tipo:
+          type: string
+          description: "`PACK` (por defecto) o `ABONO` (desde 0.109.0, RF-M29-007).\
+            \ En un abono `creditos` son las asistencias que permite cada periodo\
+            \ y `vigenciaDias` la duracion maxima del periodo"
+          enum:
+          - PACK
+          - ABONO
+          example: PACK
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Desde cuando se puede vender
+          example: 2026-10-01
+        vigenciaDias:
+          type: integer
+          format: int32
+          description: "Dias corridos que vale el pase desde la compra, contando el\
+            \ dia de la compra"
+          example: 60
+          exclusiveMinimum: 0
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Hasta cuando se puede vender, inclusive. Ausente: sin fin."
+      required:
+      - moneda
+      - nombre
+      - precio
+      - vigenciaDesde
     CrearSerieDeTurnos:
       type: object
       description: "Alta de una serie semanal de turnos (DP-04). Se reservan TODAS\
@@ -24240,9 +26220,16 @@ components:
           exclusiveMinimum: 0
         esquemaCobro:
           type: string
-          description: "Esquema de cobro declarado, texto libre acotado. Se guarda\
-            \ sin resolverse: los modulos que lo interpretarian no existen todavia"
-          example: SESION_SUELTA
+          description: "Esquema de cobro (RN-M27-006): `POR_SESION` devenga por atencion,\
+            \ `POR_PACK` y `POR_ABONO` consumen el credito de un pase o abono y la\
+            \ deuda nace al venderlo. Vocabulario cerrado: otro valor es 400. `POR_CLASE`\
+            \ existe en el esquema pero hoy responde 400, hasta decidir cuando se\
+            \ devenga (U-39). Ausente: sin esquema declarado"
+          enum:
+          - POR_SESION
+          - POR_PACK
+          - POR_ABONO
+          example: POR_SESION
           maxLength: 32
           minLength: 0
         generaRegistroClinico:
@@ -24946,6 +26933,137 @@ components:
           minLength: 0
       required:
       - token
+    DerivacionDeParticipante:
+      type: object
+      description: Vinculo entre una participacion de clase y un Caso Clinico (AKINE-08.04).
+      properties:
+        asistenciaId:
+          type: integer
+          format: int64
+          description: La asistencia de la que cuelga el vinculo
+          example: 981
+        autorizacionId:
+          type: integer
+          format: int64
+        casoClinicoId:
+          type: integer
+          format: int64
+          example: 88
+        derivadaEn:
+          type: string
+          format: date-time
+        derivadaPorCuentaId:
+          type: integer
+          format: int64
+        estado:
+          type: string
+          enum:
+          - VIGENTE
+          - REVERTIDA
+          example: VIGENTE
+        historiaClinicaId:
+          type: integer
+          format: int64
+          example: 40
+        id:
+          type: integer
+          format: int64
+          example: 501
+        inscripcionId:
+          type: integer
+          format: int64
+          example: 301
+        motivo:
+          type: string
+        motivoReversion:
+          type: string
+        numeroCaso:
+          type: integer
+          format: int32
+          description: "Numero visible del Caso dentro de la historia (\"caso 3\"\
+            ), el que la pantalla muestra en lugar del id. Ausente solo si el Caso\
+            \ no se pudo resolver"
+          example: 3
+        ofertaId:
+          type: integer
+          format: int64
+          description: "Oferta clinica que justifico la derivacion, congelada"
+          example: 45
+        personaId:
+          type: integer
+          format: int64
+          example: 512
+        planTratamientoId:
+          type: integer
+          format: int64
+        requiereCasoClinico:
+          type: boolean
+          description: "Copia congelada de la oferta: si la atencion va a exigir Caso"
+        revertidaEn:
+          type: string
+          format: date-time
+        revertidaPorCuentaId:
+          type: integer
+          format: int64
+        version:
+          type: integer
+          format: int64
+          example: 0
+        yaExistia:
+          type: boolean
+          description: true si el pedido no creo nada porque el vinculo ya existia
+    DerivacionesDeParticipante:
+      type: object
+      description: "Las derivaciones de una participacion, vigentes y revertidas,\
+        \ mas nueva primero. Lectura clinica: se autoriza y se audita."
+      properties:
+        derivaciones:
+          type: array
+          items:
+            $ref: "#/components/schemas/DerivacionDeParticipante"
+        historiaClinicaId:
+          type: integer
+          format: int64
+          description: "null si la persona todavia no tiene historia: la derivacion\
+            \ la abre"
+    DerivarParticipante:
+      type: object
+      description: "Vincula la participacion (la asistencia) a un Caso Clinico existente\
+        \ y activo de esa persona. No crea Sesion, no consume autorizacion y no devenga."
+      properties:
+        activarPerfilPaciente:
+          type: boolean
+          default: false
+          description: "true activa el perfil de paciente si la persona no lo tiene\
+            \ (exige paciente:manage). Si falta o es false, una persona sin perfil\
+            \ es 409 persona-sin-perfil-paciente."
+          example: false
+        autorizacionId:
+          type: integer
+          format: int64
+          description: "Autorizacion declarada. Opcional (RF-M11-008); si viene, tiene\
+            \ que habilitar el dia de la clase. No se consume"
+          example: 7
+          exclusiveMinimum: 0
+        casoClinicoId:
+          type: integer
+          format: int64
+          description: "Caso Clinico destino, activo y de la historia de esa persona"
+          example: 88
+          exclusiveMinimum: 0
+        motivo:
+          type: string
+          description: "Por que se deriva. Opcional: el motivo clinico vive en el\
+            \ Caso"
+          example: Indicacion del kinesiologo tras la clase
+          maxLength: 300
+          minLength: 0
+        planTratamientoId:
+          type: integer
+          format: int64
+          description: Plan de Tratamiento del Caso. Opcional (RF-M11-007)
+          example: 12
+          exclusiveMinimum: 0
     DesvinculacionImpactoResponse:
       type: object
       description: Trabajo pendiente que quedaria sin dueño al desvincular
@@ -25049,6 +27167,32 @@ components:
           type: integer
           format: int32
           example: 1
+    DeudaDeVenta:
+      type: object
+      description: "La obligacion que devengo la venta (RF-M18-009). **No es un cobro**:\
+        \ se paga con `POST /cobros`."
+      properties:
+        estado:
+          type: string
+          enum:
+          - PENDIENTE
+          - PARCIAL
+          - PAGADA
+          - ANULADA
+          example: PENDIENTE
+        importe:
+          type: number
+          example: 40000.0
+        moneda:
+          type: string
+          example: ARS
+        obligacionId:
+          type: integer
+          format: int64
+          example: 9001
+        saldo:
+          type: number
+          example: 40000.0
     DiaDeAgenda:
       type: object
       description: "Un dia resuelto: o tiene slots, o tiene motivo"
@@ -25259,6 +27403,52 @@ components:
       - concepto
       - importeTotal
       - version
+    EditarProducto:
+      type: object
+      description: "Edita el producto. Los campos ausentes se conservan. **Los pases\
+        \ ya vendidos no cambian**: llevan su propio snapshot."
+      properties:
+        creditos:
+          type: integer
+          format: int32
+          exclusiveMinimum: 0
+        descripcion:
+          type: string
+          maxLength: 500
+          minLength: 0
+        limpiarVigenciaHasta:
+          type: boolean
+          description: true deja la ventana comercial sin fin
+          example: false
+        moneda:
+          type: string
+          maxLength: 3
+          minLength: 3
+        nombre:
+          type: string
+          maxLength: 160
+          minLength: 0
+        precio:
+          type: number
+          exclusiveMinimum: 0
+        version:
+          type: integer
+          format: int64
+          description: Version que el cliente leyo
+          example: 0
+          minimum: 0
+        vigenciaDesde:
+          type: string
+          format: date
+        vigenciaDias:
+          type: integer
+          format: int32
+          exclusiveMinimum: 0
+        vigenciaHasta:
+          type: string
+          format: date
+      required:
+      - version
     EffectivePermissionsResponse:
       type: object
       description: Permisos efectivos de la cuenta en su contexto de trabajo activo
@@ -25376,6 +27566,44 @@ components:
           description: "Control optimista del **borrador**. El saldo no lo mueve:\
             \ se toca en fases distintas y nunca corren la misma carrera."
           example: 2
+    ElegibilidadClinicaDeParticipante:
+      type: object
+      description: "Veredicto GRUPAL, sin efectos y sin leer nada clinico: si la oferta\
+        \ es clinica, si la persona estuvo y si ya es paciente. Caso, Plan, autorizacion\
+        \ y permiso clinico se deciden al derivar."
+      properties:
+        asistenciaId:
+          type: integer
+          format: int64
+          description: null si no hay asistencia registrada
+        derivable:
+          type: boolean
+        esPacienteVigente:
+          type: boolean
+        inscripcionId:
+          type: integer
+          format: int64
+          example: 301
+        motivos:
+          type: array
+          description: "Bloqueos: OFERTA_NO_CLINICA, SIN_ASISTENCIA, AUSENTE"
+          items:
+            type: string
+        ofertaClinica:
+          type: boolean
+        personaId:
+          type: integer
+          format: int64
+          example: 512
+        requiereActivarPerfil:
+          type: boolean
+          description: Derivar exige activarPerfilPaciente = true. No bloquea por
+            si solo
+        requiereCasoClinico:
+          type: boolean
+        resultadoAsistencia:
+          type: string
+          description: "PRESENTE, PRESENTE_TARDE, AUSENTE o null"
     ElegibilidadResponse:
       type: object
       description: Requisitos administrativos que el convenio exige y su veredicto
@@ -27302,6 +29530,47 @@ components:
       required:
       - personaId
       - resultado
+    IniciarAtencionDeParticipante:
+      type: object
+      description: Abre la Sesion del participante desde su derivacion clinica vigente.
+      properties:
+        derivacionId:
+          type: integer
+          format: int64
+          description: "La derivacion de la que cuelga la atencion. Opcional si el\
+            \ participante tiene una sola vigente; obligatoria si tiene varias (si\
+            \ falta, 409 `derivacion-ambigua`)"
+          example: 88
+          exclusiveMinimum: 0
+    IniciarAtencionGrupal:
+      type: object
+      description: Abre la Sesion de varios participantes. La respuesta es **200 aunque
+        haya fallos parciales**.
+      properties:
+        items:
+          type: array
+          description: Hasta 200 participantes
+          items:
+            $ref: "#/components/schemas/IniciarAtencionGrupalItem"
+          maxItems: 200
+          minItems: 0
+      required:
+      - items
+    IniciarAtencionGrupalItem:
+      type: object
+      description: Un participante del lote
+      properties:
+        derivacionId:
+          type: integer
+          format: int64
+          description: Opcional si tiene una sola derivacion vigente
+          example: 88
+          exclusiveMinimum: 0
+        inscripcionId:
+          type: integer
+          format: int64
+          example: 412
+          exclusiveMinimum: 0
     Inscribir:
       type: object
       description: "Reserva un cupo para una Persona. **La persona no se convierte\
@@ -27309,8 +29578,9 @@ components:
       properties:
         aceptaListaEspera:
           type: boolean
+          default: false
           description: "Si no hay lugar: true la deja en la lista de espera, false\
-            \ responde clase-completa sin anotarla."
+            \ responde clase-completa sin anotarla. Opcional: si no viene, vale false."
           example: true
         idempotencyKey:
           type: string
@@ -27487,6 +29757,36 @@ components:
           minLength: 0
       required:
       - token
+    ItemDeAtencionGrupal:
+      type: object
+      description: "O trae la atencion, o trae el error de ese participante"
+      properties:
+        atencion:
+          $ref: "#/components/schemas/AtencionDeParticipante"
+          description: Presente cuando el item salio bien
+        derivacionIds:
+          type: array
+          description: "Solo con `derivacion-ambigua`: las derivaciones vigentes entre\
+            \ las que hay que elegir, las mismas que trae el Problem Detail de la\
+            \ operacion individual. Se reintenta el item con una de ellas como `derivacionId`.\
+            \ Ausente en cualquier otro caso"
+          example:
+          - 88
+          - 91
+          items:
+            type: integer
+            format: int64
+        detalle:
+          type: string
+          description: Explicacion del fallo de este participante
+        inscripcionId:
+          type: integer
+          format: int64
+          example: 412
+        problemType:
+          type: string
+          description: "URI del tipo de problema, la misma del Problem Detail individual"
+          example: https://akine.app/problems/participacion-sin-derivacion
     ItemDeLoteDeAsistencia:
       type: object
       description: "Resultado individual. Un fallo aca no revierte los items anteriores:\
@@ -28320,6 +30620,61 @@ components:
           - MANUAL
           - REVERSION
           example: COBRO
+    MovimientoPase:
+      type: object
+      description: Movimiento inmutable del ledger de creditos (RN-M29-003). `cantidad`
+        lleva signo; la suma del ledger es el saldo.
+      properties:
+        actorCuentaId:
+          type: integer
+          format: int64
+        asistenciaId:
+          type: integer
+          format: int64
+          description: "La asistencia que lo produjo, si la hay"
+          example: 455
+        cantidad:
+          type: integer
+          format: int32
+          example: -1
+        id:
+          type: integer
+          format: int64
+          example: 301
+        motivo:
+          type: string
+        ocurridoEn:
+          type: string
+          format: date-time
+        origenId:
+          type: integer
+          format: int64
+          description: "Para VENTA, el pase; para ASISTENCIA, el evento de asistencia;\
+            \ para CANCELACION, la clase cancelada; para AJUSTE_MANUAL y VENCIMIENTO,\
+            \ la version del pase sobre la que se aplico"
+          example: 901
+        origenTipo:
+          type: string
+          enum:
+          - VENTA
+          - ASISTENCIA
+          - CANCELACION
+          - AJUSTE_MANUAL
+          - VENCIMIENTO
+          example: ASISTENCIA
+        saldoResultante:
+          type: integer
+          format: int32
+          example: 7
+        tipo:
+          type: string
+          enum:
+          - COMPRA
+          - CONSUMO
+          - AJUSTE
+          - DEVOLUCION
+          - VENCIMIENTO
+          example: CONSUMO
     MovimientoResponse:
       type: object
       description: Un movimiento del ledger de saldo de una autorizacion
@@ -28504,6 +30859,8 @@ components:
           - TURNO_RESERVADO
           - TURNO_CANCELADO
           - TURNO_REPROGRAMADO
+          - PASE_POR_VENCER
+          - PASE_SALDO_BAJO
           example: INVITACION_COLABORADOR
         ultimoError:
           type: string
@@ -28581,6 +30938,23 @@ components:
           type: integer
           format: int64
           example: 42
+        origen:
+          type: string
+          description: "Que hecho devengo la deuda: una atencion (`SESION`) o la venta\
+            \ de un pack o pase (`VENTA_PASE`, RF-M18-009) o de un periodo de abono\
+            \ (`VENTA_ABONO`, RF-M18-010). Devengar no es cobrar: la deuda de una\
+            \ venta se paga con `POST /cobros` como cualquier otra."
+          enum:
+          - SESION
+          - VENTA_PASE
+          - VENTA_ABONO
+          example: SESION
+        paseId:
+          type: integer
+          format: int64
+          description: Pase vendido que la genero. Presente con `origen = VENTA_PASE`
+            o `VENTA_ABONO`.
+          example: 77
         personaId:
           type: integer
           format: int64
@@ -28607,7 +30981,9 @@ components:
         sesionId:
           type: integer
           format: int64
-          description: Atencion que la genero. Es lo que la hace trazable.
+          description: "Atencion que la genero, cuando `origen` es `SESION`. **Ausente**\
+            \ cuando la deuda nace de la venta de un pase o de un abono (`origen =\
+            \ VENTA_PASE` o `VENTA_ABONO`, desde 0.102.0)."
           example: 501
         snapshotNombre:
           type: string
@@ -28660,10 +31036,15 @@ components:
           example: 45
         esquemaCobro:
           type: string
-          description: "Esquema de cobro DECLARADO, texto libre acotado. No lo resuelve\
-            \ nadie todavia: los modulos de facturacion y cobros no existen (RN-M27-006).\
-            \ Se guarda para no perder el dato, no para ramificar"
-          example: SESION_SUELTA
+          description: "Esquema de cobro de la oferta (RN-M27-006), o ausente si no\
+            \ declara ninguno. `POR_CLASE` esta en la lista porque el esquema lo admite,\
+            \ aunque hoy no se puede declarar (U-39)"
+          enum:
+          - POR_SESION
+          - POR_CLASE
+          - POR_PACK
+          - POR_ABONO
+          example: POR_SESION
         estado:
           type: string
           description: "Ciclo de vida administrativo. Una oferta INACTIVA se sigue\
@@ -28909,6 +31290,37 @@ components:
           format: int64
           description: Version para bloqueo optimista. Devolverla tal cual en el PATCH
           example: 0
+    PaginaDeMovimientosDePase:
+      type: object
+      description: "Una pagina del ledger de un pase, del movimiento mas viejo al\
+        \ mas nuevo (desde 0.116.0). Misma forma que el resto de los listados paginados\
+        \ de la API."
+      properties:
+        content:
+          type: array
+          description: Movimientos de esta pagina
+          items:
+            $ref: "#/components/schemas/MovimientoPase"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de movimientos del pase
+          example: 3
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 1
     PagoDeEgreso:
       type: object
       description: "El acto de saldar un egreso. Anular no lo borra: lo deja en `ANULADO`\
@@ -29103,6 +31515,46 @@ components:
         tipoDocumento:
           type: string
           example: DNI
+    ParticipanteEnAtencionGrupal:
+      type: object
+      description: Un participante con asistencia
+      properties:
+        apellido:
+          type: string
+          description: "Del padron, resuelto al leer. Ausente si la ficha no se resolvio"
+          example: Perez
+        asistenciaId:
+          type: integer
+          format: int64
+          example: 933
+        atenciones:
+          type: array
+          description: Una por derivacion atendida. Vacia si todavia no tiene
+          items:
+            $ref: "#/components/schemas/AtencionDeParticipante"
+        estuvo:
+          type: boolean
+          description: "`true` si estuvo: solo entonces se lo puede atender"
+        inscripcionId:
+          type: integer
+          format: int64
+          example: 412
+        nombre:
+          type: string
+          description: "Del padron, resuelto al leer. Ausente si la ficha no se resolvio.\
+            \ Junto con `apellido` es lo unico de la persona que viaja: ni documento\
+            \ ni contacto"
+          example: Ana
+        personaId:
+          type: integer
+          format: int64
+          example: 77
+        resultadoAsistencia:
+          type: string
+          enum:
+          - PRESENTE
+          - PRESENTE_TARDE
+          - AUSENTE
     ParticipanteOperativo:
       type: object
       description: Inscripcion mas asistencia. `asistencia` es null mientras nadie
@@ -29121,6 +31573,160 @@ components:
           type: string
         tipoDocumento:
           type: string
+    Pase:
+      type: object
+      description: "Pase comprado por una Persona (RF-M29-002). Nombre, precio, moneda,\
+        \ creditos y oferta son el **snapshot de la venta**: editar el producto no\
+        \ los cambia."
+      properties:
+        anulable:
+          type: boolean
+          description: "true si `POST .../anulacion` lo aceptaria hoy: no esta `ANULADO`,\
+            \ no tiene creditos usados y la deuda de su venta no tiene cobros imputados.\
+            \ Es la misma regla con la que la anulacion responde `pase-no-ajustable`\
+            \ (`causa = CREDITOS_USADOS`) o `pase-con-cobros`, calculada al leer.\
+            \ Aditivo desde 0.111.0"
+          example: false
+        anuladoEn:
+          type: string
+          format: date-time
+          description: Cuando se anulo. Presente solo con `estado = ANULADO`
+        anuladoPorCuentaId:
+          type: integer
+          format: int64
+          description: Quien lo anulo
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        creditosDisponibles:
+          type: integer
+          format: int32
+          description: Saldo vigente. Nunca negativo (RN-M29-008)
+          example: 7
+        creditosIniciales:
+          type: integer
+          format: int32
+          example: 8
+        creditosUsados:
+          type: integer
+          format: int32
+          description: "Creditos tomados por asistencias: el neto de los `CONSUMO`\
+            \ y `DEVOLUCION` del ledger; los ajustes manuales no cuentan. Calculado\
+            \ al leer. Aditivo desde 0.111.0"
+          example: 1
+        estado:
+          type: string
+          enum:
+          - ACTIVO
+          - AGOTADO
+          - VENCIDO
+          - ANULADO
+          example: ACTIVO
+        id:
+          type: integer
+          format: int64
+          example: 77
+        moneda:
+          type: string
+          example: ARS
+        motivoAnulacion:
+          type: string
+          description: Por que se anulo
+        nombre:
+          type: string
+          example: Pack Pilates 8 clases
+        ofertaId:
+          type: integer
+          format: int64
+          description: La oferta cuyas clases consumen estos creditos
+          example: 42
+        personaId:
+          type: integer
+          format: int64
+          example: 512
+        precio:
+          type: number
+          example: 40000.0
+        productoId:
+          type: integer
+          format: int64
+          example: 12
+        renovacionAutomatica:
+          type: boolean
+          description: "Solo abonos (desde 0.116.0): true si el sistema va a vender\
+            \ el periodo siguiente al acercarse el fin de este. Se apaga cuando se\
+            \ renueva (el periodo nuevo la hereda) o cuando no se pudo renovar (`renovacionOmitidaMotivo`).\
+            \ Aditivo"
+          example: false
+        renovacionAutorizadaPor:
+          type: string
+          description: "Solo abonos: nombre de quien activo por ultima vez la renovacion\
+            \ automatica. Se conserva al apagarla y el periodo que vende el job lo\
+            \ hereda. Resuelto al leer (el nombre de hoy); ausente si nunca se activo\
+            \ o la cuenta no resuelve. Aditivo desde 0.117.0"
+          example: Ana Gomez
+        renovacionOmitidaMotivo:
+          type: string
+          description: "Por que el sistema no pudo renovar este periodo (producto\
+            \ de baja, persona de baja, periodo ocupado). Ausente si no se intento\
+            \ o se renovo. Aditivo desde 0.116.0"
+        renovadoPorPaseId:
+          type: integer
+          format: int64
+          description: El periodo de abono siguiente que renovo a este (la reciproca
+            de `renuevaPaseId`); ausente si no se renovo. Calculado al leer. Puede
+            estar `ANULADO`. Aditivo desde 0.117.0
+          example: 78
+        renuevaPaseId:
+          type: integer
+          format: int64
+          description: El periodo de abono que este renueva; ausente si lo vendio
+            una persona. Aditivo desde 0.116.0
+          example: 76
+        tipo:
+          type: string
+          description: '`PACK` o `ABONO` (desde 0.109.0). Un abono cubre el periodo
+            `vigenciaDesde`..`vigenciaHasta` elegido al venderlo'
+          enum:
+          - PACK
+          - ABONO
+          example: PACK
+        vendidoEn:
+          type: string
+          format: date-time
+        vendidoPorCuentaId:
+          type: integer
+          format: int64
+          example: 3
+        version:
+          type: integer
+          format: int64
+          description: "Version para el control optimista del ajuste, la anulacion\
+            \ y la renovacion"
+          example: 1
+        vigenciaDesde:
+          type: string
+          format: date
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia en que vale, inclusive"
+        vigente:
+          type: boolean
+          description: "true si hoy, en la zona de la sede, puede cubrir una asistencia:\
+            \ activo, con saldo y dentro de su vigencia"
+          example: true
+    PaseDetalle:
+      type: object
+      description: "Un pase con su ledger, del movimiento mas viejo al mas nuevo."
+      properties:
+        movimientos:
+          type: array
+          items:
+            $ref: "#/components/schemas/MovimientoPase"
+        pase:
+          $ref: "#/components/schemas/Pase"
     PasswordResetConfirmRequest:
       type: object
       description: Token del enlace de restablecimiento y contrasena nueva
@@ -29435,6 +32041,21 @@ components:
           format: int64
           description: Autorizacion de M17 que respalda la cantidad. Siempre ausente
             mientras el origen sea DECLARADA
+        autorizacionVigenciaDesde:
+          type: string
+          format: date
+          description: "Primer dia de vigencia de esa autorizacion, leido en vivo\
+            \ de M17 (0.107.0). Ausente si el item no tiene autorizacion o si esta\
+            \ ya no resuelve (dada de baja). Fecha local, sin hora"
+          example: 2026-09-01
+        autorizacionVigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia de vigencia de esa autorizacion, INCLUSIVO, leido\
+            \ en vivo de M17 (0.107.0). Ausente si no tiene autorizacion, si no resuelve\
+            \ o si la autorizacion no tiene fin. Sirve para avisar que vence antes\
+            \ del fin estimado del plan sin pedir otro permiso"
+          example: 2026-12-31
         cantidadAutorizada:
           type: integer
           format: int32
@@ -29657,6 +32278,75 @@ components:
           description: Cuenta que escribio ESTA version. Quien modifica no suele ser
             quien escribio la original
           example: 8
+    PlatformOrganizationPageResponse:
+      type: object
+      description: "Pagina del listado de centros de la administracion de plataforma,\
+        \ ordenada por nombre"
+      properties:
+        content:
+          type: array
+          description: Centros de esta pagina
+          items:
+            $ref: "#/components/schemas/PlatformOrganizationResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Cantidad de elementos por pagina
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Cantidad total de centros que cumplen el filtro
+          example: 37
+        totalPages:
+          type: integer
+          format: int32
+          description: Cantidad total de paginas disponibles
+          example: 2
+    PlatformOrganizationResponse:
+      type: object
+      description: "Centro en el listado de la administracion de plataforma: identificacion,\
+        \ estado y plan de la suscripcion, sin datos del centro"
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+          description: Instante de alta de la organizacion
+          example: 2026-01-15T13:45:00Z
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la organizacion
+          example: 1
+        name:
+          type: string
+          description: Nombre del centro
+          example: Centro Kinesio Norte
+        planCode:
+          type: string
+          description: Codigo del plan contratado
+          example: BASICO
+        planName:
+          type: string
+          description: Nombre comercial del plan contratado
+          example: Basico
+        slug:
+          type: string
+          description: Identificador legible y unico del centro
+          example: kinesio-norte
+        status:
+          type: string
+          description: Estado de la suscripcion
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - CANCELADA
+          example: ACTIVA
     PlatformRoleResponse:
       type: object
       description: Rol de plataforma vigente sobre una cuenta
@@ -29695,6 +32385,62 @@ components:
           type: string
           format: date-time
           description: "Vencimiento, o null si no vence"
+    PlatformSubscriptionResponse:
+      type: object
+      description: "Suscripcion de un centro para la administracion de plataforma:\
+        \ plan, estado y version, sin el consumo de limites"
+      properties:
+        allowedTargets:
+          type: array
+          description: Estados a los que se puede transicionar desde el actual. Vacio
+            cuando el estado es terminal
+          example:
+          - SUSPENDIDA
+          - CANCELADA
+          items:
+            type: string
+            enum:
+            - ACTIVA
+            - SUSPENDIDA
+            - CANCELADA
+          uniqueItems: true
+        id:
+          type: integer
+          format: int64
+          description: Identificador de la suscripcion
+          example: 1
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion titular de la suscripcion
+          example: 1
+        planCode:
+          type: string
+          description: Codigo del plan contratado
+          example: BASICO
+        planName:
+          type: string
+          description: Nombre comercial del plan contratado
+          example: Basico
+        startedAt:
+          type: string
+          format: date-time
+          description: Instante de alta de la suscripcion
+          example: 2026-01-15T13:45:00Z
+        status:
+          type: string
+          description: Estado de la suscripcion
+          enum:
+          - ACTIVA
+          - SUSPENDIDA
+          - CANCELADA
+          example: ACTIVA
+        version:
+          type: integer
+          format: int64
+          description: Version para bloqueo optimista. Es la expectedVersion del cambio
+            de plan
+          example: 0
     PoliticaDePrepagoRequest:
       type: object
       description: Politica de prepago de una oferta
@@ -30156,6 +32902,7 @@ components:
       - https://akine.app/problems/enmienda-cambia-practicas
       - https://akine.app/problems/obligacion-already-anulada
       - https://akine.app/problems/obligacion-con-cobros
+      - https://akine.app/problems/obligacion-de-venta
       - https://akine.app/problems/cobro-no-cuadra
       - https://akine.app/problems/saldo-insuficiente
       - https://akine.app/problems/obligacion-no-cobrable
@@ -30205,6 +32952,7 @@ components:
       - https://akine.app/problems/entrada-clinica-no-accesible
       - https://akine.app/problems/entrada-clinica-inactiva
       - https://akine.app/problems/enmienda-sin-motivo
+      - https://akine.app/problems/justificacion-de-acceso-requerida
       - https://akine.app/problems/adjunto-clinico-no-accesible
       - https://akine.app/problems/adjunto-clinico-inactivo
       - https://akine.app/problems/adjunto-clinico-no-disponible
@@ -30267,11 +33015,88 @@ components:
       - https://akine.app/problems/clase-capacidad-no-admitida
       - https://akine.app/problems/clase-completa
       - https://akine.app/problems/inscripcion-transicion-no-permitida
+      - https://akine.app/problems/producto-no-vendible
+      - https://akine.app/problems/producto-nombre-en-uso
+      - https://akine.app/problems/abono-periodo-superpuesto
+      - https://akine.app/problems/pase-no-ajustable
+      - https://akine.app/problems/pase-con-cobros
       - https://akine.app/problems/oferta-no-clinica
       - https://akine.app/problems/participacion-sin-asistencia
       - https://akine.app/problems/autorizacion-no-elegible
       - https://akine.app/problems/derivacion-no-accesible
       - https://akine.app/problems/oferta-sin-precio
+      - https://akine.app/problems/participacion-sin-derivacion
+      - https://akine.app/problems/derivacion-ambigua
+      - https://akine.app/problems/derivacion-con-sesion
+      - https://akine.app/problems/caso-de-atencion-grupal
+    Producto:
+      type: object
+      description: Producto de pack del catalogo de una sede (RF-M29-001).
+      properties:
+        active:
+          type: boolean
+          description: "false tras la baja: no se vende mas"
+          example: true
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        creditos:
+          type: integer
+          format: int32
+          example: 8
+        deactivationReason:
+          type: string
+        deletedAt:
+          type: string
+          format: date-time
+        descripcion:
+          type: string
+        id:
+          type: integer
+          format: int64
+          example: 12
+        moneda:
+          type: string
+          example: ARS
+        nombre:
+          type: string
+          example: Pack Pilates 8 clases
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        precio:
+          type: number
+          example: 40000.0
+        tipo:
+          type: string
+          description: "`PACK`: creditos que valen `vigenciaDias` desde la compra.\
+            \ `ABONO` (desde 0.109.0): `creditos` son las asistencias que permite\
+            \ cada periodo y `vigenciaDias` la duracion maxima de un periodo, que\
+            \ se elige al vender"
+          enum:
+          - PACK
+          - ABONO
+          example: PACK
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Desde cuando se vende
+        vigenciaDias:
+          type: integer
+          format: int32
+          description: Dias corridos que vale un pase desde la compra
+          example: 60
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Hasta cuando se vende, inclusive. Ausente: sin fin"
     ProfesionalHabilitado:
       type: object
       description: Profesional habilitado para prestar la oferta
@@ -30342,6 +33167,18 @@ components:
             \ de capacidad 1 es un turno individual mal rotulado."
           example: 8
           minimum: 2
+        espacioId:
+          type: integer
+          format: int64
+          description: "Box elegido. **Opcional**: sin el, el servidor elige el primer\
+            \ box apto y libre (solo si la oferta exige espacio). Con el, se valida\
+            \ ese y solo ese: activo, de esta sede, en servicio toda la franja, habilitado\
+            \ para la oferta y libre de turnos y de otras clases. No se cae a otro\
+            \ box: si no sirve es 409 `slot-no-disponible`, y si esta ocupado 409\
+            \ `recurso-ocupado` con `recurso = espacio`. Se admite aunque la oferta\
+            \ no exija espacio."
+          example: 8
+          exclusiveMinimum: 0
         fin:
           type: string
           format: date-time
@@ -31400,6 +34237,15 @@ components:
             ya confirmados** (RF-M12-012).
           example: 10
           minimum: 2
+        espacioId:
+          type: integer
+          format: int64
+          description: "Box elegido. **Opcional**, pero sin el el servidor vuelve\
+            \ a elegir el primer box apto y libre, que **puede no ser el actual**:\
+            \ para conservar el box, manda el `espacioId` que tiene la clase. Con\
+            \ el, se valida igual que al programar."
+          example: 8
+          exclusiveMinimum: 0
         fin:
           type: string
           format: date-time
@@ -31719,6 +34565,20 @@ components:
       required:
       - accion
       - expectedVersion
+    ResultadoDeAnulacionDePase:
+      type: object
+      description: "El pase ANULADO y la deuda de su venta, tambien anulada (no borrada)."
+      properties:
+        anulado:
+          type: boolean
+          description: false si el pase ya estaba anulado y no se escribio nada
+          example: true
+        deuda:
+          $ref: "#/components/schemas/DeudaDeVenta"
+          description: La obligacion de la venta despues de anularla. Ausente si la
+            venta no tenia deuda
+        pase:
+          $ref: "#/components/schemas/Pase"
     ResultadoDeAsistencia:
       type: object
       description: La asistencia y como quedo la inscripcion. `registrada` y `corregida`
@@ -31726,6 +34586,10 @@ components:
       properties:
         asistencia:
           $ref: "#/components/schemas/Asistencia"
+        consumoDeCredito:
+          $ref: "#/components/schemas/ConsumoDeCredito"
+          description: Que le hizo este registro al saldo de pases de la persona (AKINE-08.07).
+            Ausente si el pedido repetia lo ya registrado y no se escribio nada.
         corregida:
           type: boolean
           description: true si esta llamada corrigio un hecho previo
@@ -31737,6 +34601,23 @@ components:
           type: boolean
           description: true si esta llamada creo el hecho
           example: true
+    ResultadoDeAtencionGrupal:
+      type: object
+      description: "Resultados parciales explicitos: cada participante conserva su\
+        \ resultado propio y un fallo no oculta a los demas."
+      properties:
+        exitosos:
+          type: integer
+          format: int32
+          example: 6
+        fallidos:
+          type: integer
+          format: int32
+          example: 1
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemDeAtencionGrupal"
     ResultadoDeCancelacion:
       type: object
       properties:
@@ -31798,6 +34679,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ItemDeLoteDeAsistencia"
+    ResultadoDeVenta:
+      type: object
+      description: "El pase vendido y su deuda, sin cobro."
+      properties:
+        creada:
+          type: boolean
+          description: false si fue un reintento con la misma clave
+          example: true
+        deuda:
+          $ref: "#/components/schemas/DeudaDeVenta"
+        pase:
+          $ref: "#/components/schemas/Pase"
     ResumenDePersonaResponse:
       type: object
       description: "Ficha administrativa consolidada de una persona, recortada por\
@@ -31852,6 +34745,19 @@ components:
       required:
       - motivo
       - movimientoId
+    RevertirDerivacion:
+      type: object
+      description: "Deshace el vinculo con motivo. La fila queda: los historicos permanecen\
+        \ consultables. Revertir dos veces devuelve la misma derivacion."
+      properties:
+        motivo:
+          type: string
+          description: Por que se deshace el vinculo
+          example: Se derivo al caso equivocado
+          maxLength: 300
+          minLength: 0
+      required:
+      - motivo
     RevertirMovimientoDeCaja:
       type: object
       description: "Compensa un movimiento con otro de signo opuesto. **No borra nada**\
@@ -32371,10 +35277,31 @@ components:
         cierre:
           $ref: "#/components/schemas/CierreDeSesion"
           description: Cierre clinico. Ausente si la sesion sigue abierta.
+        claseId:
+          type: integer
+          format: int64
+          description: AKINE-08.05. Clase programada de la que salio una atencion
+            de origen grupal. Ausente en las demas.
+          example: 640
+        claseTitulo:
+          type: string
+          description: "AKINE-08.05. Como se llama la clase de una atencion de origen\
+            \ grupal: su titulo, o el nombre comercial de la oferta si la clase no\
+            \ tiene titulo (el mismo criterio de la semana de clases). Calculado al\
+            \ leer. Ausente si la atencion no es grupal."
+          example: Pilates terapeutico
         consultorioId:
           type: integer
           format: int64
           example: 7
+        derivacionId:
+          type: integer
+          format: int64
+          description: "AKINE-08.05. Derivacion clinica de la que salio una atencion\
+            \ de **origen grupal** (participante de una clase clinica). Ausente en\
+            \ una atencion de turno o sin turno. Si viene, el caso no se puede cambiar\
+            \ (409 `caso-de-atencion-grupal`)."
+          example: 88
         estado:
           type: string
           description: "Estado de la ATENCION, no del turno ni del cobro. `BORRADOR`\
@@ -32537,6 +35464,12 @@ components:
           description: "Cuenta que la escribio. Es **por version**: quien enmienda\
             \ no suele ser quien cerro"
           example: 8
+        registradaPorNombre:
+          type: string
+          description: "Nombre visible de la cuenta que la escribio, para mostrar\
+            \ sin resolver el id. Solo el nombre: ni el email ni ningun dato del paciente.\
+            \ Ausente si la cuenta ya no se puede resolver"
+          example: Laura Gomez
         respuestaTratamiento:
           type: string
         tolerancia:
@@ -33916,7 +36849,13 @@ components:
           exclusiveMinimum: 0
         esquemaCobro:
           type: string
-          description: Esquema de cobro nuevo. Null deja el actual
+          description: "Esquema de cobro nuevo. Null deja el actual. Mismo vocabulario\
+            \ que el alta: `POR_CLASE` responde 400 hasta decidir U-39"
+          enum:
+          - POR_SESION
+          - POR_PACK
+          - POR_ABONO
+          example: POR_PACK
           maxLength: 32
           minLength: 0
         expectedVersion:
@@ -34294,6 +37233,50 @@ components:
           minimum: 0
       required:
       - expectedVersion
+    VenderPase:
+      type: object
+      description: "Vende un pase a una Persona: crea el pase con su saldo inicial\
+        \ y **una obligacion**, sin cobrar (DP-06). La persona no se convierte en\
+        \ paciente."
+      properties:
+        idempotencyKey:
+          type: string
+          description: Clave del cliente para que un reintento no venda dos veces.
+            Reusarla con otro pedido es un 409.
+          example: c0a8-venta-512
+          maxLength: 80
+          minLength: 0
+        periodoDesde:
+          type: string
+          format: date
+          description: "Solo abonos (desde 0.109.0): primer dia del periodo que cubre.\
+            \ Obligatorio para un abono y prohibido para un pack"
+          example: 2026-11-01
+        periodoHasta:
+          type: string
+          format: date
+          description: "Solo abonos: ultimo dia del periodo, inclusive. Ausente: el\
+            \ periodo dura los `vigenciaDias` del producto. No puede durar mas que\
+            \ eso ni haber terminado"
+          example: 2026-11-30
+        personaId:
+          type: integer
+          format: int64
+          description: "Titular, del padron de la organizacion"
+          example: 512
+          exclusiveMinimum: 0
+        productoId:
+          type: integer
+          format: int64
+          description: Producto vigente de la sede
+          example: 12
+          exclusiveMinimum: 0
+        renovacionAutomatica:
+          type: boolean
+          description: "Solo abonos (desde 0.116.0): que el sistema venda solo el\
+            \ periodo siguiente, con su obligacion, cuando este se acerque a su fin.\
+            \ Ausente o false: no se renueva. En un pack es 400"
+          example: false
     VersionResponse:
       type: object
       description: Identidad tecnica del backend y version del contrato OpenAPI publicado

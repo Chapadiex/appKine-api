@@ -1,7 +1,9 @@
 package com.akine.resource.spi;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -33,6 +35,15 @@ public interface EspacioDirectory {
 	 * 409, y colapsarlos haria imposible mostrar un historico.
 	 */
 	Optional<EspacioSnapshot> find(long organizationId, long espacioId, Instant at);
+
+	/**
+	 * {@link #find} para varios espacios en UNA consulta, indexados por id. Los que no existen o son
+	 * de otro tenant no aparecen en el mapa; los dados de baja si, igual que en {@link #find}.
+	 *
+	 * <p>Para listas: pedir el espacio de cada fila con {@link #find} es una consulta por fila
+	 * (docs/carga.md §6.4). {@code enServicio} se evalua en {@code at} para todos.
+	 */
+	Map<Long, EspacioSnapshot> findTodos(long organizationId, Collection<Long> espacioIds, Instant at);
 
 	/**
 	 * Los espacios de una sede que estan EN SERVICIO durante toda la ventana

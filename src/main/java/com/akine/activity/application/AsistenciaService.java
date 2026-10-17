@@ -71,6 +71,10 @@ import java.util.stream.Collectors;
  * lista cerrada, y la politica no existe en ninguna tabla—. El devengo es 08.06/08.07/08.09 y
  * cuelga de la referencia economica unica que esta etapa deja.
  *
+ * <p><b>Desde AKINE-08.07 si mueve creditos</b>, que no son deuda: en una oferta {@code POR_PACK}
+ * la asistencia consume un credito del pase de la persona y la correccion a ausente lo devuelve,
+ * en esta misma transaccion ({@link ConsumoDePaseService}). Un credito no es plata (RN-M29-006).
+ *
  * <h2>El cupo no se mueve, salvo en una operacion</h2>
  *
  * <p>{@code RESERVADA}, {@code CONFIRMADA}, {@code ASISTIO} y {@code AUSENTE} consumen lugar los
@@ -109,10 +113,12 @@ public class AsistenciaService {
 	private final ClaseProgramadaRepositoryPort clases;
 	private final ClaseEventoRepositoryPort eventosDeClase;
 	private final CapacidadDeClase capacidad;
+	private final ProyeccionDeClase proyeccion;
 	private final PacienteDirectory personas;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final ConsumoDePaseService consumoDePases;
 
 	/**
 	 * La transaccion de cada item del lote. <b>No alcanza con que {@link #registrar} este
@@ -131,10 +137,12 @@ public class AsistenciaService {
 			ClaseProgramadaRepositoryPort clases,
 			ClaseEventoRepositoryPort eventosDeClase,
 			CapacidadDeClase capacidad,
+			ProyeccionDeClase proyeccion,
 			PacienteDirectory personas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
+			ConsumoDePaseService consumoDePases,
 			PlatformTransactionManager transactionManager) {
 
 		this.asistencias = asistencias;
@@ -143,10 +151,12 @@ public class AsistenciaService {
 		this.clases = clases;
 		this.eventosDeClase = eventosDeClase;
 		this.capacidad = capacidad;
+		this.proyeccion = proyeccion;
 		this.personas = personas;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.consumoDePases = consumoDePases;
 		this.transaccionPorItem = new TransactionTemplate(transactionManager);
 	}
 
@@ -293,7 +303,7 @@ public class AsistenciaService {
 		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
 
 		ClaseProgramada clase = exigirClaseQueAdmiteAsistencia(
-				organizationId, consultorioId, claseId);
+				organizationId, consultorioId, claseId, false);
 		InscripcionClase inscripcion = inscripciones
 				.findByIdInScope(organizationId, claseId, command.inscripcionId())
 				.orElseThrow(() ->
@@ -323,7 +333,7 @@ public class AsistenciaService {
 				return new ResultadoDeAsistencia(
 						AsistenciaView.de(existente), InscripcionView.de(inscripcion), false, false);
 			}
-			return corregir(actor, sede, inscripcion, existente, command, ahora);
+			return corregir(actor, sede, clase, inscripcion, existente, command, ahora);
 		}
 		return crear(actor, sede, clase, inscripcion, command, ahora);
 	}
@@ -344,14 +354,18 @@ public class AsistenciaService {
 				proyectada, command.resultado(), command.origen(),
 				clase.getProfesionalMembershipId(), command.observaciones(),
 				actor.accountId(), ahora));
-		eventos.registrar(AsistenciaEvento.registro(guardada, actor.accountId(), ahora));
+		AsistenciaEvento evento =
+				eventos.registrar(AsistenciaEvento.registro(guardada, actor.accountId(), ahora));
 
 		auditar(actor, guardada, sede, "ASISTENCIA_REGISTRADA", anterior.name(), null, ahora);
+		// AKINE-08.07: la asistencia consume credito de un pase si la oferta cobra por pack.
+		ConsumoDeCredito consumo = consumoDePases.aplicar(
+				clase, guardada, evento, actor.accountId(), null, ahora);
 		log.info("Asistencia registrada: asistenciaId={} claseId={} resultado={} origen={}",
 				guardada.getId(), guardada.getClaseId(), command.resultado(), command.origen());
 
 		return new ResultadoDeAsistencia(
-				AsistenciaView.de(guardada), InscripcionView.de(proyectada), true, false);
+				AsistenciaView.de(guardada), InscripcionView.de(proyectada), true, false, consumo);
 	}
 
 	/**
@@ -361,6 +375,7 @@ public class AsistenciaService {
 	private ResultadoDeAsistencia corregir(
 			OperatingActor actor,
 			ConsultorioSnapshot sede,
+			ClaseProgramada clase,
 			InscripcionClase inscripcion,
 			AsistenciaActividad existente,
 			RegistrarAsistenciaCommand command,
@@ -370,7 +385,7 @@ public class AsistenciaService {
 				command.resultado(), command.observaciones(), command.motivo(),
 				actor.accountId(), ahora);
 		AsistenciaActividad corregida = asistencias.saveAndFlush(existente);
-		eventos.registrar(AsistenciaEvento.correccion(
+		AsistenciaEvento evento = eventos.registrar(AsistenciaEvento.correccion(
 				corregida, anterior, command.motivo(), actor.accountId(), ahora));
 
 		inscripcion.marcarAsistencia(command.resultado().estadoDeInscripcion(), ahora);
@@ -378,11 +393,14 @@ public class AsistenciaService {
 
 		auditar(actor, corregida, sede, "ASISTENCIA_CORREGIDA", anterior.name(), command.motivo(),
 				ahora);
+		// AKINE-08.07: una correccion a ausente devuelve el credito; de vuelta a presente lo toma.
+		ConsumoDeCredito consumo = consumoDePases.aplicar(
+				clase, corregida, evento, actor.accountId(), command.motivo(), ahora);
 		log.info("Asistencia corregida: asistenciaId={} de={} a={}",
 				corregida.getId(), anterior, command.resultado());
 
 		return new ResultadoDeAsistencia(
-				AsistenciaView.de(corregida), InscripcionView.de(proyectada), false, true);
+				AsistenciaView.de(corregida), InscripcionView.de(proyectada), false, true, consumo);
 	}
 
 	// =================================================================================
@@ -501,7 +519,7 @@ public class AsistenciaService {
 		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
 
 		ClaseProgramada clase = exigirClaseQueAdmiteAsistencia(
-				organizationId, consultorioId, claseId);
+				organizationId, consultorioId, claseId, true);
 		if (clase.getEstado().estaCerrada()) {
 			throw new TransicionDeClaseNoPermitidaException(
 					claseId, "ya cerro su operacion y no admite ingresos");
@@ -637,9 +655,18 @@ public class AsistenciaService {
 	 * porque las correcciones llegan despues de que la clase termino, que es cuando se descubren.
 	 */
 	private ClaseProgramada exigirClaseQueAdmiteAsistencia(
-			long organizationId, long consultorioId, long claseId) {
+			long organizationId, long consultorioId, long claseId, boolean ocupaCupo) {
 
-		ClaseProgramada clase = exigirClaseDelTenant(organizationId, consultorioId, claseId);
+		// AKINE-08.07: la clase se lee BLOQUEADA, antes de tocar la inscripcion o un pase. En modo
+		// compartido varias asistencias conviven, pero ninguna corre a la vez que la cancelacion
+		// (que la toma exclusiva): asi la cancelacion devuelve todo credito consumido en la clase y
+		// ningun consumo entra sobre una clase ya cancelada. El ingreso sin inscripcion la toma
+		// exclusiva porque despues escribe el cupo, y un S que pide X es un deadlock.
+		// Orden de locks: clase_programada -> inscripcion_clase -> pase_servicio.
+		ClaseProgramada clase = (ocupaCupo
+				? clases.lockByIdInScope(organizationId, consultorioId, claseId)
+				: clases.lockCompartidoByIdInScope(organizationId, consultorioId, claseId))
+				.orElseThrow(() -> new ClaseNotAccessibleException(claseId));
 		if (!clase.getEstado().admiteAsistencia()) {
 			throw new TransicionDeClaseNoPermitidaException(
 					claseId,
@@ -670,11 +697,9 @@ public class AsistenciaService {
 		}
 	}
 
+	/** La misma proyeccion que {@code ClaseService}: el schema Clase sale igual de los dos. */
 	private ClaseView vista(long organizationId, long consultorioId, ClaseProgramada clase) {
-		return ClaseView.de(
-				clase,
-				capacidad.efectiva(organizationId, consultorioId, clase),
-				clase.getCupoOcupado());
+		return proyeccion.de(organizationId, consultorioId, clase);
 	}
 
 	private CuposView cupos(long organizationId, long consultorioId, long claseId) {

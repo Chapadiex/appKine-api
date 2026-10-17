@@ -144,6 +144,19 @@ public interface ClaseProgramadaRepository
 			@Param("consultorioId") long consultorioId,
 			@Param("claseId") long claseId);
 
+	@Override
+	@Query(value = """
+			SELECT * FROM clase_programada
+			 WHERE id = :claseId
+			   AND organization_id = :organizationId
+			   AND consultorio_id = :consultorioId
+			 FOR SHARE
+			""", nativeQuery = true)
+	Optional<ClaseProgramada> lockCompartidoByIdInScope(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("claseId") long claseId);
+
 	/**
 	 * <b>La operacion que hace cumplir el cupo.</b> Ver el javadoc del puerto: la condicion del
 	 * {@code WHERE} <b>es</b> la correctitud, y cero filas afectadas es "no hay lugar".

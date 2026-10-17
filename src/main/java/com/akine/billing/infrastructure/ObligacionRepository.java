@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +41,30 @@ public interface ObligacionRepository
 			 ORDER BY o.id
 			""")
 	List<Obligacion> findDeLaSesion(@Param("sesionId") long sesionId);
+
+	@Override
+	@Query("""
+			SELECT o FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.paseId = :paseId
+			   AND o.deletedAt IS NULL
+			""")
+	Optional<Obligacion> findDeLaVenta(
+			@Param("organizationId") long organizationId,
+			@Param("paseId") long paseId);
+
+	@Override
+	@Query("""
+			SELECT o.paseId FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.paseId IN :paseIds
+			   AND o.deletedAt IS NULL
+			   AND o.estado <> com.akine.billing.domain.EstadoObligacion.ANULADA
+			   AND o.saldo <> o.importeOriginal
+			""")
+	List<Long> ventasConCobros(
+			@Param("organizationId") long organizationId,
+			@Param("paseIds") Collection<Long> paseIds);
 
 	@Override
 	@Query("""

@@ -164,14 +164,17 @@ class ActivityControllersTest {
 					.willReturn(new ResultadoDeProgramacion(clase(), false));
 			String cuerpo = """
 					{"inicio":"%s","fin":"%s","profesionalId":31,"capacidad":8,
-					 "titulo":"Pilates","idempotencyKey":"k-1"}
+					 "titulo":"Pilates","idempotencyKey":"k-1","espacioId":8}
 					""".formatted(INICIO, INICIO.plus(1, ChronoUnit.HOURS));
 
 			autenticado(post(CLASES + "/ofertas/45").contentType(MediaType.APPLICATION_JSON)
 					.content(cuerpo))
 					.andExpect(status().isCreated())
 					.andExpect(header().string("Location", CLASE))
-					.andExpect(jsonPath("$.id").value(CLASE_ID));
+					.andExpect(jsonPath("$.id").value(CLASE_ID))
+					.andExpect(jsonPath("$.ofertaNombre").value("Pilates reformer"))
+					.andExpect(jsonPath("$.profesionalNombre").value("Laura Gomez"))
+					.andExpect(jsonPath("$.espacioNombre").value("Salon 1"));
 			autenticado(post(CLASES + "/ofertas/45").contentType(MediaType.APPLICATION_JSON)
 					.content(cuerpo))
 					.andExpect(status().isOk())
@@ -183,6 +186,7 @@ class ActivityControllersTest {
 					.programar(any(), eq(SEDE_ID), eq(45L), comando.capture());
 			assertThat(comando.getValue().capacidad()).isEqualTo(8);
 			assertThat(comando.getValue().idempotencyKey()).isEqualTo("k-1");
+			assertThat(comando.getValue().espacioId()).isEqualTo(8L);
 		}
 
 		@Test
@@ -204,7 +208,7 @@ class ActivityControllersTest {
 
 			autenticado(post(CLASE + "/reprogramacion").contentType(MediaType.APPLICATION_JSON)
 					.content("""
-							{"inicio":"%s","fin":"%s","capacidad":10,"version":3}
+							{"inicio":"%s","fin":"%s","capacidad":10,"version":3,"espacioId":9}
 							""".formatted(INICIO, INICIO.plus(1, ChronoUnit.HOURS))))
 					.andExpect(status().isOk());
 
@@ -213,6 +217,7 @@ class ActivityControllersTest {
 			verify(claseService).reprogramar(any(), eq(SEDE_ID), eq(CLASE_ID), comando.capture());
 			assertThat(comando.getValue().version()).isEqualTo(3L);
 			assertThat(comando.getValue().capacidad()).isEqualTo(10);
+			assertThat(comando.getValue().espacioId()).isEqualTo(9L);
 		}
 
 		@Test
@@ -292,6 +297,22 @@ class ActivityControllersTest {
 			verify(inscripcionService, org.mockito.Mockito.times(2))
 					.inscribir(any(), eq(SEDE_ID), eq(CLASE_ID), comando.capture());
 			assertThat(comando.getValue()).isEqualTo(new InscribirCommand(512L, true, "k"));
+		}
+
+		/** El contrato lo publica opcional: un primitivo ausente era 400 validation-error. */
+		@Test
+		@DisplayName("Sin aceptaListaEspera inscribe igual y la omision vale false")
+		void sin_acepta_lista_espera_vale_false() throws Exception {
+			given(inscripcionService.inscribir(any(), anyLong(), anyLong(), any()))
+					.willReturn(new ResultadoDeInscripcion(inscripcion("RESERVADA"), cupos(), true));
+
+			autenticado(post(CLASE + "/inscripciones").contentType(MediaType.APPLICATION_JSON)
+					.content("{\"personaId\":512}"))
+					.andExpect(status().isCreated());
+
+			ArgumentCaptor<InscribirCommand> comando = ArgumentCaptor.forClass(InscribirCommand.class);
+			verify(inscripcionService).inscribir(any(), eq(SEDE_ID), eq(CLASE_ID), comando.capture());
+			assertThat(comando.getValue()).isEqualTo(new InscribirCommand(512L, false, null));
 		}
 
 		/** El 409 lleva los dos numeros para que la pantalla ofrezca la espera sin otra vuelta. */
@@ -492,7 +513,8 @@ class ActivityControllersTest {
 
 	private static ClaseView clase() {
 		return new ClaseView(CLASE_ID, SEDE_ID, 45L, "Pilates", INICIO,
-				INICIO.plus(1, ChronoUnit.HOURS), "PROGRAMADA", 31L, 8L, 8, 8, 6, null, null, 0L);
+				INICIO.plus(1, ChronoUnit.HOURS), "PROGRAMADA", 31L, 8L, 8, 8, 6, null, null, 0L,
+				"Pilates reformer", "Laura Gomez", "Salon 1");
 	}
 
 	private static CuposView cupos() {

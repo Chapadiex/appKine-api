@@ -102,8 +102,10 @@ aparece en `/catalogo/practicas` como global. Aprobar sin ningún código posibl
 Api POST '/api/v1/organizations' $X @{ name = 'Centro QA C'; slug = 'centro-qa-c'; planCode = 'BASICO' } @{ 'Idempotency-Key' = (Nueva-Clave) }
 ```
 
-Repetí con el mismo slug y **otra** `Idempotency-Key`: 409 tipado. Con la **misma** clave y el mismo
-cuerpo: la misma respuesta, sin otra organización.
+Repetí con el mismo slug, con **otra** `Idempotency-Key` o con la **misma** clave y el mismo cuerpo:
+en los dos casos 409 `organization-slug-taken`, sin otra organización. Este camino administrativo
+**no registra idempotencia** (la clave solo correlaciona el log y la auditoría); el duplicado lo
+cierra la unicidad del slug, no un replay con la misma respuesta.
 
 ```sql
 SELECT o.id, o.name, o.slug, o.timezone, s.status, p.code

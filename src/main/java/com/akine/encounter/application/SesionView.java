@@ -24,6 +24,11 @@ import java.time.Instant;
  *                     como comparacion que la pantalla tenga que hacer: que un registro clinico
  *                     este corregido es un hecho que quien lo lee tiene derecho a ver sin pedir
  *                     el historial
+ * @param derivacionId derivacion de la que salio una atencion de origen grupal (AKINE-08.05), o
+ *                     {@code null} en una atencion de turno o sin turno
+ * @param claseId      clase de la que salio una atencion de origen grupal, o {@code null}
+ * @param claseTitulo  titulo de esa clase, o el nombre de su oferta si no tiene (08.05, web #104).
+ *                     {@code null} si la atencion no es grupal
  */
 public record SesionView(
 		long id,
@@ -46,7 +51,10 @@ public record SesionView(
 		Instant cerradaEn,
 		long version,
 		int ultimoNumeroVersion,
-		boolean fueEnmendada) {
+		boolean fueEnmendada,
+		Long derivacionId,
+		Long claseId,
+		String claseTitulo) {
 
 	/**
 	 * La evaluacion de la sesion ANTERIOR del mismo paciente, para poder comparar.
@@ -66,6 +74,11 @@ public record SesionView(
 	}
 
 	public static SesionView de(Sesion sesion, EvaluacionPrevia previa) {
+		return de(sesion, previa, null);
+	}
+
+	/** @param claseTitulo como se llama la clase de una atencion grupal; {@code null} en las demas */
+	public static SesionView de(Sesion sesion, EvaluacionPrevia previa, String claseTitulo) {
 		return new SesionView(
 				sesion.getId(),
 				sesion.getConsultorioId(),
@@ -101,6 +114,9 @@ public record SesionView(
 				sesion.getCerradaEn(),
 				sesion.getVersion(),
 				sesion.getUltimoNumeroVersion(),
-				sesion.fueEnmendada());
+				sesion.fueEnmendada(),
+				sesion.getDerivacionId(),
+				sesion.getClaseId(),
+				claseTitulo);
 	}
 }

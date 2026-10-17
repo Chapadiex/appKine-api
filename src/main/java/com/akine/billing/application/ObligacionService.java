@@ -1,8 +1,10 @@
 package com.akine.billing.application;
 
 import com.akine.billing.domain.Obligacion;
+import com.akine.billing.domain.OrigenObligacion;
 import com.akine.billing.domain.PermissionCodes;
 import com.akine.billing.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.billing.domain.exception.ObligacionDeVentaException;
 import com.akine.billing.domain.exception.ObligacionNotAccessibleException;
 import com.akine.billing.domain.port.ObligacionRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
@@ -111,6 +113,15 @@ public class ObligacionService {
 
 		Obligacion obligacion = obligaciones.findByIdInScope(organizationId, consultorioId, obligacionId)
 				.orElseThrow(() -> new ObligacionNotAccessibleException(obligacionId));
+
+		// AKINE-08.09. La deuda de una venta es la mitad de un acto comercial: anularla sola deja
+		// el pase vivo y consumible sin que nadie lo pague. Se anula por el pase, que anula las dos
+		// mitades en la misma transaccion (DevengoDeVentas#anularDeudaDeVenta). billing no puede
+		// llamar a activity —activity ya depende de billing.spi—, asi que aca solo se rechaza.
+		if (obligacion.getOrigen() != OrigenObligacion.SESION) {
+			throw new ObligacionDeVentaException(
+					obligacionId, obligacion.getPaseId(), obligacion.getOrigen().name());
+		}
 
 		if (obligacion.getVersion() != expectedVersion) {
 			throw new org.springframework.dao.OptimisticLockingFailureException(

@@ -42,6 +42,12 @@ import java.util.Set;
  *                           cobertura: el devengo no busca convenio y el consumo no gasta
  *                           autorizacion. {@code false} sin turno, sin recepcion o con cobertura,
  *                           y en las formas anteriores a E-7: ahi nada cambia
+ * @param claseId            clase programada de la que salio la atencion, o {@code null} si no es
+ *                           de origen grupal (AKINE-08.05). Es un id administrativo, no dato
+ *                           clinico. Lo necesita {@code billing}: la economia de una clase la
+ *                           resuelve su esquema de cobro (pase, abono, clase), y devengar el particular en el
+ *                           cierre de cada Sesion cobraria dos veces la misma clase. Ver
+ *                           {@link #esDeOrigenGrupal()}
  */
 public record SesionCerrada(
 		long sesionId,
@@ -59,7 +65,8 @@ public record SesionCerrada(
 		Long casoId,
 		boolean ofertaAdmiteObraSocial,
 		Long turnoId,
-		boolean particularPorRecepcion) {
+		boolean particularPorRecepcion,
+		Long claseId) {
 
 	/**
 	 * <b>AKINE-06.04 agrega {@code practicasRealizadas}, y es lo que cierra el defecto que 04.05
@@ -93,7 +100,40 @@ public record SesionCerrada(
 	public SesionCerrada conNumeroSesion(int numero) {
 		return new SesionCerrada(sesionId, organizationId, consultorioId, personaId, ofertaId, numero,
 				asistio, cerradaEn, cerradaPorCuentaId, precioDeLaOferta, moneda, practicasRealizadas,
-				casoId, ofertaAdmiteObraSocial, turnoId, particularPorRecepcion);
+				casoId, ofertaAdmiteObraSocial, turnoId, particularPorRecepcion, claseId);
+	}
+
+	/**
+	 * {@code true} si la atencion salio de una clase grupal (AKINE-08.05). Hoy decide que el
+	 * cierre sin cobertura NO devengue particular (con cobertura devenga por convenio): ver
+	 * {@link #claseId} y U-42 en {@code docs/fases/decisiones-pendientes.md}.
+	 */
+	public boolean esDeOrigenGrupal() {
+		return claseId != null;
+	}
+
+	/** Sin el origen grupal: la forma anterior a AKINE-08.05. */
+	@SuppressWarnings("java:S107")
+	public SesionCerrada(
+			long sesionId,
+			long organizationId,
+			long consultorioId,
+			long personaId,
+			long ofertaId,
+			int numeroSesion,
+			boolean asistio,
+			Instant cerradaEn,
+			Long cerradaPorCuentaId,
+			BigDecimal precioDeLaOferta,
+			String moneda,
+			Set<Long> practicasRealizadas,
+			Long casoId,
+			boolean ofertaAdmiteObraSocial,
+			Long turnoId,
+			boolean particularPorRecepcion) {
+		this(sesionId, organizationId, consultorioId, personaId, ofertaId, numeroSesion, asistio,
+				cerradaEn, cerradaPorCuentaId, precioDeLaOferta, moneda, practicasRealizadas, casoId,
+				ofertaAdmiteObraSocial, turnoId, particularPorRecepcion, null);
 	}
 
 	/** Sin la modalidad de la recepcion: la forma anterior a AKINE E-7. */

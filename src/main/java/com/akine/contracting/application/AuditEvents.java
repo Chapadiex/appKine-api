@@ -94,7 +94,8 @@ final class AuditEvents {
 
 	/**
 	 * Importacion masiva de aranceles confirmada (B-7, RF-M16-007). Un evento por lote, sobre el
-	 * convenio, con la cantidad y el rango; cada fila deja ademas su {@link #ARANCEL_CREATED}.
+	 * convenio, con la cantidad y el rango. Es el unico evento del lote: las filas no dejan
+	 * un {@link #ARANCEL_CREATED} cada una.
 	 * Una importacion rechazada no audita nada: no escribio nada.
 	 */
 	static final String ARANCELES_IMPORTADOS = "ARANCELES_IMPORTADOS";

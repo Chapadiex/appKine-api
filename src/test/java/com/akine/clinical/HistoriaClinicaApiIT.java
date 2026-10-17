@@ -173,6 +173,25 @@ class HistoriaClinicaApiIT {
 				.as("dar de baja en otro tenant").isEqualTo(404);
 	}
 
+	@Test
+	@DisplayName("sin hc:read, la persona de otra organizacion es 404 y la propia 403: pertenencia antes que permiso")
+	void sin_permiso_clinico_la_persona_ajena_es_404() {
+		// Pre-QA del 14/10, CLI-15: el permiso se evaluaba antes que la pertenencia y el
+		// ORG_ADMIN de B —sin hc:read— recibia 403 por la persona de A, contra la regla de que
+		// lo que esta fuera de alcance se responde 404.
+		Tenant a = crearTenant("orga");
+		long personaDeA = crearPaciente(a);
+		Tenant b = crearTenant("orgbadm", "ORG_ADMIN");
+		long personaDeB = crearPaciente(b);
+
+		assertThat(get(base(personaDeA), b.token()).status())
+				.as("ver la historia de otro tenant sin hc:read").isEqualTo(404);
+		assertThat(get(base(personaDeA) + "/antecedentes", b.token()).status())
+				.as("listar antecedentes de otro tenant sin hc:read").isEqualTo(404);
+		assertThat(get(base(personaDeB), b.token()).status())
+				.as("la persona propia sin hc:read sigue siendo 403").isEqualTo(403);
+	}
+
 	// =================================================================================
 	// Resumen
 	// =================================================================================
@@ -292,6 +311,10 @@ class HistoriaClinicaApiIT {
 	 * inventa un permiso.
 	 */
 	private Tenant crearTenant(String etiqueta) {
+		return crearTenant(etiqueta, "PROFESIONAL");
+	}
+
+	private Tenant crearTenant(String etiqueta, String rol) {
 		String email = etiqueta + "-" + UUID.randomUUID() + "@ejemplo.test";
 		Respuesta alta = post("/api/v1/auth/register", null,
 				"{\"email\":\"" + email + "\",\"password\":\"" + PASSWORD + "\","
@@ -304,7 +327,7 @@ class HistoriaClinicaApiIT {
 		jdbc.update("UPDATE cuenta SET estado = 'ACTIVA' WHERE email_normalizado = ?", normalizado);
 		long cuentaId = jdbc.queryForObject(
 				"SELECT id FROM cuenta WHERE email_normalizado = ?", Long.class, normalizado);
-		jdbc.update("UPDATE membership SET role_code = 'PROFESIONAL' WHERE account_id = ?", cuentaId);
+		jdbc.update("UPDATE membership SET role_code = ? WHERE account_id = ?", rol, cuentaId);
 
 		Respuesta login = post("/api/v1/auth/login", null,
 				"{\"email\":\"" + email + "\",\"password\":\"" + PASSWORD + "\"}");

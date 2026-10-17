@@ -90,9 +90,13 @@ public record CreateOfertaRequest(
 		String moneda,
 
 		@Schema(
-				description = "Esquema de cobro declarado, texto libre acotado. Se guarda sin "
-						+ "resolverse: los modulos que lo interpretarian no existen todavia",
-				example = "SESION_SUELTA",
+				description = "Esquema de cobro (RN-M27-006): `POR_SESION` devenga por atencion, "
+						+ "`POR_PACK` y `POR_ABONO` consumen el credito de un pase o abono y la deuda "
+						+ "nace al venderlo. Vocabulario cerrado: otro valor es 400. `POR_CLASE` "
+						+ "existe en el esquema pero hoy responde 400, hasta decidir cuando se devenga "
+						+ "(U-39). Ausente: sin esquema declarado",
+				allowableValues = {"POR_SESION", "POR_PACK", "POR_ABONO"},
+				example = "POR_SESION",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		@Size(max = 32, message = "El esquema de cobro no puede superar los 32 caracteres")
 		String esquemaCobro,

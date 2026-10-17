@@ -117,6 +117,7 @@ public class CobroService {
 	private final TurnoDirectory turnos;
 	private final AuditTrail auditTrail;
 	private final TransactionTemplate transaccionDeNegocio;
+	private final TransactionTemplate relecturaDelGanador;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public CobroService(
@@ -144,6 +145,9 @@ public class CobroService {
 		this.auditTrail = auditTrail;
 		this.transaccionDeNegocio = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.DEFAULT);
+		this.relecturaDelGanador = new TransactionTemplate(transactionManager);
+		this.relecturaDelGanador.setIsolationLevel(Isolation.READ_COMMITTED.value());
+		this.relecturaDelGanador.setReadOnly(true);
 	}
 
 	/**
@@ -165,8 +169,16 @@ public class CobroService {
 		// pedido retenia dos conexiones y diez cobros simultaneos trababan el pool (FilaLockPrevia).
 		iniciador.asegurar(organizationId, consultorioId);
 
-		Registro registro = transaccionDeNegocio.execute(estado -> registrarEnTransaccion(
-				actor, consultorioId, command, organizationId, sede));
+		Registro registro;
+		try {
+			registro = transaccionDeNegocio.execute(estado -> registrarEnTransaccion(
+					actor, consultorioId, command, organizationId, sede));
+		} catch (IdempotencyKeyConflictException conflicto) {
+			throw conflicto;
+		} catch (RuntimeException falla) {
+			registro = reintentoQuePerdioLaCarrera(organizationId, consultorioId, command)
+					.orElseThrow(() -> falla);
+		}
 		CobroView vista = registro.vista();
 		if (!registro.nuevo()) {
 			return vista;
@@ -183,6 +195,37 @@ public class CobroService {
 
 	/** Lo que devuelve la transaccion: el cobro y si es nuevo o el de un reintento idempotente. */
 	private record Registro(CobroView vista, boolean nuevo) {
+	}
+
+	/**
+	 * El doble click: dos pedidos con la MISMA clave que llegan juntos (pre-QA D2, 14/10/2026).
+	 *
+	 * <p>Los dos pasan el paso 1 sin ver un cobro —ninguno commiteo todavia— y compiten por el
+	 * UPDATE condicional del saldo. El perdedor espera el lock de la fila de la obligacion y, cuando
+	 * el ganador commitea, encuentra el saldo en cero: {@code saldo-insuficiente}. Si la deuda admitia
+	 * los dos importes, choca despues contra {@code uk_cobro_idempotencia}. Ninguno de los dos
+	 * desenlaces es el que la clave promete, que es <b>el mismo cobro</b>.
+	 *
+	 * <p>Por eso, cuando un pedido con clave falla, se vuelve a buscar la clave <b>despues</b> del
+	 * rollback y en una transaccion nueva en {@code READ_COMMITTED}: bajo {@code REPEATABLE READ} la
+	 * foto podria ser anterior al commit del ganador y no verlo (regla de la integracion del 29/09).
+	 * Si el cobro existe y la huella coincide, se devuelve ese; si la huella es otra, es el 409 de
+	 * clave reusada; si no existe, la falla original era legitima y sigue su camino.
+	 */
+	private Optional<Registro> reintentoQuePerdioLaCarrera(
+			long organizationId, long consultorioId, CobroCommand command) {
+		if (command.idempotencyKey() == null) {
+			return Optional.empty();
+		}
+		return Optional.ofNullable(relecturaDelGanador.execute(estado -> cobros
+				.findByIdempotencyKey(organizationId, command.idempotencyKey())
+				.map(existente -> {
+					if (!command.huella(consultorioId).equals(existente.getRequestHash())) {
+						throw new IdempotencyKeyConflictException(command.idempotencyKey());
+					}
+					return new Registro(CobroView.de(existente), false);
+				})
+				.orElse(null)));
 	}
 
 	private Registro registrarEnTransaccion(

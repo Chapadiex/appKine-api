@@ -24,6 +24,7 @@ public record CasoClinicoView(
 		int numeroCaso,
 		long ofertaId,
 		long ofertaConsultorioId,
+		String ofertaNombre,
 		String diagnosticoPresuntivo,
 		String objetivoTerapeutico,
 		String estado,
@@ -36,12 +37,19 @@ public record CasoClinicoView(
 		long version) {
 
 	public static CasoClinicoView de(CasoClinico caso, List<CasoProfesionalView> equipo) {
+		return de(caso, equipo, null);
+	}
+
+	/** Con el nombre comercial de la oferta resuelto al leer (0.107.0), o {@code null}. */
+	public static CasoClinicoView de(
+			CasoClinico caso, List<CasoProfesionalView> equipo, String ofertaNombre) {
 		return new CasoClinicoView(
 				caso.getId(),
 				caso.getHistoriaClinicaId(),
 				caso.getNumeroCaso(),
 				caso.getOfertaId(),
 				caso.getOfertaConsultorioId(),
+				ofertaNombre,
 				caso.getDiagnosticoPresuntivo(),
 				caso.getObjetivoTerapeutico(),
 				caso.getEstado().name(),
@@ -60,7 +68,7 @@ public record CasoClinicoView(
 	 */
 	public CasoClinicoView conVersion(long nuevaVersion) {
 		return new CasoClinicoView(id, historiaClinicaId, numeroCaso, ofertaId, ofertaConsultorioId,
-				diagnosticoPresuntivo, objetivoTerapeutico, estado, abiertoEn, abiertoPor, cerradoEn,
-				cerradoPor, motivoCierre, equipo, nuevaVersion);
+				ofertaNombre, diagnosticoPresuntivo, objetivoTerapeutico, estado, abiertoEn,
+				abiertoPor, cerradoEn, cerradoPor, motivoCierre, equipo, nuevaVersion);
 	}
 }

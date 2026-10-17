@@ -1,8 +1,5 @@
 package com.akine.clinical.domain;
 
-import java.util.Arrays;
-import java.util.Optional;
-
 /**
  * Clase de antecedente clinico (RF-M09-002).
  *
@@ -26,13 +23,4 @@ public enum TipoAntecedente {
 	FAMILIAR,
 	HABITO,
 	OTRO;
-
-	/** El tipo con ese nombre, o vacio si no existe: es un 400 del cliente, no un 500. */
-	public static Optional<TipoAntecedente> desde(String nombre) {
-		if (nombre == null || nombre.isBlank()) {
-			return Optional.empty();
-		}
-		String normalizado = nombre.strip().toUpperCase();
-		return Arrays.stream(values()).filter(t -> t.name().equals(normalizado)).findFirst();
-	}
 }

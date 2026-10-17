@@ -24,8 +24,12 @@ public record ObligacionResponse(
 		@Schema(example = "7")
 		long consultorioId,
 
-		@Schema(description = "Atencion que la genero. Es lo que la hace trazable.", example = "501")
-		long sesionId,
+		@Schema(
+				description = "Atencion que la genero, cuando `origen` es `SESION`. **Ausente** "
+						+ "cuando la deuda nace de la venta de un pase o de un abono (`origen = "
+						+ "VENTA_PASE` o `VENTA_ABONO`, desde 0.102.0).",
+				example = "501")
+		Long sesionId,
 
 		@Schema(example = "128")
 		long personaId,
@@ -108,7 +112,19 @@ public record ObligacionResponse(
 		boolean alertaPracticaNoHabilitada,
 
 		@Schema(description = "Convenio aplicado, congelado. Ausente en `PARTICULAR`.")
-		ConvenioAplicadoResponse convenio) {
+		ConvenioAplicadoResponse convenio,
+
+		@Schema(
+				description = "Que hecho devengo la deuda: una atencion (`SESION`) o la venta de un "
+						+ "pack o pase (`VENTA_PASE`, RF-M18-009) o de un periodo de abono (`VENTA_ABONO`, "
+						+ "RF-M18-010). Devengar no es cobrar: la deuda "
+						+ "de una venta se paga con `POST /cobros` como cualquier otra.",
+				allowableValues = {"SESION", "VENTA_PASE", "VENTA_ABONO"},
+				example = "SESION")
+		String origen,
+
+		@Schema(description = "Pase vendido que la genero. Presente con `origen = VENTA_PASE` o `VENTA_ABONO`.", example = "77")
+		Long paseId) {
 
 	public static ObligacionResponse de(ObligacionView vista) {
 		return new ObligacionResponse(
@@ -118,6 +134,6 @@ public record ObligacionResponse(
 				vista.estado(), vista.ofertaId(), vista.snapshotNombre(), vista.snapshotPrecio(),
 				vista.devengadaEn(), vista.anuladaEn(), vista.motivoAnulacion(), vista.version(),
 				vista.concepto(), vista.practicaId(), vista.alertaPracticaNoHabilitada(),
-				ConvenioAplicadoResponse.de(vista.convenio()));
+				ConvenioAplicadoResponse.de(vista.convenio()), vista.origen(), vista.paseId());
 	}
 }

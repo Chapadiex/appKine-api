@@ -62,4 +62,19 @@ public interface EventoClinicoContributor {
 	 */
 	List<EventoClinico> eventosDe(
 			long organizationId, long historiaClinicaId, Instant hasta, int limite, Long casoId);
+
+	/**
+	 * El {@code origen} de TODOS los eventos que aporta esta fuente, o {@code null} si mezcla
+	 * varios. Agregado para el filtro por origen del timeline (contrato 0.107.0).
+	 *
+	 * <p><b>Por que importa declararlo.</b> El filtro por origen se resuelve <b>salteando la
+	 * fuente entera</b>, no descartando sus eventos despues de pedirlos: una fuente que trae
+	 * {@code limite} eventos de un origen excluido y nada mas se comeria el lookahead, el agregador
+	 * creeria que no hay pagina siguiente y perderia los del origen pedido que estaban mas atras.
+	 * Una fuente que devuelve {@code null} se consulta igual y sus eventos se filtran uno por uno,
+	 * con ese riesgo: las cuatro de hoy declaran el suyo.
+	 */
+	default String origen() {
+		return null;
+	}
 }

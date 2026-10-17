@@ -44,6 +44,19 @@ public final class PermissionCodes {
 	 */
 	public static final String ASISTENCIA_MANAGE = "asistencia:manage";
 
+	/** Catalogo de productos de pack (AKINE-08.06). */
+	public static final String PRODUCTO_READ = "producto:read";
+
+	public static final String PRODUCTO_MANAGE = "producto:manage";
+
+	/** Pases vendidos, saldo y ledger (AKINE-08.06). */
+	public static final String PASE_READ = "pase:read";
+
+	public static final String PASE_MANAGE = "pase:manage";
+
+	/** Ajustar el saldo de un pase y anularlo (AKINE-08.07, RF-M29-005). Permiso reforzado. */
+	public static final String PASE_ADJUST = "pase:adjust";
+
 	private PermissionCodes() {
 	}
 }

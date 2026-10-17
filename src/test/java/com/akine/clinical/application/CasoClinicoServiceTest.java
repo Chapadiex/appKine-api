@@ -65,6 +65,10 @@ import static org.mockito.Mockito.verify;
 @DisplayName("CasoClinicoService")
 class CasoClinicoServiceTest {
 
+	/** 0.107.0: sin stub devuelve el mapa vacio, que es "ningun nombre resolvio". */
+	@Mock
+	private NombresDeProfesionales nombres;
+
 	private static final long ACCOUNT_ID = 40L;
 	private static final long ORG_ID = 10L;
 	private static final long SEDE_ID = 20L;
@@ -116,7 +120,7 @@ class CasoClinicoServiceTest {
 		service = new CasoClinicoService(historias, casos, equipos, eventos, numerador,
 				numeradorIniciador, ofertas, permissionGuard, relaciones, auditTrail,
 				supportAccessAuditor, mock(PlatformTransactionManager.class),
-				mock(com.akine.organization.spi.ConsultorioDirectory.class));
+				mock(com.akine.organization.spi.ConsultorioDirectory.class), nombres);
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
@@ -162,6 +166,20 @@ class CasoClinicoServiceTest {
 		assertThat(vista.numeroCaso())
 				.as("el numero es el que entrego el numerador, no un MAX+1")
 				.isEqualTo(3);
+	}
+
+	@Test
+	@DisplayName("la vista trae el nombre de la oferta y de cada integrante, resueltos al leer (0.107.0)")
+	void la_vista_trae_los_nombres() {
+		given(nombres.de(ORG_ID, List.of(31L))).willReturn(java.util.Map.of(31L, "Lucia Fernandez"));
+
+		CasoClinicoView vista = service.abrir(profesional,
+				alta(List.of(new IntegranteDelEquipo(31L, RolEnCaso.RESPONSABLE)), false), null);
+
+		assertThat(vista.ofertaNombre()).isEqualTo("Kinesiologia");
+		assertThat(vista.equipo()).singleElement()
+				.satisfies(integrante -> assertThat(integrante.profesionalNombre())
+						.isEqualTo("Lucia Fernandez"));
 	}
 
 	@Test
@@ -213,7 +231,7 @@ class CasoClinicoServiceTest {
 						SEDE_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
 		service = new CasoClinicoService(historias, casos, equipos, eventos, numerador,
 				numeradorIniciador, ofertas, permissionGuard, relaciones, auditTrail,
-				supportAccessAuditor, mock(PlatformTransactionManager.class), consultorios,
+				supportAccessAuditor, mock(PlatformTransactionManager.class), consultorios, nombres,
 				java.time.Clock.fixed(Instant.parse("2026-03-15T01:30:00Z"), java.time.ZoneOffset.UTC));
 		given(ofertas.find(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(Optional.of(new OfertaSnapshot(
 				OFERTA_ID, ORG_ID, SEDE_ID, 1L, "Kinesiologia", 45, 1, false, true, false, true,

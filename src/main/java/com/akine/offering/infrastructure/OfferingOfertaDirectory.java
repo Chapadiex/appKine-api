@@ -4,6 +4,7 @@ import com.akine.offering.application.OfertaPrecioParticularService;
 import com.akine.offering.domain.Habilitacion;
 import com.akine.offering.domain.Modalidad;
 import com.akine.offering.domain.OfertaServicioConsultorio;
+import com.akine.offering.spi.EsquemaDeCobro;
 import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
@@ -83,9 +84,25 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 	public Optional<PrecioDeOferta> precioDe(long organizationId, long consultorioId, long ofertaId) {
 		return ofertas
 				.findByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
-				.map(oferta -> new PrecioDeOferta(
-						oferta.getId(), oferta.getPrecioBase(), oferta.getMoneda(),
-						oferta.isAdmiteObraSocial(), oferta.isExigePrepago()));
+				.map(OfferingOfertaDirectory::precio);
+	}
+
+	@Override
+	public Map<Long, PrecioDeOferta> preciosDe(
+			long organizationId, long consultorioId, Collection<Long> ofertaIds) {
+		if (ofertaIds.isEmpty()) {
+			return Map.of();
+		}
+		return ofertas.findAllByOrganizationIdAndConsultorioIdAndIdIn(
+						organizationId, consultorioId, Set.copyOf(ofertaIds))
+				.stream()
+				.collect(Collectors.toMap(OfertaServicioConsultorio::getId, OfferingOfertaDirectory::precio));
+	}
+
+	private static PrecioDeOferta precio(OfertaServicioConsultorio oferta) {
+		return new PrecioDeOferta(
+				oferta.getId(), oferta.getPrecioBase(), oferta.getMoneda(),
+				oferta.isAdmiteObraSocial(), oferta.isExigePrepago());
 	}
 
 	@Override
@@ -117,6 +134,14 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 
 		return proyectar(espacios
 				.findAllByOrganizationIdAndOfertaIdAndActive(organizationId, ofertaId, true));
+	}
+
+	@Override
+	public Optional<EsquemaDeCobro> esquemaDeCobro(
+			long organizationId, long consultorioId, long ofertaId) {
+		return ofertas
+				.findByIdAndOrganizationIdAndConsultorioId(ofertaId, organizationId, consultorioId)
+				.flatMap(oferta -> EsquemaDeCobro.de(oferta.getEsquemaCobro()));
 	}
 
 	private static List<HabilitacionSnapshot> proyectar(List<? extends Habilitacion> habilitaciones) {
