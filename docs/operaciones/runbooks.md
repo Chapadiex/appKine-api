@@ -18,6 +18,7 @@ leen logs. Nunca pegar en un ticket una línea de log o una fila con datos de un
 | [R4](#r4-429-masivos) | 429 masivos | Nadie puede entrar |
 | [R5](#r5-error-500-correlacion-por-x-request-id--traceid) | Error 500: correlación por `X-Request-Id` / `traceId` | Un flujo roto |
 | [R6](#r6-restauracion-de-adjuntos) | Restauración de adjuntos | Documentos que no se descargan |
+| [R7](#r7-jobs-de-pases-y-abonos-vencimiento-renovación-y-avisos) | Jobs de pases y abonos: vencimiento, renovación y avisos | Saldos que no vencen, abonos que no se renuevan, avisos que no llegan |
 
 ---
 
@@ -321,3 +322,130 @@ AKINE_DB_*=... AKINE_ADJUNTOS_VOLUME=akine-var ops/verificar-adjuntos.sh
    efímero (`ops/verificar-backup.sh` deja el ejemplo) y copiar ese único archivo.
 5. Verificar descargando el documento desde la aplicación (y que quede `ADJUNTO_DOWNLOADED` en la
    auditoría).
+
+---
+
+## R7. Jobs de pases y abonos: vencimiento, renovación y avisos
+
+**Contexto.** La segunda entrega (F9, M29) agregó tres tareas programadas en el backend, en
+`activity.infrastructure`. **Ninguna se expone por HTTP** y ninguna tiene un disparo manual: corren
+solas dentro de cada instancia del backend. Las tres siguen el patrón de `OutboxWorker`: un
+`@Scheduled` con `fixedDelay` (un tick no arranca hasta que termina el anterior), que **nunca
+propaga** una excepción —una que escapara apagaría la tarea hasta el próximo reinicio— y que
+procesa **cada pase en su propia transacción corta** en `READ_COMMITTED`, así que un pase que
+falla no frena a los demás y se reintenta en el tick siguiente.
+
+| Job | Qué hace | Cada | Arranca a los | Lote |
+|---|---|---|---|---|
+| `VencimientoDePasesWorker` | Pasa a `VENCIDO` los pases `ACTIVO` cuya `vigencia_hasta` ya pasó **en el día de su sede**, pone el saldo en cero y deja un movimiento `VENCIMIENTO` con los créditos descartados (RF-M29-006). Audita `PASE_VENCIDO` | 1 h | 2 min | 200 por vuelta, hasta 10 vueltas por tick |
+| `RenovacionDeAbonosWorker` | Vende el período siguiente de los abonos con `renovacion_automatica = 1` cuando faltan `anticipacion-dias` o menos para el fin: snapshot del producto **de ese día**, movimiento `COMPRA` y **una** obligación `VENTA_ABONO` a nombre de quien autorizó la renovación. **No cobra** (DP-06). Audita `ABONO_RENOVADO`, o `ABONO_RENOVACION_OMITIDA` cuando no puede | 1 h | 3 min | 200 por vuelta, hasta 10 vueltas por tick |
+| `AvisosDePasesWorker` | Encola por el outbox, una sola vez por pase y por tipo, el aviso `PASE_POR_VENCER` (vigencia que termina dentro de `dias-antes-del-vencimiento`) y el `PASE_SALDO_BAJO` (saldo entre 1 y `saldo-bajo`, con créditos ya usados). Audita `PASE_AVISO_DE_VENCIMIENTO` / `PASE_AVISO_DE_SALDO_BAJO`. **No toca saldo, estado ni renovación** | 1 h | 4 min | 200 por tipo y por tick |
+
+**Configuración.** Ninguna propiedad está en `application.yml`: los valores de la tabla son los
+defaults del código. Se cambian por variable de entorno con el nombre relajado de Spring.
+
+| Propiedad | Default | Variable de entorno |
+|---|---|---|
+| `akine.activity.pases.vencimiento.enabled` | `true` | `AKINE_ACTIVITY_PASES_VENCIMIENTO_ENABLED` |
+| `akine.activity.pases.vencimiento.fixed-delay-ms` / `initial-delay-ms` | `3600000` / `120000` | `AKINE_ACTIVITY_PASES_VENCIMIENTO_FIXED_DELAY_MS` / `..._INITIAL_DELAY_MS` |
+| `akine.activity.abonos.renovacion.enabled` | `true` | `AKINE_ACTIVITY_ABONOS_RENOVACION_ENABLED` |
+| `akine.activity.abonos.renovacion.anticipacion-dias` | `3` | `AKINE_ACTIVITY_ABONOS_RENOVACION_ANTICIPACION_DIAS` |
+| `akine.activity.abonos.renovacion.fixed-delay-ms` / `initial-delay-ms` | `3600000` / `180000` | `AKINE_ACTIVITY_ABONOS_RENOVACION_FIXED_DELAY_MS` / `..._INITIAL_DELAY_MS` |
+| `akine.activity.pases.avisos.enabled` | `true` | `AKINE_ACTIVITY_PASES_AVISOS_ENABLED` |
+| `akine.activity.pases.avisos.dias-antes-del-vencimiento` | `3` (0 avisa el último día) | `AKINE_ACTIVITY_PASES_AVISOS_DIAS_ANTES_DEL_VENCIMIENTO` |
+| `akine.activity.pases.avisos.saldo-bajo` | `1` (0 apaga el aviso) | `AKINE_ACTIVITY_PASES_AVISOS_SALDO_BAJO` |
+| `akine.activity.pases.avisos.fixed-delay-ms` / `initial-delay-ms` | `3600000` / `240000` | `AKINE_ACTIVITY_PASES_AVISOS_FIXED_DELAY_MS` / `..._INITIAL_DELAY_MS` |
+
+Los umbrales son **por despliegue**, iguales para todos los centros (decisión abierta U-44 en
+`docs/fases/decisiones-pendientes.md`).
+
+**Más de una instancia.** No hay lock distribuido (ShedLock ni similar): con dos backends, los
+tres jobs corren en los dos. Es seguro por diseño y está probado contra MySQL
+(`AbonoRenovacionYAvisosIT.renovacion_concurrente`, tres instancias sobre tres abonos): el
+vencimiento bloquea el pase y su `UPDATE` exige `ACTIVO` y fecha pasada; la renovación bloquea
+`producto_servicio → pase_servicio`, relee y tiene `uk_pase_servicio_renovacion` de cinturón; el
+aviso marca el pase con `UPDATE ... WHERE marca IS NULL` y la clave idempotente del outbox
+(`pase-por-vencer:<id>`, `pase-saldo-bajo:<id>`) evita el doble encolado. Lo que sí cuesta es
+trabajo repetido: si molesta, apagar los jobs en todas las instancias menos una con las variables
+`..._ENABLED=false`.
+
+**Síntomas**
+- "El pase dice vencido en pantalla pero el saldo sigue en 5": la lectura ya lo calcula vencido
+  (`vigente = false`, el consumo no lo toma), pero el job todavía no escribió `VENCIDO` ni el
+  movimiento. Normal hasta una hora después de las 24 de la sede; anormal si dura más.
+- "El abono no se renovó" o "se renovó un abono que el centro quería cortar".
+- "No me llegó el aviso de que se me vencía el pack".
+- En el log, `El tick de ... fallo; se reintenta en el proximo ciclo` en cada ciclo, o
+  `No se pudo vencer el pase {id}` / `No se pudo renovar el abono {id}` /
+  `No se pudo avisar ... del pase {id}` repetido con el mismo id.
+
+**Diagnóstico**
+
+```bash
+# Qué hicieron los tres jobs en las últimas horas (solo ids y conteos, nunca nombres)
+docker logs --since 3h akine-api 2>&1 | jq -r 'select(.logger_name|test("activity\\.(application|infrastructure)\\.(Vencimiento|Renovacion|Avisos)")) | "\(.["@timestamp"]) \(.level) \(.message)"' | tail -60
+```
+
+```sql
+-- Vencimiento: pases ACTIVO con la vigencia terminada hace más de un día (debería dar cero filas;
+-- el margen de un día cubre las sedes al oeste de UTC)
+SELECT id, organization_id, consultorio_id, vigencia_hasta, creditos_disponibles, version
+  FROM pase_servicio
+ WHERE estado = 'ACTIVO' AND vigencia_hasta < CURRENT_DATE - INTERVAL 1 DAY
+ ORDER BY vigencia_hasta LIMIT 50;
+
+-- El ledger explica el saldo (RF-M29-009): toda fila que salga es un defecto, no un atraso del job
+SELECT p.id, p.creditos_disponibles, COALESCE(SUM(m.cantidad), 0) AS suma_ledger
+  FROM pase_servicio p LEFT JOIN movimiento_pase m
+    ON m.pase_id = p.id AND m.organization_id = p.organization_id
+ WHERE p.organization_id = :org
+ GROUP BY p.id, p.creditos_disponibles
+HAVING p.creditos_disponibles <> suma_ledger;
+
+-- Renovación: abonos con la renovación prendida que ya pasaron su fin sin período siguiente
+SELECT a.id, a.organization_id, a.vigencia_hasta, a.renovacion_omitida_motivo
+  FROM pase_servicio a
+ WHERE a.tipo = 'ABONO' AND a.renovacion_automatica = 1 AND a.estado <> 'ANULADO'
+   AND a.vigencia_hasta < CURRENT_DATE
+   AND NOT EXISTS (SELECT 1 FROM pase_servicio n
+                    WHERE n.organization_id = a.organization_id AND n.renueva_pase_id = a.id);
+
+-- Renovaciones que el job apagó, y por qué
+SELECT id, organization_id, vigencia_hasta, renovacion_omitida_motivo
+  FROM pase_servicio WHERE renovacion_omitida_motivo IS NOT NULL ORDER BY vigencia_hasta DESC LIMIT 50;
+
+-- Avisos: qué se marcó y qué salió por el outbox
+SELECT id, aviso_vencimiento_en, aviso_saldo_bajo_en FROM pase_servicio WHERE id = :paseId;
+SELECT id, tipo, estado, intentos, proxima_ejecucion_en, error_sanitizado
+  FROM notification_outbox
+ WHERE clave_idempotente IN (CONCAT('pase-por-vencer:', :paseId), CONCAT('pase-saldo-bajo:', :paseId));
+
+-- La huella en la auditoría
+SELECT event_type, entity_id, previous_state, new_state, occurred_at
+  FROM audit_event
+ WHERE entity_type = 'PASE_SERVICIO'
+   AND event_type IN ('PASE_VENCIDO','ABONO_RENOVADO','ABONO_RENOVACION_OMITIDA',
+                      'PASE_AVISO_DE_VENCIMIENTO','PASE_AVISO_DE_SALDO_BAJO')
+ ORDER BY occurred_at DESC LIMIT 50;
+```
+
+| Lo que se ve | Causa | Acción |
+|---|---|---|
+| Ninguna línea de los jobs en horas, y hay pases para vencer | El job está apagado (`..._ENABLED=false` en todas las instancias) o el backend se reinició hace menos del `initial-delay` | Revisar las variables del contenedor. Al volver a prenderlo, el primer tick se pone al día solo |
+| `El tick de ... fallo` en cada ciclo | Algo falla **antes** del bucle por pase (la consulta de candidatos, la base) | `stack_trace` del log; si es la base, R3 o R5. No hay estado que destrabar: el próximo tick reintenta |
+| `No se pudo vencer el pase {id}` (o renovar, o avisar) repetido con el mismo id | Ese pase falla siempre; los demás siguen | Capturar el `stack_trace` y abrir defecto con el id. **No** escribir `VENCIDO` a mano: el saldo, el movimiento y la auditoría van juntos o no van |
+| Pases `ACTIVO` vencidos hace días, sin errores en el log | Más de 2.000 candidatos por tick, o una sede cuya zona no resuelve (cae a UTC, con WARN de `ZonaDeSede`) | Dejar correr: cada tick toma 2.000. Si no baja, revisar la zona de la sede (`docs/zonas-horarias.md`) |
+| La consulta del ledger devuelve filas | Un `UPDATE` de saldo sin su movimiento: **defecto**, no atraso | Abrir defecto con los ids. No ajustar el saldo a mano: el ajuste se hace desde la aplicación (`ajustarSaldoDePase`, permiso `pase:adjust`), que deja `AJUSTE` con motivo |
+| Abono sin renovar y `renovacion_omitida_motivo` lleno | El job no pudo: producto de baja o fuera de venta, persona de baja, período ocupado por una venta manual, o período siguiente ya terminado (job caído más de un período entero: **no vende el pasado**) | Es el comportamiento esperado. Si corresponde, vender el período a mano desde la pantalla y volver a prender la renovación sobre el período nuevo |
+| Abono sin renovar, sin motivo y con la renovación prendida | Todavía no entró en la ventana (`anticipacion-dias`), o el job no corre | Primera fila de esta tabla |
+| Se renovó un abono que el centro quería cortar | La renovación es opt-in, pero alguien la prendió y nadie la apagó | Anular el período renovado desde la aplicación (`anularPase`: anula también su deuda si no tiene cobros; con cobros responde `pase-con-cobros` y primero se anula el cobro; con créditos ya usados responde `pase-no-ajustable` y lo que queda es ajustar el saldo). Después apagar la renovación (`configurarRenovacionDeAbono`) |
+| Aviso marcado en `pase_servicio` y sin fila en el outbox | La persona no tiene correo: el aviso se da por resuelto sin encolar (log `Sin correo para avisar`) | Nada que hacer en el job: completar el correo en el padrón. El aviso **no se repite** para ese pase |
+| Fila del outbox `AGOTADA` con motivo de origen no vigente | El pase se anuló (o venció, en el aviso de vencimiento) mientras el correo esperaba en la cola | Correcto: no se manda un aviso de algo que ya no existe |
+| Fila del outbox `PENDIENTE` o `REINTENTABLE` que no sale | El envío, no el job | R2 |
+
+**Acciones que no se hacen**
+- No borrar ni editar filas de `movimiento_pase`: es append-only y es lo que explica cada saldo.
+- No poner `aviso_*_en` en NULL para "reenviar" un aviso: la clave idempotente del outbox ya existe y
+  no se encola otro. Si hace falta reenviar, el reintento administrativo del outbox (R2).
+- No cambiar `vigencia_hasta` a mano para "salvar" un pase vencido: la ventana de gracia no existe
+  (U-40 e) y el job lo vencería igual con su movimiento.

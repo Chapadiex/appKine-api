@@ -98,6 +98,7 @@ public class InscripcionService {
 	private final PacienteDirectory personas;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
+	private final SoporteEnActividad soporte;
 	private final AuditTrail auditTrail;
 
 	public InscripcionService(
@@ -108,6 +109,7 @@ public class InscripcionService {
 			PacienteDirectory personas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
+			SoporteEnActividad soporte,
 			AuditTrail auditTrail) {
 
 		this.inscripciones = inscripciones;
@@ -117,6 +119,7 @@ public class InscripcionService {
 		this.personas = personas;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.auditTrail = auditTrail;
 	}
 
@@ -232,7 +235,8 @@ public class InscripcionService {
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
 
-		InscripcionClase inscripcion = exigirInscripcion(organizationId, claseId, inscripcionId);
+		InscripcionClase inscripcion = exigirInscripcionDeLaSede(
+				organizationId, consultorioId, claseId, inscripcionId);
 		EstadoInscripcion anterior = inscripcion.getEstado();
 
 		Instant ahora = Instant.now();
@@ -273,7 +277,8 @@ public class InscripcionService {
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
 
-		InscripcionClase inscripcion = exigirInscripcion(organizationId, claseId, inscripcionId);
+		InscripcionClase inscripcion = exigirInscripcionDeLaSede(
+				organizationId, consultorioId, claseId, inscripcionId);
 		if (inscripcion.getEstado() == EstadoInscripcion.CANCELADA) {
 			return new ResultadoDeCancelacion(
 					InscripcionView.de(inscripcion), null,
@@ -461,6 +466,22 @@ public class InscripcionService {
 				});
 	}
 
+	/**
+	 * La inscripcion pedida por una ruta de sede: primero la clase tiene que ser de ESA sede.
+	 *
+	 * <p>AKINE-09.02. La inscripcion se busca por organizacion y clase, y hasta 09.02 confirmar y
+	 * cancelar no miraban la sede de la clase: un actor con alcance solo en la sede A pedia
+	 * {@code /consultorios/A/clases/{claseDeB}/inscripciones/{inscDeB}/confirmacion} y confirmaba
+	 * (200) una inscripcion de B. Cancelar se salvaba de casualidad, porque el armado de la
+	 * respuesta fallaba despues de escribir y la transaccion volvia atras.
+	 */
+	private InscripcionClase exigirInscripcionDeLaSede(
+			long organizationId, long consultorioId, long claseId, long inscripcionId) {
+
+		exigirClaseDelTenant(organizationId, consultorioId, claseId);
+		return exigirInscripcion(organizationId, claseId, inscripcionId);
+	}
+
 	private InscripcionClase exigirInscripcion(
 			long organizationId, long claseId, long inscripcionId) {
 
@@ -550,7 +571,9 @@ public class InscripcionService {
 	private void exigir(
 			OperatingActor actor, long organizationId, long consultorioId, String permiso) {
 
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now()));
+		// AKINE-09.02: la decision ya no se descarta; si vino por soporte queda auditada.
+		soporte.registrarSiCorresponde(permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now())),
+				actor.accountId(), organizationId, consultorioId, permiso);
 	}
 }

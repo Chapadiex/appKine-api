@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * La atencion clinica de cada participante de una clase (AKINE-08.05, RF-M14-011..013).
@@ -170,7 +171,13 @@ public class AtencionGrupalService {
 				null,
 				Map.of("origen", ORIGEN,
 						"claseId", String.valueOf(claseId),
-						"sesiones", String.valueOf(atenciones.size())),
+						"sesiones", String.valueOf(atenciones.size()),
+						// AKINE-09.02: que historias quedaron expuestas. Sin esto la fila no aparecia
+						// al preguntar "quien accedio a la HC X": decia cuantas, no de quienes.
+						"historiasClinicas", atenciones.stream()
+								.map(a -> String.valueOf(a.historiaClinicaId()))
+								.distinct()
+								.collect(Collectors.joining(","))),
 				Instant.now());
 		return atenciones;
 	}

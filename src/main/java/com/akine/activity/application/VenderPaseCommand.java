@@ -21,6 +21,12 @@ public record VenderPaseCommand(
 		long productoId, long personaId, String idempotencyKey,
 		LocalDate periodoDesde, LocalDate periodoHasta, boolean renovacionAutomatica) {
 
+	/** AKINE-09.02: ver {@link FechasAdmitidas}. */
+	public VenderPaseCommand {
+		FechasAdmitidas.exigir(periodoDesde, "periodoDesde");
+		FechasAdmitidas.exigir(periodoHasta, "periodoHasta");
+	}
+
 	/** La venta de un pack, sin periodo. */
 	public VenderPaseCommand(long productoId, long personaId, String idempotencyKey) {
 		this(productoId, personaId, idempotencyKey, null, null, false);

@@ -1,5 +1,8 @@
 package com.akine.activity.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
+import org.mockito.Mockito;
+
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.EstadoClase;
 import com.akine.activity.domain.EstadoInscripcion;
@@ -94,7 +97,8 @@ class InscripcionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new InscripcionService(inscripciones, clases, capacidad, avisos, personas,
-				consultorios, permissionGuard, auditTrail);
+				consultorios, permissionGuard,
+				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail);
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
 		given(clases.findByIdInScope(ORG_ID, SEDE_ID, CLASE_ID))

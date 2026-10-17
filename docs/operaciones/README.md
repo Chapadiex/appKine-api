@@ -11,7 +11,8 @@ entorno real. Se apoya en la imagen del backend (G-3, `AGENT.md` §12), la del f
 | [rollback.md](rollback.md) | Volver a la imagen anterior, cuándo eso alcanza y cuándo hay que restaurar; checklist pre-deploy |
 | [smoke-post-deploy.md](smoke-post-deploy.md) | El chequeo que se corre después de cada despliegue, y la cuenta de humo |
 | [release-notes.md](release-notes.md) | Cómo se arma el borrador de notas de una release ([plantilla](plantilla-release-notes.md)) |
-| [runbooks.md](runbooks.md) | Incidentes típicos: síntomas, diagnóstico y acciones |
+| [runbooks.md](runbooks.md) | Incidentes típicos: síntomas, diagnóstico y acciones. R7 cubre los tres jobs programados de pases y abonos (F9) |
+| [../release/RC-1.md](../release/RC-1.md) | Notas del primer release candidate (M01–M29, 16/10/2026): qué hace, qué no, qué lo condiciona |
 
 ## Scripts (`ops/`)
 

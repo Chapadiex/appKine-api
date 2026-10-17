@@ -117,6 +117,7 @@ public class AsistenciaService {
 	private final PacienteDirectory personas;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
+	private final SoporteEnActividad soporte;
 	private final AuditTrail auditTrail;
 	private final ConsumoDePaseService consumoDePases;
 
@@ -141,6 +142,7 @@ public class AsistenciaService {
 			PacienteDirectory personas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
+			SoporteEnActividad soporte,
 			AuditTrail auditTrail,
 			ConsumoDePaseService consumoDePases,
 			PlatformTransactionManager transactionManager) {
@@ -155,6 +157,7 @@ public class AsistenciaService {
 		this.personas = personas;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.auditTrail = auditTrail;
 		this.consumoDePases = consumoDePases;
 		this.transaccionPorItem = new TransactionTemplate(transactionManager);
@@ -214,6 +217,11 @@ public class AsistenciaService {
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigir(actor, organizationId, consultorioId, PermissionCodes.CLASE_MANAGE);
+		// AKINE-09.02: cerrar escribe asistencias (AUSENTE) y cancela la lista de espera. Son las
+		// dos familias que PermissionCodes separa de la clase; hoy todo rol con clase:manage las
+		// tiene, pero si eso cambia, cerrar no puede ser la puerta trasera.
+		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
+		exigir(actor, organizationId, consultorioId, PermissionCodes.INSCRIPCION_MANAGE);
 
 		ClaseProgramada clase = exigirClaseDelTenant(organizationId, consultorioId, claseId);
 		EstadoClase anterior = clase.getEstado();
@@ -835,7 +843,9 @@ public class AsistenciaService {
 	private void exigir(
 			OperatingActor actor, long organizationId, long consultorioId, String permiso) {
 
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now()));
+		// AKINE-09.02: la decision ya no se descarta; si vino por soporte queda auditada.
+		soporte.registrarSiCorresponde(permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now())),
+				actor.accountId(), organizationId, consultorioId, permiso);
 	}
 }

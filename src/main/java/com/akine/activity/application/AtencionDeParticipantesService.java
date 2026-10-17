@@ -91,6 +91,7 @@ public class AtencionDeParticipantesService {
 	private final OfertaDirectory ofertas;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
+	private final SoporteEnActividad soporte;
 	private final AtencionGrupal atenciones;
 	private final PacienteDirectory pacientes;
 
@@ -108,6 +109,7 @@ public class AtencionDeParticipantesService {
 			OfertaDirectory ofertas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
+			SoporteEnActividad soporte,
 			AtencionGrupal atenciones,
 			PacienteDirectory pacientes,
 			PlatformTransactionManager transactionManager) {
@@ -118,6 +120,7 @@ public class AtencionDeParticipantesService {
 		this.ofertas = ofertas;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.atenciones = atenciones;
 		this.pacientes = pacientes;
 		this.transaccionPorItem =
@@ -177,6 +180,13 @@ public class AtencionDeParticipantesService {
 		}
 		Clase c = resolverClase(actor, consultorioId, claseId);
 		exigirOfertaClinica(c);
+		// AKINE-09.02: lo que vale para todo el lote, una vez y como error del pedido (403). La
+		// relacion asistencial o la justificacion siguen siendo por persona, en cada item.
+		for (String permiso : List.of(PermissionCodes.SESION_REGISTER, PermissionCodes.HC_WRITE)) {
+			permissionGuard.requirePermission(new PermissionQuery(
+					actor.accountId(), permiso, c.organizationId(), c.consultorioId(), null,
+					Instant.now()));
+		}
 
 		List<ItemDeAtencionGrupal> items = new ArrayList<>(pedidos.size());
 		for (PedidoDeAtencionDeParticipante pedido : pedidos) {
@@ -343,9 +353,11 @@ public class AtencionDeParticipantesService {
 		long organizationId = actor.contextOrganizationId();
 		consultorios.find(organizationId, consultorioId)
 				.orElseThrow(() -> new ConsultorioNoAccesibleException(consultorioId));
-		permissionGuard.requirePermission(new PermissionQuery(
+		// AKINE-09.02: si el permiso vino por soporte, la lectura queda auditada.
+		soporte.registrarSiCorresponde(permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(), PermissionCodes.INSCRIPCION_READ, organizationId, consultorioId,
-				null, Instant.now()));
+				null, Instant.now())),
+				actor.accountId(), organizationId, consultorioId, PermissionCodes.INSCRIPCION_READ);
 		ClaseProgramada clase = clases.findByIdInScope(organizationId, consultorioId, claseId)
 				.orElseThrow(() -> new ClaseNotAccessibleException(claseId));
 		return new Clase(organizationId, consultorioId, clase);

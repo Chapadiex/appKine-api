@@ -57,6 +57,15 @@ public final class PermissionCodes {
 	/** Ajustar el saldo de un pase y anularlo (AKINE-08.07, RF-M29-005). Permiso reforzado. */
 	public static final String PASE_ADJUST = "pase:adjust";
 
+	/**
+	 * Codigos de OTROS modulos que el lote de atencion grupal exige de entrada (AKINE-09.02).
+	 * {@code encounter} y {@code clinical} los evaluan por item; sin exigirlos antes, quien no
+	 * puede atender recibia 200 con N items "error no previsto" en vez de un 403 del pedido.
+	 */
+	public static final String SESION_REGISTER = "sesion:register";
+
+	public static final String HC_WRITE = "hc:write";
+
 	private PermissionCodes() {
 	}
 }
