@@ -12,6 +12,7 @@ import com.akine.activity.domain.exception.DerivacionNoAccesibleException;
 import com.akine.activity.domain.exception.HorarioNoDisponibleException;
 import com.akine.activity.domain.exception.InscripcionDuplicadaException;
 import com.akine.activity.domain.exception.InscripcionNotAccessibleException;
+import com.akine.activity.domain.exception.LotesDeAsistenciaSaturadosException;
 import com.akine.activity.domain.exception.OfertaNoClinicaException;
 import com.akine.activity.domain.exception.OfertaNotAccessibleException;
 import com.akine.activity.domain.exception.OfertaNoAdmitePackException;
@@ -34,8 +35,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -83,6 +86,7 @@ public class ActivityProblemHandler {
 	private static final URI PERSONA_SIN_PERFIL_PACIENTE =
 			ProblemType.PERSONA_SIN_PERFIL_PACIENTE.uri();
 	private static final URI DERIVACION_NO_ACCESIBLE = ProblemType.DERIVACION_NO_ACCESIBLE.uri();
+	private static final URI SERVICE_UNAVAILABLE = ProblemType.SERVICE_UNAVAILABLE.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -384,6 +388,36 @@ public class ActivityProblemHandler {
 		problem.setType(DERIVACION_NO_ACCESIBLE);
 		problem.setTitle("Derivacion no encontrada");
 		return problem;
+	}
+
+	// =================================================================================
+	// Limite de lotes por sede — 503 (U-49 c, DP-30)
+	// =================================================================================
+
+	/**
+	 * <b>503 y no 429.</b> 429 dice "usted mando demasiados pedidos", y quien recibe esto mando
+	 * uno: el limite es de capacidad de la sede, compartido entre todos los que toman lista ahi.
+	 * Es exactamente la sobrecarga transitoria de RFC 9110 §15.6.4, y {@code service-unavailable}
+	 * es el tipo que ya viaja cuando el pool no entrega conexion, que es lo que este limite evita.
+	 * {@code rate-limited} se reserva para el limite por cliente del login.
+	 *
+	 * <p>El lote rechazado no escribio nada: reintentarlo despues de {@code Retry-After} es seguro.
+	 */
+	@ExceptionHandler(LotesDeAsistenciaSaturadosException.class)
+	public ResponseEntity<ProblemDetail> handleLotesSaturados(
+			LotesDeAsistenciaSaturadosException exception) {
+		log.warn("Lote de asistencia rechazado por el limite de la sede: consultorioId={} "
+				+ "reintentarEnSegundos={}", exception.getConsultorioId(),
+				exception.getSegundosParaReintentar());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.SERVICE_UNAVAILABLE,
+				"La sede tiene otros lotes de asistencia en curso. Nada de este lote se registro: "
+						+ "vuelva a enviarlo en unos segundos.");
+		problem.setType(SERVICE_UNAVAILABLE);
+		problem.setTitle("Servicio no disponible");
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+				.header(HttpHeaders.RETRY_AFTER, Long.toString(exception.getSegundosParaReintentar()))
+				.body(problem);
 	}
 
 	private static ProblemDetail conflicto(String detalle, URI tipo) {

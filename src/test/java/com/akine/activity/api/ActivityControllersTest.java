@@ -28,6 +28,7 @@ import com.akine.activity.domain.OrigenAsistencia;
 import com.akine.activity.domain.ResultadoAsistencia;
 import com.akine.activity.domain.exception.ClaseCompletaException;
 import com.akine.activity.domain.exception.ClaseNotAccessibleException;
+import com.akine.activity.domain.exception.LotesDeAsistenciaSaturadosException;
 import com.akine.platform.spi.problem.ProblemType;
 import com.akine.platform.spi.tenant.AuthenticatedPrincipal;
 import com.akine.platform.spi.tenant.RequestTenantContext;
@@ -428,6 +429,22 @@ class ActivityControllersTest {
 					comandos.capture());
 			assertThat(comandos.getValue()).extracting(RegistrarAsistenciaCommand::origen)
 					.containsOnly(OrigenAsistencia.LOTE);
+		}
+
+		@Test
+		@DisplayName("U-49 c: el lote sin lugar en la sede es 503 service-unavailable con Retry-After")
+		void lote_sin_lugar_es_503() throws Exception {
+			given(asistenciaService.registrarLote(any(), anyLong(), anyLong(), any()))
+					.willThrow(new LotesDeAsistenciaSaturadosException(SEDE_ID, 2));
+
+			autenticado(post(CLASE + "/asistencias/lote").contentType(MediaType.APPLICATION_JSON)
+					.content("""
+							{"items":[{"inscripcionId":301,"resultado":"PRESENTE"},
+							          {"inscripcionId":302,"resultado":"AUSENTE"}]}
+							"""))
+					.andExpect(status().isServiceUnavailable())
+					.andExpect(header().string("Retry-After", "2"))
+					.andExpect(jsonPath("$.type").value(ProblemType.SERVICE_UNAVAILABLE.uri().toString()));
 		}
 
 		@Test

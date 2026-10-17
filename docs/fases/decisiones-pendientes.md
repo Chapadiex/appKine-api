@@ -44,7 +44,7 @@
 | U-44 | por despliegue. | DP-27 |
 | U-46 | (a), (b), (f) como están; (c) el PROFESIONAL no ve `paseId`/`saldo`; (d) el título no viaja en el correo; (e) **sigue abierta junto con U-03**. | DP-28 |
 | U-48 | el lock solo en abonos; los packs resuelven la clave por el unique. | DP-29 |
-| U-49 | (a) hecha en #152; (c) solo si el entorno lo exige; (b) no. | DP-30 |
+| U-49 | (a) hecha en #152; (c) preparada y **apagada por defecto** (`lotes-concurrentes-por-sede`), se enciende solo si el entorno lo exige; (b) no. | DP-30 |
 
 ### Postergadas después del RC (siguen abiertas)
 

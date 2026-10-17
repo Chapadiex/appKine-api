@@ -113,7 +113,7 @@ class AsistenciaServiceTest {
 		service = new AsistenciaService(asistencias, eventos, inscripciones, clases, eventosDeClase,
 				capacidad, proyeccion, personas, consultorios, permissionGuard, permissionEvaluator,
 				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail, consumoDePases, devengoPorClase,
-				transactionManager);
+				LimiteDeLotesPorSede.sinLimite(), transactionManager);
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
 		given(clases.findByIdInScope(ORG_ID, SEDE_ID, CLASE_ID))

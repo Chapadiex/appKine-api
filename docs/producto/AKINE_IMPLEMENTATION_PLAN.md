@@ -738,7 +738,7 @@ El vencimiento no es un evento: se calcula al leer, como VENCIDA en la autorizac
 
 **Decisión.** (a) hecha en api #152 (de 18 a 11 sentencias por participante en el alta). (c) limitar los lotes concurrentes por sede **solo si el entorno de destino lo exige**. (b) agrupar ítems por transacción: **no**, porque cambiaría la actualización transaccional independiente de RF-M13-008.
 
-**Implementada en:** (a) api #152; (c) condicionada al entorno de destino.
+**Implementada en:** (a) api #152; (c) **preparada y apagada** en la rama `akine-u49c-limite-de-lotes` (contrato 0.127.0): se enciende con `akine.activity.asistencia.lotes-concurrentes-por-sede` si el entorno de destino lo exige (`docs/carga.md` §12, runbook R8).
 
 ## DP-31 — Fuera del release candidate: honorarios por clase, cuenta técnica de renovación, períodos no calendario, rentabilidad (U-41, U-43, U-45, U-50)
 

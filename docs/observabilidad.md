@@ -236,3 +236,16 @@ sum by (job) (increase(akine_job_seconds_count{application="akine-api", job="pas
 No está en el archivo de alertas porque el timer no existe hasta la primera pasada, y
 `ObservabilidadIT` exige que toda métrica de una alerta aparezca en el scrape de un contexto recién
 levantado.
+
+## 8. El límite de lotes de asistencia por sede (U-49 c, DP-30)
+
+`LimiteDeLotesPorSede` (`activity.application`) publica, **también con el límite apagado**, en cero:
+
+| Señal | Nombre | Etiquetas | Qué dice |
+|---|---|---|---|
+| Contador | `akine_asistencia_lotes_total` | `resultado` = `inmediato` \| `tras-espera` \| `rechazado` | Lotes de dos o más ítems que pasaron por el límite. **Inmediato**: había lugar. **Tras espera**: esperó y entró. **Rechazado**: no consiguió lugar en `lotes-espera-maxima` y respondió 503. Con el límite apagado no cuenta nada |
+| Gauge | `akine_asistencia_lotes_en_espera` | — | Lotes esperando lugar en este momento, en esta instancia |
+| Log | `Lote de asistencia rechazado por el limite de la sede` | `consultorioId`, `reintentarEnSegundos` | WARN por cada 503 |
+
+Sin etiqueta de sede: la cardinalidad sería la cantidad de sedes. La sede del rechazo va al log.
+Cómo encenderlo y qué mirar: `docs/carga.md` §12 ("U-49 c") y el runbook R8.
