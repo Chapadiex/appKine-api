@@ -9,6 +9,7 @@ import com.akine.activity.application.AjusteDePaseService;
 import com.akine.activity.application.AsistenciaService;
 import com.akine.activity.application.ConsumoDeCredito.Efecto;
 import com.akine.activity.application.CrearProductoCommand;
+import com.akine.activity.application.IdempotencyKeyConflictException;
 import com.akine.activity.application.InscripcionService;
 import com.akine.activity.application.ProductoService;
 import com.akine.activity.application.RegistrarAsistenciaCommand;
@@ -60,6 +61,8 @@ class CarrerasDePasesIT {
 
 	private static final int RONDAS = 3;
 	private static final String BLOQUEAR_PRODUCTO = "%FROM producto_servicio%FOR UPDATE%";
+	/** El INSERT del pase espera el lock compartido que su FK pide sobre el producto retenido. */
+	private static final String INSERTAR_PASE = "%insert into pase_servicio%";
 
 	@Autowired private ProductoService productoService;
 	@Autowired private VentaDePaseService ventaService;
@@ -83,13 +86,14 @@ class CarrerasDePasesIT {
 	// =================================================================================
 
 	@Test
-	@DisplayName("Dos ventas con la misma clave que ya pasaron el chequeo de idempotencia: la segunda devuelve la primera, no un 409")
-	void venta_con_la_misma_clave_dirigida() {
-		Tenant tenant = tenantPorPack();
-		long producto = pack(tenant, 8);
+	@DisplayName("Abono: dos ventas con la misma clave que ya pasaron el chequeo de idempotencia esperan el producto; la segunda devuelve la primera, no un 409")
+	void venta_de_abono_con_la_misma_clave_dirigida() {
+		Tenant tenant = tenantPorAbono();
+		long producto = abono(tenant);
 		String clave = UUID.randomUUID().toString();
+		LocalDate desde = LocalDate.now(ZoneId.of(ActividadItFixture.ZONA));
 		Callable<ResultadoDeVenta> vender = () -> ventaService.vender(tenant.actor(), tenant.consultorioId(),
-				new VenderPaseCommand(producto, tenant.persona(0), clave));
+				new VenderPaseCommand(producto, tenant.persona(0), clave, desde, null));
 
 		Desenlace<ResultadoDeVenta> primera;
 		Desenlace<ResultadoDeVenta> segunda;
@@ -104,6 +108,68 @@ class CarrerasDePasesIT {
 		}
 
 		afirmarUnaSolaVenta(tenant, clave, List.of(primera, segunda));
+	}
+
+	/**
+	 * U-48: un pack no toma el producto, asi que las dos ventas llegan hasta el INSERT del pase. Para
+	 * dejarlas a las dos ahi, la fila retenida es la del producto y lo que espera es la FK de
+	 * {@code pase_servicio}, que pide un lock compartido sobre el padre: el patron es el INSERT, no un
+	 * {@code FOR UPDATE}. Al soltarla, una commitea y la otra choca con {@code uk_pase_idempotency}.
+	 */
+	@Test
+	@DisplayName("Pack, sin lock del producto: dos ventas con la misma clave llegan las dos al INSERT; la que choca con el unique devuelve la primera")
+	void venta_de_pack_con_la_misma_clave_dirigida_sin_lock() {
+		Tenant tenant = tenantPorPack();
+		long producto = pack(tenant, 8);
+		String clave = UUID.randomUUID().toString();
+		Callable<ResultadoDeVenta> vender = () -> ventaService.vender(tenant.actor(), tenant.consultorioId(),
+				new VenderPaseCommand(producto, tenant.persona(0), clave));
+
+		Desenlace<ResultadoDeVenta> primera;
+		Desenlace<ResultadoDeVenta> segunda;
+		try (CarreraDirigida carrera = new CarreraDirigida(jdbc);
+				Retencion fila = Retencion.de(dataSource, "producto_servicio", producto)) {
+			Future<Desenlace<ResultadoDeVenta>> a = carrera.largarHastaBloquearse(vender, INSERTAR_PASE);
+			Future<Desenlace<ResultadoDeVenta>> b = carrera.largarHastaBloquearse(vender, INSERTAR_PASE);
+			assertThat(enCurso(BLOQUEAR_PRODUCTO)).as("un pack no pide el producto con FOR UPDATE").isZero();
+			fila.soltar();
+			primera = CarreraDirigida.resultado(a);
+			segunda = CarreraDirigida.resultado(b);
+		}
+
+		afirmarUnaSolaVenta(tenant, clave, List.of(primera, segunda));
+	}
+
+	@Test
+	@DisplayName("Pack, sin lock del producto: la misma clave para dos titulares distintos a la vez es una venta y un 409 de clave reusada")
+	void venta_de_pack_con_la_misma_clave_y_otro_titular_dirigida() {
+		Tenant tenant = tenantPorPack(2);
+		long producto = pack(tenant, 8);
+		String clave = UUID.randomUUID().toString();
+
+		Desenlace<ResultadoDeVenta> primera;
+		Desenlace<ResultadoDeVenta> segunda;
+		try (CarreraDirigida carrera = new CarreraDirigida(jdbc);
+				Retencion fila = Retencion.de(dataSource, "producto_servicio", producto)) {
+			Future<Desenlace<ResultadoDeVenta>> a = carrera.largarHastaBloquearse(() -> ventaService.vender(
+					tenant.actor(), tenant.consultorioId(), new VenderPaseCommand(producto, tenant.persona(0), clave)),
+					INSERTAR_PASE);
+			Future<Desenlace<ResultadoDeVenta>> b = carrera.largarHastaBloquearse(() -> ventaService.vender(
+					tenant.actor(), tenant.consultorioId(), new VenderPaseCommand(producto, tenant.persona(1), clave)),
+					INSERTAR_PASE);
+			fila.soltar();
+			primera = CarreraDirigida.resultado(a);
+			segunda = CarreraDirigida.resultado(b);
+		}
+
+		assertThat(primera.fallo() ^ segunda.fallo()).as("gana exactamente una: %s, %s", primera, segunda).isTrue();
+		Desenlace<ResultadoDeVenta> perdedora = primera.fallo() ? primera : segunda;
+		assertThat(ActividadItFixture.causaEs(perdedora.error(), IdempotencyKeyConflictException.class))
+				.as("%s", perdedora).isTrue();
+		assertThat(contar("SELECT COUNT(*) FROM pase_servicio WHERE organization_id = ?", tenant.organizationId()))
+				.isEqualTo(1);
+		assertThat(contar("SELECT COUNT(*) FROM obligacion WHERE organization_id = ? AND pase_id IS NOT NULL",
+				tenant.organizationId())).isEqualTo(1);
 	}
 
 	@Test
@@ -301,9 +367,34 @@ class CarrerasDePasesIT {
 	// =================================================================================
 
 	private Tenant tenantPorPack() {
-		Tenant tenant = fx.crearTenant(10, 1);
+		return tenantPorPack(1);
+	}
+
+	private Tenant tenantPorPack(int personas) {
+		Tenant tenant = fx.crearTenant(10, personas);
 		PaseVentaYConsumoIT.declararPorPack(jdbc, tenant.ofertaId());
 		return tenant;
+	}
+
+	private Tenant tenantPorAbono() {
+		Tenant tenant = fx.crearTenant(10, 1);
+		jdbc.update("UPDATE oferta_servicio_consultorio SET esquema_cobro = 'POR_ABONO', momento_devengo = 'VENTA' "
+				+ "WHERE id = ?", tenant.ofertaId());
+		return tenant;
+	}
+
+	private long abono(Tenant tenant) {
+		return productoService.crear(tenant.actor(), tenant.consultorioId(), new CrearProductoCommand(
+				tenant.ofertaId(), "Abono mensual", null, 8, new BigDecimal("30000.00"), "ARS", 31,
+				LocalDate.now().minusDays(60), null, TipoProducto.ABONO)).id();
+	}
+
+	/** Sentencias de otras conexiones en curso que contienen el patron. */
+	private int enCurso(String patron) {
+		return jdbc.queryForObject("""
+				SELECT COUNT(*) FROM information_schema.PROCESSLIST
+				 WHERE ID <> CONNECTION_ID() AND COMMAND = 'Query' AND INFO LIKE ?
+				""", Integer.class, patron);
 	}
 
 	private long pack(Tenant tenant, int creditos) {

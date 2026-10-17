@@ -986,7 +986,7 @@ holgadas y quedan fuera dos escrituras:
   períodos de un abono no se superpongan y para leer una baja recién commiteada). Con un solo
   producto, todas las ventas de la sede se serializan. Para un pack el lock no protege ninguna
   superposición; aflojarlo es una decisión del usuario (**U-48**): bloquear sólo los abonos, o
-  aceptar la cola.
+  aceptar la cola. *(17/10/2026: decidido e implementado, ver "U-48" al final de esta sección.)*
 - **inscribir**, p95 358 ms: las altas de una misma clase se serializan en la fila de la clase
   (el `UPDATE` condicional del cupo, que es la correctitud y no se toca). Con 60 clases y 10 altas
   por segundo, rozando el SLO.
@@ -1060,3 +1060,57 @@ juntas (~0,4 ms cada una). La opción (a) saca un tercio de las sentencias —es
 conexión por ítem, ~70 ms por lote de 25— pero no toca los 25 commits del lote, que son lo que
 satura el pool. Bajar más exige (b) agrupar ítems por transacción o (c) limitar lotes concurrentes:
 las dos siguen siendo decisión del usuario.
+
+### U-48: el lock del producto, sólo en la venta de un abono (17/10/2026, rama `akine-u48-lock-solo-abonos`)
+
+Decisión del usuario del 17/10 (U-48, la recomendada). `VentaDePaseService.vender` lee el **tipo**
+del producto sin lock (`ProductoServicioRepositoryPort.tipoDe`, una columna inmutable) y:
+
+- **abono:** toma el producto con `FOR UPDATE` como antes —es lo que serializa los periodos de la
+  misma persona, que ningún unique puede ver— y vuelve a mirar la clave con el lock tomado (09.03);
+- **pack:** lo lee sin lock, en `READ_COMMITTED`. Dos ventas con la misma `Idempotency-Key` llegan
+  las dos al INSERT; la segunda choca con `uk_pase_idempotency` cuando la primera commitea, y
+  `vender` relee la clave **después del rollback, en una transacción nueva `READ_COMMITTED`**, como
+  el cobro de #131: misma huella devuelve la venta existente (`creada = false`), otra huella es
+  `idempotency-key-conflict`. Sin venta que lo explique, el choque sigue su camino. Una baja del
+  producto que commitea después de la lectura se cuela: es una venta del último instante, anulable.
+
+La transacción pasó de `@Transactional` a un `TransactionTemplate` para poder releer fuera de la
+que choca. Sin cambio de contrato ni migración (`OpenApiContractIT` en verde).
+
+**Carreras.** `CarrerasDePasesIT`: la dirigida de 09.03 quedó sobre un **abono** (las dos ventas
+esperan el `FOR UPDATE` del producto) y se sumaron dos dirigidas de **pack sin lock**. Para dejar
+las dos ventas en el INSERT, la fila retenida es la del producto y lo que espera es la FK de
+`pase_servicio`, que pide un lock compartido sobre el padre; el test afirma además que ninguna
+pidió el producto con `FOR UPDATE`. Con la misma clave: un pase, una deuda, una `COMPRA`, una
+auditoría y las dos devuelven el mismo pase. Con la misma clave y otro titular: una venta y un
+409 de clave reusada. La ráfaga de seis ventas con la misma clave (pack) pasa por el unique en vez
+del lock. **Verificado por mutación:** sin la relectura, las tres de pack fallan con
+`Duplicate entry ... uk_pase_idempotency`.
+
+**Carga.** Stack aislado `u48` (MySQL 3351, backend 8111), imagen de `origin/main` (`77284eb`)
+contra imagen de esta rama, misma base sembrada, backend con 4 CPU / 2 GB y pool de 10. Dos
+escenarios: el de §12 sin el lote (5 min) y **sólo ventas a 30/s** del mismo producto (2 min,
+`-e AKINE_ACTIVIDAD_LOTES_RPS=0 -e AKINE_ACTIVIDAD_INSCRIPCIONES_RPS=0 -e AKINE_ACTIVIDAD_VENTAS_RPS=30
+-e AKINE_ACTIVIDAD_VUS=1 -e AKINE_ACTIVIDAD_DURACION=2m`), que es lo que muestra la cola. En este orden:
+antes sin el lote, antes 30/s, después 30/s, después sin el lote, antes 30/s, después 30/s.
+
+| Corrida | ventas hechas | p50 / p95 / p99 (ms) |
+|---|---|---|
+| sin el lote, antes (4,4/s) | 1.501 | 61 / 144 / 295 |
+| sin el lote, después (4,4/s) | 1.501 | 69 / 130 / 181 |
+| sólo ventas a 30/s, antes 1 | 3.344 de 3.600 | 2.624 / 4.359 / 5.490 |
+| sólo ventas a 30/s, antes 2 | 2.888 de 3.600 | 3.636 / 5.774 / 6.374 |
+| sólo ventas a 30/s, después 1 | 3.599 de 3.600 | 56 / 120 / 232 |
+| sólo ventas a 30/s, después 2 | 3.598 de 3.600 | 59 / 110 / 201 |
+
+Errores técnicos **0 %** en las seis. En la corrida sin el lote, el resto (inscribir, lecturas,
+todo lo interactivo p95 74–81 ms) no cambia.
+
+**Lectura.** A 4,4 ventas/s la cola del lock no se forma en esta máquina: el p95 de 723 ms de §12
+no se repitió con `origin/main` (144 ms), así que aquel número tenía también ruido del disco.
+Donde se ve es al subir la tasa: **antes**, todas las ventas del producto van en fila detrás del
+`FOR UPDATE` y el techo es ~20 ventas/s —a 30/s pedidas, k6 dejó de largar entre 256 y 712 y las
+que entraron esperaron 2,6–3,6 s de mediana—; **después**, las 3.600 entran y el p95 queda en
+110–120 ms, dentro del SLO. Los abonos siguen en fila por producto, que es su correctitud.
+Los números de una sola máquina de desarrollo no son los del entorno de destino (§7).
