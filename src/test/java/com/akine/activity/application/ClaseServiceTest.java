@@ -1,5 +1,8 @@
 package com.akine.activity.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
+import org.mockito.Mockito;
+
 import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseEventoRepositoryPort;
@@ -108,7 +111,8 @@ class ClaseServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ClaseService(clases, eventos, inscripciones, avisos, agenda, ofertas, disponibilidad, espacios,
-				consultorios, permissionGuard, auditTrail,
+				consultorios, permissionGuard,
+				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail,
 				new ProyeccionDeClase(ofertas, espacios, memberships, identidades),
 				consumoDePases,
 				mock(PlatformTransactionManager.class));

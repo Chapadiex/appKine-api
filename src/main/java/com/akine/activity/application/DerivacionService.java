@@ -94,6 +94,7 @@ public class DerivacionService {
 	private final PerfilPacienteProvisioning perfiles;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
+	private final SoporteEnActividad soporte;
 	private final DerivacionClinicaRegistry registro;
 
 	public DerivacionService(
@@ -105,6 +106,7 @@ public class DerivacionService {
 			PerfilPacienteProvisioning perfiles,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
+			SoporteEnActividad soporte,
 			DerivacionClinicaRegistry registro) {
 
 		this.clases = clases;
@@ -115,6 +117,7 @@ public class DerivacionService {
 		this.perfiles = perfiles;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.registro = registro;
 	}
 
@@ -268,8 +271,9 @@ public class DerivacionService {
 	 * Deshace el vinculo, con motivo obligatorio. La fila queda.
 	 *
 	 * <p>La derivacion tiene que colgar de <b>esta</b> participacion: una de otra clase de la misma
-	 * organizacion es 404 aunque exista. Se comprueba despues de revertir porque {@code clinical} no
-	 * expone una lectura sin auditar, y la excepcion revierte la transaccion entera.
+	 * organizacion es 404 aunque exista. Desde AKINE-09.02 lo comprueba {@code clinical} antes de
+	 * evaluar el acceso y de escribir (la reversion viaja acotada a la participacion); hasta
+	 * entonces se miraba despues de revertir, y el 403/409 previo delataba que el id existia.
 	 *
 	 * <p><b>AKINE-08.05: serializa sobre la fila de la asistencia</b>, como derivar y como abrir la
 	 * atencion del participante, y en {@code READ_COMMITTED}. Sin el lock, una reversion se colaba
@@ -293,8 +297,11 @@ public class DerivacionService {
 				.findDeInscripcionParaDerivar(p.organizationId(), inscripcionId)
 				.orElseThrow(() -> new DerivacionNoAccesibleException(derivacionId));
 
+		// AKINE-09.02: clinical descarta la derivacion de otra participacion ANTES de evaluar el
+		// acceso y de escribir. La comprobacion de abajo queda como segunda red.
 		DerivacionSnapshot revertida = registro.revertir(new ReversionDeDerivacion(
-				actorDeDerivacion(actor, p, justificacion), derivacionId, motivo));
+				actorDeDerivacion(actor, p, justificacion), derivacionId, motivo,
+				OrigenDeParticipacion.CLASE_PROGRAMADA, asistencia.getId()));
 
 		if (revertida.origen() != OrigenDeParticipacion.CLASE_PROGRAMADA
 				|| revertida.participacionId() != asistencia.getId()) {
@@ -317,9 +324,11 @@ public class DerivacionService {
 		long organizationId = actor.contextOrganizationId();
 		ConsultorioSnapshot sede = consultorios.find(organizationId, consultorioId)
 				.orElseThrow(() -> new ConsultorioNoAccesibleException(consultorioId));
-		permissionGuard.requirePermission(new PermissionQuery(
+		// AKINE-09.02: si el permiso vino por soporte, la lectura queda auditada.
+		soporte.registrarSiCorresponde(permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(), PermissionCodes.INSCRIPCION_READ, organizationId, consultorioId,
-				null, Instant.now()));
+				null, Instant.now())),
+				actor.accountId(), organizationId, consultorioId, PermissionCodes.INSCRIPCION_READ);
 
 		ClaseProgramada clase = clases.findByIdInScope(organizationId, consultorioId, claseId)
 				.orElseThrow(() -> new ClaseNotAccessibleException(claseId));

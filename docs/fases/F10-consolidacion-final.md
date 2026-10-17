@@ -13,7 +13,7 @@ que hay en `main` y lo que heredan de F8 y del carril G.
 | Etapa | Estado | % | Qué hay en `main` | Lo que falta |
 |---|---|---|---|---|
 | 09.01 Reportes para clases y productos | EN CURSO (rama `akine-09.01-reportes-activity`, sin commits) | 10 | `reporting` crece por contribuyentes (`ReporteContributor`): turnos, sesiones, casos, economía y financiadores. `ReporteCode` ya se está tocando en la rama | El contribuyente de `activity`: clases, ocupación, asistencia, pases vendidos, consumidos, vencidos y anulados, abonos renovados |
-| 09.02 Hardening de seguridad, privacidad y accesibilidad | EN CURSO (rama `akine-09.02-hardening-f9`, un IT sin commitear: `ActividadAislamientoIT`) | 30 | G-5 (threat model, #78), G-7 (a11y, web #24), aislamiento de tenant por IT en los módulos del MVP, pre-QA de 146 pasos con D1–D7 corregidos (#126, #131, #133) | Aislamiento de tenant de la superficie de F9 (escenarios diferidos 41, 48 y 59); SAST/DAST (**U-06**, propuesta abierta en #119); `caso:create` y la justificación en `encounter` (U-03, U-04) |
+| 09.02 Hardening de seguridad, privacidad y accesibilidad | EN CURSO: **superficie de F9 hecha** (rama `akine-09.02-hardening-f9`, contrato 0.120.0; registro abajo) | 60 | G-5 (threat model, #78), G-7 (a11y, web #24), aislamiento de tenant por IT en los módulos del MVP, pre-QA de 146 pasos con D1–D7 corregidos (#126, #131, #133) | ~~Aislamiento de tenant de la superficie de F9~~ (09.02, `ActividadAislamientoIT`); U-46; SAST/DAST (**U-06**, propuesta abierta en #119); `caso:create` y la justificación en `encounter` (U-03, U-04) |
 | 09.03 Concurrencia, rendimiento y observabilidad | EN CURSO (rama `akine-09.03-concurrencia-f9`, un archivo de soporte sin commitear) | 30 | G-4 observabilidad, G-10 carga con k6 (`docs/carga.md` §6–§11), N+1 de agenda y recepción cerrados (#91, #134), concurrencia de pases, cupos, derivación y atención grupal con ITs (ver F9) | Escenarios diferidos de concurrencia de 08.01–08.03 (39, 46, 55, 57); carga de F9; **el SLO de escrituras a 500 usuarios sigue sin cumplirse** y espera decisión (`docs/carga.md` §10) |
 | 09.04 Release candidate, E2E, CI/CD y documentación | EN CURSO (este documento, rama `akine-09.04-docs-rc`) | 30 | CI con cuatro checks en verde sobre `eef0c87` (4.009 unitarias + 880 de integración); imagen Docker y SBOM (G-3); backup, restore, rollback, smoke y runbooks (G-13, `docs/operaciones/`); E2E contra el backend real en el CI de `appKine-web`, con specs de clases, asistencia, pases y atención grupal; notas del RC en [`../release/RC-1.md`](../release/RC-1.md); runbook de los jobs de F9 (`docs/operaciones/runbooks.md` R7) | **QA manual** (U-01), **aprobación clínica y legal** y deploy con ventana de estabilización (U-02), ensayo de migración `V96`–`V103` contra una copia de datos, tag del RC |
 
@@ -39,3 +39,37 @@ El porcentaje de la fase es el promedio simple de las cuatro.
 - [ ] Release completo M01–M29: tag del RC, notas finales, aprobación.
 - [ ] Tabla de trazabilidad del plan (§ líneas ~5254–5312) actualizada: hoy marca las 56 etapas
   como "NO IMPLEMENTADO".
+
+## Registro — AKINE-09.02, hardening de la superficie de F9 (16/10/2026)
+
+Revisión adversarial de `activity` con cuatro lentes en paralelo (aislamiento, permisos, PHI y
+entradas), cada hallazgo intentado refutar antes de aceptarlo, y los de aislamiento reproducidos
+por HTTP contra MySQL antes de corregirlos. Contrato **0.120.0** (sólo restricciones de entrada y
+un booleano que pasa a opcional; ninguna operación nueva). Sin migración.
+
+| # | Sev. | Hallazgo | Arreglo |
+|---|---|---|---|
+| 1 | Alta | **Confirmar una inscripción de otra sede de la organización pidiéndola por la propia** daba 200 y la confirmaba (reproducido por `ActividadAislamientoIT`); cancelar se salvaba por el orden del armado de la respuesta | `InscripcionService.exigirInscripcionDeLaSede` |
+| 2 | Alta | La auditoría de una derivación (HC, caso, plan, persona, motivo) y de los tratamientos se leía sin `auditoria:read-clinica` | `DERIVACION_CLINICA_` y `TRATAMIENTO_` en `VocabularioClinicoDeAuditoria` |
+| 3 | Media | `activity` nunca escribía `SUPPORT_ACCESS_USED`: el `PLATFORM_ADMIN` con soporte leía participantes sin rastro | `SoporteEnActividad` en los cinco servicios que evalúan permisos |
+| 4 | Media | La reversión de una derivación escribía antes de comprobar que era de esa participación; el 403/409 previo delataba ids | `ReversionDeDerivacion` acotada a la participación; `clinical` responde 404 antes del acceso |
+| 5 | Media | El lote de atención clínica sin `sesion:register` respondía 200 con N ítems "error no previsto" (y un `log.error` por ítem) | Exige `sesion:register` y `hc:write` antes del primer ítem: 403 |
+| 6 | Media | `{"items":[null]}` en los lotes → NPE → 500 | `List<@NotNull @Valid ...>` |
+| 7 | Media | `page` enorme en `GET .../pases/{p}/movimientos` → 500 | Tope de página |
+| 8 | Media | Fechas fuera de rango: 500 (`DateTimeException`) o 409 "dato ya existente" (año > 9999 en MySQL) | `FechasAdmitidas` en clases, productos y ventas; `@Max(3660)` en `vigenciaDias`; `DateTimeException` → 400 global |
+| 9 | Media-baja | `GET .../clases` sin tope de ventana (todo `1970..9999` sin paginar) y ventana invertida = 200 vacío | 400 con ventana invertida o > 62 días, como la agenda |
+| 10 | Baja | `PUT .../productos/{p}` sin `limpiarVigenciaHasta` era 400 de cuerpo ilegible (`boolean` primitivo, Jackson 3) aunque "los ausentes se conservan" | `Boolean` |
+| 11 | Baja | El ajuste de pase con `cantidad` cerca de `Integer.MAX_VALUE` desbordaba el mensaje | `@Min(-10000) @Max(10000)` |
+| 12 | Baja | Cerrar una clase escribe asistencias y cancela la espera con sólo `clase:manage` (latente) | Exige también `asistencia:manage` e `inscripcion:manage` |
+| 13 | Baja | `SESION_GRUPAL_CONSULTADA` no decía de qué pacientes | Lista las historias clínicas expuestas |
+
+Tests: `ActividadAislamientoIT` (nuevo: cuatro atacantes contra todos los endpoints de `activity`,
+y la lectura por soporte contra `audit_event`), `MatrizDePermisosIT` (familias F9 con los cinco
+roles y cuatro grants F9 rechazados), `VocabularioClinicoDeAuditoriaTest`.
+
+Verificado sin cambios: la lista blanca de `SanitizedPayload` cubre todas las claves de los avisos
+de F9; los logs de `activity` sólo llevan ids; todas las mutaciones de F9 se auditan en la
+transacción del negocio; los workers operan cada candidato con su organización y sede.
+
+Queda para el usuario: **U-46** (`decisiones-pendientes.md`). Fuera de F9 y anotado como R13 del
+threat model: `scheduling` tampoco escribe `SUPPORT_ACCESS_USED` para `turno:read`.

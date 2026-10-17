@@ -41,6 +41,7 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -114,6 +115,7 @@ public class ClaseService {
 	private final EspacioDirectory espacios;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
+	private final SoporteEnActividad soporte;
 	private final AuditTrail auditTrail;
 	private final ProyeccionDeClase proyeccion;
 	private final ConsumoDePaseService consumoDePases;
@@ -130,6 +132,7 @@ public class ClaseService {
 			EspacioDirectory espacios,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
+			SoporteEnActividad soporte,
 			AuditTrail auditTrail,
 			ProyeccionDeClase proyeccion,
 			ConsumoDePaseService consumoDePases,
@@ -145,6 +148,7 @@ public class ClaseService {
 		this.espacios = espacios;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.auditTrail = auditTrail;
 		this.proyeccion = proyeccion;
 		this.consumoDePases = consumoDePases;
@@ -468,6 +472,7 @@ public class ClaseService {
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirLectura(actor, organizationId, consultorioId);
+		exigirVentana(desde, hasta);
 
 		// Una proyeccion para toda la lista: ofertas, boxes y nombres se piden agrupados, no por fila.
 		return proyeccion.de(organizationId, consultorioId,
@@ -893,6 +898,24 @@ public class ClaseService {
 	// Autorizacion
 	// =================================================================================
 
+	/**
+	 * La ventana del listado (AKINE-09.02): {@code hasta} despues de {@code desde} y a lo sumo
+	 * {@value #VENTANA_MAXIMA_DIAS} dias, el mismo tope que la agenda de turnos
+	 * ({@code VentanaDeAgenda}). Sin el, {@code 1970..9999} devolvia todas las clases de la sede
+	 * proyectadas y sin paginar, y una ventana invertida respondia 200 vacio.
+	 */
+	private static void exigirVentana(Instant desde, Instant hasta) {
+		if (!hasta.isAfter(desde)) {
+			throw new IllegalArgumentException("hasta tiene que ser posterior a desde");
+		}
+		if (Duration.between(desde, hasta).compareTo(Duration.ofDays(VENTANA_MAXIMA_DIAS)) > 0) {
+			throw new IllegalArgumentException(
+					"La ventana del listado admite hasta " + VENTANA_MAXIMA_DIAS + " dias");
+		}
+	}
+
+	static final int VENTANA_MAXIMA_DIAS = 62;
+
 	/** Falta de contexto es <b>403 y nunca 401</b>: un 401 deja al frontend en bucle de login. */
 	private static long exigirContexto(OperatingActor actor) {
 		if (actor == null || actor.contextOrganizationId() == null) {
@@ -918,7 +941,9 @@ public class ClaseService {
 	private void exigir(
 			OperatingActor actor, long organizationId, long consultorioId, String permiso) {
 
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now()));
+		// AKINE-09.02: la decision ya no se descarta; si vino por soporte queda auditada.
+		soporte.registrarSiCorresponde(permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now())),
+				actor.accountId(), organizationId, consultorioId, permiso);
 	}
 }

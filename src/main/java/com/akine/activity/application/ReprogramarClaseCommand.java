@@ -18,4 +18,10 @@ public record ReprogramarClaseCommand(
 		int capacidad,
 		long version,
 		Long espacioId) {
+
+	/** AKINE-09.02: ver {@link FechasAdmitidas}. */
+	public ReprogramarClaseCommand {
+		FechasAdmitidas.exigir(inicio, "inicio");
+		FechasAdmitidas.exigir(fin, "fin");
+	}
 }

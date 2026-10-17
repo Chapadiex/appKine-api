@@ -24,10 +24,10 @@
 | Bloque | Cantidad |
 |---|---|
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42) | 11 |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42, U-46) | 12 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
 | D. No bloquean nada (U-35 a U-37, U-40, U-41, U-43 a U-45) | 8 |
-| **Total** | **45** |
+| **Total** | **46** |
 
 > **Revisado el 16/10/2026** (etapa 09.04): U-39 (#129), U-40 (#135), U-41 (#139) y U-42 (#141)
 > estaban; de las cuatro "Decisiones a confirmar" de #140 (08.08), la primera —renovar un abono
@@ -246,6 +246,47 @@ fila nueva.
 - **Destraba:** el cobro particular de una prestación clínica grupal sin pase. Se encarece con cada
   Sesión grupal cerrada sin deuda: un backfill tendría que decidir a posteriori qué se cobró por la
   clase.
+
+### U-46 · Lo que el hardening de F9 (09.02) dejó para decidir
+
+09.02 corrigió los defectos de aislamiento, auditoría y entradas de `activity` (registro en
+[`F10-consolidacion-final.md`](F10-consolidacion-final.md)). Estas seis no son defectos: son
+criterios que la matriz y la especificación no fijan.
+
+- **(a) Una sede hermana responde 403, no 404.** Un miembro con alcance de sede A2 que pide
+  `/consultorios/A1/...` (A1 de su misma organización) recibe 403 `forbidden`, por regla del
+  evaluador (`PermissionEvaluatorService`: la sede existe para él). El 403 sale **antes** de mirar
+  la clase, el pase o el producto —`ActividadAislamientoIT` lo verifica—, así que no delata ningún
+  id; sólo confirma que la sede existe, que el actor ya ve en el listado de sedes de su
+  organización. Opciones: dejarlo así (recomendado: es transversal a todos los módulos y no filtra
+  datos) o pasar a 404 toda sede fuera del alcance de la membership, en el evaluador.
+- **(b) Ningún permiso de F9 es otorgable por grant.** `GRANT_POR_ROL` no tiene filas de la segunda
+  entrega y la matriz §32 no tiene filas de clases ni de pases (es la DU-12 del plan en paralelo).
+  Consecuencias: no existe el "instructor que toma lista pero no inscribe", el `PROFESIONAL` no
+  puede recibir `pase:read`, y el `ADMINISTRATIVO` no puede recibir `producto:manage` ni
+  `pase:adjust`. `MatrizDePermisosIT` fija hoy que esos grants son 400. Opciones: dejarlo cerrado
+  (recomendado hasta tener filas en la matriz) o declarar celdas "Según permiso" para F9.
+- **(c) El `PROFESIONAL` ve el saldo del pase al tomar asistencia.** La respuesta de
+  `POST .../asistencias` (y del lote y de los ingresos) lleva `consumoDeCredito {paseId, saldo}`,
+  y el profesional no tiene `pase:read`. `DetalleOperativoResponse` excluye los pases a propósito
+  para quien toma lista. Opciones: omitir `paseId`/`saldo` sin `pase:read` (cambio de contrato
+  aditivo) o aceptarlo, porque el consumo lo dispara su propio acto.
+- **(d) Dos textos libres que nada impide que lleven datos de salud.** Las `observaciones` de la
+  asistencia —la columna dice "operativa, no clínica" y la ve cualquiera con `inscripcion:read`— y
+  el `titulo` de la clase, que viaja en el correo de cancelación o reprogramación
+  (`claseTitulo`). Un título "Rehabilitación post-ACV" le cuenta un dato de salud a quien lea la
+  casilla. Opciones: aviso en pantalla, no mandar el título en el correo, o aceptarlo.
+- **(e) El panel de atención grupal no pide justificación.** `GET .../clases/{c}/atencion-clinica`
+  exige `sesion:register` y se audita (`SESION_GRUPAL_CONSULTADA`, que desde 09.02 lista las
+  historias expuestas), pero no pide `X-Justificacion-Acceso`. Es la misma decisión abierta de la
+  justificación en `encounter` (CLAUDE.md §7 n.º 21): se resuelve junto con ella.
+- **(f) Las claves de idempotencia son por organización, no por sede.** Reusar desde la sede A una
+  clave usada en B responde 409 `idempotency-key-conflict` en vez de 404. Para aprovecharlo hay que
+  conocer una clave UUID ajena. Opciones: aceptarlo (recomendado) o sumar la sede al unique, con
+  migración.
+- **Fase / RF:** F10 (09.02); §32, RNF-M28-002, RN-M24-003.
+- **Destraba:** (b) y (c) se encarecen con cada pantalla de F9 que asuma el reparto actual; (a) es
+  transversal y no bloquea nada.
 
 ---
 
