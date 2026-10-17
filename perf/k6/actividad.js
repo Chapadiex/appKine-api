@@ -54,7 +54,7 @@ export const options = {
   setupTimeout: '2m',
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max', 'count'],
   thresholds,
-  scenarios: {
+  scenarios: sinCeros({
     inscribir: {
       executor: 'constant-arrival-rate',
       exec: 'inscribir',
@@ -93,8 +93,16 @@ export const options = {
       ],
       gracefulRampDown: '10s',
     },
-  },
+  }),
 };
+
+/** Un escenario de tasa fija con tasa 0 se saca: k6 no admite `rate: 0`. Sirve para aislar uno. */
+function sinCeros(escenarios) {
+  for (const [nombre, e] of Object.entries(escenarios)) {
+    if (e.executor === 'constant-arrival-rate' && e.rate === 0) delete escenarios[nombre];
+  }
+  return escenarios;
+}
 
 const erroresTecnicos = new Rate('errores_tecnicos');
 const itemsConError = new Rate('items_de_lote_con_error');
