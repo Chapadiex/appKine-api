@@ -244,4 +244,23 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta,
 			@Param("medio") String medio);
+
+	/**
+	 * El saldo a favor <b>actual</b> de los cobros del periodo (AKINE-09.01b, RF-M23-009): plata
+	 * recibida que todavia no se aplico a ninguna deuda, y por eso de ningun servicio. No se
+	 * reconstruye a la fecha de corte, igual que la deuda vigente del reporte economico.
+	 */
+	@Query("""
+			SELECT SUM(c.saldoAFavor) FROM Cobro c
+			 WHERE c.organizationId = :organizationId
+			   AND c.consultorioId = :consultorioId
+			   AND c.deletedAt IS NULL
+			   AND c.cobradoEn >= :desde
+			   AND c.cobradoEn < :hasta
+			""")
+	BigDecimal sumarSaldoAFavorEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
 }

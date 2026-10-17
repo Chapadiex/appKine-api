@@ -1,5 +1,7 @@
 package com.akine.organization.spi;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -17,4 +19,11 @@ public interface OrganizationDirectory {
 
 	/** La organizacion, si existe. {@code Optional.empty()} si no. */
 	Optional<OrganizationSnapshot> find(long organizationId);
+
+	/**
+	 * Varias organizaciones en una sola consulta, por id. Los ids que no existen no aparecen en el
+	 * mapa. Existe para los listados que muestran el nombre de cada centro —la bandeja de
+	 * solicitudes de catalogo de la plataforma—: preguntar de a una seria una consulta por fila.
+	 */
+	Map<Long, OrganizationSnapshot> findAll(Collection<Long> organizationIds);
 }

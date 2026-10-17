@@ -4,6 +4,8 @@ import com.akine.offering.application.OfertaPrecioParticularService;
 import com.akine.offering.domain.Habilitacion;
 import com.akine.offering.domain.Modalidad;
 import com.akine.offering.domain.OfertaServicioConsultorio;
+import com.akine.offering.domain.Servicio;
+import com.akine.offering.spi.ClasificacionDeOferta;
 import com.akine.offering.spi.EsquemaDeCobro;
 import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
@@ -46,15 +48,18 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 	private final OfertaEspacioHabilitadoRepository espacios;
 	private final OfertaPrecioParticularService precios;
 	private final ConsultorioDirectory consultorios;
+	private final ServicioRepository servicios;
 
 	public OfferingOfertaDirectory(
 			OfertaRepository ofertas,
 			OfertaProfesionalHabilitadoRepository profesionales,
 			OfertaEspacioHabilitadoRepository espacios,
 			OfertaPrecioParticularService precios,
-			ConsultorioDirectory consultorios) {
+			ConsultorioDirectory consultorios,
+			ServicioRepository servicios) {
 
 		this.ofertas = ofertas;
+		this.servicios = servicios;
 		this.profesionales = profesionales;
 		this.espacios = espacios;
 		this.precios = precios;
@@ -78,6 +83,29 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 						organizationId, consultorioId, Set.copyOf(ofertaIds))
 				.stream()
 				.collect(Collectors.toMap(OfertaServicioConsultorio::getId, OfferingOfertaDirectory::proyectar));
+	}
+
+	@Override
+	public Map<Long, ClasificacionDeOferta> clasificar(
+			long organizationId, long consultorioId, Collection<Long> ofertaIds) {
+		if (ofertaIds.isEmpty()) {
+			return Map.of();
+		}
+		List<OfertaServicioConsultorio> encontradas = ofertas.findAllByOrganizationIdAndConsultorioIdAndIdIn(
+				organizationId, consultorioId, Set.copyOf(ofertaIds));
+		// El servicio es del catalogo global: se lee por id, sin tenant, como lo referencia la oferta.
+		Map<Long, Servicio> porId = servicios.findAllById(encontradas.stream()
+						.map(OfertaServicioConsultorio::getServicioId).collect(Collectors.toSet()))
+				.stream()
+				.collect(Collectors.toMap(Servicio::getId, s -> s));
+		return encontradas.stream()
+				.filter(o -> porId.containsKey(o.getServicioId()))
+				.collect(Collectors.toMap(OfertaServicioConsultorio::getId, o -> {
+					Servicio servicio = porId.get(o.getServicioId());
+					return new ClasificacionDeOferta(
+							o.getId(), o.getNombreComercial(), o.getModalidad() == Modalidad.GRUPAL,
+							servicio.getId(), servicio.getNombre(), servicio.getNaturaleza().name());
+				}));
 	}
 
 	@Override

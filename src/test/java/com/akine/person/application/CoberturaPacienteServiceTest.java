@@ -37,6 +37,9 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.akine.platform.spi.audit.AuditEntry;
+import org.mockito.ArgumentCaptor;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -50,6 +53,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
@@ -104,6 +108,9 @@ class CoberturaPacienteServiceTest {
 	@Mock
 	private AuditTrail auditTrail;
 
+	@Mock
+	private PersonSupportAccessAuditor supportAccessAuditor;
+
 	private CoberturaPacienteService service;
 
 	private final OperatingActor delMostrador =
@@ -113,7 +120,7 @@ class CoberturaPacienteServiceTest {
 	void setUp() {
 		service = new CoberturaPacienteService(
 				coberturas, candados, iniciador, personas, perfiles, catalogo, permissionGuard,
-				auditTrail, mock(PlatformTransactionManager.class));
+				supportAccessAuditor, auditTrail, mock(PlatformTransactionManager.class));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
@@ -516,6 +523,40 @@ class CoberturaPacienteServiceTest {
 		return new CoberturaAltaCommand(
 				TipoCobertura.FINANCIADA, PLAN_ID, "62000123456", LocalDate.of(2027, 12, 31),
 				DESDE, null, principal, null);
+	}
+
+	@Test
+	@DisplayName("R13 · con acceso de soporte, cada mutacion deja SUPPORT_ACCESS_USED, tambien la que termina en 409")
+	void la_mutacion_por_soporte_queda_auditada() {
+		given(permissionGuard.requirePermission(any()))
+				.willReturn(PermissionDecision.concedida("SOPORTE", true));
+		CoberturaPaciente baja = financiadaGuardada();
+		baja.deactivate(Instant.now(), "carga duplicada");
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(baja));
+
+		assertThatThrownBy(() -> service.darDeBaja(delMostrador, PERSONA_ID, COBERTURA_ID, "otra"))
+				.isInstanceOf(CoberturaInactivaException.class);
+
+		ArgumentCaptor<AuditEntry> fila = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(supportAccessAuditor, times(1)).record(fila.capture());
+		assertThat(fila.getValue().eventType()).isEqualTo("SUPPORT_ACCESS_USED");
+		assertThat(fila.getValue().entityType()).isEqualTo("CoberturaPaciente");
+		assertThat(fila.getValue().entityId()).isEqualTo(COBERTURA_ID);
+		assertThat(fila.getValue().details()).containsEntry("permissionCode", "paciente:manage");
+	}
+
+	@Test
+	@DisplayName("R13 · sin soporte, la misma mutacion no deja SUPPORT_ACCESS_USED")
+	void la_mutacion_propia_no_es_soporte() {
+		CoberturaPaciente baja = financiadaGuardada();
+		baja.deactivate(Instant.now(), "carga duplicada");
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(baja));
+
+		assertThatThrownBy(() -> service.darDeBaja(delMostrador, PERSONA_ID, COBERTURA_ID, "otra"))
+				.isInstanceOf(CoberturaInactivaException.class);
+		verify(supportAccessAuditor, never()).record(any());
 	}
 
 	private static ReferenciaDeCobertura referencia() {
