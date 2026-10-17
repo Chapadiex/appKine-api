@@ -8,6 +8,7 @@ import com.akine.activity.domain.InscripcionClase;
 import com.akine.activity.domain.MovimientoPase;
 import com.akine.activity.domain.PaseServicio;
 import com.akine.activity.domain.ProductoServicio;
+import com.akine.activity.domain.TipoProducto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -401,6 +402,12 @@ public final class ActivityRepositoryPorts {
 		 * de periodos superpuestos no comparten un valor de columna que un unique pueda ver.
 		 */
 		Optional<ProductoServicio> lockByIdInScope(long organizationId, long consultorioId, long productoId);
+
+		/**
+		 * El tipo del producto, sin cargar la entidad ni tomar lock (U-48): la venta decide con esto
+		 * si bloquea —abono— o no —pack—. El tipo es inmutable.
+		 */
+		Optional<TipoProducto> tipoDe(long organizationId, long consultorioId, long productoId);
 	}
 
 	public interface PaseServicioRepositoryPort {
