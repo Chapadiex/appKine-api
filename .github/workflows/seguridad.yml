@@ -1,0 +1,153 @@
+name: Seguridad (SAST y DAST)
+
+# Propuesta para la decision U-06 (docs/fases/decisiones-pendientes.md). Dos jobs, los dos
+# NO BLOQUEANTES por ahora: ninguno esta en los checks requeridos de `main`, y el DAST ademas
+# termina en verde aunque ZAP encuentre algo. Como activarlos de verdad: docs/calidad.md §5.
+#
+# - `codeql`: SAST. El repo es publico, asi que code scanning con CodeQL no cuesta nada ni pide
+#   GitHub Advanced Security. Los hallazgos van a la pestana Security › Code scanning.
+# - `zap`: DAST pasivo (OWASP ZAP baseline) contra el backend real levantado en el runner, con la
+#   misma pila que el job `e2e` de appKine-web: MySQL y Mailpit del compose.yaml y la imagen del
+#   Dockerfile. El reporte queda como artifact `zap-baseline`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Lunes 09:00 UTC (06:00 en Cordoba), el mismo dia que Dependabot.
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # `build-mode: none`: CodeQL extrae Java sin compilar, asi que no hace falta JDK ni
+          # Maven. Si algun dia hiciera falta mas precision, el cambio es `build-mode: manual` y un
+          # paso `./mvnw -B -DskipTests compile` antes de `analyze`.
+          - language: java-kotlin
+            build-mode: none
+          # Los propios workflows: inyeccion por `${{ }}` en `run:`, permisos de mas, etc.
+          - language: actions
+            build-mode: none
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Inicializar CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # `security-extended` agrega consultas de seguridad de menor precision a la suite
+          # default. Si el ruido molesta, se vuelve a `default`.
+          queries: security-extended
+
+      - name: Analizar
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+
+  zap:
+    name: OWASP ZAP baseline (pasivo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Proyecto `akine` explicito: la red queda como `akine_default` y el backend se engancha ahi.
+      - name: Levantar MySQL y Mailpit
+        run: docker compose -p akine -f compose.yaml up -d --wait
+
+      - name: Preparar buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Construir la imagen del backend
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          tags: akine-api:zap
+          load: true
+          cache-from: type=gha,scope=akine-api-zap
+          cache-to: type=gha,mode=max,scope=akine-api-zap
+
+      # Perfil `local`, igual que el E2E del frontend: es el unico que publica /v3/api-docs y
+      # Swagger UI, que es por donde el spider de ZAP encuentra la API. Las credenciales son las
+      # de la base efimera del compose.yaml, no secretos.
+      - name: Arrancar el backend
+        run: |
+          docker run -d --name akine-api --network akine_default -p 8080:8080 \
+            -e SPRING_PROFILES_ACTIVE=local \
+            -e AKINE_DB_URL='jdbc:mysql://mysql:3306/akine_local?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC' \
+            -e AKINE_DB_USER=akine -e AKINE_DB_PASSWORD=akine \
+            -e AKINE_MAIL_HOST=mailpit -e AKINE_MAIL_PORT=1025 \
+            akine-api:zap
+
+      - name: Esperar a que el backend este listo
+        run: |
+          for i in $(seq 1 120); do
+            if curl -fsS http://localhost:8080/actuator/health/readiness > /dev/null 2>&1; then
+              echo "Backend listo."
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' akine-api)" != "true" ]; then
+              echo "::error::El backend se cayo al arrancar."
+              docker logs akine-api | tail -200
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::El backend no quedo listo en 10 minutos."
+          docker logs akine-api | tail -200
+          exit 1
+
+      # Baseline = spider + reglas PASIVAS: no ataca, solo mira lo que el servidor responde
+      # (headers de seguridad, cookies, divulgacion de informacion). Arranca en Swagger UI para
+      # que el spider llegue al contrato; sin token, lo que esta detras de auth responde 401, y
+      # esa respuesta tambien se analiza.
+      #
+      # `fail_action: false` y `-I`: no falla ni por WARN ni por FAIL (ver docs/calidad.md §5
+      # para volverlo bloqueante). `allow_issue_writing: false`: no abre issues en el repo.
+      - name: ZAP baseline
+        uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
+        with:
+          target: http://localhost:8080/swagger-ui/index.html
+          rules_file_name: .zap/rules.tsv
+          cmd_options: '-I'
+          fail_action: false
+          allow_issue_writing: false
+          artifact_name: zap-baseline
+
+      - name: Logs del backend
+        if: always()
+        run: docker logs akine-api > backend.log 2>&1 || true
+
+      - name: Publicar log del backend
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zap-backend-log
+          path: backend.log
+          retention-days: 14
