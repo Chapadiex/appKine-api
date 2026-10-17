@@ -1114,3 +1114,49 @@ Donde se ve es al subir la tasa: **antes**, todas las ventas del producto van en
 que entraron esperaron 2,6–3,6 s de mediana—; **después**, las 3.600 entran y el p95 queda en
 110–120 ms, dentro del SLO. Los abonos siguen en fila por producto, que es su correctitud.
 Los números de una sola máquina de desarrollo no son los del entorno de destino (§7).
+
+### U-49 c: el límite de lotes por sede, preparado y apagado (17/10/2026, rama `akine-u49c-limite-de-lotes`)
+
+DP-30: la opción (c) se activa **sólo si el entorno de destino lo exige**. Quedó lista para
+encender por configuración y **apagada por defecto**: con la propiedad ausente o en `0` no se crea
+ningún semáforo y el lote corre exactamente como antes (`LimiteDeLotesApagadoIT`).
+
+| Propiedad | Default | Variable de entorno |
+|---|---|---|
+| `akine.activity.asistencia.lotes-concurrentes-por-sede` | `0` = sin límite | `AKINE_ACTIVITY_ASISTENCIA_LOTES_CONCURRENTES_POR_SEDE` |
+| `akine.activity.asistencia.lotes-espera-maxima` | `2s` | `AKINE_ACTIVITY_ASISTENCIA_LOTES_ESPERA_MAXIMA` |
+
+**Qué hace con N > 0.** `LimiteDeLotesPorSede` guarda un semáforo justo por sede, **en memoria y
+por instancia**: con varias instancias el techo efectivo es N × instancias, que es lo que se quiere,
+porque lo que se protege es el pool de cada instancia. El lote lo toma **después** de autorizar y
+**antes** del primer ítem, sin conexión abierta (el lote no es transaccional y `open-in-view` está
+apagado), y lo suelta después del último. El que no consigue lugar espera hasta
+`lotes-espera-maxima`; si no, **503 `service-unavailable` con `Retry-After`** y ningún ítem escrito.
+El lote de un solo ítem y el registro individual no pasan por el límite. **No cambia
+transacciones, locks ni el resultado por ítem**: el semáforo envuelve el bucle, no lo que hay
+adentro (`ListadosDeActividadSentenciasIT` sigue en 11/12 sentencias por participante).
+
+**503 y no 429.** 429 dice que el *cliente* mandó demasiados pedidos (RFC 6585) y es lo que viaja
+como `rate-limited` en el login, con un mensaje de "demasiados intentos". Acá quien recibe el
+rechazo mandó uno: el límite es la capacidad de la sede, compartida entre todos los que toman lista
+ahí. Es la sobrecarga transitoria de RFC 9110 §15.6.4, y `service-unavailable` ya es el tipo que
+viaja cuando el pool no entrega conexión, que es justo lo que el límite evita. Sin problemType
+nuevo; el contrato pasa a **0.127.0** sólo para declarar el 503 y su `Retry-After` en
+`registrarLote` (aditivo).
+
+**Métricas** (`docs/observabilidad.md` §8): `akine_asistencia_lotes_total{resultado=inmediato|tras-espera|rechazado}`
+y el gauge `akine_asistencia_lotes_en_espera`, registrados en cero aunque esté apagado.
+
+**Cuándo encenderlo.** Cuando, en el entorno de destino, tomar lista en lote haga subir
+`hikaricp_connections_pending` y el p95 de lo interactivo (el síntoma de la corrida 1 de §12). Con
+pool de 10, un lote ocupa **una** conexión a la vez, así que N = 1 o 2 por sede deja holgura aun con
+varias sedes tomando lista; se sube de a uno mirando `rechazado`. Runbook: R8 de
+`docs/operaciones/runbooks.md`. **No se midió con k6**: se enciende recién con números del entorno
+de destino (§7), y esta máquina no los da.
+
+**Tests.** `LimiteDeLotesPorSedeTest` (unitario: apagado, N lugares, por sede, espera que entra,
+rechazo con `Retry-After` redondeado hacia arriba y nunca 0, doble `close`, interrupción) y, contra
+MySQL, `LimiteDeLotesPorSedeIT` con N=1 y 2 s: un lote A retenido en el `FOR SHARE` de su clase
+(`CarreraDirigida`) y un lote B de **otra** clase de la misma sede, que (1) espera los 2 s y recibe
+el rechazo sin escribir nada mientras A termina bien, (2) espera y entra cuando A termina, y (3) con
+un ítem o por el registro individual no espera. `ActivityControllersTest` cubre el 503 por HTTP.

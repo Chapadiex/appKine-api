@@ -19,6 +19,7 @@ leen logs. Nunca pegar en un ticket una línea de log o una fila con datos de un
 | [R5](#r5-error-500-correlacion-por-x-request-id--traceid) | Error 500: correlación por `X-Request-Id` / `traceId` | Un flujo roto |
 | [R6](#r6-restauracion-de-adjuntos) | Restauración de adjuntos | Documentos que no se descargan |
 | [R7](#r7-jobs-de-pases-y-abonos-vencimiento-renovación-y-avisos) | Jobs de pases y abonos: vencimiento, renovación y avisos | Saldos que no vencen, abonos que no se renuevan, avisos que no llegan |
+| [R8](#r8-lotes-de-asistencia-que-saturan-el-pool-límite-por-sede) | Lotes de asistencia que saturan el pool: límite por sede | Todo lento mientras se toma lista; con el límite, 503 en el lote |
 
 ---
 
@@ -449,3 +450,62 @@ SELECT event_type, entity_id, previous_state, new_state, occurred_at
   no se encola otro. Si hace falta reenviar, el reintento administrativo del outbox (R2).
 - No cambiar `vigencia_hasta` a mano para "salvar" un pase vencido: la ventana de gracia no existe
   (U-40 e) y el job lo vencería igual con su movimiento.
+
+---
+
+## R8. Lotes de asistencia que saturan el pool: límite por sede
+
+**Contexto.** Tomar lista en lote (`POST .../clases/{claseId}/asistencias/lote`) corre **una
+transacción por participante** (RF-M13-008): un lote de 25 son 25 commits seguidos que retienen
+conexiones del pool. Con varios lotes a la vez en la misma sede el pool se agota y arrastra a todo
+lo demás (`docs/carga.md` §12: con 2 lotes/s las lecturas pasaron de p95 ~95 ms a ~2,2 s). DP-30
+dejó preparada la opción (c) de U-49, **apagada por defecto**: un semáforo por sede que deja pasar
+hasta N lotes a la vez.
+
+| Propiedad | Default | Variable de entorno |
+|---|---|---|
+| `akine.activity.asistencia.lotes-concurrentes-por-sede` | `0` (sin límite) | `AKINE_ACTIVITY_ASISTENCIA_LOTES_CONCURRENTES_POR_SEDE` |
+| `akine.activity.asistencia.lotes-espera-maxima` | `2s` | `AKINE_ACTIVITY_ASISTENCIA_LOTES_ESPERA_MAXIMA` |
+
+Con N > 0, el lote que no consigue lugar espera hasta `lotes-espera-maxima` y, si sigue sin
+lugar, responde **503 `service-unavailable` con `Retry-After`** (la espera redondeada hacia arriba,
+mínimo 1 s) **sin haber registrado ningún ítem**. El lote de un solo ítem y el registro individual
+no pasan por el límite. **El semáforo es en memoria y por instancia**: con dos backends el techo
+efectivo por sede es 2 × N. Cambiar el valor exige reiniciar la instancia.
+
+**Síntomas**
+- Sin el límite: mientras se toma lista en una sede grande, todo el sistema se pone lento; en
+  Prometheus `hikaricp_connections_pending` > 0 y el p95 de las lecturas sube junto con los
+  `POST .../asistencias/lote`. Puede disparar la alerta del pool (§6 de `docs/observabilidad.md`).
+- Con el límite: la recepción ve "el servicio no pudo atender, reintente" al enviar la lista; en el
+  log, `Lote de asistencia rechazado por el limite de la sede: consultorioId=...`.
+
+**Diagnóstico**
+
+```promql
+# Lotes por resultado en la última hora (con el límite encendido)
+sum by (resultado) (increase(akine_asistencia_lotes_total{application="akine-api"}[1h]))
+# Lotes esperando ahora, por instancia
+akine_asistencia_lotes_en_espera{application="akine-api"}
+# El pool mientras tanto
+max_over_time(hikaricp_connections_pending{application="akine-api"}[15m])
+```
+
+```bash
+# Sedes con rechazos en la última hora (solo ids)
+docker logs --since 1h akine-api 2>&1 | jq -r 'select(.message|test("Lote de asistencia rechazado")) | .message' | sort | uniq -c | sort -rn | head
+```
+
+| Lo que se ve | Causa | Acción |
+|---|---|---|
+| Pool con pendientes y el p95 general arriba cada vez que hay lotes, límite apagado | El caso que DP-30 previó | Encender con `..._LOTES_CONCURRENTES_POR_SEDE=1` o `2` y reiniciar. Empezar bajo: cada lote de N ítems usa una conexión a la vez, así que el límite total de conexiones ocupadas por lotes es sedes activas × N × instancias |
+| `rechazado` crece y la recepción se queja de reintentar | N demasiado bajo para la sede, o lotes muy largos (cerca del tope de 200 ítems) | Subir N de a uno, o subir `lotes-espera-maxima` (cuesta un hilo de Tomcat esperando por cada lote en espera). Verificar que el pool no vuelva a saturarse |
+| `tras-espera` alto y `rechazado` en cero | El límite está haciendo su trabajo: los lotes se encolan unos segundos | Nada |
+| Rechazos con el gauge en cero | Normal: el gauge es instantáneo y el rechazo ocurre al final de la espera | Mirar el contador, no el gauge |
+| Rechazos en una sola instancia | El balanceador manda una sede a una instancia (afinidad) | El límite es por instancia: es esperable |
+
+**Acciones que no se hacen**
+- No subir el pool de Hikari como primera medida para tapar los lotes: sin el límite, más conexiones
+  sólo corre el techo y deja menos holgura a la base.
+- No agrupar ítems en una transacción para "acelerar" el lote: DP-30 lo descartó (opción b), porque
+  cambia la transacción independiente por participante de RF-M13-008.
