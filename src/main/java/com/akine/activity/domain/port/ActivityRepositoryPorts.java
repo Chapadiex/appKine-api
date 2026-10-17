@@ -407,8 +407,12 @@ public final class ActivityRepositoryPorts {
 		 * en que se consumen —el que vence antes primero— y <b>bloqueados</b> ({@code FOR UPDATE}):
 		 * es una lectura actual, no la foto de {@code REPEATABLE READ}, y serializa dos consumos
 		 * simultaneos de la misma persona.
+		 *
+		 * <p>Trae el saldo de cada uno leido bajo ese mismo lock (AKINE-09.05): mientras la
+		 * transaccion lo retiene nadie mas mueve {@code creditos_disponibles}, asi que despues de un
+		 * {@link #consumirUno} que toco la fila el saldo es exactamente uno menos, sin releerlo.
 		 */
-		List<Long> lockElegibles(long organizationId, long personaId, long ofertaId, LocalDate fecha);
+		List<PaseElegible> lockElegibles(long organizationId, long personaId, long ofertaId, LocalDate fecha);
 
 		/**
 		 * Descuenta un credito si y solo si el pase sigue activo, vigente ese dia y con saldo. Una
@@ -590,6 +594,10 @@ public final class ActivityRepositoryPorts {
 
 	/** Lo que una asistencia tiene tomado de un pase. */
 	public record NetoDeAsistencia(long paseId, long neto) {
+	}
+
+	/** Un pase que puede cubrir una asistencia, con el saldo leido bajo su lock. */
+	public record PaseElegible(long paseId, int creditosDisponibles) {
 	}
 
 	public interface ClaseEventoRepositoryPort {

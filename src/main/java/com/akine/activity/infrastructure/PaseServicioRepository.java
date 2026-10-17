@@ -5,6 +5,7 @@ import com.akine.activity.domain.port.ActivityRepositoryPorts.CandidatoAAvisar;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.CandidatoARenovar;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.CandidatoAVencer;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.EstadoDePase;
+import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseElegible;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseServicioRepositoryPort;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -37,7 +38,7 @@ import java.util.Optional;
  * <p>{@code clearAutomatically = false} a proposito: limpiar el contexto desacoplaria la asistencia
  * y la inscripcion que el llamador tiene cargadas a mitad de transaccion (el defecto de #57). La
  * entidad nunca se vuelve a guardar despues de un consumo y el saldo se relee con
- * {@link #saldoActual}.
+ * {@link #saldoActual}, salvo en el consumo por asistencia, que lo saca de {@link #lockElegibles}.
  */
 public interface PaseServicioRepository
 		extends JpaRepository<PaseServicio, Long>, PaseServicioRepositoryPort {
@@ -76,8 +77,16 @@ public interface PaseServicioRepository
 			@Param("personaId") long personaId);
 
 	@Override
+	default List<PaseElegible> lockElegibles(
+			long organizationId, long personaId, long ofertaId, LocalDate fecha) {
+		return filasElegiblesBloqueadas(organizationId, personaId, ofertaId, fecha).stream()
+				.map(fila -> new PaseElegible(
+						((Number) fila[0]).longValue(), ((Number) fila[1]).intValue()))
+				.toList();
+	}
+
 	@Query(value = """
-			SELECT id FROM pase_servicio
+			SELECT id, creditos_disponibles FROM pase_servicio
 			 WHERE organization_id = :organizationId
 			   AND persona_id = :personaId
 			   AND snapshot_oferta_id = :ofertaId
@@ -88,7 +97,7 @@ public interface PaseServicioRepository
 			 ORDER BY vigencia_hasta ASC, id ASC
 			 FOR UPDATE
 			""", nativeQuery = true)
-	List<Long> lockElegibles(
+	List<Object[]> filasElegiblesBloqueadas(
 			@Param("organizationId") long organizationId,
 			@Param("personaId") long personaId,
 			@Param("ofertaId") long ofertaId,

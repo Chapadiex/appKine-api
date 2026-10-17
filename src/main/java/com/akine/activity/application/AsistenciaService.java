@@ -27,6 +27,7 @@ import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseProgramadaRep
 import com.akine.activity.domain.port.ActivityRepositoryPorts.InscripcionClaseRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
@@ -123,8 +124,8 @@ public class AsistenciaService {
 
 	/**
 	 * La transaccion de cada item del lote. <b>No alcanza con que {@link #registrar} este
-	 * anotado</b>: el lote lo invoca como {@code this.registrar(...)}, esa llamada no pasa por el
-	 * proxy de Spring y la anotacion no se aplica. Sin esta plantilla cada item corria <b>sin
+	 * anotado</b>: el lote invoca su nucleo como llamada interna ({@code registrarYaAutorizado}),
+	 * que no pasa por el proxy de Spring, y la anotacion no se aplica. Sin esta plantilla cada item corria <b>sin
 	 * transaccion</b> —cada {@code saveAndFlush} commiteaba por su cuenta— y un fallo a mitad de
 	 * item dejaba la inscripcion proyectada como {@code ASISTIO} sin la fila de asistencia que la
 	 * respalda.
@@ -310,14 +311,33 @@ public class AsistenciaService {
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
 
+		return registrarYaAutorizado(actor, sede, claseId, command, new LecturasDeConsumo(sede));
+	}
+
+	/**
+	 * Lo que {@link #registrar} hace despues de validar el tenant, la sede y el permiso. El lote
+	 * lo llama una vez por item, dentro de la transaccion del item, con esas tres cosas ya
+	 * resueltas para todo el pedido.
+	 *
+	 * <p><b>Todo lo que toma un lock sigue aca adentro</b>, y en el mismo orden: la clase en
+	 * compartido, despues la inscripcion y la asistencia, despues el pase.
+	 */
+	private ResultadoDeAsistencia registrarYaAutorizado(
+			OperatingActor actor,
+			ConsultorioSnapshot sede,
+			long claseId,
+			RegistrarAsistenciaCommand command,
+			LecturasDeConsumo lecturas) {
+
+		long organizationId = sede.organizationId();
 		ClaseProgramada clase = exigirClaseQueAdmiteAsistencia(
-				organizationId, consultorioId, claseId, false);
+				organizationId, sede.id(), claseId, false);
 		InscripcionClase inscripcion = inscripciones
 				.findByIdInScope(organizationId, claseId, command.inscripcionId())
 				.orElseThrow(() ->
 						new InscripcionNotAccessibleException(command.inscripcionId()));
 
-		return aplicar(actor, sede, clase, inscripcion, command, Instant.now());
+		return aplicar(actor, sede, clase, inscripcion, command, Instant.now(), lecturas);
 	}
 
 	/** El nucleo compartido por la operacion individual, el lote y el ingreso sin inscripcion. */
@@ -327,7 +347,8 @@ public class AsistenciaService {
 			ClaseProgramada clase,
 			InscripcionClase inscripcion,
 			RegistrarAsistenciaCommand command,
-			Instant ahora) {
+			Instant ahora,
+			LecturasDeConsumo lecturas) {
 
 		long organizationId = clase.getOrganizationId();
 		Optional<AsistenciaActividad> previa =
@@ -341,9 +362,9 @@ public class AsistenciaService {
 				return new ResultadoDeAsistencia(
 						AsistenciaView.de(existente), InscripcionView.de(inscripcion), false, false);
 			}
-			return corregir(actor, sede, clase, inscripcion, existente, command, ahora);
+			return corregir(actor, sede, clase, inscripcion, existente, command, ahora, lecturas);
 		}
-		return crear(actor, sede, clase, inscripcion, command, ahora);
+		return crear(actor, sede, clase, inscripcion, command, ahora, lecturas);
 	}
 
 	private ResultadoDeAsistencia crear(
@@ -352,7 +373,8 @@ public class AsistenciaService {
 			ClaseProgramada clase,
 			InscripcionClase inscripcion,
 			RegistrarAsistenciaCommand command,
-			Instant ahora) {
+			Instant ahora,
+			LecturasDeConsumo lecturas) {
 
 		EstadoInscripcion anterior = inscripcion.getEstado();
 		inscripcion.marcarAsistencia(command.resultado().estadoDeInscripcion(), ahora);
@@ -368,7 +390,7 @@ public class AsistenciaService {
 		auditar(actor, guardada, sede, "ASISTENCIA_REGISTRADA", anterior.name(), null, ahora);
 		// AKINE-08.07: la asistencia consume credito de un pase si la oferta cobra por pack.
 		ConsumoDeCredito consumo = consumoDePases.aplicar(
-				clase, guardada, evento, actor.accountId(), null, ahora);
+				clase, guardada, true, evento, actor.accountId(), null, ahora, lecturas);
 		log.info("Asistencia registrada: asistenciaId={} claseId={} resultado={} origen={}",
 				guardada.getId(), guardada.getClaseId(), command.resultado(), command.origen());
 
@@ -387,7 +409,8 @@ public class AsistenciaService {
 			InscripcionClase inscripcion,
 			AsistenciaActividad existente,
 			RegistrarAsistenciaCommand command,
-			Instant ahora) {
+			Instant ahora,
+			LecturasDeConsumo lecturas) {
 
 		ResultadoAsistencia anterior = existente.corregir(
 				command.resultado(), command.observaciones(), command.motivo(),
@@ -403,7 +426,8 @@ public class AsistenciaService {
 				ahora);
 		// AKINE-08.07: una correccion a ausente devuelve el credito; de vuelta a presente lo toma.
 		ConsumoDeCredito consumo = consumoDePases.aplicar(
-				clase, corregida, evento, actor.accountId(), command.motivo(), ahora);
+				clase, corregida, false, evento, actor.accountId(), command.motivo(), ahora,
+				lecturas);
 		log.info("Asistencia corregida: asistenciaId={} de={} a={}",
 				corregida.getId(), anterior, command.resultado());
 
@@ -442,12 +466,26 @@ public class AsistenciaService {
 							+ comandos.size());
 		}
 
+		// AKINE-09.05: contexto, sede y permiso son los mismos para todos los items, y antes se
+		// leian adentro de cada transaccion (tres sentencias por participante). Se resuelven una vez
+		// por pedido y en el mismo orden que antes: el primer item fallaba con la misma excepcion,
+		// que no se traduce a resultado parcial y corta el lote entero. Como en las mutaciones de
+		// #91, el permiso se decide con lo leido en este pedido y la ventana de revocacion sigue
+		// sin cruzar al pedido siguiente. Nada de esto toma un lock: los locks siguen en el item.
+		long organizationId = exigirContexto(actor);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
+		PermissionDecision decision =
+				decidir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
+		LecturasDeConsumo lecturas = new LecturasDeConsumo(sede);
+
 		List<ItemDeLote> items = new ArrayList<>(comandos.size());
 		for (RegistrarAsistenciaCommand comando : comandos) {
-			items.add(ejecutarItem(actor, consultorioId, claseId, comando));
+			// Un SUPPORT_ACCESS_USED por item, igual que cuando cada item evaluaba su permiso.
+			soporte.registrarSiCorresponde(decision, actor.accountId(), organizationId,
+					consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
+			items.add(ejecutarItem(actor, sede, claseId, comando, lecturas));
 		}
 
-		long organizationId = exigirContexto(actor);
 		return ResultadoDeLote.de(items, cupos(organizationId, consultorioId, claseId));
 	}
 
@@ -462,12 +500,12 @@ public class AsistenciaService {
 	 * segundo vocabulario de errores.
 	 */
 	private ItemDeLote ejecutarItem(
-			OperatingActor actor, long consultorioId, long claseId,
-			RegistrarAsistenciaCommand comando) {
+			OperatingActor actor, ConsultorioSnapshot sede, long claseId,
+			RegistrarAsistenciaCommand comando, LecturasDeConsumo lecturas) {
 
 		try {
 			ResultadoDeAsistencia resultado = transaccionPorItem.execute(
-					estado -> registrar(actor, consultorioId, claseId, comando));
+					estado -> registrarYaAutorizado(actor, sede, claseId, comando, lecturas));
 			return ItemDeLote.ok(comando.inscripcionId(), resultado);
 		} catch (InscripcionNotAccessibleException excepcion) {
 			// 404 y nunca "no es tuyo": sin el predicado de clase y tenant en la consulta, un lote
@@ -559,7 +597,7 @@ public class AsistenciaService {
 
 		return aplicar(actor, sede, clase, inscripcion, new RegistrarAsistenciaCommand(
 				inscripcion.getId(), command.resultado(), OrigenAsistencia.INGRESO_SIN_INSCRIPCION,
-				command.observaciones(), null), ahora);
+				command.observaciones(), null), ahora, new LecturasDeConsumo(sede));
 	}
 
 	// =================================================================================
@@ -844,8 +882,15 @@ public class AsistenciaService {
 			OperatingActor actor, long organizationId, long consultorioId, String permiso) {
 
 		// AKINE-09.02: la decision ya no se descarta; si vino por soporte queda auditada.
-		soporte.registrarSiCorresponde(permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now())),
+		soporte.registrarSiCorresponde(decidir(actor, organizationId, consultorioId, permiso),
 				actor.accountId(), organizationId, consultorioId, permiso);
+	}
+
+	/** Exige el permiso y devuelve la decision, sin auditar el acceso de soporte. */
+	private PermissionDecision decidir(
+			OperatingActor actor, long organizationId, long consultorioId, String permiso) {
+
+		return permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now()));
 	}
 }

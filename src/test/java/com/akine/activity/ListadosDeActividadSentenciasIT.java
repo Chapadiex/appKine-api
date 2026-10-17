@@ -103,15 +103,39 @@ class ListadosDeActividadSentenciasIT {
 		Escenario una = escenarioDeLote(1);
 		Escenario seis = escenarioDeLote(MUCHAS);
 
-		int conUno = ContadorDeSentencias.contar(() -> lote(una));
-		int conSeis = ContadorDeSentencias.contar(() -> lote(seis));
-		int porParticipante = (conSeis - conUno) / (MUCHAS - 1);
-		System.out.printf("[sentencias] asistencia en lote: 1 participante = %d, %d = %d (%d por participante)%n",
-				conUno, MUCHAS, conSeis, porParticipante);
+		// Las tres pasadas que hace la carga de docs/carga.md §12: el alta (presente, consume), la
+		// correccion a ausente (devuelve) y la correccion de vuelta a presente (vuelve a consumir).
+		Map<String, Integer> porParticipante = new LinkedHashMap<>();
+		porParticipante.put("alta, presente (consume)",
+				medirLote(una, seis, ResultadoAsistencia.PRESENTE, null));
+		porParticipante.put("correccion a ausente (devuelve)",
+				medirLote(una, seis, ResultadoAsistencia.AUSENTE, "Se marco por error"));
+		porParticipante.put("correccion a presente (vuelve a consumir)",
+				medirLote(una, seis, ResultadoAsistencia.PRESENTE, "Llego tarde"));
 
+		// AKINE-09.05 bajo el costo sin cambiar ninguna regla (antes: 18, 15 y 18). Es un trinquete:
+		// si algo vuelve a leer por item lo que es igual para todo el lote, esto se rompe.
+		assertThat(porParticipante.get("alta, presente (consume)")).isLessThanOrEqualTo(11);
+		assertThat(porParticipante.get("correccion a ausente (devuelve)")).isLessThanOrEqualTo(12);
+		assertThat(porParticipante.get("correccion a presente (vuelve a consumir)")).isLessThanOrEqualTo(12);
+	}
+
+	/** Sentencias por participante de un lote, midiendo el de uno y el de seis. */
+	private int medirLote(Escenario una, Escenario seis, ResultadoAsistencia resultado, String motivo) {
+		List<String> deUno = ContadorDeSentencias.capturar(() -> lote(una, resultado, motivo));
+		int conUno = deUno.size();
+		for (int i = 0; i < deUno.size(); i++) {
+			System.out.printf("[sentencias] %s %s, lote de 1, #%02d %s%n", resultado, motivo == null ? "" : "(correccion)",
+					i + 1, deUno.get(i).replaceAll("\\s+", " "));
+		}
+		int conSeis = ContadorDeSentencias.contar(() -> lote(seis, resultado, motivo));
+		int porParticipante = (conSeis - conUno) / (MUCHAS - 1);
+		System.out.printf("[sentencias] asistencia en lote, %s%s: 1 participante = %d, %d = %d (%d por participante)%n",
+				resultado, motivo == null ? "" : " (correccion)", conUno, MUCHAS, conSeis, porParticipante);
 		// Lineal y sin nada que crezca con lo que ya se registro: el sexto cuesta lo mismo que el
 		// segundo. Si el costo por item dependiera de cuantos van, la diferencia no seria exacta.
 		assertThat(conSeis - conUno).isEqualTo(porParticipante * (MUCHAS - 1));
+		return porParticipante;
 	}
 
 	// =================================================================================
@@ -173,12 +197,14 @@ class ListadosDeActividadSentenciasIT {
 		return new Escenario(tenant, clase, 0, inscripciones);
 	}
 
-	private void lote(Escenario e) {
-		asistenciaService.registrarLote(e.tenant.actor(), e.tenant.consultorioId(), e.clase,
+	private void lote(Escenario e, ResultadoAsistencia resultado, String motivo) {
+		var lote = asistenciaService.registrarLote(e.tenant.actor(), e.tenant.consultorioId(), e.clase,
 				e.inscripciones.stream()
-						.map(id -> new RegistrarAsistenciaCommand(id, ResultadoAsistencia.PRESENTE,
-								OrigenAsistencia.MOSTRADOR, null, null))
+						.map(id -> new RegistrarAsistenciaCommand(id, resultado,
+								OrigenAsistencia.MOSTRADOR, null, motivo))
 						.toList());
+		// Que se haya medido lo que se dice: ningun item fallo.
+		assertThat(lote.fallidos()).isZero();
 	}
 
 	/** {@code [sentencias con una fila, sentencias con seis]}, verificando que el listado trajo las filas. */
