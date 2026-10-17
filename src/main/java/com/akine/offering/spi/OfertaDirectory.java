@@ -33,6 +33,14 @@ public interface OfertaDirectory {
 	Map<Long, OfertaSnapshot> findTodas(long organizationId, long consultorioId, Collection<Long> ofertaIds);
 
 	/**
+	 * Servicio y naturaleza de esas ofertas de la sede, activas o no, indexadas por id (AKINE-09.01b).
+	 * Mismo criterio que {@link #findTodas}: las de otro tenant o sede no aparecen. Dos consultas,
+	 * no una por oferta.
+	 */
+	Map<Long, ClasificacionDeOferta> clasificar(
+			long organizationId, long consultorioId, Collection<Long> ofertaIds);
+
+	/**
 	 * Lo que cuesta la oferta. Ver {@link PrecioDeOferta}: viaja aparte del snapshot general.
 	 */
 	Optional<PrecioDeOferta> precioDe(long organizationId, long consultorioId, long ofertaId);

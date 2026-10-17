@@ -9,10 +9,11 @@ package com.akine.reporting.spi;
  *
  * <p><b>Los de la segunda entrega entran con su fuente, nunca vacios</b> (AKINE-09.01):
  * {@code CLASES} es RF-M23-007 y {@code PASES} es RF-M23-010, los dos alimentados por
- * {@code activity} (M28/M29). RF-M23-008 (continuidad del circuito) y RF-M23-009 (rentabilidad por
- * servicio) siguen sin valor: el primero cruza historias clinicas con actividades preventivas y el
- * segundo necesita un modelo de costeo que no existe. Un reporte que muestra cero porque su fuente
- * no existe es peor que un reporte ausente: el operador no distingue "no hubo" de "no lo se".
+ * {@code activity} (M28/M29). {@code CONTINUIDAD} es RF-M23-008 y {@code SERVICIOS} la parte de
+ * RF-M23-009 que tiene fuente (AKINE-09.01b): los ingresos por servicio. <b>La rentabilidad no</b>:
+ * ningun egreso se imputa a un servicio y no hay modelo de costeo (U-50); el reporte lo declara en
+ * una advertencia en vez de mostrar un margen inventado. Un reporte que muestra cero porque su
+ * fuente no existe es peor que un reporte ausente: el operador no distingue "no hubo" de "no lo se".
  *
  * <p>El nombre viaja al cliente en minusculas dentro de la ruta, asi que renombrar un valor es un
  * cambio de contrato aunque no toque ningun DTO.
@@ -44,5 +45,17 @@ public enum ReporteCode {
 	 * Estado de pases y abonos (RF-M23-010): ventas, movimientos de creditos, vencimientos,
 	 * anulaciones y renovaciones. Un credito no es dinero (RN-M23-006).
 	 */
-	PASES
+	PASES,
+
+	/**
+	 * Continuidad del circuito de salud (RF-M23-008): cuantas personas con alta clinica en el
+	 * periodo pasan despues a un servicio de cada naturaleza, sin contenido clinico ni personas.
+	 */
+	CONTINUIDAD,
+
+	/**
+	 * Ingresos por servicio (RF-M23-009): devengado y cobrado por oferta, separando prestaciones,
+	 * clases, packs y abonos, y los creditos consumidos aparte, que no son ingreso.
+	 */
+	SERVICIOS
 }

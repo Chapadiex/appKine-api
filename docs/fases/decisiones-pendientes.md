@@ -26,8 +26,8 @@
 | A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
 | B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42, U-46, U-48, U-49) | 14 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
-| D. No bloquean nada (U-35 a U-37, U-40, U-41, U-43 a U-45) | 8 |
-| **Total** | **48** |
+| D. No bloquean nada (U-35 a U-37, U-40, U-41, U-43 a U-45, U-50) | 9 |
+| **Total** | **49** |
 
 > **Revisado el 16/10/2026** (etapa 09.04): U-39 (#129), U-40 (#135), U-41 (#139) y U-42 (#141)
 > estaban; de las cuatro "Decisiones a confirmar" de #140 (08.08), la primera —renovar un abono
@@ -602,6 +602,29 @@ dejar el MVP como está:
 - **Recomendado:** ninguna fuente recomienda (diseño §10.8 n.º 9).
 - **Fase / RF:** F9 (08.08); RF-M29-007. Diseño §10.2 paso 3.
 - **Destraba:** nada del MVP.
+
+### U-50 · Cómo se costea un servicio para medir su rentabilidad
+
+- **Pregunta:** RF-M23-009 se titula *"rentabilidad e ingresos por servicio"* y pide *"consolidar
+  obligaciones, cobros y caja por Oferta/Servicio"*. Los ingresos tienen fuente; **los costos no**.
+  Hay que fijar: (a) si un egreso (M22) se imputa a una oferta o servicio —directo al registrarlo, o
+  por una regla de prorrateo (por horas, por sesiones, por participantes)—, y qué pasa con los
+  egresos generales (alquiler, insumos) que no son de ningún servicio; (b) si los honorarios entran
+  por el egreso declarado de hoy o por la liquidación calculada que espera **U-41**; (c) si la
+  **caja** por servicio hace falta además del cobrado imputado, y con qué regla se reparte un cobro
+  que paga deudas de dos ofertas con dos medios; (d) si el `PROFESIONAL` ve la continuidad de los
+  pacientes a los que él dio el alta (RF-M23-008), que hoy se le omite porque su `reporte:read` es
+  de actividad propia y la sección cuenta lo que pasa después en servicios de otros.
+- **Hoy (AKINE-09.01b, contrato 0.123.0):** el reporte `SERVICIOS` da devengado y cobrado imputado
+  por oferta y concepto (prestación, clase, pack, abono), anticipos sin imputar y créditos
+  consumidos, y declara siempre la advertencia `rentabilidad-sin-costos`. `egreso` no tiene ninguna
+  columna que lo ligue a oferta ni a servicio (V57): su beneficiario es un colaborador o un externo y
+  su categoría es contable. La caja no se reparte. `CONTINUIDAD` se omite al `PROFESIONAL`.
+- **Recomendado:** ninguna fuente recomienda. Lo único cerrado es que **no se inventa**: sin (a) el
+  reporte no muestra margen.
+- **Fase / RF:** F10 (09.01b); RF-M23-009, RF-M23-008, RF-M22-006. Diseño
+  [`../diseno/AKINE-09.01b-continuidad-y-rentabilidad.md`](../diseno/AKINE-09.01b-continuidad-y-rentabilidad.md) §3.
+- **Destraba:** la rentabilidad de RF-M23-009. Nada del MVP.
 
 ---
 

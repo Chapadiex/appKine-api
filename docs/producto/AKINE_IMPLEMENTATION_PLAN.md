@@ -5636,7 +5636,7 @@ Una etapa está terminada solo si:
 | 08.07 | S18 | M19/M20/M29 | Ledger de créditos | 08.06 | Sí | Sí | Sí | U/I/Conc/E2E | HECHA | api #129, #135, #138, #142 · web #96, #98, #101 |
 | 08.08 | S19 | M20/M26/M29 | Abonos y vencimientos | 01.02, 08.07 | Sí | Sí | Sí | U/I/Jobs/E2E | HECHA (U-43 a U-45 por confirmar) | api #135, #140, #142 · web #103 |
 | 08.09 | S19 | M21/M22/M24 | Economía y auditoría servicios | 07.04, 07.05, 08.05, 08.08 | Sí | Sí | Sí | U/I/Rec/E2E | PARCIAL: liquidación por clase espera U-41 | api #139 · web #102 |
-| 09.01 | S20 | M23/M28/M29 | Reportes ampliados | 07.06, 08.09 | Sí | Sí | Índices | U/I/Rec/Perf | IMPLEMENTADA salvo RF-M23-008/009 (sin cimiento) | api #145 · web #107 |
+| 09.01 | S20 | M23/M28/M29 | Reportes ampliados | 07.06, 08.09 | Sí | Sí | Índices | U/I/Rec/Perf | IMPLEMENTADA; RF-M23-008 y los ingresos de RF-M23-009 en 09.01b, la rentabilidad espera U-50 (sin costos por servicio) | api #145 · web #107 · api 09.01b |
 | 09.02 | S20 | Transversal | Seguridad, privacidad y a11y final | 09.01 | Sí | Sí | Revisar | Sec/A11y/E2E | EN CURSO: superficie de F9 hecha; faltan U-06 y U-46 | api #146 · web #109 |
 | 09.03 | S21 | Transversal | SLO, concurrencia y observabilidad final | 09.02 | Sí | Sí | Optimizar | Perf/Conc/Res | EN CURSO: superficie de F9 hecha; el SLO no se cumple (U-48, U-49) | api #147 |
 | 09.04 | S21 | Gate final | Release M01–M29 | 09.03 | Sí | Sí | Ensayo | E2E/Smoke/Restore | EN CURSO: RC-1 en borrador; faltan QA manual, aprobación y tag | api #144 · web #106 |
