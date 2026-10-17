@@ -1,5 +1,7 @@
 package com.akine.resource.application;
 
+import com.akine.organization.spi.OrganizationDirectory;
+import com.akine.organization.spi.OrganizationSnapshot;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
@@ -29,6 +31,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,6 +76,9 @@ class CatalogoSolicitudServiceTest {
 	@Mock
 	private AuditTrail auditTrail;
 
+	@Mock
+	private OrganizationDirectory organizaciones;
+
 	private CatalogoSolicitudService service;
 
 	private final OperatingActor tenant =
@@ -83,7 +89,10 @@ class CatalogoSolicitudServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new CatalogoSolicitudService(
-				solicitudes, catalogoService, permissionGuard, auditTrail);
+				solicitudes, catalogoService, permissionGuard, auditTrail, organizaciones);
+		given(organizaciones.find(ORG_ID))
+				.willReturn(Optional.of(new OrganizationSnapshot(ORG_ID, "Centro Sintetico", true)));
+		given(organizaciones.findAll(any())).willReturn(Map.of());
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("ORGANIZACION", false));
@@ -160,6 +169,37 @@ class CatalogoSolicitudServiceTest {
 
 		verify(solicitudes).listarPorTenant(ORG_ID, "PENDIENTE");
 		verify(solicitudes).listarTodas("");
+	}
+
+	@Test
+	@DisplayName("web #106 · la bandeja de la plataforma trae el nombre de cada centro, en una sola consulta")
+	void el_listado_resuelve_el_nombre_de_cada_organizacion() {
+		long otraOrg = ORG_ID + 1;
+		CatalogoSolicitud propia = solicitud();
+		CatalogoSolicitud ajena = conId(new CatalogoSolicitud(otraOrg, null, CatalogoTipo.ESPECIALIDAD,
+				"Terapia ocupacional", null, "La ejercen tres profesionales", ACCOUNT_ID));
+		CatalogoSolicitud huerfana = conId(new CatalogoSolicitud(otraOrg + 1, null, CatalogoTipo.PRACTICA,
+				"Drenaje", null, "Sin centro", ACCOUNT_ID));
+		given(solicitudes.listarTodas(anyString())).willReturn(List.of(propia, ajena, huerfana));
+		given(organizaciones.findAll(any())).willReturn(Map.of(
+				ORG_ID, new OrganizationSnapshot(ORG_ID, "Centro Sintetico", true),
+				otraOrg, new OrganizationSnapshot(otraOrg, "Otro Centro", false)));
+
+		List<CatalogoSolicitudView> vistas = service.listar(plataforma, null);
+
+		assertThat(vistas).extracting(CatalogoSolicitudView::organizationName)
+				.containsExactly("Centro Sintetico", "Otro Centro", null);
+		verify(organizaciones).findAll(List.of(ORG_ID, otraOrg, otraOrg + 1));
+		verify(organizaciones, never()).find(org.mockito.ArgumentMatchers.anyLong());
+	}
+
+	@Test
+	@DisplayName("web #106 · el alta devuelve el nombre del centro que pide")
+	void el_alta_devuelve_el_nombre_de_la_organizacion() {
+		CatalogoSolicitudView creada = service.crear(tenant, CatalogoTipo.PRACTICA, "Puncion seca",
+				null, "La usamos a diario");
+
+		assertThat(creada.organizationName()).isEqualTo("Centro Sintetico");
 	}
 
 	// =================================================================================

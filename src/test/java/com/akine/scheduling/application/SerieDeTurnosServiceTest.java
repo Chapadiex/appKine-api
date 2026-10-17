@@ -1,5 +1,6 @@
 package com.akine.scheduling.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
 import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
@@ -93,7 +94,7 @@ class SerieDeTurnosServiceTest {
 	@BeforeEach
 	void prepararServicio() {
 		service = new SerieDeTurnosService(series, turnos, eventos, agendas, ofertas, pacientes,
-				consultorios, permissionGuard, iniciador, revalidador, atenciones, ciclo, auditTrail, avisos,
+				consultorios, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), iniciador, revalidador, atenciones, ciclo, auditTrail, avisos,
 				recepciones, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(

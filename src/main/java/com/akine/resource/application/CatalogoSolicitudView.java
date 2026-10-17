@@ -18,6 +18,9 @@ public record CatalogoSolicitudView(
 
 		long organizationId,
 
+		/** Nombre de la organizacion solicitante, resuelto al leer; null si no se pudo resolver. */
+		String organizationName,
+
 		Long consultorioId,
 
 		String tipo,
@@ -45,10 +48,11 @@ public record CatalogoSolicitudView(
 
 		long version) {
 
-	public static CatalogoSolicitudView de(CatalogoSolicitud solicitud) {
+	public static CatalogoSolicitudView de(CatalogoSolicitud solicitud, String organizationName) {
 		return new CatalogoSolicitudView(
 				solicitud.getId(),
 				solicitud.getOrganizationId(),
+				organizationName,
 				solicitud.getConsultorioId(),
 				solicitud.getTipo().name(),
 				solicitud.getNombrePropuesto(),

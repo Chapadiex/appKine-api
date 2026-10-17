@@ -1,5 +1,6 @@
 package com.akine.scheduling.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -80,7 +82,7 @@ class AgendaUnificadaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AgendaUnificadaService(
-				turnos, eventosExternos, ofertas, consultorios, permissionGuard);
+				turnos, eventosExternos, ofertas, consultorios, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(sede()));
 		// Todas las ofertas del dia en una sola llamada (docs/carga.md §6.4): cada id pedido resuelve.
