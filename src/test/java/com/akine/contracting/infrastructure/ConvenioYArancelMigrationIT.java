@@ -1,5 +1,6 @@
 package com.akine.contracting.infrastructure;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.contracting.ConvenioFixtures;
 import com.akine.contracting.ConvenioFixtures.Escenario;
@@ -294,7 +295,7 @@ class ConvenioYArancelMigrationIT {
 	private long insertarConvenio(
 			Escenario escenario, String codigo, String desde, String hasta) {
 
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO convenio (organization_id, consultorio_id, financiador_id, plan_id,
 				                      codigo, nombre, modalidad, vigencia_desde, vigencia_hasta,
 				                      moneda, requiere_orden, requiere_autorizacion,
@@ -304,7 +305,6 @@ class ConvenioYArancelMigrationIT {
 				""", escenario.organizationId(), escenario.consultorioId(),
 				escenario.financiadorId(), escenario.planId(), codigo, "Convenio " + codigo,
 				desde, hasta);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private void insertarArancel(

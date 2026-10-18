@@ -1,5 +1,6 @@
 package com.akine.activity;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.activity.ActividadItFixture.Desenlace;
 import com.akine.activity.application.AsistenciaService;
@@ -313,36 +314,33 @@ class AtencionGrupalIT {
 	/** Una persona con perfil de paciente e historia: {persona, historia}. */
 	private long[] crearPaciente() {
 		String apellido = "Grupal" + UUID.randomUUID().toString().substring(0, 8);
-		jdbc.update("""
+		long personaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
 				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", mundo.organizationId(), apellido, apellido.toUpperCase());
-		long personaId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
 				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", mundo.organizationId(), personaId, actor.accountId());
-		jdbc.update("""
+		long historiaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
 				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", mundo.organizationId(), personaId, actor.accountId());
-		long historiaId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		return new long[]{personaId, historiaId};
 	}
 
 	private long crearOfertaGrupal(boolean clinica) {
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);
-		jdbc.update("""
+		long servicioId = InsertarConId.insertar(jdbc, """
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
 				VALUES (?, ?, 'CLINICO', 'GRUPAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", "AGR-" + sufijo.toUpperCase(), "Servicio " + sufijo);
-		long servicioId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO oferta_servicio_consultorio
 				       (organization_id, consultorio_id, servicio_id, nombre_comercial, modalidad,
 				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
@@ -352,7 +350,6 @@ class AtencionGrupalIT {
 				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", mundo.organizationId(), mundo.consultorioId(), servicioId, "Grupal " + sufijo,
 				clinica, clinica);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long crearClase(long ofertaId) {
@@ -360,7 +357,7 @@ class AtencionGrupalIT {
 	}
 
 	private long crearClase(long ofertaId, String titulo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO clase_programada (organization_id, consultorio_id, oferta_id, titulo,
 				                              inicio, fin, capacidad, estado,
 				                              programado_por_cuenta_id, programado_en, version)
@@ -369,7 +366,6 @@ class AtencionGrupalIT {
 				        DATE_ADD(DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 7 DAY), INTERVAL 1 HOUR),
 				        8, 'PROGRAMADA', ?, UTC_TIMESTAMP(6), 0)
 				""", mundo.organizationId(), mundo.consultorioId(), ofertaId, titulo, actor.accountId());
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long inscribir(long claseId, long persona) {

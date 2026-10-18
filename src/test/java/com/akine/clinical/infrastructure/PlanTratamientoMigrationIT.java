@@ -1,5 +1,6 @@
 package com.akine.clinical.infrastructure;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -689,7 +690,7 @@ class PlanTratamientoMigrationIT {
 				? "UTC_TIMESTAMP(6), 1, 'Motivo sintetico'"
 				: "NULL, NULL, NULL";
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO plan_tratamiento (organization_id, caso_clinico_id, numero_plan, estado,
 				                              creado_en, creado_por, activado_en, activado_por,
 				                              suspendido_en, motivo_suspension,
@@ -699,7 +700,6 @@ class PlanTratamientoMigrationIT {
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""".formatted(activacion, suspension, finalizacion),
 				organizationId, casoId, numero, estado);
-		return ultimoId();
 	}
 
 	private long insertarVersion(
@@ -717,7 +717,7 @@ class PlanTratamientoMigrationIT {
 			Integer frecuencia,
 			Integer semanas) {
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO plan_tratamiento_version (organization_id, plan_tratamiento_id,
 				                                      numero_version, objetivos, indicaciones,
 				                                      frecuencia_semanal, duracion_semanas,
@@ -726,7 +726,6 @@ class PlanTratamientoMigrationIT {
 				 VALUES (?, ?, ?, 'Objetivos sinteticos', NULL, ?, ?, ?, UTC_TIMESTAMP(6), 1,
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, planId, numero, frecuencia, semanas, motivo);
-		return ultimoId();
 	}
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
@@ -771,17 +770,16 @@ class PlanTratamientoMigrationIT {
 	}
 
 	private long crearConsultorio(long organizationId) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
 				 VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, "Sede " + SECUENCIA.incrementAndGet(), ZONA);
-		return ultimoId();
 	}
 
 	private long crearOferta(long organizationId, long consultorioId) {
 		String codigo = "PLANMIG-" + SECUENCIA.incrementAndGet();
-		jdbc().update("""
+		long servicioId = InsertarConId.insertar(jdbc(), """
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default,
 				                      genera_registro_clinico_default, active, version,
@@ -789,9 +787,8 @@ class PlanTratamientoMigrationIT {
 				 VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0,
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", codigo, "Servicio " + codigo);
-		long servicioId = ultimoId();
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO oferta_servicio_consultorio
 				       (organization_id, consultorio_id, servicio_id, nombre_comercial, modalidad,
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
@@ -801,28 +798,25 @@ class PlanTratamientoMigrationIT {
 				         DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0,
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioId, servicioId, "Oferta " + codigo);
-		return ultimoId();
 	}
 
 	private long crearCaso(long organizationId, long consultorioId, long ofertaId, int numero) {
 		String documento = String.valueOf(SECUENCIA.incrementAndGet());
-		jdbc().update("""
+		long personaId = InsertarConId.insertar(jdbc(), """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Paciente', 'SINTETICA', 'PACIENTE',
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, documento, documento);
-		long personaId = ultimoId();
 
-		jdbc().update("""
+		long historiaId = InsertarConId.insertar(jdbc(), """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              created_at, updated_at)
 				 VALUES (?, ?, UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, personaId);
-		long historiaId = ultimoId();
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO caso_clinico (organization_id, historia_clinica_id, numero_caso,
 				                          oferta_id, oferta_consultorio_id, diagnostico_presuntivo,
 				                          estado, abierto_en, abierto_por, version,
@@ -830,10 +824,5 @@ class PlanTratamientoMigrationIT {
 				 VALUES (?, ?, ?, ?, ?, 'Diagnostico sintetico', 'ACTIVO', UTC_TIMESTAMP(6), 1, 0,
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, historiaId, numero, ofertaId, consultorioId);
-		return ultimoId();
-	}
-
-	private long ultimoId() {
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 }

@@ -1,5 +1,6 @@
 package com.akine.billing;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.encounter.application.SesionService;
 import com.akine.encounter.domain.Asistencia;
@@ -363,7 +364,6 @@ class CierreSinPrecioIT {
 	}
 
 	private long insertar(String insert, Object... args) {
-		jdbc.update(insert, args);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		return InsertarConId.insertar(jdbc, insert, args);
 	}
 }

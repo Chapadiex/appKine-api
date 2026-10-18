@@ -1,5 +1,6 @@
 package com.akine.person;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.person.application.AutorizacionAltaCommand;
 import com.akine.person.application.AutorizacionService;
@@ -373,14 +374,13 @@ class AutorizacionConcurrenteIT {
 
 	private long insertarPersona(long organizationId, String sufijo) {
 		String documento = String.valueOf(10000000 + Math.abs(sufijo.hashCode()) % 80000000);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Paciente', 'SINTETICA', 'PACIENTE',
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, documento, documento);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private void insertarPerfilPaciente(long organizationId, long personaId, long accountId) {
@@ -392,23 +392,21 @@ class AutorizacionConcurrenteIT {
 	}
 
 	private long insertarFinanciador(long organizationId, String codigo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
 				VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, codigo, "Financiador " + codigo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarPlan(long organizationId, long financiadorId, String codigo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
 				VALUES (?, ?, ?, ?, '2020-01-01', 1, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, financiadorId, codigo, "Plan " + codigo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	/**
@@ -423,7 +421,7 @@ class AutorizacionConcurrenteIT {
 	private long insertarCobertura(
 			long organizationId, long personaId, long financiadorId, long planId, String sufijo) {
 
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO cobertura_paciente (
 				        organization_id, persona_id, tipo,
 				        financiador_id, financiador_codigo, financiador_nombre, financiador_tipo,
@@ -438,27 +436,24 @@ class AutorizacionConcurrenteIT {
 				financiadorId, "OS-" + sufijo, "Financiador OS-" + sufijo,
 				planId, "P-" + sufijo, "Plan P-" + sufijo,
 				"AF-" + sufijo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarEspecialidad(long organizationId, String codigo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active,
 				                          version, created_at, updated_at)
 				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, codigo, "Especialidad " + codigo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarPractica(long organizationId, long especialidadId, String codigo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from,
 				                      active, version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, especialidadId, codigo, "Practica " + codigo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private int contarAprobadas(Fixture fixture) {

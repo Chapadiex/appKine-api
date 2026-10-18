@@ -1,5 +1,6 @@
 package com.akine.encounter;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.encounter.application.OperatingActor;
 import com.akine.encounter.application.SesionService;
@@ -253,14 +254,13 @@ class CierreConcurrenteIT {
 			long organizationId, long consultorioId, long historiaClinicaId,
 			long ofertaId, long membershipId, long cuentaId) {
 
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioId, historiaClinicaId, ofertaId, membershipId, cuentaId);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertar(String insert, String select, Object[] insertArgs, Object[] selectArgs) {

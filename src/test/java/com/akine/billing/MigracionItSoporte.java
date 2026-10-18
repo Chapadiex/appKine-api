@@ -1,5 +1,6 @@
 package com.akine.billing;
 
+import com.akine.testsupport.InsertarConId;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.UncategorizedSQLException;
@@ -59,9 +60,8 @@ public final class MigracionItSoporte {
 	public long insertar(String tabla, Map<String, Object> valores) {
 		String columnas = String.join(", ", valores.keySet());
 		String marcas = valores.keySet().stream().map(c -> "?").collect(Collectors.joining(", "));
-		jdbc.update("INSERT INTO " + tabla + " (" + columnas + ") VALUES (" + marcas + ")",
+		return InsertarConId.insertar(jdbc, "INSERT INTO " + tabla + " (" + columnas + ") VALUES (" + marcas + ")",
 				valores.values().toArray());
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	public void violaCheck(String constraint, ThrowingCallable intento) {

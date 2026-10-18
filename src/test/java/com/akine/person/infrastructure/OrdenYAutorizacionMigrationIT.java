@@ -1,5 +1,6 @@
 package com.akine.person.infrastructure;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -313,8 +314,7 @@ class OrdenYAutorizacionMigrationIT {
 	}
 
 	private long insertar(String sql, Object... args) {
-		jdbc.update(sql, args);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		return InsertarConId.insertar(jdbc, sql, args);
 	}
 
 	private void insertarOrden(

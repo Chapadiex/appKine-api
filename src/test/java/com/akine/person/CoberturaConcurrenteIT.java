@@ -1,5 +1,6 @@
 package com.akine.person;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.person.application.CoberturaAltaCommand;
 import com.akine.person.application.CoberturaPacienteService;
@@ -296,14 +297,13 @@ class CoberturaConcurrenteIT {
 
 	private long insertarPersona(long organizationId, String sufijo) {
 		String documento = String.valueOf(10000000 + Math.abs(sufijo.hashCode()) % 80000000);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Paciente', 'SINTETICA', 'PACIENTE',
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, documento, documento);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private void insertarPerfilPaciente(long organizationId, long personaId, long accountId) {
@@ -315,12 +315,11 @@ class CoberturaConcurrenteIT {
 	}
 
 	private long insertarFinanciador(long organizationId, String codigo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
 				VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, codigo, "Financiador " + codigo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	/**
@@ -329,14 +328,13 @@ class CoberturaConcurrenteIT {
 	 * decir cual de las dos actuo.
 	 */
 	private long insertarPlan(long organizationId, long financiadorId, String codigo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
 				VALUES (?, ?, ?, ?, '2020-01-01', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, financiadorId, codigo, "Plan " + codigo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private int contarActivas(Fixture fixture) {

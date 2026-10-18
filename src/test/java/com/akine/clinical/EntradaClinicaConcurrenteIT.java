@@ -1,5 +1,6 @@
 package com.akine.clinical;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.clinical.application.EntradaClinicaService;
 import com.akine.clinical.application.EntradaClinicaView;
@@ -393,7 +394,6 @@ class EntradaClinicaConcurrenteIT {
 	}
 
 	private long insertar(String sql, Object[] args) {
-		jdbc.update(sql, args);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		return InsertarConId.insertar(jdbc, sql, args);
 	}
 }

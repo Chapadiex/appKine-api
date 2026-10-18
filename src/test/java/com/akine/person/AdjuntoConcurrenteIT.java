@@ -1,5 +1,6 @@
 package com.akine.person;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.person.application.AdjuntoAltaCommand;
 import com.akine.person.application.AdjuntoService;
@@ -264,13 +265,12 @@ class AdjuntoConcurrenteIT {
 
 	private long insertarPersona(long organizationId, String sufijo) {
 		String documento = String.valueOf(10000000 + Math.abs(sufijo.hashCode()) % 80000000);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Adjunto', 'SINTETICA', 'ADJUNTO',
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, documento, documento);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 }

@@ -1,5 +1,6 @@
 package com.akine.person.infrastructure;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -155,15 +156,13 @@ class AdjuntoMigrationIT {
 	}
 
 	private long insertarPersona(long organizationId, String documento) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Sintetico', 'Caso', 'SINTETICO', 'CASO',
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, documento, documento);
-
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private void insertarAdjunto(

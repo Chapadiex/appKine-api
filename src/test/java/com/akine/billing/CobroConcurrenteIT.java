@@ -1,5 +1,6 @@
 package com.akine.billing;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.billing.application.CobroCommand;
 import com.akine.billing.application.CobroService;
@@ -362,14 +363,13 @@ class CobroConcurrenteIT {
 				""", new Object[]{organizationId, consultorioId, servicioId, "Oferta " + sufijo},
 				new Object[]{organizationId, "Oferta " + sufijo});
 
-		jdbc.update("""
+		long sesionId = InsertarConId.insertar(jdbc, """
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioId, historiaId, ofertaId, 1L, cuentaId);
-		long sesionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
 		Fixture parcial = new Fixture(organizationId, consultorioId, personaId, 0, sesionId, ofertaId,
 				new OperatingActor(cuentaId, false, organizationId, consultorioId));
@@ -382,7 +382,7 @@ class CobroConcurrenteIT {
 	private Fixture conSesionNueva(Fixture fixture) {
 		Long historiaId = jdbc.queryForObject(
 				"SELECT historia_clinica_id FROM sesion WHERE id = ?", Long.class, fixture.sesionId());
-		jdbc.update("""
+		long nuevaSesionId = InsertarConId.insertar(jdbc, """
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
@@ -392,12 +392,12 @@ class CobroConcurrenteIT {
 				1L, fixture.actor().accountId());
 		return new Fixture(fixture.organizationId(), fixture.consultorioId(), fixture.personaId(),
 				fixture.obligacionId(),
-				jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class),
+				nuevaSesionId,
 				fixture.ofertaId(), fixture.actor());
 	}
 
 	private long insertarObligacion(Fixture fixture) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO obligacion (organization_id, consultorio_id, sesion_id, persona_id,
 				                        responsable, importe_original, saldo, moneda, estado,
 				                        oferta_id, snapshot_nombre, snapshot_precio, devengada_en,
@@ -407,7 +407,6 @@ class CobroConcurrenteIT {
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.sesionId(),
 				fixture.personaId(), fixture.ofertaId());
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertar(String insert, String select, Object[] insertArgs, Object[] selectArgs) {

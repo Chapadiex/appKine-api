@@ -1,5 +1,6 @@
 package com.akine.person.support;
 
+import com.akine.testsupport.InsertarConId;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDate;
@@ -37,14 +38,13 @@ public final class CoberturaFixtures {
 			long org, String apellido, String nombre, String documento, String telefonoClave,
 			boolean activa) {
 
-		jdbc.update("""
+		long id = InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, telefono, telefono_clave, created_at, updated_at)
 				VALUES (?, 'DNI', ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", org, documento, documento, apellido, nombre, apellido.toUpperCase(),
 				nombre.toUpperCase(), telefonoClave, telefonoClave);
-		long id = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		if (!activa) {
 			jdbc.update("""
 					UPDATE persona SET active = 0, deleted_at = UTC_TIMESTAMP(6),
@@ -65,24 +65,22 @@ public final class CoberturaFixtures {
 
 	public long financiador(long org) {
 		String codigo = "OS-" + UUID.randomUUID().toString().substring(0, 12);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
 				VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", org, codigo, "Financiador " + codigo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	public long plan(long org, long financiadorId) {
 		String codigo = "P-" + UUID.randomUUID().toString().substring(0, 12);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
 				VALUES (?, ?, ?, ?, '2020-01-01', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", org, financiadorId, codigo, "Plan " + codigo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	/** Un par financiador+plan nuevo, para sembrar una cobertura de un plan que no se repite. */
@@ -99,7 +97,7 @@ public final class CoberturaFixtures {
 			long org, long persona, Plan plan, String afiliado, LocalDate desde, LocalDate hasta,
 			boolean principal, LocalDate credencialHasta) {
 
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO cobertura_paciente (organization_id, persona_id, tipo,
 				                                financiador_id, financiador_codigo,
 				                                financiador_nombre, financiador_tipo,
@@ -114,18 +112,16 @@ public final class CoberturaFixtures {
 				        ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", org, persona, plan.financiadorId(), plan.planId(), afiliado, credencialHasta,
 				desde, hasta, principal ? 1 : 0);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	public long particular(
 			long org, long persona, LocalDate desde, LocalDate hasta, boolean principal) {
 
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO cobertura_paciente (organization_id, persona_id, tipo, vigencia_desde,
 				                                vigencia_hasta, principal, created_at, updated_at)
 				VALUES (?, ?, 'PARTICULAR', ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", org, persona, desde, hasta, principal ? 1 : 0);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	/** Baja logica de una cobertura, con el motivo que la base exige. */

@@ -1,5 +1,6 @@
 package com.akine.clinical.infrastructure;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -429,34 +430,31 @@ class EntradaYAdjuntoClinicoMigrationIT {
 
 	private long abrirHistoria(long organizationId) {
 		String documento = String.valueOf(SECUENCIA.incrementAndGet());
-		jdbc().update("""
+		long personaId = InsertarConId.insertar(jdbc(), """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Perez', 'Ana', 'PEREZ', 'ANA',
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, documento, documento);
-		long personaId = jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              created_at, updated_at)
 				 VALUES (?, ?, UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, personaId);
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarEntrada(
 			long organizationId, long historiaId, String tipo, String origen, Long referencia) {
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO entrada_clinica (organization_id, historia_clinica_id, tipo, ocurrio_en,
 				                             origen, referencia_origen, ultimo_numero_version,
 				                             registrada_en, registrada_por, created_at, updated_at)
 				 VALUES (?, ?, ?, UTC_TIMESTAMP(6), ?, ?, 1, UTC_TIMESTAMP(6), 1,
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, historiaId, tipo, origen, referencia);
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private void insertarVersion(
@@ -475,7 +473,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 	private long insertarAdjunto(
 			long organizationId, long historiaId, String categoria, String checksum) {
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO adjunto_clinico (organization_id, historia_clinica_id, categoria,
 				                             nombre_archivo, content_type, tamano_bytes,
 				                             checksum_sha256, storage_key, subido_por, subido_en,
@@ -484,7 +482,6 @@ class EntradaYAdjuntoClinicoMigrationIT {
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, historiaId, categoria, checksum,
 				UUID.randomUUID().toString().replace("-", ""));
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	/** Un checksum sintetico distinto por llamada: el unique de contenido no perdona repeticiones. */

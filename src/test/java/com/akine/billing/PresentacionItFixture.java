@@ -1,5 +1,6 @@
 package com.akine.billing;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.billing.application.OperatingActor;
 import com.akine.billing.application.PresentacionCommands;
 import com.akine.billing.application.PresentacionService;
@@ -63,25 +64,22 @@ final class PresentacionItFixture {
 	Tenant crearTenant() {
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);
 
-		jdbc.update("""
+		long organizationId = InsertarConId.insertar(jdbc, """
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
 				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", "Centro " + sufijo, "presentacion-it-" + sufijo, ZONA);
-		long organizationId = ultimoId();
 
-		jdbc.update("""
+		long consultorioId = InsertarConId.insertar(jdbc, """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
 				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, "Sede " + sufijo, ZONA);
-		long consultorioId = ultimoId();
 
 		String email = "presentacion-it-" + sufijo + "@ejemplo.test";
-		jdbc.update("""
+		long cuentaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
 				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", email, email);
-		long cuentaId = ultimoId();
 
 		jdbc.update("""
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
@@ -92,29 +90,26 @@ final class PresentacionItFixture {
 				""", organizationId, consultorioId, cuentaId);
 
 		String apellido = "Paciente" + sufijo;
-		jdbc.update("""
+		long personaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
 				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, apellido, apellido.toUpperCase());
-		long personaId = ultimoId();
 
-		jdbc.update("""
+		long historiaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
 				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, personaId, cuentaId);
-		long historiaId = ultimoId();
 
-		jdbc.update("""
+		long servicioId = InsertarConId.insertar(jdbc, """
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
 				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", "PRES-" + sufijo.toUpperCase(), "Servicio " + sufijo);
-		long servicioId = ultimoId();
 
-		jdbc.update("""
+		long ofertaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO oferta_servicio_consultorio
 				       (organization_id, consultorio_id, servicio_id, nombre_comercial, modalidad,
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
@@ -123,7 +118,6 @@ final class PresentacionItFixture {
 				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 1, 0, 0, 0, 0,
 				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioId, servicioId, "Oferta " + sufijo);
-		long ofertaId = ultimoId();
 
 		long financiadorId = insertarFinanciador(organizationId, sufijo);
 
@@ -132,12 +126,11 @@ final class PresentacionItFixture {
 	}
 
 	long insertarFinanciador(long organizationId, String sufijo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
 				VALUES (?, ?, ?, 'OBRA_SOCIAL', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, "FIN-" + sufijo, "Financiador " + sufijo);
-		return ultimoId();
 	}
 
 	/**
@@ -146,7 +139,7 @@ final class PresentacionItFixture {
 	 * <p>Ver la cabecera: es la fila que el devengado todavia no sabe escribir.
 	 */
 	long obligacionDeFinanciador(Tenant tenant, long financiadorId, String importe) {
-		jdbc.update("""
+		long sesionId = InsertarConId.insertar(jdbc, """
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
@@ -154,13 +147,12 @@ final class PresentacionItFixture {
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", tenant.organizationId(), tenant.consultorioId(), tenant.historiaId(),
 				tenant.ofertaId(), 1L, tenant.cuentaId());
-		long sesionId = ultimoId();
 
 		// Desde V77 la parte del financiador lleva el snapshot de convenio ENTERO
 		// (ck_obligacion_snapshot_convenio_coherente). Los ids son sinteticos: las columnas de
 		// snapshot son una copia y no tienen FK.
 		BigDecimal monto = new BigDecimal(importe);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO obligacion (organization_id, consultorio_id, sesion_id, persona_id,
 				                        responsable, financiador_id, concepto, practica_id,
 				                        cobertura_id, importe_original, saldo, moneda,
@@ -180,7 +172,6 @@ final class PresentacionItFixture {
 				        UTC_TIMESTAMP(6), 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", tenant.organizationId(), tenant.consultorioId(), sesionId, tenant.personaId(),
 				financiadorId, monto, monto, tenant.ofertaId(), monto, monto, monto);
-		return ultimoId();
 	}
 
 	/** Un borrador vacio del periodo que contiene a hoy, para el financiador dado. */
@@ -204,7 +195,7 @@ final class PresentacionItFixture {
 
 	/** Una jornada abierta HOY, insertada directo: lo que se mide es el pago, no la apertura. */
 	long abrirJornada(Tenant tenant, String saldoInicial) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO jornada_caja (organization_id, consultorio_id, fecha_negocio, moneda,
 				                          estado, saldo_inicial, saldo_arqueo, abierta_en,
 				                          abierta_por_cuenta_id, created_at, updated_at)
@@ -213,11 +204,6 @@ final class PresentacionItFixture {
 				""", tenant.organizationId(), tenant.consultorioId(),
 				Date.valueOf(LocalDate.now(ZoneId.of(ZONA))), new BigDecimal(saldoInicial),
 				new BigDecimal(saldoInicial), tenant.cuentaId());
-		return ultimoId();
-	}
-
-	private long ultimoId() {
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	// ---------------------------------------------------------------------------------
