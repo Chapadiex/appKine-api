@@ -12,7 +12,7 @@
 | Etapa | Estado | % | Lo que falta, en una línea |
 |---|---|---|---|
 | 07.06 Reportes y tableros | CUMPLIDA con desvío declarado | 90 | Export asíncrono diferido por diseño (síncrono y acotado); escenario 52 sin correr |
-| 07.07 Hardening seguridad/privacidad/a11y | PARCIAL, pendiente del usuario | 85 | Justificación en `encounter`, `caso:create`, SAST/DAST y Connector/J: decisiones del usuario |
+| 07.07 Hardening seguridad/privacidad/a11y | PARCIAL, pendiente del usuario | 85 | `caso:create` (U-04). Justificación en `encounter`, SAST/DAST y Connector/J **decididos el 17/10/2026** (DP-33, DP-35, DP-34) |
 | 07.08 Rendimiento, concurrencia, observabilidad | PARCIAL, en curso | 75 | p95 con 500 usuarios y escrituras 3,3–3,6 s contra 300 ms: rendimiento por pedido en curso |
 | 07.09 Gate y release del MVP | PARCIAL, pendiente del usuario | 70 | QA manual, aprobación clínica y legal, deploy y estabilización (G-14); E2E clínicos (web #4) |
 
@@ -66,18 +66,24 @@ El criterio de aceptación pide **cero hallazgos altos**. Abiertos:
 - [x] ~~`concurrent-modification` vs `conflict` sin unificar.~~ → DP-21 / DU-5 (#74).
 - [x] ~~`encounter` no auditaba la Sesión~~ → **reabierto y cerrado en G-5**: la integración del
   29/09 había perdido el cambio de 07.07; restituido con `SesionAuditadaIT`.
-- [ ] `encounter` no exige `X-Justificacion-Acceso` y audita con `reason` nulo (DP-03 parcial).
-  **Pendiente del usuario** (cambio de contrato).
+- [x] ~~`encounter` no exige `X-Justificacion-Acceso` y audita con `reason` nulo (DP-03 parcial).~~
+  **Cerrado por decisión del usuario el 17/10/2026 (U-03 + U-46 e, DP-33):** la propiedad de la
+  Sesión —y del panel de atención grupal— es la relación asistencial de DP-03; `reason` nulo
+  documentado, auditoría como está, sin cambio de contrato. Hallazgo alto R2 del threat model cerrado.
 - [ ] `caso:create` que nadie evalúa. **Pendiente del usuario**; desde G-5 el efecto coincide con
   la fila de la matriz porque `hc:write` ya no se otorga a quien la matriz le dice "No".
 - [x] ~~Threat model y matriz de permisos respaldada por tests~~ → G-5:
   `docs/seguridad/threat-model.md` y `MatrizDePermisosIT`. Los **runbooks** están desde G-13 (#77).
 - [x] ~~Un grant podía otorgar una celda "No" de la matriz~~ (hallazgo nuevo de G-5, cerrado).
-- [ ] SAST, SCA y DAST en CI; activar SonarQube. **SCA hecho** en G-6 (api #83, web #41):
+- [x] SAST, SCA y DAST en CI. **Decidido el 17/10/2026 (U-06, DP-35):** SAST CodeQL y DAST ZAP
+  baseline, no bloqueantes (api #119, web #77); Sonar sigue salteándose sin secretos.
+  Antes: **SCA hecho** en G-6 (api #83, web #41):
   Dependabot y dependency-check bloqueante con CVSS ≥ 7, respaldo OSV.dev. **Pendiente del
   usuario:** elegir el SAST (CodeQL o Sonar), decidir el DAST y cargar `SONAR_TOKEN`,
   `SONAR_HOST_URL` y `NVD_API_KEY`.
-- [ ] `mysql-connector-j` 9.7.0 con cuatro CVE sin versión corregida (la más alta 7,7). Excepción en
+- [x] **Resuelto el 17/10/2026 (U-05, DP-34):** Connector/J baja a **9.6.0** —no hay 9.x corregida
+  y el NVD no registra CVE para 9.6.0—, se retira la excepción, y el frontend aplica el
+  `overrides` `basic-ftp@^6`. Antes: `mysql-connector-j` 9.7.0 con cuatro CVE sin versión corregida (la más alta 7,7). Excepción en
   `dependency-check-suppressions.xml` **hasta el 09/11/2026**. **Pendiente del usuario:** esperar
   la corrección o bajar a 9.6.0. En el frontend, la cadena de `basic-ftp` (dependencia de
   desarrollo) espera decidir un `overrides` a `basic-ftp@^6` (`appKine-web/docs/calidad.md`).
@@ -150,8 +156,8 @@ El criterio de aceptación pide **cero hallazgos altos**. Abiertos:
 ## Para cerrar la fase (= pasar el gate del MVP)
 
 - [x] ~~Reportes accesibles y con dashboards.~~ Ver 07.06.
-- [ ] Cero hallazgos altos de 07.07. **No cumple:** dos decisiones de seguridad abiertas y la CVE
-  de Connector/J bajo excepción. Todo del usuario.
+- [ ] Cero hallazgos altos de 07.07. **No cumple:** queda `caso:create` (U-04). La justificación
+  en `encounter` (DP-33), SAST/DAST (DP-35) y Connector/J (DP-34) se cerraron el 17/10/2026.
 - [ ] Observabilidad mínima y una corrida de carga medida contra los SLO. **Observabilidad y
   medición, sí; el SLO con escrituras a 500 usuarios, no** (p95 3,3–3,6 s). En curso.
 - [ ] Imagen Docker, E2E en CI, QA manual corrido, cobertura ≥ 0,80. **Todo sí salvo el QA

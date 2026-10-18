@@ -718,9 +718,9 @@ El vencimiento no es un evento: se calcula al leer, como VENCIDA en la autorizac
 
 **Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
 
-**Decisión.** (a) una sede hermana responde 403, no 404; (b) ningún permiso de F9 es otorgable por grant; (f) las claves de idempotencia siguen siendo por organización, no por sede. (c) El `PROFESIONAL` **no ve** `paseId` ni `saldo` del pase en la respuesta de la asistencia (cambio aditivo de contrato, sin `pase:read`). (d) El **título de la clase no viaja** en el correo de cancelación o reprogramación. (e) El panel de atención grupal se resuelve **con la justificación en `encounter`**: sigue **abierta junto con U-03**.
+**Decisión.** (a) una sede hermana responde 403, no 404; (b) ningún permiso de F9 es otorgable por grant; (f) las claves de idempotencia siguen siendo por organización, no por sede. (c) El `PROFESIONAL` **no ve** `paseId` ni `saldo` del pase en la respuesta de la asistencia (cambio aditivo de contrato, sin `pase:read`). (d) El **título de la clase no viaja** en el correo de cancelación o reprogramación. (e) El panel de atención grupal se resuelve **con la justificación en `encounter`**: resuelta junto con U-03 en **DP-33** (17/10/2026).
 
-**Implementada en:** (a), (b) y (f) sin cambio. (c) y (d): un PR en curso. (e): pendiente de U-03.
+**Implementada en:** (a), (b) y (f) sin cambio. (c) y (d): un PR en curso. (e): DP-33, sin cambio de código.
 
 ## DP-29 — El lock del producto solo en la venta de abonos (U-48)
 
@@ -738,7 +738,7 @@ El vencimiento no es un evento: se calcula al leer, como VENCIDA en la autorizac
 
 **Decisión.** (a) hecha en api #152 (de 18 a 11 sentencias por participante en el alta). (c) limitar los lotes concurrentes por sede **solo si el entorno de destino lo exige**. (b) agrupar ítems por transacción: **no**, porque cambiaría la actualización transaccional independiente de RF-M13-008.
 
-**Implementada en:** (a) api #152; (c) condicionada al entorno de destino.
+**Implementada en:** (a) api #152; (c) **preparada y apagada** en la rama `akine-u49c-limite-de-lotes` (contrato 0.127.0): se enciende con `akine.activity.asistencia.lotes-concurrentes-por-sede` si el entorno de destino lo exige (`docs/carga.md` §12, runbook R8).
 
 ## DP-31 — Fuera del release candidate: honorarios por clase, cuenta técnica de renovación, períodos no calendario, rentabilidad (U-41, U-43, U-45, U-50)
 
@@ -755,6 +755,44 @@ El vencimiento no es un evento: se calcula al leer, como VENCIDA en la autorizac
 **Alternativas descartadas por ahora.** Numerar en lote después del commit (opción 2) y al cerrar la caja (opción 3), porque cambian el contrato o el significado del comprobante; el lock por profesional (opción 4), que en la carga medida no gana nada. Relajar la durabilidad de MySQL no es una opción: puede perder cobros confirmados.
 
 **Implementada en:** pendiente del deploy; la opción 6 (bajar el costo de CPU por pedido sin cambiar reglas) sigue en paralelo, `docs/carga.md` §13.
+
+## DP-33 — La propiedad de la Sesión es la relación asistencial de DP-03 (U-03 + U-46 e)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** La **propiedad de la Sesión** —y la del **panel de atención grupal** que abre una Sesión por participante— **es** la relación asistencial que DP-03 pide como condición del acceso clínico. Por eso `encounter` **no exige** `X-Justificacion-Acceso`: quien opera su propia Sesión ya está en relación asistencial con el paciente, y escribir en la atención ajena sigue siendo 409 (regla 6 del workspace). Las filas de auditoría de `encounter` (inicio, lectura, cierre de la Sesión; `SESION_GRUPAL_CONSULTADA` con las historias expuestas) salen con `reason` **nulo, y eso está documentado**: no es un olvido sino la consecuencia de esta decisión. La auditoría existente se mantiene tal cual.
+
+**Alternativas descartadas.** (a) header obligatorio en las operaciones de Sesión —cambio de contrato en operaciones que el frontend ya consume—; (b) header opcional y auditado. (a) vuelve a estar sobre la mesa **sólo si** se abre la lectura de Sesiones ajenas (G-5).
+
+**Implementada en:** el código vigente, sin cambio; sin cambio de contrato. Documentación: `docs/seguridad/threat-model.md` (R2 cerrado por decisión; §2.4), `docs/fases/F8-cierre-del-mvp.md` (07.07). Cierra el hallazgo alto R2 de 07.07 y la (e) que DP-28 había dejado abierta.
+
+## DP-34 — `mysql-connector-j` baja a 9.6.0; `basic-ftp@^6` por `overrides` en el frontend (U-05)
+
+**Estado:** RESUELTA e implementada el 17/10/2026. Decidido por el usuario: acepta la recomendación.
+
+**Decisión.** Si hubiera una 9.x posterior a 9.7.0 que corrigiera los CVE, usarla; si no, bajar a **9.6.0** sólo si no está afectada. Verificado el 17/10/2026:
+
+- **Maven Central** (`maven-metadata.xml`): 9.2.0 … 9.6.0, **9.7.0** y **26.7.0**. No hay 9.7.1 publicada, ni 9.7.2, ni 9.8. La 26.7.0 (24/07/2026) es la línea sucesora con el esquema de versión nuevo: **no es una 9.x** y queda fuera de lo que el usuario autorizó.
+- **NVD**: CVE-2026-60586 (7.7), CVE-2026-60623 (7.1), CVE-2026-60624 (6.5) y CVE-2026-61082 (6.5), publicados el 21/07/2026, declaran afectadas "9.7.0-9.7.1"; sus CPE son exactamente `mysql_connector/j:9.7.0` y `:9.7.1`. La consulta por CPE (`virtualMatchString`) devuelve **4 CVE para 9.7.0, 0 para 9.6.0 y 0 para 26.7.0**.
+- **OSV.dev**: sin vulnerabilidades para ninguna de las tres (OSV no publica los CVE de Connector/J, como ya decía `docs/calidad.md`).
+
+Por eso: **`mysql.version` 9.6.0** en el `pom.xml` (pisa los 9.7.0 que gestiona Spring Boot 4.1.1) y **se retira la excepción temporal** de `dependency-check-suppressions.xml`, que vencía el 09/11/2026. La propiedad se borra cuando el parent traiga una versión corregida; pasar a 26.x es una decisión aparte.
+
+En el frontend, `overrides` de **`basic-ftp@^6`** (resuelve 6.2.3): cierra las cinco altas de desarrollo de la cadena `@openapitools/openapi-generator-cli` → … → `get-uri` → `basic-ftp` (GHSA-c475-qrg2-pj4r). `npm audit` da 0 y `npm run api:generate` genera idéntico.
+
+**Alternativas descartadas.** esperar la corrección con la excepción vigente; subir a 26.7.0 (salto de línea no autorizado).
+
+**Implementada en:** api `akine-u05-connector-y-decisiones` (`./mvnw -o verify` completo en local con 9.6.0); web `akine-web-u05-basic-ftp`.
+
+## DP-35 — SAST con CodeQL y DAST con ZAP baseline, no bloqueantes (U-06)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación.
+
+**Decisión.** **SAST = GitHub CodeQL** (`java-kotlin` y `actions` en el backend; `javascript-typescript` y `actions` en el frontend), gratis en repos públicos. **DAST = OWASP ZAP baseline**, pasivo, contra el backend levantado en el CI, con el reporte como artifact. Los dos **no bloqueantes**: no entran a los checks obligatorios de `main`; cómo volverlos bloqueantes está en `docs/calidad.md` §5. Se activan las propuestas api #119 (`.github/workflows/seguridad.yml`) y web #77 (`.github/workflows/codeql.yml`), que mergea el orquestador. **Sonar sigue salteándose** mientras no se carguen `SONAR_TOKEN`/`SONAR_HOST_URL`, igual que hoy; `NVD_API_KEY` también sigue sin cargar (el job de vulnerabilidades usa OSV.dev).
+
+**Alternativas descartadas.** SonarQube como SAST (necesita servidor y secretos); DAST bloqueante desde el primer día.
+
+**Implementada en:** api #119 (mergeado el 17/10/2026) y web #77.
 
 # 8. Modelo funcional consolidado
 

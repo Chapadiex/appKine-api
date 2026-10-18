@@ -123,6 +123,7 @@ public class AsistenciaService {
 	private final AuditTrail auditTrail;
 	private final ConsumoDePaseService consumoDePases;
 	private final DevengoPorClaseService devengoPorClase;
+	private final LimiteDeLotesPorSede limiteDeLotes;
 
 	/**
 	 * La transaccion de cada item del lote. <b>No alcanza con que {@link #registrar} este
@@ -150,6 +151,7 @@ public class AsistenciaService {
 			AuditTrail auditTrail,
 			ConsumoDePaseService consumoDePases,
 			DevengoPorClaseService devengoPorClase,
+			LimiteDeLotesPorSede limiteDeLotes,
 			PlatformTransactionManager transactionManager) {
 
 		this.asistencias = asistencias;
@@ -167,6 +169,7 @@ public class AsistenciaService {
 		this.auditTrail = auditTrail;
 		this.consumoDePases = consumoDePases;
 		this.devengoPorClase = devengoPorClase;
+		this.limiteDeLotes = limiteDeLotes;
 		this.transaccionPorItem = new TransactionTemplate(transactionManager);
 	}
 
@@ -503,18 +506,27 @@ public class AsistenciaService {
 		LecturasDeConsumo lecturas = new LecturasDeConsumo(sede);
 		boolean veLosPases = puedeVerPases(actor, organizationId, consultorioId);
 
-		List<ItemDeLote> items = new ArrayList<>(comandos.size());
-		for (RegistrarAsistenciaCommand comando : comandos) {
-			// Un SUPPORT_ACCESS_USED por item, igual que cuando cada item evaluaba su permiso.
-			soporte.registrarSiCorresponde(decision, actor.accountId(), organizationId,
-					consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
-			ItemDeLote item = ejecutarItem(actor, sede, claseId, comando, lecturas);
-			items.add(item.exitoso()
-					? ItemDeLote.ok(item.inscripcionId(), paraQuienMira(item.resultado(), veLosPases))
-					: item);
-		}
+		// U-49 c (DP-30): con el limite encendido, a lo sumo N lotes a la vez por sede. Se toma
+		// despues de autorizar —un pedido sin permiso no ocupa ni espera lugar— y antes del primer
+		// item: un lote rechazado no escribio nada. Mientras espera no hay conexion abierta. El lote
+		// de un solo item no pasa: es lo mismo que el registro individual, que tampoco pasa.
+		try (LimiteDeLotesPorSede.Permiso lugar = comandos.size() > 1
+				? limiteDeLotes.tomar(consultorioId)
+				: LimiteDeLotesPorSede.Permiso.NINGUNO) {
 
-		return ResultadoDeLote.de(items, cupos(organizationId, consultorioId, claseId));
+			List<ItemDeLote> items = new ArrayList<>(comandos.size());
+			for (RegistrarAsistenciaCommand comando : comandos) {
+				// Un SUPPORT_ACCESS_USED por item, igual que cuando cada item evaluaba su permiso.
+				soporte.registrarSiCorresponde(decision, actor.accountId(), organizationId,
+						consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
+				ItemDeLote item = ejecutarItem(actor, sede, claseId, comando, lecturas);
+				items.add(item.exitoso()
+						? ItemDeLote.ok(item.inscripcionId(), paraQuienMira(item.resultado(), veLosPases))
+						: item);
+			}
+
+			return ResultadoDeLote.de(items, cupos(organizationId, consultorioId, claseId));
+		}
 	}
 
 	/**

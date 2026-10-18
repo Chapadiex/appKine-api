@@ -86,7 +86,7 @@ Dos clases, y cada entrada dice en `<notes>` por qué y desde cuándo:
 | `jackson-databind` / `jackson-core` 3.1.5 y 2.21.5 | GHSA altas: CVE-2026-68497, -91776, -91777, -89425, -89407 (el NVD no las matchea; las da OSV/GitHub Advisory) | **Bump**: `jackson-bom.version` 3.1.7, `jackson-2-bom.version` 2.21.7 |
 | `kotlin-stdlib` 2.3.21 (de okhttp, vía el exportador OTLP de G-4) | CVE-2026-53914 (9.8) | **Falso positivo**: es la caché de build del compilador de Kotlin |
 | `opentelemetry-api` 1.62.0 | CVE-2026-54285 (5.3) | **Falso positivo**: es de opentelemetry-js |
-| `mysql-connector-j` 9.7.0 | CVE-2026-60586 (7.7), -60623 (7.1), -60624 (6.5), -61082 (6.5) | **Excepción temporal hasta el 09/11/2026.** Oracle declara afectadas 9.7.0–9.7.1 y no hay versión corregida en Maven Central. **Decisión pendiente:** esperar la corrección o bajar a 9.6.0, que no figura como afectada |
+| `mysql-connector-j` 9.7.0 | CVE-2026-60586 (7.7), -60623 (7.1), -60624 (6.5), -61082 (6.5) | ~~Excepción temporal hasta el 09/11/2026.~~ **Bajado a 9.6.0 el 17/10/2026 (U-05, DP del plan §7)**: `mysql.version` 9.6.0 en el `pom.xml` y excepción retirada. Oracle declara afectadas sólo 9.7.0–9.7.1; el NVD no registra ningún CVE para 9.6.0 (consulta por CPE). La línea sucesora 26.7.0 (24/07/2026) tampoco figura afectada, pero el usuario autorizó sólo una 9.x |
 
 Las tres propiedades de versión (`tomcat.version`, `jackson-bom.version`,
 `jackson-2-bom.version`) pisan lo que gestiona Spring Boot 4.1.1. **Hay que borrarlas** cuando el
@@ -258,3 +258,63 @@ más bajo del backend y no es de los siete críticos que fija el plan.
 > **Las reglas son estrechas a propósito**: el mínimo es lo medido redondeado hacia abajo. Si un IT
 > concurrente hace que una corrida cubra un par de líneas menos que otra, el build lo va a decir;
 > la salida es mirar qué rama no se ejercitó, no bajar el número.
+
+## 5. SAST y DAST — `.github/workflows/seguridad.yml` (U-06, DP-35)
+
+> **Decidido por el usuario el 17/10/2026** (DP-35): CodeQL como SAST y ZAP baseline como DAST,
+> los dos no bloqueantes, como los propuso este apartado.
+
+Dos jobs en un workflow propio, que corre en cada PR a `main`, en cada push a `main`, los lunes
+09:00 UTC y a mano (`workflow_dispatch`). **Ninguno bloquea todavía:** no están entre los checks
+obligatorios de `main` ("Build, test y contrato" e "Imagen Docker y SBOM").
+
+### SAST — CodeQL (job `codeql`)
+
+- **Costo cero:** el repo es público, y para repos públicos code scanning con CodeQL es gratis y no
+  pide GitHub Advanced Security. Si el repo pasara a privado, CodeQL deja de estar disponible sin
+  GHAS; la alternativa sin costo es Semgrep OSS (`semgrep scan --config p/java --config
+  p/owasp-top-ten --sarif`, subiendo el SARIF con `github/codeql-action/upload-sarif`).
+- **Lenguajes:** `java-kotlin` con `build-mode: none` —extrae sin compilar, sin JDK ni Maven— y
+  `actions`, que analiza los propios workflows (inyección por `${{ }}`, permisos de más). Suite
+  `security-extended`.
+- **Dónde se ven:** pestaña **Security › Code scanning**, y como anotaciones en el diff del PR.
+- **No convive con el "default setup"**: si alguien lo enciende en *Settings › Code security*, el
+  upload de este workflow se rechaza. Hoy está `not-configured`.
+
+**Volverlo bloqueante:** en *Settings › Rules › Rulesets* (o en la protección de `main`), agregar la
+regla **Require code scanning results** con la herramienta `CodeQL` y el umbral deseado (p. ej.
+*Security alerts: High or higher*, *Alerts: Errors*). Con eso un PR que **introduce** un hallazgo
+de ese nivel no se puede mergear; los que ya existían en `main` no lo traban. Antes conviene
+revisar y cerrar (o descartar con motivo) lo que la primera corrida encuentre.
+
+### DAST — OWASP ZAP baseline (job `zap`)
+
+- **Qué levanta:** la misma pila que el job `e2e` de `appKine-web`: MySQL y Mailpit del
+  `compose.yaml` (proyecto `akine`) y la imagen del `Dockerfile`, con perfil `local`. Base nueva en
+  cada corrida, sin secretos.
+- **Qué hace:** `zaproxy/action-baseline` = spider + reglas **pasivas**. No ataca: mira headers de
+  seguridad, cookies y divulgación de información de lo que el servidor responde. Arranca en
+  `/swagger-ui/index.html` para que el spider llegue al contrato; lo que está detrás de auth
+  responde 401 y esa respuesta también se analiza.
+- **Reporte:** artifact `zap-baseline` (HTML, Markdown y JSON) y el log del backend en
+  `zap-backend-log`. `allow_issue_writing: false`: no abre issues.
+- **Falsos positivos:** `.zap/rules.tsv`, una regla por línea (`id<TAB>IGNORE|WARN|FAIL<TAB>(motivo)`).
+  Hoy ignora tres, todas sobre Swagger UI: 10049 y 10109 (informativas) y 10096 (literales
+  numéricos dentro del bundle de terceros tomados por timestamps). Toda regla que se agregue lleva
+  su motivo.
+- **Primera corrida (PR #119, 14/10/2026):** 13 URLs, **0 FAIL, 3 WARN, 61 PASS** con estas reglas (4 WARN antes de ignorar 10096). Los tres WARN
+  caen sobre Swagger UI, que sólo se publica con perfil `local`, y **no se ignoran** porque son
+  headers que faltan de verdad: CSP en `index.html` (10038), `Permissions-Policy` (10063) y
+  `Cross-Origin-Embedder-Policy` (90004). El spider no pasó de Swagger: `/` responde 401.
+- **Actions de terceros fijadas por SHA** (`docker/*`, `zaproxy/*`), con la versión en comentario:
+  CodeQL `actions` lo marca como `actions/unpinned-tag`. Dependabot las sigue actualizando.
+
+**Volverlo bloqueante:** en el paso `ZAP baseline`, sacar `-I` de `cmd_options` y poner
+`fail_action: true`; con eso el job falla ante cualquier `WARN` o `FAIL`. Para fallar sólo por lo
+grave, marcar en `.zap/rules.tsv` como `FAIL` las reglas que importan (p. ej. 10038 CSP, 10021
+`X-Content-Type-Options`, 10035 HSTS) y dejar el resto en `WARN` manteniendo `-I`. Después,
+agregar "OWASP ZAP baseline (pasivo)" a los checks obligatorios de `main`.
+
+> **El límite, dicho de frente:** un baseline no autenticado ve la superficie pública —health,
+> versión, login, Swagger— y los 401. Cubrir las ~310 operaciones exige `zaproxy/action-api-scan`
+> con el OpenAPI y un token de prueba, que es escaneo **activo** y va a un job aparte, no en cada PR.

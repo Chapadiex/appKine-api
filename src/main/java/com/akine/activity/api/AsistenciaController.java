@@ -15,6 +15,7 @@ import com.akine.activity.application.RegistrarAsistenciaCommand;
 import com.akine.activity.application.ResultadoDeAsistencia;
 import com.akine.activity.domain.OrigenAsistencia;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -219,7 +220,14 @@ public class AsistenciaController {
 
 					**Responde 200 aunque haya fallos parciales** — no es un error del pedido, es \
 					el resultado del pedido—, y cada item fallido trae el mismo `problemType` que \
-					habria viajado en la operacion individual.""")
+					habria viajado en la operacion individual.
+
+					**Lotes a la vez por sede** (U-49 c): si el despliegue enciende el limite y la \
+					sede ya tiene tantos lotes en curso como admite, el pedido espera unos \
+					segundos y, si no consigue lugar, responde **503** `service-unavailable` con \
+					`Retry-After` **sin haber registrado ningun item**: reenviarlo es seguro. El \
+					lote de un solo item y la operacion individual no tienen limite. Apagado por \
+					defecto.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Resultado por participante"),
 			@ApiResponse(
@@ -233,6 +241,16 @@ public class AsistenciaController {
 			@ApiResponse(
 					responseCode = "404",
 					description = "La sede o la clase no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "503",
+					description = "La sede ya tiene tantos lotes en curso como admite el limite "
+							+ "del despliegue. No se registro ningun item; `Retry-After` dice en "
+							+ "cuantos segundos reintentar",
+					headers = @Header(
+							name = "Retry-After",
+							description = "Segundos a esperar antes de reenviar el lote",
+							schema = @Schema(type = "integer")),
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResultadoDeLoteResponse registrarLote(
 			@PathVariable long consultorioId,
