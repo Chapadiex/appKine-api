@@ -831,6 +831,46 @@ La evidencia la da `person.spi.RespaldoDocumentalDirectory`, sólo lectura; `bil
 
 **Implementada en:** api #122 (diseño y design challenge en `docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md`). Pantallas: pendiente en `appKine-web` con el cliente 0.129.0.
 
+## DP-38 — Honorarios por clase: por participante presente, con vigencia, borrador por período que se confirma como egreso (U-41)
+
+**Estado:** DECIDIDA el 18/10/2026. Decidido por el usuario.
+
+**Decisión.** (a) El esquema es un importe **por participante presente** (asistencia `PRESENTE`). (b) Se declara en la **oferta, con vigencia**. (c) Una clase con **varios instructores** reparte el honorario en **partes iguales**. (d) La liquidación es un **borrador por período** que el administrador **confirma como egreso** (beneficiario `COLABORADOR`, categoría `HONORARIOS_PROFESIONALES`), con **snapshot de los importes** al confirmar (CA-M22-007-06); no hay egreso automático.
+
+**Alternativas descartadas.** Esquemas por clase o por hora; declararlo en el vínculo del profesional; pagar entero a cada instructor; egreso automático sin confirmación.
+
+**Implementada en:** pendiente (posterior al RC salvo que entre antes). Diseño técnico de referencia: `docs/diseno/AKINE-08.09-integracion-economica.md` §5. Cubre RF-M22-006/007.
+
+## DP-39 — Rentabilidad y caja por servicio: el egreso se imputa a una oferta y el cobro se prorratea (U-50)
+
+**Estado:** DECIDIDA el 18/10/2026. Decidido por el usuario.
+
+**Decisión.** (a) El **egreso gana una oferta/servicio opcional**; un egreso sin imputar (alquiler, insumos) sigue siendo general. (b) Los egresos de honorarios de DP-38 **ya nacen ligados a su oferta**. (c) **Rentabilidad = ingresos − egresos imputados** a la oferta. (d) Un cobro que paga varias deudas se **reparte en la caja de forma proporcional a lo imputado** a cada una (prorrateo, con redondeo al centavo que cierre exacto). Cubre RF-M23-009. El punto (d) original de U-50 (continuidad para el `PROFESIONAL`) no fue decidido y sigue omitido (`reporte:read` de actividad propia).
+
+**Alternativas descartadas.** Prorrateo de egresos generales por horas, sesiones o participantes; dejar la caja sin repartir.
+
+**Implementada en:** pendiente (posterior al RC salvo que entre antes). Depende de DP-38 para los honorarios; hoy el reporte `SERVICIOS` sigue declarando `rentabilidad-sin-costos`.
+
+## DP-40 — Renovación de abonos: la renovación se apaga si se desvincula quien la activó; el período se ancla al día de la primera venta (U-43, U-45)
+
+**Estado:** DECIDIDA el 18/10/2026. Decidido por el usuario.
+
+**Decisión (U-43).** El período renovado sigue a nombre de **quien activó la renovación** (no hay cuenta técnica de sistema). Si esa persona **se desvincula**, la renovación **se apaga sola y se avisa al administrador**.
+
+**Decisión (U-45).** Un período que no es mes calendario **se ancla al día de la primera venta**: se renueva el mismo día del mes siguiente, con el **último día del mes** si ese día no existe (31 pasa a 30 o 28/29), **sin correrse** en las renovaciones sucesivas. El mes calendario completo sigue como hoy.
+
+**Alternativas descartadas.** Cuenta técnica de sistema (migración en `identity` y rol propio); reglas "naturales" como quincena o semana calendario; correr el período por `vigenciaDias`.
+
+**Implementada en:** pendiente (posterior al RC salvo que entre antes).
+
+## DP-41 — Angular 22 y Java 25 después del despliegue del RC (U-37)
+
+**Estado:** DECIDIDA el 18/10/2026. Decidido por el usuario.
+
+**Decisión.** Los saltos de versión mayor de Dependabot —**Angular 22** (web #53, #55–#57) y **Java 25** en la imagen (api #87)— se toman **después del despliegue del release candidate, cuando esté estable**. No se mergean antes. Vitest coverage 5 (web #70) no fue mencionado en la decisión y sigue sin mergear.
+
+**Implementada en:** pendiente.
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional
