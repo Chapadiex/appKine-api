@@ -4,7 +4,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.EnumSource;
 
 import java.util.List;
 import java.util.Optional;
@@ -172,19 +171,50 @@ class RolePermissionsTest {
 		}
 	}
 
-	@ParameterizedTest
-	@EnumSource(value = PermissionCode.class, names = {
-			"CASO_CREATE"})
-	@DisplayName("Los permisos de fases futuras estan declarados y no los tiene NINGUN rol")
-	void los_permisos_de_fases_futuras_deniegan_para_todos(PermissionCode permiso) {
-		// Estan en el catalogo para que agregar una fase sea sumar filas y no rehacer el modelo.
-		// Que ninguno habilite nada todavia documenta que faltan por diseño: el dia que alguien
-		// los conecte sin su modulo, este test se lo dice.
-		for (RoleCode rol : RoleCode.values()) {
-			assertThat(RolePermissions.baseScope(rol, permiso))
-					.as("%s no puede tener %s antes de que exista su modulo", rol, permiso)
-					.isEmpty();
+	@Test
+	@DisplayName("U-04: caso:create ya no es un codigo del catalogo, se absorbio en hc:write")
+	void caso_create_se_absorbio_en_hc_write() {
+		// Era el ultimo permiso "de fase futura" que no tenia ningun rol. Abrir un caso siempre se
+		// autorizo con hc:write, y desde G-5 eso da exactamente la fila "Crear Caso Clinico":
+		// PROFESIONAL por base y CONSULTORIO_ADMIN por grant. Matriz §18.3.
+		assertThat(PermissionCode.desde("caso:create")).isEmpty();
+		assertThat(RolePermissions.baseScope(RoleCode.PROFESIONAL, PermissionCode.HC_WRITE))
+				.contains(PermissionScope.CONSULTORIO);
+		assertThat(RolePermissions.otorgableComoGrant(RoleCode.CONSULTORIO_ADMIN,
+				PermissionCode.HC_WRITE)).isTrue();
+	}
+
+	@ParameterizedTest(name = "{0}: {1}")
+	@DisplayName("U-07 y U-08: convenio:read, catalogo:read y catalogo:manage, celda por celda")
+	@CsvSource({
+			"CONVENIO_READ,   PLATFORM_ADMIN,    ",
+			"CONVENIO_READ,   ORG_ADMIN,         ORGANIZACION",
+			"CONVENIO_READ,   CONSULTORIO_ADMIN, CONSULTORIO",
+			"CONVENIO_READ,   PROFESIONAL,       CONSULTORIO",
+			"CONVENIO_READ,   ADMINISTRATIVO,    CONSULTORIO",
+			"CONVENIO_READ,   PACIENTE,          ",
+			"CATALOGO_READ,   PLATFORM_ADMIN,    GLOBAL",
+			"CATALOGO_READ,   ORG_ADMIN,         ORGANIZACION",
+			"CATALOGO_READ,   CONSULTORIO_ADMIN, CONSULTORIO",
+			"CATALOGO_READ,   PROFESIONAL,       CONSULTORIO",
+			"CATALOGO_READ,   ADMINISTRATIVO,    CONSULTORIO",
+			"CATALOGO_READ,   PACIENTE,          ",
+			"CATALOGO_MANAGE, PLATFORM_ADMIN,    GLOBAL",
+			"CATALOGO_MANAGE, ORG_ADMIN,         ORGANIZACION",
+			"CATALOGO_MANAGE, CONSULTORIO_ADMIN, CONSULTORIO",
+			"CATALOGO_MANAGE, PROFESIONAL,       ",
+			"CATALOGO_MANAGE, ADMINISTRATIVO,    ",
+			"CATALOGO_MANAGE, PACIENTE,          "})
+	void los_permisos_de_la_propuesta_recomendada(
+			PermissionCode permiso, RoleCode rol, PermissionScope alcance) {
+		if (alcance == null) {
+			assertThat(RolePermissions.baseScope(rol, permiso)).isEmpty();
+		} else {
+			assertThat(RolePermissions.baseScope(rol, permiso)).contains(alcance);
 		}
+		assertThat(RolePermissions.otorgablesComoGrant())
+				.as("ninguno es otorgable por grant")
+				.doesNotContain(permiso);
 	}
 
 	// =================================================================================

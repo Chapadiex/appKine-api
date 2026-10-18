@@ -26,20 +26,24 @@
 > del release candidate (U-41, U-43, U-45, U-50 → DP-31). El mismo día, más tarde, **3 resueltas**
 > más del bloque A: **U-03** —junto con U-46 (e)— → DP-33, **U-05** → DP-34 y **U-06** → DP-35.
 > U-47 no existe. El **18/10/2026** el usuario aceptó las recomendaciones de **U-11** y **U-28**
-> → DP-37, implementadas en api #122. Quedan **37 abiertas**, 4 de ellas postergadas.
+> → DP-37 (api #122) y de **U-04, U-07 y U-08** → DP-36 (api #123). Quedan **34 abiertas**, 4 de
+> ellas postergadas.
 
 | Bloque | Abiertas | Resueltas el 17/10 y el 18/10 |
 |---|---|---|
-| A. Bloquean el gate del MVP (U-01 a U-06) | 3 (2 acciones + 1 decisión: U-04) | U-03, U-05, U-06 |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 8 | U-39, U-42, U-46, U-48, U-49; U-11 (18/10) |
+| A. Bloquean el gate del MVP (U-01 a U-06) | 2 (2 acciones) | U-03, U-05, U-06; U-04 (18/10) |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 6 | U-39, U-42, U-46, U-48, U-49; U-07, U-08, U-11 (18/10) |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 19 | U-28 (18/10) |
 | D. No bloquean nada (U-35 a U-37) + postergadas U-41, U-43, U-45, U-50 | 7 (4 postergadas) | U-40, U-44 |
-| **Total** | **37** (de 49) | **12** |
+| **Total** | **34** (de 49) | **15** |
 
 ### Resueltas el 18/10/2026
 
 | U | Resolución | DP |
 |---|---|---|
+| U-04 | `caso:create` absorbido en `hc:write`: la matriz se enmienda y el código sale del catálogo. Sin cambio de respuestas. | DP-36 |
+| U-07 | `convenio:read` solo para el personal (como DP-22); el `PACIENTE` recibe 403 en las lecturas de `contracting`. | DP-36 |
+| U-08 | `catalogo:read` / `catalogo:manage` como en la matriz §11.1; el `PACIENTE` recibe 403 al leer el catálogo. | DP-36 |
 | U-11 | la conciliación salda lo cobrado (presentado − debitado) y deja `PENDIENTE` sólo lo debitado, re-presentable; estados `DEBITADO_PARCIAL` y `ACEPTADO_PARCIAL`, migración `V110`. | DP-37 |
 | U-28 | orden y autorización faltantes cuando el convenio las exige → **reparo** (`SIN_ORDEN`, `SIN_AUTORIZACION`, bloquean confirmar); credencial → **aviso** (`CREDENCIAL_FALTANTE` en `avisos`). | DP-37 |
 
@@ -121,7 +125,11 @@ depende del usuario".
 - **Destraba:** el criterio "cero hallazgos altos" de 07.07. Las opciones (a) y (b) cambian el
   contrato.
 
-### U-04 · `caso:create`
+### ~~U-04 · `caso:create`~~ — RESUELTA el 18/10/2026 (DP-36)
+
+> **Resuelta el 18/10/2026** por el usuario (acepta la recomendación) e implementada en api #123:
+> `caso:create` absorbido en `hc:write` y retirado del catálogo; matriz §18.3. Sin cambio de
+> respuestas. Ver DP-36.
 
 - **Pregunta:** ¿se cablea como permiso propio o se absorbe en `hc:write` enmendando la matriz?
 - **Recomendado:** enmendar la matriz y absorberlo en `hc:write` (F4 n.º 3; G-5 opción (b), "la
@@ -171,7 +179,10 @@ depende del usuario".
 Exponen datos hoy, o su arreglo necesita migración o un cambio incompatible que crece con cada
 fila nueva.
 
-### U-07 · `convenio:read`
+### ~~U-07 · `convenio:read`~~ — RESUELTA el 18/10/2026 (DP-36)
+
+> **Resuelta el 18/10/2026** por el usuario (acepta la recomendación) e implementada en api #123:
+> sin migración, contrato 0.130.0 solo con descripciones; matriz §18.1. Ver DP-36.
 
 - **Pregunta:** ¿las lecturas de `contracting` (financiadores, planes, convenios, aranceles) pasan
   a exigir un permiso? Hoy se autorizan por pertenencia y una membership `PACIENTE` lee la
@@ -182,7 +193,11 @@ fila nueva.
 - **Fase / RF:** F3 (03.03–03.05). Ficha F3 n.º 4.
 - **Destraba:** cerrar el mismo hueco que DP-22 cerró para el padrón.
 
-### U-08 · `catalogo:read` / `catalogo:manage`
+### ~~U-08 · `catalogo:read` / `catalogo:manage`~~ — RESUELTA el 18/10/2026 (DP-36)
+
+> **Resuelta el 18/10/2026** por el usuario (acepta la recomendación) e implementada en api #123:
+> la propuesta de §11.1 tal cual, también para los tipos de medición y las solicitudes de alta;
+> matriz §18.2. Ver DP-36.
 
 - **Pregunta:** ¿se aprueban como están propuestos en `docs/seguridad/matriz-permisos-minima.md`
   §11.1? Hoy rige la autorización interina por pertenencia / `ORG_ADMIN`.

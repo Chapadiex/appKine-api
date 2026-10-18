@@ -794,6 +794,20 @@ En el frontend, `overrides` de **`basic-ftp@^6`** (resuelve 6.2.3): cierra las c
 
 **Implementada en:** api #119 (mergeado el 17/10/2026) y web #77.
 
+## DP-36 — Permisos: `caso:create` en `hc:write`, `convenio:read` y `catalogo:read`/`catalogo:manage` (U-04, U-07, U-08)
+
+**Estado:** RESUELTA e implementada el 18/10/2026. Decidido por el usuario: acepta las recomendaciones de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** Tres enmiendas a la matriz de permisos (`docs/seguridad/matriz-permisos-minima.md` §18), sin migración: el catálogo de permisos y la asignación base viven en código (`organization.domain.PermissionCode` y `RolePermissions`). Ninguno de los códigos nuevos es otorgable por grant.
+
+- **U-04 — `caso:create` se absorbe en `hc:write`.** La matriz se enmienda y el código sale del catálogo: abrir un Caso Clínico siempre se autorizó con `hc:write`, y desde G-5 eso da exactamente la fila "Crear Caso Clínico" de §2 (`PROFESIONAL` por base, `CONSULTORIO_ADMIN` por grant). **No cambia ninguna respuesta.** Cierra el hallazgo R10 del threat model.
+- **U-07 — `convenio:read` solo para el personal**, con el mismo criterio que DP-22 aplicó a `paciente:read`: `ORG_ADMIN` (organización), `CONSULTORIO_ADMIN`, `PROFESIONAL` y `ADMINISTRATIVO` (consultorio). Gobierna todas las lecturas de `contracting` —financiadores, planes, convenios, aranceles y arancel efectivo—, evaluado con la sede del contexto. **Un `PACIENTE` recibe 403** donde antes leía la configuración económica del centro; cross-tenant sigue en 404.
+- **U-08 — `catalogo:read` y `catalogo:manage`** como los proponía la §11.1 de la matriz: leer el catálogo clínico (especialidades, prácticas, nomencladores, vigencias, tipos de medición y solicitudes de alta) exige `catalogo:read` —todo el personal; la plataforma con alcance Global—, y crear, editar, dar de baja o solicitar un concepto exige `catalogo:manage` —`ORG_ADMIN` y `CONSULTORIO_ADMIN`; la plataforma, Global, para los conceptos comunes y resolver solicitudes—. Reemplaza la autorización interina de 02.05 (pertenencia para leer, `consultorio:manage` para mutar). **Un `PACIENTE` recibe 403** al leer el catálogo; los roles que mutan no cambian.
+
+**Alternativas descartadas.** U-04: cablear `caso:create` como permiso propio (el mismo efecto observable, con un código más que mantener). U-07: seguir autorizando por pertenencia. U-08: mantener la autorización interina.
+
+**Implementada en:** api #123. Contrato **0.130.0**, solo descripciones de los 403 y de las mutaciones del catálogo; sin operaciones, schemas ni `problemType` nuevos. `MatrizDePermisosIT` lo fija por HTTP contra MySQL con los cinco roles. **Impacto en el frontend:** las pantallas de financiadores, planes, convenios, aranceles y catálogo clínico quedan cerradas para una membership `PACIENTE` (responden 403), y cualquier referencia a `caso:create` se reemplaza por `hc:write`.
+
 ## DP-37 — RF-M21-003: orden y autorización faltantes son reparo, la credencial es aviso; el débito parcial salda lo cobrado (U-28, U-11)
 
 **Estado:** RESUELTA e implementada el 18/10/2026. Decidido por el usuario: acepta las recomendaciones de `docs/fases/decisiones-pendientes.md`.

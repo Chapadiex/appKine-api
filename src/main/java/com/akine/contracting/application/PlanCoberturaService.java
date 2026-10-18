@@ -100,7 +100,8 @@ public class PlanCoberturaService {
 	public List<PlanCoberturaView> listar(
 			OperatingActor actor, long financiadorId, EstadoFiltro estado, LocalDate fecha) {
 
-		long organizationId = AutorizacionDeCatalogo.exigirContexto(actor, "Listar planes");
+		long organizationId =
+				AutorizacionDeCatalogo.exigirLectura(permissionGuard, actor, "Listar planes");
 		exigirFinanciadorDelTenant(organizationId, financiadorId);
 
 		EstadoFiltro filtro = estado == null ? EstadoFiltro.ACTIVO : estado;

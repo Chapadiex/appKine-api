@@ -60,17 +60,15 @@ import java.util.List;
  * <h2>Autorizacion</h2>
  *
  * <ul>
- *   <li><b>Leer</b>: cualquier membership vigente. Devuelve lo global MAS lo propio del centro.</li>
- *   <li><b>Mutar una definicion propia</b>: {@code consultorio:manage} sobre la sede del
+ *   <li><b>Leer</b>: {@code catalogo:read} (U-08). Devuelve lo global MAS lo propio del centro.</li>
+ *   <li><b>Mutar una definicion propia</b>: {@code catalogo:manage} sobre la sede del
  *       contexto.</li>
  *   <li><b>Mutar una global</b>: rol de plataforma. Un administrador de tenant la VE y no la
  *       toca.</li>
  * </ul>
  *
- * <p>Sin permisos nuevos: son los mismos de M06 que 02.05 fijo, con la misma politica interina
- * —{@code catalogo:read} y {@code catalogo:manage} siguen propuestos en
- * {@code docs/seguridad/matriz-permisos-minima.md} §11—. <b>Los codigos HTTP no cambian cuando se
- * aprueben.</b>
+ * <p>Son los mismos permisos de M06, {@code catalogo:read} y {@code catalogo:manage}, aprobados por
+ * U-08 (matriz §18.2) sobre la propuesta de la §11.1.
  *
  * <h2>Codigos</h2>
  *
@@ -154,7 +152,7 @@ public class MedicionDefinicionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "No hay sesion autenticada o no hay contexto de trabajo",
+					description = "Sin contexto de trabajo, o sin catalogo:read (el rol PACIENTE no lo tiene). Nunca 401",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
@@ -193,7 +191,7 @@ public class MedicionDefinicionController {
 					Declara que se mide, en que unidad y con que rango.
 
 					El campo alcance del cuerpo decide el duenio y quien puede crearla: \
-					ORGANIZACION exige consultorio:manage sobre la sede del contexto —pasan \
+					ORGANIZACION exige catalogo:manage sobre la sede del contexto —pasan \
 					ORG_ADMIN y CONSULTORIO_ADMIN—; GLOBAL exige rol de plataforma. Si se omite, \
 					ORGANIZACION.
 
@@ -231,7 +229,7 @@ public class MedicionDefinicionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto de trabajo, sin consultorio:manage para una "
+					description = "Sin contexto de trabajo, sin catalogo:manage para una "
 							+ "definicion contextual, o sin rol de plataforma para una global",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -314,7 +312,7 @@ public class MedicionDefinicionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto, sin consultorio:manage sobre una definicion "
+					description = "Sin contexto, sin catalogo:manage sobre una definicion "
 							+ "propia, o sin rol de plataforma sobre una global",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -396,7 +394,7 @@ public class MedicionDefinicionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin contexto, sin consultorio:manage sobre una definicion "
+					description = "Sin contexto, sin catalogo:manage sobre una definicion "
 							+ "propia, o sin rol de plataforma sobre una global",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,

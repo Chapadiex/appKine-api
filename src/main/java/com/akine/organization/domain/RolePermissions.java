@@ -231,7 +231,13 @@ public final class RolePermissions {
 				// fila que diga quien la hizo ni por que. Con soporte vigente, ReporteService
 				// escribe SUPPORT_ACCESS_USED. Lo que ve de cada seccion lo sigue recortando su
 				// permiso de fuente: con esta columna, turnos si; lo clinico y lo economico no.
-				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.SOPORTE)));
+				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.SOPORTE),
+				// U-08 (matriz §11.1 y §18.2): GLOBAL y no SOPORTE. No es una excepcion al criterio de
+				// §9.7: la pregunta no aplica, porque lo unico que la plataforma alcanza en el catalogo
+				// clinico es el catalogo COMUN, que no es dato de ningun tenant. Los conceptos
+				// contextuales le siguen cerrados en resource.application.AlcanceDelCatalogo.
+				Map.entry(PermissionCode.CATALOGO_READ, PermissionScope.GLOBAL),
+				Map.entry(PermissionCode.CATALOGO_MANAGE, PermissionScope.GLOBAL)));
 
 		// ORG_ADMIN â "tenant:manage" NO esta: la matriz Â§4 acota su "Limitado" a editar su
 		// organizacion y ver su suscripcion, y deja el cambio de plan y la suspension para
@@ -280,6 +286,13 @@ public final class RolePermissions {
 				// administrar los financiadores de un tenant, que es precisamente lo que su celda
 				// excluye. Queda sin cumplirse hasta que exista la poblacion global.
 				Map.entry(PermissionCode.CONVENIO_MANAGE, PermissionScope.ORGANIZACION),
+				// U-07, mismo criterio que DP-22: las lecturas de contracting dejan de autorizarse por
+				// pertenencia. Lo tiene todo el personal; PACIENTE no (matriz §18.1).
+				Map.entry(PermissionCode.CONVENIO_READ, PermissionScope.ORGANIZACION),
+				// U-08: la propuesta de la matriz §11.1, aprobada. Reemplaza la pertenencia (lectura) y
+				// consultorio:manage (mutacion) que 02.05 dejo como autorizacion interina.
+				Map.entry(PermissionCode.CATALOGO_READ, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.CATALOGO_MANAGE, PermissionScope.ORGANIZACION),
 				// AKINE-08.01. M28 Â§2 lo nombra entre los actores de una clase, y el alcance es el
 				// mismo que el de sus turnos.
 				Map.entry(PermissionCode.CLASE_READ, PermissionScope.ORGANIZACION),
@@ -342,6 +355,12 @@ public final class RolePermissions {
 				// alcance sigue siendo el de la membership con la que se decide, mismo criterio
 				// que `paciente:manage` sobre una Persona que tambien es de la organizacion.
 				Map.entry(PermissionCode.CONVENIO_MANAGE, PermissionScope.CONSULTORIO),
+				// U-07 y U-08. Ver el comentario del ORG_ADMIN. La fila Consultorio de catalogo:manage
+				// conserva a proposito lo que daba consultorio:manage: el concepto contextual que crea lo
+				// ven las demas sedes del tenant (matriz §11.1).
+				Map.entry(PermissionCode.CONVENIO_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.CATALOGO_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.CATALOGO_MANAGE, PermissionScope.CONSULTORIO),
 				// AKINE-G-1 (DP-15). "Si" en Ver Reportes, con el alcance de su sede.
 				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.CONSULTORIO)));
 
@@ -377,6 +396,10 @@ public final class RolePermissions {
 				// "Segun permiso" es la celda de GESTIONAR; para atender hay que poder ver al
 				// paciente, su cobertura y su autorizacion.
 				Map.entry(PermissionCode.PACIENTE_READ, PermissionScope.CONSULTORIO),
+				// U-07: para atender hay que ver la cobertura y el arancel aplicable. U-08: sin leer el
+				// catalogo no puede elegir la practica que acaba de hacer.
+				Map.entry(PermissionCode.CONVENIO_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.CATALOGO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.HC_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.HC_WRITE, PermissionScope.CONSULTORIO),
@@ -411,6 +434,9 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.PACIENTE_MANAGE, PermissionScope.CONSULTORIO),
 				// AKINE-DU-6 (DP-22): el mostrador busca, abre fichas y mira coberturas.
 				Map.entry(PermissionCode.PACIENTE_READ, PermissionScope.CONSULTORIO),
+				// U-07 y U-08: el mostrador mira coberturas, convenios y practicas.
+				Map.entry(PermissionCode.CONVENIO_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.CATALOGO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO),

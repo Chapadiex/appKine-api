@@ -95,7 +95,7 @@ public class ArancelController {
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							array = @ArraySchema(
 									schema = @Schema(implementation = ArancelResponse.class)))),
-			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo",
+			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo o sin convenio:read (el rol PACIENTE no lo tiene)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404", description = "La sede o el convenio no son accesibles",
@@ -375,7 +375,7 @@ public class ArancelController {
 					description = "El arancel efectivo, o el motivo por el que no hay",
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = ArancelEfectivoResponse.class))),
-			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo",
+			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo o sin convenio:read (el rol PACIENTE no lo tiene)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",

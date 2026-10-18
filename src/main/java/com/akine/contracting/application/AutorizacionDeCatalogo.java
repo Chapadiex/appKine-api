@@ -20,9 +20,9 @@ import java.time.Instant;
  * <h2>Las dos formas de autorizar de este modulo</h2>
  *
  * <pre>
- *   LEER   pertenencia al tenant: alcanza con tener contexto de organizacion activo. No hay
- *          convenio:read en el catalogo de la matriz y una etapa no lo inventa. El hueco que
- *          eso deja esta declarado en PermissionCodes.
+ *   LEER   convenio:read evaluado con la sede del contexto (U-07, mismo criterio que DP-22).
+ *          Hasta U-07 alcanzaba la pertenencia al tenant, y el rol PACIENTE leia financiadores,
+ *          planes, convenios y aranceles. Lo tiene todo el personal; PACIENTE no.
  *   MUTAR  convenio:manage evaluado CON la sede del contexto. Que lleve sede aunque el
  *          financiador sea de la organizacion NO es obvio y esta explicado en PermissionCodes:
  *          sin sede, el evaluador deja afuera al CONSULTORIO_ADMIN.
@@ -40,7 +40,38 @@ final class AutorizacionDeCatalogo {
 	}
 
 	/**
-	 * Exige contexto de organizacion y lo devuelve. Es el control de las LECTURAS.
+	 * Exige contexto de organizacion, evalua {@code convenio:read} y devuelve la organizacion. Es
+	 * el control de TODAS las LECTURAS del modulo (U-07, mismo criterio que DP-22).
+	 *
+	 * <p>Quien pertenece sin el permiso recibe <b>403</b>; quien pide un financiador, plan o
+	 * convenio de otra organizacion sigue recibiendo <b>404</b>, porque la organizacion sale del
+	 * contexto y la busqueda posterior no lo encuentra.
+	 *
+	 * <p>Se evalua con la sede <b>del contexto</b> y no con la de la ruta, igual que
+	 * {@code paciente:read}: sin sede los alcances de consultorio no cubren la consulta, y usar la
+	 * de la ruta le cerraria a un {@code PROFESIONAL} los convenios de otra sede de su organizacion,
+	 * que hasta U-07 leia. El unico cambio de comportamiento buscado es el del {@code PACIENTE}.
+	 *
+	 * <p>La decision no se devuelve: ningun rol con alcance {@code SOPORTE} tiene
+	 * {@code convenio:read}, asi que no hay {@code SUPPORT_ACCESS_USED} que dejar.
+	 */
+	static long exigirLectura(
+			PermissionGuard permissionGuard, OperatingActor actor, String operacion) {
+
+		long organizationId = exigirContexto(actor, operacion);
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.CONVENIO_READ,
+				organizationId,
+				actor.consultorioId(),
+				null,
+				Instant.now()));
+		return organizationId;
+	}
+
+	/**
+	 * Exige contexto de organizacion y lo devuelve. Es el primer paso de las mutaciones de M16,
+	 * que despues evaluan {@code convenio:manage} sobre la sede de la ruta.
 	 *
 	 * <p>La organizacion nunca viaja por parametro ni por la ruta: sale del contexto que
 	 * {@code TenantContextFilter} revalido contra la base en este request.

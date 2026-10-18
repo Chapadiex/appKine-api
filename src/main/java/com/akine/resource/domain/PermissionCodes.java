@@ -11,7 +11,8 @@ package com.akine.resource.domain;
  * modulo consumidor declara los codigos que usa. Tenerlos en una constante con nombre y no
  * esparcidos como literales es lo que hace que un renombre del catalogo sea un solo grep.
  *
- * <p><b>Ningun codigo de aca es nuevo.</b> Los dos salen de la seccion 5 de
+ * <p>{@code catalogo:read} y {@code catalogo:manage} los agrego la decision U-08 (matriz §18.2).
+ * Los demas salen de la seccion 5 de
  * {@code docs/seguridad/matriz-permisos-minima.md}, que es vinculante: una etapa no le agrega
  * filas al catalogo. {@code espacio:read} estuvo PROPUESTO en la seccion 10.1 mientras 02.02 lo
  * autorizaba por pertenencia; se aprobo el <b>25/08/2026</b> y desde entonces esta en la
@@ -29,25 +30,26 @@ public final class PermissionCodes {
 	 */
 	public static final String CONSULTORIO_MANAGE = "consultorio:manage";
 
-	/*
-	 * AKINE-02.05 usa CONSULTORIO_MANAGE tambien para mutar el CATALOGO CLINICO contextual
-	 * —especialidades, practicas, nomencladores y solicitudes—, y es una autorizacion INTERINA,
-	 * no la definitiva.
+	/**
+	 * Consultar el catalogo clinico —especialidades, practicas, nomencladores, vigencias, tipos de
+	 * medicion y solicitudes de alta—, global y propio (U-08, matriz §11.1 y §18.2).
 	 *
-	 * M06 necesita dos codigos que el catalogo de la matriz no tiene: `catalogo:read` y
-	 * `catalogo:manage`. Esta etapa NO los inventa, por la misma regla con la que 01.03 se nego a
-	 * inventar un codigo de edicion de organizacion (§9.2) y 02.02 dejo `espacio:read` propuesto
-	 * (§10.1): el catalogo de la seccion 5 es vinculante y agregarle una fila es una decision de
-	 * la matriz, no de una etapa.
-	 *
-	 * La propuesta, con su tabla de asignacion por rol y con las dos diferencias respecto de lo
-	 * interino, esta en docs/seguridad/matriz-permisos-minima.md §11.1. Las LECTURAS del catalogo
-	 * no evaluan ningun permiso: se autorizan por pertenencia, igual que hacian las de espacios
-	 * antes de que `espacio:read` se aprobara.
-	 *
-	 * Cuando los codigos se aprueben, cambia a que se llama al evaluador y nada mas: los codigos
-	 * HTTP de rechazo son los mismos.
+	 * <p>Reemplaza la autorizacion interina por pertenencia de 02.05: lo tiene todo el personal y
+	 * la plataforma (GLOBAL, solo el catalogo comun); el rol {@code PACIENTE} recibe 403. Se
+	 * evalua con la sede del contexto.
 	 */
+	public static final String CATALOGO_READ = "catalogo:read";
+
+	/**
+	 * Administrar los conceptos del catalogo clinico y las solicitudes de alta (U-08, matriz
+	 * §11.1 y §18.2).
+	 *
+	 * <p>Reemplaza el {@link #CONSULTORIO_MANAGE} interino de 02.05 con los mismos roles:
+	 * {@code ORG_ADMIN} (organizacion) y {@code CONSULTORIO_ADMIN} (su sede) sobre conceptos
+	 * contextuales; {@code PLATFORM_ADMIN} (GLOBAL) sobre los globales y la resolucion de
+	 * solicitudes. Los codigos HTTP de rechazo no cambian.
+	 */
+	public static final String CATALOGO_MANAGE = "catalogo:manage";
 
 	/**
 	 * Consultar el catalogo fisico y la disponibilidad de una sede. Es lo que exigen las tres

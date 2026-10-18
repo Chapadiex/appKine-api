@@ -3,9 +3,10 @@ package com.akine.contracting.domain;
 /**
  * Codigos del catalogo de la matriz de permisos que evalua {@code contracting}.
  *
- * <p><b>Ninguno es nuevo.</b> {@code convenio:manage} ya estaba en el catalogo de la matriz §5
- * desde AKINE-01.03, declarado para F3, y esta etapa <b>no agrega ningun codigo</b>: la matriz no
- * la amplia una etapa, mismo criterio que 02.04, 02.05, 02.06 y 02.07.
+ * <p>{@code convenio:manage} ya estaba en el catalogo de la matriz §5 desde AKINE-01.03,
+ * declarado para F3, y 03.03 <b>no agrego ningun codigo</b>: la matriz no la amplia una etapa,
+ * mismo criterio que 02.04, 02.05, 02.06 y 02.07. {@code convenio:read} lo agrego despues la
+ * decision U-07 (matriz §18.1).
  *
  * <p>Es literal y no el enum de {@code organization} por el motivo de siempre:
  * {@code organization.domain.PermissionCode} es privado de ese modulo y ArchUnit prohibe
@@ -25,9 +26,8 @@ package com.akine.contracting.domain;
  * <h2>Las dos formas de autorizar de este modulo</h2>
  *
  * <pre>
- *   LEER   pertenencia al tenant: alcanza con tener contexto de organizacion activo.
- *          NO existe convenio:read en el catalogo de la matriz y una etapa no lo inventa.
- *          Ver el hueco conocido abajo.
+ *   LEER   convenio:read evaluado con la sede del contexto (U-07, desde la propuesta de
+ *          permisos recomendados; mismo criterio que DP-22 para el padron).
  *   MUTAR  convenio:manage evaluado CON la sede del contexto.
  * </pre>
  *
@@ -40,12 +40,10 @@ package com.akine.contracting.domain;
  * <h2>Dos huecos conocidos que esta etapa NO cierra, declarados</h2>
  *
  * <ol>
- *   <li><b>No existe {@code convenio:read}.</b> Las lecturas se autorizan por pertenencia, asi
- *       que una membership con rol {@code PACIENTE} lee el catalogo de financiadores de su
- *       organizacion. Es exactamente el mismo hueco que 03.01 dejo en el padron, y aprobar un
- *       codigo de lectura tampoco lo cerraria del todo: el problema de fondo es el alcance
- *       {@code OWN}, que no esta implementado en ninguna parte porque no hay vinculo entre cuenta
- *       y persona.</li>
+ *   <li><s>No existe {@code convenio:read}.</s> <b>Cerrado por U-07</b> con el mismo criterio
+ *       que DP-22 cerro el padron: {@code convenio:read} solo para el personal, y el rol
+ *       {@code PACIENTE} recibe 403 en todas las lecturas del modulo. El alcance {@code OWN} —que
+ *       un paciente vea su propio financiador— sigue para despues del MVP.</li>
  *   <li><b>{@code PLATFORM_ADMIN} no recibe asignacion base.</b> Su celda dice "Catalogo global",
  *       que la matriz §3 define como "solo sobre el catalogo de plataforma (financiadores/planes
  *       globales), nunca sobre convenios de un tenant". <b>Ese catalogo global no existe</b>:
@@ -64,6 +62,14 @@ public final class PermissionCodes {
 	 * <p>Se evalua con la sede del contexto como alcance. Ver la cabecera de la clase.
 	 */
 	public static final String CONVENIO_MANAGE = "convenio:manage";
+
+	/**
+	 * Ver financiadores, planes, convenios y aranceles (U-07, matriz §18.1). Lo tiene todo el
+	 * personal; {@code PACIENTE} y {@code PLATFORM_ADMIN} no.
+	 *
+	 * <p>Se evalua con la sede del contexto. Ver {@code AutorizacionDeCatalogo.exigirLectura}.
+	 */
+	public static final String CONVENIO_READ = "convenio:read";
 
 	private PermissionCodes() {
 		// Catalogo de constantes.

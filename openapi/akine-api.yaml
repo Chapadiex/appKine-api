@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.129.0
+  version: 0.130.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -1653,7 +1653,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: No hay sesion autenticada o no hay contexto de trabajo
+          description: "Sin contexto de trabajo, o sin catalogo:read (el rol PACIENTE\
+            \ no lo tiene). Nunca 401"
       summary: Solicitudes de alta de catalogo
       tags:
       - Catalogo clinico
@@ -1667,7 +1668,7 @@ paths:
 
         La administracion de plataforma no puede usar este endpoint: no se pide conceptos a si misma, los crea.
 
-        Exige consultorio:manage sobre la sede del contexto.
+        Exige catalogo:manage sobre la sede del contexto.
       operationId: createCatalogoSolicitud
       requestBody:
         content:
@@ -1693,7 +1694,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo, sin consultorio:manage, o es un administrador\
+          description: "Sin contexto de trabajo, sin catalogo:manage, o es un administrador\
             \ de plataforma"
         "409":
           content:
@@ -1827,7 +1828,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: No hay sesion autenticada o no hay contexto de trabajo
+          description: "Sin contexto de trabajo, o sin catalogo:read (el rol PACIENTE\
+            \ no lo tiene). Nunca 401"
         "404":
           content:
             application/problem+json:
@@ -1847,7 +1849,7 @@ paths:
 
         La vigencia HEREDA el duenio del nomenclador y no lo puede elegir: por eso no hay campo alcance. Un nomenclador GLOBAL solo puede codificar practicas GLOBALES (409 catalogo-scope-mismatch).
 
-        Exige poder mutar el nomenclador: consultorio:manage si es del tenant, rol de plataforma si es global.
+        Exige poder mutar el nomenclador: catalogo:manage si es del tenant, rol de plataforma si es global.
       operationId: createNomencladorVigencia
       parameters:
       - description: Identificador del nomenclador
@@ -2071,7 +2073,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: No hay sesion autenticada o no hay contexto de trabajo
+          description: "Sin contexto de trabajo, o sin catalogo:read (el rol PACIENTE\
+            \ no lo tiene). Nunca 401"
       summary: Busqueda incremental en el catalogo
       tags:
       - Catalogo clinico
@@ -2079,7 +2082,7 @@ paths:
       description: |-
         Crea una especialidad, una practica o un nomenclador (RF-M06-001..003).
 
-        El campo alcance del cuerpo decide el duenio y quien puede crearlo: ORGANIZACION exige consultorio:manage sobre la sede del contexto —pasan ORG_ADMIN y CONSULTORIO_ADMIN—; GLOBAL exige rol de plataforma. Si se omite, ORGANIZACION.
+        El campo alcance del cuerpo decide el duenio y quien puede crearlo: ORGANIZACION exige catalogo:manage sobre la sede del contexto —pasan ORG_ADMIN y CONSULTORIO_ADMIN—; GLOBAL exige rol de plataforma. Si se omite, ORGANIZACION.
 
         especialidadId es obligatorio al crear una practica. Una practica GLOBAL solo puede colgar de una especialidad GLOBAL: al reves seria dejar que un centro decida el destino de un concepto que ven todos los demas, y responde 409 catalogo-scope-mismatch.
 
@@ -2124,7 +2127,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo, sin consultorio:manage para un concepto\
+          description: "Sin contexto de trabajo, sin catalogo:manage para un concepto\
             \ contextual, o sin rol de plataforma para uno global"
         "404":
           content:
@@ -2184,7 +2187,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: No hay sesion autenticada o no hay contexto de trabajo
+          description: "Sin contexto de trabajo, o sin catalogo:read (el rol PACIENTE\
+            \ no lo tiene). Nunca 401"
         "404":
           content:
             application/problem+json:
@@ -2250,7 +2254,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto, sin consultorio:manage sobre un concepto propio,\
+          description: "Sin contexto, sin catalogo:manage sobre un concepto propio,\
             \ o sin rol de plataforma sobre uno global"
         "404":
           content:
@@ -2321,7 +2325,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto, sin consultorio:manage sobre un concepto propio,\
+          description: "Sin contexto, sin catalogo:manage sobre un concepto propio,\
             \ o sin rol de plataforma sobre uno global"
         "404":
           content:
@@ -2474,7 +2478,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Sin contexto de trabajo activo
+          description: Sin contexto de trabajo activo o sin convenio:read (el rol
+            PACIENTE no lo tiene)
         "404":
           content:
             application/problem+json:
@@ -5302,7 +5307,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Sin contexto de trabajo activo
+          description: Sin contexto de trabajo activo o sin convenio:read (el rol
+            PACIENTE no lo tiene)
         "404":
           content:
             application/problem+json:
@@ -5492,7 +5498,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Sin contexto de trabajo activo
+          description: Sin contexto de trabajo activo o sin convenio:read (el rol
+            PACIENTE no lo tiene)
         "404":
           content:
             application/problem+json:
@@ -5634,7 +5641,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Sin contexto de trabajo activo
+          description: Sin contexto de trabajo activo o sin convenio:read (el rol
+            PACIENTE no lo tiene)
         "404":
           content:
             application/problem+json:
@@ -13720,7 +13728,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Sin sesion o sin contexto de trabajo activo
+          description: Sin contexto de trabajo activo o sin convenio:read (el rol
+            PACIENTE no lo tiene)
       summary: Buscar financiadores de la organizacion
       tags:
       - Financiadores y planes
@@ -13856,7 +13865,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Sin contexto de trabajo activo
+          description: Sin contexto de trabajo activo o sin convenio:read (el rol
+            PACIENTE no lo tiene)
         "404":
           content:
             application/problem+json:
@@ -13976,7 +13986,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Sin contexto de trabajo activo
+          description: Sin contexto de trabajo activo o sin convenio:read (el rol
+            PACIENTE no lo tiene)
         "404":
           content:
             application/problem+json:
@@ -15609,7 +15620,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: No hay sesion autenticada o no hay contexto de trabajo
+          description: "Sin contexto de trabajo, o sin catalogo:read (el rol PACIENTE\
+            \ no lo tiene). Nunca 401"
       summary: Listado del catalogo de medidas
       tags:
       - Definiciones de medicion
@@ -15617,7 +15629,7 @@ paths:
       description: |-
         Declara que se mide, en que unidad y con que rango.
 
-        El campo alcance del cuerpo decide el duenio y quien puede crearla: ORGANIZACION exige consultorio:manage sobre la sede del contexto —pasan ORG_ADMIN y CONSULTORIO_ADMIN—; GLOBAL exige rol de plataforma. Si se omite, ORGANIZACION.
+        El campo alcance del cuerpo decide el duenio y quien puede crearla: ORGANIZACION exige catalogo:manage sobre la sede del contexto —pasan ORG_ADMIN y CONSULTORIO_ADMIN—; GLOBAL exige rol de plataforma. Si se omite, ORGANIZACION.
 
         El TIPO decide todo lo demas y es inmutable. NUMERICO y ESCALA exigen unidad y admiten rango; TEXTO y BOOLEANO no llevan ni una ni otro —un minimo sobre un texto no significa nada—. Un tipo incoherente con la unidad o el rango es 400.
 
@@ -15651,7 +15663,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto de trabajo, sin consultorio:manage para una definicion\
+          description: "Sin contexto de trabajo, sin catalogo:manage para una definicion\
             \ contextual, o sin rol de plataforma para una global"
         "409":
           content:
@@ -15705,8 +15717,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto, sin consultorio:manage sobre una definicion\
-            \ propia, o sin rol de plataforma sobre una global"
+          description: "Sin contexto, sin catalogo:manage sobre una definicion propia,\
+            \ o sin rol de plataforma sobre una global"
         "404":
           content:
             application/problem+json:
@@ -15769,8 +15781,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Sin contexto, sin consultorio:manage sobre una definicion\
-            \ propia, o sin rol de plataforma sobre una global"
+          description: "Sin contexto, sin catalogo:manage sobre una definicion propia,\
+            \ o sin rol de plataforma sobre una global"
         "404":
           content:
             application/problem+json:
