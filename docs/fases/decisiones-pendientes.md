@@ -26,21 +26,27 @@
 > del release candidate (U-41, U-43, U-45, U-50 → DP-31). El mismo día, más tarde, **3 resueltas**
 > más del bloque A: **U-03** —junto con U-46 (e)— → DP-33, **U-05** → DP-34 y **U-06** → DP-35.
 > U-47 no existe. El **18/10/2026** el usuario aceptó las recomendaciones de **U-11** y **U-28**
-> → DP-37 (api #122) y de **U-04, U-07 y U-08** → DP-36 (api #123). Quedan **34 abiertas**, 4 de
-> ellas postergadas.
+> → DP-37 (api #122) y de **U-04, U-07 y U-08** → DP-36 (api #123). El **18/10/2026**, más tarde,
+> el usuario resolvió las 4 postergadas —**U-41 → DP-38, U-50 → DP-39, U-43 y U-45 → DP-40**— y
+> **U-37 → DP-41**. Quedan **29 abiertas**, ninguna postergada.
 
 | Bloque | Abiertas | Resueltas el 17/10 y el 18/10 |
 |---|---|---|
 | A. Bloquean el gate del MVP (U-01 a U-06) | 2 (2 acciones) | U-03, U-05, U-06; U-04 (18/10) |
 | B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 6 | U-39, U-42, U-46, U-48, U-49; U-07, U-08, U-11 (18/10) |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 19 | U-28 (18/10) |
-| D. No bloquean nada (U-35 a U-37) + postergadas U-41, U-43, U-45, U-50 | 7 (4 postergadas) | U-40, U-44 |
-| **Total** | **34** (de 49) | **15** |
+| D. No bloquean nada (U-35 a U-37) + ex postergadas U-41, U-43, U-45, U-50 | 2 | U-40, U-44; U-37, U-41, U-43, U-45, U-50 (18/10) |
+| **Total** | **29** (de 49) | **20** |
 
 ### Resueltas el 18/10/2026
 
 | U | Resolución | DP |
 |---|---|---|
+| U-41 | honorarios por clase: importe por participante presente, declarado en la oferta con vigencia; varios instructores, partes iguales; borrador por período que el administrador confirma como egreso, con snapshot. | DP-38 |
+| U-50 | el egreso gana oferta/servicio opcional (los de honorarios ya ligados); rentabilidad = ingresos − egresos imputados; el cobro de varias deudas se reparte en caja proporcional a lo imputado. | DP-39 |
+| U-43 | el período renovado sigue a nombre de quien activó la renovación; si se desvincula, la renovación se apaga sola y se avisa al administrador. | DP-40 |
+| U-45 | período no calendario anclado al día de la primera venta (último día del mes si no existe), sin correrse. | DP-40 |
+| U-37 | Angular 22 y Java 25 después del despliegue del RC, cuando esté estable. | DP-41 |
 | U-04 | `caso:create` absorbido en `hc:write`: la matriz se enmienda y el código sale del catálogo. Sin cambio de respuestas. | DP-36 |
 | U-07 | `convenio:read` solo para el personal (como DP-22); el `PACIENTE` recibe 403 en las lecturas de `contracting`. | DP-36 |
 | U-08 | `catalogo:read` / `catalogo:manage` como en la matriz §11.1; el `PACIENTE` recibe 403 al leer el catálogo. | DP-36 |
@@ -62,16 +68,9 @@
 | U-48 | el lock solo en abonos; los packs resuelven la clave por el unique. | DP-29 |
 | U-49 | (a) hecha en #152; (c) preparada y **apagada por defecto** (`lotes-concurrentes-por-sede`), se enciende solo si el entorno lo exige; (b) no. | DP-30 |
 
-### Postergadas después del RC (siguen abiertas)
+### Postergadas después del RC
 
-| U | Tema | Motivo |
-|---|---|---|
-| U-41 | Honorarios por clase | Mejora posterior; el egreso de honorarios se carga a mano |
-| U-43 | Cuenta técnica del job de renovación | Hoy vende a nombre de quien autorizó la renovación |
-| U-45 | Períodos de abono no calendario | Hoy: mes calendario o `vigenciaDias` |
-| U-50 | Rentabilidad y caja por servicio | Sin fuente de costos; el reporte no muestra margen |
-
-Decisión: DP-31.
+Ninguna: el 18/10/2026 las cuatro (U-41, U-43, U-45, U-50) pasaron a resueltas (DP-38 a DP-40). DP-31 las había postergado el 17/10/2026.
 
 > **Revisado el 16/10/2026** (etapa 09.04): U-39 (#129), U-40 (#135), U-41 (#139) y U-42 (#141)
 > estaban; de las cuatro "Decisiones a confirmar" de #140 (08.08), la primera —renovar un abono
@@ -580,7 +579,9 @@ dejar el MVP como está:
 - **Fase / RF:** F8 (07.06).
 - **Destraba:** el 10 % de 07.06 (como desvío declarado).
 
-### U-37 · Saltos de versión mayor de Dependabot
+### ~~U-37 · Saltos de versión mayor de Dependabot~~ — RESUELTA el 18/10/2026 (DP-41)
+
+> **Resuelta el 18/10/2026** por el usuario: Angular 22 y Java 25 después del despliegue del RC, cuando esté estable. Ver DP-41 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 - **Pregunta:** ¿se toman Angular 22 (web #53, #55–#57), Vitest coverage 5 (web #70) y Java 25 en
   la imagen (api #87)?
@@ -611,9 +612,9 @@ dejar el MVP como está:
   [`../diseno/AKINE-08.07-08.08-ledger-y-abonos.md`](../diseno/AKINE-08.07-08.08-ledger-y-abonos.md) §9.
 - **Destraba:** nada del MVP.
 
-### U-41 · El esquema de honorarios que RF-M22-006 da por configurado — POSTERGADA (después del RC, DP-31)
+### ~~U-41 · El esquema de honorarios que RF-M22-006 da por configurado~~ — RESUELTA el 18/10/2026 (DP-38)
 
-> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (honorarios por clase); documentada y abierta. Ver DP-31.
+> **Resuelta el 18/10/2026** por el usuario: importe por participante presente, en la oferta con vigencia, partes iguales entre instructores, borrador por período confirmado como egreso. Ver DP-38 en `AKINE_IMPLEMENTATION_PLAN.md` §7. (Postergada antes por DP-31; el texto de abajo es el planteo original.)
 
 - **Pregunta:** RF-M22-006 dice *"aplica esquema de honorario configurado: por clase, hora,
   participante u otro soportado"*, y ese esquema **no existe** en el modelo ni en la especificación.
@@ -677,9 +678,9 @@ dejar el MVP como está:
 - **Fase / RF:** F10 (09.03); RF-M13-008, RF-M28-007.
 - **Destraba:** el SLO con asistencia en lote bajo carga.
 
-### U-43 · A nombre de quién se vende el período que renueva el job — POSTERGADA (después del RC, DP-31)
+### ~~U-43 · A nombre de quién se vende el período que renueva el job~~ — RESUELTA el 18/10/2026 (DP-40)
 
-> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (cuenta técnica del job de renovación); documentada y abierta. Ver DP-31.
+> **Resuelta el 18/10/2026** por el usuario: sigue a nombre de quien activó la renovación; si se desvincula, se apaga y se avisa. Ver DP-40 en `AKINE_IMPLEMENTATION_PLAN.md` §7. (Postergada antes por DP-31; el texto de abajo es el planteo original.)
 
 - **Pregunta:** la renovación automática de un abono (08.08) vende el período siguiente sin que
   nadie apriete un botón. ¿Quién figura como vendedor: la cuenta que prendió la renovación, o una
@@ -709,9 +710,9 @@ dejar el MVP como está:
 - **Fase / RF:** F9 (08.08); RF-M26-008, CA-M26-008-06. Diseño §10.3 y §10.8 n.º 8.
 - **Destraba:** nada del MVP. Cómo se operan hoy: [`../operaciones/runbooks.md`](../operaciones/runbooks.md) R7.
 
-### U-45 · Qué período sigue al renovar un abono que no es un mes calendario — POSTERGADA (después del RC, DP-31)
+### ~~U-45 · Qué período sigue al renovar un abono que no es un mes calendario~~ — RESUELTA el 18/10/2026 (DP-40)
 
-> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (períodos no calendario); documentada y abierta. Ver DP-31.
+> **Resuelta el 18/10/2026** por el usuario: anclado al día de la primera venta. Ver DP-40 en `AKINE_IMPLEMENTATION_PLAN.md` §7. (Postergada antes por DP-31; el texto de abajo es el planteo original.)
 
 - **Pregunta:** el job renueva un mes calendario completo por el mes siguiente (noviembre →
   diciembre). Cualquier otro período se renueva por `vigenciaDias` desde el día siguiente al fin, y
@@ -722,9 +723,9 @@ dejar el MVP como está:
 - **Fase / RF:** F9 (08.08); RF-M29-007. Diseño §10.2 paso 3.
 - **Destraba:** nada del MVP.
 
-### U-50 · Cómo se costea un servicio para medir su rentabilidad — POSTERGADA (después del RC, DP-31)
+### ~~U-50 · Cómo se costea un servicio para medir su rentabilidad~~ — RESUELTA el 18/10/2026 (DP-39)
 
-> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (rentabilidad y caja por servicio); documentada y abierta. Ver DP-31.
+> **Resuelta el 18/10/2026** por el usuario: egreso imputable a una oferta, rentabilidad = ingresos − egresos imputados, cobro prorrateado en caja. Ver DP-39 en `AKINE_IMPLEMENTATION_PLAN.md` §7. (Postergada antes por DP-31; el texto de abajo es el planteo original.)
 
 - **Pregunta:** RF-M23-009 se titula *"rentabilidad e ingresos por servicio"* y pide *"consolidar
   obligaciones, cobros y caja por Oferta/Servicio"*. Los ingresos tienen fuente; **los costos no**.

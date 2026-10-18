@@ -49,7 +49,7 @@ dato ajeno responde 404, nunca 403).
 | **Atención clínica grupal** | Abrir una Sesión por participante desde su derivación, de a uno o en lote, con panel de la clase; cada Sesión se cierra y numera en su Caso | Completo, con pantalla |
 | **Pases (packs)** | Catálogo de productos, venta con deuda `VENTA_PASE`, consumo por asistencia, devolución al cancelar la clase, ajuste con motivo (`pase:adjust`), anulación junto con su deuda, vencimiento automático, ledger paginado | Completo, con pantalla |
 | **Abonos** | Venta por período, renovación automática opcional, avisos de vencimiento próximo y saldo bajo por correo | Completo, con pantalla |
-| **Economía de la segunda entrega** | La deuda de una venta se cobra y entra a la caja como cualquier otra; se anula sólo anulando el pase. Una Sesión grupal con cobertura devenga por convenio y entra a la presentación | Completo salvo liquidación de honorarios (U-41, fuera del RC, DP-31) |
+| **Economía de la segunda entrega** | La deuda de una venta se cobra y entra a la caja como cualquier otra; se anula sólo anulando el pase. Una Sesión grupal con cobertura devenga por convenio y entra a la presentación | Completo salvo liquidación de honorarios (U-41, decidida en DP-38 el 18/10/2026; se implementa después del RC) |
 
 ## Qué NO hace
 
@@ -57,7 +57,7 @@ dato ajeno responde 404, nunca 403).
   post-MVP por DP-22). Tampoco hay vista pública de turnos.
 - **Cobrar una clase suelta (`POR_CLASE`).** Declararla responde 400 hasta que entre el PR que implementa DP-24 (U-39: devenga con la asistencia, sin no-show por defecto). Quien
   asiste a una oferta por pack sin pase vigente queda registrado e informado, sin deuda.
-- **Liquidar honorarios** a profesionales o instructores por clase, hora o participante (U-41, **fuera del RC** por DP-31). Un
+- **Liquidar honorarios** a profesionales o instructores por clase, hora o participante (U-41: **decidida el 18/10/2026, DP-38**; se implementa después del RC salvo que entre antes). Un
   egreso de honorarios se carga a mano.
 - **Exigir orden, autorización y credencial al presentar** (RF-M21-003): hoy avisa y deja confirmar
   (U-28). El **débito parcial** deja la obligación del financiador pendiente por el total (U-11).
@@ -84,15 +84,15 @@ La lista completa está en
 | ~~U-03, U-05, U-06~~ | Justificación en `encounter`; Connector/J; SAST y DAST | **Decididas el 17/10/2026**: la propiedad de la Sesión es la relación asistencial (DP-33, con U-46 e); Connector/J 9.6.0 sin excepción (DP-34); CodeQL y ZAP baseline no bloqueantes (DP-35) |
 | U-28, U-11 | RF-M21-003 y débito parcial | Lo que se le presenta y debita a una obra social. Propuesta en api #122 |
 | U-38 | "Hoy" para lo que no tiene sede | Entre las 21 y las 24 de Córdoba una cobertura, orden o autorización que vence ese día se lee vencida |
-| ~~U-39, U-41, U-42~~ | Devengo por clase, honorarios, economía de la atención grupal | **Decididas el 17/10/2026**: U-39 (DP-24) y U-42 (DP-26) resueltas; U-41 fuera del RC (DP-31). U-39 se implementa en un PR en curso |
+| ~~U-39, U-41, U-42~~ | Devengo por clase, honorarios, economía de la atención grupal | **Decididas el 17/10/2026**: U-39 (DP-24) y U-42 (DP-26) resueltas; U-41 decidida el 18/10 (DP-38), después del RC. U-39 se implementa en un PR en curso |
 | — | La apertura de F9 sin DP escrita (DU-12) | Trazabilidad: DP-07 pedía el gate del MVP antes de la segunda entrega |
 
 **A confirmar por el dueño del producto** (implementadas con un criterio provisorio que el PR
 declara): el `type` del 403 sin justificación clínica pasó de `forbidden` a
 `justificacion-de-acceso-requerida` (api #132); elegir contexto deja dos eventos de auditoría
 (api #133, D4); la cuenta corriente del financiador sigue sumando los lotes en `BORRADOR`
-(api #131); renovar un abono impago (U-40 b), el vendedor del período renovado (U-43, fuera del RC) y la regla
-del período (U-45, fuera del RC). El resto, en [`../qa/90-conocido-y-aceptado.md`](../qa/90-conocido-y-aceptado.md).
+(api #131); renovar un abono impago (U-40 b), el vendedor del período renovado (U-43, decidida en DP-40: se apaga si se desvincula; después del RC) y la regla
+del período (U-45, decidida en DP-40: ancla al día de la primera venta; después del RC). El resto, en [`../qa/90-conocido-y-aceptado.md`](../qa/90-conocido-y-aceptado.md).
 
 ## Deuda declarada que viaja con el RC
 
@@ -152,7 +152,7 @@ del período (U-45, fuera del RC). El resto, en [`../qa/90-conocido-y-aceptado.m
 
 El usuario aceptó las recomendaciones de F9/F10 (DP-24 a DP-31, `AKINE_IMPLEMENTATION_PLAN.md` §7;
 detalle en `docs/fases/decisiones-pendientes.md`). Resueltas: U-39, U-40, U-42, U-44, U-46, U-48 y
-U-49. **Fuera del RC** (mejoras posteriores, abiertas): U-41, U-43, U-45 y U-50. En implementación:
+U-49. **Decididas el 18/10/2026, se implementan después del RC salvo que entren antes:** U-41 (DP-38), U-50 (DP-39), U-43 y U-45 (DP-40); U-37 (DP-41: Angular 22 y Java 25 tras el despliegue estable del RC). En implementación:
 U-39 (devengo `POR_CLASE`), U-48 (lock solo en abonos) y U-46 (c)/(d).
 
 Más tarde el mismo día, el usuario resolvió tres del bloque A (DP-33 a DP-35):
