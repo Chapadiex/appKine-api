@@ -1,5 +1,6 @@
 package com.akine.organization.infrastructure;
 
+import com.akine.organization.domain.LecturaDeContexto;
 import com.akine.organization.domain.Membership;
 import com.akine.organization.domain.port.MembershipRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -36,6 +37,31 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 	/** Memberships activas de una cuenta en un tenant concreto. Ver el puerto: desde V10 pueden ser varias. */
 	List<Membership> findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(
 			Long organizationId, Long accountId);
+
+	/**
+	 * Ver el puerto. Los {@code LEFT JOIN} no dependen de la membership: cada uno trae a lo sumo
+	 * una fila (la sede por su id, la organizacion por su id y la suscripcion por
+	 * {@code uk_subscription_organization}), asi que hay exactamente una fila por membership.
+	 */
+	@Override
+	@Query("""
+			select new com.akine.organization.domain.LecturaDeContexto(m, c.id, o.id, s.status)
+			  from Membership m
+			  left join Consultorio c
+			         on c.id = :consultorioId and c.organizationId = :organizationId and c.active = true
+			  left join Organization o
+			         on o.id = :organizationId and o.active = true
+			  left join Subscription s
+			         on s.organizationId = :organizationId
+			 where m.organizationId = :organizationId
+			   and m.accountId = :accountId
+			   and m.active = true
+			 order by m.id asc
+			""")
+	List<LecturaDeContexto> leerContextoDeAcceso(
+			@Param("organizationId") Long organizationId,
+			@Param("accountId") Long accountId,
+			@Param("consultorioId") Long consultorioId);
 
 	List<Membership> findAllByOrganizationIdAndActiveTrue(Long organizationId);
 

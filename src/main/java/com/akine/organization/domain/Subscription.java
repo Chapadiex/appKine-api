@@ -119,6 +119,14 @@ public class Subscription extends TimestampedEntity {
 	 *                           de baja gana sobre cualquier estado de suscripcion
 	 */
 	public OperationalStatus operationalStatus(boolean organizationActive) {
+		return operationalStatus(status, organizationActive);
+	}
+
+	/**
+	 * La misma derivacion que {@link #operationalStatus(boolean)}, a partir del estado leido sin
+	 * la entidad (la resolucion de contexto lee solo esa columna, docs/carga.md §13).
+	 */
+	public static OperationalStatus operationalStatus(SubscriptionStatus status, boolean organizationActive) {
 		if (!organizationActive) {
 			return OperationalStatus.BAJA;
 		}

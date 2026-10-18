@@ -1,5 +1,6 @@
 package com.akine.organization.domain.port;
 
+import com.akine.organization.domain.LecturaDeContexto;
 import com.akine.organization.domain.Membership;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -46,6 +47,20 @@ public interface MembershipRepositoryPort {
 	 */
 	List<Membership> findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(
 			Long organizationId, Long accountId);
+
+	/**
+	 * Lo que decide un contexto de trabajo, <b>en una sola sentencia</b>: las mismas memberships
+	 * que {@link #findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc}, en el mismo
+	 * orden, cada una con la sede pedida (solo si esta activa y es de esa organizacion), la
+	 * organizacion (solo si esta vigente) y el estado de su suscripcion. Sin memberships no hay
+	 * filas.
+	 *
+	 * <p>Reemplaza a cuatro lecturas dentro de una transaccion de solo lectura que existia para
+	 * verlas en una misma foto: una sentencia es una foto por si misma, y se ahorran la
+	 * transaccion y tres idas y vueltas en cada pedido (docs/carga.md §13).
+	 */
+	List<LecturaDeContexto> leerContextoDeAcceso(
+			Long organizationId, Long accountId, Long consultorioId);
 
 	/** Conteo de uso para {@code MAX_MIEMBROS_ACTIVOS}. Mismas condiciones que el de sedes. */
 	long countByOrganizationIdAndActiveTrue(Long organizationId);

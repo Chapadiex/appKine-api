@@ -108,7 +108,10 @@ del período (U-45, fuera del RC). El resto, en [`../qa/90-conocido-y-aceptado.m
   huecos en la numeración ni turnos solapados (`docs/carga.md` §10). El cobro serializa en el
   numerador de comprobantes y la reserva en `agenda_sede`. Las cinco salidas —numeración por punto
   de venta, numerar en lote después del commit, al cerrar caja, lock por profesional, medir en el
-  entorno de destino— esperan decisión. La carga de F9 no se midió.
+  entorno de destino— se resolvieron por **DP-32** (17/10/2026): **la medición de la carga en el
+  entorno de destino es un paso del deploy** (`perf/stack.sh`, `docs/carga.md` §3), y si allá el
+  commit sigue arriba de ~10 ms se implementa la numeración por punto de venta. La carga de F9 se
+  midió aparte (`docs/carga.md` §12).
 - **Escenarios diferidos de F9** sin IT propio: 39–42, 46–48 y 54–59 de
   [`../tests-diferidos.md`](../tests-diferidos.md) (concurrencia clase/turno, capacidad contra
   inscripción, unique de asistencia, cierre concurrente, lote, aislamiento y REST de 08.01–08.03).
