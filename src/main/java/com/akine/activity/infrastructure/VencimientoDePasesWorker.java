@@ -29,9 +29,11 @@ public class VencimientoDePasesWorker {
 	static final int LOTES_POR_TICK = 10;
 
 	private final VencimientoDePases vencimiento;
+	private final ObservacionDeJobs observacion;
 
-	public VencimientoDePasesWorker(VencimientoDePases vencimiento) {
+	public VencimientoDePasesWorker(VencimientoDePases vencimiento, ObservacionDeJobs observacion) {
 		this.vencimiento = vencimiento;
+		this.observacion = observacion;
 	}
 
 	@Scheduled(
@@ -40,7 +42,8 @@ public class VencimientoDePasesWorker {
 	public void tick() {
 		try {
 			for (int i = 0; i < LOTES_POR_TICK; i++) {
-				if (vencimiento.vencerLosVencidos(LOTE) < LOTE) {
+				if (observacion.observar(ObservacionDeJobs.VENCIMIENTO_DE_PASES,
+						() -> vencimiento.vencerLosVencidos(LOTE)).procesados() < LOTE) {
 					return;
 				}
 			}

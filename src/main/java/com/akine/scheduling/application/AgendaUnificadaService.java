@@ -4,8 +4,6 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
-import com.akine.organization.spi.PermissionGuard;
-import com.akine.organization.spi.PermissionQuery;
 import com.akine.scheduling.domain.PermissionCodes;
 import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
@@ -57,20 +55,20 @@ public class AgendaUnificadaService {
 	private final EventoExternoDeAgenda eventosExternos;
 	private final OfertaDirectory ofertas;
 	private final ConsultorioDirectory consultorios;
-	private final PermissionGuard permissionGuard;
+	private final SoporteEnAgenda soporte;
 
 	public AgendaUnificadaService(
 			TurnoRepositoryPort turnos,
 			EventoExternoDeAgenda eventosExternos,
 			OfertaDirectory ofertas,
 			ConsultorioDirectory consultorios,
-			PermissionGuard permissionGuard) {
+			SoporteEnAgenda soporte) {
 
 		this.turnos = turnos;
 		this.eventosExternos = eventosExternos;
 		this.ofertas = ofertas;
 		this.consultorios = consultorios;
-		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 	}
 
 	/**
@@ -89,9 +87,7 @@ public class AgendaUnificadaService {
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = consultorios.find(organizationId, consultorioId)
 				.orElseThrow(() -> new ConsultorioNoAccesibleException(consultorioId));
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), PermissionCodes.TURNO_READ, organizationId, consultorioId,
-				null, Instant.now()));
+		soporte.exigir(actor, PermissionCodes.TURNO_READ, organizationId, consultorioId);
 
 		ZoneId zona = ZoneId.of(sede.timezone());
 		Instant desde = fecha.atStartOfDay(zona).toInstant();

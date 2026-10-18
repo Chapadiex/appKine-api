@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.118.0
+  version: 0.127.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -3284,6 +3284,8 @@ paths:
         **La idempotencia sale del hecho, no de una clave**: repetir el mismo resultado devuelve 200 sin escribir nada; mandar otro resultado es una **correccion**, que exige `motivo` y **apendea** el valor anterior en el historial en vez de borrarlo.
 
         **El cupo no se mueve**: los cuatro estados involucrados consumen lugar.
+
+        **Sin `pase:read` en la sede**, `consumoDeCredito` viaja solo con su `efecto`: quien toma lista sabe si consumio un credito, pero no que pase era ni cuanto le queda (U-46 c). Vale igual para el lote y para el ingreso sin inscripcion.
       operationId: registrarAsistencia
       parameters:
       - in: path
@@ -3370,6 +3372,8 @@ paths:
         La lista compacta de RF-M13-008. **Cada item corre en su propia transaccion**: un fallo individual no revierte a los anteriores ni oculta los resultados de los demas (CA-M13-008-06).
 
         **Responde 200 aunque haya fallos parciales** — no es un error del pedido, es el resultado del pedido—, y cada item fallido trae el mismo `problemType` que habria viajado en la operacion individual.
+
+        **Lotes a la vez por sede** (U-49 c): si el despliegue enciende el limite y la sede ya tiene tantos lotes en curso como admite, el pedido espera unos segundos y, si no consigue lugar, responde **503** `service-unavailable` con `Retry-After` **sin haber registrado ningun item**: reenviarlo es seguro. El lote de un solo item y la operacion individual no tienen limite. Apagado por defecto.
       operationId: registrarLote
       parameters:
       - in: path
@@ -3427,6 +3431,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "La sede o la clase no existen, o son de otro tenant"
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede ya tiene tantos lotes en curso como admite el limite
+            del despliegue. No se registro ningun item; `Retry-After` dice en cuantos
+            segundos reintentar
+          headers:
+            Retry-After:
+              description: Segundos a esperar antes de reenviar el lote
+              schema:
+                type: integer
+              style: simple
       summary: Marcar a varios participantes
       tags:
       - Asistencia de clases
@@ -6914,7 +6935,7 @@ paths:
 
         **Una obligacion con cobros imputados no se anula.** Anular lo que ya se cobro dejaria plata en la caja sin ninguna deuda que la justifique, y el arqueo del dia no cerraria. Lo que corresponde en ese caso es una devolucion, que es M19 y tiene su propio registro.
 
-        **La deuda de una venta no se anula por aca** (`origen = VENTA_PASE` o `VENTA_ABONO`, desde 0.114.0): responde 409 `obligacion-de-venta` con el `paseId`. Anularla sola dejaria el pase vivo y consumible sin pagar; se anula con `POST /pases/{paseId}/anulacion`, que anula pase y deuda juntos.
+        **La deuda de una venta no se anula por aca** (`origen = VENTA_PASE` o `VENTA_ABONO`, desde 0.114.0): responde 409 `obligacion-de-venta` con el `paseId`. Anularla sola dejaria el pase vivo y consumible sin pagar; se anula con `POST /pases/{paseId}/anulacion`, que anula pase y deuda juntos. La deuda de una clase asistida (`ASISTENCIA_CLASE`, desde 0.124.0) si se anula por aca; corregir la asistencia a ausente la anula sola si no tiene cobros.
 
         Devuelve la obligacion anulada y no un 204, porque el cuerpo trae el estado y la version nueva que la pantalla necesita para seguir operando.
       operationId: anularObligacion
@@ -10485,7 +10506,7 @@ paths:
   /api/v1/consultorios/{consultorioId}/reportes/{reporte}:
     get:
       description: |-
-        Calcula el reporte para el periodo pedido (RF-M23-001 a RF-M23-005).
+        Calcula el reporte para el periodo pedido (RF-M23-001 a RF-M23-005; `CLASES` es RF-M23-007, `CONTINUIDAD` RF-M23-008, `SERVICIOS` los ingresos de RF-M23-009, sin rentabilidad porque no hay costos por servicio, y `PASES` RF-M23-010).
 
         **El periodo se interpreta en la zona de la sede**, no en la del servidor. Un cobro de las 21:30 en Ushuaia convertido con la zona equivocada cae en el dia siguiente: el reporte no falla, da otro numero.
 
@@ -10513,6 +10534,10 @@ paths:
           - CLINICO
           - ECONOMICO
           - FINANCIADORES
+          - CLASES
+          - PASES
+          - CONTINUIDAD
+          - SERVICIOS
       - in: query
         name: desde
         required: true
@@ -10594,6 +10619,10 @@ paths:
           - CLINICO
           - ECONOMICO
           - FINANCIADORES
+          - CLASES
+          - PASES
+          - CONTINUIDAD
+          - SERVICIOS
       - in: query
         name: desde
         required: true
@@ -22138,6 +22167,8 @@ components:
           format: int32
           description: "Creditos con signo: positivo suma, negativo resta. Nunca cero"
           example: -1
+          maximum: 10000
+          minimum: -10000
         motivo:
           type: string
           description: "Obligatorio: queda en el ledger y en la auditoria (CA-M29-005-06)"
@@ -22653,7 +22684,8 @@ components:
           example: 412
         observaciones:
           type: string
-          description: "Nota operativa, **nunca clinica**"
+          description: "Nota **operativa, nunca clinica**: la ve cualquiera con `inscripcion:read`\
+            \ y no debe llevar datos de salud (U-46 d)."
         origen:
           type: string
           description: "MOSTRADOR, LOTE, CIERRE o INGRESO_SIN_INSCRIPCION. Distingue\
@@ -24063,6 +24095,14 @@ components:
           format: int64
           description: Organizacion que solicita
           example: 1
+        organizationName:
+          type:
+          - string
+          - "null"
+          description: "Nombre de la organizacion que solicita, resuelto al leer:\
+            \ si el centro cambia de nombre, la solicitud muestra el actual. null\
+            \ solo si la organizacion ya no se encuentra"
+          example: Centro Kinesico del Parque
         resolucionNota:
           type: string
           description: "Motivo de la aprobacion o del rechazo, o null"
@@ -24996,12 +25036,16 @@ components:
         paseId:
           type: integer
           format: int64
-          description: El pase afectado. Ausente si no hubo movimiento.
+          description: "El pase afectado. Ausente si no hubo movimiento, **y siempre\
+            \ ausente si quien registra no tiene `pase:read` en la sede** (U-46 c):\
+            \ el `efecto` le dice si consumio, pero no que pase era."
           example: 77
         saldo:
           type: integer
           format: int32
-          description: Saldo del pase despues del movimiento.
+          description: Saldo del pase despues del movimiento. **Solo con `pase:read`**
+            en la sede; sin el permiso viaja ausente aunque haya habido movimiento
+            (U-46 c).
           example: 7
     ConvenioAplicado:
       type: object
@@ -25315,6 +25359,7 @@ components:
             \ dia de la compra"
           example: 60
           exclusiveMinimum: 0
+          maximum: 3660
         vigenciaHasta:
           type: string
           format: date
@@ -26221,12 +26266,14 @@ components:
         esquemaCobro:
           type: string
           description: "Esquema de cobro (RN-M27-006): `POR_SESION` devenga por atencion,\
-            \ `POR_PACK` y `POR_ABONO` consumen el credito de un pase o abono y la\
-            \ deuda nace al venderlo. Vocabulario cerrado: otro valor es 400. `POR_CLASE`\
-            \ existe en el esquema pero hoy responde 400, hasta decidir cuando se\
-            \ devenga (U-39). Ausente: sin esquema declarado"
+            \ `POR_CLASE` devenga una deuda por cada clase asistida (presente o presente\
+            \ con demora; la ausencia no devenga: U-39, RF-M18-008), `POR_PACK` y\
+            \ `POR_ABONO` consumen el credito de un pase o abono y la deuda nace al\
+            \ venderlo. Vocabulario cerrado: otro valor es 400. Ausente: sin esquema\
+            \ declarado"
           enum:
           - POR_SESION
+          - POR_CLASE
           - POR_PACK
           - POR_ABONO
           example: POR_SESION
@@ -27193,6 +27240,64 @@ components:
         saldo:
           type: number
           example: 40000.0
+    DevengoDeClase:
+      type: object
+      description: "Que le hizo una asistencia a la deuda de la persona en una oferta\
+        \ `POR_CLASE`. La deuda nace cuando la persona estuvo (presente o presente\
+        \ con demora) y la ausencia no devenga. **Devengar no es cobrar**: se paga\
+        \ con `POST /cobros` (RF-M19-009), y el estado de la asistencia no depende\
+        \ del de la deuda (CA-M19-009-06)."
+      properties:
+        efecto:
+          type: string
+          description: "`DEVENGADA`: nacio la deuda de la clase. `YA_DEVENGADA`: la\
+            \ asistencia ya tenia su deuda viva. `ANULADA`: una correccion a ausente\
+            \ anulo la deuda (no la borra). `CON_COBROS`: la correccion a ausente\
+            \ encontro la deuda con cobros; sigue viva y se regulariza reintegrando\
+            \ el cobro y anulandola. `SIN_DEUDA`: la correccion a ausente no encontro\
+            \ deuda viva. `SIN_PRECIO`: la oferta no tiene precio vigente el dia de\
+            \ la clase; la asistencia queda registrada igual. `SIN_CAMBIO`: la correccion\
+            \ no cambia si la persona estuvo. `NO_APLICA`: la oferta no cobra por\
+            \ clase o el resultado es ausente."
+          enum:
+          - DEVENGADA
+          - YA_DEVENGADA
+          - ANULADA
+          - CON_COBROS
+          - SIN_DEUDA
+          - SIN_PRECIO
+          - SIN_CAMBIO
+          - NO_APLICA
+          example: DEVENGADA
+        estado:
+          type: string
+          description: Estado de la deuda despues de este registro.
+          enum:
+          - PENDIENTE
+          - PARCIAL
+          - PAGADA
+          - ANULADA
+          example: PENDIENTE
+        importe:
+          type: number
+          description: "Importe congelado de la deuda: el precio vigente de la oferta\
+            \ el dia de la clase."
+          example: 6000.0
+        moneda:
+          type: string
+          description: "Moneda, ISO 4217."
+          example: ARS
+        obligacionId:
+          type: integer
+          format: int64
+          description: "La deuda afectada. Ausente si no hay, y ausentes los cinco\
+            \ datos de la deuda para quien no tiene `pase:read` (mismo filtro que\
+            \ el pase, U-46 c)."
+          example: 9001
+        saldo:
+          type: number
+          description: Lo que falta pagar despues de este registro.
+          example: 6000.0
     DiaDeAgenda:
       type: object
       description: "Un dia resuelto: o tiene slots, o tiene motivo"
@@ -27444,6 +27549,7 @@ components:
           type: integer
           format: int32
           exclusiveMinimum: 0
+          maximum: 3660
         vigenciaHasta:
           type: string
           format: date
@@ -29509,7 +29615,8 @@ components:
       properties:
         observaciones:
           type: string
-          description: "Nota operativa, no clinica"
+          description: "Nota **operativa, no clinica**: la ve cualquiera con `inscripcion:read`,\
+            \ asi que **no debe llevar datos de salud** (U-46 d)."
           example: Se sumo sin anotarse
           maxLength: 500
           minLength: 0
@@ -30881,6 +30988,18 @@ components:
           type: string
           format: date-time
           description: Ausente si la deuda sigue vigente
+        asistenciaId:
+          type: integer
+          format: int64
+          description: Asistencia a clase que la genero. Presente con `origen = ASISTENCIA_CLASE`
+            (desde 0.124.0).
+          example: 3101
+        claseId:
+          type: integer
+          format: int64
+          description: Clase de esa asistencia. Presente con `origen = ASISTENCIA_CLASE`
+            (desde 0.124.0).
+          example: 640
         concepto:
           type: string
           description: "Que parte de la prestacion es esta deuda (AKINE F-4). `PARTICULAR`:\
@@ -30942,12 +31061,15 @@ components:
           type: string
           description: "Que hecho devengo la deuda: una atencion (`SESION`) o la venta\
             \ de un pack o pase (`VENTA_PASE`, RF-M18-009) o de un periodo de abono\
-            \ (`VENTA_ABONO`, RF-M18-010). Devengar no es cobrar: la deuda de una\
-            \ venta se paga con `POST /cobros` como cualquier otra."
+            \ (`VENTA_ABONO`, RF-M18-010), o una clase asistida de una oferta `POR_CLASE`\
+            \ (`ASISTENCIA_CLASE`, RF-M18-008, desde 0.124.0). Devengar no es cobrar:\
+            \ la deuda de una venta o de una clase se paga con `POST /cobros` como\
+            \ cualquier otra."
           enum:
           - SESION
           - VENTA_PASE
           - VENTA_ABONO
+          - ASISTENCIA_CLASE
           example: SESION
         paseId:
           type: integer
@@ -30983,7 +31105,8 @@ components:
           format: int64
           description: "Atencion que la genero, cuando `origen` es `SESION`. **Ausente**\
             \ cuando la deuda nace de la venta de un pase o de un abono (`origen =\
-            \ VENTA_PASE` o `VENTA_ABONO`, desde 0.102.0)."
+            \ VENTA_PASE` o `VENTA_ABONO`, desde 0.102.0) o de una clase asistida\
+            \ (`ASISTENCIA_CLASE`, desde 0.124.0)."
           example: 501
         snapshotNombre:
           type: string
@@ -31037,8 +31160,8 @@ components:
         esquemaCobro:
           type: string
           description: "Esquema de cobro de la oferta (RN-M27-006), o ausente si no\
-            \ declara ninguno. `POR_CLASE` esta en la lista porque el esquema lo admite,\
-            \ aunque hoy no se puede declarar (U-39)"
+            \ declara ninguno. `POR_CLASE` devenga con la asistencia, sin no-show\
+            \ (U-39)"
           enum:
           - POR_SESION
           - POR_CLASE
@@ -33512,7 +33635,9 @@ components:
         observaciones:
           type: string
           description: "Nota **operativa, no clinica**. La ve cualquiera con `inscripcion:read`,\
-            \ asi que no puede llevar informacion de salud."
+            \ asi que **no debe llevar datos de salud** (U-46 d): ni diagnosticos,\
+            \ ni sintomas, ni el motivo de una ausencia medica. El servidor no puede\
+            \ verificarlo; la pantalla lo avisa al cargarla."
           example: Llego a los 10 minutos
           maxLength: 500
           minLength: 0
@@ -34594,6 +34719,11 @@ components:
           type: boolean
           description: true si esta llamada corrigio un hecho previo
           example: false
+        devengoDeClase:
+          $ref: "#/components/schemas/DevengoDeClase"
+          description: "Que le hizo este registro a la deuda de la persona en una\
+            \ oferta `POR_CLASE` (U-39, RF-M18-008, desde 0.124.0). Ausente si el\
+            \ pedido repetia lo ya registrado y no se escribio nada."
         inscripcion:
           $ref: "#/components/schemas/Inscripcion"
           description: "La reserva, con su estado ya proyectado a ASISTIO o AUSENTE"
@@ -36849,10 +36979,11 @@ components:
           exclusiveMinimum: 0
         esquemaCobro:
           type: string
-          description: "Esquema de cobro nuevo. Null deja el actual. Mismo vocabulario\
-            \ que el alta: `POR_CLASE` responde 400 hasta decidir U-39"
+          description: Esquema de cobro nuevo. Null deja el actual. Mismo vocabulario
+            que el alta
           enum:
           - POR_SESION
+          - POR_CLASE
           - POR_PACK
           - POR_ABONO
           example: POR_PACK

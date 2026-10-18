@@ -27,7 +27,8 @@ public record ObligacionResponse(
 		@Schema(
 				description = "Atencion que la genero, cuando `origen` es `SESION`. **Ausente** "
 						+ "cuando la deuda nace de la venta de un pase o de un abono (`origen = "
-						+ "VENTA_PASE` o `VENTA_ABONO`, desde 0.102.0).",
+						+ "VENTA_PASE` o `VENTA_ABONO`, desde 0.102.0) o de una clase asistida "
+						+ "(`ASISTENCIA_CLASE`, desde 0.124.0).",
 				example = "501")
 		Long sesionId,
 
@@ -117,14 +118,24 @@ public record ObligacionResponse(
 		@Schema(
 				description = "Que hecho devengo la deuda: una atencion (`SESION`) o la venta de un "
 						+ "pack o pase (`VENTA_PASE`, RF-M18-009) o de un periodo de abono (`VENTA_ABONO`, "
-						+ "RF-M18-010). Devengar no es cobrar: la deuda "
-						+ "de una venta se paga con `POST /cobros` como cualquier otra.",
-				allowableValues = {"SESION", "VENTA_PASE", "VENTA_ABONO"},
+						+ "RF-M18-010), o una clase asistida de una oferta `POR_CLASE` "
+						+ "(`ASISTENCIA_CLASE`, RF-M18-008, desde 0.124.0). Devengar no es cobrar: la "
+						+ "deuda de una venta o de una clase se paga con `POST /cobros` como cualquier "
+						+ "otra.",
+				allowableValues = {"SESION", "VENTA_PASE", "VENTA_ABONO", "ASISTENCIA_CLASE"},
 				example = "SESION")
 		String origen,
 
 		@Schema(description = "Pase vendido que la genero. Presente con `origen = VENTA_PASE` o `VENTA_ABONO`.", example = "77")
-		Long paseId) {
+		Long paseId,
+
+		@Schema(description = "Asistencia a clase que la genero. Presente con `origen = "
+				+ "ASISTENCIA_CLASE` (desde 0.124.0).", example = "3101")
+		Long asistenciaId,
+
+		@Schema(description = "Clase de esa asistencia. Presente con `origen = ASISTENCIA_CLASE` "
+				+ "(desde 0.124.0).", example = "640")
+		Long claseId) {
 
 	public static ObligacionResponse de(ObligacionView vista) {
 		return new ObligacionResponse(
@@ -134,6 +145,7 @@ public record ObligacionResponse(
 				vista.estado(), vista.ofertaId(), vista.snapshotNombre(), vista.snapshotPrecio(),
 				vista.devengadaEn(), vista.anuladaEn(), vista.motivoAnulacion(), vista.version(),
 				vista.concepto(), vista.practicaId(), vista.alertaPracticaNoHabilitada(),
-				ConvenioAplicadoResponse.de(vista.convenio()), vista.origen(), vista.paseId());
+				ConvenioAplicadoResponse.de(vista.convenio()), vista.origen(), vista.paseId(),
+				vista.asistenciaId(), vista.claseId());
 	}
 }

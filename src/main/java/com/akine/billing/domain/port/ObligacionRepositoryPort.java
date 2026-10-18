@@ -34,6 +34,22 @@ public interface ObligacionRepositoryPort {
 	Optional<Obligacion> findDeLaVenta(long organizationId, long paseId);
 
 	/**
+	 * La obligacion viva —no anulada, sin baja— devengada por esa asistencia a clase (U-39,
+	 * RF-M18-008). Lectura consistente, sin lock: es la idempotencia del re-devengo, y dos registros
+	 * de la misma asistencia ya los serializa la {@code @Version} de la asistencia.
+	 */
+	Optional<Obligacion> findVivaDeLaAsistencia(long organizationId, long asistenciaId);
+
+	/**
+	 * {@link #findVivaDeLaAsistencia} con {@code FOR UPDATE}, para anularla: un cobro que imputa a la
+	 * vez espera, y la decision "tiene cobros o no" se toma sobre el saldo actual.
+	 */
+	Optional<Obligacion> lockVivaDeLaAsistencia(long organizationId, long asistenciaId);
+
+	/** Las obligaciones vivas de las asistencias de una clase, con {@code FOR UPDATE} (RF-M28-006). */
+	List<Obligacion> lockVivasDeLaClase(long organizationId, long claseId);
+
+	/**
 	 * De esos pases, los que tienen la obligacion viva de su venta con cobros imputados: no anulada
 	 * y con saldo distinto del importe original.
 	 */

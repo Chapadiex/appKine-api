@@ -10,6 +10,7 @@ import com.akine.activity.application.CrearProductoCommand;
 import com.akine.activity.application.EditarProductoCommand;
 import com.akine.activity.application.InscripcionService;
 import com.akine.activity.application.MovimientoPaseView;
+import com.akine.activity.application.PasadaDeJob;
 import com.akine.activity.application.PaseDetalleView;
 import com.akine.activity.application.PaseView;
 import com.akine.activity.application.ProductoService;
@@ -168,11 +169,11 @@ class AbonoRenovacionYAvisosIT {
 			abonos.add(paseId);
 		}
 
-		List<Callable<Integer>> instancias = List.of(
+		List<Callable<PasadaDeJob>> instancias = List.of(
 				() -> renovacion.renovarLosQueTerminan(0, 500),
 				() -> renovacion.renovarLosQueTerminan(0, 500),
 				() -> renovacion.renovarLosQueTerminan(0, 500));
-		List<Desenlace<Integer>> desenlaces = ActividadItFixture.enParalelo(instancias);
+		List<Desenlace<PasadaDeJob>> desenlaces = ActividadItFixture.enParalelo(instancias);
 
 		assertThat(desenlaces).noneMatch(Desenlace::fallo);
 		for (long paseId : abonos) {

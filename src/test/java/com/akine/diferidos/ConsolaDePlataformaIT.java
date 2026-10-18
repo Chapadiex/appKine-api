@@ -94,6 +94,9 @@ class ConsolaDePlataformaIT extends BaseEscenarioDiferido {
 						+ "\"codigo\":\"" + codigo + "\",\"nombre\":\"" + nombrePublicado + "\"}");
 		assertThat(aprobada.status()).as("aprobacion: %s", aprobada.body()).isEqualTo(200);
 		assertThat(aprobada.texto("estado")).isEqualTo("APROBADA");
+		// web #106: el nombre del centro viaja en la respuesta, resuelto contra la fila de hoy.
+		assertThat(aprobada.texto("organizationName")).isEqualTo(jdbc.queryForObject(
+				"SELECT name FROM organization WHERE id = ?", String.class, centro.organizationId()));
 		long conceptoId = aprobada.json().get("conceptoId").asLong();
 
 		// La base: un concepto GLOBAL (owner_key 0, sin tenant) con lo que dispuso la

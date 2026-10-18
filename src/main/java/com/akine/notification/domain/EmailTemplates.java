@@ -63,23 +63,24 @@ public final class EmailTemplates {
 					saludo + ",\n\nAlguien intento registrar una cuenta con este email y ya "
 							+ "tenes una. Inicia sesion normalmente o, si no recordas tu "
 							+ "contrasena, usa la opcion de recuperarla." + FIRMA);
-			// AKINE-08.02. Los dos avisos de clase nombran la clase y el horario, y NADA MAS: ni
-			// quien mas esta anotado, ni cuantos lugares quedan, ni un id interno. CA-M26-006-06
-			// pide notificar sin exponer la lista de participantes.
+			// AKINE-08.02. Los dos avisos de clase dicen fecha, hora y sede, y NADA MAS: ni quien
+			// mas esta anotado, ni cuantos lugares quedan, ni un id interno. CA-M26-006-06 pide
+			// notificar sin exponer la lista de participantes. Desde U-46 (d) (17/10/2026)
+			// tampoco el titulo de la clase: es texto libre y puede nombrar una condicion de salud.
 			case CLASE_MODIFICADA -> new EmailMessage(
 					destinatario,
 					"Cambio tu clase en " + payload.getOrDefault("consultorioNombre", "AKINE"),
-					saludo + ",\n\nHubo un cambio en la clase "
-							+ payload.getOrDefault("claseTitulo", "en la que estabas inscripto")
-							+ " del " + payload.getOrDefault("claseInicio", "horario reservado")
+					saludo + ",\n\nHubo un cambio en tu clase del "
+							+ payload.getOrDefault("claseInicio", "horario reservado")
+							+ sede(payload)
 							+ ".\n\nEntra en tu cuenta para ver el detalle, o comunicate con el "
 							+ "centro si necesitas reprogramar." + FIRMA);
 			case CUPO_LIBERADO -> new EmailMessage(
 					destinatario,
 					"Se libero tu lugar en la clase",
-					saludo + ",\n\nSe libero un lugar y ya estas inscripto en la clase "
-							+ payload.getOrDefault("claseTitulo", "en la que estabas esperando")
-							+ " del " + payload.getOrDefault("claseInicio", "horario reservado")
+					saludo + ",\n\nSe libero un lugar y ya estas inscripto en la clase del "
+							+ payload.getOrDefault("claseInicio", "horario reservado")
+							+ sede(payload)
 							+ ".\n\nEl lugar ya es tuyo: no hace falta que confirmes nada. Si no "
 							+ "podes asistir, avisale al centro para liberarlo." + FIRMA);
 			// AKINE E-5 (RF-M26-002/003). Fecha, hora, sede y servicio, y NADA MAS: ni el

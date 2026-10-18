@@ -109,7 +109,9 @@ public class ObligacionController {
 					**La deuda de una venta no se anula por aca** (`origen = VENTA_PASE` o \
 					`VENTA_ABONO`, desde 0.114.0): responde 409 `obligacion-de-venta` con el \
 					`paseId`. Anularla sola dejaria el pase vivo y consumible sin pagar; se anula \
-					con `POST /pases/{paseId}/anulacion`, que anula pase y deuda juntos.
+					con `POST /pases/{paseId}/anulacion`, que anula pase y deuda juntos. La deuda \
+					de una clase asistida (`ASISTENCIA_CLASE`, desde 0.124.0) si se anula por \
+					aca; corregir la asistencia a ausente la anula sola si no tiene cobros.
 
 					Devuelve la obligacion anulada y no un 204, porque el cuerpo trae el estado y \
 					la version nueva que la pantalla necesita para seguir operando.""")

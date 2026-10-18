@@ -97,7 +97,9 @@ public class ReporteController {
 	@Operation(
 			summary = "Generar un reporte",
 			description = """
-					Calcula el reporte para el periodo pedido (RF-M23-001 a RF-M23-005).
+					Calcula el reporte para el periodo pedido (RF-M23-001 a RF-M23-005; \
+					`CLASES` es RF-M23-007, `CONTINUIDAD` RF-M23-008, `SERVICIOS` los ingresos de \
+					RF-M23-009, sin rentabilidad porque no hay costos por servicio, y `PASES` RF-M23-010).
 
 					**El periodo se interpreta en la zona de la sede**, no en la del servidor. Un \
 					cobro de las 21:30 en Ushuaia convertido con la zona equivocada cae en el dia \

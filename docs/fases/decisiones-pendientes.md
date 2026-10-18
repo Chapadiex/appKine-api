@@ -21,13 +21,46 @@
 
 ## Resumen
 
-| Bloque | Cantidad |
-|---|---|
-| A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38, U-39, U-42) | 11 |
-| C. Alcance del MVP, aditivas (U-15 a U-34) | 20 |
-| D. No bloquean nada (U-35 a U-37, U-40, U-41) | 5 |
-| **Total** | **42** |
+> **Actualizado el 17/10/2026.** El usuario aceptó en bloque las recomendaciones de F9/F10: **7
+> resueltas** (U-39, U-40, U-42, U-44, U-46, U-48, U-49 → DP-24 a DP-30) y **4 postergadas** después
+> del release candidate (U-41, U-43, U-45, U-50 → DP-31). U-46 (e) sigue abierta junto con U-03.
+> U-47 no existe. Quedan **42 abiertas**, 4 de ellas postergadas.
+
+| Bloque | Abiertas | Resueltas el 17/10 |
+|---|---|---|
+| A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) | — |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 9 | U-39, U-42, U-46, U-48, U-49 |
+| C. Alcance del MVP, aditivas (U-15 a U-34) | 20 | — |
+| D. No bloquean nada (U-35 a U-37) + postergadas U-41, U-43, U-45, U-50 | 7 (4 postergadas) | U-40, U-44 |
+| **Total** | **42** (de 49) | **7** |
+
+### Resueltas el 17/10/2026
+
+| U | Resolución | DP |
+|---|---|---|
+| U-39 | (a) con la asistencia, sin no-show por defecto; (b) en `POR_PACK`, solo se informa. | DP-24 |
+| U-40 | las cinco quedan como están. | DP-25 |
+| U-42 | (a): solo por convenio; sin cobertura, nada particular. | DP-26 |
+| U-44 | por despliegue. | DP-27 |
+| U-46 | (a), (b), (f) como están; (c) el PROFESIONAL no ve `paseId`/`saldo`; (d) el título no viaja en el correo; (e) **sigue abierta junto con U-03**. | DP-28 |
+| U-48 | el lock solo en abonos; los packs resuelven la clave por el unique. | DP-29 |
+| U-49 | (a) hecha en #152; (c) preparada y **apagada por defecto** (`lotes-concurrentes-por-sede`), se enciende solo si el entorno lo exige; (b) no. | DP-30 |
+
+### Postergadas después del RC (siguen abiertas)
+
+| U | Tema | Motivo |
+|---|---|---|
+| U-41 | Honorarios por clase | Mejora posterior; el egreso de honorarios se carga a mano |
+| U-43 | Cuenta técnica del job de renovación | Hoy vende a nombre de quien autorizó la renovación |
+| U-45 | Períodos de abono no calendario | Hoy: mes calendario o `vigenciaDias` |
+| U-50 | Rentabilidad y caja por servicio | Sin fuente de costos; el reporte no muestra margen |
+
+Decisión: DP-31.
+
+> **Revisado el 16/10/2026** (etapa 09.04): U-39 (#129), U-40 (#135), U-41 (#139) y U-42 (#141)
+> estaban; de las cuatro "Decisiones a confirmar" de #140 (08.08), la primera —renovar un abono
+> impago— ya vivía como U-40 (b) y las otras tres entran como **U-43, U-44 y U-45**. Seis tenían una
+> propuesta en borrador: U-06 (api #119), U-11 y U-28 (api #122) y U-04, U-07 y U-08 (api #123).
 
 Ya resueltas y fuera de la lista (las fichas las mencionan): el **escenario 7b** (`request_hash`
 en `onboarding_registro`), que la ficha de F0–F1 daba abierto y cerró el PR #104 el 13/10/2026
@@ -206,7 +239,9 @@ fila nueva.
 - **Destraba:** que una cobertura, autorización u orden que vence hoy no se lea vencida a la noche.
   Se encarece con cada sitio nuevo que copie `LocalDate.now()`.
 
-### U-39 · Cuándo se devenga una clase `POR_CLASE`, y qué pasa sin pase en `POR_PACK`
+### ~~U-39 · Cuándo se devenga una clase `POR_CLASE`, y qué pasa sin pase en `POR_PACK`~~ — RESUELTA el 17/10/2026 (DP-24)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): (a) con la asistencia, sin no-show por defecto; (b) en `POR_PACK`, solo se informa. Ver DP-24 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 - **Pregunta:** (a) en una oferta `POR_CLASE`, ¿la deuda nace con la **asistencia** o con la
   **inscripción**, y el no-show cobra? (b) en una oferta `POR_PACK`, ¿qué se hace con quien asiste
@@ -225,7 +260,9 @@ fila nueva.
   cambia esquema: `obligacion` necesita un origen nuevo (`ck_obligacion_origen`), que es un
   `DROP CHECK` cuidadoso.
 
-### U-42 · Qué consecuencia económica tiene la atención clínica de un participante de clase
+### ~~U-42 · Qué consecuencia económica tiene la atención clínica de un participante de clase~~ — RESUELTA el 17/10/2026 (DP-26)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): (a): solo por convenio; sin cobertura, nada particular. Ver DP-26 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 - **Pregunta:** la Sesión de un participante de una clase clínica (08.05) se cierra como cualquier
   Sesión. ¿Qué devenga? (a) **sólo lo del convenio** cuando hay cobertura (financiador + coseguro,
@@ -246,6 +283,49 @@ fila nueva.
 - **Destraba:** el cobro particular de una prestación clínica grupal sin pase. Se encarece con cada
   Sesión grupal cerrada sin deuda: un backfill tendría que decidir a posteriori qué se cobró por la
   clase.
+
+### ~~U-46 · Lo que el hardening de F9 (09.02) dejó para decidir~~ — RESUELTA el 17/10/2026 (DP-28) (parcial: (e) abierta)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): (a), (b), (f) como están; (c) el PROFESIONAL no ve `paseId`/`saldo`; (d) el título no viaja en el correo; (e) **sigue abierta junto con U-03**. Ver DP-28 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
+
+09.02 corrigió los defectos de aislamiento, auditoría y entradas de `activity` (registro en
+[`F10-consolidacion-final.md`](F10-consolidacion-final.md)). Estas seis no son defectos: son
+criterios que la matriz y la especificación no fijan.
+
+- **(a) Una sede hermana responde 403, no 404.** Un miembro con alcance de sede A2 que pide
+  `/consultorios/A1/...` (A1 de su misma organización) recibe 403 `forbidden`, por regla del
+  evaluador (`PermissionEvaluatorService`: la sede existe para él). El 403 sale **antes** de mirar
+  la clase, el pase o el producto —`ActividadAislamientoIT` lo verifica—, así que no delata ningún
+  id; sólo confirma que la sede existe, que el actor ya ve en el listado de sedes de su
+  organización. Opciones: dejarlo así (recomendado: es transversal a todos los módulos y no filtra
+  datos) o pasar a 404 toda sede fuera del alcance de la membership, en el evaluador.
+- **(b) Ningún permiso de F9 es otorgable por grant.** `GRANT_POR_ROL` no tiene filas de la segunda
+  entrega y la matriz §32 no tiene filas de clases ni de pases (es la DU-12 del plan en paralelo).
+  Consecuencias: no existe el "instructor que toma lista pero no inscribe", el `PROFESIONAL` no
+  puede recibir `pase:read`, y el `ADMINISTRATIVO` no puede recibir `producto:manage` ni
+  `pase:adjust`. `MatrizDePermisosIT` fija hoy que esos grants son 400. Opciones: dejarlo cerrado
+  (recomendado hasta tener filas en la matriz) o declarar celdas "Según permiso" para F9.
+- **(c) El `PROFESIONAL` ve el saldo del pase al tomar asistencia.** La respuesta de
+  `POST .../asistencias` (y del lote y de los ingresos) lleva `consumoDeCredito {paseId, saldo}`,
+  y el profesional no tiene `pase:read`. `DetalleOperativoResponse` excluye los pases a propósito
+  para quien toma lista. Opciones: omitir `paseId`/`saldo` sin `pase:read` (cambio de contrato
+  aditivo) o aceptarlo, porque el consumo lo dispara su propio acto.
+- **(d) Dos textos libres que nada impide que lleven datos de salud.** Las `observaciones` de la
+  asistencia —la columna dice "operativa, no clínica" y la ve cualquiera con `inscripcion:read`— y
+  el `titulo` de la clase, que viaja en el correo de cancelación o reprogramación
+  (`claseTitulo`). Un título "Rehabilitación post-ACV" le cuenta un dato de salud a quien lea la
+  casilla. Opciones: aviso en pantalla, no mandar el título en el correo, o aceptarlo.
+- **(e) El panel de atención grupal no pide justificación.** `GET .../clases/{c}/atencion-clinica`
+  exige `sesion:register` y se audita (`SESION_GRUPAL_CONSULTADA`, que desde 09.02 lista las
+  historias expuestas), pero no pide `X-Justificacion-Acceso`. Es la misma decisión abierta de la
+  justificación en `encounter` (CLAUDE.md §7 n.º 21): se resuelve junto con ella.
+- **(f) Las claves de idempotencia son por organización, no por sede.** Reusar desde la sede A una
+  clave usada en B responde 409 `idempotency-key-conflict` en vez de 404. Para aprovecharlo hay que
+  conocer una clave UUID ajena. Opciones: aceptarlo (recomendado) o sumar la sede al unique, con
+  migración.
+- **Fase / RF:** F10 (09.02); §32, RNF-M28-002, RN-M24-003.
+- **Destraba:** (b) y (c) se encarecen con cada pantalla de F9 que asuma el reparto actual; (a) es
+  transversal y no bloquea nada.
 
 ---
 
@@ -453,7 +533,9 @@ dejar el MVP como está:
 - **Fase / RF:** F8.
 - **Destraba:** nada del MVP.
 
-### U-40 · Las políticas de pases y abonos que M29 no define
+### ~~U-40 · Las políticas de pases y abonos que M29 no define~~ — RESUELTA el 17/10/2026 (DP-25)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): las cinco quedan como están. Ver DP-25 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 - **Pregunta:** cinco, todas de producto: (a) ¿un abono puede no tener tope de asistencias por
   periodo? (b) ¿el abono se activa al vender o al cobrarse ("según política de pago",
@@ -474,7 +556,9 @@ dejar el MVP como está:
   [`../diseno/AKINE-08.07-08.08-ledger-y-abonos.md`](../diseno/AKINE-08.07-08.08-ledger-y-abonos.md) §9.
 - **Destraba:** nada del MVP.
 
-### U-41 · El esquema de honorarios que RF-M22-006 da por configurado
+### U-41 · El esquema de honorarios que RF-M22-006 da por configurado — POSTERGADA (después del RC, DP-31)
+
+> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (honorarios por clase); documentada y abierta. Ver DP-31.
 
 - **Pregunta:** RF-M22-006 dice *"aplica esquema de honorario configurado: por clase, hora,
   participante u otro soportado"*, y ese esquema **no existe** en el modelo ni en la especificación.
@@ -492,6 +576,121 @@ dejar el MVP como está:
   snapshot de los importes (CA-M22-007-06).
 - **Fase / RF:** F9 (08.09); RF-M22-006, RF-M22-007.
 - **Destraba:** RF-M22-006/007, la mitad de 08.09.
+
+### ~~U-48 · El lock del producto en la venta de un pack~~ — RESUELTA el 17/10/2026 (DP-29)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): el lock solo en abonos; los packs resuelven la clave por el unique. Ver DP-29 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
+
+- **Pregunta:** ¿la venta de un **pack** sigue tomando el producto con `FOR UPDATE`, o sólo la de
+  un abono?
+- **Hoy:** toda venta lo toma (08.08): en un abono serializa los períodos de la misma persona para
+  que no se superpongan; en un pack sólo sirve para leer una baja recién commiteada. Con un solo
+  producto, todas las ventas de la sede van en fila: p95 **723 ms** a 4,2 ventas/s
+  (`docs/carga.md` §12). 09.03 sumó una segunda razón para el lock: ahí se vuelve a mirar la
+  `Idempotency-Key` de dos ventas simultáneas.
+- **Recomendado:** bloquear sólo los abonos y, en un pack, resolver la carrera de la clave con el
+  unique `uk_pase_idempotency` (relectura en `READ_COMMITTED` al chocar). La baja recién
+  commiteada que se cuela es una venta del último instante, que el mostrador puede anular.
+- **Fase / RF:** F10 (09.03); RF-M29-002.
+- **Destraba:** el SLO de la venta de pases con varios mostradores.
+
+### ~~U-49 · El costo de la asistencia en lote~~ — RESUELTA el 17/10/2026 (DP-30)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): (a) hecha en #152; (c) solo si el entorno lo exige; (b) no. Ver DP-30 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
+
+- **Pregunta:** ¿se cambia cómo se transacciona la asistencia en lote?
+- **Hoy:** cada ítem es su propia transacción (RF-M13-008, "actualización transaccional
+  independiente") con ~18 sentencias. Un lote de 25 tarda 1,5 s de mediana y, a 2 lotes por
+  segundo, satura el pool de 10 y arrastra a toda la API (`docs/carga.md` §12: p95 de lecturas de
+  ~95 ms a ~2,2 s).
+- **Opciones:** (a) sacar del ítem lo que se repite igual en todos —sede, zona, esquema de cobro—,
+  3 de 18 sentencias, sin cambio de semántica; (b) agrupar ítems de a varios por transacción,
+  manteniendo el resultado parcial por ítem —cambia "independiente"—; (c) limitar los lotes
+  concurrentes por sede.
+- **(a) hecha el 17/10/2026** (rama `akine-asistencia-lote-costo`, `docs/carga.md` §12 "09.05"),
+  sin cambiar ninguna regla —misma transacción por ítem, mismos locks y en el mismo orden, mismas
+  auditorías—: **de 18 a 11 sentencias por participante en el alta, de 15 a 12 en la corrección a
+  ausente y de 18 a 12 en la corrección a presente** (contexto, sede y permiso una vez por pedido;
+  zona y esquema de cobro una vez por pedido; sin neto de una asistencia recién creada; saldo leído
+  bajo el lock). **Lo que no se ganó:** cada ítem sigue con su COMMIT durable, que en la máquina de
+  desarrollo cuesta 4–11 ms según la carga del disco, tanto como todas sus sentencias juntas. La
+  carga de `actividad.js` no distingue la mejora del ruido de la máquina (seis corridas de 5 min y
+  ocho de 2 min, intercaladas). Estimado: ~3 ms de conexión menos por ítem, ~70 ms por lote de 25.
+  **Los 25 commits por lote quedan**, y son lo que satura el pool: bajar de ahí es (b) o (c).
+- **Recomendado:** (c) si el entorno de destino lo confirma; (b) sólo si un RF lo admite. Con (a)
+  hecha, ése es el número con el que se decide.
+- **Fase / RF:** F10 (09.03); RF-M13-008, RF-M28-007.
+- **Destraba:** el SLO con asistencia en lote bajo carga.
+
+### U-43 · A nombre de quién se vende el período que renueva el job — POSTERGADA (después del RC, DP-31)
+
+> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (cuenta técnica del job de renovación); documentada y abierta. Ver DP-31.
+
+- **Pregunta:** la renovación automática de un abono (08.08) vende el período siguiente sin que
+  nadie apriete un botón. ¿Quién figura como vendedor: la cuenta que prendió la renovación, o una
+  cuenta técnica de sistema?
+- **Hoy (PR #140, `V103`):** la cuenta que autorizó la renovación
+  (`renovacion_autorizada_por_cuenta_id`), porque `vendido_por_cuenta_id` es `NOT NULL` y **no
+  existe cuenta técnica**. La auditoría `ABONO_RENOVADO` va con actor nulo (sistema) y el
+  autorizante en los detalles. Desde #142 la pantalla lo muestra (`Pase.renovacionAutorizadaPor`).
+- **Recomendado:** ninguna fuente recomienda; el diseño la deja a confirmar. Una cuenta técnica
+  pide una migración en `identity` y decidir qué rol tiene.
+- **Fase / RF:** F9 (08.08); RF-M29-007, RF-M18-010. Diseño
+  [`../diseno/AKINE-08.07-08.08-ledger-y-abonos.md`](../diseno/AKINE-08.07-08.08-ledger-y-abonos.md)
+  §10.2 y §10.8 n.º 7.
+- **Destraba:** nada del MVP. Importa si un colaborador que prendió renovaciones se desvincula: sus
+  abonos se siguen vendiendo a su nombre.
+
+### ~~U-44 · Umbrales de aviso de pases por despliegue o por centro~~ — RESUELTA el 17/10/2026 (DP-27)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): por despliegue. Ver DP-27 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
+
+- **Pregunta:** los avisos de vencimiento próximo y de saldo bajo (RF-M26-008) se configuran con
+  `akine.activity.pases.avisos.dias-antes-del-vencimiento` (3) y `.saldo-bajo` (1), **iguales para
+  todos los centros del despliegue**. ¿Hace falta configurarlos por organización o por producto?
+- **Hoy (PR #140):** por despliegue. Un umbral por centro o producto pide una pantalla que ningún
+  RF describe, y el padrón no tiene preferencias de notificación (el único canal es el correo).
+- **Recomendado:** dejarlo por despliegue hasta que un centro lo pida (diseño §10.3).
+- **Fase / RF:** F9 (08.08); RF-M26-008, CA-M26-008-06. Diseño §10.3 y §10.8 n.º 8.
+- **Destraba:** nada del MVP. Cómo se operan hoy: [`../operaciones/runbooks.md`](../operaciones/runbooks.md) R7.
+
+### U-45 · Qué período sigue al renovar un abono que no es un mes calendario — POSTERGADA (después del RC, DP-31)
+
+> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (períodos no calendario); documentada y abierta. Ver DP-31.
+
+- **Pregunta:** el job renueva un mes calendario completo por el mes siguiente (noviembre →
+  diciembre). Cualquier otro período se renueva por `vigenciaDias` desde el día siguiente al fin, y
+  **se corre**: 30 días desde el 5 de noviembre terminan el 4 de diciembre. ¿Se admiten otras reglas
+  "naturales" (quincena, semana calendario) o se ancla al día de la primera venta?
+- **Hoy (PR #140):** mes calendario o `vigenciaDias`; nada más.
+- **Recomendado:** ninguna fuente recomienda (diseño §10.8 n.º 9).
+- **Fase / RF:** F9 (08.08); RF-M29-007. Diseño §10.2 paso 3.
+- **Destraba:** nada del MVP.
+
+### U-50 · Cómo se costea un servicio para medir su rentabilidad — POSTERGADA (después del RC, DP-31)
+
+> **Postergada el 17/10/2026** por el usuario: queda fuera del release candidate como mejora posterior (rentabilidad y caja por servicio); documentada y abierta. Ver DP-31.
+
+- **Pregunta:** RF-M23-009 se titula *"rentabilidad e ingresos por servicio"* y pide *"consolidar
+  obligaciones, cobros y caja por Oferta/Servicio"*. Los ingresos tienen fuente; **los costos no**.
+  Hay que fijar: (a) si un egreso (M22) se imputa a una oferta o servicio —directo al registrarlo, o
+  por una regla de prorrateo (por horas, por sesiones, por participantes)—, y qué pasa con los
+  egresos generales (alquiler, insumos) que no son de ningún servicio; (b) si los honorarios entran
+  por el egreso declarado de hoy o por la liquidación calculada que espera **U-41**; (c) si la
+  **caja** por servicio hace falta además del cobrado imputado, y con qué regla se reparte un cobro
+  que paga deudas de dos ofertas con dos medios; (d) si el `PROFESIONAL` ve la continuidad de los
+  pacientes a los que él dio el alta (RF-M23-008), que hoy se le omite porque su `reporte:read` es
+  de actividad propia y la sección cuenta lo que pasa después en servicios de otros.
+- **Hoy (AKINE-09.01b, contrato 0.123.0):** el reporte `SERVICIOS` da devengado y cobrado imputado
+  por oferta y concepto (prestación, clase, pack, abono), anticipos sin imputar y créditos
+  consumidos, y declara siempre la advertencia `rentabilidad-sin-costos`. `egreso` no tiene ninguna
+  columna que lo ligue a oferta ni a servicio (V57): su beneficiario es un colaborador o un externo y
+  su categoría es contable. La caja no se reparte. `CONTINUIDAD` se omite al `PROFESIONAL`.
+- **Recomendado:** ninguna fuente recomienda. Lo único cerrado es que **no se inventa**: sin (a) el
+  reporte no muestra margen.
+- **Fase / RF:** F10 (09.01b); RF-M23-009, RF-M23-008, RF-M22-006. Diseño
+  [`../diseno/AKINE-09.01b-continuidad-y-rentabilidad.md`](../diseno/AKINE-09.01b-continuidad-y-rentabilidad.md) §3.
+- **Destraba:** la rentabilidad de RF-M23-009. Nada del MVP.
 
 ---
 

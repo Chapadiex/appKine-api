@@ -1,7 +1,6 @@
 package com.akine.billing.application;
 
 import com.akine.billing.domain.Obligacion;
-import com.akine.billing.domain.OrigenObligacion;
 import com.akine.billing.domain.PermissionCodes;
 import com.akine.billing.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.billing.domain.exception.ObligacionDeVentaException;
@@ -118,7 +117,11 @@ public class ObligacionService {
 		// el pase vivo y consumible sin que nadie lo pague. Se anula por el pase, que anula las dos
 		// mitades en la misma transaccion (DevengoDeVentas#anularDeudaDeVenta). billing no puede
 		// llamar a activity —activity ya depende de billing.spi—, asi que aca solo se rechaza.
-		if (obligacion.getOrigen() != OrigenObligacion.SESION) {
+		// U-39: la deuda de una clase asistida (ASISTENCIA_CLASE) SI se anula por aca, como la de
+		// una sesion: no tiene otra mitad viva que quede sin pagar. Es la salida para una deuda que
+		// quedo viva con cobros cuando la asistencia se corrigio a ausente: se reintegra el cobro
+		// (RF-M19-010) y despues se anula. Si la asistencia vuelve a presente, se devenga otra.
+		if (obligacion.getOrigen().esDeVenta()) {
 			throw new ObligacionDeVentaException(
 					obligacionId, obligacion.getPaseId(), obligacion.getOrigen().name());
 		}

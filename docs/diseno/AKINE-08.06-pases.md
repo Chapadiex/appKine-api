@@ -59,8 +59,61 @@ neto es `SUM(cantidad)` sobre un índice, sin join.
   (CA-M19-009-06: asistencia y economía son independientes; RN-M29-005 sólo dice que no se consume),
   el resultado lo informa como `SIN_PASE_ELEGIBLE` y queda en la auditoría
   (`PASE_SIN_CREDITO_ELEGIBLE`). Ningún RF pide devengar una clase suelta en una oferta `POR_PACK`.
+  **U-39 (b), decidida el 17/10/2026: se informa, como hasta ahora.** No cambió nada.
 
 El resultado viaja en `ResultadoDeAsistencia.consumoDeCredito` (aditivo).
+
+### 4.1 `POR_CLASE`: la deuda nace con la asistencia (U-39 (a), 17/10/2026)
+
+Decisión del usuario: **asistencia, sin no-show** (`devenga_no_show = 0`, el default de `V64`).
+Implementado en la rama `akine-u39-devengo-por-clase` (`V107`, contrato 0.126.0). RF-M18-008,
+RF-M19-009, RF-M28-006 paso 7, RN-M18-006/008, CA-M18-008-06, CA-M19-009-06.
+
+- **La oferta.** `EsquemaCobro` acepta `POR_CLASE` y deriva `momento_devengo = ASISTENCIA`, que
+  `ck_oferta_politica_devengo` (V64) ya admitía. Declararlo deja de ser 400.
+- **El disparador** es la **transición** del resultado, en la transacción del ítem
+  (`DevengoPorClaseService`, `MANDATORY`, después del consumo de créditos):
+
+  | Antes → ahora | Qué pasa |
+  |---|---|
+  | (alta) → presente / con demora | devenga |
+  | ausente → presente / con demora | devenga **otra** (la anulada queda como historia) |
+  | presente / con demora → ausente | anula la viva con el motivo de la corrección (no la borra) |
+  | presente ↔ con demora · (alta) → ausente · cierre de la clase | nada |
+
+  Mirar la transición y no "estuvo y no tiene deuda" respeta una deuda anulada a mano (bonificación):
+  corregir presente → con demora no la vuelve a devengar.
+- **El importe** es el precio vigente de la oferta **el día de la clase en la zona de la sede**
+  (`OfertaDirectory.precioVigenteEl`: precio particular que cubre la fecha, o el de lista), congelado
+  en la fila. `PARTICULAR`, a cargo del paciente. Precio, nombre y esquema se leen una vez por
+  pedido (`LecturasDeConsumo`).
+- **Sin precio ese día:** la asistencia se registra igual, el resultado dice `SIN_PRECIO` y queda
+  auditado (`ASISTENCIA_POR_CLASE_SIN_PRECIO`). Diferencia declarada con DP-17 (que bloquea el cierre
+  de una sesión sin precio): la lista de una clase se toma con la gente adelante, y CA-M19-009-06
+  separa asistencia de economía.
+- **Con cobros:** la regla de siempre de `billing` — lo cobrado no se anula, se reintegra
+  (RF-M19-010). La corrección a ausente **corrige la asistencia** y deja la deuda viva: el resultado
+  dice `CON_COBROS` y queda auditado (`ASISTENCIA_DEUDA_CON_COBROS`). Volver a presente no devenga
+  otra. Se regulariza anulando el cobro y después la deuda desde la cuenta corriente: a diferencia de
+  la de una venta, **la deuda `ASISTENCIA_CLASE` sí se anula por `DELETE /obligaciones/{id}`**
+  (no tiene otra mitad que quede viva sin pagar).
+- **Cancelar la clase** anula las deudas vivas de sus asistencias (RF-M28-006 paso 7, el gemelo de la
+  devolución de créditos), una por una con la misma regla: las cobradas quedan vivas y auditadas.
+- **Modelo (`V107`).** `obligacion` gana `asistencia_id` y `clase_id` (FK, como `pase_id`), el origen
+  `ASISTENCIA_CLASE` en `ck_obligacion_origen` —`DROP CHECK` + `ADD` en un solo `ALTER`, repitiendo
+  literalmente las dos ramas de V64— y `asistencia_viva_id`, columna generada que vale el
+  `asistencia_id` sólo mientras la deuda está viva, con `uk_obligacion_asistencia_viva
+  (organization_id, asistencia_viva_id, responsable)`: una viva por asistencia, re-devengable después
+  de anulada.
+- **Respuesta.** `ResultadoDeAsistencia.devengoDeClase` (aditivo), con el mismo filtro de U-46 (c)
+  que el pase: sin `pase:read` viaja sólo el `efecto`. `Obligacion` gana `asistenciaId` y `claseId`.
+- **Costo por participante del lote** (`ListadosDeActividadSentenciasIT`): 9 al devengar, 11 al
+  anular, 11 al re-devengar — igual o menos que `POR_PACK` (11, 12, 12), que no cambió.
+
+**Límite declarado:** el devengo mira el esquema **actual** de la oferta. Si un centro cambia una
+oferta de `POR_CLASE` a otro esquema, las correcciones posteriores de asistencias viejas ya no mueven
+sus deudas (la cancelación de la clase sí, porque no mira el esquema); se anulan a mano. Mirar siempre
+costaría una sentencia por corrección también en `POR_PACK`.
 
 ## 5. El defecto de `esquemaCobro` que se corrige al pasar
 
@@ -148,7 +201,7 @@ haya una venta, ninguna respuesta real lo trae vacío. El otro cambio de forma e
   del pase, consulta paginada del ledger, si el no-show consume crédito.
 - **08.08:** abonos (`tipo = ABONO`, `origen = VENTA_ABONO`).
 - **08.09:** integración con caja y reportes de pases.
-- **U-39 (nueva):** cómo se devenga `POR_CLASE` —asistencia o inscripción— y si el no-show cobra.
-  Hasta decidirla, `POR_CLASE` es 400 en la oferta y RF-M18-008 no tiene disparador.
-- **Sin pase en `POR_PACK`:** hoy se informa y se audita; si el centro quiere bloquear la asistencia
-  o devengar una clase suelta, es decisión de producto.
+- ~~**U-39:** cómo se devenga `POR_CLASE` —asistencia o inscripción— y si el no-show cobra.~~
+  **Decidida el 17/10/2026 e implementada (§4.1):** asistencia, sin no-show.
+- ~~**Sin pase en `POR_PACK`:** si el centro quiere bloquear la asistencia o devengar una clase
+  suelta, es decisión de producto.~~ **U-39 (b): se informa, como hoy.**

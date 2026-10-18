@@ -109,6 +109,7 @@ public class AutorizacionService {
 	private final PerfilPacienteRepositoryPort perfiles;
 	private final ArancelDirectory aranceles;
 	private final PermissionGuard permissionGuard;
+	private final PersonSupportAccessAuditor supportAccessAuditor;
 	private final AuditTrail auditTrail;
 	private final AutorizacionEventoRepositoryPort eventos;
 	private final AutorizacionAlertaRepositoryPort alertas;
@@ -126,6 +127,7 @@ public class AutorizacionService {
 			PerfilPacienteRepositoryPort perfiles,
 			ArancelDirectory aranceles,
 			PermissionGuard permissionGuard,
+			PersonSupportAccessAuditor supportAccessAuditor,
 			AuditTrail auditTrail,
 			AutorizacionEventoRepositoryPort eventos,
 			AutorizacionAlertaRepositoryPort alertas,
@@ -142,6 +144,7 @@ public class AutorizacionService {
 		this.perfiles = perfiles;
 		this.aranceles = aranceles;
 		this.permissionGuard = permissionGuard;
+		this.supportAccessAuditor = supportAccessAuditor;
 		this.auditTrail = auditTrail;
 		this.eventos = eventos;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
@@ -263,8 +266,8 @@ public class AutorizacionService {
 	public AutorizacionView registrar(
 			OperatingActor actor, long personaId, AutorizacionAltaCommand command) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Registrar una autorizacion");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Registrar una autorizacion", AuditEvents.ENTITY_PERSONA, personaId);
 		long organizationId = actor.contextOrganizationId();
 		long consultorioId = actor.consultorioId();
 
@@ -361,8 +364,8 @@ public class AutorizacionService {
 			long autorizacionId,
 			AutorizacionEdicionCommand command) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Editar una autorizacion");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Editar una autorizacion", AuditEvents.ENTITY_AUTORIZACION, autorizacionId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPersonaDelTenant(organizationId, personaId);
@@ -441,8 +444,8 @@ public class AutorizacionService {
 			long autorizacionId,
 			ResolucionDeAutorizacionCommand command) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Resolver una autorizacion");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Resolver una autorizacion", AuditEvents.ENTITY_AUTORIZACION, autorizacionId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPersonaDelTenant(organizationId, personaId);
@@ -528,8 +531,8 @@ public class AutorizacionService {
 	public AutorizacionView vincularDocumento(
 			OperatingActor actor, long personaId, long autorizacionId, Long adjuntoId) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Vincular el comprobante de una autorizacion");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Vincular el comprobante de una autorizacion", AuditEvents.ENTITY_AUTORIZACION, autorizacionId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPersonaDelTenant(organizationId, personaId);
@@ -568,8 +571,8 @@ public class AutorizacionService {
 	public AutorizacionView darDeBaja(
 			OperatingActor actor, long personaId, long autorizacionId, String motivo) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Dar de baja una autorizacion");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Dar de baja una autorizacion", AuditEvents.ENTITY_AUTORIZACION, autorizacionId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPersonaDelTenant(organizationId, personaId);

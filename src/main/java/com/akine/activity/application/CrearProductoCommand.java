@@ -23,6 +23,12 @@ public record CrearProductoCommand(
 		LocalDate vigenciaHasta,
 		TipoProducto tipo) {
 
+	/** AKINE-09.02: ver {@link FechasAdmitidas}. */
+	public CrearProductoCommand {
+		FechasAdmitidas.exigir(vigenciaDesde, "vigenciaDesde");
+		FechasAdmitidas.exigir(vigenciaHasta, "vigenciaHasta");
+	}
+
 	/** Un pack, como antes de 08.08. */
 	public CrearProductoCommand(
 			long ofertaId, String nombre, String descripcion, int creditos, BigDecimal precio,

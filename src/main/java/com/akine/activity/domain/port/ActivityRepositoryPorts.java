@@ -8,6 +8,7 @@ import com.akine.activity.domain.InscripcionClase;
 import com.akine.activity.domain.MovimientoPase;
 import com.akine.activity.domain.PaseServicio;
 import com.akine.activity.domain.ProductoServicio;
+import com.akine.activity.domain.TipoProducto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -146,6 +147,17 @@ public final class ActivityRepositoryPorts {
 		 * @return 1 si se otorgo el lugar, 0 si no habia
 		 */
 		int tomarCupo(long organizationId, long claseId, int capacidadEfectiva);
+
+		/**
+		 * {@link #tomarCupo} para una clase {@code EN_CURSO}: el lugar del ingreso sin inscripcion
+		 * (RF-M13-007, AKINE-08.03). Mismo {@code UPDATE} condicional y mismo techo; lo unico que
+		 * cambia es el estado que exige el {@code WHERE}. Con el de {@link #tomarCupo}
+		 * —{@code PROGRAMADA}— el ingreso devolvia cero filas siempre y respondia
+		 * {@code clase-completa} con lugares libres (escenario 56 de {@code docs/tests-diferidos.md}).
+		 *
+		 * @return 1 si se otorgo el lugar, 0 si no habia
+		 */
+		int tomarCupoEnCurso(long organizationId, long claseId, int capacidadEfectiva);
 
 		/**
 		 * Devuelve un lugar. Condicional por el mismo motivo que {@link #tomarCupo}: un cupo
@@ -390,6 +402,12 @@ public final class ActivityRepositoryPorts {
 		 * de periodos superpuestos no comparten un valor de columna que un unique pueda ver.
 		 */
 		Optional<ProductoServicio> lockByIdInScope(long organizationId, long consultorioId, long productoId);
+
+		/**
+		 * El tipo del producto, sin cargar la entidad ni tomar lock (U-48): la venta decide con esto
+		 * si bloquea —abono— o no —pack—. El tipo es inmutable.
+		 */
+		Optional<TipoProducto> tipoDe(long organizationId, long consultorioId, long productoId);
 	}
 
 	public interface PaseServicioRepositoryPort {
@@ -407,8 +425,12 @@ public final class ActivityRepositoryPorts {
 		 * en que se consumen —el que vence antes primero— y <b>bloqueados</b> ({@code FOR UPDATE}):
 		 * es una lectura actual, no la foto de {@code REPEATABLE READ}, y serializa dos consumos
 		 * simultaneos de la misma persona.
+		 *
+		 * <p>Trae el saldo de cada uno leido bajo ese mismo lock (AKINE-09.05): mientras la
+		 * transaccion lo retiene nadie mas mueve {@code creditos_disponibles}, asi que despues de un
+		 * {@link #consumirUno} que toco la fila el saldo es exactamente uno menos, sin releerlo.
 		 */
-		List<Long> lockElegibles(long organizationId, long personaId, long ofertaId, LocalDate fecha);
+		List<PaseElegible> lockElegibles(long organizationId, long personaId, long ofertaId, LocalDate fecha);
 
 		/**
 		 * Descuenta un credito si y solo si el pase sigue activo, vigente ese dia y con saldo. Una
@@ -590,6 +612,10 @@ public final class ActivityRepositoryPorts {
 
 	/** Lo que una asistencia tiene tomado de un pase. */
 	public record NetoDeAsistencia(long paseId, long neto) {
+	}
+
+	/** Un pase que puede cubrir una asistencia, con el saldo leido bajo su lock. */
+	public record PaseElegible(long paseId, int creditosDisponibles) {
 	}
 
 	public interface ClaseEventoRepositoryPort {

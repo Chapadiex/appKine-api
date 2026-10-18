@@ -288,6 +288,12 @@ public class DerivacionClinicaService {
 		DerivacionClinica derivacion = derivaciones
 				.findByIdInScope(organizationId, reversion.derivacionId())
 				.orElseThrow(() -> new DerivacionNotAccessibleException(reversion.derivacionId()));
+		// AKINE-09.02: la derivacion de OTRA participacion es 404 aca, antes del acceso y del
+		// cerrojo. Hasta 09.02 el llamador lo comprobaba despues de revertir: la escritura volvia
+		// atras, pero el 403 o el 409 que salian antes del 404 confirmaban que el id existia.
+		if (!reversion.admite(derivacion.getOrigen(), derivacion.getParticipacionId())) {
+			throw new DerivacionNotAccessibleException(reversion.derivacionId());
+		}
 
 		// El acceso se evalua DESPUES de resolver la fila, porque hace falta la personaId para
 		// preguntar por la relacion asistencial. Un 404 por tenant ya salio arriba, asi que nadie

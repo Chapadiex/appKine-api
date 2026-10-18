@@ -1,6 +1,7 @@
 package com.akine.activity.infrastructure;
 
 import com.akine.activity.domain.ProductoServicio;
+import com.akine.activity.domain.TipoProducto;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ProductoServicioRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -62,6 +63,18 @@ public interface ProductoServicioRepository
 			 FOR UPDATE
 			""", nativeQuery = true)
 	Optional<ProductoServicio> lockByIdInScope(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("productoId") long productoId);
+
+	@Override
+	@Query("""
+			SELECT p.tipo FROM ProductoServicio p
+			 WHERE p.organizationId = :organizationId
+			   AND p.consultorioId = :consultorioId
+			   AND p.id = :productoId
+			""")
+	Optional<TipoProducto> tipoDe(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("productoId") long productoId);

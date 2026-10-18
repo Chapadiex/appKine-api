@@ -1,5 +1,6 @@
 package com.akine.scheduling.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
@@ -42,6 +43,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -91,7 +93,7 @@ class CicloDeRecepcionServiceTest {
 	@BeforeEach
 	void preparar() {
 		service = new CicloDeRecepcionService(turnos, bloqueos, registro, eventos, consultorios,
-				permissionGuard, practicas, coberturas, elegibilidad,
+				new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), practicas, coberturas, elegibilidad,
 				new PrepagoDeRecepcion(ofertas, prepagos));
 
 		Instant inicio = Instant.now().plus(Duration.ofDays(2));

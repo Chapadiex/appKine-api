@@ -109,7 +109,7 @@ class ObservabilidadIT {
 		// este test cierra. `up` lo genera Prometheus, no la aplicacion; los `akine:*` son las
 		// reglas de grabacion del mismo archivo.
 		Pattern metrica = Pattern.compile(
-				"\\b((?:http_server_requests_seconds|hikaricp|jvm|process|tomcat|logback)_[a-z_]+)\\b");
+				"\\b((?:http_server_requests_seconds|hikaricp|jvm|process|tomcat|logback|akine_job)_[a-z_]+)\\b");
 		Set<String> usadas = new TreeSet<>();
 		for (String archivo : List.of("ops/observabilidad/alertas-akine-api.yml",
 				"ops/observabilidad/tablero-akine-api.json")) {

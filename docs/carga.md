@@ -887,3 +887,276 @@ contrato ni migración.
 Medido en el CI de #134 (la suite completa: 3.949 unitarias y 853 de integración, 0 fallos). Con una
 sola oferta la cuenta no cambia —una consulta por lista reemplaza a una por oferta—; con seis, la
 recepción hace las mismas diez sentencias que con una.
+
+## 12. F9: carreras, N+1 y carga de clases y pases (16/10/2026, rama `akine-09.03-concurrencia-f9`)
+
+### Carreras con IT
+
+Las que ya tenían IT antes de 09.03: última vacante con espera (`UltimaVacanteConcurrenteIT`),
+promoción doble (`PromocionDesdeEsperaConcurrenteIT`), invariante del cupo
+(`CupoOcupadoInvarianteIT`), último crédito (`ConsumoDePaseConcurrenteIT`), cancelación contra
+asistencias y ajuste contra consumo (`DevolucionYAjusteConcurrenteIT`) y dos renovaciones a la vez
+(`AbonoRenovacionYAvisosIT`). Las que faltaban:
+
+| Carrera | IT | Resultado |
+|---|---|---|
+| Inscribir contra cancelar la clase | `InscripcionContraCancelacionIT` | **Defecto, corregido** (abajo) |
+| Venta de pase con la misma `idempotencyKey` | `CarrerasDePasesIT` | **Defecto, corregido** (abajo) |
+| Consumo contra anulación del pase | `CarrerasDePasesIT` | Correcto: o se anula sin uso y la asistencia queda `SIN_PASE_ELEGIBLE`, o se consume y la anulación es 409 |
+| Ajuste contra anulación | `CarrerasDePasesIT` | Correcto: gana uno, el otro 409 por versión |
+| Vencimiento contra consumo de una clase del último día | `CarrerasDePasesIT` | Correcto: un solo `VENCIMIENTO` y el ledger en cero |
+| Renovación automática contra anulación manual | `CarrerasDePasesIT` | Correcto: o se anula y no se renueva, o se renueva y la anulación es 409; una deuda por período |
+
+`CarreraDirigida` (test) abre la ventana a propósito en vez de sortearla: una conexión propia
+retiene la fila con `FOR UPDATE` y cada tarea se larga recién cuando su sentencia aparece esperando
+en `information_schema.PROCESSLIST`. Los dos defectos se reprodujeron **siempre** antes del
+arreglo; las ráfagas de `enParalelo` quedan además como control del invariante.
+
+1. **Inscribir mientras se cancela la clase dejaba a la persona en la cola de una clase
+   `CANCELADA`.** `inscribir` valida la clase sin lock y después pide el lugar con el `UPDATE`
+   condicional, que filtra `estado = 'PROGRAMADA'`. Si la cancelación commitea en el medio, el
+   `UPDATE` da cero filas y el servicio lo leía como "no hay lugar": con espera aceptada creaba una
+   `LISTA_ESPERA` viva que nadie avisa ni resuelve; sin espera respondía `clase-completa`. Ahora la
+   rama de cero filas relee la clase **bloqueada** y responde `clase-transicion-no-permitida`.
+2. **Dos ventas simultáneas con la misma `Idempotency-Key`: la segunda respondía 409 `conflict`**
+   en vez de la venta existente. Las dos pasaban la búsqueda de la clave antes de que la primera
+   commiteara; el lock del producto las ponía en fila, pero la segunda no volvía a mirar y chocaba
+   con `uk_pase_idempotency`. Ahora la clave se vuelve a buscar con el producto ya bloqueado
+   (`READ_COMMITTED`). Sin cambio de contrato.
+
+### N+1
+
+`ListadosDeActividadSentenciasIT` cuenta las sentencias del hilo del test (`ContadorDeSentencias`,
+que pasó a `testsupport` y comparte con `AgendaDelDiaSentenciasIT`) con una fila y con seis:
+
+| Listado | 1 fila | 6 filas |
+|---|---:|---:|
+| clases de la sede (`ClaseService.listar`) | 5 | 5 |
+| participantes (`InscripcionService.participantes`) | 7 | 7 |
+| detalle operativo (`AsistenciaService.detalleOperativo`) | 13 | 13 |
+| pases de la persona (`VentaDePaseService.deLaPersona`) | 9 | 9 |
+| ledger paginado (`VentaDePaseService.movimientos`) | 5 | 5 |
+| productos de la sede (`ProductoService.listar`) | 4 | 4 |
+
+**Ninguno crece**: `ProyeccionDeClase` y `LecturaDePases` ya resolvían en lote. No hubo nada que
+corregir. La asistencia en lote, que no es un listado sino N escrituras independientes por diseño
+(RF-M13-008), cuesta **18 sentencias por participante** (1 participante = 21, 6 = 111). De esas 18,
+tres se repiten igual en cada ítem —la sede, su zona horaria y el esquema de cobro de la oferta—;
+el resto es trabajo propio del ítem (lock de la clase, asistencia, evento, auditoría y el consumo
+del crédito con su movimiento).
+
+### Carga
+
+`perf/k6/sembrado-actividad.js` agrega al centro de G-10 una oferta grupal `POR_PACK`, un pack, un
+pase por persona (150), 60 clases futuras y 20 clases iniciadas con 25 inscriptos cada una.
+`perf/k6/actividad.js` corre, durante 5 minutos: **inscribir** a 10/s (persona y clase al azar,
+espera aceptada; el 409 de inscripción duplicada es esperado), **asistencia en lote** a 2/s (los 25
+inscriptos de una clase, en ronda, presente o ausente al azar: casi todo ítem es una corrección que
+consume o devuelve crédito), **venta de pase** a 5/s del mismo producto, y **200 usuarios** que
+leen la grilla de la semana, los participantes y los pases de una persona. Cualquier escenario de
+tasa fija se apaga con su variable en 0 (p. ej. `-e AKINE_ACTIVIDAD_LOTES_RPS=0`).
+
+```bash
+perf/stack.sh up && perf/stack.sh sembrar && perf/stack.sh sembrar-actividad
+perf/stack.sh actividad            # acepta -e VAR=valor, como `carga`
+```
+
+**Medido el 16/10/2026**, stack aislado con prefijo `f1003` (MySQL 3334, backend 8095), imagen del
+jar de esta rama, backend con 4 CPU / 2 GB y pool de 10, misma máquina que §5. Latencias de k6 en
+ms; la del servidor (`prometheus-latencia.mjs`) coincide en lo grueso.
+
+| Endpoint | Corrida 1: todo · p50 / p95 / p99 | Corrida 2: sin el lote · p50 / p95 / p99 |
+|---|---|---|
+| inscribir (8,3–8,5/s) | 127 / 3.210 / 9.405 | 59 / 358 / 1.057 |
+| asistencia en lote, 25 ítems (1,6/s) | 1.515 / 19.044 / 24.968 | — |
+| vender pase (4,2/s) | 150 / 3.665 / 9.656 | 77 / 723 / 2.028 |
+| clases de la semana | 25 / 2.181 / 5.891 | 21 / 92 / 861 |
+| participantes | 27 / 2.286 / 6.474 | 23 / 97 / 774 |
+| pases de la persona | 29 / 2.232 / 5.360 | 26 / 104 / 755 |
+| **todo lo interactivo** | 34 / 2.683 / 8.337 | 25 / 189 / 944 |
+
+Errores técnicos **0 %** en las dos corridas, y **0 %** de ítems de lote con error: ninguna carrera
+de las de arriba apareció bajo carga. **El SLO no se cumple con el lote adentro**, y el motivo es
+uno solo: cada lote de 25 son 25 transacciones de ~18 sentencias cada una, que retienen conexiones
+del pool de 10 durante 1,5 s de mediana; a 2 lotes por segundo el pool se satura y arrastra a
+todo lo demás (las lecturas pasan de p95 ~95 ms a ~2,2 s). Sin el lote, las lecturas cumplen
+holgadas y quedan fuera dos escrituras:
+
+- **vender pase**, p95 723 ms: toda venta toma el producto con `FOR UPDATE` (08.08, para que dos
+  períodos de un abono no se superpongan y para leer una baja recién commiteada). Con un solo
+  producto, todas las ventas de la sede se serializan. Para un pack el lock no protege ninguna
+  superposición; aflojarlo es una decisión del usuario (**U-48**): bloquear sólo los abonos, o
+  aceptar la cola. *(17/10/2026: decidido e implementado, ver "U-48" al final de esta sección.)*
+- **inscribir**, p95 358 ms: las altas de una misma clase se serializan en la fila de la clase
+  (el `UPDATE` condicional del cupo, que es la correctitud y no se toca). Con 60 clases y 10 altas
+  por segundo, rozando el SLO.
+
+**Lo que queda abierto, sin corregir en esta rama:** el costo del lote. Las opciones, de menor a
+mayor cambio: sacar del ítem lo que se repite igual en todos (sede, zona y esquema de cobro, 3 de
+18 sentencias); agrupar los ítems de a varios por transacción manteniendo el resultado parcial por
+ítem; o limitar la concurrencia de lotes por sede. Ninguna cambia el contrato; las dos últimas
+cambian la semántica de "transacción independiente" de RF-M13-008 y son decisión del usuario
+(**U-49**).
+Los números de una sola máquina de desarrollo no son los del entorno de destino (§7).
+
+### 09.05: el costo del lote sin cambiar ninguna regla (17/10/2026, rama `akine-asistencia-lote-costo`)
+
+Lo que U-49 llama opción (a), hecho: **misma transacción por ítem, mismos locks en el mismo orden
+(clase en compartido → inscripción → asistencia → pase), mismas auditorías**, mismo resultado
+observable y sin cambio de contrato ni migración.
+
+**Por qué eran 18.** `ContadorDeSentencias.capturar` (nuevo) devuelve el texto de cada sentencia.
+Un ítem de alta en una oferta `POR_PACK` hacía: sede, rol de plataforma y memberships (contexto y
+permiso, **dentro** de la transacción del ítem), lock de la clase, inscripción, asistencia previa,
+UPDATE de la inscripción, INSERT de asistencia, evento y auditoría, neto del ledger de esa
+asistencia, oferta (esquema de cobro), **sede otra vez** (zona horaria), lock de pases elegibles,
+UPDATE del pase, relectura del saldo, movimiento y auditoría. Cinco de esas lecturas eran
+idénticas en todos los ítems y dos eran innecesarias.
+
+| Qué se sacó del ítem | Por qué no cambia una regla |
+|---|---|
+| Sede, rol de plataforma y memberships: **una vez por pedido**, antes del primer ítem | Ninguna toma lock. Fallaban en el primer ítem con la misma excepción, que el lote no traduce a resultado parcial. El permiso se decide con lo leído en el pedido, como las mutaciones de #91; la revocación sigue sin cruzar al pedido siguiente. El `SUPPORT_ACCESS_USED` se sigue escribiendo una vez por ítem |
+| Zona de la sede: del snapshot que ya se leyó para validar el tenant | Es la misma fila |
+| Esquema de cobro de la oferta: una vez por pedido (`LecturasDeConsumo`) | Era una lectura consistente sin lock |
+| Neto del ledger de una asistencia **recién insertada** | Su id es nuevo: ningún movimiento puede tenerlo |
+| Relectura del saldo después de consumir | `lockElegibles` trae el saldo bajo su `FOR UPDATE`, que la transacción retiene: el UPDATE que tocó la fila restó exactamente uno |
+
+Sentencias por participante (`ListadosDeActividadSentenciasIT`, lote de 1 contra lote de 6; antes
+medido sobre `origin/main` con el mismo IT):
+
+| Pasada | Antes | Después |
+|---|---:|---:|
+| alta, presente (consume) | 18 | **11** |
+| corrección a ausente (devuelve) | 15 | **12** |
+| corrección a presente (vuelve a consumir) | 18 | **12** |
+
+El IT afirma esos tres techos: si algo vuelve a leer por ítem lo que es igual para todo el lote, se
+rompe. Lo que queda en el ítem es trabajo propio: lock de la clase, inscripción, asistencia, sus
+escrituras, evento, auditoría y el movimiento del crédito con su auditoría.
+
+**Carga.** Seis corridas completas de `actividad.js` (5 min, misma configuración que arriba, stack
+aislado `lote` en 3341/8101, imagen de `origin/main` contra imagen de esta rama, intercaladas):
+
+| Corrida | lote p50 / p95 / p99 | interactivo p95 / p99 | COMMIT promedio |
+|---|---|---|---:|
+| antes 1 | 868 / 1.458 / 2.858 | 133 / 1.030 | — |
+| antes 2 | 601 / 895 / 1.753 | 84 / 707 | 4,3 ms |
+| antes 3 | 663 / 985 / 1.277 | 84 / 682 | 4,2 ms |
+| después 1 | 873 / 12.055 / 19.517 | 1.875 / 3.799 | — |
+| después 2 | 821 / 1.600 / 2.971 | 124 / 1.052 | 7,6 ms |
+| después 3 | 773 / 1.256 / 2.092 | 106 / 805 | 6,9 ms |
+
+**La carga no distingue la mejora del ruido de esta máquina, y no hay que leerla como empeoramiento.**
+Las corridas "después" 2 y 3 coincidieron con tres a cuatro MySQL de Testcontainers de otros
+agentes corriendo en el mismo disco (registro de contenedores de la sesión), y el COMMIT promedio
+pasó de 4,2 a 7,6 ms sin que el código toque el commit. Ocho corridas cortas más (2 min, misma
+base, backend alternado) dieron el p95 del lote mejor con la rama en tres de cuatro pares y una
+dispersión de 3 a 28 s entre corridas iguales. El digest de MySQL sí confirma el efecto: ~15.000
+lecturas de memberships y ~18.000 de sede menos por corrida, con la misma cantidad de COMMIT.
+
+**Lo que el número dice para U-49.** Por ítem quedan 11–12 sentencias y **un COMMIT durable**, y en
+esta máquina el COMMIT (4–11 ms según la carga del disco) cuesta tanto como todas las sentencias
+juntas (~0,4 ms cada una). La opción (a) saca un tercio de las sentencias —estimado ~3 ms de
+conexión por ítem, ~70 ms por lote de 25— pero no toca los 25 commits del lote, que son lo que
+satura el pool. Bajar más exige (b) agrupar ítems por transacción o (c) limitar lotes concurrentes:
+las dos siguen siendo decisión del usuario.
+
+### U-48: el lock del producto, sólo en la venta de un abono (17/10/2026, rama `akine-u48-lock-solo-abonos`)
+
+Decisión del usuario del 17/10 (U-48, la recomendada). `VentaDePaseService.vender` lee el **tipo**
+del producto sin lock (`ProductoServicioRepositoryPort.tipoDe`, una columna inmutable) y:
+
+- **abono:** toma el producto con `FOR UPDATE` como antes —es lo que serializa los periodos de la
+  misma persona, que ningún unique puede ver— y vuelve a mirar la clave con el lock tomado (09.03);
+- **pack:** lo lee sin lock, en `READ_COMMITTED`. Dos ventas con la misma `Idempotency-Key` llegan
+  las dos al INSERT; la segunda choca con `uk_pase_idempotency` cuando la primera commitea, y
+  `vender` relee la clave **después del rollback, en una transacción nueva `READ_COMMITTED`**, como
+  el cobro de #131: misma huella devuelve la venta existente (`creada = false`), otra huella es
+  `idempotency-key-conflict`. Sin venta que lo explique, el choque sigue su camino. Una baja del
+  producto que commitea después de la lectura se cuela: es una venta del último instante, anulable.
+
+La transacción pasó de `@Transactional` a un `TransactionTemplate` para poder releer fuera de la
+que choca. Sin cambio de contrato ni migración (`OpenApiContractIT` en verde).
+
+**Carreras.** `CarrerasDePasesIT`: la dirigida de 09.03 quedó sobre un **abono** (las dos ventas
+esperan el `FOR UPDATE` del producto) y se sumaron dos dirigidas de **pack sin lock**. Para dejar
+las dos ventas en el INSERT, la fila retenida es la del producto y lo que espera es la FK de
+`pase_servicio`, que pide un lock compartido sobre el padre; el test afirma además que ninguna
+pidió el producto con `FOR UPDATE`. Con la misma clave: un pase, una deuda, una `COMPRA`, una
+auditoría y las dos devuelven el mismo pase. Con la misma clave y otro titular: una venta y un
+409 de clave reusada. La ráfaga de seis ventas con la misma clave (pack) pasa por el unique en vez
+del lock. **Verificado por mutación:** sin la relectura, las tres de pack fallan con
+`Duplicate entry ... uk_pase_idempotency`.
+
+**Carga.** Stack aislado `u48` (MySQL 3351, backend 8111), imagen de `origin/main` (`77284eb`)
+contra imagen de esta rama, misma base sembrada, backend con 4 CPU / 2 GB y pool de 10. Dos
+escenarios: el de §12 sin el lote (5 min) y **sólo ventas a 30/s** del mismo producto (2 min,
+`-e AKINE_ACTIVIDAD_LOTES_RPS=0 -e AKINE_ACTIVIDAD_INSCRIPCIONES_RPS=0 -e AKINE_ACTIVIDAD_VENTAS_RPS=30
+-e AKINE_ACTIVIDAD_VUS=1 -e AKINE_ACTIVIDAD_DURACION=2m`), que es lo que muestra la cola. En este orden:
+antes sin el lote, antes 30/s, después 30/s, después sin el lote, antes 30/s, después 30/s.
+
+| Corrida | ventas hechas | p50 / p95 / p99 (ms) |
+|---|---|---|
+| sin el lote, antes (4,4/s) | 1.501 | 61 / 144 / 295 |
+| sin el lote, después (4,4/s) | 1.501 | 69 / 130 / 181 |
+| sólo ventas a 30/s, antes 1 | 3.344 de 3.600 | 2.624 / 4.359 / 5.490 |
+| sólo ventas a 30/s, antes 2 | 2.888 de 3.600 | 3.636 / 5.774 / 6.374 |
+| sólo ventas a 30/s, después 1 | 3.599 de 3.600 | 56 / 120 / 232 |
+| sólo ventas a 30/s, después 2 | 3.598 de 3.600 | 59 / 110 / 201 |
+
+Errores técnicos **0 %** en las seis. En la corrida sin el lote, el resto (inscribir, lecturas,
+todo lo interactivo p95 74–81 ms) no cambia.
+
+**Lectura.** A 4,4 ventas/s la cola del lock no se forma en esta máquina: el p95 de 723 ms de §12
+no se repitió con `origin/main` (144 ms), así que aquel número tenía también ruido del disco.
+Donde se ve es al subir la tasa: **antes**, todas las ventas del producto van en fila detrás del
+`FOR UPDATE` y el techo es ~20 ventas/s —a 30/s pedidas, k6 dejó de largar entre 256 y 712 y las
+que entraron esperaron 2,6–3,6 s de mediana—; **después**, las 3.600 entran y el p95 queda en
+110–120 ms, dentro del SLO. Los abonos siguen en fila por producto, que es su correctitud.
+Los números de una sola máquina de desarrollo no son los del entorno de destino (§7).
+
+### U-49 c: el límite de lotes por sede, preparado y apagado (17/10/2026, rama `akine-u49c-limite-de-lotes`)
+
+DP-30: la opción (c) se activa **sólo si el entorno de destino lo exige**. Quedó lista para
+encender por configuración y **apagada por defecto**: con la propiedad ausente o en `0` no se crea
+ningún semáforo y el lote corre exactamente como antes (`LimiteDeLotesApagadoIT`).
+
+| Propiedad | Default | Variable de entorno |
+|---|---|---|
+| `akine.activity.asistencia.lotes-concurrentes-por-sede` | `0` = sin límite | `AKINE_ACTIVITY_ASISTENCIA_LOTES_CONCURRENTES_POR_SEDE` |
+| `akine.activity.asistencia.lotes-espera-maxima` | `2s` | `AKINE_ACTIVITY_ASISTENCIA_LOTES_ESPERA_MAXIMA` |
+
+**Qué hace con N > 0.** `LimiteDeLotesPorSede` guarda un semáforo justo por sede, **en memoria y
+por instancia**: con varias instancias el techo efectivo es N × instancias, que es lo que se quiere,
+porque lo que se protege es el pool de cada instancia. El lote lo toma **después** de autorizar y
+**antes** del primer ítem, sin conexión abierta (el lote no es transaccional y `open-in-view` está
+apagado), y lo suelta después del último. El que no consigue lugar espera hasta
+`lotes-espera-maxima`; si no, **503 `service-unavailable` con `Retry-After`** y ningún ítem escrito.
+El lote de un solo ítem y el registro individual no pasan por el límite. **No cambia
+transacciones, locks ni el resultado por ítem**: el semáforo envuelve el bucle, no lo que hay
+adentro (`ListadosDeActividadSentenciasIT` sigue en 11/12 sentencias por participante).
+
+**503 y no 429.** 429 dice que el *cliente* mandó demasiados pedidos (RFC 6585) y es lo que viaja
+como `rate-limited` en el login, con un mensaje de "demasiados intentos". Acá quien recibe el
+rechazo mandó uno: el límite es la capacidad de la sede, compartida entre todos los que toman lista
+ahí. Es la sobrecarga transitoria de RFC 9110 §15.6.4, y `service-unavailable` ya es el tipo que
+viaja cuando el pool no entrega conexión, que es justo lo que el límite evita. Sin problemType
+nuevo; el contrato pasa a **0.127.0** sólo para declarar el 503 y su `Retry-After` en
+`registrarLote` (aditivo).
+
+**Métricas** (`docs/observabilidad.md` §8): `akine_asistencia_lotes_total{resultado=inmediato|tras-espera|rechazado}`
+y el gauge `akine_asistencia_lotes_en_espera`, registrados en cero aunque esté apagado.
+
+**Cuándo encenderlo.** Cuando, en el entorno de destino, tomar lista en lote haga subir
+`hikaricp_connections_pending` y el p95 de lo interactivo (el síntoma de la corrida 1 de §12). Con
+pool de 10, un lote ocupa **una** conexión a la vez, así que N = 1 o 2 por sede deja holgura aun con
+varias sedes tomando lista; se sube de a uno mirando `rechazado`. Runbook: R8 de
+`docs/operaciones/runbooks.md`. **No se midió con k6**: se enciende recién con números del entorno
+de destino (§7), y esta máquina no los da.
+
+**Tests.** `LimiteDeLotesPorSedeTest` (unitario: apagado, N lugares, por sede, espera que entra,
+rechazo con `Retry-After` redondeado hacia arriba y nunca 0, doble `close`, interrupción) y, contra
+MySQL, `LimiteDeLotesPorSedeIT` con N=1 y 2 s: un lote A retenido en el `FOR SHARE` de su clase
+(`CarreraDirigida`) y un lote B de **otra** clase de la misma sede, que (1) espera los 2 s y recibe
+el rechazo sin escribir nada mientras A termina bien, (2) espera y entra cuando A termina, y (3) con
+un ítem o por el registro individual no espera. `ActivityControllersTest` cubre el 503 por HTTP.

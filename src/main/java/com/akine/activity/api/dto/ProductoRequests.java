@@ -1,6 +1,8 @@
 package com.akine.activity.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -43,7 +45,7 @@ public final class ProductoRequests {
 
 			@Schema(description = "Dias corridos que vale el pase desde la compra, contando el dia "
 					+ "de la compra", example = "60")
-			@Positive int vigenciaDias,
+			@Positive @Max(3660) int vigenciaDias,
 
 			@Schema(description = "Desde cuando se puede vender", example = "2026-10-01")
 			@NotNull LocalDate vigenciaDesde,
@@ -74,14 +76,14 @@ public final class ProductoRequests {
 
 			@Size(min = 3, max = 3) String moneda,
 
-			@Positive Integer vigenciaDias,
+			@Positive @Max(3660) Integer vigenciaDias,
 
 			LocalDate vigenciaDesde,
 
 			LocalDate vigenciaHasta,
 
 			@Schema(description = "true deja la ventana comercial sin fin", example = "false")
-			boolean limpiarVigenciaHasta,
+			Boolean limpiarVigenciaHasta,
 
 			@Schema(description = "Version que el cliente leyo", example = "0")
 			@NotNull @PositiveOrZero Long version) {
@@ -138,7 +140,7 @@ public final class ProductoRequests {
 
 			@Schema(description = "Creditos con signo: positivo suma, negativo resta. Nunca cero",
 					example = "-1")
-			int cantidad,
+			@Min(-10000) @Max(10000) int cantidad,
 
 			@Schema(description = "Obligatorio: queda en el ledger y en la auditoria (CA-M29-005-06)",
 					example = "Clase de cortesia descontada por error")

@@ -25,6 +25,11 @@ public record ConsumoDeCredito(Efecto efecto, Long paseId, Integer saldo) {
 		NO_APLICA
 	}
 
+	/** El mismo efecto, sin decir que pase era ni cuanto le queda (U-46 (c)). */
+	public ConsumoDeCredito sinPase() {
+		return new ConsumoDeCredito(efecto, null, null);
+	}
+
 	public static ConsumoDeCredito noAplica() {
 		return new ConsumoDeCredito(Efecto.NO_APLICA, null, null);
 	}

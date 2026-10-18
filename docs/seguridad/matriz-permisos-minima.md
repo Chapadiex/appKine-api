@@ -752,3 +752,37 @@ contrato, sin una segunda lista que mantener:
 - **400 `permiso-no-otorgable-al-rol`**, con `roleCode` y `permissionCode` en propiedades, cuando el
   código existe pero la matriz no lo admite para el rol del vínculo (incluido el que no es otorgable
   a ningún rol). Un código inexistente sigue siendo `validation-error`.
+
+
+## 17. Enmiendas — AKINE-09.02 (la superficie de F9, revisada contra esta matriz)
+
+No hay ningún código nuevo ni cambia ninguna asignación base. Lo que 09.02 fija es la **lectura
+escrita** de la segunda entrega, que la §32 no tiene (no hay filas de clases ni de pases) y que
+hasta acá vivía sólo en los comentarios de `RolePermissions`.
+
+### 17.1 Asignación base de F9
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `clase:read` | Soporte | Org | Consultorio | Consultorio | Consultorio | — |
+| `clase:manage` | — | Org | Consultorio | Consultorio | Consultorio | — |
+| `inscripcion:read` | Soporte | Org | Consultorio | Consultorio | Consultorio | — |
+| `inscripcion:manage` | — | Org | Consultorio | Consultorio | Consultorio | — |
+| `asistencia:manage` | — | Org | Consultorio | Consultorio | Consultorio | — |
+| `producto:read` | — | Org | Consultorio | — | Consultorio | — |
+| `producto:manage` | — | Org | Consultorio | — | — | — |
+| `pase:read` / `pase:manage` | — | Org | Consultorio | — | Consultorio | — |
+| `pase:adjust` | — | Org | Consultorio | — | — | — |
+
+- **Ningún permiso de F9 es otorgable por grant** (`GRANT_POR_ROL` no tiene filas de F9): sin fila
+  en la §32 no hay celda "No por defecto" que traducir. `MatrizDePermisosIT` lo fija con cuatro
+  grants que responden 400. Abrir alguno es la decisión **U-46 (b)**.
+- **Las lecturas por soporte dejan rastro desde 09.02.** `clase:read` e `inscripcion:read` con
+  alcance `SOPORTE` escriben `SUPPORT_ACCESS_USED` (`activity.application.SoporteEnActividad`),
+  como `reporting` y `person`. Hasta 09.02 la decisión se descartaba.
+- **Lo clínico de la clase no es de F9.** Derivar y revertir piden `hc:write`; ver las derivaciones,
+  `hc:read` con relación o justificación; atender, `sesion:register` y `hc:write`. `activity` sólo
+  exige `inscripcion:read` para llegar al participante, y desde 09.02 el lote de atención exige
+  además `sesion:register` y `hc:write` de entrada.
+- **Cerrar una clase** exige, desde 09.02, `clase:manage` **y** `asistencia:manage` **e**
+  `inscripcion:manage`: escribe ausentes y cancela la lista de espera.

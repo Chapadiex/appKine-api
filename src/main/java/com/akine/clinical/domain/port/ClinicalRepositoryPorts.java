@@ -60,6 +60,9 @@ public final class ClinicalRepositoryPorts {
 
 		/** La historia vigente de esa persona en esa organizacion, si existe. */
 		Optional<HistoriaClinica> buscarVigentePorPersona(Long organizationId, Long personaId);
+
+		/** Pares {@code [historia_clinica_id, persona_id]} de esas historias del tenant, vigentes o no. */
+		List<Object[]> personasDeHistorias(long organizationId, Collection<Long> historiaIds);
 	}
 
 	public interface AntecedenteClinicoRepositoryPort {

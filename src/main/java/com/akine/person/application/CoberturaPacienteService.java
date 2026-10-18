@@ -97,6 +97,7 @@ public class CoberturaPacienteService {
 	private final PerfilPacienteRepositoryPort perfiles;
 	private final CoberturaCatalogoDirectory catalogo;
 	private final PermissionGuard permissionGuard;
+	private final PersonSupportAccessAuditor supportAccessAuditor;
 	private final AuditTrail auditTrail;
 	private final TransactionTemplate transaccionReadCommitted;
 
@@ -108,6 +109,7 @@ public class CoberturaPacienteService {
 			PerfilPacienteRepositoryPort perfiles,
 			CoberturaCatalogoDirectory catalogo,
 			PermissionGuard permissionGuard,
+			PersonSupportAccessAuditor supportAccessAuditor,
 			AuditTrail auditTrail,
 			PlatformTransactionManager transactionManager) {
 
@@ -118,6 +120,7 @@ public class CoberturaPacienteService {
 		this.perfiles = perfiles;
 		this.catalogo = catalogo;
 		this.permissionGuard = permissionGuard;
+		this.supportAccessAuditor = supportAccessAuditor;
 		this.auditTrail = auditTrail;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
@@ -213,8 +216,8 @@ public class CoberturaPacienteService {
 	public CoberturaView agregar(
 			OperatingActor actor, long personaId, CoberturaAltaCommand command) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Agregar una cobertura");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Agregar una cobertura", AuditEvents.ENTITY_PERSONA, personaId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPacienteVigente(organizationId, personaId, "cargar una cobertura");
@@ -299,7 +302,8 @@ public class CoberturaPacienteService {
 			long coberturaId,
 			CoberturaEdicionCommand command) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, actor, "Editar una cobertura");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Editar una cobertura", AuditEvents.ENTITY_COBERTURA, coberturaId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPacienteVigente(organizationId, personaId, "editar una cobertura");
@@ -369,8 +373,8 @@ public class CoberturaPacienteService {
 	public CoberturaView marcarPrincipal(
 			OperatingActor actor, long personaId, long coberturaId, boolean principal) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Elegir la cobertura principal");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Elegir la cobertura principal", AuditEvents.ENTITY_COBERTURA, coberturaId);
 		long organizationId = actor.contextOrganizationId();
 
 		exigirPacienteVigente(organizationId, personaId, "elegir su cobertura principal");
@@ -423,8 +427,8 @@ public class CoberturaPacienteService {
 	public CoberturaView darDeBaja(
 			OperatingActor actor, long personaId, long coberturaId, String motivo) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Dar de baja una cobertura");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Dar de baja una cobertura", AuditEvents.ENTITY_COBERTURA, coberturaId);
 		long organizationId = actor.contextOrganizationId();
 
 		// A diferencia de las otras tres mutaciones, la baja NO toma el lock: quitar una fila no

@@ -3,8 +3,6 @@ package com.akine.scheduling.application;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
-import com.akine.organization.spi.PermissionGuard;
-import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.CoberturaAplicable;
 import com.akine.person.spi.CoberturasAplicablesDirectory;
 import com.akine.person.spi.ElegibilidadAdministrativaDirectory;
@@ -74,7 +72,7 @@ public class CicloDeRecepcionService {
 	private final RegistroDeRecepcion registro;
 	private final RecepcionEventoRepositoryPort eventos;
 	private final ConsultorioDirectory consultorios;
-	private final PermissionGuard permissionGuard;
+	private final SoporteEnAgenda soporte;
 	private final PracticasDeOfertaDirectory practicas;
 	private final CoberturasAplicablesDirectory coberturas;
 	private final ElegibilidadAdministrativaDirectory elegibilidad;
@@ -87,7 +85,7 @@ public class CicloDeRecepcionService {
 			RegistroDeRecepcion registro,
 			RecepcionEventoRepositoryPort eventos,
 			ConsultorioDirectory consultorios,
-			PermissionGuard permissionGuard,
+			SoporteEnAgenda soporte,
 			PracticasDeOfertaDirectory practicas,
 			CoberturasAplicablesDirectory coberturas,
 			ElegibilidadAdministrativaDirectory elegibilidad,
@@ -98,7 +96,7 @@ public class CicloDeRecepcionService {
 		this.registro = registro;
 		this.eventos = eventos;
 		this.consultorios = consultorios;
-		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.practicas = practicas;
 		this.coberturas = coberturas;
 		this.elegibilidad = elegibilidad;
@@ -442,14 +440,10 @@ public class CicloDeRecepcionService {
 	}
 
 	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), PermissionCodes.TURNO_MANAGE,
-				organizationId, consultorioId, null, Instant.now()));
+		soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
 	}
 
 	private void exigirLectura(OperatingActor actor, long organizationId, long consultorioId) {
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), PermissionCodes.TURNO_READ,
-				organizationId, consultorioId, null, Instant.now()));
+		soporte.exigir(actor, PermissionCodes.TURNO_READ, organizationId, consultorioId);
 	}
 }

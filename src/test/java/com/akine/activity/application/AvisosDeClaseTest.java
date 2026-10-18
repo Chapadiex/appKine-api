@@ -84,7 +84,7 @@ class AvisosDeClaseTest {
 		assertThat(comando.getValue().destinatario()).isEqualTo("ana@example.test");
 		assertThat(comando.getValue().claveIdempotente()).isEqualTo("clase-modificada:1:" + momento);
 		assertThat(comando.getValue().datosDeRender())
-				.containsEntry("claseTitulo", "Pilates")
+				.doesNotContainKey("claseTitulo")
 				.containsEntry("consultorioNombre", "Sede Centro")
 				.containsKey("claseInicio");
 	}
@@ -135,7 +135,8 @@ class AvisosDeClaseTest {
 		verify(outbox).enqueue(comando.capture());
 		assertThat(comando.getValue().datosDeRender())
 				.doesNotContainKey("consultorioNombre")
-				.containsEntry("claseTitulo", "Pilates");
+				.containsKey("claseInicio")
+				.doesNotContainKey("claseTitulo");
 	}
 
 	private static ClaseProgramada clase() {

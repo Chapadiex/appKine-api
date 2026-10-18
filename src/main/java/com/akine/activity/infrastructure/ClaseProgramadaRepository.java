@@ -197,6 +197,27 @@ public interface ClaseProgramadaRepository
 			@Param("capacidadEfectiva") int capacidadEfectiva);
 
 	/**
+	 * {@link #tomarCupo} con {@code estado = 'EN_CURSO'}: el ingreso sin inscripcion entra a una
+	 * clase que ya empezo. Separada y no parametrizada para que el estado siga escrito en el
+	 * predicado, a la vista, como en {@link #tomarCupo}.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query(value = """
+			UPDATE clase_programada
+			   SET cupo_ocupado = cupo_ocupado + 1
+			 WHERE id = :claseId
+			   AND organization_id = :organizationId
+			   AND deleted_at IS NULL
+			   AND estado = 'EN_CURSO'
+			   AND cupo_ocupado < LEAST(capacidad, :capacidadEfectiva)
+			""", nativeQuery = true)
+	@Override
+	int tomarCupoEnCurso(
+			@Param("organizationId") long organizationId,
+			@Param("claseId") long claseId,
+			@Param("capacidadEfectiva") int capacidadEfectiva);
+
+	/**
 	 * El inverso. <b>No filtra por {@code estado} ni por {@code deleted_at}</b>, a diferencia de
 	 * {@link #tomarCupo}, y es deliberado: liberar el lugar de alguien que se da de baja de una
 	 * clase que despues se cancelo sigue siendo correcto, y negarse dejaria el contador diciendo una

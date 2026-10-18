@@ -8,7 +8,11 @@ import com.akine.clinical.spi.HistoriaClinicaSnapshot;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Implementacion de {@link HistoriaClinicaDirectory}: el borde por donde {@code clinical} responde
@@ -46,6 +50,21 @@ public class ClinicalHistoriaClinicaDirectory implements HistoriaClinicaDirector
 	public Optional<HistoriaClinicaSnapshot> findPorId(long organizationId, long historiaClinicaId) {
 		return historias.findByIdAndOrganizationId(historiaClinicaId, organizationId)
 				.map(ClinicalHistoriaClinicaDirectory::instantanea);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Map<Long, Long> personasDe(
+			long organizationId, Collection<Long> historiaClinicaIds) {
+		if (historiaClinicaIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<Long, Long> personas = new HashMap<>();
+		for (Object[] fila : historias.personasDeHistorias(
+				organizationId, Set.copyOf(historiaClinicaIds))) {
+			personas.put(((Number) fila[0]).longValue(), ((Number) fila[1]).longValue());
+		}
+		return personas;
 	}
 
 	@Override

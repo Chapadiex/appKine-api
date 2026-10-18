@@ -32,12 +32,15 @@ import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -62,8 +65,19 @@ import java.util.Optional;
  *
  * <p>Con {@code Idempotency-Key}, el reintento se resuelve <b>antes</b> de validar el producto y
  * sobre todo antes de devengar: misma huella devuelve la venta existente sin escribir; otra huella
- * es 409. {@code uk_pase_idempotency} cubre la carrera entre dos pedidos simultaneos, y
- * {@code uk_obligacion_venta} es el cinturon del lado de {@code billing}.
+ * es 409. Dos pedidos simultaneos con la misma clave pasan los dos esa primera mirada si ninguno
+ * commiteo todavia, y lo que los resuelve depende del tipo de producto (U-48, 17/10/2026):
+ *
+ * <ul>
+ *   <li><b>Abono:</b> el producto se toma con {@code FOR UPDATE} —es lo que serializa los periodos
+ *       de la misma persona—, y el segundo vuelve a mirar la clave al despertar (AKINE-09.03).</li>
+ *   <li><b>Pack:</b> sin lock del producto, para que las ventas de la sede no vayan en fila
+ *       (docs/carga.md §12). El segundo choca con {@code uk_pase_idempotency} al insertar; despues
+ *       del rollback se relee la clave en una transaccion nueva en {@code READ_COMMITTED}, como el
+ *       cobro (#131): misma huella devuelve la venta del primero, otra huella es 409.</li>
+ * </ul>
+ *
+ * <p>{@code uk_obligacion_venta} es el cinturon del lado de {@code billing}.
  *
  * <p>{@code READ_COMMITTED}: el perdedor de una carrera sobre la clave tiene que poder ver la fila
  * del ganador, y bajo {@code REPEATABLE READ} no la ve.
@@ -84,6 +98,8 @@ public class VentaDePaseService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final LecturaDePases lectura;
+	private final TransactionTemplate transaccionDeVenta;
+	private final TransactionTemplate relecturaDelGanador;
 	private final Clock clock;
 
 	@Autowired
@@ -96,10 +112,11 @@ public class VentaDePaseService {
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
-			LecturaDePases lectura) {
+			LecturaDePases lectura,
+			PlatformTransactionManager transactionManager) {
 
 		this(pases, productos, movimientos, devengo, personas, consultorios, permissionGuard,
-				auditTrail, lectura, Clock.systemUTC());
+				auditTrail, lectura, transactionManager, Clock.systemUTC());
 	}
 
 	VentaDePaseService(
@@ -112,6 +129,7 @@ public class VentaDePaseService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
 			LecturaDePases lectura,
+			PlatformTransactionManager transactionManager,
 			Clock clock) {
 
 		this.pases = pases;
@@ -123,6 +141,11 @@ public class VentaDePaseService {
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 		this.lectura = lectura;
+		this.transaccionDeVenta = new TransactionTemplate(transactionManager);
+		this.transaccionDeVenta.setIsolationLevel(Isolation.READ_COMMITTED.value());
+		this.relecturaDelGanador = new TransactionTemplate(transactionManager);
+		this.relecturaDelGanador.setIsolationLevel(Isolation.READ_COMMITTED.value());
+		this.relecturaDelGanador.setReadOnly(true);
 		this.clock = clock;
 	}
 
@@ -136,37 +159,77 @@ public class VentaDePaseService {
 	 * @throws PersonaDadaDeBajaException      ficha de baja (409)
 	 * @throws IdempotencyKeyConflictException misma clave, otro pedido (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ResultadoDeVenta vender(OperatingActor actor, long consultorioId, VenderPaseCommand command) {
 		long organizationId = ProductoService.exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigir(actor, organizationId, consultorioId, PermissionCodes.PASE_MANAGE);
-		LocalDate hoy = ZonaDeSede.hoy(sede, clock);
-
 		String huella = command.idempotencyKey() == null ? null : command.huella(consultorioId);
-		Optional<PaseServicio> yaVendido = command.idempotencyKey() == null
-				? Optional.empty()
-				: pases.findByIdempotencyKey(organizationId, command.idempotencyKey());
-		if (yaVendido.isPresent()) {
-			PaseServicio existente = yaVendido.get();
-			if (!huella.equals(existente.getRequestHash())) {
-				throw new IdempotencyKeyConflictException(command.idempotencyKey());
-			}
-			// El devengo es idempotente por pase: devuelve la deuda que ya existe sin escribir.
-			DeudaDeVenta deuda = devengar(existente, actor);
-			return new ResultadoDeVenta(
-					PaseView.de(existente, hoy,
-							lectura.uso(organizationId, existente)),
-					deuda(deuda), false);
+
+		try {
+			return transaccionDeVenta.execute(estado ->
+					venderEnTransaccion(actor, organizationId, sede, command, huella));
+		} catch (DataIntegrityViolationException choque) {
+			// Un pack no toma el producto (U-48): dos ventas con la misma clave llegan las dos al
+			// INSERT, y la segunda choca con uk_pase_idempotency cuando la primera commitea.
+			return ventaQueGanoLaCarrera(organizationId, sede, command, huella, actor)
+					.orElseThrow(() -> choque);
+		}
+	}
+
+	/**
+	 * La venta del pedido con la misma clave que commiteo primero, leida <b>despues</b> del rollback y
+	 * en una transaccion nueva en {@code READ_COMMITTED}: la foto de la transaccion que choco podria
+	 * no verla. Vacio si no hay clave o si nadie la uso: el choque era otro y sigue su camino.
+	 */
+	private Optional<ResultadoDeVenta> ventaQueGanoLaCarrera(
+			long organizationId, ConsultorioSnapshot sede, VenderPaseCommand command, String huella,
+			OperatingActor actor) {
+
+		if (command.idempotencyKey() == null) {
+			return Optional.empty();
+		}
+		return Optional.ofNullable(relecturaDelGanador.execute(estado ->
+				reintento(organizationId, command, huella, ZonaDeSede.hoy(sede, clock), actor).orElse(null)));
+	}
+
+	private ResultadoDeVenta venderEnTransaccion(
+			OperatingActor actor, long organizationId, ConsultorioSnapshot sede, VenderPaseCommand command,
+			String huella) {
+
+		long consultorioId = sede.id();
+		LocalDate hoy = ZonaDeSede.hoy(sede, clock);
+		Optional<ResultadoDeVenta> reintento = reintento(organizationId, command, huella, hoy, actor);
+		if (reintento.isPresent()) {
+			return reintento.get();
 		}
 
-		// El producto se lee BLOQUEADO (AKINE-08.08): lectura actual —una baja que commiteo recien
-		// se ve— y, en un abono, serializa las ventas del mismo producto, que es lo que hace cumplir
-		// "un periodo, una obligacion": dos periodos superpuestos vendidos a la vez no comparten un
-		// valor de columna que un unique pueda ver. Orden: producto_servicio -> pase_servicio.
-		ProductoServicio producto = productos
-				.lockByIdInScope(organizationId, consultorioId, command.productoId())
+		// U-48 (17/10/2026): el producto se BLOQUEA solo si es un abono. El tipo es inmutable
+		// (updatable = false) y se pregunta sin cargar la entidad, para que el lock del abono lea la
+		// fila actual y no una copia que la sesion ya tuviera.
+		TipoProducto tipo = productos.tipoDe(organizationId, consultorioId, command.productoId())
 				.orElseThrow(() -> new ProductoNotAccessibleException(command.productoId()));
+		ProductoServicio producto;
+		if (tipo == TipoProducto.ABONO) {
+			// En un abono el lock serializa las ventas del mismo producto, que es lo que hace cumplir
+			// "un periodo, una obligacion" (AKINE-08.08): dos periodos superpuestos vendidos a la vez
+			// no comparten un valor de columna que un unique pueda ver. Orden: producto_servicio ->
+			// pase_servicio.
+			producto = productos.lockByIdInScope(organizationId, consultorioId, command.productoId())
+					.orElseThrow(() -> new ProductoNotAccessibleException(command.productoId()));
+			// SEGUNDA MIRADA A LA CLAVE, YA CON EL PRODUCTO BLOQUEADO (AKINE-09.03): el segundo de
+			// dos pedidos con la misma clave, al despertar, lee en READ_COMMITTED la venta del primero.
+			reintento = reintento(organizationId, command, huella, hoy, actor);
+			if (reintento.isPresent()) {
+				return reintento.get();
+			}
+		} else {
+			// En un pack, sin lock: lectura en READ_COMMITTED, que ve una baja ya commiteada. La que
+			// commitea despues de esta lectura se cuela: es una venta del ultimo instante, que el
+			// mostrador puede anular. La carrera de la clave la resuelve uk_pase_idempotency y
+			// vender() relee al ganador.
+			producto = productos.findByIdInScope(organizationId, consultorioId, command.productoId())
+					.orElseThrow(() -> new ProductoNotAccessibleException(command.productoId()));
+		}
 		boolean abono = producto.getTipo() == TipoProducto.ABONO;
 		if (!abono && (command.periodoDesde() != null || command.periodoHasta() != null)) {
 			throw new IllegalArgumentException(
@@ -322,6 +385,28 @@ public class VentaDePaseService {
 	}
 
 	// =================================================================================
+
+	/**
+	 * La venta que ya hizo un pedido con la misma clave: misma huella devuelve esa venta sin
+	 * escribir; otra huella es 409. Vacio si no hay clave o si nadie la uso todavia.
+	 */
+	private Optional<ResultadoDeVenta> reintento(
+			long organizationId, VenderPaseCommand command, String huella, LocalDate hoy, OperatingActor actor) {
+
+		if (command.idempotencyKey() == null) {
+			return Optional.empty();
+		}
+		return pases.findByIdempotencyKey(organizationId, command.idempotencyKey()).map(existente -> {
+			if (!huella.equals(existente.getRequestHash())) {
+				throw new IdempotencyKeyConflictException(command.idempotencyKey());
+			}
+			// El devengo es idempotente por pase: devuelve la deuda que ya existe sin escribir.
+			DeudaDeVenta deuda = devengar(existente, actor);
+			return new ResultadoDeVenta(
+					PaseView.de(existente, hoy, lectura.uso(organizationId, existente)),
+					deuda(deuda), false);
+		});
+	}
 
 	/**
 	 * El periodo de un abono (RF-M29-007 paso 5): desde obligatorio, hasta por defecto el que da la
