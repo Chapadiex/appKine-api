@@ -12,7 +12,7 @@
 | Etapa | Estado | % | Lo que falta, en una línea |
 |---|---|---|---|
 | 07.06 Reportes y tableros | CUMPLIDA con desvío declarado | 90 | Export asíncrono diferido por diseño (síncrono y acotado); escenario 52 sin correr |
-| 07.07 Hardening seguridad/privacidad/a11y | PARCIAL, pendiente del usuario | 85 | `caso:create` (U-04). Justificación en `encounter`, SAST/DAST y Connector/J **decididos el 17/10/2026** (DP-33, DP-35, DP-34) |
+| 07.07 Hardening seguridad/privacidad/a11y | PARCIAL, pendiente del usuario | 85 | Justificación en `encounter`, SAST/DAST y Connector/J **decididos el 17/10/2026** (DP-33, DP-35, DP-34); `caso:create` **decidido el 18/10/2026** (DP-36) |
 | 07.08 Rendimiento, concurrencia, observabilidad | PARCIAL, en curso | 75 | p95 con 500 usuarios y escrituras 3,3–3,6 s contra 300 ms: rendimiento por pedido en curso |
 | 07.09 Gate y release del MVP | PARCIAL, pendiente del usuario | 70 | QA manual, aprobación clínica y legal, deploy y estabilización (G-14); E2E clínicos (web #4) |
 
@@ -156,8 +156,8 @@ El criterio de aceptación pide **cero hallazgos altos**. Abiertos:
 ## Para cerrar la fase (= pasar el gate del MVP)
 
 - [x] ~~Reportes accesibles y con dashboards.~~ Ver 07.06.
-- [ ] Cero hallazgos altos de 07.07. **No cumple:** queda `caso:create` (U-04). La justificación
-  en `encounter` (DP-33), SAST/DAST (DP-35) y Connector/J (DP-34) se cerraron el 17/10/2026.
+- [x] Cero hallazgos altos de 07.07. La justificación en `encounter` (DP-33), SAST/DAST (DP-35) y
+  Connector/J (DP-34) se cerraron el 17/10/2026, y `caso:create` (DP-36, api #123) el 18/10/2026.
 - [ ] Observabilidad mínima y una corrida de carga medida contra los SLO. **Observabilidad y
   medición, sí; el SLO con escrituras a 500 usuarios, no** (p95 3,3–3,6 s). En curso.
 - [ ] Imagen Docker, E2E en CI, QA manual corrido, cobertura ≥ 0,80. **Todo sí salvo el QA

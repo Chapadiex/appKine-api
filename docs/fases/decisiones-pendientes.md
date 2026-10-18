@@ -25,17 +25,18 @@
 > resueltas** (U-39, U-40, U-42, U-44, U-46, U-48, U-49 → DP-24 a DP-30) y **4 postergadas** después
 > del release candidate (U-41, U-43, U-45, U-50 → DP-31). El mismo día, más tarde, **3 resueltas**
 > más del bloque A: **U-03** —junto con U-46 (e)— → DP-33, **U-05** → DP-34 y **U-06** → DP-35.
-> U-47 no existe. Quedan **39 abiertas**, 4 de ellas postergadas.
+> U-47 no existe. El **18/10/2026** el usuario aceptó las recomendaciones de **U-04, U-07 y U-08**
+> → DP-36 (api #123). Quedan **36 abiertas**, 4 de ellas postergadas.
 
-| Bloque | Abiertas | Resueltas el 17/10 |
+| Bloque | Abiertas | Resueltas el 17 y 18/10 |
 |---|---|---|
-| A. Bloquean el gate del MVP (U-01 a U-06) | 3 (2 acciones + 1 decisión: U-04) | U-03, U-05, U-06 |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 9 | U-39, U-42, U-46, U-48, U-49 |
+| A. Bloquean el gate del MVP (U-01 a U-06) | 2 (2 acciones) | U-03, U-04, U-05, U-06 |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 7 | U-07, U-08, U-39, U-42, U-46, U-48, U-49 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 | — |
 | D. No bloquean nada (U-35 a U-37) + postergadas U-41, U-43, U-45, U-50 | 7 (4 postergadas) | U-40, U-44 |
-| **Total** | **39** (de 49) | **10** |
+| **Total** | **36** (de 49) | **13** |
 
-### Resueltas el 17/10/2026
+### Resueltas el 17 y el 18/10/2026
 
 | U | Resolución | DP |
 |---|---|---|
@@ -47,6 +48,9 @@
 | U-03 | la propiedad de la Sesión (y del panel grupal) **es** la relación asistencial de DP-03; sin `X-Justificacion-Acceso` en `encounter`, `reason` nulo documentado. | DP-33 |
 | U-05 | Connector/J **9.6.0** (no hay 9.x corregida; 9.6.0 sin CVE en el NVD); fuera la excepción. Web: `overrides` `basic-ftp@^6`. | DP-34 |
 | U-06 | SAST **CodeQL** y DAST **ZAP baseline**, no bloqueantes (api #119, web #77); Sonar sigue salteándose sin secretos. | DP-35 |
+| U-04 | `caso:create` absorbido en `hc:write`: la matriz se enmienda y el código sale del catálogo. Sin cambio de respuestas. | DP-36 |
+| U-07 | `convenio:read` solo para el personal (como DP-22); el `PACIENTE` recibe 403 en las lecturas de `contracting`. | DP-36 |
+| U-08 | `catalogo:read` / `catalogo:manage` como en la matriz §11.1; el `PACIENTE` recibe 403 al leer el catálogo. | DP-36 |
 | U-48 | el lock solo en abonos; los packs resuelven la clave por el unique. | DP-29 |
 | U-49 | (a) hecha en #152; (c) preparada y **apagada por defecto** (`lotes-concurrentes-por-sede`), se enciende solo si el entorno lo exige; (b) no. | DP-30 |
 
@@ -113,10 +117,11 @@ depende del usuario".
 - **Destraba:** el criterio "cero hallazgos altos" de 07.07. Las opciones (a) y (b) cambian el
   contrato.
 
-### U-04 · `caso:create`
+### ~~U-04 · `caso:create`~~ — RESUELTA el 18/10/2026 (DP-36)
 
-> **Implementada en PR #123, pendiente de aprobación** (borrador): opción recomendada, `caso:create`
-> absorbido en `hc:write` y retirado del catálogo; matriz §17.3. Sin cambio de respuestas.
+> **Resuelta el 18/10/2026** por el usuario (acepta la recomendación) e implementada en api #123:
+> `caso:create` absorbido en `hc:write` y retirado del catálogo; matriz §18.3. Sin cambio de
+> respuestas. Ver DP-36.
 
 - **Pregunta:** ¿se cablea como permiso propio o se absorbe en `hc:write` enmendando la matriz?
 - **Recomendado:** enmendar la matriz y absorberlo en `hc:write` (F4 n.º 3; G-5 opción (b), "la
@@ -166,10 +171,10 @@ depende del usuario".
 Exponen datos hoy, o su arreglo necesita migración o un cambio incompatible que crece con cada
 fila nueva.
 
-### U-07 · `convenio:read`
+### ~~U-07 · `convenio:read`~~ — RESUELTA el 18/10/2026 (DP-36)
 
-> **Implementada en PR #123, pendiente de aprobación** (borrador): opción recomendada, sin
-> migración, contrato 0.100.0 solo con descripciones; matriz §17.1.
+> **Resuelta el 18/10/2026** por el usuario (acepta la recomendación) e implementada en api #123:
+> sin migración, contrato 0.128.0 solo con descripciones; matriz §18.1. Ver DP-36.
 
 - **Pregunta:** ¿las lecturas de `contracting` (financiadores, planes, convenios, aranceles) pasan
   a exigir un permiso? Hoy se autorizan por pertenencia y una membership `PACIENTE` lee la
@@ -180,10 +185,11 @@ fila nueva.
 - **Fase / RF:** F3 (03.03–03.05). Ficha F3 n.º 4.
 - **Destraba:** cerrar el mismo hueco que DP-22 cerró para el padrón.
 
-### U-08 · `catalogo:read` / `catalogo:manage`
+### ~~U-08 · `catalogo:read` / `catalogo:manage`~~ — RESUELTA el 18/10/2026 (DP-36)
 
-> **Implementada en PR #123, pendiente de aprobación** (borrador): la propuesta de §11.1 tal
-> cual, también para los tipos de medición y las solicitudes de alta; matriz §17.2.
+> **Resuelta el 18/10/2026** por el usuario (acepta la recomendación) e implementada en api #123:
+> la propuesta de §11.1 tal cual, también para los tipos de medición y las solicitudes de alta;
+> matriz §18.2. Ver DP-36.
 
 - **Pregunta:** ¿se aprueban como están propuestos en `docs/seguridad/matriz-permisos-minima.md`
   §11.1? Hoy rige la autorización interina por pertenencia / `ORG_ADMIN`.
