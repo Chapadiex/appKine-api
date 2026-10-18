@@ -34,6 +34,13 @@
 		<tomcat.version>11.0.26</tomcat.version>
 		<jackson-bom.version>3.1.7</jackson-bom.version>
 		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
+		<!-- Connector/J BAJADO a 9.6.0 (U-05, decidido por el usuario el 17/10/2026). Spring Boot
+		     4.1.1 gestiona 9.7.0, afectada por CVE-2026-60586 (7.7), -60623 (7.1), -60624 y -61082
+		     (6.5): Oracle declara afectadas 9.7.0-9.7.1 y no hay 9.7.x ni 9.8 corregida en Maven Central.
+		     NVD no registra ningun CVE para 9.6.0. La linea sucesora 26.7.0 (24/07/2026) tampoco figura
+		     afectada, pero es un salto de linea que el usuario no autorizo. BORRAR esta propiedad cuando
+		     el parent traiga una version corregida, o queda fijando una version vieja. -->
+		<mysql.version>9.6.0</mysql.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
 		<akine.contract.version>0.128.0</akine.contract.version>

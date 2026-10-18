@@ -382,7 +382,7 @@ matriz pide y el motivo por el que la enmienda hacía falta.
 Mismo criterio que las secciones 9 y 10: nada se aplicó en silencio. Cada punto es una diferencia
 real entre lo que dicen las secciones 1–8 y lo que el código hace, con su motivo y su alcance.
 
-### 11.1 `catalogo:read` y `catalogo:manage` — **APROBADOS tal cual (U-08, DP-XX, §18.2)**
+### 11.1 `catalogo:read` y `catalogo:manage` — **APROBADOS tal cual (U-08, DP-36, §18.2)**
 
 **El hueco que los origina, en una línea.** M06 introduce cuatro tablas de catálogo clínico
 —especialidad, práctica, nomenclador y sus vigencias— y el catálogo de la sección 5 **no tiene
@@ -596,7 +596,7 @@ a esa sede — sigue siendo de la organización.
 
 ### 13.4 Las lecturas se autorizan por pertenencia, y eso concede de más
 
-> **Lo cierra U-07 (DP-XX, §18.1):** `convenio:read` solo para el
+> **Lo cierra U-07 (DP-36, §18.1):** `convenio:read` solo para el
 > personal, con el mismo criterio que DP-22 aplicó al padrón (§15). Lo que sigue es la historia.
 
 **No existe `convenio:read`** y esta etapa no lo crea. Leer el catálogo de financiadores y planes
@@ -732,7 +732,7 @@ borra —baja lógica, y además es historia— y sigue apareciendo en `GET .../
 quien puede abrir un caso es exactamente quien la fila "Crear Caso Clínico" de §2 habilita: el
 `PROFESIONAL` por base y el `CONSULTORIO_ADMIN` por grant ("Según rol clínico"). Si `caso:create`
 se cablea como código propio o se enmienda la matriz para absorberlo en `hc:write` sigue siendo una
-decisión del dueño del producto. **U-04 lo absorbió en `hc:write`** (DP-XX, §18.3).
+decisión del dueño del producto. **U-04 lo absorbió en `hc:write`** (DP-36, §18.3).
 
 ### 16.2 La matriz, ejecutable
 
@@ -793,9 +793,9 @@ hasta acá vivía sólo en los comentarios de `RolePermissions`.
 - **Cerrar una clase** exige, desde 09.02, `clase:manage` **y** `asistencia:manage` **e**
   `inscripcion:manage`: escribe ausentes y cancela la lista de espera.
 
-## 18. Enmiendas — permisos recomendados U-04, U-07 y U-08 (DP-XX)
+## 18. Enmiendas — permisos recomendados U-04, U-07 y U-08 (DP-36)
 
-> **Aprobadas por el dueño del producto el 18/10/2026** (DP-XX en
+> **Aprobadas por el dueño del producto el 18/10/2026** (DP-36 en
 > `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` §7) e implementadas en el PR #123: son las opciones
 > **recomendadas** de `docs/fases/decisiones-pendientes.md` U-04, U-07 y U-08.
 
