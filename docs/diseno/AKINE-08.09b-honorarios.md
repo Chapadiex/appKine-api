@@ -2,8 +2,8 @@
 
 > 18/10/2026 · rama `akine-dp38-honorarios-por-clase` · contrato **0.134.0** · migración **V114** (reservadas al principio 0.131.0/V111; DP-39 tomó 0.132.0/V112 y la renovación 0.133.0/V113).
 >
-> Fuente: decisión del usuario del 18/10/2026 sobre **U-41** (será **DP-38**; la registra otro
-> agente), RF-M22-006, RF-M22-007 (CA-M22-006-06, CA-M22-007-06), la forma técnica de
+> Fuente: decisión del usuario del 18/10/2026 sobre **U-41** (**DP-38**, registrada en el plan §7 por
+> #161), RF-M22-006, RF-M22-007 (CA-M22-006-06, CA-M22-007-06), la forma técnica de
 > `AKINE-08.09-integracion-economica.md` §5 y el egreso de 07.05.
 
 ## 1. La decisión, en una tabla
