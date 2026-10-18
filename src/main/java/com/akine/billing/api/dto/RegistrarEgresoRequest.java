@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
@@ -85,13 +86,21 @@ public record RegistrarEgresoRequest(
 				description = "Clave del cliente para que un doble click no cargue dos veces la "
 						+ "misma liquidacion. Reusarla con **otro** contenido devuelve 409.",
 				example = "9d1a7b3c-55e2-4f10-bb02-7c9e1d4a6f88")
-		@Size(max = 80) String idempotencyKey) {
+		@Size(max = 80) String idempotencyKey,
+
+		@Schema(
+				description = "Oferta de esta sede a la que se imputa el costo (DP-39): es lo que la "
+						+ "rentabilidad por servicio del reporte `SERVICIOS` resta de sus ingresos. "
+						+ "**Opcional**: sin oferta el egreso va a la fila \"sin imputar\" (alquiler, "
+						+ "impuestos). Una oferta de otra sede o de otro tenant es 404.",
+				example = "18")
+		@Positive Long ofertaId) {
 
 	public EgresoCommand aDominio() {
 		return new EgresoCommand(
 				categoria, tipoBeneficiario, beneficiarioMembershipId,
 				beneficiarioNombre, beneficiarioDocumento,
 				periodoDesde, periodoHasta, concepto, importeTotal, moneda,
-				comprobanteTipo, comprobanteNumero, comprobanteFecha, idempotencyKey);
+				comprobanteTipo, comprobanteNumero, comprobanteFecha, idempotencyKey, ofertaId);
 	}
 }

@@ -6,11 +6,13 @@ import com.akine.billing.domain.exception.BeneficiarioNoVinculadoException;
 import com.akine.billing.domain.exception.EgresoComprobanteDuplicadoException;
 import com.akine.billing.domain.exception.EgresoNoEditableException;
 import com.akine.billing.domain.exception.EgresoNotAccessibleException;
+import com.akine.billing.domain.exception.OfertaDelEgresoNoAccesibleException;
 import com.akine.billing.domain.port.EgresoRepositoryPort;
 import com.akine.billing.domain.port.PagoEgresoRepositoryPort;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.offering.spi.OfertaDirectory;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.identity.AccountIdentity;
@@ -57,6 +59,7 @@ public class EgresoService {
 	private final AccountIdentityDirectory identidades;
 	private final CajaAcceso acceso;
 	private final AuditTrail auditTrail;
+	private final OfertaDirectory ofertas;
 
 	public EgresoService(
 			EgresoRepositoryPort egresos,
@@ -64,7 +67,8 @@ public class EgresoService {
 			ConsultorioMembershipDirectory memberships,
 			AccountIdentityDirectory identidades,
 			CajaAcceso acceso,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			OfertaDirectory ofertas) {
 
 		this.egresos = egresos;
 		this.pagos = pagos;
@@ -72,6 +76,7 @@ public class EgresoService {
 		this.identidades = identidades;
 		this.acceso = acceso;
 		this.auditTrail = auditTrail;
+		this.ofertas = ofertas;
 	}
 
 	/**
@@ -102,6 +107,7 @@ public class EgresoService {
 		}
 
 		Beneficiario beneficiario = resolverBeneficiario(organizationId, command);
+		exigirOfertaDeLaSede(organizationId, consultorioId, command.ofertaId());
 		exigirComprobanteNoDuplicado(
 				organizationId, beneficiario.clave(),
 				command.comprobanteTipo(), command.comprobanteNumero(), null);
@@ -122,6 +128,7 @@ public class EgresoService {
 				command.categoria(), command.periodoDesde(), command.periodoHasta(),
 				command.concepto(), command.importeTotal(),
 				command.comprobanteTipo(), command.comprobanteNumero(), command.comprobanteFecha());
+		egreso.imputarAOferta(command.ofertaId());
 
 		Egreso guardado = egresos.save(egreso);
 		auditar(actor, AuditEvents.EGRESO_REGISTRADO, guardado, null, ahora);
@@ -165,6 +172,7 @@ public class EgresoService {
 		if (!egreso.getEstado().esEditable()) {
 			throw new EgresoNoEditableException(egresoId, egreso.getEstado().name());
 		}
+		exigirOfertaDeLaSede(organizationId, consultorioId, command.ofertaId());
 
 		exigirComprobanteNoDuplicado(
 				organizationId, egreso.getBeneficiarioClave(),
@@ -174,6 +182,7 @@ public class EgresoService {
 				command.categoria(), command.periodoDesde(), command.periodoHasta(),
 				command.concepto(), command.importeTotal(),
 				command.comprobanteTipo(), command.comprobanteNumero(), command.comprobanteFecha());
+		egreso.imputarAOferta(command.ofertaId());
 
 		// El beneficiario NO se edita: cambiarlo seria otro egreso, no una correccion de este, y
 		// dejaria el comprobante ya validado colgando de una clave distinta.
@@ -334,6 +343,18 @@ public class EgresoService {
 		return new Beneficiario(claveDeColaborador(membershipId), nombre);
 	}
 
+	/**
+	 * La oferta a la que se imputa el costo tiene que ser de esta sede (DP-39). {@code find} filtra por
+	 * organizacion y sede, asi que una de otro tenant o de otra sede no aparece: <b>404</b>. Una oferta
+	 * dada de baja si se acepta: un egreso de septiembre puede ser costo de un servicio que se dejo de
+	 * prestar en octubre.
+	 */
+	private void exigirOfertaDeLaSede(long organizationId, long consultorioId, Long ofertaId) {
+		if (ofertaId != null && ofertas.find(organizationId, consultorioId, ofertaId).isEmpty()) {
+			throw new OfertaDelEgresoNoAccesibleException(ofertaId);
+		}
+	}
+
 	private static String claveDeColaborador(long membershipId) {
 		return "M:" + membershipId;
 	}
@@ -384,6 +405,9 @@ public class EgresoService {
 		detalles.put("beneficiario", egreso.getBeneficiarioClave());
 		detalles.put("importeTotal", egreso.getImporteTotal().toPlainString());
 		detalles.put("saldoPendiente", egreso.getSaldoPendiente().toPlainString());
+		if (egreso.getOfertaId() != null) {
+			detalles.put("ofertaId", egreso.getOfertaId().toString());
+		}
 
 		auditTrail.record(new AuditEntry(
 				actor.contextOrganizationId(),

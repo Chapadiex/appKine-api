@@ -78,6 +78,17 @@ public class Egreso {
 	@Column(name = "consultorio_id", nullable = false, updatable = false)
 	private Long consultorioId;
 
+	/**
+	 * La oferta de la misma sede a la que se imputa este costo (DP-39, RF-M23-009), o NULL si no
+	 * es costo de ningun servicio en particular: el alquiler, los impuestos.
+	 *
+	 * <p>Es lo que hace calculable la rentabilidad por servicio. No cambia nada del ciclo del
+	 * egreso: se fija y se corrige mientras sea borrador, como el resto de sus datos, y la
+	 * pertenencia de la oferta a la sede la valida {@code EgresoService} antes de llegar aca.
+	 */
+	@Column(name = "oferta_id")
+	private Long ofertaId;
+
 	@Enumerated(EnumType.STRING)
 	@Column(name = "categoria", nullable = false, length = 32)
 	private CategoriaEgreso categoria;
@@ -277,6 +288,17 @@ public class Egreso {
 	}
 
 	/**
+	 * Imputa el costo a una oferta, o lo deja sin imputar con {@code null} (DP-39).
+	 *
+	 * <p>Mismo contrato que {@link #editarBorrador}: el llamador ya verifico que es borrador y que la
+	 * oferta es de esta sede. Va aparte para que la firma de la edicion no cambie para quien no
+	 * imputa.
+	 */
+	public void imputarAOferta(Long ofertaId) {
+		this.ofertaId = ofertaId;
+	}
+
+	/**
 	 * Punto de no retorno: a partir de aca el egreso no se edita mas y admite pagos.
 	 *
 	 * @throws EgresoSinComprobanteException <b>400</b>: falta el respaldo documental. Un egreso
@@ -336,6 +358,10 @@ public class Egreso {
 
 	public Long getConsultorioId() {
 		return consultorioId;
+	}
+
+	public Long getOfertaId() {
+		return ofertaId;
 	}
 
 	public CategoriaEgreso getCategoria() {

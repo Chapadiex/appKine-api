@@ -14,6 +14,9 @@ import com.akine.billing.domain.port.PagoEgresoRepositoryPort;
 import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
+import com.akine.offering.spi.OfertaDirectory;
+import com.akine.offering.spi.OfertaSnapshot;
+import com.akine.billing.domain.exception.OfertaDelEgresoNoAccesibleException;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,6 +79,7 @@ class EgresoServiceTest {
 	@Mock private AccountIdentityDirectory identidades;
 	@Mock private CajaAcceso acceso;
 	@Mock private AuditTrail auditTrail;
+	@Mock private OfertaDirectory ofertas;
 
 	private EgresoService service;
 
@@ -83,7 +87,7 @@ class EgresoServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new EgresoService(egresos, pagos, memberships, identidades, acceso, auditTrail);
+		service = new EgresoService(egresos, pagos, memberships, identidades, acceso, auditTrail, ofertas);
 		given(egresos.save(any())).willAnswer(EgresoServiceTest::conIdComoJpa);
 		given(egresos.findVigentePorComprobante(anyLong(), anyString(), anyString(), anyString()))
 				.willReturn(Optional.empty());
@@ -326,6 +330,72 @@ class EgresoServiceTest {
 
 		verify(acceso).exigirSedeDelTenant(ORG_ID, CONSULTORIO_ID);
 		verify(acceso).exigirOperarCaja(actor, ORG_ID, CONSULTORIO_ID);
+	}
+
+	@Nested
+	@DisplayName("Imputacion a una oferta (DP-39)")
+	class ImputacionAOferta {
+
+		private static final long OFERTA = 55L;
+
+		@Test
+		@DisplayName("Un egreso imputado a una oferta de la sede la guarda y la devuelve")
+		void alta_imputada() {
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA)).willReturn(Optional.of(oferta()));
+
+			EgresoView vista = service.registrar(actor, CONSULTORIO_ID, imputadoA(OFERTA, null));
+
+			assertThat(vista.ofertaId()).isEqualTo(OFERTA);
+		}
+
+		@Test
+		@DisplayName("Una oferta de otra sede o de otro tenant es 404 y no se guarda nada")
+		void oferta_ajena() {
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> service.registrar(actor, CONSULTORIO_ID, imputadoA(OFERTA, null)))
+					.isInstanceOf(OfertaDelEgresoNoAccesibleException.class);
+			verify(egresos, never()).save(any());
+		}
+
+		@Test
+		@DisplayName("Editar el borrador cambia la oferta, y sin oferta la quita")
+		void editar_cambia_y_quita() {
+			Egreso egreso = borrador();
+			egreso.imputarAOferta(OFERTA);
+			given(egresos.findByIdInScope(ORG_ID, CONSULTORIO_ID, EGRESO_ID)).willReturn(Optional.of(egreso));
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA + 1)).willReturn(Optional.of(oferta()));
+
+			assertThat(service.editar(actor, CONSULTORIO_ID, EGRESO_ID, imputadoA(OFERTA + 1, null), 0)
+					.ofertaId()).isEqualTo(OFERTA + 1);
+			assertThat(service.editar(actor, CONSULTORIO_ID, EGRESO_ID, comando(null), 0).ofertaId())
+					.isNull();
+		}
+
+		@Test
+		@DisplayName("Sin oferta no se consulta offering, y la huella es la de antes de DP-39")
+		void sin_oferta() {
+			service.registrar(actor, CONSULTORIO_ID, comando(null));
+
+			verify(ofertas, never()).find(anyLong(), anyLong(), anyLong());
+			assertThat(comando("k").huella(CONSULTORIO_ID))
+					.isEqualTo(imputadoA(null, "k").huella(CONSULTORIO_ID))
+					.isNotEqualTo(imputadoA(OFERTA, "k").huella(CONSULTORIO_ID));
+		}
+
+		private EgresoCommand imputadoA(Long ofertaId, String idempotencyKey) {
+			EgresoCommand base = comando(idempotencyKey);
+			return new EgresoCommand(base.categoria(), base.tipoBeneficiario(),
+					base.beneficiarioMembershipId(), base.beneficiarioNombre(),
+					base.beneficiarioDocumento(), base.periodoDesde(), base.periodoHasta(),
+					base.concepto(), base.importeTotal(), base.moneda(), base.comprobanteTipo(),
+					base.comprobanteNumero(), base.comprobanteFecha(), idempotencyKey, ofertaId);
+		}
+
+		private OfertaSnapshot oferta() {
+			return new OfertaSnapshot(OFERTA, ORG_ID, CONSULTORIO_ID, 5L, "Kinesio", 30, 1, false,
+					true, false, false, false, LocalDate.of(2026, 1, 1), null, true);
+		}
 	}
 
 	// =================================================================================

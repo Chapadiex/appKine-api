@@ -263,4 +263,63 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta);
+
+	// =================================================================================
+	// DP-39 — caja por servicio (RF-M23-009)
+	// =================================================================================
+	//
+	// Las dos traen el MISMO universo que sumarCobradoEnElReporte —cobros de la sede en el
+	// periodo, sin los anulados— y lo devuelven crudo, por cobro: el reparto proporcional
+	// lo hace CajaPorServicioEnElReporte al leer, y no se persiste (es derivable).
+
+	/**
+	 * Lo que entro por cada medio de cada cobro del periodo.
+	 *
+	 * @return filas {@code [cobro_id, medio, importe]}
+	 */
+	@Query(value = """
+			SELECT c.id, m.medio, SUM(m.importe) AS importe
+			  FROM cobro c
+			  JOIN cobro_medio m ON m.cobro_id = c.id
+			 WHERE c.organization_id = :organizationId
+			   AND c.consultorio_id = :consultorioId
+			   AND c.deleted_at IS NULL
+			   AND c.cobrado_en >= :desde
+			   AND c.cobrado_en < :hasta
+			 GROUP BY c.id, m.medio
+			""", nativeQuery = true)
+	List<Object[]> listarMediosDeCobrosEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/**
+	 * Lo imputado por cada cobro del periodo a cada oferta, <b>hasta hoy</b>: una imputacion
+	 * posterior del saldo a favor cuenta para el cobro que trajo la plata, no para el dia en que se
+	 * aplico. Sin filtro por la sede de la deuda: es la caja de ESTA sede la que se reparte.
+	 *
+	 * @return filas {@code [cobro_id, oferta_id, importe]}
+	 */
+	@Query(value = """
+			SELECT ci.cobro_id, o.oferta_id, SUM(ci.importe) AS importe
+			  FROM cobro c
+			  JOIN cobro_imputacion ci
+			    ON ci.cobro_id = c.id
+			   AND ci.organization_id = c.organization_id
+			  JOIN obligacion o
+			    ON o.id = ci.obligacion_id
+			   AND o.organization_id = ci.organization_id
+			 WHERE c.organization_id = :organizationId
+			   AND c.consultorio_id = :consultorioId
+			   AND c.deleted_at IS NULL
+			   AND c.cobrado_en >= :desde
+			   AND c.cobrado_en < :hasta
+			 GROUP BY ci.cobro_id, o.oferta_id
+			""", nativeQuery = true)
+	List<Object[]> listarImputadoPorOfertaDeCobrosEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
 }

@@ -6094,7 +6094,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: La sede no existe o es de otro tenant
+          description: "La sede, o la oferta a la que se imputa (`ofertaId`), no existe\
+            \ o es de otro tenant u otra sede"
         "409":
           content:
             application/json:
@@ -6206,7 +6207,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "El egreso o la sede no existen, o son de otro tenant"
+          description: "El egreso, la sede o la oferta a la que se imputa (`ofertaId`)\
+            \ no existen, o son de otro tenant u otra sede"
         "409":
           content:
             application/json:
@@ -27500,6 +27502,14 @@ components:
           description: "Decimal exacto, nunca float."
           example: 185000.0
           minimum: 0.01
+        ofertaId:
+          type: integer
+          format: int64
+          description: "Oferta de esta sede a la que se imputa el costo (DP-39). La\
+            \ correccion **reemplaza** el valor: sin `ofertaId` el egreso queda sin\
+            \ imputar. Una oferta de otra sede o de otro tenant es 404."
+          example: 18
+          exclusiveMinimum: 0
         periodoDesde:
           type: string
           format: date
@@ -27646,6 +27656,13 @@ components:
           example: ARS
         motivoAnulacion:
           type: string
+        ofertaId:
+          type: integer
+          format: int64
+          description: "Oferta de la sede a la que se imputa el costo (DP-39), o vacio\
+            \ si no es costo de ningun servicio. Es lo que lee la rentabilidad del\
+            \ reporte `SERVICIOS`."
+          example: 18
         pagos:
           type: array
           description: "Vacio en los listados, completo en el detalle. **Incluye los\
@@ -33873,6 +33890,16 @@ components:
           example: ARS
           maxLength: 3
           minLength: 3
+        ofertaId:
+          type: integer
+          format: int64
+          description: "Oferta de esta sede a la que se imputa el costo (DP-39): es\
+            \ lo que la rentabilidad por servicio del reporte `SERVICIOS` resta de\
+            \ sus ingresos. **Opcional**: sin oferta el egreso va a la fila \"sin\
+            \ imputar\" (alquiler, impuestos). Una oferta de otra sede o de otro tenant\
+            \ es 404."
+          example: 18
+          exclusiveMinimum: 0
         periodoDesde:
           type: string
           format: date
