@@ -806,7 +806,30 @@ En el frontend, `overrides` de **`basic-ftp@^6`** (resuelve 6.2.3): cierra las c
 
 **Alternativas descartadas.** U-04: cablear `caso:create` como permiso propio (el mismo efecto observable, con un código más que mantener). U-07: seguir autorizando por pertenencia. U-08: mantener la autorización interina.
 
-**Implementada en:** api #123. Contrato **0.128.0**, solo descripciones de los 403 y de las mutaciones del catálogo; sin operaciones, schemas ni `problemType` nuevos. `MatrizDePermisosIT` lo fija por HTTP contra MySQL con los cinco roles. **Impacto en el frontend:** las pantallas de financiadores, planes, convenios, aranceles y catálogo clínico quedan cerradas para una membership `PACIENTE` (responden 403), y cualquier referencia a `caso:create` se reemplaza por `hc:write`.
+**Implementada en:** api #123. Contrato **0.130.0**, solo descripciones de los 403 y de las mutaciones del catálogo; sin operaciones, schemas ni `problemType` nuevos. `MatrizDePermisosIT` lo fija por HTTP contra MySQL con los cinco roles. **Impacto en el frontend:** las pantallas de financiadores, planes, convenios, aranceles y catálogo clínico quedan cerradas para una membership `PACIENTE` (responden 403), y cualquier referencia a `caso:create` se reemplaza por `hc:write`.
+
+## DP-37 — RF-M21-003: orden y autorización faltantes son reparo, la credencial es aviso; el débito parcial salda lo cobrado (U-28, U-11)
+
+**Estado:** RESUELTA e implementada el 18/10/2026. Decidido por el usuario: acepta las recomendaciones de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión (U-28).** Al **validar** y al **confirmar** un lote —no al incluir el ítem, para que la validación muestre la lista entera—, cada obligación del financiador se evalúa contra lo que el convenio **exigía el día de la prestación**, congelado en la obligación por F-4, no contra el convenio de hoy:
+
+- Orden médica exigida y ninguna activa y vigente ese día para esa cobertura → **reparo `SIN_ORDEN`** en `hallazgos`: **bloquea confirmar**. Misma regla de vigencia que la recepción (`OrdenMedica#vigenteEl`, `sirveParaCobertura`).
+- Autorización exigida y ninguna APROBADA de esa cobertura y práctica cuya vigencia cubra el día → **reparo `SIN_AUTORIZACION`**: **bloquea confirmar**. No se mira el saldo: la propia sesión pudo gastar la última unidad.
+- Credencial exigida y vencida ese día, o cobertura sin número de afiliado → **aviso `CREDENCIAL_FALTANTE`** en la lista nueva **`avisos`**: se confirma igual.
+- Una obligación sin convenio congelado (anterior a F-4, o particular) no exige nada (RN-M17-005/006).
+
+La evidencia la da `person.spi.RespaldoDocumentalDirectory`, sólo lectura; `billing → person.spi` ya existía.
+
+**Decisión (U-11).** Un débito **parcial** deja el ítem **`DEBITADO_PARCIAL`**, que **sigue ocupando** la obligación hasta conciliar (lo no debitado todavía se cobra en ese lote; liberarla permitiría reclamarla entera en otro). **Conciliar** lo pasa a **`ACEPTADO_PARCIAL`**, descuenta de la obligación **presentado − debitado** con el mismo UPDATE condicional que mueve `version`, y la libera: queda `PARCIAL` sólo por lo debitado, re-presentable en otro lote por su saldo. Pasar lo debitado al paciente lo decide el administrativo, no el sistema. Un débito por el total sigue siendo `DEBITADO`, libera al momento y al conciliar no salda nada.
+
+**Migración `V110`** (nació como `V95` en el borrador; se renumeró porque Flyway corre sin `outOfOrder`): reemplaza `ck_presentacion_item_estado` por la unión de los seis valores, redefine la columna generada `ocupa_marca` (`INCLUIDO`, `ACEPTADO`, `DEBITADO_PARCIAL` ocupan), extiende `ck_presentacion_item_debito_completo` y agrega `ck_presentacion_item_debito_parcial`. Sin tablas ni columnas nuevas y **sin migración de datos**: un `DEBITADO` parcial anterior a `V110` sigue con la regla vieja (consulta para encontrarlos en `docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md` §6).
+
+**Contrato 0.129.0, aditivo:** `ValidacionDePresentacion.avisos`; `ReparoDePresentacion.hallazgo` gana `SIN_ORDEN`, `SIN_AUTORIZACION` y `CREDENCIAL_FALTANTE`; `PresentacionItem.estado` gana `DEBITADO_PARCIAL` y `ACEPTADO_PARCIAL`. **Cambio de conducta visible:** un lote que antes se confirmaba sin orden o sin autorización exigidas ahora responde 409 `presentacion-con-hallazgos`.
+
+**Alternativas descartadas.** U-28: todo como aviso (el financiador debita igual: presentarlo es un débito anunciado) o todo como reparo (la credencial suele regularizarse después del envío). U-11: pasar lo debitado al paciente automáticamente, o darlo de baja como pérdida.
+
+**Implementada en:** api #122 (diseño y design challenge en `docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md`). Pantallas: pendiente en `appKine-web` con el cliente 0.129.0.
 
 # 8. Modelo funcional consolidado
 

@@ -854,7 +854,7 @@ solo servía para que alguien creyera que existía un control que no existe. **N
 respuesta.** `MatrizDePermisosIT` lo fija: sin `hc:write` abrir un caso es 403, y con el grant el
 `CONSULTORIO_ADMIN` pasa.
 
-### 18.4 Contrato 0.128.0
+### 18.4 Contrato 0.130.0
 
 Solo descripciones: los 403 de las lecturas de `contracting` y del catálogo nombran el permiso que
 falta, y las mutaciones del catálogo nombran `catalogo:manage` en lugar de `consultorio:manage`. Sin

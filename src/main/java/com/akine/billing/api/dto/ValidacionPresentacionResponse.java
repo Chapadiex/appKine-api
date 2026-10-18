@@ -25,8 +25,12 @@ public record ValidacionPresentacionResponse(
 				example = "false")
 		boolean confirmable,
 
-		@Schema(description = "Vacio cuando el lote esta listo")
-		List<Reparo> hallazgos) {
+		@Schema(description = "Lo que impide confirmar. Vacio cuando el lote esta listo")
+		List<Reparo> hallazgos,
+
+		@Schema(description = "Lo que conviene regularizar y NO impide confirmar (hoy, "
+				+ "`CREDENCIAL_FALTANTE`). Misma forma que `hallazgos`")
+		List<Reparo> avisos) {
 
 	/** Un problema concreto sobre una prestacion concreta. */
 	@Schema(name = "ReparoDePresentacion")
@@ -39,13 +43,15 @@ public record ValidacionPresentacionResponse(
 			long obligacionId,
 
 			@Schema(
-					description = "Los tres requisitos documentales del convenio —orden, "
-							+ "autorizacion y credencial— **todavia no se validan**: viven en el "
-							+ "arancel congelado y el devengado no los copia a la obligacion.",
+					description = "Los requisitos documentales se evaluan contra lo que el "
+							+ "convenio exigia el dia de la prestacion: `SIN_ORDEN` y "
+							+ "`SIN_AUTORIZACION` van en `hallazgos` (bloquean); "
+							+ "`CREDENCIAL_FALTANTE` va en `avisos` (no bloquea).",
 					allowableValues = {
 							"OBLIGACION_ANULADA", "SIN_SALDO", "DEUDA_DEL_PACIENTE",
 							"FINANCIADOR_DISTINTO",
-							"SEDE_DISTINTA", "FUERA_DEL_PERIODO", "MONEDA_DISTINTA"},
+							"SEDE_DISTINTA", "FUERA_DEL_PERIODO", "MONEDA_DISTINTA",
+							"SIN_ORDEN", "SIN_AUTORIZACION", "CREDENCIAL_FALTANTE"},
 					example = "FUERA_DEL_PERIODO")
 			String hallazgo) {
 	}
@@ -54,9 +60,14 @@ public record ValidacionPresentacionResponse(
 		return new ValidacionPresentacionResponse(
 				validacion.presentacionId(),
 				validacion.confirmable(),
-				validacion.hallazgos().stream()
-						.map(reparo -> new Reparo(
-								reparo.itemId(), reparo.obligacionId(), reparo.hallazgo().name()))
-						.toList());
+				reparos(validacion.hallazgos()),
+				reparos(validacion.avisos()));
+	}
+
+	private static List<Reparo> reparos(List<ValidacionDePresentacion.Reparo> reparos) {
+		return reparos.stream()
+				.map(reparo -> new Reparo(
+						reparo.itemId(), reparo.obligacionId(), reparo.hallazgo().name()))
+				.toList();
 	}
 }
