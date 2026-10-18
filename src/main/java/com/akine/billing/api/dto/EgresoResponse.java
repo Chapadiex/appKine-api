@@ -96,7 +96,12 @@ public record EgresoResponse(
 		long version,
 
 		@Schema(description = "Vacio en los listados, completo en el detalle. **Incluye los anulados.**")
-		List<PagoEgresoResponse> pagos) {
+		List<PagoEgresoResponse> pagos,
+
+		@Schema(description = "Oferta de la sede a la que se imputa el costo (DP-39), o vacio si no es "
+				+ "costo de ningun servicio. Es lo que lee la rentabilidad del reporte `SERVICIOS`.",
+				example = "18")
+		Long ofertaId) {
 
 	public static EgresoResponse de(EgresoView vista) {
 		return new EgresoResponse(
@@ -123,6 +128,7 @@ public record EgresoResponse(
 				vista.anuladoEn(),
 				vista.motivoAnulacion(),
 				vista.version(),
-				vista.pagos().stream().map(PagoEgresoResponse::de).toList());
+				vista.pagos().stream().map(PagoEgresoResponse::de).toList(),
+				vista.ofertaId());
 	}
 }

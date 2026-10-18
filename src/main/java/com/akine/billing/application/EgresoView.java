@@ -14,6 +14,7 @@ import java.util.List;
  *                       ya pagado, y son dos numeros distintos a proposito: una liquidacion
  *                       confirmada y no pagada tiene saldo igual al total
  * @param pagos          vacio en los listados y completo en el detalle. Incluye los anulados
+ * @param ofertaId       la oferta a la que se imputa el costo (DP-39), o {@code null}
  */
 public record EgresoView(
 		long id,
@@ -39,7 +40,8 @@ public record EgresoView(
 		Instant anuladoEn,
 		String motivoAnulacion,
 		long version,
-		List<PagoEgresoView> pagos) {
+		List<PagoEgresoView> pagos,
+		Long ofertaId) {
 
 	/** Vista de listado: sin los pagos. Traerlos por cada fila es el N+1 del primer listado. */
 	public static EgresoView de(Egreso egreso) {
@@ -71,6 +73,7 @@ public record EgresoView(
 				egreso.getAnuladoEn(),
 				egreso.getMotivoAnulacion(),
 				egreso.getVersion(),
-				pagos);
+				pagos,
+				egreso.getOfertaId());
 	}
 }

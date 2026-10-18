@@ -21,6 +21,8 @@ import java.util.HexFormat;
  *                                 liquidacion se arma antes de tener la factura en la mano
  * @param idempotencyKey           clave del cliente para que un doble click no cargue dos veces la
  *                                 misma liquidacion. {@code null} la desactiva
+ * @param ofertaId                 oferta de la misma sede a la que se imputa el costo (DP-39), o
+ *                                 {@code null} si no es costo de ningun servicio
  */
 public record EgresoCommand(
 		CategoriaEgreso categoria,
@@ -36,7 +38,22 @@ public record EgresoCommand(
 		String comprobanteTipo,
 		String comprobanteNumero,
 		LocalDate comprobanteFecha,
-		String idempotencyKey) {
+		String idempotencyKey,
+		Long ofertaId) {
+
+	/** Sin oferta: el egreso que no es costo de ningun servicio, y el de todo cliente anterior a DP-39. */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public EgresoCommand(
+			CategoriaEgreso categoria, TipoBeneficiario tipoBeneficiario, Long beneficiarioMembershipId,
+			String beneficiarioNombre, String beneficiarioDocumento, LocalDate periodoDesde,
+			LocalDate periodoHasta, String concepto, BigDecimal importeTotal, String moneda,
+			String comprobanteTipo, String comprobanteNumero, LocalDate comprobanteFecha,
+			String idempotencyKey) {
+
+		this(categoria, tipoBeneficiario, beneficiarioMembershipId, beneficiarioNombre,
+				beneficiarioDocumento, periodoDesde, periodoHasta, concepto, importeTotal, moneda,
+				comprobanteTipo, comprobanteNumero, comprobanteFecha, idempotencyKey, null);
+	}
 
 	/**
 	 * Huella del pedido, para distinguir un reintento de un reuso de clave con otro contenido.
@@ -54,7 +71,10 @@ public record EgresoCommand(
 				+ beneficiarioMembershipId + "|" + beneficiarioDocumento + "|"
 				+ periodoDesde + "|" + periodoHasta + "|" + concepto + "|"
 				+ importeTotal.stripTrailingZeros().toPlainString() + "|" + moneda + "|"
-				+ comprobanteTipo + "|" + comprobanteNumero;
+				+ comprobanteTipo + "|" + comprobanteNumero
+				// Solo si hay oferta: asi la huella de un pedido sin oferta es la misma que antes de
+				// DP-39, y un reintento de un pedido viejo no se lee como reuso de clave.
+				+ (ofertaId == null ? "" : "|oferta=" + ofertaId);
 		try {
 			byte[] digest = MessageDigest.getInstance("SHA-256")
 					.digest(canonico.getBytes(StandardCharsets.UTF_8));
