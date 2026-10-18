@@ -4,7 +4,6 @@ import com.akine.billing.domain.OrigenObligacion;
 import com.akine.billing.domain.PermissionCodes;
 import com.akine.offering.spi.ClasificacionDeOferta;
 import com.akine.offering.spi.OfertaDirectory;
-import com.akine.reporting.spi.AdvertenciaDeReporte;
 import com.akine.reporting.spi.AporteDeReporte;
 import com.akine.reporting.spi.ConsultaDeReporte;
 import com.akine.reporting.spi.FilaDeReporte;
@@ -40,18 +39,11 @@ import java.util.Set;
  *       {@code servicios-anticipos-sin-imputar}.</li>
  * </ul>
  *
- * <p>Y declara lo que no:
- *
- * <ul>
- *   <li><b>La caja por servicio.</b> Un movimiento de caja es un medio de un cobro, y un cobro
- *       puede pagar deudas de varias ofertas con dos medios: repartir el efectivo entre ofertas
- *       seria elegir una regla de prorrateo que ningun RF da. El cobrado imputado es la misma plata
- *       vista por la deuda.</li>
- *   <li><b>La rentabilidad.</b> Necesita costos por servicio, y ningun egreso (M22) se imputa a una
- *       oferta: su beneficiario es un colaborador o un externo y su categoria es contable. Los
- *       honorarios por clase no existen (U-41). Mostrar un margen seria inventarlo. La advertencia
- *       {@code rentabilidad-sin-costos} lo dice siempre, y la decision es U-50.</li>
- * </ul>
+ * <p>La caja por servicio y la rentabilidad, que esta seccion declaraba fuera hasta DP-39, viven en
+ * sus propias secciones del mismo reporte: {@link CajaPorServicioEnElReporte} reparte cada medio de
+ * un cobro en proporcion a lo imputado, y {@link RentabilidadPorServicioEnElReporte} resta los
+ * egresos imputados a cada oferta y es la que emite {@code rentabilidad-sin-costos} cuando no hay
+ * ninguno.
  *
  * <h2>Consumir un credito no es un ingreso (CA-M23-009-06)</h2>
  *
@@ -70,7 +62,6 @@ import java.util.Set;
 public class IngresosPorServicioEnElReporte implements ReporteContributor {
 
 	static final String SECCION = "ingresos-por-servicio";
-	static final String ADVERTENCIA_SIN_COSTOS = "rentabilidad-sin-costos";
 
 	private static final String MONEDA_POR_DEFECTO = "ARS";
 	private static final String CRITERIO_INSTANTE_SEDE = "instante proyectado a la zona de la sede";
@@ -178,14 +169,9 @@ public class IngresosPorServicioEnElReporte implements ReporteContributor {
 						e.getKey().concepto().etiqueta,
 						e.getValue()[0].toPlainString(), e.getValue()[1].toPlainString())));
 
-		AdvertenciaDeReporte sinCostos = new AdvertenciaDeReporte(SECCION, ADVERTENCIA_SIN_COSTOS,
-				"La rentabilidad por servicio no se calcula: ningun egreso se imputa a un servicio "
-						+ "y no existe un esquema de honorarios por clase (U-41). Estos son ingresos, "
-						+ "no margen. Decision pendiente U-50.");
-
 		return new AporteDeReporte(SECCION, titulo(), indicadores,
 				List.of("Servicio", "Naturaleza", "Oferta", "Concepto", "Devengado", "Cobrado imputado"),
-				filas, List.of(sinCostos));
+				filas, List.of());
 	}
 
 	/** Una fila del detalle: servicio, oferta y concepto. */

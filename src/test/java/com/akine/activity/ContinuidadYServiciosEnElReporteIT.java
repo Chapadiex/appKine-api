@@ -14,6 +14,12 @@ import com.akine.activity.domain.ResultadoAsistencia;
 import com.akine.billing.application.CajaService;
 import com.akine.billing.application.CobroCommand;
 import com.akine.billing.application.CobroService;
+import com.akine.billing.application.EgresoCommand;
+import com.akine.billing.application.EgresoService;
+import com.akine.billing.application.EgresoView;
+import com.akine.billing.domain.CategoriaEgreso;
+import com.akine.billing.domain.TipoBeneficiario;
+import com.akine.billing.domain.exception.OfertaDelEgresoNoAccesibleException;
 import com.akine.billing.domain.MedioDePago;
 import com.akine.reporting.application.ExportadorCsv;
 import com.akine.reporting.application.OperatingActor;
@@ -44,6 +50,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * AKINE-09.01b contra MySQL real: los reportes {@code CONTINUIDAD} (RF-M23-008) y
@@ -72,6 +79,7 @@ class ContinuidadYServiciosEnElReporteIT {
 	@Autowired private VentaDePaseService ventaService;
 	@Autowired private CajaService cajaService;
 	@Autowired private CobroService cobroService;
+	@Autowired private EgresoService egresoService;
 	@Autowired private JdbcTemplate jdbc;
 
 	private ActividadItFixture fx;
@@ -266,6 +274,120 @@ class ContinuidadYServiciosEnElReporteIT {
 
 		assertThat(exportador.aCsv(vista)).contains("\"Reporte\",\"SERVICIOS\"")
 				.contains("rentabilidad-sin-costos");
+	}
+
+	// =================================================================================
+	// DP-39 — rentabilidad y caja por servicio
+	// =================================================================================
+
+	@Test
+	@DisplayName("SERVICIOS: rentabilidad = devengado - egresos imputados; caja de un cobro repartida por medio en proporcion a lo imputado")
+	void rentabilidad_y_caja_por_servicio() {
+		Tenant t = fx.crearTenant(10, 2);
+		naturalezaDe(t.ofertaId(), "PREVENTIVO");
+		long pilates = t.ofertaId();
+		long kinesio = oferta(t, "CLINICO", "INDIVIDUAL");
+		long membership = membershipDe(t);
+		var actorDeCaja = new com.akine.billing.application.OperatingActor(
+				t.actor().accountId(), false, t.organizationId(), t.consultorioId());
+		cajaService.abrir(actorDeCaja, t.consultorioId(), BigDecimal.ZERO, "ARS");
+
+		// Dos deudas de la misma persona: kinesio 1000 y Pilates 500.
+		long hc = historia(t, t.persona(0));
+		long deudaKinesio = deuda(t, hc, t.persona(0), kinesio, membership, "1000.00", "PENDIENTE");
+		long deudaPilates = deuda(t, hc, t.persona(0), pilates, membership, "500.00", "PENDIENTE");
+
+		// UN cobro de 1200: 100 en efectivo y 1100 por transferencia; imputa 600 a kinesio y 400 a
+		// Pilates y deja 200 de saldo a favor. Pesos 600/400/200 sobre 1200:
+		//   efectivo 100      -> 50.00 | 33.333.. | 16.666..  -> 50.00 | 33.33 | 16.67 (el centavo al mayor resto)
+		//   transferencia 1100 -> 550.00 | 366.666.. | 183.333.. -> 550.00 | 366.67 | 183.33
+		//   por fila           -> 600.00 | 400.00 | 200.00
+		cobroService.registrar(actorDeCaja, t.consultorioId(), new CobroCommand(
+				t.persona(0), new BigDecimal("1200.00"),
+				List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, new BigDecimal("100.00"), null),
+						new CobroCommand.MedioPedido(MedioDePago.TRANSFERENCIA, new BigDecimal("1100.00"), "T-1")),
+				List.of(new CobroCommand.ImputacionPedida(deudaKinesio, new BigDecimal("600.00")),
+						new CobroCommand.ImputacionPedida(deudaPilates, new BigDecimal("400.00"))),
+				null, new BigDecimal("200.00"), "ARS"));
+
+		// Egresos: 250 a kinesio y 150 a Pilates confirmados; 1000 de alquiler sin oferta; 999 a
+		// kinesio confirmado y anulado (no suma); 777 a Pilates en borrador (no suma).
+		egreso(actorDeCaja, t, kinesio, "250.00", "F-1", Fin.CONFIRMAR);
+		egreso(actorDeCaja, t, pilates, "150.00", "F-2", Fin.CONFIRMAR);
+		egreso(actorDeCaja, t, null, "1000.00", "F-3", Fin.CONFIRMAR);
+		egreso(actorDeCaja, t, kinesio, "999.00", "F-4", Fin.ANULAR);
+		egreso(actorDeCaja, t, pilates, "777.00", "F-5", Fin.BORRADOR);
+
+		// Otro tenant: un egreso imputado a SU oferta no suma; y no puede imputar a la de este.
+		Tenant otro = fx.crearTenant(10, 1);
+		var actorOtro = new com.akine.billing.application.OperatingActor(
+				otro.actor().accountId(), false, otro.organizationId(), otro.consultorioId());
+		egreso(actorOtro, otro, otro.ofertaId(), "5000.00", "F-9", Fin.CONFIRMAR);
+		assertThatThrownBy(() -> egreso(actorOtro, otro, kinesio, "10.00", "F-10", Fin.BORRADOR))
+				.isInstanceOf(OfertaDelEgresoNoAccesibleException.class);
+
+		LocalDate hoy = hoy();
+		ReporteView vista = reportes.generar(reporteDe(t), t.consultorioId(), ReporteCode.SERVICIOS,
+				hoy.minusDays(5), hoy.plusDays(5));
+		String sinImputar = "(sin imputar)";
+
+		String r = "rentabilidad-por-servicio";
+		assertThat(valor(vista, r, "rentabilidad-ingresos")).isEqualByComparingTo("1500");
+		assertThat(valor(vista, r, "rentabilidad-egresos-imputados")).isEqualByComparingTo("400");
+		assertThat(valor(vista, r, "rentabilidad-egresos-sin-imputar")).isEqualByComparingTo("1000");
+		assertThat(valor(vista, r, "rentabilidad-margen-de-servicios")).isEqualByComparingTo("1100");
+		assertThat(valor(vista, r, "rentabilidad-resultado")).isEqualByComparingTo("100");
+		assertThat(seccion(vista, r).filas())
+				.extracting(f -> f.celdas())
+				.containsExactlyInAnyOrder(
+						List.of(servicioDe(kinesio), "CLINICO", ofertaNombre(kinesio), "1000.00", "250.00", "750.00"),
+						List.of(servicioDe(pilates), "PREVENTIVO", ofertaNombre(pilates), "500.00", "150.00", "350.00"),
+						List.of(sinImputar, "", "(egresos sin oferta)", "0", "1000.00", "-1000.00"));
+		assertThat(vista.advertencias()).extracting(a -> a.codigo()).doesNotContain("rentabilidad-sin-costos");
+
+		String c = "caja-por-servicio";
+		assertThat(valor(vista, c, "servicios-caja-cobrado")).isEqualByComparingTo("1200");
+		assertThat(valor(vista, c, "servicios-caja-imputado")).isEqualByComparingTo("1000");
+		assertThat(valor(vista, c, "servicios-caja-sin-imputar")).isEqualByComparingTo("200");
+		assertThat(seccion(vista, c).filas())
+				.extracting(f -> f.celdas())
+				.containsExactlyInAnyOrder(
+						List.of(servicioDe(kinesio), "CLINICO", ofertaNombre(kinesio),
+								"600.00", "50.00", "550.00", "0", "0", "0"),
+						List.of(servicioDe(pilates), "PREVENTIVO", ofertaNombre(pilates),
+								"400.00", "33.33", "366.67", "0", "0", "0"),
+						List.of(sinImputar, "", "(anticipos y saldo a favor)",
+								"200.00", "16.67", "183.33", "0", "0", "0"));
+		assertThat(indicador(vista, c, "servicios-caja-cobrado").criterioDeFecha()).contains("generadoEn");
+
+		// Las dos secciones cierran contra el reporte economico: la caja suma lo cobrado y la columna
+		// de egresos (imputados + sin imputar) suma los egresos confirmados.
+		ReporteView economico = reportes.generar(reporteDe(t), t.consultorioId(), ReporteCode.ECONOMICO,
+				hoy.minusDays(5), hoy.plusDays(5));
+		assertThat(valor(economico, "economia", "cobrado")).isEqualByComparingTo("1200");
+		assertThat(valor(economico, "economia", "egresos-confirmados")).isEqualByComparingTo("1400");
+		assertThat(valor(economico, "economia", "devengado")).isEqualByComparingTo("1500");
+
+		assertThat(exportador.aCsv(vista)).contains("Resultado (margen - egresos sin imputar)")
+				.contains("Cobrado en caja (todos los medios)").contains("(anticipos y saldo a favor)");
+	}
+
+	private enum Fin { BORRADOR, CONFIRMAR, ANULAR }
+
+	private void egreso(com.akine.billing.application.OperatingActor actor, Tenant t, Long ofertaId,
+			String importe, String comprobante, Fin fin) {
+		EgresoView egreso = egresoService.registrar(actor, t.consultorioId(), new EgresoCommand(
+				CategoriaEgreso.OTRO, TipoBeneficiario.EXTERNO, null, "Proveedor sintetico",
+				null, null, null, "Egreso sintetico " + comprobante, new BigDecimal(importe), "ARS",
+				"FACTURA_C", comprobante + "-" + UUID.randomUUID().toString().substring(0, 8),
+				hoy(), null, ofertaId));
+		assertThat(egreso.ofertaId()).isEqualTo(ofertaId);
+		if (fin != Fin.BORRADOR) {
+			egresoService.confirmar(actor, t.consultorioId(), egreso.id());
+		}
+		if (fin == Fin.ANULAR) {
+			egresoService.anular(actor, t.consultorioId(), egreso.id(), "Sintetico");
+		}
 	}
 
 	// =================================================================================

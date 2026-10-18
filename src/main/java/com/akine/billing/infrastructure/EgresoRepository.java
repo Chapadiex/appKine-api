@@ -197,13 +197,13 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 	// M23 — agregaciones de reporte (AKINE-07.06)
 	// =================================================================================
 	//
-	// Las dos suman EGRESO (M22), el quinto concepto economico. NO es un movimiento de
+	// Todas suman EGRESO (M22), el quinto concepto economico. NO es un movimiento de
 	// caja: un egreso confirmado que todavia no se pago no movio un peso de ningun cajon,
 	// y un egreso pagado por transferencia salio del centro sin tocar el arqueo.
 	//
-	// Por eso tampoco existe ningun total que reste egresos de ingresos: seria un
-	// resultado economico, que es RF-M23-009 y no tiene cimiento —`egreso` no se liga a
-	// una oferta ni a un servicio, asi que no hay modelo de costeo que lo sostenga—.
+	// Desde DP-39 el egreso puede imputarse a una oferta, y la resta existe en un solo lugar:
+	// la rentabilidad por servicio del reporte SERVICIOS (RentabilidadPorServicioEnElReporte),
+	// que abre estos mismos egresos por oferta. El reporte economico sigue sin restarlos.
 
 	/**
 	 * Egresos confirmados en el periodo.
@@ -246,4 +246,28 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 	BigDecimal sumarSaldoPendienteEnElReporte(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId);
+
+	/**
+	 * Los mismos egresos que {@link #sumarConfirmadosEnElReporte}, abiertos por la oferta a la que se
+	 * imputaron (DP-39, rentabilidad por servicio). La fila con oferta {@code NULL} son los egresos
+	 * sin imputar. Mismo recorte a proposito: la suma de todas las filas es el indicador
+	 * {@code egresos-confirmados} del reporte economico, y el IT lo compara.
+	 *
+	 * @return filas {@code [oferta_id | null, total]}
+	 */
+	@Query(value = """
+			SELECT e.oferta_id, SUM(e.importe_total) AS total
+			  FROM egreso e
+			 WHERE e.organization_id = :organizationId
+			   AND e.consultorio_id = :consultorioId
+			   AND e.estado IN ('CONFIRMADO', 'PAGADO')
+			   AND e.registrado_en >= :desde
+			   AND e.registrado_en < :hasta
+			 GROUP BY e.oferta_id
+			""", nativeQuery = true)
+	List<Object[]> sumarConfirmadosPorOfertaEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
 }

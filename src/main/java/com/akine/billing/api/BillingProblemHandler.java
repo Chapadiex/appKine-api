@@ -11,6 +11,7 @@ import com.akine.billing.domain.exception.EgresoNotAccessibleException;
 import com.akine.billing.domain.exception.EgresoSaldoInsuficienteException;
 import com.akine.billing.domain.exception.EgresoSinComprobanteException;
 import com.akine.billing.domain.exception.EgresoYaAnuladoException;
+import com.akine.billing.domain.exception.OfertaDelEgresoNoAccesibleException;
 import com.akine.billing.domain.exception.PagoEgresoNotAccessibleException;
 import com.akine.billing.domain.exception.PagoEgresoYaAnuladoException;
 import com.akine.billing.domain.exception.CajaCerradaException;
@@ -495,6 +496,12 @@ public class BillingProblemHandler {
 	public ProblemDetail handleEgresoNoAccesible(EgresoNotAccessibleException exception) {
 		log.debug("Egreso no accesible: egresoId={}", exception.getEgresoId());
 		return noEncontrado("El egreso no existe.");
+	}
+
+	@ExceptionHandler(OfertaDelEgresoNoAccesibleException.class)
+	public ProblemDetail handleOfertaDelEgresoNoAccesible(OfertaDelEgresoNoAccesibleException exception) {
+		log.debug("Oferta del egreso no accesible: ofertaId={}", exception.getOfertaId());
+		return noEncontrado("La oferta no existe en esta sede.");
 	}
 
 	@ExceptionHandler(PagoEgresoNotAccessibleException.class)

@@ -106,7 +106,8 @@ public class EgresoController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "404",
-					description = "La sede no existe o es de otro tenant",
+					description = "La sede, o la oferta a la que se imputa (`ofertaId`), no existe o es de "
+							+ "otro tenant u otra sede",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
@@ -154,7 +155,8 @@ public class EgresoController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "404",
-					description = "El egreso o la sede no existen, o son de otro tenant",
+					description = "El egreso, la sede o la oferta a la que se imputa (`ofertaId`) no existen, "
+							+ "o son de otro tenant u otra sede",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",

@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
@@ -58,13 +59,20 @@ public record EditarEgresoRequest(
 		LocalDate comprobanteFecha,
 
 		@Schema(description = "Version que el cliente leyo. **Requerida.**", example = "0")
-		@NotNull @PositiveOrZero Long version) {
+		@NotNull @PositiveOrZero Long version,
+
+		@Schema(
+				description = "Oferta de esta sede a la que se imputa el costo (DP-39). La correccion "
+						+ "**reemplaza** el valor: sin `ofertaId` el egreso queda sin imputar. Una oferta de "
+						+ "otra sede o de otro tenant es 404.",
+				example = "18")
+		@Positive Long ofertaId) {
 
 	/** Solo los campos editables: el servicio no lee beneficiario, moneda ni clave al corregir. */
 	public EgresoCommand aDominio() {
 		return new EgresoCommand(
 				categoria, null, null, null, null,
 				periodoDesde, periodoHasta, concepto, importeTotal, null,
-				comprobanteTipo, comprobanteNumero, comprobanteFecha, null);
+				comprobanteTipo, comprobanteNumero, comprobanteFecha, null, ofertaId);
 	}
 }
