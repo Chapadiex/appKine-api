@@ -160,8 +160,10 @@ public class EgresoController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "`egreso-no-editable`, `egreso-comprobante-duplicado` o "
-							+ "`concurrent-modification` (la version quedo vieja)",
+					description = "`egreso-no-editable`, `egreso-comprobante-duplicado`, "
+							+ "`concurrent-modification` (la version quedo vieja) o "
+							+ "`egreso-de-liquidacion` (importe, categoria o periodo de un egreso que "
+							+ "nacio de una liquidacion de honorarios por clase)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<EgresoResponse> editar(
 			@PathVariable long consultorioId,
@@ -228,7 +230,11 @@ public class EgresoController {
 					devuelve— y despues el compromiso.
 
 					**Anular no significa borrar** (RN-M22-002): la fila queda con su motivo, su \
-					actor y su fecha.""")
+					actor y su fecha.
+
+					**Si el egreso nacio de una liquidacion de honorarios por clase (DP-38), la \
+					libera**: sus clases vuelven a entrar en el borrador siguiente del colaborador. \
+					La liquidacion queda `LIBERADA`, con su detalle.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Egreso anulado"),
 			@ApiResponse(

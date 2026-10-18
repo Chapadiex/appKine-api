@@ -10,6 +10,7 @@ import com.akine.billing.domain.exception.EgresoNoEditableException;
 import com.akine.billing.domain.exception.EgresoSinComprobanteException;
 import com.akine.billing.domain.exception.EgresoYaAnuladoException;
 import com.akine.billing.domain.port.EgresoRepositoryPort;
+import com.akine.billing.domain.port.LiquidacionHonorarioRepositoryPort;
 import com.akine.billing.domain.port.PagoEgresoRepositoryPort;
 import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
@@ -80,6 +81,7 @@ class EgresoServiceTest {
 	@Mock private CajaAcceso acceso;
 	@Mock private AuditTrail auditTrail;
 	@Mock private OfertaDirectory ofertas;
+	@Mock private LiquidacionHonorarioRepositoryPort liquidaciones;
 
 	private EgresoService service;
 
@@ -87,7 +89,8 @@ class EgresoServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new EgresoService(egresos, pagos, memberships, identidades, acceso, auditTrail, ofertas);
+		service = new EgresoService(egresos, pagos, memberships, identidades, acceso, auditTrail, ofertas,
+				liquidaciones);
 		given(egresos.save(any())).willAnswer(EgresoServiceTest::conIdComoJpa);
 		given(egresos.findVigentePorComprobante(anyLong(), anyString(), anyString(), anyString()))
 				.willReturn(Optional.empty());

@@ -1,13 +1,16 @@
 package com.akine.billing.application;
 
 import com.akine.billing.domain.Egreso;
+import com.akine.billing.domain.LiquidacionHonorario;
 import com.akine.billing.domain.TipoBeneficiario;
 import com.akine.billing.domain.exception.BeneficiarioNoVinculadoException;
 import com.akine.billing.domain.exception.EgresoComprobanteDuplicadoException;
+import com.akine.billing.domain.exception.EgresoDeLiquidacionException;
 import com.akine.billing.domain.exception.EgresoNoEditableException;
 import com.akine.billing.domain.exception.EgresoNotAccessibleException;
 import com.akine.billing.domain.exception.OfertaDelEgresoNoAccesibleException;
 import com.akine.billing.domain.port.EgresoRepositoryPort;
+import com.akine.billing.domain.port.LiquidacionHonorarioRepositoryPort;
 import com.akine.billing.domain.port.PagoEgresoRepositoryPort;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
@@ -30,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -60,6 +64,7 @@ public class EgresoService {
 	private final CajaAcceso acceso;
 	private final AuditTrail auditTrail;
 	private final OfertaDirectory ofertas;
+	private final LiquidacionHonorarioRepositoryPort liquidaciones;
 
 	public EgresoService(
 			EgresoRepositoryPort egresos,
@@ -68,7 +73,8 @@ public class EgresoService {
 			AccountIdentityDirectory identidades,
 			CajaAcceso acceso,
 			AuditTrail auditTrail,
-			OfertaDirectory ofertas) {
+			OfertaDirectory ofertas,
+			LiquidacionHonorarioRepositoryPort liquidaciones) {
 
 		this.egresos = egresos;
 		this.pagos = pagos;
@@ -77,6 +83,7 @@ public class EgresoService {
 		this.acceso = acceso;
 		this.auditTrail = auditTrail;
 		this.ofertas = ofertas;
+		this.liquidaciones = liquidaciones;
 	}
 
 	/**
@@ -105,6 +112,26 @@ public class EgresoService {
 			}
 			return EgresoView.de(existente);
 		}
+
+		return crearBorrador(actor, organizationId, consultorioId, command);
+	}
+
+	/**
+	 * El egreso de una liquidacion de honorarios por clase (AKINE-08.09b), <b>en la transaccion del
+	 * llamador</b>: nace {@code BORRADOR} por el mismo camino que el manual —beneficiario vigente,
+	 * comprobante no duplicado, auditoria—, sin permiso ni idempotencia propios porque los resolvio
+	 * quien liquida ({@code caja:operate} y la clave de la liquidacion).
+	 */
+	public EgresoView registrarDeLiquidacion(
+			long organizationId, long consultorioId, long actorCuentaId, EgresoCommand command) {
+
+		return crearBorrador(
+				new OperatingActor(actorCuentaId, false, organizationId, consultorioId),
+				organizationId, consultorioId, command);
+	}
+
+	private EgresoView crearBorrador(
+			OperatingActor actor, long organizationId, long consultorioId, EgresoCommand command) {
 
 		Beneficiario beneficiario = resolverBeneficiario(organizationId, command);
 		exigirOfertaDeLaSede(organizationId, consultorioId, command.ofertaId());
@@ -173,6 +200,7 @@ public class EgresoService {
 			throw new EgresoNoEditableException(egresoId, egreso.getEstado().name());
 		}
 		exigirOfertaDeLaSede(organizationId, consultorioId, command.ofertaId());
+		exigirQueNoCambieLaLiquidacion(organizationId, egreso, command);
 
 		exigirComprobanteNoDuplicado(
 				organizationId, egreso.getBeneficiarioClave(),
@@ -241,6 +269,7 @@ public class EgresoService {
 
 		Egreso guardado = egresos.save(egreso);
 		auditar(actor, AuditEvents.EGRESO_ANULADO, guardado, motivo, ahora);
+		liberarLiquidacion(actor, organizationId, egresoId, motivo, ahora);
 
 		log.info("Egreso anulado: egresoId={} motivo={}", egresoId, motivo);
 		return EgresoView.de(guardado);
@@ -258,7 +287,10 @@ public class EgresoService {
 				egreso,
 				pagos.findDelEgreso(organizationId, egresoId).stream()
 						.map(PagoEgresoView::de)
-						.toList());
+						.toList(),
+				liquidaciones.findDelEgreso(organizationId, egresoId)
+						.map(LiquidacionHonorario::getId)
+						.orElse(null));
 	}
 
 	/**
@@ -393,6 +425,62 @@ public class EgresoService {
 				.ifPresent(otro -> {
 					throw new EgresoComprobanteDuplicadoException(
 							comprobanteTipo, comprobanteNumero, otro.getId());
+				});
+	}
+
+	/**
+	 * Un egreso de liquidacion vigente no cambia importe, categoria ni periodo (AKINE-08.09b): el
+	 * total es la suma exacta del detalle por clase. Concepto y comprobante si se corrigen.
+	 */
+	private void exigirQueNoCambieLaLiquidacion(long organizationId, Egreso egreso, EgresoCommand command) {
+		liquidaciones.findDelEgreso(organizationId, egreso.getId())
+				.filter(LiquidacionHonorario::estaVigente)
+				.ifPresent(liquidacion -> {
+					boolean cambia = command.importeTotal() == null
+							|| command.importeTotal().compareTo(egreso.getImporteTotal()) != 0
+							|| command.categoria() != egreso.getCategoria()
+							|| !Objects.equals(command.periodoDesde(), egreso.getPeriodoDesde())
+							|| !Objects.equals(command.periodoHasta(), egreso.getPeriodoHasta())
+							|| !Objects.equals(command.ofertaId(), egreso.getOfertaId());
+					if (cambia) {
+						throw new EgresoDeLiquidacionException(egreso.getId(), liquidacion.getId());
+					}
+				});
+	}
+
+	/**
+	 * Anular el egreso de una liquidacion la LIBERA: sus clases vuelven al borrador siguiente
+	 * (AKINE-08.09b). Va en la misma transaccion y despues del {@code FOR UPDATE} del egreso, asi que
+	 * no compite con una segunda anulacion. Las filas quedan: la historia no se borra.
+	 */
+	private void liberarLiquidacion(
+			OperatingActor actor, long organizationId, long egresoId, String motivo, Instant ahora) {
+
+		liquidaciones.findDelEgreso(organizationId, egresoId)
+				.filter(LiquidacionHonorario::estaVigente)
+				.ifPresent(liquidacion -> {
+					liquidacion.liberar(ahora);
+					liquidaciones.save(liquidacion);
+					int clases = liquidaciones.liberarClases(organizationId, liquidacion.getId());
+
+					Map<String, String> detalles = new LinkedHashMap<>();
+					detalles.put("egresoId", String.valueOf(egresoId));
+					detalles.put("clasesLiberadas", String.valueOf(clases));
+					auditTrail.record(new AuditEntry(
+							actor.contextOrganizationId(),
+							actor.consultorioId(),
+							actor.accountId(),
+							AuditEvents.LIQUIDACION_HONORARIOS_LIBERADA,
+							AuditEvents.ENTITY_LIQUIDACION_HONORARIOS,
+							liquidacion.getId(),
+							LiquidacionHonorario.VIGENTE,
+							LiquidacionHonorario.LIBERADA,
+							detalles,
+							motivo,
+							AuditEvents.correlationId(),
+							ahora));
+					log.info("Liquidacion de honorarios liberada: liquidacionId={} egresoId={} clases={}",
+							liquidacion.getId(), egresoId, clases);
 				});
 	}
 

@@ -101,7 +101,14 @@ public record EgresoResponse(
 		@Schema(description = "Oferta de la sede a la que se imputa el costo (DP-39), o vacio si no es "
 				+ "costo de ningun servicio. Es lo que lee la rentabilidad del reporte `SERVICIOS`.",
 				example = "18")
-		Long ofertaId) {
+		Long ofertaId,
+
+		@Schema(description = "La liquidacion de honorarios por clase de la que nacio el egreso "
+				+ "(DP-38). Solo en el detalle; null en los listados y en los egresos cargados a mano. "
+				+ "Con valor, importe, categoria y periodo no se editan (409 `egreso-de-liquidacion`) "
+				+ "y el detalle por clase se lee en `verLiquidacionDeHonorarios`.",
+				example = "88")
+		Long liquidacionHonorariosId) {
 
 	public static EgresoResponse de(EgresoView vista) {
 		return new EgresoResponse(
@@ -129,6 +136,7 @@ public record EgresoResponse(
 				vista.motivoAnulacion(),
 				vista.version(),
 				vista.pagos().stream().map(PagoEgresoResponse::de).toList(),
-				vista.ofertaId());
+				vista.ofertaId(),
+				vista.liquidacionHonorariosId());
 	}
 }

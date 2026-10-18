@@ -1,6 +1,7 @@
 package com.akine.offering.domain.port;
 
 import com.akine.offering.domain.OfertaEspacioHabilitado;
+import com.akine.offering.domain.OfertaHonorarioClase;
 import com.akine.offering.domain.OfertaPractica;
 import com.akine.offering.domain.OfertaPrecioParticular;
 import com.akine.offering.domain.OfertaProfesionalHabilitado;
@@ -307,6 +308,30 @@ public final class OfferingRepositoryPorts {
 						Long organizationId, Long ofertaId, boolean active);
 
 		Optional<OfertaPrecioParticular> findByIdAndOrganizationIdAndOfertaId(
+				Long id, Long organizationId, Long ofertaId);
+	}
+
+	/**
+	 * Honorarios por clase de una oferta, por vigencia (AKINE-08.09b). Toda consulta lleva
+	 * {@code organizationId}; la sede ya se resolvio al cargar la oferta.
+	 */
+	public interface OfertaHonorarioClaseRepositoryPort {
+
+		OfertaHonorarioClase saveAndFlush(OfertaHonorarioClase honorario);
+
+		/** Activos e historicos, del mas nuevo al mas viejo. */
+		List<OfertaHonorarioClase> findAllByOrganizationIdAndOfertaIdOrderByVigenciaDesdeDescIdDesc(
+				Long organizationId, Long ofertaId);
+
+		List<OfertaHonorarioClase>
+				findAllByOrganizationIdAndOfertaIdAndActiveOrderByVigenciaDesdeDescIdDesc(
+						Long organizationId, Long ofertaId, boolean active);
+
+		/** Los activos de varias ofertas de una vez: el borrador de honorarios no pregunta por clase. */
+		List<OfertaHonorarioClase> findAllByOrganizationIdAndOfertaIdInAndActive(
+				Long organizationId, Collection<Long> ofertaIds, boolean active);
+
+		Optional<OfertaHonorarioClase> findByIdAndOrganizationIdAndOfertaId(
 				Long id, Long organizationId, Long ofertaId);
 	}
 }

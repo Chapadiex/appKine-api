@@ -8,6 +8,9 @@ import com.akine.offering.domain.exception.OfertaNombreComercialTakenException;
 import com.akine.offering.domain.exception.OfertaNotAccessibleException;
 import com.akine.offering.domain.exception.PracticaNoElegibleException;
 import com.akine.offering.domain.exception.PracticaPrincipalInvalidaException;
+import com.akine.offering.domain.exception.HonorarioDeClaseInactivoException;
+import com.akine.offering.domain.exception.HonorarioDeClaseNoAccesibleException;
+import com.akine.offering.domain.exception.HonorarioDeClaseSolapadoException;
 import com.akine.offering.domain.exception.PrecioParticularInactivoException;
 import com.akine.offering.domain.exception.PrecioParticularNoAccesibleException;
 import com.akine.offering.domain.exception.PrecioParticularSolapadoException;
@@ -82,6 +85,34 @@ public class OfferingProblemHandler {
 	public ProblemDetail handleOfertaNoAccesible(OfertaNotAccessibleException exception) {
 		log.debug("Oferta no accesible: ofertaId={}", exception.getOfertaId());
 		return noEncontrado("La oferta no existe.");
+	}
+
+	@ExceptionHandler(HonorarioDeClaseNoAccesibleException.class)
+	public ProblemDetail handleHonorarioNoAccesible(HonorarioDeClaseNoAccesibleException exception) {
+		log.debug("Honorario por clase no accesible: honorarioId={}", exception.getHonorarioId());
+		return noEncontrado("El honorario por clase no existe en esta oferta.");
+	}
+
+	/** 08.09b (DP-38): dos honorarios activos de la misma oferta no se pisan. */
+	@ExceptionHandler(HonorarioDeClaseSolapadoException.class)
+	public ProblemDetail handleHonorarioSolapado(HonorarioDeClaseSolapadoException exception) {
+		ProblemDetail problem = conflicto(
+				"Ya hay un honorario por clase de esta oferta cuyo periodo se pisa con el pedido ("
+						+ exception.getPeriodoExistente() + "). Cerra la vigencia del que esta antes "
+						+ "de cargar el nuevo.",
+				"Honorario por clase solapado",
+				ProblemType.HONORARIO_DE_CLASE_SOLAPADO.uri());
+		problem.setProperty("honorarioExistenteId", exception.getHonorarioExistenteId());
+		problem.setProperty("periodoExistente", exception.getPeriodoExistente());
+		return problem;
+	}
+
+	@ExceptionHandler(HonorarioDeClaseInactivoException.class)
+	public ProblemDetail handleHonorarioInactivo(HonorarioDeClaseInactivoException exception) {
+		return conflicto(
+				"El honorario por clase esta dado de baja: no admite cambios.",
+				"Honorario por clase dado de baja",
+				ProblemType.HONORARIO_DE_CLASE_INACTIVO.uri());
 	}
 
 	@ExceptionHandler(PrecioParticularNoAccesibleException.class)

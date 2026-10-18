@@ -105,6 +105,15 @@ final class AuditEvents {
 	static final String OFERTA_PRECIO_PARTICULAR_DEACTIVATED =
 			"OFERTA_PRECIO_PARTICULAR_DEACTIVATED";
 
+	// --- Honorario por clase por vigencia (AKINE-08.09b, DP-38) ----------------------------
+	// Entidad auditada: la OFERTA. Detalle con el honorarioId, el importe y el periodo.
+
+	static final String OFERTA_HONORARIO_CLASE_CREATED = "OFERTA_HONORARIO_CLASE_CREATED";
+
+	static final String OFERTA_HONORARIO_CLASE_UPDATED = "OFERTA_HONORARIO_CLASE_UPDATED";
+
+	static final String OFERTA_HONORARIO_CLASE_DEACTIVATED = "OFERTA_HONORARIO_CLASE_DEACTIVATED";
+
 	/**
 	 * La entidad auditada es la OFERTA, no la fila de habilitacion.
 	 *
