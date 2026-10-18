@@ -259,7 +259,10 @@ más bajo del backend y no es de los siete críticos que fija el plan.
 > concurrente hace que una corrida cubra un par de líneas menos que otra, el build lo va a decir;
 > la salida es mirar qué rama no se ejercitó, no bajar el número.
 
-## 5. SAST y DAST — `.github/workflows/seguridad.yml` (propuesta U-06)
+## 5. SAST y DAST — `.github/workflows/seguridad.yml` (U-06, DP-35)
+
+> **Decidido por el usuario el 17/10/2026** (DP-35): CodeQL como SAST y ZAP baseline como DAST,
+> los dos no bloqueantes, como los propuso este apartado.
 
 Dos jobs en un workflow propio, que corre en cada PR a `main`, en cada push a `main`, los lunes
 09:00 UTC y a mano (`workflow_dispatch`). **Ninguno bloquea todavía:** no están entre los checks
