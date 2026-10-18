@@ -519,6 +519,19 @@ public final class ActivityRepositoryPorts {
 		java.util.Map<Long, Long> renovacionesDe(long organizationId, java.util.Collection<Long> paseIds);
 
 		/**
+		 * El inicio del primer periodo de la cadena de renovaciones a la que pertenece el pase: se
+		 * sube por {@code renueva_pase_id} hasta el que no renueva a nadie. Su dia del mes es el ancla
+		 * de los periodos siguientes (DP-40, U-45).
+		 */
+		LocalDate inicioDeLaCadena(long organizationId, long paseId);
+
+		/**
+		 * Abonos de la organizacion con la renovacion prendida que autorizo esa cuenta (DP-40, U-43):
+		 * los que hay que mirar cuando la cuenta pierde el permiso de vender.
+		 */
+		List<RenovacionAutorizada> renovacionesAutorizadasPor(long organizationId, long cuentaId);
+
+		/**
 		 * Abonos de todos los tenants con la renovacion prendida y el periodo terminando antes de
 		 * {@code limite} (inclusive), los que terminan antes primero. Lo lee el job, sin contexto.
 		 */
@@ -558,6 +571,10 @@ public final class ActivityRepositoryPorts {
 	/** Un abono que el job de renovacion tiene que mirar. */
 	public record CandidatoARenovar(long paseId, long organizationId, long consultorioId, long productoId,
 									LocalDate vigenciaHasta) {
+	}
+
+	/** Un abono con la renovacion prendida por una cuenta: su sede y el nombre comercial del producto. */
+	public record RenovacionAutorizada(long paseId, long consultorioId, String productoNombre) {
 	}
 
 	/** Un pase al que el job de avisos tiene que mirar. */

@@ -273,24 +273,47 @@ public class PaseServicio {
 	}
 
 	/**
-	 * El periodo que sigue a {@code desdeAnterior..hastaAnterior} (AKINE-08.08). Empieza el dia
-	 * siguiente, sin hueco ni superposicion. <b>Un mes calendario completo se renueva por el mes
-	 * calendario siguiente</b> —el abono de noviembre por diciembre, no por "31 dias"— si el producto
-	 * lo cubre; cualquier otro periodo dura lo que el producto ({@code vigenciaDias}), igual que una
-	 * venta sin {@code periodoHasta}.
+	 * El periodo que sigue a uno que termina en {@code hastaAnterior} (AKINE-08.08; U-45, DP-40).
+	 * Empieza el dia siguiente, sin hueco ni superposicion, y <b>se ancla al dia del mes en que
+	 * empezo el primer periodo de la cadena</b> ({@code diaAncla}): termina el dia anterior a ese
+	 * mismo dia del mes siguiente, y si ese dia no existe en ese mes, el anterior al ultimo. Un abono
+	 * que arranco un 31 se renueva 31/01, 28/02 (29 en bisiesto), 31/03, 30/04, 31/05: pasar por el
+	 * 28 de febrero no le corre el ancla. El mes calendario completo es el caso {@code diaAncla = 1}
+	 * y sigue igual: noviembre se renueva por diciembre. Ya no se corre {@code vigenciaDias} desde el
+	 * fin del anterior.
 	 *
+	 * <p>Dos salidas del ancla, las dos conservadoras:
+	 *
+	 * <ul>
+	 *   <li><b>Un periodo que no arranca en el ancla</b> —el primero se vendio partido, del 5 al 30,
+	 *       o la cadena se corrio por la regla de abajo— se re-ancla en su propio inicio: del 1 de
+	 *       diciembre al 31. Volver al ancla original obligaria a un hueco o a un periodo de dias
+	 *       sueltos con precio de mes entero.</li>
+	 *   <li><b>Un producto que no cubre ese mes</b> ({@code vigenciaDias} menor que lo que dura el
+	 *       periodo anclado: un abono semanal, o uno de 30 dias en un mes de 31) dura lo que el
+	 *       producto, corrido, como antes de DP-40.</li>
+	 * </ul>
+	 *
+	 * @param diaAncla dia del mes (1 a 31) en que empezo el primer periodo de la cadena
 	 * @return {@code [desde, hasta]}, los dos inclusive
 	 */
-	public static LocalDate[] periodoSiguiente(
-			LocalDate desdeAnterior, LocalDate hastaAnterior, int vigenciaDias) {
-
-		LocalDate desde = hastaAnterior.plusDays(1);
-		boolean mesCompleto = desdeAnterior.getDayOfMonth() == 1
-				&& hastaAnterior.equals(desdeAnterior.withDayOfMonth(desdeAnterior.lengthOfMonth()));
-		if (mesCompleto && desde.lengthOfMonth() <= vigenciaDias) {
-			return new LocalDate[] {desde, desde.withDayOfMonth(desde.lengthOfMonth())};
+	public static LocalDate[] periodoSiguiente(int diaAncla, LocalDate hastaAnterior, int vigenciaDias) {
+		if (diaAncla < 1 || diaAncla > 31) {
+			throw new IllegalArgumentException("El dia de ancla es un dia del mes: " + diaAncla);
 		}
-		return new LocalDate[] {desde, desde.plusDays(vigenciaDias - 1L)};
+		LocalDate desde = hastaAnterior.plusDays(1);
+		int ancla = desde.getDayOfMonth() == enElMes(diaAncla, desde) ? diaAncla : desde.getDayOfMonth();
+		LocalDate mesSiguiente = desde.withDayOfMonth(1).plusMonths(1);
+		LocalDate hasta = mesSiguiente.withDayOfMonth(enElMes(ancla, mesSiguiente)).minusDays(1);
+		if (ChronoUnit.DAYS.between(desde, hasta) + 1 > vigenciaDias) {
+			return new LocalDate[] {desde, desde.plusDays(vigenciaDias - 1L)};
+		}
+		return new LocalDate[] {desde, hasta};
+	}
+
+	/** El dia {@code dia} en el mes de {@code fecha}, o el ultimo si ese mes no lo tiene. */
+	private static int enElMes(int dia, LocalDate fecha) {
+		return Math.min(dia, fecha.lengthOfMonth());
 	}
 
 	private static PaseServicio nuevo(

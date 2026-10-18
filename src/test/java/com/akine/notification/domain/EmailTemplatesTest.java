@@ -216,6 +216,22 @@ class EmailTemplatesTest {
 		assertThat(saldo.cuerpo()).doesNotContain("null").startsWith("Hola,");
 	}
 
+	@Test
+	@DisplayName("DP-40: el aviso de renovacion apagada dice cuantos abonos, la sede y quien la habia autorizado")
+	void el_aviso_de_renovacion_apagada() {
+		EmailMessage completo = EmailTemplates.render(NotificationType.ABONO_RENOVACION_APAGADA, DESTINATARIO,
+				SanitizedPayload.of(java.util.Map.of("nombre", "Ana", "consultorioNombre", "Sede Centro",
+						"abonosAfectados", "2", "renovacionAutorizadaPor", "Juan Perez")), null);
+		EmailMessage sinDatos = EmailTemplates.render(NotificationType.ABONO_RENOVACION_APAGADA, DESTINATARIO,
+				SanitizedPayload.vacio(), null);
+
+		assertThat(completo.asunto()).isEqualTo("Se apago la renovacion automatica de abonos en Sede Centro");
+		assertThat(completo.cuerpo()).startsWith("Hola Ana")
+				.contains("de 2 abono(s) en Sede Centro que habia autorizado Juan Perez");
+		assertThat(sinDatos.asunto()).isEqualTo("Se apago la renovacion automatica de abonos");
+		assertThat(sinDatos.cuerpo()).doesNotContain("null").contains("de uno o mas abono(s), porque");
+	}
+
 	@ParameterizedTest
 	@EnumSource(NotificationType.class)
 	@DisplayName("ningun template deja el cuerpo o el asunto vacios")

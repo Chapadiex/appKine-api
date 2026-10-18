@@ -135,7 +135,7 @@ public class IdentitySecureLinkResolver implements SecureLinkResolver {
 			case INVITACION_COLABORADOR, CUENTA_YA_REGISTRADA,
 					CLASE_MODIFICADA, CUPO_LIBERADO,
 					TURNO_RESERVADO, TURNO_CANCELADO, TURNO_REPROGRAMADO,
-					PASE_POR_VENCER, PASE_SALDO_BAJO -> Optional.empty();
+					PASE_POR_VENCER, PASE_SALDO_BAJO, ABONO_RENOVACION_APAGADA -> Optional.empty();
 		};
 	}
 

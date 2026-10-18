@@ -38,7 +38,9 @@ class SanitizedPayloadTest {
 						// AKINE E-5: los avisos de turno. Fecha, hora y servicio; nada clinico.
 						"turnoInicio", "turnoInicioAnterior", "servicioNombre",
 						// AKINE-08.08: los avisos de pases (RF-M26-008). Producto, vencimiento y saldo.
-						"productoNombre", "paseVencimiento", "creditosDisponibles", "renovacionAutomatica");
+						"productoNombre", "paseVencimiento", "creditosDisponibles", "renovacionAutomatica",
+						// DP-40 (U-43): al administrador, cuantos abonos y quien los habia autorizado.
+						"abonosAfectados", "renovacionAutorizadaPor");
 	}
 
 	@ParameterizedTest(name = "clave fuera de la lista blanca: {0}")

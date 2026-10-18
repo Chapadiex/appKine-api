@@ -131,7 +131,26 @@ public final class EmailTemplates {
 							+ sede(payload) + ", que vale hasta el "
 							+ payload.getOrDefault("paseVencimiento", "dia de su vencimiento")
 							+ ".\n\nSi queres seguir despues, comunicate con el centro." + FIRMA);
+			// DP-40 (U-43). Al administrador: cuantos abonos, en que sede y quien habia autorizado la
+			// renovacion. Ningun dato de las personas titulares: para verlas, la aplicacion.
+			case ABONO_RENOVACION_APAGADA -> new EmailMessage(
+					destinatario,
+					"Se apago la renovacion automatica de abonos"
+							+ (payload.getOrDefault("consultorioNombre", null) == null ? ""
+									: " en " + payload.getOrDefault("consultorioNombre", null)),
+					saludo + ",\n\nSe apago la renovacion automatica de "
+							+ payload.getOrDefault("abonosAfectados", "uno o mas") + " abono(s)"
+							+ sede(payload) + autorizante(payload)
+							+ ", porque esa persona ya no puede vender en la sede. Los periodos ya "
+							+ "vendidos no cambian; el siguiente no se va a vender solo."
+							+ "\n\nSi tienen que seguir renovandose, alguien que pueda vender tiene que "
+							+ "volver a activar la renovacion en cada abono." + FIRMA);
 		};
+	}
+
+	private static String autorizante(SanitizedPayload payload) {
+		String quien = payload.getOrDefault("renovacionAutorizadaPor", null);
+		return quien == null ? "" : " que habia autorizado " + quien;
 	}
 
 	private static String creditos(SanitizedPayload payload) {

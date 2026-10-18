@@ -71,6 +71,13 @@ import java.util.Optional;
  *       persona de baja, el periodo ya ocupado por una venta manual, el periodo siguiente ya
  *       terminado—, en vez de reintentarse para siempre. Queda en
  *       {@code renovacion_omitida_motivo} y en la auditoria.</li>
+ *   <li><b>Quien autorizo tiene que poder vender hoy</b> (DP-40, U-43): si ya no tiene
+ *       {@code pase:manage} en la sede, la renovacion se apaga y se avisa al administrador
+ *       ({@link ApagadoDeRenovaciones}). La desvinculacion la apaga antes, al momento; esto cubre lo
+ *       que no pasa por un evento, como un permiso adicional que vence solo.</li>
+ *   <li><b>El periodo se ancla al dia de la primera venta</b> (DP-40, U-45): el dia del mes en que
+ *       empezo el primer periodo de la cadena ({@code renueva_pase_id} hacia atras), no
+ *       {@code vigenciaDias} corrido. Ver {@link PaseServicio#periodoSiguiente}.</li>
  * </ul>
  */
 @Component
@@ -87,6 +94,7 @@ public class RenovacionDeAbonos {
 	private final PacienteDirectory personas;
 	private final ConsultorioDirectory consultorios;
 	private final AuditTrail auditTrail;
+	private final ApagadoDeRenovaciones apagado;
 	private final TransactionTemplate transaccion;
 	private final Clock clock;
 
@@ -99,9 +107,10 @@ public class RenovacionDeAbonos {
 			PacienteDirectory personas,
 			ConsultorioDirectory consultorios,
 			AuditTrail auditTrail,
+			ApagadoDeRenovaciones apagado,
 			PlatformTransactionManager transactionManager) {
 
-		this(pases, productos, movimientos, devengo, personas, consultorios, auditTrail, transactionManager,
+		this(pases, productos, movimientos, devengo, personas, consultorios, auditTrail, apagado, transactionManager,
 				Clock.systemUTC());
 	}
 
@@ -113,6 +122,7 @@ public class RenovacionDeAbonos {
 			PacienteDirectory personas,
 			ConsultorioDirectory consultorios,
 			AuditTrail auditTrail,
+			ApagadoDeRenovaciones apagado,
 			PlatformTransactionManager transactionManager,
 			Clock clock) {
 
@@ -123,6 +133,7 @@ public class RenovacionDeAbonos {
 		this.personas = personas;
 		this.consultorios = consultorios;
 		this.auditTrail = auditTrail;
+		this.apagado = apagado;
 		this.transaccion = new TransactionTemplate(transactionManager);
 		this.transaccion.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
 		this.clock = clock;
@@ -196,9 +207,19 @@ public class RenovacionDeAbonos {
 			return Resultado.SIN_CAMBIOS;
 		}
 
+		// DP-40 (U-43): el periodo se vende a nombre de quien autorizo la renovacion. Si ya no puede
+		// vender en la sede —se fue, le cambiaron el rol, le vencio el permiso, esta suspendido—, la
+		// renovacion se apaga y se avisa al administrador, en vez de inventarle una autorizacion.
+		if (!apagado.puedeVender(anterior.getRenovacionAutorizadaPorCuentaId(), organizationId, consultorioId, ahora)) {
+			apagado.alRenovarSinPermiso(anterior, ahora);
+			return Resultado.OMITIDO;
+		}
+
 		ProductoServicio vigente = producto.get();
+		// DP-40 (U-45): anclado al dia del mes en que empezo el primer periodo de la cadena.
+		int diaAncla = pases.inicioDeLaCadena(organizationId, anterior.getId()).getDayOfMonth();
 		LocalDate[] periodo = PaseServicio.periodoSiguiente(
-				anterior.getVigenciaDesde(), anterior.getVigenciaHasta(), vigente.getVigenciaDias());
+				diaAncla, anterior.getVigenciaHasta(), vigente.getVigenciaDias());
 		Optional<String> impedimento = impedimento(vigente, anterior, periodo[0], periodo[1], hoy);
 		if (impedimento.isPresent()) {
 			omitir(anterior, impedimento.get(), ahora);
@@ -223,6 +244,7 @@ public class RenovacionDeAbonos {
 		detalles.put("autorizadaPorCuentaId", String.valueOf(autorizadaPor));
 		detalles.put("periodoDesde", periodo[0].toString());
 		detalles.put("periodoHasta", periodo[1].toString());
+		detalles.put("diaAncla", String.valueOf(diaAncla));
 		detalles.put("precio", nuevo.getSnapshotPrecio().toPlainString());
 		detalles.put("moneda", nuevo.getSnapshotMoneda());
 		detalles.put("obligacionId", String.valueOf(deuda.obligacionId()));

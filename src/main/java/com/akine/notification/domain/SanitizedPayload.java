@@ -56,7 +56,11 @@ public final class SanitizedPayload {
 			"productoNombre",
 			"paseVencimiento",
 			"creditosDisponibles",
-			"renovacionAutomatica");
+			"renovacionAutomatica",
+			// DP-40 (U-43): el aviso al administrador de que se apago la renovacion de abonos dice
+			// cuantos y quien la habia autorizado (un colaborador, no la persona titular). Sin ids.
+			"abonosAfectados",
+			"renovacionAutorizadaPor");
 
 	/**
 	 * Claves que estuvieron en la lista blanca y salieron. {@link #of} las rechaza como a cualquier
