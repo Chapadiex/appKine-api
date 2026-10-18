@@ -1277,7 +1277,20 @@ base nueva cada ronda, cero errores técnicos en las ocho corridas):
 | 4 (A rama, B `main`) | 25,82 | 23,87 | **−7,6 %** |
 
 **Entre 7,6 % y 12,4 % menos CPU por pedido en las cuatro rondas, con los stacks intercambiados**
-(promedio −10,8 %). Corriendo una imagen por vez, intercaladas a lo largo de cinco horas, `main`
+(promedio −10,8 %).
+
+**Repetido después de #158**, que bajó Connector/J de 9.7.0 a 9.6.0 (DP-34): `main` `c05e327`
+contra la rama mergeada con él, las mismas cuatro rondas simultáneas (18/10, 00:45–01:35, con la
+máquina más cargada: p50 de 0,2 a 1,4 s en los dos):
+
+| Ronda (stack A / stack B) | `main` ms CPU/pedido | rama ms CPU/pedido | diferencia |
+|---|---:|---:|---:|
+| 1 (A `main`, B rama) | 18,57 | 16,75 | **−9,8 %** |
+| 2 (A rama, B `main`) | 18,86 | 16,98 | **−10,0 %** |
+| 3 (A `main`, B rama) | 23,91 | 21,21 | **−11,3 %** |
+| 4 (A rama, B `main`) | 26,22 | 23,61 | **−10,0 %** |
+
+Promedio **−10,3 %**, cero errores técnicos: el cambio de driver no mueve el efecto. Corriendo una imagen por vez, intercaladas a lo largo de cinco horas, `main`
 promedió 19,4 ms (9 corridas, de 13,6 a 24,2) y la rama 18,2 ms (10 corridas, de 15,9 a 22,2): la
 dirección es la misma, pero la deriva de la máquina en esas horas es del doble que el efecto.
 
