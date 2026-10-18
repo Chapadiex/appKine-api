@@ -31,7 +31,7 @@ así). No frena código: es trazabilidad para la tesis.
 | 08.06 Productos, packs, venta | HECHA | 90 | Catálogo de productos, venta idempotente con obligación `VENTA_PASE` (#129, `V96`). Pantalla web #92; E2E `flujo-pases` | ~~`POR_CLASE` (U-39)~~ hecho, ver 08.03 |
 | 08.07 Ledger de créditos | HECHA | 90 | Consumo (#129), devolución por cancelación, ajuste con `pase:adjust`, anulación y vencimiento programado (#135, `V101`); `causa`, `moneda`, `creditosUsados`, `anulable` (#138); ledger paginado (#140) y ajuste `sinMovimientos` (#142). Pantallas web #98, #101, #103 | U-40 (c), (d), (e) |
 | 08.08 Abonos | HECHA | 90 | Venta por período y cobertura de la asistencia (#135); **renovación automática opt-in, avisos de vencimiento y saldo bajo por el outbox** (#140, `V103`, 0.116.0); `renovacionAutorizadaPor`, `renovadoPorPaseId` (#142). Pantalla web #103 | U-40 (a), (b) y las tres de #140: **U-43, U-44, U-45** |
-| 08.09 Integración económica | PARCIAL | 60 | Venta → deuda → cobro → caja → anulación probado contra MySQL; la deuda de una venta ya no se anula sola (409 `obligacion-de-venta`, #139, 0.114.0); RF-M21-010 verificado; RF-M21-009 lo cubre 08.05 | ~~**RF-M22-006/007**~~ liquidación por clase **implementada** (DP-38, `V111`, 0.131.0, `AKINE-08.09b-honorarios.md`). Reportes de clases y pases: van a 09.01 (F10) |
+| 08.09 Integración económica | PARCIAL | 60 | Venta → deuda → cobro → caja → anulación probado contra MySQL; la deuda de una venta ya no se anula sola (409 `obligacion-de-venta`, #139, 0.114.0); RF-M21-010 verificado; RF-M21-009 lo cubre 08.05 | ~~**RF-M22-006/007**~~ liquidación por clase **implementada** (DP-38, `V114`, 0.134.0, `AKINE-08.09b-honorarios.md`). Reportes de clases y pases: van a 09.01 (F10) |
 
 El porcentaje de la fase es el promedio simple de las nueve etapas.
 
@@ -81,7 +81,7 @@ El porcentaje de la fase es el promedio simple de las nueve etapas.
 2. [x] ~~**ITs diferidos de 08.01–08.03** (escenarios 39–42, 46–48, 54–59)~~ — corridos el 17/10 contra MySQL, con el aislamiento
    de 09.02 (`ActividadAislamientoIT`) reutilizado para 41, 48 y 59. Ver `docs/tests-diferidos.md`.
 3. [x] **U-39** → devengo `POR_CLASE` (08.03). **Decidida el 17/10/2026 (DP-24)**: con la asistencia, sin no-show por defecto; en `POR_PACK`, sin pase solo se informa. **Implementada** en `akine-u39-devengo-por-clase` (`V107`, contrato 0.126.0, diseño `AKINE-08.06-pases.md` §4.1).
-4. [x] **U-41** → liquidación de honorarios por clase (08.09). **Decidida el 18/10/2026 (DP-38)** e **implementada** en `akine-dp38-honorarios-por-clase` (`V111`, contrato 0.131.0, diseño `AKINE-08.09b-honorarios.md`).
+4. [x] **U-41** → liquidación de honorarios por clase (08.09). **Decidida el 18/10/2026 (DP-38)** e **implementada** en `akine-dp38-honorarios-por-clase` (`V114`, contrato 0.134.0, diseño `AKINE-08.09b-honorarios.md`).
 5. [x] U-40, U-42, U-44 **confirmadas el 17/10/2026** (DP-25, DP-26, DP-27); U-43 y U-45 **decididas el 18/10/2026 (DP-40)**; se implementan después del RC.
 6. [ ] Autoservicio del paciente: depende del alcance `OWN`, post-MVP por DP-22.
 
@@ -102,4 +102,4 @@ El porcentaje de la fase es el promedio simple de las nueve etapas.
 - [ ] DP formal de la apertura de F9 (o DU-12 cerrada).
 - [ ] Pantalla de derivación.
 - [x] Escenarios diferidos 39–59 con IT o descartados con motivo (17/10).
-- [x] U-39 implementada (decidida, DP-24; `V107`). U-41 decidida (DP-38, 18/10/2026) e implementada (`V111`, 0.131.0).
+- [x] U-39 implementada (decidida, DP-24; `V107`). U-41 decidida (DP-38, 18/10/2026) e implementada (`V114`, 0.134.0).

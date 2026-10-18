@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.132.0
+  version: 0.134.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -4785,6 +4785,133 @@ paths:
       summary: "Si el participante se puede derivar, y por que no"
       tags:
       - Derivacion clinica de participantes
+  /api/v1/consultorios/{consultorioId}/clases/{claseId}/instructores:
+    get:
+      description: "DP-38. El principal (el profesional de la clase) y los adicionales\
+        \ vigentes, en el **orden estable** del reparto de honorarios: el principal\
+        \ y despues los adicionales por membership. Exige `clase:read`."
+      operationId: getInstructoresDeClase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstructoresDeClase"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/InstructoresDeClase"
+          description: Instructores de la clase
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `clase:read` en la sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La clase o la sede no existen, o son de otro tenant"
+      summary: Ver los instructores de una clase
+      tags:
+      - Clases
+    put:
+      description: |-
+        DP-38. Reemplaza la lista **completa** de instructores adicionales; vacia los quita. Exige `clase:manage`. Cada uno con vinculo vigente en la sede y habilitado para la oferta (sin habilitaciones declaradas, cualquiera), sin repetir y sin el principal: si no, 400. Quitar no borra: queda la historia.
+
+        **El adicional no ocupa agenda**: la exclusion de turnos y clases sigue mirando solo al principal.
+
+        Una clase cancelada no cambia instructores (409 `clase-transicion-no-permitida`), y una con honorarios ya liquidados tampoco (409 `clase-con-honorarios-liquidados`): cambiaria el reparto de una liquidacion cerrada. Se anula el egreso, que la libera.
+      operationId: reemplazarInstructoresDeClase
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: claseId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReemplazarInstructoresDeClaseRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstructoresDeClase"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/InstructoresDeClase"
+          description: Instructores actualizados
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Instructor repetido, el principal, ajeno, no vigente o no\
+            \ habilitado"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `clase:manage` en la sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La clase o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Clase cancelada o con honorarios liquidados
+      summary: Reemplazar los instructores adicionales de una clase
+      tags:
+      - Clases
   /api/v1/consultorios/{consultorioId}/clases/{claseId}/reprogramacion:
     post:
       description: |-
@@ -6217,8 +6344,10 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "`egreso-no-editable`, `egreso-comprobante-duplicado` o `concurrent-modification`\
-            \ (la version quedo vieja)"
+          description: "`egreso-no-editable`, `egreso-comprobante-duplicado`, `concurrent-modification`\
+            \ (la version quedo vieja) o `egreso-de-liquidacion` (importe, categoria\
+            \ o periodo de un egreso que nacio de una liquidacion de honorarios por\
+            \ clase)"
       summary: Corregir el borrador
       tags:
       - Egresos
@@ -6232,6 +6361,8 @@ paths:
         **Se rechaza si quedan pagos vigentes** (409 `egreso-con-pagos`, con `yaPagado` en el cuerpo). Anular el compromiso dejaria plata fuera del cajon sin nada que la justifique. El orden correcto es anular primero los pagos —que es lo que la devuelve— y despues el compromiso.
 
         **Anular no significa borrar** (RN-M22-002): la fila queda con su motivo, su actor y su fecha.
+
+        **Si el egreso nacio de una liquidacion de honorarios por clase (DP-38), la libera**: sus clases vuelven a entrar en el borrador siguiente del colaborador. La liquidacion queda `LIBERADA`, con su detalle.
       operationId: anularEgreso
       parameters:
       - in: path
@@ -6882,6 +7013,230 @@ paths:
       summary: Cuenta corriente de un financiador
       tags:
       - Presentaciones
+  /api/v1/consultorios/{consultorioId}/honorarios/borrador:
+    get:
+      description: |-
+        DP-38 (RF-M22-006). **Se calcula al pedirlo y no se guarda.** Entran las clases `REALIZADA` de la sede con inicio en el periodo (dias locales de la sede) donde el colaborador es el principal o un instructor adicional.
+
+        Por clase: **tarifa vigente el dia de la clase x presentes** (`PRESENTE` + `PRESENTE_TARDE`), repartida **en partes iguales** entre los instructores; el centavo sobrante va al primero del orden estable (el principal, despues los adicionales por membership).
+
+        `excluidas` dice por que una clase dictada no entra: `YA_LIQUIDADA` (con el egreso que la tiene), `SIN_HONORARIO`, `SIN_PRESENTES` o `SIN_IMPORTE`. Periodo de hasta 62 dias. Monedas distintas en el periodo: 400.
+      operationId: calcularBorradorDeHonorarios
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Membership del colaborador
+        example: 31
+        in: query
+        name: colaboradorMembershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Primer dia del periodo, inclusive"
+        example: 2026-10-01
+        in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Ultimo dia del periodo, inclusive"
+        example: 2026-10-31
+        in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Acota a una oferta: una liquidacion es de una sola (DP-39)"
+        example: 34
+        in: query
+        name: ofertaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BorradorDeHonorarios"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BorradorDeHonorarios"
+          description: Borrador calculado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Periodo invertido, de mas de 62 dias, o con tarifas en monedas\
+            \ distintas"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `caja:operate` en la sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Calcular el borrador de honorarios por clase de un colaborador
+      tags:
+      - Egresos
+  /api/v1/consultorios/{consultorioId}/honorarios/liquidaciones:
+    post:
+      description: |-
+        DP-38 (RF-M22-006/007). Recalcula el borrador **bajo el lock de sus clases** y, si es el que se miro (`claseIds` e `importeTotal`), crea el **egreso** de M22 en `BORRADOR` —`COLABORADOR`, `HONORARIOS_PROFESIONALES`, con el periodo— y la liquidacion con el **snapshot por clase**. No mueve la caja: el egreso sigue su ciclo (confirmar con comprobante, pagar).
+
+        Si el borrador cambio —otra liquidacion, una asistencia corregida, una tarifa nueva— **409 `borrador-de-honorarios-desactualizado`** con `importeTotalActual` y `claseIdsActuales`. Sin clases liquidables, **409 `liquidacion-de-honorarios-vacia`**.
+
+        **Idempotente** por `idempotencyKey`: el reintento con el mismo pedido devuelve la misma liquidacion (200); con otro pedido, 409. Una clase liquidada no entra en otro borrador del mismo colaborador hasta que se anule su egreso.
+
+        **Una liquidacion es de UNA oferta** y su egreso queda imputado a ella (`ofertaId`, DP-39), asi que los honorarios entran solos en la rentabilidad por servicio. Si el borrador mezcla ofertas, 400: se pide y se confirma por oferta con `ofertaId`.
+      operationId: confirmarLiquidacionDeHonorarios
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmarLiquidacionDeHonorariosRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiquidacionDeHonorarios"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LiquidacionDeHonorarios"
+          description: "Reintento con la misma clave: la misma liquidacion"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiquidacionDeHonorarios"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LiquidacionDeHonorarios"
+          description: Liquidacion confirmada y egreso creado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Cuerpo invalido o periodo invalido
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `caja:operate` en la sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`borrador-de-honorarios-desactualizado`, `liquidacion-de-honorarios-vacia`,\
+            \ `beneficiario-no-vinculado`, `egreso-comprobante-duplicado` o clave\
+            \ de idempotencia reusada con otro pedido"
+      summary: Confirmar el borrador de honorarios como egreso
+      tags:
+      - Egresos
+  /api/v1/consultorios/{consultorioId}/honorarios/liquidaciones/{liquidacionId}:
+    get:
+      description: "DP-38 (RF-M22-007, CA-M22-007-06). La liquidacion con su **snapshot\
+        \ por clase**: oferta, presentes, tarifa, instructores y la parte del colaborador,\
+        \ tal como se confirmaron. `estado` `LIBERADA` si se anulo su egreso. El egreso\
+        \ la referencia en `liquidacionHonorariosId`."
+      operationId: verLiquidacionDeHonorarios
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: liquidacionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiquidacionDeHonorarios"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LiquidacionDeHonorarios"
+          description: La liquidacion
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `caja:operate` en la sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La liquidacion o la sede no existen, o son de otro tenant"
+      summary: Ver una liquidacion de honorarios por clase
+      tags:
+      - Egresos
   /api/v1/consultorios/{consultorioId}/obligaciones:
     get:
       description: |-
@@ -7590,6 +7945,260 @@ paths:
           description: "Version desactualizada (concurrent-modification), oferta dada\
             \ de baja (oferta-inactiva), o sede no operable (consultorio-no-operable)"
       summary: Fijar que profesionales pueden prestar la oferta
+      tags:
+      - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/honorarios-por-clase:
+    get:
+      description: |-
+        DP-38 (RF-M22-006). La grilla de vigencias, ACTIVOS E HISTORICOS, del mas nuevo al mas viejo. vigente dice cual rige hoy. Exige consultorio:manage: es lo que cobra un colega.
+
+        La tarifa que aplica a una clase es la vigente el dia local de la clase en la sede. Una clase sin tarifa ese dia no entra en ninguna liquidacion.
+      operationId: listHonorariosPorClaseDeOferta
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HonorarioPorClase"
+          description: Honorarios de la oferta
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta o la sede no existen, o son de otro tenant"
+      summary: Listar los honorarios por clase de la oferta
+      tags:
+      - Servicios y ofertas
+    post:
+      description: |-
+        DP-38 (RF-M22-006). Exige consultorio:manage.
+
+        DOS HONORARIOS ACTIVOS DE LA MISMA OFERTA NO PUEDEN PISARSE: 409 honorario-de-clase-solapado, con el id y el periodo del que choca. Para cambiar la tarifa se cierra la vigencia de la actual (PUT) y se carga la nueva.
+
+        El importe no se edita despues. Lo ya liquidado no cambia nunca: la liquidacion copio su importe (CA-M22-007-06). Sin moneda, hereda la del precio de lista.
+      operationId: createHonorarioPorClaseDeOferta
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHonorarioPorClaseRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HonorarioPorClase"
+          description: Honorario creado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Importe no positivo, vigencia invertida o moneda ausente o\
+            \ invalida"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Periodo solapado (honorario-de-clase-solapado), oferta dada\
+            \ de baja (oferta-inactiva) o sede no operable (consultorio-no-operable)"
+      summary: Fijar el honorario por participante presente de la oferta para un periodo
+      tags:
+      - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/honorarios-por-clase/{honorarioId}:
+    delete:
+      description: Baja LOGICA con motivo obligatorio. Exige consultorio:manage. Libera
+        el periodo; lo ya liquidado con esa tarifa no se toca.
+      operationId: deactivateHonorarioPorClaseDeOferta
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Honorario por clase
+        example: 12
+        in: path
+        name: honorarioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateOfferingRequest"
+        required: true
+      responses:
+        "204":
+          description: Honorario dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta, la sede o el honorario no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El honorario ya estaba dado de baja (honorario-de-clase-inactivo)
+      summary: Dar de baja un honorario por clase
+      tags:
+      - Servicios y ofertas
+    put:
+      description: "DP-38. Exige consultorio:manage. Es lo UNICO editable de un honorario:\
+        \ el fin de su vigencia. Extenderlo puede producir 409 honorario-de-clase-solapado."
+      operationId: cambiarFinHonorarioPorClaseDeOferta
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Honorario por clase
+        example: 12
+        in: path
+        name: honorarioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CambiarFinHonorarioPorClaseRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HonorarioPorClase"
+          description: Honorario actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Vigencia invertida o falta la version
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta, la sede o el honorario no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Periodo solapado (honorario-de-clase-solapado), honorario\
+            \ dado de baja (honorario-de-clase-inactivo) o version desactualizada\
+            \ (concurrent-modification)"
+      summary: Cerrar o reabrir la vigencia de un honorario por clase
       tags:
       - Servicios y ofertas
   /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/politica-de-prepago:
@@ -23509,6 +24118,41 @@ components:
           description: "Primer dia en que el bloque ya NO rige, EXCLUSIVO. null =\
             \ sin fin previsto"
           example: 2027-01-01
+    BorradorDeHonorarios:
+      type: object
+      description: El borrador de honorarios por clase de un colaborador en un periodo.
+        Se calcula al pedirlo y no se guarda
+      properties:
+        clases:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineaDeHonorario"
+        colaboradorMembershipId:
+          type: integer
+          format: int64
+          example: 31
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        desde:
+          type: string
+          format: date
+        excluidas:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClaseExcluidaDeHonorarios"
+        hasta:
+          type: string
+          format: date
+        importeTotal:
+          type: number
+          description: Suma de importeColaborador de las clases
+          example: 5250.0
+        moneda:
+          type: string
+          description: Null si no entra ninguna clase
+          example: ARS
     CalendarioSedeResponse:
       type: object
       description: Politica de calendario de la sede y feriados de la ventana consultada
@@ -23589,6 +24233,23 @@ components:
           minimum: 0
       required:
       - version
+    CambiarFinHonorarioPorClaseRequest:
+      type: object
+      description: Nuevo fin de vigencia del honorario por clase
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version del honorario que se esta editando
+          example: 0
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia en que rige, INCLUSIVE. Null reabre la vigencia\
+            \ sin fin"
+          example: 2027-02-28
+      required:
+      - expectedVersion
     CambiarFinPrecioParticularRequest:
       type: object
       description: Nuevo fin de vigencia del precio particular
@@ -24402,6 +25063,41 @@ components:
           format: int64
           description: Se manda de vuelta al reprogramar
           example: 3
+    ClaseExcluidaDeHonorarios:
+      type: object
+      description: Una clase dictada que no entra en el borrador
+      properties:
+        claseId:
+          type: integer
+          format: int64
+          example: 502
+        egresoId:
+          type: integer
+          format: int64
+          description: "Con YA_LIQUIDADA, el egreso que la tiene. Null en los demas"
+          example: 5501
+        fecha:
+          type: string
+          format: date
+        inicio:
+          type: string
+          format: date-time
+        motivo:
+          type: string
+          description: Por que no entra
+          enum:
+          - YA_LIQUIDADA
+          - SIN_HONORARIO
+          - SIN_PRESENTES
+          - SIN_IMPORTE
+        ofertaId:
+          type: integer
+          format: int64
+          example: 34
+        ofertaNombre:
+          type: string
+        titulo:
+          type: string
     ClasificarAdjuntoRequest:
       type: object
       description: Reclasificacion de un adjunto. El contenido no se puede cambiar
@@ -24928,6 +25624,76 @@ components:
       required:
       - activa
       - version
+    ConfirmarLiquidacionDeHonorariosRequest:
+      type: object
+      description: "Confirma el borrador que se miro. claseIds e importeTotal son\
+        \ los del borrador: si el recalculo da otra cosa, 409 borrador-de-honorarios-desactualizado"
+      properties:
+        claseIds:
+          type: array
+          description: Las clases del borrador que se miro
+          example:
+          - 501
+          - 503
+          items:
+            type: integer
+            format: int64
+          minItems: 1
+        colaboradorMembershipId:
+          type: integer
+          format: int64
+          example: 31
+        comprobanteFecha:
+          type: string
+          format: date
+        comprobanteNumero:
+          type: string
+          maxLength: 40
+          minLength: 0
+        comprobanteTipo:
+          type: string
+          description: "Comprobante del profesional, si ya lo hay. Confirmar el egreso\
+            \ lo exige"
+          maxLength: 24
+          minLength: 0
+        concepto:
+          type: string
+          description: "Concepto del egreso. Por defecto: Honorarios por clase del\
+            \ <desde> al <hasta>"
+          maxLength: 280
+          minLength: 0
+        desde:
+          type: string
+          format: date
+          example: 2026-10-01
+        hasta:
+          type: string
+          format: date
+          example: 2026-10-31
+        idempotencyKey:
+          type: string
+          description: "Clave de idempotencia: un reintento con la misma clave y el\
+            \ mismo pedido devuelve la misma liquidacion"
+          maxLength: 80
+          minLength: 0
+        importeTotal:
+          type: number
+          description: El total del borrador que se miro
+          example: 5250.0
+          minimum: 0.01
+        ofertaId:
+          type: integer
+          format: int64
+          description: "Oferta a liquidar. Una liquidacion es de UNA oferta: su egreso\
+            \ se imputa a ella (DP-39). Opcional si el borrador tiene una sola; si\
+            \ mezcla, 400 y se confirma por oferta"
+          example: 34
+      required:
+      - claseIds
+      - colaboradorMembershipId
+      - desde
+      - hasta
+      - importeTotal
     ConsultorioPageResponse:
       type: object
       description: "Pagina de sedes de la organizacion, segun el filtro de estado\
@@ -26130,6 +26896,34 @@ components:
       - codigo
       - nombre
       - tipo
+    CreateHonorarioPorClaseRequest:
+      type: object
+      description: Honorario por participante presente de la oferta para un periodo
+      properties:
+        importePorParticipante:
+          type: number
+          description: Lo que se paga por cada participante PRESENTE o PRESENTE_TARDE.
+            Mayor que cero
+          example: 1500.0
+          minimum: 0.01
+        moneda:
+          type: string
+          description: "ISO 4217. Si se omite, la del precio de lista de la oferta"
+          example: ARS
+          pattern: "[A-Za-z]{3}"
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que rige (dia local de la clase en la sede)
+          example: 2026-11-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "ULTIMO dia en que rige, INCLUSIVE. Null = sin fin previsto"
+          example: 2027-03-31
+      required:
+      - importePorParticipante
+      - vigenciaDesde
     CreateInvitacionRequest:
       type: object
       description: Datos de la invitacion a emitir
@@ -27651,6 +28445,14 @@ components:
         importeTotal:
           type: number
           example: 185000.0
+        liquidacionHonorariosId:
+          type: integer
+          format: int64
+          description: "La liquidacion de honorarios por clase de la que nacio el\
+            \ egreso (DP-38). Solo en el detalle; null en los listados y en los egresos\
+            \ cargados a mano. Con valor, importe, categoria y periodo no se editan\
+            \ (409 `egreso-de-liquidacion`) y el detalle por clase se lee en `verLiquidacionDeHonorarios`."
+          example: 88
         moneda:
           type: string
           example: ARS
@@ -29393,6 +30195,58 @@ components:
           type: string
           description: Titulo corto
           example: Turno
+    HonorarioPorClase:
+      type: object
+      description: Honorario por clase de la oferta para un periodo
+      properties:
+        deactivationReason:
+          type: string
+          description: Motivo de la baja. Null mientras este activo
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante de la baja. Null mientras este activo
+        estado:
+          type: string
+          description: Ciclo de vida
+          enum:
+          - ACTIVO
+          - INACTIVO
+        id:
+          type: integer
+          format: int64
+          description: Identificador del honorario
+          example: 12
+        importePorParticipante:
+          type: number
+          description: Importe por participante presente
+          example: 1500.0
+        moneda:
+          type: string
+          description: ISO 4217
+          example: ARS
+        ofertaId:
+          type: integer
+          format: int64
+          description: Oferta
+          example: 34
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para cambiar el fin
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que rige
+          example: 2026-11-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia en que rige, INCLUSIVE. Null = sin fin previsto"
+        vigente:
+          type: boolean
+          description: Si es el que rige hoy
     HorarioGeneralFranjaRequest:
       type: object
       description: Franja semanal del horario general de la sede
@@ -29779,6 +30633,43 @@ components:
           type: integer
           format: int64
           example: 0
+    InstructorAdicional:
+      type: object
+      description: Un instructor adicional de una clase
+      properties:
+        agregadoEn:
+          type: string
+          format: date-time
+        membershipId:
+          type: integer
+          format: int64
+          example: 44
+        nombre:
+          type: string
+          description: Nombre actual. Null si no resuelve
+    InstructoresDeClase:
+      type: object
+      description: "Los instructores de una clase. El orden estable del reparto de\
+        \ honorarios es: el principal y despues los adicionales por membership ascendente."
+      properties:
+        adicionales:
+          type: array
+          description: "Instructores adicionales vigentes, por membership ascendente"
+          items:
+            $ref: "#/components/schemas/InstructorAdicional"
+        claseId:
+          type: integer
+          format: int64
+          example: 501
+        principalMembershipId:
+          type: integer
+          format: int64
+          description: Membership del profesional principal (el de la clase). Null
+            si la oferta no exige profesional
+          example: 31
+        principalNombre:
+          type: string
+          description: Nombre actual del principal. Null si no resuelve
     IntegranteDelEquipo:
       type: object
       description: "Profesional del equipo tratante de un caso, con su rol"
@@ -30040,6 +30931,134 @@ components:
           format: int32
           description: Tope que impone el plan. Ausente cuando el limite es ilimitado
           example: 3
+    LineaDeHonorario:
+      type: object
+      description: "Una clase que entra en la liquidacion, con todo lo que explica\
+        \ su importe"
+      properties:
+        claseId:
+          type: integer
+          format: int64
+          example: 501
+        fecha:
+          type: string
+          format: date
+          description: "Dia local de la clase en la sede: el que eligio la tarifa"
+          example: 2026-10-07
+        honorarioId:
+          type: integer
+          format: int64
+          description: La tarifa aplicada
+          example: 12
+        importeClase:
+          type: number
+          description: importePorParticipante x presentes
+          example: 10500.0
+        importeColaborador:
+          type: number
+          description: La parte de este colaborador
+          example: 5250.0
+        importePorParticipante:
+          type: number
+          example: 1500.0
+        inicio:
+          type: string
+          format: date-time
+        instructores:
+          type: integer
+          format: int32
+          description: Cuantos instructores se reparten la clase
+          example: 2
+        moneda:
+          type: string
+          example: ARS
+        ofertaId:
+          type: integer
+          format: int64
+          example: 34
+        ofertaNombre:
+          type: string
+          example: Pilates reformer
+        posicion:
+          type: integer
+          format: int32
+          description: "1 = el primero del orden estable: se lleva el centavo sobrante"
+          example: 1
+        presentes:
+          type: integer
+          format: int32
+          description: PRESENTE + PRESENTE_TARDE
+          example: 7
+        titulo:
+          type: string
+    LiquidacionDeHonorarios:
+      type: object
+      description: "Una liquidacion de honorarios por clase confirmada, con el snapshot\
+        \ por clase. Un cambio posterior de tarifa, nombre o asistencia no la altera\
+        \ (CA-M22-007-06)"
+      properties:
+        clases:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineaDeHonorario"
+        colaboradorMembershipId:
+          type: integer
+          format: int64
+          example: 31
+        colaboradorNombre:
+          type: string
+          description: Nombre congelado en el egreso
+        confirmadaEn:
+          type: string
+          format: date-time
+        confirmadaPorCuentaId:
+          type: integer
+          format: int64
+          example: 1204
+        consultorioId:
+          type: integer
+          format: int64
+          example: 7
+        desde:
+          type: string
+          format: date
+        egresoEstado:
+          type: string
+          description: Estado actual del egreso
+          example: BORRADOR
+        egresoId:
+          type: integer
+          format: int64
+          description: El egreso de M22 que la confirmacion creo
+          example: 5501
+        estado:
+          type: string
+          description: "LIBERADA cuando se anulo su egreso: sus clases vuelven al\
+            \ borrador"
+          enum:
+          - VIGENTE
+          - LIBERADA
+        hasta:
+          type: string
+          format: date
+        id:
+          type: integer
+          format: int64
+          example: 88
+        importeTotal:
+          type: number
+          example: 5250.0
+        liberadaEn:
+          type: string
+          format: date-time
+        moneda:
+          type: string
+          example: ARS
+        ofertaId:
+          type: integer
+          format: int64
+          description: La oferta a la que se imputo el egreso (DP-39)
+          example: 34
     LoginRequest:
       type: object
       description: Credenciales para abrir una sesion
@@ -33185,6 +34204,12 @@ components:
       - https://akine.app/problems/derivacion-ambigua
       - https://akine.app/problems/derivacion-con-sesion
       - https://akine.app/problems/caso-de-atencion-grupal
+      - https://akine.app/problems/honorario-de-clase-solapado
+      - https://akine.app/problems/honorario-de-clase-inactivo
+      - https://akine.app/problems/clase-con-honorarios-liquidados
+      - https://akine.app/problems/borrador-de-honorarios-desactualizado
+      - https://akine.app/problems/liquidacion-de-honorarios-vacia
+      - https://akine.app/problems/egreso-de-liquidacion
     Producto:
       type: object
       description: Producto de pack del catalogo de una sede (RF-M29-001).
@@ -33530,6 +34555,24 @@ components:
       required:
       - expectedVersion
       - ids
+    ReemplazarInstructoresDeClaseRequest:
+      type: object
+      description: La lista completa de instructores ADICIONALES. Vacia los quita
+        a todos
+      properties:
+        adicionales:
+          type: array
+          description: "Memberships de los adicionales, sin repetir y sin el principal"
+          example:
+          - 44
+          - 45
+          items:
+            type: integer
+            format: int64
+          maxItems: 10
+          minItems: 0
+      required:
+      - adicionales
     ReemplazarPracticasRequest:
       type: object
       description: "Conjunto completo de practicas de la oferta y su principal. Reemplaza,\
