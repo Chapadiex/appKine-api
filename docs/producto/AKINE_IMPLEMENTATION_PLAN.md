@@ -746,6 +746,16 @@ El vencimiento no es un evento: se calcula al leer, como VENCIDA en la autorizac
 
 **Decisión.** Cuatro decisiones quedan **fuera del release candidate**, como mejoras posteriores: **U-41** (esquema de honorarios por clase, RF-M22-006/007), **U-43** (cuenta técnica de sistema para el job de renovación de abonos), **U-45** (períodos de abono que no son un mes calendario) y **U-50** (rentabilidad y caja por servicio, RF-M23-009). Siguen **documentadas y abiertas** en `decisiones-pendientes.md`, marcadas como postergadas, para después del RC. Hoy valen: el egreso de honorarios se carga a mano; el período renovado se vende a nombre de la cuenta que autorizó la renovación; se renueva por mes calendario o `vigenciaDias`; el reporte `SERVICIOS` no muestra margen (`rentabilidad-sin-costos`).
 
+## DP-32 — SLO de escrituras: medir en el entorno de destino antes de tocar la numeración (`docs/carga.md` §10)
+
+**Estado:** DECIDIDA el 17/10/2026. Decidido por el usuario: acepta lo que `docs/carga.md` §10 da como "lo que conviene primero".
+
+**Decisión.** Primero la **opción 5**: repetir la carga de `perf/` en el entorno de destino (o uno equivalente) antes de cambiar la numeración de comprobantes. **Si allá el `COMMIT` sigue arriba de ~10 ms**, se implementa la **opción 1**, numeración por punto de venta (un talonario por caja u operador, cada uno correlativo y sin huecos). La medición en destino es un **paso del deploy**, no una tarea aparte.
+
+**Alternativas descartadas por ahora.** Numerar en lote después del commit (opción 2) y al cerrar la caja (opción 3), porque cambian el contrato o el significado del comprobante; el lock por profesional (opción 4), que en la carga medida no gana nada. Relajar la durabilidad de MySQL no es una opción: puede perder cobros confirmados.
+
+**Implementada en:** pendiente del deploy; la opción 6 (bajar el costo de CPU por pedido sin cambiar reglas) sigue en paralelo, `docs/carga.md` §13.
+
 ## DP-33 — La propiedad de la Sesión es la relación asistencial de DP-03 (U-03 + U-46 e)
 
 **Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.

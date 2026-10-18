@@ -40,7 +40,9 @@ export const options = {
   },
 };
 
-let reservas = 0;
+// Las corridas repetidas sobre la misma base (`perf/stack.sh cpu-por-pedido`) corren el primer
+// horario libre con AKINE_POR_PEDIDO_DESDE_RESERVA, para que cada reserva siga ganando.
+let reservas = parseInt(__ENV.AKINE_POR_PEDIDO_DESDE_RESERVA || '0', 10);
 
 function pedir(endpoint, i) {
   const c = centro.consultorioId;

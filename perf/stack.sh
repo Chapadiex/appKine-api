@@ -10,6 +10,7 @@
 #   perf/stack.sh actividad # k6 actividad.js -> perf/salida/actividad-resumen.{md,json} (F9, 09.03)
 #   perf/stack.sh metricas  # digest del performance_schema -> perf/salida/digest.tsv
 #   perf/stack.sh historia  # sentencias recientes por conexion (`historia on` antes de la carga)
+#   perf/stack.sh cpu-por-pedido  # ms de CPU del backend por pedido de cada endpoint -> perf/salida/cpu-por-pedido.md
 #   perf/stack.sh down      # baja y BORRA todo lo <P>-* (contenedores, volumenes, red; imagenes con --imagenes)
 #
 # Todo lleva el prefijo <P>- (g10 por defecto) y puertos propios: no toca akine-mysql,
@@ -207,6 +208,47 @@ por-pedido)
 	done
 	} | tee "$PERF/salida/por-pedido.md"
 	;;
+cpu-por-pedido)
+	# Milisegundos de CPU del backend por pedido de cada endpoint (docs/carga.md §13): un usuario,
+	# en serie, con el backend quieto. Primero una tanda de calentamiento (JIT), despues N pedidos
+	# entre dos lecturas de process_cpu_time_ns_total. Al total se le resta lo que el proceso gasta
+	# quieto (outbox, jobs, el propio scrape), medido antes durante 20 s y prorrateado por la
+	# duracion de cada tanda. AKINE_POR_PEDIDO_DESDE_RESERVA corre los horarios de la reserva para
+	# que una segunda pasada sobre la misma base siga ganando.
+	mkdir -p "$PERF/salida"
+	N="${AKINE_POR_PEDIDO_N:-300}"
+	DESDE="${AKINE_POR_PEDIDO_DESDE_RESERVA:-0}"
+	cpu_ns() {
+		curl -fsS "http://localhost:$PUERTO_API/actuator/prometheus" \
+			| awk '/^process_cpu_time_ns_total\{/ {printf "%.0f", $2}'
+	}
+	ahora_ms() { date +%s%3N; }
+	k6_cpu() {
+		docker run --rm --network "$RED" -v "$(montaje_perf):/perf" "${K6_ENV[@]}" \
+			-e "AKINE_POR_PEDIDO_ENDPOINT=$1" -e "AKINE_POR_PEDIDO_N=$2" \
+			-e "AKINE_POR_PEDIDO_DESDE_RESERVA=$3" "$K6_IMAGE" run -q /perf/k6/por-pedido.js >&2
+	}
+	k6_cpu token 1 0
+	c0=$(cpu_ns); t0=$(ahora_ms); sleep 20; c1=$(cpu_ns); t1=$(ahora_ms)
+	QUIETO=$(awk -v c="$((c1 - c0))" -v t="$((t1 - t0))" 'BEGIN {printf "%.6f", c / t}')
+	{
+	echo "| Endpoint | Pedidos | ms de CPU por pedido |"
+	echo "|---|---:|---:|"
+	for e in ${AKINE_POR_PEDIDO_ENDPOINTS:-agenda_dia buscar_slots recepcion_dia paciente_360 cobro reporte reserva login}; do
+		n="$N"; [ "$e" = login ] && n=20
+		if [ "$e" != login ]; then
+			k6_cpu "$e" "$((n / 3))" "$DESDE"; DESDE=$((DESDE + n / 3))
+		fi
+		c0=$(cpu_ns); t0=$(ahora_ms)
+		k6_cpu "$e" "$n" "$DESDE"; [ "$e" = reserva ] && DESDE=$((DESDE + n))
+		c1=$(cpu_ns); t1=$(ahora_ms)
+		awk -v e="$e" -v n="$n" -v c="$((c1 - c0))" -v t="$((t1 - t0))" -v q="$QUIETO" \
+			'BEGIN {printf "| %s | %d | %.2f |\n", e, n, (c - q * t) / n / 1e6}'
+	done
+	echo
+	echo "Quieto: $(awk -v q="$QUIETO" 'BEGIN {printf "%.1f", q / 1e3}') ms de CPU por segundo. Siguiente AKINE_POR_PEDIDO_DESDE_RESERVA=$DESDE"
+	} | tee "$PERF/salida/cpu-por-pedido.md"
+	;;
 historia)
 	# Las ultimas 10 000 sentencias de todas las conexiones (events_statements_history_long), para
 	# medir que corre bajo un lock con perf/seccion-critica.mjs (docs/carga.md §10). `historia on`
@@ -244,7 +286,7 @@ down)
 	echo "stack $P borrado"
 	;;
 *)
-	sed -n '2,16p' "$0"
+	sed -n '2,17p' "$0"
 	exit 1
 	;;
 esac
