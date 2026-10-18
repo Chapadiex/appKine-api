@@ -1,9 +1,10 @@
 # AKINE-07.04b — Reparos documentales (RF-M21-003) y débito parcial
 
-> **Propuesta, no decisión.** Implementa las dos opciones *recomendadas* de
-> `docs/fases/decisiones-pendientes.md` (**U-28** y **U-11**) y de la ficha F7 (n.º 3 y n.º 4) en
-> un PR en borrador para que el usuario decida con el código a la vista. Migración **`V110`**,
-> contrato **0.100.0**.
+> **Aprobada el 18/10/2026 (DP-37).** Nació como propuesta: implementa las dos opciones
+> *recomendadas* de `docs/fases/decisiones-pendientes.md` (**U-28** y **U-11**) y de la ficha F7
+> (n.º 3 y n.º 4), y el usuario las aceptó. Migración **`V110`** (nació como `V95` y se renumeró al
+> ponerse al día con `main`: Flyway corre sin `outOfOrder`), contrato **0.129.0** (nació como
+> 0.100.0; donde abajo dice 0.100.0, léase 0.129.0).
 
 ## 1. Qué se decide y qué se implementa
 

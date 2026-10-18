@@ -14,7 +14,7 @@ package com.akine.billing.application;
  * lo que el convenio exigia el dia de la prestacion —congelado en la obligacion por F-4— y solo al
  * validar y al confirmar, no al incluir: el item tiene que estar en el lote para que la pantalla de
  * validacion lo muestre. Los dos primeros bloquean; la credencial avisa. Es la opcion recomendada
- * de la decision U-28, implementada como propuesta. Ver
+ * de la decision U-28, aprobada el 18/10/2026 (DP-37). Ver
  * docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md §2.
  */
 public enum HallazgoDeValidacion {
