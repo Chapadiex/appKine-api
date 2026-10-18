@@ -851,6 +851,9 @@ serialización de la agenda.
 **Lo que conviene primero:** la opción 5 —medir dónde va a correr— y, si el commit sigue arriba de
 ~10 ms, la 1, que es la más barata, no toca la garantía de huecos y tiene precedente fiscal.
 
+**Decidido (DP-32, 17/10/2026):** primero la opción 5, como paso del deploy; si en el entorno de
+destino el commit sigue arriba de ~10 ms, se implementa la opción 1.
+
 ## 11. Los cuatro sobrantes de §6 y del #82, verificados (15/10/2026, rama `akine-g10-sobrantes`)
 
 Cuatro problemas seguían anotados como abiertos en `CLAUDE.md` §7. Se revisó cada uno contra
@@ -1160,3 +1163,177 @@ MySQL, `LimiteDeLotesPorSedeIT` con N=1 y 2 s: un lote A retenido en el `FOR SHA
 (`CarreraDirigida`) y un lote B de **otra** clase de la misma sede, que (1) espera los 2 s y recibe
 el rechazo sin escribir nada mientras A termina bien, (2) espera y entra cuando A termina, y (3) con
 un ítem o por el registro individual no espera. `ActivityControllersTest` cubre el 503 por HTTP.
+
+## 13. CPU por pedido sin cambiar reglas (17–18/10/2026, rama `akine-cpu-por-pedido`)
+
+Opción 6 de §10: con los locks fuera del camino, el p95 de escrituras lo marca la CPU en ráfagas.
+Esta rama perfila el backend bajo la mezcla de `perf/` y **saca dos costos que se pagaban en cada
+pedido sin decidir nada**. No cambian el contrato, las transacciones de negocio, el orden de los
+locks, las aislaciones ni el esquema (no hay migración: `V108` no se usó).
+
+Stack aislado con prefijo `cpu-` (MySQL 3361, Mailpit 8061/1061, backend 8121) y, para las
+comparaciones simultáneas, un segundo con prefijo `cpub-` (3362, 8062/1062, 8122). Backend con 4
+CPU, 2 GB y el pool por defecto (10). Las imágenes se armaron con el jar de cada commit sobre un
+JDK 21 (las capas del `Dockerfile`, pero con `jcmd` para volcar JFR).
+
+### Cómo se midió
+
+- **Perfil.** JFR `settings=profile` con `-XX:FlightRecorderOptions=stackdepth=256` durante la
+  mezcla completa, volcado con `jcmd 1 JFR.dump`, y las muestras de la meseta de 500 usuarios
+  (180 s) agrupadas por endpoint (el `*Controller` más cercano a la raíz), por fase y por método
+  inclusivo. Para atribuir lo que pasa **fuera** del controller hacen falta las pilas largas.
+- **CPU por pedido.** `process_cpu_time_ns_total` del backend antes y después de la corrida,
+  dividido por los pedidos de `http_server_requests_seconds_count`. Nuevo en `perf/stack.sh`:
+  `cpu-por-pedido`, lo mismo por endpoint con un usuario en serie (descuenta lo que el proceso gasta
+  quieto); `perf/k6/por-pedido.js` acepta `AKINE_POR_PEDIDO_DESDE_RESERVA` para repetir la reserva
+  sobre la misma base.
+- **La máquina tiene más ruido que el efecto.** La misma imagen dio entre 13,6 y 24,2 ms de CPU por
+  pedido según la hora (otros agentes con Testcontainers y stacks propios en el mismo Docker
+  Desktop), y el serial por endpoint varía ±20 % entre dos pasadas seguidas. Por eso la comparación
+  que vale es la **simultánea**: dos stacks idénticos con base nueva y el mismo sembrado, uno con
+  `main` y otro con la rama, corriendo la mezcla completa **a la vez**, cuatro rondas con los stacks
+  intercambiados. El ruido de la máquina cae igual sobre los dos.
+
+### Dónde se iba la CPU en `main` (`61e5859`, meseta de 500 usuarios, 11 422 muestras)
+
+| Fase (marcador más cercano a la hoja) | % de las muestras |
+|---|---:|
+| Dentro del controller (consultas, Hibernate, lógica) | 47,5 |
+| **Lecturas de acceso**: membership, rol de plataforma y grants | **20,4** |
+| Tomcat (lectura y escritura del socket) | 6,7 |
+| **Elegir el handler de Spring MVC** (`DispatcherServlet.getHandler`) | **6,3** |
+| Abrir y cerrar transacciones | 5,2 |
+| Micrometer (`http.server.requests`, observación del pedido) | 5,0 |
+| Serializar la respuesta (Jackson) | 3,5 |
+| Logging (chequeos de nivel de Hibernate y Spring) | 3,1 |
+| JWT | 1,6 |
+
+Por endpoint: búsqueda de slots 15,5 %, recepción del día 10,2 %, cobro 6,9 %, agenda del día 6,0 %,
+Paciente 360 5,8 %, reserva 5,6 %, login 3,0 %, reporte 2,7 %, y **42,3 % en los filtros sin llegar
+al controller** (acceso, JWT, mapeo, serialización). Por biblioteca: Connector/J 25,6 %, Hibernate
+21,2 %, Spring 11,5 %; Argon2 del login 2,8 %, TLS hacia MySQL 2,3 %. Asignación: ~950 KB por
+pedido, pero el GC es chico (1,5 s de pausas en toda la corrida): el costo es del hilo del pedido.
+
+Dos cosas de esa tabla no deciden nada y se pagaban en cada pedido:
+
+1. **`OrganizationMembershipDirectory.resolveMembership`, 14,9 % de toda la CPU.** Cada pedido con
+   contexto abría una transacción de solo lectura para cuatro lecturas —memberships de la cuenta en
+   la organización, sede por (id, organización) activa, organización vigente y suscripción—: 4
+   `SELECT` más dos `SET autocommit`, dos `SET SESSION TRANSACTION` y un `COMMIT`, nueve idas y
+   vueltas con su paso por Hibernate, el TLS y el transaction manager. La transacción estaba para
+   ver las cuatro en una misma foto (§9).
+2. **Elegir el handler, 6,3 %.** Casi todas las rutas llevan variables, así que Spring no las halla
+   por ruta directa y evalúa en cada pedido las condiciones completas —método, `Accept`,
+   `Content-Type`, patrón— de **las ~330 operaciones**, a través de la cadena de envoltorios del
+   request.
+
+Lo que no se tocó, y por qué: la relectura de membership y rol en cada pedido es la regla
+(ADR-0020, T-7); los `SET SESSION TRANSACTION READ ONLY` los defiende §9 (que MySQL rechace una
+escritura en una transacción de lectura); el TLS hacia MySQL es seguridad; las consultas derivadas de
+Spring Data ya usan la caché de interpretación de Hibernate (pasarlas a `@Query` no ahorra); el
+`Calendar` UTC con que Hibernate lee y escribe los `Instant` (~3 % de la CPU y 15 % de las
+asignaciones) sólo se va cambiando cómo viajan las fechas, que es la regla de `AGENT.md` §5; y apagar
+las métricas de logback quita series de `/actuator/prometheus`.
+
+### Qué se cambió
+
+| Cambio | Dónde | Por qué no cambia ninguna regla |
+|---|---|---|
+| El contexto de trabajo se resuelve con **una sola sentencia**: las memberships activas de la cuenta en la organización, cada una con la sede (`LEFT JOIN` por id, organización y `active`), la organización vigente y el estado de la suscripción. Sin transacción propia: `SUPPORTS`, como el rol de plataforma de §9 | `MembershipRepository.leerContextoDeAcceso`, `OrganizationMembershipDirectory`, `LecturasDeAcceso.contexto`, `LecturaDeContexto` | Las mismas condiciones que las cuatro lecturas, decididas en el mismo orden: vigencia y alcance con `MembershipSelection` (gana la de la sede), sede de **esa** organización y activa, organización vigente, suscripción presente; cualquier falta es el mismo `Optional.empty()` y el mismo 404. Una sentencia es una foto por sí misma: la consistencia que daba la transacción se conserva. Sigue sin caché, se lee en cada pedido. Cada `LEFT JOIN` trae a lo sumo una fila (PK y `uk_subscription_organization`): una fila por membership. Las memberships quedan en la memoria del pedido como antes, para la evaluación de permisos. Dentro de una transacción del llamador se une a ella, igual que antes |
+| **Descarte previo** de las rutas que no pueden coincidir: antes de la evaluación completa de Spring, se compara la forma del camino (cantidad de segmentos y literales en su lugar) con la de cada patrón simple. Si no puede coincidir, se devuelve lo que devolvería Spring (`null`) sin evaluar el resto; si puede, decide Spring como siempre | `MapeoDeRutasConDescarte`, `MapeoDeRutasConfig` (`WebMvcRegistrations`) | Es una condición **necesaria** de `PathPattern.matches` para patrones con sólo literales y variables de un segmento, comparada contra el valor decodificado del segmento, el mismo que usa Spring; si el analizador no distingue mayúsculas, no descarta. Comodines, regex, `**` y la raíz van sin descarte. El conjunto de coincidencias es el mismo, y por lo tanto el handler; 404/405/406/415 los decide Spring recorriendo todas las rutas por su cuenta. Las formas se arman una vez al registrar las rutas y se buscan por identidad: `RequestMappingInfo.hashCode` no está cacheado, y buscarlo en un `ConcurrentHashMap` en cada evaluación costaba más de lo que ahorraba (medido en una primera versión) |
+
+### Antes y después
+
+**Perfil** (JFR, meseta de 500 usuarios, misma ventana, corridas separadas):
+
+| | `main` | rama |
+|---|---:|---:|
+| Muestras de CPU en la meseta | 11 422 (110 req/s) | **8 826** (~114 req/s) |
+| `resolveMembership` | 1 702 (14,9 %) | **449 (5,1 %)** |
+| `DispatcherServlet.getHandler` | 745 (6,5 %) | **454 (5,1 %)** |
+
+**Sentencias por pedido** (`perf/stack.sh por-pedido`, las dos imágenes a la vez sobre bases
+gemelas): **8 menos en todos los endpoints con contexto** —una transacción menos: dos
+`SET autocommit`, dos `SET SESSION TRANSACTION`, un `COMMIT` y tres `SELECT`—.
+
+| Endpoint | Sentencias `main` → rama | SET | COMMIT |
+|---|---:|---:|---:|
+| agenda del día | 19 → **11** | 8 → 4 | 2 → 1 |
+| búsqueda de slots | 32 → **24** | 8 → 4 | 2 → 1 |
+| recepción del día | 23 → **15** | 8 → 4 | 2 → 1 |
+| Paciente 360 | 22 → **14** | 8 → 4 | 2 → 1 |
+| cobro | 35 → **27** | 14 → 10 | 4 → 3 |
+| reporte | 33 → **25** | 6 → 2 | 2 → 1 |
+| reserva | 47 → **39** | 16 → 12 | 4 → 3 |
+
+**CPU por pedido, mezcla completa a 500 usuarios, `main` y la rama corriendo a la vez** (dos stacks,
+base nueva cada ronda, cero errores técnicos en las ocho corridas):
+
+| Ronda (stack A / stack B) | `main` ms CPU/pedido | rama ms CPU/pedido | diferencia |
+|---|---:|---:|---:|
+| 1 (A `main`, B rama) | 17,46 | 15,50 | **−11,2 %** |
+| 2 (A rama, B `main`) | 18,62 | 16,41 | **−11,9 %** |
+| 3 (A `main`, B rama) | 20,16 | 17,66 | **−12,4 %** |
+| 4 (A rama, B `main`) | 25,82 | 23,87 | **−7,6 %** |
+
+**Entre 7,6 % y 12,4 % menos CPU por pedido en las cuatro rondas, con los stacks intercambiados**
+(promedio −10,8 %).
+
+**Repetido después de #158**, que bajó Connector/J de 9.7.0 a 9.6.0 (DP-34): `main` `c05e327`
+contra la rama mergeada con él, las mismas cuatro rondas simultáneas (18/10, 00:45–01:35, con la
+máquina más cargada: p50 de 0,2 a 1,4 s en los dos):
+
+| Ronda (stack A / stack B) | `main` ms CPU/pedido | rama ms CPU/pedido | diferencia |
+|---|---:|---:|---:|
+| 1 (A `main`, B rama) | 18,57 | 16,75 | **−9,8 %** |
+| 2 (A rama, B `main`) | 18,86 | 16,98 | **−10,0 %** |
+| 3 (A `main`, B rama) | 23,91 | 21,21 | **−11,3 %** |
+| 4 (A rama, B `main`) | 26,22 | 23,61 | **−10,0 %** |
+
+Promedio **−10,3 %**, cero errores técnicos: el cambio de driver no mueve el efecto. Corriendo una imagen por vez, intercaladas a lo largo de cinco horas, `main`
+promedió 19,4 ms (9 corridas, de 13,6 a 24,2) y la rama 18,2 ms (10 corridas, de 15,9 a 22,2): la
+dirección es la misma, pero la deriva de la máquina en esas horas es del doble que el efecto.
+
+**Por endpoint**, en serie (`cpu-por-pedido`, promedio de 4 pasadas por imagen con el JIT caliente,
+intercaladas; ±20 % de ruido por pasada), con el primer cambio solo: agenda del día 20,2 → 14,9 ms,
+recepción 26,2 → 21,0, Paciente 360 16,5 → 14,0, cobro 34,0 → 29,3, reporte 24,7 → 21,7, reserva
+35,2 → 31,2, búsqueda de slots 27,4 → 26,1. El descarte de rutas (~1–2 ms) no se distingue en serie;
+se ve en el perfil y en la comparación simultánea. El login (Argon2) no cambia.
+
+**Latencia.** Con dos stacks a la vez la máquina se satura y el p95 de los dos sube a 1–5 s: esas
+corridas sirven para la CPU, no para el SLO. Con un solo stack y la máquina quieta, intercalando
+`main` y la rama sobre la misma base (17/10, 20:14–21:18; la rama todavía con la primera versión
+del descarte):
+
+| Par | `main` p50 / p95 / p99 ms (interactivo) | rama p50 / p95 / p99 ms |
+|---|---|---|
+| 1 (`main` primero) | 31 / 320 / 1 559 | 24 / **152** / 408 |
+| 2 (`main` primero) | 28 / 261 / 675 | 21 / **103** / 494 |
+| 3 (rama primero) | 23 / 179 / 600 | 20 / **106** / 536 |
+| 4 (rama primero) | 23 / 148 / 691 | 20 / **112** / 624 |
+
+En los cuatro pares el p95 de la rama es menor (103–152 contra 148–320 ms) y las muestras con
+pedidos esperando conexión bajan (2–6 contra 3–13 muestras de 5 s). Más tarde, con la máquina cargada por otros
+agentes, las dos imágenes dieron p95 de 300 a 1 300 ms y una corrida de `main` sufrió una pausa de
+la máquina entera (p99 16 s): esa se descarta. Con la máquina quieta las dos cumplen o rozan el
+SLO de ADR-0016; el ruido de la hora pesa más que el cambio, y por eso la evidencia firme de la rama
+es la CPU por pedido, no el p95.
+
+### Tests
+
+- `OrganizationMembershipDirectoryTest` reescrito sobre la sentencia única: los mismos casos
+  (vencida, futura, de otra sede, sede ajena o dada de baja, organización dada de baja, sin
+  suscripción, estados) más "gana la de la sede" y "una sola lectura".
+- `ContextoDeAccesoIT` (nuevo, MySQL real): sede de otra organización, sede y organización dadas de
+  baja, varias memberships en orden de id sin multiplicarse por las uniones, la dada de baja afuera,
+  y sin membership ninguna fila.
+- `MapeoDeRutasEquivalenteIT` (nuevo): para cada operación, el pedido que le corresponde y siete
+  variantes (otro método, `DELETE`, un segmento de más o de menos, barra final, literal cambiado y
+  **literal codificado con `%XX`**), comparando el handler o la excepción contra un
+  `RequestMappingHandlerMapping` de Spring sin descarte con la misma configuración: más de mil
+  comparaciones. **Verificado por mutación:** comparar contra el valor crudo del segmento en vez del
+  decodificado lo hace fallar (`DELETE /api/v1/%66inanciadores/1/planes/1`).
+- En verde contra MySQL: `AislamientoDeTenantIT`, `AislamientoPorContextoIT`, `MatrizDePermisosIT`,
+  `LoginConcurrenteIT` y `OpenApiContractIT`; la suite completa, con los ITs de concurrencia, en el CI.
+
+Los números de una sola máquina de desarrollo no son los del entorno de destino (§7).

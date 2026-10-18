@@ -2,6 +2,7 @@ package com.akine.organization.application;
 
 import java.util.List;
 
+import com.akine.organization.domain.LecturaDeContexto;
 import com.akine.organization.domain.Membership;
 import com.akine.organization.domain.MembershipGrant;
 import com.akine.organization.domain.PlatformRole;
@@ -61,6 +62,21 @@ public final class LecturasDeAcceso {
 				() -> List.copyOf(repositorio
 						.findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(
 								organizationId, accountId)));
+	}
+
+	/**
+	 * Lo que decide un contexto de trabajo, leido <b>siempre</b> de la base y en una sola
+	 * sentencia ({@link MembershipRepositoryPort#leerContextoDeAcceso}). Las memberships de esa
+	 * lectura quedan en la memoria del pedido como si las hubiera leido {@link #memberships}, para
+	 * que la evaluacion de permisos del mismo pedido no las vuelva a leer.
+	 */
+	public static List<LecturaDeContexto> contexto(
+			MembershipRepositoryPort repositorio, long organizationId, long accountId, long consultorioId) {
+		List<LecturaDeContexto> filas =
+				repositorio.leerContextoDeAcceso(organizationId, accountId, consultorioId);
+		List<Membership> leidas = filas.stream().map(LecturaDeContexto::membership).toList();
+		MemoriaDelPedido.memorizar(new Memberships(organizationId, accountId), () -> leidas);
+		return filas;
 	}
 
 	/** Grants activos de la membership. */
