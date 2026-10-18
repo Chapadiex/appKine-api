@@ -1,14 +1,17 @@
 package com.akine.billing;
 
 import com.akine.TestcontainersConfiguration;
+import com.akine.billing.application.HallazgoDeValidacion;
 import com.akine.billing.application.ObligacionService;
 import com.akine.billing.application.ObligacionView;
 import com.akine.billing.application.OperatingActor;
 import com.akine.billing.application.PresentacionCommands;
 import com.akine.billing.application.PresentacionService;
 import com.akine.billing.application.PresentacionView;
+import com.akine.billing.application.ValidacionDePresentacion;
 import com.akine.billing.domain.EstadoPresentacion;
 import com.akine.billing.domain.exception.FinanciadorNoAccesibleException;
+import com.akine.billing.domain.exception.PresentacionConHallazgosException;
 import com.akine.billing.infrastructure.FinanciadoresEnElReporte;
 import com.akine.billing.infrastructure.ObligacionDevengador;
 import com.akine.encounter.application.SesionService;
@@ -256,6 +259,30 @@ class ObligacionDelFinanciadorIT {
 		PresentacionView borrador = presentacionService.crear(f.administrativo(), f.consultorioId(),
 				new PresentacionCommands.Alta(f.financiador(), hoy().minusDays(30),
 						hoy().plusDays(30), "ARS", List.of(financiadorObligacion)));
+
+		// DP-37 (U-28): el convenio exigia orden y el paciente no tiene ninguna. Es un reparo, y el
+		// lote no se confirma; la credencial vencida es un aviso y no frena nada.
+		assertThatThrownBy(() -> presentacionService.confirmar(
+				f.administrativo(), f.consultorioId(), borrador.id()))
+				.isInstanceOf(PresentacionConHallazgosException.class)
+				.satisfies(e -> assertThat(((PresentacionConHallazgosException) e).getHallazgos())
+						.containsExactly(financiadorObligacion + ":SIN_ORDEN"));
+
+		// Cargada la orden, el reparo se levanta solo en la proxima validacion y queda el aviso.
+		jdbc.update("""
+				INSERT INTO orden_medica (organization_id, persona_id, consultorio_id,
+				                          profesional_emisor, fecha_emision, vigencia_desde,
+				                          active, version, created_at, updated_at)
+				VALUES (?, ?, ?, 'Dra. Sintetica', ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", f.organizationId(), f.personaId(), f.consultorioId(),
+				java.sql.Date.valueOf(hoy().minusDays(10)), java.sql.Date.valueOf(hoy().minusDays(10)));
+		ValidacionDePresentacion validacion = presentacionService.validar(
+				f.administrativo(), f.consultorioId(), borrador.id());
+		assertThat(validacion.confirmable()).isTrue();
+		assertThat(validacion.hallazgos()).isEmpty();
+		assertThat(validacion.avisos()).extracting(ValidacionDePresentacion.Reparo::hallazgo)
+				.containsExactly(HallazgoDeValidacion.CREDENCIAL_FALTANTE);
+
 		PresentacionView confirmada = presentacionService.confirmar(
 				f.administrativo(), f.consultorioId(), borrador.id());
 		assertThat(confirmada.estado()).isEqualTo(EstadoPresentacion.PRESENTADA);
