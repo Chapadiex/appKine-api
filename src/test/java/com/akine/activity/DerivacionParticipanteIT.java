@@ -1,5 +1,6 @@
 package com.akine.activity;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.activity.application.AsistenciaService;
 import com.akine.activity.application.DerivacionService;
@@ -163,14 +164,13 @@ class DerivacionParticipanteIT {
 
 	private long crearOfertaGrupal(boolean clinica) {
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);
-		jdbc.update("""
+		long servicioId = InsertarConId.insertar(jdbc, """
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
 				VALUES (?, ?, 'CLINICO', 'GRUPAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", "DER-" + sufijo.toUpperCase(), "Servicio " + sufijo);
-		long servicioId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO oferta_servicio_consultorio
 				       (organization_id, consultorio_id, servicio_id, nombre_comercial, modalidad,
 				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
@@ -180,11 +180,10 @@ class DerivacionParticipanteIT {
 				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", mundo.organizationId(), mundo.consultorioId(), servicioId, "Grupal " + sufijo,
 				clinica, clinica);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long crearClase(long ofertaId) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO clase_programada (organization_id, consultorio_id, oferta_id, titulo,
 				                              inicio, fin, capacidad, estado,
 				                              programado_por_cuenta_id, programado_en, version)
@@ -193,7 +192,6 @@ class DerivacionParticipanteIT {
 				        DATE_ADD(DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 7 DAY), INTERVAL 1 HOUR),
 				        8, 'PROGRAMADA', ?, UTC_TIMESTAMP(6), 0)
 				""", mundo.organizationId(), mundo.consultorioId(), ofertaId, actor.accountId());
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long inscribir(long claseId, long persona) {
@@ -222,12 +220,11 @@ class DerivacionParticipanteIT {
 
 	private long crearPersonaSinPerfil() {
 		String apellido = "SinPerfil" + UUID.randomUUID().toString().substring(0, 8);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
 				VALUES (?, ?, 'Sintetica', ?, 'SINTETICA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", mundo.organizationId(), apellido, apellido.toUpperCase());
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private int auditados(String eventType) {

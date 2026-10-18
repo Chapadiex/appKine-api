@@ -1,5 +1,6 @@
 package com.akine.billing;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.billing.application.HallazgoDeValidacion;
 import com.akine.billing.application.ObligacionService;
@@ -646,7 +647,6 @@ class ObligacionDelFinanciadorIT {
 	}
 
 	private long insertar(String insert, Object... args) {
-		jdbc.update(insert, args);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		return InsertarConId.insertar(jdbc, insert, args);
 	}
 }

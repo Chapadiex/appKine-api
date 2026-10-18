@@ -1,5 +1,6 @@
 package com.akine.encounter.support;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.encounter.application.OperatingActor;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -174,7 +175,7 @@ public final class EncounterFixtures {
 
 	/** Una sesion BORRADOR cuyo dueño es {@code duenio}, que tiene que ser miembro de la sede. */
 	public long crearSesion(Mundo mundo, Miembro duenio) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
@@ -182,7 +183,6 @@ public final class EncounterFixtures {
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", mundo.organizationId(), mundo.consultorioId(), mundo.historiaClinicaId(),
 				mundo.ofertaId(), duenio.membershipId(), duenio.cuentaId());
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	/** Un Caso Clinico ACTIVO en la historia del mundo, con el numero dado dentro de ella. */

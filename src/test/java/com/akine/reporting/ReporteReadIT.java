@@ -1,5 +1,6 @@
 package com.akine.reporting;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.organization.domain.exception.PermissionDeniedException;
 import com.akine.reporting.application.OperatingActor;
@@ -495,7 +496,6 @@ class ReporteReadIT {
 	}
 
 	private long insertar(String sql, Object... args) {
-		jdbc.update(sql, args);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		return InsertarConId.insertar(jdbc, sql, args);
 	}
 }

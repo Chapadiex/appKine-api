@@ -1,5 +1,6 @@
 package com.akine.reporting;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.billing.application.CajaService;
 import com.akine.billing.application.CobroCommand;
@@ -368,7 +369,6 @@ class ReportesContraElMotorIT {
 	}
 
 	private long insertar(String sql, Object... args) {
-		jdbc.update(sql, args);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		return InsertarConId.insertar(jdbc, sql, args);
 	}
 }

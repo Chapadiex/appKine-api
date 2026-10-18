@@ -1,5 +1,6 @@
 package com.akine.person.infrastructure;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -360,7 +361,7 @@ class AutorizacionMovimientoMigrationIT {
 			String motivo,
 			Long movimientoOrigenId) {
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO autorizacion_movimiento
 				       (organization_id, autorizacion_id, persona_id, consultorio_id, tipo,
 				        cantidad, tipo_origen, referencia_origen, motivo, movimiento_origen_id,
@@ -369,7 +370,6 @@ class AutorizacionMovimientoMigrationIT {
 				         UTC_TIMESTAMP(6))
 				""", organizationId, autorizacionId, personaId, tipo, cantidad, tipoOrigen,
 				referenciaOrigen, motivo, movimientoOrigenId);
-		return ultimoId();
 	}
 
 	private List<String> columnasDe(String tabla) {
@@ -387,24 +387,22 @@ class AutorizacionMovimientoMigrationIT {
 	}
 
 	private long crearConsultorio(long organizationId) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
 				 VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, "Sede " + SECUENCIA.incrementAndGet(), ZONA);
-		return ultimoId();
 	}
 
 	private long crearPersona(long organizationId) {
 		String documento = String.valueOf(SECUENCIA.incrementAndGet());
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Paciente', 'SINTETICA', 'PACIENTE',
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, documento, documento);
-		return ultimoId();
 	}
 
 	/**
@@ -424,7 +422,7 @@ class AutorizacionMovimientoMigrationIT {
 		long especialidadId = crearEspecialidad(organizationId, "E-" + sufijo);
 		long practicaId = crearPractica(organizationId, especialidadId, "PR-" + sufijo);
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO autorizacion (organization_id, persona_id, consultorio_id,
 				                          cobertura_id, practica_id, numero, estado,
 				                          cantidad_autorizada, cantidad_consumida, vigencia_desde,
@@ -433,20 +431,18 @@ class AutorizacionMovimientoMigrationIT {
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, personaId, consultorioId, coberturaId, practicaId,
 				"AUT-" + sufijo);
-		return ultimoId();
 	}
 
 	private long crearFinanciador(long organizationId, String codigo) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
 				 VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, codigo, "Financiador " + codigo);
-		return ultimoId();
 	}
 
 	private long crearPlan(long organizationId, long financiadorId, String codigo) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
@@ -454,14 +450,13 @@ class AutorizacionMovimientoMigrationIT {
 				 VALUES (?, ?, ?, ?, '2020-01-01', 1, 0, 1, 0,
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, financiadorId, codigo, "Plan " + codigo);
-		return ultimoId();
 	}
 
 	/** La copia congelada va ENTERA: {@code ck_cobertura_referencia_coherente} rechaza media. */
 	private long crearCobertura(
 			long organizationId, long personaId, long financiadorId, long planId, String sufijo) {
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO cobertura_paciente (
 				        organization_id, persona_id, tipo,
 				        financiador_id, financiador_codigo, financiador_nombre, financiador_tipo,
@@ -476,30 +471,23 @@ class AutorizacionMovimientoMigrationIT {
 				financiadorId, "OS-" + sufijo, "Financiador OS-" + sufijo,
 				planId, "P-" + sufijo, "Plan P-" + sufijo,
 				"AF-" + sufijo);
-		return ultimoId();
 	}
 
 	private long crearEspecialidad(long organizationId, String codigo) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active,
 				                          version, created_at, updated_at)
 				 VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, codigo, "Especialidad " + codigo);
-		return ultimoId();
 	}
 
 	private long crearPractica(long organizationId, long especialidadId, String codigo) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from,
 				                      active, version, created_at, updated_at)
 				 VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, especialidadId, codigo, "Practica " + codigo);
-		return ultimoId();
-	}
-
-	private long ultimoId() {
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 }

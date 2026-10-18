@@ -1,5 +1,6 @@
 package com.akine.billing;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.billing.application.CajaService;
 import com.akine.billing.application.CobroCommand;
@@ -413,16 +414,15 @@ class CierreDeCajaConcurrenteIT {
 				""", new Object[]{organizationId, consultorioId, servicioId, "Oferta " + sufijo},
 				new Object[]{organizationId, "Oferta " + sufijo});
 
-		jdbc.update("""
+		long sesionId = InsertarConId.insertar(jdbc, """
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioId, historiaId, ofertaId, 1L, cuentaId);
-		long sesionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
-		jdbc.update("""
+		long obligacionId = InsertarConId.insertar(jdbc, """
 				INSERT INTO obligacion (organization_id, consultorio_id, sesion_id, persona_id,
 				                        responsable, importe_original, saldo, moneda, estado,
 				                        oferta_id, snapshot_nombre, snapshot_precio, devengada_en,
@@ -431,7 +431,6 @@ class CierreDeCajaConcurrenteIT {
 				        ?, 'Sesion sintetica', 8500.00, UTC_TIMESTAMP(6), 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, consultorioId, sesionId, personaId, ofertaId);
-		long obligacionId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 
 		return new Fixture(organizationId, consultorioId, personaId, obligacionId, jornadaId, actor);
 	}

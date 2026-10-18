@@ -1,5 +1,6 @@
 package com.akine.person.infrastructure;
 
+import com.akine.testsupport.InsertarConId;
 import java.util.List;
 
 import javax.sql.DataSource;
@@ -275,14 +276,12 @@ class PersonaMigrationIT {
 	private long insertarPersona(
 			Long organizationId, String tipo, String numero, String apellido, String nombre) {
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, ?, ?, ?, ?, ?, UPPER(?), UPPER(?), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, tipo, numero, numero, apellido, nombre, apellido, nombre);
-
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private void activarPerfil(long personaId) {

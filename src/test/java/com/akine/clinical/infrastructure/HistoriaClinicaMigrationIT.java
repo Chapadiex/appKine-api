@@ -1,5 +1,6 @@
 package com.akine.clinical.infrastructure;
 
+import com.akine.testsupport.InsertarConId;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -261,33 +262,30 @@ class HistoriaClinicaMigrationIT {
 
 	private long crearPersona(long organizationId) {
 		String documento = String.valueOf(SECUENCIA.incrementAndGet());
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Perez', 'Ana', 'PEREZ', 'ANA',
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, documento, documento);
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long abrirHistoria(long organizationId, long personaId) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              created_at, updated_at)
 				 VALUES (?, ?, UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, personaId);
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long registrarAntecedente(long organizationId, long historiaId, String tipo) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO historia_clinica_antecedente (organization_id, historia_clinica_id, tipo,
 				                                          descripcion, registrado_en, registrado_por,
 				                                          created_at, updated_at)
 				 VALUES (?, ?, ?, 'penicilina', UTC_TIMESTAMP(6), 1,
 				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, historiaId, tipo);
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 }

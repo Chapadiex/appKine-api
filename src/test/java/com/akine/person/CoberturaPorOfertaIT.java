@@ -1,5 +1,6 @@
 package com.akine.person;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.contracting.ConvenioFixtures.Desenlace;
 import com.akine.contracting.application.ArancelCommands.ArancelAltaCommand;
@@ -485,8 +486,7 @@ class CoberturaPorOfertaIT {
 	}
 
 	private long insertar(String insert, Object... args) {
-		jdbc.update(insert, args);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		return InsertarConId.insertar(jdbc, insert, args);
 	}
 
 	private static LocalDate hoy() {

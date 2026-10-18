@@ -1,5 +1,6 @@
 package com.akine.billing;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.billing.domain.port.PresentacionRepositoryPort;
 import com.akine.billing.domain.port.TotalesDeCuentaCorriente;
@@ -125,37 +126,33 @@ class CuentaCorrienteDeFinanciadorIT {
 	}
 
 	private long insertarOrganizacion(String sufijo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
 				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", "Centro " + sufijo, "cc-fin-it-" + sufijo, ZONA);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarSede(long organizationId, String nombre) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
 				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, "Sede " + nombre, ZONA);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarCuenta(String sufijo) {
 		String email = "cc-fin-it-" + sufijo + "@ejemplo.test";
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
 				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", email, email);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarFinanciador(long organizationId, String sufijo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
 				VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, "FIN-" + sufijo, "Financiador " + sufijo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 }

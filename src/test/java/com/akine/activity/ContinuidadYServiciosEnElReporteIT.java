@@ -1,5 +1,6 @@
 package com.akine.activity;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.activity.ActividadItFixture.Tenant;
 import com.akine.activity.application.AsistenciaService;
@@ -407,8 +408,7 @@ class ContinuidadYServiciosEnElReporteIT {
 	}
 
 	private long insertar(String sql, Object... args) {
-		jdbc.update(sql, args);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+		return InsertarConId.insertar(jdbc, sql, args);
 	}
 
 	private static OperatingActor reporteDe(Tenant t) {

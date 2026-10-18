@@ -1,5 +1,6 @@
 package com.akine.contracting;
 
+import com.akine.testsupport.InsertarConId;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
@@ -152,33 +153,30 @@ public final class ConvenioFixtures {
 	}
 
 	private long insertarFinanciador(long organizationId, String sufijo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
 				VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, "FIN-" + sufijo, "Financiador " + sufijo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarPlan(long organizationId, long financiadorId, String sufijo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
 				VALUES (?, ?, ?, ?, '2020-01-01', 0, 1, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, financiadorId, "PLAN-" + sufijo, "Plan " + sufijo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarEspecialidad(long organizationId, String sufijo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active, version,
 				                          created_at, updated_at)
 				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, "ESP-" + sufijo, "Especialidad " + sufijo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarCuenta(String sufijo) {
@@ -207,12 +205,11 @@ public final class ConvenioFixtures {
 	}
 
 	private long insertarPractica(long organizationId, long especialidadId, String sufijo) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from,
 				                      active, version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, especialidadId, "PRA-" + sufijo, "Practica " + sufijo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 }

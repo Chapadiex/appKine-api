@@ -1,5 +1,6 @@
 package com.akine.clinical;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -349,13 +350,12 @@ class HistoriaClinicaApiIT {
 	/** Persona con perfil de paciente vigente, escrita por SQL como en {@code TimelineIT}. */
 	private long crearPaciente(Tenant tenant) {
 		String sufijo = UUID.randomUUID().toString().substring(0, 12);
-		jdbc.update("""
+		long personaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave,
 				                     nombre_clave, active, version, created_at, updated_at)
 				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", tenant.organizationId(), "Paciente" + sufijo, ("PACIENTE" + sufijo).toUpperCase());
-		long personaId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)

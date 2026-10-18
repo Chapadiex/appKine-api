@@ -1,5 +1,6 @@
 package com.akine.activity;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.activity.application.InscribirCommand;
 import com.akine.activity.application.InscripcionService;
 import com.akine.activity.application.OperatingActor;
@@ -147,7 +148,7 @@ public final class ActividadItFixture {
 	 *                     grilla imposible confunde a quien lea los datos de una corrida
 	 */
 	public long programarClase(Tenant tenant, int capacidad, int diasAdelante) {
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO clase_programada (organization_id, consultorio_id, oferta_id, titulo,
 				                              inicio, fin, capacidad, estado,
 				                              programado_por_cuenta_id, programado_en, version)
@@ -157,7 +158,6 @@ public final class ActividadItFixture {
 				        ?, 'PROGRAMADA', ?, UTC_TIMESTAMP(6), 0)
 				""", tenant.organizationId(), tenant.consultorioId(), tenant.ofertaId(),
 				diasAdelante, diasAdelante, capacidad, tenant.actor().accountId());
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	/** Inscribe por el servicio real, sin clave de idempotencia. */

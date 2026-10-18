@@ -1,5 +1,6 @@
 package com.akine.person.infrastructure;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -266,7 +267,7 @@ class CoberturaPacienteMigrationIT {
 			String desde, String hasta) {
 
 		boolean financiada = "FINANCIADA".equals(tipo);
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO cobertura_paciente (organization_id, persona_id, tipo,
 				                                financiador_id, financiador_codigo,
 				                                financiador_nombre, financiador_tipo,
@@ -290,8 +291,6 @@ class CoberturaPacienteMigrationIT {
 				financiada ? 1 : null,
 				financiada ? "2026-09-01 00:00:00.000000" : null,
 				afiliado, desde, hasta);
-
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarOrganizacion() {
@@ -306,28 +305,26 @@ class CoberturaPacienteMigrationIT {
 
 	private long insertarPersona(long organizationId) {
 		String documento = String.valueOf(System.nanoTime()).substring(0, 8);
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Paciente', 'SINTETICA', 'PACIENTE',
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, documento, documento);
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarFinanciador(long organizationId) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
 				VALUES (?, 'OSDE', 'OSDE Binario', 'PREPAGA', 1, 0, UTC_TIMESTAMP(6),
 				        UTC_TIMESTAMP(6))
 				""", organizationId);
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarPlan(long organizationId, long financiadorId) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
@@ -335,6 +332,5 @@ class CoberturaPacienteMigrationIT {
 				VALUES (?, ?, '210', 'Plan 210', '2026-01-01', 0, 1, 1, 0, UTC_TIMESTAMP(6),
 				        UTC_TIMESTAMP(6))
 				""", organizationId, financiadorId);
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 }

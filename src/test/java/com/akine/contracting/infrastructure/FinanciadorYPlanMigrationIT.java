@@ -1,5 +1,6 @@
 package com.akine.contracting.infrastructure;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -284,25 +285,23 @@ class FinanciadorYPlanMigrationIT {
 	}
 
 	private long insertarFinanciador(long organizationId, String codigo, String nombre, String cuit) {
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, cuit, active,
 				                         version, created_at, updated_at)
 				VALUES (?, ?, ?, 'PREPAGA', ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, codigo, nombre, cuit);
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long insertarPlan(
 			long organizationId, long financiadorId, String codigo, String nombre,
 			String desde, String hasta) {
 
-		jdbc().update("""
+		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, vigencia_hasta, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, ?, 0, 1, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, financiadorId, codigo, nombre, desde, hasta);
-		return jdbc().queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 }

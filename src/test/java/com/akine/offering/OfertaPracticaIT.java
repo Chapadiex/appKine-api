@@ -1,5 +1,6 @@
 package com.akine.offering;
 
+import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.offering.application.HabilitacionesView;
 import com.akine.offering.application.OfertaHabilitacionService;
@@ -295,20 +296,18 @@ class OfertaPracticaIT {
 
 	private long insertarPractica(Long organizationId, String prefijo) {
 		String sufijo = prefijo + "-" + UUID.randomUUID().toString().substring(0, 8);
-		jdbc.update("""
+		long especialidadId = InsertarConId.insertar(jdbc, """
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active, version,
 				                          created_at, updated_at)
 				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, "ESP-" + sufijo, "Especialidad " + sufijo);
-		long especialidadId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from,
 				                      active, version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", organizationId, especialidadId, "PRA-" + sufijo, "Practica " + sufijo);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private void insertarFila(Escenario e, long practicaId, boolean principal, boolean dadaDeBaja) {
@@ -324,12 +323,11 @@ class OfertaPracticaIT {
 
 	private long otraSede(Escenario e) {
 		String nombre = "Otra sede " + UUID.randomUUID().toString().substring(0, 8);
-		jdbc.update("""
+		return InsertarConId.insertar(jdbc, """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
 				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", org(e), nombre, AgendaFixtures.ZONA);
-		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
 	private long version(Escenario e) {
