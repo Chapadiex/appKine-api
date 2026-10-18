@@ -1,5 +1,6 @@
 package com.akine.encounter.api;
 
+import com.akine.encounter.api.dto.CambiarCasoDeSesionRequest;
 import com.akine.encounter.api.dto.CerrarSesionRequest;
 import com.akine.encounter.api.dto.EnmendarSesionRequest;
 import com.akine.encounter.api.dto.GuardarBorradorRequest;
@@ -81,7 +82,8 @@ public class SesionController {
 
 					LA IDEMPOTENCIA MANDA SOBRE EL CASO: si la sesion del turno ya existe se \
 					devuelve tal cual, con el caso que tenga, aunque esta llamada traiga otro. \
-					Reasignar el caso de una atencion ya empezada no es "iniciar".""")
+					Reasignar el caso de una atencion ya empezada no es "iniciar": es \
+					`PUT .../sesiones/{sesionId}/caso`.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201", description = "Atencion iniciada"),
 			@ApiResponse(
@@ -145,9 +147,18 @@ public class SesionController {
 					es 409 y no 403.
 
 					El contenido es **opaco**: que campos tiene una evaluacion lo define \
-					AKINE-06.02. Esta etapa garantiza que se guarda, se versiona y no se pierde.""")
+					AKINE-06.02. Esta etapa garantiza que se guarda, se versiona y no se pierde.
+
+					**Lo unico que se exige es que sea JSON.** Un `contenido` que no parsea, vacio \
+					o anidado mas alla de 99 niveles responde **400 `validation-error`** con \
+					`errors.contenido`; reintentar el mismo cuerpo falla igual. `null` vacia el \
+					borrador.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Borrador guardado"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "El contenido no es un documento JSON valido, o falta la version",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "404",
 					description = "La sesion o la sede no existen, o son de otro tenant",
@@ -164,6 +175,60 @@ public class SesionController {
 		return ResponseEntity.ok(SesionResponse.de(sesionService.guardarBorrador(
 				apiActor.current(), consultorioId, sesionId,
 				request.contenido(), request.version())));
+	}
+
+	@PutMapping("/{sesionId}/caso")
+	@Operation(
+			operationId = "cambiarCasoDeSesion",
+			summary = "Asociar, cambiar o quitar el caso clinico de una atencion abierta",
+			description = """
+					Deja en la sesion el caso que viene en `casoId`, o ninguno si viene nulo. Es \
+					la unica forma de corregir el caso despues de iniciar: el inicio es \
+					idempotente y devuelve la sesion con el caso que ya tenia.
+
+					**Solo con la sesion abierta.** Una sesion cerrada ya tiene su numero dentro \
+					del caso, y cambiarlo seria renumerar historia clinica (409 `sesion-cerrada`).
+
+					El caso tiene que ser **activo y de la misma historia clinica**: uno de otro \
+					paciente responde 404 —indistinguible de "no existe"— y uno cerrado 409 \
+					`caso-clinico-cerrado`. Quitar el caso siempre se puede: el caso no es \
+					obligatorio (RF-M14-002).
+
+					**Hay que mandar la `version` que se leyo**, y **solo el profesional de la \
+					sesion puede cambiarlo**: escribir en la atencion ajena es 409, no 403. Deja \
+					evento de auditoria. Pedir el caso que ya tiene no escribe ni avanza la \
+					version.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Caso asignado. Devuelve la sesion "
+					+ "con la version nueva"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Falta la version o el caso no es un id valido",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `sesion:register` en esa sede, o sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sesion, la sede o el caso no existen, son de otro tenant, o "
+							+ "el caso es de otra historia clinica",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "La sesion esta cerrada, la atiende otro profesional, la version "
+							+ "quedo vieja (`concurrent-modification`), el caso esta cerrado, o la "
+							+ "sesion es de origen grupal y su caso lo fija la derivacion "
+							+ "(`caso-de-atencion-grupal`, AKINE-08.05)",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<SesionResponse> cambiarCaso(
+			@PathVariable long consultorioId,
+			@PathVariable long sesionId,
+			@RequestBody @Valid CambiarCasoDeSesionRequest request) {
+
+		return ResponseEntity.ok(SesionResponse.de(sesionService.cambiarCaso(
+				apiActor.current(), consultorioId, sesionId,
+				request.casoId(), request.version())));
 	}
 
 	@PutMapping("/{sesionId}/evaluacion")

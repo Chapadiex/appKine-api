@@ -26,7 +26,9 @@ Tablas: `persona`, `perfil_paciente`, `adjunto_administrativo`, `financiador`, `
 de nacimiento, email `ana.qa@ejemplo.test`. Después intentá otra con el **mismo DNI** y otro
 nombre.
 
-**Esperado:** la primera entra. La segunda avisa posible duplicado y solo sigue si lo confirmás.
+**Esperado:** la primera entra. La segunda se **rechaza siempre** con 409 `persona-documento-taken`: el documento es único en la
+organización y confirmar no lo saltea. El aviso de "posible duplicado" que sí se puede confirmar
+(`confirmaPosibleDuplicado`) es por mismo nombre y fecha de nacimiento con **otro** documento.
 
 ```sql
 SET @persona := (SELECT MAX(id) FROM persona WHERE organization_id = @org_a AND numero_documento = '30111222');
@@ -346,16 +348,19 @@ WHERE p.organization_id = @org_a AND p.active = 0;
 ```
 
 Esperado: persona **y** perfil dados de baja lógica (la baja de la persona da de baja su perfil,
-03.02); nada se borra. **Auditoría:** `PERSONA_DEACTIVATED`, `PERFIL_PACIENTE_DEACTIVATED`.
+03.02); nada se borra. **Auditoría:** `PERSONA_DEACTIVATED`; la baja del perfil queda dentro de ese mismo
+evento (`details.perfilPacienteDadoDeBaja`). `PERFIL_PACIENTE_DEACTIVATED` aparte es solo de la baja
+del perfil sin baja de la persona.
 
 ---
 
 ### PER-14 · Selector explicable: de qué autorización se descontaría (RF-M17-007, web #58)
 
 **Pantalla:** `/pacientes/<persona>/autorizaciones` → sección del selector ("de qué autorización se
-descontaría"): elegí una fecha y una práctica. Para que tenga sentido, cargá antes una **segunda**
-autorización aprobada de la misma persona y práctica que venza **antes** que la de PER-10, y una
-tercera de **otra** práctica.
+descontaría"): elegí una fecha y una práctica. Para que tenga sentido, cargá antes una autorización aprobada de **otra** práctica y una **consecutiva** de la misma
+práctica (renovación que empieza cuando termina la de PER-10). **No se admiten dos aprobadas de la
+misma práctica que se pisen** (409 `autorizacion-superpuesta`), así que el desempate "la que vence
+antes" no se arma con dos vigentes el mismo día: se ve cambiando la `fecha` del selector.
 
 **Esperado:** las candidatas del día, en el orden del backend; arriba "la que se usaría" (la de la
 misma práctica que vence antes, con saldo), y para cada una de las otras el **por qué no** (otra

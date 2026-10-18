@@ -1,7 +1,6 @@
 package com.akine.person.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
@@ -14,6 +13,11 @@ import jakarta.validation.constraints.Size;
  * <p>{@code movimientoId} y no "el ultimo": revertir el consumo equivocado es peor que no revertir
  * ninguno, y "el ultimo" deja de significar lo mismo en cuanto dos cierres del mismo dia se
  * ordenan distinto de lo que el operador recuerda.
+ *
+ * <p><b>{@code motivo} no lleva {@code @NotBlank} a proposito.</b> El contrato promete
+ * {@code reversion-sin-motivo} y la pantalla lo espera; con la anotacion, bean validation cortaba
+ * antes y respondia {@code validation-error} (pre-QA D6, 14/10/2026). El motivo en blanco lo
+ * rechaza {@code ConsumoDeAutorizacionService.revertir}.
  */
 @Schema(description = "Reversion de un consumo de autorizacion")
 public record RevertirConsumoRequest(
@@ -32,7 +36,6 @@ public record RevertirConsumoRequest(
 						+ "no 409: no hay ningun estado que impida la operacion, falta un dato",
 				example = "La sesion se cerro por error sobre el paciente equivocado",
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotBlank(message = "Revertir un consumo exige un motivo declarado")
 		@Size(max = 280, message = "El motivo no puede superar los 280 caracteres")
 		String motivo) {
 }

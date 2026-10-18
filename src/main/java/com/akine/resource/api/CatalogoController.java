@@ -86,7 +86,7 @@ import java.util.List;
  * </ul>
  *
  * <p>{@code catalogo:read} y {@code catalogo:manage} los aprobo U-08 tal como 02.05 los habia
- * propuesto en {@code docs/seguridad/matriz-permisos-minima.md} §11.1 (registro en §17.2). Los
+ * propuesto en {@code docs/seguridad/matriz-permisos-minima.md} §11.1 (registro en §18.2). Los
  * codigos HTTP no cambiaron; lo que cambio es que un {@code PACIENTE}, que hasta entonces leia el
  * catalogo por pertenencia, recibe 403.
  *

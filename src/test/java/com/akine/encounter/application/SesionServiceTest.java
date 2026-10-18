@@ -139,6 +139,9 @@ class SesionServiceTest {
 
 	/** DP-17 (E-7b): billing decide si la deuda del paciente es el precio particular. */
 	@Mock private PrecioParticularDelCierre requisitoDePrecio;
+	/** AKINE-08.05: el nombre de la clase de una Sesion grupal, que responde activity. */
+	@Mock private com.akine.encounter.spi.TituloDeClaseGrupal tituloDeClase;
+	@Mock private com.akine.platform.spi.identity.AccountIdentityDirectory identidades;
 
 	private SesionService service;
 
@@ -151,7 +154,8 @@ class SesionServiceTest {
 				sesiones, versiones, auditTrail, turnos, historias, casos, consultorios,
 				memberships, permissionGuard, numerador, numeradorIniciador, ofertas,
 				tratamientos, parametros, mediciones, tratamientoService, medicionService,
-				List.of(observador), List.of(requisitoDePrecio), mock(PlatformTransactionManager.class));
+				List.of(observador), List.of(requisitoDePrecio), List.of(tituloDeClase), identidades,
+				mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -198,6 +202,34 @@ class SesionServiceTest {
 				profesionalMembershipId, Instant.EPOCH, CUENTA_PROPIA);
 		ReflectionTestUtils.setField(sesion, "id", 1L);
 		return sesion;
+	}
+
+	@Test
+	@DisplayName("08.05: una Sesion grupal viaja con el nombre de su clase, que responde activity")
+	void sesion_grupal_con_titulo_de_clase() {
+		Sesion grupal = Sesion.desdeParticipacion(ORG_ID, CONSULTORIO_ID, HISTORIA_ID, 17L, OFERTA_ID,
+				MEMBERSHIP_PROPIA, Instant.EPOCH, CUENTA_PROPIA, 88L, 931L, 640L);
+		ReflectionTestUtils.setField(grupal, "id", 1L);
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(grupal));
+		given(tituloDeClase.de(ORG_ID, CONSULTORIO_ID, 640L))
+				.willReturn(Optional.of("Pilates terapeutico"));
+
+		SesionView vista = service.ver(actor, CONSULTORIO_ID, 1L);
+
+		assertThat(vista.claseId()).isEqualTo(640L);
+		assertThat(vista.claseTitulo()).isEqualTo("Pilates terapeutico");
+	}
+
+	@Test
+	@DisplayName("08.05: una Sesion de turno no tiene clase y no se pregunta por ninguna")
+	void sesion_de_turno_sin_titulo_de_clase() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		SesionView vista = service.ver(actor, CONSULTORIO_ID, 1L);
+
+		assertThat(vista.claseTitulo()).isNull();
+		org.mockito.Mockito.verifyNoInteractions(tituloDeClase);
 	}
 
 	@Test
@@ -995,5 +1027,175 @@ class SesionServiceTest {
 				.extracting(e -> ((CasoNoAsignableException) e).getMotivo())
 				.isEqualTo(CasoNoAsignableException.Motivo.NO_ACCESIBLE);
 		verify(sesiones, never()).save(any());
+	}
+
+	// =================================================================================
+	// Pedidos de la pantalla de atencion (web #80)
+	// =================================================================================
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = {
+			"no es json", "", "   ", "{\"a\":1", "{\"a\":1} basura", "{'a':1}"})
+	@DisplayName("Un borrador que no es JSON es 400 antes de escribir, no un 409 de la base")
+	void el_borrador_que_no_es_json(String contenido) {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		assertThatThrownBy(() -> service.guardarBorrador(actor, CONSULTORIO_ID, 1L, contenido, 0L))
+				.isInstanceOf(com.akine.encounter.domain.exception.BorradorNoEsJsonException.class);
+
+		verify(sesiones, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("El borrador acepta cualquier valor JSON y null, y rechaza el anidamiento que MySQL "
+			+ "no admite")
+	void el_borrador_json_limites() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willAnswer(invocacion -> Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		for (String valido : new String[] {null, "null", "3", "\"texto\"", "[]",
+				"[".repeat(ContenidoJson.MAX_CONTENEDORES_ANIDADOS)
+						+ "]".repeat(ContenidoJson.MAX_CONTENEDORES_ANIDADOS)}) {
+			service.guardarBorrador(actor, CONSULTORIO_ID, 1L, valido, 0L);
+		}
+
+		String profundo = "[".repeat(ContenidoJson.MAX_CONTENEDORES_ANIDADOS + 1)
+				+ "]".repeat(ContenidoJson.MAX_CONTENEDORES_ANIDADOS + 1);
+		assertThatThrownBy(() -> service.guardarBorrador(actor, CONSULTORIO_ID, 1L, profundo, 0L))
+				.isInstanceOf(com.akine.encounter.domain.exception.BorradorNoEsJsonException.class);
+	}
+
+	@Test
+	@DisplayName("El historial trae el nombre visible del autor, resuelto en un solo lote")
+	void el_historial_trae_el_nombre_del_autor() {
+		Sesion cerrada = sesionCerrada();
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(cerrada));
+		given(versiones.buscarPorSesion(ORG_ID, 1L)).willReturn(List.of(
+				SesionVersion.original(cerrada, new FotoClinica(null, null)),
+				SesionVersion.original(cerrada, new FotoClinica(null, null))));
+		given(identidades.identidadesDe(List.of(CUENTA_PROPIA))).willReturn(java.util.Map.of(
+				CUENTA_PROPIA, new com.akine.platform.spi.identity.AccountIdentity(
+						CUENTA_PROPIA, "Laura Gomez", "laura@example.test")));
+
+		List<SesionVersionView> historial = service.versiones(actor, CONSULTORIO_ID, 1L);
+
+		assertThat(historial).extracting(SesionVersionView::registradaPorNombre)
+				.containsExactly("Laura Gomez", "Laura Gomez");
+		verify(identidades).identidadesDe(List.of(CUENTA_PROPIA));
+	}
+
+	@Test
+	@DisplayName("Una cuenta que ya no resuelve deja el nombre ausente, no inventado")
+	void el_historial_sin_autor_resuelto() {
+		Sesion cerrada = sesionCerrada();
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(cerrada));
+		given(versiones.buscarPorSesion(ORG_ID, 1L))
+				.willReturn(List.of(SesionVersion.original(cerrada, new FotoClinica(null, null))));
+		given(identidades.identidadesDe(any())).willReturn(java.util.Map.of());
+
+		assertThat(service.versiones(actor, CONSULTORIO_ID, 1L))
+				.singleElement()
+				.extracting(SesionVersionView::registradaPorNombre)
+				.isNull();
+	}
+
+	@Test
+	@DisplayName("Asociar un caso a la sesion abierta valida el caso, guarda y audita")
+	void asociar_caso() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(casos.find(ORG_ID, CASO_ID))
+				.willReturn(Optional.of(new CasoSnapshot(CASO_ID, ORG_ID, HISTORIA_ID, 2, true)));
+
+		SesionView vista = service.cambiarCaso(actor, CONSULTORIO_ID, 1L, CASO_ID, 0L);
+
+		assertThat(vista.casoId()).isEqualTo(CASO_ID);
+		verify(sesiones).saveAndFlush(any());
+		ArgumentCaptor<AuditEntry> auditoria = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(auditoria.capture());
+		assertThat(auditoria.getValue().eventType()).isEqualTo("SESION_CASO_CAMBIADO");
+		assertThat(auditoria.getValue().previousState()).isEqualTo("CASO_null");
+		assertThat(auditoria.getValue().newState()).isEqualTo("CASO_" + CASO_ID);
+	}
+
+	@Test
+	@DisplayName("Quitar el caso siempre se puede y no consulta clinical")
+	void quitar_caso() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionConCaso()));
+
+		SesionView vista = service.cambiarCaso(actor, CONSULTORIO_ID, 1L, null, 0L);
+
+		assertThat(vista.casoId()).isNull();
+		verify(casos, never()).find(anyLong(), anyLong());
+		verify(auditTrail).record(any());
+	}
+
+	@Test
+	@DisplayName("Pedir el caso que ya tiene es un no-op: no escribe ni audita")
+	void mismo_caso_no_op() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionConCaso()));
+
+		service.cambiarCaso(actor, CONSULTORIO_ID, 1L, CASO_ID, 0L);
+
+		verify(sesiones, never()).saveAndFlush(any());
+		verify(auditTrail, never()).record(any());
+	}
+
+	@Test
+	@DisplayName("El caso de una sesion cerrada no se cambia: ya numero dentro de el")
+	void caso_de_sesion_cerrada() {
+		Sesion cerrada = sesionCerrada();
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(cerrada));
+		given(casos.find(ORG_ID, CASO_ID))
+				.willReturn(Optional.of(new CasoSnapshot(CASO_ID, ORG_ID, HISTORIA_ID, 2, true)));
+
+		assertThatThrownBy(() -> service.cambiarCaso(
+				actor, CONSULTORIO_ID, 1L, CASO_ID, cerrada.getVersion()))
+				.isInstanceOf(SesionCerradaException.class);
+		verify(auditTrail, never()).record(any());
+	}
+
+	@Test
+	@DisplayName("El caso de la atencion ajena no se cambia: 409 de propiedad, no 403")
+	void caso_de_sesion_ajena() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA + 1)));
+
+		assertThatThrownBy(() -> service.cambiarCaso(actor, CONSULTORIO_ID, 1L, CASO_ID, 0L))
+				.isInstanceOf(SesionAjenaException.class);
+		verify(casos, never()).find(anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("Cambiar el caso con una version vieja es concurrent-modification")
+	void caso_con_version_vieja() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+
+		assertThatThrownBy(() -> service.cambiarCaso(actor, CONSULTORIO_ID, 1L, CASO_ID, 5L))
+				.isInstanceOf(OptimisticLockingFailureException.class);
+		verify(sesiones, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("Un caso cerrado o de otra historia no se asocia a la atencion")
+	void caso_no_asignable_al_cambiar() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L))
+				.willAnswer(invocacion -> Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(casos.find(ORG_ID, CASO_ID))
+				.willReturn(Optional.of(new CasoSnapshot(CASO_ID, ORG_ID, HISTORIA_ID, 2, false)));
+		given(casos.find(ORG_ID, CASO_ID + 1)).willReturn(Optional.of(
+				new CasoSnapshot(CASO_ID + 1, ORG_ID, HISTORIA_ID + 1, 1, true)));
+
+		assertThatThrownBy(() -> service.cambiarCaso(actor, CONSULTORIO_ID, 1L, CASO_ID, 0L))
+				.extracting(e -> ((CasoNoAsignableException) e).getMotivo())
+				.isEqualTo(CasoNoAsignableException.Motivo.CERRADO);
+		assertThatThrownBy(() -> service.cambiarCaso(actor, CONSULTORIO_ID, 1L, CASO_ID + 1, 0L))
+				.extracting(e -> ((CasoNoAsignableException) e).getMotivo())
+				.isEqualTo(CasoNoAsignableException.Motivo.DE_OTRA_HISTORIA);
+		verify(sesiones, never()).saveAndFlush(any());
 	}
 }

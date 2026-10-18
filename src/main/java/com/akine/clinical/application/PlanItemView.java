@@ -2,6 +2,8 @@ package com.akine.clinical.application;
 
 import com.akine.clinical.domain.PlanItem;
 
+import java.time.LocalDate;
+
 /**
  * Una practica planificada, tal como sale de la aplicacion.
  *
@@ -22,7 +24,9 @@ public record PlanItemView(
 		int cantidadPlanificada,
 		Integer cantidadAutorizada,
 		String origenAutorizacion,
-		Long autorizacionId) {
+		Long autorizacionId,
+		LocalDate autorizacionVigenciaDesde,
+		LocalDate autorizacionVigenciaHasta) {
 
 	public static PlanItemView de(PlanItem item) {
 		return new PlanItemView(
@@ -34,6 +38,18 @@ public record PlanItemView(
 				item.getCantidadPlanificada(),
 				item.getCantidadAutorizada(),
 				item.getOrigenAutorizacion().name(),
-				item.getAutorizacionId());
+				item.getAutorizacionId(),
+				null,
+				null);
+	}
+
+	/**
+	 * El mismo item con la vigencia de su autorizacion de M17, leida en vivo (0.107.0, pedido de
+	 * appKine-web #83). No se copia al plan: si el financiador extiende la vigencia, el plan lo ve.
+	 */
+	public PlanItemView conVigenciaDeAutorizacion(LocalDate desde, LocalDate hasta) {
+		return new PlanItemView(id, ofertaId, ofertaConsultorioId, ofertaNombre, servicioId,
+				cantidadPlanificada, cantidadAutorizada, origenAutorizacion, autorizacionId, desde,
+				hasta);
 	}
 }

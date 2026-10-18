@@ -12,6 +12,7 @@ import com.akine.identity.domain.port.CuentaRepositoryPort;
 import com.akine.identity.domain.port.IdentityClock;
 import com.akine.identity.domain.port.RefreshTokenRepositoryPort;
 import com.akine.identity.domain.port.TokenGenerator;
+import com.akine.organization.spi.AccountContextDirectory;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.security.AccessTokenIssuer;
 import com.akine.platform.spi.security.AccessTokenScope;
@@ -84,6 +85,7 @@ public class SessionService {
 	private final TokenGenerator tokenGenerator;
 	private final AccessTokenIssuer accessTokenIssuer;
 	private final MembershipDirectory membershipDirectory;
+	private final AccountContextDirectory accountContextDirectory;
 	private final SessionSettings settings;
 	private final IdentityClock clock;
 	private final AuditTrail auditTrail;
@@ -95,6 +97,7 @@ public class SessionService {
 			TokenGenerator tokenGenerator,
 			AccessTokenIssuer accessTokenIssuer,
 			MembershipDirectory membershipDirectory,
+			AccountContextDirectory accountContextDirectory,
 			SessionSettings settings,
 			IdentityClock clock,
 			AuditTrail auditTrail) {
@@ -104,6 +107,7 @@ public class SessionService {
 		this.tokenGenerator = tokenGenerator;
 		this.accessTokenIssuer = accessTokenIssuer;
 		this.membershipDirectory = membershipDirectory;
+		this.accountContextDirectory = accountContextDirectory;
 		this.settings = settings;
 		this.clock = clock;
 		this.auditTrail = auditTrail;
@@ -313,6 +317,12 @@ public class SessionService {
 	 * viva</b>, para que el proximo refresh reemita sobre el mismo lugar donde la persona
 	 * estaba trabajando en vez de devolverla a la pantalla de seleccion cada diez minutos.
 	 *
+	 * <p><b>Y deja el puntero de la cuenta</b> ({@code account_active_context}, D-7 de 01.01) por
+	 * {@link AccountContextDirectory#selectContext}, en la misma transaccion. Es el "ultimo contexto
+	 * elegido" con el que {@code GET /me/contexts} marca cual preseleccionar al volver a entrar, y
+	 * sobrevive a la sesion: la familia muere con el logout, el puntero no. Hasta el pre-QA del
+	 * 14/10 (ON-03) este metodo no lo llamaba y la tabla quedaba vacia para todas las cuentas.
+	 *
 	 * <p>La familia se filtra por {@code cuentaId} antes de tocarla: sin ese filtro, pasar el
 	 * identificador de familia de otra persona dejaria escribir sobre su sesion.
 	 *
@@ -345,6 +355,10 @@ public class SessionService {
 		}
 
 		TenantMembership membership = accesible.get();
+		// Revalida contra la base con su propio criterio y, si diverge del de MembershipDirectory,
+		// lanza ContextNotAuthorizedException: 404, igual que el rechazo de arriba. No se captura:
+		// la transaccion ya quedaria marcada para rollback.
+		accountContextDirectory.selectContext(cuentaId, organizationId, consultorioId);
 		int recordado = recordarContextoEnLaFamilia(
 				cuentaId, familiaId, organizationId, consultorioId);
 

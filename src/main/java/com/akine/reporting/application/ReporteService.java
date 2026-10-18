@@ -8,6 +8,7 @@ import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.reporting.domain.PermissionCodes;
@@ -38,7 +39,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Los reportes del MVP (M23): RF-M23-001 a RF-M23-005.
+ * Los reportes de M23: RF-M23-001 a RF-M23-005, y desde AKINE-09.01 RF-M23-007 y RF-M23-010.
  *
  * <h2>Este servicio no consulta ninguna tabla</h2>
  *
@@ -177,7 +178,9 @@ public class ReporteService {
 				? membershipsDelActor(actor, organizationId)
 				: null;
 
-		ZoneId zona = ZoneId.of(sede.timezone());
+		// ZonaDeSede y no ZoneId.of: una sede con zona invalida o vacia cae a UTC con un WARN en vez
+		// de tumbar el reporte con un 500 (AKINE-09.01, mismo criterio que #113).
+		ZoneId zona = ZonaDeSede.de(sede);
 		ConsultaDeReporte consulta = construirConsulta(
 				organizationId, consultorioId, desde, hasta, zona, actividadPropiaDe);
 
@@ -225,7 +228,7 @@ public class ReporteService {
 			advertencias.add(0, new AdvertenciaDeReporte(
 					null,
 					ADVERTENCIA_ACTIVIDAD_PROPIA,
-					"Reporte limitado a tu propia actividad: turnos, sesiones y casos que "
+					"Reporte limitado a tu propia actividad: turnos, sesiones, casos y clases que "
 							+ "atendiste o te fueron asignados. No incluye al resto del equipo."));
 		}
 

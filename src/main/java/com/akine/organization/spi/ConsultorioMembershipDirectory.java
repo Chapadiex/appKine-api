@@ -1,6 +1,8 @@
 package com.akine.organization.spi;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -21,6 +23,13 @@ import java.util.Optional;
 public interface ConsultorioMembershipDirectory {
 
 	Optional<ConsultorioMembershipSnapshot> find(long organizationId, long membershipId);
+
+	/**
+	 * {@link #find} para varias memberships en UNA consulta, indexadas por id. Las que no existen o
+	 * son de otro tenant no aparecen en el mapa. Para listas: {@link #find} por fila es N+1.
+	 */
+	Map<Long, ConsultorioMembershipSnapshot> findTodas(
+			long organizationId, Collection<Long> membershipIds);
 
 	/**
 	 * Los vinculos activos de una cuenta en la organizacion, en orden estable por id.

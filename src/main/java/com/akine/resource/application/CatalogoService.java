@@ -61,7 +61,7 @@ import java.util.Map;
  * <p>02.05 dejo los dos codigos PROPUESTOS en la §11.1 de
  * {@code docs/seguridad/matriz-permisos-minima.md} y autorizo por pertenencia (lecturas) y
  * {@code consultorio:manage} (mutaciones) mientras tanto. La decision U-08 los aprueba tal como
- * estaban propuestos (matriz §17.2):
+ * estaban propuestos (matriz §18.2):
  *
  * <ul>
  *   <li><b>Lecturas</b>: {@code catalogo:read}, evaluado con la sede del contexto. Lo tiene todo

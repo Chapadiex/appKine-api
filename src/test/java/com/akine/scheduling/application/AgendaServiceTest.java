@@ -1,5 +1,6 @@
 package com.akine.scheduling.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
 import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -133,7 +135,7 @@ class AgendaServiceTest {
 	/** "Ahora" fijo, en hora local de la sede. */
 	private AgendaService conReloj(java.time.LocalDateTime ahoraLocal) {
 		return new AgendaService(
-				ofertas, disponibilidad, espacios, consultorios, memberships, permissionGuard, reservas,
+				ofertas, disponibilidad, espacios, consultorios, memberships, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), reservas,
 				Clock.fixed(ahoraLocal.atZone(ZONA).toInstant(), ZONA));
 	}
 

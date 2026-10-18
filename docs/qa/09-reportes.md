@@ -88,8 +88,9 @@ Esperado: el detalle por financiador **suma** al indicador `prestado` (defecto 4
 **Pantalla:** admin-a (con `hc:read` por grant de [ORG-07](02-organizacion-sedes-colaboradores.md))
 y profesional → Clínico.
 
-**Esperado:** admin-a con el grant ve casos y sesiones; sin el grant, las dos secciones vienen en
-`omitidas` (`hc:read`, `sesion:register`). El profesional ve solo lo suyo. **Una consulta que trae
+**Esperado:** admin-a con el grant `hc:read` ve **casos**; **sesiones** exige `sesion:register`, que el
+`ORG_ADMIN` no tiene ni puede recibir por grant, así que viene siempre en `omitidas`. Sin el grant,
+`casos` también (`hc:read`). El profesional ve solo lo suyo. **Una consulta que trae
 contenido clínico deja `REPORTE_CONSULTADO`**; los demás reportes no auditan.
 
 ```sql
@@ -115,7 +116,7 @@ Con administrativo, profesional y paciente, el reporte Económico y el Clínico.
 
 | Rol | Económico | Clínico |
 |---|---|---|
-| `ORG_ADMIN` | completo | casos y sesiones solo con grant `hc:read` |
+| `ORG_ADMIN` | completo | `casos` solo con grant `hc:read`; `sesiones` siempre en `omitidas` (`sesion:register`) |
 | `ADMINISTRATIVO` | completo (operativos y caja) | `omitidas`: `casos` (`hc:read`), `sesiones` (`sesion:register`) |
 | `PROFESIONAL` | `omitidas`: `economia` (`cobro:register`) + advertencia `alcance-actividad-propia` | solo su actividad |
 | `PACIENTE` | **403** | **403** |

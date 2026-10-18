@@ -298,6 +298,69 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 				.doesNotContain("casos");
 	}
 
+	/**
+	 * AKINE-09.02: la segunda entrega (M28/M29) por la misma regla. El recurso no existe: quien
+	 * tiene el permiso pasa y recibe el 404 del dato; quien no, el 403 antes de mirarlo. Asignacion
+	 * base de {@code RolePermissions}: clases, inscripciones y asistencia para todo el personal;
+	 * productos, venta y lectura de pases para los administradores y el mostrador; fijar productos y
+	 * ajustar pases solo para los administradores. El PACIENTE, nada.
+	 */
+	@Test
+	@DisplayName("09.02 la superficie de F9 responde a cada rol lo que RolePermissions le asigna")
+	void la_matriz_de_f9_se_cumple() {
+		String c = "/api/v1/consultorios/" + tenant.consultorioId();
+		String k = c + "/clases/" + INEXISTENTE;
+		String p = c + "/pases/" + INEXISTENTE;
+		Instant desde = Instant.now();
+		List<String> personal = List.of(OA, CA, ADM, PROF);
+		List<String> mostrador = List.of(OA, CA, ADM);
+		List<String> administradores = List.of(OA, CA);
+
+		record Pedido(String metodo, String ruta, String cuerpo, int siPermitido, List<String> roles) {
+		}
+		List<Pedido> pedidos = List.of(
+				// clase:read / clase:manage
+				new Pedido("GET", c + "/clases?desde=" + desde + "&hasta=" + desde.plus(7, ChronoUnit.DAYS),
+						null, 200, personal),
+				new Pedido("GET", k, null, 404, personal),
+				new Pedido("POST", k + "/cancelacion", "{\"motivo\":\"matriz\"}", 404, personal),
+				new Pedido("POST", k + "/inicio", "{}", 404, personal),
+				// inscripcion:read / inscripcion:manage
+				new Pedido("GET", k + "/inscripciones", null, 404, personal),
+				new Pedido("POST", k + "/inscripciones", "{\"personaId\":" + persona + "}", 404, personal),
+				// asistencia:manage
+				new Pedido("POST", k + "/asistencias",
+						"{\"inscripcionId\":1,\"resultado\":\"PRESENTE\"}", 404, personal),
+				// producto:read / producto:manage
+				new Pedido("GET", c + "/productos", null, 200, mostrador),
+				new Pedido("POST", c + "/productos/" + INEXISTENTE + "/baja", "{\"motivo\":\"matriz\"}",
+						404, administradores),
+				// pase:read / pase:manage / pase:adjust
+				new Pedido("GET", c + "/personas/" + persona + "/pases", null, 200, mostrador),
+				new Pedido("GET", p, null, 404, mostrador),
+				new Pedido("POST", c + "/pases",
+						"{\"productoId\":" + INEXISTENTE + ",\"personaId\":" + persona + "}", 404, mostrador),
+				new Pedido("POST", p + "/ajustes", "{\"cantidad\":1,\"motivo\":\"matriz\",\"version\":0}",
+						404, administradores),
+				new Pedido("POST", p + "/anulacion", "{\"motivo\":\"matriz\",\"version\":0}",
+						404, administradores));
+
+		SoftAssertions celdas = new SoftAssertions();
+		for (Pedido pedido : pedidos) {
+			for (Map.Entry<String, String> rol : tokens.entrySet()) {
+				int esperado = pedido.roles().contains(rol.getKey()) ? pedido.siPermitido() : 403;
+				Respuesta respuesta = pedido.metodo().equals("GET")
+						? get(pedido.ruta(), rol.getValue())
+						: post(pedido.ruta(), rol.getValue(), pedido.cuerpo());
+				celdas.assertThat(respuesta.status())
+						.as("F9 [%s] %s %s -> %s", rol.getKey(), pedido.metodo(), pedido.ruta(),
+								respuesta.body())
+						.isEqualTo(esperado);
+			}
+		}
+		celdas.assertAll();
+	}
+
 	@Test
 	@DisplayName("G5-M2 gestionar colaboradores: solo ORG_ADMIN y CONSULTORIO_ADMIN otorgan permisos")
 	void solo_los_administradores_otorgan() {
@@ -343,6 +406,16 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 		// auditoria:read-clinica: la §6 solo la da por grant a los dos administradores.
 		rechazado(celdas, post(o + memberships.get(PROF) + "/grants", token,
 				grant("auditoria:read-clinica")), PROF, "auditoria:read-clinica");
+		// AKINE-09.02, F9: ninguna celda de la segunda entrega se completa por grant. Fijar productos
+		// y ajustar pases no son del mostrador; vender y ver pases no son del profesional.
+		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("pase:adjust")),
+				ADM, "pase:adjust");
+		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("producto:manage")),
+				ADM, "producto:manage");
+		rechazado(celdas, post(o + memberships.get(PROF) + "/grants", token, grant("pase:read")),
+				PROF, "pase:read");
+		rechazado(celdas, post(o + memberships.get(PAC) + "/grants", token, grant("inscripcion:read")),
+				PAC, "inscripcion:read");
 		// Un permiso del catalogo que no es otorgable a ningun rol sale con el mismo type.
 		rechazado(celdas, post(o + memberships.get(CA) + "/grants", token, grant("tenant:manage")),
 				CA, "tenant:manage");

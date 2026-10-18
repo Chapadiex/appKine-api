@@ -31,6 +31,22 @@ public interface EgresoRepositoryPort {
 
 	Optional<Egreso> findByIdInScope(long organizationId, long consultorioId, long egresoId);
 
+	/**
+	 * El egreso, <b>con lock de fila</b> ({@code SELECT ... FOR UPDATE}), para la anulacion.
+	 *
+	 * <p>La anulacion decide mirando el saldo —no se anula un compromiso con pagos vigentes— y
+	 * despues lo escribe por JPA. Leido sin lock, un pago que commiteaba entre la lectura y el flush
+	 * no se veia: el egreso quedaba {@code ANULADO} con un pago {@code CONFIRMADO} y la plata fuera
+	 * del cajon sin nada que lo marcara (E2E de web #94, 9 de 12 intentos). Con el lock las dos
+	 * operaciones se serializan: si el pago llego antes, la anulacion lo ve y responde
+	 * {@code egreso-con-pagos}; si llego despues, su {@code UPDATE} ve {@code ANULADO} y responde
+	 * {@code egreso-no-pagable}.
+	 *
+	 * <p>Sin deadlock posible con el pago: el pago toma la fila del egreso con su primer
+	 * {@code UPDATE}, y la anulacion no tiene ningun otro lock tomado antes que este.
+	 */
+	Optional<Egreso> findByIdInScopeParaEscribir(long organizationId, long consultorioId, long egresoId);
+
 	Optional<Egreso> findByIdempotencyKey(long organizationId, String idempotencyKey);
 
 	/**
@@ -70,6 +86,10 @@ public interface EgresoRepositoryPort {
 	 *         el saldo— y el llamador las distingue releyendo. Es seguro: un {@code UPDATE} de cero
 	 *         filas no marca la transaccion para rollback, a diferencia de un {@code flush} fallido
 	 *         por constraint
+	 *
+	 * <p><b>Avanza {@code version}.</b> Antes no lo hacia, y una escritura por JPA que habia leido el
+	 * egreso antes del pago pasaba su {@code WHERE version = N} intacta y pisaba el saldo. Es la regla
+	 * que {@code CobroRepositoryPort.descontarSaldo} ya aplica a la obligacion.
 	 */
 	int descontarSaldo(long organizationId, long egresoId, BigDecimal importe);
 
@@ -78,6 +98,8 @@ public interface EgresoRepositoryPort {
 	 *
 	 * <p>Sin condicion de importe: devolver nunca puede pasarse: el {@code CHECK}
 	 * {@code saldo_pendiente <= importe_total} lo respalda por si un camino futuro se equivoca.
+	 *
+	 * <p>Avanza {@code version}, por lo mismo que {@link #descontarSaldo}.
 	 *
 	 * @return filas afectadas
 	 */

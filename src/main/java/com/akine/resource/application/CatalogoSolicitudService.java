@@ -1,5 +1,7 @@
 package com.akine.resource.application;
 
+import com.akine.organization.spi.OrganizationDirectory;
+import com.akine.organization.spi.OrganizationSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
@@ -69,17 +71,20 @@ public class CatalogoSolicitudService {
 	private final CatalogoService catalogoService;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	private final OrganizationDirectory organizaciones;
 
 	public CatalogoSolicitudService(
 			CatalogoRepositoryPorts.SolicitudPort solicitudes,
 			CatalogoService catalogoService,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			OrganizationDirectory organizaciones) {
 
 		this.solicitudes = solicitudes;
 		this.catalogoService = catalogoService;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
+		this.organizaciones = organizaciones;
 	}
 
 	/** Alta de una solicitud (RF-M06-005). */
@@ -122,7 +127,7 @@ public class CatalogoSolicitudService {
 		log.info("Solicitud de catalogo creada: organizationId={} solicitudId={}",
 				organizationId, persistida.getId());
 
-		return CatalogoSolicitudView.de(persistida);
+		return conNombre(persistida);
 	}
 
 	/**
@@ -147,7 +152,14 @@ public class CatalogoSolicitudService {
 				? solicitudes.listarTodas(filtro)
 				: solicitudes.listarPorTenant(organizationId, filtro);
 
-		return encontradas.stream().map(CatalogoSolicitudView::de).toList();
+		// Los nombres de todos los centros del listado en UNA consulta: la bandeja de la plataforma
+		// mezcla solicitudes de muchas organizaciones y preguntar por fila seria un N+1.
+		Map<Long, OrganizationSnapshot> nombres = organizaciones.findAll(encontradas.stream()
+				.map(CatalogoSolicitud::getOrganizationId).distinct().toList());
+		return encontradas.stream()
+				.map(solicitud -> CatalogoSolicitudView.de(solicitud,
+						nombreDe(nombres.get(solicitud.getOrganizationId()))))
+				.toList();
 	}
 
 	/**
@@ -220,7 +232,7 @@ public class CatalogoSolicitudService {
 		log.info("Solicitud de catalogo resuelta: solicitudId={} estado={} conceptoId={}",
 				solicitudId, guardada.getEstado(), conceptoId);
 
-		return CatalogoSolicitudView.de(guardada);
+		return conNombre(guardada);
 	}
 
 	/**
@@ -318,5 +330,20 @@ public class CatalogoSolicitudService {
 				motivo,
 				AuditEvents.correlationId(),
 				ahora));
+	}
+
+	/**
+	 * La vista con el nombre de la organizacion solicitante, resuelto al leer (pedido de web #106).
+	 *
+	 * <p>Se resuelve y no se copia en la fila: un centro que cambia de nombre se ve con el actual, y
+	 * no hace falta migracion. Una organizacion dada de baja conserva su nombre.
+	 */
+	private CatalogoSolicitudView conNombre(CatalogoSolicitud solicitud) {
+		return CatalogoSolicitudView.de(solicitud,
+				nombreDe(organizaciones.find(solicitud.getOrganizationId()).orElse(null)));
+	}
+
+	private static String nombreDe(OrganizationSnapshot organizacion) {
+		return organizacion == null ? null : organizacion.name();
 	}
 }

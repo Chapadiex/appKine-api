@@ -41,6 +41,7 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -114,7 +115,11 @@ public class ClaseService {
 	private final EspacioDirectory espacios;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
+	private final SoporteEnActividad soporte;
 	private final AuditTrail auditTrail;
+	private final ProyeccionDeClase proyeccion;
+	private final ConsumoDePaseService consumoDePases;
+	private final DevengoPorClaseService devengoPorClase;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public ClaseService(
@@ -128,7 +133,11 @@ public class ClaseService {
 			EspacioDirectory espacios,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
+			SoporteEnActividad soporte,
 			AuditTrail auditTrail,
+			ProyeccionDeClase proyeccion,
+			ConsumoDePaseService consumoDePases,
+			DevengoPorClaseService devengoPorClase,
 			PlatformTransactionManager transactionManager) {
 
 		this.clases = clases;
@@ -141,7 +150,11 @@ public class ClaseService {
 		this.espacios = espacios;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.auditTrail = auditTrail;
+		this.proyeccion = proyeccion;
+		this.consumoDePases = consumoDePases;
+		this.devengoPorClase = devengoPorClase;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -205,10 +218,8 @@ public class ClaseService {
 				organizationId, consultorioId, sede, oferta, command.profesionalId(),
 				command.inicio(), command.fin());
 
-		Long espacioId = oferta.requiereEspacio()
-				? elegirEspacio(organizationId, consultorioId, oferta, command.inicio(),
-						command.fin(), null)
-				: null;
+		Long espacioId = resolverEspacio(organizationId, consultorioId, oferta,
+				command.espacioId(), command.inicio(), command.fin(), null);
 
 		exigirCapacidadSostenible(
 				organizationId, oferta, espacioId, command.capacidad(), command.inicio(), 0);
@@ -291,10 +302,8 @@ public class ClaseService {
 		// Se excluye a si misma: sigue viva en su intervalo viejo mientras se la revalida, y sin
 		// excluirla una clase que se corre media hora chocaria contra si misma. Es el mismo
 		// turnoExcluidoId de RevalidadorDeSlot.
-		Long espacioId = oferta.requiereEspacio()
-				? elegirEspacio(organizationId, consultorioId, oferta, command.inicio(),
-						command.fin(), claseId)
-				: null;
+		Long espacioId = resolverEspacio(organizationId, consultorioId, oferta,
+				command.espacioId(), command.inicio(), command.fin(), claseId);
 
 		int ocupados = contarOcupacion(clase);
 		exigirCapacidadSostenible(
@@ -352,8 +361,14 @@ public class ClaseService {
 	 * operacion la devolucion de creditos y las reversas economicas, una segunda ejecucion que no
 	 * fuera idempotente devolveria plata dos veces. La regla se fija aca, antes que el dinero que
 	 * protege.
+	 *
+	 * <p><b>Devuelve los creditos</b> que tomaron sus asistencias (AKINE-08.07, RF-M29-004), solo
+	 * en la llamada que cancela. {@code READ_COMMITTED} por eso: con la clase bloqueada en
+	 * exclusivo, la lectura de los consumos tiene que ver lo que las asistencias commitearon
+	 * mientras esta transaccion esperaba el lock, y bajo {@code REPEATABLE READ} la foto ya estaba
+	 * fijada antes (la primera lectura es la de la sede).
 	 */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ClaseView cancelar(
 			OperatingActor actor, long consultorioId, long claseId, String motivo) {
 
@@ -382,6 +397,12 @@ public class ClaseService {
 					cancelada, TipoEventoClase.CANCELACION, anterior, motivo,
 					actor.accountId(), ahora));
 			auditar(actor, cancelada, "CLASE_CANCELADA", anterior, motivo, ahora);
+			// AKINE-08.07 (RF-M29-004): los creditos que tomaron las asistencias de esta clase
+			// vuelven a sus pases. Antes de resolver las inscripciones, que limpian el contexto.
+			consumoDePases.devolverPorCancelacion(cancelada, actor.accountId(), motivo, ahora);
+			// U-39 (RF-M28-006 paso 7, RN-M28-009): y las deudas POR_CLASE de sus asistencias se
+			// anulan; las que ya tienen cobros quedan vivas y auditadas (se reintegra, RF-M19-010).
+			devengoPorClase.anularPorCancelacion(cancelada, actor.accountId(), motivo, ahora);
 			resolverInscripcionesDeClaseCancelada(
 					actor, sede, cancelada, claseId, motivo, ahora);
 			log.info("Clase cancelada: claseId={} consultorioId={}", claseId, consultorioId);
@@ -397,9 +418,9 @@ public class ClaseService {
 	 * <p>Cancela a todos —los que tenian lugar y los que esperaban—, pone el contador en cero para
 	 * que el invariante siga cerrando, y avisa a cada uno por separado (RF-M26-006).
 	 *
-	 * <p><b>No promueve a nadie</b>: no hay clase a la que promover. Y <b>no devuelve creditos ni
-	 * plata</b> —paso 7 de RF-M28-006—: eso es 08.07, y lo que esta etapa le deja es una operacion
-	 * idempotente de la que colgarlo sin devolver dos veces.
+	 * <p><b>No promueve a nadie</b>: no hay clase a la que promover. Los creditos los devuelve
+	 * {@code cancelar} antes de llegar aca (08.07); la plata no se devuelve sola: un reintegro es un
+	 * acto de caja con su propio registro (RF-M19-010).
 	 *
 	 * <p>La lista de afectados se lee ANTES del {@code UPDATE} masivo, que es lo unico que permite
 	 * saber a quien avisarle: despues ya estan todos en {@code CANCELADA} y son indistinguibles de
@@ -457,10 +478,11 @@ public class ClaseService {
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirLectura(actor, organizationId, consultorioId);
+		exigirVentana(desde, hasta);
 
-		return clases.findDeLaSedeEnVentana(organizationId, consultorioId, desde, hasta).stream()
-				.map(clase -> proyectar(organizationId, consultorioId, clase))
-				.toList();
+		// Una proyeccion para toda la lista: ofertas, boxes y nombres se piden agrupados, no por fila.
+		return proyeccion.de(organizationId, consultorioId,
+				clases.findDeLaSedeEnVentana(organizationId, consultorioId, desde, hasta));
 	}
 
 	/** Historial de una clase (RN-M28-009). Append-only. */
@@ -568,6 +590,82 @@ public class ClaseService {
 		}
 
 		return profesionalId;
+	}
+
+	/**
+	 * El box de la clase: el que pidio quien programa, o el que elige el servidor.
+	 *
+	 * <p><b>Sin {@code espacioId}, el comportamiento de siempre</b>: si la oferta exige box, el
+	 * primero apto y libre ({@link #elegirEspacio}); si no lo exige, ninguno. Al reprogramar eso
+	 * puede cambiar el box actual, y por eso el contrato le dice al cliente que lo mande si quiere
+	 * conservarlo.
+	 *
+	 * <p><b>Con {@code espacioId}</b> se valida ese y solo ese (RF-M12-009 y RF-M28-001 paso 5:
+	 * "selecciona ... espacio"). No se cae a otro si el elegido no sirve: quien eligio un box quiere
+	 * ESE box, y cambiarselo en silencio es peor que un 409. Se acepta tambien sobre una oferta que
+	 * no exige box: una clase de yoga puede reservar el salon aunque la oferta no lo obligue, y desde
+	 * ese momento el salon queda ocupado para turnos y otras clases.
+	 *
+	 * <p>Corre bajo el lock de {@code agenda_sede}, igual que la eleccion automatica: el "libre" que
+	 * se mira aca no puede cambiar antes del INSERT.
+	 */
+	private Long resolverEspacio(
+			long organizationId,
+			long consultorioId,
+			OfertaSnapshot oferta,
+			Long espacioPedido,
+			Instant inicio,
+			Instant fin,
+			Long claseExcluidaId) {
+
+		if (espacioPedido == null) {
+			return oferta.requiereEspacio()
+					? elegirEspacio(organizationId, consultorioId, oferta, inicio, fin,
+							claseExcluidaId)
+					: null;
+		}
+		if (!espacioApto(organizationId, consultorioId, oferta, espacioPedido, inicio, fin)) {
+			// slot-no-disponible y no 404: el box puede existir y ser de la sede, y lo que falla es
+			// que no sirve para esta oferta en esa franja. Un box de otro tenant cae aca tambien,
+			// sin confirmar que existe.
+			throw new HorarioNoDisponibleException(
+					"el espacio elegido no esta en servicio en esta sede o no esta habilitado "
+							+ "para la oferta en ese horario");
+		}
+		if (!espacioLibre(organizationId, espacioPedido, inicio, fin, claseExcluidaId)) {
+			throw new RecursoOcupadoException("espacio");
+		}
+		return espacioPedido;
+	}
+
+	/**
+	 * Activo, de esta sede, en servicio durante TODA la franja y habilitado para la oferta. Lista de
+	 * habilitaciones vacia significa todos, la misma regla de V28 que usa {@link #elegirEspacio}.
+	 */
+	private boolean espacioApto(
+			long organizationId,
+			long consultorioId,
+			OfertaSnapshot oferta,
+			long espacioId,
+			Instant inicio,
+			Instant fin) {
+
+		boolean enServicioEnLaSede = espacios.find(organizationId, espacioId, inicio)
+				.filter(EspacioSnapshot::active)
+				.filter(EspacioSnapshot::enServicio)
+				.filter(espacio -> espacio.consultorioId() == consultorioId)
+				// enServicio se evaluo al inicio; un box que deja de operar a mitad de clase no sirve.
+				.filter(espacio -> espacio.validUntil() == null || !espacio.validUntil().isBefore(fin))
+				.isPresent();
+		if (!enServicioEnLaSede) {
+			return false;
+		}
+		List<HabilitacionSnapshot> habilitados = ofertas.espaciosHabilitados(
+				organizationId, consultorioId, oferta.id());
+		return habilitados.isEmpty()
+				|| habilitados.stream()
+						.filter(habilitacion -> habilitacion.recursoId() == espacioId)
+						.anyMatch(habilitacion -> habilitacion.vigenteEn(inicio));
 	}
 
 	/**
@@ -730,11 +828,7 @@ public class ClaseService {
 	}
 
 	private ClaseView proyectar(long organizationId, long consultorioId, ClaseProgramada clase) {
-		int efectiva = ofertas.find(organizationId, consultorioId, clase.getOfertaId())
-				.map(oferta -> capacidadEfectiva(organizationId, oferta, clase.getEspacioId(),
-						clase.getInicio(), clase.getCapacidad()))
-				.orElse(clase.getCapacidad());
-		return ClaseView.de(clase, efectiva, contarOcupacion(clase));
+		return proyeccion.de(organizationId, consultorioId, clase);
 	}
 
 	/**
@@ -810,6 +904,24 @@ public class ClaseService {
 	// Autorizacion
 	// =================================================================================
 
+	/**
+	 * La ventana del listado (AKINE-09.02): {@code hasta} despues de {@code desde} y a lo sumo
+	 * {@value #VENTANA_MAXIMA_DIAS} dias, el mismo tope que la agenda de turnos
+	 * ({@code VentanaDeAgenda}). Sin el, {@code 1970..9999} devolvia todas las clases de la sede
+	 * proyectadas y sin paginar, y una ventana invertida respondia 200 vacio.
+	 */
+	private static void exigirVentana(Instant desde, Instant hasta) {
+		if (!hasta.isAfter(desde)) {
+			throw new IllegalArgumentException("hasta tiene que ser posterior a desde");
+		}
+		if (Duration.between(desde, hasta).compareTo(Duration.ofDays(VENTANA_MAXIMA_DIAS)) > 0) {
+			throw new IllegalArgumentException(
+					"La ventana del listado admite hasta " + VENTANA_MAXIMA_DIAS + " dias");
+		}
+	}
+
+	static final int VENTANA_MAXIMA_DIAS = 62;
+
 	/** Falta de contexto es <b>403 y nunca 401</b>: un 401 deja al frontend en bucle de login. */
 	private static long exigirContexto(OperatingActor actor) {
 		if (actor == null || actor.contextOrganizationId() == null) {
@@ -835,7 +947,9 @@ public class ClaseService {
 	private void exigir(
 			OperatingActor actor, long organizationId, long consultorioId, String permiso) {
 
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now()));
+		// AKINE-09.02: la decision ya no se descarta; si vino por soporte queda auditada.
+		soporte.registrarSiCorresponde(permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now())),
+				actor.accountId(), organizationId, consultorioId, permiso);
 	}
 }

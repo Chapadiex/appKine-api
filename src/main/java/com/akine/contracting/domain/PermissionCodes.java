@@ -6,7 +6,7 @@ package com.akine.contracting.domain;
  * <p>{@code convenio:manage} ya estaba en el catalogo de la matriz §5 desde AKINE-01.03,
  * declarado para F3, y 03.03 <b>no agrego ningun codigo</b>: la matriz no la amplia una etapa,
  * mismo criterio que 02.04, 02.05, 02.06 y 02.07. {@code convenio:read} lo agrego despues la
- * decision U-07 (matriz §17.1).
+ * decision U-07 (matriz §18.1).
  *
  * <p>Es literal y no el enum de {@code organization} por el motivo de siempre:
  * {@code organization.domain.PermissionCode} es privado de ese modulo y ArchUnit prohibe
@@ -64,7 +64,7 @@ public final class PermissionCodes {
 	public static final String CONVENIO_MANAGE = "convenio:manage";
 
 	/**
-	 * Ver financiadores, planes, convenios y aranceles (U-07, matriz §17.1). Lo tiene todo el
+	 * Ver financiadores, planes, convenios y aranceles (U-07, matriz §18.1). Lo tiene todo el
 	 * personal; {@code PACIENTE} y {@code PLATFORM_ADMIN} no.
 	 *
 	 * <p>Se evalua con la sede del contexto. Ver {@code AutorizacionDeCatalogo.exigirLectura}.

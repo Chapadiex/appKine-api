@@ -45,7 +45,25 @@ public record ClaseResponse(
 		@Schema(example = "El instructor se reporto enfermo") String motivoCancelacion,
 		Instant canceladoEn,
 
-		@Schema(description = "Se manda de vuelta al reprogramar", example = "3") long version) {
+		@Schema(description = "Se manda de vuelta al reprogramar", example = "3") long version,
+
+		@Schema(
+				description = "Nombre comercial de la oferta, leido al responder. Ausente si la "
+						+ "oferta ya no se puede resolver.",
+				example = "Pilates reformer")
+		String ofertaNombre,
+
+		@Schema(
+				description = "Nombre del profesional o instructor, leido al responder. Ausente si "
+						+ "la clase no tiene profesional o su vinculo ya no se puede resolver.",
+				example = "Laura Gomez")
+		String profesionalNombre,
+
+		@Schema(
+				description = "Nombre del box, leido al responder. Ausente si la clase no tiene box "
+						+ "o ya no se puede resolver.",
+				example = "Salon 1")
+		String espacioNombre) {
 
 	public static ClaseResponse de(ClaseView view) {
 		return new ClaseResponse(
@@ -63,6 +81,9 @@ public record ClaseResponse(
 				view.ocupados(),
 				view.motivoCancelacion(),
 				view.canceladoEn(),
-				view.version());
+				view.version(),
+				view.ofertaNombre(),
+				view.profesionalNombre(),
+				view.espacioNombre());
 	}
 }

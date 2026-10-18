@@ -176,7 +176,7 @@ class RolePermissionsTest {
 	void caso_create_se_absorbio_en_hc_write() {
 		// Era el ultimo permiso "de fase futura" que no tenia ningun rol. Abrir un caso siempre se
 		// autorizo con hc:write, y desde G-5 eso da exactamente la fila "Crear Caso Clinico":
-		// PROFESIONAL por base y CONSULTORIO_ADMIN por grant. Matriz §17.3.
+		// PROFESIONAL por base y CONSULTORIO_ADMIN por grant. Matriz §18.3.
 		assertThat(PermissionCode.desde("caso:create")).isEmpty();
 		assertThat(RolePermissions.baseScope(RoleCode.PROFESIONAL, PermissionCode.HC_WRITE))
 				.contains(PermissionScope.CONSULTORIO);

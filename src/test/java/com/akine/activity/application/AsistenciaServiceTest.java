@@ -1,5 +1,8 @@
 package com.akine.activity.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
+import org.mockito.Mockito;
+
 import com.akine.activity.domain.AsistenciaActividad;
 import com.akine.activity.domain.AsistenciaEvento;
 import com.akine.activity.domain.ClaseProgramada;
@@ -19,6 +22,8 @@ import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseProgramadaRep
 import com.akine.activity.domain.port.ActivityRepositoryPorts.InscripcionClaseRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
+import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
@@ -91,23 +96,42 @@ class AsistenciaServiceTest {
 	@Mock private ClaseProgramadaRepositoryPort clases;
 	@Mock private ClaseEventoRepositoryPort eventosDeClase;
 	@Mock private CapacidadDeClase capacidad;
+	@Mock private ProyeccionDeClase proyeccion;
 	@Mock private PacienteDirectory personas;
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
+	@Mock private PermissionEvaluator permissionEvaluator;
 	@Mock private AuditTrail auditTrail;
 	@Mock private PlatformTransactionManager transactionManager;
+	@Mock private ConsumoDePaseService consumoDePases;
+	@Mock private DevengoPorClaseService devengoPorClase;
 
 	private AsistenciaService service;
 
 	@BeforeEach
 	void setUp() {
 		service = new AsistenciaService(asistencias, eventos, inscripciones, clases, eventosDeClase,
-				capacidad, personas, consultorios, permissionGuard, auditTrail, transactionManager);
+				capacidad, proyeccion, personas, consultorios, permissionGuard, permissionEvaluator,
+				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail, consumoDePases, devengoPorClase,
+				LimiteDeLotesPorSede.sinLimite(), transactionManager);
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
 		given(clases.findByIdInScope(ORG_ID, SEDE_ID, CLASE_ID))
 				.willReturn(Optional.of(clase(EstadoClase.EN_CURSO, 8, 6)));
+		// AKINE-08.07: tomar lista lee la clase bloqueada (compartida; exclusiva en el ingreso sin
+		// inscripcion). Los tests que preparan la clase con findByIdInScope siguen valiendo: los
+		// locks devuelven lo mismo, salvo que el test los prepare por su cuenta.
+		given(clases.lockCompartidoByIdInScope(anyLong(), anyLong(), anyLong())).willAnswer(llamada ->
+				clases.findByIdInScope(llamada.getArgument(0), llamada.getArgument(1), llamada.getArgument(2)));
+		given(clases.lockByIdInScope(anyLong(), anyLong(), anyLong())).willAnswer(llamada ->
+				clases.findByIdInScope(llamada.getArgument(0), llamada.getArgument(1), llamada.getArgument(2)));
 		given(capacidad.efectiva(anyLong(), anyLong(), any())).willReturn(8);
+		given(permissionEvaluator.evaluate(any()))
+				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
+		given(proyeccion.de(anyLong(), anyLong(), any(ClaseProgramada.class))).willAnswer(llamada -> {
+			ClaseProgramada clase = llamada.getArgument(2);
+			return ClaseView.de(clase, 8, clase.getCupoOcupado(), "Pilates", null, null);
+		});
 		given(inscripciones.contarEnEspera(ORG_ID, CLASE_ID)).willReturn(0);
 		given(inscripciones.findByIdInScope(ORG_ID, CLASE_ID, INSCRIPCION_ID))
 				.willReturn(Optional.of(reservada(INSCRIPCION_ID)));
@@ -139,6 +163,7 @@ class AsistenciaServiceTest {
 		// NI UN LLAMADO AL ASIGNADOR. Si esta linea alguna vez falla, alguien reintrodujo una
 		// escritura de cupo donde no hay ningun lugar que otorgar.
 		verify(clases, never()).tomarCupo(anyLong(), anyLong(), anyInt());
+		verify(clases, never()).tomarCupoEnCurso(anyLong(), anyLong(), anyInt());
 		verify(clases, never()).liberarCupo(anyLong(), anyLong());
 	}
 
@@ -211,7 +236,7 @@ class AsistenciaServiceTest {
 		given(personas.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(persona()));
 		given(inscripciones.findVivaDePersona(ORG_ID, CLASE_ID, PERSONA_ID))
 				.willReturn(Optional.empty());
-		given(clases.tomarCupo(ORG_ID, CLASE_ID, 8)).willReturn(0);
+		given(clases.tomarCupoEnCurso(ORG_ID, CLASE_ID, 8)).willReturn(0);
 
 		assertThatThrownBy(() -> service.registrarIngresoSinInscripcion(
 				actor(), SEDE_ID, CLASE_ID,
@@ -438,7 +463,7 @@ class AsistenciaServiceTest {
 		given(personas.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(persona()));
 		given(inscripciones.findVivaDePersona(ORG_ID, CLASE_ID, PERSONA_ID))
 				.willReturn(Optional.empty());
-		given(clases.tomarCupo(ORG_ID, CLASE_ID, 8)).willReturn(1);
+		given(clases.tomarCupoEnCurso(ORG_ID, CLASE_ID, 8)).willReturn(1);
 		given(inscripciones.saveAndFlush(any())).willAnswer(llamada -> {
 			InscripcionClase nueva = llamada.getArgument(0);
 			if (nueva.getId() == null) {
@@ -482,7 +507,7 @@ class AsistenciaServiceTest {
 		assertThatThrownBy(() -> service.registrarIngresoSinInscripcion(
 				actor(), SEDE_ID, CLASE_ID, ingreso))
 				.isInstanceOf(InscripcionDuplicadaException.class);
-		verify(clases, never()).tomarCupo(anyLong(), anyLong(), anyInt());
+		verify(clases, never()).tomarCupoEnCurso(anyLong(), anyLong(), anyInt());
 	}
 
 	@Test

@@ -55,7 +55,7 @@ import java.util.List;
  * <h2>Autorizacion</h2>
  *
  * <ul>
- *   <li><b>Leer</b>: {@code convenio:read} con la sede del contexto (U-07, matriz §17.1). Hasta
+ *   <li><b>Leer</b>: {@code convenio:read} con la sede del contexto (U-07, matriz §18.1). Hasta
  *       U-07 alcanzaba el contexto de organizacion y el rol {@code PACIENTE} leia el catalogo
  *       entero (el hueco que declaraba la matriz §13.4).</li>
  *   <li><b>Mutar</b>: {@code convenio:manage}, evaluado con la <b>sede</b> del contexto. Que lleve

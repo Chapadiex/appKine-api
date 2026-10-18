@@ -65,8 +65,9 @@ solape      contra los aranceles ACTIVOS del convenio, por grupo (convenio, prá
   `FOR UPDATE` sobre `convenio_lock`; **relectura del convenio** (su vigencia o su estado pudieron
   cambiar); evaluación entera; si alguna fila no entra, excepción **antes del primer INSERT**; si
   no, un `saveAndFlush` por fila.
-- **Auditoría:** el mismo `ARANCEL_CREATED` del alta por fila, con `origen = IMPORTACION`, más un
-  `ARANCELES_IMPORTADOS` por lote sobre el convenio con cantidad, prácticas distintas y rango.
+- **Auditoría:** un solo `ARANCELES_IMPORTADOS` por lote sobre el convenio con cantidad, prácticas
+  distintas y rango. Hasta el pre-QA del 14/10 cada fila dejaba además su `ARANCEL_CREATED` con
+  `origen = IMPORTACION`; se sacó porque lo auditable es el acto y no cada fila (PER-06b).
   Una confirmación rechazada no audita: no escribió nada.
 
 ### 3.1 Por qué no `Idempotency-Key`

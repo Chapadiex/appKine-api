@@ -67,7 +67,17 @@ public enum NotificationType {
 	 * Se movio un turno de la persona a otro horario (RF-M26-003). Lleva el horario anterior y el
 	 * nuevo; tampoco lleva el motivo, por la misma razon que la cancelacion.
 	 */
-	TURNO_REPROGRAMADO(false);
+	TURNO_REPROGRAMADO(false),
+
+	/**
+	 * El pase o abono de la persona vence pronto (RF-M26-008, AKINE-08.08). Lleva el producto, la
+	 * fecha y el saldo, y si el abono se va a renovar solo. <b>No renueva ni consume nada</b>
+	 * (CA-M26-008-06): informa.
+	 */
+	PASE_POR_VENCER(false),
+
+	/** Al pase o abono de la persona le quedan pocos creditos (RF-M26-008, AKINE-08.08). */
+	PASE_SALDO_BAJO(false);
 
 	private final boolean requiereEnlaceSeguro;
 

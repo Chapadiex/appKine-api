@@ -69,7 +69,7 @@ public record OfertaView(
 				oferta.getPrecioBase(),
 				oferta.getMoneda(),
 				// Se muestra tal cual se declaro: nadie lo interpreta (RN-M27-006, EsquemaCobro).
-				oferta.getEsquemaCobro() == null ? null : oferta.getEsquemaCobro().valor(),
+				oferta.getEsquemaCobro(),
 				oferta.isAdmiteObraSocial(),
 				oferta.isExigePrepago(),
 				oferta.isRequiereCasoClinico(),

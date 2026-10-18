@@ -11,7 +11,7 @@ package com.akine.resource.domain;
  * modulo consumidor declara los codigos que usa. Tenerlos en una constante con nombre y no
  * esparcidos como literales es lo que hace que un renombre del catalogo sea un solo grep.
  *
- * <p>{@code catalogo:read} y {@code catalogo:manage} los agrego la decision U-08 (matriz §17.2).
+ * <p>{@code catalogo:read} y {@code catalogo:manage} los agrego la decision U-08 (matriz §18.2).
  * Los demas salen de la seccion 5 de
  * {@code docs/seguridad/matriz-permisos-minima.md}, que es vinculante: una etapa no le agrega
  * filas al catalogo. {@code espacio:read} estuvo PROPUESTO en la seccion 10.1 mientras 02.02 lo
@@ -32,7 +32,7 @@ public final class PermissionCodes {
 
 	/**
 	 * Consultar el catalogo clinico —especialidades, practicas, nomencladores, vigencias, tipos de
-	 * medicion y solicitudes de alta—, global y propio (U-08, matriz §11.1 y §17.2).
+	 * medicion y solicitudes de alta—, global y propio (U-08, matriz §11.1 y §18.2).
 	 *
 	 * <p>Reemplaza la autorizacion interina por pertenencia de 02.05: lo tiene todo el personal y
 	 * la plataforma (GLOBAL, solo el catalogo comun); el rol {@code PACIENTE} recibe 403. Se
@@ -42,7 +42,7 @@ public final class PermissionCodes {
 
 	/**
 	 * Administrar los conceptos del catalogo clinico y las solicitudes de alta (U-08, matriz
-	 * §11.1 y §17.2).
+	 * §11.1 y §18.2).
 	 *
 	 * <p>Reemplaza el {@link #CONSULTORIO_MANAGE} interino de 02.05 con los mismos roles:
 	 * {@code ORG_ADMIN} (organizacion) y {@code CONSULTORIO_ADMIN} (su sede) sobre conceptos

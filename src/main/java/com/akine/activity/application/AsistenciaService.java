@@ -27,6 +27,8 @@ import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseProgramadaRep
 import com.akine.activity.domain.port.ActivityRepositoryPorts.InscripcionClaseRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
+import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
@@ -65,11 +67,14 @@ import java.util.stream.Collectors;
  * </pre>
  *
  * <p>Esta clase <b>no crea Sesiones</b>, no toca {@code clinical} ni {@code encounter} y no los
- * importa (RN-M28-007). Y <b>no devenga nada</b>: RF-M18-008 condiciona la deuda a que la Oferta
- * use esquema {@code POR_CLASE} y a que "la politica" lo defina, y ninguna de las dos condiciones
- * es evaluable —{@code V24} declara {@code esquema_cobro} como dato "declarado, no resuelto" sin
- * lista cerrada, y la politica no existe en ninguna tabla—. El devengo es 08.06/08.07/08.09 y
- * cuelga de la referencia economica unica que esta etapa deja.
+ * importa (RN-M28-007). <b>No devengaba nada</b> hasta U-39: RF-M18-008 condiciona la deuda a que
+ * la Oferta use esquema {@code POR_CLASE} y a que "la politica" lo defina. El usuario lo decidio el
+ * 17/10/2026 —asistencia, sin no-show—, y desde entonces la asistencia a una clase {@code POR_CLASE}
+ * devenga en esta misma transaccion ({@link DevengoPorClaseService}). Devengar no es cobrar.
+ *
+ * <p><b>Desde AKINE-08.07 si mueve creditos</b>, que no son deuda: en una oferta {@code POR_PACK}
+ * la asistencia consume un credito del pase de la persona y la correccion a ausente lo devuelve,
+ * en esta misma transaccion ({@link ConsumoDePaseService}). Un credito no es plata (RN-M29-006).
  *
  * <h2>El cupo no se mueve, salvo en una operacion</h2>
  *
@@ -109,15 +114,21 @@ public class AsistenciaService {
 	private final ClaseProgramadaRepositoryPort clases;
 	private final ClaseEventoRepositoryPort eventosDeClase;
 	private final CapacidadDeClase capacidad;
+	private final ProyeccionDeClase proyeccion;
 	private final PacienteDirectory personas;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionGuard permissionGuard;
+	private final PermissionEvaluator permissionEvaluator;
+	private final SoporteEnActividad soporte;
 	private final AuditTrail auditTrail;
+	private final ConsumoDePaseService consumoDePases;
+	private final DevengoPorClaseService devengoPorClase;
+	private final LimiteDeLotesPorSede limiteDeLotes;
 
 	/**
 	 * La transaccion de cada item del lote. <b>No alcanza con que {@link #registrar} este
-	 * anotado</b>: el lote lo invoca como {@code this.registrar(...)}, esa llamada no pasa por el
-	 * proxy de Spring y la anotacion no se aplica. Sin esta plantilla cada item corria <b>sin
+	 * anotado</b>: el lote invoca su nucleo como llamada interna ({@code registrarYaAutorizado}),
+	 * que no pasa por el proxy de Spring, y la anotacion no se aplica. Sin esta plantilla cada item corria <b>sin
 	 * transaccion</b> —cada {@code saveAndFlush} commiteaba por su cuenta— y un fallo a mitad de
 	 * item dejaba la inscripcion proyectada como {@code ASISTIO} sin la fila de asistencia que la
 	 * respalda.
@@ -131,10 +142,16 @@ public class AsistenciaService {
 			ClaseProgramadaRepositoryPort clases,
 			ClaseEventoRepositoryPort eventosDeClase,
 			CapacidadDeClase capacidad,
+			ProyeccionDeClase proyeccion,
 			PacienteDirectory personas,
 			ConsultorioDirectory consultorios,
 			PermissionGuard permissionGuard,
+			PermissionEvaluator permissionEvaluator,
+			SoporteEnActividad soporte,
 			AuditTrail auditTrail,
+			ConsumoDePaseService consumoDePases,
+			DevengoPorClaseService devengoPorClase,
+			LimiteDeLotesPorSede limiteDeLotes,
 			PlatformTransactionManager transactionManager) {
 
 		this.asistencias = asistencias;
@@ -143,10 +160,16 @@ public class AsistenciaService {
 		this.clases = clases;
 		this.eventosDeClase = eventosDeClase;
 		this.capacidad = capacidad;
+		this.proyeccion = proyeccion;
 		this.personas = personas;
 		this.consultorios = consultorios;
 		this.permissionGuard = permissionGuard;
+		this.permissionEvaluator = permissionEvaluator;
+		this.soporte = soporte;
 		this.auditTrail = auditTrail;
+		this.consumoDePases = consumoDePases;
+		this.devengoPorClase = devengoPorClase;
+		this.limiteDeLotes = limiteDeLotes;
 		this.transaccionPorItem = new TransactionTemplate(transactionManager);
 	}
 
@@ -198,14 +221,29 @@ public class AsistenciaService {
 	 * {@code estado}.
 	 *
 	 * <p><b>Cerrar no cobra.</b> Ver la cabecera.
+	 *
+	 * <p><b>La clase se toma {@code FOR UPDATE} antes de buscar pendientes, en
+	 * {@code READ_COMMITTED}</b> (escenario 55 de {@code docs/tests-diferidos.md}). Sin el lock, dos
+	 * cierres simultaneos leian la misma lista de pendientes, el primero insertaba las asistencias y
+	 * los demas chocaban contra {@code uk_asistencia_clase_persona}: el dato quedaba bien y el
+	 * operador recibia un 500 por un cierre "idempotente". Con el lock el segundo espera, y con
+	 * {@code READ_COMMITTED} su consulta de pendientes ve lo que el primero commiteo: no encuentra
+	 * ninguno y devuelve la clase ya realizada. Mismo orden que el resto del modulo:
+	 * {@code clase_programada -> inscripcion_clase}.
 	 */
-	@Transactional
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public ResultadoDeCierre cerrar(OperatingActor actor, long consultorioId, long claseId) {
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigir(actor, organizationId, consultorioId, PermissionCodes.CLASE_MANAGE);
+		// AKINE-09.02: cerrar escribe asistencias (AUSENTE) y cancela la lista de espera. Son las
+		// dos familias que PermissionCodes separa de la clase; hoy todo rol con clase:manage las
+		// tiene, pero si eso cambia, cerrar no puede ser la puerta trasera.
+		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
+		exigir(actor, organizationId, consultorioId, PermissionCodes.INSCRIPCION_MANAGE);
 
-		ClaseProgramada clase = exigirClaseDelTenant(organizationId, consultorioId, claseId);
+		ClaseProgramada clase = clases.lockByIdInScope(organizationId, consultorioId, claseId)
+				.orElseThrow(() -> new ClaseNotAccessibleException(claseId));
 		EstadoClase anterior = clase.getEstado();
 		Instant ahora = Instant.now();
 
@@ -292,14 +330,35 @@ public class AsistenciaService {
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
 
+		return paraQuienMira(
+				registrarYaAutorizado(actor, sede, claseId, command, new LecturasDeConsumo(sede)),
+				puedeVerPases(actor, organizationId, consultorioId));
+	}
+
+	/**
+	 * Lo que {@link #registrar} hace despues de validar el tenant, la sede y el permiso. El lote
+	 * lo llama una vez por item, dentro de la transaccion del item, con esas tres cosas ya
+	 * resueltas para todo el pedido.
+	 *
+	 * <p><b>Todo lo que toma un lock sigue aca adentro</b>, y en el mismo orden: la clase en
+	 * compartido, despues la inscripcion y la asistencia, despues el pase.
+	 */
+	private ResultadoDeAsistencia registrarYaAutorizado(
+			OperatingActor actor,
+			ConsultorioSnapshot sede,
+			long claseId,
+			RegistrarAsistenciaCommand command,
+			LecturasDeConsumo lecturas) {
+
+		long organizationId = sede.organizationId();
 		ClaseProgramada clase = exigirClaseQueAdmiteAsistencia(
-				organizationId, consultorioId, claseId);
+				organizationId, sede.id(), claseId, false);
 		InscripcionClase inscripcion = inscripciones
 				.findByIdInScope(organizationId, claseId, command.inscripcionId())
 				.orElseThrow(() ->
 						new InscripcionNotAccessibleException(command.inscripcionId()));
 
-		return aplicar(actor, sede, clase, inscripcion, command, Instant.now());
+		return aplicar(actor, sede, clase, inscripcion, command, Instant.now(), lecturas);
 	}
 
 	/** El nucleo compartido por la operacion individual, el lote y el ingreso sin inscripcion. */
@@ -309,7 +368,8 @@ public class AsistenciaService {
 			ClaseProgramada clase,
 			InscripcionClase inscripcion,
 			RegistrarAsistenciaCommand command,
-			Instant ahora) {
+			Instant ahora,
+			LecturasDeConsumo lecturas) {
 
 		long organizationId = clase.getOrganizationId();
 		Optional<AsistenciaActividad> previa =
@@ -323,9 +383,9 @@ public class AsistenciaService {
 				return new ResultadoDeAsistencia(
 						AsistenciaView.de(existente), InscripcionView.de(inscripcion), false, false);
 			}
-			return corregir(actor, sede, inscripcion, existente, command, ahora);
+			return corregir(actor, sede, clase, inscripcion, existente, command, ahora, lecturas);
 		}
-		return crear(actor, sede, clase, inscripcion, command, ahora);
+		return crear(actor, sede, clase, inscripcion, command, ahora, lecturas);
 	}
 
 	private ResultadoDeAsistencia crear(
@@ -334,7 +394,8 @@ public class AsistenciaService {
 			ClaseProgramada clase,
 			InscripcionClase inscripcion,
 			RegistrarAsistenciaCommand command,
-			Instant ahora) {
+			Instant ahora,
+			LecturasDeConsumo lecturas) {
 
 		EstadoInscripcion anterior = inscripcion.getEstado();
 		inscripcion.marcarAsistencia(command.resultado().estadoDeInscripcion(), ahora);
@@ -344,14 +405,21 @@ public class AsistenciaService {
 				proyectada, command.resultado(), command.origen(),
 				clase.getProfesionalMembershipId(), command.observaciones(),
 				actor.accountId(), ahora));
-		eventos.registrar(AsistenciaEvento.registro(guardada, actor.accountId(), ahora));
+		AsistenciaEvento evento =
+				eventos.registrar(AsistenciaEvento.registro(guardada, actor.accountId(), ahora));
 
 		auditar(actor, guardada, sede, "ASISTENCIA_REGISTRADA", anterior.name(), null, ahora);
+		// AKINE-08.07: la asistencia consume credito de un pase si la oferta cobra por pack.
+		ConsumoDeCredito consumo = consumoDePases.aplicar(
+				clase, guardada, true, evento, actor.accountId(), null, ahora, lecturas);
+		// U-39: en una oferta POR_CLASE la deuda nace con la asistencia (RF-M18-008).
+		DevengoDeClase devengo = devengoPorClase.aplicar(
+				clase, guardada, null, actor.accountId(), null, ahora, lecturas);
 		log.info("Asistencia registrada: asistenciaId={} claseId={} resultado={} origen={}",
 				guardada.getId(), guardada.getClaseId(), command.resultado(), command.origen());
 
 		return new ResultadoDeAsistencia(
-				AsistenciaView.de(guardada), InscripcionView.de(proyectada), true, false);
+				AsistenciaView.de(guardada), InscripcionView.de(proyectada), true, false, consumo, devengo);
 	}
 
 	/**
@@ -361,16 +429,18 @@ public class AsistenciaService {
 	private ResultadoDeAsistencia corregir(
 			OperatingActor actor,
 			ConsultorioSnapshot sede,
+			ClaseProgramada clase,
 			InscripcionClase inscripcion,
 			AsistenciaActividad existente,
 			RegistrarAsistenciaCommand command,
-			Instant ahora) {
+			Instant ahora,
+			LecturasDeConsumo lecturas) {
 
 		ResultadoAsistencia anterior = existente.corregir(
 				command.resultado(), command.observaciones(), command.motivo(),
 				actor.accountId(), ahora);
 		AsistenciaActividad corregida = asistencias.saveAndFlush(existente);
-		eventos.registrar(AsistenciaEvento.correccion(
+		AsistenciaEvento evento = eventos.registrar(AsistenciaEvento.correccion(
 				corregida, anterior, command.motivo(), actor.accountId(), ahora));
 
 		inscripcion.marcarAsistencia(command.resultado().estadoDeInscripcion(), ahora);
@@ -378,11 +448,18 @@ public class AsistenciaService {
 
 		auditar(actor, corregida, sede, "ASISTENCIA_CORREGIDA", anterior.name(), command.motivo(),
 				ahora);
+		// AKINE-08.07: una correccion a ausente devuelve el credito; de vuelta a presente lo toma.
+		ConsumoDeCredito consumo = consumoDePases.aplicar(
+				clase, corregida, false, evento, actor.accountId(), command.motivo(), ahora,
+				lecturas);
+		// U-39: a ausente anula la deuda de la clase (con cobros, no); de vuelta a presente la devenga.
+		DevengoDeClase devengo = devengoPorClase.aplicar(
+				clase, corregida, anterior, actor.accountId(), command.motivo(), ahora, lecturas);
 		log.info("Asistencia corregida: asistenciaId={} de={} a={}",
 				corregida.getId(), anterior, command.resultado());
 
 		return new ResultadoDeAsistencia(
-				AsistenciaView.de(corregida), InscripcionView.de(proyectada), false, true);
+				AsistenciaView.de(corregida), InscripcionView.de(proyectada), false, true, consumo, devengo);
 	}
 
 	// =================================================================================
@@ -416,13 +493,40 @@ public class AsistenciaService {
 							+ comandos.size());
 		}
 
-		List<ItemDeLote> items = new ArrayList<>(comandos.size());
-		for (RegistrarAsistenciaCommand comando : comandos) {
-			items.add(ejecutarItem(actor, consultorioId, claseId, comando));
-		}
-
+		// AKINE-09.05: contexto, sede y permiso son los mismos para todos los items, y antes se
+		// leian adentro de cada transaccion (tres sentencias por participante). Se resuelven una vez
+		// por pedido y en el mismo orden que antes: el primer item fallaba con la misma excepcion,
+		// que no se traduce a resultado parcial y corta el lote entero. Como en las mutaciones de
+		// #91, el permiso se decide con lo leido en este pedido y la ventana de revocacion sigue
+		// sin cruzar al pedido siguiente. Nada de esto toma un lock: los locks siguen en el item.
 		long organizationId = exigirContexto(actor);
-		return ResultadoDeLote.de(items, cupos(organizationId, consultorioId, claseId));
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
+		PermissionDecision decision =
+				decidir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
+		LecturasDeConsumo lecturas = new LecturasDeConsumo(sede);
+		boolean veLosPases = puedeVerPases(actor, organizationId, consultorioId);
+
+		// U-49 c (DP-30): con el limite encendido, a lo sumo N lotes a la vez por sede. Se toma
+		// despues de autorizar —un pedido sin permiso no ocupa ni espera lugar— y antes del primer
+		// item: un lote rechazado no escribio nada. Mientras espera no hay conexion abierta. El lote
+		// de un solo item no pasa: es lo mismo que el registro individual, que tampoco pasa.
+		try (LimiteDeLotesPorSede.Permiso lugar = comandos.size() > 1
+				? limiteDeLotes.tomar(consultorioId)
+				: LimiteDeLotesPorSede.Permiso.NINGUNO) {
+
+			List<ItemDeLote> items = new ArrayList<>(comandos.size());
+			for (RegistrarAsistenciaCommand comando : comandos) {
+				// Un SUPPORT_ACCESS_USED por item, igual que cuando cada item evaluaba su permiso.
+				soporte.registrarSiCorresponde(decision, actor.accountId(), organizationId,
+						consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
+				ItemDeLote item = ejecutarItem(actor, sede, claseId, comando, lecturas);
+				items.add(item.exitoso()
+						? ItemDeLote.ok(item.inscripcionId(), paraQuienMira(item.resultado(), veLosPases))
+						: item);
+			}
+
+			return ResultadoDeLote.de(items, cupos(organizationId, consultorioId, claseId));
+		}
 	}
 
 	/**
@@ -436,12 +540,12 @@ public class AsistenciaService {
 	 * segundo vocabulario de errores.
 	 */
 	private ItemDeLote ejecutarItem(
-			OperatingActor actor, long consultorioId, long claseId,
-			RegistrarAsistenciaCommand comando) {
+			OperatingActor actor, ConsultorioSnapshot sede, long claseId,
+			RegistrarAsistenciaCommand comando, LecturasDeConsumo lecturas) {
 
 		try {
 			ResultadoDeAsistencia resultado = transaccionPorItem.execute(
-					estado -> registrar(actor, consultorioId, claseId, comando));
+					estado -> registrarYaAutorizado(actor, sede, claseId, comando, lecturas));
 			return ItemDeLote.ok(comando.inscripcionId(), resultado);
 		} catch (InscripcionNotAccessibleException excepcion) {
 			// 404 y nunca "no es tuyo": sin el predicado de clase y tenant en la consulta, un lote
@@ -501,7 +605,7 @@ public class AsistenciaService {
 		exigir(actor, organizationId, consultorioId, PermissionCodes.ASISTENCIA_MANAGE);
 
 		ClaseProgramada clase = exigirClaseQueAdmiteAsistencia(
-				organizationId, consultorioId, claseId);
+				organizationId, consultorioId, claseId, true);
 		if (clase.getEstado().estaCerrada()) {
 			throw new TransicionDeClaseNoPermitidaException(
 					claseId, "ya cerro su operacion y no admite ingresos");
@@ -517,8 +621,10 @@ public class AsistenciaService {
 		Instant ahora = Instant.now();
 
 		// EL MISMO UPDATE CONDICIONAL DE 08.02. El techo `capacidad` esta en el WHERE como columna,
-		// asi que esta operacion —escrita en otra etapa— tampoco puede sobrevender.
-		if (clases.tomarCupo(organizationId, claseId, capacidadEfectiva) != 1) {
+		// asi que esta operacion —escrita en otra etapa— tampoco puede sobrevender. Es la variante
+		// EN_CURSO: la de 08.02 exige PROGRAMADA y aca la clase ya empezo, asi que devolvia cero
+		// filas siempre y el ingreso respondia clase-completa con lugares libres (escenario 56).
+		if (clases.tomarCupoEnCurso(organizationId, claseId, capacidadEfectiva) != 1) {
 			throw new ClaseCompletaException(
 					claseId, capacidadEfectiva, clase.getCupoOcupado());
 		}
@@ -531,9 +637,12 @@ public class AsistenciaService {
 		log.info("Ingreso sin inscripcion: claseId={} personaId={} inscripcionId={}",
 				claseId, command.personaId(), inscripcion.getId());
 
-		return aplicar(actor, sede, clase, inscripcion, new RegistrarAsistenciaCommand(
-				inscripcion.getId(), command.resultado(), OrigenAsistencia.INGRESO_SIN_INSCRIPCION,
-				command.observaciones(), null), ahora);
+		return paraQuienMira(
+				aplicar(actor, sede, clase, inscripcion, new RegistrarAsistenciaCommand(
+						inscripcion.getId(), command.resultado(),
+						OrigenAsistencia.INGRESO_SIN_INSCRIPCION, command.observaciones(), null),
+						ahora, new LecturasDeConsumo(sede)),
+				puedeVerPases(actor, organizationId, consultorioId));
 	}
 
 	// =================================================================================
@@ -637,9 +746,18 @@ public class AsistenciaService {
 	 * porque las correcciones llegan despues de que la clase termino, que es cuando se descubren.
 	 */
 	private ClaseProgramada exigirClaseQueAdmiteAsistencia(
-			long organizationId, long consultorioId, long claseId) {
+			long organizationId, long consultorioId, long claseId, boolean ocupaCupo) {
 
-		ClaseProgramada clase = exigirClaseDelTenant(organizationId, consultorioId, claseId);
+		// AKINE-08.07: la clase se lee BLOQUEADA, antes de tocar la inscripcion o un pase. En modo
+		// compartido varias asistencias conviven, pero ninguna corre a la vez que la cancelacion
+		// (que la toma exclusiva): asi la cancelacion devuelve todo credito consumido en la clase y
+		// ningun consumo entra sobre una clase ya cancelada. El ingreso sin inscripcion la toma
+		// exclusiva porque despues escribe el cupo, y un S que pide X es un deadlock.
+		// Orden de locks: clase_programada -> inscripcion_clase -> pase_servicio.
+		ClaseProgramada clase = (ocupaCupo
+				? clases.lockByIdInScope(organizationId, consultorioId, claseId)
+				: clases.lockCompartidoByIdInScope(organizationId, consultorioId, claseId))
+				.orElseThrow(() -> new ClaseNotAccessibleException(claseId));
 		if (!clase.getEstado().admiteAsistencia()) {
 			throw new TransicionDeClaseNoPermitidaException(
 					claseId,
@@ -670,11 +788,9 @@ public class AsistenciaService {
 		}
 	}
 
+	/** La misma proyeccion que {@code ClaseService}: el schema Clase sale igual de los dos. */
 	private ClaseView vista(long organizationId, long consultorioId, ClaseProgramada clase) {
-		return ClaseView.de(
-				clase,
-				capacidad.efectiva(organizationId, consultorioId, clase),
-				clase.getCupoOcupado());
+		return proyeccion.de(organizationId, consultorioId, clase);
 	}
 
 	private CuposView cupos(long organizationId, long consultorioId, long claseId) {
@@ -810,7 +926,51 @@ public class AsistenciaService {
 	private void exigir(
 			OperatingActor actor, long organizationId, long consultorioId, String permiso) {
 
-		permissionGuard.requirePermission(new PermissionQuery(
+		// AKINE-09.02: la decision ya no se descarta; si vino por soporte queda auditada.
+		soporte.registrarSiCorresponde(decidir(actor, organizationId, consultorioId, permiso),
+				actor.accountId(), organizationId, consultorioId, permiso);
+	}
+
+	/**
+	 * Si quien toma lista puede ver los pases de la sede (U-46 (c), decidida el 17/10/2026).
+	 *
+	 * <p>Va por {@link PermissionEvaluator} y no por {@link PermissionGuard} porque no tenerlo no
+	 * es un rechazo: es recibir el resultado con el pase tapado. Tampoco registra
+	 * {@code SUPPORT_ACCESS_USED}: la operacion ya dejo su fila por {@code asistencia:manage}, y
+	 * esta segunda pregunta del mismo pedido no agrega un hecho nuevo.
+	 */
+	private boolean puedeVerPases(OperatingActor actor, long organizationId, long consultorioId) {
+		return permissionEvaluator.evaluate(new PermissionQuery(
+				actor.accountId(), PermissionCodes.PASE_READ, organizationId, consultorioId, null,
+				Instant.now())).granted();
+	}
+
+	/**
+	 * Tapa el pase y su saldo para quien no tiene {@code pase:read}. El {@code efecto} queda: quien
+	 * marco presente tiene que saber si eso consumio un credito o si la persona no tenia pase, y eso
+	 * lo dispara su propio acto. Que pase era y cuanto le queda es informacion economica de la
+	 * persona, la misma que {@code DetalleOperativoResponse} ya le niega a quien solo toma lista.
+	 */
+	private static ResultadoDeAsistencia paraQuienMira(
+			ResultadoDeAsistencia resultado, boolean veLosPases) {
+		if (veLosPases || (resultado.consumo() == null && resultado.devengo() == null)) {
+			return resultado;
+		}
+		// U-39: la deuda POR_CLASE pasa por el mismo filtro. El efecto queda (DEVENGADA, ANULADA,
+		// CON_COBROS...: lo dispara el propio acto de quien toma lista); que obligacion es, cuanto
+		// vale y cuanto falta pagar es la misma informacion economica de la persona que se tapa en el
+		// pase.
+		return new ResultadoDeAsistencia(resultado.asistencia(), resultado.inscripcion(),
+				resultado.registrada(), resultado.corregida(),
+				resultado.consumo() == null ? null : resultado.consumo().sinPase(),
+				resultado.devengo() == null ? null : resultado.devengo().sinImporte());
+	}
+
+	/** Exige el permiso y devuelve la decision, sin auditar el acceso de soporte. */
+	private PermissionDecision decidir(
+			OperatingActor actor, long organizationId, long consultorioId, String permiso) {
+
+		return permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now()));
 	}
 }

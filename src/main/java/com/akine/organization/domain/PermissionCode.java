@@ -142,7 +142,7 @@ public enum PermissionCode {
 	HC_WRITE("hc:write"),
 
 	// `caso:create` (Crear Caso Clinico, F4) YA NO ES UN CODIGO: se absorbio en `hc:write` (U-04,
-	// matriz §17.3). Abrir un caso siempre se autorizo con `hc:write`, y desde G-5 eso da
+	// matriz §18.3). Abrir un caso siempre se autorizo con `hc:write`, y desde G-5 eso da
 	// exactamente las celdas de la fila "Crear Caso Clinico": PROFESIONAL por base y
 	// CONSULTORIO_ADMIN por grant. Un codigo que ningun endpoint evalua y ningun rol tiene solo
 	// servia para que alguien creyera que existe un control que no existe.
@@ -161,7 +161,7 @@ public enum PermissionCode {
 	 * Asignacion base: ORGANIZACION para {@code ORG_ADMIN}; CONSULTORIO para
 	 * {@code CONSULTORIO_ADMIN}, {@code PROFESIONAL} y {@code ADMINISTRATIVO}. {@code PACIENTE} y
 	 * {@code PLATFORM_ADMIN} no lo tienen (el catalogo global de financiadores no existe, matriz
-	 * §13.2). No es otorgable por grant. Matriz §17.1.
+	 * §13.2). No es otorgable por grant. Matriz §18.1.
 	 */
 	CONVENIO_READ("convenio:read"),
 
@@ -171,7 +171,7 @@ public enum PermissionCode {
 	 *
 	 * <p>GLOBAL para {@code PLATFORM_ADMIN} (solo ve el catalogo comun, que no es dato de ningun
 	 * tenant), ORGANIZACION para {@code ORG_ADMIN}, CONSULTORIO para {@code CONSULTORIO_ADMIN},
-	 * {@code PROFESIONAL} y {@code ADMINISTRATIVO}. {@code PACIENTE} no. Matriz §17.2.
+	 * {@code PROFESIONAL} y {@code ADMINISTRATIVO}. {@code PACIENTE} no. Matriz §18.2.
 	 */
 	CATALOGO_READ("catalogo:read"),
 
@@ -181,7 +181,7 @@ public enum PermissionCode {
 	 * <p>GLOBAL para {@code PLATFORM_ADMIN} —y solo sobre conceptos globales: la plataforma no
 	 * crea conceptos de un tenant—, ORGANIZACION para {@code ORG_ADMIN}, CONSULTORIO para
 	 * {@code CONSULTORIO_ADMIN}. Reemplaza la autorizacion interina con {@code consultorio:manage}
-	 * de 02.05. Matriz §17.2.
+	 * de 02.05. Matriz §18.2.
 	 */
 	CATALOGO_MANAGE("catalogo:manage"),
 
@@ -273,7 +273,46 @@ public enum PermissionCode {
 	 * <p>{@code PLATFORM_ADMIN} no lo recibe: tomar lista es operacion del centro, y la matriz §32
 	 * le dice "No" a todas las filas operativas.
 	 */
-	ASISTENCIA_MANAGE("asistencia:manage");
+	ASISTENCIA_MANAGE("asistencia:manage"),
+
+	/**
+	 * Ver el catalogo de productos de pack de una sede. F9, M29 (AKINE-08.06).
+	 *
+	 * <p>La matriz §32 no tiene fila de productos: el reparto sale de la mas cercana. Lo tienen
+	 * {@code ORG_ADMIN}, {@code CONSULTORIO_ADMIN} y el {@code ADMINISTRATIVO}, que tiene que ver el
+	 * catalogo para vender.
+	 */
+	PRODUCTO_READ("producto:read"),
+
+	/**
+	 * Crear, editar y dar de baja productos de pack. F9, M29 (AKINE-08.06).
+	 *
+	 * <p>Sin fila en la matriz; se reparte como {@code convenio:manage} —fijar que se vende y a cuanto
+	 * es decision comercial del centro—: {@code ORG_ADMIN} y {@code CONSULTORIO_ADMIN}, no el
+	 * mostrador. El plan de 08.06 pide administracion de producto y operador economico separados.
+	 */
+	PRODUCTO_MANAGE("producto:manage"),
+
+	/**
+	 * Ver los pases vendidos, su saldo y su ledger. F9, M29 (AKINE-08.06). Dato economico: el
+	 * {@code PROFESIONAL} no lo recibe ("No por defecto" en las filas economicas de la matriz §2).
+	 */
+	PASE_READ("pase:read"),
+
+	/**
+	 * Vender un pase. F9, M29 (AKINE-08.06). Mismo reparto que {@code cobro:register}: vender un
+	 * pack es trabajo del mostrador. {@code PLATFORM_ADMIN} no lo recibe.
+	 */
+	PASE_MANAGE("pase:manage"),
+
+	/**
+	 * Ajustar el saldo de un pase y anularlo. F9, M29 (AKINE-08.07, RF-M29-005).
+	 *
+	 * <p>RF-M29-005 pide "permiso especifico" y el plan de 08.07 "permiso reforzado": corregir lo
+	 * vendido no es venderlo. Sin fila en la matriz §32; lo tienen {@code ORG_ADMIN} y
+	 * {@code CONSULTORIO_ADMIN}, no el mostrador, con el mismo criterio que {@code producto:manage}.
+	 */
+	PASE_ADJUST("pase:adjust");
 
 	private final String code;
 

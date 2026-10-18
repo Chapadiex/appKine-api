@@ -17,6 +17,53 @@ import java.util.Optional;
 
 public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRepositoryPort {
 
+	// =================================================================================
+	// M23 — continuidad del circuito (AKINE-09.01b, RF-M23-008)
+	// =================================================================================
+	//
+	// Solo ids e instantes. El instante sale como segundos y microsegundos desde la epoca
+	// (TIMESTAMPDIFF contra '1970-01-01'), no como DATETIME: el driver lo convertiria con la zona
+	// de la sesion y la columna guarda UTC. Mismo criterio que ActividadEnElReporteRepository.
+
+	/** Columnas: historia_clinica_id, oferta_id, cerrada_en en microsegundos UTC. */
+	@Query(value = """
+			SELECT s.historia_clinica_id,
+			       s.oferta_id,
+			       TIMESTAMPDIFF(MICROSECOND, '1970-01-01', s.cerrada_en) AS cerrada_micros
+			  FROM sesion s
+			 WHERE s.organization_id = :organizationId
+			   AND s.consultorio_id = :consultorioId
+			   AND s.cerrada_en >= :desde
+			   AND s.cerrada_en < :hasta
+			   AND s.estado = 'CERRADA'
+			   AND s.proxima_conducta = 'ALTA'
+			   AND s.deleted_at IS NULL
+			""", nativeQuery = true)
+	List<Object[]> altasDelPeriodoEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/** Columnas: historia_clinica_id, oferta_id, cerrada_en en microsegundos UTC. */
+	@Query(value = """
+			SELECT s.historia_clinica_id,
+			       s.oferta_id,
+			       TIMESTAMPDIFF(MICROSECOND, '1970-01-01', s.cerrada_en) AS cerrada_micros
+			  FROM sesion s
+			 WHERE s.organization_id = :organizationId
+			   AND s.historia_clinica_id IN (:historias)
+			   AND s.consultorio_id = :consultorioId
+			   AND s.cerrada_en > :desde
+			   AND s.estado = 'CERRADA'
+			   AND s.deleted_at IS NULL
+			""", nativeQuery = true)
+	List<Object[]> cerradasDespuesDeEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("historias") Collection<Long> historias,
+			@Param("desde") Instant desde);
+
 	@Override
 	@Query("""
 			SELECT s FROM Sesion s
@@ -334,4 +381,30 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("limite") int limite,
 			@Param("recortar") boolean recortar,
 			@Param("memberships") Collection<Long> memberships);
+
+	@Override
+	@Query("""
+			SELECT s FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.derivacionId = :derivacionId
+			   AND s.deletedAt IS NULL
+			""")
+	Optional<Sesion> findVivaPorDerivacion(
+			@Param("organizationId") long organizationId,
+			@Param("derivacionId") long derivacionId);
+
+	/** Calza con {@code ix_sesion_clase} de V102. */
+	@Override
+	@Query("""
+			SELECT s FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.consultorioId = :consultorioId
+			   AND s.claseId = :claseId
+			   AND s.deletedAt IS NULL
+			 ORDER BY s.id
+			""")
+	List<Sesion> findVivasDeLaClase(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("claseId") long claseId);
 }

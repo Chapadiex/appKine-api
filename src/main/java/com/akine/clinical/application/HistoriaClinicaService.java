@@ -108,7 +108,8 @@ public class HistoriaClinicaService {
 	public HistoriaClinicaView abrirOObtener(
 			OperatingActor actor, long personaId, String justificacion) {
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigirSobrePersona(permissionGuard, relaciones,
+				supportAccessAuditor, pacientes, actor,
 				PermissionCodes.HC_WRITE, personaId, justificacion, "Abrir historia clinica");
 		long organizationId = actor.contextOrganizationId();
 
@@ -241,7 +242,8 @@ public class HistoriaClinicaService {
 	 */
 	@Transactional
 	public HistoriaClinicaView ver(OperatingActor actor, long personaId, String justificacion) {
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigirSobrePersona(permissionGuard, relaciones,
+				supportAccessAuditor, pacientes, actor,
 				PermissionCodes.HC_READ, personaId, justificacion, "Ver historia clinica");
 		long organizationId = actor.contextOrganizationId();
 
@@ -278,7 +280,8 @@ public class HistoriaClinicaService {
 			long expectedVersion,
 			String justificacion) {
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigirSobrePersona(permissionGuard, relaciones,
+				supportAccessAuditor, pacientes, actor,
 				PermissionCodes.HC_WRITE, personaId, justificacion, "Actualizar resumen clinico");
 		long organizationId = actor.contextOrganizationId();
 

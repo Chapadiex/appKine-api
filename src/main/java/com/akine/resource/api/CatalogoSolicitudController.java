@@ -60,7 +60,7 @@ import java.util.List;
  *       resuelve. Es la unica consulta cross-tenant de todo el modulo.</li>
  * </ul>
  *
- * <p>Crear exige {@code catalogo:manage} y listar {@code catalogo:read} (U-08, matriz §17.2);
+ * <p>Crear exige {@code catalogo:manage} y listar {@code catalogo:read} (U-08, matriz §18.2);
  * hasta U-08 crear exigia {@code consultorio:manage} y listar alcanzaba con pertenecer.
  */
 @RestController

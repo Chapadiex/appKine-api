@@ -124,11 +124,12 @@ class OrdenYAutorizacionServiceTest {
 		alertas = mock(AutorizacionAlertaRepositoryPort.class);
 
 		ordenService = new OrdenMedicaService(
-				ordenes, coberturas, adjuntos, personas, perfiles, permissionGuard, auditTrail,
-				autorizaciones);
+				ordenes, coberturas, adjuntos, personas, perfiles, permissionGuard, mock(PersonSupportAccessAuditor.class),
+				auditTrail, autorizaciones);
 		autorizacionService = new AutorizacionService(
 				autorizaciones, candados, iniciador, ordenes, coberturas, adjuntos, personas,
-				perfiles, aranceles, permissionGuard, auditTrail, eventos, alertas,
+				perfiles, aranceles, permissionGuard, mock(PersonSupportAccessAuditor.class), auditTrail,
+				eventos, alertas,
 				mock(PlatformTransactionManager.class));
 
 		given(personas.findByIdAndOrganizationId(anyLong(), anyLong()))

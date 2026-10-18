@@ -144,6 +144,19 @@ public interface ClaseProgramadaRepository
 			@Param("consultorioId") long consultorioId,
 			@Param("claseId") long claseId);
 
+	@Override
+	@Query(value = """
+			SELECT * FROM clase_programada
+			 WHERE id = :claseId
+			   AND organization_id = :organizationId
+			   AND consultorio_id = :consultorioId
+			 FOR SHARE
+			""", nativeQuery = true)
+	Optional<ClaseProgramada> lockCompartidoByIdInScope(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("claseId") long claseId);
+
 	/**
 	 * <b>La operacion que hace cumplir el cupo.</b> Ver el javadoc del puerto: la condicion del
 	 * {@code WHERE} <b>es</b> la correctitud, y cero filas afectadas es "no hay lugar".
@@ -179,6 +192,27 @@ public interface ClaseProgramadaRepository
 			""", nativeQuery = true)
 	@Override
 	int tomarCupo(
+			@Param("organizationId") long organizationId,
+			@Param("claseId") long claseId,
+			@Param("capacidadEfectiva") int capacidadEfectiva);
+
+	/**
+	 * {@link #tomarCupo} con {@code estado = 'EN_CURSO'}: el ingreso sin inscripcion entra a una
+	 * clase que ya empezo. Separada y no parametrizada para que el estado siga escrito en el
+	 * predicado, a la vista, como en {@link #tomarCupo}.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query(value = """
+			UPDATE clase_programada
+			   SET cupo_ocupado = cupo_ocupado + 1
+			 WHERE id = :claseId
+			   AND organization_id = :organizationId
+			   AND deleted_at IS NULL
+			   AND estado = 'EN_CURSO'
+			   AND cupo_ocupado < LEAST(capacidad, :capacidadEfectiva)
+			""", nativeQuery = true)
+	@Override
+	int tomarCupoEnCurso(
 			@Param("organizationId") long organizationId,
 			@Param("claseId") long claseId,
 			@Param("capacidadEfectiva") int capacidadEfectiva);

@@ -5,6 +5,7 @@ import com.akine.organization.api.dto.EffectivePermissionsResponse;
 import com.akine.organization.api.dto.MyPlatformRoleResponse;
 import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.spi.AccountContextDirectory;
+import com.akine.organization.spi.ActiveContext;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Contextos de trabajo de la cuenta autenticada.
@@ -87,6 +89,9 @@ public class MeContextController {
 					contextos hay. Devuelve una lista vacia —no un error— cuando la cuenta todavia \
 					no tiene ninguno; el frontend distingue 'no elegiste' de 'no tenes donde'.
 
+					lastSelected marca el ultimo contexto elegido, revalidado: si dejo de estar \
+					habilitado no lo trae ninguno.
+
 					Este endpoint no cambia el contexto activo. Seleccionarlo renueva el token, y \
 					eso lo publica el modulo de identidad en 01.02 como POST /api/v1/auth/context.""")
 	@ApiResponses({
@@ -107,9 +112,10 @@ public class MeContextController {
 	public ResponseEntity<List<AuthorizedContextResponse>> contexts() {
 		ApiActor actor = ApiActor.current(tenantContextHolder);
 
+		Optional<ActiveContext> ultimo = accountContextDirectory.activeContext(actor.accountId());
 		List<AuthorizedContextResponse> contextos =
 				accountContextDirectory.authorizedContexts(actor.accountId()).stream()
-						.map(AuthorizedContextResponse::from)
+						.map(contexto -> AuthorizedContextResponse.from(contexto, ultimo))
 						.toList();
 
 		return ResponseEntity.ok(contextos);

@@ -68,7 +68,7 @@ import java.util.List;
  * </ul>
  *
  * <p>Son los mismos permisos de M06, {@code catalogo:read} y {@code catalogo:manage}, aprobados por
- * U-08 (matriz §17.2) sobre la propuesta de la §11.1.
+ * U-08 (matriz §18.2) sobre la propuesta de la §11.1.
  *
  * <h2>Codigos</h2>
  *

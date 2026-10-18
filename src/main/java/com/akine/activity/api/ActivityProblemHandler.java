@@ -3,15 +3,30 @@ package com.akine.activity.api;
 import com.akine.activity.application.IdempotencyKeyConflictException;
 import com.akine.activity.domain.exception.AsistenciaNotAccessibleException;
 import com.akine.activity.domain.exception.CapacidadNoAdmitidaException;
+import com.akine.activity.domain.exception.AbonoPeriodoSuperpuestoException;
 import com.akine.activity.domain.exception.ClaseCompletaException;
 import com.akine.activity.domain.exception.ClaseNoProgramableException;
 import com.akine.activity.domain.exception.ClaseNotAccessibleException;
 import com.akine.activity.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.activity.domain.exception.DerivacionNoAccesibleException;
 import com.akine.activity.domain.exception.HorarioNoDisponibleException;
 import com.akine.activity.domain.exception.InscripcionDuplicadaException;
 import com.akine.activity.domain.exception.InscripcionNotAccessibleException;
+import com.akine.activity.domain.exception.LotesDeAsistenciaSaturadosException;
+import com.akine.activity.domain.exception.OfertaNoClinicaException;
 import com.akine.activity.domain.exception.OfertaNotAccessibleException;
+import com.akine.activity.domain.exception.OfertaNoAdmitePackException;
+import com.akine.activity.domain.exception.ParticipacionSinAsistenciaException;
+import com.akine.activity.domain.exception.PaseConCobrosException;
+import com.akine.activity.domain.exception.PaseNoAjustableException;
+import com.akine.activity.domain.exception.PaseNotAccessibleException;
+import com.akine.activity.domain.exception.PersonaDadaDeBajaException;
 import com.akine.activity.domain.exception.PersonaNoAccesibleException;
+import com.akine.activity.domain.exception.PersonaSinPerfilPacienteException;
+import com.akine.activity.domain.exception.ProductoDadoDeBajaException;
+import com.akine.activity.domain.exception.ProductoNoVendibleException;
+import com.akine.activity.domain.exception.ProductoNombreEnUsoException;
+import com.akine.activity.domain.exception.ProductoNotAccessibleException;
 import com.akine.activity.domain.exception.RecursoOcupadoException;
 import com.akine.activity.domain.exception.TransicionDeClaseNoPermitidaException;
 import com.akine.activity.domain.exception.TransicionDeInscripcionNoPermitidaException;
@@ -20,8 +35,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -63,6 +80,13 @@ public class ActivityProblemHandler {
 	private static final URI INSCRIPCION_TRANSICION =
 			ProblemType.INSCRIPCION_TRANSICION_NO_PERMITIDA.uri();
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
+	private static final URI OFERTA_NO_CLINICA = ProblemType.OFERTA_NO_CLINICA.uri();
+	private static final URI PARTICIPACION_SIN_ASISTENCIA =
+			ProblemType.PARTICIPACION_SIN_ASISTENCIA.uri();
+	private static final URI PERSONA_SIN_PERFIL_PACIENTE =
+			ProblemType.PERSONA_SIN_PERFIL_PACIENTE.uri();
+	private static final URI DERIVACION_NO_ACCESIBLE = ProblemType.DERIVACION_NO_ACCESIBLE.uri();
+	private static final URI SERVICE_UNAVAILABLE = ProblemType.SERVICE_UNAVAILABLE.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -230,11 +254,170 @@ public class ActivityProblemHandler {
 		return noEncontrado("La asistencia no existe.");
 	}
 
+	// =================================================================================
+	// Productos y pases (AKINE-08.06)
+	// =================================================================================
+
+	@ExceptionHandler(ProductoNotAccessibleException.class)
+	public ProblemDetail handleProductoNoAccesible(ProductoNotAccessibleException exception) {
+		log.debug("Producto no accesible: productoId={}", exception.getProductoId());
+		return noEncontrado("El producto no existe en esta sede.");
+	}
+
+	@ExceptionHandler(PaseNotAccessibleException.class)
+	public ProblemDetail handlePaseNoAccesible(PaseNotAccessibleException exception) {
+		log.debug("Pase no accesible: paseId={}", exception.getPaseId());
+		return noEncontrado("El pase no existe en esta sede.");
+	}
+
+	@ExceptionHandler(ProductoNoVendibleException.class)
+	public ProblemDetail handleProductoNoVendible(ProductoNoVendibleException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.PRODUCTO_NO_VENDIBLE.uri());
+		problem.setTitle("El producto no se puede vender");
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	@ExceptionHandler(ProductoNombreEnUsoException.class)
+	public ProblemDetail handleProductoNombreEnUso(ProductoNombreEnUsoException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.PRODUCTO_NOMBRE_EN_USO.uri());
+		problem.setTitle("Ya hay un producto con ese nombre");
+		return problem;
+	}
+
+	@ExceptionHandler(OfertaNoAdmitePackException.class)
+	public ProblemDetail handleOfertaNoAdmitePack(OfertaNoAdmitePackException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), CONFLICT);
+		problem.setTitle("La oferta no admite productos de pack");
+		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	@ExceptionHandler(ProductoDadoDeBajaException.class)
+	public ProblemDetail handleProductoDadoDeBaja(ProductoDadoDeBajaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), CONFLICT);
+		problem.setTitle("El producto esta dado de baja");
+		return problem;
+	}
+
+	@ExceptionHandler(PersonaDadaDeBajaException.class)
+	public ProblemDetail handlePersonaDadaDeBaja(PersonaDadaDeBajaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), CONFLICT);
+		problem.setTitle("La ficha de la persona esta dada de baja");
+		return problem;
+	}
+
+	// =================================================================================
+	// Abonos, ajuste y anulacion de pases (AKINE-08.07 / 08.08)
+	// =================================================================================
+
+	@ExceptionHandler(AbonoPeriodoSuperpuestoException.class)
+	public ProblemDetail handleAbonoPeriodoSuperpuesto(AbonoPeriodoSuperpuestoException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.ABONO_PERIODO_SUPERPUESTO.uri());
+		problem.setTitle("La persona ya tiene ese abono en el periodo");
+		return problem;
+	}
+
+	@ExceptionHandler(PaseNoAjustableException.class)
+	public ProblemDetail handlePaseNoAjustable(PaseNoAjustableException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.PASE_NO_AJUSTABLE.uri());
+		problem.setTitle("El pase no admite la operacion");
+		problem.setProperty("motivo", exception.getMotivo());
+		problem.setProperty("causa", exception.getCausa().name());
+		return problem;
+	}
+
+	@ExceptionHandler(PaseConCobrosException.class)
+	public ProblemDetail handlePaseConCobros(PaseConCobrosException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), ProblemType.PASE_CON_COBROS.uri());
+		problem.setTitle("La deuda del pase tiene cobros");
+		problem.setProperty("obligacionId", exception.getObligacionId());
+		problem.setProperty("cobrado", exception.getCobrado());
+		problem.setProperty("moneda", exception.getMoneda());
+		return problem;
+	}
+
 	@ExceptionHandler(IdempotencyKeyConflictException.class)
 	public ProblemDetail handleIdempotencyConflict(IdempotencyKeyConflictException exception) {
 		ProblemDetail problem = conflicto(exception.getMessage(), IDEMPOTENCY_KEY_CONFLICT);
 		problem.setTitle("La clave de idempotencia se reuso con otro pedido");
 		return problem;
+	}
+
+	// =================================================================================
+	// Derivacion clinica (AKINE-08.04)
+	//
+	// Los tipos los declaro 08.04 en ProblemType y no tenian emisor: la operacion no estaba
+	// expuesta. Los de lo clinico —caso-no-activo, autorizacion-no-elegible, el 403 con
+	// requiereJustificacion— los emite ClinicalProblemHandler, porque las excepciones nacen en
+	// clinical y cruzan por el spi.
+	// =================================================================================
+
+	@ExceptionHandler(OfertaNoClinicaException.class)
+	public ProblemDetail handleOfertaNoClinica(OfertaNoClinicaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), OFERTA_NO_CLINICA);
+		problem.setTitle("La oferta de la clase no genera registro clinico");
+		problem.setProperty("ofertaId", exception.getOfertaId());
+		return problem;
+	}
+
+	/** Lleva {@code resultado} cuando hay asistencia: la salida es corregirla, no forzar. */
+	@ExceptionHandler(ParticipacionSinAsistenciaException.class)
+	public ProblemDetail handleSinAsistencia(ParticipacionSinAsistenciaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), PARTICIPACION_SIN_ASISTENCIA);
+		problem.setTitle("El participante no estuvo en la clase");
+		problem.setProperty("inscripcionId", exception.getInscripcionId());
+		problem.setProperty("resultado", exception.getResultado());
+		return problem;
+	}
+
+	/** Lleva el {@code personaId} para que la pantalla ofrezca activar el perfil como paso propio. */
+	@ExceptionHandler(PersonaSinPerfilPacienteException.class)
+	public ProblemDetail handlePersonaSinPerfil(PersonaSinPerfilPacienteException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(), PERSONA_SIN_PERFIL_PACIENTE);
+		problem.setTitle("La persona no tiene perfil de paciente vigente");
+		problem.setProperty("personaId", exception.getPersonaId());
+		return problem;
+	}
+
+	@ExceptionHandler(DerivacionNoAccesibleException.class)
+	public ProblemDetail handleDerivacionNoAccesible(DerivacionNoAccesibleException exception) {
+		log.debug("Derivacion no accesible: derivacionId={}", exception.getDerivacionId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.NOT_FOUND, "La derivacion no existe.");
+		problem.setType(DERIVACION_NO_ACCESIBLE);
+		problem.setTitle("Derivacion no encontrada");
+		return problem;
+	}
+
+	// =================================================================================
+	// Limite de lotes por sede — 503 (U-49 c, DP-30)
+	// =================================================================================
+
+	/**
+	 * <b>503 y no 429.</b> 429 dice "usted mando demasiados pedidos", y quien recibe esto mando
+	 * uno: el limite es de capacidad de la sede, compartido entre todos los que toman lista ahi.
+	 * Es exactamente la sobrecarga transitoria de RFC 9110 §15.6.4, y {@code service-unavailable}
+	 * es el tipo que ya viaja cuando el pool no entrega conexion, que es lo que este limite evita.
+	 * {@code rate-limited} se reserva para el limite por cliente del login.
+	 *
+	 * <p>El lote rechazado no escribio nada: reintentarlo despues de {@code Retry-After} es seguro.
+	 */
+	@ExceptionHandler(LotesDeAsistenciaSaturadosException.class)
+	public ResponseEntity<ProblemDetail> handleLotesSaturados(
+			LotesDeAsistenciaSaturadosException exception) {
+		log.warn("Lote de asistencia rechazado por el limite de la sede: consultorioId={} "
+				+ "reintentarEnSegundos={}", exception.getConsultorioId(),
+				exception.getSegundosParaReintentar());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.SERVICE_UNAVAILABLE,
+				"La sede tiene otros lotes de asistencia en curso. Nada de este lote se registro: "
+						+ "vuelva a enviarlo en unos segundos.");
+		problem.setType(SERVICE_UNAVAILABLE);
+		problem.setTitle("Servicio no disponible");
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+				.header(HttpHeaders.RETRY_AFTER, Long.toString(exception.getSegundosParaReintentar()))
+				.body(problem);
 	}
 
 	private static ProblemDetail conflicto(String detalle, URI tipo) {

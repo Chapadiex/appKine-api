@@ -94,7 +94,8 @@ class ConsumoDeAutorizacionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ConsumoDeAutorizacionService(
-				autorizaciones, movimientos, personas, permissionGuard, auditTrail, coberturas,
+				autorizaciones, movimientos, personas, permissionGuard,
+				mock(PersonSupportAccessAuditor.class), auditTrail, coberturas,
 				alertas, eventos);
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));

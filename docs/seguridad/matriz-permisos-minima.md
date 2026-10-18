@@ -106,12 +106,12 @@ Códigos `<dominio>:<acción>`. Estable, en minúsculas, sin significado de UI. 
 | `paciente:manage` | Gestionar paciente | F3 |
 | `paciente:read` | Ver el padrón y los datos administrativos de las personas (DP-22, §15) | F3 (DU-6) |
 | `hc:read` / `hc:write` | Ver / Editar Historia Clínica | F4 |
-| ~~`caso:create`~~ | ~~Crear Caso Clínico~~ — **absorbido en `hc:write`** (U-04, §17.3, pendiente de aprobación) | F4 |
+| ~~`caso:create`~~ | ~~Crear Caso Clínico~~ — **absorbido en `hc:write`** (U-04, §18.3) | F4 |
 | `sesion:register` | Registrar Sesión | F6 |
 | `convenio:manage` | Administrar Convenios | F3 |
-| `convenio:read` | Ver financiadores, planes, convenios y aranceles (U-07, §17.1, pendiente de aprobación) | F3 |
-| `catalogo:read` | Consultar el catálogo clínico, global y propio (U-08, §11.1 y §17.2, pendiente de aprobación) | F2 |
-| `catalogo:manage` | Administrar el catálogo clínico y las solicitudes de alta (U-08, §11.1 y §17.2, pendiente de aprobación) | F2 |
+| `convenio:read` | Ver financiadores, planes, convenios y aranceles (U-07, §18.1) | F3 |
+| `catalogo:read` | Consultar el catálogo clínico, global y propio (U-08, §11.1 y §18.2) | F2 |
+| `catalogo:manage` | Administrar el catálogo clínico y las solicitudes de alta (U-08, §11.1 y §18.2) | F2 |
 | `cobro:register` | Registrar Cobro | F7 |
 | `caja:operate` | Operar Caja | F7 |
 | `reporte:read` | Ver Reportes | F8 |
@@ -382,7 +382,7 @@ matriz pide y el motivo por el que la enmienda hacía falta.
 Mismo criterio que las secciones 9 y 10: nada se aplicó en silencio. Cada punto es una diferencia
 real entre lo que dicen las secciones 1–8 y lo que el código hace, con su motivo y su alcance.
 
-### 11.1 `catalogo:read` y `catalogo:manage` — **PROPUESTOS; implementados tal cual en la propuesta U-08 (§17.2), pendiente de aprobación**
+### 11.1 `catalogo:read` y `catalogo:manage` — **APROBADOS tal cual (U-08, DP-XX, §18.2)**
 
 **El hueco que los origina, en una línea.** M06 introduce cuatro tablas de catálogo clínico
 —especialidad, práctica, nomenclador y sus vigencias— y el catálogo de la sección 5 **no tiene
@@ -596,7 +596,7 @@ a esa sede — sigue siendo de la organización.
 
 ### 13.4 Las lecturas se autorizan por pertenencia, y eso concede de más
 
-> **Lo cierra la propuesta U-07 (§17.1), pendiente de aprobación:** `convenio:read` solo para el
+> **Lo cierra U-07 (DP-XX, §18.1):** `convenio:read` solo para el
 > personal, con el mismo criterio que DP-22 aplicó al padrón (§15). Lo que sigue es la historia.
 
 **No existe `convenio:read`** y esta etapa no lo crea. Leer el catálogo de financiadores y planes
@@ -732,8 +732,7 @@ borra —baja lógica, y además es historia— y sigue apareciendo en `GET .../
 quien puede abrir un caso es exactamente quien la fila "Crear Caso Clínico" de §2 habilita: el
 `PROFESIONAL` por base y el `CONSULTORIO_ADMIN` por grant ("Según rol clínico"). Si `caso:create`
 se cablea como código propio o se enmienda la matriz para absorberlo en `hc:write` sigue siendo una
-decisión del dueño del producto. **La propuesta U-04 (§17.3) lo absorbe en `hc:write`**, pendiente de
-aprobación.
+decisión del dueño del producto. **U-04 lo absorbió en `hc:write`** (DP-XX, §18.3).
 
 ### 16.2 La matriz, ejecutable
 
@@ -760,18 +759,51 @@ contrato, sin una segunda lista que mantener:
   código existe pero la matriz no lo admite para el rol del vínculo (incluido el que no es otorgable
   a ningún rol). Un código inexistente sigue siendo `validation-error`.
 
-## 17. Enmiendas — propuesta de permisos recomendados (U-04, U-07, U-08)
 
-> **Pendiente de aprobación.** Esta sección implementa las opciones **recomendadas** de
-> `docs/fases/decisiones-pendientes.md` U-04, U-07 y U-08 en el PR #123, en borrador. El dueño del
-> producto decide mergeándolo; si lo descarta, esta sección no existe. Al aprobarse, cada una se
-> escribe como DP en `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` §7.
+## 17. Enmiendas — AKINE-09.02 (la superficie de F9, revisada contra esta matriz)
+
+No hay ningún código nuevo ni cambia ninguna asignación base. Lo que 09.02 fija es la **lectura
+escrita** de la segunda entrega, que la §32 no tiene (no hay filas de clases ni de pases) y que
+hasta acá vivía sólo en los comentarios de `RolePermissions`.
+
+### 17.1 Asignación base de F9
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `clase:read` | Soporte | Org | Consultorio | Consultorio | Consultorio | — |
+| `clase:manage` | — | Org | Consultorio | Consultorio | Consultorio | — |
+| `inscripcion:read` | Soporte | Org | Consultorio | Consultorio | Consultorio | — |
+| `inscripcion:manage` | — | Org | Consultorio | Consultorio | Consultorio | — |
+| `asistencia:manage` | — | Org | Consultorio | Consultorio | Consultorio | — |
+| `producto:read` | — | Org | Consultorio | — | Consultorio | — |
+| `producto:manage` | — | Org | Consultorio | — | — | — |
+| `pase:read` / `pase:manage` | — | Org | Consultorio | — | Consultorio | — |
+| `pase:adjust` | — | Org | Consultorio | — | — | — |
+
+- **Ningún permiso de F9 es otorgable por grant** (`GRANT_POR_ROL` no tiene filas de F9): sin fila
+  en la §32 no hay celda "No por defecto" que traducir. `MatrizDePermisosIT` lo fija con cuatro
+  grants que responden 400. Abrir alguno es la decisión **U-46 (b)**.
+- **Las lecturas por soporte dejan rastro desde 09.02.** `clase:read` e `inscripcion:read` con
+  alcance `SOPORTE` escriben `SUPPORT_ACCESS_USED` (`activity.application.SoporteEnActividad`),
+  como `reporting` y `person`. Hasta 09.02 la decisión se descartaba.
+- **Lo clínico de la clase no es de F9.** Derivar y revertir piden `hc:write`; ver las derivaciones,
+  `hc:read` con relación o justificación; atender, `sesion:register` y `hc:write`. `activity` sólo
+  exige `inscripcion:read` para llegar al participante, y desde 09.02 el lote de atención exige
+  además `sesion:register` y `hc:write` de entrada.
+- **Cerrar una clase** exige, desde 09.02, `clase:manage` **y** `asistencia:manage` **e**
+  `inscripcion:manage`: escribe ausentes y cancela la lista de espera.
+
+## 18. Enmiendas — permisos recomendados U-04, U-07 y U-08 (DP-XX)
+
+> **Aprobadas por el dueño del producto el 18/10/2026** (DP-XX en
+> `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` §7) e implementadas en el PR #123: son las opciones
+> **recomendadas** de `docs/fases/decisiones-pendientes.md` U-04, U-07 y U-08.
 
 Hay **tres códigos nuevos** (`convenio:read`, `catalogo:read`, `catalogo:manage`) y **uno que sale
 del catálogo** (`caso:create`). Sin migración: el catálogo de permisos y la asignación base viven en
 código (`organization.domain.PermissionCode` y `RolePermissions`). Ninguno es otorgable por grant.
 
-### 17.1 `convenio:read` (U-07) — DP-22 repetido para `contracting`
+### 18.1 `convenio:read` (U-07) — DP-22 repetido para `contracting`
 
 | Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
 |---|---|---|---|---|---|---|
@@ -791,7 +823,7 @@ código (`organization.domain.PermissionCode` y `RolePermissions`). Ninguno es o
   ya pedían `paciente:read` y no cambian. Las de `contracting.spi` (`congelar`, resolución de
   arancel desde `billing` o `person`) no pasan por un actor y tampoco cambian.
 
-### 17.2 `catalogo:read` y `catalogo:manage` (U-08) — la propuesta de §11.1, aprobada tal cual
+### 18.2 `catalogo:read` y `catalogo:manage` (U-08) — la propuesta de §11.1, aprobada tal cual
 
 | Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
 |---|---|---|---|---|---|---|
@@ -812,7 +844,7 @@ código (`organization.domain.PermissionCode` y `RolePermissions`). Ninguno es o
   la plataforma sigue sin ver ni mutar conceptos contextuales de un tenant. **Los códigos HTTP de
   rechazo son los mismos**; lo que cambia es que el `PACIENTE` recibe 403 al leer.
 
-### 17.3 `caso:create` (U-04) — absorbido en `hc:write`
+### 18.3 `caso:create` (U-04) — absorbido en `hc:write`
 
 Opción (b) de G-5, la recomendada. Abrir un Caso Clínico siempre se autorizó con `hc:write`, y desde
 G-5 (§16.1) eso da exactamente las celdas de la fila "Crear Caso Clínico" de §2: `PROFESIONAL` por
@@ -822,7 +854,7 @@ solo servía para que alguien creyera que existía un control que no existe. **N
 respuesta.** `MatrizDePermisosIT` lo fija: sin `hc:write` abrir un caso es 403, y con el grant el
 `CONSULTORIO_ADMIN` pasa.
 
-### 17.4 Contrato 0.100.0
+### 18.4 Contrato 0.128.0
 
 Solo descripciones: los 403 de las lecturas de `contracting` y del catálogo nombran el permiso que
 falta, y las mutaciones del catálogo nombran `catalogo:manage` en lugar de `consultorio:manage`. Sin

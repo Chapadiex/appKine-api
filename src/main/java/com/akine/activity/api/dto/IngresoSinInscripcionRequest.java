@@ -24,6 +24,9 @@ public record IngresoSinInscripcionRequest(
 		@Schema(description = "Normalmente PRESENTE o PRESENTE_TARDE", example = "PRESENTE_TARDE")
 		@NotNull ResultadoAsistenciaApi resultado,
 
-		@Schema(description = "Nota operativa, no clinica", example = "Se sumo sin anotarse")
+		@Schema(
+				description = "Nota **operativa, no clinica**: la ve cualquiera con "
+						+ "`inscripcion:read`, asi que **no debe llevar datos de salud** (U-46 d).",
+				example = "Se sumo sin anotarse")
 		@Size(max = 500) String observaciones) {
 }

@@ -2,19 +2,24 @@ package com.akine.clinical.application;
 
 import com.akine.clinical.domain.CasoClinico;
 import com.akine.clinical.domain.DerivacionClinica;
+import com.akine.clinical.domain.EstadoDerivacion;
 import com.akine.clinical.domain.HistoriaClinica;
 import com.akine.clinical.domain.PermissionCodes;
 import com.akine.clinical.domain.PlanTratamiento;
 import com.akine.clinical.domain.exception.AutorizacionNoElegibleException;
 import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.CasoNoActivoException;
+import com.akine.clinical.domain.exception.DerivacionAmbiguaException;
+import com.akine.clinical.domain.exception.DerivacionConSesionException;
 import com.akine.clinical.domain.exception.DerivacionNotAccessibleException;
+import com.akine.clinical.domain.exception.ParticipacionSinDerivacionException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRepositoryPort;
 import com.akine.clinical.domain.port.DerivacionRepositoryPorts.DerivacionClinicaRepositoryPort;
 import com.akine.clinical.domain.port.PlanRepositoryPorts.PlanTratamientoRepositoryPort;
 import com.akine.clinical.spi.ActorDeDerivacion;
+import com.akine.clinical.spi.AtencionesDeLaDerivacionProbe;
 import com.akine.clinical.spi.DerivacionSnapshot;
 import com.akine.clinical.spi.EstadoClinicoDeParticipacion;
 import com.akine.clinical.spi.OrigenDeParticipacion;
@@ -30,10 +35,12 @@ import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,6 +89,13 @@ public class DerivacionClinicaService {
 	private final AuditTrail auditTrail;
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
 
+	/**
+	 * AKINE-08.05: quien sabe si de una derivacion cuelga una Sesion. Lista porque lo implementa
+	 * {@code encounter} y este modulo no puede exigir que exista: sin implementacion, nadie
+	 * atiende desde derivaciones y no hay nada que proteger.
+	 */
+	private final List<AtencionesDeLaDerivacionProbe> atenciones;
+
 	public DerivacionClinicaService(
 			DerivacionClinicaRepositoryPort derivaciones,
 			CasoClinicoRepositoryPort casos,
@@ -92,7 +106,8 @@ public class DerivacionClinicaService {
 			PermissionGuard permissionGuard,
 			RelacionAsistencialProbe relaciones,
 			AuditTrail auditTrail,
-			ClinicalSupportAccessAuditor supportAccessAuditor) {
+			ClinicalSupportAccessAuditor supportAccessAuditor,
+			List<AtencionesDeLaDerivacionProbe> atenciones) {
 
 		this.derivaciones = derivaciones;
 		this.casos = casos;
@@ -104,6 +119,7 @@ public class DerivacionClinicaService {
 		this.relaciones = relaciones;
 		this.auditTrail = auditTrail;
 		this.supportAccessAuditor = supportAccessAuditor;
+		this.atenciones = List.copyOf(atenciones);
 	}
 
 	/**
@@ -128,7 +144,7 @@ public class DerivacionClinicaService {
 
 		OperatingActor actor = traducir(actorExterno);
 		AccesoClinico acceso = AutorizacionClinica.exigir(
-				permissionGuard, relaciones, actor, PermissionCodes.HC_READ, personaId,
+				permissionGuard, relaciones, supportAccessAuditor, actor, PermissionCodes.HC_READ, personaId,
 				actorExterno.justificacion(), "Consultar derivaciones de una participacion");
 
 		long organizationId = actor.contextOrganizationId();
@@ -149,7 +165,7 @@ public class DerivacionClinicaService {
 				Instant.now()));
 
 		return new EstadoClinicoDeParticipacion(
-				historiaClinicaId, filas.stream().map(f -> proyectar(f, false)).toList());
+				historiaClinicaId, proyectarConNumeros(organizationId, filas));
 	}
 
 	/**
@@ -173,7 +189,7 @@ public class DerivacionClinicaService {
 
 		OperatingActor actor = traducir(actorExterno);
 		AccesoClinico acceso = AutorizacionClinica.exigir(
-				permissionGuard, relaciones, actor, PermissionCodes.HC_WRITE,
+				permissionGuard, relaciones, supportAccessAuditor, actor, PermissionCodes.HC_WRITE,
 				participacion.personaId(), actorExterno.justificacion(),
 				"Derivar participante al circuito clinico");
 
@@ -186,7 +202,7 @@ public class DerivacionClinicaService {
 		if (yaExistente.isPresent()) {
 			log.debug("Derivacion ya vigente: participacionId={} casoId={}",
 					participacion.participacionId(), registro.casoClinicoId());
-			return proyectar(yaExistente.get(), true);
+			return proyectar(organizationId, yaExistente.get(), true);
 		}
 
 		CasoClinico caso = casos.findByIdAndOrganizationId(registro.casoClinicoId(), organizationId)
@@ -234,15 +250,23 @@ public class DerivacionClinicaService {
 		try {
 			guardada = derivaciones.saveAndFlush(derivacion);
 		} catch (DataIntegrityViolationException choque) {
-			// Segunda capa: otro request gano la carrera entre el pre-chequeo y este INSERT. Es la
-			// ventana que ningun SELECT previo cierra, y por eso las dos capas hacen falta.
-			log.info("Derivacion concurrente resuelta por el unique: participacionId={} casoId={}",
+			// Segunda capa: otro request gano la carrera entre el pre-chequeo y este INSERT. NO se
+			// relee aca: la excepcion ya dejo la sesion de Hibernate rota —la entidad quedo con id
+			// nulo y cualquier flush posterior falla con AssertionFailure— y la transaccion marcada
+			// para rollback, asi que "devolver la del ganador" terminaba en 500
+			// (DerivacionConcurrenteIT). El que llega por la ruta de clases no deberia ver nunca
+			// esto: activity serializa sobre la asistencia antes de llamar. Si igual pasa, 409
+			// concurrent-modification, que es honesto: reintentar encuentra la existente. Cualquier
+			// otra violacion (una FK, un CHECK) sigue su camino: no es una carrera.
+			if (!String.valueOf(choque.getMostSpecificCause().getMessage())
+					.contains("uk_derivacion_destino")) {
+				throw choque;
+			}
+			log.info("Derivacion concurrente detectada por el unique: participacionId={} casoId={}",
 					participacion.participacionId(), caso.getId());
-			return derivaciones.findVigenteAlCaso(
-							organizationId, participacion.origen(),
-							participacion.participacionId(), caso.getId())
-					.map(fila -> proyectar(fila, true))
-					.orElseThrow(() -> choque);
+			throw new OptimisticLockingFailureException(
+					"Otra derivacion del mismo participante al mismo caso se registro a la vez",
+					choque);
 		}
 
 		auditTrail.record(entrada(
@@ -252,7 +276,7 @@ public class DerivacionClinicaService {
 				ahora));
 		registrarSoporte(acceso, actor, guardada, "derivar", ahora);
 
-		return proyectar(guardada, false);
+		return proyectar(guardada, false, caso.getNumeroCaso());
 	}
 
 	/** Deshace el vinculo, con motivo obligatorio. La fila queda. */
@@ -264,20 +288,35 @@ public class DerivacionClinicaService {
 		DerivacionClinica derivacion = derivaciones
 				.findByIdInScope(organizationId, reversion.derivacionId())
 				.orElseThrow(() -> new DerivacionNotAccessibleException(reversion.derivacionId()));
+		// AKINE-09.02: la derivacion de OTRA participacion es 404 aca, antes del acceso y del
+		// cerrojo. Hasta 09.02 el llamador lo comprobaba despues de revertir: la escritura volvia
+		// atras, pero el 403 o el 409 que salian antes del 404 confirmaban que el id existia.
+		if (!reversion.admite(derivacion.getOrigen(), derivacion.getParticipacionId())) {
+			throw new DerivacionNotAccessibleException(reversion.derivacionId());
+		}
 
 		// El acceso se evalua DESPUES de resolver la fila, porque hace falta la personaId para
 		// preguntar por la relacion asistencial. Un 404 por tenant ya salio arriba, asi que nadie
 		// llega aca con una derivacion ajena.
 		AccesoClinico acceso = AutorizacionClinica.exigir(
-				permissionGuard, relaciones, actor, PermissionCodes.HC_WRITE,
+				permissionGuard, relaciones, supportAccessAuditor, actor, PermissionCodes.HC_WRITE,
 				derivacion.getPersonaId(), reversion.actor().justificacion(),
 				"Revertir una derivacion clinica");
+
+		// AKINE-08.05: el cerrojo que 08.04 dejo anunciado. Despues del acceso —un 409 confirma que
+		// la derivacion existe, y eso solo se le dice a quien puede escribir en esa historia— y
+		// antes de tocar la fila. Una ya revertida no tiene Sesion nueva posible: atender exige
+		// derivacion vigente, asi que el reintento de una reversion vieja no llega a preguntar.
+		if (derivacion.getEstado() == EstadoDerivacion.VIGENTE
+				&& tieneAtencion(organizationId, derivacion.getId())) {
+			throw new DerivacionConSesionException(derivacion.getId());
+		}
 
 		Instant ahora = Instant.now();
 		if (!derivacion.revertir(reversion.motivo(), ahora, actor.accountId())) {
 			// Ya estaba revertida: el reintento tras un timeout no es un error, y el segundo
 			// motivo no pisa al primero. Tampoco se audita de nuevo: no ocurrio ningun hecho.
-			return proyectar(derivacion, true);
+			return proyectar(organizationId, derivacion, true);
 		}
 
 		DerivacionClinica guardada = derivaciones.saveAndFlush(derivacion);
@@ -290,7 +329,73 @@ public class DerivacionClinicaService {
 				ahora));
 		registrarSoporte(acceso, actor, guardada, "revertir", ahora);
 
-		return proyectar(guardada, false);
+		return proyectar(organizationId, guardada, false);
+	}
+
+	/**
+	 * La derivacion vigente de la que va a colgar una atencion (AKINE-08.05). Ver
+	 * {@code DerivacionClinicaRegistry#paraAtender}.
+	 *
+	 * <p>{@code hc:write} y no {@code hc:read}: la Sesion que se abre con esta respuesta es
+	 * escritura clinica nueva. Se audita como acceso —{@code DERIVACION_CLINICA_ACCESSED} con
+	 * {@code para = ATENDER}— porque dice a quien se va a atender y desde que Caso; la Sesion que
+	 * nace despues tiene su propio evento en {@code encounter}.
+	 *
+	 * <p>No es {@code readOnly} por la misma razon que {@link #consultar}: el INSERT de auditoria
+	 * se une a esta transaccion.
+	 */
+	@Transactional
+	public DerivacionSnapshot paraAtender(
+			ActorDeDerivacion actorExterno,
+			OrigenDeParticipacion origen,
+			long participacionId,
+			long personaId,
+			Long derivacionId) {
+
+		OperatingActor actor = traducir(actorExterno);
+		long organizationId = exigirContexto(actor);
+		AccesoClinico acceso = AutorizacionClinica.exigir(
+				permissionGuard, relaciones, supportAccessAuditor, actor, PermissionCodes.HC_WRITE,
+				personaId, actorExterno.justificacion(), "Atender desde una derivacion clinica");
+
+		List<DerivacionClinica> vigentes =
+				derivaciones.findDeLaParticipacion(organizationId, origen, participacionId).stream()
+						.filter(d -> d.getEstado() == EstadoDerivacion.VIGENTE)
+						.filter(d -> d.getPersonaId() == personaId)
+						.toList();
+
+		DerivacionClinica elegida;
+		if (derivacionId != null) {
+			elegida = vigentes.stream()
+					.filter(d -> d.getId().equals(derivacionId))
+					.findFirst()
+					.orElseThrow(() -> new ParticipacionSinDerivacionException(
+							participacionId, derivacionId));
+		} else if (vigentes.size() == 1) {
+			elegida = vigentes.get(0);
+		} else if (vigentes.isEmpty()) {
+			throw new ParticipacionSinDerivacionException(participacionId, null);
+		} else {
+			throw new DerivacionAmbiguaException(participacionId,
+					vigentes.stream().map(DerivacionClinica::getId).toList());
+		}
+
+		Instant ahora = Instant.now();
+		auditTrail.record(entrada(
+				AuditEvents.DERIVACION_CLINICA_ACCESSED, AuditEvents.ENTITY_DERIVACION_CLINICA,
+				elegida.getId(), actor, acceso,
+				Map.of("personaId", String.valueOf(personaId),
+						"origen", origen.name(),
+						"participacionId", String.valueOf(participacionId),
+						"para", "ATENDER"),
+				ahora));
+		registrarSoporte(acceso, actor, elegida, "atender", ahora);
+
+		return proyectar(organizationId, elegida, false);
+	}
+
+	private boolean tieneAtencion(long organizationId, long derivacionId) {
+		return atenciones.stream().anyMatch(probe -> probe.tieneAtencion(organizationId, derivacionId));
 	}
 
 	private Long validarPlan(long organizationId, Long planId, long casoId) {
@@ -406,7 +511,36 @@ public class DerivacionClinicaService {
 				ahora));
 	}
 
-	private static DerivacionSnapshot proyectar(DerivacionClinica d, boolean yaExistia) {
+	/**
+	 * Las derivaciones de una participacion con el numero visible de su Caso, en <b>una</b>
+	 * consulta por historia y no una por derivacion. Todas las de una participacion son de la
+	 * misma persona, asi que en la practica es una sola: los casos de su historia, cerrados
+	 * incluidos (una derivacion revertida puede apuntar a un Caso ya cerrado).
+	 */
+	private List<DerivacionSnapshot> proyectarConNumeros(
+			long organizationId, List<DerivacionClinica> filas) {
+
+		Map<Long, Integer> numeros = new HashMap<>();
+		filas.stream()
+				.map(DerivacionClinica::getHistoriaClinicaId)
+				.distinct()
+				.forEach(historiaId -> casos.buscarDeHistoria(organizationId, historiaId, false)
+						.forEach(caso -> numeros.put(caso.getId(), caso.getNumeroCaso())));
+		return filas.stream()
+				.map(f -> proyectar(f, false, numeros.get(f.getCasoClinicoId())))
+				.toList();
+	}
+
+	/** Una derivacion con el numero visible de su Caso, leido por id. */
+	private DerivacionSnapshot proyectar(long organizationId, DerivacionClinica d, boolean yaExistia) {
+		Integer numeroCaso = casos.findByIdAndOrganizationId(d.getCasoClinicoId(), organizationId)
+				.map(CasoClinico::getNumeroCaso)
+				.orElse(null);
+		return proyectar(d, yaExistia, numeroCaso);
+	}
+
+	private static DerivacionSnapshot proyectar(
+			DerivacionClinica d, boolean yaExistia, Integer numeroCaso) {
 		return new DerivacionSnapshot(
 				d.getId(),
 				d.getOrganizationId(),
@@ -416,6 +550,7 @@ public class DerivacionClinicaService {
 				d.getPersonaId(),
 				d.getHistoriaClinicaId(),
 				d.getCasoClinicoId(),
+				numeroCaso,
 				d.getPlanTratamientoId(),
 				d.getOfertaId(),
 				d.isRequiereCasoClinico(),

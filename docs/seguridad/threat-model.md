@@ -1,6 +1,7 @@
 # Threat model — AKINE backend
 
-- **Estado:** vigente desde AKINE-G-5 (09/10/2026), sobre `main` con contrato 0.80.0.
+- **Estado:** vigente desde AKINE-G-5 (09/10/2026), sobre `main` con contrato 0.80.0. Ampliado con
+  la superficie de F9 en AKINE-09.02 (16/10/2026, contrato 0.120.0): §2.4 bis, R13 y R14.
 - **Método:** STRIDE por superficie. Cada control nombra la clase o el archivo que lo implementa,
   para que se pueda verificar contra el código y no contra este documento.
 - **Alcance:** el backend `appKine-api`. El frontend y la infraestructura de despliegue (proxy,
@@ -77,6 +78,25 @@ servicio · E elevación de privilegios.
 | I | Oráculo de existencia por 403 vs 404 | Orden pertenencia → permiso → dato; una sesión inalcanzable no deja fila de auditoría |
 | T | Corrección silenciosa de una sesión cerrada | Solo por enmienda versionada con motivo obligatorio (06.06); versión 1 inmutable |
 
+### 2.4 bis Segunda entrega: clases, inscripciones, asistencia, pases y abonos (`activity`, F9)
+
+Revisada adversarialmente en AKINE-09.02 (aislamiento, permisos, PHI y entradas). Las tres
+primeras filas son defectos que 09.02 encontró y cerró.
+
+| STRIDE | Amenaza | Controles existentes |
+|---|---|---|
+| T/E | Un actor con alcance en la sede A2 confirma o cancela una inscripción de A1 **pidiéndola por su propia sede** (la inscripción se buscaba por organización y clase) | **Cerrado en 09.02:** confirmar y cancelar exigen que la clase sea de la sede de la ruta antes de buscar la inscripción (`InscripcionService.exigirInscripcionDeLaSede`). Antes: 200 y la confirmaba |
+| I | Enumerar `derivacionId` de la organización con la reversión: el 403/409 de `clinical` salía antes del 404 de "no es de esta participación" | **Cerrado en 09.02:** la reversión viaja acotada a la participación (`ReversionDeDerivacion.admite`) y `clinical` responde 404 antes de evaluar el acceso y de escribir |
+| R/I | `PLATFORM_ADMIN` con soporte lee participantes (nombre y documento), detalle operativo y panel de una clase sin rastro | **Cerrado en 09.02:** `SoporteEnActividad` escribe `SUPPORT_ACCESS_USED` por `AuditoriaAparte` en cada permiso de `activity` concedido por soporte |
+| I | La auditoría de una derivación (HC, caso, plan, persona, motivo de reversión) y de los tratamientos de la Sesión se leía sin `auditoria:read-clinica` | **Cerrado en 09.02:** `DERIVACION_CLINICA_` y `TRATAMIENTO_` entran a `VocabularioClinicoDeAuditoria` |
+| I/E | Leer o mutar clases, inscripciones, productos o pases de otra organización cambiando ids | Todas las consultas filtran por `organization_id` y, salvo inscripción y asistencia —que cuelgan de una clase ya validada en la sede—, por `consultorio_id`. `ActividadAislamientoIT` recorre todos los endpoints de `activity` con cuatro atacantes: otra organización es 404 en las dos formas; sede hermana por su propia sede, 404; por la sede ajena, 403 sin mirar el recurso (U-46 a) |
+| E | Un endpoint de F9 autoriza por pertenencia o con el permiso de otra familia | Cada servicio evalúa el permiso de su familia antes de buscar el dato. `MatrizDePermisosIT` (09.02) recorre `clase:*`, `inscripcion:*`, `asistencia:manage`, `producto:*`, `pase:*` y `pase:adjust` con los cinco roles, y fija que ningún permiso F9 es otorgable por grant. El lote de atención clínica exige `sesion:register` y `hc:write` de entrada (antes: 200 con N ítems "error no previsto") |
+| I | PHI en los correos de clases y pases | `SanitizedPayload.CLAVES_PERMITIDAS`: nombre de pila, inicio, sede, producto, vencimiento, créditos y renovación. Sin documento, contacto ni datos de otros participantes; una fila de outbox por destinatario. **Cerrado por U-46 (d), 17/10/2026:** el título de la clase —texto libre del centro, que puede nombrar una condición— salió de la lista blanca y de los avisos `CLASE_MODIFICADA` y `CUPO_LIBERADO`, que dicen fecha, hora y sede; una fila pendiente encolada antes se relee sin él (`SanitizedPayload.CLAVES_RETIRADAS`). `SaldoYTituloSegunQuienMiraIT` |
+| I | Quien toma lista sin `pase:read` ve el pase y el saldo de cada participante en la respuesta de la asistencia | **Cerrado por U-46 (c), 17/10/2026:** `consumoDeCredito` viaja sólo con su `efecto` si el actor no tiene `pase:read` en la sede (individual, lote e ingreso sin inscripción), igual que `DetalleOperativoResponse` excluye los pases. `SaldoYTituloSegunQuienMiraIT` |
+| I | Datos de salud en las `observaciones` de la asistencia, que lee cualquiera con `inscripcion:read` | Aceptado por U-46 (d): el contrato declara el campo operativo y sin datos de salud, y el frontend avisa al cargarlo. El servidor no puede verificarlo |
+| R | Lectura clínica grupal sin poder atribuirla a un paciente | `SESION_GRUPAL_CONSULTADA` lista, desde 09.02, las historias clínicas expuestas. Sin justificación declarada (U-46 e) |
+| D | Entradas que terminaban en 500 o en un 409 falso: elemento `null` en un lote, `page` enorme en el ledger del pase, fechas fuera de rango (año mil millones o > 9999), ventana del listado de clases sin tope | **Cerrado en 09.02:** `List<@NotNull @Valid ...>` en los lotes, tope de página, `FechasAdmitidas` (1000-01-01 a 9000-12-31) en clases, productos y ventas, `@Max(3660)` en `vigenciaDias`, ±10.000 en el ajuste, ventana de 62 días y `DateTimeException` → 400 en `GlobalExceptionHandler` |
+
 ### 2.5 Adjuntos (administrativos y clínicos)
 
 | STRIDE | Amenaza | Controles existentes |
@@ -127,13 +147,14 @@ servicio · E elevación de privilegios.
 | R7 | Media | **El vocabulario clínico de la auditoría es una lista de prefijos**: un evento clínico nuevo con un prefijo no declarado se lee sin redactar | Cerrarlo exige marcar el evento en origen (campo en `AuditEntry`) | Etapa propia |
 | R8 | Baja | **No hay purga de `refresh_token`** vencidos (deuda de ADR-0017) | Son hashes sin valor una vez vencidos; crecen sin límite | Etapa de operación |
 | R9 | Baja | **Alcance `OWN` sin implementar**: el `PACIENTE` no tiene ningún acceso | Por diseño hasta el autoservicio (DP-22) | Post-MVP |
-| R10 | Baja | **`caso:create` no se evalúa**: abrir un caso se autoriza con `hc:write` | Desde G-5 el efecto coincide con la fila de la matriz (solo `PROFESIONAL` por base y `CONSULTORIO_ADMIN` por grant); falta decidir si se cablea o se enmienda | Decisión pendiente G-5 (§4) |
+| R10 | Baja | ~~**`caso:create` no se evalúa**~~ **Cerrado por DP-XX (U-04, 18/10/2026, PR #123)**: la matriz se enmendó y `caso:create` salió del catálogo, absorbido en `hc:write` (matriz §18.3) | El efecto coincide con la fila "Crear Caso Clínico" de la matriz: solo `PROFESIONAL` por base y `CONSULTORIO_ADMIN` por grant | — |
 | R11 | Baja | **Un grant que el rol ya no admite sigue listándose** en `GET .../grants` aunque el evaluador lo ignore | No concede nada; limpiarlo es una migración de datos | Etapa de operación |
+| R13 | Media | ~~**`scheduling` no escribe `SUPPORT_ACCESS_USED`**~~ **Cerrado en #149** (contrato 0.122.0): todo permiso de `scheduling` —agenda de la oferta, agenda unificada, recepción del día, turno suelto, historial del turno y de su recepción, series— pasa por `SoporteEnAgenda`, que evalúa y escribe `SUPPORT_ACCESS_USED` por `AuditoriaAparte` si la decisión vino por soporte; `SchedulingSoporteIT` ve la fila en `audit_event`, también tras un 404. **El barrido** de los nueve permisos con alcance `SOPORTE` encontró el mismo hueco en `person`: órdenes, autorizaciones, coberturas y la reversión de un consumo pedían `paciente:manage` y tiraban la decisión, mientras `PersonaService`, `PerfilPacienteService` y `AdjuntoService` sí la auditaban. Corregido con la sobrecarga auditada de `AutorizacionDePadron.exigirGestionDelPadron`. El resto ya escribía la fila (`organization`, `activity`, `reporting`, `resource` en la ruta de plataforma de espacios) | `resource` no audita las lecturas de `colaborador:read` y `espacio:read` por las rutas con contexto de tenant: es decisión escrita (`DisponibilidadService`), porque esas rutas no llevan la organización y un `PLATFORM_ADMIN` no llega. `scheduling` y `person` tampoco son alcanzables hoy por HTTP —mismo motivo—: la fila vive igual en el servicio para que una ruta de soporte futura no nazca sin rastro | Si se agrega una ruta de soporte a M05, cablear `SupportAccessAuditor` en esas lecturas |
+| R14 | Baja | **Las decisiones de U-46**: sede hermana 403, grants de F9, justificación del panel grupal, idempotencia por organización. (c) saldo del pase y (d) textos libres, **decididas e implementadas el 17/10/2026** | Criterios que la matriz no fija | `decisiones-pendientes.md` U-46 |
 | R12 | Fuera del modelo | Operador con acceso a la base, backups sin cifrar, TLS | Infraestructura | Gate de release 07.09 |
 
 ## 4. Decisiones pendientes que este documento eleva
 
 Se listan con opciones en el registro de G-5 (`docs/producto/AKINE_IMPLEMENTATION_PLAN.md`) y en el
 PR. En resumen: R1 (qué herramientas de SAST/SCA/DAST y si bloquean el build), R2 (header
-obligatorio en `encounter` o justificación implícita por propiedad de la sesión) y R10 (cablear
-`caso:create` o enmendar la matriz).
+obligatorio en `encounter` o justificación implícita por propiedad de la sesión). R10 (`caso:create`) se cerró con DP-XX: la matriz se enmendó.

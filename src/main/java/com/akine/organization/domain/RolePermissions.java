@@ -232,7 +232,7 @@ public final class RolePermissions {
 				// escribe SUPPORT_ACCESS_USED. Lo que ve de cada seccion lo sigue recortando su
 				// permiso de fuente: con esta columna, turnos si; lo clinico y lo economico no.
 				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.SOPORTE),
-				// U-08 (matriz §11.1 y §17.2): GLOBAL y no SOPORTE. No es una excepcion al criterio de
+				// U-08 (matriz §11.1 y §18.2): GLOBAL y no SOPORTE. No es una excepcion al criterio de
 				// §9.7: la pregunta no aplica, porque lo unico que la plataforma alcanza en el catalogo
 				// clinico es el catalogo COMUN, que no es dato de ningun tenant. Los conceptos
 				// contextuales le siguen cerrados en resource.application.AlcanceDelCatalogo.
@@ -287,7 +287,7 @@ public final class RolePermissions {
 				// excluye. Queda sin cumplirse hasta que exista la poblacion global.
 				Map.entry(PermissionCode.CONVENIO_MANAGE, PermissionScope.ORGANIZACION),
 				// U-07, mismo criterio que DP-22: las lecturas de contracting dejan de autorizarse por
-				// pertenencia. Lo tiene todo el personal; PACIENTE no (matriz §17.1).
+				// pertenencia. Lo tiene todo el personal; PACIENTE no (matriz §18.1).
 				Map.entry(PermissionCode.CONVENIO_READ, PermissionScope.ORGANIZACION),
 				// U-08: la propuesta de la matriz §11.1, aprobada. Reemplaza la pertenencia (lectura) y
 				// consultorio:manage (mutacion) que 02.05 dejo como autorizacion interina.
@@ -304,6 +304,14 @@ public final class RolePermissions {
 				// AKINE-08.03. Tomar lista tiene codigo propio âun instructor podria marcarla sin
 				// poder anotar ni dar de baja a nadieâ pero el reparto base es el mismo.
 				Map.entry(PermissionCode.ASISTENCIA_MANAGE, PermissionScope.ORGANIZACION),
+				// AKINE-08.06. Productos de pack y pases (M29). Dos ejes separados, como pide el plan:
+				// fijar que se vende y a cuanto (producto:*) y vender (pase:*).
+				Map.entry(PermissionCode.PRODUCTO_READ, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.PRODUCTO_MANAGE, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.PASE_READ, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.PASE_MANAGE, PermissionScope.ORGANIZACION),
+				// AKINE-08.07. Ajustar y anular pases: permiso reforzado, fuera del mostrador.
+				Map.entry(PermissionCode.PASE_ADJUST, PermissionScope.ORGANIZACION),
 				// AKINE-G-1 (DP-15). La matriz §2 le dice "Si" en Ver Reportes. Lo que ve de cada
 				// seccion lo decide el permiso de su fuente: sin hc:read ni sesion:register, lo
 				// clinico se omite y se declara en las secciones omitidas.
@@ -334,6 +342,13 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.INSCRIPCION_MANAGE, PermissionScope.CONSULTORIO),
 				// AKINE-08.03. Ver el comentario del ORG_ADMIN.
 				Map.entry(PermissionCode.ASISTENCIA_MANAGE, PermissionScope.CONSULTORIO),
+				// AKINE-08.06. Ver el comentario del ORG_ADMIN.
+				Map.entry(PermissionCode.PRODUCTO_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.PRODUCTO_MANAGE, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.PASE_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.PASE_MANAGE, PermissionScope.CONSULTORIO),
+				// AKINE-08.07. Ver el comentario del ORG_ADMIN.
+				Map.entry(PermissionCode.PASE_ADJUST, PermissionScope.CONSULTORIO),
 				// AKINE-03.03. La matriz Â§2 le dice "Si" en Administrar Convenios, igual que al
 				// ORG_ADMIN. El alcance es su sede, que es el de su membership: que el financiador
 				// sea de la ORGANIZACION no lo convierte en un permiso de organizacion â el
@@ -434,6 +449,12 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.INSCRIPCION_MANAGE, PermissionScope.CONSULTORIO),
 				// AKINE-08.03. Ver el comentario del ORG_ADMIN.
 				Map.entry(PermissionCode.ASISTENCIA_MANAGE, PermissionScope.CONSULTORIO),
+				// AKINE-08.06. Vender un pack es trabajo del mostrador, con el mismo reparto que
+				// cobro:register; ve el catalogo para venderlo. NO tiene producto:manage: fijar que se
+				// vende y a cuanto es decision comercial del centro (mismo criterio que convenio:manage).
+				Map.entry(PermissionCode.PRODUCTO_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.PASE_READ, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.PASE_MANAGE, PermissionScope.CONSULTORIO),
 				// AKINE-07.03. La matriz §2 le dice "Si" al ADMINISTRATIVO en Operar Caja, y es
 				// coherente: quien esta en el mostrador es quien abre la caja a la manana y la
 				// arquea a la noche. El PROFESIONAL no lo tiene —su celda dice "No"—, a diferencia

@@ -1,5 +1,8 @@
 package com.akine.clinical.domain.exception;
 
+import com.akine.platform.spi.problem.ConTipoDeProblema;
+import com.akine.platform.spi.problem.ProblemType;
+
 /**
  * El actor tiene el permiso clinico pero no tiene con que justificar este acceso.
  *
@@ -12,7 +15,8 @@ package com.akine.clinical.domain.exception;
  * tercera condicion la que falta, y el llamador la resuelve declarando el motivo — que es el caso
  * borde "acceso de emergencia autorizado" de la etapa.
  */
-public class AccesoClinicoNoJustificadoException extends RuntimeException {
+public class AccesoClinicoNoJustificadoException extends RuntimeException
+		implements ConTipoDeProblema {
 
 	private final long personaId;
 
@@ -20,6 +24,12 @@ public class AccesoClinicoNoJustificadoException extends RuntimeException {
 		super("El acceso a la historia clinica de la persona " + personaId
 				+ " exige relacion asistencial o una justificacion declarada");
 		this.personaId = personaId;
+	}
+
+	/** El mismo {@code type} que pone {@code ClinicalProblemHandler}; el lote de 08.05 lo usa. */
+	@Override
+	public ProblemType tipoDeProblema() {
+		return ProblemType.JUSTIFICACION_DE_ACCESO_REQUERIDA;
 	}
 
 	public long getPersonaId() {

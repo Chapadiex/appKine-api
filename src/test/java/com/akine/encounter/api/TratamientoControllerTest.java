@@ -50,7 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>Lo que solo se rompe en esta capa: que una lista de parametros omitida llegue como lista
  * vacia y no como {@code null} —el servicio la recorre—, que los parametros conserven su tipo, y
- * que la baja conteste 204 aunque el cliente pida solo {@code application/problem+json}.
+ * que la baja conteste 200 con cuerpo aunque el cliente pida solo {@code application/problem+json}.
  */
 @WebMvcTest(TratamientoController.class)
 @Import({TratamientoControllerTest.SliceSecurityConfig.class, EncounterApiActor.class})
@@ -135,14 +135,20 @@ class TratamientoControllerTest {
 	}
 
 	@Test
-	@DisplayName("La baja responde 204 aunque el cliente acepte SOLO problem+json")
-	void la_baja_responde_204_con_accept_problem_json() throws Exception {
+	@DisplayName("La baja responde 200 con la version nueva de la sesion, aunque el cliente acepte "
+			+ "SOLO problem+json (el cliente generado hasta 0.99.0)")
+	void la_baja_responde_200_con_accept_problem_json() throws Exception {
+		given(tratamientoService.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyLong()))
+				.willReturn(vista(List.of()));
+
 		mockMvc.perform(delete(RUTA + "/900")
 						.contentType(MediaType.APPLICATION_JSON)
 						.accept(MediaType.APPLICATION_PROBLEM_JSON)
 						.content("{\"motivo\":\"El paciente refirio molestia\",\"version\":4}")
 						.with(miembro(8L)))
-				.andExpect(status().isNoContent());
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(900))
+				.andExpect(jsonPath("$.sesionVersion").value(4));
 
 		verify(tratamientoService).darDeBaja(
 				any(), eq(7L), eq(501L), eq(900L), eq("El paciente refirio molestia"), eq(4L));
