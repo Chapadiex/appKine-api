@@ -32,19 +32,4 @@
 		<cve>CVE-2026-54285</cve>
 	</suppress>
 
-	<!-- 2. Excepcion TEMPORAL. mysql-connector-j 9.7.0 (gestionado por Spring Boot 4.1.1):
-	     CVE-2026-60586 (7.7) y CVE-2026-60623 (7.1), mas dos medias. Oracle declara afectadas
-	     9.7.0-9.7.1 y al 09/10/2026 no hay 9.7.2 ni 9.8 en Maven Central: no existe un bump que lo
-	     corrija. La alternativa es BAJAR a 9.6.0, que no figura como afectada, y eso es decision
-	     del usuario (docs/calidad.md). Vence el 09/11/2026: si para entonces no salio la version
-	     corregida, el gate vuelve a fallar y obliga a decidir. -->
-	<suppress until="2026-11-09Z">
-		<notes>Temporal: Connector/J 9.7.0 sin version corregida publicada; decision pendiente entre esperar o bajar a 9.6.0 (G-6, 09/10/2026).</notes>
-		<packageUrl regex="true">^pkg:maven/com\.mysql/mysql-connector-j@9\.7\..*$</packageUrl>
-		<cve>CVE-2026-60586</cve>
-		<cve>CVE-2026-60623</cve>
-		<cve>CVE-2026-60624</cve>
-		<cve>CVE-2026-61082</cve>
-	</suppress>
-
 </suppressions>

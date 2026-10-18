@@ -23,16 +23,17 @@
 
 > **Actualizado el 17/10/2026.** El usuario aceptó en bloque las recomendaciones de F9/F10: **7
 > resueltas** (U-39, U-40, U-42, U-44, U-46, U-48, U-49 → DP-24 a DP-30) y **4 postergadas** después
-> del release candidate (U-41, U-43, U-45, U-50 → DP-31). U-46 (e) sigue abierta junto con U-03.
-> U-47 no existe. Quedan **42 abiertas**, 4 de ellas postergadas.
+> del release candidate (U-41, U-43, U-45, U-50 → DP-31). El mismo día, más tarde, **3 resueltas**
+> más del bloque A: **U-03** —junto con U-46 (e)— → DP-33, **U-05** → DP-34 y **U-06** → DP-35.
+> U-47 no existe. Quedan **39 abiertas**, 4 de ellas postergadas.
 
 | Bloque | Abiertas | Resueltas el 17/10 |
 |---|---|---|
-| A. Bloquean el gate del MVP (U-01 a U-06) | 6 (2 acciones + 4 decisiones) | — |
+| A. Bloquean el gate del MVP (U-01 a U-06) | 3 (2 acciones + 1 decisión: U-04) | U-03, U-05, U-06 |
 | B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 9 | U-39, U-42, U-46, U-48, U-49 |
 | C. Alcance del MVP, aditivas (U-15 a U-34) | 20 | — |
 | D. No bloquean nada (U-35 a U-37) + postergadas U-41, U-43, U-45, U-50 | 7 (4 postergadas) | U-40, U-44 |
-| **Total** | **42** (de 49) | **7** |
+| **Total** | **39** (de 49) | **10** |
 
 ### Resueltas el 17/10/2026
 
@@ -42,7 +43,10 @@
 | U-40 | las cinco quedan como están. | DP-25 |
 | U-42 | (a): solo por convenio; sin cobertura, nada particular. | DP-26 |
 | U-44 | por despliegue. | DP-27 |
-| U-46 | (a), (b), (f) como están; (c) el PROFESIONAL no ve `paseId`/`saldo`; (d) el título no viaja en el correo; (e) **sigue abierta junto con U-03**. | DP-28 |
+| U-46 | (a), (b), (f) como están; (c) el PROFESIONAL no ve `paseId`/`saldo`; (d) el título no viaja en el correo; (e) resuelta con U-03. | DP-28, DP-33 |
+| U-03 | la propiedad de la Sesión (y del panel grupal) **es** la relación asistencial de DP-03; sin `X-Justificacion-Acceso` en `encounter`, `reason` nulo documentado. | DP-33 |
+| U-05 | Connector/J **9.6.0** (no hay 9.x corregida; 9.6.0 sin CVE en el NVD); fuera la excepción. Web: `overrides` `basic-ftp@^6`. | DP-34 |
+| U-06 | SAST **CodeQL** y DAST **ZAP baseline**, no bloqueantes (api #119, web #77); Sonar sigue salteándose sin secretos. | DP-35 |
 | U-48 | el lock solo en abonos; los packs resuelven la clave por el unique. | DP-29 |
 | U-49 | (a) hecha en #152; (c) preparada y **apagada por defecto** (`lotes-concurrentes-por-sede`), se enciende solo si el entorno lo exige; (b) no. | DP-30 |
 
@@ -93,7 +97,12 @@ depende del usuario".
 - **Fase / RF:** F8 — 07.09, DP-07, DP-08.
 - **Destraba:** el cierre de F8 y, con eso, la decisión de abrir F9 (L-2 / DU-12).
 
-### U-03 · Justificación de acceso en `encounter`
+### ~~U-03 · Justificación de acceso en `encounter`~~ — RESUELTA el 17/10/2026 (DP-33)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): la propiedad de la Sesión
+> —y la del panel de atención grupal— es la relación asistencial que pide DP-03. `encounter` no
+> exige `X-Justificacion-Acceso`; `reason` queda nulo y documentado; la auditoría existente se
+> mantiene. Cierra también U-46 (e). Sin cambio de contrato. Ver DP-33.
 
 - **Pregunta:** ¿`X-Justificacion-Acceso` obligatorio en las operaciones de Sesión, opcional y
   auditado, o se declara que la propiedad de la sesión ya es relación asistencial?
@@ -112,7 +121,12 @@ depende del usuario".
 - **Fase / RF:** F8 (07.07) y F4 (04.03). CLAUDE §7 n.º 22.
 - **Destraba:** "cero hallazgos altos" de 07.07.
 
-### U-05 · `mysql-connector-j` 9.7.0 con CVE sin corrección — **vence el 09/11/2026**
+### ~~U-05 · `mysql-connector-j` 9.7.0 con CVE sin corrección — vence el 09/11/2026~~ — RESUELTA el 17/10/2026 (DP-34)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación) e implementada: Maven
+> Central no tiene 9.x posterior a 9.7.0 (sólo la línea 26.7.0); el NVD no registra CVE para
+> 9.6.0, así que `mysql.version` baja a **9.6.0** y sale la excepción de
+> `dependency-check-suppressions.xml`. En el frontend, `overrides` `basic-ftp@^6`. Ver DP-34.
 
 - **Pregunta:** ¿esperar la versión corregida o bajar a 9.6.0? Y en el frontend, ¿se aplica el
   `overrides` de `basic-ftp@^6` (dependencia de desarrollo, cruza una mayor)?
@@ -122,7 +136,11 @@ depende del usuario".
 - **Fase / RF:** F8 (07.07). CLAUDE §7 n.º 23. Frontend: `appKine-web/docs/calidad.md`.
 - **Destraba:** "cero hallazgos altos" de 07.07 y que el CI de `main` siga verde después del 09/11.
 
-### U-06 · SAST y DAST; secretos de Sonar y NVD
+### ~~U-06 · SAST y DAST; secretos de Sonar y NVD~~ — RESUELTA el 17/10/2026 (DP-35)
+
+> **Resuelta el 17/10/2026** por el usuario (acepta la propuesta de api #119 / web #77): SAST
+> **CodeQL**, DAST **OWASP ZAP baseline**, los dos no bloqueantes. Sonar sigue salteándose
+> mientras no se carguen sus secretos; `NVD_API_KEY` también sigue sin cargar. Ver DP-35.
 
 - **Pregunta:** ¿CodeQL o SonarQube como SAST? ¿Se agrega un DAST (OWASP ZAP baseline)? Cargar
   `SONAR_TOKEN`, `SONAR_HOST_URL` y `NVD_API_KEY` como secretos de Actions.
@@ -288,9 +306,9 @@ fila nueva.
   Sesión grupal cerrada sin deuda: un backfill tendría que decidir a posteriori qué se cobró por la
   clase.
 
-### ~~U-46 · Lo que el hardening de F9 (09.02) dejó para decidir~~ — RESUELTA el 17/10/2026 (DP-28) (parcial: (e) abierta)
+### ~~U-46 · Lo que el hardening de F9 (09.02) dejó para decidir~~ — RESUELTA el 17/10/2026 (DP-28; (e) DP-33)
 
-> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): (a), (b), (f) como están; (c) el PROFESIONAL no ve `paseId`/`saldo`; (d) el título no viaja en el correo; (e) **sigue abierta junto con U-03**. Ver DP-28 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
+> **Resuelta el 17/10/2026** por el usuario (acepta la recomendación): (a), (b), (f) como están; (c) el PROFESIONAL no ve `paseId`/`saldo`; (d) el título no viaja en el correo; (e) resuelta con U-03: la propiedad del panel de atención grupal es la relación asistencial, sin justificación declarada (DP-33). Ver DP-28 y DP-33 en `AKINE_IMPLEMENTATION_PLAN.md` §7.
 
 09.02 corrigió los defectos de aislamiento, auditoría y entradas de `activity` (registro en
 [`F10-consolidacion-final.md`](F10-consolidacion-final.md)). Estas seis no son defectos: son

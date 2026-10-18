@@ -86,7 +86,7 @@ Dos clases, y cada entrada dice en `<notes>` por qué y desde cuándo:
 | `jackson-databind` / `jackson-core` 3.1.5 y 2.21.5 | GHSA altas: CVE-2026-68497, -91776, -91777, -89425, -89407 (el NVD no las matchea; las da OSV/GitHub Advisory) | **Bump**: `jackson-bom.version` 3.1.7, `jackson-2-bom.version` 2.21.7 |
 | `kotlin-stdlib` 2.3.21 (de okhttp, vía el exportador OTLP de G-4) | CVE-2026-53914 (9.8) | **Falso positivo**: es la caché de build del compilador de Kotlin |
 | `opentelemetry-api` 1.62.0 | CVE-2026-54285 (5.3) | **Falso positivo**: es de opentelemetry-js |
-| `mysql-connector-j` 9.7.0 | CVE-2026-60586 (7.7), -60623 (7.1), -60624 (6.5), -61082 (6.5) | **Excepción temporal hasta el 09/11/2026.** Oracle declara afectadas 9.7.0–9.7.1 y no hay versión corregida en Maven Central. **Decisión pendiente:** esperar la corrección o bajar a 9.6.0, que no figura como afectada |
+| `mysql-connector-j` 9.7.0 | CVE-2026-60586 (7.7), -60623 (7.1), -60624 (6.5), -61082 (6.5) | ~~Excepción temporal hasta el 09/11/2026.~~ **Bajado a 9.6.0 el 17/10/2026 (U-05, DP del plan §7)**: `mysql.version` 9.6.0 en el `pom.xml` y excepción retirada. Oracle declara afectadas sólo 9.7.0–9.7.1; el NVD no registra ningún CVE para 9.6.0 (consulta por CPE). La línea sucesora 26.7.0 (24/07/2026) tampoco figura afectada, pero el usuario autorizó sólo una 9.x |
 
 Las tres propiedades de versión (`tomcat.version`, `jackson-bom.version`,
 `jackson-2-bom.version`) pisan lo que gestiona Spring Boot 4.1.1. **Hay que borrarlas** cuando el
@@ -259,7 +259,10 @@ más bajo del backend y no es de los siete críticos que fija el plan.
 > concurrente hace que una corrida cubra un par de líneas menos que otra, el build lo va a decir;
 > la salida es mirar qué rama no se ejercitó, no bajar el número.
 
-## 5. SAST y DAST — `.github/workflows/seguridad.yml` (propuesta U-06)
+## 5. SAST y DAST — `.github/workflows/seguridad.yml` (U-06, DP-35)
+
+> **Decidido por el usuario el 17/10/2026** (DP-35): CodeQL como SAST y ZAP baseline como DAST,
+> los dos no bloqueantes, como los propuso este apartado.
 
 Dos jobs en un workflow propio, que corre en cada PR a `main`, en cada push a `main`, los lunes
 09:00 UTC y a mano (`workflow_dispatch`). **Ninguno bloquea todavía:** no están entre los checks

@@ -73,16 +73,15 @@ dato ajeno responde 404, nunca 403).
 
 ## Lo que condiciona el RC: decisiones abiertas
 
-La lista completa —45 entradas— está en
+La lista completa está en
 [`../fases/decisiones-pendientes.md`](../fases/decisiones-pendientes.md). Las que mandan sobre este RC:
 
 | | Decisión | Por qué condiciona |
 |---|---|---|
 | U-01 | Correr el QA manual del §6 | Bloqueante para deploy desde 02.02; nunca se corrió |
 | U-02 | Aprobación clínica y legal, deploy y ventana de estabilización | Es el gate (DP-07, DP-08) |
-| U-03, U-04 | Justificación de acceso en `encounter`; `caso:create` | Seguridad del circuito clínico (G-5) |
-| U-05 | `mysql-connector-j` 9.7.0 con CVE sin corrección | **La excepción vence el 09/11/2026** y el job de vulnerabilidades se pone rojo |
-| U-06 | SAST y DAST | Propuesta abierta en api #119; SCA ya está |
+| U-04 | `caso:create` | Seguridad del circuito clínico (G-5) |
+| ~~U-03, U-05, U-06~~ | Justificación en `encounter`; Connector/J; SAST y DAST | **Decididas el 17/10/2026**: la propiedad de la Sesión es la relación asistencial (DP-33, con U-46 e); Connector/J 9.6.0 sin excepción (DP-34); CodeQL y ZAP baseline no bloqueantes (DP-35) |
 | U-28, U-11 | RF-M21-003 y débito parcial | Lo que se le presenta y debita a una obra social. Propuesta en api #122 |
 | U-38 | "Hoy" para lo que no tiene sede | Entre las 21 y las 24 de Córdoba una cobertura, orden o autorización que vence ese día se lee vencida |
 | ~~U-39, U-41, U-42~~ | Devengo por clase, honorarios, economía de la atención grupal | **Decididas el 17/10/2026**: U-39 (DP-24) y U-42 (DP-26) resueltas; U-41 fuera del RC (DP-31). U-39 se implementa en un PR en curso |
@@ -115,8 +114,8 @@ del período (U-45, fuera del RC). El resto, en [`../qa/90-conocido-y-aceptado.m
   09.02 y 09.03 están escribiendo parte.
 - **Gate de `BRANCH`** en JaCoCo sin poner (U-35). Línea e instrucción gateadas en 0,80 global y por
   módulo crítico.
-- **Secretos sin cargar:** `NVD_API_KEY` (el job de vulnerabilidades cae a OSV.dev) y
-  `SONAR_TOKEN`/`SONAR_HOST_URL`.
+- **Secretos sin cargar:** `NVD_API_KEY` (el job de vulnerabilidades cae a OSV.dev, que no publica
+  los CVE de Connector/J) y `SONAR_TOKEN`/`SONAR_HOST_URL` (el job `sonar` se saltea; DP-35).
 - **Sin registry** de imágenes: el rollback por imagen asume que la anterior sigue en el host
   (`docs/operaciones/rollback.md`).
 - **Migraciones `V96`–`V103` no ensayadas sobre una copia restaurada**; el simulacro de restore de
@@ -151,5 +150,15 @@ del período (U-45, fuera del RC). El resto, en [`../qa/90-conocido-y-aceptado.m
 El usuario aceptó las recomendaciones de F9/F10 (DP-24 a DP-31, `AKINE_IMPLEMENTATION_PLAN.md` §7;
 detalle en `docs/fases/decisiones-pendientes.md`). Resueltas: U-39, U-40, U-42, U-44, U-46, U-48 y
 U-49. **Fuera del RC** (mejoras posteriores, abiertas): U-41, U-43, U-45 y U-50. En implementación:
-U-39 (devengo `POR_CLASE`), U-48 (lock solo en abonos) y U-46 (c)/(d). U-46 (e) sigue abierta junto
-con U-03.
+U-39 (devengo `POR_CLASE`), U-48 (lock solo en abonos) y U-46 (c)/(d).
+
+Más tarde el mismo día, el usuario resolvió tres del bloque A (DP-33 a DP-35):
+
+- **U-03 + U-46 (e):** la propiedad de la Sesión —y del panel de atención grupal— es la relación
+  asistencial de DP-03; `encounter` no exige `X-Justificacion-Acceso` y su `reason` nulo queda
+  documentado. Sin cambio de contrato.
+- **U-05:** `mysql-connector-j` baja a **9.6.0** (no hay 9.x corregida en Maven Central; el NVD no
+  registra CVE para 9.6.0) y sale la excepción que vencía el 09/11/2026. Frontend: `overrides`
+  `basic-ftp@^6`, `npm audit` en 0.
+- **U-06:** SAST CodeQL y DAST ZAP baseline, no bloqueantes (api #119, web #77). Sonar sigue
+  salteándose sin secretos.
