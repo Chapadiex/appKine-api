@@ -117,6 +117,14 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 	@Column(name = "esquema_cobro", length = EsquemaCobro.LARGO_MAXIMO)
 	private String esquemaCobro;
 
+	/**
+	 * Cuando nace la deuda de esta oferta (V64). No se recibe: se deriva del esquema con
+	 * {@link EsquemaCobro#momentoDevengo()} y viaja siempre junto a el, porque
+	 * {@code ck_oferta_politica_devengo} rechaza un esquema sin su momento.
+	 */
+	@Column(name = "momento_devengo", length = 16)
+	private String momentoDevengo;
+
 	@Column(name = "admite_obra_social", nullable = false)
 	private boolean admiteObraSocial;
 
@@ -197,6 +205,7 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 		this.precioBase = precioBase;
 		this.moneda = moneda;
 		this.esquemaCobro = esquemaCobro == null ? null : esquemaCobro.valor();
+		this.momentoDevengo = esquemaCobro == null ? null : esquemaCobro.momentoDevengo();
 		this.admiteObraSocial = admiteObraSocial;
 		this.requiereCasoClinico = requiereCasoClinico;
 		this.generaRegistroClinico = generaRegistroClinico;
@@ -276,8 +285,10 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 		}
 		if (limpiarEsquemaCobro) {
 			this.esquemaCobro = null;
+			this.momentoDevengo = null;
 		} else if (esquemaCobro != null) {
 			this.esquemaCobro = esquemaCobro.valor();
+			this.momentoDevengo = esquemaCobro.momentoDevengo();
 		}
 		if (admiteObraSocial != null) {
 			this.admiteObraSocial = admiteObraSocial;
@@ -469,8 +480,13 @@ public class OfertaServicioConsultorio extends MarcaTemporal {
 		return moneda;
 	}
 
-	public EsquemaCobro getEsquemaCobro() {
-		return esquemaCobro == null ? null : new EsquemaCobro(esquemaCobro);
+	/** El esquema tal como esta guardado. No se revalida al leer: lo guardado ya paso el CHECK. */
+	public String getEsquemaCobro() {
+		return esquemaCobro;
+	}
+
+	public String getMomentoDevengo() {
+		return momentoDevengo;
 	}
 
 	public boolean isAdmiteObraSocial() {

@@ -17,7 +17,16 @@ public record ResultadoDeAsistencia(
 		AsistenciaView asistencia,
 		InscripcionView inscripcion,
 		boolean registrada,
-		boolean corregida) {
+		boolean corregida,
+		ConsumoDeCredito consumo,
+		DevengoDeClase devengo) {
+
+	/** Sin efecto economico evaluado: un pedido repetido que no escribio nada. */
+	public ResultadoDeAsistencia(
+			AsistenciaView asistencia, InscripcionView inscripcion, boolean registrada,
+			boolean corregida) {
+		this(asistencia, inscripcion, registrada, corregida, null, null);
+	}
 
 	/** {@code true} si esta llamada no cambio nada porque repetia lo ya registrado. */
 	public boolean sinCambios() {

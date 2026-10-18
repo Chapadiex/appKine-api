@@ -6,7 +6,10 @@ import com.akine.clinical.domain.exception.AdjuntoClinicoNoDisponibleException;
 import com.akine.clinical.domain.exception.AdjuntoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.AntecedenteNotAccessibleException;
 import com.akine.clinical.domain.exception.AutorizacionNoElegibleException;
+import com.akine.clinical.domain.exception.DerivacionAmbiguaException;
+import com.akine.clinical.domain.exception.DerivacionConSesionException;
 import com.akine.clinical.domain.exception.DerivacionNotAccessibleException;
+import com.akine.clinical.domain.exception.ParticipacionSinDerivacionException;
 import com.akine.clinical.domain.exception.ArchivoClinicoNoAceptadoException;
 import com.akine.clinical.domain.exception.CasoClinicoCerradoException;
 import com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException;
@@ -77,7 +80,8 @@ public class ClinicalProblemHandler {
 	private static final Logger log = LoggerFactory.getLogger(ClinicalProblemHandler.class);
 
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
-	private static final URI FORBIDDEN = ProblemType.FORBIDDEN.uri();
+	private static final URI JUSTIFICACION_REQUERIDA =
+			ProblemType.JUSTIFICACION_DE_ACCESO_REQUERIDA.uri();
 	private static final URI ENTRADA_NO_ACCESIBLE = ProblemType.ENTRADA_CLINICA_NO_ACCESIBLE.uri();
 	private static final URI ENTRADA_INACTIVA = ProblemType.ENTRADA_CLINICA_INACTIVA.uri();
 	private static final URI ENMIENDA_SIN_MOTIVO = ProblemType.ENMIENDA_SIN_MOTIVO.uri();
@@ -166,10 +170,11 @@ public class ClinicalProblemHandler {
 	 * {@code requiereJustificacion} la pantalla sabe que lo que corresponde es pedir el motivo y
 	 * reintentar el mismo pedido con la cabecera puesta.
 	 *
-	 * <p>No se publica un {@code type} propio: el diseño de la etapa enumera los siete
-	 * {@code type} nuevos y este no esta entre ellos, y agregar uno al catalogo es una decision de
-	 * contrato que no le toca tomar a la capa HTTP. La propiedad extra da la misma informacion sin
-	 * ampliar el enum publicado.
+	 * <p><b>Desde el contrato 0.107.0 tiene {@code type} propio</b>,
+	 * {@code justificacion-de-acceso-requerida}, a pedido de appKine-web #83: con {@code forbidden}
+	 * y una extension que el contrato no declaraba, el gate de {@code problemType} del frontend no
+	 * podia proteger la distincion. {@code requiereJustificacion} y {@code cabecera} se siguen
+	 * enviando: quien ya las lee no se rompe.
 	 *
 	 * <p><b>403 y nunca 401.</b> La sesion es valida; el interceptor del frontend borra el token
 	 * ante cualquier 401 y entraria en bucle de login.
@@ -181,7 +186,7 @@ public class ClinicalProblemHandler {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
 				HttpStatus.FORBIDDEN,
 				"El acceso a esta historia clinica exige declarar un motivo.");
-		problem.setType(FORBIDDEN);
+		problem.setType(JUSTIFICACION_REQUERIDA);
 		problem.setTitle("Acceso clinico sin justificar");
 		problem.setProperty("requiereJustificacion", true);
 		problem.setProperty("cabecera", AccesoClinicoHeaders.JUSTIFICACION);
@@ -601,6 +606,43 @@ public class ClinicalProblemHandler {
 		problem.setTitle("La autorizacion no habilita");
 		problem.setProperty("autorizacionId", ex.getAutorizacionId());
 		problem.setProperty("motivo", ex.getMotivo());
+		return problem;
+	}
+
+	// =================================================================================
+	// Atencion clinica desde una derivacion (AKINE-08.05)
+	// =================================================================================
+
+	/** 409: no hay derivacion vigente de la que colgar la atencion. El remedio es derivar. */
+	@ExceptionHandler(ParticipacionSinDerivacionException.class)
+	public ProblemDetail handleParticipacionSinDerivacion(ParticipacionSinDerivacionException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(ex.tipoDeProblema().uri());
+		problem.setTitle("La participacion no tiene derivacion vigente");
+		problem.setProperty("participacionId", ex.getParticipacionId());
+		if (ex.getDerivacionId() != null) {
+			problem.setProperty("derivacionId", ex.getDerivacionId());
+		}
+		return problem;
+	}
+
+	/** 409 con las derivaciones vigentes, para que la pantalla ofrezca elegir el Caso. */
+	@ExceptionHandler(DerivacionAmbiguaException.class)
+	public ProblemDetail handleDerivacionAmbigua(DerivacionAmbiguaException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(ex.tipoDeProblema().uri());
+		problem.setTitle("Hay que elegir la derivacion");
+		problem.setProperty("derivacionIds", ex.getDerivacionIds());
+		return problem;
+	}
+
+	/** 409: de la derivacion cuelga una Sesion, y la Sesion no se borra (regla maestra 10). */
+	@ExceptionHandler(DerivacionConSesionException.class)
+	public ProblemDetail handleDerivacionConSesion(DerivacionConSesionException ex) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+		problem.setType(ex.tipoDeProblema().uri());
+		problem.setTitle("La derivacion ya tiene una atencion");
+		problem.setProperty("derivacionId", ex.getDerivacionId());
 		return problem;
 	}
 

@@ -160,7 +160,7 @@ Las decisiones necesarias para comenzar quedaron cerradas: fuente funcional M01�
 
 # 5. Matriz requerimientos vs implementación
 
-El proyecto es greenfield confirmado. “Encontrado” se refiere únicamente a evidencia documental; ninguna capacidad se marca como implementada.
+El proyecto es greenfield confirmado. “Encontrado” se refiere únicamente a evidencia documental; ninguna capacidad se marca como implementada. **Nota del 17/10/2026:** esta matriz es la foto del arranque y se conserva así; el estado real por etapa está en la tabla del §23 y en el registro "F9 y F10 (17/10/2026)" al final del plan.
 
 | Área | Requerido | Encontrado | Estado | Evidencia | Etapas planificadas |
 |---|---|---|---|---|---|
@@ -677,6 +677,74 @@ un evento de auditoría no es un contrato de negocio).
 
 **Implementada en:** B-4 (`V85`, contrato 0.79.0, `docs/diseno/AKINE-B-4-historial-autorizacion.md`).
 El vencimiento no es un evento: se calcula al leer, como VENCIDA en la autorización.
+
+## DP-24 — `POR_CLASE` devenga con la asistencia; asistir sin pase en `POR_PACK` solo se informa (U-39)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** (a) En una oferta `POR_CLASE` la deuda nace con la **asistencia**, y el no-show **no** cobra por defecto (`devenga_no_show = 0`, ya en `V64`). (b) En una oferta `POR_PACK`, quien asiste **sin pase vigente** queda registrado e informado (`consumoDeCredito.efecto = SIN_PASE_ELEGIBLE`, auditado), sin bloqueo ni deuda suelta.
+
+**Alternativas descartadas.** devengar con la inscripción; bloquear la asistencia sin pase; devengar una clase suelta.
+
+**Implementada en:** un PR en curso (devengo `POR_CLASE`); hasta que entre, declarar `POR_CLASE` sigue respondiendo 400.
+
+## DP-25 — Las cinco políticas de pases y abonos quedan como están (U-40)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** (a) el abono lleva tope de asistencias por período; (b) se activa al vender, incluida la renovación automática, sin mirar si el anterior se pagó; (c) no se anula un pase ya usado (se ajusta el saldo); (d) el ajuste manual deja el saldo en `[0, créditos comprados]`; (e) sin ventana de gracia tras el vencimiento. Se revisa cuando un centro lo pida.
+
+**Implementada en:** el código vigente (08.07, 08.08); sin cambio.
+
+## DP-26 — La atención grupal devenga solo por convenio; sin cobertura, nada particular (U-42)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** (a) La Sesión de un participante de clase clínica devenga **solo lo del convenio** cuando hay cobertura (entra a la presentación) y **nada particular** sin ella: la clase se cobra por su esquema (pase, abono, clase) sobre la asistencia.
+
+**Alternativas descartadas.** cobrar también el particular al precio de la oferta; no devengar nada, ni por convenio.
+
+**Implementada en:** el código vigente (08.05); sin cambio.
+
+## DP-27 — Umbrales de aviso de pases por despliegue (U-44)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** Los umbrales de vencimiento próximo y saldo bajo (`akine.activity.pases.avisos.*`) son **por despliegue**, no por centro ni por producto, hasta que un centro lo pida.
+
+**Implementada en:** el código vigente (08.08); sin cambio.
+
+## DP-28 — Criterios que el hardening de F9 dejó para decidir (U-46)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** (a) una sede hermana responde 403, no 404; (b) ningún permiso de F9 es otorgable por grant; (f) las claves de idempotencia siguen siendo por organización, no por sede. (c) El `PROFESIONAL` **no ve** `paseId` ni `saldo` del pase en la respuesta de la asistencia (cambio aditivo de contrato, sin `pase:read`). (d) El **título de la clase no viaja** en el correo de cancelación o reprogramación. (e) El panel de atención grupal se resuelve **con la justificación en `encounter`**: sigue **abierta junto con U-03**.
+
+**Implementada en:** (a), (b) y (f) sin cambio. (c) y (d): un PR en curso. (e): pendiente de U-03.
+
+## DP-29 — El lock del producto solo en la venta de abonos (U-48)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** El `FOR UPDATE` del producto se toma **solo en la venta de abonos** (serializa los períodos de la misma persona). En un **pack**, la carrera de la `Idempotency-Key` se resuelve por el unique `uk_pase_idempotency`, con relectura en `READ_COMMITTED` al chocar.
+
+**Alternativas descartadas.** bloquear toda venta (p95 723 ms a 4,2 ventas/s en `docs/carga.md` §12).
+
+**Implementada en:** un PR en curso.
+
+## DP-30 — Costo de la asistencia en lote: (a) hecha; (c) solo si el entorno lo exige (U-49)
+
+**Estado:** RESUELTA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** (a) hecha en api #152 (de 18 a 11 sentencias por participante en el alta). (c) limitar los lotes concurrentes por sede **solo si el entorno de destino lo exige**. (b) agrupar ítems por transacción: **no**, porque cambiaría la actualización transaccional independiente de RF-M13-008.
+
+**Implementada en:** (a) api #152; (c) **preparada y apagada** en la rama `akine-u49c-limite-de-lotes` (contrato 0.127.0): se enciende con `akine.activity.asistencia.lotes-concurrentes-por-sede` si el entorno de destino lo exige (`docs/carga.md` §12, runbook R8).
+
+## DP-31 — Fuera del release candidate: honorarios por clase, cuenta técnica de renovación, períodos no calendario, rentabilidad (U-41, U-43, U-45, U-50)
+
+**Estado:** DECIDIDA el 17/10/2026. Decidido por el usuario: acepta la recomendación de `docs/fases/decisiones-pendientes.md`.
+
+**Decisión.** Cuatro decisiones quedan **fuera del release candidate**, como mejoras posteriores: **U-41** (esquema de honorarios por clase, RF-M22-006/007), **U-43** (cuenta técnica de sistema para el job de renovación de abonos), **U-45** (períodos de abono que no son un mes calendario) y **U-50** (rentabilidad y caja por servicio, RF-M23-009). Siguen **documentadas y abiertas** en `decisiones-pendientes.md`, marcadas como postergadas, para después del RC. Hoy valen: el egreso de honorarios se carga a mano; el período renovado se vende a nombre de la cuenta que autorizó la renovación; se renueva por mes calendario o `vigenciaDias`; el reporte `SERVICIOS` no muestra margen (`rentabilidad-sin-costos`).
 
 # 8. Modelo funcional consolidado
 
@@ -5580,64 +5648,66 @@ Una etapa está terminada solo si:
 
 # 23. Tabla final de trazabilidad
 
-| Etapa | Sprint | Módulo | Requerimientos | Depende de | Backend | Frontend | DB | Tests | Estado actual |
-|---|---|---|---|---|---|---|---|---|---|
-| 00.01 | S00 | Baseline | Greenfield, stack, §§40–44 | — | Crear | Crear | Inicial | Smoke/I | NO IMPLEMENTADO |
-| 00.02 | S00 | Arquitectura | RNF M01–M29, §§32–41 | 00.01 | Sí | Sí | Sí | Arch/I/F | NO IMPLEMENTADO |
-| 00.03 | S00 | Decisiones | DP-01–DP-09, reglas 1–30 | 00.02 | ADR | ADR | Sin cambio | Escenarios | NO IMPLEMENTADO |
-| 01.01 | S01 | M01 | RF/RN/RNF M01 | 00.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 01.02 | S01 | M02/M26 | Identidad, auth, recuperación, notificaciones | 01.01 | Sí | Sí | Sí | U/I/Sec/E2E | NO IMPLEMENTADO |
-| 01.03 | S01 | M01/M02/M05/M24 | Memberships, RBAC, auditoría | 01.02 | Sí | Sí | Sí | U/I/Sec/E2E | NO IMPLEMENTADO |
-| 02.01 | S02 | M03 | Consultorio y onboarding DP-01 | 01.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 02.02 | S02 | M04 | Espacios y capacidad | 02.01 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 02.03 | S02 | M05/M26 | Colaboradores e invitaciones | 01.03, 02.01 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 02.04 | S02 | M05 | Disponibilidad y excepciones | 02.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 02.05 | S03 | M06 | Especialidades/prácticas | 01.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 02.06 | S03 | M03/M06/M27 | Servicio y Oferta | 02.01, 02.05 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 02.07 | S03 | M04/M05/M27 | Configuración y habilitaciones | 02.02, 02.04, 02.06 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 03.01 | S04 | M07 | Persona y PerfilPaciente | 01.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 03.02 | S04 | M07/M25 | Paciente 360 y adjuntos | 03.01 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 03.03 | S04 | M15 | Financiadores y planes | 01.03, 02.01 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 03.04 | S04 | M08 | Coberturas de paciente | 03.01, 03.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 03.05 | S05 | M16 | Convenios y aranceles | 02.05, 02.07, 03.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 03.06 | S05 | M17/M25 | Órdenes, autorizaciones y documentos | 03.04, 03.05 | Sí | Sí | Sí | U/I/Sec/E2E | NO IMPLEMENTADO |
-| 04.01 | S06 | M09 | HC organizacional y acceso | 03.02 | Sí | Sí | Sí | U/I/Sec/E2E | NO IMPLEMENTADO |
-| 04.02 | S06 | M09/M25 | Timeline y adjuntos clínicos | 03.02, 04.01 | Sí | Sí | Sí | U/I/Sec/E2E | NO IMPLEMENTADO |
-| 04.03 | S06 | M10 | Caso Clínico | 02.07, 04.02 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 04.04 | S07 | M11 | Plan de Tratamiento | 02.07, 04.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 04.05 | S07 | M11/M17 | Consumo de autorizaciones | 03.06, 04.04 | Sí | Sí | Sí | U/I/Conc/E2E | NO IMPLEMENTADO |
-| 05.01 | S08 | M04/M05/M12 | Motor de slots | 02.04, 02.07, 03.04 | Sí | Sí | Índices | U/I/Perf/E2E | NO IMPLEMENTADO |
-| 05.02 | S08 | M04/M12/M26 | Reserva y confirmación | 03.01, 05.01 | Sí | Sí | Sí | U/I/Conc/E2E | NO IMPLEMENTADO |
-| 05.03 | S09 | M12/M26 | Ciclo e historial de Turno | 05.02 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 05.04 | S09 | M13 | Check-in y espera | 03.06, 04.05, 05.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 06.01 | S10 | M14 | Inicio y autosave de Sesión | 04.05, 05.04 | Sí | Sí | Sí | U/I/Idem/E2E | NO IMPLEMENTADO |
-| 06.02 | S10 | M14 | Evaluación base | 06.01 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 06.03 | S10 | M14 | Examen y mediciones | 06.02 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 06.04 | S11 | M04/M06/M14 | Tratamientos y espacios usados | 02.02, 02.05, 06.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 06.05 | S11 | M14 | Resultado y cierre | 06.04 | Sí | Sí | Sí | U/I/Conc/E2E | NO IMPLEMENTADO |
-| 06.06 | S11 | M14/M24 | Enmiendas y versionado | 06.05 | Sí | Sí | Sí | U/I/Audit/E2E | NO IMPLEMENTADO |
-| 07.01 | S12 | M17/M18 | Obligaciones y snapshots | 03.05, 04.05, 06.05 | Sí | Sí | Sí | U/I/Idem/E2E | NO IMPLEMENTADO |
-| 07.02 | S12 | M19 | Cobros e imputaciones | 07.01 | Sí | Sí | Sí | U/I/Conc/E2E | NO IMPLEMENTADO |
-| 07.03 | S13 | M20 | Caja y movimientos | 07.02 | Sí | Sí | Sí | U/I/Conc/E2E | NO IMPLEMENTADO |
-| 07.04 | S13 | M21 | Presentaciones financiadores | 07.01, 07.03 | Sí | Sí | Sí | U/I/Rec/E2E | NO IMPLEMENTADO |
-| 07.05 | S13 | M22 | Egresos y pagos | 02.03, 07.03 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 07.06 | S14 | M23 | Reportes M01–M27 | 07.04, 07.05 | Sí | Sí | Índices | U/I/Rec/Perf | NO IMPLEMENTADO |
-| 07.07 | S14 | Transversal | Seguridad, privacidad, a11y MVP | 07.06 | Sí | Sí | Revisar | Sec/A11y/E2E | NO IMPLEMENTADO |
-| 07.08 | S15 | Transversal | SLO, concurrencia, observabilidad MVP | 07.07 | Sí | Sí | Optimizar | Perf/Conc/Res | NO IMPLEMENTADO |
-| 07.09 | S15 | Gate MVP | Release M01–M27 | 07.08 | Sí | Sí | Ensayo | E2E/Smoke/Restore | NO IMPLEMENTADO |
-| 08.01 | S16 | M12/M28 | Clases y agenda unificada | 02.07, 05.03, 07.09 | Sí | Sí | Sí | U/I/Conc/E2E | NO IMPLEMENTADO |
-| 08.02 | S16 | M26/M28 | Inscripciones y espera | 03.01, 08.01 | Sí | Sí | Sí | U/I/Conc/E2E | NO IMPLEMENTADO |
-| 08.03 | S16 | M13/M18/M19/M28 | Asistencia y operación | 07.01, 07.02, 08.02 | Sí | Sí | Sí | U/I/F/E2E | NO IMPLEMENTADO |
-| 08.04 | S17 | M09/M10/M11/M28 | Derivación clínica | 04.04, 04.05, 08.03 | Sí | Sí | Sí | U/I/Sec/E2E | NO IMPLEMENTADO |
-| 08.05 | S17 | M14/M28 | Atención grupal individualizada | 06.05, 08.04 | Sí | Sí | Sí | U/I/Priv/E2E | NO IMPLEMENTADO |
-| 08.06 | S18 | M18/M19/M20/M29 | Productos, packs y venta | 07.03, 08.03 | Sí | Sí | Sí | U/I/Idem/E2E | NO IMPLEMENTADO |
-| 08.07 | S18 | M19/M20/M29 | Ledger de créditos | 08.06 | Sí | Sí | Sí | U/I/Conc/E2E | NO IMPLEMENTADO |
-| 08.08 | S19 | M20/M26/M29 | Abonos y vencimientos | 01.02, 08.07 | Sí | Sí | Sí | U/I/Jobs/E2E | NO IMPLEMENTADO |
-| 08.09 | S19 | M21/M22/M24 | Economía y auditoría servicios | 07.04, 07.05, 08.05, 08.08 | Sí | Sí | Sí | U/I/Rec/E2E | NO IMPLEMENTADO |
-| 09.01 | S20 | M23/M28/M29 | Reportes ampliados | 07.06, 08.09 | Sí | Sí | Índices | U/I/Rec/Perf | NO IMPLEMENTADO |
-| 09.02 | S20 | Transversal | Seguridad, privacidad y a11y final | 09.01 | Sí | Sí | Revisar | Sec/A11y/E2E | NO IMPLEMENTADO |
-| 09.03 | S21 | Transversal | SLO, concurrencia y observabilidad final | 09.02 | Sí | Sí | Optimizar | Perf/Conc/Res | NO IMPLEMENTADO |
-| 09.04 | S21 | Gate final | Release M01–M29 | 09.03 | Sí | Sí | Ensayo | E2E/Smoke/Restore | NO IMPLEMENTADO |
+> **Al día el 17/10/2026** contra `docs/fases/F*.md` y la API de GitHub (PR mergeados de `appKine-api` hasta #147 y de `appKine-web` hasta #109). Hasta esa fecha las 56 etapas figuraban "NO IMPLEMENTADO". La última columna lista los PR que entregaron o cerraron la etapa: `api #N` es `appKine-api`, `web #N` es `appKine-web`. Lo anterior al PR api #2 (integración del 29/09) no existe como PR sino como commits dentro de él. El resumen está en el registro final "F9 y F10 (17/10/2026)".
+
+| Etapa | Sprint | Módulo | Requerimientos | Depende de | Backend | Frontend | DB | Tests | Estado actual (17/10/2026) | PR que la cerraron |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 00.01 | S00 | Baseline | Greenfield, stack, §§40–44 | — | Crear | Crear | Inicial | Smoke/I | CUMPLIDA | api #2, #83 · web #41 |
+| 00.02 | S00 | Arquitectura | RNF M01–M29, §§32–41 | 00.01 | Sí | Sí | Sí | Arch/I/F | CUMPLIDA | api #2, #29, #62 · web #18, #30 |
+| 00.03 | S00 | Decisiones | DP-01–DP-09, reglas 1–30 | 00.02 | ADR | ADR | Sin cambio | Escenarios | CUMPLIDA | api #2, #42, #48, #74 |
+| 01.01 | S01 | M01 | RF/RN/RNF M01 | 00.03 | Sí | Sí | Sí | U/I/F/E2E | CUMPLIDA | api #2, #96 · web #36 |
+| 01.02 | S01 | M02/M26 | Identidad, auth, recuperación, notificaciones | 01.01 | Sí | Sí | Sí | U/I/Sec/E2E | CUMPLIDA | api #2, #51, #67 · web #36 |
+| 01.03 | S01 | M01/M02/M05/M24 | Memberships, RBAC, auditoría | 01.02 | Sí | Sí | Sí | U/I/Sec/E2E | CUMPLIDA (el escenario 7b se cerró en api #104) | api #2, #25, #70, #78, #104 · web #44, #48 |
+| 02.01 | S02 | M03 | Consultorio y onboarding DP-01 | 01.03 | Sí | Sí | Sí | U/I/F/E2E | CERRADA técnica | api #38, #60, #73 · web #22, #39, #72 |
+| 02.02 | S02 | M04 | Espacios y capacidad | 02.01 | Sí | Sí | Sí | U/I/F/E2E | CERRADA técnica | api #38 · web #68 |
+| 02.03 | S02 | M05/M26 | Colaboradores e invitaciones | 01.03, 02.01 | Sí | Sí | Sí | U/I/F/E2E | CERRADA técnica | api #38, #100 · web #17, #64, #72 |
+| 02.04 | S02 | M05 | Disponibilidad y excepciones | 02.03 | Sí | Sí | Sí | U/I/F/E2E | CERRADA técnica | api #38, #64 · web #17, #29, #68 |
+| 02.05 | S03 | M06 | Especialidades/prácticas | 01.03 | Sí | Sí | Sí | U/I/F/E2E | PARCIAL (~90 %): `nomenclador_item` y `catalogo:*` son del usuario (U-08, U-13) | api #53 · web #13, #68 |
+| 02.06 | S03 | M03/M06/M27 | Servicio y Oferta | 02.01, 02.05 | Sí | Sí | Sí | U/I/F/E2E | CERRADA técnica | api #46 · web #32 |
+| 02.07 | S03 | M04/M05/M27 | Configuración y habilitaciones | 02.02, 02.04, 02.06 | Sí | Sí | Sí | U/I/F/E2E | CERRADA técnica | api #23, #36 · web #68 |
+| 03.01 | S04 | M07 | Persona y PerfilPaciente | 01.03 | Sí | Sí | Sí | U/I/F/E2E | CERRADA en código | api #12, #76 · web #3, #40, #68 |
+| 03.02 | S04 | M07/M25 | Paciente 360 y adjuntos | 03.01 | Sí | Sí | Sí | U/I/F/E2E | CERRADA en código | api #34, #64, #68, #103 · web #16, #29 |
+| 03.03 | S04 | M15 | Financiadores y planes | 01.03, 02.01 | Sí | Sí | Sí | U/I/F/E2E | CERRADA en código (U-07, U-12 abiertas) | api #21 · web #68 |
+| 03.04 | S04 | M08 | Coberturas de paciente | 03.01, 03.03 | Sí | Sí | Sí | U/I/F/E2E | CERRADA en código | api #49, #52, #55, #56, #107 · web #15, #23, #74 |
+| 03.05 | S05 | M16 | Convenios y aranceles | 02.05, 02.07, 03.03 | Sí | Sí | Sí | U/I/F/E2E | CERRADA en código | api #49, #55, #63 · web #15, #28 |
+| 03.06 | S05 | M17/M25 | Órdenes, autorizaciones y documentos | 03.04, 03.05 | Sí | Sí | Sí | U/I/Sec/E2E | CERRADA en código | api #75, #98 · web #36, #39, #58 |
+| 04.01 | S06 | M09 | HC organizacional y acceso | 03.02 | Sí | Sí | Sí | U/I/Sec/E2E | CERRADA en backend; pantalla de acceso hecha | api #5, #8, #97, #109, #115 · web #4, #83 |
+| 04.02 | S06 | M09/M25 | Timeline y adjuntos clínicos | 03.02, 04.01 | Sí | Sí | Sí | U/I/Sec/E2E | CERRADA | api #94 · web #4, #83, #99 |
+| 04.03 | S06 | M10 | Caso Clínico | 02.07, 04.02 | Sí | Sí | Sí | U/I/F/E2E | CASI CERRADA: falta el gate RF-M10-007 (U-09) | api #7, #109 · web #4, #83, #99 |
+| 04.04 | S07 | M11 | Plan de Tratamiento | 02.07, 04.03 | Sí | Sí | Sí | U/I/F/E2E | CASI CERRADA: ítems por oferta y no por práctica (U-10) | api #7, #20 · web #4, #83, #99 |
+| 04.05 | S07 | M11/M17 | Consumo de autorizaciones | 03.06, 04.04 | Sí | Sí | Sí | U/I/Conc/E2E | CERRADA en lo que tiene RF | api #47, #98 · web #58, #74 |
+| 05.01 | S08 | M04/M05/M12 | Motor de slots | 02.04, 02.07, 03.04 | Sí | Sí | Índices | U/I/Perf/E2E | CUMPLIDA | api #22, #66 · web #26 |
+| 05.02 | S08 | M04/M12/M26 | Reserva y confirmación | 03.01, 05.01 | Sí | Sí | Sí | U/I/Conc/E2E | CUMPLIDA salvo decisión (autoservicio, `OWN`) | api #107, #116 · web #74 |
+| 05.03 | S09 | M12/M26 | Ciclo e historial de Turno | 05.02 | Sí | Sí | Sí | U/I/F/E2E | CUMPLIDA salvo decisión | api #44, #71 · web #10, #20, #34 |
+| 05.04 | S09 | M13 | Check-in y espera | 03.06, 04.05, 05.03 | Sí | Sí | Sí | U/I/F/E2E | CUMPLIDA salvo decisión | api #52, #54, #56, #59 · web #8, #14, #21 |
+| 06.01 | S10 | M14 | Inicio y autosave de Sesión | 04.05, 05.04 | Sí | Sí | Sí | U/I/Idem/E2E | CASI CERRADA: caso obligatorio y atención sin turno (U-09) | api #4, #127 · web #80, #90 |
+| 06.02 | S10 | M14 | Evaluación base | 06.01 | Sí | Sí | Sí | U/I/F/E2E | CUMPLIDA | api #127 · web #80 |
+| 06.03 | S10 | M14 | Examen y mediciones | 06.02 | Sí | Sí | Sí | U/I/F/E2E | CASI CERRADA: subbloques ROM/fuerza/marcha son decisión | api #43, #109 · web #80 |
+| 06.04 | S11 | M04/M06/M14 | Tratamientos y espacios usados | 02.02, 02.05, 06.03 | Sí | Sí | Sí | U/I/F/E2E | CASI CERRADA: parámetros obligatorios por práctica son decisión | api #6, #43 · web #80 |
+| 06.05 | S11 | M14 | Resultado y cierre | 06.04 | Sí | Sí | Sí | U/I/Conc/E2E | CERRADA con desvío (desacople de la economía: U-14) | api #72, #78 · web #80 |
+| 06.06 | S11 | M14/M24 | Enmiendas y versionado | 06.05 | Sí | Sí | Sí | U/I/Audit/E2E | CASI CERRADA: permiso y ventana de enmienda son decisión | api #43 · web #80, #99 |
+| 07.01 | S12 | M17/M18 | Obligaciones y snapshots | 03.05, 04.05, 06.05 | Sí | Sí | Sí | U/I/Idem/E2E | CUMPLIDA con decisiones abiertas (arancel 0, crédito/bono) | api #49, #72, #86 · web #42 |
+| 07.02 | S12 | M19 | Cobros e imputaciones | 07.01 | Sí | Sí | Sí | U/I/Conc/E2E | CUMPLIDA | api #39, #86, #91, #101 · web #33, #35 |
+| 07.03 | S13 | M20 | Caja y movimientos | 07.02 | Sí | Sí | Sí | U/I/Conc/E2E | CUMPLIDA | api #28, #57 · web #7, #35 |
+| 07.04 | S13 | M21 | Presentaciones financiadores | 07.01, 07.03 | Sí | Sí | Sí | U/I/Rec/E2E | CUMPLIDA con decisiones abiertas (U-11, RF-M21-003) | api #30, #57, #108 · web #9, #35, #74 |
+| 07.05 | S13 | M22 | Egresos y pagos | 02.03, 07.03 | Sí | Sí | Sí | U/I/F/E2E | CUMPLIDA con decisiones abiertas (adjunto binario, `egreso:manage`) | api #19, #24, #105, #136 · web #63 |
+| 07.06 | S14 | M23 | Reportes M01–M27 | 07.04, 07.05 | Sí | Sí | Índices | U/I/Rec/Perf | CUMPLIDA con desvío declarado (export síncrono) | api #58, #106 · web #12 |
+| 07.07 | S14 | Transversal | Seguridad, privacidad, a11y MVP | 07.06 | Sí | Sí | Revisar | Sec/A11y/E2E | PARCIAL: U-03 a U-06 son del usuario | api #78, #82, #83 · web #24, #44, #65 |
+| 07.08 | S15 | Transversal | SLO, concurrencia, observabilidad MVP | 07.07 | Sí | Sí | Optimizar | Perf/Conc/Res | PARCIAL: el SLO de escrituras a 500 usuarios no se cumple (`docs/carga.md` §10) | api #62, #80, #91, #97, #112, #117, #134 · web #47, #69 |
+| 07.09 | S15 | Gate MVP | Release M01–M27 | 07.08 | Sí | Sí | Ensayo | E2E/Smoke/Restore | PARCIAL: el gate no pasa (QA manual, aprobación clínica y legal, deploy) | api #77, #84, #126, #130, #114 · web #30, #82, #94 |
+| 08.01 | S16 | M12/M28 | Clases y agenda unificada | 02.07, 05.03, 07.09 | Sí | Sí | Sí | U/I/Conc/E2E | HECHA salvo ITs diferidos | api #128 · web #81, #91 |
+| 08.02 | S16 | M26/M28 | Inscripciones y espera | 03.01, 08.01 | Sí | Sí | Sí | U/I/Conc/E2E | HECHA salvo ITs diferidos | api #33, #125 · web #81 |
+| 08.03 | S16 | M13/M18/M19/M28 | Asistencia y operación | 07.01, 07.02, 08.02 | Sí | Sí | Sí | U/I/F/E2E | PARCIAL: el devengo `POR_CLASE` espera U-39 | api #129, #135 · web #79 |
+| 08.04 | S17 | M09/M10/M11/M28 | Derivación clínica | 04.04, 04.05, 08.03 | Sí | Sí | Sí | U/I/Sec/E2E | HECHA (backend y pantalla de derivación) | api #125, #132 · web #108 |
+| 08.05 | S17 | M14/M28 | Atención grupal individualizada | 06.05, 08.04 | Sí | Sí | Sí | U/I/Priv/E2E | HECHA (U-42 abierta) | api #141, #143 · web #104, #105 |
+| 08.06 | S18 | M18/M19/M20/M29 | Productos, packs y venta | 07.03, 08.03 | Sí | Sí | Sí | U/I/Idem/E2E | HECHA (`POR_CLASE`: U-39) | api #129 · web #92 |
+| 08.07 | S18 | M19/M20/M29 | Ledger de créditos | 08.06 | Sí | Sí | Sí | U/I/Conc/E2E | HECHA | api #129, #135, #138, #142 · web #96, #98, #101 |
+| 08.08 | S19 | M20/M26/M29 | Abonos y vencimientos | 01.02, 08.07 | Sí | Sí | Sí | U/I/Jobs/E2E | HECHA (U-43 a U-45 por confirmar) | api #135, #140, #142 · web #103 |
+| 08.09 | S19 | M21/M22/M24 | Economía y auditoría servicios | 07.04, 07.05, 08.05, 08.08 | Sí | Sí | Sí | U/I/Rec/E2E | PARCIAL: liquidación por clase espera U-41 | api #139 · web #102 |
+| 09.01 | S20 | M23/M28/M29 | Reportes ampliados | 07.06, 08.09 | Sí | Sí | Índices | U/I/Rec/Perf | IMPLEMENTADA; RF-M23-008 y los ingresos de RF-M23-009 en 09.01b, la rentabilidad espera U-50 (sin costos por servicio) | api #145 · web #107 · api 09.01b |
+| 09.02 | S20 | Transversal | Seguridad, privacidad y a11y final | 09.01 | Sí | Sí | Revisar | Sec/A11y/E2E | EN CURSO: superficie de F9 hecha; faltan U-06 y U-46 | api #146 · web #109 |
+| 09.03 | S21 | Transversal | SLO, concurrencia y observabilidad final | 09.02 | Sí | Sí | Optimizar | Perf/Conc/Res | EN CURSO: superficie de F9 hecha; el SLO no se cumple (U-48, U-49) | api #147 |
+| 09.04 | S21 | Gate final | Release M01–M29 | 09.03 | Sí | Sí | Ensayo | E2E/Smoke/Restore | EN CURSO: RC-1 en borrador; faltan QA manual, aprobación y tag | api #144 · web #106 |
 
 **Leyenda:** U = unitarios; I = integración; F = frontend; Arch = arquitectura; Sec = seguridad; Conc = concurrencia; Idem = idempotencia; Rec = reconciliación; Perf = rendimiento; Res = resiliencia; Priv = privacidad.
 
@@ -11238,3 +11308,29 @@ opción que recomienda cada ficha.
   ninguna ficha las da por hechas.
 - **El QA manual del §6** sigue sin correr desde 02.02. Es la única acción que aparece en el
   "pendiente del usuario" de todas las fichas.
+
+## Registro de avance — F9 y F10 (17/10/2026)
+
+Medido el 17/10 sobre `appKine-api` `main` `4530d6f` (778 commits, PR hasta **#147**) y `appKine-web` `main` `75144b2` (PR hasta **#109**), con la API de GitHub y el contenido de los repos. Los números de tests son los del CI de `eef0c87` que cita `docs/release/RC-1.md` (4.009 unitarias + 880 de integración); **no se volvieron a correr** para este registro.
+
+| | Backend | Frontend |
+|---|---|---|
+| Contrato / cliente | **0.121.0**, 333 operaciones | cliente **0.121.0** (web #107) |
+| Migraciones | última **`V104`** (80 archivos en `db/migration`) | — |
+| PR mergeados del 14 al 17/10 | **32** (#113–#147) | **33** (#4 y #75–#109) |
+| Tests en el árbol | 143 archivos `*IT.java` y 307 `*Test.java` | 177 specs de unidad y **62 specs E2E** (`e2e/`) |
+
+**Qué entró del 14 al 17/10**
+
+- **F9 dejó de estar congelada.** El usuario la abrió el 14/10 sin DP escrita (`docs/fases/F9-segunda-entrega.md`): clases e inscripciones (api #125, #128, web #81, #91), asistencia (api #129, #135, web #79), derivación de participantes a la clínica (api #125, #132, web #108 — la pantalla de derivar, que la ficha del 16/10 daba faltante), atención clínica grupal (api #141, #143, web #104, #105), productos, venta, ledger y abonos con renovación y avisos (api #129, #135, #138, #140, #142, web #92, #96, #98, #101–#103) e integración económica (api #139, web #102).
+- **F10 arrancó:** 09.01 reportes de clases y pases (api #145, web #107), 09.02 hardening de la superficie de F9 con 13 hallazgos (api #146, web #109), 09.03 las carreras de F9 con IT, observabilidad de los jobs y carga (api #147) y 09.04 las notas del RC-1, E2E de F9 y runbook (api #144, web #106).
+- **F4 y F6 en pantalla:** historia clínica, casos y plan (web #4, #83, #99) y atención clínica con mediciones, tratamientos y enmiendas (web #80, #90).
+- **Pre-QA automatizado** de la guía de QA manual y siete defectos corregidos (api #126, #130, #131, #133), más correcciones de carreras y de zona horaria (api #113, #132, #135, #136, #139).
+
+**Lo que falta**
+
+- **El gate del MVP y el release M01–M29 no pasan:** QA manual (U-01), aprobación clínica y legal y deploy con ventana de estabilización (U-02), y el tag del RC (`docs/release/RC-1.md`, "Lo que condiciona el RC").
+- **Etapas sin cerrar:** 07.07 (U-03 a U-06), 07.08 (el SLO de escrituras a 500 usuarios, `docs/carga.md` §10), 08.03 (devengo `POR_CLASE`, U-39), 08.09 (liquidación por clase, U-41), 09.02 (U-06, U-46), 09.03 (U-48, U-49), 09.04 y los escenarios diferidos 39–42, 46–48 y 54–59.
+- **Decisiones del usuario:** **48** (U-01 a U-49; U-47 no existe), en `docs/fases/decisiones-pendientes.md`. La tarea que originó este registro hablaba de 49: la medición da 48 identificadores distintos y la tabla-resumen del documento suma 48.
+- **Abierto sin DP:** la apertura de F9 el 14/10 (el orden de DP-07) sigue sin decisión escrita.
+- **Pendiente de este registro:** la matriz del §5 (por área) se dejó como foto del arranque; la fuente del estado por etapa es el §23.

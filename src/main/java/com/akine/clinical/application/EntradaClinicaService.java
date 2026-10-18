@@ -125,7 +125,7 @@ public class EntradaClinicaService {
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_WRITE, historia.getPersonaId(), justificacion,
 				"Registrar entrada clinica");
 
@@ -208,7 +208,7 @@ public class EntradaClinicaService {
 				.orElseThrow(() -> new EntradaClinicaNotAccessibleException(entradaClinicaId));
 		HistoriaClinica historia = exigirHistoria(organizationId, entrada.getHistoriaClinicaId());
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_WRITE, historia.getPersonaId(), justificacion,
 				"Enmendar entrada clinica");
 
@@ -279,7 +279,7 @@ public class EntradaClinicaService {
 				.orElseThrow(() -> new EntradaClinicaNotAccessibleException(entradaClinicaId));
 		HistoriaClinica historia = exigirHistoria(organizationId, entrada.getHistoriaClinicaId());
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_WRITE, historia.getPersonaId(), justificacion,
 				"Dar de baja una entrada clinica");
 
@@ -331,7 +331,7 @@ public class EntradaClinicaService {
 				.orElseThrow(() -> new EntradaClinicaNotAccessibleException(entradaClinicaId));
 		HistoriaClinica historia = exigirHistoria(organizationId, entrada.getHistoriaClinicaId());
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_READ, historia.getPersonaId(), justificacion,
 				"Ver entrada clinica");
 
@@ -358,7 +358,7 @@ public class EntradaClinicaService {
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_READ, historia.getPersonaId(), justificacion,
 				"Listar entradas clinicas");
 
@@ -412,7 +412,7 @@ public class EntradaClinicaService {
 				.orElseThrow(() -> new EntradaClinicaNotAccessibleException(entradaClinicaId));
 		HistoriaClinica historia = exigirHistoria(organizationId, entrada.getHistoriaClinicaId());
 
-		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
 				PermissionCodes.HC_READ, historia.getPersonaId(), justificacion,
 				"Ver versiones de una entrada clinica");
 

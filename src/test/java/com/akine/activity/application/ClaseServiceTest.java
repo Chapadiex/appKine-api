@@ -1,5 +1,8 @@
 package com.akine.activity.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
+import org.mockito.Mockito;
+
 import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseEventoRepositoryPort;
@@ -36,7 +39,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioMembershipSnapshot;
+import com.akine.platform.spi.identity.AccountIdentity;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
 
 import com.akine.activity.domain.exception.ClaseNotAccessibleException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -46,6 +55,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
 
@@ -92,13 +102,21 @@ class ClaseServiceTest {
 	@Mock private ConsultorioDirectory consultorios;
 	@Mock private PermissionGuard permissionGuard;
 	@Mock private AuditTrail auditTrail;
+	@Mock private ConsultorioMembershipDirectory memberships;
+	@Mock private AccountIdentityDirectory identidades;
+	@Mock private ConsumoDePaseService consumoDePases;
+	@Mock private DevengoPorClaseService devengoPorClase;
 
 	private ClaseService service;
 
 	@BeforeEach
 	void setUp() {
 		service = new ClaseService(clases, eventos, inscripciones, avisos, agenda, ofertas, disponibilidad, espacios,
-				consultorios, permissionGuard, auditTrail, mock(PlatformTransactionManager.class));
+				consultorios, permissionGuard,
+				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail,
+				new ProyeccionDeClase(ofertas, espacios, memberships, identidades),
+				consumoDePases, devengoPorClase,
+				mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
 		given(ofertas.find(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(Optional.of(ofertaGrupal(8)));
@@ -107,6 +125,14 @@ class ClaseServiceTest {
 		given(espacios.enServicio(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of(espacio(20)));
 		given(espacios.find(ORG_ID, ESPACIO_ID, INICIO)).willReturn(Optional.of(espacio(20)));
+		// La proyeccion pide ofertas y boxes AGRUPADOS (web #81): sin estos stubs la capacidad
+		// efectiva caeria a la propia y los nombres saldrian nulos.
+		given(ofertas.findTodas(anyLong(), anyLong(), any()))
+				.willAnswer(llamada -> ofertas.find(ORG_ID, SEDE_ID, OFERTA_ID)
+						.map(oferta -> Map.of(oferta.id(), oferta)).orElse(Map.of()));
+		given(espacios.findTodos(anyLong(), any(), any()))
+				.willAnswer(llamada -> espacios.find(ORG_ID, ESPACIO_ID, INICIO)
+						.map(espacio -> Map.of(espacio.id(), espacio)).orElse(Map.of()));
 		given(disponibilidad.efectiva(anyLong(), any(), anyLong(), any(), any()))
 				.willReturn(List.of(diaConFranjaDe(INICIO, FIN)));
 		given(agenda.turnosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
@@ -224,6 +250,9 @@ class ClaseServiceTest {
 		var segunda = service.cancelar(actor(), SEDE_ID, 77L, "otro motivo distinto");
 
 		org.mockito.Mockito.verify(eventos, org.mockito.Mockito.times(1)).registrar(any());
+		// AKINE-08.07 (CA-M29-004-06): los creditos se devuelven una sola vez, en la que cancela.
+		org.mockito.Mockito.verify(consumoDePases, org.mockito.Mockito.times(1))
+				.devolverPorCancelacion(any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
 		assertThat(segunda.estado()).isEqualTo("CANCELADA");
 		// El motivo es el de la PRIMERA cancelacion: la segunda no reescribio la historia.
 		assertThat(segunda.motivoCancelacion()).isEqualTo("El instructor se reporto enfermo");
@@ -254,7 +283,7 @@ class ClaseServiceTest {
 		given(espacios.find(ORG_ID, ESPACIO_ID, nuevoInicio)).willReturn(Optional.of(espacio(20)));
 
 		service.reprogramar(actor(), SEDE_ID, 77L, new ReprogramarClaseCommand(
-				nuevoInicio, nuevoFin, PROFESIONAL_ID, 8, 0L));
+				nuevoInicio, nuevoFin, PROFESIONAL_ID, 8, 0L, null));
 
 		org.mockito.Mockito.verify(avisos).avisarCambioDeClase(any(), any(), any(), any(), any());
 		org.mockito.Mockito.verify(eventos).registrar(any());
@@ -272,7 +301,7 @@ class ClaseServiceTest {
 		// Se BAJA la capacidad, no se sube: subirla chocaria contra el tope de la oferta, que es
 		// otro caso y ya tiene su propio test.
 		service.reprogramar(actor(), SEDE_ID, 77L, new ReprogramarClaseCommand(
-				INICIO, FIN, PROFESIONAL_ID, 6, 0L));
+				INICIO, FIN, PROFESIONAL_ID, 6, 0L, null));
 
 		org.mockito.Mockito.verify(avisos, org.mockito.Mockito.never())
 				.avisarCambioDeClase(any(), any(), any(), any(), any());
@@ -285,7 +314,7 @@ class ClaseServiceTest {
 		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
 
 		assertThatThrownBy(() -> service.reprogramar(actor(), SEDE_ID, 77L,
-				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 8, 7L)))
+				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 8, 7L, null)))
 				.isInstanceOf(OptimisticLockingFailureException.class);
 
 		org.mockito.Mockito.verify(clases, org.mockito.Mockito.never()).saveAndFlush(any());
@@ -298,7 +327,7 @@ class ClaseServiceTest {
 		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.reprogramar(actor(), SEDE_ID, 77L,
-				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 8, 0L)))
+				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 8, 0L, null)))
 				.isInstanceOf(ClaseNotAccessibleException.class);
 	}
 
@@ -347,6 +376,216 @@ class ClaseServiceTest {
 				.avisarCambioDeClase(any(), any(), any(), any(), any());
 		org.mockito.Mockito.verify(clases, org.mockito.Mockito.never())
 				.vaciarCupo(anyLong(), anyLong());
+	}
+
+	// =================================================================================
+	// Box elegido por quien programa (web #81)
+	// =================================================================================
+
+	private static final long OTRO_ESPACIO_ID = 9L;
+
+	@Test
+	@DisplayName("Con espacioId se usa ESE box, aunque el servidor hubiera elegido otro")
+	void programar_con_espacio_elegido() {
+		given(espacios.find(ORG_ID, OTRO_ESPACIO_ID, INICIO))
+				.willReturn(Optional.of(espacio(OTRO_ESPACIO_ID, SEDE_ID, 20)));
+
+		var resultado = service.programar(actor(), SEDE_ID, OFERTA_ID,
+				comandoConEspacio(8, OTRO_ESPACIO_ID));
+
+		assertThat(resultado.clase().espacioId()).isEqualTo(OTRO_ESPACIO_ID);
+		org.mockito.Mockito.verify(espacios, org.mockito.Mockito.never())
+				.enServicio(anyLong(), anyLong(), any(), any());
+		org.mockito.Mockito.verify(agenda, org.mockito.Mockito.atLeastOnce())
+				.turnosDeEspacioQueCruzan(ORG_ID, OTRO_ESPACIO_ID, INICIO, FIN);
+	}
+
+	/**
+	 * Quien eligio un box quiere ESE box: si esta ocupado es 409, no otro box en silencio. El box 8
+	 * esta libre y el test verifica que no se lo asigna.
+	 */
+	@Test
+	@DisplayName("El box elegido ocupado por un turno es recurso-ocupado; no cae a otro box")
+	void espacio_elegido_ocupado() {
+		given(espacios.find(ORG_ID, OTRO_ESPACIO_ID, INICIO))
+				.willReturn(Optional.of(espacio(OTRO_ESPACIO_ID, SEDE_ID, 20)));
+		given(agenda.turnosDeEspacioQueCruzan(ORG_ID, OTRO_ESPACIO_ID, INICIO, FIN))
+				.willReturn(List.of(new OcupacionDeAgenda(
+						"TURNO", 5L, null, OTRO_ESPACIO_ID, INICIO, FIN)));
+
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID,
+				comandoConEspacio(8, OTRO_ESPACIO_ID)))
+				.isInstanceOf(RecursoOcupadoException.class)
+				.satisfies(error -> assertThat(((RecursoOcupadoException) error).getRecurso())
+						.isEqualTo("espacio"));
+		org.mockito.Mockito.verify(clases, org.mockito.Mockito.never()).save(any());
+	}
+
+	@Test
+	@DisplayName("Otra clase viva en el box elegido tambien lo ocupa")
+	void espacio_elegido_ocupado_por_otra_clase() {
+		given(espacios.find(ORG_ID, OTRO_ESPACIO_ID, INICIO))
+				.willReturn(Optional.of(espacio(OTRO_ESPACIO_ID, SEDE_ID, 20)));
+		given(clases.findVivasDeEspacioQueCruzan(ORG_ID, OTRO_ESPACIO_ID, INICIO, FIN))
+				.willReturn(List.of(conId(nuevaClase(8), 55L)));
+
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID,
+				comandoConEspacio(8, OTRO_ESPACIO_ID)))
+				.isInstanceOf(RecursoOcupadoException.class);
+	}
+
+	@Test
+	@DisplayName("Un box de otra sede, inexistente o que deja de operar a mitad de clase es slot-no-disponible")
+	void espacio_elegido_no_apto() {
+		given(espacios.find(ORG_ID, OTRO_ESPACIO_ID, INICIO))
+				.willReturn(Optional.of(espacio(OTRO_ESPACIO_ID, SEDE_ID + 1, 20)));
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID,
+				comandoConEspacio(8, OTRO_ESPACIO_ID)))
+				.isInstanceOf(HorarioNoDisponibleException.class)
+				.hasMessageContaining("espacio elegido");
+
+		given(espacios.find(ORG_ID, OTRO_ESPACIO_ID, INICIO)).willReturn(Optional.empty());
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID,
+				comandoConEspacio(8, OTRO_ESPACIO_ID)))
+				.isInstanceOf(HorarioNoDisponibleException.class);
+
+		given(espacios.find(ORG_ID, OTRO_ESPACIO_ID, INICIO)).willReturn(Optional.of(
+				new EspacioSnapshot(OTRO_ESPACIO_ID, ORG_ID, SEDE_ID, "Box 9", "BOX", 20,
+						Instant.parse("2020-01-01T00:00:00Z"), INICIO.plusSeconds(600), true, true)));
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID,
+				comandoConEspacio(8, OTRO_ESPACIO_ID)))
+				.as("deja de estar en servicio a mitad de la clase")
+				.isInstanceOf(HorarioNoDisponibleException.class);
+	}
+
+	/** Con habilitaciones cargadas, la lista manda: un box fuera de ella no es apto. */
+	@Test
+	@DisplayName("Un box no habilitado para la oferta es slot-no-disponible")
+	void espacio_elegido_no_habilitado() {
+		given(ofertas.espaciosHabilitados(ORG_ID, SEDE_ID, OFERTA_ID)).willReturn(List.of(
+				new HabilitacionSnapshot(2L, ESPACIO_ID, Instant.parse("2020-01-01T00:00:00Z"),
+						null, true)));
+		given(espacios.find(ORG_ID, OTRO_ESPACIO_ID, INICIO))
+				.willReturn(Optional.of(espacio(OTRO_ESPACIO_ID, SEDE_ID, 20)));
+
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID,
+				comandoConEspacio(8, OTRO_ESPACIO_ID)))
+				.isInstanceOf(HorarioNoDisponibleException.class);
+	}
+
+	@Test
+	@DisplayName("La capacidad la limita el box elegido, no el que hubiera elegido el servidor")
+	void el_box_elegido_limita_la_capacidad() {
+		given(espacios.find(ORG_ID, OTRO_ESPACIO_ID, INICIO))
+				.willReturn(Optional.of(espacio(OTRO_ESPACIO_ID, SEDE_ID, 4)));
+
+		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID,
+				comandoConEspacio(8, OTRO_ESPACIO_ID)))
+				.isInstanceOf(CapacidadNoAdmitidaException.class)
+				.extracting(error -> ((CapacidadNoAdmitidaException) error).getCapacidadMaxima())
+				.isEqualTo(4);
+	}
+
+	@Test
+	@DisplayName("Reprogramar con espacioId mueve la clase a ese box, excluyendose a si misma")
+	void reprogramar_con_espacio_elegido() {
+		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		given(clases.saveAndFlush(any())).willAnswer(invocacion -> invocacion.getArgument(0));
+		given(espacios.find(ORG_ID, OTRO_ESPACIO_ID, INICIO))
+				.willReturn(Optional.of(espacio(OTRO_ESPACIO_ID, SEDE_ID, 20)));
+		given(clases.findVivasDeEspacioQueCruzan(ORG_ID, OTRO_ESPACIO_ID, INICIO, FIN))
+				.willReturn(List.of(clase));
+
+		ClaseView movida = service.reprogramar(actor(), SEDE_ID, 77L,
+				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 8, 0L, OTRO_ESPACIO_ID));
+
+		assertThat(movida.espacioId()).isEqualTo(OTRO_ESPACIO_ID);
+	}
+
+	/**
+	 * Sin box elegido la huella es la de siempre: si cambiara, el reintento de una clase programada
+	 * antes del campo nuevo seria un 409 de idempotencia.
+	 */
+	@Test
+	@DisplayName("La huella solo cambia si se elige box")
+	void huella_con_y_sin_box() {
+		ProgramarClaseCommand sinBox = comando(8, "k");
+		assertThat(sinBox.huella(SEDE_ID, OFERTA_ID))
+				.isEqualTo(sha256(SEDE_ID + "|" + OFERTA_ID + "|" + INICIO + "|" + FIN + "|"
+						+ PROFESIONAL_ID + "|8"));
+		assertThat(comandoConEspacio(8, OTRO_ESPACIO_ID).huella(SEDE_ID, OFERTA_ID))
+				.isNotEqualTo(sinBox.huella(SEDE_ID, OFERTA_ID));
+	}
+
+	// =================================================================================
+	// Nombres de la clase (web #81)
+	// =================================================================================
+
+	/**
+	 * Los nombres que pidio la pantalla, en un numero de consultas que no crece con la lista: una
+	 * por modulo, nunca una por fila.
+	 */
+	@Test
+	@DisplayName("Listar resuelve oferta, profesional y box agrupados, sin una lectura por clase")
+	void listar_con_nombres_sin_n_mas_uno() {
+		ClaseProgramada conBox = conId(nuevaClase(8), 77L);
+		ClaseProgramada sinBox = conId(new ClaseProgramada(ORG_ID, SEDE_ID, OFERTA_ID, null, null,
+				"Yoga", INICIO.plusSeconds(7200), FIN.plusSeconds(7200), 8, CUENTA_ID,
+				Instant.parse("2026-10-01T09:00:00Z"), null, null), 78L);
+		given(clases.findDeLaSedeEnVentana(ORG_ID, SEDE_ID, INICIO, FIN))
+				.willReturn(List.of(conBox, sinBox));
+		org.mockito.BDDMockito.willReturn(Map.of(OFERTA_ID, ofertaGrupal(8)))
+				.given(ofertas).findTodas(ORG_ID, SEDE_ID, Set.of(OFERTA_ID));
+		org.mockito.BDDMockito.willReturn(Map.of(ESPACIO_ID, espacio(6)))
+				.given(espacios).findTodos(eq(ORG_ID), eq(Set.of(ESPACIO_ID)), any());
+		given(memberships.findTodas(ORG_ID, Set.of(PROFESIONAL_ID)))
+				.willReturn(Map.of(PROFESIONAL_ID, new ConsultorioMembershipSnapshot(
+						PROFESIONAL_ID, 500L, ORG_ID, SEDE_ID, "PROFESIONAL", "ACTIVA",
+						Instant.parse("2020-01-01T00:00:00Z"), null, true, true)));
+		given(identidades.identidadesDe(List.of(500L)))
+				.willReturn(Map.of(500L, new AccountIdentity(500L, "Laura Gomez", "l@ejemplo.test")));
+
+		List<ClaseView> lista = service.listar(actor(), SEDE_ID, INICIO, FIN);
+
+		assertThat(lista).extracting(ClaseView::id).containsExactly(77L, 78L);
+		assertThat(lista.get(0)).satisfies(vista -> {
+			assertThat(vista.ofertaNombre()).isEqualTo("Pilates");
+			assertThat(vista.profesionalNombre()).isEqualTo("Laura Gomez");
+			assertThat(vista.espacioNombre()).isEqualTo("Salon");
+			assertThat(vista.capacidadEfectiva()).isEqualTo(6);
+		});
+		assertThat(lista.get(1)).satisfies(vista -> {
+			assertThat(vista.ofertaNombre()).isEqualTo("Pilates");
+			assertThat(vista.profesionalNombre()).isNull();
+			assertThat(vista.espacioNombre()).isNull();
+			assertThat(vista.capacidadEfectiva()).isEqualTo(8);
+		});
+		org.mockito.Mockito.verify(ofertas, org.mockito.Mockito.never())
+				.find(anyLong(), anyLong(), anyLong());
+		org.mockito.Mockito.verify(espacios, org.mockito.Mockito.never())
+				.find(anyLong(), anyLong(), any());
+		org.mockito.Mockito.verify(memberships, org.mockito.Mockito.never())
+				.find(anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("Un nombre que ya no resuelve sale nulo; la clase se sigue leyendo")
+	void nombres_que_no_resuelven() {
+		ClaseProgramada clase = conId(nuevaClase(8), 77L);
+		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
+		org.mockito.BDDMockito.willReturn(Map.of()).given(ofertas).findTodas(anyLong(), anyLong(), any());
+		org.mockito.BDDMockito.willReturn(Map.of()).given(espacios).findTodos(anyLong(), any(), any());
+		given(memberships.findTodas(anyLong(), any())).willReturn(Map.of());
+
+		ClaseView vista = service.ver(actor(), SEDE_ID, 77L);
+
+		assertThat(vista.ofertaNombre()).isNull();
+		assertThat(vista.profesionalNombre()).isNull();
+		assertThat(vista.espacioNombre()).isNull();
+		assertThat(vista.capacidadEfectiva()).as("cae a la propia").isEqualTo(8);
+		org.mockito.Mockito.verifyNoInteractions(identidades);
 	}
 
 	// =================================================================================
@@ -443,7 +682,7 @@ class ClaseServiceTest {
 	@DisplayName("La oferta exige profesional: sin profesional no hay clase")
 	void profesional_obligatorio() {
 		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID,
-				new ProgramarClaseCommand(INICIO, FIN, null, 8, "Pilates", null)))
+				new ProgramarClaseCommand(INICIO, FIN, null, 8, "Pilates", null, null)))
 				.isInstanceOf(HorarioNoDisponibleException.class)
 				.hasMessageContaining("exige profesional");
 	}
@@ -523,7 +762,7 @@ class ClaseServiceTest {
 		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
 
 		assertThatThrownBy(() -> service.reprogramar(actor(), SEDE_ID, 77L,
-				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 4, 0L)))
+				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 4, 0L, null)))
 				.isInstanceOf(CapacidadNoAdmitidaException.class)
 				.hasMessageContaining("por debajo");
 	}
@@ -542,7 +781,7 @@ class ClaseServiceTest {
 				.willReturn(List.of(clase));
 
 		ClaseView movida = service.reprogramar(actor(), SEDE_ID, 77L,
-				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 7, 0L));
+				new ReprogramarClaseCommand(INICIO, FIN, PROFESIONAL_ID, 7, 0L, null));
 
 		assertThat(movida.capacidad()).isEqualTo(7);
 	}
@@ -599,13 +838,33 @@ class ClaseServiceTest {
 	// Fixtures
 	// =================================================================================
 
+	private static ProgramarClaseCommand comandoConEspacio(int capacidad, long espacioId) {
+		return new ProgramarClaseCommand(
+				INICIO, FIN, PROFESIONAL_ID, capacidad, "Pilates - avanzado", null, espacioId);
+	}
+
+	private static String sha256(String texto) {
+		try {
+			return java.util.HexFormat.of().formatHex(java.security.MessageDigest
+					.getInstance("SHA-256")
+					.digest(texto.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+		} catch (java.security.NoSuchAlgorithmException imposible) {
+			throw new IllegalStateException(imposible);
+		}
+	}
+
+	private static EspacioSnapshot espacio(long id, long consultorioId, int capacidad) {
+		return new EspacioSnapshot(id, ORG_ID, consultorioId, "Box " + id, "BOX", capacidad,
+				Instant.parse("2020-01-01T00:00:00Z"), null, true, true);
+	}
+
 	private static OperatingActor actor() {
 		return new OperatingActor(CUENTA_ID, false, ORG_ID, SEDE_ID);
 	}
 
 	private static ProgramarClaseCommand comando(int capacidad, String idempotencyKey) {
 		return new ProgramarClaseCommand(
-				INICIO, FIN, PROFESIONAL_ID, capacidad, "Pilates - avanzado", idempotencyKey);
+				INICIO, FIN, PROFESIONAL_ID, capacidad, "Pilates - avanzado", idempotencyKey, null);
 	}
 
 	private static ClaseProgramada nuevaClase(int capacidad) {

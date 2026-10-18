@@ -128,6 +128,7 @@ public class ConsumoDeAutorizacionService {
 	private final AutorizacionMovimientoRepositoryPort movimientos;
 	private final PersonaRepositoryPort personas;
 	private final PermissionGuard permissionGuard;
+	private final PersonSupportAccessAuditor supportAccessAuditor;
 	private final AuditTrail auditTrail;
 	private final CoberturaPacienteRepositoryPort coberturas;
 	private final AutorizacionAlertaRepositoryPort alertas;
@@ -139,6 +140,7 @@ public class ConsumoDeAutorizacionService {
 			AutorizacionMovimientoRepositoryPort movimientos,
 			PersonaRepositoryPort personas,
 			PermissionGuard permissionGuard,
+			PersonSupportAccessAuditor supportAccessAuditor,
 			AuditTrail auditTrail,
 			CoberturaPacienteRepositoryPort coberturas,
 			AutorizacionAlertaRepositoryPort alertas,
@@ -148,6 +150,7 @@ public class ConsumoDeAutorizacionService {
 		this.movimientos = movimientos;
 		this.personas = personas;
 		this.permissionGuard = permissionGuard;
+		this.supportAccessAuditor = supportAccessAuditor;
 		this.auditTrail = auditTrail;
 		this.coberturas = coberturas;
 		this.alertas = alertas;
@@ -483,8 +486,8 @@ public class ConsumoDeAutorizacionService {
 	public MovimientoView revertir(
 			OperatingActor actor, long autorizacionId, ReversionCommand command) {
 
-		AutorizacionDePadron.exigirGestionDelPadron(
-				permissionGuard, actor, "Revertir un consumo de autorizacion");
+		AutorizacionDePadron.exigirGestionDelPadron(permissionGuard, supportAccessAuditor, actor,
+				"Revertir un consumo de autorizacion", AuditEvents.ENTITY_AUTORIZACION, autorizacionId);
 		long organizationId = actor.contextOrganizationId();
 
 		String motivo = command.motivo() == null || command.motivo().isBlank()
@@ -681,33 +684,6 @@ public class ConsumoDeAutorizacionService {
 		}
 		int porFecha = finUna.compareTo(finOtra);
 		return porFecha != 0 ? porFecha : Long.compare(una.id(), otra.id());
-	}
-
-	/**
-	 * Si la autorizacion sirve para alguna practica que realmente se aplico (AKINE-06.04).
-	 *
-	 * <h2>El conjunto vacio devuelve {@code true}, y es la decision que hace viable la etapa</h2>
-	 *
-	 * <p>Vacio significa <b>"no se sabe que practicas fueron"</b>, no "ninguna". Son vacias
-	 * <b>todas</b> las sesiones anteriores a 06.04 —el registro de tratamientos no existia— y
-	 * tambien las de ofertas que no registran practicas, como una consulta o una evaluacion
-	 * inicial.
-	 *
-	 * <p>Si el filtro se aplicara igual, esas sesiones no matchearian con nada y el sistema
-	 * <b>dejaria de consumir autorizaciones por completo</b>. Una etapa que "arregla la
-	 * imputacion" y apaga el consumo entero es peor que el defecto que corrige.
-	 *
-	 * <p>Ante la ignorancia se conserva exactamente el comportamiento anterior: se elige la que
-	 * vence antes. El filtro se aplica <b>solo cuando hay dato con el cual filtrar</b>.
-	 */
-	private static boolean cubreAlgunaPracticaRealizada(
-			Autorizacion autorizacion, ConsumoPorSesion hecho) {
-
-		if (hecho.practicasRealizadas().isEmpty()) {
-			return true;
-		}
-		return autorizacion.getPracticaId() != null
-				&& hecho.practicasRealizadas().contains(autorizacion.getPracticaId());
 	}
 
 	private Autorizacion cargar(long organizationId, long autorizacionId) {

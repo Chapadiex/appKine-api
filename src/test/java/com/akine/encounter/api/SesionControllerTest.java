@@ -283,6 +283,80 @@ class SesionControllerTest {
 				.andExpect(jsonPath("$[0].registradaPor").value(8));
 	}
 
+	@Test
+	@DisplayName("El historial publica el nombre visible del autor de cada version")
+	void el_historial_publica_el_nombre_del_autor() throws Exception {
+		given(sesionService.versiones(any(), anyLong(), anyLong())).willReturn(List.of(
+				SesionVersionView.de(SesionVersion.original(cerrada(), new FotoClinica(null, null)),
+						"Laura Gomez")));
+
+		mockMvc.perform(get(RUTA + "/501/versiones").with(miembro(8L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].registradaPorNombre").value("Laura Gomez"));
+	}
+
+	@Test
+	@DisplayName("Un borrador que no es JSON es 400 validation-error con el campo, no 409")
+	void el_borrador_que_no_es_json_es_400() throws Exception {
+		given(sesionService.guardarBorrador(any(), anyLong(), anyLong(), any(), anyLong()))
+				.willThrow(new com.akine.encounter.domain.exception.BorradorNoEsJsonException(
+						"El contenido tiene que ser un documento JSON valido"));
+
+		mockMvc.perform(put(RUTA + "/501/borrador")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"contenido\":\"no es json\",\"version\":3}")
+						.with(miembro(8L)))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.type").value(
+						com.akine.platform.spi.problem.ProblemType.VALIDATION_ERROR.uri().toString()))
+				.andExpect(jsonPath("$.errors.contenido").exists());
+	}
+
+	@Test
+	@DisplayName("Cambiar el caso: el id y la version llegan al servicio, y la respuesta trae el caso")
+	void cambiar_caso() throws Exception {
+		Sesion conCaso = new Sesion(1L, 7L, 88L, 17L, 301L, 42L, 31L, Instant.EPOCH, 8L);
+		ReflectionTestUtils.setField(conCaso, "id", 501L);
+		given(sesionService.cambiarCaso(any(), anyLong(), anyLong(), any(), anyLong()))
+				.willReturn(SesionView.de(conCaso));
+
+		mockMvc.perform(put(RUTA + "/501/caso")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"casoId\":17,\"version\":3}")
+						.with(miembro(8L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.casoId").value(17));
+
+		verify(sesionService).cambiarCaso(any(), eq(7L), eq(501L), eq(17L), eq(3L));
+	}
+
+	@Test
+	@DisplayName("Quitar el caso: casoId ausente llega como null, no como cero")
+	void quitar_caso() throws Exception {
+		given(sesionService.cambiarCaso(any(), anyLong(), anyLong(), any(), anyLong()))
+				.willReturn(SesionView.de(abierta()));
+
+		mockMvc.perform(put(RUTA + "/501/caso")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"version\":3}")
+						.with(miembro(8L)))
+				.andExpect(status().isOk());
+
+		verify(sesionService).cambiarCaso(any(), eq(7L), eq(501L), isNull(), eq(3L));
+	}
+
+	@Test
+	@DisplayName("Cambiar el caso sin version es 400 y no llega al servicio")
+	void cambiar_caso_sin_version() throws Exception {
+		mockMvc.perform(put(RUTA + "/501/caso")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"casoId\":17}")
+						.with(miembro(8L)))
+				.andExpect(status().isBadRequest());
+
+		verify(sesionService, never()).cambiarCaso(any(), anyLong(), anyLong(), any(), anyLong());
+	}
+
 	private static Sesion abierta() {
 		Sesion sesion = new Sesion(1L, 7L, 88L, null, 301L, 42L, 31L, Instant.EPOCH, 8L);
 		ReflectionTestUtils.setField(sesion, "id", 501L);

@@ -106,6 +106,13 @@ public class ObligacionController {
 					dia no cerraria. Lo que corresponde en ese caso es una devolucion, que es M19 \
 					y tiene su propio registro.
 
+					**La deuda de una venta no se anula por aca** (`origen = VENTA_PASE` o \
+					`VENTA_ABONO`, desde 0.114.0): responde 409 `obligacion-de-venta` con el \
+					`paseId`. Anularla sola dejaria el pase vivo y consumible sin pagar; se anula \
+					con `POST /pases/{paseId}/anulacion`, que anula pase y deuda juntos. La deuda \
+					de una clase asistida (`ASISTENCIA_CLASE`, desde 0.124.0) si se anula por \
+					aca; corregir la asistencia a ausente la anula sola si no tiene cobros.
+
 					Devuelve la obligacion anulada y no un 204, porque el cuerpo trae el estado y \
 					la version nueva que la pantalla necesita para seguir operando.""")
 	@ApiResponses({
@@ -120,7 +127,8 @@ public class ObligacionController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "Ya estaba anulada, tiene cobros imputados, o la version quedo vieja",
+					description = "Ya estaba anulada, tiene cobros imputados, es la deuda de una venta "
+							+ "(`obligacion-de-venta`), o la version quedo vieja",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<ObligacionResponse> anular(
 			@PathVariable long consultorioId,

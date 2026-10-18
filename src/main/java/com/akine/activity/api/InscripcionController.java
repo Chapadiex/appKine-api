@@ -110,7 +110,7 @@ public class InscripcionController {
 				apiActor.current(), consultorioId, claseId,
 				new InscribirCommand(
 						request.personaId(),
-						request.aceptaListaEspera(),
+						request.aceptaListaEsperaEfectiva(),
 						request.idempotencyKey()));
 
 		ResultadoDeInscripcionResponse cuerpo = ResultadoDeInscripcionResponse.de(resultado);

@@ -1,5 +1,5 @@
 -- =====================================================================================
--- V95 — AKINE-07.04b: el debito parcial de una presentacion (decision U-11, PROPUESTA)
+-- V110 — AKINE-07.04b: el debito parcial de una presentacion (decision U-11, aprobada el 18/10/2026)
 -- =====================================================================================
 --
 -- Diseno: docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md §3.
@@ -21,7 +21,7 @@
 -- libera porque lo que queda pendiente en la obligacion es solo lo debitado, y un lote nuevo
 -- lo incluye por `obligacion.saldo`, que es exactamente eso.
 --
--- SIN MIGRACION DE DATOS, a proposito. Un DEBITADO parcial anterior a V95 sigue con la regla
+-- SIN MIGRACION DE DATOS, a proposito. Un DEBITADO parcial anterior a V110 sigue con la regla
 -- vieja. Reclasificarlo a DEBITADO_PARCIAL lo haria ocupar una obligacion que en el medio pudo
 -- entrar a otro lote (el unique lo rechazaria y la migracion no correria), y tocar lotes ya
 -- conciliados moveria saldos de cuentas corrientes cerradas. Para encontrarlos:

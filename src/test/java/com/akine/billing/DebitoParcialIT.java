@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * AKINE-07.04b contra MySQL: las dos decisiones recomendadas (U-11 y U-28) de punta a punta, por
- * los servicios, con los UPDATE nativos, la columna generada de V95 y la lectura de {@code person}.
+ * los servicios, con los UPDATE nativos, la columna generada de V110 y la lectura de {@code person}.
  *
  * <p>Diseno: {@code docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md}.
  */

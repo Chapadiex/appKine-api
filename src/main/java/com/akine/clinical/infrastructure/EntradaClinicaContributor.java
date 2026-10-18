@@ -30,6 +30,12 @@ public class EntradaClinicaContributor implements EventoClinicoContributor {
 	/** Como se identifica esta fuente en el orden total del timeline y en el cursor. */
 	static final String ORIGEN = "ENTRADA_CLINICA";
 
+	/** Todos los eventos de esta fuente tienen el mismo origen: el filtro la saltea entera. */
+	@Override
+	public String origen() {
+		return ORIGEN;
+	}
+
 	private final EntradaClinicaRepositoryPort entradas;
 
 	public EntradaClinicaContributor(EntradaClinicaRepositoryPort entradas) {

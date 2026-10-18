@@ -3,7 +3,9 @@ package com.akine.activity.infrastructure;
 import com.akine.activity.domain.AsistenciaActividad;
 import com.akine.activity.domain.ResultadoAsistencia;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.AsistenciaActividadRepositoryPort;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -66,6 +68,18 @@ public interface AsistenciaActividadRepository
 			   AND a.inscripcionId = :inscripcionId
 			""")
 	Optional<AsistenciaActividad> findDeInscripcion(
+			@Param("organizationId") long organizationId,
+			@Param("inscripcionId") long inscripcionId);
+
+	/** Ver el puerto: la misma lectura, con la fila tomada en exclusivo hasta el commit. */
+	@Override
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+			SELECT a FROM AsistenciaActividad a
+			 WHERE a.organizationId = :organizationId
+			   AND a.inscripcionId = :inscripcionId
+			""")
+	Optional<AsistenciaActividad> findDeInscripcionParaDerivar(
 			@Param("organizationId") long organizationId,
 			@Param("inscripcionId") long inscripcionId);
 

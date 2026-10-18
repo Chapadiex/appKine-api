@@ -63,23 +63,24 @@ public final class EmailTemplates {
 					saludo + ",\n\nAlguien intento registrar una cuenta con este email y ya "
 							+ "tenes una. Inicia sesion normalmente o, si no recordas tu "
 							+ "contrasena, usa la opcion de recuperarla." + FIRMA);
-			// AKINE-08.02. Los dos avisos de clase nombran la clase y el horario, y NADA MAS: ni
-			// quien mas esta anotado, ni cuantos lugares quedan, ni un id interno. CA-M26-006-06
-			// pide notificar sin exponer la lista de participantes.
+			// AKINE-08.02. Los dos avisos de clase dicen fecha, hora y sede, y NADA MAS: ni quien
+			// mas esta anotado, ni cuantos lugares quedan, ni un id interno. CA-M26-006-06 pide
+			// notificar sin exponer la lista de participantes. Desde U-46 (d) (17/10/2026)
+			// tampoco el titulo de la clase: es texto libre y puede nombrar una condicion de salud.
 			case CLASE_MODIFICADA -> new EmailMessage(
 					destinatario,
 					"Cambio tu clase en " + payload.getOrDefault("consultorioNombre", "AKINE"),
-					saludo + ",\n\nHubo un cambio en la clase "
-							+ payload.getOrDefault("claseTitulo", "en la que estabas inscripto")
-							+ " del " + payload.getOrDefault("claseInicio", "horario reservado")
+					saludo + ",\n\nHubo un cambio en tu clase del "
+							+ payload.getOrDefault("claseInicio", "horario reservado")
+							+ sede(payload)
 							+ ".\n\nEntra en tu cuenta para ver el detalle, o comunicate con el "
 							+ "centro si necesitas reprogramar." + FIRMA);
 			case CUPO_LIBERADO -> new EmailMessage(
 					destinatario,
 					"Se libero tu lugar en la clase",
-					saludo + ",\n\nSe libero un lugar y ya estas inscripto en la clase "
-							+ payload.getOrDefault("claseTitulo", "en la que estabas esperando")
-							+ " del " + payload.getOrDefault("claseInicio", "horario reservado")
+					saludo + ",\n\nSe libero un lugar y ya estas inscripto en la clase del "
+							+ payload.getOrDefault("claseInicio", "horario reservado")
+							+ sede(payload)
 							+ ".\n\nEl lugar ya es tuyo: no hace falta que confirmes nada. Si no "
 							+ "podes asistir, avisale al centro para liberarlo." + FIRMA);
 			// AKINE E-5 (RF-M26-002/003). Fecha, hora, sede y servicio, y NADA MAS: ni el
@@ -109,7 +110,33 @@ public final class EmailTemplates {
 							+ sede(payload)
 							+ ".\n\nSi el nuevo horario no te queda bien, comunicate con el centro."
 							+ FIRMA);
+			// AKINE-08.08 (RF-M26-008). Producto, fecha y saldo. CA-M26-008-06: el aviso no renueva
+			// ni consume nada, asi que el texto no ofrece ninguna accion que lo haga.
+			case PASE_POR_VENCER -> new EmailMessage(
+					destinatario,
+					"Tu " + payload.getOrDefault("productoNombre", "pase") + " vence pronto",
+					saludo + ",\n\nTu " + payload.getOrDefault("productoNombre", "pase")
+							+ sede(payload) + " vale hasta el "
+							+ payload.getOrDefault("paseVencimiento", "dia de su vencimiento")
+							+ creditos(payload) + "."
+							+ ("si".equals(payload.getOrDefault("renovacionAutomatica", null))
+									? "\n\nSe va a renovar automaticamente por el periodo siguiente."
+									: "\n\nSi queres seguir, comunicate con el centro para renovarlo.")
+							+ FIRMA);
+			case PASE_SALDO_BAJO -> new EmailMessage(
+					destinatario,
+					"Te quedan pocas clases en tu " + payload.getOrDefault("productoNombre", "pase"),
+					saludo + ",\n\nTe quedan " + payload.getOrDefault("creditosDisponibles", "pocas")
+							+ " clase(s) en tu " + payload.getOrDefault("productoNombre", "pase")
+							+ sede(payload) + ", que vale hasta el "
+							+ payload.getOrDefault("paseVencimiento", "dia de su vencimiento")
+							+ ".\n\nSi queres seguir despues, comunicate con el centro." + FIRMA);
 		};
+	}
+
+	private static String creditos(SanitizedPayload payload) {
+		String creditos = payload.getOrDefault("creditosDisponibles", null);
+		return creditos == null ? "" : ", con " + creditos + " clase(s) disponible(s)";
 	}
 
 	private static String servicio(SanitizedPayload payload) {

@@ -4,8 +4,6 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
-import com.akine.organization.spi.PermissionGuard;
-import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
@@ -98,7 +96,7 @@ public class SerieDeTurnosService {
 	private final OfertaDirectory ofertas;
 	private final PacienteDirectory pacientes;
 	private final ConsultorioDirectory consultorios;
-	private final PermissionGuard permissionGuard;
+	private final SoporteEnAgenda soporte;
 	private final AgendaSedeIniciador iniciador;
 	private final RevalidadorDeSlot revalidador;
 	private final AtencionProbe atenciones;
@@ -116,7 +114,7 @@ public class SerieDeTurnosService {
 			OfertaDirectory ofertas,
 			PacienteDirectory pacientes,
 			ConsultorioDirectory consultorios,
-			PermissionGuard permissionGuard,
+			SoporteEnAgenda soporte,
 			AgendaSedeIniciador iniciador,
 			RevalidadorDeSlot revalidador,
 			AtencionProbe atenciones,
@@ -133,7 +131,7 @@ public class SerieDeTurnosService {
 		this.ofertas = ofertas;
 		this.pacientes = pacientes;
 		this.consultorios = consultorios;
-		this.permissionGuard = permissionGuard;
+		this.soporte = soporte;
 		this.iniciador = iniciador;
 		this.revalidador = revalidador;
 		this.atenciones = atenciones;
@@ -643,7 +641,6 @@ public class SerieDeTurnosService {
 
 	private void exigirPermiso(
 			OperatingActor actor, long organizationId, long consultorioId, String permiso) {
-		permissionGuard.requirePermission(new PermissionQuery(
-				actor.accountId(), permiso, organizationId, consultorioId, null, Instant.now()));
+		soporte.exigir(actor, permiso, organizationId, consultorioId);
 	}
 }

@@ -79,7 +79,8 @@ class ElegibilidadAdministrativaServiceTest {
 		servicio = new ElegibilidadAdministrativaService(
 				coberturas, ordenes, autorizaciones, personas, aranceles,
 				mock(com.akine.organization.spi.PermissionGuard.class),
-				mock(com.akine.organization.spi.ConsultorioDirectory.class));
+				mock(com.akine.organization.spi.ConsultorioDirectory.class),
+				java.time.Clock.fixed(HOY.atTime(12, 0).toInstant(java.time.ZoneOffset.UTC), java.time.ZoneOffset.UTC));
 
 		given(personas.findByIdAndOrganizationId(anyLong(), anyLong()))
 				.willReturn(Optional.of(persona()));
@@ -383,7 +384,9 @@ class ElegibilidadAdministrativaServiceTest {
 		ElegibilidadAdministrativa veredicto =
 				servicio.consultar(ACTOR, PERSONA, COBERTURA, PRACTICA, null);
 
-		assertThat(veredicto.fecha()).isEqualTo(LocalDate.now());
+		// El reloj del test esta fijo en HOY: comparar contra LocalDate.now() fallaba entre las 21 y
+		// las 24 de Argentina, cuando el dia local y el dia UTC (el de la sede por defecto) difieren.
+		assertThat(veredicto.fecha()).isEqualTo(HOY);
 	}
 
 	// =================================================================================

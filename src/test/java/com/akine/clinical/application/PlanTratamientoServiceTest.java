@@ -9,11 +9,14 @@ import com.akine.clinical.domain.PlanItem;
 import com.akine.clinical.domain.PlanTratamiento;
 import com.akine.clinical.domain.PlanTratamientoVersion;
 import com.akine.clinical.domain.TipoEventoPlan;
+import com.akine.clinical.domain.exception.AutorizacionNoVinculableException;
 import com.akine.clinical.domain.exception.CasoNoActivoException;
 import com.akine.clinical.domain.exception.OfertaNoHabilitadaException;
 import com.akine.clinical.domain.exception.PlanNoEditableException;
 import com.akine.clinical.domain.exception.PlanSinItemsException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
+import com.akine.clinical.domain.exception.PlanVivoEnElCasoException;
+import com.akine.clinical.domain.exception.ReferenciaDelPlanNotAccessibleException;
 import com.akine.clinical.domain.exception.TransicionDePlanInvalidaException;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRepositoryPort;
@@ -30,6 +33,7 @@ import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.spi.AutorizacionDirectory;
+import com.akine.person.spi.AutorizacionSnapshot;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -667,6 +671,260 @@ class PlanTratamientoServiceTest {
 
 			assertThatThrownBy(() -> service.avance(profesional, PLAN_ID, 9, null))
 					.isInstanceOf(IllegalArgumentException.class);
+		}
+	}
+
+	// =================================================================================
+	// RF-M11-007 — atar el item a una autorizacion real de M17
+	// =================================================================================
+
+	@Nested
+	@DisplayName("Vincular autorizacion")
+	class VincularAutorizacion {
+
+		private static final long AUTORIZACION_ID = 6100L;
+
+		@BeforeEach
+		void planActivoConUnItem() {
+			PlanTratamiento plan = plan(EstadoPlan.ACTIVO);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
+			conUnItem(plan);
+		}
+
+		@Test
+		@DisplayName("la cantidad pasa a salir de la autorizacion, sin versionar ni asentar evento")
+		void vincula_la_cantidad_de_m17() {
+			given(autorizaciones.find(any(Long.class), any(Long.class), any(Long.class), any()))
+					.willReturn(Optional.of(autorizacion(true, null)));
+
+			PlanTratamientoView vista = service.vincularAutorizacion(profesional, PLAN_ID,
+					new VincularAutorizacionCommand(301L, AUTORIZACION_ID, 0L), "Control");
+
+			// 0.107.0: la vista trae la vigencia de la autorizacion, leida de M17 en vivo.
+			assertThat(vista.versionVigente().items()).singleElement().satisfies(vinculado -> {
+				assertThat(vinculado.autorizacionVigenciaDesde()).isEqualTo(LocalDate.of(2026, 1, 1));
+				assertThat(vinculado.autorizacionVigenciaHasta()).isNull();
+			});
+
+			ArgumentCaptor<List<PlanItem>> guardados = ArgumentCaptor.forClass(List.class);
+			verify(items).saveAll(guardados.capture());
+			PlanItem item = guardados.getValue().get(0);
+			assertThat(item.getAutorizacionId()).isEqualTo(AUTORIZACION_ID);
+			assertThat(item.getCantidadAutorizada())
+					.as("lo que vale es lo que concedio el financiador, no lo declarado (10)")
+					.isEqualTo(12);
+			// La autorizacion se busca para la persona DEL PLAN: plan -> caso -> historia.
+			verify(autorizaciones, org.mockito.Mockito.atLeastOnce()).find(any(Long.class),
+					org.mockito.ArgumentMatchers.eq(PERSONA_ID),
+					org.mockito.ArgumentMatchers.eq(AUTORIZACION_ID), any());
+			verify(versiones, never()).saveAndFlush(any());
+			verify(eventos, never()).save(any());
+		}
+
+		@Test
+		@DisplayName("una autorizacion que no habilita hoy es 409 con su motivo, y el item no cambia")
+		void autorizacion_agotada() {
+			given(autorizaciones.find(any(Long.class), any(Long.class), any(Long.class), any()))
+					.willReturn(Optional.of(autorizacion(false, "AGOTADA")));
+
+			assertThatThrownBy(() -> service.vincularAutorizacion(profesional, PLAN_ID,
+					new VincularAutorizacionCommand(301L, AUTORIZACION_ID, 0L), "Control"))
+					.isInstanceOf(AutorizacionNoVinculableException.class)
+					.extracting(e -> ((AutorizacionNoVinculableException) e).getMotivo())
+					.isEqualTo("AGOTADA");
+			verify(items, never()).saveAll(any());
+		}
+
+		@Test
+		@DisplayName("una autorizacion de otro paciente o inexistente es 404, sin distinguir")
+		void autorizacion_ajena() {
+			given(autorizaciones.find(any(Long.class), any(Long.class), any(Long.class), any()))
+					.willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> service.vincularAutorizacion(profesional, PLAN_ID,
+					new VincularAutorizacionCommand(301L, AUTORIZACION_ID, 0L), "Control"))
+					.isInstanceOf(ReferenciaDelPlanNotAccessibleException.class);
+			verify(items, never()).saveAll(any());
+		}
+
+		@Test
+		@DisplayName("un item que no es de la version vigente es 404 y no consulta M17")
+		void item_de_otra_version() {
+			assertThatThrownBy(() -> service.vincularAutorizacion(profesional, PLAN_ID,
+					new VincularAutorizacionCommand(999L, AUTORIZACION_ID, 0L), "Control"))
+					.isInstanceOf(ReferenciaDelPlanNotAccessibleException.class);
+			verify(autorizaciones, never()).find(anyLong(), anyLong(), anyLong(), any());
+		}
+
+		@Test
+		@DisplayName("con version vieja es 409 antes de tocar items o M17")
+		void version_vieja() {
+			assertThatThrownBy(() -> service.vincularAutorizacion(profesional, PLAN_ID,
+					new VincularAutorizacionCommand(301L, AUTORIZACION_ID, 7L), "Control"))
+					.isInstanceOf(OptimisticLockingFailureException.class);
+			verify(autorizaciones, never()).find(anyLong(), anyLong(), anyLong(), any());
+		}
+
+		private AutorizacionSnapshot autorizacion(boolean habilita, String motivo) {
+			return new AutorizacionSnapshot(AUTORIZACION_ID, ORG_ID, PERSONA_ID, 1L, 2L, "A-1",
+					12, habilita ? 3 : 12, habilita ? 9 : 0, LocalDate.of(2026, 1, 1), null,
+					LocalDate.of(2026, 10, 14), habilita, motivo);
+		}
+	}
+
+	// =================================================================================
+	// Bordes de activacion, acceso y lecturas
+	// =================================================================================
+
+	@Nested
+	@DisplayName("Bordes")
+	class Bordes {
+
+		@Test
+		@DisplayName("activar con un plan SUSPENDIDO en el caso es 409: un frenado no se finaliza solo")
+		void activar_contra_un_suspendido() {
+			// El defecto 4 de la integracion del 29/09: sin este control el caso quedaba con dos
+			// planes vivos y reanudar el frenado era imposible.
+			PlanTratamiento nuevo = plan(EstadoPlan.BORRADOR);
+			PlanTratamiento suspendido = otroPlanActivo();
+			ReflectionTestUtils.setField(suspendido, "estado", EstadoPlan.SUSPENDIDO);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(nuevo));
+			given(planes.buscarQueOcupaElLugarDelCaso(ORG_ID, CASO_ID))
+					.willReturn(Optional.of(suspendido));
+			conUnItem(nuevo);
+
+			assertThatThrownBy(() -> service.activar(profesional, PLAN_ID, 0L, null))
+					.isInstanceOf(PlanVivoEnElCasoException.class)
+					.extracting(e -> ((PlanVivoEnElCasoException) e).getPlanQueOcupaId())
+					.isEqualTo(OTRO_PLAN_ID);
+			assertThat(suspendido.getEstado()).isEqualTo(EstadoPlan.SUSPENDIDO);
+			assertThat(nuevo.getEstado()).isEqualTo(EstadoPlan.BORRADOR);
+			verify(planes, never()).saveAndFlush(any());
+		}
+
+		@Test
+		@DisplayName("reactivar el mismo plan que ocupa el lugar no lo finaliza contra si mismo")
+		void el_vigente_es_el_mismo() {
+			PlanTratamiento nuevo = plan(EstadoPlan.BORRADOR);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(nuevo));
+			given(planes.buscarQueOcupaElLugarDelCaso(ORG_ID, CASO_ID))
+					.willReturn(Optional.of(nuevo));
+			conUnItem(nuevo);
+
+			assertThat(service.activar(profesional, PLAN_ID, 0L, null).estado())
+					.isEqualTo("ACTIVO");
+			verify(planes, org.mockito.Mockito.times(1)).saveAndFlush(any());
+		}
+
+		@Test
+		@DisplayName("activar con el caso cerrado es 409 y no toca el plan vigente")
+		void activar_con_caso_cerrado() {
+			PlanTratamiento nuevo = plan(EstadoPlan.BORRADOR);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(nuevo));
+			given(casos.findByIdAndOrganizationId(CASO_ID, ORG_ID))
+					.willReturn(Optional.of(caso(false)));
+
+			assertThatThrownBy(() -> service.activar(profesional, PLAN_ID, 0L, null))
+					.isInstanceOf(CasoNoActivoException.class);
+			verify(planes, never()).buscarQueOcupaElLugarDelCaso(anyLong(), anyLong());
+		}
+
+		@Test
+		@DisplayName("sin contexto de trabajo es 403 antes de leer nada")
+		void sin_contexto() {
+			OperatingActor sinSede = new OperatingActor(ACCOUNT_ID, false, ORG_ID, null);
+
+			assertThatThrownBy(() -> service.ver(sinSede, PLAN_ID, null))
+					.isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+			verify(planes, never()).findByIdAndOrganizationId(anyLong(), anyLong());
+		}
+
+		@Test
+		@DisplayName("una historia dada de baja vuelve inaccesible el plan: 404 sobre el plan")
+		void historia_no_vigente() {
+			HistoriaClinica baja = historia();
+			ReflectionTestUtils.setField(baja, "active", false);
+			given(historias.findByIdAndOrganizationId(HC_ID, ORG_ID)).willReturn(Optional.of(baja));
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID))
+					.willReturn(Optional.of(plan(EstadoPlan.ACTIVO)));
+
+			assertThatThrownBy(() -> service.ver(profesional, PLAN_ID, null))
+					.isInstanceOf(PlanTratamientoNotAccessibleException.class);
+			verify(auditTrail, never()).record(any());
+		}
+
+		@Test
+		@DisplayName("crear sobre un caso ajeno es 404 y no asegura numerador")
+		void crear_en_caso_ajeno() {
+			given(casos.findByIdAndOrganizationId(CASO_ID, ORG_ID)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> service.crear(profesional, CASO_ID, contenido(), null))
+					.isInstanceOf(com.akine.clinical.domain.exception.CasoClinicoNotAccessibleException.class);
+			verify(numeradorIniciador, never()).asegurarPlanes(anyLong(), anyLong());
+		}
+
+		@Test
+		@DisplayName("el acceso por soporte deja SUPPORT_ACCESS_USED ademas del evento de lectura")
+		void acceso_de_soporte() {
+			given(permissionGuard.requirePermission(any()))
+					.willReturn(PermissionDecision.concedida("SOPORTE", true));
+			PlanTratamiento plan = plan(EstadoPlan.ACTIVO);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
+			conUnItem(plan);
+
+			service.ver(profesional, PLAN_ID, "Ticket 4411");
+
+			verify(supportAccessAuditor).record(any());
+		}
+
+		@Test
+		@DisplayName("listar y ver versiones auditan la lectura, y las versiones traen sus items")
+		void listar_y_versiones() {
+			PlanTratamiento plan = plan(EstadoPlan.ACTIVO);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
+			given(planes.buscarDeCaso(ORG_ID, CASO_ID, true)).willReturn(List.of(plan));
+			given(versiones.buscarDePlan(ORG_ID, PLAN_ID))
+					.willReturn(List.of(version(plan, 2, "Se agrega fisio"), version(plan, 1, null)));
+			conUnItem(plan);
+
+			assertThat(service.listar(profesional, CASO_ID, true, "Control")).hasSize(1);
+			List<PlanVersionView> historico = service.versiones(profesional, PLAN_ID, "Control");
+
+			assertThat(historico).hasSize(2);
+			verify(auditTrail, org.mockito.Mockito.times(2)).record(any());
+		}
+
+		@Test
+		@DisplayName("un plan sin version vigente se muestra sin contenido en vez de fallar")
+		void cabecera_sin_version_en_la_vista() {
+			// activar lo ya activo devuelve la vista sin exigir version vigente.
+			PlanTratamiento plan = plan(EstadoPlan.ACTIVO);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
+			given(versiones.buscarVigente(ORG_ID, PLAN_ID)).willReturn(Optional.empty());
+
+			assertThat(service.activar(profesional, PLAN_ID, 0L, null).versionVigente()).isNull();
+		}
+
+		@Test
+		@DisplayName("el avance de una version pedida cuenta solo sus ofertas planificadas")
+		void avance_de_version_pedida() {
+			PlanTratamiento plan = plan(EstadoPlan.ACTIVO);
+			given(planes.findByIdAndOrganizationId(PLAN_ID, ORG_ID)).willReturn(Optional.of(plan));
+			given(versiones.buscarPorNumero(ORG_ID, PLAN_ID, 1))
+					.willReturn(Optional.of(version(plan, 1, null)));
+			given(items.buscarDeVersion(ORG_ID, VERSION_ID)).willReturn(List.of(item()));
+			given(realizado.contarPorOfertaEnElCaso(ORG_ID, CASO_ID)).willReturn(List.of(
+					new RealizadoPorOferta(OFERTA_ID, 5, 1),
+					new RealizadoPorOferta(OTRA_OFERTA_ID, 9, 0)));
+
+			AvanceDelPlanView avance = service.avance(profesional, PLAN_ID, 1, "Control");
+
+			assertThat(avance.numeroVersion()).isEqualTo(1);
+			assertThat(avance.items()).singleElement().satisfies(item -> {
+				assertThat(item.realizadas()).isEqualTo(5);
+				assertThat(item.canceladas()).isEqualTo(1);
+			});
+			assertThat(avance.completo()).isFalse();
 		}
 	}
 

@@ -334,6 +334,12 @@ public enum ProblemType {
 	 * el arqueo del dia no cerraria. Lo que corresponde es una devolucion, que es M19.
 	 */
 	OBLIGACION_CON_COBROS("obligacion-con-cobros"),
+	/**
+	 * Se intenta anular desde la cuenta corriente la deuda de la venta de un pase o de un abono
+	 * (409, AKINE-08.09). Esa deuda se anula anulando el pase, que anula las dos cosas juntas: sola
+	 * dejaria el pase vivo y sin pagar. Lleva {@code obligacionId}, {@code paseId} y {@code origen}.
+	 */
+	OBLIGACION_DE_VENTA("obligacion-de-venta"),
 
 	// --- Cobros (M19) ----------------------------------------------------------------------
 	/**
@@ -580,6 +586,19 @@ public enum ProblemType {
 	 * el historial deja de servir para lo unico que sirve (RF-M09-006, RN-M09-004).
 	 */
 	ENMIENDA_SIN_MOTIVO("enmienda-sin-motivo"),
+	/**
+	 * El acceso clinico exige declarar un motivo y el pedido no lo trajo (403). DP-03.
+	 *
+	 * <p>Quien opera <b>si</b> tiene {@code hc:read} o {@code hc:write}: lo que falta es relacion
+	 * asistencial con el paciente o un motivo en la cabecera {@code X-Justificacion-Acceso}. Es un
+	 * {@code type} propio y no {@link #FORBIDDEN} porque el remedio es el opuesto: con
+	 * {@code forbidden} no hay nada que el usuario pueda hacer salvo pedir un permiso; con este, la
+	 * pantalla pide el motivo y reintenta el mismo pedido. Antes del contrato 0.107.0 viajaba como
+	 * {@code forbidden} con la extension {@code requiereJustificacion}, que se sigue enviando para
+	 * no romper a quien la lea. 403 y nunca 401: el interceptor del frontend borra el token ante
+	 * un 401.
+	 */
+	JUSTIFICACION_DE_ACCESO_REQUERIDA("justificacion-de-acceso-requerida"),
 	/**
 	 * El adjunto clinico no existe, es de otro tenant, o es de otra historia (404).
 	 *
@@ -1177,6 +1196,32 @@ public enum ProblemType {
 	 */
 	INSCRIPCION_TRANSICION_NO_PERMITIDA("inscripcion-transicion-no-permitida"),
 
+	// --- Productos de pack y pases (M29, AKINE-08.06) ---------------------------------------
+
+	/**
+	 * El producto no se puede vender hoy: esta dado de baja o fuera de su ventana comercial (409).
+	 * Lleva {@code motivo}. Es el caso borde "producto inactivo durante el checkout": se revalida
+	 * dentro de la transaccion de la venta.
+	 */
+	PRODUCTO_NO_VENDIBLE("producto-no-vendible"),
+	/** Ya hay un producto vigente con ese nombre en la sede (409). */
+	PRODUCTO_NOMBRE_EN_USO("producto-nombre-en-uso"),
+	/**
+	 * La persona ya tiene ese abono, no anulado, en un periodo que se superpone con el pedido (409,
+	 * AKINE-08.08): un periodo genera como maximo una obligacion.
+	 */
+	ABONO_PERIODO_SUPERPUESTO("abono-periodo-superpuesto"),
+	/**
+	 * El pase no admite el ajuste o la anulacion (409, AKINE-08.07): anulado, vencido, saldo final
+	 * fuera de [0, creditos comprados] o, para anular, creditos ya usados. Lleva {@code motivo}.
+	 */
+	PASE_NO_AJUSTABLE("pase-no-ajustable"),
+	/**
+	 * La deuda de la venta tiene cobros imputados y el pase no se anula (409, AKINE-08.07): primero
+	 * se anula o reintegra el cobro. Lleva {@code obligacionId} y {@code cobrado}.
+	 */
+	PASE_CON_COBROS("pase-con-cobros"),
+
 	// --- Derivacion al circuito clinico (M28/M09/M10/M11, AKINE-08.04) ----------------------
 
 	/**
@@ -1239,7 +1284,42 @@ public enum ProblemType {
 	 * {@code SIN_COBERTURA_APLICABLE}). La sesion sigue abierta y sin numero: se carga el precio en
 	 * la oferta y se reintenta el cierre tal cual.
 	 */
-	OFERTA_SIN_PRECIO("oferta-sin-precio");
+	OFERTA_SIN_PRECIO("oferta-sin-precio"),
+
+	/**
+	 * La participacion no tiene ninguna derivacion clinica vigente, o la que se nombro no esta
+	 * vigente o no es de esa participacion (409). AKINE-08.05.
+	 *
+	 * <p><b>Derivar es la puerta y atender es entrar</b>: una Sesion de origen grupal cuelga de
+	 * una derivacion vigente (08.04) y de ninguna otra cosa. El remedio es derivar primero.
+	 */
+	PARTICIPACION_SIN_DERIVACION("participacion-sin-derivacion"),
+
+	/**
+	 * La participacion tiene mas de una derivacion vigente —a Casos distintos— y el pedido no dijo
+	 * a cual corresponde la atencion (409). AKINE-08.05. Lleva {@code derivacionIds}.
+	 *
+	 * <p>No se elige por el cliente: elegir el Caso equivocado numera la Sesion dentro de otro
+	 * tratamiento, y eso no se corrige sin reescribir historia clinica.
+	 */
+	DERIVACION_AMBIGUA("derivacion-ambigua"),
+
+	/**
+	 * La derivacion no se puede revertir porque ya cuelga de ella una Sesion (409). AKINE-08.05.
+	 *
+	 * <p>Revertirla dejaria una atencion clinica documentada sin el vinculo que explica de donde
+	 * vino el paciente. Es el cerrojo que 08.04 dejo anunciado para cuando existiera la tabla.
+	 */
+	DERIVACION_CON_SESION("derivacion-con-sesion"),
+
+	/**
+	 * Se intento cambiar o quitar el Caso de una Sesion de origen grupal (409). AKINE-08.05.
+	 *
+	 * <p>El Caso de esa atencion lo fijo la derivacion de la que salio: cambiarlo aca dejaria una
+	 * Sesion numerada en un Caso distinto del que la derivacion declara. El camino es atender
+	 * desde la derivacion al otro Caso.
+	 */
+	CASO_DE_ATENCION_GRUPAL("caso-de-atencion-grupal");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

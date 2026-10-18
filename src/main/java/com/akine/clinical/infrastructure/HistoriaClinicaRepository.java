@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -38,6 +40,16 @@ public interface HistoriaClinicaRepository
 			""")
 	Optional<HistoriaClinica> buscarVigentePorPersona(
 			@Param("organizationId") Long organizationId, @Param("personaId") Long personaId);
+
+	@Override
+	@Query("""
+			SELECT hc.id, hc.personaId FROM HistoriaClinica hc
+			 WHERE hc.organizationId = :organizationId
+			   AND hc.id IN :historiaIds
+			""")
+	List<Object[]> personasDeHistorias(
+			@Param("organizationId") long organizationId,
+			@Param("historiaIds") Collection<Long> historiaIds);
 
 	/**
 	 * {@code INSERT IGNORE}: el choque contra el unique queda en advertencia y no en excepcion.

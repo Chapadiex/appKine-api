@@ -6,6 +6,8 @@
 #   perf/stack.sh api       # recrea SOLO el backend (p. ej. con otro AKINE_CARGA_POOL), misma base
 #   perf/stack.sh sembrar   # k6 sembrado.js  -> perf/salida/sembrado.json
 #   perf/stack.sh carga     # k6 carga.js     -> perf/salida/carga-resumen.{md,json} + latencia-servidor.md
+#   perf/stack.sh sembrar-actividad  # k6 sembrado-actividad.js (F9, despues de sembrar)
+#   perf/stack.sh actividad # k6 actividad.js -> perf/salida/actividad-resumen.{md,json} (F9, 09.03)
 #   perf/stack.sh metricas  # digest del performance_schema -> perf/salida/digest.tsv
 #   perf/stack.sh historia  # sentencias recientes por conexion (`historia on` antes de la carga)
 #   perf/stack.sh down      # baja y BORRA todo lo <P>-* (contenedores, volumenes, red; imagenes con --imagenes)
@@ -131,6 +133,22 @@ sembrar)
 	mkdir -p "$PERF/salida"
 	docker run --rm --network "$RED" -v "$(montaje_perf):/perf" "${K6_ENV[@]}" "$K6_IMAGE" run -q /perf/k6/sembrado.js
 	;;
+sembrar-actividad)
+	# F9 (09.03), encima del centro de `sembrar`: oferta grupal, pack, pases y clases.
+	docker run --rm --network "$RED" -v "$(montaje_perf):/perf" "${K6_ENV[@]}" "$K6_IMAGE" run -q /perf/k6/sembrado-actividad.js
+	;;
+actividad)
+	# Carga de F9 (09.03): inscribir, asistencia en lote, venta de pases y lecturas. Igual que
+	# `carga`, con la latencia del lado del servidor restando dos fotos de Prometheus.
+	shift
+	mkdir -p "$PERF/salida"
+	docker exec "$P-mysql" mysql -uroot -proot -e "TRUNCATE performance_schema.events_statements_summary_by_digest" 2>/dev/null
+	curl -fsS "http://localhost:$PUERTO_API/actuator/prometheus" >"$PERF/salida/prometheus-antes.txt"
+	docker run --rm --network "$RED" -v "$(montaje_perf):/perf" "${K6_ENV[@]}" "$@" "$K6_IMAGE" run -q /perf/k6/actividad.js || true
+	curl -fsS "http://localhost:$PUERTO_API/actuator/prometheus" >"$PERF/salida/prometheus-despues.txt"
+	(cd "$PERF" && node prometheus-latencia.mjs salida/prometheus-antes.txt salida/prometheus-despues.txt) \
+		| tee "$PERF/salida/latencia-servidor-actividad.md"
+	;;
 carga)
 	shift
 	mkdir -p "$PERF/salida"
@@ -226,7 +244,7 @@ down)
 	echo "stack $P borrado"
 	;;
 *)
-	sed -n '2,14p' "$0"
+	sed -n '2,16p' "$0"
 	exit 1
 	;;
 esac

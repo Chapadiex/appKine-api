@@ -28,6 +28,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -258,8 +259,116 @@ class TimelineServiceTest {
 	}
 
 	// =================================================================================
+	// Filtros de origen y fecha (0.107.0, appKine-web #83)
+	// =================================================================================
+
+	@Test
+	@DisplayName("el filtro por origen saltea la fuente entera y pagina sin perder eventos")
+	void filtro_por_origen_pagina_sin_perder() {
+		// Cinco entradas MAS NUEVAS que las tres sesiones. Si el filtro descartara despues de pedir,
+		// la fuente de entradas no influiria; lo que se prueba es que la de sesiones recorre entera.
+		FuenteReal entradas = new FuenteReal("ENTRADA_CLINICA",
+				evento(T, "ENTRADA_CLINICA", 15L), evento(T.minusSeconds(10), "ENTRADA_CLINICA", 14L),
+				evento(T.minusSeconds(20), "ENTRADA_CLINICA", 13L),
+				evento(T.minusSeconds(30), "ENTRADA_CLINICA", 12L),
+				evento(T.minusSeconds(40), "ENTRADA_CLINICA", 11L));
+		FuenteReal sesiones = new FuenteReal("SESION",
+				evento(T.minusSeconds(100), "SESION", 3L), evento(T.minusSeconds(200), "SESION", 2L),
+				evento(T.minusSeconds(300), "SESION", 1L));
+		TimelineService service = conFuentes(entradas, sesiones);
+
+		TimelinePagina primera = service.ver(profesional, HC_ID, null, 2, null,
+				Set.of("SESION"), null, null, null);
+		TimelinePagina segunda = service.ver(profesional, HC_ID, primera.proximoCursor(), 2, null,
+				Set.of("SESION"), null, null, null);
+
+		assertThat(primera.eventos()).extracting(EventoClinico::referencia).containsExactly(3L, 2L);
+		assertThat(segunda.eventos()).extracting(EventoClinico::referencia).containsExactly(1L);
+		assertThat(segunda.proximoCursor()).isNull();
+		assertThat(entradas.llamadas).as("la fuente excluida no se consulta").isZero();
+	}
+
+	@Test
+	@DisplayName("un origen que ninguna fuente declara es 400, no una pagina vacia")
+	void origen_desconocido() {
+		TimelineService service = conFuentes(new FuenteReal("SESION"));
+
+		assertThatThrownBy(() -> service.ver(profesional, HC_ID, null, null, null,
+				Set.of("TURNO"), null, null, null))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("TURNO");
+	}
+
+	@Test
+	@DisplayName("hasta baja el tope de las fuentes; desde descarta la cola; los dos se auditan")
+	void filtro_por_fecha() {
+		FuenteReal sesiones = new FuenteReal("SESION",
+				evento(T, "SESION", 4L), evento(T.minusSeconds(60), "SESION", 3L),
+				evento(T.minusSeconds(120), "SESION", 2L), evento(T.minusSeconds(180), "SESION", 1L));
+		Instant desde = T.minusSeconds(120);
+		Instant hasta = T.minusSeconds(30);
+
+		TimelinePagina pagina = conFuentes(sesiones).ver(profesional, HC_ID, null, 10, null,
+				null, desde, hasta, null);
+
+		assertThat(sesiones.ultimoHasta).isEqualTo(hasta);
+		assertThat(pagina.eventos()).extracting(EventoClinico::referencia).containsExactly(3L, 2L);
+		assertThat(pagina.proximoCursor()).isNull();
+		assertThat(auditado().details())
+				.containsEntry("filtroDesde", desde.toString())
+				.containsEntry("filtroHasta", hasta.toString());
+	}
+
+	@Test
+	@DisplayName("desde posterior a hasta es 400")
+	void desde_posterior_a_hasta() {
+		assertThatThrownBy(() -> conFuentes(new FuenteReal("SESION")).ver(profesional, HC_ID, null,
+				null, null, null, T, T.minusSeconds(1), null))
+				.isInstanceOf(IllegalArgumentException.class);
+		verify(auditTrail, never()).record(any());
+	}
+
+	// =================================================================================
 	// Andamiaje
 	// =================================================================================
+
+	/** Una fuente que se porta como las reales: un origen, tope inclusivo y limite respetados. */
+	private static final class FuenteReal implements EventoClinicoContributor {
+
+		private final String origen;
+		private final List<EventoClinico> eventos;
+		private int llamadas;
+		private Instant ultimoHasta;
+
+		private FuenteReal(String origen, EventoClinico... eventos) {
+			this.origen = origen;
+			this.eventos = List.of(eventos);
+		}
+
+		@Override
+		public List<EventoClinico> eventosDe(
+				long organizationId, long historiaClinicaId, Instant hasta, int limite, Long casoId) {
+
+			llamadas++;
+			ultimoHasta = hasta;
+			return eventos.stream()
+					.filter(evento -> !evento.ocurrioEn().isAfter(hasta))
+					.sorted(TimelineCursor.ORDEN)
+					.limit(limite)
+					.toList();
+		}
+
+		@Override
+		public String origen() {
+			return origen;
+		}
+	}
+
+	private AuditEntry auditado() {
+		ArgumentCaptor<AuditEntry> captor = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail).record(captor.capture());
+		return captor.getValue();
+	}
 
 	private TimelineService conFuentes(EventoClinicoContributor... fuentes) {
 		return new TimelineService(historias, casos, List.of(fuentes), permissionGuard, relaciones,

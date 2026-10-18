@@ -6,6 +6,7 @@ import com.akine.clinical.spi.RelacionAsistencialProbe;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.platform.spi.audit.AuditEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,9 @@ class AutorizacionClinicaTest {
 	@Mock
 	private RelacionAsistencialProbe relaciones;
 
+	@Mock
+	private ClinicalSupportAccessAuditor rechazos;
+
 	private final OperatingActor profesional = new OperatingActor(ACCOUNT_ID, false, ORG_ID, SEDE_ID);
 
 	@BeforeEach
@@ -82,6 +86,20 @@ class AutorizacionClinicaTest {
 		// cualquier paciente sin dejar mas rastro que un evento de lectura mas.
 		assertThatThrownBy(() -> exigirLectura(profesional, null))
 				.isInstanceOf(AccesoClinicoNoJustificadoException.class);
+
+		// Y el rechazo queda auditado aparte (appKine-web #83): sobre la persona, con la operacion
+		// y el motivo del rechazo, sin justificacion porque es justamente lo que falto.
+		ArgumentCaptor<AuditEntry> rechazo = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(rechazos).registrarRechazo(rechazo.capture());
+		assertThat(rechazo.getValue().eventType()).isEqualTo("HISTORIA_CLINICA_ACCESS_DENIED");
+		assertThat(rechazo.getValue().entityType()).isEqualTo("Persona");
+		assertThat(rechazo.getValue().entityId()).isEqualTo(PERSONA_ID);
+		assertThat(rechazo.getValue().actorAccountId()).isEqualTo(ACCOUNT_ID);
+		assertThat(rechazo.getValue().details())
+				.containsEntry("motivoDelRechazo", "SIN_JUSTIFICACION")
+				.containsEntry("permissionCode", PermissionCodes.HC_READ)
+				.containsEntry("operacion", "Ver historia clinica");
+		assertThat(rechazo.getValue().reason()).isNull();
 	}
 
 	@Test
@@ -130,8 +148,26 @@ class AutorizacionClinicaTest {
 		assertThat(query.getValue().consultorioId()).isEqualTo(SEDE_ID);
 	}
 
+	@Test
+	@DisplayName("Una persona de otra organizacion es 404 y NO deja auditoria de rechazo con su id")
+	void persona_ajena_no_se_audita() {
+		// Una fila HISTORIA_CLINICA_ACCESS_DENIED con ese personaId confirmaria que existe en
+		// algun lado. La pertenencia va antes que el motivo y que el permiso (merge con D7).
+		com.akine.person.spi.PacienteDirectory pacientes =
+				org.mockito.Mockito.mock(com.akine.person.spi.PacienteDirectory.class);
+		given(pacientes.find(ORG_ID, PERSONA_ID)).willReturn(java.util.Optional.empty());
+
+		assertThatThrownBy(() -> AutorizacionClinica.exigirSobrePersona(permissionGuard,
+				relaciones, rechazos, pacientes, profesional, PermissionCodes.HC_READ, PERSONA_ID,
+				null, "Ver historia clinica"))
+				.isInstanceOf(com.akine.clinical.domain.exception
+						.HistoriaClinicaNotAccessibleException.class);
+
+		verifyNoInteractions(permissionGuard, relaciones, rechazos);
+	}
+
 	private AccesoClinico exigirLectura(OperatingActor actor, String justificacion) {
-		return AutorizacionClinica.exigir(permissionGuard, relaciones, actor,
+		return AutorizacionClinica.exigir(permissionGuard, relaciones, rechazos, actor,
 				PermissionCodes.HC_READ, PERSONA_ID, justificacion, "Ver historia clinica");
 	}
 }

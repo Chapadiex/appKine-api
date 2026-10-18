@@ -1,5 +1,8 @@
 package com.akine.activity.application;
 
+import com.akine.platform.spi.audit.AuditoriaAparte;
+import org.mockito.Mockito;
+
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.EstadoClase;
 import com.akine.activity.domain.EstadoInscripcion;
@@ -94,11 +97,15 @@ class InscripcionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new InscripcionService(inscripciones, clases, capacidad, avisos, personas,
-				consultorios, permissionGuard, auditTrail);
+				consultorios, permissionGuard,
+				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail);
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
 		given(clases.findByIdInScope(ORG_ID, SEDE_ID, CLASE_ID))
 				.willReturn(Optional.of(claseConOcupados(8, 6)));
+		// La relectura bloqueada de la rama de cero filas (AKINE-09.03): la clase sigue programada.
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, CLASE_ID))
+				.willReturn(Optional.of(claseConOcupados(8, 8)));
 		given(capacidad.efectiva(anyLong(), anyLong(), any())).willReturn(8);
 		given(personas.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(persona()));
 		given(inscripciones.findVivaDePersona(ORG_ID, CLASE_ID, PERSONA_ID))
@@ -169,6 +176,26 @@ class InscripcionServiceTest {
 					assertThat(completa.getCapacidadEfectiva()).isEqualTo(8);
 					assertThat(completa.getOcupados()).isEqualTo(6);
 				});
+		verify(inscripciones, never()).saveAndFlush(any());
+	}
+
+	/**
+	 * AKINE-09.03: el cero del {@code UPDATE} tambien es "la cancelaron despues de que la lei".
+	 * La relectura bloqueada lo distingue; sin ella la persona quedaba en la cola de una clase
+	 * cancelada ({@code InscripcionContraCancelacionIT} lo reproduce contra MySQL).
+	 */
+	@Test
+	@DisplayName("Cero filas porque la clase se cancelo despues de leerla: transicion no permitida, ni cola ni clase-completa")
+	void cero_filas_por_cancelacion_no_es_clase_completa() {
+		ClaseProgramada cancelada = claseConOcupados(8, 0);
+		cancelada.cancelar("Lluvia", CUENTA_ID, Instant.now());
+		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, CLASE_ID)).willReturn(Optional.of(cancelada));
+		given(clases.tomarCupo(ORG_ID, CLASE_ID, 8)).willReturn(0);
+
+		assertThatThrownBy(() -> service.inscribir(actor(), SEDE_ID, CLASE_ID, comando(true)))
+				.isInstanceOf(TransicionDeClaseNoPermitidaException.class)
+				.hasMessageContaining("cancelada");
+		verify(clases, never()).siguientePosicionDeEspera(anyLong(), anyLong());
 		verify(inscripciones, never()).saveAndFlush(any());
 	}
 

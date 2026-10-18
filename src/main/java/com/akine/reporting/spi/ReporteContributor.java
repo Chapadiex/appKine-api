@@ -26,7 +26,7 @@ import java.util.Set;
  * que un modulo cambie una regla el reporte seguiria mostrando lo que ya no corresponde.
  *
  * <p>Consecuencia buscada: <b>una seccion nueva no toca {@code reporting}.</b> Cuando exista
- * {@code activity}, RF-M23-007 agrega su contribuyente y aparece sola.
+ * {@code activity}, RF-M23-007 agrego su contribuyente y aparecio sola (AKINE-09.01).
  *
  * <h2>Lo que un aporte NO puede traer</h2>
  *

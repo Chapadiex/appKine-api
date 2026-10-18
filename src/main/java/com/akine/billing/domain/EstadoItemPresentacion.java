@@ -7,7 +7,7 @@ package com.akine.billing.domain;
  *
  * <p>RN-M21-003 —"una prestacion no debe duplicarse en presentaciones incompatibles"— no se cumple
  * con un {@code if}: la hace cumplir la columna <b>generada</b> {@code ocupa_marca} de V56 (redefinida en
- * V95), que vale 1 para {@link #INCLUIDO}, {@link #ACEPTADO} y {@link #DEBITADO_PARCIAL} y NULL
+ * V110), que vale 1 para {@link #INCLUIDO}, {@link #ACEPTADO} y {@link #DEBITADO_PARCIAL} y NULL
  * para los otros tres, mas el unique
  * {@code (organization_id, obligacion_id, ocupa_marca)}. Varios NULL no colisionan en MySQL.
  *
@@ -35,15 +35,15 @@ public enum EstadoItemPresentacion {
 	 * deuda. La obligacion queda pendiente y disponible para otro lote — que es el caso borde
 	 * "reapertura" de la etapa.
 	 *
-	 * <p>Desde V95 es el debito <b>total</b> (importe igual a lo presentado). El parcial es
-	 * {@link #DEBITADO_PARCIAL}. Las filas anteriores a V95 pueden tener un importe menor: siguen
+	 * <p>Desde V110 es el debito <b>total</b> (importe igual a lo presentado). El parcial es
+	 * {@link #DEBITADO_PARCIAL}. Las filas anteriores a V110 pueden tener un importe menor: siguen
 	 * con la regla vieja y no saldan nada al conciliar (docs/diseno/AKINE-07.04b §3.4).
 	 */
 	DEBITADO,
 
 	/**
 	 * El financiador rechazo <b>parte</b> de lo reclamado, con motivo, y el lote sigue en curso
-	 * (AKINE-07.04b, V95). <b>Ocupa</b> la obligacion.
+	 * (AKINE-07.04b, V110). <b>Ocupa</b> la obligacion.
 	 *
 	 * <p>Sigue ocupando porque lo NO debitado todavia se esta cobrando en este lote: si la liberara,
 	 * otro lote podria reclamar la obligacion entera —por su saldo completo— mientras este va a
@@ -52,7 +52,7 @@ public enum EstadoItemPresentacion {
 	DEBITADO_PARCIAL,
 
 	/**
-	 * El lote se concilio con este item debitado en parte (AKINE-07.04b, V95). <b>Libera</b> la
+	 * El lote se concilio con este item debitado en parte (AKINE-07.04b, V110). <b>Libera</b> la
 	 * obligacion.
 	 *
 	 * <p>La conciliacion salda lo cobrado —presentado menos debitado— y lo debitado queda
@@ -64,7 +64,7 @@ public enum EstadoItemPresentacion {
 	/** El borrador que lo contenia se descarto. <b>Libera</b> la obligacion. */
 	ANULADO;
 
-	/** Si esta fila mantiene tomada su obligacion. Espeja {@code ocupa_marca} de V95. */
+	/** Si esta fila mantiene tomada su obligacion. Espeja {@code ocupa_marca} de V110. */
 	public boolean ocupa() {
 		return this == INCLUIDO || this == ACEPTADO || this == DEBITADO_PARCIAL;
 	}

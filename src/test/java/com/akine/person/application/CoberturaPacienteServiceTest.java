@@ -11,7 +11,14 @@ import com.akine.person.domain.PerfilPaciente;
 import com.akine.person.domain.Persona;
 import com.akine.person.domain.TipoCobertura;
 import com.akine.person.domain.TipoDocumento;
+import com.akine.person.domain.exception.CoberturaInactivaException;
 import com.akine.person.domain.exception.CoberturaPrincipalSuperpuestaException;
+import com.akine.person.domain.exception.PersonaInactivaException;
+import com.akine.person.domain.exception.PersonaNotAccessibleException;
+import com.akine.platform.spi.audit.AuditEntry;
+import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import com.akine.person.domain.exception.CoberturaSuperpuestaException;
 import com.akine.person.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.person.domain.exception.PlanNoSeleccionableException;
@@ -30,6 +37,9 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.akine.platform.spi.audit.AuditEntry;
+import org.mockito.ArgumentCaptor;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -43,6 +53,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
@@ -97,6 +108,9 @@ class CoberturaPacienteServiceTest {
 	@Mock
 	private AuditTrail auditTrail;
 
+	@Mock
+	private PersonSupportAccessAuditor supportAccessAuditor;
+
 	private CoberturaPacienteService service;
 
 	private final OperatingActor delMostrador =
@@ -106,7 +120,7 @@ class CoberturaPacienteServiceTest {
 	void setUp() {
 		service = new CoberturaPacienteService(
 				coberturas, candados, iniciador, personas, perfiles, catalogo, permissionGuard,
-				auditTrail, mock(PlatformTransactionManager.class));
+				supportAccessAuditor, auditTrail, mock(PlatformTransactionManager.class));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
@@ -317,6 +331,190 @@ class CoberturaPacienteServiceTest {
 		assertThat(editada.vigenciaHasta()).isEqualTo(DESDE.plusMonths(3));
 	}
 
+	@Test
+	@DisplayName("Editar con version vieja es 409 y no escribe")
+	void editar_con_version_vieja() {
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(financiadaGuardada()));
+
+		assertThatThrownBy(() -> service.editar(delMostrador, PERSONA_ID, COBERTURA_ID,
+				new CoberturaEdicionCommand(null, null, null, DESDE.plusMonths(3), null, 5L)))
+				.isInstanceOf(OptimisticLockingFailureException.class);
+		verify(coberturas, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("Una cobertura dada de baja no se edita, no se marca principal ni se vuelve a bajar")
+	void la_baja_es_terminal() {
+		CoberturaPaciente baja = financiadaGuardada();
+		baja.deactivate(Instant.now(), "carga duplicada");
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(baja));
+
+		assertThatThrownBy(() -> service.editar(delMostrador, PERSONA_ID, COBERTURA_ID,
+				new CoberturaEdicionCommand("1", null, null, null, null, 0L)))
+				.isInstanceOf(CoberturaInactivaException.class);
+		assertThatThrownBy(() -> service.marcarPrincipal(delMostrador, PERSONA_ID, COBERTURA_ID, true))
+				.isInstanceOf(CoberturaInactivaException.class);
+		assertThatThrownBy(() -> service.darDeBaja(delMostrador, PERSONA_ID, COBERTURA_ID, "otra"))
+				.isInstanceOf(CoberturaInactivaException.class);
+		verify(coberturas, never()).save(any());
+		verify(coberturas, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("Mover el inicio de la vigencia sobre otra del mismo plan es 409, excluyendose a si misma")
+	void editar_revalida_el_solapamiento() {
+		// La fila editada esta en activasDe: si no se excluyera chocaria contra si misma. La
+		// otra del mismo plan termino el dia anterior al inicio, y adelantar el inicio la pisa.
+		CoberturaPaciente editada = financiadaGuardada();
+		CoberturaPaciente anterior = conId(CoberturaPaciente.financiada(
+				ORG_ID, PERSONA_ID, referencia(), "62000123456", null,
+				DESDE.minusMonths(6), DESDE.minusDays(1), false, null));
+		ReflectionTestUtils.setField(anterior, "id", 300L);
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(editada));
+		given(coberturas.activasDe(ORG_ID, PERSONA_ID)).willReturn(List.of(editada, anterior));
+
+		assertThat(service.editar(delMostrador, PERSONA_ID, COBERTURA_ID,
+				new CoberturaEdicionCommand(null, null, null, null, "sin cambio de fechas", 0L)))
+				.isNotNull();
+
+		assertThatThrownBy(() -> service.editar(delMostrador, PERSONA_ID, COBERTURA_ID,
+				new CoberturaEdicionCommand(null, null, DESDE.minusMonths(1), null, null, 0L)))
+				.isInstanceOf(CoberturaSuperpuestaException.class)
+				.extracting(e -> ((CoberturaSuperpuestaException) e).getCoberturaExistenteId())
+				.isEqualTo(300L);
+	}
+
+	@Test
+	@DisplayName("Cerrar la vigencia se audita como finalizacion; editar otro dato, como edicion")
+	void el_evento_distingue_cierre_de_edicion() {
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(financiadaGuardada()));
+		ArgumentCaptor<AuditEntry> auditadas = ArgumentCaptor.forClass(AuditEntry.class);
+
+		service.editar(delMostrador, PERSONA_ID, COBERTURA_ID,
+				new CoberturaEdicionCommand("62000999", LocalDate.of(2028, 1, 31), DESDE, null,
+						null, 0L));
+		service.editar(delMostrador, PERSONA_ID, COBERTURA_ID,
+				new CoberturaEdicionCommand(null, null, null, DESDE.plusMonths(2), null, 0L));
+
+		verify(auditTrail, org.mockito.Mockito.times(2)).record(auditadas.capture());
+		AuditEntry edicion = auditadas.getAllValues().get(0);
+		assertThat(edicion.eventType()).isEqualTo(AuditEvents.COBERTURA_UPDATED);
+		assertThat(edicion.details())
+				.as("se registra QUE cambio el afiliado, nunca el valor: es PII")
+				.containsEntry("numeroAfiliado", "actualizado")
+				.containsKey("credencialVigenciaHasta")
+				.doesNotContainKey("vigenciaDesde");
+		assertThat(edicion.details().values()).noneMatch(v -> v.contains("62000999"));
+		assertThat(auditadas.getAllValues().get(1).eventType())
+				.isEqualTo(AuditEvents.COBERTURA_VIGENCIA_FINALIZADA);
+	}
+
+	@Test
+	@DisplayName("Marcar principal con otra principal solapada es 409; desmarcar no consulta nada")
+	void marcar_principal() {
+		CoberturaPaciente esta = financiadaGuardada();
+		CoberturaPaciente otraPrincipal = financiadaGuardada();
+		ReflectionTestUtils.setField(otraPrincipal, "id", 301L);
+		otraPrincipal.marcarPrincipal(true);
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(esta));
+		given(coberturas.activasDe(ORG_ID, PERSONA_ID)).willReturn(List.of(esta, otraPrincipal));
+
+		assertThatThrownBy(() -> service.marcarPrincipal(delMostrador, PERSONA_ID, COBERTURA_ID, true))
+				.isInstanceOf(CoberturaPrincipalSuperpuestaException.class);
+		assertThat(otraPrincipal.isPrincipal()).as("no se desmarca en silencio").isTrue();
+
+		esta.marcarPrincipal(true);
+		assertThat(service.marcarPrincipal(delMostrador, PERSONA_ID, COBERTURA_ID, false).principal())
+				.isFalse();
+	}
+
+	@Test
+	@DisplayName("Marcar principal sin otra solapada la deja PRINCIPAL y lo audita")
+	void marcar_principal_sin_conflicto() {
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(financiadaGuardada()));
+
+		assertThat(service.marcarPrincipal(delMostrador, PERSONA_ID, COBERTURA_ID, true).principal())
+				.isTrue();
+		verify(candados).lockByScope(ORG_ID, PERSONA_ID);
+	}
+
+	@Test
+	@DisplayName("La baja exige motivo, y una persona ajena es 404")
+	void la_baja_exige_motivo() {
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(financiadaGuardada()));
+
+		assertThatThrownBy(() -> service.darDeBaja(delMostrador, PERSONA_ID, COBERTURA_ID, "  "))
+				.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> service.darDeBaja(delMostrador, 999L, COBERTURA_ID, "x"))
+				.isInstanceOf(PersonaNotAccessibleException.class);
+		verify(coberturas, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("El mismo carnet vigente bajo el mismo plan choca en la base y sale como 409 sin id ajeno")
+	void el_unique_de_afiliado_no_filtra_al_otro_paciente() {
+		org.mockito.BDDMockito.willThrow(new DataIntegrityViolationException("uk")).given(coberturas).saveAndFlush(any());
+
+		assertThatThrownBy(() -> service.agregar(delMostrador, PERSONA_ID, altaFinanciada(false)))
+				.isInstanceOf(CoberturaSuperpuestaException.class)
+				.extracting(e -> ((CoberturaSuperpuestaException) e).getCoberturaExistenteId())
+				.as("la fila que choca puede ser de OTRO paciente: no se devuelve su id")
+				.isEqualTo(0L);
+	}
+
+	@Test
+	@DisplayName("Una financiada sin plan es 400; a una persona dada de baja no se le carga nada")
+	void validaciones_del_alta() {
+		assertThatThrownBy(() -> service.agregar(delMostrador, PERSONA_ID, new CoberturaAltaCommand(
+				TipoCobertura.FINANCIADA, null, "1", null, DESDE, null, false, null)))
+				.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> service.agregar(delMostrador, PERSONA_ID, new CoberturaAltaCommand(
+				TipoCobertura.PARTICULAR, null, null, null, null, null, false, null)))
+				.as("sin fecha de inicio")
+				.isInstanceOf(IllegalArgumentException.class);
+
+		Persona baja = personaVigente();
+		baja.deactivate(Instant.now(), "duplicada");
+		given(personas.findByIdAndOrganizationId(PERSONA_ID, ORG_ID)).willReturn(Optional.of(baja));
+		assertThatThrownBy(() -> service.agregar(delMostrador, PERSONA_ID, altaFinanciada(false)))
+				.isInstanceOf(PersonaInactivaException.class);
+		verify(coberturas, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("El listado filtra por estado y la seleccion del dia elige la principal VIGENTE")
+	void listado_y_seleccion() {
+		CoberturaPaciente baja = financiadaGuardada();
+		ReflectionTestUtils.setField(baja, "id", 1L);
+		baja.deactivate(Instant.now(), "duplicada");
+		CoberturaPaciente principal = financiadaGuardada();
+		principal.marcarPrincipal(true);
+		CoberturaPaciente futura = financiadaGuardada();
+		ReflectionTestUtils.setField(futura, "id", 2L);
+		ReflectionTestUtils.setField(futura, "vigenciaDesde", DESDE.plusYears(1));
+		given(coberturas.historial(ORG_ID, PERSONA_ID)).willReturn(List.of(baja, principal));
+		given(coberturas.activasDe(ORG_ID, PERSONA_ID)).willReturn(List.of(futura, principal));
+
+		assertThat(service.listar(delMostrador, PERSONA_ID, CoberturaEstadoFiltro.ACTIVA, DESDE))
+				.extracting(CoberturaView::id).containsExactly(COBERTURA_ID);
+		assertThat(service.listar(delMostrador, PERSONA_ID, CoberturaEstadoFiltro.INACTIVA, null))
+				.extracting(CoberturaView::id).containsExactly(1L);
+		assertThat(service.listar(delMostrador, PERSONA_ID, null, null)).hasSize(2);
+
+		SeleccionDeCobertura seleccion = service.resolverParaAtencion(delMostrador, PERSONA_ID, DESDE);
+		assertThat(seleccion.vigentes())
+				.as("la que empieza el ano que viene no aplica hoy")
+				.extracting(CoberturaView::id).containsExactly(COBERTURA_ID);
+		assertThat(seleccion.principal().id()).isEqualTo(COBERTURA_ID);
+	}
+
 	// =================================================================================
 	// Apoyo
 	// =================================================================================
@@ -325,6 +523,40 @@ class CoberturaPacienteServiceTest {
 		return new CoberturaAltaCommand(
 				TipoCobertura.FINANCIADA, PLAN_ID, "62000123456", LocalDate.of(2027, 12, 31),
 				DESDE, null, principal, null);
+	}
+
+	@Test
+	@DisplayName("R13 · con acceso de soporte, cada mutacion deja SUPPORT_ACCESS_USED, tambien la que termina en 409")
+	void la_mutacion_por_soporte_queda_auditada() {
+		given(permissionGuard.requirePermission(any()))
+				.willReturn(PermissionDecision.concedida("SOPORTE", true));
+		CoberturaPaciente baja = financiadaGuardada();
+		baja.deactivate(Instant.now(), "carga duplicada");
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(baja));
+
+		assertThatThrownBy(() -> service.darDeBaja(delMostrador, PERSONA_ID, COBERTURA_ID, "otra"))
+				.isInstanceOf(CoberturaInactivaException.class);
+
+		ArgumentCaptor<AuditEntry> fila = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(supportAccessAuditor, times(1)).record(fila.capture());
+		assertThat(fila.getValue().eventType()).isEqualTo("SUPPORT_ACCESS_USED");
+		assertThat(fila.getValue().entityType()).isEqualTo("CoberturaPaciente");
+		assertThat(fila.getValue().entityId()).isEqualTo(COBERTURA_ID);
+		assertThat(fila.getValue().details()).containsEntry("permissionCode", "paciente:manage");
+	}
+
+	@Test
+	@DisplayName("R13 · sin soporte, la misma mutacion no deja SUPPORT_ACCESS_USED")
+	void la_mutacion_propia_no_es_soporte() {
+		CoberturaPaciente baja = financiadaGuardada();
+		baja.deactivate(Instant.now(), "carga duplicada");
+		given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA_ID, ORG_ID, PERSONA_ID))
+				.willReturn(Optional.of(baja));
+
+		assertThatThrownBy(() -> service.darDeBaja(delMostrador, PERSONA_ID, COBERTURA_ID, "otra"))
+				.isInstanceOf(CoberturaInactivaException.class);
+		verify(supportAccessAuditor, never()).record(any());
 	}
 
 	private static ReferenciaDeCobertura referencia() {

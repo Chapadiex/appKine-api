@@ -25,6 +25,7 @@ class VocabularioClinicoDeAuditoriaTest {
 			// M09 — AKINE-04.01.
 			"HISTORIA_CLINICA_OPENED",
 			"HISTORIA_CLINICA_ACCESSED",
+			"HISTORIA_CLINICA_ACCESS_DENIED",
 			"HISTORIA_CLINICA_RESUMEN_UPDATED",
 			"ANTECEDENTE_CLINICO_REGISTERED",
 			"ANTECEDENTE_CLINICO_DEACTIVATED",
@@ -53,7 +54,21 @@ class VocabularioClinicoDeAuditoriaTest {
 			"PLAN_TRATAMIENTO_RESUMED",
 			"PLAN_TRATAMIENTO_FINALIZED",
 			"PLAN_TRATAMIENTO_AMENDED",
-			"PLAN_ITEM_AUTORIZACION_LINKED"
+			"PLAN_ITEM_AUTORIZACION_LINKED",
+			// AKINE-09.02: se leian sin redactar. La derivacion lleva HC, caso, plan, persona y el
+			// motivo de reversion; los tratamientos son el contenido de la Sesion.
+			"DERIVACION_CLINICA_CREATED",
+			"DERIVACION_CLINICA_ACCESSED",
+			"DERIVACION_CLINICA_REVERTED",
+			"TRATAMIENTO_REGISTRADO",
+			"TRATAMIENTO_MODIFICADO",
+			"TRATAMIENTO_DADO_DE_BAJA",
+			"TRATAMIENTO_CONSULTADO",
+			// M14 — la Sesion y su atencion grupal (AKINE-06.x, 08.05).
+			"SESION_INICIADA",
+			"SESION_ACCEDIDA",
+			"SESION_CERRADA",
+			"SESION_GRUPAL_CONSULTADA"
 	})
 	@DisplayName("reconoce cada evento que el modulo clinico emite hoy")
 	void reconoceElVocabularioConocido(String eventType) {

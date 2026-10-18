@@ -80,6 +80,32 @@ class CobroConcurrenteIT {
 	}
 
 	@Test
+	@DisplayName("doble click con la misma Idempotency-Key: los dos reciben el mismo cobro (pre-QA D2)")
+	void doble_click_con_la_misma_clave_devuelve_el_mismo_cobro() {
+		// Los dos pasan la busqueda de la clave antes de que el otro commitee y compiten por el
+		// saldo: el perdedor recibia saldo-insuficiente en vez del cobro que la clave promete.
+		Fixture fixture = crearFixture();
+		String clave = UUID.randomUUID().toString();
+
+		List<Desenlace> desenlaces = enParalelo(List.of(
+				() -> cobrarConClave(fixture, IMPORTE, clave),
+				() -> cobrarConClave(fixture, IMPORTE, clave)));
+
+		assertThat(desenlaces.stream().filter(Desenlace::fallo).toList())
+				.as("ninguno falla. Desenlaces: %s", desenlaces)
+				.isEmpty();
+		assertThat(desenlaces.get(0).cobro().id())
+				.as("el mismo cobro")
+				.isEqualTo(desenlaces.get(1).cobro().id());
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM cobro WHERE organization_id = ?",
+				Integer.class, fixture.organizationId()))
+				.as("y uno solo en la base")
+				.isEqualTo(1);
+		assertThat(saldoDe(fixture)).isEqualByComparingTo(BigDecimal.ZERO);
+	}
+
+	@Test
 	@DisplayName("dos cobros parciales concurrentes entran los dos y dejan el saldo exacto")
 	void dos_parciales_concurrentes_cuadran() {
 		// La otra mitad de la misma regla: el UPDATE condicional no debe rechazar cobros que SI
@@ -160,6 +186,14 @@ class CobroConcurrenteIT {
 				List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, importe, null)),
 				List.of(new CobroCommand.ImputacionPedida(obligacionId, importe)),
 				null));
+	}
+
+	private CobroView cobrarConClave(Fixture fixture, BigDecimal importe, String clave) {
+		return cobroService.registrar(fixture.actor(), fixture.consultorioId(), new CobroCommand(
+				fixture.personaId(), importe,
+				List.of(new CobroCommand.MedioPedido(MedioDePago.EFECTIVO, importe, null)),
+				List.of(new CobroCommand.ImputacionPedida(fixture.obligacionId(), importe)),
+				clave));
 	}
 
 	private BigDecimal saldoDe(Fixture fixture) {

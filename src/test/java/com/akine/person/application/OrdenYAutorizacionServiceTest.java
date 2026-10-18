@@ -124,11 +124,12 @@ class OrdenYAutorizacionServiceTest {
 		alertas = mock(AutorizacionAlertaRepositoryPort.class);
 
 		ordenService = new OrdenMedicaService(
-				ordenes, coberturas, adjuntos, personas, perfiles, permissionGuard, auditTrail,
-				autorizaciones);
+				ordenes, coberturas, adjuntos, personas, perfiles, permissionGuard, mock(PersonSupportAccessAuditor.class),
+				auditTrail, autorizaciones);
 		autorizacionService = new AutorizacionService(
 				autorizaciones, candados, iniciador, ordenes, coberturas, adjuntos, personas,
-				perfiles, aranceles, permissionGuard, auditTrail, eventos, alertas,
+				perfiles, aranceles, permissionGuard, mock(PersonSupportAccessAuditor.class), auditTrail,
+				eventos, alertas,
 				mock(PlatformTransactionManager.class));
 
 		given(personas.findByIdAndOrganizationId(anyLong(), anyLong()))
@@ -635,6 +636,220 @@ class OrdenYAutorizacionServiceTest {
 
 			assertThat(vista.situacion()).isEqualTo("EN_CURSO");
 			assertThat(vista.sesionesConsumidas()).isEqualTo(3);
+		}
+	}
+
+	// =================================================================================
+	// Los rechazos: lo dado de baja no respalda nada
+	// =================================================================================
+
+	@Nested
+	@DisplayName("Rechazos y bordes")
+	class Rechazos {
+
+		@Test
+		@DisplayName("una persona dada de baja no recibe ni orden ni autorizacion")
+		void persona_dada_de_baja() {
+			Persona baja = persona();
+			baja.deactivate(Instant.now(), "duplicada");
+			given(personas.findByIdAndOrganizationId(anyLong(), anyLong()))
+					.willReturn(Optional.of(baja));
+
+			assertThatThrownBy(() -> ordenService.registrar(ACTOR, PERSONA, altaDeOrden(null)))
+					.isInstanceOf(com.akine.person.domain.exception.PersonaInactivaException.class);
+			assertThatThrownBy(() -> autorizacionService.registrar(
+					ACTOR, PERSONA, alta(EstadoAutorizacion.APROBADA)))
+					.isInstanceOf(com.akine.person.domain.exception.PersonaInactivaException.class);
+			verify(ordenes, never()).saveAndFlush(any());
+			verify(autorizaciones, never()).saveAndFlush(any());
+		}
+
+		@Test
+		@DisplayName("una autorizacion sobre alguien sin perfil de paciente es 409")
+		void autorizacion_sin_perfil() {
+			given(perfiles.buscarVigente(anyLong(), anyLong())).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> autorizacionService.registrar(
+					ACTOR, PERSONA, alta(EstadoAutorizacion.PENDIENTE)))
+					.isInstanceOf(PersonaSinPerfilPacienteException.class);
+		}
+
+		@Test
+		@DisplayName("la orden declarada tiene que estar vigente para respaldar una autorizacion")
+		void orden_dada_de_baja() {
+			OrdenMedica baja = orden(null);
+			baja.deactivate(Instant.now(), "cargada por error");
+			given(ordenes.findByIdAndOrganizationIdAndPersonaId(51L, ORG, PERSONA))
+					.willReturn(Optional.of(baja));
+
+			assertThatThrownBy(() -> autorizacionService.registrar(ACTOR, PERSONA,
+					new AutorizacionAltaCommand(COBERTURA, PRACTICA, 51L, "AUT-1",
+							EstadoAutorizacion.PENDIENTE, 10, ENERO, DICIEMBRE, null)))
+					.isInstanceOf(com.akine.person.domain.exception.OrdenInactivaException.class);
+		}
+
+		@Test
+		@DisplayName("sin cobertura, sin practica o sin inicio de vigencia el alta es 400")
+		void datos_obligatorios() {
+			assertThatThrownBy(() -> autorizacionService.registrar(ACTOR, PERSONA,
+					new AutorizacionAltaCommand(null, PRACTICA, null, "A", null, 1, ENERO, null, null)))
+					.isInstanceOf(IllegalArgumentException.class);
+			assertThatThrownBy(() -> autorizacionService.registrar(ACTOR, PERSONA,
+					new AutorizacionAltaCommand(COBERTURA, null, null, "A", null, 1, ENERO, null, null)))
+					.isInstanceOf(IllegalArgumentException.class);
+			assertThatThrownBy(() -> autorizacionService.registrar(ACTOR, PERSONA,
+					new AutorizacionAltaCommand(COBERTURA, PRACTICA, null, "A", null, 1, null, null, null)))
+					.isInstanceOf(IllegalArgumentException.class);
+			assertThatThrownBy(() -> autorizacionService.resolver(ACTOR, PERSONA, 77L,
+					new ResolucionDeAutorizacionCommand(null, null, null, null, null, 0L)))
+					.as("una resolucion sin accion")
+					.isInstanceOf(IllegalArgumentException.class);
+			verify(autorizaciones, never()).saveAndFlush(any());
+		}
+
+		@Test
+		@DisplayName("sin estado declarado nace PENDIENTE; sin cantidad no audita una cantidad")
+		void alta_por_defecto() {
+			AutorizacionView vista = autorizacionService.registrar(ACTOR, PERSONA,
+					new AutorizacionAltaCommand(COBERTURA, PRACTICA, null, "AUT-9", null, null,
+							ENERO, null, null));
+
+			assertThat(vista.estadoAutorizacion()).isEqualTo("PENDIENTE");
+			verifyNoInteractions(candados);
+			ArgumentCaptor<com.akine.platform.spi.audit.AuditEntry> auditada =
+					ArgumentCaptor.forClass(com.akine.platform.spi.audit.AuditEntry.class);
+			verify(auditTrail).record(auditada.capture());
+			assertThat(auditada.getValue().details()).doesNotContainKey("cantidadAutorizada");
+		}
+
+		@Test
+		@DisplayName("el mismo numero vigente bajo la misma cobertura choca en la base y es 409")
+		void numero_repetido() {
+			org.mockito.BDDMockito.willThrow(
+					new org.springframework.dao.DataIntegrityViolationException("uk"))
+					.given(autorizaciones).saveAndFlush(any());
+			org.mockito.BDDMockito.willThrow(
+					new org.springframework.dao.DataIntegrityViolationException("uk"))
+					.given(ordenes).saveAndFlush(any());
+
+			assertThatThrownBy(() -> autorizacionService.registrar(
+					ACTOR, PERSONA, alta(EstadoAutorizacion.PENDIENTE)))
+					.isInstanceOf(com.akine.person.domain.exception.NumeroDeDocumentoTakenException.class);
+			assertThatThrownBy(() -> ordenService.registrar(ACTOR, PERSONA, altaDeOrden(null)))
+					.isInstanceOf(com.akine.person.domain.exception.NumeroDeDocumentoTakenException.class);
+		}
+
+		@Test
+		@DisplayName("vincular un adjunto dado de baja es 409; desvincular deja el comprobante vacio")
+		void documento_de_la_autorizacion() {
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(77L, ORG, PERSONA))
+					.willReturn(Optional.of(autorizacion(EstadoAutorizacion.APROBADA)));
+			AdjuntoAdministrativo bajaAdj = adjunto();
+			bajaAdj.deactivate(Instant.now(), "escaneo ilegible");
+			given(adjuntos.buscarDeLaPersona(ORG, PERSONA, 907L)).willReturn(Optional.of(bajaAdj));
+			AdjuntoAdministrativo vigente = conId(adjunto(), 908L);
+			given(adjuntos.buscarDeLaPersona(ORG, PERSONA, 908L)).willReturn(Optional.of(vigente));
+
+			assertThatThrownBy(() -> autorizacionService.vincularDocumento(ACTOR, PERSONA, 77L, 907L))
+					.isInstanceOf(com.akine.person.domain.exception.AdjuntoInactivoException.class);
+			given(ordenes.findByIdAndOrganizationIdAndPersonaId(51L, ORG, PERSONA))
+					.willReturn(Optional.of(orden(null)));
+			assertThatThrownBy(() -> ordenService.vincularDocumento(ACTOR, PERSONA, 51L, 907L))
+					.isInstanceOf(com.akine.person.domain.exception.AdjuntoInactivoException.class);
+
+			assertThat(autorizacionService.vincularDocumento(ACTOR, PERSONA, 77L, 908L).adjuntoId())
+					.isEqualTo(908L);
+			assertThat(autorizacionService.vincularDocumento(ACTOR, PERSONA, 77L, null).adjuntoId())
+					.isNull();
+			ArgumentCaptor<AutorizacionEvento> eventosCapturados =
+					ArgumentCaptor.forClass(AutorizacionEvento.class);
+			verify(eventos, org.mockito.Mockito.times(2)).registrar(eventosCapturados.capture());
+			assertThat(eventosCapturados.getAllValues()).extracting(AutorizacionEvento::getDetalle)
+					.containsExactly("Comprobante vinculado: adjunto 908", "Comprobante desvinculado");
+		}
+
+		@Test
+		@DisplayName("lo dado de baja no se edita, no se resuelve ni se vuelve a bajar")
+		void lo_dado_de_baja_es_terminal() {
+			Autorizacion baja = autorizacion(EstadoAutorizacion.PENDIENTE);
+			baja.deactivate(Instant.now(), "cargada por error");
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(77L, ORG, PERSONA))
+					.willReturn(Optional.of(baja));
+			OrdenMedica ordenBaja = orden(null);
+			ordenBaja.deactivate(Instant.now(), "cargada por error");
+			given(ordenes.findByIdAndOrganizationIdAndPersonaId(51L, ORG, PERSONA))
+					.willReturn(Optional.of(ordenBaja));
+
+			assertThatThrownBy(() -> autorizacionService.editar(ACTOR, PERSONA, 77L, edicion()))
+					.isInstanceOf(com.akine.person.domain.exception.AutorizacionInactivaException.class);
+			assertThatThrownBy(() -> autorizacionService.darDeBaja(ACTOR, PERSONA, 77L, "otra"))
+					.isInstanceOf(com.akine.person.domain.exception.AutorizacionInactivaException.class);
+			assertThatThrownBy(() -> ordenService.editar(ACTOR, PERSONA, 51L,
+					new OrdenEdicionCommand(null, null, null, null, null, null, null, null, null, 0L)))
+					.isInstanceOf(com.akine.person.domain.exception.OrdenInactivaException.class);
+			verify(autorizaciones, never()).save(any());
+			verify(ordenes, never()).saveAndFlush(any());
+		}
+
+		@Test
+		@DisplayName("la baja de una autorizacion exige motivo")
+		void baja_de_autorizacion_sin_motivo() {
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(77L, ORG, PERSONA))
+					.willReturn(Optional.of(autorizacion(EstadoAutorizacion.APROBADA)));
+
+			assertThatThrownBy(() -> autorizacionService.darDeBaja(ACTOR, PERSONA, 77L, null))
+					.isInstanceOf(IllegalArgumentException.class);
+			given(ordenes.findByIdAndOrganizationIdAndPersonaId(51L, ORG, PERSONA))
+					.willReturn(Optional.of(orden(null)));
+			assertThatThrownBy(() -> ordenService.darDeBaja(ACTOR, PERSONA, 51L, null))
+					.isInstanceOf(IllegalArgumentException.class);
+		}
+
+		@Test
+		@DisplayName("los filtros ACTIVA e INACTIVA separan lo dado de baja; sin fecha se mide hoy")
+		void filtros_del_padron() {
+			Autorizacion viva = autorizacion(EstadoAutorizacion.APROBADA);
+			Autorizacion baja = autorizacion(EstadoAutorizacion.APROBADA);
+			ReflectionTestUtils.setField(baja, "id", 78L);
+			baja.deactivate(Instant.now(), "cargada por error");
+			given(autorizaciones.historial(ORG, PERSONA)).willReturn(List.of(viva, baja));
+			given(alertas.pendientesPorAutorizacion(ORG, PERSONA)).willReturn(Map.of());
+			OrdenMedica ordenBaja = orden(null);
+			ordenBaja.deactivate(Instant.now(), "cargada por error");
+			given(ordenes.historial(ORG, PERSONA)).willReturn(List.of(orden(null), ordenBaja));
+
+			assertThat(autorizacionService.listar(ACTOR, PERSONA, DocumentoEstadoFiltro.INACTIVA, null))
+					.extracting(AutorizacionView::id).containsExactly(78L);
+			assertThat(autorizacionService.listar(ACTOR, PERSONA, null, ENERO)).hasSize(2);
+			assertThat(ordenService.listar(ACTOR, PERSONA, DocumentoEstadoFiltro.INACTIVA, null))
+					.hasSize(1);
+			assertThat(ordenService.listar(ACTOR, PERSONA, null, null)).hasSize(2);
+		}
+
+		@Test
+		@DisplayName("la orden con cobertura exige que la cobertura sea del paciente")
+		void orden_con_cobertura_ajena() {
+			given(coberturas.findByIdAndOrganizationIdAndPersonaId(COBERTURA, ORG, PERSONA))
+					.willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> ordenService.registrar(ACTOR, PERSONA, altaDeOrden(COBERTURA)))
+					.isInstanceOf(com.akine.person.domain.exception.CoberturaNotAccessibleException.class);
+			verify(ordenes, never()).saveAndFlush(any());
+		}
+
+		@Test
+		@DisplayName("aprobar mueve la autorizacion contra las otras aprobadas, excluyendose a si misma")
+		void aprobar_se_excluye_a_si_misma() {
+			Autorizacion pendiente = autorizacion(EstadoAutorizacion.PENDIENTE);
+			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(77L, ORG, PERSONA))
+					.willReturn(Optional.of(pendiente));
+			// aprobadasDe la trae a ella misma (ya flusheada como APROBADA en otra lectura).
+			given(autorizaciones.aprobadasDe(ORG, COBERTURA, PRACTICA)).willReturn(List.of(pendiente));
+
+			AutorizacionView aprobada = autorizacionService.resolver(ACTOR, PERSONA, 77L,
+					resolucion(AccionSobreAutorizacion.APROBAR, null));
+
+			assertThat(aprobada.estadoAutorizacion()).isEqualTo("APROBADA");
 		}
 	}
 

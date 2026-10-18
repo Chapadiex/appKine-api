@@ -1,7 +1,12 @@
 package com.akine.organization.domain.port;
 
 import com.akine.organization.domain.Organization;
+import com.akine.organization.domain.OrganizationListing;
+import com.akine.organization.domain.SubscriptionStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -26,6 +31,13 @@ public interface OrganizationRepositoryPort {
 	Optional<Organization> findByIdAndActiveTrue(Long id);
 
 	/**
+	 * Varias organizaciones en una consulta. La firma es literalmente la de
+	 * {@code ListCrudRepository#findAllById}: con otra, Spring Data la tomaria por consulta derivada
+	 * y el contexto no arrancaria (la trampa del {@code saveAll} del 29/09).
+	 */
+	List<Organization> findAllById(Iterable<Long> ids);
+
+	/**
 	 * Chequeo previo de disponibilidad del slug.
 	 *
 	 * <p>No reemplaza a {@code uk_organization_slug}: entre este SELECT y el INSERT hay una
@@ -33,4 +45,15 @@ public interface OrganizationRepositoryPort {
 	 * para garantizar unicidad.
 	 */
 	boolean existsBySlug(String slug);
+
+	/**
+	 * Organizaciones vigentes con su suscripcion y su plan, para la administracion de
+	 * plataforma, ordenadas por nombre y desempatadas por id.
+	 *
+	 * @param patron patron de {@code LIKE} con los comodines del cliente ya escapados, comparado
+	 *               contra el nombre y el slug
+	 * @param status estado de la suscripcion, o {@code null} para no filtrar
+	 */
+	Page<OrganizationListing> listForPlatform(
+			String patron, SubscriptionStatus status, Pageable pageable);
 }

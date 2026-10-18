@@ -130,11 +130,11 @@ class PresentacionesMigrationIT {
 	}
 
 	// =================================================================================
-	// V95 — debito parcial (AKINE-07.04b)
+	// V110 — debito parcial (AKINE-07.04b)
 	// =================================================================================
 
 	@Test
-	@DisplayName("V95: el CHECK de estados reemplazado existe una vez y admite los seis valores")
+	@DisplayName("V110: el CHECK de estados reemplazado existe una vez y admite los seis valores")
 	void v95_el_check_de_estados_es_la_union() {
 		assertThat(db.checksLlamados("ck_presentacion_item_estado")).isEqualTo(1);
 		long lote = db.insertar("presentacion", borrador());
@@ -151,7 +151,7 @@ class PresentacionesMigrationIT {
 	}
 
 	@Test
-	@DisplayName("V95: DEBITADO_PARCIAL ocupa la obligacion y ACEPTADO_PARCIAL la libera")
+	@DisplayName("V110: DEBITADO_PARCIAL ocupa la obligacion y ACEPTADO_PARCIAL la libera")
 	void v95_ocupa_marca_de_los_parciales() {
 		long loteA = db.insertar("presentacion", borrador());
 		long loteB = db.insertar("presentacion", borrador());
@@ -170,7 +170,7 @@ class PresentacionesMigrationIT {
 	}
 
 	@Test
-	@DisplayName("V95: un parcial va completo y es parcial de verdad")
+	@DisplayName("V110: un parcial va completo y es parcial de verdad")
 	void v95_el_parcial_va_completo_y_es_parcial() {
 		long lote = db.insertar("presentacion", borrador());
 		db.violaCheck("ck_presentacion_item_debito_completo", () -> db.insertar("presentacion_item",
@@ -178,7 +178,7 @@ class PresentacionesMigrationIT {
 		db.violaCheck("ck_presentacion_item_debito_parcial", () -> db.insertar("presentacion_item",
 				con(parcial(lote, obligacion(), "ACEPTADO_PARCIAL"),
 						"importe_debitado", new BigDecimal("8500.00"))));
-		// El DEBITADO conserva la regla vieja: un importe menor sigue entrando (filas previas a V95).
+		// El DEBITADO conserva la regla vieja: un importe menor sigue entrando (filas previas a V110).
 		entra(() -> db.insertar("presentacion_item", con(debitado(lote, obligacion()),
 				"importe_debitado", new BigDecimal("1000.00"))));
 	}

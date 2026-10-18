@@ -2,7 +2,7 @@
 
 > **Propuesta, no decisión.** Implementa las dos opciones *recomendadas* de
 > `docs/fases/decisiones-pendientes.md` (**U-28** y **U-11**) y de la ficha F7 (n.º 3 y n.º 4) en
-> un PR en borrador para que el usuario decida con el código a la vista. Migración **`V95`**,
+> un PR en borrador para que el usuario decida con el código a la vista. Migración **`V110`**,
 > contrato **0.100.0**.
 
 ## 1. Qué se decide y qué se implementa
@@ -102,10 +102,10 @@ de elegibles y un lote nuevo la incluye por `obligacion.saldo` —sólo lo debit
   para `ACEPTADO_PARCIAL`, 0 para `DEBITADO`) = `total_cobrado`. Se sigue de la anterior con saldo 0.
 - **Obligación:** después de conciliar, `saldo_final = saldo_al_incluir − lo aceptado del ítem`, y
   `importe_original` no se toca. DECIMAL de punta a punta.
-- **Ítem (CHECK nuevo de V95):** los dos estados parciales exigen `0 < importe_debitado < importe_presentado`
+- **Ítem (CHECK nuevo de V110):** los dos estados parciales exigen `0 < importe_debitado < importe_presentado`
   y el débito completo (motivo, instante, actor).
 
-### 3.4 V95
+### 3.4 V110
 
 - `ck_presentacion_item_estado`: se reemplaza por la **unión** de los cuatro valores de V56 más los dos
   nuevos. Es el error de V57 (`akine-alter-check-no-es-aditivo`): un CHECK que se reemplaza tiene que
@@ -116,7 +116,7 @@ de elegibles y un lote nuevo la incluye por `obligacion.saldo` —sólo lo debit
   agrega `ck_presentacion_item_debito_parcial`.
 - `estado` sigue en `VARCHAR(16)`: `DEBITADO_PARCIAL` y `ACEPTADO_PARCIAL` miden exactamente 16.
 
-**No hay migración de datos.** Un `DEBITADO` parcial registrado antes de V95 sigue con la regla vieja
+**No hay migración de datos.** Un `DEBITADO` parcial registrado antes de V110 sigue con la regla vieja
 (no salda al conciliar): reclasificarlo a `DEBITADO_PARCIAL` lo haría ocupar una obligación que en el
 medio pudo haber entrado a otro lote —el unique lo rechazaría— y reclasificar lotes ya conciliados
 movería saldos de cuentas corrientes cerradas. Es un desvío declarado; la consulta para encontrarlos
@@ -174,7 +174,7 @@ criterio aditivo que el repo ya aplicó con `HallazgoDeValidacion` en F-4.
 
 - **Segundo débito** sobre un ítem ya debitado parcialmente: 409 como hoy (`item-no-debitable`).
 - **Pasar lo debitado al paciente o darlo de baja**: decisión del administrativo, sin flujo nuevo.
-- **Débitos parciales previos a V95**: siguen con la regla vieja. Para encontrarlos:
+- **Débitos parciales previos a V110**: siguen con la regla vieja. Para encontrarlos:
   `SELECT * FROM presentacion_item WHERE estado = 'DEBITADO' AND importe_debitado < importe_presentado`.
 - **Frontend**: mostrar `avisos`, los tres hallazgos nuevos y los dos estados de ítem. Espera el
   cliente 0.100.0.

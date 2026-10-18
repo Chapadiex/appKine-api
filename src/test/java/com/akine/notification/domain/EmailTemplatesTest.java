@@ -41,6 +41,24 @@ class EmailTemplatesTest {
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 
+	/** U-46 (d): el aviso de clase dice fecha, hora y sede; el titulo releido de una fila vieja no. */
+	@ParameterizedTest(name = "{0}")
+	@EnumSource(value = NotificationType.class, names = {"CLASE_MODIFICADA", "CUPO_LIBERADO"})
+	@DisplayName("los avisos de clase no nombran la clase")
+	void los_avisos_de_clase_no_nombran_la_clase(NotificationType tipo) {
+		SanitizedPayload filaVieja = SanitizedPayload.fromJson(
+				"{\"nombre\":\"Ana\",\"claseTitulo\":\"Rehabilitacion post-ACV\","
+						+ "\"claseInicio\":\"20/10/2026 a las 18:00\","
+						+ "\"consultorioNombre\":\"Sede Centro\"}");
+
+		EmailMessage mensaje = EmailTemplates.render(tipo, DESTINATARIO, filaVieja, null);
+
+		assertThat(mensaje.asunto() + mensaje.cuerpo()).doesNotContain("Rehabilitacion");
+		assertThat(mensaje.cuerpo())
+				.startsWith("Hola Ana,")
+				.contains("clase del 20/10/2026 a las 18:00 en Sede Centro.");
+	}
+
 	@Test
 	@DisplayName("la activacion lleva el enlace y avisa que se usa una sola vez")
 	void la_activacion_lleva_el_enlace() {
@@ -177,6 +195,25 @@ class EmailTemplatesTest {
 
 		assertThat(mensaje.asunto()).doesNotContain("null").endsWith("AKINE");
 		assertThat(mensaje.cuerpo()).doesNotContain("null").startsWith("Hola,");
+	}
+
+	@Test
+	@DisplayName("AKINE-08.08: el aviso de vencimiento dice producto, fecha y saldo, y si se renueva solo")
+	void el_aviso_de_vencimiento_de_pase() {
+		EmailMessage renovable = EmailTemplates.render(NotificationType.PASE_POR_VENCER, DESTINATARIO,
+				SanitizedPayload.of(java.util.Map.of("nombre", "Ana", "productoNombre", "Abono Pilates",
+						"paseVencimiento", "30/11/2026", "creditosDisponibles", "3",
+						"renovacionAutomatica", "si")), null);
+		EmailMessage sinDatos = EmailTemplates.render(NotificationType.PASE_POR_VENCER, DESTINATARIO,
+				SanitizedPayload.vacio(), null);
+		EmailMessage saldo = EmailTemplates.render(NotificationType.PASE_SALDO_BAJO, DESTINATARIO,
+				SanitizedPayload.vacio(), null);
+
+		assertThat(renovable.asunto()).isEqualTo("Tu Abono Pilates vence pronto");
+		assertThat(renovable.cuerpo()).contains("vale hasta el 30/11/2026, con 3 clase(s)")
+				.contains("Se va a renovar automaticamente");
+		assertThat(sinDatos.cuerpo()).doesNotContain("null").contains("comunicate con el centro para renovarlo");
+		assertThat(saldo.cuerpo()).doesNotContain("null").startsWith("Hola,");
 	}
 
 	@ParameterizedTest

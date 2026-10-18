@@ -14,6 +14,14 @@ final class AuditEvents {
 
 	static final String HISTORIA_CLINICA_OPENED = "HISTORIA_CLINICA_OPENED";
 	static final String HISTORIA_CLINICA_ACCESSED = "HISTORIA_CLINICA_ACCESSED";
+
+	/**
+	 * Un acceso clinico rechazado por falta de motivo (DP-03, pedido de appKine-web #83). Se
+	 * escribe aparte, despues de la transaccion que revierte. La entidad es la PERSONA y no la
+	 * historia: el rechazo ocurre antes de saber —o sin necesitar— cual es su historia, y lo que se
+	 * revisa despues es "quien intento entrar a la ficha clinica de este paciente".
+	 */
+	static final String HISTORIA_CLINICA_ACCESS_DENIED = "HISTORIA_CLINICA_ACCESS_DENIED";
 	static final String HISTORIA_CLINICA_RESUMEN_UPDATED = "HISTORIA_CLINICA_RESUMEN_UPDATED";
 	static final String ANTECEDENTE_REGISTERED = "ANTECEDENTE_CLINICO_REGISTERED";
 	static final String ANTECEDENTE_DEACTIVATED = "ANTECEDENTE_CLINICO_DEACTIVATED";
@@ -110,6 +118,7 @@ final class AuditEvents {
 	static final String DERIVACION_CLINICA_ACCESSED = "DERIVACION_CLINICA_ACCESSED";
 
 	static final String ENTITY_HISTORIA_CLINICA = "HistoriaClinica";
+	static final String ENTITY_PERSONA = "Persona";
 	static final String ENTITY_PLAN_TRATAMIENTO = "PlanTratamiento";
 	static final String ENTITY_CASO_CLINICO = "CasoClinico";
 	static final String ENTITY_ANTECEDENTE = "AntecedenteClinico";

@@ -1,8 +1,5 @@
 package com.akine.clinical.domain;
 
-import java.util.Arrays;
-import java.util.Optional;
-
 /**
  * Clase de hecho clinico que registra una entrada (RF-M09-006).
  *
@@ -35,13 +32,4 @@ public enum TipoEntradaClinica {
 	OBSERVACION,
 
 	OTRO;
-
-	/** El tipo con ese nombre, o vacio si no existe: es un 400 del cliente, no un 500. */
-	public static Optional<TipoEntradaClinica> desde(String nombre) {
-		if (nombre == null || nombre.isBlank()) {
-			return Optional.empty();
-		}
-		String normalizado = nombre.strip().toUpperCase();
-		return Arrays.stream(values()).filter(t -> t.name().equals(normalizado)).findFirst();
-	}
 }

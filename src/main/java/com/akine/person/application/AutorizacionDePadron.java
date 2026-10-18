@@ -4,11 +4,13 @@ import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.domain.PermissionCodes;
+import com.akine.platform.spi.audit.AuditEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * Los controles de acceso que comparten los dos servicios de M07, en un solo lugar.
@@ -116,5 +118,50 @@ final class AutorizacionDePadron {
 				actor.consultorioId(),
 				null,
 				Instant.now()));
+	}
+
+	/**
+	 * {@link #exigirGestionDelPadron(PermissionGuard, OperatingActor, String)} mas la fila
+	 * {@code SUPPORT_ACCESS_USED} cuando el permiso se concedio por un acceso de soporte (R13 del
+	 * threat model).
+	 *
+	 * <p>Existe porque el barrido de R13 encontro cuatro servicios —ordenes, autorizaciones,
+	 * coberturas y la reversion de un consumo— que pedian {@code paciente:manage} y tiraban la
+	 * decision: con soporte vigente, el {@code PLATFORM_ADMIN} podia modificar el padron sin dejar
+	 * rastro de que habia entrado por soporte. Juntar la evaluacion y la fila en un metodo hace
+	 * que no se pueda pedir una sin la otra.
+	 *
+	 * <p>La fila va por {@link PersonSupportAccessAuditor}, en transaccion propia, igual que en
+	 * {@code PersonaService}: si la mutacion termina en 404 o en 409, el acceso de soporte igual
+	 * se ejercio.
+	 *
+	 * @param entidad   tipo de entidad de la fila ({@code AuditEvents.ENTITY_*})
+	 * @param entidadId id de esa entidad
+	 */
+	static PermissionDecision exigirGestionDelPadron(
+			PermissionGuard permissionGuard,
+			PersonSupportAccessAuditor supportAccessAuditor,
+			OperatingActor actor,
+			String operacion,
+			String entidad,
+			long entidadId) {
+
+		PermissionDecision decision = exigirGestionDelPadron(permissionGuard, actor, operacion);
+		if (decision != null && decision.viaSupportAccess()) {
+			supportAccessAuditor.record(new AuditEntry(
+					actor.contextOrganizationId(),
+					actor.consultorioId(),
+					actor.accountId(),
+					"SUPPORT_ACCESS_USED",
+					entidad,
+					entidadId,
+					null,
+					null,
+					Map.of("operacion", operacion, "permissionCode", PermissionCodes.PACIENTE_MANAGE),
+					null,
+					AuditEvents.correlationId(),
+					Instant.now()));
+		}
+		return decision;
 	}
 }

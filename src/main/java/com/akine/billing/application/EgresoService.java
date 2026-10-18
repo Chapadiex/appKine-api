@@ -209,6 +209,10 @@ public class EgresoService {
 	 *
 	 * <p>Se rechaza si queda algun pago vigente. Primero se anulan los pagos —que es lo que devuelve
 	 * la plata al cajon— y despues el compromiso.
+	 *
+	 * <p><b>Compite con el pago y uno de los dos pierde</b>: por eso lee con
+	 * {@code SELECT ... FOR UPDATE} en {@code READ_COMMITTED}, que ve el saldo ya commiteado por un
+	 * pago concurrente en lugar de una foto previa a el.
 	 */
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public EgresoView anular(
@@ -218,7 +222,11 @@ public class EgresoService {
 		acceso.exigirSedeDelTenant(organizationId, consultorioId);
 		acceso.exigirOperarCaja(actor, organizationId, consultorioId);
 
-		Egreso egreso = exigirEgreso(organizationId, consultorioId, egresoId);
+		// Con lock de fila y no con la lectura comun: "no tiene pagos" se decide sobre el saldo, y un
+		// pago que commiteara entre esta lectura y el flush no se veria. Sin el lock el egreso
+		// quedaba ANULADO con un pago CONFIRMADO vigente (web #94). Ver el puerto.
+		Egreso egreso = egresos.findByIdInScopeParaEscribir(organizationId, consultorioId, egresoId)
+				.orElseThrow(() -> new EgresoNotAccessibleException(egresoId));
 		Instant ahora = Instant.now();
 		egreso.anular(motivo, ahora, actor.accountId());
 

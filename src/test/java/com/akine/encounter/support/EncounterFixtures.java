@@ -185,6 +185,22 @@ public final class EncounterFixtures {
 		return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
 	}
 
+	/** Un Caso Clinico ACTIVO en la historia del mundo, con el numero dado dentro de ella. */
+	public long crearCaso(Mundo mundo, int numero) {
+		return insertar("""
+				INSERT INTO caso_clinico (organization_id, historia_clinica_id, numero_caso,
+				                          oferta_id, oferta_consultorio_id, diagnostico_presuntivo,
+				                          estado, abierto_en, abierto_por, version,
+				                          created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, 'Diagnostico sintetico', 'ACTIVO', UTC_TIMESTAMP(6), ?, 0,
+				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", """
+				SELECT id FROM caso_clinico WHERE historia_clinica_id = ? AND numero_caso = ?
+				""", new Object[]{mundo.organizationId(), mundo.historiaClinicaId(), numero,
+						mundo.ofertaId(), mundo.consultorioId(), mundo.profesional().cuentaId()},
+				new Object[]{mundo.historiaClinicaId(), numero});
+	}
+
 	private long insertar(String insert, String select, Object[] insertArgs, Object[] selectArgs) {
 		jdbc.update(insert, insertArgs);
 		return jdbc.queryForObject(select, Long.class, selectArgs);

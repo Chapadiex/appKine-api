@@ -315,6 +315,70 @@ class TimelineIT {
 	}
 
 	// =================================================================================
+	// Filtros (0.107.0) y rechazo auditado (appKine-web #83)
+	// =================================================================================
+
+	@Test
+	@DisplayName("filtrar por origen y fecha contra las fuentes reales, paginando, no pierde ni mezcla")
+	void filtros_contra_las_fuentes_reales() {
+		Fixture fixture = crearFixture();
+		insertarSesion(fixture, "CERRADA", 1, ANCLA.minus(10, ChronoUnit.HOURS));
+		registrarEntrada(fixture, "Evolucion 1", ANCLA.minus(9, ChronoUnit.HOURS));
+		insertarSesion(fixture, "CERRADA", 2, ANCLA.minus(8, ChronoUnit.HOURS));
+		registrarEntrada(fixture, "Evolucion 2", ANCLA.minus(7, ChronoUnit.HOURS));
+		insertarSesion(fixture, "CERRADA", 3, ANCLA.minus(6, ChronoUnit.HOURS));
+		registrarEntrada(fixture, "Evolucion 3", ANCLA.minus(5, ChronoUnit.HOURS));
+		registrarEntrada(fixture, "Evolucion 4", ANCLA.minus(4, ChronoUnit.HOURS));
+
+		List<EventoClinico> sesiones = new ArrayList<>();
+		String cursor = null;
+		do {
+			TimelinePagina pagina = timeline.ver(fixture.actor(), fixture.historiaClinicaId(),
+					cursor, 1, null, java.util.Set.of("SESION"), null, null, JUSTIFICACION);
+			sesiones.addAll(pagina.eventos());
+			cursor = pagina.proximoCursor();
+		} while (cursor != null);
+
+		assertThat(sesiones).extracting(EventoClinico::origen).containsOnly("SESION");
+		assertThat(sesiones).as("las tres sesiones, de a una, sin perder ni repetir").hasSize(3);
+
+		TimelinePagina ventana = timeline.ver(fixture.actor(), fixture.historiaClinicaId(),
+				null, 50, null, null, ANCLA.minus(8, ChronoUnit.HOURS),
+				ANCLA.minus(5, ChronoUnit.HOURS), JUSTIFICACION);
+		assertThat(ventana.eventos())
+				.as("de -8h a -5h inclusive: sesion 2, evolucion 2, sesion 3, evolucion 3")
+				.extracting(EventoClinico::ocurrioEn)
+				.containsExactly(ANCLA.minus(5, ChronoUnit.HOURS), ANCLA.minus(6, ChronoUnit.HOURS),
+						ANCLA.minus(7, ChronoUnit.HOURS), ANCLA.minus(8, ChronoUnit.HOURS));
+	}
+
+	@Test
+	@DisplayName("el acceso sin motivo se rechaza Y queda en audit_event aunque la transaccion revierta")
+	void el_rechazo_sin_motivo_queda_auditado() {
+		Fixture fixture = crearFixture();
+
+		assertThatThrownBy(() -> timeline.ver(
+				fixture.actor(), fixture.historiaClinicaId(), null, 50, null, null))
+				.isInstanceOf(
+						com.akine.clinical.domain.exception.AccesoClinicoNoJustificadoException.class);
+
+		assertThat(jdbc.queryForObject("""
+				SELECT COUNT(*) FROM audit_event
+				 WHERE organization_id = ? AND actor_account_id = ?
+				   AND event_type = 'HISTORIA_CLINICA_ACCESS_DENIED' AND entity_type = 'Persona'
+				""", Integer.class, fixture.actor().contextOrganizationId(),
+				fixture.actor().accountId()))
+				.as("el rechazo se escribe aparte, despues del rollback del pedido")
+				.isEqualTo(1);
+		assertThat(jdbc.queryForObject("""
+				SELECT COUNT(*) FROM audit_event
+				 WHERE organization_id = ? AND event_type = 'TIMELINE_ACCESSED'
+				""", Integer.class, fixture.actor().contextOrganizationId()))
+				.as("y un rechazo no es una lectura")
+				.isZero();
+	}
+
+	// =================================================================================
 	// Aislamiento de tenant — 404, nunca 403
 	// =================================================================================
 

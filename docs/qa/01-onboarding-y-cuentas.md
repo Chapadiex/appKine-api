@@ -151,7 +151,8 @@ FROM cuenta WHERE email_normalizado IN (@email_admin_a, 'qa.sin-activar@ejemplo.
 Esperado: `intentos_fallidos` sube en 1 por intento fallido de admin-a y vuelve a 0 con el
 siguiente login correcto; `bloqueada_en` sigue NULL.
 
-**Auditoría:** `LOGIN_FALLIDO` (`details.intentosFallidos`) y, para la cuenta sin activar,
+**Auditoría:** `LOGIN_FALLIDO` (`details.motivo = CREDENCIALES`; el contador `intentosFallidos` va solo en
+`ACTIVIDAD_SOSPECHOSA`, al llegar al umbral de fallos consecutivos) y, para la cuenta sin activar,
 `LOGIN_RECHAZADO_ESTADO`, ambos con `organization_id` NULL:
 
 ```sql
@@ -231,11 +232,12 @@ SELECT id, familia_id, revocado_en, motivo_revocacion
 FROM refresh_token WHERE cuenta_id = @cuenta_admin_a ORDER BY id DESC LIMIT 5;
 
 SELECT tipo, estado FROM notification_outbox
-WHERE destinatario = @email_admin_a AND tipo = 'RESET_PASSWORD';
+WHERE destinatario = @email_admin_a AND tipo = 'RECUPERACION_PASSWORD';
 ```
 
 Esperado: un token `RESET` usado; **todos** los refresh que estaban vivos antes del canje con
-`motivo_revocacion = RESET_PASSWORD`; la notificación `RESET_PASSWORD` `ENVIADA`.
+`motivo_revocacion = RESET_PASSWORD`; la notificación `RECUPERACION_PASSWORD` `ENVIADA` (`RESET_PASSWORD` es solo el motivo de
+revocación del refresh token, no el tipo de la notificación).
 
 **Auditoría:** `RESET_SOLICITADO`, `RESET_COMPLETADO`.
 

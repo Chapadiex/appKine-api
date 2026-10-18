@@ -9,6 +9,8 @@ import com.akine.person.application.AutorizacionService;
 import com.akine.person.application.CoberturaParaOfertaService;
 import com.akine.person.application.ConsumoDeAutorizacionService;
 import com.akine.person.application.ElegibilidadAdministrativaService;
+import com.akine.person.application.ReversionCommand;
+import com.akine.person.domain.exception.ReversionSinMotivoException;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import com.akine.testsupport.Fixture;
 import com.akine.testsupport.SliceDeController;
@@ -37,6 +39,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -114,14 +117,19 @@ class PersonControllersTest extends SliceRestDeModulo {
 	}
 
 	@Test
-	@DisplayName("revertir un consumo sin motivo es 400 y no llega al servicio")
+	@DisplayName("revertir un consumo sin motivo es 400 reversion-sin-motivo, no validation-error (pre-QA D6)")
 	void reversion_sin_motivo() throws Exception {
+		// El motivo en blanco tiene que llegar al servicio: es quien emite el tipo que el contrato
+		// declara y la pantalla espera. Con @NotBlank en el DTO, bean validation cortaba antes.
+		given(consumos.revertir(any(), eq(40L), any())).willThrow(new ReversionSinMotivoException());
+
 		mockMvc.perform(post("/api/v1/autorizaciones/40/reversiones").with(miembro())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"movimientoId\":7,\"motivo\":\" \"}"))
-				.andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.type").value("https://akine.app/problems/reversion-sin-motivo"));
 
-		verifyNoInteractions(consumos);
+		verify(consumos).revertir(any(), eq(40L), eq(new ReversionCommand(7L, " ")));
 	}
 
 	@Test

@@ -159,4 +159,16 @@ public interface SesionRepositoryPort {
 	 */
 	java.util.List<com.akine.encounter.domain.ConteoDeSesionesPorOferta> contarCerradasPorOferta(
 			long organizationId, long casoId);
+
+	/**
+	 * La Sesion viva que cuelga de esa derivacion, si existe (AKINE-08.05).
+	 *
+	 * <p>Es la relectura de la idempotencia del inicio grupal: una derivacion produce como mucho
+	 * una Sesion viva, y {@code uk_sesion_derivacion} de V102 lo respalda en el motor. Sin filtro
+	 * por sede por el mismo motivo que {@link #findVivaPorTurno}.
+	 */
+	Optional<Sesion> findVivaPorDerivacion(long organizationId, long derivacionId);
+
+	/** Las sesiones vivas de origen grupal de una clase, en la sede (AKINE-08.05, el panel). */
+	java.util.List<Sesion> findVivasDeLaClase(long organizationId, long consultorioId, long claseId);
 }

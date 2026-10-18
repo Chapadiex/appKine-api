@@ -35,6 +35,15 @@ public class AuditoriaDeObligacion {
 		if (obligacion.getSesionId() != null) {
 			detalles.put("sesionId", String.valueOf(obligacion.getSesionId()));
 		}
+		if (obligacion.getPaseId() != null) {
+			detalles.put("origen", obligacion.getOrigen().name());
+			detalles.put("paseId", String.valueOf(obligacion.getPaseId()));
+		}
+		if (obligacion.getAsistenciaId() != null) {
+			detalles.put("origen", obligacion.getOrigen().name());
+			detalles.put("asistenciaId", String.valueOf(obligacion.getAsistenciaId()));
+			detalles.put("claseId", String.valueOf(obligacion.getClaseId()));
+		}
 		detalles.put("responsable", obligacion.getResponsable().name());
 		if (obligacion.getConcepto() != null) {
 			detalles.put("concepto", obligacion.getConcepto().name());

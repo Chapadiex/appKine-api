@@ -65,7 +65,13 @@ public final class VocabularioClinicoDeAuditoria {
 			// M13 — Plan de Tratamiento (AKINE-04.04, AKINE-04.05).
 			"PLAN_TRATAMIENTO_",
 			"PLAN_ITEM_",
-			// M14 — Sesion. La atencion es el hecho clinico por excelencia.
+			// Derivacion de un participante de clase al circuito clinico (AKINE-08.04). Lleva HC,
+			// caso, plan, persona y el motivo de reversion; faltaba hasta AKINE-09.02.
+			"DERIVACION_CLINICA_",
+			// Tratamientos realizados de la Sesion (AKINE-06.04). Faltaba hasta AKINE-09.02.
+			"TRATAMIENTO_",
+			// M14 — Sesion. La atencion es el hecho clinico por excelencia. Cubre tambien
+			// SESION_GRUPAL_CONSULTADA (AKINE-08.05).
 			"SESION_");
 
 	private VocabularioClinicoDeAuditoria() {

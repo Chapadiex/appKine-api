@@ -3,6 +3,7 @@ package com.akine.billing.domain.port;
 import com.akine.billing.domain.Obligacion;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,6 +26,36 @@ public interface ObligacionRepositoryPort {
 	 * devengo financiador y coseguro no veria nada que la frene y agregaria una particular encima.
 	 */
 	List<Obligacion> findDeLaSesion(long sesionId);
+
+	/**
+	 * La obligacion viva devengada por la venta de ese pase (AKINE-08.06). Es la idempotencia de
+	 * RF-M18-009 del lado de {@code billing}: un reintento de la venta no devenga dos veces.
+	 */
+	Optional<Obligacion> findDeLaVenta(long organizationId, long paseId);
+
+	/**
+	 * La obligacion viva —no anulada, sin baja— devengada por esa asistencia a clase (U-39,
+	 * RF-M18-008). Lectura consistente, sin lock: es la idempotencia del re-devengo, y dos registros
+	 * de la misma asistencia ya los serializa la {@code @Version} de la asistencia.
+	 */
+	Optional<Obligacion> findVivaDeLaAsistencia(long organizationId, long asistenciaId);
+
+	/**
+	 * {@link #findVivaDeLaAsistencia} con {@code FOR UPDATE}, para anularla: un cobro que imputa a la
+	 * vez espera, y la decision "tiene cobros o no" se toma sobre el saldo actual.
+	 */
+	Optional<Obligacion> lockVivaDeLaAsistencia(long organizationId, long asistenciaId);
+
+	/** Las obligaciones vivas de las asistencias de una clase, con {@code FOR UPDATE} (RF-M28-006). */
+	List<Obligacion> lockVivasDeLaClase(long organizationId, long claseId);
+
+	/**
+	 * De esos pases, los que tienen la obligacion viva de su venta con cobros imputados: no anulada
+	 * y con saldo distinto del importe original.
+	 */
+	List<Long> ventasConCobros(long organizationId, Collection<Long> paseIds);
+
+	Obligacion saveAndFlush(Obligacion obligacion);
 
 	/**
 	 * La cuenta corriente <b>del paciente</b> en la organizacion (RF-M18-003): solo lo que debe el

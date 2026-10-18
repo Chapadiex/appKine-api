@@ -34,7 +34,7 @@ public interface PresentacionItemRepository
 			@Param("itemId") long itemId);
 
 	/**
-	 * Espeja la columna generada {@code ocupa_marca} de V95: INCLUIDO, ACEPTADO y DEBITADO_PARCIAL
+	 * Espeja la columna generada {@code ocupa_marca} de V110: INCLUIDO, ACEPTADO y DEBITADO_PARCIAL
 	 * ocupan.
 	 *
 	 * <p>El unique sigue siendo el mecanismo que garantiza RN-M21-003; esto existe para poder

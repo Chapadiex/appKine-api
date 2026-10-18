@@ -227,12 +227,14 @@ class ImportacionArancelesServiceTest {
 		orden.verify(aranceles, times(2)).saveAndFlush(any());
 
 		ArgumentCaptor<AuditEntry> auditoria = ArgumentCaptor.forClass(AuditEntry.class);
-		verify(auditTrail, times(3)).record(auditoria.capture());
-		assertThat(auditoria.getAllValues()).extracting(AuditEntry::eventType).containsExactly(
-				"ARANCEL_CREATED", "ARANCEL_CREATED", "ARANCELES_IMPORTADOS");
-		assertThat(auditoria.getAllValues().get(2).details())
+		verify(auditTrail).record(auditoria.capture());
+		assertThat(auditoria.getAllValues()).extracting(AuditEntry::eventType)
+				.as("un evento por el acto de importar, no uno por fila (pre-QA PER-06b)")
+				.containsExactly("ARANCELES_IMPORTADOS");
+		assertThat(auditoria.getValue().details())
 				.containsEntry("cantidad", "2")
-				.containsEntry("rango", ENERO + " a " + DICIEMBRE);
+				.containsEntry("rango", ENERO + " a " + DICIEMBRE)
+				.containsKey("arancelIds");
 	}
 
 	// =================================================================================

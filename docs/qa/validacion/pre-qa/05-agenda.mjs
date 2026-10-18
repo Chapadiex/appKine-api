@@ -1,0 +1,227 @@
+import { randomUUID } from 'node:crypto';
+import { APIC, MAILC, RED, API, MAILPIT, P, MYSQL, DB, PLATAFORMA, AQUI, PASSWORD, PASSWORD2, SALIDA, SALIDA_JSON, SOLO, suf, dormir, UA, inicioCorrida, Corte, Bloqueo, R, cur, CIRC, paso, ultimaSql, ok, eq, st, tipo, must, need, nota, manual, soloManual, n, SECRETO, limpiar, descr, api, galletas, cookieRt, V, lit, unesc, q, q1, fmtSql, ahoraDb, maxAudit, auditDesde, tiene, cuenta, det, docker, correos, textoCorreo, esperarCorreos, tokenDe, tokenCorreo, ES_ACTIVACION, ES_INVITACION, pw, correo, registrar, activar, login, entrar, CU, SES, S, Splat, hoy, horaLocal, fechaLocal, instanteLocal, C, usados, agenda, slot, reservar, recepcionHastaLlamado, ses, iniciarSesion, tratar, cerrarSesion, atencionCompleta, PNG, multipart, sha256, J, ORIGEN, GUIA, guia, ZONA, setZona, AUDIT_RANGO } from './lib.mjs';
+
+// 05 · Agenda, turnos, series, recepcion y prepago (+ ECO-04, abrir la caja, antes del prepago en efectivo)
+export const tu = (id, p = '') => `/api/v1/consultorios/${C.sede_a}/turnos/${id}${p}`;
+const turnoDb = (id) => q(`SELECT id, oferta_id, persona_id, profesional_membership_id, inicio, fin, estado, serie_id, idempotency_key, reservado_por_cuenta_id, cobertura_id, confirmado_en, reprogramado_en, ausente_en, motivo_cancelacion, cancelado_en, cancelado_por_cuenta_id, deleted_at, version FROM turno WHERE id = ${id}`);
+const eventos = (id) => q(`SELECT tipo, estado_anterior, estado_nuevo, inicio_anterior, inicio_nuevo, motivo, actor_cuenta_id FROM turno_evento WHERE turno_id = ${id} ORDER BY id`);
+
+export async function c05() {
+	await paso('AGE-01', 'Buscar y reservar', async () => {
+		need(C.oferta, C.persona, C.mprof);
+		const adm = await S('adm');
+		// el turno de AGE-05 se reserva primero, en el slot mas cercano, para que haya pasado al final de la corrida
+		const sa = await slot({ margenMin: 1 });
+		const ta = await reservar(adm, C.persona_part, sa);
+		if ([200, 201].includes(ta.status)) C.turno_ausente = ta.cuerpo;
+		const sl = await slot();
+		const k = randomUUID();
+		const [r1, r2] = await Promise.all([reservar(adm, C.persona, sl, { key: k }), reservar(adm, C.persona, sl, { key: k })]);
+		ok([200, 201].includes(r1.status) && [200, 201].includes(r2.status) && r1.cuerpo.id === r2.cuerpo.id, 'doble click con la misma idempotencyKey: un solo turno', r1, r2);
+		C.turno_rep = V.turno = r1.cuerpo.id;
+		const t = turnoDb(C.turno_rep);
+		ok(t[0]?.estado === 'RESERVADO' && n(t[0].reservado_por_cuenta_id) === n(q1(`SELECT id FROM cuenta WHERE email_normalizado = ${lit(CU.adm.email)}`).id), 'RESERVADO, reservado por el administrativo', t);
+		ok(new Date(`${t[0]?.inicio}Z`).toISOString() === new Date(sl.desde).toISOString(), 'inicio guardado en UTC', t, `slot: ${sl.desde}`);
+		const ev = eventos(C.turno_rep);
+		ok(ev.length === 1 && ev[0].tipo === 'RESERVA', 'un evento RESERVA', ev);
+		const c = q('SELECT COUNT(*) n FROM turno t JOIN turno u ON u.profesional_membership_id = t.profesional_membership_id AND u.inicio = t.inicio WHERE t.id = @turno AND u.deleted_at IS NULL');
+		eq(c[0].n, 1, 'un turno vivo en ese horario', c);
+		const sin = await reservar(adm, C.persona_dup, await slot());
+		tipo(sin, 'persona-sin-perfil-paciente', 'reservar para una persona sin perfil (PER-02)');
+		manual('la grilla marca el slot como ocupado');
+	});
+	await paso('AGE-02', 'Confirmar', async () => {
+		need(C.turno_rep);
+		const d0 = maxAudit();
+		must(await api('POST', tu(C.turno_rep, '/confirmacion'), { s: await S('adm') }), 200, 'confirmar');
+		const t = turnoDb(C.turno_rep);
+		ok(t[0].estado === 'CONFIRMADO' && t[0].confirmado_en, 'CONFIRMADO', t);
+		ok(eventos(C.turno_rep).some((e) => e.tipo === 'CONFIRMACION'), 'evento CONFIRMACION');
+		eq(auditDesde(d0, `AND entity_id = ${C.turno_rep} AND event_type LIKE 'TURNO%'`).length, 0, 'confirmar no escribe audit_event');
+	});
+	await paso('AGE-03', 'Reprogramar mueve el mismo turno', async () => {
+		need(C.turno_rep);
+		const d0 = maxAudit();
+		const t0 = turnoDb(C.turno_rep)[0];
+		const nuevo = await slot({ dia: 1 });
+		const r = await api('POST', tu(C.turno_rep, '/reprogramacion'), { s: await S('adm'), json: { inicio: nuevo.desde, motivo: 'Pide otro dia (pre-QA)', expectedVersion: n(t0.version) } });
+		must(r, 200, 'reprogramar a manana');
+		eq(r.cuerpo.id, C.turno_rep, 'el mismo id');
+		const ev = eventos(C.turno_rep).find((e) => e.tipo === 'REPROGRAMACION');
+		ok(ev && ev.inicio_anterior && ev.inicio_nuevo && ev.motivo, 'evento REPROGRAMACION con los dos horarios', eventos(C.turno_rep));
+		ok(tiene(auditDesde(d0, 'AND organization_id = @org_a'), 'TURNO_REPROGRAMADO', (x) => x.reason), 'TURNO_REPROGRAMADO con reason');
+	});
+	await paso('AGE-04', 'No se reserva en el pasado', async () => {
+		const inicio = instanteLocal(hoy(), '00:00');
+		const r = await reservar(await S('adm'), C.persona, inicio);
+		ok(r.status >= 400 && r.status < 500, 'reservar hoy a las 00:00 se rechaza', r);
+		eq(q1(`SELECT COUNT(*) n FROM turno WHERE consultorio_id = @sede_a AND inicio = ${lit(inicio.replace('T', ' ').replace('Z', ''))}`).n, 0, 'ningun turno en ese horario');
+	});
+	await paso('AGE-06', 'Cancelar con motivo devuelve el lugar', async () => {
+		const d0 = maxAudit();
+		const adm = await S('adm');
+		const sl = await slot({ dia: 1 });
+		const t = must(await reservar(adm, C.persona_part, sl), [200, 201], 'reservar');
+		must(await api('POST', tu(t.id, '/cancelacion'), { s: adm, json: { expectedVersion: t.version, motivo: 'No puede venir (pre-QA)' } }), 200, 'cancelar');
+		C.turno_cancelado = t.id;
+		const f = turnoDb(t.id);
+		ok(f[0].estado === 'CANCELADO' && f[0].deleted_at && f[0].motivo_cancelacion && f[0].cancelado_por_cuenta_id, 'CANCELADO con deleted_at, motivo y actor', f);
+		const ag = await agenda(adm, C.sede_a, C.oferta, hoy(1), hoy(2), C.mprof);
+		ok(ag.cuerpo.dias.flatMap((d) => d.slots).some((x) => x.desde === sl.desde), 'el slot vuelve a estar libre');
+		usados.add(sl.desde);
+		ok(tiene(auditDesde(d0, 'AND organization_id = @org_a'), 'TURNO_CANCELADO', (x) => x.previous_state === 'RESERVADO' && x.new_state === 'CANCELADO' && x.reason), 'TURNO_CANCELADO RESERVADO -> CANCELADO con reason');
+		nota('el 409 turno-con-atencion se prueba en CLI-01');
+	});
+	await paso('AGE-07', 'Serie de turnos: alta', async () => {
+		const d0 = maxAudit();
+		let k = 7;
+		while (new Date(`${hoy(k)}T12:00:00Z`).getUTCDay() !== 1) k++;
+		const r = await api('POST', `/api/v1/consultorios/${C.sede_a}/series-de-turnos`, { s: await S('adm'), json: { ofertaId: C.oferta, personaId: C.persona_part, profesionalId: C.mprof, diasSemana: [1, 3], hora: '10:00', fechaDesde: hoy(k), cantidad: 6, idempotencyKey: randomUUID() } });
+		const sr = must(r, [200, 201], 'alta de la serie');
+		C.serie = V.serie = sr.id;
+		const f = q('SELECT id, frecuencia, dias_semana, hora_local, cantidad, cantidad_generada, timezone FROM turno_serie WHERE id = @serie');
+		eq(f[0]?.cantidad_generada, 6, 'cantidad_generada = 6', f);
+		const ts = q('SELECT id, inicio, estado FROM turno WHERE serie_id = @serie ORDER BY inicio');
+		ok(ts.length === 6 && ts.every((x) => x.estado === 'RESERVADO'), 'seis turnos RESERVADO', ts);
+		const col = q("SELECT COUNT(*) n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'turno_serie' AND column_name = 'estado'");
+		eq(col[0].n, 0, 'la serie no tiene columna de estado (DP-20)');
+		C.serieTurnos = ts.map((x) => n(x.id));
+		ok(tiene(auditDesde(d0, 'AND organization_id = @org_a'), 'TURNO_SERIE_CREADA'), 'TURNO_SERIE_CREADA');
+		manual('previsualizar en /agenda/ofertas/<id>/reservar-serie');
+	});
+	await paso('AGE-08', 'Serie: reprogramar "este y los siguientes", y cancelar', async () => {
+		need(C.serie);
+		const d0 = maxAudit();
+		const adm = await S('adm');
+		const base = `/api/v1/consultorios/${C.sede_a}/series-de-turnos/${C.serie}`;
+		const [, , t3, , t5] = C.serieTurnos;
+		const al = must(await api('GET', `${base}/alcance?alcance=ESTE_Y_SIGUIENTES&turnoId=${t3}`, { s: adm }), 200, 'previsualizar el alcance');
+		eq(al.afectados?.length, 4, 'la previsualizacion dice cuantos turnos se afectan');
+		const fecha3 = fechaLocal(`${q1(`SELECT inicio FROM turno WHERE id = ${t3}`).inicio}Z`);
+		must(await api('POST', `${base}/reprogramacion`, { s: adm, json: { alcance: 'ESTE_Y_SIGUIENTES', turnoId: t3, inicio: instanteLocal(fecha3, '11:00'), cantidadConfirmada: 4, motivo: 'Cambio de horario (pre-QA)' } }), 200, 'reprogramar desde el tercero a las 11');
+		const malo = await api('POST', `${base}/cancelacion`, { s: adm, json: { alcance: 'ESTE_Y_SIGUIENTES', turnoId: t5, cantidadConfirmada: 3, motivo: 'x' } });
+		tipo(malo, 'conflict', 'confirmar una cantidad que no coincide');
+		ok(malo.cuerpo?.afectados !== undefined && malo.cuerpo?.confirmados !== undefined, 'el 409 trae afectados y confirmados', malo);
+		must(await api('POST', `${base}/cancelacion`, { s: adm, json: { alcance: 'ESTE_Y_SIGUIENTES', turnoId: t5, cantidadConfirmada: 2, motivo: 'Termina antes (pre-QA)' } }), 200, 'cancelar desde el quinto');
+		const ts = q('SELECT id, inicio, estado, deleted_at FROM turno WHERE serie_id = @serie ORDER BY id');
+		const h = ts.map((x) => horaLocal(`${x.inicio}Z`));
+		ok(ts.slice(2).every((_, i) => h[i + 2] === '11:00') && ts.slice(0, 2).every((_, i) => h[i] === '10:00'), 'los turnos 3 a 6 movidos a las 11 (mismos ids)', ts, `horas: ${h}`);
+		ok(ts.slice(4).every((x) => x.estado === 'CANCELADO') && ts.slice(0, 4).every((x) => x.estado !== 'CANCELADO'), 'los 5 y 6 cancelados', ts);
+		const bandeja = must(await api('GET', `/api/v1/consultorios/${C.sede_a}/series-de-turnos`, { s: adm }), 200, 'la bandeja de series');
+		const sr = (Array.isArray(bandeja) ? bandeja : bandeja.content ?? []).find((x) => x.id === C.serie);
+		ok(sr?.estado === 'VIGENTE', 'la serie sigue VIGENTE: quedan los turnos 1 a 4 pendientes (CANCELADA solo sin ninguno pendiente)', sr);
+		const au = auditDesde(d0, 'AND organization_id = @org_a');
+		ok(tiene(au, 'TURNO_SERIE_REPROGRAMADA') && tiene(au, 'TURNO_SERIE_CANCELADA'), 'TURNO_SERIE_REPROGRAMADA y TURNO_SERIE_CANCELADA', au);
+	});
+	await paso('AGE-09', 'Recepcion: llegada, validacion, espera y llamado', async () => {
+		need(C.cobertura, C.autorizacion);
+		const d0 = maxAudit();
+		const adm = await S('adm');
+		const t = must(await reservar(adm, C.persona, await slot()), [200, 201], 'turno de hoy de la persona con cobertura');
+		C.turno_os = t.id;
+		const r = await recepcionHastaLlamado(adm, t.id, { cobertura: C.cobertura });
+		must(r, 200, 'recepcion hasta el llamado');
+		const f = q(`SELECT id, estado, modalidad, cobertura_id, practica_id, convenio_id, observacion, llegada_en, validada_en, en_espera_desde, llamada_en FROM recepcion WHERE turno_id = ${t.id}`);
+		ok(f[0]?.estado === 'LLAMADA' && f[0].modalidad === 'COBERTURA' && n(f[0].cobertura_id) === C.cobertura, 'LLAMADA, modalidad COBERTURA', f);
+		const ev = q(`SELECT tipo, actor_cuenta_id, ocurrido_en FROM recepcion_evento WHERE recepcion_id = ${n(f[0]?.id)} ORDER BY id`);
+		eq(ev.map((x) => x.tipo).join(','), 'LLEGADA,VALIDACION,ESPERA,LLAMADO', 'eventos en orden', ev);
+		ok(ev.every((x) => x.actor_cuenta_id && x.ocurrido_en), 'cada uno con actor y hora', ev);
+		eq(turnoDb(t.id)[0].estado, 'RESERVADO', 'el turno no cambio de estado');
+		const au = auditDesde(d0, 'AND organization_id = @org_a');
+		for (const e of ['RECEPCION_LLEGADA', 'RECEPCION_VALIDACION', 'RECEPCION_ESPERA', 'RECEPCION_LLAMADO']) ok(tiene(au, e), e, au);
+	});
+	await paso('AGE-10', 'Atender como Particular', async () => {
+		const d0 = maxAudit();
+		const adm = await S('adm');
+		const t = must(await reservar(adm, C.persona_part, await slot()), [200, 201], 'turno de hoy (la persona tiene obra social)');
+		C.turno_part = t.id;
+		must(await recepcionHastaLlamado(adm, t.id, { particular: 'Prefiere pagar particular (pre-QA)' }), 200, 'recepcion particular hasta el llamado');
+		const f = q(`SELECT estado, modalidad, motivo_particular, cobertura_id FROM recepcion WHERE turno_id = ${t.id}`);
+		ok(f[0]?.modalidad === 'PARTICULAR' && f[0].motivo_particular && f[0].cobertura_id === null, 'PARTICULAR con motivo y sin cobertura', f);
+		ok(tiene(auditDesde(d0, 'AND organization_id = @org_a'), 'RECEPCION_PARTICULAR', (x) => x.reason), 'RECEPCION_PARTICULAR con reason');
+	});
+	await paso('AGE-11', 'Anular una recepcion', async () => {
+		const d0 = maxAudit();
+		const adm = await S('adm');
+		const t = must(await reservar(adm, C.persona_part, await slot()), [200, 201], 'turno');
+		const ll = must(await api('POST', tu(t.id, '/recepcion'), { s: adm }), [200, 201], 'llegada');
+		must(await api('POST', tu(t.id, '/recepcion/anulacion'), { s: adm, json: { expectedVersion: ll.version, motivo: 'Se fue (pre-QA)' } }), 200, 'anular');
+		const f = q(`SELECT estado, motivo_cierre, cerrada_en, cerrada_por_cuenta_id FROM recepcion WHERE turno_id = ${t.id}`);
+		ok(f[0]?.estado === 'ANULADA' && f[0].cerrada_en && f[0].motivo_cierre, 'ANULADA con cerrada_en y motivo', f);
+		const tt = turnoDb(t.id);
+		ok(tt[0].estado === 'RESERVADO' && tt[0].deleted_at === null, 'el turno intacto', tt);
+		const t2 = must(await reservar(adm, C.persona_part, await slot()), [200, 201], 'otro turno');
+		must(await api('POST', tu(t2.id, '/recepcion'), { s: adm }), [200, 201], 'llegada');
+		const tv = turnoDb(t2.id)[0];
+		must(await api('POST', tu(t2.id, '/cancelacion'), { s: adm, json: { expectedVersion: n(tv.version), motivo: 'Cancelado con recepcion abierta' } }), 200, 'cancelar el turno con la recepcion abierta');
+		const r2 = q(`SELECT r.estado, (SELECT GROUP_CONCAT(e.tipo) FROM recepcion_evento e WHERE e.recepcion_id = r.id) eventos FROM recepcion r WHERE r.turno_id = ${t2.id}`);
+		ok(r2[0]?.estado !== 'LLEGO' && /CIERRE_POR_CANCELACION/.test(r2[0]?.eventos ?? ''), 'cancelar el turno cierra la recepcion sola (CIERRE_POR_CANCELACION)', r2);
+		ok(tiene(auditDesde(d0, 'AND organization_id = @org_a'), 'RECEPCION_ANULACION'), 'RECEPCION_ANULACION');
+	});
+	await paso('ECO-04', 'Abrir la caja', async () => {
+		const d0 = maxAudit();
+		const s = await S('adm');
+		C.jornada = V.jornada = must(await api('POST', `/api/v1/consultorios/${C.sede_a}/caja/jornadas`, { s, json: { moneda: 'ARS', saldoInicial: 0 } }), 201, 'abrir').id;
+		st(await api('POST', `/api/v1/consultorios/${C.sede_a}/caja/jornadas`, { s, json: { moneda: 'ARS', saldoInicial: 0 } }), 409, 'abrir otra');
+		const f = q("SELECT id, estado, saldo_inicial FROM jornada_caja WHERE consultorio_id = @sede_a AND estado = 'ABIERTA'");
+		ok(f.length === 1 && n(f[0].id) === C.jornada, 'una jornada ABIERTA por sede', f);
+		ok(tiene(auditDesde(d0, 'AND organization_id = @org_a'), 'CAJA_ABIERTA'), 'CAJA_ABIERTA');
+	});
+	await paso('AGE-12', 'Prepago antes del check-in', async () => {
+		need(C.jornada);
+		const d0 = maxAudit();
+		const a = await S('admin');
+		const adm = await S('adm');
+		const o = (await api('GET', `/api/v1/consultorios/${C.sede_a}/ofertas`, { s: a })).cuerpo;
+		const ver = (Array.isArray(o) ? o : o.content ?? []).find((x) => x.id === C.oferta)?.version;
+		const pol = must(await api('PUT', `/api/v1/consultorios/${C.sede_a}/ofertas/${C.oferta}/politica-de-prepago`, { s: a, json: { exigePrepago: true, expectedVersion: ver } }), 200, 'exige prepago');
+		const t = must(await reservar(adm, C.persona_part, await slot()), [200, 201], 'turno de hoy para la persona particular');
+		C.turno_prepago = V.turno_prepago = t.id;
+		const dia = must(await api('GET', `/api/v1/consultorios/${C.sede_a}/turnos?fecha=${hoy()}`, { s: adm }), 200, 'agenda del dia');
+		eq(dia.turnos.find((x) => x.id === t.id)?.prepago?.estado, 'PENDIENTE', 'el turno avisa prepago pendiente');
+		const cobro = (k) => api('POST', `/api/v1/consultorios/${C.sede_a}/cobros`, { s: adm, json: { personaId: C.persona_part, turnoId: t.id, total: 12000, anticipo: 12000, moneda: 'ARS', medios: [{ medio: 'EFECTIVO', importe: 12000 }], idempotencyKey: k } });
+		C.cobro_prepago = must(await cobro(randomUUID()), 201, 'anticipo en efectivo').id;
+		tipo(await cobro(randomUUID()), 'prepago-ya-registrado', 'un segundo prepago');
+		const dia2 = (await api('GET', `/api/v1/consultorios/${C.sede_a}/turnos?fecha=${hoy()}`, { s: adm })).cuerpo;
+		eq(dia2.turnos.find((x) => x.id === t.id)?.prepago?.estado, 'REGISTRADO', 'el aviso pasa a registrado');
+		const tc = turnoDb(C.turno_cancelado)[0];
+		const pc = await api('POST', `/api/v1/consultorios/${C.sede_a}/cobros`, { s: adm, json: { personaId: C.persona_part, turnoId: C.turno_cancelado, total: 100, anticipo: 100, moneda: 'ARS', medios: [{ medio: 'EFECTIVO', importe: 100 }], idempotencyKey: randomUUID() } });
+		ok(tc && pc.tipo === 'prepago-no-admitido', 'prepago sobre un turno cancelado: prepago-no-admitido', pc);
+		const f = q('SELECT id, persona_id, turno_id, turno_prepago_vigente, total, saldo_a_favor, deleted_at FROM cobro WHERE turno_id = @turno_prepago');
+		ok(f.length === 1 && Number(f[0].saldo_a_favor) === 12000, 'un cobro con turno_id y saldo a favor = el anticipo', f);
+		must(await api('PUT', `/api/v1/consultorios/${C.sede_a}/ofertas/${C.oferta}/politica-de-prepago`, { s: a, json: { exigePrepago: false, expectedVersion: pol.version } }), 200, 'volver a no exigir prepago');
+		const au = auditDesde(d0, 'AND organization_id = @org_a');
+		ok(tiene(au, 'OFERTA_POLITICA_PREPAGO_CHANGED') && tiene(au, 'COBRO_REGISTRADO'), 'OFERTA_POLITICA_PREPAGO_CHANGED y COBRO_REGISTRADO', au);
+		nota('anticipo de 12000 contra un precio de 10000: el sobrante tiene que quedar a favor (ECO-03)');
+	});
+	await paso('AGE-14', 'Cobertura elegida al reservar', async () => {
+		need(C.cobertura);
+		const adm = await S('adm');
+		const a = await S('admin');
+		C.plan2 = must(await api('POST', `/api/v1/financiadores/${C.financiador}/planes`, { s: a, json: { codigo: 'PLAN-QA-2', nombre: 'Plan QA 2', vigenciaDesde: '2026-01-01' } }), 201, 'segundo plan').id;
+		C.cob2 = must(await api('POST', `/api/v1/personas/${C.persona}/coberturas`, { s: a, json: { tipo: 'FINANCIADA', planId: C.plan2, numeroAfiliado: 'AF-QA-009', vigenciaDesde: '2026-01-01', principal: false } }), 201, 'segunda cobertura, no principal').id;
+		const t1 = must(await reservar(adm, C.persona, await slot({ dia: 1 }), { coberturaId: C.cob2 }), [200, 201], 'reservar con la no principal');
+		const t2 = must(await reservar(adm, C.persona, await slot({ dia: 1 })), [200, 201], 'reservar sin elegir');
+		const f = q(`SELECT t.id, t.cobertura_id, c.principal, c.tipo FROM turno t LEFT JOIN cobertura_paciente c ON c.id = t.cobertura_id WHERE t.id IN (${t1.id}, ${t2.id}) ORDER BY t.id`);
+		ok(n(f[0]?.cobertura_id) === C.cob2 && f[0].principal === '0' && f[1]?.cobertura_id === null, 'el primero con la no principal, el segundo sin cobertura', f);
+		must(await api('POST', tu(t1.id, '/reprogramacion'), { s: adm, json: { inicio: (await slot({ dia: 1 })).desde, motivo: 'pre-QA', expectedVersion: t1.version } }), 200, 'reprogramar el primero');
+		eq(n(turnoDb(t1.id)[0].cobertura_id), C.cob2, 'reprogramar conserva cobertura_id');
+		const antes = n(q1('SELECT COUNT(*) n FROM turno WHERE persona_id = @persona').n);
+		for (const cob of [C.cob_part, 999999]) {
+			const r = await reservar(adm, C.persona, await slot({ dia: 1 }), { coberturaId: cob });
+			st(r, 404, `cobertura ${cob === 999999 ? 'inexistente' : 'de otra persona'}`);
+			tipo(r, 'not-found', 'cobertura ajena');
+		}
+		eq(q1('SELECT COUNT(*) n FROM turno WHERE persona_id = @persona').n, antes, 'ningun turno nuevo');
+		const hoyT = must(await reservar(adm, C.persona, await slot(), { coberturaId: C.cob2 }), [200, 201], 'turno de hoy con la cobertura elegida');
+		const base = tu(hoyT.id, '/recepcion');
+		const ll = must(await api('POST', base, { s: adm }), [200, 201], 'llegada');
+		const v = await api('POST', `${base}/validacion`, { s: adm, json: { expectedVersion: ll.version } });
+		must(v, 200, 'validar sin mandar coberturaId (nunca 4xx)');
+		const rc = q(`SELECT r.estado, r.modalidad, r.cobertura_id, t.cobertura_id AS elegida, r.observacion FROM recepcion r JOIN turno t ON t.id = r.turno_id WHERE r.turno_id = ${hoyT.id}`);
+		ok(n(rc[0]?.cobertura_id) === C.cob2, 'la recepcion toma la cobertura elegida al reservar, no la principal', rc);
+		nota(`la recepcion quedo ${rc[0]?.estado}${rc[0]?.observacion ? ` (${rc[0].observacion})` : ''}: el plan 2 no tiene convenio`);
+		C.turno_anular_os = hoyT.id;
+		manual('el selector "Cobertura con la que se piensa atender" y los textos de confirmacion');
+	});
+}
