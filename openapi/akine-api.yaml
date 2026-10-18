@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.127.0
+  version: 0.129.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -8890,7 +8890,7 @@ paths:
 
         **Exige saldo cero y no ofrece ajuste.** Cerrar con diferencia haria que el residual dejara de estar en ninguna parte como lo que es —plata reclamada y no cobrada— y que la cuenta corriente cuadrara por definicion; prorratearlo entre las prestaciones inventaria un debito que el financiador nunca informo. El sistema **nombra el residual y se niega a fingir**: el 409 lo lleva, y la salida es registrar el debito o el pago que falta.
 
-        **Aca, y solo aca, se salda la deuda.** Cada prestacion que sigue `INCLUIDO` pasa a `ACEPTADO` y su obligacion se descuenta por el importe exacto que se presento. Una `DEBITADO` no salda nada: esa deuda sigue existiendo.
+        **Aca, y solo aca, se salda la deuda.** Cada prestacion que sigue `INCLUIDO` pasa a `ACEPTADO` y su obligacion se descuenta por el importe exacto que se presento. Cada `DEBITADO_PARCIAL` pasa a `ACEPTADO_PARCIAL` y su obligacion se descuenta por lo presentado menos lo debitado: queda pendiente solo lo debitado, re-presentable en otro lote. Una `DEBITADO` no salda nada: esa deuda sigue existiendo.
       operationId: conciliar
       parameters:
       - in: path
@@ -9275,7 +9275,7 @@ paths:
       description: |-
         Asienta el debito que el financiador informo (RF-M21-006).
 
-        **No borra la prestacion ni perdona la deuda** (RN-M21-004). La sesion original queda intacta, la obligacion sigue pendiente, y la prestacion vuelve a estar **disponible para otro lote** — que es como se re-presenta lo rechazado.
+        **No borra la prestacion ni perdona la deuda** (RN-M21-004). La sesion original queda intacta y la obligacion sigue pendiente. Un debito **por el total** deja el item `DEBITADO` y la prestacion vuelve a estar **disponible para otro lote**. Un debito **parcial** lo deja `DEBITADO_PARCIAL`: sigue ocupando la prestacion hasta conciliar, porque lo no debitado se cobra en este lote; al conciliar se salda lo cobrado y lo debitado queda disponible para re-presentarlo.
 
         El saldo del lote se mueve con una condicion del motor y no con un lock, asi que un aviso de debito y una transferencia cargados a la vez no pueden colarse los dos: el segundo recibe 409 con el saldo actual.
       operationId: debitar
@@ -9486,7 +9486,7 @@ paths:
 
         **Es una lectura: no cambia estado y no bloquea nada.** Lo que bloquea es confirmar, que la vuelve a correr del lado del servidor — el frontend nunca es autoridad. Tenerla aparte permite mostrar los problemas **mientras se arma** el lote, en vez de descubrirlos todos juntos al apretar el boton.
 
-        > **Todavia no valida orden, autorizacion ni credencial.** Desde AKINE F-4 esos tres requisitos viajan congelados en cada obligacion del financiador, pero decidir si cada faltante bloquea el lote o solo avisa sigue abierto.
+        **Orden, autorizacion y credencial** se evaluan contra lo que el convenio exigia el dia de la prestacion, congelado en cada obligacion del financiador. Una orden o una autorizacion faltante es un **reparo** (`SIN_ORDEN`, `SIN_AUTORIZACION` en `hallazgos`): impide confirmar. Una credencial vencida ese dia, o una cobertura sin numero de afiliado, es un **aviso** (`CREDENCIAL_FALTANTE` en `avisos`): se confirma igual. Agregar el item al borrador no los evalua; validar y confirmar si.
       operationId: validar
       parameters:
       - in: path
@@ -32869,13 +32869,17 @@ components:
           description: Ausente si no se debito
         estado:
           type: string
-          description: '`INCLUIDO` y `ACEPTADO` mantienen tomada la obligacion; `DEBITADO`
-            y `ANULADO` la liberan para otro lote.'
+          description: "`INCLUIDO`, `ACEPTADO` y `DEBITADO_PARCIAL` mantienen tomada\
+            \ la obligacion; `DEBITADO` (debito total), `ACEPTADO_PARCIAL` (conciliado\
+            \ con debito parcial: lo debitado queda pendiente y re-presentable) y\
+            \ `ANULADO` la liberan para otro lote."
           enum:
           - INCLUIDO
           - ACEPTADO
           - DEBITADO
           - ANULADO
+          - DEBITADO_PARCIAL
+          - ACEPTADO_PARCIAL
           example: INCLUIDO
         fechaPrestacion:
           type: string
@@ -34276,9 +34280,10 @@ components:
       properties:
         hallazgo:
           type: string
-          description: "Los tres requisitos documentales del convenio —orden, autorizacion\
-            \ y credencial— **todavia no se validan**: viven en el arancel congelado\
-            \ y el devengado no los copia a la obligacion."
+          description: "Los requisitos documentales se evaluan contra lo que el convenio\
+            \ exigia el dia de la prestacion: `SIN_ORDEN` y `SIN_AUTORIZACION` van\
+            \ en `hallazgos` (bloquean); `CREDENCIAL_FALTANTE` va en `avisos` (no\
+            \ bloquea)."
           enum:
           - OBLIGACION_ANULADA
           - SIN_SALDO
@@ -34287,6 +34292,9 @@ components:
           - SEDE_DISTINTA
           - FUERA_DEL_PERIODO
           - MONEDA_DISTINTA
+          - SIN_ORDEN
+          - SIN_AUTORIZACION
+          - CREDENCIAL_FALTANTE
           example: FUERA_DEL_PERIODO
         itemId:
           type: integer
@@ -37329,13 +37337,19 @@ components:
         \ de cada una. La lista entera y no la primera: hay que poder arreglar todo\
         \ de una vez."
       properties:
+        avisos:
+          type: array
+          description: "Lo que conviene regularizar y NO impide confirmar (hoy, `CREDENCIAL_FALTANTE`).\
+            \ Misma forma que `hallazgos`"
+          items:
+            $ref: "#/components/schemas/ReparoDePresentacion"
         confirmable:
           type: boolean
           description: '`true` cuando el lote tiene prestaciones y ninguna tiene reparos'
           example: false
         hallazgos:
           type: array
-          description: Vacio cuando el lote esta listo
+          description: Lo que impide confirmar. Vacio cuando el lote esta listo
           items:
             $ref: "#/components/schemas/ReparoDePresentacion"
         presentacionId:

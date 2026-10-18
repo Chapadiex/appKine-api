@@ -25,15 +25,23 @@
 > resueltas** (U-39, U-40, U-42, U-44, U-46, U-48, U-49 → DP-24 a DP-30) y **4 postergadas** después
 > del release candidate (U-41, U-43, U-45, U-50 → DP-31). El mismo día, más tarde, **3 resueltas**
 > más del bloque A: **U-03** —junto con U-46 (e)— → DP-33, **U-05** → DP-34 y **U-06** → DP-35.
-> U-47 no existe. Quedan **39 abiertas**, 4 de ellas postergadas.
+> U-47 no existe. El **18/10/2026** el usuario aceptó las recomendaciones de **U-11** y **U-28**
+> → DP-37, implementadas en api #122. Quedan **37 abiertas**, 4 de ellas postergadas.
 
-| Bloque | Abiertas | Resueltas el 17/10 |
+| Bloque | Abiertas | Resueltas el 17/10 y el 18/10 |
 |---|---|---|
 | A. Bloquean el gate del MVP (U-01 a U-06) | 3 (2 acciones + 1 decisión: U-04) | U-03, U-05, U-06 |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 9 | U-39, U-42, U-46, U-48, U-49 |
-| C. Alcance del MVP, aditivas (U-15 a U-34) | 20 | — |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 8 | U-39, U-42, U-46, U-48, U-49; U-11 (18/10) |
+| C. Alcance del MVP, aditivas (U-15 a U-34) | 19 | U-28 (18/10) |
 | D. No bloquean nada (U-35 a U-37) + postergadas U-41, U-43, U-45, U-50 | 7 (4 postergadas) | U-40, U-44 |
-| **Total** | **39** (de 49) | **10** |
+| **Total** | **37** (de 49) | **12** |
+
+### Resueltas el 18/10/2026
+
+| U | Resolución | DP |
+|---|---|---|
+| U-11 | la conciliación salda lo cobrado (presentado − debitado) y deja `PENDIENTE` sólo lo debitado, re-presentable; estados `DEBITADO_PARCIAL` y `ACEPTADO_PARCIAL`, migración `V110`. | DP-37 |
+| U-28 | orden y autorización faltantes cuando el convenio las exige → **reparo** (`SIN_ORDEN`, `SIN_AUTORIZACION`, bloquean confirmar); credencial → **aviso** (`CREDENCIAL_FALTANTE` en `avisos`). | DP-37 |
 
 ### Resueltas el 17/10/2026
 
@@ -202,7 +210,10 @@ fila nueva.
 - **Fase / RF:** F4 (04.04). Antes, decisión pendiente 6 del `CLAUDE.md` del workspace.
 - **Destraba:** el 15 % de 04.04 y el ADR que la ficha de F4 pide.
 
-### U-11 · Débito parcial de una presentación
+### ~~U-11 · Débito parcial de una presentación~~ — RESUELTA el 18/10/2026 (DP-37)
+
+> **Resuelta el 18/10/2026** por el usuario (acepta la recomendada) e implementada en api #122,
+> contrato **0.129.0**, migración **`V110`** (antes `V95`). Ver DP-37.
 
 - **Pregunta:** lo debitado ¿se re-presenta, se pasa al paciente o se da de baja como pérdida? Hoy
   debitar deja el ítem `DEBITADO` entero y, al conciliar, la obligación del financiador sigue
@@ -212,6 +223,10 @@ fila nueva.
   sistema. **Necesita migración** (F7 n.º 4).
 - **Fase / RF:** F7 (07.04). CLAUDE §7 n.º 24; `docs/qa/90-conocido-y-aceptado.md` §5.
 - **Destraba:** el saldo correcto del financiador después de cada conciliación con débito.
+- **Estado:** **aprobada el 18/10/2026 e implementada en PR #122.** La
+  recomendada, con `V110` (nació como `V95`) y contrato 0.129.0: estados de ítem `DEBITADO_PARCIAL` (ocupa hasta
+  conciliar) y `ACEPTADO_PARCIAL` (libera lo debitado). Diseño y design challenge en
+  `docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md` §3.
 
 ### U-12 · DU-13 — catálogo global de financiadores
 
@@ -458,13 +473,20 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F6 (06.04). Antes, decisión pendiente 11 del `CLAUDE.md` del workspace.
 - **Destraba:** el 10 % de 06.04.
 
-### U-28 · RF-M21-003 — orden, autorización y credencial en la presentación
+### ~~U-28 · RF-M21-003 — orden, autorización y credencial en la presentación~~ — RESUELTA el 18/10/2026 (DP-37)
+
+> **Resuelta el 18/10/2026** por el usuario (acepta la recomendada) e implementada en api #122,
+> contrato **0.129.0**. Ver DP-37.
 
 - **Pregunta:** un faltante ¿es **reparo** (bloquea confirmar el lote) o **aviso**?
 - **Recomendado:** reparo para orden y autorización cuando el convenio las exige; aviso para la
   credencial vencida. Es un valor nuevo en `HallazgoDeValidacion`: contrato aditivo (F7 n.º 3).
 - **Fase / RF:** F7 (07.04).
 - **Destraba:** parte del 10 % de 07.04 y menos débitos del financiador.
+- **Estado:** **aprobada el 18/10/2026 e implementada en PR #122.** La
+  recomendada, contrato 0.129.0: `SIN_ORDEN` y `SIN_AUTORIZACION` en `hallazgos` (bloquean
+  confirmar), `CREDENCIAL_FALTANTE` en la lista nueva `avisos` (no bloquea). Se evalúan al validar y
+  confirmar, no al incluir. Diseño en `docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md` §2.
 
 ### U-29 · Ventana de cancelación del paciente *(depende de `OWN`, post-MVP por DP-22)*
 

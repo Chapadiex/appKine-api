@@ -8,13 +8,14 @@ package com.akine.billing.application;
  * pasar la deuda al paciente— y colapsarlos obligaria a adivinar cual es. Es la misma leccion que
  * 05.01 dejo escrita con {@code MotivoSinSlots} y 03.05 con {@code MotivoSinArancel}.
  *
- * <h2>Lo que esta lista NO tiene, y por que</h2>
+ * <h2>Los requisitos documentales del convenio (AKINE-07.04b)</h2>
  *
- * <p>Faltan los tres requisitos documentales del convenio —orden, autorizacion y credencial—, que
- * es lo primero que RF-M21-003 sugiere validar. Desde AKINE F-4 el devengado los congela en la
- * obligacion (y la credencial vencida el dia de la prestacion), asi que el dato existe; lo que
- * falta decidir es si cada faltante es un reparo que bloquea el lote o un aviso, y eso agrega
- * valores a este enum. Ver docs/diseno/AKINE-F-4-obligacion-financiador.md.
+ * <p>{@link #SIN_ORDEN}, {@link #SIN_AUTORIZACION} y {@link #CREDENCIAL_FALTANTE} se evaluan contra
+ * lo que el convenio exigia el dia de la prestacion —congelado en la obligacion por F-4— y solo al
+ * validar y al confirmar, no al incluir: el item tiene que estar en el lote para que la pantalla de
+ * validacion lo muestre. Los dos primeros bloquean; la credencial avisa. Es la opcion recomendada
+ * de la decision U-28, aprobada el 18/10/2026 (DP-37). Ver
+ * docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md §2.
  */
 public enum HallazgoDeValidacion {
 
@@ -42,5 +43,34 @@ public enum HallazgoDeValidacion {
 	FUERA_DEL_PERIODO,
 
 	/** Otra moneda. Un total que suma pesos con dolares no significa nada. */
-	MONEDA_DISTINTA
+	MONEDA_DISTINTA,
+
+	/**
+	 * El convenio exigia orden medica el dia de la prestacion y el paciente no tiene ninguna
+	 * vigente ese dia para esa cobertura. <b>Reparo: bloquea confirmar</b> (AKINE-07.04b, U-28).
+	 *
+	 * <p>Se arregla cargando la orden en la ficha del paciente; el reparo se levanta solo en la
+	 * proxima validacion.
+	 */
+	SIN_ORDEN,
+
+	/**
+	 * El convenio exigia autorizacion previa y no hay ninguna APROBADA de esa cobertura y esa
+	 * practica cuya vigencia cubra el dia de la prestacion. <b>Reparo: bloquea confirmar.</b>
+	 *
+	 * <p>El financiador la va a debitar de todos modos: presentarla igual es un debito anunciado.
+	 */
+	SIN_AUTORIZACION,
+
+	/**
+	 * El convenio exigia credencial y estaba vencida el dia de la prestacion, o la cobertura no
+	 * tiene numero de afiliado. <b>Aviso: NO bloquea</b> —viaja en {@code avisos}, no en
+	 * {@code hallazgos}—, porque se suele regularizar despues del envio.
+	 */
+	CREDENCIAL_FALTANTE;
+
+	/** Si este hallazgo impide confirmar el lote. Solo la credencial es un aviso. */
+	public boolean bloquea() {
+		return this != CREDENCIAL_FALTANTE;
+	}
 }

@@ -125,8 +125,8 @@ class DebitoYPagoConcurrenteIT {
 				assertThat(fila.get("total_debitado")).isEqualTo(new BigDecimal("15000.00"));
 				assertThat(fila.get("total_cobrado")).isEqualTo(new BigDecimal("0.00"));
 				assertThat(item.get("estado"))
-						.as("ronda %d: el item del debito ganador quedo DEBITADO en la base", ronda)
-						.isEqualTo("DEBITADO");
+						.as("ronda %d: el item del debito ganador quedo DEBITADO_PARCIAL en la base", ronda)
+						.isEqualTo("DEBITADO_PARCIAL");
 				assertThat((BigDecimal) item.get("importe_debitado")).isEqualByComparingTo("15000.00");
 				assertThat(pagos).as("el pago perdedor no dejo fila").isZero();
 				assertThat(movimientos).as("ni movimiento de caja").isZero();
@@ -153,7 +153,7 @@ class DebitoYPagoConcurrenteIT {
 	}
 
 	@Test
-	@DisplayName("un debito solo queda escrito en el item: DEBITADO, con motivo, y libera la obligacion")
+	@DisplayName("un debito parcial queda escrito en el item: DEBITADO_PARCIAL, con motivo, y sigue ocupando la obligacion")
 	void el_debito_queda_escrito_en_el_item() {
 		// El control de la mitad que la carrera no siempre ejercita: el item del debito tiene que
 		// quedar marcado en la BASE, no solo en la vista que devuelve el servicio. Entre cargar el
@@ -163,16 +163,18 @@ class DebitoYPagoConcurrenteIT {
 		long itemId = lote.items().getFirst().id();
 
 		PresentacionItemView vista = debitar(tenant, lote.id(), itemId, "15000.00");
-		assertThat(vista.estado().name()).isEqualTo("DEBITADO");
+		assertThat(vista.estado().name()).isEqualTo("DEBITADO_PARCIAL");
 
 		Map<String, Object> item = item(itemId);
-		assertThat(item.get("estado")).isEqualTo("DEBITADO");
+		assertThat(item.get("estado")).isEqualTo("DEBITADO_PARCIAL");
 		assertThat((BigDecimal) item.get("importe_debitado")).isEqualByComparingTo("15000.00");
 		assertThat(item.get("motivo_debito")).isEqualTo("Falta autorizacion previa");
 		assertThat(item.get("debitado_en")).isNotNull();
-		assertThat(item.get("ocupa_marca"))
-				.as("DEBITADO libera la obligacion para otro lote")
-				.isNull();
+		// 15.000 de 100.000: lo no debitado todavia se cobra en este lote, asi que la obligacion
+		// sigue tomada hasta conciliar (AKINE-07.04b). El debito total libera: DebitoParcialIT.
+		assertThat(((Number) item.get("ocupa_marca")).intValue())
+				.as("DEBITADO_PARCIAL sigue ocupando la obligacion")
+				.isEqualTo(1);
 		assertThat((BigDecimal) lote(lote.id()).get("saldo")).isEqualByComparingTo("85000.00");
 	}
 

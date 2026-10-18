@@ -130,6 +130,60 @@ class PresentacionesMigrationIT {
 	}
 
 	// =================================================================================
+	// V110 — debito parcial (AKINE-07.04b)
+	// =================================================================================
+
+	@Test
+	@DisplayName("V110: el CHECK de estados reemplazado existe una vez y admite los seis valores")
+	void v95_el_check_de_estados_es_la_union() {
+		assertThat(db.checksLlamados("ck_presentacion_item_estado")).isEqualTo(1);
+		long lote = db.insertar("presentacion", borrador());
+
+		// Los cuatro de V56 siguen entrando: un CHECK reemplazado que olvida uno es el error de V57.
+		entra(() -> db.insertar("presentacion_item", item(lote, obligacion(), "INCLUIDO")));
+		entra(() -> db.insertar("presentacion_item", item(lote, obligacion(), "ACEPTADO")));
+		entra(() -> db.insertar("presentacion_item", debitado(lote, obligacion())));
+		entra(() -> db.insertar("presentacion_item", item(lote, obligacion(), "ANULADO")));
+		entra(() -> db.insertar("presentacion_item", parcial(lote, obligacion(), "DEBITADO_PARCIAL")));
+		entra(() -> db.insertar("presentacion_item", parcial(lote, obligacion(), "ACEPTADO_PARCIAL")));
+		db.violaCheck("ck_presentacion_item_estado",
+				() -> db.insertar("presentacion_item", item(lote, obligacion(), "RECHAZADO")));
+	}
+
+	@Test
+	@DisplayName("V110: DEBITADO_PARCIAL ocupa la obligacion y ACEPTADO_PARCIAL la libera")
+	void v95_ocupa_marca_de_los_parciales() {
+		long loteA = db.insertar("presentacion", borrador());
+		long loteB = db.insertar("presentacion", borrador());
+		long loteC = db.insertar("presentacion", borrador());
+		long obligacion = obligacion();
+
+		long enCurso = db.insertar("presentacion_item", parcial(loteA, obligacion, "DEBITADO_PARCIAL"));
+		assertThat(ocupa(enCurso)).isEqualTo(1);
+		// Mientras el primer lote no concilia, nadie mas la reclama: seria un reclamo doble.
+		db.violaUnique("uk_presentacion_item_ocupa",
+				() -> db.insertar("presentacion_item", item(loteB, obligacion, "INCLUIDO")));
+
+		jdbc.update("UPDATE presentacion_item SET estado = 'ACEPTADO_PARCIAL' WHERE id = ?", enCurso);
+		assertThat(ocupa(enCurso)).isNull();
+		entra(() -> db.insertar("presentacion_item", item(loteC, obligacion, "INCLUIDO")));
+	}
+
+	@Test
+	@DisplayName("V110: un parcial va completo y es parcial de verdad")
+	void v95_el_parcial_va_completo_y_es_parcial() {
+		long lote = db.insertar("presentacion", borrador());
+		db.violaCheck("ck_presentacion_item_debito_completo", () -> db.insertar("presentacion_item",
+				con(parcial(lote, obligacion(), "DEBITADO_PARCIAL"), "motivo_debito", null)));
+		db.violaCheck("ck_presentacion_item_debito_parcial", () -> db.insertar("presentacion_item",
+				con(parcial(lote, obligacion(), "ACEPTADO_PARCIAL"),
+						"importe_debitado", new BigDecimal("8500.00"))));
+		// El DEBITADO conserva la regla vieja: un importe menor sigue entrando (filas previas a V110).
+		entra(() -> db.insertar("presentacion_item", con(debitado(lote, obligacion()),
+				"importe_debitado", new BigDecimal("1000.00"))));
+	}
+
+	// =================================================================================
 	// presentacion
 	// =================================================================================
 
@@ -298,6 +352,14 @@ class PresentacionesMigrationIT {
 		return con(item(presentacionId, obligacionId, "DEBITADO"),
 				"importe_debitado", new BigDecimal("8500.00"),
 				"motivo_debito", "Falta autorizacion previa",
+				"debitado_en", ahora(),
+				"debitado_por_cuenta_id", tenant.cuentaId());
+	}
+
+	private Map<String, Object> parcial(long presentacionId, long obligacionId, String estado) {
+		return con(item(presentacionId, obligacionId, estado),
+				"importe_debitado", new BigDecimal("1000.00"),
+				"motivo_debito", "Valor por encima del nomenclador",
 				"debitado_en", ahora(),
 				"debitado_por_cuenta_id", tenant.cuentaId());
 	}

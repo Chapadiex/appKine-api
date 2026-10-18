@@ -280,9 +280,13 @@ public class PresentacionController {
 					autoridad. Tenerla aparte permite mostrar los problemas **mientras se arma** \
 					el lote, en vez de descubrirlos todos juntos al apretar el boton.
 
-					> **Todavia no valida orden, autorizacion ni credencial.** Desde AKINE F-4 esos \
-					tres requisitos viajan congelados en cada obligacion del financiador, pero \
-					decidir si cada faltante bloquea el lote o solo avisa sigue abierto.""")
+					**Orden, autorizacion y credencial** se evaluan contra lo que el convenio \
+					exigia el dia de la prestacion, congelado en cada obligacion del financiador. \
+					Una orden o una autorizacion faltante es un **reparo** (`SIN_ORDEN`, \
+					`SIN_AUTORIZACION` en `hallazgos`): impide confirmar. Una credencial vencida ese \
+					dia, o una cobertura sin numero de afiliado, es un **aviso** \
+					(`CREDENCIAL_FALTANTE` en `avisos`): se confirma igual. Agregar el item al \
+					borrador no los evalua; validar y confirmar si.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Resultado de la revision"),
 			@ApiResponse(
@@ -389,8 +393,12 @@ public class PresentacionController {
 					Asienta el debito que el financiador informo (RF-M21-006).
 
 					**No borra la prestacion ni perdona la deuda** (RN-M21-004). La sesion original \
-					queda intacta, la obligacion sigue pendiente, y la prestacion vuelve a estar \
-					**disponible para otro lote** — que es como se re-presenta lo rechazado.
+					queda intacta y la obligacion sigue pendiente. Un debito **por el total** deja \
+					el item `DEBITADO` y la prestacion vuelve a estar **disponible para otro \
+					lote**. Un debito **parcial** lo deja `DEBITADO_PARCIAL`: sigue ocupando la \
+					prestacion hasta conciliar, porque lo no debitado se cobra en este lote; al \
+					conciliar se salda lo cobrado y lo debitado queda disponible para \
+					re-presentarlo.
 
 					El saldo del lote se mueve con una condicion del motor y no con un lock, asi \
 					que un aviso de debito y una transferencia cargados a la vez no pueden colarse \
@@ -516,7 +524,10 @@ public class PresentacionController {
 
 					**Aca, y solo aca, se salda la deuda.** Cada prestacion que sigue `INCLUIDO` \
 					pasa a `ACEPTADO` y su obligacion se descuenta por el importe exacto que se \
-					presento. Una `DEBITADO` no salda nada: esa deuda sigue existiendo.""")
+					presento. Cada `DEBITADO_PARCIAL` pasa a `ACEPTADO_PARCIAL` y su obligacion \
+					se descuenta por lo presentado menos lo debitado: queda pendiente solo lo \
+					debitado, re-presentable en otro lote. Una `DEBITADO` no salda nada: esa \
+					deuda sigue existiendo.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Lote conciliado"),
 			@ApiResponse(
