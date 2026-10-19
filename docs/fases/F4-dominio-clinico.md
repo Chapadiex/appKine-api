@@ -98,6 +98,8 @@ los registros**. Es deuda documentada que quedó huérfana.
 
 ## Decisiones del usuario que bloquean
 
+> **Decididas el 19/10/2026** (el usuario aceptó las recomendaciones; ver `decisiones-pendientes.md`). U-09 (C-9) caso obligatorio solo en ofertas con `requiere_caso_clinico = true`: se implementa, PR en curso (DP-43). U-10 plan por oferta, práctica derivada de la principal (DP-11): se deja como está (DP-42). U-20: se deja como está (DP-42).
+
 - Puente Oferta↔Práctica (compartida con [F2](F2-operacion-del-consultorio.md)).
 - ~~Reversión del consumo ante sesión anulada: automática o manual.~~ Resuelta: DP-13 (manual con
   alerta), implementada en C-4.

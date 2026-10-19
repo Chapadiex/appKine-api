@@ -871,6 +871,62 @@ La evidencia la da `person.spi.RespaldoDocumentalDirectory`, sólo lectura; `bil
 
 **Implementada en:** pendiente.
 
+## DP-42 — Tanda 1 de decisiones pendientes: se deja como está, sin código (U-10, U-13, U-14, U-16, U-17, U-18, U-20, U-23, U-26, U-31, U-32, U-34, U-36)
+
+**Estado:** DECIDIDA el 19/10/2026. Decidido por el usuario (acepta en bloque las recomendaciones).
+
+**Decisión.** Trece decisiones se resuelven **confirmando lo que el código ya hace**; ninguna requiere cambio.
+
+- **U-17.** La disciplina del profesional no se valida al habilitarlo; si se pide, se avisa.
+- **U-13.** `nomenclador_item` es informativo; el desvío del plan queda aceptado.
+- **U-20.** Los datos administrativos de la HC no se auditan.
+- **U-10.** El plan de tratamiento sigue **por oferta**; la práctica se deriva de la principal de la oferta (DP-11).
+- **U-14.** Un observador que falla hace fallar el cierre (regla 7).
+- **U-26.** ROM, fuerza y marcha se registran como **medición genérica** con catálogo de tipos; el desvío respecto de los subbloques queda declarado.
+- **U-18.** Los requisitos (orden, autorización, credencial) se exigen **solo en el convenio**.
+- **U-34.** Arancel total 0: no genera deuda, pero **se ve en el reporte como prestación sin cargo**; sin crédito ni bono. La liquidación a profesionales ya la cubre DP-38.
+- **U-31.** Los egresos siguen con `caja:operate`.
+- **U-32.** Las presentaciones siguen con `cobro:register`.
+- **U-36.** El export síncrono y acotado de 07.06 queda confirmado.
+- **U-23.** Los eventos de turno que notifican quedan como están.
+- **U-16.** El cambio de email de una cuenta queda **fuera de alcance**.
+
+**Implementada en:** no requiere implementación.
+
+## DP-43 — Tanda 2 de decisiones pendientes: se implementa (U-09, U-12, U-15, U-21, U-22, U-24, U-25, U-35, U-38)
+
+**Estado:** DECIDIDA el 19/10/2026. Decidido por el usuario (acepta en bloque las recomendaciones). **Los PR están en curso.**
+
+**Decisión.**
+
+- **U-09.** El caso clínico es obligatorio **solo en las ofertas con `requiere_caso_clinico = true`**.
+- **U-21.** `RETIRADO` se alcanza desde `LLEGO` o `EN_ESPERA`, **con motivo y sin tocar el turno**; el Particular puede registrarse desde `EN_ESPERA`.
+- **U-22.** En una serie, el **feriado omite la ocurrencia** y se lista en la previsualización.
+- **U-24.** Sesión sin turno: permiso `sesion:register` y motivo. El **reemplazo del profesional** lo hace solo `CONSULTORIO_ADMIN`, auditado.
+- **U-25.** `sesion:amend` propio y **ventana de 30 días configurable por organización** para enmendar.
+- **U-12.** Catálogo global de financiadores: el centro **adopta una copia** (no referencia la fila global). Cierra DU-13.
+- **U-38.** **Zona horaria por organización**, por defecto la de su primera sede (ver `docs/zonas-horarias.md`).
+- **U-15.** Editar la propia organización: manda la **regla más restrictiva**, solo `ORG_ADMIN`.
+- **U-35.** Gate de `BRANCH` en JaCoCo al **0,75**, como trinquete.
+
+**Alternativas descartadas.** Referenciar la fila global de financiadores con `owner_key`; permiso de enmienda compartido con otro existente.
+
+**Implementada en:** en curso (PR abiertos el 19/10/2026 en paralelo; se completa el puntero cuando mergeen).
+
+## DP-44 — Tanda 3 de decisiones pendientes: después del release candidate (U-19, U-27, U-29, U-30, U-33)
+
+**Estado:** DECIDIDA el 19/10/2026. Decidido por el usuario (acepta en bloque las recomendaciones).
+
+**Decisión.** Cinco decisiones quedan **postergadas**, no se implementan antes del RC.
+
+- **U-27.** Parámetros obligatorios por práctica: **etapa propia**.
+- **U-29.** Ventana de cancelación del paciente de **24 h por sede**; depende de `OWN` (post-MVP, DP-22).
+- **U-30.** La vista pública de slots queda **fuera del MVP**; también depende de `OWN`.
+- **U-33.** Adjunto binario del egreso: **alcanza la referencia**; la extracción del storage a `platform.spi` va después.
+- **U-19.** Clonar convenio queda **fuera del MVP**.
+
+**Implementada en:** pendiente (posterior al RC).
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional
