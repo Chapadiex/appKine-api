@@ -107,8 +107,12 @@ export async function c02a() {
 	await paso('PLA-06', 'Cambiar el plan de A a PROFESIONAL', async () => {
 		const d0 = maxAudit();
 		const s = await Splat();
-		const gs = await api('GET', orgUrl('/subscription'), { s });
-		st(gs, 200, 'la plataforma lee la suscripcion para conocer la version (la guia usa GET .../subscription con el token de plataforma)');
+		// D3 (api f96aedd): la plataforma lee la version por su propia ruta; la del centro sigue detras de
+		// tenant:read y, sin acceso de soporte, es 403.
+		st(await api('GET', orgUrl('/subscription'), { s }), 403, 'la suscripcion del centro sin soporte (tenant:read)');
+		const gs = await api('GET', `/api/v1/platform/organizations/${C.org_a}/subscription`, { s });
+		st(gs, 200, 'la plataforma lee la suscripcion por GET /platform/organizations/{org}/subscription');
+		ok(gs.cuerpo?.version != null && gs.cuerpo?.planCode, 'trae plan y version', gs.cuerpo);
 		const sub = gs.status === 200 ? gs.cuerpo : { version: n(q1('SELECT version FROM subscription WHERE organization_id = @org_a').version) };
 		if (gs.status !== 200) nota('se siguio con la version leida de la base');
 		must(await api('POST', orgUrl('/subscription/plan-changes'), { s, json: { planCode: 'PROFESIONAL', expectedVersion: sub.version } }), 200, 'cambio de plan');
@@ -278,7 +282,9 @@ export async function c02b() {
 			['cobros', 'GET', `${sede}/cobros?personaId=${C.persona}`, null, { admin: 200, adm: 200, prof: 403, pac: 403 }],
 			['caja', 'GET', `${sede}/caja/jornadas`, null, { admin: 200, adm: 200, prof: 403, pac: 403 }],
 			['presentaciones', 'GET', `${sede}/presentaciones`, null, { admin: 200, adm: 200, prof: 403, pac: 403 }],
-			['financiadores (lectura por pertenencia, conocido)', 'GET', '/api/v1/financiadores', null, { admin: 200, adm: 200, prof: 200, pac: 200 }],
+			// DP-36 (U-07, U-08): convenio:read y catalogo:read son del personal; el PACIENTE recibe 403.
+			['financiadores (convenio:read, DP-36)', 'GET', '/api/v1/financiadores', null, { admin: 200, adm: 200, prof: 200, pac: 403 }],
+			['catalogo clinico (catalogo:read, DP-36)', 'GET', '/api/v1/catalogos/practicas', null, { admin: 200, adm: 200, prof: 200, pac: 403 }],
 			['alta de financiador', 'POST', '/api/v1/financiadores', { codigo: `NO${suf}`.toUpperCase(), nombre: 'No', tipo: 'OTRO' }, { adm: 403, prof: 403, pac: 403 }],
 			['reportes', 'GET', `${sede}/reportes/OPERATIVO?desde=${hoy()}&hasta=${hoy()}`, null, { admin: 200, adm: 200, prof: 200, pac: 403 }],
 		];

@@ -33,7 +33,6 @@ Fuentes: `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` (DP-01 a DP-23), §7 del `
 | Otorgar `PLATFORM_ADMIN` a una cuenta le quita los permisos de sus memberships | Coherente con el modelo de soporte | `CLAUDE.md` §7 |
 | El login no bloquea la cuenta por intentos fallidos | Bloquear por intentos habilita un DoS dirigido; frena el límite de 30/min por IP | `AuthenticationService` |
 | El alta directa de colaborador responde 404 si el email no tiene cuenta (y el resto de la identidad responde uniforme) | Excepción declarada, con cupo propio de 10/min y `MEMBERSHIP_ALTA_RECHAZADA` | threat model §2.1 |
-| Las lecturas de `contracting` (financiadores, planes, convenios) se autorizan por pertenencia: cualquier rol las ve | Hueco declarado en la matriz; no tiene fila de lectura | matriz §13.4 |
 | Una oferta sin habilitaciones la presta cualquier `PROFESIONAL` de la sede | Es la regla, no un vacío | 02.07 |
 | Una oferta sin prácticas no es error; "lista vacía" = la oferta no declara prácticas | Sin práctica no hay arancel de convenio posible | A-9 |
 | El precio particular no se edita: solo se cierra o reabre su vigencia | | B-3 (d) |

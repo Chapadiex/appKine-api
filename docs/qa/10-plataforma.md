@@ -123,9 +123,14 @@ SELECT COUNT(*) AS organizaciones_con_ese_slug FROM organization WHERE slug = 'c
 Destraba [ORG-03b](02-organizacion-sedes-colaboradores.md) (segunda sede) y el tope de miembros.
 
 ```powershell
-$sub = (Api GET "/api/v1/organizations/<org_a>/subscription" $X).Cuerpo
+$sub = (Api GET "/api/v1/platform/organizations/<org_a>/subscription" $X).Cuerpo
 Api POST "/api/v1/organizations/<org_a>/subscription/plan-changes" $X @{ planCode = 'PROFESIONAL'; expectedVersion = $sub.version }
 ```
+
+La versión sale de `GET /platform/organizations/{org}/subscription` (plan, estado, versión y
+transiciones posibles; contrato 0.106.0, corrección de D3). `GET /organizations/<org_a>/subscription`,
+que trae además el consumo de los límites, es dato del centro: con el token de plataforma y **sin
+acceso de soporte** responde **403** `tenant:read`, y es lo esperado.
 
 ```sql
 SELECT p.code, s.status, s.version FROM subscription s JOIN plan p ON p.id = s.plan_id WHERE s.organization_id = @org_a;
