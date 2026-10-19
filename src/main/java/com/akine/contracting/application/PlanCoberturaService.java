@@ -10,6 +10,7 @@ import com.akine.contracting.domain.exception.PlanNotAccessibleException;
 import com.akine.contracting.domain.exception.PlanYaInactivoException;
 import com.akine.contracting.domain.port.ContractingRepositoryPorts.FinanciadorRepositoryPort;
 import com.akine.contracting.domain.port.ContractingRepositoryPorts.PlanCoberturaRepositoryPort;
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
@@ -68,12 +69,16 @@ public class PlanCoberturaService {
 	private final FinanciadorRepositoryPort financiadores;
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
+	/** "Hoy" de la organizacion para lo que no tiene sede (U-38, DP-43). */
+	private final ZonaDeOrganizacion zonaDeOrganizacion;
 
 	public PlanCoberturaService(
 			PlanCoberturaRepositoryPort planes,
 			FinanciadorRepositoryPort financiadores,
 			PermissionGuard permissionGuard,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			ZonaDeOrganizacion zonaDeOrganizacion) {
+		this.zonaDeOrganizacion = zonaDeOrganizacion;
 
 		this.planes = planes;
 		this.financiadores = financiadores;
@@ -105,7 +110,7 @@ public class PlanCoberturaService {
 		exigirFinanciadorDelTenant(organizationId, financiadorId);
 
 		EstadoFiltro filtro = estado == null ? EstadoFiltro.ACTIVO : estado;
-		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
+		LocalDate contra = fecha == null ? zonaDeOrganizacion.hoy(organizationId) : fecha;
 
 		return planes
 				.findAllByOrganizationIdAndFinanciadorIdOrderByNombreAsc(organizationId, financiadorId)
@@ -178,7 +183,7 @@ public class PlanCoberturaService {
 		auditar(AuditEvents.PLAN_COBERTURA_CREATED, creado, actor, null, "ACTIVO", null, detalles);
 
 		log.info("Plan de cobertura creado: planId={} financiadorId={}", creado.getId(), financiadorId);
-		return PlanCoberturaView.de(creado, LocalDate.now());
+		return PlanCoberturaView.de(creado, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	/**
@@ -233,7 +238,7 @@ public class PlanCoberturaService {
 		}
 
 		auditar(AuditEvents.PLAN_COBERTURA_UPDATED, guardado, actor, null, null, null, detalles);
-		return PlanCoberturaView.de(guardado, LocalDate.now());
+		return PlanCoberturaView.de(guardado, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	/**
@@ -266,7 +271,7 @@ public class PlanCoberturaService {
 				"ACTIVO", "INACTIVO", motivo, Map.of());
 
 		log.info("Plan de cobertura dado de baja: planId={}", planId);
-		return PlanCoberturaView.de(guardado, LocalDate.now());
+		return PlanCoberturaView.de(guardado, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	// =================================================================================

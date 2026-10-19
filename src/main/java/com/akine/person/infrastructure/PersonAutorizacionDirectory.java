@@ -5,6 +5,7 @@ import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.port.PersonRepositoryPorts.AutorizacionRepositoryPort;
 import com.akine.person.spi.AutorizacionDirectory;
 import com.akine.person.spi.AutorizacionSnapshot;
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,8 +32,12 @@ import java.util.Optional;
 public class PersonAutorizacionDirectory implements AutorizacionDirectory {
 
 	private final AutorizacionRepositoryPort autorizaciones;
+	/** "Hoy" de la organizacion para lo que no tiene sede (U-38, DP-43). */
+	private final ZonaDeOrganizacion zonaDeOrganizacion;
 
-	public PersonAutorizacionDirectory(AutorizacionRepositoryPort autorizaciones) {
+	public PersonAutorizacionDirectory(
+			AutorizacionRepositoryPort autorizaciones, ZonaDeOrganizacion zonaDeOrganizacion) {
+		this.zonaDeOrganizacion = zonaDeOrganizacion;
 		this.autorizaciones = autorizaciones;
 	}
 
@@ -41,7 +46,7 @@ public class PersonAutorizacionDirectory implements AutorizacionDirectory {
 	public Optional<AutorizacionSnapshot> find(
 			long organizationId, long personaId, long autorizacionId, LocalDate fecha) {
 
-		LocalDate dia = fecha == null ? LocalDate.now() : fecha;
+		LocalDate dia = fecha == null ? zonaDeOrganizacion.hoy(organizationId) : fecha;
 
 		return autorizaciones
 				.findByIdAndOrganizationIdAndPersonaId(autorizacionId, organizationId, personaId)

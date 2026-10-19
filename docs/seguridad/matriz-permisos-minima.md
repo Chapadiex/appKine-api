@@ -84,7 +84,7 @@ La spec no las detalla. Decisión para cada celda, revisable en la etapa que imp
 
 | Celda | Restricción |
 |---|---|
-| Gestionar tenant — `ORG_ADMIN` | Puede editar datos de su propia organización y ver su suscripción; **no** puede cambiar de plan ni suspender/reactivar (eso es `PLATFORM_ADMIN`) |
+| Gestionar tenant — `ORG_ADMIN` | Puede editar datos de su propia organización (`tenant:update`) y ver su suscripción (`tenant:read`); **no** puede cambiar de plan ni suspender/reactivar (eso es `PLATFORM_ADMIN`). **Editar los datos de la organización es sólo suyo**: ningún otro rol, ni por grant, ni `PLATFORM_ADMIN` (DP-43, U-15, §19) |
 | Ver HC — `ADMINISTRATIVO` | Solo metadatos administrativos (existencia, fechas, profesional tratante, cobertura). **Nunca** contenido clínico |
 | Ver Reportes — `PROFESIONAL` | Solo reportes de su propia actividad |
 | Ver Reportes — `ADMINISTRATIVO` | Solo reportes operativos y de caja del consultorio, sin contenido clínico |
@@ -97,6 +97,7 @@ Códigos `<dominio>:<acción>`. Estable, en minúsculas, sin significado de UI. 
 |---|---|---|
 | `tenant:manage` | Gestionar tenant | **F1** |
 | `tenant:read` | Ver datos y suscripción de la propia organización (el "Limitado" de `ORG_ADMIN`) | **F1** |
+| `tenant:update` | Editar los datos de la propia organización: nombre y zona horaria (el otro lado del "Limitado" de `ORG_ADMIN`, DP-43, §19) | **F1** |
 | `consultorio:manage` | Gestionar consultorio | **F1** (mínimo) / F2 |
 | `espacio:read` | Consultar el catálogo físico y la disponibilidad de una sede | F2 |
 | `colaborador:manage` | Gestionar colaboradores: invitar, asignar rol, revocar, desvincular | **F1** |
@@ -124,6 +125,7 @@ Lo que cada rol tiene **implícito** para las acciones de F1. Todo lo que no fig
 |---|---|---|---|---|---|---|
 | `tenant:manage` | Global | — | — | — | — | — |
 | `tenant:read` | Global | Org | — | — | — | — |
+| `tenant:update` | — | Org | — | — | — | — |
 | `consultorio:manage` | Global | Org | Consultorio | — | — | — |
 | `espacio:read` | Soporte | Org | Consultorio | Consultorio | Consultorio | — |
 | `colaborador:manage` | Global | Org | Consultorio | — | — | — |
@@ -192,6 +194,9 @@ lectura merece un código propio —algo como `tenant:read-basic`— en vez de q
 excepción por pertenencia. Hoy inventarlo sería agregar un código que la matriz no declara.
 
 ### 9.2 `tenant:read` cubre también la edición de la propia organización — **contradicción interna, no enmienda**
+
+> **Resuelta el 19/10/2026 (DP-43, U-15), ver §19.** La sección 5 ganó `tenant:update` y la
+> sección 6 se lo asigna sólo a `ORG_ADMIN`. Lo que sigue es la historia.
 
 La sección 4 dice que el "Limitado" de `ORG_ADMIN` en *Gestionar tenant* **incluye editar los
 datos de su propia organización** (y excluye cambiar de plan y suspender, que son de plataforma).
@@ -859,3 +864,43 @@ respuesta.** `MatrizDePermisosIT` lo fija: sin `hc:write` abrir un caso es 403, 
 Solo descripciones: los 403 de las lecturas de `contracting` y del catálogo nombran el permiso que
 falta, y las mutaciones del catálogo nombran `catalogo:manage` en lugar de `consultorio:manage`. Sin
 operaciones, schemas ni `problemType` nuevos.
+
+---
+
+## 19. Enmiendas — DP-43 (U-15, editar la propia organización)
+
+### 19.1 La contradicción, resuelta por la regla más restrictiva
+
+**La contradicción (§9.2).** La §4 incluía en el "Limitado" de `ORG_ADMIN` la edición de los datos
+de su organización; la §5 no tenía código para eso y la §6 le daba sólo `tenant:read`. El código
+la resolvía autorizando `PATCH /organizations/{orgId}` con `tenant:read`, y ese permiso **también
+lo tiene `PLATFORM_ADMIN` con alcance `SOPORTE`** (§9.7): con un acceso de soporte vigente, la
+plataforma editaba el nombre y la zona horaria de cualquier centro.
+
+**La decisión del usuario (19/10/2026): manda la regla más restrictiva, sólo `ORG_ADMIN`.**
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `tenant:update` | — | Org | — | — | — | — |
+
+- **No es otorgable por grant** a ningún rol (`RolePermissions.otorgableComoGrant` da `false`): no
+  hay celda "No por defecto" ni "Según permiso" que lo habilite.
+- **`PLATFORM_ADMIN` no lo tiene, con o sin soporte.** Lo que la plataforma gestiona es el
+  **contrato** del tenant —alta, plan, suspensión— con `tenant:manage`, no sus datos. El guard lo
+  rechaza con 403 antes de evaluar (`AuthorizationGuard.requireOrgDataEditor`).
+- `tenant:read` no cambia: sigue cubriendo la lectura de la suscripción para `ORG_ADMIN` (Org) y
+  `PLATFORM_ADMIN` (Soporte). La lectura del perfil de la organización sigue siendo por
+  pertenencia (§9.1).
+
+**Por qué importa ahora.** Desde U-38 (DP-43) la zona horaria de la organización decide "hoy" en
+todo lo que la organización hace sin sede —padrón, coberturas, autorizaciones, órdenes, planes del
+financiador— (`docs/zonas-horarias.md`). Editarla es cambiar qué vigencias se leen vencidas.
+
+**Lo verifican** `RolePermissionsTest` (fila y no otorgable), `AuthorizationGuardTest`
+(`tenant:update`, plataforma rechazada) y `MatrizDePermisosIT` por HTTP: sólo el `ORG_ADMIN`
+recibe 200; `CONSULTORIO_ADMIN`, `PROFESIONAL`, `ADMINISTRATIVO` y `PACIENTE`, 403.
+
+### 19.2 Contrato 0.138.0
+
+Sólo descripciones de `updateOrganization`: el permiso que pide, el 403 de la plataforma y el 400
+de una zona que no es IANA. Sin operaciones, schemas ni `problemType` nuevos.

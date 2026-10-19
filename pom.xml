@@ -43,7 +43,7 @@
 		<mysql.version>9.6.0</mysql.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
-		<akine.contract.version>0.134.0</akine.contract.version>
+		<akine.contract.version>0.138.0</akine.contract.version>
 	</properties>
 
 	<dependencies>
@@ -374,6 +374,15 @@
 											<counter>INSTRUCTION</counter>
 											<value>COVEREDRATIO</value>
 											<minimum>0.80</minimum>
+										</limit>
+										<!-- BRANCH sobre el BUNDLE (DP-43, U-35, 19/10/2026). El minimo lo fijo
+										     el usuario en 0,75; medido con verify completo el 19/10 sobre esta
+										     rama: ver docs/calidad.md. Es un trinquete global, no por modulo:
+										     los criticos siguen gateando LINE e INSTRUCTION. -->
+										<limit>
+											<counter>BRANCH</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.75</minimum>
 										</limit>
 									</limits>
 								</rule>

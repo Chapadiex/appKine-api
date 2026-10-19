@@ -1,5 +1,6 @@
 package com.akine.person.application;
 
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.PermissionCodes;
 import com.akine.person.domain.TipoCobertura;
@@ -78,17 +79,22 @@ public class CoberturasEnElResumenDePersona implements ResumenDePersonaContribut
 	private static final String MASCARA = "···";
 
 	private final CoberturaPacienteRepositoryPort coberturas;
+	private final ZonaDeOrganizacion zonaDeOrganizacion;
 	private final Clock clock;
 
 	@Autowired
-	public CoberturasEnElResumenDePersona(CoberturaPacienteRepositoryPort coberturas) {
-		// UTC explicito y no la zona de la JVM: "hoy" de la organizacion es decision pendiente
-		// (docs/zonas-horarias.md), pero no puede depender de donde corra el proceso.
-		this(coberturas, Clock.systemUTC());
+	public CoberturasEnElResumenDePersona(
+			CoberturaPacienteRepositoryPort coberturas, ZonaDeOrganizacion zonaDeOrganizacion) {
+		// "Hoy" en la zona de la organizacion (U-38, DP-43): el 360 es de la persona, que es de
+		// la organizacion y no de una sede. El reloj es UTC: nada depende de la zona de la JVM.
+		this(coberturas, zonaDeOrganizacion, Clock.systemUTC());
 	}
 
-	CoberturasEnElResumenDePersona(CoberturaPacienteRepositoryPort coberturas, Clock clock) {
+	CoberturasEnElResumenDePersona(
+			CoberturaPacienteRepositoryPort coberturas, ZonaDeOrganizacion zonaDeOrganizacion,
+			Clock clock) {
 		this.coberturas = coberturas;
+		this.zonaDeOrganizacion = zonaDeOrganizacion;
 		this.clock = clock;
 	}
 
@@ -105,7 +111,7 @@ public class CoberturasEnElResumenDePersona implements ResumenDePersonaContribut
 
 	@Override
 	public AporteDeResumen aportar(ConsultaDeResumen consulta) {
-		LocalDate hoy = LocalDate.now(clock);
+		LocalDate hoy = zonaDeOrganizacion.hoy(consulta.organizationId(), clock);
 
 		// historial filtra por organizacion Y persona: el aislamiento de tenant lo hace la
 		// consulta, nunca un id pelado.

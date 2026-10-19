@@ -226,6 +226,24 @@ class OrganizationServiceTest {
 	}
 
 	@Test
+	@DisplayName("U-38: una zona que no es IANA es 400 y no persiste nada")
+	void editar_con_zona_invalida_es_400() {
+		// Desde DP-43 la zona de la organizacion decide "hoy" en el padron, las coberturas y las
+		// autorizaciones: un offset fijo no conoce el horario de verano.
+		Organization organization = Fixtures.organizacion();
+		given(organizationRepository.findByIdAndActiveTrue(ORG_ID))
+				.willReturn(Optional.of(organization));
+
+		assertThatThrownBy(() ->
+				organizationService.update(ORG_ID, null, "-03:00", 0L, ACCOUNT_ID))
+				.isInstanceOf(IllegalArgumentException.class);
+
+		assertThat(organization.getTimezone()).isEqualTo("America/Argentina/Cordoba");
+		verify(organizationRepository, never()).save(any());
+		verifyNoInteractions(auditTrail);
+	}
+
+	@Test
 	@DisplayName("Editar con una version desactualizada es conflicto y no persiste nada")
 	void editar_con_version_vieja_es_conflicto() {
 		Organization organization = Fixtures.organizacion();

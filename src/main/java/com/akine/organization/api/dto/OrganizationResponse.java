@@ -30,7 +30,9 @@ public record OrganizationResponse(
 				example = "centro-kinesico-belgrano")
 		String slug,
 
-		@Schema(description = "Zona horaria IANA del centro", example = "America/Argentina/Buenos_Aires")
+		@Schema(description = "Zona horaria IANA del centro. Decide el dia de hoy en lo que se hace "
+				+ "sin sede (padron, coberturas, autorizaciones, ordenes, planes); por defecto la de "
+				+ "su primera sede (DP-43)", example = "America/Argentina/Buenos_Aires")
 		String timezone,
 
 		@Schema(description = "false cuando la organizacion fue dada de baja logica", example = "true")

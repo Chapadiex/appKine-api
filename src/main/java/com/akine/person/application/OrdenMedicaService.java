@@ -1,5 +1,6 @@
 package com.akine.person.application;
 
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.AdjuntoAdministrativo;
 import com.akine.person.domain.Autorizacion;
@@ -75,6 +76,8 @@ public class OrdenMedicaService {
 	private final PersonSupportAccessAuditor supportAccessAuditor;
 	private final AuditTrail auditTrail;
 	private final AutorizacionRepositoryPort autorizaciones;
+	/** "Hoy" de la organizacion para lo que no tiene sede (U-38, DP-43). */
+	private final ZonaDeOrganizacion zonaDeOrganizacion;
 
 	@SuppressWarnings("java:S107")
 	public OrdenMedicaService(
@@ -86,7 +89,9 @@ public class OrdenMedicaService {
 			PermissionGuard permissionGuard,
 			PersonSupportAccessAuditor supportAccessAuditor,
 			AuditTrail auditTrail,
-			AutorizacionRepositoryPort autorizaciones) {
+			AutorizacionRepositoryPort autorizaciones,
+			ZonaDeOrganizacion zonaDeOrganizacion) {
+		this.zonaDeOrganizacion = zonaDeOrganizacion;
 
 		this.ordenes = ordenes;
 		this.coberturas = coberturas;
@@ -124,7 +129,7 @@ public class OrdenMedicaService {
 		exigirPersonaDelTenant(organizationId, personaId);
 
 		DocumentoEstadoFiltro filtro = estado == null ? DocumentoEstadoFiltro.TODAS : estado;
-		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
+		LocalDate contra = fecha == null ? zonaDeOrganizacion.hoy(organizationId) : fecha;
 		// Una sola lectura para todas las ordenes: la situacion de cada una sale de aca (B-4).
 		List<Autorizacion> delPaciente = autorizaciones.historial(organizationId, personaId);
 
@@ -180,7 +185,7 @@ public class OrdenMedicaService {
 		auditar(AuditEvents.ORDEN_CREATED, creada, actor, null, "ACTIVA", null, detalles);
 
 		log.info("Orden medica registrada: ordenId={} personaId={}", creada.getId(), personaId);
-		return OrdenView.de(creada, LocalDate.now());
+		return OrdenView.de(creada, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	/**
@@ -284,7 +289,7 @@ public class OrdenMedicaService {
 		return OrdenView.de(
 				orden,
 				autorizaciones.historial(orden.getOrganizationId(), orden.getPersonaId()),
-				LocalDate.now());
+				zonaDeOrganizacion.hoy(orden.getOrganizationId()));
 	}
 
 	// =================================================================================

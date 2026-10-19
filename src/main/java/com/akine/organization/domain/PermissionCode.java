@@ -28,6 +28,19 @@ public enum PermissionCode {
 	/** Ver datos y suscripcion de la propia organizacion (el "Limitado" de ORG_ADMIN). Fase 1. */
 	TENANT_READ("tenant:read"),
 
+	/**
+	 * Editar los datos de la propia organizacion: nombre y zona horaria. <b>DP-43, U-15.</b>
+	 *
+	 * <p>La matriz se contradecia: la §4 le daba al {@code ORG_ADMIN} la edicion de su organizacion
+	 * dentro de su "Limitado" y la §5/§6 no tenian codigo de edicion, asi que el PATCH se autorizaba
+	 * con {@code tenant:read} y lo alcanzaba cualquiera que leyera el tenant —incluido el
+	 * {@code PLATFORM_ADMIN} con soporte—. La decision del 19/10/2026 fue la regla mas restrictiva:
+	 * <b>solo el {@code ORG_ADMIN}</b>, con alcance organizacion. No es otorgable por grant y el
+	 * {@code PLATFORM_ADMIN} no lo tiene: lo que la plataforma gestiona es el contrato del tenant
+	 * ({@link #TENANT_MANAGE}), no sus datos. Matriz §19.
+	 */
+	TENANT_UPDATE("tenant:update"),
+
 	/** Gestionar consultorio. Fase 1 (minimo) / F2. Los endpoints que lo consumen son de 02.01. */
 	CONSULTORIO_MANAGE("consultorio:manage"),
 

@@ -221,7 +221,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 		// matriz §4 se lo da al ORG_ADMIN —y el fundador lo es— con alcance organizacion.
 		assertThat(permissionEvaluator.effectivePermissions(
 				tenant.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
-				.containsExactlyInAnyOrder("tenant:read", "consultorio:manage", "espacio:read",
+				.containsExactlyInAnyOrder("tenant:read", "tenant:update", "consultorio:manage", "espacio:read",
 						"colaborador:manage", "colaborador:read", "auditoria:read",
 						"paciente:manage", "turno:read", "turno:manage", "cobro:register",
 						// `paciente:read` lo sumo AKINE-DU-6 (DP-22): todo el personal lee el padron; el

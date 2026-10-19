@@ -102,15 +102,9 @@ public class AuthorizationGuard {
 	 * no puede autorizar sobre el tenant entero, y aceptarlo seria una escalada de privilegio
 	 * que aparece sola en cuanto existan memberships por sede.
 	 *
-	 * <p><b>Contradiccion conocida del catalogo, dicha y no tapada.</b> Uno de los tres usos de
-	 * este metodo es la edicion de la propia organizacion, y el catalogo de la matriz §5 no
-	 * tiene un codigo para "editar la propia organizacion": §6 le da a {@code ORG_ADMIN}
-	 * unicamente {@code tenant:read}, mientras que §4 dice explicitamente que su "Limitado"
-	 * <b>incluye</b> editar los datos de su organizacion (y excluye cambiar de plan y
-	 * suspender, que son de plataforma). Los dos parrafos de la matriz no coinciden. Se resolvio
-	 * por el lado que preserva el comportamiento vigente y el texto de §4 —{@code tenant:read}
-	 * cubre los tres usos— en vez de inventar un codigo que la matriz, que es vinculante, no
-	 * declara. Queda registrado para la etapa que enmiende el catalogo.
+	 * <p><b>La edicion de la propia organizacion ya no pasa por aca</b> (DP-43, U-15): tiene su
+	 * propio codigo, {@code tenant:update}, y su propio metodo, {@link #requireOrgDataEditor}.
+	 * Este queda para las dos lecturas de la suscripcion.
 	 *
 	 * <p><b>El {@code PLATFORM_ADMIN} ya no pasa de largo.</b> Hasta esta correccion habia un
 	 * {@code if (platformAdmin) return;} antes de cualquier evaluacion: leia el perfil y la
@@ -140,6 +134,38 @@ public class AuthorizationGuard {
 			requireSameContext(accountId, organizationId, contextOrganizationId);
 		}
 		exigirTenantRead(accountId, organizationId);
+	}
+
+	/**
+	 * Exige poder editar los datos de la organizacion pedida: {@link PermissionCode#TENANT_UPDATE}.
+	 *
+	 * <p><b>DP-43, U-15: solo el {@code ORG_ADMIN}.</b> La matriz se contradecia —la §4 incluia la
+	 * edicion en el "Limitado" del {@code ORG_ADMIN} y la §5/§6 no tenian codigo para ella— y el
+	 * {@code PATCH} se autorizaba con {@code tenant:read}, que tambien alcanzaba al
+	 * {@code PLATFORM_ADMIN} con un acceso de soporte vigente. La decision fue la regla mas
+	 * restrictiva: el permiso lo tiene unicamente el {@code ORG_ADMIN}, con alcance organizacion,
+	 * no es otorgable por grant, y el {@code PLATFORM_ADMIN} recibe 403 con o sin soporte.
+	 *
+	 * <p>Importa mas que antes porque desde U-38 la zona horaria de la organizacion decide "hoy"
+	 * en el padron, las coberturas, las autorizaciones y las ordenes.
+	 *
+	 * @throws AccessDeniedException         si no es {@code ORG_ADMIN} de esa organizacion, si es
+	 *                                       {@code PLATFORM_ADMIN}, o si no hay contexto (403)
+	 * @throws OrganizationNotFoundException si la organizacion pedida es de otro tenant (404)
+	 */
+	@Transactional(readOnly = true)
+	public void requireOrgDataEditor(
+			long accountId, long organizationId, Long contextOrganizationId, boolean platformAdmin) {
+
+		if (platformAdmin) {
+			log.info("Edicion de organizacion rechazada a la plataforma: accountId={} "
+					+ "organizationId={}", accountId, organizationId);
+			throw new AccessDeniedException(
+					"Los datos de la organizacion los edita solo su administrador (ORG_ADMIN)");
+		}
+		requireSameContext(accountId, organizationId, contextOrganizationId);
+		permissionGuard.requirePermission(PermissionQuery.of(
+				accountId, PermissionCode.TENANT_UPDATE.code(), organizationId, Instant.now()));
 	}
 
 	/**

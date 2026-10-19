@@ -209,6 +209,44 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 	}
 
 	@Test
+	@DisplayName("U-15 tenant:update: solo el ORG_ADMIN edita los datos de su organizacion")
+	void solo_el_org_admin_edita_la_organizacion() {
+		String ruta = "/api/v1/organizations/" + tenant.organizationId();
+		long version = get(ruta, tokens.get(OA)).json().get("version").asLong();
+		String cuerpo = "{\"timezone\":\"America/Argentina/Mendoza\",\"version\":" + version + "}";
+
+		SoftAssertions celdas = new SoftAssertions();
+		for (Map.Entry<String, String> rol : tokens.entrySet()) {
+			if (OA.equals(rol.getKey())) {
+				continue;
+			}
+			Respuesta respuesta = patch(ruta, rol.getValue(), cuerpo);
+			celdas.assertThat(respuesta.status())
+					.as("[%s] editar la organizacion: %s", rol.getKey(), respuesta.body())
+					.isEqualTo(403);
+		}
+		celdas.assertThat(jdbc.queryForObject(
+						"SELECT timezone FROM organization WHERE id = ?", String.class,
+						tenant.organizationId()))
+				.as("ningun rechazo toco la zona")
+				.isNotEqualTo("America/Argentina/Mendoza");
+
+		Respuesta delAdmin = patch(ruta, tokens.get(OA), cuerpo);
+		celdas.assertThat(delAdmin.status()).as("[ORG_ADMIN] %s", delAdmin.body()).isEqualTo(200);
+		celdas.assertThat(jdbc.queryForObject(
+						"SELECT timezone FROM organization WHERE id = ?", String.class,
+						tenant.organizationId()))
+				.isEqualTo("America/Argentina/Mendoza");
+
+		// U-38: la zona se valida contra IANA, porque desde DP-43 decide el "hoy" sin sede.
+		long nueva = delAdmin.json().get("version").asLong();
+		Respuesta offset = patch(ruta, tokens.get(OA),
+				"{\"timezone\":\"-03:00\",\"version\":" + nueva + "}");
+		celdas.assertThat(offset.status()).as("offset fijo: %s", offset.body()).isEqualTo(400);
+		celdas.assertAll();
+	}
+
+	@Test
 	@DisplayName("U-04 caso:create absorbido en hc:write: solo el PROFESIONAL abre un caso por base")
 	void abrir_un_caso_exige_hc_write() {
 		String ruta = "/api/v1/historias-clinicas/" + historia + "/casos";

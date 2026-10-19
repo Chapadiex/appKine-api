@@ -221,7 +221,7 @@ class CoberturasEnElResumenDePersonaTest {
 
 	private CoberturasEnElResumenDePersona contribuyente() {
 		return new CoberturasEnElResumenDePersona(
-				coberturas, Clock.fixed(HOY.atTime(12, 0).toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
+				coberturas, organizationId -> ZoneOffset.UTC, Clock.fixed(HOY.atTime(12, 0).toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
 	}
 
 	private static ConsultaDeResumen consulta(long organizationId, int limite) {

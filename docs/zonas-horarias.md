@@ -3,8 +3,10 @@
 > Escrito el **14/10/2026** (rama `akine-hoy-en-la-zona-de-la-sede`). Inventario hecho con
 > `grep -rnE "LocalDate\.now\(|LocalDateTime\.now\(|LocalTime\.now\(|ZoneId\.systemDefault\("`
 > sobre `src/main`, más los `LocalDate.now(ZoneOffset.UTC)` y `ofInstant(…, ZoneOffset.UTC)` que
-> tienen el mismo efecto. La decisión abierta es **U-38** de
-> [`fases/decisiones-pendientes.md`](fases/decisiones-pendientes.md).
+> tienen el mismo efecto. La decisión que quedaba abierta, **U-38**, la tomó el usuario el
+> **19/10/2026 (DP-43)**: zona por organización. Implementada en la rama
+> `akine-dp43-zona-matriz-gate` (migración `V118`, contrato 0.138.0); la sección (b) es el
+> inventario corregido.
 
 ## El problema
 
@@ -25,9 +27,15 @@ que nadie lo ve hasta producción.
    Se calcula con `organization.spi.ZonaDeSede`, que concentra la política: zona de la sede, y
    **UTC con un WARN** si la sede no declara una válida o no resuelve.
 2. **Si la operación es de la organización sin sede** —padrón, coberturas de la persona,
-   autorizaciones, órdenes, catálogo de planes— **no hay zona definida**: una organización con
-   sedes en dos husos no tiene un "hoy" único. Eso es la decisión **U-38**, y esos sitios quedan
-   como están (UTC en la imagen) hasta que se decida.
+   autorizaciones, órdenes, catálogo de planes— "hoy" es el de **la zona IANA de la organización**
+   (`organization.timezone`), por **U-38 / DP-43**. Se calcula con `organization.spi.ZonaDeOrganizacion`
+   (implementada en `organization.infrastructure.tenant.OrganizationZonaDirectory`): zona de la
+   organización, y **`America/Argentina/Cordoba` con un WARN** si la organización no resuelve o su
+   zona no es válida. Por defecto es la de su **primera sede** (la de menor id: `V118` hizo el
+   backfill), o Córdoba si no tiene sedes. La edita sólo el `ORG_ADMIN`, con
+   `PATCH /organizations/{orgId}` (`tenant:update`, U-15), y se valida contra la base IANA igual
+   que la de una sede: un offset fijo o una abreviatura es 400. Una organización con sedes en dos
+   husos tiene **un** "hoy" para lo que no tiene sede; lo que tiene sede sigue con la regla 1.
 3. Nada depende de la zona de la JVM: el reloj por defecto es `Clock.systemUTC()`, y los servicios
    que calculan "hoy" reciben un `Clock` por un constructor de paquete para que un test fije la hora.
 
@@ -63,36 +71,42 @@ secas: ante una zona nula o inválida **fallan** en vez de caer a UTC. Delegarlo
 cambiaría ese comportamiento —en la caja, un movimiento imputado en silencio al día UTC—, y es una
 decisión que queda abierta.
 
-## (b) De la organización, sin sede — pendientes de U-38
+## (b) De la organización, sin sede — corregidos por U-38 (DP-43)
 
-Siguen con `LocalDate.now()` (zona de la JVM, UTC en la imagen). Lista exacta, con la línea de
-la rama:
+Hasta DP-43 estos sitios usaban `LocalDate.now()` (zona de la JVM, UTC en la imagen). Desde la rama
+`akine-dp43-zona-matriz-gate` calculan "hoy" con `ZonaDeOrganizacion`, que cada clase recibe por
+constructor. Lista exacta, con la línea de esa rama:
 
 | Sitio | Qué evalúa |
 |---|---|
-| `contracting/application/PlanCoberturaService.java:107` | vigencia de planes del financiador sin `fecha` (listar) |
-| `PlanCoberturaService.java:180`, `:235`, `:268` | `vigente` de la vista al crear, editar y dar de baja |
-| `person/application/AutorizacionService.java:175`, `:201`, `:246` | vigencia de autorizaciones sin `fecha` (listar, ver, historial) |
-| `AutorizacionService.java:345`, `:421`, `:517`, `:555`, `:589` | `vigente` de la vista al crear y en cada mutación |
-| `person/application/CoberturaPacienteService.java:152`, `:180` | coberturas vigentes de la persona sin `fecha` |
-| `CoberturaPacienteService.java:281`, `:355`, `:408`, `:445` | `vigente` de la vista en cada mutación |
-| `person/application/OrdenMedicaService.java:124`, `:180`, `:284` | vigencia y situación de la orden médica |
-| `person/application/ConsumoDeAutorizacionService.java:598` | saldo de una autorización sin `fecha` |
-| `ConsumoDeAutorizacionService.java:650` | autorizaciones elegibles del paciente sin `fecha` |
-| `ConsumoDeAutorizacionService.java:179` | respaldo si el cierre no trae fecha. **Hoy inalcanzable**: el único llamador (`ConsumoDeAutorizacionEnCierre`) siempre manda el día local de la sede |
-| `person/infrastructure/PersonAutorizacionDirectory.java:44` | respaldo del `spi` si el llamador no manda fecha. **Hoy inalcanzable**: los dos llamadores (`PlanTratamientoService`, `DerivacionClinicaService`) mandan fecha |
-| `person/application/CoberturasEnElResumenDePersona.java:108` | coberturas vigentes en el Paciente 360. Usa `Clock`; en esta rama pasó de `systemDefaultZone()` a `systemUTC()` (ver (c)) |
-| `resource/infrastructure/ResourceDesvinculacionProbe.java:93` y `:117` | bloques y excepciones vigentes de una membership al desvincularla: la membership puede abarcar varias sedes |
+| `contracting/application/PlanCoberturaService.java:113` | vigencia de planes del financiador sin `fecha` (listar) |
+| `PlanCoberturaService.java:186`, `:241`, `:274` | `vigente` de la vista al crear, editar y dar de baja |
+| `person/application/AutorizacionService.java:183`, `:209`, `:254` | vigencia de autorizaciones sin `fecha` (listar, ver, historial) |
+| `AutorizacionService.java:353`, `:429`, `:525`, `:563`, `:597` | `vigente` de la vista al crear y en cada mutación |
+| `person/application/CoberturaPacienteService.java:160`, `:188` | coberturas vigentes de la persona sin `fecha` |
+| `CoberturaPacienteService.java:289`, `:364`, `:417`, `:454` | `vigente` de la vista en cada mutación |
+| `person/application/OrdenMedicaService.java:132`, `:188`, `:292` | vigencia y situación de la orden médica |
+| `person/application/ConsumoDeAutorizacionService.java:606` | saldo de una autorización sin `fecha` |
+| `ConsumoDeAutorizacionService.java:658` | autorizaciones elegibles del paciente sin `fecha` |
+| `ConsumoDeAutorizacionService.java:187` | respaldo si el cierre no trae fecha. **Hoy inalcanzable**: el único llamador (`ConsumoDeAutorizacionEnCierre`) siempre manda el día local de la sede |
+| `person/infrastructure/PersonAutorizacionDirectory.java:49` | respaldo del `spi` si el llamador no manda fecha. **Hoy inalcanzable**: los dos llamadores (`PlanTratamientoService`, `DerivacionClinicaService`) mandan fecha |
+| `person/application/CoberturasEnElResumenDePersona.java:114` | coberturas vigentes en el Paciente 360, con el `Clock` del contribuyente (`hoy(organizationId, clock)`) |
+| `resource/infrastructure/ResourceDesvinculacionProbe.java:98` y `:123` | bloques y excepciones vigentes de una membership al desvincularla, y la medianoche de la primera excepción: la membership puede abarcar varias sedes |
 
 **28 sitios** en 8 archivos: 25 en `person` y `contracting`, uno en el 360 y los dos de la sonda de
-desvinculación (uno calcula el día y el otro lo proyecta a instante).
+desvinculación. Ningún `LocalDate.now()` sin zona queda en `src/main`.
 
-Las opciones que U-38 tiene que elegir, sin recomendación propia de este documento:
+**Lo que no se tocó, a propósito:**
 
-- **zona por organización** (columna nueva en `organization`, migración), o
-- **zona de la sede del contexto cuando la hay**, y UTC (o la de la organización) cuando no, o
-- **que el cliente mande siempre `fecha`** en las lecturas, y "hoy" del servidor sólo en las
-  mutaciones.
+- El instante `ocurrioEn` de los hitos de cobertura del 360
+  (`CoberturasEnElResumenDePersona`, `atStartOfDay(ZoneOffset.UTC)`): es una **fecha** viajando en
+  el único campo temporal del hito, documentada como medianoche UTC en el javadoc y en el contrato.
+  Moverla a la zona de la organización cambiaría el instante publicado sin cambiar el día.
+- Los jobs de F9 (`VencimientoDePases`, `AvisosDePases`, `RenovacionDeAbonos`) usan el día UTC
+  sólo como **prefiltro** con un día de margen, y deciden después con la zona de cada sede.
+
+**Las otras dos opciones que U-38 tenía** —zona de la sede del contexto cuando la hay, o que el
+cliente mande siempre `fecha`— quedaron descartadas por DP-43.
 
 ## (c) Instantes y relojes
 
@@ -108,3 +122,9 @@ timestamps ya son `Instant`. **1 sitio.**
 Los tests fijan el reloj en **`2026-03-15T01:30:00Z`** (o `2026-07-01T01:30:00Z`), que son las
 **22:30 del día anterior en Córdoba**: `ZonaDeSedeTest`, `CasoClinicoServiceTest`
 (`oferta_que_vence_hoy_en_la_sede`) y `ConvenioServiceTest` (`sin_fecha_hoy_es_el_de_la_sede`).
+
+Para la organización (DP-43): `OrganizationZonaDirectoryTest` (mismo reloj, Córdoba contra Tokio y
+el default ante una zona inválida), `CoberturaPacienteServiceTest`
+(`sin_fecha_hoy_es_el_de_la_organizacion`), `ResourceDesvinculacionProbeTest`
+(`el_dia_es_el_de_la_organizacion`) y, por HTTP, `MatrizDePermisosIT` (la zona se edita sólo como
+`ORG_ADMIN` y un offset fijo es 400).
