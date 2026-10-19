@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.134.0
+  version: 0.136.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -11384,6 +11384,8 @@ paths:
 
         Si una ocurrencia no tiene lugar, no se crea nada y el 409 conserva el tipo de la causa (`slot-no-disponible`, `slot-completo`, `recurso-ocupado`, `oferta-no-agendable`) con la propiedad `ocurrenciaInicio`.
 
+        **Salvo los feriados** (U-22): una ocurrencia que cae en un dia que la sede cierra por feriado —y que ninguna apertura reabre— no se reserva y vuelve en `ocurrenciasOmitidas` con motivo `FERIADO`; el resto de la serie se crea igual. Si **todas** caen en feriado no se crea nada: 409 `slot-no-disponible` con `ocurrenciaInicio` de la primera. Una oferta sin profesional no pasa por la disponibilidad y no omite nada. La agenda (`buscarAgenda`) ya marca esos dias con `motivoSinSlots = FERIADO`, que es lo que usa la previsualizacion.
+
         Cada ocurrencia es un turno pleno: conserva identidad, estado e historial propios (DP-04), y una ausencia en la primera **no** elimina la serie.
       operationId: crearSerieDeTurnos
       parameters:
@@ -11418,7 +11420,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/SerieDeTurnos"
-          description: Serie creada con todas sus ocurrencias
+          description: "Serie creada con todas sus ocurrencias, menos las omitidas\
+            \ por feriado"
         "400":
           content:
             application/json:
@@ -13819,9 +13822,11 @@ paths:
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/particular:
     post:
       description: |-
-        RF-M13-005. Decision explicita del operador, **con motivo obligatorio**, cuando la persona no tiene cobertura aplicable o la validacion quedo observada. Deja la recepcion `VALIDADA` con modalidad `PARTICULAR`.
+        RF-M13-005. Decision explicita del operador, **con motivo obligatorio**, cuando la persona no tiene cobertura aplicable o la validacion quedo observada. Desde `LLEGO` u `OBSERVADA` deja la recepcion `VALIDADA` con modalidad `PARTICULAR`.
 
-        **No modifica la cobertura maestra del paciente** (RN-M13-004): es un dato de esta recepcion. Desde `LLEGO` u `OBSERVADA`.
+        **Desde `EN_ESPERA`** (U-21) la persona sigue en la sala: la recepcion queda `EN_ESPERA`, con modalidad `PARTICULAR` y su `enEsperaDesde` intacto, sin anular ni volver a marcar la llegada. Si ya se atiende como Particular responde 409.
+
+        **No modifica la cobertura maestra del paciente** (RN-M13-004): es un dato de esta recepcion.
       operationId: atenderComoParticular
       parameters:
       - in: path
@@ -13890,6 +13895,84 @@ paths:
           description: "No hay recepcion abierta o su estado no lo admite (`recepcion-transicion-no-permitida`),\
             \ o la version quedo vieja"
       summary: Continuar como Particular
+      tags:
+      - Recepcion
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/retiro:
+    post:
+      description: |-
+        U-21. Desde `LLEGO` o `EN_ESPERA`, **con motivo obligatorio**. Deja la recepcion `RETIRADO`, terminal, con `cerradaEn` y `motivoCierre`.
+
+        A diferencia de la anulacion, **la llegada vale**: la persona vino. Por eso la recepcion sigue siendo la vigente del turno, un nuevo check-in responde 409 y el turno ya no se puede marcar ausente ni reprogramar.
+
+        **No cambia el estado del turno** (DP-05): sigue `RESERVADO` o `CONFIRMADO`. Tampoco impide abrir la Sesion: la Sesion es la que prueba la atencion.
+      operationId: retirarRecepcion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetirarRecepcion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Recepcion"
+          description: Recepcion cerrada como RETIRADO
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay recepcion abierta o su estado no lo admite (`recepcion-transicion-no-permitida`),\
+            \ o la version quedo vieja (`concurrent-modification`)"
+      summary: Registrar que la persona se retiro sin ser atendida
       tags:
       - Recepcion
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/validacion:
@@ -29442,6 +29525,7 @@ components:
           - LLAMADO
           - ANULACION
           - CIERRE_POR_CANCELACION
+          - RETIRO
           example: LLEGADA
     EventoDeTurno:
       type: object
@@ -32173,6 +32257,28 @@ components:
           format: int64
           description: Version para el control optimista
           example: 0
+    OcurrenciaOmitidaDeSerie:
+      type: object
+      description: "Ocurrencia que la regla producia y que el alta no reservo, con\
+        \ su motivo. No es un turno: nunca existio."
+      properties:
+        fecha:
+          type: string
+          format: date
+          description: "Fecha local de la ocurrencia, en la zona de la serie"
+          example: 2026-12-07
+        inicio:
+          type: string
+          format: date-time
+          description: Instante que la regla producia
+          example: 2026-12-07T12:00:00Z
+        motivo:
+          type: string
+          description: "`FERIADO`: la sede cierra ese dia por feriado y ninguna apertura\
+            \ lo reabre."
+          enum:
+          - FERIADO
+          example: FERIADO
     OfertaResponse:
       type: object
       description: Oferta de un servicio en una sede concreta
@@ -34423,7 +34529,7 @@ components:
         cerradaEn:
           type: string
           format: date-time
-          description: Cuando se anulo o se cerro.
+          description: "Cuando se anulo, se cerro o la persona se retiro."
           example: 2026-09-15T12:30:00Z
         coberturaId:
           type: integer
@@ -34443,8 +34549,9 @@ components:
           type: string
           description: "`LLEGO` (sin validar), `VALIDADA` (se sabe como se atiende),\
             \ `OBSERVADA` (la validacion encontro algo: advierte, no bloquea), `EN_ESPERA`,\
-            \ `LLAMADA`, `ANULADA` (check-in por error) o `CERRADA` (el turno se cancelo\
-            \ con la persona presente; la llegada consta)."
+            \ `LLAMADA`, `ANULADA` (check-in por error), `RETIRADO` (se retiro sin\
+            \ ser atendido; la llegada consta) o `CERRADA` (el turno se cancelo con\
+            \ la persona presente; la llegada consta)."
           enum:
           - LLEGO
           - VALIDADA
@@ -34453,6 +34560,7 @@ components:
           - LLAMADA
           - ANULADA
           - CERRADA
+          - RETIRADO
           example: EN_ESPERA
         id:
           type: integer
@@ -34482,7 +34590,8 @@ components:
           example: COBERTURA
         motivoCierre:
           type: string
-          description: Motivo de la anulacion o de la cancelacion del turno.
+          description: "Motivo de la anulacion, de la cancelacion del turno o del\
+            \ retiro."
           example: El profesional se descompuso
         motivoParticular:
           type: string
@@ -35944,6 +36053,27 @@ components:
             explicitas para que la pantalla no las confunda con ausencia de datos
           items:
             $ref: "#/components/schemas/SeccionOmitidaResponse"
+    RetirarRecepcion:
+      type: object
+      description: La persona se retiro sin ser atendida. La llegada consta y el turno
+        no cambia.
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version que devolvio la ultima lectura de la recepcion.
+          example: 2
+          minimum: 0
+        motivo:
+          type: string
+          description: "Por que se retiro. **Obligatorio**: es lo unico que explica\
+            \ despues por que un turno con llegada quedo sin atender."
+          example: No quiso esperar la demora de 40 minutos
+          maxLength: 300
+          minLength: 0
+      required:
+      - expectedVersion
+      - motivo
     RevertirConsumoRequest:
       type: object
       description: Reversion de un consumo de autorizacion
@@ -36247,6 +36377,14 @@ components:
           type: integer
           format: int64
           example: 12
+        ocurrenciasOmitidas:
+          type: array
+          description: "Las ocurrencias que la regla producia y el alta NO reservo,\
+            \ con su motivo (U-22): hoy, las que caen en un dia que la sede cierra\
+            \ por feriado. Vacia si no se omitio ninguna. No son turnos —nunca existieron—\
+            , y por eso `cantidad` puede ser mayor que la cantidad de `turnos`."
+          items:
+            $ref: "#/components/schemas/OcurrenciaOmitidaDeSerie"
         ofertaId:
           type: integer
           format: int64
@@ -37532,8 +37670,8 @@ components:
           type: string
           description: "`YA_EMPEZO` (el pasado es inalterable), `ESTADO_TERMINAL`\
             \ (ya cancelado o ausente), `EN_ESPERA` (el paciente ya llego: tiene una\
-            \ recepcion abierta; se resuelve solo) o `CON_ATENCION` (tiene una Sesion\
-            \ registrada)"
+            \ recepcion abierta o se retiro sin ser atendido; se resuelve solo) o\
+            \ `CON_ATENCION` (tiene una Sesion registrada)"
           enum:
           - YA_EMPEZO
           - ESTADO_TERMINAL

@@ -28,5 +28,8 @@ public enum TipoEventoRecepcion {
 	ANULACION,
 
 	/** El turno se cancelo con la recepcion abierta. */
-	CIERRE_POR_CANCELACION
+	CIERRE_POR_CANCELACION,
+
+	/** La persona se retiro sin ser atendida, con motivo obligatorio (U-21). */
+	RETIRO
 }

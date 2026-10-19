@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -442,6 +443,170 @@ class RecepcionIT {
 				turno.id(), new ReprogramacionCommand(hora(10), fixture.profesionalMembershipId(), "mover",
 						versionDelTurno(turno.id())));
 		assertThat(movido.inicio()).isEqualTo(hora(10));
+	}
+
+	// =================================================================================
+	// U-21 (DP-43): RETIRADO y Particular desde la espera
+	// =================================================================================
+
+	@Test
+	@DisplayName("U-21: se retira desde EN_ESPERA con motivo; el turno no cambia, la llegada consta y queda auditado")
+	void se_retira_desde_la_espera() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		RecepcionView abierta = llegar(fixture, turno);
+		RecepcionView particular = recepcion.atenderComoParticular(fixture.actor(),
+				fixture.consultorioId(), turno.id(), "Paga en el mostrador", abierta.version());
+		RecepcionView enEspera = recepcion.pasarAEspera(
+				fixture.actor(), fixture.consultorioId(), turno.id(), particular.version());
+		long versionTurno = versionDelTurno(turno.id());
+
+		RecepcionView retirada = recepcion.retirar(fixture.actor(), fixture.consultorioId(),
+				turno.id(), "  No quiso esperar la demora ", enEspera.version());
+
+		assertThat(retirada.estado()).isEqualTo("RETIRADO");
+		assertThat(retirada.motivoCierre()).isEqualTo("No quiso esperar la demora");
+		assertThat(retirada.cerradaEn()).isNotNull();
+		Map<String, Object> fila = jdbc.queryForMap("""
+				SELECT estado, motivo_cierre, cerrada_en, cerrada_por_cuenta_id, llegada_en, turno_vigente_id
+				  FROM recepcion WHERE turno_id = ?""", turno.id());
+		assertThat(fila).containsEntry("estado", "RETIRADO")
+				.containsEntry("motivo_cierre", "No quiso esperar la demora");
+		assertThat(fila.get("cerrada_en")).isNotNull();
+		assertThat(fila.get("llegada_en")).as("la llegada consta").isNotNull();
+		assertThat(((Number) fila.get("cerrada_por_cuenta_id")).longValue()).isEqualTo(fixture.actor().accountId());
+		assertThat(((Number) fila.get("turno_vigente_id")).longValue())
+				.as("sigue siendo la recepcion vigente del turno: la llegada vale, no se anulo")
+				.isEqualTo(turno.id());
+
+		assertThat(jdbc.queryForMap("SELECT estado, version FROM turno WHERE id = ?", turno.id()))
+				.as("Recepcion != Turno: ni el estado ni la version del turno se mueven")
+				.containsEntry("estado", "RESERVADO")
+				.containsEntry("version", versionTurno);
+
+		List<EventoDeRecepcionView> eventos = historial(fixture, turno.id());
+		assertThat(eventos).extracting(EventoDeRecepcionView::tipo)
+				.containsExactly("LLEGADA", "PARTICULAR", "ESPERA", "RETIRO");
+		EventoDeRecepcionView retiro = eventos.get(3);
+		assertThat(retiro.estadoAnterior()).isEqualTo("EN_ESPERA");
+		assertThat(retiro.estadoNuevo()).isEqualTo("RETIRADO");
+		assertThat(retiro.motivo()).isEqualTo("No quiso esperar la demora");
+		assertThat(retiro.actorCuentaId()).isEqualTo(fixture.actor().accountId());
+
+		assertThat(jdbc.queryForObject("""
+				SELECT COUNT(*) FROM audit_event
+				 WHERE organization_id = ? AND event_type = 'RECEPCION_RETIRO' AND entity_id = ?
+				   AND previous_state = 'EN_ESPERA' AND new_state = 'RETIRADO'
+				   AND reason = 'No quiso esperar la demora'
+				""", Long.class, fixture.organizationId(), retirada.id()))
+				.as("auditado como toda transicion de recepcion")
+				.isEqualTo(1L);
+	}
+
+	@Test
+	@DisplayName("U-21: retirado, la llegada consta: no hay nuevo check-in, ni ausencia, ni reprogramacion")
+	void retirado_bloquea_llegada_ausencia_y_reprogramacion() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		RecepcionView abierta = llegar(fixture, turno);
+
+		recepcion.retirar(fixture.actor(), fixture.consultorioId(), turno.id(),
+				"Se descompuso y se fue", abierta.version());
+
+		assertThatThrownBy(() -> recepcion.registrarLlegada(
+				fixture.actor(), fixture.consultorioId(), turno.id()))
+				.isInstanceOf(TransicionDeRecepcionNoPermitidaException.class)
+				.hasMessageContaining("se retiro");
+		assertThatThrownBy(() -> cicloService.marcarAusente(fixture.actor(), fixture.consultorioId(),
+				turno.id(), null, versionDelTurno(turno.id())))
+				.as("afirmar que no vino seria falso")
+				.isInstanceOf(TransicionDeTurnoNoPermitidaException.class)
+				.hasMessageContaining("se retiro sin ser atendido");
+		assertThatThrownBy(() -> cicloService.reprogramar(fixture.actor(), fixture.consultorioId(),
+				turno.id(), new ReprogramacionCommand(hora(10), fixture.profesionalMembershipId(), "mover",
+						versionDelTurno(turno.id()))))
+				.isInstanceOf(TransicionDeTurnoNoPermitidaException.class)
+				.hasMessageContaining("se retiro sin ser atendido");
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recepcion WHERE turno_id = ?",
+				Integer.class, turno.id())).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT estado FROM turno WHERE id = ?", String.class, turno.id()))
+				.isEqualTo("RESERVADO");
+	}
+
+	@Test
+	@DisplayName("U-21: el retiro solo desde LLEGO o EN_ESPERA, y la base rechaza un RETIRADO sin motivo")
+	void retiro_fuera_de_estado_y_sin_motivo() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		RecepcionView abierta = llegar(fixture, turno);
+		RecepcionView validada = recepcion.atenderComoParticular(fixture.actor(),
+				fixture.consultorioId(), turno.id(), "Paga en el mostrador", abierta.version());
+
+		assertThatThrownBy(() -> recepcion.retirar(fixture.actor(), fixture.consultorioId(),
+				turno.id(), "Se fue", validada.version()))
+				.isInstanceOf(TransicionDeRecepcionNoPermitidaException.class);
+		assertThat(jdbc.queryForObject("SELECT estado FROM recepcion WHERE turno_id = ?",
+				String.class, turno.id())).isEqualTo("VALIDADA");
+
+		// V116: ck_recepcion_retirado_con_motivo y ck_recepcion_cierre, contra el motor.
+		assertThatThrownBy(() -> jdbc.update("""
+				UPDATE recepcion SET estado = 'RETIRADO', cerrada_en = UTC_TIMESTAMP(6), motivo_cierre = NULL
+				 WHERE turno_id = ?""", turno.id()))
+				.isInstanceOf(DataAccessException.class).hasMessageContaining("ck_recepcion_retirado_con_motivo");
+		assertThatThrownBy(() -> jdbc.update("""
+				UPDATE recepcion SET estado = 'RETIRADO', cerrada_en = NULL, motivo_cierre = 'x'
+				 WHERE turno_id = ?""", turno.id()))
+				.isInstanceOf(DataAccessException.class).hasMessageContaining("ck_recepcion_cierre");
+	}
+
+	@Test
+	@DisplayName("U-21: Particular desde EN_ESPERA deja a la persona en la sala con modalidad PARTICULAR")
+	void particular_desde_la_espera() {
+		Fixture fixture = fixtures.crear(1);
+		TurnoView turno = reservar(fixture, fixture.personaA(), hora(9));
+		conPractica(fixture);
+		conCobertura(fixture, 412L);
+		given(elegibilidad.evaluar(eq(fixture.organizationId()), eq(fixture.consultorioId()),
+				eq(fixture.personaA()), eq(412L), eq(PRACTICA), eq(LUNES)))
+				.willReturn(new VeredictoDeElegibilidad(true, null, 9L, List.of()));
+		RecepcionView abierta = llegar(fixture, turno);
+		RecepcionView validada = recepcion.validar(
+				fixture.actor(), fixture.consultorioId(), turno.id(), null, abierta.version());
+		RecepcionView enEspera = recepcion.pasarAEspera(
+				fixture.actor(), fixture.consultorioId(), turno.id(), validada.version());
+		Object esperaDesde = jdbc.queryForMap(
+				"SELECT en_espera_desde FROM recepcion WHERE turno_id = ?", turno.id()).get("en_espera_desde");
+
+		RecepcionView particular = recepcion.atenderComoParticular(fixture.actor(),
+				fixture.consultorioId(), turno.id(), "La credencial esta vencida; abona", enEspera.version());
+
+		assertThat(particular.estado()).isEqualTo("EN_ESPERA");
+		assertThat(particular.modalidad()).isEqualTo("PARTICULAR");
+		Map<String, Object> fila = jdbc.queryForMap("""
+				SELECT estado, modalidad, motivo_particular, cobertura_id, convenio_id, en_espera_desde
+				  FROM recepcion WHERE turno_id = ?""", turno.id());
+		assertThat(fila).containsEntry("estado", "EN_ESPERA")
+				.containsEntry("modalidad", "PARTICULAR")
+				.containsEntry("motivo_particular", "La credencial esta vencida; abona")
+				.containsEntry("cobertura_id", null)
+				.containsEntry("convenio_id", null)
+				.containsEntry("en_espera_desde", esperaDesde);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recepcion WHERE turno_id = ?",
+				Integer.class, turno.id()))
+				.as("sin anular ni volver a marcar la llegada")
+				.isEqualTo(1);
+
+		EventoDeRecepcionView ultimo = historial(fixture, turno.id()).getLast();
+		assertThat(ultimo.tipo()).isEqualTo("PARTICULAR");
+		assertThat(ultimo.estadoAnterior()).isEqualTo("EN_ESPERA");
+		assertThat(ultimo.estadoNuevo()).isEqualTo("EN_ESPERA");
+		assertThat(ultimo.motivo()).isEqualTo("La credencial esta vencida; abona");
+
+		assertThatThrownBy(() -> recepcion.atenderComoParticular(fixture.actor(),
+				fixture.consultorioId(), turno.id(), "otra vez", particular.version()))
+				.isInstanceOf(TransicionDeRecepcionNoPermitidaException.class);
+		assertThat(recepcion.llamar(fixture.actor(), fixture.consultorioId(), turno.id(),
+				particular.version()).estado()).isEqualTo("LLAMADA");
 	}
 
 	// =================================================================================

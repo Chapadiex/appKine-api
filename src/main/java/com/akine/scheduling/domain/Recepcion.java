@@ -37,6 +37,14 @@ public class Recepcion {
 	private static final Set<EstadoRecepcion> PASAN_A_ESPERA =
 			EnumSet.of(EstadoRecepcion.VALIDADA, EstadoRecepcion.OBSERVADA);
 
+	/** U-21: Particular tambien desde la sala, sin anular y volver a marcar la llegada. */
+	private static final Set<EstadoRecepcion> ADMITEN_PARTICULAR =
+			EnumSet.of(EstadoRecepcion.LLEGO, EstadoRecepcion.OBSERVADA, EstadoRecepcion.EN_ESPERA);
+
+	/** U-21: de donde se puede salir sin ser atendido. Lo decidio el usuario, no se infiere. */
+	private static final Set<EstadoRecepcion> ADMITEN_RETIRO =
+			EnumSet.of(EstadoRecepcion.LLEGO, EstadoRecepcion.EN_ESPERA);
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
@@ -172,14 +180,25 @@ public class Recepcion {
 	 *
 	 * <p>No toca la cobertura maestra del paciente (RN-M13-004): es un dato de esta recepcion. La
 	 * observacion previa, si la hubo, se conserva: es la razon por la que se decidio esto.
+	 *
+	 * <p><b>Desde {@code EN_ESPERA}</b> (U-21) la persona sigue en la sala: cambia la modalidad y
+	 * el estado queda {@code EN_ESPERA}, con su hora de espera intacta. Volverla a
+	 * {@code VALIDADA} la sacaria de la sala por una decision administrativa. Si ya se atiende
+	 * como Particular es 409: repetirla pisaria el motivo que ya consta.
 	 */
 	public void atenderComoParticular(String motivo, long cuentaId, Instant ahora) {
-		exigir(VALIDABLES, "atender como Particular");
+		exigir(ADMITEN_PARTICULAR, "atender como Particular");
 		if (motivo == null || motivo.isBlank()) {
 			throw new IllegalArgumentException(
 					"Atender como Particular exige un motivo (RF-M13-005)");
 		}
-		this.estado = EstadoRecepcion.VALIDADA;
+		if (modalidad == ModalidadRecepcion.PARTICULAR) {
+			throw new TransicionDeRecepcionNoPermitidaException(turnoId,
+					"ya se atiende como Particular");
+		}
+		if (estado != EstadoRecepcion.EN_ESPERA) {
+			this.estado = EstadoRecepcion.VALIDADA;
+		}
 		this.modalidad = ModalidadRecepcion.PARTICULAR;
 		this.motivoParticular = motivo.strip();
 		this.coberturaId = null;
@@ -208,6 +227,20 @@ public class Recepcion {
 	public void anular(String motivo, long cuentaId, Instant ahora) {
 		exigirAbierta("anular");
 		cerrar(EstadoRecepcion.ANULADA, motivo, cuentaId, ahora);
+	}
+
+	/**
+	 * La persona se retiro sin ser atendida (U-21). A diferencia de {@link #anular}, la llegada
+	 * <b>vale</b>: la persona vino. Y a diferencia de {@link #cerrarPorCancelacion}, el turno no se
+	 * toca. El motivo es obligatorio (lo exige tambien {@code ck_recepcion_retirado_con_motivo}).
+	 */
+	public void retirar(String motivo, long cuentaId, Instant ahora) {
+		exigir(ADMITEN_RETIRO, "registrar que se retiro sin ser atendido");
+		if (motivo == null || motivo.isBlank()) {
+			throw new IllegalArgumentException(
+					"Registrar que la persona se retiro sin ser atendida exige un motivo");
+		}
+		cerrar(EstadoRecepcion.RETIRADO, motivo, cuentaId, ahora);
 	}
 
 	/** El turno se cancelo con la persona presente: la llegada consta y la recepcion termina. */

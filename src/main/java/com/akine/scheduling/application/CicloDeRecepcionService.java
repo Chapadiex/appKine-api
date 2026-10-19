@@ -139,6 +139,13 @@ public class CicloDeRecepcionService {
 			return new ResultadoDeLlegada(
 					vista(organizationId, consultorioId, turno, vigente.get()), false, TurnoView.de(turno));
 		}
+		// U-21: la persona ya vino y se fue. La llegada consta y la recepcion es terminal; abrir
+		// otra sobre el mismo turno chocaria contra uk_recepcion_turno_vigente, y "volvio" no es
+		// una llegada nueva a esta reserva. La Sesion se puede abrir igual (DP-05).
+		if (vigente.isPresent() && vigente.get().getEstado() == EstadoRecepcion.RETIRADO) {
+			throw new TransicionDeRecepcionNoPermitidaException(turnoId,
+					"la persona se retiro sin ser atendida y esa recepcion es terminal");
+		}
 		// Una vigente CERRADA solo existe sobre un turno cancelado, y eso lo rechaza esto mismo.
 		turno.exigirAdmiteLlegada();
 
@@ -312,6 +319,23 @@ public class CicloDeRecepcionService {
 		return transicionar(actor, consultorioId, turnoId, expectedVersion,
 				TipoEventoRecepcion.ANULACION, prepagoActual -> motivo,
 				(recepcion, ahora) -> recepcion.anular(motivo, actor.accountId(), ahora));
+	}
+
+	/**
+	 * La persona se retiro sin ser atendida (U-21, DP-43): desde {@code LLEGO} o {@code EN_ESPERA},
+	 * con motivo obligatorio. <b>No toca el turno</b> (Recepcion ≠ Turno ≠ Sesion): sigue
+	 * {@code RESERVADO} o {@code CONFIRMADO}, y desde ahora no se puede marcar ausente ni
+	 * reprogramar, porque la llegada consta. Queda en el historial y en la auditoria
+	 * ({@code RECEPCION_RETIRO}), como toda transicion.
+	 */
+	@Transactional
+	public RecepcionView retirar(
+			OperatingActor actor, long consultorioId, long turnoId, String motivo,
+			long expectedVersion) {
+
+		return transicionar(actor, consultorioId, turnoId, expectedVersion,
+				TipoEventoRecepcion.RETIRO, prepagoActual -> motivo,
+				(recepcion, ahora) -> recepcion.retirar(motivo, actor.accountId(), ahora));
 	}
 
 	/**

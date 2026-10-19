@@ -24,7 +24,7 @@ public record EventoDeRecepcionResponse(
 				description = "`VALIDACION` la calcula el servidor; `PARTICULAR` la decide el operador. "
 						+ "Las dos pueden terminar en VALIDADA.",
 				allowableValues = {"LLEGADA", "VALIDACION", "PARTICULAR", "ESPERA", "LLAMADO",
-						"ANULACION", "CIERRE_POR_CANCELACION"},
+						"ANULACION", "CIERRE_POR_CANCELACION", "RETIRO"},
 				example = "LLEGADA")
 		String tipo,
 

@@ -161,10 +161,68 @@ class RecepcionTest {
 	}
 
 	@Test
-	@DisplayName("EstadoRecepcion: solo ANULADA y CERRADA estan cerradas")
+	@DisplayName("EstadoRecepcion: solo ANULADA, CERRADA y RETIRADO estan cerradas")
 	void abiertas() {
 		assertThat(EstadoRecepcion.values()).filteredOn(e -> !e.estaAbierta())
-				.containsExactly(EstadoRecepcion.ANULADA, EstadoRecepcion.CERRADA);
+				.containsExactly(EstadoRecepcion.ANULADA, EstadoRecepcion.CERRADA, EstadoRecepcion.RETIRADO);
+	}
+
+	@Test
+	@DisplayName("U-21: se retira desde LLEGO o EN_ESPERA, con motivo, y es terminal con la llegada intacta")
+	void retiro() {
+		Recepcion recienLlegada = nueva();
+		assertThatThrownBy(() -> recienLlegada.retirar("  ", 9L, AHORA))
+				.isInstanceOf(IllegalArgumentException.class);
+		recienLlegada.retirar(" No quiso esperar ", 9L, AHORA.plusSeconds(60));
+		assertThat(recienLlegada.getEstado()).isEqualTo(EstadoRecepcion.RETIRADO);
+		assertThat(recienLlegada.getMotivoCierre()).isEqualTo("No quiso esperar");
+		assertThat(recienLlegada.getCerradaEn()).isEqualTo(AHORA.plusSeconds(60));
+		assertThat(recienLlegada.getLlegadaEn()).as("la llegada consta").isEqualTo(AHORA);
+		assertThat(recienLlegada.estaAbierta()).isFalse();
+		assertThatThrownBy(() -> recienLlegada.anular("era un error", 9L, AHORA))
+				.as("terminal: no se anula despues")
+				.isInstanceOf(TransicionDeRecepcionNoPermitidaException.class);
+
+		Recepcion enEspera = nueva();
+		enEspera.atenderComoParticular("Abona", 9L, AHORA);
+		enEspera.pasarAEspera(AHORA);
+		enEspera.retirar("Se fue por la demora", 9L, AHORA);
+		assertThat(enEspera.getEstado()).isEqualTo(EstadoRecepcion.RETIRADO);
+
+		Recepcion validada = nueva();
+		validada.atenderComoParticular("Abona", 9L, AHORA);
+		assertThatThrownBy(() -> validada.retirar("Se fue", 9L, AHORA))
+				.as("U-21 lo admite solo desde LLEGO o EN_ESPERA")
+				.isInstanceOf(TransicionDeRecepcionNoPermitidaException.class);
+		validada.pasarAEspera(AHORA);
+		validada.llamar(9L, AHORA);
+		assertThatThrownBy(() -> validada.retirar("Se fue", 9L, AHORA))
+				.isInstanceOf(TransicionDeRecepcionNoPermitidaException.class);
+	}
+
+	@Test
+	@DisplayName("U-21: Particular desde EN_ESPERA cambia la modalidad sin sacar a la persona de la sala")
+	void particular_desde_la_espera() {
+		Recepcion recepcion = nueva();
+		recepcion.validarConCobertura(33L, 412L, 9L, 9L, AHORA);
+		recepcion.pasarAEspera(AHORA.plusSeconds(60));
+
+		recepcion.atenderComoParticular("La credencial esta vencida; abona", 7L, AHORA.plusSeconds(120));
+
+		assertThat(recepcion.getEstado()).isEqualTo(EstadoRecepcion.EN_ESPERA);
+		assertThat(recepcion.getEnEsperaDesde()).as("sigue esperando desde la misma hora")
+				.isEqualTo(AHORA.plusSeconds(60));
+		assertThat(recepcion.getModalidad()).isEqualTo(ModalidadRecepcion.PARTICULAR);
+		assertThat(recepcion.getMotivoParticular()).isEqualTo("La credencial esta vencida; abona");
+		assertThat(recepcion.getCoberturaId()).isNull();
+		assertThat(recepcion.getConvenioId()).isNull();
+		assertThat(recepcion.getValidadaEn()).isEqualTo(AHORA.plusSeconds(120));
+
+		assertThatThrownBy(() -> recepcion.atenderComoParticular("otra vez", 7L, AHORA))
+				.as("ya es Particular: repetirla pisaria el motivo")
+				.isInstanceOf(TransicionDeRecepcionNoPermitidaException.class);
+		recepcion.llamar(7L, AHORA.plusSeconds(180));
+		assertThat(recepcion.getEstado()).isEqualTo(EstadoRecepcion.LLAMADA);
 	}
 
 	private static Recepcion nueva() {

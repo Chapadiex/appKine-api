@@ -11,6 +11,7 @@ import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.domain.AlcanceDeSerie;
 import com.akine.scheduling.domain.EstadoDeSerie;
+import com.akine.scheduling.domain.OcurrenciaOmitida;
 import com.akine.scheduling.domain.PermissionCodes;
 import com.akine.scheduling.domain.TipoEventoTurno;
 import com.akine.scheduling.domain.Turno;
@@ -29,6 +30,7 @@ import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
 import com.akine.scheduling.domain.exception.CantidadConfirmadaDesactualizadaException;
 import com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.AgendaSedeRepositoryPort;
+import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.OcurrenciaOmitidaRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoEventoRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoSerieRepositoryPort;
@@ -44,6 +46,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -53,6 +56,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -71,6 +75,10 @@ import java.util.stream.Collectors;
  * <p>RF-M12-002: si la operacion no admite modo parcial, no deja cambios parciales. Si una sola
  * ocurrencia no tiene lugar, la transaccion entera hace rollback y el 409 nombra esa ocurrencia
  * ({@link OcurrenciaSinLugarException}).
+ *
+ * <p><b>Salvo los feriados</b> (U-22, DP-43): una ocurrencia que cae en un dia que la sede cierra
+ * por feriado no se reserva y queda registrada como omitida ({@link OcurrenciaOmitida}), en vez de
+ * hacer fallar la serie entera. Cualquier otra causa sigue siendo todo o nada.
  *
  * <h2>Concurrencia</h2>
  *
@@ -104,6 +112,7 @@ public class SerieDeTurnosService {
 	private final AuditTrail auditTrail;
 	private final AvisosDeTurno avisos;
 	private final RegistroDeRecepcion recepciones;
+	private final OcurrenciaOmitidaRepositoryPort omisiones;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public SerieDeTurnosService(
@@ -122,6 +131,7 @@ public class SerieDeTurnosService {
 			AuditTrail auditTrail,
 			AvisosDeTurno avisos,
 			RegistroDeRecepcion recepciones,
+			OcurrenciaOmitidaRepositoryPort omisiones,
 			PlatformTransactionManager transactionManager) {
 
 		this.series = series;
@@ -139,6 +149,7 @@ public class SerieDeTurnosService {
 		this.auditTrail = auditTrail;
 		this.avisos = avisos;
 		this.recepciones = recepciones;
+		this.omisiones = omisiones;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -148,7 +159,8 @@ public class SerieDeTurnosService {
 	// =================================================================================
 
 	/**
-	 * Crea la serie y reserva TODAS sus ocurrencias, o ninguna.
+	 * Crea la serie y reserva TODAS sus ocurrencias, o ninguna, salvo las que caen en un feriado que
+	 * la sede cierra: esas se omiten y vuelven en {@link SerieView#omitidas()} (U-22).
 	 *
 	 * @throws IllegalArgumentException        la regla no produce turnos, produce demasiados, o la
 	 *                                         primera ocurrencia ya paso (400)
@@ -198,14 +210,34 @@ public class SerieDeTurnosService {
 					"La primera ocurrencia de la serie ya paso: el pasado no se reserva");
 		}
 
+		// U-22: las ocurrencias que caen en un dia que la sede cierra por feriado se OMITEN, en vez
+		// de hacer fallar la serie entera. Todo o nada sigue valiendo para cualquier otra causa.
+		Set<LocalDate> feriados = revalidador.feriadosQueCierran(
+				organizationId, sede, oferta, command.profesionalId(),
+				fechaLocal(inicios.getFirst(), zona), fechaLocal(inicios.getLast(), zona).plusDays(1));
+		List<Instant> aReservar = inicios.stream()
+				.filter(inicio -> !feriados.contains(fechaLocal(inicio, zona)))
+				.toList();
+		if (aReservar.isEmpty()) {
+			// Una serie sin un solo turno no es una serie: no se crea nada, como en todo o nada.
+			throw new OcurrenciaSinLugarException(inicios.getFirst(), new SlotNoDisponibleException(
+					"todas las ocurrencias de la serie caen en dias que la sede cierra por feriado"));
+		}
+
 		TurnoSerie serie = series.save(new TurnoSerie(
 				organizationId, consultorioId, command.ofertaId(), command.personaId(),
-				command.profesionalId(), command.regla(), sede.timezone(), inicios.size(),
+				command.profesionalId(), command.regla(), sede.timezone(), aReservar.size(),
 				actor.accountId(), ahora, command.idempotencyKey(),
 				command.idempotencyKey() == null ? null : command.huella(consultorioId)));
 
+		List<OcurrenciaOmitida> omitidas = inicios.stream()
+				.filter(inicio -> feriados.contains(fechaLocal(inicio, zona)))
+				.map(inicio -> omisiones.registrar(new OcurrenciaOmitida(
+						serie, inicio, fechaLocal(inicio, zona), OcurrenciaOmitida.Motivo.FERIADO)))
+				.toList();
+
 		List<Turno> creados = new ArrayList<>();
-		for (Instant inicio : inicios) {
+		for (Instant inicio : aReservar) {
 			Instant fin = inicio.plusSeconds(oferta.duracionMinutos() * 60L);
 			RevalidadorDeSlot.Asignacion asignacion = sinLugarNombraLaOcurrencia(inicio, () -> {
 				exigirVigencia(oferta, inicio, zona);
@@ -229,15 +261,27 @@ public class SerieDeTurnosService {
 			creados.add(creado);
 		}
 
-		auditar(actor, serie, "TURNO_SERIE_CREADA", null, detalles(
+		Map<String, String> detalles = detalles(
 				"ofertaId", String.valueOf(command.ofertaId()),
 				"personaId", String.valueOf(command.personaId()),
 				"cantidad", String.valueOf(creados.size()),
-				"turnoIds", ids(creados)), ahora);
+				"turnoIds", ids(creados));
+		if (!omitidas.isEmpty()) {
+			detalles.put("omitidasPorFeriado", omitidas.stream()
+					.map(omitida -> omitida.getFecha().toString())
+					.collect(Collectors.joining(",")));
+		}
+		auditar(actor, serie, "TURNO_SERIE_CREADA", null, detalles, ahora);
 
-		log.info("Serie de turnos creada: serieId={} consultorioId={} ofertaId={} ocurrencias={}",
-				serie.getId(), consultorioId, command.ofertaId(), creados.size());
-		return new ResultadoDeSerie(SerieView.de(serie, creados.stream().map(TurnoView::de).toList()), true);
+		log.info("Serie de turnos creada: serieId={} consultorioId={} ofertaId={} ocurrencias={} omitidas={}",
+				serie.getId(), consultorioId, command.ofertaId(), creados.size(), omitidas.size());
+		return new ResultadoDeSerie(SerieView.de(serie,
+				creados.stream().map(TurnoView::de).toList(),
+				omitidas.stream().map(OcurrenciaOmitidaView::de).toList()), true);
+	}
+
+	private static LocalDate fechaLocal(Instant inicio, ZoneId zona) {
+		return inicio.atZone(zona).toLocalDate();
 	}
 
 	// =================================================================================
@@ -502,7 +546,8 @@ public class SerieDeTurnosService {
 		return SeleccionDeAlcance.calcular(deLaSerie, alcance, pivote, ahora,
 				turno -> atenciones.tieneAtencion(
 						turno.getOrganizationId(), turno.getConsultorioId(), turno.getId()),
-				turno -> recepciones.tieneAbierta(turno.getOrganizationId(), turno.getId()));
+				// La llegada consta —abierta o RETIRADO (U-21)—: no se cancela ni se mueve por lote.
+				turno -> recepciones.llegadaConsta(turno.getOrganizationId(), turno.getId()));
 	}
 
 	private Turno pivoteDe(TurnoSerie serie, long turnoId) {
@@ -574,8 +619,11 @@ public class SerieDeTurnosService {
 	}
 
 	private SerieView vista(TurnoSerie serie) {
-		return SerieView.de(serie, turnos.findDeLaSerie(serie.getOrganizationId(), serie.getId())
-				.stream().map(TurnoView::de).toList());
+		return SerieView.de(serie,
+				turnos.findDeLaSerie(serie.getOrganizationId(), serie.getId())
+						.stream().map(TurnoView::de).toList(),
+				omisiones.deLaSerie(serie.getOrganizationId(), serie.getId())
+						.stream().map(OcurrenciaOmitidaView::de).toList());
 	}
 
 	// =================================================================================

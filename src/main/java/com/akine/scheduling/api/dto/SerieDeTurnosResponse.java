@@ -54,13 +54,20 @@ public record SerieDeTurnosResponse(
 		Instant creadaEn,
 
 		@Schema(description = "Los turnos de la serie, del mas temprano al mas tarde, en cualquier estado")
-		List<TurnoResponse> turnos) {
+		List<TurnoResponse> turnos,
+
+		@Schema(description = "Las ocurrencias que la regla producia y el alta NO reservo, con su motivo "
+				+ "(U-22): hoy, las que caen en un dia que la sede cierra por feriado. Vacia si no se "
+				+ "omitio ninguna. No son turnos —nunca existieron—, y por eso `cantidad` puede ser "
+				+ "mayor que la cantidad de `turnos`.")
+		List<OcurrenciaOmitidaDeSerieResponse> ocurrenciasOmitidas) {
 
 	public static SerieDeTurnosResponse de(SerieView vista) {
 		return new SerieDeTurnosResponse(
 				vista.id(), vista.consultorioId(), vista.ofertaId(), vista.personaId(),
 				vista.profesionalId(), vista.frecuencia(), vista.diasSemana(), vista.hora(),
 				vista.fechaDesde(), vista.fechaHasta(), vista.cantidad(), vista.timezone(),
-				vista.creadaEn(), vista.turnos().stream().map(TurnoResponse::de).toList());
+				vista.creadaEn(), vista.turnos().stream().map(TurnoResponse::de).toList(),
+				vista.omitidas().stream().map(OcurrenciaOmitidaDeSerieResponse::de).toList());
 	}
 }

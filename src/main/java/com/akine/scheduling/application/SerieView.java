@@ -9,7 +9,10 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
-/** Una serie con la regla que la genero y sus turnos tal como estan HOY (AKINE E-3). */
+/**
+ * Una serie con la regla que la genero, sus turnos tal como estan HOY (AKINE E-3) y las
+ * ocurrencias que el alta salto, con su motivo (U-22).
+ */
 public record SerieView(
 		long id,
 		long consultorioId,
@@ -24,9 +27,17 @@ public record SerieView(
 		Integer cantidad,
 		String timezone,
 		Instant creadaEn,
-		List<TurnoView> turnos) {
+		List<TurnoView> turnos,
+		List<OcurrenciaOmitidaView> omitidas) {
 
+	/** Sin omitidas: para las lecturas que solo muestran la regla. */
 	public static SerieView de(TurnoSerie serie, List<TurnoView> turnos) {
+		return de(serie, turnos, List.of());
+	}
+
+	public static SerieView de(
+			TurnoSerie serie, List<TurnoView> turnos, List<OcurrenciaOmitidaView> omitidas) {
+
 		ReglaDeRecurrencia regla = serie.getRegla();
 		return new SerieView(
 				serie.getId(),
@@ -42,6 +53,7 @@ public record SerieView(
 				regla.cantidad(),
 				serie.getTimezone(),
 				serie.getCreadaEn(),
-				List.copyOf(turnos));
+				List.copyOf(turnos),
+				List.copyOf(omitidas));
 	}
 }

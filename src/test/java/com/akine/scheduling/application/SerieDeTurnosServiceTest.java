@@ -19,6 +19,7 @@ import com.akine.scheduling.domain.TurnoSerie;
 import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.AgendaSedeRepositoryPort;
+import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.OcurrenciaOmitidaRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoEventoRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoSerieRepositoryPort;
@@ -85,6 +86,7 @@ class SerieDeTurnosServiceTest {
 	@Mock private AuditTrail auditTrail;
 	@Mock private AvisosDeTurno avisos;
 	@Mock private RegistroDeRecepcion recepciones;
+	@Mock private OcurrenciaOmitidaRepositoryPort omisiones;
 
 	private SerieDeTurnosService service;
 	private final OperatingActor actor = new OperatingActor(9L, false, ORG_ID, CONSULTORIO_ID);
@@ -95,7 +97,7 @@ class SerieDeTurnosServiceTest {
 	void prepararServicio() {
 		service = new SerieDeTurnosService(series, turnos, eventos, agendas, ofertas, pacientes,
 				consultorios, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), iniciador, revalidador, atenciones, ciclo, auditTrail, avisos,
-				recepciones, mock(PlatformTransactionManager.class));
+				recepciones, omisiones, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", ZONA, true)));
@@ -135,6 +137,46 @@ class SerieDeTurnosServiceTest {
 				});
 		// El rollback lo hace la transaccion; lo que el servicio garantiza es no seguir.
 		verify(turnos, org.mockito.Mockito.times(1)).save(any());
+	}
+
+	@Test
+	@DisplayName("U-22: la ocurrencia que cae en feriado se omite y se registra; las demas se reservan")
+	void el_feriado_se_omite() {
+		java.time.ZoneId zona = java.time.ZoneId.of(ZONA);
+		LocalDate segundoLunes = tresLunes.ocurrencias().get(1).toLocalDate();
+		given(revalidador.feriadosQueCierran(eq(ORG_ID), any(), any(), eq(31L), any(), any()))
+				.willReturn(Set.of(segundoLunes));
+		given(revalidador.revalidar(any())).willReturn(new RevalidadorDeSlot.Asignacion(31L, null));
+		given(omisiones.registrar(any())).willAnswer(invocacion -> invocacion.getArgument(0));
+
+		SerieView serie = service.crear(actor, CONSULTORIO_ID,
+				new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null)).serie();
+
+		verify(turnos, org.mockito.Mockito.times(2)).save(any());
+		verify(revalidador, org.mockito.Mockito.times(2)).revalidar(any());
+		assertThat(serie.turnos()).hasSize(2);
+		assertThat(serie.omitidas()).singleElement().satisfies(omitida -> {
+			assertThat(omitida.fecha()).isEqualTo(segundoLunes);
+			assertThat(omitida.inicio()).isEqualTo(tresLunes.ocurrencias().get(1).atZone(zona).toInstant());
+			assertThat(omitida.motivo()).isEqualTo("FERIADO");
+		});
+		verify(series).save(argThat(guardada -> guardada.getCantidadGenerada() == 2));
+	}
+
+	@Test
+	@DisplayName("U-22: si todas caen en feriado no se crea nada y el 409 nombra la primera")
+	void todas_en_feriado() {
+		given(revalidador.feriadosQueCierran(eq(ORG_ID), any(), any(), eq(31L), any(), any()))
+				.willReturn(tresLunes.ocurrencias().stream()
+						.map(java.time.LocalDateTime::toLocalDate)
+						.collect(java.util.stream.Collectors.toSet()));
+
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID,
+				new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null)))
+				.isInstanceOfSatisfying(OcurrenciaSinLugarException.class, error -> assertThat(error.getCausa())
+						.isInstanceOf(com.akine.scheduling.domain.exception.SlotNoDisponibleException.class));
+		verify(series, never()).save(any());
+		verify(turnos, never()).save(any());
 	}
 
 	@Test
