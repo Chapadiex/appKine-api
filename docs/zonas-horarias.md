@@ -81,6 +81,7 @@ constructor. Lista exacta, con la línea de esa rama:
 |---|---|
 | `contracting/application/PlanCoberturaService.java:113` | vigencia de planes del financiador sin `fecha` (listar) |
 | `PlanCoberturaService.java:186`, `:241`, `:274` | `vigente` de la vista al crear, editar y dar de baja |
+| `contracting/application/AdopcionDeFinanciadorService.java:181` | `vigente` de los planes de la copia al adoptar un financiador del catálogo global (entró con #168, U-12, después del inventario del 14/10) |
 | `person/application/AutorizacionService.java:183`, `:209`, `:254` | vigencia de autorizaciones sin `fecha` (listar, ver, historial) |
 | `AutorizacionService.java:353`, `:429`, `:525`, `:563`, `:597` | `vigente` de la vista al crear y en cada mutación |
 | `person/application/CoberturaPacienteService.java:160`, `:188` | coberturas vigentes de la persona sin `fecha` |
@@ -93,8 +94,8 @@ constructor. Lista exacta, con la línea de esa rama:
 | `person/application/CoberturasEnElResumenDePersona.java:114` | coberturas vigentes en el Paciente 360, con el `Clock` del contribuyente (`hoy(organizationId, clock)`) |
 | `resource/infrastructure/ResourceDesvinculacionProbe.java:98` y `:123` | bloques y excepciones vigentes de una membership al desvincularla, y la medianoche de la primera excepción: la membership puede abarcar varias sedes |
 
-**28 sitios** en 8 archivos: 25 en `person` y `contracting`, uno en el 360 y los dos de la sonda de
-desvinculación. Ningún `LocalDate.now()` sin zona queda en `src/main`.
+**29 sitios** en 9 archivos: los 28 del inventario del 14/10 —25 en `person` y `contracting`, uno en
+el 360 y los dos de la sonda de desvinculación— y la adopción de financiadores que agregó #168. Ningún `LocalDate.now()` sin zona queda en `src/main`.
 
 **Lo que no se tocó, a propósito:**
 
