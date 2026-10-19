@@ -911,7 +911,7 @@ financiador— (`docs/zonas-horarias.md`). Editarla es cambiar qué vigencias se
 (`tenant:update`, plataforma rechazada) y `MatrizDePermisosIT` por HTTP: sólo el `ORG_ADMIN`
 recibe 200; `CONSULTORIO_ADMIN`, `PROFESIONAL`, `ADMINISTRATIVO` y `PACIENTE`, 403.
 
-### 19.2 Contrato 0.138.0
+### 19.2 Contrato 0.141.0
 
 Sólo descripciones de `updateOrganization`: el permiso que pide, el 403 de la plataforma y el 400
 de una zona que no es IANA. Sin operaciones, schemas ni `problemType` nuevos.

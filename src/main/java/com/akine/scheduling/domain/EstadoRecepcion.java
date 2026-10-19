@@ -19,6 +19,8 @@ package com.akine.scheduling.domain;
  *   EN_ESPERA --llamar-->       LLAMADA
  *   abierta   --anular-->       ANULADA                (check-in por error: la llegada no vale)
  *   abierta   --cancelacion del turno--> CERRADA       (la llegada SI vale)
+ *   LLEGO | EN_ESPERA --retiro-->  RETIRADO            (se fue sin ser atendido, con motivo; U-21)
+ *   EN_ESPERA --particular-->   EN_ESPERA              (cambia la modalidad, no sale de la sala; U-21)
  * </pre>
  */
 public enum EstadoRecepcion {
@@ -42,10 +44,16 @@ public enum EstadoRecepcion {
 	ANULADA,
 
 	/** El turno se cancelo con la persona presente. Terminal; la llegada consta. */
-	CERRADA;
+	CERRADA,
 
-	/** {@code true} mientras la recepcion no termino: todo salvo ANULADA y CERRADA. */
+	/**
+	 * La persona se retiro sin ser atendida (U-21, DP-43). Terminal y con motivo. La llegada consta
+	 * y el turno no cambia: que se haya ido es un hecho de la recepcion, no de la reserva.
+	 */
+	RETIRADO;
+
+	/** {@code true} mientras la recepcion no termino: todo salvo ANULADA, CERRADA y RETIRADO. */
 	public boolean estaAbierta() {
-		return this != ANULADA && this != CERRADA;
+		return this != ANULADA && this != CERRADA && this != RETIRADO;
 	}
 }

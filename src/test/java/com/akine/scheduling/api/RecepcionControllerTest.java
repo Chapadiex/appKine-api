@@ -104,6 +104,24 @@ class RecepcionControllerTest {
 	}
 
 	@Test
+	@DisplayName("U-21: el retiro sin motivo es 400; con motivo llega al servicio con su version")
+	void retiro() throws Exception {
+		mockMvc.perform(post(RUTA + "/retiro").with(miembro())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"motivo\":\" \",\"expectedVersion\":2}"))
+				.andExpect(status().isBadRequest());
+		verifyNoInteractions(recepcion);
+
+		given(recepcion.retirar(any(), anyLong(), anyLong(), any(), anyLong())).willReturn(vista("RETIRADO"));
+		mockMvc.perform(post(RUTA + "/retiro").with(miembro())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"motivo\":\"No quiso esperar\",\"expectedVersion\":2}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.estado").value("RETIRADO"));
+		verify(recepcion).retirar(any(), eq(7L), eq(301L), eq("No quiso esperar"), eq(2L));
+	}
+
+	@Test
 	@DisplayName("Particular, espera, llamado y anulacion llegan al servicio con su version")
 	void transiciones() throws Exception {
 		given(recepcion.atenderComoParticular(any(), anyLong(), anyLong(), any(), anyLong()))

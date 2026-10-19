@@ -3,6 +3,7 @@ package com.akine.scheduling.domain.port;
 import com.akine.scheduling.domain.AgendaSede;
 import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.OcupacionDeTurno;
+import com.akine.scheduling.domain.OcurrenciaOmitida;
 import com.akine.scheduling.domain.Recepcion;
 import com.akine.scheduling.domain.RecepcionEvento;
 import com.akine.scheduling.domain.Turno;
@@ -247,6 +248,15 @@ public final class SchedulingRepositoryPorts {
 
 		/** El total del mismo filtro que {@link #listar}. */
 		long contar(long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado, Instant ahora);
+	}
+
+	/** Ocurrencias que el alta de una serie no reservo (U-22). Append-only. */
+	public interface OcurrenciaOmitidaRepositoryPort {
+
+		OcurrenciaOmitida registrar(OcurrenciaOmitida omitida);
+
+		/** Las omitidas de una serie, de la mas temprana a la mas tarde. */
+		List<OcurrenciaOmitida> deLaSerie(long organizationId, long serieId);
 	}
 
 	// =================================================================================

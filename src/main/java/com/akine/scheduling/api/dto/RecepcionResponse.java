@@ -27,10 +27,11 @@ public record RecepcionResponse(
 		@Schema(
 				description = "`LLEGO` (sin validar), `VALIDADA` (se sabe como se atiende), "
 						+ "`OBSERVADA` (la validacion encontro algo: advierte, no bloquea), "
-						+ "`EN_ESPERA`, `LLAMADA`, `ANULADA` (check-in por error) o `CERRADA` (el "
+						+ "`EN_ESPERA`, `LLAMADA`, `ANULADA` (check-in por error), `RETIRADO` (se retiro sin ser "
+						+ "atendido; la llegada consta) o `CERRADA` (el "
 						+ "turno se cancelo con la persona presente; la llegada consta).",
 				allowableValues = {"LLEGO", "VALIDADA", "OBSERVADA", "EN_ESPERA", "LLAMADA",
-						"ANULADA", "CERRADA"},
+						"ANULADA", "CERRADA", "RETIRADO"},
 				example = "EN_ESPERA")
 		String estado,
 
@@ -75,10 +76,10 @@ public record RecepcionResponse(
 		@Schema(example = "2026-09-15T12:01:00Z")
 		Instant llamadaEn,
 
-		@Schema(description = "Cuando se anulo o se cerro.", example = "2026-09-15T12:30:00Z")
+		@Schema(description = "Cuando se anulo, se cerro o la persona se retiro.", example = "2026-09-15T12:30:00Z")
 		Instant cerradaEn,
 
-		@Schema(description = "Motivo de la anulacion o de la cancelacion del turno.", example = "El profesional se descompuso")
+		@Schema(description = "Motivo de la anulacion, de la cancelacion del turno o del retiro.", example = "El profesional se descompuso")
 		String motivoCierre,
 
 		@Schema(description = "Version para el control optimista de las transiciones", example = "2")

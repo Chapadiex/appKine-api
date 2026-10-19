@@ -5,7 +5,7 @@
 > sobre `src/main`, más los `LocalDate.now(ZoneOffset.UTC)` y `ofInstant(…, ZoneOffset.UTC)` que
 > tienen el mismo efecto. La decisión que quedaba abierta, **U-38**, la tomó el usuario el
 > **19/10/2026 (DP-43)**: zona por organización. Implementada en la rama
-> `akine-dp43-zona-matriz-gate` (migración `V118`, contrato 0.138.0); la sección (b) es el
+> `akine-dp43-zona-matriz-gate` (migración `V121`, contrato 0.141.0); la sección (b) es el
 > inventario corregido.
 
 ## El problema
@@ -31,7 +31,7 @@ que nadie lo ve hasta producción.
    (`organization.timezone`), por **U-38 / DP-43**. Se calcula con `organization.spi.ZonaDeOrganizacion`
    (implementada en `organization.infrastructure.tenant.OrganizationZonaDirectory`): zona de la
    organización, y **`America/Argentina/Cordoba` con un WARN** si la organización no resuelve o su
-   zona no es válida. Por defecto es la de su **primera sede** (la de menor id: `V118` hizo el
+   zona no es válida. Por defecto es la de su **primera sede** (la de menor id: `V121` hizo el
    backfill), o Córdoba si no tiene sedes. La edita sólo el `ORG_ADMIN`, con
    `PATCH /organizations/{orgId}` (`tenant:update`, U-15), y se valida contra la base IANA igual
    que la de una sede: un offset fijo o una abreviatura es 400. Una organización con sedes en dos

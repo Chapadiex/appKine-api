@@ -8,6 +8,7 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.scheduling.domain.EstadoTurno;
+import com.akine.scheduling.domain.Recepcion;
 import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.exception.TurnoConAtencionException;
 import com.akine.scheduling.domain.exception.TurnoNotAccessibleException;
@@ -162,7 +163,8 @@ class CicloDeTurnoServiceTest {
 	void la_recepcion_abierta_bloquea_ausencia_y_reprogramacion() {
 		Turno turno = turnoFuturo();
 		given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(turno));
-		given(recepciones.tieneAbierta(ORG_ID, TURNO_ID)).willReturn(true);
+		given(recepciones.vigente(ORG_ID, TURNO_ID))
+				.willReturn(Optional.of(Recepcion.llegada(turno, Instant.now(), 9L)));
 		given(agendas.lockByScope(ORG_ID, CONSULTORIO_ID))
 				.willReturn(Optional.of(org.mockito.Mockito.mock(com.akine.scheduling.domain.AgendaSede.class)));
 
@@ -173,6 +175,27 @@ class CicloDeTurnoServiceTest {
 				new ReprogramacionCommand(turno.getInicio().plus(Duration.ofDays(1)), 31L, "mover", 0L)))
 				.isInstanceOf(com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException.class)
 				.hasMessageContaining("recepcion abierta");
+		assertThat(turno.getEstado()).isEqualTo(EstadoTurno.RESERVADO);
+	}
+
+	@Test
+	@DisplayName("U-21: con la recepcion RETIRADO tampoco: la persona vino y se fue, la llegada consta")
+	void la_recepcion_retirada_bloquea_ausencia_y_reprogramacion() {
+		Turno turno = turnoFuturo();
+		Recepcion retirada = Recepcion.llegada(turno, Instant.now(), 9L);
+		retirada.retirar("No quiso esperar", 9L, Instant.now());
+		given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(turno));
+		given(recepciones.vigente(ORG_ID, TURNO_ID)).willReturn(Optional.of(retirada));
+		given(agendas.lockByScope(ORG_ID, CONSULTORIO_ID))
+				.willReturn(Optional.of(org.mockito.Mockito.mock(com.akine.scheduling.domain.AgendaSede.class)));
+
+		assertThatThrownBy(() -> service.marcarAusente(actor, CONSULTORIO_ID, TURNO_ID, null, 0L))
+				.isInstanceOf(com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException.class)
+				.hasMessageContaining("se retiro sin ser atendido");
+		assertThatThrownBy(() -> service.reprogramar(actor, CONSULTORIO_ID, TURNO_ID,
+				new ReprogramacionCommand(turno.getInicio().plus(Duration.ofDays(1)), 31L, "mover", 0L)))
+				.isInstanceOf(com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException.class)
+				.hasMessageContaining("se retiro sin ser atendido");
 		assertThat(turno.getEstado()).isEqualTo(EstadoTurno.RESERVADO);
 	}
 
