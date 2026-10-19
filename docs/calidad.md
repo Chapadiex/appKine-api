@@ -318,3 +318,12 @@ agregar "OWASP ZAP baseline (pasivo)" a los checks obligatorios de `main`.
 > **El límite, dicho de frente:** un baseline no autenticado ve la superficie pública —health,
 > versión, login, Swagger— y los 401. Cubrir las ~310 operaciones exige `zaproxy/action-api-scan`
 > con el OpenAPI y un token de prueba, que es escaneo **activo** y va a un job aparte, no en cada PR.
+
+## Gate de `BRANCH` (DP-43, U-35, 19/10/2026)
+
+El usuario decidió agregar la regla de `BRANCH` sobre el BUNDLE con mínimo **0,75**. Medido con
+`./mvnw -o verify` completo el 19/10/2026 sobre `main` (hasta #169) más la rama
+`akine-dp43-zona-matriz-gate`: **4.144 unitarias + 978 de integración, 0 fallos**; BUNDLE
+**instrucción 93,33 % · línea 93,73 % · rama 80,01 %**. Como lo medido supera 0,75, el mínimo queda
+en el valor decidido y todas las reglas de JaCoCo pasan. Es un trinquete global: los módulos
+críticos siguen gateando línea e instrucción, no rama.

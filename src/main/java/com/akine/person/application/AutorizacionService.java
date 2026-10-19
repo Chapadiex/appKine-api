@@ -2,6 +2,7 @@ package com.akine.person.application;
 
 import com.akine.contracting.spi.ArancelCongelado;
 import com.akine.contracting.spi.ArancelDirectory;
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.AccionSobreAutorizacion;
 import com.akine.person.domain.AdjuntoAdministrativo;
@@ -114,6 +115,8 @@ public class AutorizacionService {
 	private final AutorizacionEventoRepositoryPort eventos;
 	private final AutorizacionAlertaRepositoryPort alertas;
 	private final TransactionTemplate transaccionReadCommitted;
+	/** "Hoy" de la organizacion para lo que no tiene sede (U-38, DP-43). */
+	private final ZonaDeOrganizacion zonaDeOrganizacion;
 
 	@SuppressWarnings("java:S107")
 	public AutorizacionService(
@@ -131,7 +134,9 @@ public class AutorizacionService {
 			AuditTrail auditTrail,
 			AutorizacionEventoRepositoryPort eventos,
 			AutorizacionAlertaRepositoryPort alertas,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			ZonaDeOrganizacion zonaDeOrganizacion) {
+		this.zonaDeOrganizacion = zonaDeOrganizacion;
 
 		this.alertas = alertas;
 		this.autorizaciones = autorizaciones;
@@ -175,7 +180,7 @@ public class AutorizacionService {
 		exigirPersonaDelTenant(organizationId, personaId);
 
 		DocumentoEstadoFiltro filtro = estado == null ? DocumentoEstadoFiltro.TODAS : estado;
-		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
+		LocalDate contra = fecha == null ? zonaDeOrganizacion.hoy(organizationId) : fecha;
 
 		// Una sola consulta agrupada para todas las filas, no una por autorizacion.
 		Map<Long, Integer> pendientes = alertas.pendientesPorAutorizacion(organizationId, personaId);
@@ -201,7 +206,7 @@ public class AutorizacionService {
 		exigirPersonaDelTenant(organizationId, personaId);
 
 		return vista(organizationId, cargar(organizationId, personaId, autorizacionId),
-				fecha == null ? LocalDate.now() : fecha);
+				fecha == null ? zonaDeOrganizacion.hoy(organizationId) : fecha);
 	}
 
 	/** La vista con sus consumos a revisar, contados con la misma consulta que el listado. */
@@ -246,7 +251,7 @@ public class AutorizacionService {
 				autorizacion,
 				contenido,
 				eventos.contar(organizationId, autorizacionId),
-				fecha == null ? LocalDate.now() : fecha);
+				fecha == null ? zonaDeOrganizacion.hoy(organizationId) : fecha);
 	}
 
 	// =================================================================================
@@ -345,7 +350,7 @@ public class AutorizacionService {
 
 		log.info("Autorizacion registrada: autorizacionId={} personaId={} estado={}",
 				creada.getId(), personaId, creada.getEstado());
-		return AutorizacionView.de(creada, LocalDate.now(), 0); // recien nacida: sin consumos
+		return AutorizacionView.de(creada, zonaDeOrganizacion.hoy(organizationId), 0); // recien nacida: sin consumos
 	}
 
 	/**
@@ -421,7 +426,7 @@ public class AutorizacionService {
 		antes.describirDiferencia(CambiosDeAutorizacion.de(guardada)).ifPresent(detalle ->
 				historiar(guardada, TipoEventoAutorizacion.MODIFICACION, guardada.getEstado(),
 						detalle, null, actor));
-		return vista(organizationId, guardada, LocalDate.now());
+		return vista(organizationId, guardada, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	/**
@@ -517,7 +522,7 @@ public class AutorizacionService {
 
 		log.info("Autorizacion resuelta: autorizacionId={} {} -> {}",
 				autorizacionId, previo, guardada.getEstado());
-		return vista(organizationId, guardada, LocalDate.now());
+		return vista(organizationId, guardada, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	/**
@@ -555,7 +560,7 @@ public class AutorizacionService {
 						: "Comprobante vinculado: adjunto " + adjuntoId,
 				null, actor);
 
-		return vista(organizationId, guardada, LocalDate.now());
+		return vista(organizationId, guardada, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	/**
@@ -589,7 +594,7 @@ public class AutorizacionService {
 
 		log.info("Autorizacion dada de baja: autorizacionId={} personaId={}",
 				autorizacionId, personaId);
-		return vista(organizationId, guardada, LocalDate.now());
+		return vista(organizationId, guardada, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	// =================================================================================

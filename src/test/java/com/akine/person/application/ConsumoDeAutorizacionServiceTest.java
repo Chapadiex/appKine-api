@@ -96,7 +96,7 @@ class ConsumoDeAutorizacionServiceTest {
 		service = new ConsumoDeAutorizacionService(
 				autorizaciones, movimientos, personas, permissionGuard,
 				mock(PersonSupportAccessAuditor.class), auditTrail, coberturas,
-				alertas, eventos);
+				alertas, eventos, organizationId -> java.time.ZoneId.systemDefault());
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
 		// Por defecto la cobertura de las autorizaciones esta vigente: los casos de 04.05 y 06.04

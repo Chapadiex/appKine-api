@@ -38,7 +38,8 @@ class PersonSpiAdaptersTest {
 	private static final LocalDate HOY = LocalDate.of(2026, 10, 15);
 
 	private final AutorizacionRepositoryPort repositorio = mock(AutorizacionRepositoryPort.class);
-	private final PersonAutorizacionDirectory directorio = new PersonAutorizacionDirectory(repositorio);
+	private final PersonAutorizacionDirectory directorio = new PersonAutorizacionDirectory(
+			repositorio, organizationId -> java.time.ZoneId.systemDefault());
 
 	@Test
 	@DisplayName("una autorizacion aprobada, vigente y con saldo habilita, sin motivo")

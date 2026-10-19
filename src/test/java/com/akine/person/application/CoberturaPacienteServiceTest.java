@@ -5,6 +5,7 @@ import com.akine.contracting.spi.CoberturaCatalogoDirectory;
 import com.akine.contracting.spi.ReferenciaDeCobertura;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.CoberturaPersonaLock;
 import com.akine.person.domain.PerfilPaciente;
@@ -43,6 +44,8 @@ import org.mockito.ArgumentCaptor;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -113,6 +116,23 @@ class CoberturaPacienteServiceTest {
 
 	private CoberturaPacienteService service;
 
+	/** El "hoy" que devuelve la organizacion; null es el de la zona de la JVM, como antes de U-38. */
+	private LocalDate hoyDeLaOrganizacion;
+	private final List<Long> organizacionesConsultadas = new ArrayList<>();
+	private final ZonaDeOrganizacion zonaDeOrganizacion = new ZonaDeOrganizacion() {
+		@Override
+		public ZoneId de(long organizationId) {
+			return ZoneId.systemDefault();
+		}
+
+		@Override
+		public LocalDate hoy(long organizationId) {
+			organizacionesConsultadas.add(organizationId);
+			return hoyDeLaOrganizacion != null
+					? hoyDeLaOrganizacion : ZonaDeOrganizacion.super.hoy(organizationId);
+		}
+	};
+
 	private final OperatingActor delMostrador =
 			new OperatingActor(ACCOUNT_ID, false, ORG_ID, SEDE_ID);
 
@@ -120,7 +140,8 @@ class CoberturaPacienteServiceTest {
 	void setUp() {
 		service = new CoberturaPacienteService(
 				coberturas, candados, iniciador, personas, perfiles, catalogo, permissionGuard,
-				supportAccessAuditor, auditTrail, mock(PlatformTransactionManager.class));
+				supportAccessAuditor, auditTrail, mock(PlatformTransactionManager.class),
+				zonaDeOrganizacion);
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));
@@ -513,6 +534,25 @@ class CoberturaPacienteServiceTest {
 				.as("la que empieza el ano que viene no aplica hoy")
 				.extracting(CoberturaView::id).containsExactly(COBERTURA_ID);
 		assertThat(seleccion.principal().id()).isEqualTo(COBERTURA_ID);
+	}
+
+	@Test
+	@DisplayName("U-38: sin fecha, el dia de la seleccion es el de la zona de la organizacion")
+	void sin_fecha_hoy_es_el_de_la_organizacion() {
+		CoberturaPaciente principal = financiadaGuardada();
+		principal.marcarPrincipal(true);
+		given(coberturas.activasDe(ORG_ID, PERSONA_ID)).willReturn(List.of(principal));
+
+		// La cobertura arranca DESDE. La vispera en la organizacion no aplica, aunque en UTC ya
+		// sea el dia siguiente: el dia lo decide la zona de la organizacion, no la de la JVM.
+		hoyDeLaOrganizacion = DESDE.minusDays(1);
+		assertThat(service.resolverParaAtencion(delMostrador, PERSONA_ID, null).vigentes())
+				.isEmpty();
+
+		hoyDeLaOrganizacion = DESDE;
+		assertThat(service.resolverParaAtencion(delMostrador, PERSONA_ID, null).vigentes())
+				.extracting(CoberturaView::id).containsExactly(COBERTURA_ID);
+		assertThat(organizacionesConsultadas).containsOnly(ORG_ID);
 	}
 
 	// =================================================================================

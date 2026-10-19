@@ -18,7 +18,8 @@ import java.time.ZoneOffset;
  * ruta, en la entidad o en el contexto— calcula su "hoy" aca, con la zona IANA de la sede.
  *
  * <p>Las operaciones de la organizacion SIN sede (padron, coberturas de la persona, autorizaciones,
- * catalogo) no pasan por aca: su zona es una decision pendiente, ver {@code docs/zonas-horarias.md}.
+ * catalogo) no pasan por aca: usan la zona de la organizacion, {@link ZonaDeOrganizacion} (U-38,
+ * DP-43). Ver {@code docs/zonas-horarias.md}.
  *
  * <p><b>Cae a UTC y no falla</b> si la sede no declara zona, la declara invalida o no resuelve:
  * {@code consultorio.timezone} es NOT NULL desde V18 y {@code organization} la valida al dar de

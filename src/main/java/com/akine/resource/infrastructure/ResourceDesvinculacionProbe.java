@@ -1,13 +1,14 @@
 package com.akine.resource.infrastructure;
 
 import com.akine.organization.spi.ColaboradorDesvinculacionProbe;
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.resource.domain.DisponibilidadExcepcion;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.List;
 
 /**
@@ -59,10 +60,11 @@ import java.util.List;
  * —el instante que ya recibe como parametro— como el "primero" cuando hay al menos un bloque
  * activo: un bloque activo esta, por definicion, vigente ahora mismo, asi que decir "desde
  * ahora" no es impreciso, es exacto. Cuando NO hay bloques y solo hay excepciones futuras, el
- * primero es la fecha de la excepcion mas temprana, llevada a {@code Instant} en UTC a
- * medianoche: esta sonda es informativa, no alimenta el calculo de disponibilidad efectiva (que
- * si usa la zona horaria real de la sede), asi que una fecha calendario en UTC alcanza para que
- * la interfaz diga "desde el martes" sin pretender una precision que el dato no necesita.
+ * primero es la fecha de la excepcion mas temprana, llevada a {@code Instant} a medianoche de
+ * la zona de la organizacion. La membership puede abarcar varias sedes, asi que "hoy" y la
+ * medianoche son los de la organizacion ({@code organization.spi.ZonaDeOrganizacion}, U-38,
+ * DP-43) y no los de una sede: esta sonda es informativa y no alimenta el calculo de
+ * disponibilidad efectiva, que si usa la zona real de cada sede.
  */
 @Component
 public class ResourceDesvinculacionProbe implements ColaboradorDesvinculacionProbe {
@@ -74,11 +76,14 @@ public class ResourceDesvinculacionProbe implements ColaboradorDesvinculacionPro
 
 	private final BloqueDisponibilidadRepository bloqueRepository;
 	private final DisponibilidadExcepcionRepository excepcionRepository;
+	private final ZonaDeOrganizacion zonaDeOrganizacion;
 
 	public ResourceDesvinculacionProbe(
 			BloqueDisponibilidadRepository bloqueRepository,
-			DisponibilidadExcepcionRepository excepcionRepository) {
+			DisponibilidadExcepcionRepository excepcionRepository,
+			ZonaDeOrganizacion zonaDeOrganizacion) {
 		this.bloqueRepository = bloqueRepository;
+		this.zonaDeOrganizacion = zonaDeOrganizacion;
 		this.excepcionRepository = excepcionRepository;
 	}
 
@@ -90,7 +95,8 @@ public class ResourceDesvinculacionProbe implements ColaboradorDesvinculacionPro
 	@Override
 	@Transactional(readOnly = true)
 	public Impacto pendingWorkOn(long organizationId, long membershipId, long accountId, Instant at) {
-		LocalDate fecha = LocalDate.ofInstant(at, ZoneOffset.UTC);
+		ZoneId zona = zonaDeOrganizacion.de(organizationId);
+		LocalDate fecha = LocalDate.ofInstant(at, zona);
 		long bloquesActivos = bloqueRepository.countVigentesDe(organizationId, membershipId, fecha);
 
 		List<DisponibilidadExcepcion> excepcionesFuturas =
@@ -102,7 +108,7 @@ public class ResourceDesvinculacionProbe implements ColaboradorDesvinculacionPro
 		}
 
 		String tipo = tipoDe(bloquesActivos, excepcionesFuturas.size());
-		Instant primero = bloquesActivos > 0 ? at : primeraFechaComo(excepcionesFuturas.get(0));
+		Instant primero = bloquesActivos > 0 ? at : primeraFechaComo(excepcionesFuturas.get(0), zona);
 		return new Impacto(tipo, total, primero);
 	}
 
@@ -113,7 +119,7 @@ public class ResourceDesvinculacionProbe implements ColaboradorDesvinculacionPro
 		return bloquesActivos > 0 ? TIPO_SOLO_BLOQUES : TIPO_SOLO_EXCEPCIONES;
 	}
 
-	private static Instant primeraFechaComo(DisponibilidadExcepcion excepcion) {
-		return excepcion.getFechaDesde().atStartOfDay(ZoneOffset.UTC).toInstant();
+	private static Instant primeraFechaComo(DisponibilidadExcepcion excepcion, ZoneId zona) {
+		return excepcion.getFechaDesde().atStartOfDay(zona).toInstant();
 	}
 }

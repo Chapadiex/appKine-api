@@ -14,6 +14,7 @@ import com.akine.contracting.domain.port.ContractingRepositoryPorts.FinanciadorR
 import com.akine.contracting.domain.port.ContractingRepositoryPorts.PlanCatalogoRepositoryPort;
 import com.akine.contracting.domain.port.ContractingRepositoryPorts.PlanCoberturaRepositoryPort;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
@@ -70,6 +71,8 @@ public class AdopcionDeFinanciadorService {
 	private final AuditTrail auditTrail;
 	private final TransactionTemplate transaccion;
 	private final TransactionTemplate relectura;
+	/** "Hoy" de la organizacion para lo que no tiene sede (U-38, DP-43). */
+	private final ZonaDeOrganizacion zonaDeOrganizacion;
 
 	public AdopcionDeFinanciadorService(
 			FinanciadorCatalogoRepositoryPort catalogo,
@@ -78,8 +81,10 @@ public class AdopcionDeFinanciadorService {
 			PlanCoberturaRepositoryPort planes,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			ZonaDeOrganizacion zonaDeOrganizacion) {
 
+		this.zonaDeOrganizacion = zonaDeOrganizacion;
 		this.catalogo = catalogo;
 		this.planesCatalogo = planesCatalogo;
 		this.financiadores = financiadores;
@@ -173,7 +178,7 @@ public class AdopcionDeFinanciadorService {
 	}
 
 	private AdopcionView vista(Financiador copia, boolean creado) {
-		LocalDate hoy = LocalDate.now();
+		LocalDate hoy = zonaDeOrganizacion.hoy(copia.getOrganizationId());
 		List<PlanCoberturaView> planesDeLaCopia = planes
 				.findAllByOrganizationIdAndFinanciadorIdOrderByNombreAsc(
 						copia.getOrganizationId(), copia.getId())

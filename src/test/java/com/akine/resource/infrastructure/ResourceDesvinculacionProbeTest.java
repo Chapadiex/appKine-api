@@ -7,7 +7,6 @@ import com.akine.resource.domain.TipoExcepcion;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -46,8 +45,13 @@ class ResourceDesvinculacionProbeTest {
 	@Mock
 	private DisponibilidadExcepcionRepository excepcionRepository;
 
-	@InjectMocks
 	private ResourceDesvinculacionProbe probe;
+
+	@org.junit.jupiter.api.BeforeEach
+	void crear() {
+		probe = new ResourceDesvinculacionProbe(
+				bloqueRepository, excepcionRepository, organizationId -> java.time.ZoneOffset.UTC);
+	}
 
 	@Test
 	@DisplayName("sin bloques activos ni excepciones futuras, no hay nada que reportar")
@@ -95,6 +99,25 @@ class ResourceDesvinculacionProbeTest {
 		assertThat(impacto.count()).isEqualTo(2L);
 		assertThat(impacto.desde())
 				.isEqualTo(LocalDate.of(2026, 9, 10).atStartOfDay(ZoneOffset.UTC).toInstant());
+	}
+
+	@Test
+	@DisplayName("U-38: el dia de corte y la medianoche son los de la zona de la organizacion")
+	void el_dia_es_el_de_la_organizacion() {
+		// AT es 2026-09-01T00:00Z: en Cordoba todavia es el 31/08. Con UTC la sonda dejaba
+		// afuera la excepcion de "hoy" tres horas antes de que empezara.
+		ResourceDesvinculacionProbe enCordoba = new ResourceDesvinculacionProbe(
+				bloqueRepository, excepcionRepository,
+				organizationId -> java.time.ZoneId.of("America/Argentina/Cordoba"));
+		LocalDate treintaYUno = LocalDate.of(2026, 8, 31);
+		given(bloqueRepository.countVigentesDe(ORG_ID, MEMBERSHIP_ID, treintaYUno)).willReturn(0L);
+		given(excepcionRepository.findFuturasDeLaMembership(ORG_ID, MEMBERSHIP_ID, treintaYUno))
+				.willReturn(List.of(excepcion(treintaYUno)));
+
+		Impacto impacto = enCordoba.pendingWorkOn(ORG_ID, MEMBERSHIP_ID, ACCOUNT_ID, AT);
+
+		assertThat(impacto.count()).isEqualTo(1L);
+		assertThat(impacto.desde()).isEqualTo(Instant.parse("2026-08-31T03:00:00Z"));
 	}
 
 	@Test

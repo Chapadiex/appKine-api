@@ -113,7 +113,10 @@ public class OrganizationService {
 		String slugFinal = slug == null || slug.isBlank()
 				? Slugs.derivar(name, organizationRepository::existsBySlug)
 				: Slugs.normalizar(slug);
-		String zona = timezone == null || timezone.isBlank() ? TIMEZONE_POR_DEFECTO : timezone;
+		// La zona se valida contra la base IANA igual que la de una sede: desde U-38 (DP-43) es la
+		// que da "hoy" a todo lo que la organizacion hace sin sede.
+		String zona = timezone == null || timezone.isBlank()
+				? TIMEZONE_POR_DEFECTO : ZonasHorarias.exigirValida(timezone);
 		Instant ahora = Instant.now();
 
 		Organization organization;
@@ -205,7 +208,7 @@ public class OrganizationService {
 		Map<String, String> details = new LinkedHashMap<>();
 		String nombreFinal = name == null || name.isBlank() ? organization.getName() : name;
 		String zonaFinal = timezone == null || timezone.isBlank()
-				? organization.getTimezone() : timezone;
+				? organization.getTimezone() : ZonasHorarias.exigirValida(timezone);
 
 		if (!nombreFinal.equals(organization.getName())) {
 			details.put("name", organization.getName() + " -> " + nombreFinal);

@@ -83,7 +83,8 @@ class PlanCoberturaServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new PlanCoberturaService(planes, financiadores, permissionGuard, auditTrail);
+		service = new PlanCoberturaService(planes, financiadores, permissionGuard, auditTrail,
+				organizationId -> java.time.ZoneId.systemDefault());
 		given(planes.saveAndFlush(any())).willAnswer(i -> conId(i.getArgument(0)));
 		given(planes.save(any())).willAnswer(i -> conId(i.getArgument(0)));
 		given(permissionGuard.requirePermission(any()))

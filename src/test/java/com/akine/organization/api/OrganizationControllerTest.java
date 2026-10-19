@@ -301,7 +301,7 @@ class OrganizationControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.version").value(4));
 
-		verify(authorizationGuard).requireOrgAdmin(7L, 1L, null, false);
+		verify(authorizationGuard).requireOrgDataEditor(7L, 1L, null, false);
 		verify(organizationService).update(
 				1L, "Centro Kinesico Belgrano Norte", "America/Argentina/Cordoba", 3L, 7L);
 	}
@@ -352,7 +352,7 @@ class OrganizationControllerTest {
 	@DisplayName("Estar en el tenant correcto sin administrarlo es 403: negarlo no revela nada nuevo")
 	void edicion_sin_rol_de_administrador_es_403() throws Exception {
 		willThrow(new AccessDeniedException("Se requiere administrar la organizacion"))
-				.given(authorizationGuard).requireOrgAdmin(eq(7L), eq(1L), any(), anyBoolean());
+				.given(authorizationGuard).requireOrgDataEditor(eq(7L), eq(1L), any(), anyBoolean());
 
 		mockMvc.perform(patch("/api/v1/organizations/1")
 						.contentType(MediaType.APPLICATION_JSON)

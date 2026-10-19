@@ -57,6 +57,8 @@ class RolePermissionsTest {
 
 			// ORG_ADMIN — todo con alcance de organizacion.
 			"ORG_ADMIN,          TENANT_READ,             ORGANIZACION",
+			// tenant:update (DP-43, U-15): editar los datos de su organizacion es SOLO suyo.
+			"ORG_ADMIN,          TENANT_UPDATE,           ORGANIZACION",
 			"ORG_ADMIN,          CONSULTORIO_MANAGE,      ORGANIZACION",
 			"ORG_ADMIN,          ESPACIO_READ,            ORGANIZACION",
 			"ORG_ADMIN,          COLABORADOR_MANAGE,      ORGANIZACION",
@@ -98,6 +100,12 @@ class RolePermissionsTest {
 			// CONSULTORIO_ADMIN no lee los datos del tenant.
 			"CONSULTORIO_ADMIN,  TENANT_READ",
 			"CONSULTORIO_ADMIN,  TENANT_MANAGE",
+			// U-15: nadie mas que el ORG_ADMIN edita la organizacion, tampoco la plataforma.
+			"PLATFORM_ADMIN,     TENANT_UPDATE",
+			"CONSULTORIO_ADMIN,  TENANT_UPDATE",
+			"PROFESIONAL,        TENANT_UPDATE",
+			"ADMINISTRATIVO,     TENANT_UPDATE",
+			"PACIENTE,           TENANT_UPDATE",
 			// PROFESIONAL y ADMINISTRATIVO no administran nada en F1.
 			"PROFESIONAL,        COLABORADOR_MANAGE",
 			"PROFESIONAL,        AUDITORIA_READ",
@@ -112,6 +120,19 @@ class RolePermissionsTest {
 	@DisplayName("Cada celda que deniega devuelve vacio, y vacio significa denegado")
 	void las_celdas_que_deniegan(RoleCode rol, PermissionCode permiso) {
 		assertThat(RolePermissions.baseScope(rol, permiso)).isEmpty();
+	}
+
+	@Test
+	@DisplayName("U-15: tenant:update no se otorga por grant a ningun rol, y solo ORG_ADMIN lo tiene")
+	void tenant_update_es_solo_del_org_admin() {
+		for (RoleCode rol : RoleCode.values()) {
+			assertThat(RolePermissions.otorgableComoGrant(rol, PermissionCode.TENANT_UPDATE))
+					.as("%s no recibe tenant:update por grant", rol)
+					.isFalse();
+			assertThat(RolePermissions.baseScope(rol, PermissionCode.TENANT_UPDATE).isPresent())
+					.as("solo ORG_ADMIN edita su organizacion; %s no", rol)
+					.isEqualTo(rol == RoleCode.ORG_ADMIN);
+		}
 	}
 
 	@Test

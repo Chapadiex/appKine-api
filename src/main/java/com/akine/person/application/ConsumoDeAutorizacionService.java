@@ -1,5 +1,6 @@
 package com.akine.person.application;
 
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.Autorizacion;
 import com.akine.person.domain.AutorizacionEvento;
@@ -133,6 +134,8 @@ public class ConsumoDeAutorizacionService {
 	private final CoberturaPacienteRepositoryPort coberturas;
 	private final AutorizacionAlertaRepositoryPort alertas;
 	private final AutorizacionEventoRepositoryPort eventos;
+	/** "Hoy" de la organizacion para lo que no tiene sede (U-38, DP-43). */
+	private final ZonaDeOrganizacion zonaDeOrganizacion;
 
 	@SuppressWarnings("java:S107")
 	public ConsumoDeAutorizacionService(
@@ -144,7 +147,9 @@ public class ConsumoDeAutorizacionService {
 			AuditTrail auditTrail,
 			CoberturaPacienteRepositoryPort coberturas,
 			AutorizacionAlertaRepositoryPort alertas,
-			AutorizacionEventoRepositoryPort eventos) {
+			AutorizacionEventoRepositoryPort eventos,
+			ZonaDeOrganizacion zonaDeOrganizacion) {
+		this.zonaDeOrganizacion = zonaDeOrganizacion;
 
 		this.autorizaciones = autorizaciones;
 		this.movimientos = movimientos;
@@ -179,7 +184,7 @@ public class ConsumoDeAutorizacionService {
 	@Transactional
 	public List<ResultadoDeConsumo> consumirPorSesion(ConsumoPorSesion hecho) {
 		long organizationId = hecho.organizationId();
-		LocalDate fecha = hecho.fecha() == null ? LocalDate.now() : hecho.fecha();
+		LocalDate fecha = hecho.fecha() == null ? zonaDeOrganizacion.hoy(organizationId) : hecho.fecha();
 		int cantidad = hecho.cantidad() <= 0 ? 1 : hecho.cantidad();
 
 		// IDEMPOTENCIA POR SESION (AKINE C-4). Lo que esta sesion ya dejo en el ledger, en
@@ -598,7 +603,7 @@ public class ConsumoDeAutorizacionService {
 		return SaldoDeAutorizacionView.de(
 				autorizacion,
 				movimientos.listarDeAutorizacion(organizationId, autorizacionId),
-				fecha == null ? LocalDate.now() : fecha,
+				fecha == null ? zonaDeOrganizacion.hoy(organizationId) : fecha,
 				consumosARevisar);
 	}
 
@@ -650,7 +655,7 @@ public class ConsumoDeAutorizacionService {
 		personas.findByIdAndOrganizationId(personaId, organizationId)
 				.orElseThrow(() -> new PersonaNotAccessibleException(personaId));
 
-		LocalDate dia = fecha == null ? LocalDate.now() : fecha;
+		LocalDate dia = fecha == null ? zonaDeOrganizacion.hoy(organizationId) : fecha;
 
 		return autorizaciones.historial(organizationId, personaId).stream()
 				.filter(Autorizacion::isActive)

@@ -125,12 +125,12 @@ class OrdenYAutorizacionServiceTest {
 
 		ordenService = new OrdenMedicaService(
 				ordenes, coberturas, adjuntos, personas, perfiles, permissionGuard, mock(PersonSupportAccessAuditor.class),
-				auditTrail, autorizaciones);
+				auditTrail, autorizaciones, organizationId -> java.time.ZoneId.systemDefault());
 		autorizacionService = new AutorizacionService(
 				autorizaciones, candados, iniciador, ordenes, coberturas, adjuntos, personas,
 				perfiles, aranceles, permissionGuard, mock(PersonSupportAccessAuditor.class), auditTrail,
 				eventos, alertas,
-				mock(PlatformTransactionManager.class));
+				mock(PlatformTransactionManager.class), organizationId -> java.time.ZoneId.systemDefault());
 
 		given(personas.findByIdAndOrganizationId(anyLong(), anyLong()))
 				.willReturn(Optional.of(persona()));

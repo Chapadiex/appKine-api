@@ -195,6 +195,50 @@ class AuthorizationGuardTest {
 				.isInstanceOf(PermissionDeniedException.class);
 	}
 
+	// ----------------------------------------------------- requireOrgDataEditor (U-15)
+
+	@Test
+	@DisplayName("U-15: editar la organizacion pide tenant:update, no tenant:read")
+	void editar_pide_tenant_update() {
+		conPermiso();
+		guard.requireOrgDataEditor(ACCOUNT_ID, ORG_ID, ORG_ID, false);
+
+		ArgumentCaptor<PermissionQuery> pedido = ArgumentCaptor.forClass(PermissionQuery.class);
+		verify(permissionGuard).requirePermission(pedido.capture());
+		assertThat(pedido.getValue().permissionCode()).isEqualTo("tenant:update");
+		assertThat(pedido.getValue().organizationId()).isEqualTo(ORG_ID);
+		assertThat(pedido.getValue().consultorioId()).isNull();
+	}
+
+	@Test
+	@DisplayName("U-15: la plataforma no edita los datos de un tenant, ni con soporte")
+	void la_plataforma_no_edita_la_organizacion() {
+		// Antes el PATCH pedia tenant:read, que es SOPORTE para PLATFORM_ADMIN: con un acceso de
+		// soporte vigente editaba el nombre y la zona horaria de cualquier centro.
+		assertThatThrownBy(() -> guard.requireOrgDataEditor(ACCOUNT_ID, ORG_ID, null, true))
+				.isInstanceOf(AccessDeniedException.class)
+				.hasMessageContaining("ORG_ADMIN");
+		verifyNoInteractions(permissionGuard);
+	}
+
+	@Test
+	@DisplayName("U-15: editar desde el contexto de otra organizacion es 404")
+	void editar_desde_otro_tenant_es_404() {
+		assertThatThrownBy(() -> guard.requireOrgDataEditor(ACCOUNT_ID, ORG_ID, OTRA_ORG_ID, false))
+				.isInstanceOf(OrganizationNotFoundException.class);
+		verifyNoInteractions(permissionGuard);
+	}
+
+	@Test
+	@DisplayName("U-15: el rechazo del evaluador se propaga tal cual")
+	void editar_sin_permiso_se_rechaza() {
+		willThrow(new PermissionDeniedException("tenant:update", ACCOUNT_ID, ORG_ID))
+				.given(permissionGuard).requirePermission(any());
+
+		assertThatThrownBy(() -> guard.requireOrgDataEditor(ACCOUNT_ID, ORG_ID, ORG_ID, false))
+				.isInstanceOf(PermissionDeniedException.class);
+	}
+
 	// --------------------------------------------------------------------- requireMember
 
 	@Test

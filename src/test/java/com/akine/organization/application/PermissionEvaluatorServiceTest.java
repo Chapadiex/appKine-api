@@ -562,7 +562,7 @@ class PermissionEvaluatorServiceTest {
 			// alcance ORGANIZACION al ORG_ADMIN.
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 					.containsExactlyInAnyOrder(
-							"tenant:read", "consultorio:manage", "espacio:read",
+							"tenant:read", "tenant:update", "consultorio:manage", "espacio:read",
 							"colaborador:manage", "colaborador:read", "auditoria:read",
 							"paciente:manage", "turno:read", "turno:manage", "cobro:register",
 							// `paciente:read` lo sumo AKINE-DU-6 (DP-22): todo el personal lee el padron.

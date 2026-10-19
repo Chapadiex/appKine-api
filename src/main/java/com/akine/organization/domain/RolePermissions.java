@@ -244,6 +244,10 @@ public final class RolePermissions {
 		// PLATFORM_ADMIN. auditoria:read-clinica tampoco: es "No por defecto (grant)".
 		tabla.put(RoleCode.ORG_ADMIN, Map.ofEntries(
 				Map.entry(PermissionCode.TENANT_READ, PermissionScope.ORGANIZACION),
+				// tenant:update (DP-43, U-15): editar los datos de SU organizacion es solo del
+				// ORG_ADMIN. Ningun otro rol lo tiene, ni por base ni por grant, y PLATFORM_ADMIN
+				// tampoco: matriz §19.
+				Map.entry(PermissionCode.TENANT_UPDATE, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.CONSULTORIO_MANAGE, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.ESPACIO_READ, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.COLABORADOR_MANAGE, PermissionScope.ORGANIZACION),

@@ -2,6 +2,7 @@ package com.akine.person.application;
 
 import com.akine.contracting.spi.CoberturaCatalogoDirectory;
 import com.akine.contracting.spi.ReferenciaDeCobertura;
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.person.domain.CoberturaPaciente;
 import com.akine.person.domain.Persona;
@@ -100,6 +101,8 @@ public class CoberturaPacienteService {
 	private final PersonSupportAccessAuditor supportAccessAuditor;
 	private final AuditTrail auditTrail;
 	private final TransactionTemplate transaccionReadCommitted;
+	/** "Hoy" de la organizacion para lo que no tiene sede (U-38, DP-43). */
+	private final ZonaDeOrganizacion zonaDeOrganizacion;
 
 	public CoberturaPacienteService(
 			CoberturaPacienteRepositoryPort coberturas,
@@ -111,7 +114,9 @@ public class CoberturaPacienteService {
 			PermissionGuard permissionGuard,
 			PersonSupportAccessAuditor supportAccessAuditor,
 			AuditTrail auditTrail,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			ZonaDeOrganizacion zonaDeOrganizacion) {
+		this.zonaDeOrganizacion = zonaDeOrganizacion;
 
 		this.coberturas = coberturas;
 		this.candados = candados;
@@ -152,7 +157,7 @@ public class CoberturaPacienteService {
 		exigirPersonaDelTenant(organizationId, personaId);
 
 		CoberturaEstadoFiltro filtro = estado == null ? CoberturaEstadoFiltro.TODAS : estado;
-		LocalDate contra = fecha == null ? LocalDate.now() : fecha;
+		LocalDate contra = fecha == null ? zonaDeOrganizacion.hoy(organizationId) : fecha;
 
 		return coberturas.historial(organizationId, personaId).stream()
 				.filter(cobertura -> switch (filtro) {
@@ -180,7 +185,7 @@ public class CoberturaPacienteService {
 						permissionGuard, actor, "Resolver la cobertura de la atencion");
 		exigirPersonaDelTenant(organizationId, personaId);
 
-		LocalDate dia = fecha == null ? LocalDate.now() : fecha;
+		LocalDate dia = fecha == null ? zonaDeOrganizacion.hoy(organizationId) : fecha;
 
 		List<CoberturaView> vigentes = coberturas.activasDe(organizationId, personaId).stream()
 				.filter(cobertura -> cobertura.vigenteEl(dia))
@@ -281,7 +286,7 @@ public class CoberturaPacienteService {
 
 		log.info("Cobertura creada: coberturaId={} personaId={} tipo={}",
 				creada.getId(), personaId, creada.getTipo());
-		return CoberturaView.de(creada, LocalDate.now());
+		return CoberturaView.de(creada, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	/**
@@ -356,7 +361,7 @@ public class CoberturaPacienteService {
 						: AuditEvents.COBERTURA_UPDATED,
 				guardada, actor, null, null, null, detalles);
 
-		return CoberturaView.de(guardada, LocalDate.now());
+		return CoberturaView.de(guardada, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	/**
@@ -409,7 +414,7 @@ public class CoberturaPacienteService {
 
 		log.info("Cobertura principal cambiada: coberturaId={} personaId={} principal={}",
 				coberturaId, personaId, principal);
-		return CoberturaView.de(guardada, LocalDate.now());
+		return CoberturaView.de(guardada, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	/**
@@ -446,7 +451,7 @@ public class CoberturaPacienteService {
 				"ACTIVA", "INACTIVA", motivo, Map.of());
 
 		log.info("Cobertura dada de baja: coberturaId={} personaId={}", coberturaId, personaId);
-		return CoberturaView.de(guardada, LocalDate.now());
+		return CoberturaView.de(guardada, zonaDeOrganizacion.hoy(organizationId));
 	}
 
 	// =================================================================================
