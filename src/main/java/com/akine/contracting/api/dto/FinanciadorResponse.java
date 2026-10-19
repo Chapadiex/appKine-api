@@ -59,7 +59,14 @@ public record FinanciadorResponse(
 		String deactivationReason,
 
 		@Schema(description = "Version a reenviar para editar", example = "0")
-		long version) {
+		long version,
+
+		@Schema(
+				description = "Entrada del catalogo global de la plataforma de la que se adopto esta "
+						+ "copia (DP-43). INFORMATIVO: la copia es del centro y editar el catalogo no la "
+						+ "toca. Null = cargado a mano por el centro",
+				example = "7")
+		Long catalogoId) {
 
 	public static FinanciadorResponse de(FinanciadorView view) {
 		return new FinanciadorResponse(
@@ -74,6 +81,7 @@ public record FinanciadorResponse(
 				view.estado(),
 				view.deletedAt(),
 				view.deactivationReason(),
-				view.version());
+				view.version(),
+				view.catalogoId());
 	}
 }

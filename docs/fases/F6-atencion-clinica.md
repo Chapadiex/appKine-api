@@ -40,8 +40,8 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 - [x] ~~06.01: "FK única a caso" — `sesion.caso_id` sigue nullable (`V48`) y el frontend nunca lo
   envía. Se resuelve junto con el gate RF-M10-007 ([F4](F4-dominio-clinico.md)).~~ **DP-43 (U-09):** el caso es obligatorio solo en ofertas con `requiere_caso_clinico`: iniciar, quitarlo y cerrar presente sin caso responden 409 `caso-clinico-requerido`; `caso_id` sigue nullable y las sesiones viejas no se migran.
 - [x] ~~06.01: atención sin turno — `turno_id` es nullable pero el único inicio es
-  `POST /sesiones/turnos/{turnoId}`.~~ **DP-43 (U-24):** `POST /sesiones` sin turno, con `sesion:register`, motivo obligatorio e `idempotencyKey` (`V115`).
-- [x] ~~06.01: reemplazo autorizado del profesional.~~ **DP-43 (U-24):** `PUT /sesiones/{id}/profesional`, solo `sesion:reassign` (CONSULTORIO_ADMIN), motivo y registro en `sesion_reemplazo_profesional` (`V115`).
+  `POST /sesiones/turnos/{turnoId}`.~~ **DP-43 (U-24):** `POST /sesiones` sin turno, con `sesion:register`, motivo obligatorio e `idempotencyKey` (`V119`).
+- [x] ~~06.01: reemplazo autorizado del profesional.~~ **DP-43 (U-24):** `PUT /sesiones/{id}/profesional`, solo `sesion:reassign` (CONSULTORIO_ADMIN), motivo y registro en `sesion_reemplazo_profesional` (`V119`).
 - [ ] 06.03: subbloques ROM, fuerza y marcha (hoy todo es medición genérica, desvío no documentado);
   obligatorios por modo/política; "copiar previo con confirmación".
 - [ ] 06.04: parámetros obligatorios por práctica (**decisión pendiente**: no hay configuración que los declare).
@@ -49,7 +49,7 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
   cerrado es imposible.~~ **Cerrado por C-6** (`V71`, contrato 0.56.0): cada version lleva la foto
   de tratamientos y mediciones, y la enmienda los corrige sin poder cambiar las practicas
   realizadas. Ver `docs/diseno/AKINE-C-6-enmiendas.md`.
-- [x] ~~06.06: permiso reforzado y política temporal para enmendar.~~ **DP-43 (U-25):** `sesion:amend` y ventana de 30 días por organización (`politica_de_enmienda`, `V115`); fuera de ventana 409 `enmienda-fuera-de-ventana`.
+- [x] ~~06.06: permiso reforzado y política temporal para enmendar.~~ **DP-43 (U-25):** `sesion:amend` y ventana de 30 días por organización (`politica_de_enmienda`, `V119`); fuera de ventana 409 `enmienda-fuera-de-ventana`.
 - [ ] 06.05: el criterio pide "HC consistente aunque la economía falle y reintente"; hoy un
   observador que falla hace fallar el cierre. **Pendiente del usuario (DU-11)**: no hay arreglo
   acotado que no sea decidir el desacople.

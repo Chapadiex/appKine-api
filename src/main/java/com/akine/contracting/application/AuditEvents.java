@@ -100,6 +100,23 @@ final class AuditEvents {
 	 */
 	static final String ARANCELES_IMPORTADOS = "ARANCELES_IMPORTADOS";
 
+	// --- Catalogo global de financiadores (DP-43). Sin tenant: organization_id NULL --------
+	static final String FINANCIADOR_CATALOGO_CREATED = "FINANCIADOR_CATALOGO_CREATED";
+	static final String FINANCIADOR_CATALOGO_UPDATED = "FINANCIADOR_CATALOGO_UPDATED";
+	static final String FINANCIADOR_CATALOGO_DEACTIVATED = "FINANCIADOR_CATALOGO_DEACTIVATED";
+	static final String ENTITY_FINANCIADOR_CATALOGO = "FinanciadorCatalogo";
+	static final String PLAN_CATALOGO_CREATED = "PLAN_CATALOGO_CREATED";
+	static final String PLAN_CATALOGO_UPDATED = "PLAN_CATALOGO_UPDATED";
+	static final String PLAN_CATALOGO_DEACTIVATED = "PLAN_CATALOGO_DEACTIVATED";
+	static final String ENTITY_PLAN_CATALOGO = "PlanCatalogo";
+
+	/**
+	 * Un centro adopto un financiador del catalogo global: bajo el tenant que adopta, sobre la
+	 * COPIA creada, con el {@code catalogoId} de origen y cuantos planes se copiaron. Adoptar algo
+	 * ya adoptado no escribe nada, asi que no audita.
+	 */
+	static final String FINANCIADOR_ADOPTADO = "FINANCIADOR_ADOPTADO";
+
 	private static final String MDC_TRACE_ID = "traceId";
 
 	private AuditEvents() {

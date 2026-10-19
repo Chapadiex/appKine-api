@@ -393,13 +393,13 @@ class ContractingControllersTest {
 	private static FinanciadorView financiador(String estado) {
 		return new FinanciadorView(
 				31L, "OSDE", "OSDE Binario", "PREPAGA", "30712345678",
-				"admin@osde.test", "011-4000-0000", null, estado, null, null, 0L);
+				"admin@osde.test", "011-4000-0000", null, estado, null, null, 0L, null);
 	}
 
 	private static PlanCoberturaView plan(String estado, boolean vigente) {
 		return new PlanCoberturaView(
 				88L, 31L, "210", "Plan 210", null,
 				LocalDate.of(2026, 1, 1), LocalDate.of(2026, 6, 30), vigente,
-				false, true, new BigDecimal("1500.00"), "ARS", estado, null, null, 0L);
+				false, true, new BigDecimal("1500.00"), "ARS", estado, null, null, 0L, null);
 	}
 }

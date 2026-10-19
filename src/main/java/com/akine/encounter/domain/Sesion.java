@@ -108,12 +108,12 @@ public class Sesion {
 
 	/**
 	 * DP-43 (U-24): por que se atendio sin turno ni derivacion. {@code null} en las demas. Lo ata
-	 * {@code ck_sesion_motivo_solo_sin_turno} de V115.
+	 * {@code ck_sesion_motivo_solo_sin_turno} de V119.
 	 */
 	@Column(name = "motivo_sin_turno", length = 500, updatable = false)
 	private String motivoSinTurno;
 
-	/** DP-43: clave de idempotencia del inicio sin turno, o {@code null}. Ver V115. */
+	/** DP-43: clave de idempotencia del inicio sin turno, o {@code null}. Ver V119. */
 	@Column(name = "idempotency_key", length = 80, updatable = false)
 	private String idempotencyKey;
 
@@ -340,7 +340,7 @@ public class Sesion {
 	 * Una atencion sin turno ni derivacion (U-24, DP-43, RF-M14-002).
 	 *
 	 * <p>El motivo es obligatorio: sin turno no hay reserva que explique por que el paciente estaba
-	 * ahi. La clave y la huella son opcionales y van juntas (V115).
+	 * ahi. La clave y la huella son opcionales y van juntas (V119).
 	 */
 	@SuppressWarnings("java:S107")
 	public static Sesion sinTurno(
