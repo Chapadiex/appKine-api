@@ -175,12 +175,18 @@ reserva haría que un arancel cargado tarde impida reservar. La huella de idempo
    limit, no un rediseño.
 4. **Qué eventos de turno notifican** (decisión 7 del `CLAUDE.md` del backend). Hoy avisan
    reservar, cancelar y reprogramar; confirmar y ausente no. *Recomendado: dejarlo así.*
-5. **Salida "se retiró sin ser atendido"** y **Particular desde `EN_ESPERA`** (decisión 18).
-   *Recomendado: una transición `RETIRADO` desde `LLEGO`/`EN_ESPERA` con motivo obligatorio, sin
-   tocar el turno; y admitir Particular desde `EN_ESPERA`*, que hoy obliga a anular y volver a
-   llegar.
-6. **Alta de serie todo o nada** (decisión 19, E-3): un feriado la hace fallar entera. *Recomendado:
-   omitir la ocurrencia y listarla en la previsualización*, que ya existe.
+5. ~~**Salida "se retiró sin ser atendido"** y **Particular desde `EN_ESPERA`** (decisión 18).~~
+   **Decidido el 19/10/2026 (DP-43, U-21) e implementado** en `akine-dp43-recepcion-y-series`
+   (`V120`, contrato 0.140.0): `POST .../recepcion/retiro` deja la recepción `RETIRADO` desde
+   `LLEGO` o `EN_ESPERA`, con motivo obligatorio, sin tocar el turno; la llegada consta, así que
+   después no hay nuevo check-in, ni ausencia, ni reprogramación. "Atender como Particular" se
+   admite desde `EN_ESPERA` y la persona sigue en la sala.
+6. ~~**Alta de serie todo o nada** (decisión 19, E-3): un feriado la hace fallar entera.~~
+   **Decidido el 19/10/2026 (DP-43, U-22) e implementado** en la misma rama: la ocurrencia que cae
+   en un día que la sede cierra por feriado se omite, queda en `turno_serie_omision` y vuelve en
+   `SerieDeTurnos.ocurrenciasOmitidas`; si todas caen en feriado no se crea nada. Las demás causas
+   siguen siendo todo o nada. La previsualización de la pantalla ya ve el feriado en la agenda
+   (`motivoSinSlots = FERIADO`).
 7. **QA manual del §6** sobre `docs/qa/05-agenda-turnos-recepcion.md`, AGE-01 a **AGE-14** (este
    PR sumó AGE-14, cobertura elegida por la API). Bloqueante para deploy y sin correr desde 02.02;
    la ejecución es del usuario.

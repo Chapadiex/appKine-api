@@ -74,10 +74,18 @@ public class SerieDeTurnosController {
 					causa (`slot-no-disponible`, `slot-completo`, `recurso-ocupado`, \
 					`oferta-no-agendable`) con la propiedad `ocurrenciaInicio`.
 
+					**Salvo los feriados** (U-22): una ocurrencia que cae en un dia que la sede \
+					cierra por feriado —y que ninguna apertura reabre— no se reserva y vuelve en \
+					`ocurrenciasOmitidas` con motivo `FERIADO`; el resto de la serie se crea igual. \
+					Si **todas** caen en feriado no se crea nada: 409 `slot-no-disponible` con \
+					`ocurrenciaInicio` de la primera. Una oferta sin profesional no pasa por la \
+					disponibilidad y no omite nada. La agenda (`buscarAgenda`) ya marca esos dias \
+					con `motivoSinSlots = FERIADO`, que es lo que usa la previsualizacion.
+
 					Cada ocurrencia es un turno pleno: conserva identidad, estado e historial propios \
 					(DP-04), y una ausencia en la primera **no** elimina la serie.""")
 	@ApiResponses({
-			@ApiResponse(responseCode = "201", description = "Serie creada con todas sus ocurrencias"),
+			@ApiResponse(responseCode = "201", description = "Serie creada con todas sus ocurrencias, menos las omitidas por feriado"),
 			@ApiResponse(
 					responseCode = "200",
 					description = "Reintento con la misma clave y el mismo pedido: la serie ya creada"),

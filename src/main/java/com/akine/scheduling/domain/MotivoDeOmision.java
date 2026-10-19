@@ -14,7 +14,10 @@ public enum MotivoDeOmision {
 	/** Ya esta cancelado o ausente. */
 	ESTADO_TERMINAL,
 
-	/** El paciente ya llego (recepcion abierta, E-4): se resuelve turno por turno, no en lote. */
+	/**
+	 * El paciente ya llego: recepcion abierta (E-4) o RETIRADO (U-21), la llegada consta. Se resuelve
+	 * turno por turno, no en lote. Conserva el nombre publicado.
+	 */
 	EN_ESPERA,
 
 	/** Tiene una Sesion registrada (DP-05): nunca se deshace por lote. */

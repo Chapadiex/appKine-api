@@ -49,6 +49,15 @@ public class RegistroDeRecepcion {
 	}
 
 	/**
+	 * {@code true} si la llegada del turno consta: hay una recepcion vigente —abierta, o
+	 * terminada sin anular—. La diferencia con {@link #tieneAbierta} es {@code RETIRADO} (U-21): la
+	 * persona vino y se fue, asi que el turno ya no se puede marcar ausente ni mover.
+	 */
+	public boolean llegadaConsta(long organizationId, long turnoId) {
+		return vigente(organizationId, turnoId).isPresent();
+	}
+
+	/**
 	 * Guarda la recepcion ya transicionada y deja su evento y su auditoria.
 	 *
 	 * <p>{@code saveAndFlush} antes del evento: la llegada necesita el id que asigna la base, y en

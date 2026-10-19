@@ -6,6 +6,7 @@ import com.akine.scheduling.AgendaFixtures.Fixture;
 import com.akine.scheduling.application.AlcanceDeSerieView;
 import com.akine.scheduling.application.AltaDeSerieCommand;
 import com.akine.scheduling.application.CicloDeTurnoService;
+import com.akine.scheduling.application.OcurrenciaOmitidaView;
 import com.akine.scheduling.application.OperacionDeSerieCommand;
 import com.akine.scheduling.application.ReservaCommand;
 import com.akine.scheduling.application.SerieDeTurnosService;
@@ -22,6 +23,7 @@ import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
 import com.akine.scheduling.domain.exception.SlotCompletoException;
+import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -419,6 +421,128 @@ class SerieDeTurnosIT {
 		assertThat(segundo.creada()).isFalse();
 		assertThat(segundo.serie().id()).isEqualTo(primero.serie().id());
 		assertThat(contarVivos(fixture)).isEqualTo(2);
+	}
+
+	// =================================================================================
+	// U-22 (DP-43): el feriado se omite
+	// =================================================================================
+
+	/**
+	 * Tres lunes de junio de 2031 con un feriado sintetico en el del medio. La tabla de feriados
+	 * es GLOBAL (ADR-0022), asi que la fecha se elige lejos de todo otro test y se borra al final.
+	 */
+	private static final LocalDate LUNES_JUNIO_2031 = LocalDate.of(2031, 6, 2);
+	private static final LocalDate FERIADO_SINTETICO = LUNES_JUNIO_2031.plusWeeks(1);
+
+	@org.junit.jupiter.api.AfterEach
+	void borrarFeriadoSintetico() {
+		jdbc.update("DELETE FROM feriado WHERE pais = 'AR' AND fecha = ? AND nombre = 'Feriado sintetico U-22'",
+				FERIADO_SINTETICO);
+	}
+
+	@Test
+	@DisplayName("U-22: la ocurrencia en feriado se omite y queda registrada; la serie se crea con las demas")
+	void el_feriado_se_omite_y_la_serie_se_crea() {
+		Fixture fixture = fixtures.crear(1);
+		insertarFeriadoSintetico();
+
+		AltaDeSerieCommand pedido = new AltaDeSerieCommand(fixture.ofertaId(), fixture.personaA(),
+				fixture.profesionalMembershipId(),
+				new ReglaDeRecurrencia(Set.of(DayOfWeek.MONDAY), LocalTime.of(9, 0), LUNES_JUNIO_2031, null, 3),
+				"u22-" + fixture.organizationId());
+		SerieView serie = serieService.crear(fixture.actor(), fixture.consultorioId(), pedido).serie();
+
+		assertThat(serie.turnos()).extracting(TurnoView::inicio)
+				.containsExactly(hora(LUNES_JUNIO_2031, 9), hora(LUNES_JUNIO_2031.plusWeeks(2), 9));
+		assertThat(serie.omitidas()).singleElement().satisfies(omitida -> {
+			assertThat(omitida.fecha()).isEqualTo(FERIADO_SINTETICO);
+			assertThat(omitida.inicio()).isEqualTo(hora(FERIADO_SINTETICO, 9));
+			assertThat(omitida.motivo()).isEqualTo("FERIADO");
+		});
+		assertThat(serie.cantidad()).as("la regla no se reescribe").isEqualTo(3);
+
+		assertThat(jdbc.queryForObject(
+				"SELECT cantidad_generada FROM turno_serie WHERE id = ?", Integer.class, serie.id()))
+				.isEqualTo(2);
+		assertThat(turnosVivosQueEmpiezanEn(fixture, hora(FERIADO_SINTETICO, 9)))
+				.as("el feriado no tiene turno")
+				.isZero();
+		assertThat(jdbc.queryForList("""
+				SELECT organization_id, consultorio_id, fecha, motivo FROM turno_serie_omision
+				 WHERE serie_id = ?""", serie.id()))
+				.singleElement().satisfies(fila -> assertThat(fila)
+						.containsEntry("organization_id", fixture.organizationId())
+						.containsEntry("consultorio_id", fixture.consultorioId())
+						.containsEntry("fecha", java.sql.Date.valueOf(FERIADO_SINTETICO))
+						.containsEntry("motivo", "FERIADO"));
+		assertThat(jdbc.queryForObject("""
+				SELECT JSON_UNQUOTE(JSON_EXTRACT(details, '$.omitidasPorFeriado')) FROM audit_event
+				 WHERE organization_id = ? AND event_type = 'TURNO_SERIE_CREADA' AND entity_id = ?
+				""", String.class, fixture.organizationId(), serie.id()))
+				.as("la auditoria del alta dice que fecha se salto")
+				.isEqualTo(FERIADO_SINTETICO.toString());
+
+		assertThat(serieService.ver(fixture.actor(), fixture.consultorioId(), serie.id()).omitidas())
+				.as("releer la serie la sigue contando")
+				.extracting(OcurrenciaOmitidaView::fecha).containsExactly(FERIADO_SINTETICO);
+		var reintento = serieService.crear(fixture.actor(), fixture.consultorioId(), pedido);
+		assertThat(reintento.creada()).isFalse();
+		assertThat(reintento.serie().omitidas())
+				.as("y el reintento idempotente devuelve la misma serie con su omitida")
+				.extracting(OcurrenciaOmitidaView::fecha).containsExactly(FERIADO_SINTETICO);
+	}
+
+	@Test
+	@DisplayName("U-22: si todas las ocurrencias caen en feriado no se crea nada")
+	void si_todas_caen_en_feriado_no_se_crea_nada() {
+		Fixture fixture = fixtures.crear(1);
+		insertarFeriadoSintetico();
+
+		assertThatThrownBy(() -> serieService.crear(fixture.actor(), fixture.consultorioId(),
+				new AltaDeSerieCommand(fixture.ofertaId(), fixture.personaA(), fixture.profesionalMembershipId(),
+						new ReglaDeRecurrencia(Set.of(DayOfWeek.MONDAY), LocalTime.of(9, 0),
+								FERIADO_SINTETICO, null, 1),
+						null)))
+				.isInstanceOfSatisfying(OcurrenciaSinLugarException.class, error -> {
+					assertThat(error.getOcurrenciaInicio()).isEqualTo(hora(FERIADO_SINTETICO, 9));
+					assertThat(error.getCausa()).isInstanceOf(SlotNoDisponibleException.class);
+				});
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM turno_serie WHERE organization_id = ?",
+				Long.class, fixture.organizationId())).isZero();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM turno_serie_omision WHERE organization_id = ?",
+				Long.class, fixture.organizationId())).isZero();
+	}
+
+	@Test
+	@DisplayName("U-22: un dia sin lugar que NO es feriado sigue haciendo fallar la serie entera")
+	void otra_causa_sigue_siendo_todo_o_nada() {
+		Fixture fixture = fixtures.crear(1);
+		insertarFeriadoSintetico();
+		// El tercer lunes esta tomado por una reserva suelta: eso no es un feriado.
+		turnoService.reservar(fixture.actor(), fixture.consultorioId(), fixture.ofertaId(),
+				new ReservaCommand(fixture.personaB(), hora(LUNES_JUNIO_2031.plusWeeks(2), 9),
+						fixture.profesionalMembershipId(), null));
+
+		assertThatThrownBy(() -> serieService.crear(fixture.actor(), fixture.consultorioId(),
+				new AltaDeSerieCommand(fixture.ofertaId(), fixture.personaA(), fixture.profesionalMembershipId(),
+						new ReglaDeRecurrencia(Set.of(DayOfWeek.MONDAY), LocalTime.of(9, 0),
+								LUNES_JUNIO_2031, null, 3),
+						null)))
+				.isInstanceOfSatisfying(OcurrenciaSinLugarException.class, error ->
+						assertThat(error.getOcurrenciaInicio()).isEqualTo(hora(LUNES_JUNIO_2031.plusWeeks(2), 9)));
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM turno_serie WHERE organization_id = ?",
+				Long.class, fixture.organizationId())).isZero();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM turno_serie_omision WHERE organization_id = ?",
+				Long.class, fixture.organizationId()))
+				.as("el rollback se lleva tambien la omision")
+				.isZero();
+	}
+
+	private void insertarFeriadoSintetico() {
+		jdbc.update("""
+				INSERT IGNORE INTO feriado (pais, fecha, nombre, tipo, created_at, updated_at)
+				VALUES ('AR', ?, 'Feriado sintetico U-22', 'INAMOVIBLE', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", FERIADO_SINTETICO);
 	}
 
 	// =================================================================================
