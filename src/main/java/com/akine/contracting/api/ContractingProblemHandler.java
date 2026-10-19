@@ -169,6 +169,14 @@ public class ContractingProblemHandler {
 		log.debug("Operacion sobre financiador ya inactivo: financiadorId={} operacion={}",
 				exception.getFinanciadorId(), exception.getOperacion());
 
+		if ("adoptar".equals(exception.getOperacion())) {
+			// DP-43: el financiador del catalogo global se dio de baja y ya no se ofrece. Las
+			// copias que los centros adoptaron antes siguen intactas.
+			return conflicto(
+					"El financiador del catalogo global esta dado de baja y ya no se puede adoptar.",
+					"Financiador dado de baja",
+					FINANCIADOR_INACTIVO);
+		}
 		return "dar de baja".equals(exception.getOperacion())
 				? conflicto(
 						"El financiador ya estaba dado de baja.",

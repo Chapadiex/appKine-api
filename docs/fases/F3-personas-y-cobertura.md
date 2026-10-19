@@ -47,7 +47,7 @@ La auditoría decía que F3 estaba aislada. Al 13/10 está conectada en los tres
 - [x] ~~Contribuyente de cobertura al Paciente 360.~~ → B-5, api #34; por campos en A-11, api #64. Pantalla: web #16 y #29.
 - [x] ~~`ArancelDirectory#congelar` sin consumidor.~~ → F-4, api #49 (07/10).
 - [ ] **Obligatoriedad de requisitos configurable por financiador o por prestación** — *pendiente del usuario*, ver abajo.
-- [ ] **Catálogo global de financiadores (DU-13)** — *pendiente del usuario*, ver abajo.
+- [x] ~~**Catálogo global de financiadores (DU-13)**~~ → DP-43 (19/10): copia adoptada, `V117`, contrato 0.137.0.
 - [ ] **`convenio:read`** — *pendiente del usuario*, ver abajo.
 
 ### Seguridad

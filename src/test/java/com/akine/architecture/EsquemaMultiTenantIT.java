@@ -131,6 +131,14 @@ class EsquemaMultiTenantIT {
 		EXCEPCIONES.put("servicio", new Excepcion(Forma.SIN_COLUMNA,
 				"Concepto del catalogo global (RN-M27-001). Como lo presta un centro concreto vive en "
 						+ "oferta_servicio_consultorio, que si lleva organization_id NOT NULL"));
+
+		// --- ADR-0023 aplicado por DP-43 (V117) — catalogo global de financiadores ---------------
+		EXCEPCIONES.put("financiador_catalogo", new Excepcion(Forma.SIN_COLUMNA,
+				"Catalogo global de la plataforma, una sola poblacion como servicio. El centro lo "
+						+ "ADOPTA como copia en financiador, que si lleva organization_id NOT NULL"));
+		EXCEPCIONES.put("plan_catalogo", new Excepcion(Forma.SIN_COLUMNA,
+				"Planes del catalogo global. La copia del centro vive en plan_cobertura, que si lleva "
+						+ "organization_id NOT NULL"));
 	}
 
 	/** Tabla de Flyway. No es del dominio y no la escribe ninguna migracion nuestra. */

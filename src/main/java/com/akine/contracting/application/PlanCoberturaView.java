@@ -33,7 +33,8 @@ public record PlanCoberturaView(
 		String estado,
 		Instant deletedAt,
 		String deactivationReason,
-		long version) {
+		long version,
+		Long catalogoId) {
 
 	public static PlanCoberturaView de(PlanCobertura plan, LocalDate fecha) {
 		return new PlanCoberturaView(
@@ -52,6 +53,7 @@ public record PlanCoberturaView(
 				plan.isActive() ? "ACTIVO" : "INACTIVO",
 				plan.getDeletedAt(),
 				plan.getDeactivationReason(),
-				plan.getVersion());
+				plan.getVersion(),
+				plan.getCatalogoId());
 	}
 }

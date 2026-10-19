@@ -23,7 +23,8 @@ public record FinanciadorView(
 		String estado,
 		Instant deletedAt,
 		String deactivationReason,
-		long version) {
+		long version,
+		Long catalogoId) {
 
 	public static FinanciadorView de(Financiador financiador) {
 		return new FinanciadorView(
@@ -38,6 +39,7 @@ public record FinanciadorView(
 				financiador.isActive() ? "ACTIVO" : "INACTIVO",
 				financiador.getDeletedAt(),
 				financiador.getDeactivationReason(),
-				financiador.getVersion());
+				financiador.getVersion(),
+				financiador.getCatalogoId());
 	}
 }
