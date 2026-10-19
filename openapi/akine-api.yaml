@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.140.0
+  version: 0.141.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -16768,7 +16768,9 @@ paths:
       - Organizaciones
     patch:
       description: |-
-        Actualiza nombre y zona horaria. Requiere administrar esa organizacion.
+        Actualiza nombre y zona horaria. Requiere tenant:update, que tiene solo el ORG_ADMIN de esa organizacion: ningun otro rol, ni por grant, y tampoco la administracion de plataforma, con o sin acceso de soporte (DP-43, U-15).
+
+        La zona horaria es un identificador IANA (offsets fijos y abreviaturas son 400) y desde DP-43 decide el dia de hoy en todo lo que la organizacion hace sin sede: padron, coberturas de la persona, autorizaciones, ordenes medicas y planes del financiador. Lo que tiene sede sigue usando la zona de la sede.
 
         El slug no se puede cambiar: se usa en URLs y en soporte, y renombrarlo rompe enlaces. Cambiar de identificador es crear otro tenant, no editar este.
 
@@ -16803,13 +16805,15 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Campos invalidos, o falta la version"
+          description: "Campos invalidos, falta la version o la zona horaria no es\
+            \ IANA"
         "403":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El actor esta en el tenant correcto pero no lo administra
+          description: "El actor esta en el tenant correcto pero no es su ORG_ADMIN,\
+            \ o es administrador de plataforma"
         "404":
           content:
             application/problem+json:
@@ -33192,7 +33196,9 @@ components:
           example: centro-kinesico-belgrano
         timezone:
           type: string
-          description: Zona horaria IANA del centro
+          description: "Zona horaria IANA del centro. Decide el dia de hoy en lo que\
+            \ se hace sin sede (padron, coberturas, autorizaciones, ordenes, planes);\
+            \ por defecto la de su primera sede (DP-43)"
           example: America/Argentina/Buenos_Aires
         version:
           type: integer
@@ -39058,8 +39064,9 @@ components:
           minLength: 0
         timezone:
           type: string
-          description: Nueva zona horaria IANA. Omitirla o enviarla vacia la deja
-            como esta
+          description: "Nueva zona horaria IANA de la organizacion: decide el dia\
+            \ de hoy en todo lo que se hace sin sede (DP-43). Omitirla o enviarla\
+            \ vacia la deja como esta; un offset fijo o una abreviatura es 400"
           example: America/Argentina/Cordoba
           maxLength: 64
           minLength: 0
