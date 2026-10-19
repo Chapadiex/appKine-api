@@ -241,9 +241,10 @@ que la deuda del período siguiente exista antes de que empiece), "hoy" **en la 
    contra una venta manual del mismo producto, que es lo que hace valer el control de superposición.
 2. Relectura con el lock (lectura actual): sigue con la renovación prendida, es abono, no está
    anulado y nadie lo renovó (`renovacionDe`).
-3. Período siguiente: **un mes calendario completo se renueva por el mes siguiente** (noviembre por
-   diciembre, no por "31 días") si el producto lo cubre; cualquier otro período dura `vigenciaDias`
-   desde el día siguiente al fin, sin hueco ni superposición.
+3. Período siguiente: **anclado al día de la primera venta** (DP-40, ver §10.9): empieza el día
+   siguiente al fin, sin hueco ni superposición, y termina el día anterior al mismo día del mes
+   siguiente. El mes calendario completo es el caso del ancla en el día 1 (noviembre por diciembre).
+   *Hasta DP-40 cualquier período que no fuera un mes calendario duraba `vigenciaDias` corrido.*
 4. Las mismas validaciones que la venta manual: producto vendible hoy, período coherente (en
    particular, no ya terminado: un job caído más que un período entero no vende el pasado), persona
    activa, sin superposición. **Lo que no se puede renovar se apaga con su motivo**
@@ -358,9 +359,116 @@ solo las escribe el `UPDATE` nativo.
 
 6. **¿Renovar un abono impago?** Hoy sí (sigue a U-40 b). Si U-40 se decide "al cobrarse", la
    renovación cambia con la venta.
-7. **El vendedor del período renovado** es quien prendió la renovación. Alternativa: una cuenta
-   técnica de sistema, que hoy no existe (`vendido_por_cuenta_id` es `NOT NULL`).
+7. ~~**El vendedor del período renovado** es quien prendió la renovación.~~ **Resuelta por DP-40
+   (U-43), §10.9:** sigue siendo quien la prendió, y si deja de poder vender la renovación se apaga
+   sola y se avisa al administrador.
 8. **Umbrales de aviso por despliegue**, no por organización: ¿hace falta configurarlos por centro o
    por producto?
-9. **El mes calendario** es la única regla de período "natural"; cualquier otro período se renueva
-   por `vigenciaDias` y puede correrse (30 días desde el 5 de noviembre termina el 4 de diciembre).
+9. ~~**El mes calendario** es la única regla de período "natural".~~ **Resuelta por DP-40 (U-45),
+   §10.9:** todo período se ancla al día de la primera venta.
+
+### 10.9 DP-40 — quién autoriza la renovación y a qué día se ancla el período (18/10/2026)
+
+> Rama `akine-dp40-renovacion`, contrato **0.133.0**, sin migración. Decisión del usuario del
+> 18/10/2026 sobre U-43 y U-45.
+
+#### U-43 — la renovación se apaga sola cuando quien la autorizó ya no puede vender
+
+El período renovado se sigue vendiendo a nombre de `renovacion_autorizada_por_cuenta_id`. Lo nuevo:
+**si esa cuenta ya no tiene `pase:manage` en la sede del abono, la renovación se apaga** —con el
+motivo *quien autorizó la renovación ya no puede vender en la sede* en `renovacion_omitida_motivo`,
+auditado `ABONO_RENOVACION_APAGADA` por abono— y **se avisa a los `ORG_ADMIN` que cubren la sede**
+por el outbox (tipo nuevo `ABONO_RENOVACION_APAGADA`). Lo hace `activity.application.ApagadoDeRenovaciones`,
+por dos puertas:
+
+1. **Al desvincular.** `organization` no publicaba ningún evento de la baja de membership: la única
+   pieza que otros módulos enchufaban era la sonda informativa `ColaboradorDesvinculacionProbe`.
+   Se agregó la contracara, **`organization.spi.ReaccionALaDesvinculacion`**, con el mismo patrón
+   (lista de implementaciones inyectada en `MembershipService`). `MembershipService` la llama
+   **después de guardar y dentro de la misma transacción** en la revocación, el cambio de rol o de
+   sede y la baja de un permiso adicional. La implementa `activity.infrastructure.RenovacionAlDesvincular`.
+2. **Antes de cada renovación**, en la transacción del job y con el abono bloqueado: cubre lo que no
+   pasa por un evento —un permiso adicional que vence solo, una membership suspendida— y cualquier
+   cosa que se le escape a la primera puerta. El permiso se mira **antes** que el producto y la
+   persona.
+
+Las dos **vuelven a evaluar el permiso con `PermissionEvaluator`** en la sede de cada abono en vez de
+inferirlo de la causa: una cuenta que pierde una de sus dos memberships puede seguir vendiendo en la
+otra sede, y un cambio de rol a otro que también vende no apaga nada.
+
+- **Idempotente:** apagar es `omitirRenovacion`, un `UPDATE ... WHERE renovacion_automatica = 1`; una
+  segunda llamada no apaga, no audita ni avisa (`AbonoRenovacionYAvisosIT.desvinculacion_apaga_la_renovacion`).
+- **Auditado:** `ABONO_RENOVACION_APAGADA` sobre `PASE_SERVICIO`, `RENOVACION_ACTIVA → RENOVACION_INACTIVA`,
+  con `causa` (`REVOCACION`, `CAMBIO_DE_ROL`, `CAMBIO_DE_SEDE`, `PERMISO_QUITADO` o
+  `AUTORIZANTE_SIN_PERMISO` desde el job) y `autorizadaPorCuentaId`; el actor es quien desvinculó, o
+  nulo si lo apagó el job.
+- **El aviso, sin PHI:** uno por administrador y por sede, con `nombre` (del administrador),
+  `consultorioNombre`, `abonosAfectados` (cuántos) y `renovacionAutorizadaPor` (el nombre del
+  colaborador). Ningún dato de las personas titulares ni un id. Las dos claves nuevas entraron a la
+  lista blanca de `SanitizedPayload`. Clave idempotente
+  `renovacion-apagada:<org>:<primer abono>:<instante>:<administrador>`. Sin administradores con
+  correo no se avisa (WARN en el log): la renovación queda apagada igual.
+- **Lo que se dejó afuera a propósito:** la **suspensión** no dispara la reacción —es temporal—; si
+  sigue suspendido cuando llega la renovación, la apaga el job. Volver a prenderla es
+  `configurarRenovacionDeAbono`, a nombre de quien la prenda.
+- **Contrapartida asumida:** la reacción corre en la transacción de la desvinculación; si falla, la
+  desvinculación falla. Es un `SELECT` por cuenta, un `UPDATE` por abono y el encolado.
+
+#### U-45 — el período se ancla al día de la primera venta
+
+`PaseServicio.periodoSiguiente(diaAncla, hastaAnterior, vigenciaDias)`. El ancla es el día del mes en
+que empezó **el primer período de la cadena**: `inicioDeLaCadena` sube por `renueva_pase_id` con un
+`WITH RECURSIVE` (una consulta, la organización en los dos lados del `UNION`). Hace falta la cadena y
+no el período anterior: un abono que arrancó un 31 pasa por el 28 de febrero, y desde ahí el ancla
+tiene que seguir siendo 31.
+
+| Ancla | Períodos |
+|---|---|
+| 1 | 01/11–30/11 → 01/12–31/12 → 01/01–31/01 (el mes calendario, igual que antes) |
+| 5 | 05/12–04/01 → 05/01–04/02 → 05/02–04/03 (28 días) → 05/03–04/04 |
+| 31 | 31/01–27/02 → 28/02–30/03 → 31/03–29/04 → 30/04–30/05 → 31/05–29/06 |
+| 31, bisiesto | 31/01/2028–28/02 → 29/02–30/03 |
+| 29, año común | 29/01–27/02 → 28/02–28/03 |
+
+Dos salidas del ancla, las dos para no vender un hueco ni días sueltos a precio de mes:
+
+- **Un período que no arranca en el ancla** (el primero se vendió partido, del 5 al 30 de noviembre)
+  **se re-ancla en su propio inicio**: el siguiente es diciembre entero, no del 1 al 4.
+- **Un producto que no cubre el período anclado** (`vigenciaDias` menor: un abono semanal, o uno de 30
+  días en un mes de 31) **dura lo que el producto, corrido**, como antes.
+
+La auditoría `ABONO_RENOVADO` suma `diaAncla` en los detalles. Lo prueban `ProductoYPaseTest` (31 →
+30/28/29, bisiestos, cruce de año, fuera del ancla, producto corto) y
+`AbonoRenovacionYAvisosIT.periodo_anclado` (31/01 → 28/02–30/03 → 31/03–29/04 contra MySQL, por la
+cadena).
+
+#### Contrato 0.133.0
+
+Sólo un valor nuevo en el enum `tipo` de las notificaciones del listado: **`ABONO_RENOVACION_APAGADA`**.
+Aditivo; ninguna operación ni campo nuevo. Sin migración: el motivo usa `renovacion_omitida_motivo`
+(V103) y el outbox no restringe el tipo.
+
+#### Design challenge
+
+1. **Ownership.** Nada nuevo en el esquema. `activity` escribe sus columnas; el outbox lo escribe
+   `notification` por su `spi`; `organization` sólo llama a su propio `spi`.
+2. **Ciclos.** Ninguna arista nueva entre módulos: `activity → organization.spi` (evaluador,
+   memberships, el `spi` nuevo), `→ notification.spi` y `→ platform.spi` ya existían.
+   `organization` no conoce a `activity`: lo descubre por la lista de implementaciones, como a las
+   sondas. `ModuleArchitectureTest` en verde.
+3. **Tenant.** `renovacionesAutorizadasPor` y la cadena filtran por `organization_id`; la cadena no
+   cruza tenants.
+4. **Reglas maestras.** Apagar no anula ni cobra nada: los períodos vendidos y sus obligaciones
+   quedan como están.
+5. **Baja lógica.** Nada se borra; el último autorizante queda en la fila.
+6. **Contrato.** Minor aditivo.
+7. **Ruta crítica.** Sobre la renovación de 08.08 (#140), que ya estaba.
+8. **El caso que rompe el diseño.** *Revocan al vendedor mientras el job está renovando uno de sus
+   abonos.* El job tiene el abono bloqueado (`producto → pase`) y evaluó el permiso antes del commit
+   de la revocación: vende ese período —el vendedor todavía estaba— y el nuevo hereda la renovación.
+   La revocación leyó la lista sin lock y no ve el período nuevo; su `UPDATE` sobre el viejo espera el
+   lock y, al soltarse, ya no encuentra la renovación prendida. El período nuevo queda con la
+   renovación de alguien que ya no está **hasta que le toque renovarse**: ahí la segunda puerta
+   evalúa el permiso, la apaga y avisa. Ningún período se vende a nombre de alguien sin permiso al
+   momento de venderse. No hay deadlock: el job no toma locks de `organization` (lee la membership
+   sin lock) y la revocación no toma el del producto.

@@ -77,7 +77,14 @@ public enum NotificationType {
 	PASE_POR_VENCER(false),
 
 	/** Al pase o abono de la persona le quedan pocos creditos (RF-M26-008, AKINE-08.08). */
-	PASE_SALDO_BAJO(false);
+	PASE_SALDO_BAJO(false),
+
+	/**
+	 * Al ADMINISTRADOR, no a la persona (DP-40, U-43): se apago sola la renovacion automatica de uno o
+	 * mas abonos porque quien la autorizo ya no puede vender en la sede. Dice cuantos, en que sede y
+	 * quien la habia autorizado: ningun dato de las personas titulares ni un id.
+	 */
+	ABONO_RENOVACION_APAGADA(false);
 
 	private final boolean requiereEnlaceSeguro;
 

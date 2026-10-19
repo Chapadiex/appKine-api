@@ -7,6 +7,7 @@ import com.akine.activity.domain.port.ActivityRepositoryPorts.CandidatoAVencer;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.EstadoDePase;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseElegible;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.PaseServicioRepositoryPort;
+import com.akine.activity.domain.port.ActivityRepositoryPorts.RenovacionAutorizada;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -367,6 +368,54 @@ public interface PaseServicioRepository
 	List<Object[]> filasDeRenovacion(
 			@Param("organizationId") long organizationId,
 			@Param("paseIds") Collection<Long> paseIds);
+
+	@Override
+	default LocalDate inicioDeLaCadena(long organizationId, long paseId) {
+		String inicio = filaDeInicioDeLaCadena(organizationId, paseId);
+		if (inicio == null) {
+			throw new IllegalStateException("El pase " + paseId + " no esta en la organizacion " + organizationId);
+		}
+		return LocalDate.parse(inicio);
+	}
+
+	/**
+	 * Sube por {@code renueva_pase_id} hasta el periodo que no renueva a nadie. Cada paso usa la PK y
+	 * la organizacion va en los dos lados del {@code UNION}: una cadena no cruza tenants.
+	 */
+	@Query(value = """
+			WITH RECURSIVE cadena (id, renueva_pase_id, vigencia_desde, nivel) AS (
+			    SELECT id, renueva_pase_id, vigencia_desde, 0
+			      FROM pase_servicio
+			     WHERE id = :paseId AND organization_id = :organizationId
+			    UNION ALL
+			    SELECT p.id, p.renueva_pase_id, p.vigencia_desde, c.nivel + 1
+			      FROM pase_servicio p
+			      JOIN cadena c ON p.id = c.renueva_pase_id
+			     WHERE p.organization_id = :organizationId
+			)
+			SELECT DATE_FORMAT(vigencia_desde, '%Y-%m-%d') FROM cadena ORDER BY nivel DESC LIMIT 1
+			""", nativeQuery = true)
+	String filaDeInicioDeLaCadena(
+			@Param("organizationId") long organizationId,
+			@Param("paseId") long paseId);
+
+	@Override
+	default List<RenovacionAutorizada> renovacionesAutorizadasPor(long organizationId, long cuentaId) {
+		return filasAutorizadasPor(organizationId, cuentaId).stream()
+				.map(fila -> new RenovacionAutorizada((Long) fila[0], (Long) fila[1], (String) fila[2]))
+				.toList();
+	}
+
+	@Query("""
+			SELECT p.id, p.consultorioId, p.snapshotNombre FROM PaseServicio p
+			 WHERE p.organizationId = :organizationId
+			   AND p.renovacionAutorizadaPorCuentaId = :cuentaId
+			   AND p.renovacionAutomatica = true
+			 ORDER BY p.id ASC
+			""")
+	List<Object[]> filasAutorizadasPor(
+			@Param("organizationId") long organizationId,
+			@Param("cuentaId") long cuentaId);
 
 	@Override
 	default List<CandidatoARenovar> candidatosARenovar(LocalDate limite, int maximo) {

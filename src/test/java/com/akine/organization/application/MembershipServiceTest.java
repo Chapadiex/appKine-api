@@ -22,6 +22,7 @@ import com.akine.organization.domain.port.MembershipGrantRepositoryPort;
 import com.akine.organization.domain.port.MembershipRepositoryPort;
 import com.akine.organization.domain.port.SubscriptionRepositoryPort;
 import com.akine.organization.spi.ColaboradorDesvinculacionProbe;
+import com.akine.organization.spi.ReaccionALaDesvinculacion;
 import com.akine.organization.spi.DirectMembershipCommand;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionEvaluator;
@@ -242,6 +243,29 @@ class MembershipServiceTest {
 
 			assertThat(service.revoke(actor, ORG_ID, MEMBERSHIP_ID, MOTIVO).estado())
 					.isEqualTo(MembershipEstado.REVOCADA.name());
+		}
+
+		@Test
+		@DisplayName("DP-40: la revocacion avisa a quien reacciona, despues de guardar y con la cuenta desvinculada")
+		void la_revocacion_avisa_a_quien_reacciona() {
+			ReaccionALaDesvinculacion reaccion = org.mockito.Mockito.mock(ReaccionALaDesvinculacion.class);
+			MembershipService conReaccion = new MembershipService(membershipRepository, grantRepository,
+					subscriptionRepository, consultorioRepository, permissionGuard, permissionEvaluator, auditTrail,
+					supportAccessReadAuditor, accountDirectory, desvinculacionProbes, List.of(reaccion), planGate,
+					usageCounter);
+			objetivo(deOtraCuenta(RoleCode.ADMINISTRATIVO));
+
+			conReaccion.revoke(actor, ORG_ID, MEMBERSHIP_ID, MOTIVO);
+
+			ArgumentCaptor<ReaccionALaDesvinculacion.Desvinculacion> hecho =
+					ArgumentCaptor.forClass(ReaccionALaDesvinculacion.Desvinculacion.class);
+			org.mockito.InOrder orden = org.mockito.Mockito.inOrder(membershipRepository, reaccion);
+			orden.verify(membershipRepository).save(any());
+			orden.verify(reaccion).alDesvincular(hecho.capture());
+			assertThat(hecho.getValue().accountId()).isEqualTo(OTRA_CUENTA);
+			assertThat(hecho.getValue().organizationId()).isEqualTo(ORG_ID);
+			assertThat(hecho.getValue().causa()).isEqualTo(ReaccionALaDesvinculacion.Causa.REVOCACION);
+			assertThat(hecho.getValue().actorCuentaId()).isEqualTo(ACCOUNT_ID);
 		}
 
 		@Test
