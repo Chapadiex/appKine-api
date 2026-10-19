@@ -509,13 +509,16 @@ class CierreConDosNumeradoresIT {
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", new Object[]{"DOSNUM-" + sufijo.toUpperCase(), "Servicio " + sufijo});
 
+		// requiere_caso_clinico = 0: esta suite mezcla a proposito sesiones con y sin caso en la misma
+		// historia. Desde DP-43 (U-09) una oferta que exige caso no cierra una atencion sin el, y lo
+		// prueba AtencionClinicaDp43IT; aca lo que se mide son los dos numeradores.
 		long ofertaId = insertar("""
 				INSERT INTO oferta_servicio_consultorio
 				       (organization_id, consultorio_id, servicio_id, nombre_comercial, modalidad,
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 0, 1, 1, 1, 0,
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 0, 0, 1, 1, 0,
 				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0,
 				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 				""", new Object[]{organizationId, consultorioId, servicioId, "Oferta " + sufijo});

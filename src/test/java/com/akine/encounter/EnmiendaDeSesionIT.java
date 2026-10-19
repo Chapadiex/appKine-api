@@ -262,9 +262,9 @@ class EnmiendaDeSesionIT {
 	// =================================================================================
 
 	@Test
-	@DisplayName("sin sesion:register no se enmienda: 403 y sin efectos")
+	@DisplayName("sin sesion:amend no se enmienda: 403 y sin efectos")
 	void sin_el_permiso_es_403() {
-		// 06.06 §6: sesion:register mas propiedad. Un ADMINISTRATIVO no atiende, no registra.
+		// U-25 (DP-43): sesion:amend mas propiedad. Un ADMINISTRATIVO no atiende ni enmienda.
 		Mundo mundo = fixtures.crearMundo();
 		long sesionId = sesionCerrada(mundo, "Nota original");
 		var administrativo = fixtures.crearMiembro(mundo.organizationId(), mundo.consultorioId(),
@@ -274,7 +274,7 @@ class EnmiendaDeSesionIT {
 		assertThatThrownBy(() -> sesionService.enmendar(administrativo.actor(), mundo.consultorioId(),
 				sesionId, contenido("Nota ajena"), "motivo", version))
 				.isInstanceOfSatisfying(PermissionDeniedException.class, error -> {
-					assertThat(error.getPermissionCode()).isEqualTo("sesion:register");
+					assertThat(error.getPermissionCode()).isEqualTo("sesion:amend");
 					assertThat(permisos.handlePermissionDenied(error).getStatus())
 							.isEqualTo(HttpStatus.FORBIDDEN.value());
 				});

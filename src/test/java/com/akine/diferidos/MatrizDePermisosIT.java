@@ -187,6 +187,45 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 	}
 
 	@Test
+	@DisplayName("DP-43: enmendar, reemplazar, atender sin turno y la politica responden lo que la matriz da")
+	void la_matriz_de_dp_43_se_cumple() {
+		// Sobre ids inexistentes: quien tiene el permiso pasa y recibe el 404 del dato, quien no lo
+		// tiene recibe el 403 ANTES de que se mire nada. Asi se prueba el permiso sin efectos.
+		String c = "/api/v1/consultorios/" + tenant.consultorioId();
+		record Escritura(String familia, String metodo, String ruta, String cuerpo, int siPermitido,
+				List<String> permitidos) {
+		}
+		List<Escritura> matriz = List.of(
+				// U-25: sesion:amend, con el reparto de Registrar Sesion: solo PROFESIONAL.
+				new Escritura("enmendar", "POST", c + "/sesiones/" + INEXISTENTE + "/enmiendas",
+						"{\"motivo\":\"motivo\",\"version\":0}", 404, List.of(PROF)),
+				// U-24: sesion:reassign, solo CONSULTORIO_ADMIN.
+				new Escritura("reemplazar profesional", "PUT",
+						c + "/sesiones/" + INEXISTENTE + "/profesional",
+						"{\"profesionalId\":1,\"motivo\":\"motivo\",\"version\":0}", 404, List.of(CA)),
+				// U-24: atender sin turno es sesion:register.
+				new Escritura("atender sin turno", "POST", c + "/sesiones",
+						"{\"personaId\":" + persona + ",\"ofertaId\":" + INEXISTENTE
+								+ ",\"motivo\":\"motivo\"}", 404, List.of(PROF)),
+				// U-25: la politica la administra quien administra la organizacion.
+				new Escritura("politica de enmienda", "GET", "/api/v1/politica-de-enmienda", null,
+						200, List.of(OA)));
+
+		SoftAssertions celdas = new SoftAssertions();
+		for (Escritura celda : matriz) {
+			for (Map.Entry<String, String> rol : tokens.entrySet()) {
+				int esperado = celda.permitidos().contains(rol.getKey()) ? celda.siPermitido() : 403;
+				Respuesta respuesta = conJustificacion(
+						celda.metodo(), celda.ruta(), rol.getValue(), celda.cuerpo());
+				celdas.assertThat(respuesta.status())
+						.as("%s [%s] -> %s", celda.familia(), rol.getKey(), respuesta.body())
+						.isEqualTo(esperado);
+			}
+		}
+		celdas.assertAll();
+	}
+
+	@Test
 	@DisplayName("U-08 catalogo:manage: solo ORG_ADMIN y CONSULTORIO_ADMIN crean conceptos del tenant")
 	void solo_los_administradores_crean_conceptos_del_catalogo() {
 		SoftAssertions celdas = new SoftAssertions();

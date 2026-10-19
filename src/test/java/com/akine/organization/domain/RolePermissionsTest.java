@@ -166,6 +166,33 @@ class RolePermissionsTest {
 	}
 
 	@Test
+	@DisplayName("U-25: `sesion:amend` tiene el reparto de Registrar Sesion y no es otorgable")
+	void sesion_amend_como_sesion_register() {
+		for (RoleCode rol : RoleCode.values()) {
+			assertThat(RolePermissions.baseScope(rol, PermissionCode.SESION_AMEND))
+					.as("%s: mismo alcance que sesion:register", rol)
+					.isEqualTo(RolePermissions.baseScope(rol, PermissionCode.SESION_REGISTER));
+		}
+		assertThat(RolePermissions.otorgablesComoGrant()).doesNotContain(PermissionCode.SESION_AMEND);
+	}
+
+	@Test
+	@DisplayName("U-24: `sesion:reassign` lo tiene solo el CONSULTORIO_ADMIN y no es otorgable")
+	void sesion_reassign_solo_el_consultorio_admin() {
+		for (RoleCode rol : RoleCode.values()) {
+			assertThat(RolePermissions.baseScope(rol, PermissionCode.SESION_REASSIGN))
+					.as("%s", rol)
+					.isEqualTo(rol == RoleCode.CONSULTORIO_ADMIN
+							? java.util.Optional.of(PermissionScope.CONSULTORIO)
+							: java.util.Optional.empty());
+		}
+		assertThat(RolePermissions.otorgablesComoGrant()).doesNotContain(PermissionCode.SESION_REASSIGN);
+		// Reemplazar no es atender: el administrador no gana sesion:register por esto.
+		assertThat(RolePermissions.baseScope(RoleCode.CONSULTORIO_ADMIN, PermissionCode.SESION_REGISTER))
+				.isEmpty();
+	}
+
+	@Test
 	@DisplayName("`caja:operate` lo tienen los tres roles administrativos, y el PROFESIONAL no")
 	void caja_operate_los_tres_administrativos() {
 		// Salio de la lista de "fases futuras" en AKINE-07.03, la etapa que crea la caja. La

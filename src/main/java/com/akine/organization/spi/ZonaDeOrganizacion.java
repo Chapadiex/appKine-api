@@ -15,7 +15,7 @@ import java.time.ZoneId;
  *
  * <p><b>La regla.</b> La zona es la columna {@code organization.timezone}, editable por el
  * {@code ORG_ADMIN} con {@code PATCH /organizations/{orgId}}. Por defecto es la de la
- * <b>primera sede</b> de la organizacion —V121 hizo el backfill con la de la sede mas antigua—
+ * <b>primera sede</b> de la organizacion —V123 hizo el backfill con la de la sede mas antigua—
  * o {@link #POR_DEFECTO} si no tiene ninguna. Las operaciones con sede siguen usando
  * {@link ZonaDeSede}: esta interfaz es solo para las que no la tienen.
  *

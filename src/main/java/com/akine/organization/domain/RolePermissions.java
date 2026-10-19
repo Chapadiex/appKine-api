@@ -366,7 +366,11 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.CATALOGO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.CATALOGO_MANAGE, PermissionScope.CONSULTORIO),
 				// AKINE-G-1 (DP-15). "Si" en Ver Reportes, con el alcance de su sede.
-				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.CONSULTORIO)));
+				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.CONSULTORIO),
+				// U-24 (DP-43): reemplazar al profesional de una atencion abierta es decision de quien
+				// administra la sede, y solo de el. No le da sesion:register: no atiende ni escribe
+				// en la atencion, cambia quien la atiende.
+				Map.entry(PermissionCode.SESION_REASSIGN, PermissionScope.CONSULTORIO)));
 
 		// PROFESIONAL y ADMINISTRATIVO â ven la lista de colaboradores de su sede y, desde la
 		// aprobacion del 25/08/2026, el catalogo fisico de esa misma sede: sin `espacio:read` un
@@ -423,6 +427,9 @@ public final class RolePermissions {
 				// "Segun rol clinico" al CONSULTORIO_ADMIN âo sea NO por defectoâ. A los demas les
 				// dice "No". Quien no atiende no registra atenciones.
 				Map.entry(PermissionCode.SESION_REGISTER, PermissionScope.CONSULTORIO),
+				// U-25 (DP-43): enmendar es otra accion que registrar, con el mismo reparto que la
+				// fila Registrar Sesion. La propiedad de la atencion sigue decidiendo sobre cual.
+				Map.entry(PermissionCode.SESION_AMEND, PermissionScope.CONSULTORIO),
 				// AKINE-G-1 (DP-15). La matriz §2 le dice "Limitado" en Ver Reportes y la §4 define
 				// la restriccion: "solo reportes de su propia actividad". ACTIVIDAD_PROPIA cubre su
 				// sede como CONSULTORIO y le avisa a ReporteService que recorte turnos, sesiones y

@@ -163,6 +163,28 @@ public enum PermissionCode {
 	/** Registrar Sesion. F6. Sin asignacion base todavia: deniega. */
 	SESION_REGISTER("sesion:register"),
 
+	/**
+	 * Enmendar una sesion cerrada. <b>U-25 (DP-43).</b>
+	 *
+	 * <p>Hasta DP-43 la enmienda se autorizaba con {@code sesion:register} mas la propiedad de la
+	 * atencion. Separarlo es lo que permite tratar la correccion de un registro clinico cerrado
+	 * como lo que es —otra accion, con su ventana— y no como un guardado mas. Se reparte como la
+	 * fila "Registrar Sesion" de la matriz §2: base del {@code PROFESIONAL} con alcance de su sede;
+	 * el "Segun rol clinico" del {@code CONSULTORIO_ADMIN} no se concede, igual que
+	 * {@code sesion:register}. La propiedad sigue mandando: tener el permiso no deja enmendar la
+	 * atencion de otro (409 {@code sesion-ajena}).
+	 */
+	SESION_AMEND("sesion:amend"),
+
+	/**
+	 * Reemplazar al profesional de una sesion abierta. <b>U-24 (DP-43).</b>
+	 *
+	 * <p>Base <b>solo</b> del {@code CONSULTORIO_ADMIN}, con alcance de su sede, y no otorgable. No
+	 * es un permiso para escribir en la atencion ajena —eso sigue siendo 409—: es la operacion
+	 * explicita, con motivo y auditada, que cambia quien es el dueño de la atencion.
+	 */
+	SESION_REASSIGN("sesion:reassign"),
+
 	/** Administrar Convenios. F3. Sin asignacion base todavia: deniega. */
 	CONVENIO_MANAGE("convenio:manage"),
 
