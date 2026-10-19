@@ -229,7 +229,142 @@ ArchUnit · Testcontainers.
 > `SerializationFeature` a `DateTimeFeature`, o sea `spring.jackson.datatype.datetime.*`.
 > Ante una duda de API, inspeccionar el jar antes de asumir la forma de 3.x.
 
-### Estado al 16/10/2026, sobre `eef0c87`
+### Estado al 19/10/2026, sobre `13e1c0f`
+
+> Esta subsección **supersede** a la del 16/10 en contrato, migraciones, tests, decisiones y
+> defectos; la del 16/10 queda como historia. Medido el 19/10 sobre `origin/main` y por la API de
+> GitHub. **Otros agentes mergean en paralelo** (zona horaria por organización, contrato 0.143.0):
+> los números de la tabla son los de `13e1c0f` y se actualizan al mergear.
+
+Desde `eef0c87` entraron a `main` **27 PR**: #144 a #164 y #167 a #170, más las propuestas
+#119, #122 y #123, que se mergearon como implementación cuando el usuario decidió. Siguen abiertos
+sólo **#165** (Dependabot, `mailpit` 1.31.6) y **#166** (Dependabot, `eclipse-temurin` 24-jre; la
+decisión es DP-41: Java 25 después del RC).
+
+| | Valor medido sobre `origin/main` `13e1c0f` (19/10) |
+|---|---|
+| Contrato | `openapi/akine-api.yaml` **0.142.0**, **357 operaciones** (`grep -cE '^\s+operationId:'`). Cliente de `appKine-web`: ver su §7 |
+| Migraciones | Última **`V122`** (atención sin turno, reemplazo y ventana de enmienda, #170). Entraron nueve desde el 16/10: `V104`, `V106`, `V107`, `V110`, `V112`, `V114`, `V117`, `V120`, `V122`. Los números intermedios se reservaron y no se usaron. **Antes de tomar la próxima, confirmarla con los agentes en curso** |
+| Commits | **871** en `main` |
+| Tests | CI de `13e1c0f`: **4.129 unitarias, 0 fallos** (leído del log del job; el log de la API viene truncado y **no se leyó el total de integración**), siete checks en verde: build/test/contrato, imagen y SBOM, vulnerabilidades, CodeQL (java y actions), ZAP baseline y Sonar. **Sonar pasa en verde porque se saltea**: faltan `SONAR_TOKEN` y `SONAR_HOST_URL` |
+| Fases | F9 ~86 % y F10 ~25 % según sus fichas (reverificadas el 16/10, **sin tocar desde entonces**): no reflejan 09.01 a 09.03, que entraron el 17/10. El gate del MVP (F8) sigue sin pasar |
+
+**Qué agregó cada minor del contrato de 0.119.0 a 0.142.0** (medido sobre los merges de primer
+padre que tocan el YAML). Los PR declaran otra versión en varios casos: la subieron al rebasear.
+**No llegaron a `main`: 0.119.0, 0.124.0, 0.128.0, 0.131.0, 0.135.0, 0.136.0, 0.138.0, 0.139.0
+ni 0.141.0.**
+
+| Minor | PR | Qué | Operaciones |
+|---|---|---|---|
+| 0.120.0 | #146 | Hardening de la superficie de F9 (09.02): sólo restricciones de entrada (`minimum`/`maximum` en el ajuste de pase y en `vigenciaDias`) | 333 |
+| 0.121.0 | #145 | Reportes `CLASES` y de pases y abonos (09.01, RF-M23-007 y 010) | 333 |
+| 0.122.0 | #149 | Aditivo: nombre del centro en las solicitudes de catálogo (R13) | 333 |
+| 0.123.0 | #150 | Reportes `CONTINUIDAD` e ingresos por servicio (09.01b, RF-M23-008 y 009) | 333 |
+| 0.125.0 | #154 | U-46 (c) y (d): saldo del pase sólo con `pase:read`, aviso de clase sin título | 333 |
+| 0.126.0 | #155 | U-39: la deuda `POR_CLASE` nace con la asistencia (`V107`) | 333 |
+| 0.127.0 | #157 | U-49 (c): límite de lotes de asistencia por sede, apagado por defecto | 333 |
+| 0.129.0 | #122 | DP-37: reparos de RF-M21-003 y débito parcial (`V110`) | 333 |
+| 0.130.0 | #123 | DP-36: `caso:create` en `hc:write`, `convenio:read` y `catalogo:read`/`catalogo:manage`; el `PACIENTE` recibe 403 en `contracting` y catálogo | 333 |
+| 0.132.0 | #162 | DP-39: rentabilidad y caja por servicio; `egreso.oferta_id` (`V112`) | 333 |
+| 0.133.0 | #163 | DP-40: la renovación se apaga al desvincular al autorizante; período anclado al día de la primera venta | 333 |
+| 0.134.0 | #164 | DP-38: honorarios por clase, instructores adicionales y borrador por período (`V114`) | 342 |
+| 0.137.0 | #168 | DP-43: catálogo global de financiadores y planes, adoptado por copia (`V117`) | 352 |
+| 0.140.0 | #169 | DP-43: recepción `RETIRADO`, Particular desde la espera y series que omiten feriados (`V120`) | 353 |
+| 0.142.0 | #170 | DP-43: caso obligatorio por oferta, atención sin turno, reemplazo del profesional y ventana de enmienda (`V122`) | 357 |
+
+**PR mergeados del 16 al 19/10:**
+
+- **#144** — 09.04: estado al 16/10, fichas de F9 y F10, notas del RC-1 y runbook de los jobs de pases.
+- **#145** — 09.01: reportes de clases y de pases y abonos.
+- **#146** — 09.02: hardening de la superficie de F9 (13 hallazgos, ver defectos).
+- **#147** — 09.03: carreras de F9 con IT, observabilidad de los jobs (`akine_job_items_total`), N+1 y carga.
+- **#148** — trazabilidad del plan al día y registros de avance de F9 y F10.
+- **#149** — R13: `SUPPORT_ACCESS_USED` en `scheduling` y `person`.
+- **#150** — 09.01b: reportes de continuidad del circuito e ingresos por servicio.
+- **#151** — F9: escenarios diferidos 39–42, 46–48 y 54–59 con IT; corrige dos defectos de 08.03.
+- **#152** — asistencia en lote de 18 a 11–12 sentencias por ítem, sin cambiar reglas (U-49 a).
+- **#153** — registro de las decisiones del 17/10 (DP-24 a DP-31).
+- **#154** — U-46 (c) y (d).
+- **#155** — U-39: deuda `POR_CLASE` con la asistencia.
+- **#156** — U-48: la venta de un pack ya no bloquea el producto (sólo el abono).
+- **#157** — U-49 (c): límite de lotes de asistencia por sede, preparado y apagado.
+- **#119** — U-06: CodeQL (SAST) y ZAP baseline (DAST), no bloqueantes.
+- **#158** — U-05: Connector/J baja a 9.6.0, y DP-33 a DP-35.
+- **#159** — perf: baja la CPU por pedido sin cambiar reglas (`docs/carga.md` §13) y DP-32.
+- **#122** — DP-37: reparos de RF-M21-003 y débito parcial.
+- **#123** — DP-36: permisos (U-04, U-07, U-08).
+- **#160** — tests: id generado en la misma sentencia en vez de `LAST_INSERT_ID()` por el pool.
+- **#161** — decisiones del 18/10 (DP-38 a DP-41).
+- **#162** — DP-39: rentabilidad y caja por servicio.
+- **#163** — DP-40: renovación de abonos y período anclado.
+- **#164** — DP-38: honorarios por clase.
+- **#167** — decisiones del 19/10 (DP-42 a DP-44).
+- **#168** — DP-43: catálogo global de financiadores por copia (U-12).
+- **#169** — DP-43: `RETIRADO`, Particular desde la espera y feriados en series (U-21, U-22).
+- **#170** — DP-43: caso por oferta, atención sin turno, reemplazo y enmienda (U-09, U-24, U-25).
+
+**Decisiones (DP-24 a DP-44)**, todas en `docs/producto/AKINE_IMPLEMENTATION_PLAN.md` §7:
+
+| DP | Qué | Implementada |
+|---|---|---|
+| 24 a 30 | 17/10: `POR_CLASE` devenga con la asistencia, políticas de pases y abonos, atención grupal sólo por convenio, umbrales de aviso, hardening de F9, lock del producto sólo en abonos, costo del lote | #154–#157, #152 |
+| 31, 32 | Fuera del RC: honorarios, renovación, períodos, rentabilidad (luego decididos); **SLO de escrituras: medir en el destino antes de tocar la numeración** | 31 → DP-38 a DP-40; 32 espera el deploy |
+| 33 a 35 | Propiedad de la Sesión = relación asistencial; Connector/J 9.6.0 y `basic-ftp@^6`; CodeQL y ZAP no bloqueantes | #158, #119 |
+| 36, 37 | Permisos (U-04, U-07, U-08); reparos y débito parcial (U-28, U-11) | #123, #122 |
+| 38 a 40 | Honorarios por clase; rentabilidad y caja por servicio; renovación de abonos | #164, #162, #163 |
+| 41 | Angular 22 y Java 25 después del despliegue del RC | tras el RC |
+| 42 | Se deja como está (13): U-10, U-13, U-14, U-16, U-17, U-18, U-20, U-23, U-26, U-31, U-32, U-34, U-36 | sin código |
+| 43 | Se implementa (9): U-09, U-12, U-15, U-21, U-22, U-24, U-25, U-35, U-38 | entraron U-12, U-21, U-22, U-09, U-24 y U-25 (#168–#170); U-38 (zona por organización, 0.143.0) en curso; **U-15 y U-35 (gate de `BRANCH` al 0,75) sin verificar en `main`** |
+| 44 | **Postergadas (5)** después del RC: U-19, U-27, U-29, U-30, U-33 | — |
+
+**Quedan abiertas sólo U-01 y U-02**, y las dos son acciones del usuario, no decisiones: correr el QA
+manual del §6 y la aprobación clínica y legal con el deploy
+(`docs/fases/decisiones-pendientes.md`: 49 entradas, 42 resueltas).
+
+**Defectos corregidos del 16 al 19/10** (casi todos encontrados ejecutando contra MySQL real):
+
+1. **Confirmar una inscripción de otra sede de la organización daba 200** (#146, alta): la pedía por
+   la propia sede y la confirmaba; lo reprodujo `ActividadAislamientoIT`.
+2. **La auditoría de una derivación y de los tratamientos de la Sesión se leía sin
+   `auditoria:read-clinica`** (#146, alta): HC, caso, plan, persona y motivo.
+3. **`activity` y `scheduling` nunca escribían `SUPPORT_ACCESS_USED`** (#146, #149): el
+   `PLATFORM_ADMIN` leía participantes y turnos del día sin dejar rastro.
+4. **El lote de atención clínica sin `sesion:register` respondía 200** con N ítems de error; y
+   `{"items":[null]}`, un `page` enorme, fechas fuera de rango y un `PUT` de producto daban 500 o
+   400 ilegible (#146, hallazgos 5 a 13).
+5. **Inscripción viva en una clase cancelada** (#147): `inscribir` validaba sin lock y la persona
+   quedaba en lista de espera de una clase `CANCELADA`.
+6. **Venta repetida con la misma `Idempotency-Key` daba 409 `conflict`** (#147).
+7. **El ingreso sin inscripción no funcionó nunca desde 08.03** (#151): pedía el lugar con un
+   `UPDATE` que exige `PROGRAMADA` para una clase `EN_CURSO`. El unitario lo mockeaba.
+8. **Dos cierres simultáneos de una clase respondían 500** (#151): ahora se toma la clase
+   `FOR UPDATE` en `READ_COMMITTED`.
+9. **El error de FK intermitente de `EntradaYAdjuntoClinicoMigrationIT`** (#160): los ITs leían
+   `LAST_INSERT_ID()` por el pool, que es por conexión y puede ser otra. Era un defecto del test,
+   no del producto; ~100 sitios migrados.
+
+> **El patrón de siempre:** 5, 6, 7 y 8 los destapó ejecutar contra el motor con
+> `CarreraDirigida` o `MigracionItSoporte`, no leer el código; y 7 es un mock que reproduce el
+> defecto en vez de detectarlo.
+
+**Lo que queda:**
+
+- **El QA manual del §6** (U-01): la guía está en `docs/qa/`; la ejecución es del usuario. Bloquea
+  el deploy.
+- **Aprobación clínica y legal y deploy** (U-02), con **medición en el destino** (DP-32): el SLO de
+  escrituras a 500 usuarios **no se cumple en desarrollo** (`docs/carga.md` §10 y §13; #159 bajó la
+  CPU por pedido sin cambiar reglas). No se toca la numeración antes de medir donde se despliega.
+- **Secretos sin cargar:** `SONAR_TOKEN`/`SONAR_HOST_URL` (el job de Sonar se saltea, confirmado en
+  el log del 19/10) y `NVD_API_KEY` (sin ella la verificación de dependencias cae a OSV.dev).
+- **Cierre de DP-43:** U-38 (zona horaria por organización, contrato 0.143.0, en curso), y
+  confirmar U-15 y U-35.
+- **Cierre de F9 y F10:** las fichas no se actualizaron desde el 16/10.
+- **Dependabot:** #165 y #166 abiertos; el segundo choca con DP-41.
+- **Connector/J:** DP-34 dejó 9.6.0 por los CVE de 9.7.0; no hay 9.x posterior.
+
+Punteros: los de la subsección del 16/10 siguen vigentes (RC-1, runbook R7, pre-QA, carga).
+
+### Estado al 16/10/2026, sobre `eef0c87` (histórico)
 
 > Esta subsección **supersede** a la del 14/10 en contrato, migraciones, tests, fases y defectos;
 > la del 14/10 queda como historia. Medido el 16/10 sobre `origin/main` y por la API de GitHub
