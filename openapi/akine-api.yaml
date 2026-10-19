@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.136.0
+  version: 0.137.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -33,6 +33,9 @@ tags:
 - description: "Emision, listado, reenvio y cancelacion de invitaciones a colaborar\
     \ (M05)"
   name: Invitaciones
+- description: Financiadores y planes que la plataforma ofrece para que los centros
+    adopten (DP-43)
+  name: Catalogo global de financiadores
 - description: "Administracion de la plataforma: acceso de soporte y roles globales"
   name: Plataforma
 - description: "Lotes reclamados a financiadores, debitos, pagos y conciliacion (M21)"
@@ -1612,6 +1615,110 @@ paths:
       summary: Reabrir un Caso Clinico cerrado
       tags:
       - Casos clinicos
+  /api/v1/catalogo-financiadores:
+    get:
+      description: |-
+        Lo que el centro puede adoptar: las entradas ACTIVAS del catalogo de la plataforma, con sus planes ACTIVOS, ordenadas por nombre. q busca por nombre, codigo y CUIT.
+
+        Por cada entrada, financiadorAdoptadoId es la copia VIGENTE que este centro ya adopto (null si no la adopto), y actualizacionDisponible avisa que la entrada cambio despues de adoptarla. Es solo informativo: la copia no se actualiza sola.
+
+        Exige convenio:read con la sede del contexto.
+      operationId: listCatalogoFinanciadores
+      parameters:
+      - description: "Texto a buscar en nombre, codigo y CUIT"
+        example: osde
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Filtro por clasificacion. Si se omite, todos"
+        in: query
+        name: tipo
+        required: false
+        schema:
+          type: string
+          enum:
+          - OBRA_SOCIAL
+          - PREPAGA
+          - ART
+          - MUTUAL
+          - ORGANISMO_PUBLICO
+          - OTRO
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CatalogoFinanciadorResponse"
+          description: Entradas activas del catalogo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:read
+      summary: Buscar en el catalogo global de financiadores
+      tags:
+      - Catalogo global de financiadores
+  /api/v1/catalogo-financiadores/{catalogoId}/adopcion:
+    post:
+      description: |-
+        Crea en la organizacion del contexto una COPIA PROPIA del financiador y de sus planes ACTIVOS, con catalogoId apuntando al origen. La copia es un financiador del centro como cualquier otro: se edita, se da de baja y se usa en coberturas y convenios sin tocar el catalogo, y editar el catalogo despues no la cambia.
+
+        IDEMPOTENTE: si el centro ya tiene una copia vigente de esa entrada, responde 200 con esa copia y no escribe nada; la primera vez responde 201. Dos llamadas simultaneas dejan una sola copia. Dada de baja la copia, se puede volver a adoptar.
+
+        Si el centro ya cargo a mano un financiador vigente con el mismo codigo, nombre o CUIT, responde 409 con el type de siempre y no crea nada.
+
+        Exige convenio:manage con la sede del contexto. Sin cuerpo.
+      operationId: adoptarFinanciadorDelCatalogo
+      parameters:
+      - description: Identificador en el catalogo
+        example: 7
+        in: path
+        name: catalogoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdopcionDeFinanciadorResponse"
+          description: "El centro ya la habia adoptado: la copia vigente, sin cambios"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdopcionDeFinanciadorResponse"
+          description: Copia creada
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La entrada del catalogo no existe
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La entrada esta dada de baja (financiador-inactivo), o el\
+            \ centro ya tiene un financiador vigente con ese codigo (financiador-codigo-taken),\
+            \ nombre (financiador-nombre-taken) o CUIT (financiador-cuit-taken)"
+      summary: Adoptar un financiador del catalogo global
+      tags:
+      - Catalogo global de financiadores
   /api/v1/catalogo-solicitudes:
     get:
       description: |-
@@ -11384,8 +11491,6 @@ paths:
 
         Si una ocurrencia no tiene lugar, no se crea nada y el 409 conserva el tipo de la causa (`slot-no-disponible`, `slot-completo`, `recurso-ocupado`, `oferta-no-agendable`) con la propiedad `ocurrenciaInicio`.
 
-        **Salvo los feriados** (U-22): una ocurrencia que cae en un dia que la sede cierra por feriado —y que ninguna apertura reabre— no se reserva y vuelve en `ocurrenciasOmitidas` con motivo `FERIADO`; el resto de la serie se crea igual. Si **todas** caen en feriado no se crea nada: 409 `slot-no-disponible` con `ocurrenciaInicio` de la primera. Una oferta sin profesional no pasa por la disponibilidad y no omite nada. La agenda (`buscarAgenda`) ya marca esos dias con `motivoSinSlots = FERIADO`, que es lo que usa la previsualizacion.
-
         Cada ocurrencia es un turno pleno: conserva identidad, estado e historial propios (DP-04), y una ausencia en la primera **no** elimina la serie.
       operationId: crearSerieDeTurnos
       parameters:
@@ -11420,8 +11525,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/SerieDeTurnos"
-          description: "Serie creada con todas sus ocurrencias, menos las omitidas\
-            \ por feriado"
+          description: Serie creada con todas sus ocurrencias
         "400":
           content:
             application/json:
@@ -13822,11 +13926,9 @@ paths:
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/particular:
     post:
       description: |-
-        RF-M13-005. Decision explicita del operador, **con motivo obligatorio**, cuando la persona no tiene cobertura aplicable o la validacion quedo observada. Desde `LLEGO` u `OBSERVADA` deja la recepcion `VALIDADA` con modalidad `PARTICULAR`.
+        RF-M13-005. Decision explicita del operador, **con motivo obligatorio**, cuando la persona no tiene cobertura aplicable o la validacion quedo observada. Deja la recepcion `VALIDADA` con modalidad `PARTICULAR`.
 
-        **Desde `EN_ESPERA`** (U-21) la persona sigue en la sala: la recepcion queda `EN_ESPERA`, con modalidad `PARTICULAR` y su `enEsperaDesde` intacto, sin anular ni volver a marcar la llegada. Si ya se atiende como Particular responde 409.
-
-        **No modifica la cobertura maestra del paciente** (RN-M13-004): es un dato de esta recepcion.
+        **No modifica la cobertura maestra del paciente** (RN-M13-004): es un dato de esta recepcion. Desde `LLEGO` u `OBSERVADA`.
       operationId: atenderComoParticular
       parameters:
       - in: path
@@ -13895,84 +13997,6 @@ paths:
           description: "No hay recepcion abierta o su estado no lo admite (`recepcion-transicion-no-permitida`),\
             \ o la version quedo vieja"
       summary: Continuar como Particular
-      tags:
-      - Recepcion
-  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/retiro:
-    post:
-      description: |-
-        U-21. Desde `LLEGO` o `EN_ESPERA`, **con motivo obligatorio**. Deja la recepcion `RETIRADO`, terminal, con `cerradaEn` y `motivoCierre`.
-
-        A diferencia de la anulacion, **la llegada vale**: la persona vino. Por eso la recepcion sigue siendo la vigente del turno, un nuevo check-in responde 409 y el turno ya no se puede marcar ausente ni reprogramar.
-
-        **No cambia el estado del turno** (DP-05): sigue `RESERVADO` o `CONFIRMADO`. Tampoco impide abrir la Sesion: la Sesion es la que prueba la atencion.
-      operationId: retirarRecepcion
-      parameters:
-      - in: path
-        name: consultorioId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      - in: path
-        name: turnoId
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RetirarRecepcion"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Recepcion"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Recepcion"
-          description: Recepcion cerrada como RETIRADO
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Falta el motivo
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: Sin `turno:manage` en esa sede
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "El turno o la sede no existen, o son de otro tenant"
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ProblemDetail"
-          description: "No hay recepcion abierta o su estado no lo admite (`recepcion-transicion-no-permitida`),\
-            \ o la version quedo vieja (`concurrent-modification`)"
-      summary: Registrar que la persona se retiro sin ser atendida
       tags:
       - Recepcion
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/recepcion/validacion:
@@ -21690,6 +21714,420 @@ paths:
       summary: Catalogo de planes contratables
       tags:
       - Planes
+  /api/v1/platform/catalogo-financiadores:
+    get:
+      description: "Consola de plataforma. Devuelve las entradas del catalogo global\
+        \ con TODOS sus planes, activos y dados de baja, ordenadas por nombre. q busca\
+        \ por nombre, codigo y CUIT; estado filtra el ciclo de vida (por defecto ACTIVO).\
+        \ financiadorAdoptadoId viaja siempre null y actualizacionDisponible false:\
+        \ son de la lectura de un centro."
+      operationId: listCatalogoFinanciadoresDePlataforma
+      parameters:
+      - description: "Texto a buscar en nombre, codigo y CUIT"
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Filtro por ciclo de vida. Si se omite, ACTIVO"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVO
+          - INACTIVO
+          - TODOS
+      - description: Filtro por clasificacion
+        in: query
+        name: tipo
+        required: false
+        schema:
+          type: string
+          enum:
+          - OBRA_SOCIAL
+          - PREPAGA
+          - ART
+          - MUTUAL
+          - ORGANISMO_PUBLICO
+          - OTRO
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CatalogoFinanciadorResponse"
+          description: Entradas del catalogo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no tiene rol de plataforma vigente
+      summary: Listar el catalogo global de financiadores
+      tags:
+      - Catalogo global de financiadores
+    post:
+      description: "El codigo es unico entre las entradas VIGENTES del catalogo y\
+        \ no se puede cambiar despues: es el codigo que recibe la copia de cada centro\
+        \ que lo adopte. El nombre y el CUIT (normalizado a 11 digitos) tambien son\
+        \ unicos entre las vigentes."
+      operationId: createCatalogoFinanciador
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFinanciadorRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoFinanciadorResponse"
+          description: Entrada creada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos o faltantes
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no tiene rol de plataforma vigente
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Codigo (financiador-codigo-taken), nombre (financiador-nombre-taken)\
+            \ o CUIT (financiador-cuit-taken) repetido entre las entradas vigentes\
+            \ del catalogo"
+      summary: Dar de alta un financiador en el catalogo global
+      tags:
+      - Catalogo global de financiadores
+  /api/v1/platform/catalogo-financiadores/{catalogoId}:
+    delete:
+      description: "Baja LOGICA con motivo obligatorio. La entrada deja de ofrecerse\
+        \ para adoptar. No cascadea: sus planes conservan su estado y las copias que\
+        \ los centros ya adoptaron no se tocan."
+      operationId: deactivateCatalogoFinanciador
+      parameters:
+      - description: Identificador en el catalogo
+        example: 7
+        in: path
+        name: catalogoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateContractingRequest"
+        required: true
+      responses:
+        "204":
+          description: Entrada dada de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no tiene rol de plataforma vigente
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La entrada no existe
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya estaba dada de baja (financiador-already-inactive)
+      summary: Dar de baja una entrada del catalogo global de financiadores
+      tags:
+      - Catalogo global de financiadores
+    get:
+      description: "Con 200 aunque este dada de baja, y con todos sus planes."
+      operationId: getCatalogoFinanciadorDePlataforma
+      parameters:
+      - description: Identificador en el catalogo
+        example: 7
+        in: path
+        name: catalogoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoFinanciadorResponse"
+          description: La entrada del catalogo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no tiene rol de plataforma vigente
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La entrada no existe
+      summary: Ver una entrada del catalogo global de financiadores
+      tags:
+      - Catalogo global de financiadores
+    put:
+      description: "Edicion parcial: los campos en null no se tocan. El codigo no\
+        \ se edita. NO propaga a las copias que los centros ya adoptaron: esos centros\
+        \ ven actualizacionDisponible = true en su lectura del catalogo."
+      operationId: updateCatalogoFinanciador
+      parameters:
+      - description: Identificador en el catalogo
+        example: 7
+        in: path
+        name: catalogoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFinanciadorRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoFinanciadorResponse"
+          description: Entrada actualizada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no tiene rol de plataforma vigente
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La entrada no existe
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Nombre o CUIT repetido, entrada dada de baja (financiador-inactivo)\
+            \ o version desactualizada (concurrent-modification)"
+      summary: Editar una entrada del catalogo global de financiadores
+      tags:
+      - Catalogo global de financiadores
+  /api/v1/platform/catalogo-financiadores/{catalogoId}/planes:
+    post:
+      description: "Mismas reglas que el alta de un plan del centro: codigo inmutable\
+        \ y unico entre los planes vigentes de esa entrada, vigencia hasta INCLUSIVA,\
+        \ copago y moneda juntos. Una entrada dada de baja no admite planes nuevos."
+      operationId: createCatalogoPlan
+      parameters:
+      - description: Identificador en el catalogo
+        example: 7
+        in: path
+        name: catalogoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanCoberturaRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanCatalogoResponse"
+          description: Plan creado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos o faltantes
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no tiene rol de plataforma vigente
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La entrada no existe
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Codigo o nombre repetido (plan-cobertura-codigo-taken, plan-cobertura-nombre-taken)\
+            \ o entrada dada de baja (financiador-inactivo)"
+      summary: Dar de alta un plan en una entrada del catalogo global
+      tags:
+      - Catalogo global de financiadores
+  /api/v1/platform/catalogo-financiadores/{catalogoId}/planes/{planId}:
+    delete:
+      description: Baja LOGICA con motivo. Deja de copiarse en adopciones nuevas;
+        las copias ya hechas no se tocan.
+      operationId: deactivateCatalogoPlan
+      parameters:
+      - description: Identificador en el catalogo
+        example: 7
+        in: path
+        name: catalogoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del plan
+        example: 12
+        in: path
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeactivateContractingRequest"
+        required: true
+      responses:
+        "204":
+          description: Plan dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo de la baja
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no tiene rol de plataforma vigente
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El plan no existe o es de otra entrada
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya estaba dado de baja (plan-cobertura-already-inactive)
+      summary: Dar de baja un plan del catalogo global
+      tags:
+      - Catalogo global de financiadores
+    put:
+      description: "Edicion parcial, incluido el cierre de vigencia. No propaga a\
+        \ las copias."
+      operationId: updateCatalogoPlan
+      parameters:
+      - description: Identificador en el catalogo
+        example: 7
+        in: path
+        name: catalogoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del plan
+        example: 12
+        in: path
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlanCoberturaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanCatalogoResponse"
+          description: Plan actualizado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Campos invalidos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La cuenta no tiene rol de plataforma vigente
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El plan no existe o es de otra entrada
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Nombre repetido, plan dado de baja (plan-cobertura-inactivo)\
+            \ o version desactualizada (concurrent-modification)"
+      summary: Editar un plan del catalogo global
+      tags:
+      - Catalogo global de financiadores
   /api/v1/platform/organizations:
     get:
       description: "Listado paginado de las organizaciones vigentes con el estado\
@@ -22765,6 +23203,25 @@ components:
           format: int64
           description: Version para el bloqueo optimista
           example: 0
+    AdopcionDeFinanciadorResponse:
+      type: object
+      description: Resultado de adoptar un financiador del catalogo global (DP-43)
+      properties:
+        creado:
+          type: boolean
+          description: true si esta llamada creo la copia (201); false si ya existia
+            y se devuelve sin tocar nada (200)
+        financiador:
+          $ref: "#/components/schemas/FinanciadorResponse"
+          description: "La copia del centro. Es un financiador de la organizacion\
+            \ como cualquier otro, con catalogoId apuntando al origen"
+        planes:
+          type: array
+          description: "Los planes de la copia. Al crearla, los planes ACTIVOS del\
+            \ catalogo; si ya existia, los que tenga hoy, incluidos los que el centro\
+            \ agrego"
+          items:
+            $ref: "#/components/schemas/PlanCoberturaResponse"
     AdvertenciaResponse:
       type: object
       description: Una aclaracion sobre los numeros de una seccion
@@ -24801,6 +25258,90 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReporteDisponible"
+    CatalogoFinanciadorResponse:
+      type: object
+      description: "Financiador del catalogo global de la plataforma, con sus planes\
+        \ (DP-43)"
+      properties:
+        actualizacionDisponible:
+          type: boolean
+          description: "Solo en la lectura de un centro: true si la entrada cambio\
+            \ despues de que el centro adopto su copia. INFORMATIVO: la copia no se\
+            \ actualiza sola ni hay operacion que la re-sincronice"
+        actualizadoEn:
+          type: string
+          format: date-time
+          description: "Ultima edicion de la entrada: de la cabecera o de cualquiera\
+            \ de sus planes, incluidas altas y bajas de plan"
+        codigo:
+          type: string
+          description: Clave estable. Es el codigo que recibe la copia del centro
+          example: OSDE
+        cuit:
+          type: string
+          description: "CUIT normalizado a 11 digitos, o null"
+          example: "30712345678"
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja. Null mientras este vigente
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja logica. Null mientras este vigente
+        emailContacto:
+          type: string
+          description: Contacto administrativo general del financiador
+        estado:
+          type: string
+          description: Ciclo de vida. Un centro solo ve los ACTIVOS
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        financiadorAdoptadoId:
+          type: integer
+          format: int64
+          description: "Solo en la lectura de un centro: su copia VIGENTE de esta\
+            \ entrada, si ya la adopto. Null si no la adopto, y siempre null en la\
+            \ consola de plataforma"
+          example: 31
+        id:
+          type: integer
+          format: int64
+          description: Identificador en el catalogo. Es el que se adopta
+          example: 7
+        nombre:
+          type: string
+          description: Nombre visible
+          example: OSDE
+        observaciones:
+          type: string
+          description: Notas administrativas. Nunca contenido clinico
+        planes:
+          type: array
+          description: "Planes. En la consola de plataforma, todos; para un centro,\
+            \ solo los ACTIVOS, que son los que se copian al adoptar"
+          items:
+            $ref: "#/components/schemas/PlanCatalogoResponse"
+        telefonoContacto:
+          type: string
+          description: Telefono administrativo general del financiador
+        tipo:
+          type: string
+          description: "Clasificacion. Clasifica, no habilita"
+          enum:
+          - OBRA_SOCIAL
+          - PREPAGA
+          - ART
+          - MUTUAL
+          - ORGANISMO_PUBLICO
+          - OTRO
+          example: PREPAGA
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para editar
+          example: 0
     CatalogoSolicitudResponse:
       type: object
       description: Pedido de un tenant para que la plataforma incorpore un concepto
@@ -29525,7 +30066,6 @@ components:
           - LLAMADO
           - ANULACION
           - CIERRE_POR_CANCELACION
-          - RETIRO
           example: LLEGADA
     EventoDeTurno:
       type: object
@@ -29823,6 +30363,13 @@ components:
       type: object
       description: Financiador del catalogo de la organizacion
       properties:
+        catalogoId:
+          type: integer
+          format: int64
+          description: "Entrada del catalogo global de la plataforma de la que se\
+            \ adopto esta copia (DP-43). INFORMATIVO: la copia es del centro y editar\
+            \ el catalogo no la toca. Null = cargado a mano por el centro"
+          example: 7
         codigo:
           type: string
           description: "Clave estable con la que las coberturas lo referencian. No\
@@ -32257,28 +32804,6 @@ components:
           format: int64
           description: Version para el control optimista
           example: 0
-    OcurrenciaOmitidaDeSerie:
-      type: object
-      description: "Ocurrencia que la regla producia y que el alta no reservo, con\
-        \ su motivo. No es un turno: nunca existio."
-      properties:
-        fecha:
-          type: string
-          format: date
-          description: "Fecha local de la ocurrencia, en la zona de la serie"
-          example: 2026-12-07
-        inicio:
-          type: string
-          format: date-time
-          description: Instante que la regla producia
-          example: 2026-12-07T12:00:00Z
-        motivo:
-          type: string
-          description: "`FERIADO`: la sede cierra ese dia por feriado y ninguna apertura\
-            \ lo reabre."
-          enum:
-          - FERIADO
-          example: FERIADO
     OfertaResponse:
       type: object
       description: Oferta de un servicio en una sede concreta
@@ -33166,6 +33691,73 @@ components:
           format: int64
           description: Version para el bloqueo optimista. Reenviarla al editar
           example: 0
+    PlanCatalogoResponse:
+      type: object
+      description: Plan de un financiador del catalogo global de la plataforma (DP-43)
+      properties:
+        codigo:
+          type: string
+          description: Clave estable dentro del financiador. No cambia
+          example: "210"
+        copago:
+          type: number
+          description: Copago de referencia. Se copia como dato al adoptar
+          example: 1500.0
+        deactivationReason:
+          type: string
+          description: Motivo declarado de la baja. Null mientras este vigente
+        deletedAt:
+          type: string
+          format: date-time
+          description: Instante UTC de la baja logica. Null mientras este vigente
+        descripcion:
+          type: string
+          description: Descripcion administrativa
+        estado:
+          type: string
+          description: Ciclo de vida
+          enum:
+          - ACTIVO
+          - INACTIVO
+          example: ACTIVO
+        financiadorCatalogoId:
+          type: integer
+          format: int64
+          description: Financiador del catalogo al que pertenece
+          example: 7
+        id:
+          type: integer
+          format: int64
+          description: Identificador del plan en el catalogo
+          example: 12
+        moneda:
+          type: string
+          description: ISO 4217 del copago. Null si y solo si copago es null
+          example: ARS
+        nombre:
+          type: string
+          description: Nombre visible del plan
+          example: Plan 210
+        requiereAutorizacion:
+          type: boolean
+          description: Si las prestaciones exigen autorizacion previa del financiador
+        requiereCredencial:
+          type: boolean
+          description: Si la cobertura del paciente exige numero de credencial
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar para editar
+          example: 0
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que se puede elegir
+          example: 2026-01-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia en que se puede elegir, INCLUSIVE. Null = sin fin"
     PlanChangeRequest:
       type: object
       description: Plan a contratar y version esperada de la suscripcion
@@ -33209,6 +33801,13 @@ components:
       type: object
       description: Plan de cobertura de un financiador
       properties:
+        catalogoId:
+          type: integer
+          format: int64
+          description: "Entrada del catalogo global de la plataforma de la que se\
+            \ adopto esta copia (DP-43). INFORMATIVO: la copia es del centro y editar\
+            \ el catalogo no la toca. Null = cargado a mano por el centro"
+          example: 7
         codigo:
           type: string
           description: Clave estable dentro del financiador. No cambia
@@ -34529,7 +35128,7 @@ components:
         cerradaEn:
           type: string
           format: date-time
-          description: "Cuando se anulo, se cerro o la persona se retiro."
+          description: Cuando se anulo o se cerro.
           example: 2026-09-15T12:30:00Z
         coberturaId:
           type: integer
@@ -34549,9 +35148,8 @@ components:
           type: string
           description: "`LLEGO` (sin validar), `VALIDADA` (se sabe como se atiende),\
             \ `OBSERVADA` (la validacion encontro algo: advierte, no bloquea), `EN_ESPERA`,\
-            \ `LLAMADA`, `ANULADA` (check-in por error), `RETIRADO` (se retiro sin\
-            \ ser atendido; la llegada consta) o `CERRADA` (el turno se cancelo con\
-            \ la persona presente; la llegada consta)."
+            \ `LLAMADA`, `ANULADA` (check-in por error) o `CERRADA` (el turno se cancelo\
+            \ con la persona presente; la llegada consta)."
           enum:
           - LLEGO
           - VALIDADA
@@ -34560,7 +35158,6 @@ components:
           - LLAMADA
           - ANULADA
           - CERRADA
-          - RETIRADO
           example: EN_ESPERA
         id:
           type: integer
@@ -34590,8 +35187,7 @@ components:
           example: COBERTURA
         motivoCierre:
           type: string
-          description: "Motivo de la anulacion, de la cancelacion del turno o del\
-            \ retiro."
+          description: Motivo de la anulacion o de la cancelacion del turno.
           example: El profesional se descompuso
         motivoParticular:
           type: string
@@ -36053,27 +36649,6 @@ components:
             explicitas para que la pantalla no las confunda con ausencia de datos
           items:
             $ref: "#/components/schemas/SeccionOmitidaResponse"
-    RetirarRecepcion:
-      type: object
-      description: La persona se retiro sin ser atendida. La llegada consta y el turno
-        no cambia.
-      properties:
-        expectedVersion:
-          type: integer
-          format: int64
-          description: Version que devolvio la ultima lectura de la recepcion.
-          example: 2
-          minimum: 0
-        motivo:
-          type: string
-          description: "Por que se retiro. **Obligatorio**: es lo unico que explica\
-            \ despues por que un turno con llegada quedo sin atender."
-          example: No quiso esperar la demora de 40 minutos
-          maxLength: 300
-          minLength: 0
-      required:
-      - expectedVersion
-      - motivo
     RevertirConsumoRequest:
       type: object
       description: Reversion de un consumo de autorizacion
@@ -36377,14 +36952,6 @@ components:
           type: integer
           format: int64
           example: 12
-        ocurrenciasOmitidas:
-          type: array
-          description: "Las ocurrencias que la regla producia y el alta NO reservo,\
-            \ con su motivo (U-22): hoy, las que caen en un dia que la sede cierra\
-            \ por feriado. Vacia si no se omitio ninguna. No son turnos —nunca existieron—\
-            , y por eso `cantidad` puede ser mayor que la cantidad de `turnos`."
-          items:
-            $ref: "#/components/schemas/OcurrenciaOmitidaDeSerie"
         ofertaId:
           type: integer
           format: int64
@@ -37670,8 +38237,8 @@ components:
           type: string
           description: "`YA_EMPEZO` (el pasado es inalterable), `ESTADO_TERMINAL`\
             \ (ya cancelado o ausente), `EN_ESPERA` (el paciente ya llego: tiene una\
-            \ recepcion abierta o se retiro sin ser atendido; se resuelve solo) o\
-            \ `CON_ATENCION` (tiene una Sesion registrada)"
+            \ recepcion abierta; se resuelve solo) o `CON_ATENCION` (tiene una Sesion\
+            \ registrada)"
           enum:
           - YA_EMPEZO
           - ESTADO_TERMINAL

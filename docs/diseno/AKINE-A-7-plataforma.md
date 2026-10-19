@@ -74,7 +74,17 @@ resolución) pasa de 200 a 400. No hay consumidor: el frontend no tiene pantalla
 pedido —nombre propuesto, justificación—, no datos del centro (matriz §11.2, criterio de §9.7). Un
 tenant no resuelve (403). La plataforma no pide (403). La resolución sigue siendo terminal.
 
-## 3. Catálogo global de financiadores — diseñado, decisión pendiente (DU-13)
+## 3. Catálogo global de financiadores — DECIDIDO (DP-43, 19/10/2026): opción (B), copia adoptada
+
+> **Implementado** en la rama `akine-dp43-financiadores-globales` (`V117`, contrato 0.137.0):
+> `financiador_catalogo` y `plan_catalogo` sin `organization_id`; CRUD en
+> `/api/v1/platform/catalogo-financiadores` (rol de plataforma revalidado, sin excepción del
+> filtro de tenant: el filtro ya deja pasar al rol sin contexto); lectura para el centro en
+> `GET /api/v1/catalogo-financiadores` (`convenio:read`) y adopción idempotente en
+> `POST /api/v1/catalogo-financiadores/{catalogoId}/adopcion` (`convenio:manage`). Las dos
+> preguntas que quedaban: **los cambios no se propagan** (la lectura del centro informa
+> `actualizacionDisponible`, sin re-sincronizar), y **el copago del plan global se copia como
+> dato**, igual que `plan_cobertura.copago`. Lo que sigue es el diseño tal como se escribió.
 
 **Por qué no entra.** El RF no alcanza para definirlo, y la decisión que falta cambia el modelo
 entero, no un detalle:

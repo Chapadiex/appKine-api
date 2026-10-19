@@ -548,7 +548,7 @@ class RecepcionIT {
 		assertThat(jdbc.queryForObject("SELECT estado FROM recepcion WHERE turno_id = ?",
 				String.class, turno.id())).isEqualTo("VALIDADA");
 
-		// V116: ck_recepcion_retirado_con_motivo y ck_recepcion_cierre, contra el motor.
+		// V120: ck_recepcion_retirado_con_motivo y ck_recepcion_cierre, contra el motor.
 		assertThatThrownBy(() -> jdbc.update("""
 				UPDATE recepcion SET estado = 'RETIRADO', cerrada_en = UTC_TIMESTAMP(6), motivo_cierre = NULL
 				 WHERE turno_id = ?""", turno.id()))

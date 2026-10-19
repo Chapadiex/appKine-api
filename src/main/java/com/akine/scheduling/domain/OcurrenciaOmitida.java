@@ -14,7 +14,7 @@ import java.time.LocalDate;
 
 /**
  * Una ocurrencia que la regla de una serie producia y que el alta NO reservo, con su motivo
- * (U-22, DP-43). Mapea {@code turno_serie_omision} (V116).
+ * (U-22, DP-43). Mapea {@code turno_serie_omision} (V120).
  *
  * <p>Hasta U-22 un feriado hacia fallar el alta entera. Ahora esa ocurrencia se salta, y esta fila
  * es lo que permite contarlo despues: al releer la serie, en el reintento idempotente del alta y
@@ -25,7 +25,7 @@ import java.time.LocalDate;
 @Table(name = "turno_serie_omision")
 public class OcurrenciaOmitida {
 
-	/** Por que se omitio. Hoy hay un solo motivo; el CHECK de V116 fija el conjunto. */
+	/** Por que se omitio. Hoy hay un solo motivo; el CHECK de V120 fija el conjunto. */
 	public enum Motivo {
 		/** La sede cierra ese dia por feriado y ninguna apertura lo reabre. */
 		FERIADO

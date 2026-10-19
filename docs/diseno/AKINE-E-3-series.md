@@ -258,7 +258,7 @@ El costo es una serie de 12 = 12 correos. Consolidarlo en un aviso por serie es 
    la fecha del feriado en `ocurrenciaInicio`. Si en el mostrador eso resulta frecuente, la
    alternativa más barata es una política explícita "saltear feriados" en el pedido, no el modo
    parcial genérico.
-   > **Cambiado por DP-43 (U-22, 19/10/2026)**, `V116`, contrato 0.136.0: los feriados se saltean
+   > **Cambiado por DP-43 (U-22, 19/10/2026)**, `V120`, contrato 0.140.0: los feriados se saltean
    > siempre, sin bandera en el pedido. La ocurrencia que cae en un día que la sede cierra por
    > feriado (el `razonVacio = FERIADO` de M05 para el profesional; una apertura que lo reabre lo
    > deja fuera) no se reserva, se guarda en `turno_serie_omision` y vuelve en

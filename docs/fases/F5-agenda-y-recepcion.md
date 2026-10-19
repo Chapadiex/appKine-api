@@ -177,7 +177,7 @@ reserva haría que un arancel cargado tarde impida reservar. La huella de idempo
    reservar, cancelar y reprogramar; confirmar y ausente no. *Recomendado: dejarlo así.*
 5. ~~**Salida "se retiró sin ser atendido"** y **Particular desde `EN_ESPERA`** (decisión 18).~~
    **Decidido el 19/10/2026 (DP-43, U-21) e implementado** en `akine-dp43-recepcion-y-series`
-   (`V116`, contrato 0.136.0): `POST .../recepcion/retiro` deja la recepción `RETIRADO` desde
+   (`V120`, contrato 0.140.0): `POST .../recepcion/retiro` deja la recepción `RETIRADO` desde
    `LLEGO` o `EN_ESPERA`, con motivo obligatorio, sin tocar el turno; la llegada consta, así que
    después no hay nuevo check-in, ni ausencia, ni reprogramación. "Atender como Particular" se
    admite desde `EN_ESPERA` y la persona sigue en la sala.

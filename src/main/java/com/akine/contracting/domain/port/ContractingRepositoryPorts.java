@@ -1,8 +1,11 @@
 package com.akine.contracting.domain.port;
 
 import com.akine.contracting.domain.Financiador;
+import com.akine.contracting.domain.FinanciadorCatalogo;
+import com.akine.contracting.domain.PlanCatalogo;
 import com.akine.contracting.domain.PlanCobertura;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -68,6 +71,18 @@ public final class ContractingRepositoryPorts {
 		 * un {@code VARCHAR} si lo resuelve Hibernate sin ambiguedad.
 		 */
 		List<Financiador> buscar(Long organizationId, String patron, int activoFiltro, String tipo);
+
+		/**
+		 * La copia VIGENTE que la organizacion adopto de ese financiador del catalogo (DP-43). Es la
+		 * lectura de la idempotencia de la adopcion; la garantia sin ventana es
+		 * {@code uk_financiador_catalogo_vigente}.
+		 */
+		Optional<Financiador> findByOrganizationIdAndCatalogoIdAndDeletedAtIsNull(
+				Long organizationId, Long catalogoId);
+
+		/** Las copias vigentes de la organizacion de esos financiadores del catalogo (DP-43). */
+		List<Financiador> findAllByOrganizationIdAndCatalogoIdInAndDeletedAtIsNull(
+				Long organizationId, Collection<Long> catalogoIds);
 	}
 
 	/** Acceso a los planes de cobertura (M15). Alcance: organizacion y financiador. */
@@ -113,5 +128,39 @@ public final class ContractingRepositoryPorts {
 		 */
 		long countByOrganizationIdAndFinanciadorIdAndActive(
 				Long organizationId, Long financiadorId, boolean active);
+	}
+
+	/**
+	 * El catalogo GLOBAL de financiadores de la plataforma (DP-43, V117).
+	 *
+	 * <p><b>La excepcion a la invariante de arriba, y la unica:</b> estas firmas no llevan
+	 * {@code organizationId} porque la tabla no lo tiene (ADR-0023). No hay nada que aislar al
+	 * leer —el catalogo es el mismo para todos los centros—; el control es de escritura y vive en
+	 * el servicio, que exige el rol de plataforma.
+	 */
+	public interface FinanciadorCatalogoRepositoryPort {
+
+		FinanciadorCatalogo save(FinanciadorCatalogo financiador);
+
+		/** Guarda y FUERZA el flush, para traducir los uniques a su 409 dentro del servicio. */
+		FinanciadorCatalogo saveAndFlush(FinanciadorCatalogo financiador);
+
+		Optional<FinanciadorCatalogo> findById(Long id);
+
+		/** Mismo contrato que {@link FinanciadorRepositoryPort#buscar}, sin tenant. */
+		List<FinanciadorCatalogo> buscar(String patron, int activoFiltro, String tipo);
+	}
+
+	/** Los planes del catalogo global (DP-43). Alcance: el financiador del catalogo. */
+	public interface PlanCatalogoRepositoryPort {
+
+		PlanCatalogo save(PlanCatalogo plan);
+
+		PlanCatalogo saveAndFlush(PlanCatalogo plan);
+
+		Optional<PlanCatalogo> findByIdAndFinanciadorCatalogoId(Long id, Long financiadorCatalogoId);
+
+		List<PlanCatalogo> findAllByFinanciadorCatalogoIdInOrderByNombreAsc(
+				Collection<Long> financiadorCatalogoIds);
 	}
 }
