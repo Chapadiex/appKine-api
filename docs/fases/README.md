@@ -37,7 +37,7 @@ Medido sobre `main` `c791c7c`: contrato **0.98.0**, última migración **`V93`**
 |---|---|---|---|---|
 | [F0–F1](F0-F1-fundacion-y-plataforma.md) | Cerrada en lo técnico | ~98 | api #99 | Del usuario: secretos de Sonar, QA manual. El 7b que la ficha da abierto lo cerró api #104 |
 | [F2](F2-operacion-del-consultorio.md) | Cerrada en lo técnico | ~95 | api #102 · web #72 | Del usuario: `nomenclador_item`, `catalogo:*`, disciplina, QA manual |
-| [F3](F3-personas-y-cobertura.md) | Cerrada en código | ~96 | api #103 | Del usuario: DU-13, requisitos, clonación, `convenio:read`, QA manual |
+| [F3](F3-personas-y-cobertura.md) | Cerrada en código | ~96 | api #103 | Del usuario: QA manual (DU-13, requisitos y `convenio:read` decididos; clonación después del RC, DP-42 a DP-44) |
 | [F4](F4-dominio-clinico.md) | Backend cerrado; pantallas pendientes | backend ~94 | api #109 | Pantallas D-a/b/c (web #4, abierto) y D-e; del usuario: C-9, plan por práctica, `caso:create` |
 | [F5](F5-agenda-y-recepcion.md) | Cerrada salvo decisiones | ~92 | api #107 | Selector de cobertura en la reserva (espera el cliente); del usuario: autoservicio, ventana, `RETIRADO`, series, QA manual |
 | [F6](F6-atencion-clinica.md) | Backend cerrado; pantallas sin PR | backend ~88 | api #109 | Pantallas D-d y D-g; del usuario: C-8, DU-11, subbloques, parámetros, permiso de enmienda |
