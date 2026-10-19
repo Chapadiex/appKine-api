@@ -375,11 +375,14 @@ Ingresá con cada cuenta (en A) y recorré el menú. Lo esperado por rol (matriz
 | Cobros y cuenta corriente | sí | sí | — | — |
 | Caja | sí | sí | — | — |
 | Presentaciones | sí | sí | — | — |
-| Convenios, financiadores | gestionar | solo leer (*) | solo leer (*) | solo leer (*) |
+| Convenios, financiadores, aranceles | gestionar | solo leer | solo leer | **403** |
+| Catálogo clínico (especialidades, prácticas, nomencladores) | gestionar | solo leer | solo leer | **403** |
 | Reportes | todo | operativos y caja | solo su actividad | — |
 
-(*) Las lecturas de `contracting` se autorizan por pertenencia (matriz §13.4): cualquier membership
-las ve. Es conocido, ver [90](90-conocido-y-aceptado.md); no se reporta.
+Desde DP-36 (U-07, U-08; api #123) las lecturas de `contracting` exigen `convenio:read` y las del
+catálogo clínico `catalogo:read`, los dos solo del personal: una membership `PACIENTE` recibe
+**403** donde antes leía la configuración económica y el catálogo del centro. Otra organización sigue
+siendo 404.
 
 **Esperado:** lo que el rol no puede, o no aparece o lleva a `/sin-permiso`. Si entrás igual por URL,
 el backend responde **403** (nunca 200 con datos vacíos).
