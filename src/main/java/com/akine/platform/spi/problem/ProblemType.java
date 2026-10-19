@@ -1319,7 +1319,35 @@ public enum ProblemType {
 	 * Sesion numerada en un Caso distinto del que la derivacion declara. El camino es atender
 	 * desde la derivacion al otro Caso.
 	 */
-	CASO_DE_ATENCION_GRUPAL("caso-de-atencion-grupal");
+	CASO_DE_ATENCION_GRUPAL("caso-de-atencion-grupal"),
+
+	// --- Honorarios por clase (AKINE-08.09b, DP-38) --------------------------------------
+
+	/**
+	 * Ya hay un honorario por clase activo de la oferta cuyo periodo se pisa con el pedido (409).
+	 * Lo produce el servicio bajo el lock de la oferta, como el precio particular.
+	 */
+	HONORARIO_DE_CLASE_SOLAPADO("honorario-de-clase-solapado"),
+	/** El honorario por clase esta dado de baja: no admite cambios ni otra baja (409). */
+	HONORARIO_DE_CLASE_INACTIVO("honorario-de-clase-inactivo"),
+	/**
+	 * La clase ya tiene honorarios liquidados vigentes: cambiar sus instructores cambiaria el
+	 * reparto de una liquidacion cerrada (409). Se anula el egreso, que la libera, y se reintenta.
+	 */
+	CLASE_CON_HONORARIOS_LIQUIDADOS("clase-con-honorarios-liquidados"),
+	/**
+	 * El borrador de honorarios cambio entre que se miro y se confirmo: otra liquidacion, una
+	 * asistencia corregida o una tarifa nueva (409). Lleva el borrador actual; se revisa y se
+	 * vuelve a confirmar.
+	 */
+	BORRADOR_DE_HONORARIOS_DESACTUALIZADO("borrador-de-honorarios-desactualizado"),
+	/** El borrador de honorarios no tiene ninguna clase liquidable en el periodo (409). */
+	LIQUIDACION_DE_HONORARIOS_VACIA("liquidacion-de-honorarios-vacia"),
+	/**
+	 * El egreso nacio de una liquidacion de honorarios: su importe, categoria y periodo son los de
+	 * la liquidacion y no se editan (409). Se anula el egreso y se vuelve a liquidar.
+	 */
+	EGRESO_DE_LIQUIDACION("egreso-de-liquidacion");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

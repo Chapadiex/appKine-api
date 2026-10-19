@@ -41,7 +41,8 @@ public record EgresoView(
 		String motivoAnulacion,
 		long version,
 		List<PagoEgresoView> pagos,
-		Long ofertaId) {
+		Long ofertaId,
+		Long liquidacionHonorariosId) {
 
 	/** Vista de listado: sin los pagos. Traerlos por cada fila es el N+1 del primer listado. */
 	public static EgresoView de(Egreso egreso) {
@@ -49,6 +50,11 @@ public record EgresoView(
 	}
 
 	public static EgresoView de(Egreso egreso, List<PagoEgresoView> pagos) {
+		return de(egreso, pagos, null);
+	}
+
+	/** El detalle, con la liquidacion de honorarios de la que nacio, si nacio de una (08.09b). */
+	public static EgresoView de(Egreso egreso, List<PagoEgresoView> pagos, Long liquidacionHonorariosId) {
 		return new EgresoView(
 				egreso.getId(),
 				egreso.getConsultorioId(),
@@ -74,6 +80,7 @@ public record EgresoView(
 				egreso.getMotivoAnulacion(),
 				egreso.getVersion(),
 				pagos,
-				egreso.getOfertaId());
+				egreso.getOfertaId(),
+				liquidacionHonorariosId);
 	}
 }

@@ -66,6 +66,13 @@ public final class PermissionCodes {
 
 	public static final String HC_WRITE = "hc:write";
 
+	/**
+	 * El permiso del egreso de M22 (AKINE-08.09b): calcular y confirmar la liquidacion de
+	 * honorarios por clase es armar un egreso, y la matriz §32 no tiene otra fila para eso. El
+	 * {@code PROFESIONAL} no lo tiene: no se liquida a si mismo.
+	 */
+	public static final String CAJA_OPERATE = "caja:operate";
+
 	private PermissionCodes() {
 	}
 }

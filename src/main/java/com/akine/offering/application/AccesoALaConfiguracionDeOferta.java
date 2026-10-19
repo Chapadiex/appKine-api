@@ -142,6 +142,24 @@ final class AccesoALaConfiguracionDeOferta {
 		return oferta;
 	}
 
+	/**
+	 * Lectura que exige {@code consultorio:manage} y no solo pertenencia (AKINE-08.09b): el
+	 * honorario por clase es lo que cobra un colega, y no lo tiene que ver cualquier miembro.
+	 */
+	ConsultorioSnapshot exigirLecturaDeGestion(
+			OperatingActor actor, long organizationId, long consultorioId) {
+
+		exigirContextoDeLaSede(actor, organizationId, consultorioId);
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.CONSULTORIO_MANAGE,
+				organizationId,
+				consultorioId,
+				null,
+				Instant.now()));
+		return exigirSedeDelTenant(organizationId, consultorioId);
+	}
+
 	ConsultorioSnapshot exigirLectura(OperatingActor actor, long organizationId, long consultorioId) {
 		if (actor.contextOrganizationId() == null) {
 			throw new AccessDeniedException("La operacion requiere un contexto de trabajo activo");

@@ -4,6 +4,10 @@ import com.akine.activity.application.IdempotencyKeyConflictException;
 import com.akine.activity.domain.exception.AsistenciaNotAccessibleException;
 import com.akine.activity.domain.exception.CapacidadNoAdmitidaException;
 import com.akine.activity.domain.exception.AbonoPeriodoSuperpuestoException;
+import com.akine.activity.domain.exception.BorradorDeHonorariosDesactualizadoException;
+import com.akine.activity.domain.exception.ClaseConHonorariosLiquidadosException;
+import com.akine.activity.domain.exception.LiquidacionDeHonorariosNoAccesibleException;
+import com.akine.activity.domain.exception.LiquidacionDeHonorariosVaciaException;
 import com.akine.activity.domain.exception.ClaseCompletaException;
 import com.akine.activity.domain.exception.ClaseNoProgramableException;
 import com.akine.activity.domain.exception.ClaseNotAccessibleException;
@@ -135,6 +139,42 @@ public class ActivityProblemHandler {
 		ProblemDetail problem = conflicto(exception.getMessage(), CLASE_NO_PROGRAMABLE);
 		problem.setTitle("La oferta no puede sostener una clase");
 		problem.setProperty("motivo", exception.getMotivo());
+		return problem;
+	}
+
+	// --- Honorarios por clase (AKINE-08.09b, DP-38) ------------------------------------
+
+	@ExceptionHandler(LiquidacionDeHonorariosNoAccesibleException.class)
+	public ProblemDetail handleLiquidacionNoAccesible(LiquidacionDeHonorariosNoAccesibleException exception) {
+		log.debug("Liquidacion de honorarios no accesible: liquidacionId={}", exception.getLiquidacionId());
+		return noEncontrado("La liquidacion de honorarios no existe.");
+	}
+
+	@ExceptionHandler(ClaseConHonorariosLiquidadosException.class)
+	public ProblemDetail handleClaseLiquidada(ClaseConHonorariosLiquidadosException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(),
+				ProblemType.CLASE_CON_HONORARIOS_LIQUIDADOS.uri());
+		problem.setTitle("La clase tiene honorarios liquidados");
+		problem.setProperty("claseId", exception.getClaseId());
+		return problem;
+	}
+
+	/** Lleva lo actual: la pantalla lo muestra sin otra ida y vuelta y se vuelve a confirmar. */
+	@ExceptionHandler(BorradorDeHonorariosDesactualizadoException.class)
+	public ProblemDetail handleBorradorDesactualizado(BorradorDeHonorariosDesactualizadoException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(),
+				ProblemType.BORRADOR_DE_HONORARIOS_DESACTUALIZADO.uri());
+		problem.setTitle("El borrador de honorarios cambio");
+		problem.setProperty("importeTotalActual", exception.getImporteTotalActual());
+		problem.setProperty("claseIdsActuales", exception.getClaseIdsActuales());
+		return problem;
+	}
+
+	@ExceptionHandler(LiquidacionDeHonorariosVaciaException.class)
+	public ProblemDetail handleLiquidacionVacia(LiquidacionDeHonorariosVaciaException exception) {
+		ProblemDetail problem = conflicto(exception.getMessage(),
+				ProblemType.LIQUIDACION_DE_HONORARIOS_VACIA.uri());
+		problem.setTitle("No hay clases para liquidar");
 		return problem;
 	}
 

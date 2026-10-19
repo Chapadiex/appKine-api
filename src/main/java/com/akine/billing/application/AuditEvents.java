@@ -49,6 +49,13 @@ final class AuditEvents {
 	static final String EGRESO_PAGO_ANULADO = "EGRESO_PAGO_ANULADO";
 
 	/**
+	 * La liquidacion de honorarios por clase (AKINE-08.09b): confirmarla crea el egreso, y anular
+	 * el egreso la libera. Las dos mueven lo que se le debe a un profesional.
+	 */
+	static final String LIQUIDACION_HONORARIOS_CONFIRMADA = "LIQUIDACION_HONORARIOS_CONFIRMADA";
+	static final String LIQUIDACION_HONORARIOS_LIBERADA = "LIQUIDACION_HONORARIOS_LIBERADA";
+
+	/**
 	 * Lo que se hace sobre un cobro ya registrado (M19, F-3). Las tres mueven plata o deuda despues
 	 * de emitido el comprobante, que es justo lo que RN-M19-003 pide que no pase en silencio.
 	 */
@@ -76,6 +83,7 @@ final class AuditEvents {
 	static final String ENTITY_PRESENTACION = "Presentacion";
 	static final String ENTITY_EGRESO = "Egreso";
 	static final String ENTITY_PAGO_EGRESO = "PagoEgreso";
+	static final String ENTITY_LIQUIDACION_HONORARIOS = "LiquidacionHonorario";
 
 	private static final String MDC_TRACE_ID = "traceId";
 

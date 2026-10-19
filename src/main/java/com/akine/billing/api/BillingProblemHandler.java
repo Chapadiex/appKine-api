@@ -5,6 +5,7 @@ import com.akine.billing.domain.exception.BeneficiarioNoVinculadoException;
 import com.akine.billing.domain.exception.EgresoComprobanteDuplicadoException;
 import com.akine.billing.domain.exception.EgresoConPagosException;
 import com.akine.billing.domain.exception.EgresoNoConfirmableException;
+import com.akine.billing.domain.exception.EgresoDeLiquidacionException;
 import com.akine.billing.domain.exception.EgresoNoEditableException;
 import com.akine.billing.domain.exception.EgresoNoPagableException;
 import com.akine.billing.domain.exception.EgresoNotAccessibleException;
@@ -517,6 +518,17 @@ public class BillingProblemHandler {
 		problem.setType(EGRESO_NO_EDITABLE);
 		problem.setTitle("El egreso ya no se edita");
 		problem.setProperty("estado", exception.getEstado());
+		return problem;
+	}
+
+	/** 08.09b: el egreso de una liquidacion de honorarios no cambia importe, categoria ni periodo. */
+	@ExceptionHandler(EgresoDeLiquidacionException.class)
+	public ProblemDetail handleEgresoDeLiquidacion(EgresoDeLiquidacionException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(ProblemType.EGRESO_DE_LIQUIDACION.uri());
+		problem.setTitle("El egreso es de una liquidacion de honorarios");
+		problem.setProperty("liquidacionId", exception.getLiquidacionId());
 		return problem;
 	}
 
