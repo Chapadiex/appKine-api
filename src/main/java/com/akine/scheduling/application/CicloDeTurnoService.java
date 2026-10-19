@@ -7,6 +7,7 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
+import com.akine.scheduling.domain.EstadoRecepcion;
 import com.akine.scheduling.domain.EstadoTurno;
 import com.akine.scheduling.domain.PermissionCodes;
 import com.akine.scheduling.domain.TipoEventoTurno;
@@ -416,9 +417,19 @@ public class CicloDeTurnoService {
 		}
 	}
 
+	/**
+	 * Una recepcion abierta dice que la persona esta en la sala; una {@code RETIRADO} (U-21), que
+	 * vino y se fue. En los dos casos la llegada consta: marcar ausente seria falso y mover el
+	 * turno se llevaria a otra fecha una llegada que ocurrio en esta.
+	 */
 	private void exigirSinRecepcionAbierta(long organizationId, Turno turno, String motivo) {
-		if (recepciones.tieneAbierta(organizationId, turno.getId())) {
+		var vigente = recepciones.vigente(organizationId, turno.getId());
+		if (vigente.filter(recepcion -> recepcion.estaAbierta()).isPresent()) {
 			throw new TransicionDeTurnoNoPermitidaException(turno.getId(), motivo);
+		}
+		if (vigente.filter(recepcion -> recepcion.getEstado() == EstadoRecepcion.RETIRADO).isPresent()) {
+			throw new TransicionDeTurnoNoPermitidaException(turno.getId(),
+					"el paciente llego y se retiro sin ser atendido: la llegada consta");
 		}
 	}
 

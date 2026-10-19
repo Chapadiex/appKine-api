@@ -22,6 +22,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Revalida que un intervalo se pueda ocupar, y elige el espacio. <b>Lo que lee turnos se ejecuta
@@ -98,6 +100,34 @@ class RevalidadorDeSlot {
 	Asignacion revalidar(Pedido pedido) {
 		return revalidarBajoLock(pedido, prevalidar(pedido));
 	}
+
+	/**
+	 * Las fechas de {@code [desde, hasta)} que la sede cierra por feriado para el profesional
+	 * (U-22): las que la disponibilidad efectiva de M05 deja vacias con {@code razonVacio = FERIADO}.
+	 * Un feriado que una apertura reabre no aparece, porque ese dia tiene franjas.
+	 *
+	 * <p>Vacio para una oferta sin profesional o sin profesional indicado: la reserva de esa oferta
+	 * no pasa por la disponibilidad —controla solo el horario general de la sede, que no conoce
+	 * feriados—, asi que un feriado no le impide nada y no hay nada que omitir. Una sola consulta
+	 * para toda la ventana, no una por dia.
+	 *
+	 * @param hasta fecha local <b>EXCLUSIVA</b>
+	 */
+	Set<LocalDate> feriadosQueCierran(
+			long organizationId, ConsultorioSnapshot sede, OfertaSnapshot oferta, Long profesionalId,
+			LocalDate desde, LocalDate hasta) {
+
+		if (!oferta.requiereProfesional() || profesionalId == null) {
+			return Set.of();
+		}
+		return disponibilidad.efectiva(organizationId, sede, profesionalId, desde, hasta).stream()
+				.filter(dia -> FERIADO.equals(dia.razonVacio()))
+				.map(DisponibilidadDirectory.DiaDisponible::fecha)
+				.collect(Collectors.toUnmodifiableSet());
+	}
+
+	/** El {@code razonVacio} con que M05 marca un dia que la sede cierra por feriado. */
+	private static final String FERIADO = "FERIADO";
 
 	/** Lo que {@link #prevalidar} resolvio sin mirar turnos. */
 	record Previa(Long profesionalId) {

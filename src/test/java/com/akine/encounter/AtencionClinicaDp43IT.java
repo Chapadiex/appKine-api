@@ -56,7 +56,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * DP-43 contra MySQL real: caso obligatorio por oferta (U-09, RF-M10-007), atencion sin turno y
  * reemplazo autorizado del profesional (U-24) y permiso y ventana para enmendar (U-25).
  *
- * <p>Lo que solo contesta el motor: que V119 acepte la atencion sin turno con su motivo y rechace
+ * <p>Lo que solo contesta el motor: que V122 acepte la atencion sin turno con su motivo y rechace
  * el motivo en una de turno, que el unique de idempotencia resuelva el doble click concurrente con
  * una sola fila, que el reemplazo deje su registro y mueva al dueño de verdad, y que la ventana se
  * cuente contra el {@code cerrada_en} guardado.
@@ -214,7 +214,7 @@ class AtencionClinicaDp43IT {
 		}
 
 		@Test
-		@DisplayName("V119: el motivo sin turno no entra en una atencion de turno")
+		@DisplayName("V122: el motivo sin turno no entra en una atencion de turno")
 		void el_check_del_motivo() {
 			Mundo mundo = fixtures.crearMundo();
 			SesionView deTurno = sesionService.iniciar(

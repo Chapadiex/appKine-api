@@ -10,7 +10,7 @@ package com.akine.encounter.domain.exception;
  */
 public class MotivoObligatorioException extends RuntimeException {
 
-	/** Largo maximo del motivo: el de las columnas de V119. */
+	/** Largo maximo del motivo: el de las columnas de V122. */
 	public static final int MAXIMO = 500;
 
 	private final String campo;

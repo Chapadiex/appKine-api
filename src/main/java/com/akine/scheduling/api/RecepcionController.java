@@ -4,6 +4,7 @@ import com.akine.scheduling.api.dto.AnularRecepcionRequest;
 import com.akine.scheduling.api.dto.AtenderComoParticularRequest;
 import com.akine.scheduling.api.dto.EventoDeRecepcionResponse;
 import com.akine.scheduling.api.dto.RecepcionResponse;
+import com.akine.scheduling.api.dto.RetirarRecepcionRequest;
 import com.akine.scheduling.api.dto.TransicionDeRecepcionRequest;
 import com.akine.scheduling.api.dto.ValidarRecepcionRequest;
 import com.akine.scheduling.application.CicloDeRecepcionService;
@@ -200,11 +201,15 @@ public class RecepcionController {
 			summary = "Continuar como Particular",
 			description = """
 					RF-M13-005. Decision explicita del operador, **con motivo obligatorio**, cuando \
-					la persona no tiene cobertura aplicable o la validacion quedo observada. Deja la \
-					recepcion `VALIDADA` con modalidad `PARTICULAR`.
+					la persona no tiene cobertura aplicable o la validacion quedo observada. Desde \
+					`LLEGO` u `OBSERVADA` deja la recepcion `VALIDADA` con modalidad `PARTICULAR`.
+
+					**Desde `EN_ESPERA`** (U-21) la persona sigue en la sala: la recepcion queda \
+					`EN_ESPERA`, con modalidad `PARTICULAR` y su `enEsperaDesde` intacto, sin anular \
+					ni volver a marcar la llegada. Si ya se atiende como Particular responde 409.
 
 					**No modifica la cobertura maestra del paciente** (RN-M13-004): es un dato de \
-					esta recepcion. Desde `LLEGO` u `OBSERVADA`.""")
+					esta recepcion.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Recepcion validada como Particular"),
 			@ApiResponse(
@@ -327,6 +332,50 @@ public class RecepcionController {
 			@RequestBody @Valid AnularRecepcionRequest request) {
 
 		return ResponseEntity.ok(RecepcionResponse.de(recepcion.anular(
+				apiActor.current(), consultorioId, turnoId,
+				request.motivo(), request.expectedVersion())));
+	}
+
+	@PostMapping("/retiro")
+	@Operation(
+			operationId = "retirarRecepcion",
+			summary = "Registrar que la persona se retiro sin ser atendida",
+			description = """
+					U-21. Desde `LLEGO` o `EN_ESPERA`, **con motivo obligatorio**. Deja la recepcion \
+					`RETIRADO`, terminal, con `cerradaEn` y `motivoCierre`.
+
+					A diferencia de la anulacion, **la llegada vale**: la persona vino. Por eso la \
+					recepcion sigue siendo la vigente del turno, un nuevo check-in responde 409 y el \
+					turno ya no se puede marcar ausente ni reprogramar.
+
+					**No cambia el estado del turno** (DP-05): sigue `RESERVADO` o `CONFIRMADO`. \
+					Tampoco impide abrir la Sesion: la Sesion es la que prueba la atencion.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Recepcion cerrada como RETIRADO"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Falta el motivo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:manage` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El turno o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "No hay recepcion abierta o su estado no lo admite "
+							+ "(`recepcion-transicion-no-permitida`), o la version quedo vieja "
+							+ "(`concurrent-modification`)",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<RecepcionResponse> retirar(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId,
+			@RequestBody @Valid RetirarRecepcionRequest request) {
+
+		return ResponseEntity.ok(RecepcionResponse.de(recepcion.retirar(
 				apiActor.current(), consultorioId, turnoId,
 				request.motivo(), request.expectedVersion())));
 	}

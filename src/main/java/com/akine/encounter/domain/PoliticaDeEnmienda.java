@@ -27,7 +27,7 @@ public class PoliticaDeEnmienda {
 	/** DP-43: 30 dias desde el cierre, si la organizacion no fijo otra cosa. */
 	public static final int VENTANA_POR_DEFECTO = 30;
 	public static final int VENTANA_MINIMA = 1;
-	/** Diez anios, el CHECK de V119: un tope para que un error de tipeo no sea "para siempre". */
+	/** Diez anios, el CHECK de V122: un tope para que un error de tipeo no sea "para siempre". */
 	public static final int VENTANA_MAXIMA = 3650;
 
 	@Id

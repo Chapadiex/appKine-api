@@ -245,6 +245,12 @@ el turno en `RESERVADO`/`CONFIRMADO` con su hora de llegada.
   llama, o se anula (que dice que la llegada no valía). Un estado "se retiró" no está en DP-16.
 - **Particular desde `EN_ESPERA`** (decidirlo después de pasar a espera con la observación
   abierta) no se admite: se decide antes de pasar a espera.
+  > **Cerrados los dos por DP-43 (U-21, 19/10/2026)**, `V120`, contrato 0.140.0: la recepción
+  > gana el estado terminal `RETIRADO` (`POST .../recepcion/retiro`, desde `LLEGO` o `EN_ESPERA`,
+  > motivo obligatorio, evento `RETIRO`). La llegada vale, así que la fila sigue vigente: un nuevo
+  > check-in es 409 y el turno ya no se marca ausente ni se reprograma (ni por lote: se omite con
+  > el motivo `EN_ESPERA`). El turno no cambia de estado. Y Particular se admite desde
+  > `EN_ESPERA`: cambia la modalidad y la persona sigue en la sala.
 - **`billing` no lee la modalidad de la recepción.** F-4 (ya en `main`) devenga la parte del
   financiador cuando la oferta admite obra social y hay cobertura aplicable con arancel, **sin
   mirar la recepción**: una atención que el mostrador resolvió como Particular igual puede

@@ -410,7 +410,7 @@ public class SesionService {
 				organizationId, consultorioId, historia.id(), pedido.casoId(), oferta.id(),
 				profesionalMembershipId, ahora, actor.accountId(), motivo, clave, huella));
 
-		// El motivo NO va a la auditoria: es texto libre sobre un paciente. Ver la cabecera de V119.
+		// El motivo NO va a la auditoria: es texto libre sobre un paciente. Ver la cabecera de V122.
 		auditar(organizationId, consultorioId, actor, AuditEvents.SESION_INICIADA, sesion.getId(),
 				null, "ABIERTA",
 				Map.of("historiaClinicaId", String.valueOf(historia.id()),

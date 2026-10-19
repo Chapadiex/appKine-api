@@ -36,7 +36,7 @@ public interface SesionRepositoryPort {
 	/**
 	 * La atencion sin turno iniciada con esa clave de idempotencia en el tenant (DP-43), viva o no.
 	 *
-	 * <p>Sin filtro de baja: el unique de V119 no la incluye, asi que una clave usada no se
+	 * <p>Sin filtro de baja: el unique de V122 no la incluye, asi que una clave usada no se
 	 * reutiliza nunca, y el reintento de un pedido cuya sesion se dio de baja tiene que ver esa
 	 * sesion y no crear otra.
 	 */
