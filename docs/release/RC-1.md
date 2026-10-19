@@ -61,13 +61,13 @@ dato ajeno responde 404, nunca 403).
   egreso de honorarios se carga a mano.
 - **Exigir orden, autorización y credencial al presentar** (RF-M21-003): hoy avisa y deja confirmar
   (U-28). El **débito parcial** deja la obligación del financiador pendiente por el total (U-11).
-- **Catálogo global de financiadores** (DU-13, U-12): cada centro carga los suyos.
-- **Adjuntar el archivo** del comprobante de un egreso: se registra la referencia (U-33).
+- **Catálogo global de financiadores** (DU-13, U-12): cada centro carga los suyos. **Decidido el 19/10/2026 (DP-43)**: el centro adopta una copia; PR en curso.
+- **Adjuntar el archivo** del comprobante de un egreso: se registra la referencia (U-33, DP-44: alcanza la referencia; la extracción del storage va después del RC).
 - **Que un `ORG_ADMIN` cambie el plan** de su organización: sólo la plataforma.
 - **Otro canal que no sea correo**, ni preferencias de notificación por persona. Los umbrales de
   aviso de pases son del despliegue, no del centro (U-44, DP-27).
 - **Exportes asíncronos**: el CSV de reportes es síncrono y acotado a 366 días y 500 filas por
-  sección (U-36).
+  sección (U-36, confirmado el 19/10/2026, DP-42).
 - **Derivar desde la pantalla** a un participante de clase (ver arriba): la atención grupal necesita
   la derivación hecha.
 
@@ -80,10 +80,10 @@ La lista completa está en
 |---|---|---|
 | U-01 | Correr el QA manual del §6 | Bloqueante para deploy desde 02.02; nunca se corrió |
 | U-02 | Aprobación clínica y legal, deploy y ventana de estabilización | Es el gate (DP-07, DP-08) |
-| U-04 | `caso:create` | Seguridad del circuito clínico (G-5) |
+| ~~U-04~~ | `caso:create` | **Decidida el 18/10/2026 (DP-36)**: absorbido en `hc:write` |
 | ~~U-03, U-05, U-06~~ | Justificación en `encounter`; Connector/J; SAST y DAST | **Decididas el 17/10/2026**: la propiedad de la Sesión es la relación asistencial (DP-33, con U-46 e); Connector/J 9.6.0 sin excepción (DP-34); CodeQL y ZAP baseline no bloqueantes (DP-35) |
 | U-28, U-11 | RF-M21-003 y débito parcial | Lo que se le presenta y debita a una obra social. Propuesta en api #122 |
-| U-38 | "Hoy" para lo que no tiene sede | Entre las 21 y las 24 de Córdoba una cobertura, orden o autorización que vence ese día se lee vencida |
+| ~~U-38~~ | "Hoy" para lo que no tiene sede | **Decidida el 19/10/2026 (DP-43)**: zona horaria por organización, por defecto la de su primera sede; PR en curso |
 | ~~U-39, U-41, U-42~~ | Devengo por clase, honorarios, economía de la atención grupal | **Decididas el 17/10/2026**: U-39 (DP-24) y U-42 (DP-26) resueltas; U-41 decidida el 18/10 (DP-38), después del RC. U-39 se implementa en un PR en curso |
 | — | La apertura de F9 sin DP escrita (DU-12) | Trazabilidad: DP-07 pedía el gate del MVP antes de la segunda entrega |
 
@@ -115,7 +115,7 @@ del período (U-45, decidida en DP-40: ancla al día de la primera venta; despu�
   [`../tests-diferidos.md`](../tests-diferidos.md) (concurrencia clase/turno, capacidad contra
   inscripción, unique de asistencia, cierre concurrente, lote, aislamiento y REST de 08.01–08.03).
   09.02 y 09.03 están escribiendo parte.
-- **Gate de `BRANCH`** en JaCoCo sin poner (U-35). Línea e instrucción gateadas en 0,80 global y por
+- **Gate de `BRANCH`** en JaCoCo sin poner (U-35: decidido el 19/10/2026, DP-43, al 0,75; PR en curso). Línea e instrucción gateadas en 0,80 global y por
   módulo crítico.
 - **Secretos sin cargar:** `NVD_API_KEY` (el job de vulnerabilidades cae a OSV.dev, que no publica
   los CVE de Connector/J) y `SONAR_TOKEN`/`SONAR_HOST_URL` (el job `sonar` se saltea; DP-35).
@@ -155,7 +155,13 @@ detalle en `docs/fases/decisiones-pendientes.md`). Resueltas: U-39, U-40, U-42, 
 U-49. **Decididas el 18/10/2026, se implementan después del RC salvo que entren antes:** U-41 (DP-38), U-50 (DP-39), U-43 y U-45 (DP-40); U-37 (DP-41: Angular 22 y Java 25 tras el despliegue estable del RC). En implementación:
 U-39 (devengo `POR_CLASE`), U-48 (lock solo en abonos) y U-46 (c)/(d).
 
-Más tarde el mismo día, el usuario resolvió tres del bloque A (DP-33 a DP-35):
+**Decididas el 19/10/2026** (aceptó en bloque las recomendaciones; `docs/fases/decisiones-pendientes.md`). Quedan abiertas solo U-01 y U-02, que son acciones suyas.
+
+- **DP-42, se deja como está (sin código):** U-10, U-13, U-14, U-16, U-17, U-18, U-20, U-23, U-26, U-31, U-32, U-34, U-36.
+- **DP-43, se implementa (PR en curso):** U-09, U-12, U-15, U-21, U-22, U-24, U-25, U-35, U-38.
+- **DP-44, después del RC:** U-19, U-27, U-29, U-30, U-33.
+
+Más tarde el mismo día (17/10), el usuario resolvió tres del bloque A (DP-33 a DP-35):
 
 - **U-03 + U-46 (e):** la propiedad de la Sesión —y del panel de atención grupal— es la relación
   asistencial de DP-03; `encounter` no exige `X-Justificacion-Acceso` y su `reason` nulo queda

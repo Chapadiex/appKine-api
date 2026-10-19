@@ -86,6 +86,8 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 
 ## Decisiones del usuario que bloquean
 
+> **Decididas el 19/10/2026** (el usuario aceptó las recomendaciones; ver `decisiones-pendientes.md`). U-24 (C-8) sesión sin turno con `sesion:register` y reemplazo solo por `CONSULTORIO_ADMIN`: se implementa, PR en curso (DP-43). U-25 `sesion:amend` propio y ventana de 30 días por organización: se implementa, PR en curso (DP-43). U-14 (DU-11) un observador que falla hace fallar el cierre: se deja como está (DP-42). U-26 ROM/fuerza/marcha como medición genérica: se deja como está (DP-42). U-27 parámetros por práctica: después del RC (DP-44).
+
 - ¿Una sesión con N tratamientos consume N unidades de autorización o 1? (hoy 1)
 - Parámetros obligatorios por práctica.
 

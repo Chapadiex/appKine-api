@@ -88,6 +88,8 @@ La auditoría decía que F3 estaba aislada. Al 13/10 está conectada en los tres
 
 ## Pendiente del usuario
 
+> **Decididas el 19/10/2026** (el usuario aceptó las recomendaciones; ver `decisiones-pendientes.md`). U-12 (DU-13) el centro adopta una copia del catálogo global: se implementa, PR en curso (DP-43). U-18 requisitos solo en el convenio: se deja como está (DP-42). U-20 datos administrativos de la HC sin auditar: se deja como está (DP-42). U-19 clonar convenio fuera del MVP: después del RC (DP-44).
+
 Ninguna se implementó porque ningún RF la resuelve; cada una trae la opción recomendada.
 
 1. **DU-13 — catálogo global de financiadores.** ¿El centro *referencia* la fila global

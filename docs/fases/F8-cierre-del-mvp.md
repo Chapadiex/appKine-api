@@ -228,6 +228,8 @@ escrituras, que está en curso.
 
 ## Lo que no bloquea pero también es del usuario
 
+> **Decididas el 19/10/2026** (el usuario aceptó las recomendaciones; ver `decisiones-pendientes.md`). U-35 gate de `BRANCH` en JaCoCo al 0,75: se implementa, PR en curso (DP-43). U-36 export síncrono: se deja como está (DP-42). Quedan abiertas solo U-01 y U-02.
+
 - Gate de `BRANCH` en JaCoCo (77,91 % hoy).
 - Confirmar el desvío del export síncrono y acotado de 07.06.
 - Angular 22 (web #53, #55–#57) y Java 25 en la imagen (api #87).

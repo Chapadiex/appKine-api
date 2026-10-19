@@ -152,6 +152,8 @@ Sólo se corrieron los tests que este PR toca (máquina cargada): la suite compl
 
 ## Pendiente del usuario
 
+> **Decididas el 19/10/2026** (el usuario aceptó las recomendaciones; ver `decisiones-pendientes.md`). U-31 (DU-10) egresos con `caja:operate`, U-32 presentaciones con `cobro:register`, U-34 arancel 0 sin deuda y visible como prestación sin cargo, U-36 export síncrono: se deja como está (DP-42). U-33 adjunto binario del egreso, alcanza la referencia: después del RC (DP-44).
+
 Ninguna se decidió acá. Cada una lleva la pregunta y la opción que se recomienda.
 
 1. **DU-10 · Permiso propio de egresos.** ¿`egreso:manage` propio o seguir reusando `caja:operate`?
