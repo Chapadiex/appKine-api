@@ -108,6 +108,8 @@ Códigos `<dominio>:<acción>`. Estable, en minúsculas, sin significado de UI. 
 | `hc:read` / `hc:write` | Ver / Editar Historia Clínica | F4 |
 | ~~`caso:create`~~ | ~~Crear Caso Clínico~~ — **absorbido en `hc:write`** (U-04, §18.3) | F4 |
 | `sesion:register` | Registrar Sesión | F6 |
+| `sesion:amend` | Enmendar una sesión cerrada, dentro de la ventana de la organización (U-25, DP-43). Mismo reparto que Registrar Sesión: base del `PROFESIONAL` en su sede; no otorgable | F6 |
+| `sesion:reassign` | Reemplazar al profesional de una sesión abierta, con motivo y auditado (U-24, DP-43). Base **solo** del `CONSULTORIO_ADMIN` en su sede; no otorgable. No habilita escribir en la atención ajena | F6 |
 | `convenio:manage` | Administrar Convenios | F3 |
 | `convenio:read` | Ver financiadores, planes, convenios y aranceles (U-07, §18.1) | F3 |
 | `catalogo:read` | Consultar el catálogo clínico, global y propio (U-08, §11.1 y §18.2) | F2 |

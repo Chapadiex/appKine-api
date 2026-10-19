@@ -37,11 +37,11 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 ## Faltantes
 
 ### Backend / API
-- [ ] 06.01: "FK única a caso" — `sesion.caso_id` sigue nullable (`V48`) y el frontend nunca lo
-  envía. Se resuelve junto con el gate RF-M10-007 ([F4](F4-dominio-clinico.md)).
-- [ ] 06.01: atención sin turno — `turno_id` es nullable pero el único inicio es
-  `POST /sesiones/turnos/{turnoId}`.
-- [ ] 06.01: reemplazo autorizado del profesional.
+- [x] ~~06.01: "FK única a caso" — `sesion.caso_id` sigue nullable (`V48`) y el frontend nunca lo
+  envía. Se resuelve junto con el gate RF-M10-007 ([F4](F4-dominio-clinico.md)).~~ **DP-43 (U-09):** el caso es obligatorio solo en ofertas con `requiere_caso_clinico`: iniciar, quitarlo y cerrar presente sin caso responden 409 `caso-clinico-requerido`; `caso_id` sigue nullable y las sesiones viejas no se migran.
+- [x] ~~06.01: atención sin turno — `turno_id` es nullable pero el único inicio es
+  `POST /sesiones/turnos/{turnoId}`.~~ **DP-43 (U-24):** `POST /sesiones` sin turno, con `sesion:register`, motivo obligatorio e `idempotencyKey` (`V115`).
+- [x] ~~06.01: reemplazo autorizado del profesional.~~ **DP-43 (U-24):** `PUT /sesiones/{id}/profesional`, solo `sesion:reassign` (CONSULTORIO_ADMIN), motivo y registro en `sesion_reemplazo_profesional` (`V115`).
 - [ ] 06.03: subbloques ROM, fuerza y marcha (hoy todo es medición genérica, desvío no documentado);
   obligatorios por modo/política; "copiar previo con confirmación".
 - [ ] 06.04: parámetros obligatorios por práctica (**decisión pendiente**: no hay configuración que los declare).
@@ -49,7 +49,7 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
   cerrado es imposible.~~ **Cerrado por C-6** (`V71`, contrato 0.56.0): cada version lleva la foto
   de tratamientos y mediciones, y la enmienda los corrige sin poder cambiar las practicas
   realizadas. Ver `docs/diseno/AKINE-C-6-enmiendas.md`.
-- [ ] 06.06: permiso reforzado y política temporal para enmendar (hoy usa el mismo `sesion:register`).
+- [x] ~~06.06: permiso reforzado y política temporal para enmendar.~~ **DP-43 (U-25):** `sesion:amend` y ventana de 30 días por organización (`politica_de_enmienda`, `V115`); fuera de ventana 409 `enmienda-fuera-de-ventana`.
 - [ ] 06.05: el criterio pide "HC consistente aunque la economía falle y reintente"; hoy un
   observador que falla hace fallar el cierre. **Pendiente del usuario (DU-11)**: no hay arreglo
   acotado que no sea decidir el desacople.
@@ -79,7 +79,7 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 | Sesión cuelga de la HC y no del caso; correlativo principal por HC | Sí, DP-10 y registros |
 | Caso opcional | Sí, javadoc de `SesionService` |
 | Examen como modelo genérico de mediciones, no por dominios | **No — silencioso** |
-| Enmienda sin permiso reforzado | **No — silencioso** |
+| Enmienda sin permiso reforzado | ~~No — silencioso~~ Cerrado por DP-43: `sesion:amend` y ventana |
 | Ruta de mediciones bajo `/consultorios/{id}/sesiones/...` | Sí, registro §6 |
 | Se quitó la validación de ocupación del espacio en tratamientos; parámetros con borrado físico | Sí |
 | Un observador que falla hace fallar el cierre | Sí, como "contrapartida asumida", no como DP |
@@ -92,8 +92,8 @@ que recree el CHECK (no editar `V55`), con IT que lo reproduzca primero.
 ## Para cerrar la fase
 
 - [x] Migración que corrija el CHECK de lateralidad, con IT.
-- [ ] Caso obligatorio y atención sin turno (coordinado con F4 y F5).
-- [ ] Enmiendas que versionen tratamientos y mediciones (**hecho en C-6**), con permiso reforzado (pendiente: decision del usuario).
+- [x] ~~Caso obligatorio y atención sin turno (coordinado con F4 y F5).~~ DP-43.
+- [ ] Enmiendas que versionen tratamientos y mediciones (**hecho en C-6**), con permiso reforzado (**DP-43**: `sesion:amend` y ventana).
 - [ ] Pantallas de mediciones, tratamientos y enmiendas con E2E.
 - [ ] Registros de 06.03, 06.04 y 06.06 promovidos a cierre.
 

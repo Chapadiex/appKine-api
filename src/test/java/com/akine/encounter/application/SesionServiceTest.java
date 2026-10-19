@@ -142,6 +142,9 @@ class SesionServiceTest {
 	/** AKINE-08.05: el nombre de la clase de una Sesion grupal, que responde activity. */
 	@Mock private com.akine.encounter.spi.TituloDeClaseGrupal tituloDeClase;
 	@Mock private com.akine.platform.spi.identity.AccountIdentityDirectory identidades;
+	@Mock private PoliticaDeEnmiendaService politicaDeEnmienda;
+	@Mock private com.akine.encounter.domain.port.SesionReemplazoProfesionalRepositoryPort reemplazos;
+	@Mock private com.akine.organization.spi.PermissionEvaluator permissionEvaluator;
 
 	private SesionService service;
 
@@ -155,7 +158,8 @@ class SesionServiceTest {
 				memberships, permissionGuard, numerador, numeradorIniciador, ofertas,
 				tratamientos, parametros, mediciones, tratamientoService, medicionService,
 				List.of(observador), List.of(requisitoDePrecio), List.of(tituloDeClase), identidades,
-				mock(PlatformTransactionManager.class));
+				mock(PlatformTransactionManager.class), politicaDeEnmienda, reemplazos, permissionEvaluator);
+		org.mockito.Mockito.lenient().when(politicaDeEnmienda.ventanaDe(anyLong())).thenReturn(30);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -641,7 +645,7 @@ class SesionServiceTest {
 	private static Sesion sesionCerrada() {
 		Sesion sesion = sesionExistente(MEMBERSHIP_PROPIA);
 		sesion.cerrar(cierre(Asistencia.PRESENTE, "Terapia manual"), 8, null,
-				Instant.EPOCH.plusSeconds(3600), CUENTA_PROPIA);
+				Instant.now().minusSeconds(3600), CUENTA_PROPIA);
 		return sesion;
 	}
 

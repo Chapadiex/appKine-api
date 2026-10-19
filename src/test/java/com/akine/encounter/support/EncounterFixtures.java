@@ -146,6 +146,30 @@ public final class EncounterFixtures {
 				new OperatingActor(cuentaId, false, organizationId, consultorioId));
 	}
 
+	/** Una cuenta con membership vigente de alcance ORGANIZACION (sin sede), p. ej. un ORG_ADMIN. */
+	public Miembro crearMiembroDeOrganizacion(long organizationId, String rol, String alias) {
+		String email = alias + "@ejemplo.test";
+		long cuentaId = insertar("""
+				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
+				                    version, created_at, updated_at)
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", "SELECT id FROM cuenta WHERE email_normalizado = ?",
+				new Object[]{email, email}, new Object[]{email});
+
+		long membershipId = insertar("""
+				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
+				                        is_founder, valid_from, estado, active, version,
+				                        created_at, updated_at)
+				VALUES (?, NULL, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
+				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", "SELECT id FROM membership WHERE organization_id = ? AND account_id = ?",
+				new Object[]{organizationId, cuentaId, rol},
+				new Object[]{organizationId, cuentaId});
+
+		return new Miembro(cuentaId, membershipId,
+				new OperatingActor(cuentaId, false, organizationId, null));
+	}
+
 	public long crearPractica(long organizationId, long especialidadId, String codigo, String nombre) {
 		return insertar("""
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from, active,

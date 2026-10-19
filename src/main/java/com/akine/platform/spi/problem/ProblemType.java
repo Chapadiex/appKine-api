@@ -1347,7 +1347,38 @@ public enum ProblemType {
 	 * El egreso nacio de una liquidacion de honorarios: su importe, categoria y periodo son los de
 	 * la liquidacion y no se editan (409). Se anula el egreso y se vuelve a liquidar.
 	 */
-	EGRESO_DE_LIQUIDACION("egreso-de-liquidacion");
+	EGRESO_DE_LIQUIDACION("egreso-de-liquidacion"),
+
+	// --- Atencion clinica (DP-43: U-09, U-24, U-25) ----------------------------------------
+
+	/**
+	 * La oferta de la atencion exige Caso Clinico y no se eligio ninguno (409). RF-M10-007, U-09.
+	 *
+	 * <p>Lo emite iniciar —de turno o sin turno— sin {@code casoId}, quitar el Caso de una atencion
+	 * abierta y cerrar una atencion sin Caso, siempre que la oferta tenga
+	 * {@code requiereCasoClinico = true}. <b>409 y no 400</b>: el pedido es el mismo que en una
+	 * oferta que no lo exige; lo que lo impide es la configuracion de la oferta, y la accion que
+	 * corresponde es elegir (o abrir) un Caso, no corregir el cuerpo. Lleva {@code ofertaId}.
+	 */
+	CASO_CLINICO_REQUERIDO("caso-clinico-requerido"),
+
+	/**
+	 * La sesion se cerro hace mas de lo que la organizacion admite para enmendarla (409). U-25.
+	 *
+	 * <p>La ventana se cuenta desde el cierre y la fija cada organizacion (30 dias si no la fijo).
+	 * Lleva {@code cerradaEn}, {@code ventanaDias} y {@code enmendableHasta}, para que la pantalla
+	 * diga desde cuando no se puede, en vez de un "no se puede" sin fecha.
+	 */
+	ENMIENDA_FUERA_DE_VENTANA("enmienda-fuera-de-ventana"),
+
+	/**
+	 * El profesional no esta habilitado para la oferta en este momento (409). U-24.
+	 *
+	 * <p>Lo emiten la atencion sin turno —que no pasa por el motor de agenda, que es quien
+	 * filtraba habilitaciones en la reserva— y el reemplazo del profesional. Una oferta sin
+	 * habilitaciones declaradas admite a todos (regla de V28).
+	 */
+	PROFESIONAL_NO_HABILITADO_EN_OFERTA("profesional-no-habilitado-en-oferta");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

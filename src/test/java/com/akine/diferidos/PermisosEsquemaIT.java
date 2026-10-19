@@ -266,6 +266,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				companiero.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
 				.containsExactlyInAnyOrder(
 						"colaborador:read", "espacio:read", "turno:read", "turno:manage", "sesion:register",
+						// U-25 (DP-43): enmendar es un permiso propio, con el reparto de Registrar Sesion.
+						"sesion:amend",
 						"hc:read", "hc:write",
 						// AKINE-DU-6 (DP-22): por base y no por grant, a diferencia de paciente:manage.
 						"paciente:read",

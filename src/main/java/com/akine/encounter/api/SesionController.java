@@ -5,6 +5,8 @@ import com.akine.encounter.api.dto.CerrarSesionRequest;
 import com.akine.encounter.api.dto.EnmendarSesionRequest;
 import com.akine.encounter.api.dto.GuardarBorradorRequest;
 import com.akine.encounter.api.dto.GuardarEvaluacionRequest;
+import com.akine.encounter.api.dto.IniciarSesionSinTurnoRequest;
+import com.akine.encounter.api.dto.ReemplazarProfesionalDeSesionRequest;
 import com.akine.encounter.api.dto.SesionResponse;
 import com.akine.encounter.api.dto.SesionVersionResponse;
 import com.akine.encounter.application.SesionService;
@@ -72,10 +74,11 @@ public class SesionController {
 					no es quien inicia, es 409: dejar que otro abra la sesion de un turno ajeno \
 					rompe la propiedad antes de que la sesion exista.
 
-					EL CASO CLINICO ES OPCIONAL (04.03). Sin casoId la atencion se registra \
-					igual: RF-M14-002 admite atencion sin caso y ninguna sesion anterior a 04.03 \
-					lo tiene. Exigirlo es RF-M10-007, que necesita su propia ventana de \
-					migracion. Cuando viene, tiene que ser un caso ACTIVO de la MISMA historia \
+					EL CASO CLINICO ES OPCIONAL SALVO QUE LA OFERTA LO EXIJA (RF-M10-007, DP-43). \
+					Si la oferta del turno tiene `requiereCasoClinico`, iniciar sin casoId \
+					responde 409 `caso-clinico-requerido` y no abre historia ni sesion; en las \
+					demas ofertas la atencion se registra igual sin caso. Las sesiones ya \
+					existentes sin caso no se tocan. Cuando viene, tiene que ser un caso ACTIVO de la MISMA historia \
 					clinica: uno de otro paciente responde 404 —indistinguible de "no existe", \
 					para no poder censar casos ajenos probando ids— y uno cerrado responde 409, \
 					porque lleva a otra accion, que es reabrirlo.
@@ -96,7 +99,8 @@ public class SesionController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "El turno no habilita una atencion, o la persona no es paciente",
+					description = "El turno no habilita una atencion, la persona no es paciente, o la "
+							+ "oferta exige caso y no vino (`caso-clinico-requerido`)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<SesionResponse> iniciar(
 			@PathVariable long consultorioId,
@@ -108,6 +112,125 @@ public class SesionController {
 		return ResponseEntity
 				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/sesiones/" + vista.id()))
 				.body(SesionResponse.de(vista));
+	}
+
+	@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "iniciarSesionSinTurno",
+			summary = "Iniciar una atencion sin turno",
+			description = """
+					Abre la atencion de un paciente **sin reserva** (RF-M14-002, DP-43). Exige \
+					`sesion:register` en la sede, como la atencion de turno, y quien atiende es \
+					quien inicia.
+
+					**El motivo es obligatorio**: sin turno nada explica por que el paciente estaba \
+					ahi. No va a la auditoria (es texto libre sobre un paciente); vuelve en \
+					`motivoSinTurno`.
+
+					**La oferta la elige el cliente**, asi que se valida: de esta sede (404 si no), \
+					vigente hoy en la zona de la sede (409 `oferta-no-vigente`) y con quien atiende \
+					habilitado (409 `profesional-no-habilitado-en-oferta`; una oferta sin \
+					habilitaciones declaradas admite a todos). La persona tiene que ser paciente \
+					vigente; la historia clinica se crea si no existia.
+
+					**El caso** es obligatorio solo si la oferta tiene `requiereCasoClinico` (409 \
+					`caso-clinico-requerido`). Cuando viene, mismas reglas que en la atencion de \
+					turno: activo y de la misma historia (404 si es de otro paciente, 409 si esta \
+					cerrado).
+
+					**Manda `idempotencyKey`.** Sin turno no hay reserva que ancle el doble click: \
+					con la misma clave y el mismo pedido se devuelve la atencion ya creada, con \
+					otro pedido 409 `idempotency-key-conflict`. Sin clave cada llamada abre una \
+					atencion nueva.
+
+					No ocupa ni libera agenda: Turno es reserva y Sesion es atencion (DP-05).""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "201", description = "Atencion iniciada, o la ya creada con "
+					+ "la misma clave"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Falta el motivo, la persona o la oferta",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `sesion:register` en esa sede, o sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede, la oferta, la persona o el caso no existen, son de otro "
+							+ "tenant, o el caso es de otra historia clinica",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "La oferta exige caso (`caso-clinico-requerido`), no esta vigente "
+							+ "(`oferta-no-vigente`) o quien atiende no esta habilitado "
+							+ "(`profesional-no-habilitado-en-oferta`); la persona no es paciente; "
+							+ "el caso esta cerrado; o la clave ya se uso con otro pedido "
+							+ "(`idempotency-key-conflict`)",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<SesionResponse> iniciarSinTurno(
+			@PathVariable long consultorioId,
+			@RequestBody @Valid IniciarSesionSinTurnoRequest request) {
+
+		SesionView vista = sesionService.iniciarSinTurno(
+				apiActor.current(), consultorioId, request.aDominio(), request.idempotencyKey());
+		return ResponseEntity
+				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/sesiones/" + vista.id()))
+				.body(SesionResponse.de(vista));
+	}
+
+	@PutMapping(path = "/{sesionId}/profesional", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "reemplazarProfesionalDeSesion",
+			summary = "Reemplazar al profesional de una atencion abierta",
+			description = """
+					Otro profesional continua la atencion (DP-43). **Solo el administrador de la \
+					sede** (`sesion:reassign`, del `CONSULTORIO_ADMIN`), con motivo obligatorio, y \
+					queda auditado (`SESION_PROFESIONAL_REEMPLAZADO`) con un registro propio de \
+					quien reemplazo a quien y por que.
+
+					**No es un permiso para escribir en la atencion ajena**: escribir en la atencion \
+					de otro sigue siendo 409 `sesion-ajena`. Esta operacion cambia al dueño; desde \
+					ahi, el anterior recibe `sesion-ajena` y el nuevo guarda normalmente.
+
+					**Solo con la sesion abierta** (cerrada: 409 `sesion-cerrada`: la atencion ya \
+					ocurrio y cambiar quien la presto seria reescribirla). El profesional nuevo \
+					tiene que tener membership vigente en la sede y `sesion:register` (409 \
+					`profesional-no-asignable`) y estar habilitado para la oferta (409 \
+					`profesional-no-habilitado-en-oferta`). **El turno no se toca.**
+
+					**Hay que mandar la `version` que se leyo.** Pedir el profesional que ya tiene \
+					no escribe ni avanza la version.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Profesional reemplazado. Devuelve la "
+					+ "sesion con la version nueva"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Falta el motivo, el profesional o la version",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `sesion:reassign` en esa sede, o sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sesion o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "La sesion esta cerrada, la version quedo vieja "
+							+ "(`concurrent-modification`), el profesional no puede atender en la "
+							+ "sede (`profesional-no-asignable`) o no esta habilitado para la oferta "
+							+ "(`profesional-no-habilitado-en-oferta`)",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<SesionResponse> reemplazarProfesional(
+			@PathVariable long consultorioId,
+			@PathVariable long sesionId,
+			@RequestBody @Valid ReemplazarProfesionalDeSesionRequest request) {
+
+		return ResponseEntity.ok(SesionResponse.de(sesionService.reemplazarProfesional(
+				apiActor.current(), consultorioId, sesionId, request.profesionalId(),
+				request.motivo(), request.version())));
 	}
 
 	@GetMapping("/{sesionId}")
@@ -191,8 +314,8 @@ public class SesionController {
 
 					El caso tiene que ser **activo y de la misma historia clinica**: uno de otro \
 					paciente responde 404 —indistinguible de "no existe"— y uno cerrado 409 \
-					`caso-clinico-cerrado`. Quitar el caso siempre se puede: el caso no es \
-					obligatorio (RF-M14-002).
+					`caso-clinico-cerrado`. Quitar el caso se puede salvo que la oferta lo exija \
+					(409 `caso-clinico-requerido`, RF-M10-007, DP-43).
 
 					**Hay que mandar la `version` que se leyo**, y **solo el profesional de la \
 					sesion puede cambiarlo**: escribir en la atencion ajena es 409, no 403. Deja \
@@ -217,9 +340,10 @@ public class SesionController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "La sesion esta cerrada, la atiende otro profesional, la version "
-							+ "quedo vieja (`concurrent-modification`), el caso esta cerrado, o la "
+							+ "quedo vieja (`concurrent-modification`), el caso esta cerrado, la "
 							+ "sesion es de origen grupal y su caso lo fija la derivacion "
-							+ "(`caso-de-atencion-grupal`, AKINE-08.05)",
+							+ "(`caso-de-atencion-grupal`, AKINE-08.05), o se quiso quitar el caso "
+							+ "de una oferta que lo exige (`caso-clinico-requerido`)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<SesionResponse> cambiarCaso(
 			@PathVariable long consultorioId,
@@ -320,8 +444,10 @@ public class SesionController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "La sesion la atiende otro profesional, la version quedo vieja, "
-							+ "o la deuda del paciente es el precio particular y la oferta no "
-							+ "tiene precio ese dia (oferta-sin-precio)",
+							+ "la deuda del paciente es el precio particular y la oferta no "
+							+ "tiene precio ese dia (oferta-sin-precio), o la oferta exige caso, "
+							+ "el paciente asistio y la sesion no tiene caso "
+							+ "(`caso-clinico-requerido`: se asigna con PUT .../caso y se reintenta)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<SesionResponse> cerrar(
 			@PathVariable long consultorioId,
@@ -373,15 +499,17 @@ public class SesionController {
 					unica excepcion son `tratamientos` y `mediciones`: **ausentes no se tocan**, \
 					para que un cliente que no los conoce no pueda vaciarlos por omision.
 
-					**Solo el profesional de la sesion puede enmendar.** No es cuestion de \
-					permiso —dos profesionales de la misma sede tienen el mismo \
-					`sesion:register`— sino de propiedad de esa atencion, y por eso el rechazo \
-					es 409 y no 403.
+					**Exige `sesion:amend`** (DP-43; hasta entonces \
+					era `sesion:register`), y **solo el profesional de la sesion puede \
+					enmendar.** Lo segundo no es cuestion de permiso —dos profesionales de la \
+					misma sede tienen el mismo `sesion:amend`— sino de propiedad de esa \
+					atencion, y por eso el rechazo es 409 y no 403.
 
-					**No hay ventana temporal**: se puede enmendar una sesion de hace dos años. \
-					El error clinico que mas necesita correccion es el que se descubre tarde, y \
-					la enmienda no puede ocultar nada — el original queda, con su fecha y su \
-					autor.""")
+					**Hay ventana temporal** (DP-43): se puede enmendar hasta `enmendableHasta`, \
+					el cierre mas los dias que fija la organizacion (30 si no fijo otros, \
+					`GET /api/v1/politica-de-enmienda`). Despues, 409 \
+					`enmienda-fuera-de-ventana` con `cerradaEn`, `ventanaDias` y \
+					`enmendableHasta`. El original queda siempre, con su fecha y su autor.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Enmendada. Devuelve la sesion vigente"),
 			@ApiResponse(
@@ -398,8 +526,13 @@ public class SesionController {
 					responseCode = "409",
 					description = "La sesion todavia esta abierta (`sesion-no-cerrada`: se guarda, "
 							+ "no se enmienda), la atiende otro profesional, la version quedo vieja, "
-							+ "o la enmienda cambiaria las practicas realizadas "
-							+ "(`enmienda-cambia-practicas`)",
+							+ "la enmienda cambiaria las practicas realizadas "
+							+ "(`enmienda-cambia-practicas`), o paso la ventana de la organizacion "
+							+ "(`enmienda-fuera-de-ventana`)",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `sesion:amend` en esa sede, o sin contexto de trabajo activo",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<SesionResponse> enmendar(
 			@PathVariable long consultorioId,

@@ -29,6 +29,9 @@ import java.time.Instant;
  * @param claseId      clase de la que salio una atencion de origen grupal, o {@code null}
  * @param claseTitulo  titulo de esa clase, o el nombre de su oferta si no tiene (08.05, web #104).
  *                     {@code null} si la atencion no es grupal
+ * @param motivoSinTurno por que se atendio sin turno (DP-43); {@code null} en las demas
+ * @param enmendableHasta hasta cuando se puede enmendar la sesion cerrada (U-25); {@code null}
+ *                     mientras esta abierta
  */
 public record SesionView(
 		long id,
@@ -54,7 +57,21 @@ public record SesionView(
 		boolean fueEnmendada,
 		Long derivacionId,
 		Long claseId,
-		String claseTitulo) {
+		String claseTitulo,
+		String motivoSinTurno,
+		Instant enmendableHasta) {
+
+	/**
+	 * La misma vista con hasta cuando se puede enmendar (U-25). Lo calcula el servicio, que es quien
+	 * conoce la politica de la organizacion; {@code null} mientras la sesion esta abierta.
+	 */
+	public SesionView conEnmendableHasta(Instant hasta) {
+		return new SesionView(id, consultorioId, historiaClinicaId, casoId, turnoId, ofertaId,
+				profesionalId, estado, iniciadaEn, borrador, borradorGuardadoEn, evaluacion,
+				evaluadaEn, previa, numeroSesion, numeroEnCaso, cierre, cerradaEn, version,
+				ultimoNumeroVersion, fueEnmendada, derivacionId, claseId, claseTitulo,
+				motivoSinTurno, hasta);
+	}
 
 	/**
 	 * La evaluacion de la sesion ANTERIOR del mismo paciente, para poder comparar.
@@ -117,6 +134,8 @@ public record SesionView(
 				sesion.fueEnmendada(),
 				sesion.getDerivacionId(),
 				sesion.getClaseId(),
-				claseTitulo);
+				claseTitulo,
+				sesion.getMotivoSinTurno(),
+				null);
 	}
 }

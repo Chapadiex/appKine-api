@@ -79,6 +79,12 @@ public final class AuditEvents {
 	/** Se escribio una version nueva de una sesion cerrada (RF-M14-010). */
 	public static final String SESION_AMENDED = "SESION_AMENDED";
 
+	/**
+	 * Se reemplazo al profesional de una sesion abierta (U-24, DP-43). Las memberships en la
+	 * transicion; el motivo en {@code sesion_reemplazo_profesional}, no aca.
+	 */
+	static final String SESION_PROFESIONAL_REEMPLAZADO = "SESION_PROFESIONAL_REEMPLAZADO";
+
 	// --- Tratamientos realizados (AKINE-06.04) ---------------------------------------------
 
 	/** Entidad sobre la que recaen los eventos de tratamientos. */

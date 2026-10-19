@@ -16,7 +16,20 @@ import com.akine.encounter.domain.EvaluacionBase;
 import com.akine.encounter.domain.PermissionCodes;
 import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.exception.CasoDeAtencionGrupalException;
+import com.akine.encounter.domain.exception.CasoClinicoRequeridoException;
 import com.akine.encounter.domain.exception.CasoNoAsignableException;
+import com.akine.encounter.domain.exception.EnmiendaFueraDeVentanaException;
+import com.akine.encounter.domain.exception.MotivoObligatorioException;
+import com.akine.encounter.domain.exception.OfertaNoAtendibleException;
+import com.akine.encounter.domain.exception.ProfesionalNoAsignableException;
+import com.akine.encounter.domain.exception.SesionCerradaException;
+import com.akine.encounter.domain.PoliticaDeEnmienda;
+import com.akine.encounter.domain.SesionReemplazoProfesional;
+import com.akine.encounter.domain.port.SesionReemplazoProfesionalRepositoryPort;
+import com.akine.offering.spi.OfertaSnapshot;
+import com.akine.organization.spi.PermissionEvaluator;
+import com.akine.organization.spi.ZonaDeSede;
+import org.springframework.dao.DataIntegrityViolationException;
 import com.akine.encounter.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
@@ -151,6 +164,18 @@ public class SesionService {
 	/** Nombre visible de quien escribio cada version (solo nombre, por id de cuenta). */
 	private final AccountIdentityDirectory identidades;
 
+	/** U-25 (DP-43): la ventana para enmendar de cada organizacion. */
+	private final PoliticaDeEnmiendaService politicaDeEnmienda;
+
+	/** U-24 (DP-43): el registro de quien reemplazo a quien. */
+	private final SesionReemplazoProfesionalRepositoryPort reemplazos;
+
+	/**
+	 * U-24: si el profesional que entra por un reemplazo puede atender. Se evalua sobre SU cuenta y
+	 * sin auditar el rechazo: no es un intento de acceso de nadie, es validar un dato del pedido.
+	 */
+	private final PermissionEvaluator permissionEvaluator;
+
 	@SuppressWarnings("java:S107")
 	public SesionService(
 			SesionRepositoryPort sesiones,
@@ -174,7 +199,10 @@ public class SesionService {
 			List<PrecioParticularDelCierre> requisitosDePrecio,
 			List<TituloDeClaseGrupal> titulosDeClase,
 			AccountIdentityDirectory identidades,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			PoliticaDeEnmiendaService politicaDeEnmienda,
+			SesionReemplazoProfesionalRepositoryPort reemplazos,
+			PermissionEvaluator permissionEvaluator) {
 
 		this.sesiones = sesiones;
 		this.versiones = versiones;
@@ -197,6 +225,9 @@ public class SesionService {
 		this.requisitosDePrecio = List.copyOf(requisitosDePrecio);
 		this.titulosDeClase = List.copyOf(titulosDeClase);
 		this.identidades = identidades;
+		this.politicaDeEnmienda = politicaDeEnmienda;
+		this.reemplazos = reemplazos;
+		this.permissionEvaluator = permissionEvaluator;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -206,12 +237,12 @@ public class SesionService {
 	 *
 	 * @throws ConsultorioNoAccesibleException si la sede no existe o es de otro tenant (404)
 	 * @throws TurnoNoAtendibleException       si el turno esta de baja o no es de quien atiende (409)
-	 * <h2>El caso es opcional, y eso es 04.03 entrando sin romper nada</h2>
+	 * <h2>El caso es opcional salvo que la oferta lo exija (DP-43)</h2>
 	 *
-	 * <p>{@code casoId} puede venir en {@code null} y es lo que hace hoy toda pantalla existente:
-	 * RF-M14-002 admite atencion sin caso, y <b>todas</b> las sesiones anteriores a 04.03 no lo
-	 * tienen. Exigirlo es RF-M10-007, que toca tambien {@code scheduling} y que necesita su propia
-	 * ventana de migracion — encenderlo hoy romperia la vertical que funciona.
+	 * <p>{@code casoId} puede venir en {@code null} en las ofertas que no lo exigen: RF-M14-002
+	 * admite atencion sin caso. Desde DP-43 (U-09, RF-M10-007) una oferta con
+	 * {@code requiereCasoClinico} responde 409 {@code caso-clinico-requerido} sin abrir nada. Las
+	 * sesiones viejas sin caso no se migran; la idempotencia las devuelve tal cual.
 	 *
 	 * <p>Cuando viene, se valida contra {@code clinical.spi.CasoDirectory}: tiene que existir en el
 	 * tenant, colgar de <b>la misma historia</b> que la sesion y estar activo. Un caso de otro
@@ -250,6 +281,11 @@ public class SesionService {
 
 		long profesionalMembershipId = resolverProfesional(actor, organizationId, consultorioId, turno);
 
+		// U-09 (DP-43, RF-M10-007): ANTES de asegurar la historia, para que un rechazo no le abra
+		// historia clinica a nadie. Y DESPUES de la idempotencia: una atencion que ya estaba
+		// abierta sin caso se devuelve igual, no se le niega al profesional lo que venia escribiendo.
+		exigirCasoSiLaOfertaLoRequiere(organizationId, consultorioId, turno.ofertaId(), casoId);
+
 		// La HC se crea si no existia. `asegurar` es de 04.01 y exige perfil de paciente vigente:
 		// una atencion sobre alguien que solo es "persona" tiene que fallar aca y no crear una
 		// historia clinica a nombre de quien no es paciente.
@@ -283,6 +319,265 @@ public class SesionService {
 				sesion.getId(), turnoId, historia.id(), casoId, profesionalMembershipId);
 
 		return conPrevia(sesion, organizationId);
+	}
+
+	// =================================================================================
+	// DP-43 (U-24) — atencion sin turno
+	// =================================================================================
+
+	/**
+	 * Abre una atencion <b>sin turno</b> (RF-M14-002, U-24): el paciente que se atiende sin reserva.
+	 *
+	 * <p>Mismas reglas que el inicio de turno —{@code sesion:register}, historia que se asegura,
+	 * caso opcional salvo que la oferta lo exija— mas lo que el turno resolvia y aca no esta:
+	 * <ul>
+	 *   <li><b>Motivo obligatorio.</b> Sin reserva nada explica por que el paciente estaba ahi.</li>
+	 *   <li><b>La oferta la elige el cliente</b>, asi que se valida: de la sede (404 si no), vigente
+	 *       hoy en la zona de la sede (409 {@code oferta-no-vigente}) y con quien atiende habilitado
+	 *       (409 {@code profesional-no-habilitado-en-oferta}; una oferta sin habilitaciones declaradas
+	 *       admite a todos, V28). En la reserva lo hacia el motor de agenda.</li>
+	 *   <li><b>Quien atiende es quien inicia.</b> No hay turno que diga otro profesional.</li>
+	 *   <li><b>Idempotencia por {@code Idempotency-Key}</b>, opcional: sin turno no hay
+	 *       {@code uk_sesion_turno} que ancle el doble click. Misma clave y mismo pedido devuelve la
+	 *       sesion ya creada; otro pedido con la misma clave, 409. Dos pedidos simultaneos con la
+	 *       misma clave chocan en {@code uk_sesion_idempotencia} y el perdedor relee en
+	 *       {@code READ_COMMITTED} —bajo {@code REPEATABLE READ} no veria la fila del ganador, la
+	 *       leccion del adjunto concurrente de 04.02—.</li>
+	 * </ul>
+	 *
+	 * <p>No toca {@code scheduling}: una atencion sin turno no ocupa agenda ni la libera. Turno es
+	 * reserva y Sesion es atencion (DP-05); que el profesional estuviera libre no es una regla de la
+	 * atencion que ya ocurrio.
+	 */
+	public SesionView iniciarSinTurno(
+			OperatingActor actor, long consultorioId, InicioSinTurno pedido, String idempotencyKey) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirRegistro(actor, organizationId, consultorioId);
+		String motivo = MotivoObligatorioException.exigir("motivo", pedido.motivo());
+
+		String clave = idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey.strip();
+		String huella = clave == null ? null : pedido.huella(consultorioId);
+
+		try {
+			return transaccionReadCommitted.execute(estado -> iniciarSinTurnoEnTransaccion(
+					actor, organizationId, consultorioId, pedido, motivo, clave, huella));
+		} catch (DataIntegrityViolationException carrera) {
+			if (clave == null) {
+				throw carrera;
+			}
+			// La otra llamada con la misma clave gano el unique. Se relee en una transaccion NUEVA
+			// en READ_COMMITTED: la anterior quedo marcada para rollback y su foto no ve al ganador.
+			return transaccionReadCommitted.execute(estado ->
+					sesiones.findPorIdempotencyKey(organizationId, clave)
+							.map(existente -> reintento(existente, clave, huella, organizationId))
+							.orElseThrow(() -> carrera));
+		}
+	}
+
+	private SesionView iniciarSinTurnoEnTransaccion(
+			OperatingActor actor, long organizationId, long consultorioId, InicioSinTurno pedido,
+			String motivo, String clave, String huella) {
+
+		if (clave != null) {
+			var yaCreada = sesiones.findPorIdempotencyKey(organizationId, clave);
+			if (yaCreada.isPresent()) {
+				return reintento(yaCreada.get(), clave, huella, organizationId);
+			}
+		}
+
+		Instant ahora = Instant.now();
+		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, pedido.ofertaId())
+				.orElseThrow(() -> new OfertaNoAtendibleException(
+						pedido.ofertaId(), OfertaNoAtendibleException.Motivo.NO_EXISTE));
+		LocalDate hoy = LocalDate.ofInstant(ahora, ZonaDeSede.de(consultorios, organizationId, consultorioId));
+		if (!oferta.vigenteEl(hoy)) {
+			throw new OfertaNoAtendibleException(oferta.id(), OfertaNoAtendibleException.Motivo.NO_VIGENTE);
+		}
+
+		long profesionalMembershipId = membershipDe(actor, organizationId, consultorioId);
+		exigirHabilitado(organizationId, consultorioId, oferta.id(), profesionalMembershipId, ahora);
+		exigirCasoSiLaOfertaLoRequiere(organizationId, consultorioId, oferta.id(), pedido.casoId());
+
+		HistoriaClinicaSnapshot historia =
+				historias.asegurar(organizationId, pedido.personaId(), actor.accountId());
+		exigirCasoAsignable(organizationId, historia.id(), pedido.casoId());
+
+		// saveAndFlush: el choque contra uk_sesion_idempotencia tiene que salir ACA, dentro del
+		// execute, para que quien llama lo resuelva releyendo.
+		Sesion sesion = sesiones.saveAndFlush(Sesion.sinTurno(
+				organizationId, consultorioId, historia.id(), pedido.casoId(), oferta.id(),
+				profesionalMembershipId, ahora, actor.accountId(), motivo, clave, huella));
+
+		// El motivo NO va a la auditoria: es texto libre sobre un paciente. Ver la cabecera de V115.
+		auditar(organizationId, consultorioId, actor, AuditEvents.SESION_INICIADA, sesion.getId(),
+				null, "ABIERTA",
+				Map.of("historiaClinicaId", String.valueOf(historia.id()),
+						"turnoId", "null",
+						"sinTurno", "true",
+						"casoId", String.valueOf(pedido.casoId())),
+				ahora);
+
+		log.info("Sesion sin turno iniciada: sesionId={} historiaClinicaId={} ofertaId={} casoId={} "
+						+ "profesional={}",
+				sesion.getId(), historia.id(), oferta.id(), pedido.casoId(), profesionalMembershipId);
+
+		return conPrevia(sesion, organizationId);
+	}
+
+	/** Misma clave: mismo pedido devuelve la sesion; otro pedido, 409. */
+	private SesionView reintento(Sesion existente, String clave, String huella, long organizationId) {
+		if (!huella.equals(existente.getRequestHash())) {
+			throw new IdempotencyKeyConflictException(clave);
+		}
+		return conPrevia(existente, organizationId);
+	}
+
+	// =================================================================================
+	// DP-43 (U-24) — reemplazo autorizado del profesional
+	// =================================================================================
+
+	/**
+	 * Reemplaza al profesional de una atencion <b>abierta</b> (U-24): otro profesional la continua.
+	 *
+	 * <h2>No es un permiso para escribir en la atencion ajena</h2>
+	 *
+	 * <p>"Escribir en la atencion ajena es 409" sigue intacto: quien reemplaza —el
+	 * {@code CONSULTORIO_ADMIN}, con {@code sesion:reassign}— no escribe nada clinico; cambia quien
+	 * es el dueño, y desde ese momento el control de propiedad es el mismo contra el dueño nuevo. El
+	 * anterior recibe {@code sesion-ajena} en su proximo autosave, que es exactamente lo que tiene
+	 * que pasar.
+	 *
+	 * <p>Exige: motivo, la {@code version} leida, la sesion abierta (cerrada: 409
+	 * {@code sesion-cerrada}; la atencion ya ocurrio y cambiar quien la presto seria reescribirla), y
+	 * un profesional que pueda atender en la sede —membership vigente que la cubra y
+	 * {@code sesion:register} (409 {@code profesional-no-asignable})— y habilitado para la oferta
+	 * (409 {@code profesional-no-habilitado-en-oferta}). Deja una fila en
+	 * {@code sesion_reemplazo_profesional} con el motivo y {@code SESION_PROFESIONAL_REEMPLAZADO} en
+	 * la auditoria, sin el motivo.
+	 *
+	 * <p><b>El turno no se toca</b>: Turno es reserva y Sesion es atencion (DP-05). Que la reserva
+	 * dijera otro profesional es historia de la reserva.
+	 *
+	 * <p>Pedir el profesional que ya tiene es un no-op: no escribe, no audita y no avanza la version.
+	 */
+	@Transactional
+	@SuppressWarnings("java:S107")
+	public SesionView reemplazarProfesional(
+			OperatingActor actor, long consultorioId, long sesionId, long nuevoProfesionalMembershipId,
+			String motivo, long expectedVersion) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirPermiso(actor, PermissionCodes.SESION_REASSIGN, organizationId, consultorioId);
+		String razon = MotivoObligatorioException.exigir("motivo", motivo);
+
+		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
+				.filter(Sesion::estaViva)
+				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
+		exigirVersion(sesion, expectedVersion);
+		if (sesion.estaCerrada()) {
+			throw new SesionCerradaException(sesion.getId());
+		}
+		if (sesion.getProfesionalMembershipId() == nuevoProfesionalMembershipId) {
+			return conPrevia(sesion, organizationId);
+		}
+
+		Instant ahora = Instant.now();
+		exigirProfesionalQueAtiende(organizationId, consultorioId, nuevoProfesionalMembershipId, ahora);
+		exigirHabilitado(organizationId, consultorioId, sesion.getOfertaId(),
+				nuevoProfesionalMembershipId, ahora);
+
+		long anterior = sesion.reemplazarProfesional(nuevoProfesionalMembershipId);
+		// La columna cambia, asi que el flush emite el UPDATE ... WHERE version = N y la version
+		// avanza una vez: sin force-increment.
+		Sesion guardada = sesiones.saveAndFlush(sesion);
+		SesionReemplazoProfesional registro = reemplazos.save(new SesionReemplazoProfesional(
+				organizationId, consultorioId, guardada.getId(), anterior, nuevoProfesionalMembershipId,
+				razon, actor.accountId(), ahora));
+
+		auditar(organizationId, consultorioId, actor, AuditEvents.SESION_PROFESIONAL_REEMPLAZADO,
+				guardada.getId(), "PROFESIONAL_" + anterior, "PROFESIONAL_" + nuevoProfesionalMembershipId,
+				Map.of("historiaClinicaId", String.valueOf(guardada.getHistoriaClinicaId()),
+						"reemplazoId", String.valueOf(registro.getId()),
+						"profesionalAnteriorId", String.valueOf(anterior),
+						"profesionalNuevoId", String.valueOf(nuevoProfesionalMembershipId)),
+				ahora);
+
+		log.info("Profesional de la sesion reemplazado: sesionId={} anterior={} nuevo={} por={}",
+				sesionId, anterior, nuevoProfesionalMembershipId, actor.accountId());
+
+		return conPrevia(guardada, organizationId);
+	}
+
+	/**
+	 * Quien entra por un reemplazo tiene que poder atender en la sede: membership vigente que la
+	 * cubra y {@code sesion:register}. Si no, la atencion quedaria con un dueño que no puede ni
+	 * guardar el borrador.
+	 */
+	private void exigirProfesionalQueAtiende(
+			long organizationId, long consultorioId, long membershipId, Instant ahora) {
+
+		var membership = memberships.find(organizationId, membershipId)
+				.filter(m -> m.validAt(ahora) && m.cubreConsultorio(consultorioId))
+				.orElseThrow(() -> new ProfesionalNoAsignableException(membershipId));
+		boolean atiende = permissionEvaluator.evaluate(new PermissionQuery(
+				membership.accountId(), PermissionCodes.SESION_REGISTER, organizationId, consultorioId,
+				null, ahora)).granted();
+		if (!atiende) {
+			throw new ProfesionalNoAsignableException(membershipId);
+		}
+	}
+
+	/**
+	 * El profesional esta habilitado para la oferta en este instante. Lista vacia de habilitaciones
+	 * significa "todos" (regla de V28), no "ninguno".
+	 */
+	private void exigirHabilitado(
+			long organizationId, long consultorioId, long ofertaId, long membershipId, Instant ahora) {
+
+		var habilitados = ofertas.profesionalesHabilitados(organizationId, consultorioId, ofertaId);
+		if (habilitados.isEmpty()) {
+			return;
+		}
+		boolean habilitado = habilitados.stream()
+				.anyMatch(h -> h.recursoId() == membershipId && h.vigenteEn(ahora));
+		if (!habilitado) {
+			throw new OfertaNoAtendibleException(
+					ofertaId, OfertaNoAtendibleException.Motivo.PROFESIONAL_NO_HABILITADO);
+		}
+	}
+
+	/**
+	 * U-09 (DP-43, RF-M10-007): si la oferta exige Caso Clinico, la atencion tiene que tener uno.
+	 *
+	 * <p>Una oferta que no resuelve (de baja despues, o de otra sede) no exige nada: la atencion ya
+	 * existe o la va a rechazar otra validacion, y negar por un dato que no se puede leer seria
+	 * bloquear por las dudas.
+	 */
+	private void exigirCasoSiLaOfertaLoRequiere(
+			long organizationId, long consultorioId, long ofertaId, Long casoId) {
+
+		if (casoId != null) {
+			return;
+		}
+		boolean requiere = ofertas.find(organizationId, consultorioId, ofertaId)
+				.map(OfertaSnapshot::requiereCasoClinico)
+				.orElse(false);
+		if (requiere) {
+			throw new CasoClinicoRequeridoException(ofertaId);
+		}
+	}
+
+	/** U-25 (DP-43): la enmienda solo dentro de la ventana de la organizacion, desde el cierre. */
+	private void exigirDentroDeLaVentana(long organizationId, Sesion sesion, Instant ahora) {
+		int ventanaDias = politicaDeEnmienda.ventanaDe(organizationId);
+		Instant hasta = PoliticaDeEnmienda.enmendableHasta(sesion.getCerradaEn(), ventanaDias);
+		if (ahora.isAfter(hasta)) {
+			throw new EnmiendaFueraDeVentanaException(
+					sesion.getId(), sesion.getCerradaEn(), ventanaDias, hasta);
+		}
 	}
 
 	/**
@@ -458,6 +753,16 @@ public class SesionService {
 
 		exigirVersion(sesion, expectedVersion);
 		cierre.exigirMinimos();
+
+		// U-09 (DP-43): "toda prestacion clinica debe resolver Caso antes del cierre" (M27). Solo
+		// alcanza a una atencion abierta antes de DP-43 sin caso —las nuevas ya no inician sin el—
+		// y no la bloquea: se le asigna el caso (PUT .../caso) y se cierra. Una AUSENCIA se cierra
+		// igual: no hubo prestacion, y exigir un caso para registrar que el paciente falto seria el
+		// "Caso artificial" que el RF prohibe. La grupal tiene caso siempre (V102).
+		if (cierre.asistencia() == Asistencia.PRESENTE) {
+			exigirCasoSiLaOfertaLoRequiere(organizationId, sesion.getConsultorioId(),
+					sesion.getOfertaId(), sesion.getCasoId());
+		}
 
 		Instant ahora = Instant.now();
 		long cerradaPor = actor.accountId();
@@ -641,18 +946,25 @@ public class SesionService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirRegistro(actor, organizationId, consultorioId);
+		// U-25 (DP-43): permiso propio. Hasta DP-43 era sesion:register.
+		exigirPermiso(actor, PermissionCodes.SESION_AMEND, organizationId, consultorioId);
 
 		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
 				.filter(Sesion::estaViva)
 				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
 
 		// Propiedad, no permiso: escribir en la atencion ajena es 409 y no 403, y enmendar es
-		// escribir. El reemplazo autorizado —un supervisor que corrige— necesita el registro de
-		// quien reemplaza a quien que 06.01 declaro inexistente; hasta que exista, fail-closed.
+		// escribir. El reemplazo autorizado de DP-43 es solo de atenciones ABIERTAS: una cerrada la
+		// enmienda quien la presto.
 		sesion.exigirPropiedadDe(membershipDe(actor, organizationId, consultorioId));
 
 		exigirVersion(sesion, expectedVersion);
+
+		// U-25 (DP-43): la ventana se cuenta desde el cierre. Una sesion abierta no tiene cierre y
+		// sigue su camino: la rechaza `Sesion#enmendar` con sesion-no-cerrada, que es lo que es.
+		if (sesion.estaCerrada()) {
+			exigirDentroDeLaVentana(organizationId, sesion, Instant.now());
+		}
 
 		int anterior = sesion.getUltimoNumeroVersion();
 		// Aplica el contenido y reserva el numero. Valida coherencia clinica y minimos del cierre
@@ -774,9 +1086,9 @@ public class SesionService {
 	 *       "no existe", y uno cerrado es 409.</li>
 	 * </ul>
 	 *
-	 * <p>{@code casoId} nulo quita el caso: RF-M14-002 admite atencion sin caso, y exigirlo es
-	 * RF-M10-007 (C-9), que esta operacion <b>no</b> enciende. Pedir el caso que ya tiene es un
-	 * no-op: no escribe, no audita y no avanza la version.
+	 * <p>{@code casoId} nulo quita el caso, salvo que la oferta lo exija (DP-43, RF-M10-007: 409
+	 * {@code caso-clinico-requerido}). Pedir el caso que ya tiene es un no-op: no escribe, no audita
+	 * y no avanza la version.
 	 */
 	@Transactional
 	public SesionView cambiarCaso(
@@ -805,6 +1117,12 @@ public class SesionService {
 		// cual sea el pedido: su Caso lo fijo la derivacion.
 		if (sesion.esDeOrigenGrupal()) {
 			throw new CasoDeAtencionGrupalException(sesion.getId());
+		}
+		// U-09 (DP-43): quitar el caso de una atencion cuya oferta lo exige deja una atencion que
+		// no podria haberse iniciado asi. Cambiarlo por otro si se puede.
+		if (!sesion.estaCerrada()) {
+			exigirCasoSiLaOfertaLoRequiere(organizationId, sesion.getConsultorioId(),
+					sesion.getOfertaId(), casoId);
 		}
 		exigirCasoAsignable(organizationId, sesion.getHistoriaClinicaId(), casoId);
 		sesion.asignarCaso(casoId);
@@ -966,6 +1284,16 @@ public class SesionService {
 	}
 
 	private SesionView conPrevia(Sesion sesion, long organizationId) {
+		SesionView vista = sinVentana(sesion, organizationId);
+		// U-25: solo una sesion cerrada tiene ventana. El autosave de una abierta no paga la lectura
+		// de la politica.
+		return sesion.getCerradaEn() == null
+				? vista
+				: vista.conEnmendableHasta(PoliticaDeEnmienda.enmendableHasta(
+						sesion.getCerradaEn(), politicaDeEnmienda.ventanaDe(organizationId)));
+	}
+
+	private SesionView sinVentana(Sesion sesion, long organizationId) {
 		return SesionView.de(sesion, sesiones
 				.findPreviaEvaluada(organizationId, sesion.getHistoriaClinicaId(), sesion.getIniciadaEn())
 				.map(previa -> new SesionView.EvaluacionPrevia(
@@ -1158,9 +1486,14 @@ public class SesionService {
 	}
 
 	private void exigirRegistro(OperatingActor actor, long organizationId, long consultorioId) {
+		exigirPermiso(actor, PermissionCodes.SESION_REGISTER, organizationId, consultorioId);
+	}
+
+	private void exigirPermiso(
+			OperatingActor actor, String permiso, long organizationId, long consultorioId) {
 		permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(),
-				PermissionCodes.SESION_REGISTER,
+				permiso,
 				organizationId,
 				consultorioId,
 				null,

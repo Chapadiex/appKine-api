@@ -23,8 +23,10 @@ public record SesionResponse(
 
 		@Schema(
 				description = "Caso Clinico al que pertenece la atencion (04.03). **Ausente es "
-						+ "legitimo**: RF-M14-002 admite atencion sin caso, y ninguna sesion "
-						+ "anterior a 04.03 lo tiene. Exigirlo es RF-M10-007 y todavia no rige.",
+						+ "legitimo** en las ofertas que no lo exigen. Desde DP-43 (RF-M10-007) "
+						+ "una oferta con `requiereCasoClinico` no inicia, no quita el caso ni "
+						+ "cierra sin el (409 `caso-clinico-requerido`). Las sesiones anteriores "
+						+ "sin caso siguen como estaban.",
 				example = "17")
 		Long casoId,
 
@@ -34,7 +36,8 @@ public record SesionResponse(
 		@Schema(example = "42")
 		long ofertaId,
 
-		@Schema(description = "Membership del profesional que atiende. Decide quien puede guardar.", example = "31")
+		@Schema(description = "Membership del profesional que atiende. Decide quien puede guardar. "
+				+ "Solo cambia por el reemplazo autorizado (DP-43).", example = "31")
 		long profesionalId,
 
 		@Schema(
@@ -127,7 +130,21 @@ public record SesionResponse(
 						+ "titulo (el mismo criterio de la semana de clases). Calculado al leer. "
 						+ "Ausente si la atencion no es grupal.",
 				example = "Pilates terapeutico")
-		String claseTitulo) {
+		String claseTitulo,
+
+		@Schema(
+				description = "DP-43. Por que se atendio **sin turno**. Viene solo en la atencion "
+						+ "sin turno ni derivacion, donde es obligatorio.",
+				example = "Paciente con dolor agudo que espero sin turno")
+		String motivoSinTurno,
+
+		@Schema(
+				description = "U-25 (DP-43). Hasta cuando se puede enmendar la sesion cerrada: el "
+						+ "cierre mas la ventana de la organizacion (30 dias si no fijo otra). "
+						+ "Despues, la enmienda responde 409 `enmienda-fuera-de-ventana`. Ausente "
+						+ "mientras la sesion esta abierta.",
+				example = "2026-10-15T12:48:00Z")
+		Instant enmendableHasta) {
 
 	@Schema(name = "CierreDeSesion", description = "Resultado y proxima conducta")
 	public record CierreResponse(
@@ -190,7 +207,9 @@ public record SesionResponse(
 				vista.fueEnmendada(),
 				vista.derivacionId(),
 				vista.claseId(),
-				vista.claseTitulo());
+				vista.claseTitulo(),
+				vista.motivoSinTurno(),
+				vista.enmendableHasta());
 	}
 
 	/** Los enums viajan como texto para que el cliente no dependa del enum de este modulo. */

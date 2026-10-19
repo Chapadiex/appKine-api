@@ -34,6 +34,15 @@ public interface SesionRepositoryPort {
 	Optional<Sesion> findByIdInScope(long organizationId, long consultorioId, long sesionId);
 
 	/**
+	 * La atencion sin turno iniciada con esa clave de idempotencia en el tenant (DP-43), viva o no.
+	 *
+	 * <p>Sin filtro de baja: el unique de V115 no la incluye, asi que una clave usada no se
+	 * reutiliza nunca, y el reintento de un pedido cuya sesion se dio de baja tiene que ver esa
+	 * sesion y no crear otra.
+	 */
+	Optional<Sesion> findPorIdempotencyKey(long organizationId, String idempotencyKey);
+
+	/**
 	 * La misma consulta, pero forzando el avance de la version de la sesion al commitear.
 	 *
 	 * <p><b>Es lo que protege las escrituras de tratamientos (06.04)</b>, y es la leccion de 02.07
