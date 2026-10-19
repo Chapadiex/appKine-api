@@ -47,7 +47,7 @@ La auditoría decía que F3 estaba aislada. Al 13/10 está conectada en los tres
 - [x] ~~Contribuyente de cobertura al Paciente 360.~~ → B-5, api #34; por campos en A-11, api #64. Pantalla: web #16 y #29.
 - [x] ~~`ArancelDirectory#congelar` sin consumidor.~~ → F-4, api #49 (07/10).
 - [ ] **Obligatoriedad de requisitos configurable por financiador o por prestación** — *pendiente del usuario*, ver abajo.
-- [ ] **Catálogo global de financiadores (DU-13)** — *pendiente del usuario*, ver abajo.
+- [x] ~~**Catálogo global de financiadores (DU-13)**~~ → DP-43 (19/10): copia adoptada, `V117`, contrato 0.137.0.
 - [ ] **`convenio:read`** — *pendiente del usuario*, ver abajo.
 
 ### Seguridad
@@ -87,6 +87,8 @@ La auditoría decía que F3 estaba aislada. Al 13/10 está conectada en los tres
 - [ ] Las cuatro decisiones del usuario y el QA manual (abajo).
 
 ## Pendiente del usuario
+
+> **Decididas el 19/10/2026** (el usuario aceptó las recomendaciones; ver `decisiones-pendientes.md`). U-12 (DU-13) el centro adopta una copia del catálogo global: se implementa, PR en curso (DP-43). U-18 requisitos solo en el convenio: se deja como está (DP-42). U-20 datos administrativos de la HC sin auditar: se deja como está (DP-42). U-19 clonar convenio fuera del MVP: después del RC (DP-44).
 
 Ninguna se implementó porque ningún RF la resuelve; cada una trae la opción recomendada.
 

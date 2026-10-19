@@ -126,6 +126,8 @@ corrió contra el backend real: 82 passed, 0 skipped, 0 flaky** (13/10/2026).
 
 ### Pendiente del usuario
 
+> **Decididas el 19/10/2026** (el usuario aceptó las recomendaciones; ver `decisiones-pendientes.md`). U-13 nomenclador informativo: se deja como está (DP-42). U-17 disciplina sin validar: se deja como está (DP-42). U-16 cambio de email fuera de alcance: se deja como está (DP-42). U-38 zona horaria por organización: se implementa, PR en curso (DP-43). U-15 editar la propia organización, regla más restrictiva y solo `ORG_ADMIN`: se implementa, PR en curso (DP-43).
+
 1. **`nomenclador_item`.** `convenio_arancel` (`V43`) referencia la práctica y no una versión de
    nomenclador, así que la regla "los convenios referencian versión/vigencia" no se cumple y
    `nomenclador_item` no tiene consumidor. *Pregunta:* ¿el arancel se ata a un ítem de nomenclador

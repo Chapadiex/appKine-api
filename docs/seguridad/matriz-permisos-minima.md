@@ -589,6 +589,17 @@ está escrito en la cabecera de V41: `organization_id` pasa a nullable y aparece
 construirlo es el mismo que arrastra RF-M06-005 desde 02.05: **ningún endpoint le dice al frontend
 si quien mira tiene rol de plataforma**, así que la consola de plataforma no se puede construir.
 
+> **Actualizado el 19/10/2026 (DP-43, V117).** El catálogo global **existe**, y no por el camino
+> de V41: se eligió la **copia** (opción B de `docs/diseno/AKINE-A-7-plataforma.md` §3). Las
+> tablas globales son `financiador_catalogo` y `plan_catalogo`, sin `organization_id` (ADR-0023);
+> un centro **adopta** una entrada y lo que queda es una copia propia en `financiador` /
+> `plan_cobertura` con `catalogo_id` informativo. La celda "Catálogo global" del `PLATFORM_ADMIN`
+> se cumple sobre **esas** tablas, con el rol de plataforma revalidado
+> (`/api/v1/platform/catalogo-financiadores`), y **sigue sin recibir `convenio:manage`**: nunca
+> toca los financiadores de un tenant, que es lo que su celda excluye. Leer el catálogo global
+> desde un centro exige `convenio:read`; adoptar, `convenio:manage` con la sede del contexto. No se
+> agregó ningún código de permiso.
+
 ### 13.3 El permiso se evalúa CON la sede del contexto, aunque el financiador sea de la organización
 
 Idéntico a 12.2 y por el mismo motivo mecánico: `PermissionEvaluatorService.alcanceCubre` concede
@@ -822,7 +833,7 @@ código (`organization.domain.PermissionCode` y `RolePermissions`). Ninguno es o
   convenios de otra sede de su organización, que leía hasta ahora: el único cambio de
   comportamiento buscado es el del `PACIENTE`.
 - Pertenecer sin el permiso es **403**; un recurso de otra organización sigue siendo **404**.
-- `PLATFORM_ADMIN` sin nada: el catálogo global de financiadores no existe (§13.2) y no tiene
+- `PLATFORM_ADMIN` sin nada sobre el tenant: administra el catálogo global (DP-43, §13.2) y no tiene
   contexto de tenant en `contracting`.
 - Las lecturas de otros módulos que muestran coberturas (padrón, Paciente 360, cobertura aplicable)
   ya pedían `paciente:read` y no cambian. Las de `contracting.spi` (`congelar`, resolución de

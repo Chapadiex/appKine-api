@@ -162,6 +162,8 @@ reserva haría que un arancel cargado tarde impida reservar. La huella de idempo
 
 ### Pendiente del usuario
 
+> **Decididas el 19/10/2026** (el usuario aceptó las recomendaciones; ver `decisiones-pendientes.md`). U-21 `RETIRADO` desde `LLEGO`/`EN_ESPERA` y Particular desde `EN_ESPERA`: se implementa, PR en curso (DP-43). U-22 el feriado omite la ocurrencia de la serie: se implementa, PR en curso (DP-43). U-23 eventos de turno que notifican: se deja como está (DP-42). U-29 ventana de cancelación de 24 h por sede y U-30 vista pública de slots: después del RC (DP-44).
+
 1. **Autoservicio del paciente y alcance `OWN`.** ¿El paciente reserva, cancela y ve sus turnos
    desde el portal en el MVP? *Recomendado: después del MVP*, como ya dice el `CLAUDE.md` del
    backend. Destraba los dos siguientes.
