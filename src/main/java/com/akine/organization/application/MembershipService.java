@@ -30,6 +30,7 @@ import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.organization.spi.PlanGate;
+import com.akine.organization.spi.ReaccionALaDesvinculacion;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.identity.AccountIdentity;
@@ -132,6 +133,7 @@ public class MembershipService implements MembershipProvisioning {
 	private final AuditTrail auditTrail;
 	private final SupportAccessReadAuditor supportAccessReadAuditor;
 	private final AccountIdentityDirectory accountDirectory;
+	private final List<ReaccionALaDesvinculacion> reaccionesALaDesvinculacion;
 	private final List<ColaboradorDesvinculacionProbe> desvinculacionProbes;
 	private final PlanGate planGate;
 	private final TenantUsageCounter usageCounter;
@@ -147,11 +149,13 @@ public class MembershipService implements MembershipProvisioning {
 			SupportAccessReadAuditor supportAccessReadAuditor,
 			AccountIdentityDirectory accountDirectory,
 			List<ColaboradorDesvinculacionProbe> desvinculacionProbes,
+			List<ReaccionALaDesvinculacion> reaccionesALaDesvinculacion,
 			PlanGate planGate,
 			TenantUsageCounter usageCounter) {
 		this.supportAccessReadAuditor = supportAccessReadAuditor;
 		this.accountDirectory = accountDirectory;
 		this.desvinculacionProbes = desvinculacionProbes;
+		this.reaccionesALaDesvinculacion = reaccionesALaDesvinculacion;
 		this.planGate = planGate;
 		this.usageCounter = usageCounter;
 		this.membershipRepository = membershipRepository;
@@ -441,6 +445,7 @@ public class MembershipService implements MembershipProvisioning {
 		exigirActiva(membership, MembershipEstado.ACTIVA);
 
 		Instant ahora = Instant.now();
+		ReaccionALaDesvinculacion.Causa causa = null;
 
 		if (nuevoRol != null) {
 			RoleCode destino = rolValido(nuevoRol);
@@ -455,6 +460,7 @@ public class MembershipService implements MembershipProvisioning {
 				auditar(AuditEvents.MEMBERSHIP_ROLE_CHANGED, AuditEvents.ENTITY_MEMBERSHIP,
 						membership, actor.accountId(), anterior.name(), destino.name(), motivo,
 						Map.of(), ahora);
+				causa = ReaccionALaDesvinculacion.Causa.CAMBIO_DE_ROL;
 			}
 		}
 
@@ -468,10 +474,17 @@ public class MembershipService implements MembershipProvisioning {
 				detalles.put("consultorioNuevo", String.valueOf(nuevaSede));
 				auditar(AuditEvents.MEMBERSHIP_SCOPE_CHANGED, AuditEvents.ENTITY_MEMBERSHIP,
 						membership, actor.accountId(), null, null, motivo, detalles, ahora);
+				if (causa == null) {
+					causa = ReaccionALaDesvinculacion.Causa.CAMBIO_DE_SEDE;
+				}
 			}
 		}
 
-		return conCuenta(membershipRepository.save(membership));
+		Membership guardada = membershipRepository.save(membership);
+		if (causa != null) {
+			reaccionarALaDesvinculacion(actor, guardada, causa, ahora);
+		}
+		return conCuenta(guardada);
 	}
 
 	/**
@@ -566,7 +579,25 @@ public class MembershipService implements MembershipProvisioning {
 				actor.accountId(), anterior.name(), MembershipEstado.REVOCADA.name(), motivo,
 				detallesDelImpacto(impacto), ahora);
 
-		return conCuenta(membershipRepository.save(membership));
+		Membership guardada = membershipRepository.save(membership);
+		reaccionarALaDesvinculacion(actor, guardada, ReaccionALaDesvinculacion.Causa.REVOCACION, ahora);
+		return conCuenta(guardada);
+	}
+
+	/**
+	 * Avisa a los modulos que reaccionan cuando una cuenta pierde alcance (DP-40): hoy, la renovacion
+	 * de abonos de {@code activity}. Va despues del {@code save} y dentro de la misma transaccion:
+	 * quien reaccione vuelve a evaluar el permiso y tiene que ver el vinculo ya cambiado.
+	 */
+	private void reaccionarALaDesvinculacion(
+			OperatingActor actor, Membership membership, ReaccionALaDesvinculacion.Causa causa, Instant ahora) {
+
+		ReaccionALaDesvinculacion.Desvinculacion hecho = new ReaccionALaDesvinculacion.Desvinculacion(
+				membership.getOrganizationId(), membership.getId(), membership.getAccountId(), causa,
+				actor.accountId(), ahora);
+		for (ReaccionALaDesvinculacion reaccion : reaccionesALaDesvinculacion) {
+			reaccion.alDesvincular(hecho);
+		}
 	}
 
 	/**
@@ -730,6 +761,7 @@ public class MembershipService implements MembershipProvisioning {
 		detalles.put("permissionCode", permiso.code());
 		auditar(AuditEvents.GRANT_REVOKED, AuditEvents.ENTITY_MEMBERSHIP_GRANT, membership,
 				actor.accountId(), permiso.code(), null, motivo, detalles, ahora);
+		reaccionarALaDesvinculacion(actor, membership, ReaccionALaDesvinculacion.Causa.PERMISO_QUITADO, ahora);
 	}
 
 	// =================================================================================

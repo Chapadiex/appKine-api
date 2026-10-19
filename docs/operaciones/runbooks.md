@@ -339,7 +339,7 @@ falla no frena a los demás y se reintenta en el tick siguiente.
 | Job | Qué hace | Cada | Arranca a los | Lote |
 |---|---|---|---|---|
 | `VencimientoDePasesWorker` | Pasa a `VENCIDO` los pases `ACTIVO` cuya `vigencia_hasta` ya pasó **en el día de su sede**, pone el saldo en cero y deja un movimiento `VENCIMIENTO` con los créditos descartados (RF-M29-006). Audita `PASE_VENCIDO` | 1 h | 2 min | 200 por vuelta, hasta 10 vueltas por tick |
-| `RenovacionDeAbonosWorker` | Vende el período siguiente de los abonos con `renovacion_automatica = 1` cuando faltan `anticipacion-dias` o menos para el fin: snapshot del producto **de ese día**, movimiento `COMPRA` y **una** obligación `VENTA_ABONO` a nombre de quien autorizó la renovación. **No cobra** (DP-06). Audita `ABONO_RENOVADO`, o `ABONO_RENOVACION_OMITIDA` cuando no puede | 1 h | 3 min | 200 por vuelta, hasta 10 vueltas por tick |
+| `RenovacionDeAbonosWorker` | Vende el período siguiente de los abonos con `renovacion_automatica = 1` cuando faltan `anticipacion-dias` o menos para el fin: snapshot del producto **de ese día**, movimiento `COMPRA` y **una** obligación `VENTA_ABONO` a nombre de quien autorizó la renovación. **No cobra** (DP-06). El período se **ancla al día de la primera venta** (DP-40): termina el día anterior al mismo día del mes siguiente, o al último si ese mes no lo tiene. Si quien autorizó ya no tiene `pase:manage` en la sede, **no vende**: apaga la renovación y avisa al administrador. Audita `ABONO_RENOVADO` (con `diaAncla`), `ABONO_RENOVACION_OMITIDA` cuando no puede y `ABONO_RENOVACION_APAGADA` cuando el autorizante ya no puede vender | 1 h | 3 min | 200 por vuelta, hasta 10 vueltas por tick |
 | `AvisosDePasesWorker` | Encola por el outbox, una sola vez por pase y por tipo, el aviso `PASE_POR_VENCER` (vigencia que termina dentro de `dias-antes-del-vencimiento`) y el `PASE_SALDO_BAJO` (saldo entre 1 y `saldo-bajo`, con créditos ya usados). Audita `PASE_AVISO_DE_VENCIMIENTO` / `PASE_AVISO_DE_SALDO_BAJO`. **No toca saldo, estado ni renovación** | 1 h | 4 min | 200 por tipo y por tick |
 
 **Configuración.** Ninguna propiedad está en `application.yml`: los valores de la tabla son los
@@ -375,6 +375,8 @@ trabajo repetido: si molesta, apagar los jobs en todas las instancias menos una 
   (`vigente = false`, el consumo no lo toma), pero el job todavía no escribió `VENCIDO` ni el
   movimiento. Normal hasta una hora después de las 24 de la sede; anormal si dura más.
 - "El abono no se renovó" o "se renovó un abono que el centro quería cortar".
+- "Me llegó un correo de que se apagó la renovación automática de abonos" (al administrador).
+- "El abono se renovó del 28/02 al 30/03": es el ancla al 31 (DP-40), no un error de fecha.
 - "No me llegó el aviso de que se me vencía el pack".
 - En el log, `El tick de ... fallo; se reintenta en el proximo ciclo` en cada ciclo, o
   `No se pudo vencer el pase {id}` / `No se pudo renovar el abono {id}` /
@@ -421,11 +423,32 @@ SELECT id, tipo, estado, intentos, proxima_ejecucion_en, error_sanitizado
   FROM notification_outbox
  WHERE clave_idempotente IN (CONCAT('pase-por-vencer:', :paseId), CONCAT('pase-saldo-bajo:', :paseId));
 
+-- DP-40 (U-43): renovaciones apagadas porque quien las autorizó ya no puede vender, con la causa
+-- (REVOCACION, CAMBIO_DE_ROL, CAMBIO_DE_SEDE, PERMISO_QUITADO o AUTORIZANTE_SIN_PERMISO desde el job)
+SELECT entity_id AS pase_id, actor_account_id, details, occurred_at
+  FROM audit_event
+ WHERE organization_id = :org AND event_type = 'ABONO_RENOVACION_APAGADA'
+ ORDER BY occurred_at DESC LIMIT 50;
+-- y el aviso a los administradores (uno por administrador y por sede)
+SELECT id, estado, intentos, error_sanitizado, created_at
+  FROM notification_outbox
+ WHERE organization_id = :org AND tipo = 'ABONO_RENOVACION_APAGADA' ORDER BY id DESC LIMIT 20;
+
+-- DP-40 (U-45): el día de ancla de un abono es el del primer período de su cadena
+WITH RECURSIVE cadena (id, renueva_pase_id, vigencia_desde, nivel) AS (
+    SELECT id, renueva_pase_id, vigencia_desde, 0 FROM pase_servicio
+     WHERE id = :paseId AND organization_id = :org
+    UNION ALL
+    SELECT p.id, p.renueva_pase_id, p.vigencia_desde, c.nivel + 1
+      FROM pase_servicio p JOIN cadena c ON p.id = c.renueva_pase_id
+     WHERE p.organization_id = :org)
+SELECT id, vigencia_desde, DAY(vigencia_desde) AS dia FROM cadena ORDER BY nivel DESC;
+
 -- La huella en la auditoría
 SELECT event_type, entity_id, previous_state, new_state, occurred_at
   FROM audit_event
  WHERE entity_type = 'PASE_SERVICIO'
-   AND event_type IN ('PASE_VENCIDO','ABONO_RENOVADO','ABONO_RENOVACION_OMITIDA',
+   AND event_type IN ('PASE_VENCIDO','ABONO_RENOVADO','ABONO_RENOVACION_OMITIDA','ABONO_RENOVACION_APAGADA',
                       'PASE_AVISO_DE_VENCIMIENTO','PASE_AVISO_DE_SALDO_BAJO')
  ORDER BY occurred_at DESC LIMIT 50;
 ```
@@ -438,6 +461,9 @@ SELECT event_type, entity_id, previous_state, new_state, occurred_at
 | Pases `ACTIVO` vencidos hace días, sin errores en el log | Más de 2.000 candidatos por tick, o una sede cuya zona no resuelve (cae a UTC, con WARN de `ZonaDeSede`) | Dejar correr: cada tick toma 2.000. Si no baja, revisar la zona de la sede (`docs/zonas-horarias.md`) |
 | La consulta del ledger devuelve filas | Un `UPDATE` de saldo sin su movimiento: **defecto**, no atraso | Abrir defecto con los ids. No ajustar el saldo a mano: el ajuste se hace desde la aplicación (`ajustarSaldoDePase`, permiso `pase:adjust`), que deja `AJUSTE` con motivo |
 | Abono sin renovar y `renovacion_omitida_motivo` lleno | El job no pudo: producto de baja o fuera de venta, persona de baja, período ocupado por una venta manual, o período siguiente ya terminado (job caído más de un período entero: **no vende el pasado**) | Es el comportamiento esperado. Si corresponde, vender el período a mano desde la pantalla y volver a prender la renovación sobre el período nuevo |
+| Abono sin renovar con motivo *quien autorizó la renovación ya no puede vender en la sede* | DP-40 (U-43): la cuenta que la prendió fue revocada, cambió de rol o de sede, perdió un permiso adicional o está suspendida. Lo apagó la desvinculación (actor = quien desvinculó) o el job (actor nulo, causa `AUTORIZANTE_SIN_PERMISO`), y se avisó a los `ORG_ADMIN` de la sede | Es lo esperado. Si el abono tiene que seguir, alguien con `pase:manage` en la sede vuelve a prender la renovación (`configurarRenovacionDeAbono`): desde ahí se vende a su nombre. **No** poner `renovacion_automatica = 1` a mano: seguiría a nombre de quien ya no está |
+| Se apagó la renovación y el administrador no recibió el correo | Sin `ORG_ADMIN` vigente con correo en la sede (WARN `sin administrador a quien avisar`), o el envío | La renovación queda apagada igual. Si hay fila en el outbox y no sale, R2 |
+| Un período renovado no dura lo mismo que el anterior (28/02–30/03, 05/02–04/03) | DP-40 (U-45): el período se ancla al día del mes del **primer** período de la cadena; si ese día no existe en el mes, al último. Un producto que no cubre el período anclado (`vigenciaDias` menor) sigue durando `vigenciaDias` | Es lo esperado. La consulta de la cadena de arriba muestra el ancla |
 | Abono sin renovar, sin motivo y con la renovación prendida | Todavía no entró en la ventana (`anticipacion-dias`), o el job no corre | Primera fila de esta tabla |
 | Se renovó un abono que el centro quería cortar | La renovación es opt-in, pero alguien la prendió y nadie la apagó | Anular el período renovado desde la aplicación (`anularPase`: anula también su deuda si no tiene cobros; con cobros responde `pase-con-cobros` y primero se anula el cobro; con créditos ya usados responde `pase-no-ajustable` y lo que queda es ajustar el saldo). Después apagar la renovación (`configurarRenovacionDeAbono`) |
 | Aviso marcado en `pase_servicio` y sin fila en el outbox | La persona no tiene correo: el aviso se da por resuelto sin encolar (log `Sin correo para avisar`) | Nada que hacer en el job: completar el correo en el padrón. El aviso **no se repite** para ese pase |

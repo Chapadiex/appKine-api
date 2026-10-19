@@ -32016,6 +32016,7 @@ components:
           - TURNO_REPROGRAMADO
           - PASE_POR_VENCER
           - PASE_SALDO_BAJO
+          - ABONO_RENOVACION_APAGADA
           example: INVITACION_COLABORADOR
         ultimoError:
           type: string
