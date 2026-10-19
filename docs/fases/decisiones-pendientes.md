@@ -21,22 +21,43 @@
 
 ## Resumen
 
-> **Actualizado el 17/10/2026.** El usuario aceptó en bloque las recomendaciones de F9/F10: **7
-> resueltas** (U-39, U-40, U-42, U-44, U-46, U-48, U-49 → DP-24 a DP-30) y **4 postergadas** después
-> del release candidate (U-41, U-43, U-45, U-50 → DP-31). El mismo día, más tarde, **3 resueltas**
-> más del bloque A: **U-03** —junto con U-46 (e)— → DP-33, **U-05** → DP-34 y **U-06** → DP-35.
-> U-47 no existe. El **18/10/2026** el usuario aceptó las recomendaciones de **U-11** y **U-28**
-> → DP-37 (api #122) y de **U-04, U-07 y U-08** → DP-36 (api #123). El **18/10/2026**, más tarde,
-> el usuario resolvió las 4 postergadas —**U-41 → DP-38, U-50 → DP-39, U-43 y U-45 → DP-40**— y
-> **U-37 → DP-41**. Quedan **29 abiertas**, ninguna postergada.
+> **Actualizado el 19/10/2026.** El usuario aceptó en bloque las recomendaciones de **27**
+> decisiones: **13 se dejan como están** (DP-42: U-10, U-13, U-14, U-16, U-17, U-18, U-20, U-23,
+> U-26, U-31, U-32, U-34, U-36), **9 se implementan** (DP-43, PR en curso: U-09, U-12, U-15, U-21,
+> U-22, U-24, U-25, U-35, U-38) y **5 se postergan** después del release candidate (DP-44: U-19,
+> U-27, U-29, U-30, U-33). Quedan **abiertas solo U-01 y U-02**, que son acciones del usuario (QA
+> manual; aprobación y deploy).
+>
+> Historia: el 17/10 se resolvieron U-39, U-40, U-42, U-44, U-46, U-48, U-49 (DP-24 a DP-30), U-03
+> (DP-33), U-05 (DP-34) y U-06 (DP-35); el 18/10, U-11 y U-28 (DP-37), U-04, U-07 y U-08 (DP-36),
+> U-41 (DP-38), U-50 (DP-39), U-43 y U-45 (DP-40) y U-37 (DP-41). U-47 no existe.
 
-| Bloque | Abiertas | Resueltas el 17/10 y el 18/10 |
+| Bloque | Abiertas | Resueltas |
 |---|---|---|
-| A. Bloquean el gate del MVP (U-01 a U-06) | 2 (2 acciones) | U-03, U-05, U-06; U-04 (18/10) |
-| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 6 | U-39, U-42, U-46, U-48, U-49; U-07, U-08, U-11 (18/10) |
-| C. Alcance del MVP, aditivas (U-15 a U-34) | 19 | U-28 (18/10) |
-| D. No bloquean nada (U-35 a U-37) + ex postergadas U-41, U-43, U-45, U-50 | 2 | U-40, U-44; U-37, U-41, U-43, U-45, U-50 (18/10) |
-| **Total** | **29** (de 49) | **20** |
+| A. Bloquean el gate del MVP (U-01 a U-06) | 2 (2 acciones) | U-03 a U-06 |
+| B. Se encarecen al postergarlas (U-07 a U-14, U-38) | 0 | todas (U-09, U-10, U-12, U-13, U-14, U-38 el 19/10) |
+| C. Alcance del MVP, aditivas (U-15 a U-34) | 0 | todas salvo 5 postergadas (U-19, U-27, U-29, U-30, U-33) |
+| D. No bloquean nada (U-35 a U-37) + ex postergadas | 0 | todas |
+| **Total** | **2** (de 49) | **42** (37 resueltas + 5 postergadas con DP-44) |
+
+### Resueltas el 19/10/2026
+
+| U | Resolución | DP |
+|---|---|---|
+| U-10, U-13, U-14, U-16, U-17, U-18, U-20, U-23, U-26, U-31, U-32, U-34, U-36 | se deja como está (sin código). | DP-42 |
+| U-09 | caso obligatorio solo en ofertas con `requiere_caso_clinico = true`. | DP-43 |
+| U-21 | `RETIRADO` desde `LLEGO`/`EN_ESPERA` con motivo; Particular desde `EN_ESPERA`. | DP-43 |
+| U-22 | el feriado omite la ocurrencia y se lista en la previsualización. | DP-43 |
+| U-24 | sesión sin turno con `sesion:register` y motivo; reemplazo solo `CONSULTORIO_ADMIN`, auditado. | DP-43 |
+| U-25 | `sesion:amend` propio y ventana de 30 días configurable por organización. | DP-43 |
+| U-12 | el centro adopta una copia del financiador global. | DP-43 |
+| U-38 | zona horaria por organización (por defecto la de su primera sede). | DP-43 |
+| U-15 | editar la propia organización: la regla más restrictiva, solo `ORG_ADMIN`. | DP-43 |
+| U-35 | gate de `BRANCH` en JaCoCo al 0,75. | DP-43 |
+
+### Postergadas después del RC (19/10/2026, DP-44)
+
+U-27 (parámetros por práctica: etapa propia), U-29 (ventana de cancelación de 24 h por sede; depende de `OWN`), U-30 (vista pública de slots fuera del MVP), U-33 (alcanza la referencia; storage después) y U-19 (clonar convenio fuera del MVP).
 
 ### Resueltas el 18/10/2026
 
@@ -67,10 +88,6 @@
 | U-06 | SAST **CodeQL** y DAST **ZAP baseline**, no bloqueantes (api #119, web #77); Sonar sigue salteándose sin secretos. | DP-35 |
 | U-48 | el lock solo en abonos; los packs resuelven la clave por el unique. | DP-29 |
 | U-49 | (a) hecha en #152; (c) preparada y **apagada por defecto** (`lotes-concurrentes-por-sede`), se enciende solo si el entorno lo exige; (b) no. | DP-30 |
-
-### Postergadas después del RC
-
-Ninguna: el 18/10/2026 las cuatro (U-41, U-43, U-45, U-50) pasaron a resueltas (DP-38 a DP-40). DP-31 las había postergado el 17/10/2026.
 
 > **Revisado el 16/10/2026** (etapa 09.04): U-39 (#129), U-40 (#135), U-41 (#139) y U-42 (#141)
 > estaban; de las cuatro "Decisiones a confirmar" de #140 (08.08), la primera —renovar un abono
@@ -205,7 +222,9 @@ fila nueva.
 - **Fase / RF:** F2 (02.05). Ficha F2 n.º 2.
 - **Destraba:** sacar la autorización interina de `resource/domain/PermissionCodes.java`.
 
-### U-09 · C-9 / RF-M10-007 — caso obligatorio al reservar o atender
+### ~~U-09 · C-9 / RF-M10-007 — caso obligatorio al reservar o atender~~ — RESUELTA el 19/10/2026 (DP-43)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-43.
 
 - **Pregunta:** ¿se exige ya, con ventana de migración de las sesiones sin caso?
 - **Recomendado:** exigirlo sólo para ofertas con `requiere_caso_clinico = true` y dejar el resto
@@ -215,7 +234,9 @@ fila nueva.
 - **Destraba:** el último 10 % de 04.03, 06.01 y el "caso en la reserva" de 05.02. Cada sesión
   cerrada sin caso agranda la migración.
 
-### U-10 · Plan de tratamiento por práctica o por oferta (RF-M11-002)
+### ~~U-10 · Plan de tratamiento por práctica o por oferta (RF-M11-002)~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** ¿los ítems del plan siguen por oferta o pasan a `plan_item.practica_id`?
 - **Recomendado:** quedarse en oferta y derivar la práctica por la principal de la oferta
@@ -242,7 +263,9 @@ fila nueva.
   conciliar) y `ACEPTADO_PARCIAL` (libera lo debitado). Diseño y design challenge en
   `docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md` §3.
 
-### U-12 · DU-13 — catálogo global de financiadores
+### ~~U-12 · DU-13 — catálogo global de financiadores~~ — RESUELTA el 19/10/2026 (DP-43)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-43.
 
 - **Pregunta:** ¿el centro *referencia* la fila global (`owner_key` en `financiador` /
   `plan_cobertura`) o la *adopta* como copia?
@@ -252,7 +275,9 @@ fila nueva.
 - **Destraba:** la parte de A-7 que quedó diseñada y sin implementar. Referenciar se encarece con
   cada financiador cargado por centro.
 
-### U-13 · Uso de `nomenclador_item`
+### ~~U-13 · Uso de `nomenclador_item`~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** ¿el arancel se ata a un ítem de nomenclador vigente, o el nomenclador queda como
   catálogo informativo? Hoy `convenio_arancel` (`V43`) referencia la práctica y la regla "los
@@ -263,7 +288,9 @@ fila nueva.
 - **Fase / RF:** F2 (02.05) y F3 (03.05).
 - **Destraba:** el 10 % de 02.05.
 
-### U-14 · DU-11 — ¿un observador que falla debe hacer fallar el cierre?
+### ~~U-14 · DU-11 — ¿un observador que falla debe hacer fallar el cierre?~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** el criterio de 06.05 pide "HC consistente aunque la economía falle y reintente";
   hoy un observador que falla hace fallar el cierre clínico.
@@ -272,7 +299,9 @@ fila nueva.
 - **Fase / RF:** F6 (06.05).
 - **Destraba:** el 10 % de 06.05. Desacoplar después obliga a reconciliar cierres sin deuda.
 
-### U-38 · Qué es "hoy" para una operación de la organización sin sede
+### ~~U-38 · Qué es "hoy" para una operación de la organización sin sede~~ — RESUELTA el 19/10/2026 (DP-43)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-43.
 
 - **Pregunta:** la JVM corre en UTC y entre las 21 y las 24 de Córdoba una vigencia que vence ese
   día se lee vencida. Las operaciones **con sede** ya usan la zona de la sede (rama
@@ -381,7 +410,9 @@ criterios que la matriz y la especificación no fijan.
 Ninguna necesita migración de datos existentes según su ficha, o la ficha recomienda dejarlas
 fuera del MVP. Ordenadas por fase.
 
-### U-15 · Contradicción de la matriz sobre editar la propia organización
+### ~~U-15 · Contradicción de la matriz sobre editar la propia organización~~ — RESUELTA el 19/10/2026 (DP-43)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-43.
 
 - **Pregunta:** la matriz se contradice (§4 contra §5 y §6) sobre quién edita la propia
   organización. ¿Cuál manda?
@@ -389,7 +420,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F0–F1 (01.03). Ficha F0–F1 n.º 3.
 - **Destraba:** el registro de 01.03 sin contradicción abierta.
 
-### U-16 · Cambio de email de una cuenta
+### ~~U-16 · Cambio de email de una cuenta~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** ¿entra al alcance? Ningún RF de M02 (RF-M02-001…005) lo pide.
 - **Recomendado:** la ficha lo declara fuera de alcance del MVP; si se quiere, RF nuevo en M02 y
@@ -397,7 +430,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F0–F1 (01.02). Ficha F0–F1 n.º 3.
 - **Destraba:** nada del MVP.
 
-### U-17 · Disciplina del profesional al habilitarlo
+### ~~U-17 · Disciplina del profesional al habilitarlo~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** ¿se valida que la disciplina del profesional corresponda a la oferta?
 - **Recomendado:** no validar en el MVP —RF-M05-007 paso 5 las llama informativas y RN-M05-005
@@ -405,7 +440,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F2 (02.07).
 - **Destraba:** el 5 % de 02.07.
 
-### U-18 · Obligatoriedad de requisitos por financiador o por prestación
+### ~~U-18 · Obligatoriedad de requisitos por financiador o por prestación~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** ¿los requisitos (orden, autorización, documentación) se configuran también por
   financiador o por práctica, además del convenio?
@@ -414,7 +451,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F3 (03.06).
 - **Destraba:** el 3 % de 03.06.
 
-### U-19 · Clonación controlada de convenio
+### ~~U-19 · Clonación controlada de convenio~~ — POSTERGADA el 19/10/2026 (DP-44)
+
+> **Postergada el 19/10/2026** por el usuario hasta después del RC (acepta la recomendación). Ver DP-44.
 
 - **Pregunta:** ¿se quiere? Sólo aparece en la sección Frontend de 03.05 del plan; ningún RF de M16
   la pide.
@@ -424,7 +463,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F3 (03.05).
 - **Destraba:** el 8 % de 03.05.
 
-### U-20 · Si los datos administrativos de la HC se auditan
+### ~~U-20 · Si los datos administrativos de la HC se auditan~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** la lectura limitada del `ADMINISTRATIVO` (PR #109) no se audita porque no expone
   contenido clínico. ¿Debe auditarse?
@@ -432,7 +473,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F4 (04.01).
 - **Destraba:** nada; confirma el diseño de #109.
 
-### U-21 · Salida "se retiró sin ser atendido" y Particular desde `EN_ESPERA`
+### ~~U-21 · Salida "se retiró sin ser atendido" y Particular desde `EN_ESPERA`~~ — RESUELTA el 19/10/2026 (DP-43)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-43.
 
 - **Pregunta:** ¿se agrega la salida y se admite "atender como Particular" desde `EN_ESPERA`?
 - **Recomendado:** una transición `RETIRADO` desde `LLEGO`/`EN_ESPERA` con motivo obligatorio, sin
@@ -441,21 +484,27 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F5 (05.04). CLAUDE §7 n.º 18.
 - **Destraba:** el 8 % de 05.04.
 
-### U-22 · Alta de serie todo o nada
+### ~~U-22 · Alta de serie todo o nada~~ — RESUELTA el 19/10/2026 (DP-43)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-43.
 
 - **Pregunta:** un feriado hace fallar el alta entera de una serie. ¿Se mantiene?
 - **Recomendado:** omitir la ocurrencia y listarla en la previsualización, que ya existe (F5 n.º 6).
 - **Fase / RF:** F5 (05.03, E-3). CLAUDE §7 n.º 19.
 - **Destraba:** series que atraviesan feriados.
 
-### U-23 · Qué eventos de turno notifican
+### ~~U-23 · Qué eventos de turno notifican~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** hoy avisan reservar, cancelar y reprogramar; confirmar y ausente no. ¿Alcanza?
 - **Recomendado:** dejarlo así (F5 n.º 4).
 - **Fase / RF:** F5 (05.02–05.03, RF-M26-002/003). CLAUDE §7 n.º 7.
 - **Destraba:** nada; confirma E-5.
 
-### U-24 · C-8 / DU-11 — atención sin turno y reemplazo autorizado del profesional
+### ~~U-24 · C-8 / DU-11 — atención sin turno y reemplazo autorizado del profesional~~ — RESUELTA el 19/10/2026 (DP-43)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-43.
 
 - **Pregunta:** ¿se puede iniciar una sesión sin turno y quién reemplaza al profesional?
 - **Recomendado:** `POST /sesiones` sin turno con `sesion:register` y motivo obligatorio;
@@ -463,7 +512,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F6 (06.01). Paquete C-8.
 - **Destraba:** el 20 % de 06.01 (junto con U-09).
 
-### U-25 · Permiso reforzado y ventana temporal para enmendar
+### ~~U-25 · Permiso reforzado y ventana temporal para enmendar~~ — RESUELTA el 19/10/2026 (DP-43)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-43.
 
 - **Pregunta:** hoy la enmienda usa `sesion:register` más propiedad. ¿Permiso propio y ventana?
 - **Recomendado:** `sesion:amend` propio y ventana de 30 días configurable por organización (F6
@@ -471,7 +522,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F6 (06.06). Paquete C-6 (la parte abierta).
 - **Destraba:** el 15 % de 06.06.
 
-### U-26 · Subbloques ROM, fuerza y marcha
+### ~~U-26 · Subbloques ROM, fuerza y marcha~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** ¿el examen pasa a estructura propia por dominio o sigue como medición genérica?
 - **Recomendado:** quedarse en la medición genérica con catálogo de tipos y declarar el desvío
@@ -479,7 +532,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F6 (06.03, `plan_sesiones.txt`). Paquete C-8.
 - **Destraba:** el 20 % de 06.03 (declarado como desvío).
 
-### U-27 · Parámetros obligatorios por práctica
+### ~~U-27 · Parámetros obligatorios por práctica~~ — POSTERGADA el 19/10/2026 (DP-44)
+
+> **Postergada el 19/10/2026** por el usuario hasta después del RC (acepta la recomendación). Ver DP-44.
 
 - **Pregunta:** ¿qué parámetros exige cada práctica? No hay configuración que los declare;
   `plan_sesiones.txt` §10.4 los pide condicionales por tipo.
@@ -502,7 +557,9 @@ fuera del MVP. Ordenadas por fase.
   confirmar), `CREDENCIAL_FALTANTE` en la lista nueva `avisos` (no bloquea). Se evalúan al validar y
   confirmar, no al incluir. Diseño en `docs/diseno/AKINE-07.04b-reparos-y-debito-parcial.md` §2.
 
-### U-29 · Ventana de cancelación del paciente *(depende de `OWN`, post-MVP por DP-22)*
+### ~~U-29 · Ventana de cancelación del paciente~~ — POSTERGADA el 19/10/2026 (DP-44)
+
+> **Postergada el 19/10/2026** por el usuario hasta después del RC (acepta la recomendación). Ver DP-44.
 
 - **Pregunta:** ¿cuántas horas antes cancela el paciente, por oferta o por sede, y alcanza al staff?
 - **Recomendado:** por sede, sólo para el paciente, 24 h por defecto; el staff cancela siempre con
@@ -510,7 +567,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F5 (05.03). Ningún RF de M12 la fija.
 - **Destraba:** el 10 % de 05.03, cuando exista autoservicio.
 
-### U-30 · Vista pública de slots *(depende de `OWN`)*
+### ~~U-30 · Vista pública de slots~~ — POSTERGADA el 19/10/2026 (DP-44)
+
+> **Postergada el 19/10/2026** por el usuario hasta después del RC (acepta la recomendación). Ver DP-44.
 
 - **Pregunta:** ¿hay reserva online sin login?
 - **Recomendado:** no en el MVP; el payload ya no lleva PII, así que abrirla después es un
@@ -518,7 +577,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F5 (05.01).
 - **Destraba:** el 5 % de 05.01.
 
-### U-31 · DU-10 — `egreso:manage` propio
+### ~~U-31 · DU-10 — `egreso:manage` propio~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** ¿permiso propio o seguir reusando `caja:operate`?
 - **Recomendado:** seguir con `caja:operate` en el MVP y abrir `egreso:manage` cuando aparezca un
@@ -526,14 +587,18 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F7 (07.05). Antes, decisión pendiente 10 del `CLAUDE.md` del workspace.
 - **Destraba:** el cierre formal de 07.05 sin decisión abierta.
 
-### U-32 · Permiso propio de presentaciones
+### ~~U-32 · Permiso propio de presentaciones~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** ¿permiso propio o seguir con `cobro:register`?
 - **Recomendado:** mantenerlo en el MVP, igual que U-31 (F7 n.º 2).
 - **Fase / RF:** F7 (07.04).
 - **Destraba:** ídem.
 
-### U-33 · Adjunto binario del comprobante de egreso (RF-M22-003)
+### ~~U-33 · Adjunto binario del comprobante de egreso (RF-M22-003)~~ — POSTERGADA el 19/10/2026 (DP-44)
+
+> **Postergada el 19/10/2026** por el usuario hasta después del RC (acepta la recomendación). Ver DP-44.
 
 - **Pregunta:** ¿alcanza la referencia documental (tipo, número, fecha) o se extrae el storage a
   `platform.spi` (refactor de `person` y `clinical`)?
@@ -542,7 +607,9 @@ fuera del MVP. Ordenadas por fase.
 - **Fase / RF:** F7 (07.05). Antes, decisión pendiente 7 del `CLAUDE.md` del workspace.
 - **Destraba:** el 10 % de 07.05.
 
-### U-34 · Arancel 0, crédito y bono, liquidación a profesionales
+### ~~U-34 · Arancel 0, crédito y bono, liquidación a profesionales~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 Tres preguntas de alcance económico de la misma ficha, agrupadas porque las tres recomiendan
 dejar el MVP como está:
@@ -562,7 +629,9 @@ dejar el MVP como está:
 
 ## D. No bloquean nada
 
-### U-35 · Gate de `BRANCH` en JaCoCo
+### ~~U-35 · Gate de `BRANCH` en JaCoCo~~ — RESUELTA el 19/10/2026 (DP-43)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-43.
 
 - **Pregunta:** ¿se agrega? La rama está en 77,91 % (BUNDLE, 11/10); ponerlo por encima rompe el
   build.
@@ -570,7 +639,9 @@ dejar el MVP como está:
 - **Fase / RF:** F8 (07.09). CLAUDE §7 n.º 2.
 - **Destraba:** nada del gate (la cobertura de línea e instrucción ya está gateada en 0,80).
 
-### U-36 · Confirmar el desvío del export síncrono de 07.06
+### ~~U-36 · Confirmar el desvío del export síncrono de 07.06~~ — RESUELTA el 19/10/2026 (DP-42)
+
+> **Resuelta el 19/10/2026** por el usuario (acepta la recomendación). Ver DP-42.
 
 - **Pregunta:** ¿se confirma el export síncrono y acotado (366 días, 500 filas por sección) en vez
   del asíncrono?
