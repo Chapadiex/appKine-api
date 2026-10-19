@@ -96,8 +96,30 @@ public class Sesion {
 	@Column(name = "oferta_id", nullable = false, updatable = false)
 	private Long ofertaId;
 
-	@Column(name = "profesional_membership_id", nullable = false, updatable = false)
+	/**
+	 * Quien atiende. Decide quien puede escribir (ver {@link #exigirPropiedadDe}).
+	 *
+	 * <p>Escribible desde DP-43, y <b>solo</b> por {@link #reemplazarProfesional}: el reemplazo
+	 * autorizado (U-24) cambia el dueño de una atencion abierta, con motivo y fila propia en
+	 * {@code sesion_reemplazo_profesional}. Ningun otro camino lo toca.
+	 */
+	@Column(name = "profesional_membership_id", nullable = false)
 	private Long profesionalMembershipId;
+
+	/**
+	 * DP-43 (U-24): por que se atendio sin turno ni derivacion. {@code null} en las demas. Lo ata
+	 * {@code ck_sesion_motivo_solo_sin_turno} de V122.
+	 */
+	@Column(name = "motivo_sin_turno", length = 500, updatable = false)
+	private String motivoSinTurno;
+
+	/** DP-43: clave de idempotencia del inicio sin turno, o {@code null}. Ver V122. */
+	@Column(name = "idempotency_key", length = 80, updatable = false)
+	private String idempotencyKey;
+
+	/** DP-43: huella del pedido de inicio sin turno, para distinguir reintento de pedido distinto. */
+	@Column(name = "request_hash", length = 64, updatable = false)
+	private String requestHash;
 
 	@Enumerated(EnumType.STRING)
 	@Column(name = "estado", nullable = false, length = 16)
@@ -314,6 +336,70 @@ public class Sesion {
 		return sesion;
 	}
 
+	/**
+	 * Una atencion sin turno ni derivacion (U-24, DP-43, RF-M14-002).
+	 *
+	 * <p>El motivo es obligatorio: sin turno no hay reserva que explique por que el paciente estaba
+	 * ahi. La clave y la huella son opcionales y van juntas (V122).
+	 */
+	@SuppressWarnings("java:S107")
+	public static Sesion sinTurno(
+			long organizationId,
+			long consultorioId,
+			long historiaClinicaId,
+			Long casoId,
+			long ofertaId,
+			long profesionalMembershipId,
+			Instant iniciadaEn,
+			long iniciadaPorCuentaId,
+			String motivoSinTurno,
+			String idempotencyKey,
+			String requestHash) {
+
+		if (motivoSinTurno == null || motivoSinTurno.isBlank()) {
+			throw new IllegalArgumentException("Una atencion sin turno exige motivo");
+		}
+		if ((idempotencyKey == null) != (requestHash == null)) {
+			throw new IllegalArgumentException("La clave de idempotencia y la huella van juntas");
+		}
+		Sesion sesion = new Sesion(organizationId, consultorioId, historiaClinicaId, casoId, null,
+				ofertaId, profesionalMembershipId, iniciadaEn, iniciadaPorCuentaId);
+		sesion.motivoSinTurno = motivoSinTurno;
+		sesion.idempotencyKey = idempotencyKey;
+		sesion.requestHash = requestHash;
+		return sesion;
+	}
+
+	/**
+	 * Cambia quien atiende una sesion abierta (U-24, DP-43).
+	 *
+	 * <p><b>No es un permiso para escribir en la atencion ajena</b>: es la operacion explicita que
+	 * cambia al dueño. Quien la autoriza, el motivo y el registro los pone el servicio; la entidad
+	 * hace cumplir lo que es suyo: una sesion cerrada ya se atendio, y cambiarle el profesional
+	 * seria reescribir quien la presto.
+	 *
+	 * @return la membership del profesional anterior
+	 */
+	public long reemplazarProfesional(long nuevoProfesionalMembershipId) {
+		exigirAbierta();
+		long anterior = profesionalMembershipId;
+		this.profesionalMembershipId = nuevoProfesionalMembershipId;
+		return anterior;
+	}
+
+	/** {@code true} si la atencion no salio de un turno ni de una derivacion (DP-43). */
+	public boolean esSinTurno() {
+		return turnoId == null && derivacionId == null;
+	}
+
+	public String getMotivoSinTurno() {
+		return motivoSinTurno;
+	}
+
+	public String getRequestHash() {
+		return requestHash;
+	}
+
 	/** {@code true} si la atencion salio de una derivacion de clase (AKINE-08.05). */
 	public boolean esDeOrigenGrupal() {
 		return derivacionId != null;
@@ -340,8 +426,9 @@ public class Sesion {
 	 * no de autorizacion, y por eso vive en la entidad y no en el evaluador de permisos.
 	 *
 	 * <p>El reemplazo autorizado que menciona la etapa —otro profesional que continua una atencion—
-	 * necesita un registro propio de quien reemplaza a quien y por que. No existe todavia; hasta que
-	 * exista, esto es fail-closed.
+	 * existe desde DP-43 y <b>no</b> afloja este control: {@link #reemplazarProfesional} cambia al
+	 * dueño, con su registro en {@code sesion_reemplazo_profesional}, y desde ahi el control vuelve a
+	 * ser el mismo contra el dueño nuevo.
 	 */
 	public void exigirPropiedadDe(long membershipId) {
 		if (!profesionalMembershipId.equals(membershipId)) {

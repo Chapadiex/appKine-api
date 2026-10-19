@@ -25,6 +25,11 @@ import com.akine.encounter.domain.exception.SesionNoCerradaException;
 import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TurnoNoAtendibleException;
 import com.akine.encounter.spi.OfertaSinPrecioException;
+import com.akine.encounter.application.IdempotencyKeyConflictException;
+import com.akine.encounter.domain.exception.CasoClinicoRequeridoException;
+import com.akine.encounter.domain.exception.EnmiendaFueraDeVentanaException;
+import com.akine.encounter.domain.exception.MotivoObligatorioException;
+import com.akine.encounter.domain.exception.OfertaNoAtendibleException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,6 +80,10 @@ public class EncounterProblemHandler {
 	private static final URI PROFESIONAL_NO_ASIGNABLE = ProblemType.PROFESIONAL_NO_ASIGNABLE.uri();
 	private static final URI PARAMETRO_INVALIDO = ProblemType.PARAMETRO_INVALIDO.uri();
 	private static final URI OFERTA_SIN_PRECIO = ProblemType.OFERTA_SIN_PRECIO.uri();
+	private static final URI OFERTA_NO_VIGENTE = ProblemType.OFERTA_NO_VIGENTE.uri();
+	private static final URI PROFESIONAL_NO_HABILITADO_EN_OFERTA =
+			ProblemType.PROFESIONAL_NO_HABILITADO_EN_OFERTA.uri();
+	private static final URI IDEMPOTENCY_KEY_CONFLICT = ProblemType.IDEMPOTENCY_KEY_CONFLICT.uri();
 
 	/**
 	 * El caso no habilita esta atencion (04.03). <b>404 o 409 segun el motivo.</b>
@@ -509,6 +518,79 @@ public class EncounterProblemHandler {
 		problem.setType(PARAMETRO_INVALIDO);
 		problem.setTitle("Parametro de tratamiento invalido");
 		problem.setProperty("clave", exception.getClave());
+		return problem;
+	}
+
+	// =================================================================================
+	// DP-43 — caso obligatorio por oferta, atencion sin turno, reemplazo y ventana de enmienda
+	// =================================================================================
+
+	/** <b>409 {@code caso-clinico-requerido}</b> (U-09, RF-M10-007). Lleva {@code ofertaId}. */
+	@ExceptionHandler(CasoClinicoRequeridoException.class)
+	public ProblemDetail handleCasoClinicoRequerido(CasoClinicoRequeridoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(exception.tipoDeProblema().uri());
+		problem.setTitle("La oferta exige Caso Clinico");
+		problem.setProperty("ofertaId", exception.getOfertaId());
+		return problem;
+	}
+
+	/**
+	 * <b>409 {@code enmienda-fuera-de-ventana}</b> (U-25). Con las fechas, para que la pantalla diga
+	 * desde cuando no se puede y no un "no se puede" sin fecha.
+	 */
+	@ExceptionHandler(EnmiendaFueraDeVentanaException.class)
+	public ProblemDetail handleEnmiendaFueraDeVentana(EnmiendaFueraDeVentanaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(exception.tipoDeProblema().uri());
+		problem.setTitle("La sesion ya no se puede enmendar");
+		problem.setProperty("cerradaEn", exception.getCerradaEn().toString());
+		problem.setProperty("ventanaDias", exception.getVentanaDias());
+		problem.setProperty("enmendableHasta", exception.getEnmendableHasta().toString());
+		return problem;
+	}
+
+	/**
+	 * La oferta de una atencion sin turno no la habilita (U-24). <b>404 o 409 segun el motivo</b>:
+	 * inexistente o de otra sede es 404 indistinguible; no vigente, 409 {@code oferta-no-vigente};
+	 * profesional sin habilitacion, 409 {@code profesional-no-habilitado-en-oferta}.
+	 */
+	@ExceptionHandler(OfertaNoAtendibleException.class)
+	public ProblemDetail handleOfertaNoAtendible(OfertaNoAtendibleException exception) {
+		if (exception.getMotivo() == OfertaNoAtendibleException.Motivo.NO_EXISTE) {
+			return noEncontrado(exception.getMessage());
+		}
+		boolean vigencia = exception.getMotivo() == OfertaNoAtendibleException.Motivo.NO_VIGENTE;
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(vigencia ? OFERTA_NO_VIGENTE : PROFESIONAL_NO_HABILITADO_EN_OFERTA);
+		problem.setTitle(vigencia
+				? "La oferta no esta vigente"
+				: "El profesional no esta habilitado para la oferta");
+		problem.setProperty("ofertaId", exception.getOfertaId());
+		return problem;
+	}
+
+	/** <b>400 {@code validation-error}</b> con el campo en {@code errors}: falta el motivo. */
+	@ExceptionHandler(MotivoObligatorioException.class)
+	public ProblemDetail handleMotivoObligatorio(MotivoObligatorioException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, "La solicitud contiene campos invalidos");
+		problem.setType(VALIDATION_ERROR);
+		problem.setTitle("Error de validacion");
+		problem.setProperty("errors", Map.of(exception.getCampo(), exception.getMessage()));
+		return problem;
+	}
+
+	/** <b>409 {@code idempotency-key-conflict}</b>: la misma clave llego con otro pedido. */
+	@ExceptionHandler(IdempotencyKeyConflictException.class)
+	public ProblemDetail handleIdempotencyKeyConflict(IdempotencyKeyConflictException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(IDEMPOTENCY_KEY_CONFLICT);
+		problem.setTitle("La clave de idempotencia ya se uso con otro pedido");
 		return problem;
 	}
 

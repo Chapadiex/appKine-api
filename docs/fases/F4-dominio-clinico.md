@@ -61,7 +61,7 @@ los registros**. Es deuda documentada que quedó huérfana.
   (RF-M17-007). Además DP-12: una unidad por autorización involucrada.*
 - [x] 04.04: el plan puede activarse sin ítems.
 - [x] 04.03: unique de caso activo (RN-M10-002); `EstadoCaso` solo tiene `ACTIVO`/`CERRADO`. *No aplica: RN-M10-002 admite varios casos activos; ver V47 y docs/diseno/AKINE-04.03-challenge.md. Tampoco se agrega otro estado: M10 solo pide `ACTIVO` y `CERRADO` (RF-M10-002 "activos primero y luego cerrados", RF-M10-005 "estado CERRADO"; no define ningún otro).*
-- [ ] Gate RF-M10-007 (exigir caso al reservar o atender): etapa propia con ventana de migración.
+- [x] ~~Gate RF-M10-007 (exigir caso al reservar o atender)~~ **DP-43 (U-09):** se exige al atender (iniciar, quitar el caso y cerrar presente) en las ofertas con `requiere_caso_clinico`; al reservar no, porque el turno no lleva caso (DP-05). Sin migración de datos.
   Se coordina con [F6](F6-atencion-clinica.md). **Pendiente del usuario (C-9).**
 - [x] ~~04.03: `CasoClinicoService#cambiarEquipo` confía en `OPTIMISTIC_FORCE_INCREMENT`~~ **Medido y
   corregido el 12/10/2026.** El IT nuevo mostró que la versión de la fila **sí** avanzaba, pero la

@@ -130,6 +130,16 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 	@Query("""
 			SELECT s FROM Sesion s
 			 WHERE s.organizationId = :organizationId
+			   AND s.idempotencyKey = :idempotencyKey
+			""")
+	Optional<Sesion> findPorIdempotencyKey(
+			@Param("organizationId") long organizationId,
+			@Param("idempotencyKey") String idempotencyKey);
+
+	@Override
+	@Query("""
+			SELECT s FROM Sesion s
+			 WHERE s.organizationId = :organizationId
 			   AND s.turnoId = :turnoId
 			   AND s.deletedAt IS NULL
 			""")

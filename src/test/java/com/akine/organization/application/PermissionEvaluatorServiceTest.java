@@ -666,6 +666,8 @@ class PermissionEvaluatorServiceTest {
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 					.containsExactlyInAnyOrder(
 							"colaborador:read", "espacio:read", "turno:read", "turno:manage", "sesion:register",
+							// U-25 (DP-43): enmendar es un permiso propio, con el reparto de Registrar Sesion.
+							"sesion:amend",
 							"hc:read", "hc:write",
 							// AKINE-DU-6 (DP-22): por base, no por grant.
 							"paciente:read",
