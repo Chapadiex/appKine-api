@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.137.0
+  version: 0.139.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -11858,6 +11858,88 @@ paths:
       summary: Mover turnos de una serie con alcance
       tags:
       - Series de turnos
+  /api/v1/consultorios/{consultorioId}/sesiones:
+    post:
+      description: |-
+        Abre la atencion de un paciente **sin reserva** (RF-M14-002, DP-43). Exige `sesion:register` en la sede, como la atencion de turno, y quien atiende es quien inicia.
+
+        **El motivo es obligatorio**: sin turno nada explica por que el paciente estaba ahi. No va a la auditoria (es texto libre sobre un paciente); vuelve en `motivoSinTurno`.
+
+        **La oferta la elige el cliente**, asi que se valida: de esta sede (404 si no), vigente hoy en la zona de la sede (409 `oferta-no-vigente`) y con quien atiende habilitado (409 `profesional-no-habilitado-en-oferta`; una oferta sin habilitaciones declaradas admite a todos). La persona tiene que ser paciente vigente; la historia clinica se crea si no existia.
+
+        **El caso** es obligatorio solo si la oferta tiene `requiereCasoClinico` (409 `caso-clinico-requerido`). Cuando viene, mismas reglas que en la atencion de turno: activo y de la misma historia (404 si es de otro paciente, 409 si esta cerrado).
+
+        **Manda `idempotencyKey`.** Sin turno no hay reserva que ancle el doble click: con la misma clave y el mismo pedido se devuelve la atencion ya creada, con otro pedido 409 `idempotency-key-conflict`. Sin clave cada llamada abre una atencion nueva.
+
+        No ocupa ni libera agenda: Turno es reserva y Sesion es atencion (DP-05).
+      operationId: iniciarSesionSinTurno
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IniciarSesionSinTurno"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+          description: "Atencion iniciada, o la ya creada con la misma clave"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el motivo, la persona o la oferta"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `sesion:register` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la oferta, la persona o el caso no existen, son de\
+            \ otro tenant, o el caso es de otra historia clinica"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta exige caso (`caso-clinico-requerido`), no esta vigente\
+            \ (`oferta-no-vigente`) o quien atiende no esta habilitado (`profesional-no-habilitado-en-oferta`);\
+            \ la persona no es paciente; el caso esta cerrado; o la clave ya se uso\
+            \ con otro pedido (`idempotency-key-conflict`)"
+      summary: Iniciar una atencion sin turno
+      tags:
+      - Sesiones
   /api/v1/consultorios/{consultorioId}/sesiones/turnos/{turnoId}:
     post:
       description: |-
@@ -11869,7 +11951,7 @@ paths:
 
                        Quien atiende es el profesional del turno. Si el turno tiene uno asignado y no es quien inicia, es 409: dejar que otro abra la sesion de un turno ajeno rompe la propiedad antes de que la sesion exista.
 
-        EL CASO CLINICO ES OPCIONAL (04.03). Sin casoId la atencion se registra igual: RF-M14-002 admite atencion sin caso y ninguna sesion anterior a 04.03 lo tiene. Exigirlo es RF-M10-007, que necesita su propia ventana de migracion. Cuando viene, tiene que ser un caso ACTIVO de la MISMA historia clinica: uno de otro paciente responde 404 —indistinguible de "no existe", para no poder censar casos ajenos probando ids— y uno cerrado responde 409, porque lleva a otra accion, que es reabrirlo.
+        EL CASO CLINICO ES OPCIONAL SALVO QUE LA OFERTA LO EXIJA (RF-M10-007, DP-43). Si la oferta del turno tiene `requiereCasoClinico`, iniciar sin casoId responde 409 `caso-clinico-requerido` y no abre historia ni sesion; en las demas ofertas la atencion se registra igual sin caso. Las sesiones ya existentes sin caso no se tocan. Cuando viene, tiene que ser un caso ACTIVO de la MISMA historia clinica: uno de otro paciente responde 404 —indistinguible de "no existe", para no poder censar casos ajenos probando ids— y uno cerrado responde 409, porque lleva a otra accion, que es reabrirlo.
 
         LA IDEMPOTENCIA MANDA SOBRE EL CASO: si la sesion del turno ya existe se devuelve tal cual, con el caso que tenga, aunque esta llamada traiga otro. Reasignar el caso de una atencion ya empezada no es "iniciar": es `PUT .../sesiones/{sesionId}/caso`.
       operationId: iniciarSesion
@@ -11929,7 +12011,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "El turno no habilita una atencion, o la persona no es paciente"
+          description: "El turno no habilita una atencion, la persona no es paciente,\
+            \ o la oferta exige caso y no vino (`caso-clinico-requerido`)"
       summary: Iniciar la atencion de un turno
       tags:
       - Sesiones
@@ -12053,7 +12136,7 @@ paths:
 
         **Solo con la sesion abierta.** Una sesion cerrada ya tiene su numero dentro del caso, y cambiarlo seria renumerar historia clinica (409 `sesion-cerrada`).
 
-        El caso tiene que ser **activo y de la misma historia clinica**: uno de otro paciente responde 404 —indistinguible de "no existe"— y uno cerrado 409 `caso-clinico-cerrado`. Quitar el caso siempre se puede: el caso no es obligatorio (RF-M14-002).
+        El caso tiene que ser **activo y de la misma historia clinica**: uno de otro paciente responde 404 —indistinguible de "no existe"— y uno cerrado 409 `caso-clinico-cerrado`. Quitar el caso se puede salvo que la oferta lo exija (409 `caso-clinico-requerido`, RF-M10-007, DP-43).
 
         **Hay que mandar la `version` que se leyo**, y **solo el profesional de la sesion puede cambiarlo**: escribir en la atencion ajena es 409, no 403. Deja evento de auditoria. Pedir el caso que ya tiene no escribe ni avanza la version.
       operationId: cambiarCasoDeSesion
@@ -12124,9 +12207,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "La sesion esta cerrada, la atiende otro profesional, la version\
-            \ quedo vieja (`concurrent-modification`), el caso esta cerrado, o la\
-            \ sesion es de origen grupal y su caso lo fija la derivacion (`caso-de-atencion-grupal`,\
-            \ AKINE-08.05)"
+            \ quedo vieja (`concurrent-modification`), el caso esta cerrado, la sesion\
+            \ es de origen grupal y su caso lo fija la derivacion (`caso-de-atencion-grupal`,\
+            \ AKINE-08.05), o se quiso quitar el caso de una oferta que lo exige (`caso-clinico-requerido`)"
       summary: "Asociar, cambiar o quitar el caso clinico de una atencion abierta"
       tags:
       - Sesiones
@@ -12199,8 +12282,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "La sesion la atiende otro profesional, la version quedo vieja,\
-            \ o la deuda del paciente es el precio particular y la oferta no tiene\
-            \ precio ese dia (oferta-sin-precio)"
+            \ la deuda del paciente es el precio particular y la oferta no tiene precio\
+            \ ese dia (oferta-sin-precio), o la oferta exige caso, el paciente asistio\
+            \ y la sesion no tiene caso (`caso-clinico-requerido`: se asigna con PUT\
+            \ .../caso y se reintenta)"
       summary: Cerrar la atencion
       tags:
       - Sesiones
@@ -12221,9 +12306,9 @@ paths:
 
         **Es un reemplazo completo, no un parche.** Un campo ausente significa "queda vacio", no "dejalo como estaba": la pantalla manda el formulario entero. La unica excepcion son `tratamientos` y `mediciones`: **ausentes no se tocan**, para que un cliente que no los conoce no pueda vaciarlos por omision.
 
-        **Solo el profesional de la sesion puede enmendar.** No es cuestion de permiso —dos profesionales de la misma sede tienen el mismo `sesion:register`— sino de propiedad de esa atencion, y por eso el rechazo es 409 y no 403.
+        **Exige `sesion:amend`** (DP-43; hasta entonces era `sesion:register`), y **solo el profesional de la sesion puede enmendar.** Lo segundo no es cuestion de permiso —dos profesionales de la misma sede tienen el mismo `sesion:amend`— sino de propiedad de esa atencion, y por eso el rechazo es 409 y no 403.
 
-        **No hay ventana temporal**: se puede enmendar una sesion de hace dos años. El error clinico que mas necesita correccion es el que se descubre tarde, y la enmienda no puede ocultar nada — el original queda, con su fecha y su autor.
+        **Hay ventana temporal** (DP-43): se puede enmendar hasta `enmendableHasta`, el cierre mas los dias que fija la organizacion (30 si no fijo otros, `GET /api/v1/politica-de-enmienda`). Despues, 409 `enmienda-fuera-de-ventana` con `cerradaEn`, `ventanaDias` y `enmendableHasta`. El original queda siempre, con su fecha y su autor.
       operationId: enmendar
       parameters:
       - in: path
@@ -12265,6 +12350,16 @@ paths:
           description: "Falta el motivo, el dolor esta fuera de la escala, la lateralidad\
             \ no tiene zona, o se vacio la nota de cierre de una sesion con el paciente\
             \ presente"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `sesion:amend` en esa sede, o sin contexto de trabajo\
+            \ activo"
         "404":
           content:
             application/json:
@@ -12284,7 +12379,8 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "La sesion todavia esta abierta (`sesion-no-cerrada`: se guarda,\
             \ no se enmienda), la atiende otro profesional, la version quedo vieja,\
-            \ o la enmienda cambiaria las practicas realizadas (`enmienda-cambia-practicas`)"
+            \ la enmienda cambiaria las practicas realizadas (`enmienda-cambia-practicas`),\
+            \ o paso la ventana de la organizacion (`enmienda-fuera-de-ventana`)"
       summary: Enmendar una sesion cerrada
       tags:
       - Sesiones
@@ -12635,6 +12731,89 @@ paths:
       summary: Registrar o actualizar una medicion
       tags:
       - Mediciones de sesion
+  /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}/profesional:
+    put:
+      description: |-
+        Otro profesional continua la atencion (DP-43). **Solo el administrador de la sede** (`sesion:reassign`, del `CONSULTORIO_ADMIN`), con motivo obligatorio, y queda auditado (`SESION_PROFESIONAL_REEMPLAZADO`) con un registro propio de quien reemplazo a quien y por que.
+
+        **No es un permiso para escribir en la atencion ajena**: escribir en la atencion de otro sigue siendo 409 `sesion-ajena`. Esta operacion cambia al dueño; desde ahi, el anterior recibe `sesion-ajena` y el nuevo guarda normalmente.
+
+        **Solo con la sesion abierta** (cerrada: 409 `sesion-cerrada`: la atencion ya ocurrio y cambiar quien la presto seria reescribirla). El profesional nuevo tiene que tener membership vigente en la sede y `sesion:register` (409 `profesional-no-asignable`) y estar habilitado para la oferta (409 `profesional-no-habilitado-en-oferta`). **El turno no se toca.**
+
+        **Hay que mandar la `version` que se leyo.** Pedir el profesional que ya tiene no escribe ni avanza la version.
+      operationId: reemplazarProfesionalDeSesion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: sesionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReemplazarProfesionalDeSesion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Sesion"
+          description: Profesional reemplazado. Devuelve la sesion con la version
+            nueva
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta el motivo, el profesional o la version"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `sesion:reassign` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion esta cerrada, la version quedo vieja (`concurrent-modification`),\
+            \ el profesional no puede atender en la sede (`profesional-no-asignable`)\
+            \ o no esta habilitado para la oferta (`profesional-no-habilitado-en-oferta`)"
+      summary: Reemplazar al profesional de una atencion abierta
+      tags:
+      - Sesiones
   /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}/tratamientos:
     get:
       description: |-
@@ -22467,6 +22646,88 @@ paths:
       summary: Cerrar un acceso de soporte antes de su vencimiento
       tags:
       - Plataforma
+  /api/v1/politica-de-enmienda:
+    get:
+      description: "Cuantos dias desde el cierre se puede enmendar una sesion (DP-43).\
+        \ Sin politica propia rigen **30 dias** y la respuesta trae `porDefecto =\
+        \ true` y `version` nula. Exige administrar la organizacion (`consultorio:manage`\
+        \ con alcance organizacion: el `ORG_ADMIN`). La fecha limite de cada sesion\
+        \ viaja en la sesion misma (`enmendableHasta`)."
+      operationId: verPoliticaDeEnmienda
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoliticaDeEnmienda"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PoliticaDeEnmienda"
+          description: Politica vigente
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No administra la organizacion, o sin contexto de trabajo activo"
+      summary: Ver la ventana para enmendar sesiones de la organizacion
+      tags:
+      - Sesiones
+    put:
+      description: |-
+        Fija los dias desde el cierre en que una sesion se puede enmendar, de 1 a 3650 (DP-43). **Rige tambien para las sesiones ya cerradas**: la ventana no se congela en cada sesion, asi que achicarla puede dejar fuera de ventana una sesion que hoy se podia enmendar, y agrandarla la vuelve a habilitar.
+
+        Hay que mandar la `version` leida, **nula** si se leyo la politica por defecto. Si no coincide, 409 `concurrent-modification`. Deja `POLITICA_DE_ENMIENDA_FIJADA` en la auditoria.
+      operationId: fijarPoliticaDeEnmienda
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FijarPoliticaDeEnmienda"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoliticaDeEnmienda"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PoliticaDeEnmienda"
+          description: "Politica fijada, con la version nueva"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ventana fuera de 1..3650, o falta"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No administra la organizacion, o sin contexto de trabajo activo"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La version quedo vieja (`concurrent-modification`)
+      summary: Fijar la ventana para enmendar sesiones de la organizacion
+      tags:
+      - Sesiones
   /api/v1/servicios:
     get:
       description: |-
@@ -30243,6 +30504,27 @@ components:
             \ la fija el CHECK de la migracion y esta version del contrato no ramifica\
             \ comportamiento por tipo, solo lo muestra"
           example: INAMOVIBLE
+    FijarPoliticaDeEnmienda:
+      type: object
+      description: Dias desde el cierre en que una sesion se puede enmendar.
+      properties:
+        ventanaDias:
+          type: integer
+          format: int32
+          description: "Dias desde el cierre, de 1 a 3650."
+          example: 30
+          maximum: 3650
+          minimum: 1
+        version:
+          type: integer
+          format: int64
+          description: "Version leida. **Nula** si se leyo la politica por defecto\
+            \ (`porDefecto = true`), que todavia no tiene fila. Si no coincide, 409\
+            \ `concurrent-modification`."
+          example: 0
+          minimum: 0
+      required:
+      - ventanaDias
     FilaImportacionArancelRequest:
       type: object
       description: "Una fila de la importacion: el arancel de una practica, opcionalmente\
@@ -31192,6 +31474,53 @@ components:
           format: int64
           example: 412
           exclusiveMinimum: 0
+    IniciarSesionSinTurno:
+      type: object
+      description: "Atencion sin turno. El motivo es obligatorio; el caso, solo si\
+        \ la oferta lo exige."
+      properties:
+        casoId:
+          type: integer
+          format: int64
+          description: Caso activo de la historia del paciente. **Obligatorio** si
+            la oferta tiene `requiereCasoClinico` (409 `caso-clinico-requerido`);
+            opcional en las demas.
+          example: 12
+          exclusiveMinimum: 0
+        idempotencyKey:
+          type: string
+          description: "Clave del cliente para que un reintento —el doble click— no\
+            \ abra una segunda atencion. Reusarla con **otro** paciente, oferta o\
+            \ caso devuelve 409 `idempotency-key-conflict`. Omitirla desactiva la\
+            \ proteccion."
+          example: b3f1c2a4-5d6e-4f70-8a91-2c3d4e5f6a7b
+          maxLength: 80
+          minLength: 0
+        motivo:
+          type: string
+          description: "Por que se atiende sin turno. Obligatorio, hasta 500 caracteres.\
+            \ No va a la auditoria."
+          example: Paciente con dolor agudo que espero sin turno
+          maxLength: 500
+          minLength: 0
+        ofertaId:
+          type: integer
+          format: int64
+          description: Oferta de la sede que se presta. Vigente hoy y con quien atiende
+            habilitado.
+          example: 42
+          exclusiveMinimum: 0
+        personaId:
+          type: integer
+          format: int64
+          description: Persona que se atiende. Tiene que tener perfil de paciente
+            vigente.
+          example: 88
+          exclusiveMinimum: 0
+      required:
+      - motivo
+      - ofertaId
+      - personaId
     Inscribir:
       type: object
       description: "Reserva un cupo para una Persona. **La persona no se convierte\
@@ -34318,6 +34647,31 @@ components:
           description: Version para bloqueo optimista. Es la expectedVersion del cambio
             de plan
           example: 0
+    PoliticaDeEnmienda:
+      type: object
+      description: Dias desde el cierre en que una sesion se puede enmendar. Rige
+        tambien para las sesiones ya cerradas.
+      properties:
+        actualizadaEn:
+          type: string
+          format: date-time
+          description: Cuando se fijo por ultima vez. Ausente con el valor por defecto.
+          example: 2026-10-19T14:00:00Z
+        porDefecto:
+          type: boolean
+          description: "`true` si la organizacion nunca fijo la suya y rige el valor\
+            \ por defecto, 30 dias. Entonces `version` viene nula."
+          example: true
+        ventanaDias:
+          type: integer
+          format: int32
+          example: 30
+        version:
+          type: integer
+          format: int64
+          description: Version para el proximo cambio. Nula mientras rige el valor
+            por defecto.
+          example: 0
     PoliticaDePrepagoRequest:
       type: object
       description: Politica de prepago de una oferta
@@ -34916,6 +35270,9 @@ components:
       - https://akine.app/problems/borrador-de-honorarios-desactualizado
       - https://akine.app/problems/liquidacion-de-honorarios-vacia
       - https://akine.app/problems/egreso-de-liquidacion
+      - https://akine.app/problems/caso-clinico-requerido
+      - https://akine.app/problems/enmienda-fuera-de-ventana
+      - https://akine.app/problems/profesional-no-habilitado-en-oferta
     Producto:
       type: object
       description: Producto de pack del catalogo de una sede (RF-M29-001).
@@ -35309,6 +35666,35 @@ components:
       required:
       - expectedVersion
       - practicaIds
+    ReemplazarProfesionalDeSesion:
+      type: object
+      description: Reemplazo autorizado del profesional de una atencion abierta.
+      properties:
+        motivo:
+          type: string
+          description: "Por que se reemplaza. Obligatorio, hasta 500 caracteres. Queda\
+            \ en el registro del reemplazo, no en la auditoria."
+          example: La profesional se retiro por una urgencia familiar
+          maxLength: 500
+          minLength: 0
+        profesionalId:
+          type: integer
+          format: int64
+          description: "Membership del profesional que continua la atencion. Vigente\
+            \ en la sede, con `sesion:register` y habilitado para la oferta."
+          example: 31
+          exclusiveMinimum: 0
+        version:
+          type: integer
+          format: int64
+          description: Version de la sesion que el cliente leyo. Un 409 `concurrent-modification`
+            significa recargar.
+          example: 3
+          minimum: 0
+      required:
+      - motivo
+      - profesionalId
+      - version
     RegisterAccountRequest:
       type: object
       description: "Alta self-service de cuenta, organizacion y primer consultorio"
@@ -37193,8 +37579,10 @@ components:
           type: integer
           format: int64
           description: "Caso Clinico al que pertenece la atencion (04.03). **Ausente\
-            \ es legitimo**: RF-M14-002 admite atencion sin caso, y ninguna sesion\
-            \ anterior a 04.03 lo tiene. Exigirlo es RF-M10-007 y todavia no rige."
+            \ es legitimo** en las ofertas que no lo exigen. Desde DP-43 (RF-M10-007)\
+            \ una oferta con `requiereCasoClinico` no inicia, no quita el caso ni\
+            \ cierra sin el (409 `caso-clinico-requerido`). Las sesiones anteriores\
+            \ sin caso siguen como estaban."
           example: 17
         cerradaEn:
           type: string
@@ -37228,6 +37616,14 @@ components:
             \ una atencion de turno o sin turno. Si viene, el caso no se puede cambiar\
             \ (409 `caso-de-atencion-grupal`)."
           example: 88
+        enmendableHasta:
+          type: string
+          format: date-time
+          description: "U-25 (DP-43). Hasta cuando se puede enmendar la sesion cerrada:\
+            \ el cierre mas la ventana de la organizacion (30 dias si no fijo otra).\
+            \ Despues, la enmienda responde 409 `enmienda-fuera-de-ventana`. Ausente\
+            \ mientras la sesion esta abierta."
+          example: 2026-10-15T12:48:00Z
         estado:
           type: string
           description: "Estado de la ATENCION, no del turno ni del cobro. `BORRADOR`\
@@ -37265,6 +37661,11 @@ components:
           type: string
           format: date-time
           example: 2026-09-15T12:02:44Z
+        motivoSinTurno:
+          type: string
+          description: "DP-43. Por que se atendio **sin turno**. Viene solo en la\
+            \ atencion sin turno ni derivacion, donde es obligatorio."
+          example: Paciente con dolor agudo que espero sin turno
         numeroEnCaso:
           type: integer
           format: int32
@@ -37297,7 +37698,7 @@ components:
           type: integer
           format: int64
           description: Membership del profesional que atiende. Decide quien puede
-            guardar.
+            guardar. Solo cambia por el reemplazo autorizado (DP-43).
           example: 31
         turnoId:
           type: integer
