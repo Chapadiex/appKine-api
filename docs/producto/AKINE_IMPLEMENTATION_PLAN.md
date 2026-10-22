@@ -927,6 +927,40 @@ La evidencia la da `person.spi.RespaldoDocumentalDirectory`, sólo lectura; `bil
 
 **Implementada en:** pendiente (posterior al RC).
 
+## DP-45 — Pedidos del frontend que deja el refactor UX/UI (diseño "AKINE · Pantallas")
+
+**Estado:** DECIDIDA el 22/10/2026. Decidido por el usuario al cerrar el refactor UX/UI del
+frontend (`appKine-web` #125 y #126). El detalle de pantalla vive en
+`appKine-web/docs/ux/canvas-pendientes.md`.
+
+**Contexto.** El frontend aplicó el diseño del canvas sólo con los datos que el contrato ya
+expone. Lo que el diseño muestra y el contrato no tiene quedó afuera y se pide acá. Todo es
+**aditivo**: ninguna operación existente cambia de forma.
+
+**Decisión.** Se piden al backend, en este orden:
+
+1. **Búsqueda por texto y orden en los listados paginados.** Un parámetro `q` (busca "por todo":
+   nombre, documento, código, número) y un `sort` en las operaciones que hoy paginan con
+   `page`/`size` (16 operaciones; ~18 listados de pantalla). Sin esto el frontend muestra sólo
+   el embudo de filtros y no ordena las tablas paginadas por el servidor, porque ordenar la página
+   visible engaña.
+2. **Turnos de una sede por rango de fechas.** Para el calendario semanal de turnos reservados con
+   panel de detalle. Hoy sólo existe la recepción de un día y el buscador de horarios libres.
+3. **Perfil propio (`/me`).** Nombre y rol de quien ingresó, para el pie de la barra lateral y
+   para reingresar sin salir de la pantalla cuando vence la sesión.
+4. **Indicadores y serie temporal.** Totales de caja (ingresos, egresos, otros medios), del mes en
+   egresos y de cada liquidación de honorarios; y una serie por fecha en los reportes, para el
+   gráfico de barras. Hoy los reportes devuelven indicadores sueltos y filas.
+5. **Sesión y registro.** "Mantener la sesión iniciada" (vida del refresh elegida al ingresar) y
+   la aceptación de términos en el alta self-service, registrada con fecha y versión del texto.
+   El texto legal lo provee el usuario.
+
+**Lo que NO se pide.** El editor semanal de horarios con un único guardado: se sigue guardando
+bloque por bloque, con la vista previa del impacto en turnos de cada cambio.
+
+**Implementada en:** pendiente. Cada punto es una etapa propia con su minor del contrato; el
+frontend agrega la pantalla cuando el cliente generado lo trae.
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional
