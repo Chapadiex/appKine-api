@@ -105,6 +105,7 @@ class SchedulingControllersTest extends SliceRestDeModulo {
 				op("GET", "/turnos/301/historial", null, 200),
 				op("GET", "/turnos/301", null, 200),
 				op("GET", "/turnos?fecha=2026-10-01", null, 200),
+				op("GET", "/turnos/calendario?desde=2026-10-01&hasta=2026-10-08", null, 200),
 				op("POST", "/turnos/301/llegada", null, 200),
 				op("DELETE", "/turnos/301/llegada", null, 200),
 				op("POST", "/series-de-turnos", "{\"ofertaId\":4,\"personaId\":128,\"diasSemana\":[1,3],"
@@ -170,6 +171,22 @@ class SchedulingControllersTest extends SliceRestDeModulo {
 				Instant.parse("2026-10-05T12:45:00Z"), "RESERVADO", 128L, "Perez, Ana", "DNI 30111222",
 				4L, "Kinesiologia", 31L, null, null, null, null, coberturaId, 0L, null,
 				new PrepagoView(PrepagoView.NO_EXIGIDO, null, null, null, null, null));
+	}
+
+	@Test
+	@DisplayName("DP-45: el calendario pasa el rango, los filtros y la bandera de cancelados al servicio")
+	void calendario_filtros() throws Exception {
+		mockMvc.perform(get(SEDE + "/turnos/calendario").with(miembro())
+						.param("desde", "2026-10-01").param("hasta", "2026-10-08")
+						.param("profesionalId", "31").param("ofertaId", "4")
+						.param("incluirCancelados", "true"))
+				.andExpect(status().isOk());
+		mockMvc.perform(get(SEDE + "/turnos/calendario").with(miembro())
+						.param("desde", "2026-10-01"))
+				.andExpect(status().isBadRequest());
+
+		verify(recepcion).delRango(any(), eq(7L), eq(LocalDate.of(2026, 10, 1)),
+				eq(LocalDate.of(2026, 10, 8)), eq(31L), eq(4L), eq(true));
 	}
 
 	@Test

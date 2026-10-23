@@ -28,10 +28,21 @@ public final class VentanaDeAgenda {
 
 	public static final int VENTANA_MAXIMA_DIAS = 62;
 
+	/**
+	 * Tope del listado de turnos reservados por rango (DP-45, punto 2): seis semanas. Cubre el
+	 * calendario semanal y el mensual, y acota la respuesta —un turno por fila, sin paginar— a lo
+	 * que una sede con la agenda llena produce en ese tiempo.
+	 */
+	public static final int VENTANA_MAXIMA_TURNOS_DIAS = 42;
+
 	private VentanaDeAgenda() {
 	}
 
 	public static void exigirValida(LocalDate desde, LocalDate hasta) {
+		exigirValida(desde, hasta, VENTANA_MAXIMA_DIAS);
+	}
+
+	public static void exigirValida(LocalDate desde, LocalDate hasta, int maximoDias) {
 		if (desde == null || hasta == null) {
 			throw new IllegalArgumentException(
 					"La ventana de agenda exige un inicio y un fin: " + desde + " -> " + hasta);
@@ -44,8 +55,8 @@ public final class VentanaDeAgenda {
 							+ desde + " -> " + hasta);
 		}
 		long dias = ChronoUnit.DAYS.between(desde, hasta);
-		if (dias > VENTANA_MAXIMA_DIAS) {
-			throw new VentanaDeAgendaDemasiadoAmpliaException(desde, hasta, VENTANA_MAXIMA_DIAS);
+		if (dias > maximoDias) {
+			throw new VentanaDeAgendaDemasiadoAmpliaException(desde, hasta, maximoDias);
 		}
 	}
 }
