@@ -143,6 +143,23 @@ class HonorariosPorClaseIT {
 		assertThat(confirmada.liquidacion().colaboradorNombre()).isEqualTo("Ana DePrueba");
 		assertThat(confirmada.liquidacion().ofertaId()).isEqualTo(tenant.ofertaId());
 
+		// --- DP-45: los numeros de la tira, del borrador y de la liquidacion.
+		assertThat(deAna.resumen()).satisfies(r -> {
+			assertThat(r.cantidadClases()).isEqualTo(2);
+			assertThat(r.cantidadExcluidas()).isEqualTo(1);
+			assertThat(r.totalPresentes())
+					.isEqualTo(deAna.clases().get(0).presentes() + deAna.clases().get(1).presentes());
+			assertThat(r.importeTotal()).isEqualByComparingTo("833.33");
+			assertThat(r.importePagado()).isNull();
+			assertThat(r.regla()).isEqualTo("POR_PARTICIPANTE_PRESENTE");
+		});
+		assertThat(confirmada.liquidacion().resumen()).satisfies(r -> {
+			assertThat(r.cantidadClases()).isEqualTo(2);
+			assertThat(r.cantidadExcluidas()).isNull();
+			assertThat(r.importePagado()).as("el egreso nace en borrador: nada pagado").isEqualByComparingTo("0");
+			assertThat(r.saldoPendiente()).isEqualByComparingTo("833.33");
+		});
+
 		assertThat(jdbc.queryForMap("""
 				SELECT estado, categoria, tipo_beneficiario, beneficiario_membership_id, importe_total,
 				       saldo_pendiente, periodo_desde, periodo_hasta, moneda, oferta_id

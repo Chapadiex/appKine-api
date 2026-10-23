@@ -6,6 +6,7 @@ import com.akine.billing.api.dto.EgresoResponse;
 import com.akine.billing.api.dto.PagoEgresoResponse;
 import com.akine.billing.api.dto.RegistrarEgresoRequest;
 import com.akine.billing.api.dto.RegistrarPagoEgresoRequest;
+import com.akine.billing.api.dto.ResumenDeEgresosResponse;
 import com.akine.billing.application.EgresoService;
 import com.akine.billing.application.PagoEgresoService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -253,6 +254,45 @@ public class EgresoController {
 		return ResponseEntity.ok(EgresoResponse.de(
 				egresoService.anular(
 						apiActor.current(), consultorioId, egresoId, request.motivo())));
+	}
+
+	@GetMapping("/resumen")
+	@Operation(
+			operationId = "resumirEgresos",
+			summary = "Totales de egresos del periodo",
+			description = """
+					Lo registrado, pagado y pendiente de los egresos del periodo, por moneda y por \
+					categoria, para la tira de la pantalla de egresos (DP-45).
+
+					**Sin `desde` ni `hasta`, el mes en curso en la zona de la sede.** Con solo \
+					`desde`, hasta el fin de ese mes. Las fechas se interpretan igual que en la \
+					bandeja: el instante de registro en el dia de la sede.
+
+					**Es egreso, no caja.** `registrado` son los egresos `CONFIRMADO` y `PAGADO` \
+					—lo comprometido—; `pagado` es lo saldado **hoy** (un pago anulado devuelve su \
+					importe) y `pendiente` lo que falta. Los borradores y los anulados se cuentan \
+					aparte. Ventana maxima: 366 dias.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Los totales"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Periodo invertido o de mas de 366 dias",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `caja:operate` en esa sede, o sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede no existe o es de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ResumenDeEgresosResponse> resumir(
+			@PathVariable long consultorioId,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+
+		return ResponseEntity.ok(ResumenDeEgresosResponse.de(
+				egresoService.resumir(apiActor.current(), consultorioId, desde, hasta)));
 	}
 
 	@GetMapping("/{egresoId}")
