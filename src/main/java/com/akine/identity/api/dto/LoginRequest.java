@@ -33,5 +33,24 @@ public record LoginRequest(
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		@NotBlank(message = "La contrasena es obligatoria")
 		@Size(max = 256, message = "La contrasena no puede superar los 256 caracteres")
-		String password) {
+		String password,
+
+		@Schema(
+				description = "Mantener la sesion iniciada (DP-45). Con true la sesion dura la "
+						+ "vigencia larga configurada (30 dias por defecto) en vez de la jornada "
+						+ "(12 horas). Ausente o false: la sesion de siempre. En los dos casos la "
+						+ "vigencia es absoluta desde el login y renovar no la extiende",
+				example = "false",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean recordarme) {
+
+	/** Login sin elegir la vida de la sesion: la de siempre. */
+	public LoginRequest(String email, String password) {
+		this(email, password, null);
+	}
+
+	/** {@code null} cuenta como {@code false}: el cliente que no lo manda no cambia de conducta. */
+	public boolean quiereRecordarSesion() {
+		return Boolean.TRUE.equals(recordarme);
+	}
 }

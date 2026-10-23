@@ -88,6 +88,9 @@ class EsquemaMultiTenantIT {
 				"Identidad unica cross-tenant (ADR-0009). La cuenta precede al tenant y lo atraviesa"));
 		EXCEPCIONES.put("token_verificacion", new Excepcion(Forma.SIN_COLUMNA,
 				"Cuelga de cuenta, que es global. El token se presenta ANTES de que haya contexto"));
+		EXCEPCIONES.put("aceptacion_terminos", new Excepcion(Forma.SIN_COLUMNA,
+				"Cuelga de cuenta, que es global (ADR-0019). Los terminos los acepta la persona, "
+						+ "no el tenant (DP-45)"));
 		EXCEPCIONES.put("refresh_token", new Excepcion(Forma.SIN_COLUMNA,
 				"Cuelga de cuenta. context_organization_id es el ALCANCE del token, no ownership de tenant"));
 		EXCEPCIONES.put("platform_schema_info", new Excepcion(Forma.SIN_COLUMNA,

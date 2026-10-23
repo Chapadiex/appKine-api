@@ -21,6 +21,8 @@ package com.akine.identity.application;
  * @param consultorioNombre nombre de la primera sede, o {@code null} para usar el de la
  *                          organizacion
  * @param planCode          plan a contratar, o {@code null} para el de defecto
+ * @param aceptaTerminos    si la persona acepto los terminos (DP-45), o {@code null}
+ * @param versionTerminos   version de los terminos que acepto, o {@code null}
  */
 public record RegistroCuentaCommand(
 		String claveIdempotencia,
@@ -32,7 +34,25 @@ public record RegistroCuentaCommand(
 		String organizacionNombre,
 		String organizacionSlug,
 		String consultorioNombre,
-		String planCode) {
+		String planCode,
+		Boolean aceptaTerminos,
+		String versionTerminos) {
+
+	/** Alta sin datos de terminos: la de antes de DP-45. */
+	public RegistroCuentaCommand(
+			String claveIdempotencia,
+			String requestHash,
+			String email,
+			String password,
+			String nombre,
+			String apellido,
+			String organizacionNombre,
+			String organizacionSlug,
+			String consultorioNombre,
+			String planCode) {
+		this(claveIdempotencia, requestHash, email, password, nombre, apellido,
+				organizacionNombre, organizacionSlug, consultorioNombre, planCode, null, null);
+	}
 
 	public RegistroCuentaCommand {
 		if (claveIdempotencia == null || claveIdempotencia.isBlank()) {

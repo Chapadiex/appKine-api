@@ -15,6 +15,7 @@ import com.akine.identity.domain.exception.InvitacionNotAccessibleException;
 import com.akine.identity.domain.exception.InvitacionPendienteDuplicadaException;
 import com.akine.identity.domain.exception.InvitacionVencidaException;
 import com.akine.identity.domain.exception.PasswordPolicyViolationException;
+import com.akine.identity.domain.exception.TerminosNoAceptadosException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.net.URI;
+import java.util.Map;
 
 /**
  * Traduccion de las excepciones de {@code identity} a Problem Details.
@@ -186,6 +188,24 @@ public class IdentityProblemHandler {
 				HttpStatus.BAD_REQUEST, exception.getMessage());
 		problem.setTitle("Contrasena rechazada por la politica");
 		problem.setType(VALIDATION_ERROR);
+		return problem;
+	}
+
+	/**
+	 * El alta no acepto la version vigente de los terminos (DP-45).
+	 *
+	 * <p>Misma forma que el 400 de un {@code @Valid}: {@code validation-error} con el campo en
+	 * {@code errors}, para que el formulario lo marque como cualquier otro campo. No dice nada
+	 * de la cuenta: se evalua antes de mirar el email (ADR-0018).
+	 */
+	@ExceptionHandler(TerminosNoAceptadosException.class)
+	public ProblemDetail handleTerminosNoAceptados(TerminosNoAceptadosException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, "La solicitud contiene campos invalidos");
+		problem.setTitle("Error de validacion");
+		problem.setType(VALIDATION_ERROR);
+		problem.setProperty("errors",
+				Map.of(exception.getCampo(), exception.getMessage()));
 		return problem;
 	}
 

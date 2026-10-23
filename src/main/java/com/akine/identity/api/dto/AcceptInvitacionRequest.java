@@ -52,5 +52,24 @@ public record AcceptInvitacionRequest(
 						+ "cuenta todavia. Misma politica que el registro",
 				format = "password")
 		@Size(max = 128, message = "La contrasena no puede superar los 128 caracteres")
-		String password) {
+		String password,
+
+		@Schema(
+				description = "Acepto los terminos y condiciones (DP-45). Se exige en true solo "
+						+ "si el invitado no tiene cuenta y GET /api/v1/terms informa "
+						+ "aceptacionObligatoria",
+				example = "true")
+		Boolean aceptaTerminos,
+
+		@Schema(
+				description = "Version de los terminos aceptados: la versionVigente de "
+						+ "GET /api/v1/terms. Mismas condiciones que aceptaTerminos",
+				example = "2026-10")
+		@Size(max = 40, message = "La version de los terminos no puede superar los 40 caracteres")
+		String versionTerminos) {
+
+	/** Aceptacion sin datos de terminos, la de antes de DP-45. */
+	public AcceptInvitacionRequest(String token, String nombre, String apellido, String password) {
+		this(token, nombre, apellido, password, null, null);
+	}
 }
