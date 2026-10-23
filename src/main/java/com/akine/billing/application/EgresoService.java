@@ -29,6 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -320,6 +322,43 @@ public class EgresoService {
 				.stream()
 				.map(EgresoView::de)
 				.toList();
+	}
+
+	/** Ventana maxima del resumen: la misma del reporte, un anio con sus dos extremos. */
+	static final int MAXIMO_DIAS_RESUMEN = 366;
+
+	/**
+	 * Los totales de egresos de un periodo para la tira de la pantalla (DP-45).
+	 *
+	 * <p>Sin periodo, el <b>mes en curso en la zona de la sede</b>. Con solo {@code desde}, hasta el
+	 * fin de ese mes. El recorte por fecha es el de la bandeja ({@link #buscar}): el instante de
+	 * registro en el dia de la sede. Mismo permiso que la bandeja: {@code caja:operate}.
+	 */
+	@Transactional(readOnly = true)
+	public ResumenDeEgresosView resumir(
+			OperatingActor actor, long consultorioId, LocalDate desde, LocalDate hasta) {
+
+		long organizationId = CajaAcceso.exigirContexto(actor);
+		ConsultorioSnapshot sede = acceso.exigirSedeDelTenant(organizationId, consultorioId);
+		acceso.exigirOperarCaja(actor, organizationId, consultorioId);
+
+		LocalDate inicio = desde != null
+				? desde
+				: (hasta != null ? hasta : CajaAcceso.fechaDeNegocio(sede, Instant.now())).withDayOfMonth(1);
+		LocalDate fin = hasta != null
+				? hasta
+				: inicio.with(TemporalAdjusters.lastDayOfMonth());
+		if (fin.isBefore(inicio)) {
+			throw new IllegalArgumentException("El periodo esta invertido: 'hasta' es anterior a 'desde'");
+		}
+		if (ChronoUnit.DAYS.between(inicio, fin) + 1 > MAXIMO_DIAS_RESUMEN) {
+			throw new IllegalArgumentException(
+					"El periodo del resumen no puede pasar de " + MAXIMO_DIAS_RESUMEN + " dias");
+		}
+
+		return ResumenDeEgresosView.de(consultorioId, inicio, fin,
+				egresos.resumirPorCategoriaYEstado(organizationId, consultorioId,
+						CajaAcceso.inicioDelDia(sede, inicio), CajaAcceso.finDelDia(sede, fin)));
 	}
 
 	// =================================================================================

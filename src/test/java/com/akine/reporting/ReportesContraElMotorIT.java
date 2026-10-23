@@ -6,9 +6,11 @@ import com.akine.billing.application.CajaService;
 import com.akine.billing.application.CobroCommand;
 import com.akine.billing.application.CobroService;
 import com.akine.billing.domain.MedioDePago;
+import com.akine.reporting.application.AgrupacionDeSerie;
 import com.akine.reporting.application.OperatingActor;
 import com.akine.reporting.application.ReporteService;
 import com.akine.reporting.application.ReporteView;
+import com.akine.reporting.application.SerieDeReporteView;
 import com.akine.reporting.spi.AporteDeReporte;
 import com.akine.reporting.spi.IndicadorDeReporte;
 import com.akine.reporting.spi.ReporteCode;
@@ -195,6 +197,109 @@ class ReportesContraElMotorIT {
 		assertThat(valor(siguiente, "economia", "conciliacion-caja-de-cobros"))
 				.isEqualByComparingTo(BigDecimal.ZERO);
 		assertThat(valor(siguiente, "economia", "cobrado")).isEqualByComparingTo(BigDecimal.ZERO);
+	}
+
+	// =================================================================================
+	// DP-45 — la serie temporal usa la fuente y el criterio de su indicador
+	// =================================================================================
+
+	@Test
+	@DisplayName("DP-45 · cada serie economica suma exactamente su indicador, y cae en el dia de la sede")
+	void cada_serie_economica_suma_su_indicador() {
+		Centro centro = crearCentro(CORDOBA);
+		cobrarEfectivo(centro, "1000.00");
+		cobrar(centro, "8500.00", List.of(
+				medio(MedioDePago.EFECTIVO, "5000.00"), medio(MedioDePago.TARJETA_DEBITO, "3500.00")));
+		LocalDate hoy = LocalDate.now(ZoneId.of(CORDOBA));
+
+		ReporteView vista = reportes.generar(centro.actor(), centro.consultorioId(),
+				ReporteCode.ECONOMICO, hoy.minusDays(2), hoy.plusDays(2));
+		SerieDeReporteView serie = reportes.generarSerie(centro.actor(), centro.consultorioId(),
+				ReporteCode.ECONOMICO, hoy.minusDays(2), hoy.plusDays(2), AgrupacionDeSerie.DIA);
+
+		assertThat(serie.series()).extracting(SerieDeReporteView.Serie::clave)
+				.containsExactly("devengado", "cobrado", "caja-ingresos-efectivo",
+						"caja-egresos-efectivo", "egresos-confirmados");
+		for (SerieDeReporteView.Serie s : serie.series()) {
+			assertThat(s.puntos()).hasSize(5);
+			assertThat(s.total())
+					.as("la serie %s y su indicador son la misma cuenta", s.clave())
+					.isEqualByComparingTo(valor(vista, "economia", s.clave()));
+			assertThat(s.criterioDeFecha()).isEqualTo(indicador(vista, "economia", s.clave()).criterioDeFecha());
+		}
+		SerieDeReporteView.Serie cobrado = serieDe(serie, "cobrado");
+		assertThat(cobrado.total()).isEqualByComparingTo("9500.00");
+		assertThat(cobrado.puntos().get(2).desde()).isEqualTo(hoy);
+		assertThat(cobrado.puntos().get(2).valor()).isEqualByComparingTo("9500.00");
+		assertThat(serieDe(serie, "caja-ingresos-efectivo").total())
+				.as("solo el efectivo entra al cajon")
+				.isEqualByComparingTo("6000.00");
+	}
+
+	@Test
+	@DisplayName("DP-45 · en la serie, el turno de las 21:30 de Cordoba cae el 10 y el mismo instante en Tokio el 11")
+	void la_serie_agrupa_por_el_dia_de_la_sede() {
+		LocalDate dia = LocalDate.of(2026, 3, 10);
+		Instant instante = dia.atTime(21, 30).atZone(ZoneId.of(CORDOBA)).toInstant();
+		Centro cordoba = crearCentro(CORDOBA);
+		turno(cordoba, instante);
+		Centro tokio = crearCentro("Asia/Tokyo");
+		turno(tokio, instante);
+
+		assertThat(diasConValor(reportes.generarSerie(cordoba.actor(), cordoba.consultorioId(),
+				ReporteCode.TURNOS, dia.minusDays(1), dia.plusDays(2), AgrupacionDeSerie.DIA), "turnos-totales"))
+				.containsExactly(dia);
+		assertThat(diasConValor(reportes.generarSerie(tokio.actor(), tokio.consultorioId(),
+				ReporteCode.TURNOS, dia.minusDays(1), dia.plusDays(2), AgrupacionDeSerie.DIA), "turnos-totales"))
+				.containsExactly(dia.plusDays(1));
+
+		SerieDeReporteView semanal = reportes.generarSerie(cordoba.actor(), cordoba.consultorioId(),
+				ReporteCode.TURNOS, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), AgrupacionDeSerie.SEMANA);
+		assertThat(serieDe(semanal, "turnos-totales").puntos())
+				.filteredOn(p -> p.valor().signum() > 0)
+				.singleElement()
+				.satisfies(p -> {
+					assertThat(p.desde()).isEqualTo(LocalDate.of(2026, 3, 9));
+					assertThat(p.hasta()).isEqualTo(LocalDate.of(2026, 3, 15));
+				});
+	}
+
+	@Test
+	@DisplayName("DP-45 · con horario de verano cada turno cae en su dia a los dos lados de la transicion")
+	void la_serie_respeta_el_cambio_de_horario() {
+		ZoneId madrid = ZoneId.of("Europe/Madrid");
+		Centro centro = crearCentro("Europe/Madrid");
+		// Antes del cambio (+01:00) y despues (+02:00). El segundo, con el desfase de antes, caeria
+		// el 29 a las 23:30 en vez del 30 a las 00:30.
+		turno(centro, LocalDate.of(2026, 3, 28).atTime(23, 30).atZone(madrid).toInstant());
+		turno(centro, LocalDate.of(2026, 3, 30).atTime(0, 30).atZone(madrid).toInstant());
+
+		SerieDeReporteView serie = reportes.generarSerie(centro.actor(), centro.consultorioId(),
+				ReporteCode.TURNOS, LocalDate.of(2026, 3, 27), LocalDate.of(2026, 3, 31), AgrupacionDeSerie.DIA);
+
+		assertThat(diasConValor(serie, "turnos-totales"))
+				.containsExactly(LocalDate.of(2026, 3, 28), LocalDate.of(2026, 3, 30));
+	}
+
+	private static SerieDeReporteView.Serie serieDe(SerieDeReporteView vista, String clave) {
+		return vista.series().stream()
+				.filter(s -> s.clave().equals(clave))
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("No hay serie " + clave));
+	}
+
+	private static List<LocalDate> diasConValor(SerieDeReporteView vista, String clave) {
+		return serieDe(vista, clave).puntos().stream()
+				.filter(p -> p.valor().signum() > 0)
+				.map(SerieDeReporteView.Punto::desde)
+				.toList();
+	}
+
+	private static IndicadorDeReporte indicador(ReporteView vista, String seccion, String clave) {
+		return seccion(vista, seccion).indicadores().stream()
+				.filter(i -> i.clave().equals(clave))
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("No hay indicador " + clave));
 	}
 
 	// =================================================================================

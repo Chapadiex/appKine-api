@@ -237,6 +237,32 @@ public interface ObligacionRepository
 			@Param("consultorioId") long consultorioId);
 
 	/**
+	 * {@link #sumarDevengadoEnElReporte} abierto por dia de la sede (DP-45, serie temporal). Mismo
+	 * recorte; el dia sale de {@code devengada_en} con el desfase del tramo, numerico para no
+	 * depender de las tablas de zonas de MySQL (ver {@code ConsultaDeReporte.tramosHorarios}).
+	 *
+	 * @return filas {@code [dia, importe]}
+	 */
+	@Query(value = """
+			SELECT DATE(CONVERT_TZ(o.devengada_en, '+00:00', :desfase)) AS dia,
+			       SUM(o.importe_original) AS total
+			  FROM obligacion o
+			 WHERE o.organization_id = :organizationId
+			   AND o.consultorio_id = :consultorioId
+			   AND o.estado <> 'ANULADA'
+			   AND o.deleted_at IS NULL
+			   AND o.devengada_en >= :desde
+			   AND o.devengada_en < :hasta
+			 GROUP BY dia
+			""", nativeQuery = true)
+	List<Object[]> sumarDevengadoPorDiaEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("desfase") String desfase);
+
+	/**
 	 * Lo prestado a un financiador en el periodo (RF-M23-005), por financiador.
 	 *
 	 * <p>Hasta AKINE F-4 devolvia lista vacia en cualquier despliegue real: nada devengaba

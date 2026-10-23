@@ -230,6 +230,59 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 			@Param("hasta") Instant hasta);
 
 	/**
+	 * {@link #sumarConfirmadosEnElReporte} abierto por dia de la sede (DP-45). Mismo recorte; el dia
+	 * sale de {@code registrado_en} con el desfase numerico del tramo.
+	 *
+	 * @return filas {@code [dia, total]}
+	 */
+	@Query(value = """
+			SELECT DATE(CONVERT_TZ(e.registrado_en, '+00:00', :desfase)) AS dia,
+			       SUM(e.importe_total) AS total
+			  FROM egreso e
+			 WHERE e.organization_id = :organizationId
+			   AND e.consultorio_id = :consultorioId
+			   AND e.estado IN ('CONFIRMADO', 'PAGADO')
+			   AND e.registrado_en >= :desde
+			   AND e.registrado_en < :hasta
+			 GROUP BY dia
+			""", nativeQuery = true)
+	List<Object[]> sumarConfirmadosPorDiaEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("desfase") String desfase);
+
+	/**
+	 * Los totales de egresos de un periodo para la tira de la pantalla de egresos (DP-45), por
+	 * moneda, categoria y estado. El periodo es el mismo recorte que la bandeja
+	 * ({@link #buscar}): {@code registrado_en} en el semiabierto de instantes del dia de la sede.
+	 *
+	 * <p>Agrupa por estado para que el servicio arme los totales sin una segunda consulta: los
+	 * borradores y los anulados se cuentan aparte, y {@code importe_total - saldo_pendiente} es lo
+	 * pagado <b>hoy</b> —un pago anulado devuelve su importe al saldo—.
+	 *
+	 * @return filas {@code [moneda, categoria, estado, cantidad, importe, saldo]}
+	 */
+	@Override
+	@Query(value = """
+			SELECT e.moneda, e.categoria, e.estado, COUNT(*) AS cantidad,
+			       SUM(e.importe_total) AS importe, SUM(e.saldo_pendiente) AS saldo
+			  FROM egreso e
+			 WHERE e.organization_id = :organizationId
+			   AND e.consultorio_id = :consultorioId
+			   AND e.registrado_en >= :desde
+			   AND e.registrado_en < :hasta
+			 GROUP BY e.moneda, e.categoria, e.estado
+			 ORDER BY e.moneda, e.categoria, e.estado
+			""", nativeQuery = true)
+	List<Object[]> resumirPorCategoriaYEstado(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	/**
 	 * Lo que el centro debe y todavia no pago, <b>hoy</b>.
 	 *
 	 * <p>No recibe el periodo, por la misma razon que {@code sumarSaldoVigenteEnElReporte} en

@@ -7,6 +7,7 @@ import com.akine.activity.application.HonorariosViews.InstructorAdicionalView;
 import com.akine.activity.application.HonorariosViews.InstructoresDeClaseView;
 import com.akine.activity.application.HonorariosViews.LineaDeHonorarioView;
 import com.akine.activity.application.HonorariosViews.LiquidacionDeHonorariosView;
+import com.akine.activity.application.HonorariosViews.ResumenDeHonorariosView;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -133,13 +134,16 @@ public final class HonorariosDtos {
 			@Schema(description = "Null si no entra ninguna clase", example = "ARS")
 			String moneda,
 			List<LineaDeHonorarioResponse> clases,
-			List<ClaseExcluidaResponse> excluidas) {
+			List<ClaseExcluidaResponse> excluidas,
+			@Schema(description = "Los numeros de la tira del borrador (DP-45)")
+			ResumenDeHonorariosResponse resumen) {
 
 		public static BorradorDeHonorariosResponse de(BorradorDeHonorariosView v) {
 			return new BorradorDeHonorariosResponse(v.consultorioId(), v.colaboradorMembershipId(), v.desde(),
 					v.hasta(), v.importeTotal(), v.moneda(),
 					v.clases().stream().map(LineaDeHonorarioResponse::de).toList(),
-					v.excluidas().stream().map(ClaseExcluidaResponse::de).toList());
+					v.excluidas().stream().map(ClaseExcluidaResponse::de).toList(),
+					ResumenDeHonorariosResponse.de(v.resumen()));
 		}
 	}
 
@@ -222,13 +226,40 @@ public final class HonorariosDtos {
 			Instant confirmadaEn,
 			@Schema(example = "1204") long confirmadaPorCuentaId,
 			Instant liberadaEn,
-			List<LineaDeHonorarioResponse> clases) {
+			List<LineaDeHonorarioResponse> clases,
+			@Schema(description = "Los numeros de la tira de la liquidacion (DP-45)")
+			ResumenDeHonorariosResponse resumen) {
 
 		public static LiquidacionDeHonorariosResponse de(LiquidacionDeHonorariosView v) {
 			return new LiquidacionDeHonorariosResponse(v.id(), v.consultorioId(), v.egresoId(), v.egresoEstado(),
 					v.colaboradorMembershipId(), v.colaboradorNombre(), v.ofertaId(), v.desde(), v.hasta(), v.importeTotal(),
 					v.moneda(), v.estado(), v.confirmadaEn(), v.confirmadaPorCuentaId(), v.liberadaEn(),
-					v.clases().stream().map(LineaDeHonorarioResponse::de).toList());
+					v.clases().stream().map(LineaDeHonorarioResponse::de).toList(),
+					ResumenDeHonorariosResponse.de(v.resumen()));
+		}
+	}
+
+	@Schema(name = "ResumenDeHonorarios",
+			description = "Los numeros de la tira de honorarios (DP-45). Es honorario y su egreso (M22), no "
+					+ "caja: lo pagado no dice por que medio salio ni si toco el cajon")
+	public record ResumenDeHonorariosResponse(
+			@Schema(description = "Clases que entran", example = "12") int cantidadClases,
+			@Schema(description = "Clases dictadas que no entran. Solo en el borrador", example = "2")
+			Integer cantidadExcluidas,
+			@Schema(description = "Suma de presentes de las clases que entran", example = "87") int totalPresentes,
+			@Schema(example = "5250.00") BigDecimal importeTotal,
+			@Schema(description = "Lo pagado del egreso, hoy. Solo en la liquidacion", example = "3000.00")
+			BigDecimal importePagado,
+			@Schema(description = "Lo que falta pagar del egreso. Solo en la liquidacion", example = "2250.00")
+			BigDecimal saldoPendiente,
+			@Schema(description = "Regla de calculo: la tarifa por participante por los presentes, "
+					+ "repartida en partes iguales entre los instructores, con el resto del redondeo al "
+					+ "principal", allowableValues = {"POR_PARTICIPANTE_PRESENTE"})
+			String regla) {
+
+		static ResumenDeHonorariosResponse de(ResumenDeHonorariosView r) {
+			return new ResumenDeHonorariosResponse(r.cantidadClases(), r.cantidadExcluidas(), r.totalPresentes(),
+					r.importeTotal(), r.importePagado(), r.saldoPendiente(), r.regla());
 		}
 	}
 }

@@ -284,6 +284,32 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("memberships") Collection<Long> memberships);
 
 	/**
+	 * {@link #contarCerradasEnElReporte} abierto por dia de la sede (DP-45). Mismo recorte; el dia
+	 * sale de {@code cerrada_en} con el desfase numerico del tramo.
+	 *
+	 * @return filas {@code [dia, cantidad]}
+	 */
+	@Query(value = """
+			SELECT DATE(CONVERT_TZ(s.cerrada_en, '+00:00', :desfase)) AS dia, COUNT(*) AS cantidad
+			  FROM sesion s
+			 WHERE s.organization_id = :organizationId
+			   AND s.consultorio_id = :consultorioId
+			   AND s.cerrada_en >= :desde
+			   AND s.cerrada_en < :hasta
+			   AND s.deleted_at IS NULL
+			   AND (:recortar = FALSE OR s.profesional_membership_id IN (:memberships))
+			 GROUP BY dia
+			""", nativeQuery = true)
+	List<Object[]> contarCerradasPorDiaEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("desfase") String desfase,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
+
+	/**
 	 * Las que pertenecen a un Caso Clinico.
 	 *
 	 * <p>RN-M23-004 pide que las sesiones de casos distintos no se mezclen en conteos

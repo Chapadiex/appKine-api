@@ -174,6 +174,7 @@ public class LiquidacionDeHonorariosService {
 				liquidacion.getConsultorioId(),
 				liquidacion.getEgresoId(),
 				egreso.map(e -> e.getEstado().name()).orElse(null),
+				egreso.map(Egreso::getSaldoPendiente).orElse(null),
 				liquidacion.getColaboradorMembershipId(),
 				egreso.map(Egreso::getBeneficiarioNombre).orElse(null),
 				egreso.map(Egreso::getOfertaId).orElse(null),

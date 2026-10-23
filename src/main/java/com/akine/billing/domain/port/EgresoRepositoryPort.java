@@ -77,6 +77,15 @@ public interface EgresoRepositoryPort {
 			int limite, int desplazamiento);
 
 	/**
+	 * Totales de los egresos registrados en {@code [desde, hasta)}, por moneda, categoria y estado
+	 * (DP-45). Mismo recorte por fecha que {@link #buscar}.
+	 *
+	 * @return filas {@code [moneda, categoria, estado, cantidad, importe, saldo]}
+	 */
+	List<Object[]> resumirPorCategoriaYEstado(
+			long organizationId, long consultorioId, Instant desde, Instant hasta);
+
+	/**
 	 * Descuenta del saldo pendiente, si el egreso lo admite <b>y alcanza</b>.
 	 *
 	 * <p>{@code ... WHERE estado = 'CONFIRMADO' AND saldo_pendiente >= :importe}. Un egreso no se
