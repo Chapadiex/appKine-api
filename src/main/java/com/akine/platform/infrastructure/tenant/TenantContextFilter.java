@@ -115,7 +115,10 @@ public class TenantContextFilter extends OncePerRequestFilter {
 	private static final List<String> RUTAS_EXACTAS_EXCEPTUADAS = List.of(
 			"/api/v1/version",
 			"/api/v1/me/contexts",
-			"/api/v1/me/platform-role");
+			"/api/v1/me/platform-role",
+			// DP-45 punto 3: perfil propio. Se consulta tambien sin contexto; si hay, viaja en el
+			// cuerpo.
+			"/api/v1/me");
 
 	/**
 	 * Prefijos exceptuados. Actuator y la documentacion del contrato son infraestructura, no
