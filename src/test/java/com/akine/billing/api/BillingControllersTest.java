@@ -186,7 +186,7 @@ class BillingControllersTest extends SliceRestDeModulo {
 				.andExpect(status().isOk());
 
 		verify(presentaciones).buscar(any(), eq(7L), eq("CONFIRMADA"), eq(3L),
-				eq(LocalDate.of(2026, 9, 1)), isNull(), eq(10), eq(20));
+				eq(LocalDate.of(2026, 9, 1)), isNull(), isNull(), eq(10), eq(20));
 		verify(presentaciones).elegibles(any(), eq(7L), eq(3L), isNull(), isNull(), eq(50), eq(0));
 	}
 

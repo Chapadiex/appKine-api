@@ -73,7 +73,7 @@ public interface EgresoRepositoryPort {
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	List<Egreso> buscar(
 			long organizationId, long consultorioId, String estado, String categoria,
-			String beneficiarioClave, Instant desde, Instant hasta,
+			String beneficiarioClave, Instant desde, Instant hasta, String patron,
 			int limite, int desplazamiento);
 
 	/**

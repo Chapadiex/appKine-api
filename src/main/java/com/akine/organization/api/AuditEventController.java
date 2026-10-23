@@ -6,6 +6,7 @@ import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.OperatingActor;
 import com.akine.platform.spi.audit.AuditEventSummary;
 import com.akine.platform.spi.tenant.TenantContextHolder;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * Consulta del registro de auditoria del tenant (RF-M24-002/003/004).
@@ -57,6 +59,12 @@ import java.time.Instant;
 @Tag(name = "Auditoria", description = "Consulta del registro de hechos de la organizacion")
 public class AuditEventController {
 
+	/** DP-45: campo del contrato → propiedad de la entidad de auditoria. */
+	private static final Map<String, String> ORDEN_DE_HECHOS = Map.of(
+			"ocurridoEn", "occurredAt",
+			"tipoEvento", "eventType",
+			"tipoEntidad", "entityType");
+
 	private final AuditQueryService auditQueryService;
 	private final AuthorizationGuard authorizationGuard;
 	private final TenantContextHolder tenantContextHolder;
@@ -87,7 +95,16 @@ public class AuditEventController {
 					configurado, no atacando, y devolverle cien le sirve mas que un error.
 
 					Quien tiene el permiso con alcance de sede ve solo su sede. Ese recorte lo \
-					decide el evaluador de permisos, no un parametro.""")
+					decide el evaluador de permisos, no un parametro.
+
+					DP-45: q refina cualquiera de los tres filtros. Busca "contiene" en el tipo \
+					de evento y en el tipo de entidad, sin distinguir mayusculas ni acentos, y \
+					si es un numero tambien coincide con el id de la entidad o con el de la \
+					cuenta actora. No busca en el nombre del actor (vive en la identidad, no en \
+					la auditoria) ni en el motivo o los detalles: sin auditoria:read-clinica \
+					esos campos se redactan, y buscar en ellos dejaria adivinar lo redactado. \
+					sort ordena por ocurridoEn, tipoEvento o tipoEntidad; sin el, del hecho mas \
+					nuevo al mas viejo.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -97,8 +114,8 @@ public class AuditEventController {
 							schema = @Schema(implementation = AuditEventPageResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "No se eligio exactamente un filtro, el rango esta invertido, o "
-							+ "excede los 90 dias",
+					description = "No se eligio exactamente un filtro, el rango esta invertido, "
+							+ "excede los 90 dias, o sort no es uno de los valores del enum",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -141,7 +158,17 @@ public class AuditEventController {
 			@RequestParam(defaultValue = ApiPaging.PAGINA_POR_DEFECTO) int page,
 
 			@Parameter(description = "Elementos por pagina. Se recorta a 100", example = "20")
-			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size) {
+			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size,
+
+			@Parameter(description = "Texto que refina el filtro elegido: tipo de evento, tipo "
+					+ "de entidad, o un id", example = "MEMBERSHIP")
+			@RequestParam(required = false) String q,
+
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "ocurridoEn descendente.",
+					schema = @Schema(allowableValues = {"ocurridoEn,asc", "ocurridoEn,desc",
+							"tipoEvento,asc", "tipoEvento,desc", "tipoEntidad,asc",
+							"tipoEntidad,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
 
 		// Primero el aislamiento: una organizacion ajena es 404 aunque los filtros sean invalidos.
 		OperatingActor actor = actor(orgId);
@@ -152,18 +179,18 @@ public class AuditEventController {
 
 		exigirUnSoloFiltro(porEntidad, porActor, porPeriodo);
 
-		PageRequest pagina = PageRequest.of(
-				ApiPaging.pagina(page),
-				ApiPaging.tamano(size),
-				Sort.by(Sort.Direction.DESC, "occurredAt"));
+		Sort orden = OrdenDeListado.leer(sort, ORDEN_DE_HECHOS.keySet())
+				.map(pedido -> pedido.aSort(ORDEN_DE_HECHOS.get(pedido.campo()), "id"))
+				.orElse(Sort.by(Sort.Direction.DESC, "occurredAt"));
+		PageRequest pagina = PageRequest.of(ApiPaging.pagina(page), ApiPaging.tamano(size), orden);
 
 		Page<AuditEventSummary> hechos;
 		if (porEntidad) {
-			hechos = auditQueryService.porEntidad(actor, orgId, entityType, entityId, pagina);
+			hechos = auditQueryService.porEntidad(actor, orgId, entityType, entityId, q, pagina);
 		} else if (porActor) {
-			hechos = auditQueryService.porActor(actor, orgId, actorAccountId, pagina);
+			hechos = auditQueryService.porActor(actor, orgId, actorAccountId, q, pagina);
 		} else {
-			hechos = auditQueryService.porPeriodo(actor, orgId, from, to, pagina);
+			hechos = auditQueryService.porPeriodo(actor, orgId, from, to, q, pagina);
 		}
 
 		return ResponseEntity.ok(AuditEventPageResponse.from(hechos));

@@ -12,6 +12,7 @@ import com.akine.activity.application.ResultadoDeVenta;
 import com.akine.activity.application.VenderPaseCommand;
 import com.akine.activity.application.VentaDePaseService;
 import com.akine.activity.domain.TipoProducto;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -292,9 +293,14 @@ public class PaseController {
 					Los movimientos del pase del mas viejo al mas nuevo, de a paginas (RF-M29-009, \
 					desde 0.116.0): el orden en que se lee `saldoResultante`. `size` se acota a 100 por \
 					request. Para un pase con historia larga reemplaza al ledger entero que trae \
-					`verPase`, que no cambia.""")
+					`verPase`, que no cambia.
+
+					DP-45: `sort` ordena por ocurridoEn, tipo o cantidad. Sin `q`: el ledger de un \
+					pase no tiene texto en el que buscar, se lee por tipo y fecha.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Una pagina del ledger"),
+			@ApiResponse(responseCode = "400", description = "`sort` fuera del enum",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403", description = "Sin `pase:read` en esa sede, o sin contexto activo",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404", description = P404,
@@ -305,10 +311,16 @@ public class PaseController {
 			@Parameter(description = "Numero de pagina, base cero", example = "0")
 			@RequestParam(defaultValue = "0") int page,
 			@Parameter(description = "Elementos por pagina. Se acota a 100", example = "20")
-			@RequestParam(defaultValue = "20") int size) {
+			@RequestParam(defaultValue = "20") int size,
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "ocurridoEn ascendente.",
+					schema = @Schema(allowableValues = {"ocurridoEn,asc", "ocurridoEn,desc",
+							"tipo,asc", "tipo,desc", "cantidad,asc", "cantidad,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
 
+		var orden = OrdenDeListado.leer(sort, VentaDePaseService.ORDEN_DE_MOVIMIENTOS.keySet());
 		return PaseResponses.PaginaDeMovimientos.de(ventaService.movimientos(apiActor.current(), consultorioId,
-				paseId, Math.min(Math.max(page, 0), PAGINA_MAXIMA), Math.min(Math.max(size, 1), TAMANO_MAXIMO)));
+				paseId, orden, Math.min(Math.max(page, 0), PAGINA_MAXIMA),
+				Math.min(Math.max(size, 1), TAMANO_MAXIMO)));
 	}
 
 	@PutMapping("/pases/{paseId}/renovacion")

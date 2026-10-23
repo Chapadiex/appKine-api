@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.143.0
+  version: 0.144.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -2090,6 +2090,8 @@ paths:
         especialidadId solo aplica a practicas y se ignora en los otros tipos.
 
         El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un error.
+
+        DP-45: sort ordena por codigo, nombre o alcance; sin el, el orden de siempre.
       operationId: searchCatalogo
       parameters:
       - description: Coleccion del catalogo
@@ -2160,6 +2162,23 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: el de la\
+          \ consulta del catalogo."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "codigo,asc"
+          - "codigo,desc"
+          - "nombre,asc"
+          - "nombre,desc"
+          - "alcance,asc"
+          - "alcance,desc"
       responses:
         "200":
           content:
@@ -2173,8 +2192,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Tipo de ruta desconocido, o valor de estado o alcance fuera\
-            \ del catalogo"
+          description: "Tipo de ruta desconocido, valor de estado o alcance fuera\
+            \ del catalogo, o sort fuera del enum"
         "403":
           content:
             application/problem+json:
@@ -3944,6 +3963,8 @@ paths:
         **Lo que no lleva es la mitad del punto** (RNF-M28-002): ni un dato clinico, ni cobertura, ni deuda, ni pase, ni abono. Lo clinico porque quien toma lista no puede ver a que se atiende nadie; lo economico porque todavia no existe.
 
         Exige `inscripcion:read`, **que no es `clase:read`**: quien mira la grilla del dia no necesita saber quien esta anotado.
+
+        DP-45: `sort` ordena por apellido, inscriptoEn, estado o posicionEspera. Sin `q`: una clase tiene a lo sumo su capacidad mas la espera, y la pantalla la recorre entera.
       operationId: detalleOperativo
       parameters:
       - in: path
@@ -3972,6 +3993,25 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: la lista\
+          \ de espera por posicion y el resto por orden de inscripcion."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "apellido,asc"
+          - "apellido,desc"
+          - "inscriptoEn,asc"
+          - "inscriptoEn,desc"
+          - "estado,asc"
+          - "estado,desc"
+          - "posicionEspera,asc"
+          - "posicionEspera,desc"
       responses:
         "200":
           content:
@@ -3982,6 +4022,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/DetalleOperativoDeClase"
           description: Pagina de participantes
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`sort` fuera del enum'
         "403":
           content:
             application/json:
@@ -6199,6 +6248,8 @@ paths:
         **Sin los pagos de cada fila**: traerlos seria el N+1 del primer listado que lo use. El detalle los tiene.
 
         **Los periodos superpuestos no se impiden, se muestran.** Dos liquidaciones del mismo profesional para el mismo mes son legitimas —una correccion, un segundo concepto—, y un unique sobre el periodo convertiria un caso normal en un error. Filtrar por beneficiario las pone una al lado de la otra, que es la unica respuesta honesta.
+
+        DP-45: `q` busca "contiene", sin distinguir mayusculas ni acentos, en el nombre y el documento del beneficiario, en el concepto y en el numero de comprobante. Ya pagina con `limite` y `desplazamiento` (el corte de 50 es el limite por defecto): no se agregan `page` y `size`, que serian dos formas de pedir lo mismo.
       operationId: buscarEgreso
       parameters:
       - in: path
@@ -6249,6 +6300,11 @@ paths:
           type: integer
           format: int32
           default: 0
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
       responses:
         "200":
           content:
@@ -9126,10 +9182,10 @@ paths:
       - Pases
   /api/v1/consultorios/{consultorioId}/pases/{paseId}/movimientos:
     get:
-      description: "Los movimientos del pase del mas viejo al mas nuevo, de a paginas\
-        \ (RF-M29-009, desde 0.116.0): el orden en que se lee `saldoResultante`. `size`\
-        \ se acota a 100 por request. Para un pase con historia larga reemplaza al\
-        \ ledger entero que trae `verPase`, que no cambia."
+      description: |-
+        Los movimientos del pase del mas viejo al mas nuevo, de a paginas (RF-M29-009, desde 0.116.0): el orden en que se lee `saldoResultante`. `size` se acota a 100 por request. Para un pase con historia larga reemplaza al ledger entero que trae `verPase`, que no cambia.
+
+        DP-45: `sort` ordena por ocurridoEn, tipo o cantidad. Sin `q`: el ledger de un pase no tiene texto en el que buscar, se lee por tipo y fecha.
       operationId: listarMovimientosDePase
       parameters:
       - in: path
@@ -9162,6 +9218,23 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: ocurridoEn\
+          \ ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "ocurridoEn,asc"
+          - "ocurridoEn,desc"
+          - "tipo,asc"
+          - "tipo,desc"
+          - "cantidad,asc"
+          - "cantidad,desc"
       responses:
         "200":
           content:
@@ -9172,6 +9245,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaginaDeMovimientosDePase"
           description: Una pagina del ledger
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`sort` fuera del enum'
         "403":
           content:
             application/json:
@@ -9332,6 +9414,8 @@ paths:
         Lista los lotes de la sede, filtrados y paginados.
 
         Es la pantalla principal de M21: una bandeja por estado deja ver de un vistazo que falta presentar, que espera respuesta y que quedo sin conciliar.
+
+        DP-45: `q` busca "contiene" en el numero de factura y, si es un numero, tambien el lote con ese numero. No busca en el nombre del financiador, que es de otro modulo: para eso esta `financiadorId`. Ya pagina con `limite` y `desplazamiento`.
       operationId: buscarPresentacion
       parameters:
       - in: path
@@ -9377,6 +9461,11 @@ paths:
           type: integer
           format: int32
           default: 0
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
       responses:
         "200":
           content:
@@ -11411,6 +11500,8 @@ paths:
         - `estado`: la serie **no tiene estado propio** (DP-04); se deriva de sus turnos al leer. `VIGENTE` = le queda algun turno RESERVADO o CONFIRMADO que todavia no empezo; `FINALIZADA` = no le queda ninguno.
 
         Paginado base cero; `size` se acota a 100. Exige `turno:read`. PHI minima: nombre y documento del paciente, nada clinico.
+
+        DP-45: `q` busca "contiene", sin distinguir mayusculas ni acentos, en el apellido, el nombre y el documento del paciente, en el nombre comercial de la oferta y en el nombre del profesional. `sort` ordena por creadaEn, fechaDesde o fechaHasta.
       operationId: listarSeriesDeTurnos
       parameters:
       - in: path
@@ -11454,6 +11545,30 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Texto a buscar en el paciente, la oferta o el profesional"
+        example: perez
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: las mas nuevas\
+          \ primero."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "creadaEn,asc"
+          - "creadaEn,desc"
+          - "fechaDesde,asc"
+          - "fechaDesde,desc"
+          - "fechaHasta,asc"
+          - "fechaHasta,desc"
       responses:
         "200":
           content:
@@ -11464,6 +11579,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/SerieDeTurnosPage"
           description: Una pagina de series
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`sort` fuera del enum'
         "403":
           content:
             application/json:
@@ -15617,6 +15741,8 @@ paths:
         NO TRAE NINGUNA RUTA NI LA CLAVE DE ALMACENAMIENTO (RN-M25-002).
 
         Es lectura clinica: exige hc:read mas relacion asistencial o motivo declarado, y queda auditada. Lo que revela —cuantos estudios tiene este paciente y de que clase— ya es informacion sensible aunque no sea contenido.
+
+        DP-45: sort ordena por subidoEn, titulo, categoria o tamano; el orden no cambia la autorizacion ni la auditoria de la lectura. Sin q: los adjuntos de una historia ya se filtran por categoria y por entrada, y buscar en sus titulos seria una lectura clinica mas sin necesidad.
       operationId: listarAdjuntosClinicos
       parameters:
       - description: Historia clinica cuyos adjuntos se piden
@@ -15681,6 +15807,25 @@ paths:
         required: false
         schema:
           type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: subidoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "subidoEn,asc"
+          - "subidoEn,desc"
+          - "titulo,asc"
+          - "titulo,desc"
+          - "categoria,asc"
+          - "categoria,desc"
+          - "tamano,asc"
+          - "tamano,desc"
       responses:
         "200":
           content:
@@ -15688,6 +15833,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdjuntoClinicoPageResponse"
           description: Pagina de adjuntos clinicos
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort fuera del enum
         "403":
           content:
             application/problem+json:
@@ -16530,6 +16681,8 @@ paths:
         alcance vale TODOS por defecto: al elegir una medida no importa si la sembro la plataforma o el centro. GLOBAL y ORGANIZACION existen para la pantalla de administracion, que si tiene que separarlas porque lo global no lo puede editar el tenant.
 
         El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un error.
+
+        DP-45: sort ordena por codigo, nombre o tipo; sin el, por nombre.
       operationId: searchMedicionDefiniciones
       parameters:
       - description: Texto a buscar en el nombre o en el codigo
@@ -16581,6 +16734,22 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: nombre ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "codigo,asc"
+          - "codigo,desc"
+          - "nombre,asc"
+          - "nombre,desc"
+          - "tipo,asc"
+          - "tipo,desc"
       responses:
         "200":
           content:
@@ -16594,7 +16763,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Valor de estado o de alcance fuera del catalogo
+          description: "Valor de estado o de alcance fuera del catalogo, o sort fuera\
+            \ del enum"
         "403":
           content:
             application/problem+json:
@@ -17020,6 +17190,8 @@ paths:
         size se recorta a 100 por request: un cliente que pide diez mil filas esta mal configurado, no atacando, y devolverle cien le sirve mas que un error.
 
         Quien tiene el permiso con alcance de sede ve solo su sede. Ese recorte lo decide el evaluador de permisos, no un parametro.
+
+        DP-45: q refina cualquiera de los tres filtros. Busca "contiene" en el tipo de evento y en el tipo de entidad, sin distinguir mayusculas ni acentos, y si es un numero tambien coincide con el id de la entidad o con el de la cuenta actora. No busca en el nombre del actor (vive en la identidad, no en la auditoria) ni en el motivo o los detalles: sin auditoria:read-clinica esos campos se redactan, y buscar en ellos dejaria adivinar lo redactado. sort ordena por ocurridoEn, tipoEvento o tipoEntidad; sin el, del hecho mas nuevo al mas viejo.
       operationId: listAuditEvents
       parameters:
       - description: Identificador de la organizacion
@@ -17088,6 +17260,31 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Texto que refina el filtro elegido: tipo de evento, tipo de\
+          \ entidad, o un id"
+        example: MEMBERSHIP
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: ocurridoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "ocurridoEn,asc"
+          - "ocurridoEn,desc"
+          - "tipoEvento,asc"
+          - "tipoEvento,desc"
+          - "tipoEntidad,asc"
+          - "tipoEntidad,desc"
       responses:
         "200":
           content:
@@ -17101,7 +17298,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "No se eligio exactamente un filtro, el rango esta invertido,\
-            \ o excede los 90 dias"
+            \ excede los 90 dias, o sort no es uno de los valores del enum"
         "403":
           content:
             application/problem+json:
@@ -17350,7 +17547,8 @@ paths:
         \ y su valor por defecto, ACTIVO, conserva el comportamiento historico del\
         \ endpoint: un cliente que no lo manda ve exactamente lo mismo que antes.\
         \ El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un\
-        \ error."
+        \ error. DP-45: q busca \"contiene\" en el nombre de la sede, sin distinguir\
+        \ mayusculas ni acentos; sort ordena por nombre."
       operationId: listOrganizationConsultorios
       parameters:
       - description: Identificador de la organizacion
@@ -17394,6 +17592,26 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: Texto a buscar en el nombre de la sede
+        example: centro
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: el de alta\
+          \ de las sedes."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "nombre,asc"
+          - "nombre,desc"
       responses:
         "200":
           content:
@@ -17407,7 +17625,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El valor de estado no pertenece al catalogo
+          description: "El valor de estado no pertenece al catalogo, o sort fuera\
+            \ del enum"
         "403":
           content:
             application/problem+json:
@@ -17696,6 +17915,8 @@ paths:
         El parametro estado por defecto vale ACTIVO, y eso es lo que hace que un selector de reserva NUNCA ofrezca un espacio dado de baja (RN-M04-002). Los inactivos hay que pedirlos explicitamente, y la pantalla de administracion los necesita para explicar por que un nombre esta tomado o libre.
 
         El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un error.
+
+        DP-45: q busca "contiene" en el nombre del espacio, sin distinguir mayusculas ni acentos. sort ordena por nombre, tipo o capacidad; sin el, por nombre.
       operationId: listEspacios
       parameters:
       - description: Identificador de la organizacion
@@ -17745,6 +17966,29 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: Texto a buscar en el nombre del espacio
+        example: box
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: nombre ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "nombre,asc"
+          - "nombre,desc"
+          - "tipo,asc"
+          - "tipo,desc"
+          - "capacidad,asc"
+          - "capacidad,desc"
       responses:
         "200":
           content:
@@ -17758,7 +18002,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El valor de estado no pertenece al catalogo
+          description: "El valor de estado no pertenece al catalogo, o sort no es\
+            \ uno de los valores del enum"
         "403":
           content:
             application/problem+json:
@@ -18141,6 +18386,8 @@ paths:
         Requiere colaborador:read. Devuelve TAMBIEN los vinculos suspendidos y revocados: quien administra tiene que poder ver quien estuvo, quien lo desvinculo y por que. Para eso existe la baja logica. El cliente distingue por el campo estado, no por ausencia.
 
         size se acota a 100 por request. Pedir 500 devuelve 100, no un error.
+
+        DP-45: q busca "contiene" en el nombre y en el correo de la cuenta, sin distinguir mayusculas ni acentos. sort ordena por nombre, email, rol, estado o vigenteDesde; sin el, por id.
       operationId: listMemberships
       parameters:
       - description: Identificador de la organizacion
@@ -18169,6 +18416,33 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: Texto a buscar en el nombre o el correo del colaborador
+        example: perez
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: id ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "nombre,asc"
+          - "nombre,desc"
+          - "email,asc"
+          - "email,desc"
+          - "rol,asc"
+          - "rol,desc"
+          - "estado,asc"
+          - "estado,desc"
+          - "vigenteDesde,asc"
+          - "vigenteDesde,desc"
       responses:
         "200":
           content:
@@ -18176,6 +18450,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/MembershipPageResponse"
           description: Pagina de colaboradores
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort no es uno de los valores del enum
         "403":
           content:
             application/problem+json:
@@ -18737,6 +19017,8 @@ paths:
         Requiere `colaborador:manage`, el mismo permiso que el reintento. Solo alcanza notificaciones de la organizacion del contexto. Las que nacen sin tenant (recuperacion de contraseña, activaciones fuera del alta de la organizacion) no aparecen; la activacion del fundador en el alta si, porque es de la organizacion.
 
         **Sin datos clinicos ni contenido:** el destinatario va enmascarado, el cuerpo no sale nunca y el ultimo error es un resumen ya sanitizado. De la mas nueva a la mas vieja. `size` se acota a 100 por request.
+
+        DP-45: `q` coincide con el tipo de notificacion que contiene el texto (sin distinguir mayusculas ni acentos) o con el destinatario EXACTO: como el listado lo enmascara, un "contiene" sobre la casilla real dejaria reconstruirla preguntando letra por letra. `sort` ordena por creadaEn, estado, tipo o intentos.
       operationId: listNotifications
       parameters:
       - description: Identificador de la organizacion
@@ -18780,6 +19062,32 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: Tipo de notificacion o destinatario exacto
+        example: INVITACION
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: creadaEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "creadaEn,asc"
+          - "creadaEn,desc"
+          - "estado,asc"
+          - "estado,desc"
+          - "tipo,asc"
+          - "tipo,desc"
+          - "intentos,asc"
+          - "intentos,desc"
       responses:
         "200":
           content:
@@ -18792,7 +19100,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Un `estado` que no es un valor legal
+          description: "Un `estado` que no es un valor legal, o `sort` fuera del enum"
         "403":
           content:
             application/problem+json:
@@ -19021,7 +19329,9 @@ paths:
         \ centro y cuando' meses despues, y por eso ninguna fila se edita ni se borra.\
         \ La primera fila de toda suscripcion tiene fromStatus ausente y significa\
         \ el alta. Requiere administrar esa organizacion. El tamano de pagina se acota\
-        \ a 100: pedir mas devuelve ese maximo, no un error."
+        \ a 100: pedir mas devuelve ese maximo, no un error. DP-45: sort ordena por\
+        \ ocurridoEn o estadoNuevo. Sin q: el historico de una sola suscripcion son\
+        \ pocas filas y no hay texto en el que buscar."
       operationId: listSubscriptionTransitions
       parameters:
       - description: Identificador de la organizacion
@@ -19050,6 +19360,21 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: ocurridoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "ocurridoEn,asc"
+          - "ocurridoEn,desc"
+          - "estadoNuevo,asc"
+          - "estadoNuevo,desc"
       responses:
         "200":
           content:
@@ -19057,6 +19382,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/SubscriptionTransitionPageResponse"
           description: "Pagina del historico, del hecho mas reciente al mas viejo"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort no es uno de los valores del enum
         "403":
           content:
             application/problem+json:
@@ -19145,6 +19476,8 @@ paths:
         estado filtra por ciclo de vida y por defecto trae solo las ACTIVAS. perfil filtra por perfil clinico y por defecto no filtra: la busqueda del mostrador no sabe de antemano si quien busca es paciente.
 
         OJO: esPaciente es DERIVADO y de solo lectura. Una persona sin perfil clinico es una persona valida y completa —RN-M07-006—, no una ficha a medio cargar.
+
+        DP-45: sort ordena por apellido, nombre, documento, nacimiento o alta; detras va siempre apellido, nombre e id.
       operationId: buscarPersonas
       parameters:
       - description: "Texto libre: documento, apellido, nombre, telefono o numero\
@@ -19190,6 +19523,27 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: apellido,\
+          \ nombre e id."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "apellido,asc"
+          - "apellido,desc"
+          - "nombre,asc"
+          - "nombre,desc"
+          - "documento,asc"
+          - "documento,desc"
+          - "nacimiento,asc"
+          - "nacimiento,desc"
+          - "alta,asc"
+          - "alta,desc"
       responses:
         "200":
           content:
@@ -19197,6 +19551,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/PersonaPageResponse"
           description: Pagina de personas del padron
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort fuera del enum
         "403":
           content:
             application/problem+json:
@@ -19408,6 +19768,8 @@ paths:
         Por defecto trae solo los VIGENTES. Los dados de baja se piden con incluirDadosDeBaja y siguen resolviendo, que es RN-M07-004 aplicada al documento en vez de a la persona.
 
         Una persona INACTIVA lista igual: sus documentos siguen siendo consultables.
+
+        DP-45: sort ordena por subidoEn, titulo, categoria o tamano. Sin q: los adjuntos de UNA persona son pocos y ya se filtran por categoria.
       operationId: listarAdjuntosDePersona
       parameters:
       - description: Persona duenia de los adjuntos
@@ -19454,6 +19816,25 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: subidoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "subidoEn,asc"
+          - "subidoEn,desc"
+          - "titulo,asc"
+          - "titulo,desc"
+          - "categoria,asc"
+          - "categoria,desc"
+          - "tamano,asc"
+          - "tamano,desc"
       responses:
         "200":
           content:
@@ -19461,6 +19842,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdjuntoPageResponse"
           description: Pagina de adjuntos
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort fuera del enum
         "403":
           content:
             application/problem+json:
@@ -20269,6 +20656,8 @@ paths:
         Las autorizaciones cargadas antes del historial (V85) traen un solo ALTA reconstruido con el estado que tenian ese dia, declarado en detalle.
 
         Mismo permiso que leer la autorizacion: pertenencia al tenant.
+
+        DP-45: sort ordena por ocurridoEn o tipo. Sin q: el historial de UNA autorizacion son pocos hechos y se lee en orden.
       operationId: getHistorialDeAutorizacion
       parameters:
       - description: Identificador de la persona
@@ -20311,6 +20700,21 @@ paths:
         schema:
           type: string
           format: date
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: ocurridoEn\
+          \ ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "ocurridoEn,asc"
+          - "ocurridoEn,desc"
+          - "tipo,asc"
+          - "tipo,desc"
       responses:
         "200":
           content:
@@ -20318,6 +20722,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/HistorialDeAutorizacionResponse"
           description: Pagina del historial
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort fuera del enum
         "403":
           content:
             application/problem+json:
@@ -22402,7 +22812,7 @@ paths:
         \ miembros, sedes, consumo de limites ni datos de pacientes. Reservado a la\
         \ administracion de plataforma, igual que la lectura y el cambio del plan.\
         \ El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un\
-        \ error."
+        \ error. DP-45: sort ordena por nombre, slug o creadaEn; sin el, por nombre."
       operationId: listPlatformOrganizations
       parameters:
       - description: Texto a buscar en el nombre o el slug del centro
@@ -22441,6 +22851,22 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: nombre ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "nombre,asc"
+          - "nombre,desc"
+          - "slug,asc"
+          - "slug,desc"
+          - "creadaEn,asc"
+          - "creadaEn,desc"
       responses:
         "200":
           content:
@@ -22453,7 +22879,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El estado pedido no es un estado de suscripcion
+          description: "El estado pedido no es un estado de suscripcion, o sort fuera\
+            \ del enum"
         "403":
           content:
             application/problem+json:

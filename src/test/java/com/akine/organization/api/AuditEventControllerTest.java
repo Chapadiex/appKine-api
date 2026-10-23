@@ -68,7 +68,7 @@ class AuditEventControllerTest {
 	void filtro_por_entidad() throws Exception {
 		given(authorizationGuard.actorSobre(anyLong(), anyBoolean(), any(), anyLong()))
 				.willAnswer(inv -> new OperatingActor(inv.getArgument(0), inv.getArgument(1), 3L));
-		given(auditQueryService.porEntidad(any(), eq(1L), eq("MEMBERSHIP"), eq(10L), any()))
+		given(auditQueryService.porEntidad(any(), eq(1L), eq("MEMBERSHIP"), eq(10L), any(), any()))
 				.willReturn(pagina(hecho()));
 
 		mockMvc.perform(get(BASE).param("entityType", "MEMBERSHIP").param("entityId", "10")
@@ -89,7 +89,7 @@ class AuditEventControllerTest {
 		ArgumentCaptor<OperatingActor> actor = ArgumentCaptor.forClass(OperatingActor.class);
 		ArgumentCaptor<Pageable> paginado = ArgumentCaptor.forClass(Pageable.class);
 		verify(auditQueryService).porEntidad(
-				actor.capture(), eq(1L), eq("MEMBERSHIP"), eq(10L), paginado.capture());
+				actor.capture(), eq(1L), eq("MEMBERSHIP"), eq(10L), any(), paginado.capture());
 		assertThat(actor.getValue()).isEqualTo(new OperatingActor(7L, false, 3L));
 		assertThat(paginado.getValue().getSort())
 				.isEqualTo(Sort.by(Sort.Direction.DESC, "occurredAt"));
@@ -98,20 +98,20 @@ class AuditEventControllerTest {
 	@Test
 	@DisplayName("Por actor: va a porActor con la cuenta pedida")
 	void filtro_por_actor() throws Exception {
-		given(auditQueryService.porActor(any(), anyLong(), anyLong(), any()))
+		given(auditQueryService.porActor(any(), anyLong(), anyLong(), any(), any()))
 				.willReturn(pagina());
 
 		mockMvc.perform(get(BASE).param("actorAccountId", "42").with(ApiActors.miembro(7L)))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.content.length()").value(0));
 
-		verify(auditQueryService).porActor(any(), eq(1L), eq(42L), any());
+		verify(auditQueryService).porActor(any(), eq(1L), eq(42L), any(), any());
 	}
 
 	@Test
 	@DisplayName("Por periodo: va a porPeriodo con los dos instantes parseados")
 	void filtro_por_periodo() throws Exception {
-		given(auditQueryService.porPeriodo(any(), anyLong(), any(), any(), any()))
+		given(auditQueryService.porPeriodo(any(), anyLong(), any(), any(), any(), any()))
 				.willReturn(pagina());
 
 		mockMvc.perform(get(BASE)
@@ -122,7 +122,7 @@ class AuditEventControllerTest {
 
 		verify(auditQueryService).porPeriodo(any(), eq(1L),
 				eq(Instant.parse("2026-08-01T00:00:00Z")),
-				eq(Instant.parse("2026-08-23T00:00:00Z")), any());
+				eq(Instant.parse("2026-08-23T00:00:00Z")), any(), any());
 	}
 
 	@Test
@@ -173,7 +173,7 @@ class AuditEventControllerTest {
 	@Test
 	@DisplayName("Un rango que el servicio rechaza (mas de 90 dias o invertido) sale como 400")
 	void rango_rechazado_por_el_servicio_es_400() throws Exception {
-		given(auditQueryService.porPeriodo(any(), anyLong(), any(), any(), any()))
+		given(auditQueryService.porPeriodo(any(), anyLong(), any(), any(), any(), any()))
 				.willThrow(new IllegalArgumentException("El rango no puede exceder los 90 dias"));
 
 		mockMvc.perform(get(BASE)
@@ -187,7 +187,7 @@ class AuditEventControllerTest {
 	@Test
 	@DisplayName("Sin auditoria:read es 403 con el permiso faltante")
 	void sin_permiso_es_403() throws Exception {
-		given(auditQueryService.porActor(any(), anyLong(), anyLong(), any()))
+		given(auditQueryService.porActor(any(), anyLong(), anyLong(), any(), any()))
 				.willThrow(new PermissionDeniedException("auditoria:read", 7L, 1L));
 
 		mockMvc.perform(get(BASE).param("actorAccountId", "42").with(ApiActors.miembro(7L)))
@@ -221,7 +221,7 @@ class AuditEventControllerTest {
 	@Test
 	@DisplayName("El tamano de pagina se recorta al maximo en vez de rechazarse")
 	void paginado_se_acota() throws Exception {
-		given(auditQueryService.porActor(any(), anyLong(), anyLong(), any()))
+		given(auditQueryService.porActor(any(), anyLong(), anyLong(), any(), any()))
 				.willReturn(pagina());
 
 		mockMvc.perform(get(BASE).param("actorAccountId", "42")
@@ -230,7 +230,7 @@ class AuditEventControllerTest {
 				.andExpect(status().isOk());
 
 		ArgumentCaptor<Pageable> paginado = ArgumentCaptor.forClass(Pageable.class);
-		verify(auditQueryService).porActor(any(), eq(1L), eq(42L), paginado.capture());
+		verify(auditQueryService).porActor(any(), eq(1L), eq(42L), any(), paginado.capture());
 		assertThat(paginado.getValue().getPageNumber()).isZero();
 		assertThat(paginado.getValue().getPageSize()).isEqualTo(ApiPaging.TAMANO_MAXIMO);
 	}

@@ -286,7 +286,7 @@ class AdjuntoClinicoServiceTest {
 	@Test
 	@DisplayName("listar deja evento de acceso a la historia y trae solo vigentes por defecto")
 	void listar_audita_y_filtra() {
-		given(adjuntos.listar(ORG_ID, HC_ID, null, null, 1, 0, 20))
+		given(adjuntos.listar(ORG_ID, HC_ID, null, null, 1, "", 0, 20))
 				.willReturn(List.of(conId(adjunto(null))));
 		given(adjuntos.contar(ORG_ID, HC_ID, null, null, 1)).willReturn(1L);
 

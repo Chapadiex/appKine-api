@@ -87,6 +87,8 @@ class SerieDeTurnosServiceTest {
 	@Mock private AvisosDeTurno avisos;
 	@Mock private RegistroDeRecepcion recepciones;
 	@Mock private OcurrenciaOmitidaRepositoryPort omisiones;
+	@Mock private com.akine.organization.spi.ConsultorioMembershipDirectory membresias;
+	@Mock private com.akine.platform.spi.identity.AccountIdentityDirectory identidades;
 
 	private SerieDeTurnosService service;
 	private final OperatingActor actor = new OperatingActor(9L, false, ORG_ID, CONSULTORIO_ID);
@@ -97,7 +99,8 @@ class SerieDeTurnosServiceTest {
 	void prepararServicio() {
 		service = new SerieDeTurnosService(series, turnos, eventos, agendas, ofertas, pacientes,
 				consultorios, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), iniciador, revalidador, atenciones, ciclo, auditTrail, avisos,
-				recepciones, omisiones, mock(PlatformTransactionManager.class));
+				recepciones, omisiones, mock(PlatformTransactionManager.class),
+				membresias, identidades);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", ZONA, true)));
@@ -216,7 +219,7 @@ class SerieDeTurnosServiceTest {
 				isNull(), isNull(), any()))
 				.willReturn(2L);
 		given(series.listar(eq(ORG_ID), eq(CONSULTORIO_ID),
-				isNull(), isNull(), any(),
+				isNull(), isNull(), any(), eq(java.util.Optional.empty()),
 				eq(0), eq(20)))
 				.willReturn(List.of(segunda, primera));
 		Turno deLaPrimera = futuro(301L, 3);
@@ -235,6 +238,50 @@ class SerieDeTurnosServiceTest {
 		verify(ofertas, org.mockito.Mockito.times(1)).find(ORG_ID, CONSULTORIO_ID, 42L);
 		verify(permissionGuard).requirePermission(argThat(
 				consulta -> consulta.permissionCode().equals("turno:read")));
+	}
+
+	@Test
+	@DisplayName("bandeja (DP-45): q busca en paciente, oferta y profesional, en lote, y corta la pagina en memoria")
+	void bandeja_con_q() {
+		TurnoSerie dePaula = serieConId(20L);
+		TurnoSerie deOtro = serieConId(21L);
+		ReflectionTestUtils.setField(deOtro, "personaId", 129L);
+		ReflectionTestUtils.setField(deOtro, "profesionalMembershipId", 32L);
+		given(series.todas(eq(ORG_ID), eq(CONSULTORIO_ID), isNull(), isNull(), any()))
+				.willReturn(List.of(deOtro, dePaula));
+		given(pacientes.findAll(eq(ORG_ID), any())).willReturn(java.util.Map.of(
+				128L, new PacienteSnapshot(128L, ORG_ID, "Pérez", "Paula", "DNI", "30111222", null,
+						true, true, 5L, Instant.now()),
+				129L, new PacienteSnapshot(129L, ORG_ID, "Gomez", "Gaston", "DNI", "30999888", null,
+						true, true, 6L, Instant.now())));
+		OfertaSnapshot kinesiologia = ofertas.find(ORG_ID, CONSULTORIO_ID, 42L).orElseThrow();
+		given(ofertas.findTodas(eq(ORG_ID), eq(CONSULTORIO_ID), any()))
+				.willReturn(java.util.Map.of(42L, kinesiologia));
+		given(membresias.findTodas(eq(ORG_ID), any())).willReturn(java.util.Map.of(
+				31L, new com.akine.organization.spi.ConsultorioMembershipSnapshot(31L, 501L, ORG_ID,
+						CONSULTORIO_ID, "PROFESIONAL", "ACTIVA", Instant.EPOCH, null, true, true),
+				32L, new com.akine.organization.spi.ConsultorioMembershipSnapshot(32L, 502L, ORG_ID,
+						CONSULTORIO_ID, "PROFESIONAL", "ACTIVA", Instant.EPOCH, null, true, true)));
+		given(identidades.identidadesDe(any())).willReturn(java.util.Map.of(
+				501L, new com.akine.platform.spi.identity.AccountIdentity(501L, "Lic. Ana Ruiz", "a@x.test"),
+				502L, new com.akine.platform.spi.identity.AccountIdentity(502L, "Lic. Beto Sosa", "b@x.test")));
+
+		assertThat(service.listar(actor, CONSULTORIO_ID, null, null, "PEREZ", java.util.Optional.empty(),
+				0, 20).contenido()).as("apellido sin acento ni mayusculas")
+				.extracting(SerieResumenView::id).containsExactly(20L);
+		assertThat(service.listar(actor, CONSULTORIO_ID, null, null, "30999", java.util.Optional.empty(),
+				0, 20).contenido()).as("documento")
+				.extracting(SerieResumenView::id).containsExactly(21L);
+		assertThat(service.listar(actor, CONSULTORIO_ID, null, null, "sosa", java.util.Optional.empty(),
+				0, 20).contenido()).as("profesional")
+				.extracting(SerieResumenView::id).containsExactly(21L);
+		SeriePagina porOferta = service.listar(actor, CONSULTORIO_ID, null, null, "kinesio",
+				com.akine.platform.spi.listado.OrdenDeListado.leer("creadaEn,asc", "creadaEn"), 0, 1);
+		assertThat(porOferta.total()).as("el total es de lo que coincide, no de la pagina").isEqualTo(2);
+		assertThat(porOferta.contenido()).extracting(SerieResumenView::id)
+				.as("la mas vieja primero (o el id si comparten instante)").containsExactly(20L);
+		verify(series, never()).contar(anyLong(), anyLong(), any(), any(), any());
+		verify(pacientes, org.mockito.Mockito.atMost(8)).findAll(anyLong(), any());
 	}
 
 	@Test

@@ -295,7 +295,13 @@ public class EgresoController {
 					mismo profesional para el mismo mes son legitimas —una correccion, un segundo \
 					concepto—, y un unique sobre el periodo convertiria un caso normal en un error. \
 					Filtrar por beneficiario las pone una al lado de la otra, que es la unica \
-					respuesta honesta.""")
+					respuesta honesta.
+
+					DP-45: `q` busca "contiene", sin distinguir mayusculas ni acentos, en el \
+					nombre y el documento del beneficiario, en el concepto y en el numero de \
+					comprobante. Ya pagina con `limite` y `desplazamiento` (el corte de 50 es el \
+					limite por defecto): no se agregan `page` y `size`, que serian dos formas de \
+					pedir lo mismo.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Egresos"),
 			@ApiResponse(
@@ -311,12 +317,13 @@ public class EgresoController {
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
 			@RequestParam(defaultValue = "50") int limite,
-			@RequestParam(defaultValue = "0") int desplazamiento) {
+			@RequestParam(defaultValue = "0") int desplazamiento,
+			@RequestParam(required = false) String q) {
 
 		return ResponseEntity.ok(
 				egresoService.buscar(
 								apiActor.current(), consultorioId, estado, categoria,
-								beneficiarioMembershipId, desde, hasta, limite, desplazamiento)
+								beneficiarioMembershipId, desde, hasta, q, limite, desplazamiento)
 						.stream()
 						.map(EgresoResponse::de)
 						.toList());

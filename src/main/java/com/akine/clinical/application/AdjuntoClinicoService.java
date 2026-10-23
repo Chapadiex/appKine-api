@@ -168,6 +168,32 @@ public class AdjuntoClinicoService {
 			int page,
 			int size,
 			String justificacion) {
+		return listar(actor, historiaClinicaId, categoria, entradaClinicaId, incluirDadosDeBaja, "",
+				page, size, justificacion);
+	}
+
+	/** DP-45: los campos por los que se ordenan los adjuntos clinicos. */
+	public static final java.util.Set<String> CAMPOS_DE_ORDEN =
+			java.util.Set.of("subidoEn", "titulo", "categoria", "tamano");
+
+	/**
+	 * La misma pagina con el orden que pide el cliente (DP-45). La justificacion, la autorizacion
+	 * clinica y la auditoria de la lectura son exactamente las de siempre: el orden no cambia
+	 * quien puede leer ni que queda registrado.
+	 *
+	 * @param orden la clave {@code campo,dir} ya validada, o vacio para el orden de siempre
+	 */
+	@Transactional
+	public AdjuntoClinicoPagina listar(
+			OperatingActor actor,
+			long historiaClinicaId,
+			CategoriaAdjuntoClinico categoria,
+			Long entradaClinicaId,
+			boolean incluirDadosDeBaja,
+			String orden,
+			int page,
+			int size,
+			String justificacion) {
 
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
@@ -183,7 +209,7 @@ public class AdjuntoClinicoService {
 
 		List<AdjuntoClinicoView> contenido = adjuntos
 				.listar(organizationId, historia.getId(), filtroCategoria, entradaClinicaId,
-						activoFiltro, page * size, size)
+						activoFiltro, orden, page * size, size)
 				.stream()
 				.map(AdjuntoClinicoView::de)
 				.toList();

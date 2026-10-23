@@ -58,7 +58,15 @@ public interface AdjuntoRepository
 			   AND a.persona_id = :personaId
 			   AND (:categoria IS NULL OR a.categoria = :categoria)
 			   AND (:activoFiltro = -1 OR a.active = :activoFiltro)
-			 ORDER BY a.subido_en DESC, a.id DESC
+			 ORDER BY
+			   CASE WHEN :orden = 'subidoEn,asc' THEN a.subido_en END ASC,
+			   CASE WHEN :orden = 'titulo,asc' THEN a.titulo END ASC,
+			   CASE WHEN :orden = 'titulo,desc' THEN a.titulo END DESC,
+			   CASE WHEN :orden = 'categoria,asc' THEN a.categoria END ASC,
+			   CASE WHEN :orden = 'categoria,desc' THEN a.categoria END DESC,
+			   CASE WHEN :orden = 'tamano,asc' THEN a.tamano_bytes END ASC,
+			   CASE WHEN :orden = 'tamano,desc' THEN a.tamano_bytes END DESC,
+			   a.subido_en DESC, a.id DESC
 			 LIMIT :limite OFFSET :offset
 			""", nativeQuery = true)
 	List<AdjuntoAdministrativo> listar(
@@ -66,6 +74,7 @@ public interface AdjuntoRepository
 			@Param("personaId") Long personaId,
 			@Param("categoria") String categoria,
 			@Param("activoFiltro") int activoFiltro,
+			@Param("orden") String orden,
 			@Param("offset") int offset,
 			@Param("limite") int limite);
 

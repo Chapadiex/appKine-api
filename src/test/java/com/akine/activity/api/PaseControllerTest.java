@@ -79,7 +79,7 @@ class PaseControllerTest {
 	void ledger_paginado() throws Exception {
 		MovimientoPaseView compra = new MovimientoPaseView(1L, "COMPRA", 8, 8, "VENTA", 77L, null, CUENTA,
 				null, Instant.parse("2026-10-01T12:00:00Z"));
-		given(ventaService.movimientos(any(), eq(SEDE_ID), eq(77L), eq(0), eq(100)))
+		given(ventaService.movimientos(any(), eq(SEDE_ID), eq(77L), any(), eq(0), eq(100)))
 				.willReturn(new PageImpl<>(List.of(compra), PageRequest.of(0, 100), 1));
 
 		autenticado(get(PASE + "/movimientos").param("page", "-3").param("size", "5000"))

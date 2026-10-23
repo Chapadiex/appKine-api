@@ -12,6 +12,7 @@ import com.akine.scheduling.application.SerieDeTurnosService;
 import com.akine.scheduling.domain.AlcanceDeSerie;
 import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.ReglaDeRecurrencia;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -148,9 +149,16 @@ public class SerieDeTurnosController {
 					empezo; `FINALIZADA` = no le queda ninguno.
 
 					Paginado base cero; `size` se acota a 100. Exige `turno:read`. PHI minima: \
-					nombre y documento del paciente, nada clinico.""")
+					nombre y documento del paciente, nada clinico.
+
+					DP-45: `q` busca "contiene", sin distinguir mayusculas ni acentos, en el \
+					apellido, el nombre y el documento del paciente, en el nombre comercial de la \
+					oferta y en el nombre del profesional. `sort` ordena por creadaEn, fechaDesde \
+					o fechaHasta.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Una pagina de series"),
+			@ApiResponse(responseCode = "400", description = "`sort` fuera del enum",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
 					description = "Sin `turno:read` en esa sede",
@@ -166,12 +174,22 @@ public class SerieDeTurnosController {
 			@RequestParam(required = false) @Parameter(description = "Estado derivado de sus turnos", example = "VIGENTE")
 			EstadoDeSerie estado,
 			@RequestParam(defaultValue = "0") @Parameter(description = "Pagina, base cero") int page,
-			@RequestParam(defaultValue = "20") @Parameter(description = "Tamano de pagina, maximo 100") int size) {
+			@RequestParam(defaultValue = "20") @Parameter(description = "Tamano de pagina, maximo 100") int size,
+			@RequestParam(required = false) @Parameter(
+					description = "Texto a buscar en el paciente, la oferta o el profesional", example = "perez")
+			String q,
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) @Parameter(
+					description = OrdenDeListado.DESCRIPCION + "las mas nuevas primero.",
+					schema = @Schema(allowableValues = {"creadaEn,asc", "creadaEn,desc",
+							"fechaDesde,asc", "fechaDesde,desc", "fechaHasta,asc", "fechaHasta,desc"}))
+			String sort) {
 
 		int pagina = Math.max(page, 0);
 		int tamano = Math.min(Math.max(size, 1), TAMANO_MAXIMO);
+		var orden = OrdenDeListado.leer(sort, SerieDeTurnosService.ORDEN_DE_SERIES);
 		return ResponseEntity.ok(SerieDeTurnosPageResponse.of(
-				service.listar(apiActor.current(), consultorioId, personaId, estado, pagina, tamano),
+				service.listar(apiActor.current(), consultorioId, personaId, estado, q, orden,
+						pagina, tamano),
 				pagina, tamano));
 	}
 

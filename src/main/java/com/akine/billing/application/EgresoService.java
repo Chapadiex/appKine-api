@@ -16,6 +16,7 @@ import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.identity.AccountIdentity;
@@ -304,6 +305,21 @@ public class EgresoService {
 			OperatingActor actor, long consultorioId, String estado, String categoria,
 			Long beneficiarioMembershipId, LocalDate desde, LocalDate hasta,
 			int limite, int desplazamiento) {
+		return buscar(actor, consultorioId, estado, categoria, beneficiarioMembershipId, desde,
+				hasta, null, limite, desplazamiento);
+	}
+
+	/**
+	 * La bandeja con busqueda por texto (DP-45). {@code q} busca "contiene", sin mayusculas ni
+	 * acentos, en el nombre y el documento del beneficiario, en el concepto y en el numero de
+	 * comprobante. Mismo orden y mismo corte que siempre.
+	 */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	@Transactional(readOnly = true)
+	public List<EgresoView> buscar(
+			OperatingActor actor, long consultorioId, String estado, String categoria,
+			Long beneficiarioMembershipId, LocalDate desde, LocalDate hasta, String q,
+			int limite, int desplazamiento) {
 
 		long organizationId = CajaAcceso.exigirContexto(actor);
 		ConsultorioSnapshot sede = acceso.exigirSedeDelTenant(organizationId, consultorioId);
@@ -316,6 +332,7 @@ public class EgresoService {
 		return egresos.buscar(
 						organizationId, consultorioId, estado, categoria, clave,
 						CajaAcceso.inicioDelDia(sede, desde), CajaAcceso.finDelDia(sede, hasta),
+						TextoDeBusqueda.patronLike(q),
 						Math.min(Math.max(limite, 1), LIMITE_MAXIMO), Math.max(desplazamiento, 0))
 				.stream()
 				.map(EgresoView::de)

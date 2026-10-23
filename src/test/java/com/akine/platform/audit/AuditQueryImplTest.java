@@ -74,8 +74,8 @@ class AuditQueryImplTest {
 	@DisplayName("La consulta por entidad usa el filtro de entidad, no otro")
 	void por_entidad() {
 		given(auditEventRepository
-				.findAllByOrganizationIdAndEntityTypeAndEntityIdOrderByOccurredAtDesc(
-						eq(ORG_ID), eq("Membership"), eq(60L), any()))
+				.porEntidad(
+						eq(ORG_ID), eq("Membership"), eq(60L), any(), any(), any()))
 				.willReturn(pagina(evento(null)));
 
 		Page<AuditEventSummary> resultado = auditQuery.porEntidad(
@@ -99,8 +99,8 @@ class AuditQueryImplTest {
 	@Test
 	@DisplayName("La consulta por actor usa el filtro de actor")
 	void por_actor() {
-		given(auditEventRepository.findAllByOrganizationIdAndActorAccountIdOrderByOccurredAtDesc(
-				eq(ORG_ID), eq(30L), any())).willReturn(pagina(evento(null)));
+		given(auditEventRepository.porActor(
+				eq(ORG_ID), eq(30L), any(), any(), any())).willReturn(pagina(evento(null)));
 
 		assertThat(auditQuery.porActor(
 				new AuditEventFilter(ORG_ID, null, null, null, 30L, null, null), PAGINA)
@@ -110,42 +110,42 @@ class AuditQueryImplTest {
 	@Test
 	@DisplayName("Sin sede, el periodo usa el indice de organizacion y tiempo")
 	void por_periodo_sin_sede() {
-		given(auditEventRepository.findAllByOrganizationIdAndOccurredAtBetweenOrderByOccurredAtDesc(
-				eq(ORG_ID), any(), any(), any())).willReturn(pagina(evento(null)));
+		given(auditEventRepository.porPeriodo(
+				eq(ORG_ID), any(), any(), any(), any(), any())).willReturn(pagina(evento(null)));
 
 		auditQuery.porPeriodo(new AuditEventFilter(ORG_ID, null, null, null, null,
 				AHORA.minus(1, ChronoUnit.DAYS), AHORA), PAGINA);
 
 		verify(auditEventRepository)
-				.findAllByOrganizationIdAndOccurredAtBetweenOrderByOccurredAtDesc(
-						eq(ORG_ID), any(), any(), any());
+				.porPeriodo(
+						eq(ORG_ID), any(), any(), any(), any(), any());
 		verify(auditEventRepository, never())
-				.findAllByOrganizationIdAndConsultorioIdAndOccurredAtBetweenOrderByOccurredAtDesc(
-						any(), any(), any(), any(), any());
+				.porPeriodoEnSede(
+						any(), any(), any(), any(), any(), any(), any());
 	}
 
 	@Test
 	@DisplayName("Con sede, el periodo usa el indice que la incluye: es el alcance de CONSULTORIO_ADMIN")
 	void por_periodo_con_sede() {
 		given(auditEventRepository
-				.findAllByOrganizationIdAndConsultorioIdAndOccurredAtBetweenOrderByOccurredAtDesc(
-						eq(ORG_ID), eq(CONSULTORIO_ID), any(), any(), any()))
+				.porPeriodoEnSede(
+						eq(ORG_ID), eq(CONSULTORIO_ID), any(), any(), any(), any(), any()))
 				.willReturn(pagina(evento(null)));
 
 		auditQuery.porPeriodo(new AuditEventFilter(ORG_ID, CONSULTORIO_ID, null, null, null,
 				AHORA.minus(1, ChronoUnit.DAYS), AHORA), PAGINA);
 
 		verify(auditEventRepository, never())
-				.findAllByOrganizationIdAndOccurredAtBetweenOrderByOccurredAtDesc(
-						any(), any(), any(), any());
+				.porPeriodo(
+						any(), any(), any(), any(), any(), any());
 	}
 
 	@Test
 	@DisplayName("Los detalles JSON se devuelven como mapa")
 	void los_detalles_se_deserializan() {
 		given(auditEventRepository
-				.findAllByOrganizationIdAndEntityTypeAndEntityIdOrderByOccurredAtDesc(
-						any(), any(), any(), any()))
+				.porEntidad(
+						any(), any(), any(), any(), any(), any()))
 				.willReturn(pagina(evento("{\"permissionCode\":\"colaborador:manage\"}")));
 
 		assertThat(auditQuery.porEntidad(
@@ -161,8 +161,8 @@ class AuditQueryImplTest {
 		// SOBRE QUE, que es el 90 % de para lo que se consulta una auditoria. Hacer fallar la
 		// consulta completa por el detalle de una fila seria perder todo lo demas.
 		given(auditEventRepository
-				.findAllByOrganizationIdAndEntityTypeAndEntityIdOrderByOccurredAtDesc(
-						any(), any(), any(), any()))
+				.porEntidad(
+						any(), any(), any(), any(), any(), any()))
 				.willReturn(pagina(evento("{esto no es json"), evento("   "), evento(null)));
 
 		List<AuditEventSummary> resultado = auditQuery.porEntidad(

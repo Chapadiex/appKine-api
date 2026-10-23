@@ -3,11 +3,17 @@ package com.akine.scheduling.application;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.identity.AccountIdentity;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
+import com.akine.platform.spi.listado.OrdenDeListado;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.domain.AlcanceDeSerie;
 import com.akine.scheduling.domain.EstadoDeSerie;
@@ -114,6 +120,8 @@ public class SerieDeTurnosService {
 	private final RegistroDeRecepcion recepciones;
 	private final OcurrenciaOmitidaRepositoryPort omisiones;
 	private final TransactionTemplate transaccionReadCommitted;
+	private final ConsultorioMembershipDirectory membresias;
+	private final AccountIdentityDirectory identidades;
 
 	public SerieDeTurnosService(
 			TurnoSerieRepositoryPort series,
@@ -132,7 +140,12 @@ public class SerieDeTurnosService {
 			AvisosDeTurno avisos,
 			RegistroDeRecepcion recepciones,
 			OcurrenciaOmitidaRepositoryPort omisiones,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			ConsultorioMembershipDirectory membresias,
+			AccountIdentityDirectory identidades) {
+
+		this.membresias = membresias;
+		this.identidades = identidades;
 
 		this.series = series;
 		this.turnos = turnos;
@@ -313,18 +326,54 @@ public class SerieDeTurnosService {
 	public SeriePagina listar(
 			OperatingActor actor, long consultorioId, Long personaId, EstadoDeSerie estado,
 			int pagina, int tamano) {
+		return listar(actor, consultorioId, personaId, estado, null, Optional.empty(), pagina, tamano);
+	}
+
+	/** DP-45: los campos por los que se ordena la bandeja. */
+	public static final Set<String> ORDEN_DE_SERIES = Set.of("creadaEn", "fechaDesde", "fechaHasta");
+
+	/**
+	 * La bandeja con busqueda y orden (DP-45, punto 1).
+	 *
+	 * <p>{@code q} busca "contiene", sin mayusculas ni acentos, en el apellido, el nombre y el
+	 * documento del paciente, en el nombre comercial de la oferta y en el nombre del profesional.
+	 * Los tres viven en otros modulos ({@code person}, {@code offering}, {@code identity}) y se
+	 * preguntan por su {@code spi}: con {@code q} se leen todas las series del filtro, se resuelven
+	 * los nombres en lote —una consulta por modulo, no una por fila— y la pagina se corta en
+	 * memoria. Sin {@code q} el camino es el de siempre, recortado en la base.
+	 */
+	@Transactional(readOnly = true)
+	public SeriePagina listar(
+			OperatingActor actor, long consultorioId, Long personaId, EstadoDeSerie estado,
+			String q, Optional<OrdenDeListado> orden, int pagina, int tamano) {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_READ);
 
 		Instant ahora = Instant.now();
-		long total = series.contar(organizationId, consultorioId, personaId, estado, ahora);
-		if (total == 0 || (long) pagina * tamano >= total) {
-			return new SeriePagina(List.of(), total);
+		long total;
+		List<TurnoSerie> deLaPagina;
+		if (TextoDeBusqueda.hay(q)) {
+			List<TurnoSerie> coinciden = coincidenConElTexto(organizationId, consultorioId,
+					series.todas(organizationId, consultorioId, personaId, estado, ahora), q);
+			total = coinciden.size();
+			deLaPagina = orden.map(pedido -> coinciden.stream()
+							.sorted(pedido.aplicar(comparadorDeSeries(pedido.campo()),
+									Comparator.comparingLong(TurnoSerie::getId)))
+							.toList())
+					.orElse(coinciden).stream()
+					.skip((long) pagina * tamano)
+					.limit(tamano)
+					.toList();
+		} else {
+			total = series.contar(organizationId, consultorioId, personaId, estado, ahora);
+			if (total == 0 || (long) pagina * tamano >= total) {
+				return new SeriePagina(List.of(), total);
+			}
+			deLaPagina = series.listar(
+					organizationId, consultorioId, personaId, estado, ahora, orden, pagina, tamano);
 		}
-		List<TurnoSerie> deLaPagina =
-				series.listar(organizationId, consultorioId, personaId, estado, ahora, pagina, tamano);
 		if (deLaPagina.isEmpty()) {
 			return new SeriePagina(List.of(), total);
 		}
@@ -349,6 +398,56 @@ public class SerieDeTurnosService {
 		return new SeriePagina(filas, total);
 	}
 
+
+	/**
+	 * DP-45: las series cuyo paciente, oferta o profesional contienen {@code q}. Tres consultas en
+	 * lote, una por modulo duenio del nombre, sin importar cuantas series haya.
+	 */
+	private List<TurnoSerie> coincidenConElTexto(
+			long organizationId, long consultorioId, List<TurnoSerie> candidatas, String q) {
+
+		if (candidatas.isEmpty()) {
+			return candidatas;
+		}
+		Map<Long, PacienteSnapshot> personas = pacientes.findAll(organizationId,
+				candidatas.stream().map(TurnoSerie::getPersonaId).distinct().toList());
+		Map<Long, OfertaSnapshot> ofertasDeLaSede = ofertas.findTodas(organizationId, consultorioId,
+				candidatas.stream().map(TurnoSerie::getOfertaId).distinct().toList());
+		Map<Long, ConsultorioMembershipSnapshot> profesionales = membresias.findTodas(organizationId,
+				candidatas.stream().map(TurnoSerie::getProfesionalMembershipId)
+						.filter(java.util.Objects::nonNull).distinct().toList());
+		Map<Long, AccountIdentity> cuentas = identidades.identidadesDe(profesionales.values().stream()
+				.map(ConsultorioMembershipSnapshot::accountId).distinct().toList());
+
+		return candidatas.stream()
+				.filter(serie -> {
+					PacienteSnapshot persona = personas.get(serie.getPersonaId());
+					OfertaSnapshot oferta = ofertasDeLaSede.get(serie.getOfertaId());
+					ConsultorioMembershipSnapshot profesional = serie.getProfesionalMembershipId() == null
+							? null : profesionales.get(serie.getProfesionalMembershipId());
+					AccountIdentity cuenta = profesional == null ? null : cuentas.get(profesional.accountId());
+					return TextoDeBusqueda.algunoContiene(q,
+							persona == null ? null : persona.apellido(),
+							persona == null ? null : persona.nombre(),
+							persona == null ? null : persona.numeroDocumento(),
+							oferta == null ? null : oferta.nombreComercial(),
+							cuenta == null ? null : cuenta.nombreCompleto());
+				})
+				.toList();
+	}
+
+	/** El comparador ascendente de cada campo de {@link #ORDEN_DE_SERIES}. */
+	private static Comparator<TurnoSerie> comparadorDeSeries(String campo) {
+		return switch (campo) {
+			case "creadaEn" -> Comparator.comparing(TurnoSerie::getCreadaEn,
+					Comparator.nullsLast(Comparator.naturalOrder()));
+			case "fechaDesde" -> Comparator.comparing((TurnoSerie s) -> s.getRegla().desde(),
+					Comparator.nullsLast(Comparator.naturalOrder()));
+			case "fechaHasta" -> Comparator.comparing((TurnoSerie s) -> s.getRegla().hasta(),
+					Comparator.nullsLast(Comparator.naturalOrder()));
+			default -> throw new IllegalStateException("Campo de orden sin comparador: " + campo);
+		};
+	}
 	/**
 	 * Una fila de la bandeja. "Pendiente" y el estado son exactamente el predicado del filtro de
 	 * estado en la base ({@link EstadoDeSerie#de}, DP-20), con el mismo instante. Si divergieran,
