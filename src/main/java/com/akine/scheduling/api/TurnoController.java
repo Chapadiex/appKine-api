@@ -8,6 +8,7 @@ import com.akine.scheduling.api.dto.ReprogramarTurnoRequest;
 import com.akine.scheduling.api.dto.ReservarTurnoRequest;
 import com.akine.scheduling.api.dto.TurnoDelDiaResponse;
 import com.akine.scheduling.api.dto.TurnoResponse;
+import com.akine.scheduling.api.dto.TurnosDeSedeResponse;
 import com.akine.scheduling.application.CicloDeRecepcionService;
 import com.akine.scheduling.application.CicloDeTurnoService;
 import com.akine.scheduling.application.ReprogramacionCommand;
@@ -425,6 +426,69 @@ public class TurnoController {
 				vista.fecha(),
 				vista.timezone(),
 				vista.turnos().stream().map(TurnoDelDiaResponse::de).toList()));
+	}
+
+	/**
+	 * <p>Ruta propia y no un segundo {@code GET} sobre {@code /turnos}: ese ya es la agenda del dia
+	 * (parametro {@code fecha}) y dos operaciones con el mismo metodo y la misma ruta no caben en el
+	 * contrato.
+	 */
+	@GetMapping("/calendario")
+	@Operation(
+			operationId = "listarTurnosDeSede",
+			summary = "Turnos de la sede en un rango de fechas",
+			description = """
+					Los turnos reservados de la sede que empiezan en `[desde, hasta)`, del mas \
+					temprano al mas tarde (desempate por id). Es la fuente del calendario semanal \
+					con panel de detalle.
+
+					Las fechas son dias locales de la **zona de la sede**, que viaja en la \
+					respuesta. `hasta` es **exclusivo**, como en la busqueda de horarios. **El \
+					rango tiene un maximo de 42 dias**: mas que eso responde 400 \
+					`validation-error`. No hay paginacion, el tope la hace innecesaria.
+
+					**Los cancelados no vienen** salvo `incluirCancelados=true`. Cada turno trae lo \
+					mismo que la agenda del dia (paciente, oferta, espacio, recepcion, serie, \
+					cobertura elegida) mas el nombre del profesional. **Nada clinico.**
+
+					Exige `turno:read`, igual que la agenda del dia.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Turnos del rango"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Fechas ausentes o mal formadas, `hasta` no posterior a `desde`, o rango de mas de 42 dias",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:read` en esa sede, o sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede no existe o es de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TurnosDeSedeResponse> listarTurnosDeSede(
+			@PathVariable long consultorioId,
+			@RequestParam
+			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+			@Parameter(description = "Primer dia, inclusivo, en la zona de la sede", example = "2026-10-26")
+			LocalDate desde,
+			@RequestParam
+			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+			@Parameter(description = "Ultimo dia, EXCLUSIVO. Maximo 42 dias desde `desde`", example = "2026-11-02")
+			LocalDate hasta,
+			@RequestParam(required = false)
+			@Parameter(description = "Membership del profesional, para ver solo sus turnos", example = "31")
+			Long profesionalId,
+			@RequestParam(required = false)
+			@Parameter(description = "Oferta, para ver solo sus turnos", example = "42")
+			Long ofertaId,
+			@RequestParam(defaultValue = "false")
+			@Parameter(description = "Incluir los turnos cancelados (por defecto no)")
+			boolean incluirCancelados) {
+
+		return ResponseEntity.ok(TurnosDeSedeResponse.de(recepcionService.delRango(
+				apiActor.current(), consultorioId, desde, hasta,
+				profesionalId, ofertaId, incluirCancelados)));
 	}
 
 	/**
