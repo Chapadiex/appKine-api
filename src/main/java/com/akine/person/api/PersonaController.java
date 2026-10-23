@@ -19,6 +19,7 @@ import com.akine.person.application.PersonaPagina;
 import com.akine.person.application.PersonaService;
 import com.akine.person.application.PersonaView;
 import com.akine.person.application.ResumenDePersonaService;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -153,12 +154,18 @@ public class PersonaController {
 					no sabe de antemano si quien busca es paciente.
 
 					OJO: esPaciente es DERIVADO y de solo lectura. Una persona sin perfil clinico \
-					es una persona valida y completa —RN-M07-006—, no una ficha a medio cargar.""")
+					es una persona valida y completa —RN-M07-006—, no una ficha a medio cargar.
+
+					DP-45: sort ordena por apellido, nombre, documento, nacimiento o alta; detras \
+					va siempre apellido, nombre e id.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Pagina de personas del padron",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = PersonaPageResponse.class))),
+			@ApiResponse(responseCode = "400", description = "sort fuera del enum",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403",
 					description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -177,14 +184,22 @@ public class PersonaController {
 			@RequestParam(defaultValue = PAGINA_POR_DEFECTO) int page,
 
 			@Parameter(description = "Tamano de pagina, acotado a 100")
-			@RequestParam(defaultValue = TAMANO_POR_DEFECTO) int size) {
+			@RequestParam(defaultValue = TAMANO_POR_DEFECTO) int size,
+
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "apellido, nombre e id.",
+					schema = @Schema(allowableValues = {"apellido,asc", "apellido,desc",
+							"nombre,asc", "nombre,desc", "documento,asc", "documento,desc",
+							"nacimiento,asc", "nacimiento,desc", "alta,asc", "alta,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
 
 		OperatingActor actor = apiActor.current();
 		int pagina = Math.max(page, 0);
 		int tamano = Math.min(Math.max(size, 1), TAMANO_MAXIMO);
+		String orden = OrdenDeListado.claveDe(
+				OrdenDeListado.leer(sort, PersonaBusqueda.CAMPOS_DE_ORDEN));
 
 		PersonaPagina resultado = personaService.buscar(
-				actor, new PersonaBusqueda(q, estado, perfil), pagina, tamano);
+				actor, new PersonaBusqueda(q, estado, perfil, orden), pagina, tamano);
 
 		return PersonaPageResponse.of(resultado, pagina, tamano);
 	}

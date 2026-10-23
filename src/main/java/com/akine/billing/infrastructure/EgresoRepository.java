@@ -109,6 +109,11 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 			   AND (:beneficiarioClave IS NULL OR beneficiario_clave = :beneficiarioClave)
 			   AND (:desde IS NULL OR registrado_en >= :desde)
 			   AND (:hasta IS NULL OR registrado_en < :hasta)
+			   AND (:patron IS NULL
+			        OR beneficiario_nombre LIKE :patron
+			        OR beneficiario_documento LIKE :patron
+			        OR concepto LIKE :patron
+			        OR comprobante_numero LIKE :patron)
 			 ORDER BY registrado_en DESC, id DESC
 			 LIMIT :limite OFFSET :desplazamiento
 			""", nativeQuery = true)
@@ -121,6 +126,7 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 			@Param("beneficiarioClave") String beneficiarioClave,
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta,
+			@Param("patron") String patron,
 			@Param("limite") int limite,
 			@Param("desplazamiento") int desplazamiento);
 

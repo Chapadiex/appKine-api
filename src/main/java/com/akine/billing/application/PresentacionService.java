@@ -26,6 +26,7 @@ import com.akine.contracting.spi.FinanciadorSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.person.spi.RespaldoDocumentalDirectory;
 import com.akine.person.spi.RespaldoDocumentalDirectory.RespaldoDocumental;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
@@ -536,6 +537,20 @@ public class PresentacionService {
 	public List<PresentacionView> buscar(
 			OperatingActor actor, long consultorioId, String estado, Long financiadorId,
 			LocalDate desde, LocalDate hasta, int limite, int desplazamiento) {
+		return buscar(actor, consultorioId, estado, financiadorId, desde, hasta, null, limite,
+				desplazamiento);
+	}
+
+	/**
+	 * La bandeja con busqueda por texto (DP-45). {@code q} busca "contiene" en el numero de
+	 * factura y, si es un numero, el lote con ese numero. No busca en el nombre del financiador:
+	 * es de {@code contracting} y el {@code spi} lo resuelve por id, no por texto; para eso esta el
+	 * filtro {@code financiadorId}. Mismo orden y mismo corte que siempre.
+	 */
+	@Transactional(readOnly = true)
+	public List<PresentacionView> buscar(
+			OperatingActor actor, long consultorioId, String estado, Long financiadorId,
+			LocalDate desde, LocalDate hasta, String q, int limite, int desplazamiento) {
 
 		long organizationId = PresentacionAcceso.exigirContexto(actor);
 		acceso.exigirSedeDelTenant(organizationId, consultorioId);
@@ -546,12 +561,22 @@ public class PresentacionService {
 		Map<Long, String> nombres = new LinkedHashMap<>();
 		return presentaciones.buscar(
 						organizationId, consultorioId, estado, financiadorId, desde, hasta,
+						TextoDeBusqueda.patronLike(q), numeroDelLote(q),
 						acotar(limite), Math.max(desplazamiento, 0))
 				.stream()
 				.map(presentacion -> PresentacionView.de(presentacion, nombres.computeIfAbsent(
 						presentacion.getFinanciadorId(),
 						id -> acceso.nombreDe(organizationId, id))))
 				.toList();
+	}
+
+	/** El texto como numero de lote, si lo es; si no, {@code null}, que no coincide con nada. */
+	private static Integer numeroDelLote(String q) {
+		String texto = q == null ? "" : q.strip();
+		if (texto.isEmpty() || texto.length() > 9 || !texto.chars().allMatch(Character::isDigit)) {
+			return null;
+		}
+		return Integer.valueOf(texto);
 	}
 
 	/** El detalle con sus items. */

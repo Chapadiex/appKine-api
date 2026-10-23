@@ -1049,7 +1049,7 @@ class PresentacionServiceTest {
 	@DisplayName("la bandeja resuelve un nombre por financiador y no uno por fila")
 	void buscarCacheaElNombre() {
 		given(presentaciones.buscar(
-				ORG_ID, SEDE_ID, "PRESENTADA", null, null, null, 200, 0))
+				ORG_ID, SEDE_ID, "PRESENTADA", null, null, null, null, null, 200, 0))
 				.willReturn(List.of(
 						enviada(new BigDecimal("85000.00")),
 						enviada(new BigDecimal("12000.00"))));
@@ -1067,7 +1067,7 @@ class PresentacionServiceTest {
 
 		// El limite se acota a 200 y el desplazamiento negativo a cero: un cliente no fija el techo
 		// de una consulta del servidor.
-		verify(presentaciones).buscar(ORG_ID, SEDE_ID, "PRESENTADA", null, null, null, 200, 0);
+		verify(presentaciones).buscar(ORG_ID, SEDE_ID, "PRESENTADA", null, null, null, null, null, 200, 0);
 
 		// Los listados no arman la lista de items: el detalle la trae y la bandeja no la necesita.
 		assertThat(bandeja.get(0).items()).isNull();

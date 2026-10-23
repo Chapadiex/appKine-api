@@ -10,6 +10,8 @@ import com.akine.notification.domain.port.NotificationOutboxRepositoryPort;
 import com.akine.notification.spi.NotificationType;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.platform.spi.listado.OrdenDeListado;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -18,8 +20,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -59,14 +65,33 @@ public class ConsultaDeNotificacionesService {
 		this.clock = clock;
 	}
 
+	/** Sin texto ni orden: la forma de antes de DP-45. */
+	@Transactional(readOnly = true)
+	public Page<NotificacionResumen> listar(
+			OperatingActor actor, long orgId, Collection<OutboxStatus> estados, int page, int size) {
+		return listar(actor, orgId, estados, null, Optional.empty(), page, size);
+	}
+
+	/** DP-45: campo del contrato → propiedad de la notificacion. */
+	public static final Map<String, String> ORDEN_DE_NOTIFICACIONES = Map.of(
+			"creadaEn", "createdAt",
+			"estado", "estado",
+			"tipo", "tipo",
+			"intentos", "intentos");
+
 	/**
 	 * Notificaciones de la organizacion en los estados pedidos, de la mas nueva a la mas vieja.
+	 *
+	 * <p>DP-45: {@code q} coincide con el TIPO que contiene el texto (sin mayusculas ni acentos)
+	 * o con el destinatario EXACTO. Exacto a proposito: el listado lo devuelve enmascarado, y un
+	 * "contiene" sobre la casilla real dejaria reconstruirla letra por letra preguntando.
 	 *
 	 * @param estados estados a incluir; vacio o {@code null} equivale a FALLIDA y AGOTADA
 	 */
 	@Transactional(readOnly = true)
 	public Page<NotificacionResumen> listar(
-			OperatingActor actor, long orgId, Collection<OutboxStatus> estados, int page, int size) {
+			OperatingActor actor, long orgId, Collection<OutboxStatus> estados, String q,
+			Optional<OrdenDeListado> orden, int page, int size) {
 
 		if (actor == null || actor.contextOrganizationId() == null) {
 			throw new AccessDeniedException(
@@ -84,10 +109,22 @@ public class ConsultaDeNotificacionesService {
 		Set<OutboxStatus> filtro = estados == null || estados.isEmpty()
 				? ESTADOS_POR_DEFECTO
 				: EnumSet.copyOf(estados);
-		PageRequest pagina = PageRequest.of(page, size,
-				Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+		Sort sort = orden
+				.map(pedido -> pedido.aSort(ORDEN_DE_NOTIFICACIONES.get(pedido.campo()), "id"))
+				.orElse(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+		PageRequest pagina = PageRequest.of(page, size, sort);
 
-		return repository.findByOrganizationIdAndEstadoIn(organizationId, filtro, pagina)
+		if (!TextoDeBusqueda.hay(q)) {
+			return repository.findByOrganizationIdAndEstadoIn(organizationId, filtro, pagina)
+					.map(ConsultaDeNotificacionesService::resumir);
+		}
+		List<NotificationType> tipos = Arrays.stream(NotificationType.values())
+				.filter(tipo -> TextoDeBusqueda.contiene(tipo.name().replace('_', ' '), q)
+						|| TextoDeBusqueda.contiene(tipo.name(), q))
+				.toList();
+		return repository.buscarPorTexto(organizationId, filtro, !tipos.isEmpty(),
+						tipos.isEmpty() ? List.of(NotificationType.values()) : tipos,
+						q.strip(), pagina)
 				.map(ConsultaDeNotificacionesService::resumir);
 	}
 

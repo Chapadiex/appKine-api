@@ -134,6 +134,27 @@ public class AdjuntoService {
 			boolean incluirDadosDeBaja,
 			int page,
 			int size) {
+		return listar(actor, personaId, categoria, incluirDadosDeBaja, "", page, size);
+	}
+
+	/** DP-45: los campos por los que se ordenan los adjuntos. */
+	public static final java.util.Set<String> CAMPOS_DE_ORDEN =
+			java.util.Set.of("subidoEn", "titulo", "categoria", "tamano");
+
+	/**
+	 * La misma pagina con el orden que pide el cliente (DP-45).
+	 *
+	 * @param orden la clave {@code campo,dir} ya validada, o vacio para el orden de siempre
+	 */
+	@Transactional(readOnly = true)
+	public AdjuntoPagina listar(
+			OperatingActor actor,
+			long personaId,
+			CategoriaAdjunto categoria,
+			boolean incluirDadosDeBaja,
+			String orden,
+			int page,
+			int size) {
 
 		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(
 				permissionGuard, actor, "Listar adjuntos");
@@ -143,7 +164,7 @@ public class AdjuntoService {
 		int activoFiltro = incluirDadosDeBaja ? -1 : 1;
 
 		List<AdjuntoView> contenido = adjuntos
-				.listar(organizationId, personaId, filtroCategoria, activoFiltro,
+				.listar(organizationId, personaId, filtroCategoria, activoFiltro, orden,
 						page * size, size)
 				.stream()
 				.map(AdjuntoView::de)

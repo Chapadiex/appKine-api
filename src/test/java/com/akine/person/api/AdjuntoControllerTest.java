@@ -156,11 +156,11 @@ class AdjuntoControllerTest {
 	@Test
 	@DisplayName("el listado acota el tamano de pagina y no acepta pagina negativa")
 	void el_listado_acota_la_paginacion() {
-		given(adjuntoService.listar(any(), anyLong(), any(), org.mockito.ArgumentMatchers.anyBoolean(),
+		given(adjuntoService.listar(any(), anyLong(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any(),
 				org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
 				.willReturn(new AdjuntoPagina(List.of(unaVista()), 1L));
 
-		AdjuntoPageResponse pagina = controller.listar(PERSONA_ID, null, false, -5, 5000);
+		AdjuntoPageResponse pagina = controller.listar(PERSONA_ID, null, false, -5, 5000, null);
 
 		assertThat(pagina.page()).isZero();
 		assertThat(pagina.size()).isEqualTo(100);

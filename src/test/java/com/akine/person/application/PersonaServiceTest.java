@@ -147,7 +147,7 @@ class PersonaServiceTest {
 		void leer_exige_paciente_read() {
 			// Hasta DU-6 la lectura se autorizaba por pertenencia y una membership PACIENTE leia
 			// el padron entero. Ahora evalua paciente:read con la sede del contexto.
-			given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(),
+			given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyString(),
 					anyInt(), anyInt())).willReturn(List.of());
 
 			service.buscar(delMostrador, busquedaVacia(), 0, 20);
@@ -351,7 +351,7 @@ class PersonaServiceTest {
 		// busqueda que anda bien con cien personas se cae con cincuenta mil.
 		Persona una = personaConId(1L);
 		Persona otra = personaConId(2L);
-		given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyInt(),
+		given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyString(), anyInt(),
 				anyInt())).willReturn(List.of(una, otra));
 		given(perfiles.buscarVigentesDePersonas(ORG_ID, List.of(1L, 2L)))
 				.willReturn(List.of(new PerfilPaciente(ORG_ID, 2L, Instant.now(), ACCOUNT_ID, null)));
@@ -367,7 +367,7 @@ class PersonaServiceTest {
 	@Test
 	@DisplayName("Una pagina vacia no consulta perfiles: IN () es sintaxis invalida en MySQL")
 	void una_pagina_vacia_no_consulta_perfiles() {
-		given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyInt(),
+		given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyString(), anyInt(),
 				anyInt())).willReturn(List.of());
 
 		service.buscar(delMostrador, busquedaVacia(), 0, 20);

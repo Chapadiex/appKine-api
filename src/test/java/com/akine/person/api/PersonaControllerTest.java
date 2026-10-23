@@ -83,7 +83,7 @@ class PersonaControllerTest {
 		given(personaService.buscar(any(), any(), anyInt(), anyInt()))
 				.willReturn(new PersonaPagina(List.of(unaVista()), 1L));
 
-		PersonaPageResponse pagina = controller.buscar(null, null, null, -3, 9999);
+		PersonaPageResponse pagina = controller.buscar(null, null, null, -3, 9999, null);
 
 		assertThat(pagina.page()).isZero();
 		assertThat(pagina.size()).isEqualTo(100);
@@ -100,7 +100,7 @@ class PersonaControllerTest {
 		given(personaService.buscar(any(), any(), anyInt(), anyInt()))
 				.willReturn(new PersonaPagina(List.of(), 0L));
 
-		controller.buscar("ab-1234", PersonaEstadoFiltro.TODOS, PerfilFiltro.SIN_PERFIL, 0, 20);
+		controller.buscar("ab-1234", PersonaEstadoFiltro.TODOS, PerfilFiltro.SIN_PERFIL, 0, 20, null);
 
 		ArgumentCaptor<PersonaBusqueda> filtros = ArgumentCaptor.forClass(PersonaBusqueda.class);
 		verify(personaService).buscar(any(), filtros.capture(), anyInt(), anyInt());

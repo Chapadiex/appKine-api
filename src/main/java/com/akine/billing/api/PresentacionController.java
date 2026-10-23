@@ -602,7 +602,12 @@ public class PresentacionController {
 					Lista los lotes de la sede, filtrados y paginados.
 
 					Es la pantalla principal de M21: una bandeja por estado deja ver de un vistazo \
-					que falta presentar, que espera respuesta y que quedo sin conciliar.""")
+					que falta presentar, que espera respuesta y que quedo sin conciliar.
+
+					DP-45: `q` busca "contiene" en el numero de factura y, si es un numero, \
+					tambien el lote con ese numero. No busca en el nombre del financiador, que \
+					es de otro modulo: para eso esta `financiadorId`. Ya pagina con `limite` y \
+					`desplazamiento`.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Lotes de la sede"),
 			@ApiResponse(
@@ -622,10 +627,11 @@ public class PresentacionController {
 			@RequestParam(required = false)
 			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
 			@RequestParam(defaultValue = "50") int limite,
-			@RequestParam(defaultValue = "0") int desplazamiento) {
+			@RequestParam(defaultValue = "0") int desplazamiento,
+			@RequestParam(required = false) String q) {
 
 		return presentaciones.buscar(
-						apiActor.current(), consultorioId, estado, financiadorId, desde, hasta,
+						apiActor.current(), consultorioId, estado, financiadorId, desde, hasta, q,
 						limite <= 0 ? LIMITE_POR_DEFECTO : limite, desplazamiento)
 				.stream()
 				.map(PresentacionResponse::de)

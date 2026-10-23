@@ -88,7 +88,8 @@ class PlatformOrganizationControllerTest {
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isOk());
 
-		verify(organizationService).listForPlatform(null, null, PageRequest.of(0, 100));
+		verify(organizationService).listForPlatform(null, null, PageRequest.of(0, 100,
+				org.springframework.data.domain.Sort.by("name").and(org.springframework.data.domain.Sort.by("id"))));
 	}
 
 	@Test

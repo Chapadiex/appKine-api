@@ -2,6 +2,7 @@ package com.akine.notification.domain.port;
 
 import com.akine.notification.domain.NotificationOutboxEntry;
 import com.akine.notification.domain.OutboxStatus;
+import com.akine.notification.spi.NotificationType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -61,4 +62,19 @@ public interface NotificationOutboxRepositoryPort {
 	 */
 	Page<NotificationOutboxEntry> findByOrganizationIdAndEstadoIn(
 			Long organizationId, Collection<OutboxStatus> estados, Pageable pageable);
+
+	/**
+	 * DP-45: lo mismo, refinado por el texto {@code q} del listado. Coincide si el tipo esta
+	 * entre {@code tipos} —los que contienen el texto, resueltos en memoria porque la columna es
+	 * un enum— o si el destinatario es EXACTAMENTE {@code destinatario}, sin distinguir
+	 * mayusculas por la collation. Con {@code porTipo} en falso, {@code tipos} no cuenta y se
+	 * manda no vacio solo para que el {@code IN} sea valido.
+	 */
+	Page<NotificationOutboxEntry> buscarPorTexto(
+			Long organizationId,
+			Collection<OutboxStatus> estados,
+			boolean porTipo,
+			Collection<NotificationType> tipos,
+			String destinatario,
+			Pageable pageable);
 }

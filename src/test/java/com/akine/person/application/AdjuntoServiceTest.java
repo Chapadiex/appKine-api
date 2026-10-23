@@ -309,16 +309,16 @@ class AdjuntoServiceTest {
 	@Test
 	@DisplayName("lista solo los vigentes por defecto, y todos si se lo piden")
 	void el_listado_filtra_por_estado() {
-		given(adjuntos.listar(ORG_ID, PERSONA_ID, null, 1, 0, 20))
+		given(adjuntos.listar(ORG_ID, PERSONA_ID, null, 1, "", 0, 20))
 				.willReturn(List.of(unAdjunto()));
 		given(adjuntos.contar(ORG_ID, PERSONA_ID, null, 1)).willReturn(1L);
 
 		assertThat(service.listar(delMostrador, PERSONA_ID, null, false, 0, 20).total())
 				.isEqualTo(1L);
 
-		verify(adjuntos).listar(ORG_ID, PERSONA_ID, null, 1, 0, 20);
+		verify(adjuntos).listar(ORG_ID, PERSONA_ID, null, 1, "", 0, 20);
 		service.listar(delMostrador, PERSONA_ID, CategoriaAdjunto.OTRO, true, 0, 20);
-		verify(adjuntos).listar(ORG_ID, PERSONA_ID, "OTRO", -1, 0, 20);
+		verify(adjuntos).listar(ORG_ID, PERSONA_ID, "OTRO", -1, "", 0, 20);
 	}
 
 	@Test

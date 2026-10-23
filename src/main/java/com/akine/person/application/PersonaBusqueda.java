@@ -18,7 +18,22 @@ import com.akine.person.domain.ClaveDeBusqueda;
  *                por defecto: la busqueda del mostrador no sabe todavia si la persona que busca
  *                es paciente
  */
-public record PersonaBusqueda(String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil) {
+public record PersonaBusqueda(
+		String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil, String orden) {
+
+	/** DP-45: los campos por los que se ordena el padron. */
+	public static final java.util.Set<String> CAMPOS_DE_ORDEN =
+			java.util.Set.of("apellido", "nombre", "documento", "nacimiento", "alta");
+
+	/** Sin orden pedido: el de siempre, apellido, nombre e id. */
+	public PersonaBusqueda(String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil) {
+		this(texto, estado, perfil, "");
+	}
+
+	/** La clave {@code campo,dir} para el {@code CASE} de la consulta, o vacio. */
+	public String ordenClave() {
+		return orden == null ? "" : orden;
+	}
 
 	/** Centinela de "no filtres por estado", mismo criterio que {@code CatalogoBusqueda}. */
 	private static final int SIN_FILTRO = -1;
