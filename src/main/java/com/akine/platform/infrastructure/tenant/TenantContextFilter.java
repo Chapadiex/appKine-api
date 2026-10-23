@@ -115,7 +115,10 @@ public class TenantContextFilter extends OncePerRequestFilter {
 	private static final List<String> RUTAS_EXACTAS_EXCEPTUADAS = List.of(
 			"/api/v1/version",
 			"/api/v1/me/contexts",
-			"/api/v1/me/platform-role");
+			"/api/v1/me/platform-role",
+			// DP-45: los terminos vigentes son publicos y no son de ningun tenant. Sin esto, la
+			// pantalla que los lea con un token pre_context recibiria 403 missing-tenant-context.
+			"/api/v1/terms");
 
 	/**
 	 * Prefijos exceptuados. Actuator y la documentacion del contrato son infraestructura, no

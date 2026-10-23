@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -125,9 +126,33 @@ class AuthSessionControllerTest {
 	// =================================================================================
 
 	@Test
+	@DisplayName("DP-45: recordarme=true llega al servicio; ausente o false, como siempre")
+	void recordarme_llega_al_servicio() throws Exception {
+		given(sessionService.abrirSesion(anyString(), anyString(), anyBoolean(), any()))
+				.willReturn(sesion());
+
+		mockMvc.perform(post("/api/v1/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"email":"ana.gomez@ejemplo.test","password":"kinesiologia-2026",\
+								"recordarme":true}"""))
+				.andExpect(status().isOk());
+		mockMvc.perform(post("/api/v1/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"email":"ana.gomez@ejemplo.test","password":"kinesiologia-2026",\
+								"recordarme":false}"""))
+				.andExpect(status().isOk());
+
+		verify(sessionService).abrirSesion(anyString(), anyString(), eq(true), any());
+		verify(sessionService).abrirSesion(anyString(), anyString(), eq(false), any());
+	}
+
+	@Test
 	@DisplayName("el login devuelve el access en el cuerpo y el refresh solo en la cookie")
 	void el_login_devuelve_el_access_en_el_cuerpo() throws Exception {
-		given(sessionService.abrirSesion(eq("ana.gomez@ejemplo.test"), eq("kinesiologia-2026"), any()))
+		given(sessionService.abrirSesion(
+				eq("ana.gomez@ejemplo.test"), eq("kinesiologia-2026"), eq(false), any()))
 				.willReturn(sesion());
 
 		MvcResult resultado = mockMvc.perform(post("/api/v1/auth/login")
@@ -149,7 +174,8 @@ class AuthSessionControllerTest {
 	@Test
 	@DisplayName("la cookie de refresh sale con sus cuatro atributos y con el vencimiento absoluto")
 	void la_cookie_sale_con_los_cuatro_atributos() throws Exception {
-		given(sessionService.abrirSesion(anyString(), anyString(), any())).willReturn(sesion());
+		given(sessionService.abrirSesion(anyString(), anyString(), anyBoolean(), any()))
+				.willReturn(sesion());
 
 		MvcResult resultado = mockMvc.perform(post("/api/v1/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)
@@ -173,7 +199,7 @@ class AuthSessionControllerTest {
 	@DisplayName("credenciales invalidas responden 401 invalid-credentials sin decir por que")
 	void credenciales_invalidas_responden_401() throws Exception {
 		willThrow(new InvalidCredentialsException())
-				.given(sessionService).abrirSesion(anyString(), anyString(), any());
+				.given(sessionService).abrirSesion(anyString(), anyString(), anyBoolean(), any());
 
 		MvcResult resultado = mockMvc.perform(post("/api/v1/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)
@@ -201,7 +227,7 @@ class AuthSessionControllerTest {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.type").value("https://akine.app/problems/validation-error"));
 
-		verify(sessionService, never()).abrirSesion(anyString(), anyString(), any());
+		verify(sessionService, never()).abrirSesion(anyString(), anyString(), anyBoolean(), any());
 	}
 
 	// =================================================================================
@@ -453,7 +479,8 @@ class AuthSessionControllerTest {
 	@Test
 	@DisplayName("detras de un proxy de confianza la sesion guarda el primer salto no confiable")
 	void detras_de_un_proxy_de_confianza_la_sesion_guarda_la_ip_del_cliente() throws Exception {
-		given(sessionService.abrirSesion(anyString(), anyString(), any())).willReturn(sesion());
+		given(sessionService.abrirSesion(anyString(), anyString(), anyBoolean(), any()))
+				.willReturn(sesion());
 
 		mockMvc.perform(post("/api/v1/auth/login")
 						.with(desde(PROXY))
@@ -464,7 +491,7 @@ class AuthSessionControllerTest {
 
 		ArgumentCaptor<SessionService.DatosDeCliente> datos =
 				ArgumentCaptor.forClass(SessionService.DatosDeCliente.class);
-		verify(sessionService).abrirSesion(anyString(), anyString(), datos.capture());
+		verify(sessionService).abrirSesion(anyString(), anyString(), anyBoolean(), datos.capture());
 		assertThat(datos.getValue().ip())
 				.as("ni la IP del nginx ni lo que el cliente escribio a la izquierda")
 				.isEqualTo("203.0.113.7");

@@ -28,6 +28,10 @@ import java.time.Duration;
  *       parallelism: 1
  *     session:
  *       refresh-ttl: 12h
+ *       refresh-ttl-recordada: 30d
+ *     terminos:
+ *       version-vigente: ""      # vacio: no se exige aceptacion
+ *       url: ""
  * </pre>
  *
  * <p>Ningun secreto vive aca. El secreto de firma del access token entra por variable de
@@ -39,6 +43,11 @@ public class IdentityProperties {
 	private final Links links = new Links();
 	private final Hashing hashing = new Hashing();
 	private final Session session = new Session();
+	private final Terminos terminos = new Terminos();
+
+	public Terminos getTerminos() {
+		return terminos;
+	}
 
 	public Links getLinks() {
 		return links;
@@ -69,12 +78,57 @@ public class IdentityProperties {
 		 */
 		private Duration refreshTtl = SessionSettings.REFRESH_TTL_POR_DEFECTO;
 
+		/**
+		 * Vigencia ABSOLUTA de una sesion abierta con "mantener la sesion iniciada" (DP-45).
+		 * Tampoco la extiende la rotacion. Tiene que ser mayor o igual que {@link #refreshTtl}.
+		 */
+		private Duration refreshTtlRecordada = SessionSettings.REFRESH_TTL_RECORDADA_POR_DEFECTO;
+
 		public Duration getRefreshTtl() {
 			return refreshTtl;
 		}
 
 		public void setRefreshTtl(Duration refreshTtl) {
 			this.refreshTtl = refreshTtl;
+		}
+
+		public Duration getRefreshTtlRecordada() {
+			return refreshTtlRecordada;
+		}
+
+		public void setRefreshTtlRecordada(Duration refreshTtlRecordada) {
+			this.refreshTtlRecordada = refreshTtlRecordada;
+		}
+	}
+
+	/**
+	 * Terminos y condiciones del alta (DP-45).
+	 *
+	 * <p>Sin {@link #versionVigente} no se exige nada y el alta es la de siempre. Con ella, el
+	 * registro self-service y la aceptacion de invitacion que crea cuenta exigen aceptar esa
+	 * version exacta. El texto legal no vive en el backend: {@link #url} apunta a donde lo
+	 * publique quien opera el despliegue.
+	 */
+	public static class Terminos {
+
+		private String versionVigente = "";
+
+		private String url = "";
+
+		public String getVersionVigente() {
+			return versionVigente;
+		}
+
+		public void setVersionVigente(String versionVigente) {
+			this.versionVigente = versionVigente;
+		}
+
+		public String getUrl() {
+			return url;
+		}
+
+		public void setUrl(String url) {
+			this.url = url;
 		}
 	}
 

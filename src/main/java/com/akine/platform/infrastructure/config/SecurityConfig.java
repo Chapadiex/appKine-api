@@ -146,6 +146,15 @@ public class SecurityConfig {
 			"/api/v1/auth/logout");
 
 	/**
+	 * Lecturas publicas de identidad, solo {@code GET}. Hoy una: los terminos vigentes del alta
+	 * (DP-45), que la pantalla de registro lee antes de que exista ninguna cuenta. Visible para
+	 * {@link OpenApiConfig} por la misma razon que {@link #RUTAS_PUBLICAS_DE_IDENTIDAD}.
+	 */
+	static final String[] RUTAS_PUBLICAS_GET_DE_IDENTIDAD = {
+			"/api/v1/terms"
+	};
+
+	/**
 	 * Documentacion del contrato. <b>Cerrada por default; publica solo en desarrollo.</b>
 	 *
 	 * <p>La regla estaba al reves: se cerraba si el perfil activo se llamaba {@code prod},
@@ -233,6 +242,7 @@ public class SecurityConfig {
 					auth.requestMatchers("/actuator/health", "/actuator/health/**").permitAll();
 
 					auth.requestMatchers(HttpMethod.POST, RUTAS_PUBLICAS_DE_IDENTIDAD).permitAll();
+					auth.requestMatchers(HttpMethod.GET, RUTAS_PUBLICAS_GET_DE_IDENTIDAD).permitAll();
 
 					if (desarrollo) {
 						auth.requestMatchers(RUTAS_DE_DOCUMENTACION).permitAll();
