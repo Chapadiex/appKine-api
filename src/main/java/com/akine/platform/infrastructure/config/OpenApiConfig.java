@@ -236,6 +236,7 @@ public class OpenApiConfig {
 
 			Set<String> publicasDeIdentidad =
 					new LinkedHashSet<>(List.of(SecurityConfig.RUTAS_PUBLICAS_DE_IDENTIDAD));
+			publicasDeIdentidad.addAll(List.of(SecurityConfig.RUTAS_PUBLICAS_GET_DE_IDENTIDAD));
 			Set<String> conCookie = new LinkedHashSet<>(SecurityConfig.RUTAS_CON_COOKIE_DE_REFRESH);
 
 			if (openApi.getPaths() == null) {

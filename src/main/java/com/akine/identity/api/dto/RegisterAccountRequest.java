@@ -79,5 +79,35 @@ public record RegisterAccountRequest(
 				example = "BASICO",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		@Size(max = 32, message = "El codigo de plan no puede superar los 32 caracteres")
-		String planCode) {
+		String planCode,
+
+		@Schema(
+				description = "La persona acepto los terminos y condiciones (DP-45). Obligatorio "
+						+ "en true cuando GET /api/v1/terms informa aceptacionObligatoria",
+				example = "true",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean aceptaTerminos,
+
+		@Schema(
+				description = "Version de los terminos aceptados: la versionVigente de "
+						+ "GET /api/v1/terms. Tiene que coincidir exacta cuando la aceptacion es "
+						+ "obligatoria",
+				example = "2026-10",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		@Size(max = 40, message = "La version de los terminos no puede superar los 40 caracteres")
+		String versionTerminos) {
+
+	/** Alta sin datos de terminos, la de antes de DP-45. */
+	public RegisterAccountRequest(
+			String email,
+			String password,
+			String firstName,
+			String lastName,
+			String organizationName,
+			String organizationSlug,
+			String consultorioName,
+			String planCode) {
+		this(email, password, firstName, lastName, organizationName, organizationSlug,
+				consultorioName, planCode, null, null);
+	}
 }

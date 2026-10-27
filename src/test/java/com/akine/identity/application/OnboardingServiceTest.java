@@ -1,6 +1,10 @@
 package com.akine.identity.application;
 
+import com.akine.identity.domain.AceptacionTerminos;
 import com.akine.identity.domain.Cuenta;
+import com.akine.identity.domain.TerminosSettings;
+import com.akine.identity.domain.exception.TerminosNoAceptadosException;
+import com.akine.identity.domain.port.AceptacionTerminosRepositoryPort;
 import com.akine.identity.domain.OnboardingRegistro;
 import com.akine.identity.domain.TipoTokenVerificacion;
 import com.akine.identity.domain.port.CuentaRepositoryPort;
@@ -82,6 +86,12 @@ class OnboardingServiceTest {
 	@Mock
 	private AuditTrail auditTrail;
 
+	@Mock
+	private AceptacionTerminosRepositoryPort aceptacionRepository;
+
+	/** Sin version vigente por defecto: el alta de antes de DP-45. */
+	private TerminosSettings terminos = TerminosSettings.sinTerminos();
+
 	/**
 	 * Ejecuta el callback en el hilo, sin transaccion real.
 	 *
@@ -101,7 +111,7 @@ class OnboardingServiceTest {
 		return new OnboardingService(transactionTemplate(), cuentaRepository,
 				onboardingRepository, tokenRepository, organizationProvisioning,
 				notificationOutbox, linkBuilder, new PasswordPolicy(), passwordHasher,
-				tokenGenerator, auditTrail);
+				tokenGenerator, auditTrail, new TerminosService(terminos, aceptacionRepository));
 	}
 
 	private static RegistroCuentaCommand comando() {
@@ -352,5 +362,92 @@ class OnboardingServiceTest {
 		assertThatThrownBy(() -> new RegistroCuentaCommand(CLAVE, "h", EMAIL, PASSWORD_VALIDA,
 				"Ana", "Gomez", null, "centro", "Sede", "BASICO"))
 				.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	// =================================================================================
+	// DP-45 — aceptacion de terminos
+	// =================================================================================
+
+	private static RegistroCuentaCommand comandoConTerminos(Boolean acepta, String version) {
+		return new RegistroCuentaCommand(CLAVE, "hash-del-request", EMAIL, PASSWORD_VALIDA,
+				"Ana", "Gomez", "Centro Kine Norte", "centro-kine-norte", "Sede Centro",
+				"BASICO", acepta, version);
+	}
+
+	@Test
+	@DisplayName("DP-45: con version vigente, el alta registra la aceptacion con la cuenta")
+	void con_version_vigente_registra_la_aceptacion() {
+		terminos = new TerminosSettings("2026-10", null);
+		sinReintentoPrevio();
+		given(passwordHasher.hash(PASSWORD_VALIDA)).willReturn("{h}x");
+		given(cuentaRepository.findByEmailNormalizado(EMAIL)).willReturn(Optional.empty());
+		given(cuentaRepository.saveAndFlush(any())).willReturn(cuentaPendiente());
+		given(organizationProvisioning.provision(any()))
+				.willReturn(new ProvisioningResult(ORG_ID, 20L, 60L, true));
+		given(tokenGenerator.nuevoToken()).willReturn(TOKEN_PLANO);
+		given(tokenRepository.save(any()))
+				.willReturn(token(TipoTokenVerificacion.ACTIVACION, TOKEN_PLANO));
+
+		service().registrar(comandoConTerminos(true, " 2026-10 "));
+
+		ArgumentCaptor<AceptacionTerminos> captor = ArgumentCaptor.forClass(AceptacionTerminos.class);
+		verify(aceptacionRepository).save(captor.capture());
+		assertThat(captor.getValue().getCuentaId()).isEqualTo(CUENTA_ID);
+		assertThat(captor.getValue().getVersion()).isEqualTo("2026-10");
+		assertThat(captor.getValue().getOrigen()).isEqualTo(AceptacionTerminos.Origen.REGISTRO);
+		assertThat(captor.getValue().getAceptadoEn()).isNotNull();
+	}
+
+	@Test
+	@DisplayName("DP-45: sin aceptar, 400 por aceptaTerminos ANTES de mirar el email")
+	void sin_aceptar_rechaza_antes_de_mirar_el_email() {
+		terminos = new TerminosSettings("2026-10", null);
+
+		assertThatThrownBy(() -> service().registrar(comandoConTerminos(null, "2026-10")))
+				.isInstanceOf(TerminosNoAceptadosException.class)
+				.extracting(e -> ((TerminosNoAceptadosException) e).getCampo())
+				.isEqualTo("aceptaTerminos");
+
+		// Nada del pedido llego a la base: el rechazo es identico exista o no la cuenta.
+		verifyNoInteractions(cuentaRepository, onboardingRepository, aceptacionRepository);
+	}
+
+	@Test
+	@DisplayName("DP-45: una version que no es la vigente se rechaza por versionTerminos")
+	void version_vieja_se_rechaza() {
+		terminos = new TerminosSettings("2026-10", null);
+
+		assertThatThrownBy(() -> service().registrar(comandoConTerminos(true, "2026-01")))
+				.isInstanceOf(TerminosNoAceptadosException.class)
+				.extracting(e -> ((TerminosNoAceptadosException) e).getCampo())
+				.isEqualTo("versionTerminos");
+		verifyNoInteractions(cuentaRepository);
+	}
+
+	@Test
+	@DisplayName("DP-45: con email ya registrado no se registra ninguna aceptacion")
+	void email_tomado_no_registra_aceptacion() {
+		terminos = new TerminosSettings("2026-10", null);
+		sinReintentoPrevio();
+		given(passwordHasher.hash(PASSWORD_VALIDA)).willReturn("{h}x");
+		given(cuentaRepository.findByEmailNormalizado(EMAIL))
+				.willReturn(Optional.of(cuentaPendiente()));
+
+		service().registrar(comandoConTerminos(true, "2026-10"));
+
+		verifyNoInteractions(aceptacionRepository);
+	}
+
+	@Test
+	@DisplayName("DP-45: sin version vigente, los campos se ignoran y no se registra nada")
+	void sin_version_vigente_no_exige_ni_registra() {
+		sinReintentoPrevio();
+		given(passwordHasher.hash(PASSWORD_VALIDA)).willReturn("{h}x");
+		given(cuentaRepository.findByEmailNormalizado(EMAIL))
+				.willReturn(Optional.of(cuentaPendiente()));
+
+		service().registrar(comandoConTerminos(false, "cualquiera"));
+
+		verifyNoInteractions(aceptacionRepository);
 	}
 }

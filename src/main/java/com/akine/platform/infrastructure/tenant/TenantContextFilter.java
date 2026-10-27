@@ -118,7 +118,10 @@ public class TenantContextFilter extends OncePerRequestFilter {
 			"/api/v1/me/platform-role",
 			// DP-45 punto 3: perfil propio. Se consulta tambien sin contexto; si hay, viaja en el
 			// cuerpo.
-			"/api/v1/me");
+			"/api/v1/me",
+			// DP-45: los terminos vigentes son publicos y no son de ningun tenant. Sin esto, la
+			// pantalla que los lea con un token pre_context recibiria 403 missing-tenant-context.
+			"/api/v1/terms");
 
 	/**
 	 * Prefijos exceptuados. Actuator y la documentacion del contrato son infraestructura, no

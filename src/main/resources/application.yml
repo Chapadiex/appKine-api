@@ -175,7 +175,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.147.0
+    version: 0.148.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
@@ -265,6 +265,15 @@ akine:
       # Vigencia ABSOLUTA de la sesion de refresh desde el login (ADR-0017). La rotacion NO
       # la extiende: una sesion robada no se vuelve eterna por usarla.
       refresh-ttl: 12h
+      # Vigencia ABSOLUTA de una sesion abierta con "mantener la sesion iniciada" (DP-45,
+      # login con recordarme=true). Misma regla: la rotacion no la extiende. >= refresh-ttl.
+      refresh-ttl-recordada: ${AKINE_REFRESH_TTL_RECORDADA:30d}
+    terminos:
+      # Version de los terminos y condiciones que el alta self-service y la aceptacion de
+      # invitacion con cuenta nueva exigen aceptar (DP-45). Vacia: no se exige nada. El texto
+      # legal no vive aca: url apunta a donde se publique.
+      version-vigente: ${AKINE_TERMINOS_VERSION:}
+      url: ${AKINE_TERMINOS_URL:}
 
   clinical:
     adjuntos:

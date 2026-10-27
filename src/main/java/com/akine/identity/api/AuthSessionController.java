@@ -106,6 +106,12 @@ public class AuthSessionController {
 					ninguna operacion de negocio. El paso siguiente es GET /api/v1/me/contexts y \
 					despues POST /api/v1/auth/context.
 
+					MANTENER LA SESION INICIADA (DP-45): con recordarme=true el refresh vive la \
+					vigencia larga configurada (30 dias por defecto) en vez de doce horas, y la \
+					cookie lleva ese Max-Age. Sin el campo, o en false, todo es como siempre. \
+					En los dos casos la vigencia es ABSOLUTA desde este login: renovar hereda el \
+					vencimiento y la eleccion, y nunca los extiende.
+
 					RECHAZO UNIFORME (ADR-0018): email inexistente, contrasena incorrecta y \
 					contrasena correcta sobre una cuenta bloqueada, desactivada o pendiente de \
 					activacion devuelven las tres el MISMO 401 con el MISMO cuerpo, y con un \
@@ -142,7 +148,7 @@ public class AuthSessionController {
 			@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
 
 		SessionService.SesionEmitida sesion = sessionService.abrirSesion(
-				request.email(), request.password(), datosDe(http));
+				request.email(), request.password(), request.quiereRecordarSesion(), datosDe(http));
 
 		return conCookieDeSesion(sesion);
 	}
@@ -163,7 +169,7 @@ public class AuthSessionController {
 					ROTACION ESTRICTA: cada canje invalida el refresh presentado y entrega uno \
 					nuevo en la misma familia, heredando el vencimiento ABSOLUTO de la sesion. \
 					Renovar no extiende la sesion: a las doce horas del login cae aunque se haya \
-					refrescado sin parar.
+					refrescado sin parar (o a la vigencia larga, si se abrio con recordarme).
 
 					DETECCION DE REUSO: presentar un refresh ya canjeado revoca la familia \
 					completa —victima y atacante quedan afuera— y responde 401. Ese 401 es \
