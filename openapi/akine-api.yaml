@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.146.0
+  version: 0.147.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -2754,7 +2754,9 @@ paths:
       description: "Devuelve el saldo teorico (RF-M20-005) y el desglose por medio\
         \ de pago. **El desglose no es adorno**: sin el, un arqueo de 60.000 sobre\
         \ un dia en que se facturaron 120.000 parece un faltante gigante, cuando la\
-        \ mitad entro por tarjeta y nunca estuvo en el cajon."
+        \ mitad entro por tarjeta y nunca estuvo en el cajon. Desde DP-45 trae tambien\
+        \ `resumen`: ingresos y egresos de la jornada, en efectivo y por los demas\
+        \ medios, netos de reversiones. Es caja: no es lo cobrado ni la deuda."
       operationId: verJornada
       parameters:
       - in: path
@@ -6397,6 +6399,75 @@ paths:
           description: "`beneficiario-no-vinculado`, `egreso-comprobante-duplicado`\
             \ o clave de idempotencia reusada con otro pedido"
       summary: Registrar un egreso
+      tags:
+      - Egresos
+  /api/v1/consultorios/{consultorioId}/egresos/resumen:
+    get:
+      description: |-
+        Lo registrado, pagado y pendiente de los egresos del periodo, por moneda y por categoria, para la tira de la pantalla de egresos (DP-45).
+
+        **Sin `desde` ni `hasta`, el mes en curso en la zona de la sede.** Con solo `desde`, hasta el fin de ese mes. Las fechas se interpretan igual que en la bandeja: el instante de registro en el dia de la sede.
+
+        **Es egreso, no caja.** `registrado` son los egresos `CONFIRMADO` y `PAGADO` —lo comprometido—; `pagado` es lo saldado **hoy** (un pago anulado devuelve su importe) y `pendiente` lo que falta. Los borradores y los anulados se cuentan aparte. Ventana maxima: 366 dias.
+      operationId: resumirEgresos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: desde
+        required: false
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: hasta
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumenDeEgresos"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ResumenDeEgresos"
+          description: Los totales
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Periodo invertido o de mas de 366 dias
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `caja:operate` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Totales de egresos del periodo
       tags:
       - Egresos
   /api/v1/consultorios/{consultorioId}/egresos/{egresoId}:
@@ -11489,6 +11560,104 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: La sede no existe o es de otro tenant
       summary: Exportar un reporte a CSV
+      tags:
+      - Reportes
+  /api/v1/consultorios/{consultorioId}/reportes/{reporte}/serie:
+    get:
+      description: |-
+        Los indicadores sumables del reporte abiertos por dia o por semana, para el grafico de barras (DP-45).
+
+        **Cada serie usa la fuente y el criterio de fecha de su indicador**, y la suma de sus puntos es el valor que el reporte muestra para ese indicador en el mismo periodo. Los dias son **de la sede**. `SEMANA` es la semana ISO (lunes a domingo), recortada al periodo en los extremos.
+
+        **Mismo permiso y mismas omisiones que el reporte**: exige `reporte:read`, una seccion cuyo permiso falta no tiene serie y se declara en `omitidas`, y el `PROFESIONAL` ve solo su propia actividad.
+
+        No tienen serie los saldos actuales (deuda vigente, egresos por pagar), que no se reconstruyen a una fecha, ni los porcentajes, que no se suman.
+
+        Hasta **100 puntos**: con `DIA` el periodo puede tener hasta 100 dias; para la ventana maxima de 366 dias, `SEMANA`.
+      operationId: generarSerieDeReporte
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: reporte
+        required: true
+        schema:
+          type: string
+          enum:
+          - OPERATIVO
+          - TURNOS
+          - CLINICO
+          - ECONOMICO
+          - FINANCIADORES
+          - CLASES
+          - PASES
+          - CONTINUIDAD
+          - SERVICIOS
+      - in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: agrupacion
+        required: false
+        schema:
+          type: string
+          default: DIA
+          enum:
+          - DIA
+          - SEMANA
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SerieDeReporte"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/SerieDeReporte"
+          description: Las series
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`rango-de-reporte-invalido`: periodo invertido, mas ancho\
+            \ que la ventana maxima o con mas de 100 puntos; o `agrupacion` desconocida"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `reporte:read` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Serie temporal de un reporte
       tags:
       - Reportes
   /api/v1/consultorios/{consultorioId}/series-de-turnos:
@@ -25619,6 +25788,9 @@ components:
           type: string
           description: Null si no entra ninguna clase
           example: ARS
+        resumen:
+          $ref: "#/components/schemas/ResumenDeHonorarios"
+          description: Los numeros de la tira del borrador (DP-45)
     CalendarioSedeResponse:
       type: object
       description: Politica de calendario de la sede y feriados de la ventana consultada
@@ -32508,6 +32680,11 @@ components:
           example: ARS
         motivoDiferencia:
           type: string
+        resumen:
+          $ref: "#/components/schemas/ResumenDeJornadaCaja"
+          description: "Los totales de la jornada para la tira de la pantalla (DP-45).\
+            \ **Solo en el detalle; `null` en los listados.** Es caja: no es lo cobrado\
+            \ ni la deuda."
         saldoDeclarado:
           type: number
           description: Lo que se conto fisicamente.
@@ -32685,6 +32862,9 @@ components:
           format: int64
           description: La oferta a la que se imputo el egreso (DP-39)
           example: 34
+        resumen:
+          $ref: "#/components/schemas/ResumenDeHonorarios"
+          description: Los numeros de la tira de la liquidacion (DP-45)
     LoginRequest:
       type: object
       description: Credenciales para abrir una sesion
@@ -36176,6 +36356,19 @@ components:
       - capacidad
       - fin
       - inicio
+    PuntoDeSerieDeReporte:
+      type: object
+      description: "Una barra: los dias `desde`..`hasta` inclusive y su valor. Cero\
+        \ explicito si no hubo actividad. Una semana se recorta al periodo pedido"
+      properties:
+        desde:
+          type: string
+          format: date
+        hasta:
+          type: string
+          format: date
+        valor:
+          type: number
     ReabrirCasoClinicoRequest:
       type: object
       description: Reapertura de un Caso Clinico cerrado
@@ -37724,6 +37917,108 @@ components:
           $ref: "#/components/schemas/DeudaDeVenta"
         pase:
           $ref: "#/components/schemas/Pase"
+    ResumenDeEgresos:
+      type: object
+      description: "Totales de los egresos registrados en el periodo, por moneda y\
+        \ por categoria. `registrado` son los CONFIRMADO y PAGADO; `pagado` es lo\
+        \ saldado hoy y `pendiente` lo que falta. No es caja: un pago por transferencia\
+        \ no toco el cajon"
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+        desde:
+          type: string
+          format: date
+          description: "Primer dia del periodo, en la zona de la sede"
+          example: 2026-10-01
+        hasta:
+          type: string
+          format: date
+          description: "Ultimo dia del periodo, inclusive"
+          example: 2026-10-31
+        porCategoria:
+          type: array
+          description: Solo categorias con egresos confirmados o pagados
+          items:
+            $ref: "#/components/schemas/TotalesDeEgresosPorCategoria"
+        porMoneda:
+          type: array
+          description: Una fila por moneda. Vacio si no hubo egresos en el periodo
+          items:
+            $ref: "#/components/schemas/TotalesDeEgresos"
+    ResumenDeHonorarios:
+      type: object
+      description: "Los numeros de la tira de honorarios (DP-45). Es honorario y su\
+        \ egreso (M22), no caja: lo pagado no dice por que medio salio ni si toco\
+        \ el cajon"
+      properties:
+        cantidadClases:
+          type: integer
+          format: int32
+          description: Clases que entran
+          example: 12
+        cantidadExcluidas:
+          type: integer
+          format: int32
+          description: Clases dictadas que no entran. Solo en el borrador
+          example: 2
+        importePagado:
+          type: number
+          description: "Lo pagado del egreso, hoy. Solo en la liquidacion"
+          example: 3000.0
+        importeTotal:
+          type: number
+          example: 5250.0
+        regla:
+          type: string
+          description: "Regla de calculo: la tarifa por participante por los presentes,\
+            \ repartida en partes iguales entre los instructores, con el resto del\
+            \ redondeo al principal"
+          enum:
+          - POR_PARTICIPANTE_PRESENTE
+        saldoPendiente:
+          type: number
+          description: Lo que falta pagar del egreso. Solo en la liquidacion
+          example: 2250.0
+        totalPresentes:
+          type: integer
+          format: int32
+          description: Suma de presentes de las clases que entran
+          example: 87
+    ResumenDeJornadaCaja:
+      type: object
+      description: "Lo que entro y salio en la jornada, en efectivo y por los demas\
+        \ medios. Las reversiones restan de lo que revierten: un ingreso anulado no\
+        \ es un egreso. Para el efectivo, `saldoInicial + efectivoIngresos - efectivoEgresos\
+        \ = saldoTeorico`"
+      properties:
+        cantidadMovimientos:
+          type: integer
+          format: int64
+          example: 14
+        efectivoEgresos:
+          type: number
+          example: 5000.0
+        efectivoIngresos:
+          type: number
+          description: "Solo efectivo: lo que se arquea"
+          example: 60000.0
+        egresos:
+          type: number
+          description: Todos los medios
+          example: 5000.0
+        ingresos:
+          type: number
+          description: Todos los medios
+          example: 120000.0
+        otrosMediosEgresos:
+          type: number
+          example: 0.0
+        otrosMediosIngresos:
+          type: number
+          description: "Transferencias, tarjetas y otros: no estan en el cajon"
+          example: 60000.0
     ResumenDePersonaResponse:
       type: object
       description: "Ficha administrativa consolidada de una persona, recortada por\
@@ -38032,6 +38327,92 @@ components:
       required:
       - consultorioId
       - organizationId
+    SerieDeIndicadorDeReporte:
+      type: object
+      description: "La serie de un indicador. La suma de los puntos es `total`, y\
+        \ coincide con el valor del indicador `clave` de la seccion sobre el mismo\
+        \ periodo"
+      properties:
+        clave:
+          type: string
+          description: La clave del indicador que dibuja
+          example: cobrado
+        criterioDeFecha:
+          type: string
+          example: "cobrado_en, instante proyectado a la zona de la sede"
+        etiqueta:
+          type: string
+          example: Cobrado
+        fuente:
+          type: string
+          example: M19 cobro
+        moneda:
+          type: string
+          description: ISO-4217 cuando el tipo es DINERO
+          example: ARS
+        puntos:
+          type: array
+          items:
+            $ref: "#/components/schemas/PuntoDeSerieDeReporte"
+        seccion:
+          type: string
+          example: economia
+        tipo:
+          type: string
+          enum:
+          - DINERO
+          - CONTEO
+          example: DINERO
+        total:
+          type: number
+          description: Suma de los puntos. Decimal exacto
+          example: 125000.0
+    SerieDeReporte:
+      type: object
+      description: "Series por dia o por semana de los indicadores de un reporte,\
+        \ en la zona de la sede, con las mismas omisiones por permiso que el reporte"
+      properties:
+        advertencias:
+          type: array
+          description: "Aclaraciones de alcance, por ejemplo `alcance-actividad-propia`"
+          items:
+            $ref: "#/components/schemas/AdvertenciaResponse"
+        agrupacion:
+          type: string
+          enum:
+          - DIA
+          - SEMANA
+          example: DIA
+        consultorioId:
+          type: integer
+          format: int64
+        desde:
+          type: string
+          format: date
+          description: "Primer dia del periodo, inclusive, en la zona de la sede"
+        generadoEn:
+          type: string
+          format: date-time
+        hasta:
+          type: string
+          format: date
+          description: "Ultimo dia del periodo, inclusive, en la zona de la sede"
+        omitidas:
+          type: array
+          description: "Secciones que el actor no puede ver: no tienen serie y no\
+            \ producen 403"
+          items:
+            $ref: "#/components/schemas/SeccionOmitidaDeReporteResponse"
+        reporte:
+          type: string
+          example: ECONOMICO
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/SerieDeIndicadorDeReporte"
+        zona:
+          type: string
+          example: America/Argentina/Cordoba
     SerieDeTurnos:
       type: object
       description: "La regla con la que se generaron los turnos y los turnos tal como\
@@ -38894,6 +39275,19 @@ components:
         afectaArqueo:
           type: boolean
           description: Si suma al saldo que se cuenta al arquear. Solo el efectivo.
+        cantidad:
+          type: integer
+          format: int64
+          description: "Movimientos del medio, reversiones incluidas (DP-45)"
+          example: 12
+        egresos:
+          type: number
+          description: "Egresos del medio, netos de sus reversiones (DP-45)"
+          example: 5000.0
+        ingresos:
+          type: number
+          description: "Ingresos del medio, netos de sus reversiones (DP-45)"
+          example: 60000.0
         medio:
           type: string
           enum:
@@ -38903,6 +39297,68 @@ components:
           - TARJETA_CREDITO
           - OTRO
         total:
+          type: number
+          description: '`ingresos - egresos` del medio'
+    TotalesDeEgresos:
+      type: object
+      properties:
+        cantidad:
+          type: integer
+          format: int64
+          description: Cantidad de egresos CONFIRMADO y PAGADO
+          example: 9
+        cantidadAnulados:
+          type: integer
+          format: int64
+          example: 1
+        cantidadBorrador:
+          type: integer
+          format: int64
+          description: "Borradores del periodo: todavia no son compromiso"
+          example: 2
+        importeBorrador:
+          type: number
+          example: 15000.0
+        moneda:
+          type: string
+          example: ARS
+        pagado:
+          type: number
+          description: "Lo ya saldado, hoy"
+          example: 180000.0
+        pendiente:
+          type: number
+          description: Lo que falta pagar de esos egresos
+          example: 70000.0
+        registrado:
+          type: number
+          description: Importe de los egresos CONFIRMADO y PAGADO
+          example: 250000.0
+    TotalesDeEgresosPorCategoria:
+      type: object
+      properties:
+        cantidad:
+          type: integer
+          format: int64
+        categoria:
+          type: string
+          enum:
+          - HONORARIOS_PROFESIONALES
+          - SUELDOS
+          - ALQUILER
+          - SERVICIOS
+          - INSUMOS
+          - IMPUESTOS
+          - MANTENIMIENTO
+          - OTRO
+        moneda:
+          type: string
+          example: ARS
+        pagado:
+          type: number
+        pendiente:
+          type: number
+        registrado:
           type: number
     TransicionDePlan:
       type: object

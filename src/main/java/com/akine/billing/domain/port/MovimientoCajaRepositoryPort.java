@@ -76,7 +76,12 @@ public interface MovimientoCajaRepositoryPort {
 	 * <b>la caja tuvo 120.000 de los cuales 60.000 por tarjeta</b> — el dato que se perderia si los
 	 * medios que no afectan el arqueo no se registraran.
 	 *
-	 * @return pares {@code (medio, total)}
+	 * <p>Desde DP-45 cada fila trae tambien los ingresos y los egresos del medio, <b>netos de sus
+	 * reversiones</b> ({@code INGRESO - REVERSION_DE_INGRESO} y {@code EGRESO - REVERSION_DE_EGRESO}),
+	 * y la cantidad de movimientos: con eso la vista arma los totales de la jornada sin otra
+	 * consulta, y {@code total = ingresos - egresos} por construccion.
+	 *
+	 * @return filas {@code (medio, total, ingresos, egresos, cantidad)}
 	 */
 	List<Object[]> totalesPorMedio(long organizationId, long jornadaCajaId);
 

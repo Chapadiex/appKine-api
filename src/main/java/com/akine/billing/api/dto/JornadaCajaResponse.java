@@ -77,15 +77,49 @@ public record JornadaCajaResponse(
 				description = "Cuanto movio cada medio. Vacio en los listados. Sin este desglose, un "
 						+ "arqueo de 60.000 sobre un dia de 120.000 parece un faltante gigante, "
 						+ "cuando la mitad entro por tarjeta.")
-		List<TotalPorMedioResponse> totalesPorMedio) {
+		List<TotalPorMedioResponse> totalesPorMedio,
+
+		@Schema(
+				description = "Los totales de la jornada para la tira de la pantalla (DP-45). **Solo "
+						+ "en el detalle; `null` en los listados.** Es caja: no es lo cobrado ni la "
+						+ "deuda.")
+		ResumenResponse resumen) {
 
 	@Schema(name = "TotalPorMedioDeCaja")
 	public record TotalPorMedioResponse(
 			@Schema(allowableValues = {"EFECTIVO", "TRANSFERENCIA", "TARJETA_DEBITO", "TARJETA_CREDITO", "OTRO"})
 			String medio,
+			@Schema(description = "`ingresos - egresos` del medio")
 			BigDecimal total,
 			@Schema(description = "Si suma al saldo que se cuenta al arquear. Solo el efectivo.")
-			boolean afectaArqueo) {
+			boolean afectaArqueo,
+			@Schema(description = "Ingresos del medio, netos de sus reversiones (DP-45)", example = "60000.00")
+			BigDecimal ingresos,
+			@Schema(description = "Egresos del medio, netos de sus reversiones (DP-45)", example = "5000.00")
+			BigDecimal egresos,
+			@Schema(description = "Movimientos del medio, reversiones incluidas (DP-45)", example = "12")
+			long cantidad) {
+	}
+
+	@Schema(name = "ResumenDeJornadaCaja",
+			description = "Lo que entro y salio en la jornada, en efectivo y por los demas medios. Las "
+					+ "reversiones restan de lo que revierten: un ingreso anulado no es un egreso. Para "
+					+ "el efectivo, `saldoInicial + efectivoIngresos - efectivoEgresos = saldoTeorico`")
+	public record ResumenResponse(
+			@Schema(description = "Todos los medios", example = "120000.00") BigDecimal ingresos,
+			@Schema(description = "Todos los medios", example = "5000.00") BigDecimal egresos,
+			@Schema(description = "Solo efectivo: lo que se arquea", example = "60000.00") BigDecimal efectivoIngresos,
+			@Schema(example = "5000.00") BigDecimal efectivoEgresos,
+			@Schema(description = "Transferencias, tarjetas y otros: no estan en el cajon", example = "60000.00")
+			BigDecimal otrosMediosIngresos,
+			@Schema(example = "0.00") BigDecimal otrosMediosEgresos,
+			@Schema(example = "14") long cantidadMovimientos) {
+
+		static ResumenResponse de(JornadaCajaView.Resumen r) {
+			return r == null ? null : new ResumenResponse(
+					r.ingresos(), r.egresos(), r.efectivoIngresos(), r.efectivoEgresos(),
+					r.otrosMediosIngresos(), r.otrosMediosEgresos(), r.cantidadMovimientos());
+		}
 	}
 
 	public static JornadaCajaResponse de(JornadaCajaView vista) {
@@ -98,7 +132,9 @@ public record JornadaCajaResponse(
 				vista.motivoDiferencia(),
 				vista.totalesPorMedio().stream()
 						.map(total -> new TotalPorMedioResponse(
-								total.medio(), total.total(), total.afectaArqueo()))
-						.toList());
+								total.medio(), total.total(), total.afectaArqueo(),
+								total.ingresos(), total.egresos(), total.cantidad()))
+						.toList(),
+				ResumenResponse.de(vista.resumen()));
 	}
 }
