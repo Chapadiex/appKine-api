@@ -4,6 +4,11 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioMembershipSnapshot;
+import com.akine.platform.spi.identity.AccountIdentity;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
+import com.akine.scheduling.domain.EstadoTurno;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.scheduling.domain.PermissionCodes;
@@ -20,8 +25,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -66,6 +74,8 @@ public class RecepcionService {
 	private final OfertaDirectory ofertas;
 	private final SoporteEnAgenda soporte;
 	private final PrepagoDeRecepcion prepago;
+	private final ConsultorioMembershipDirectory memberships;
+	private final AccountIdentityDirectory identidades;
 
 	public RecepcionService(
 			TurnoRepositoryPort turnos,
@@ -74,7 +84,9 @@ public class RecepcionService {
 			PacienteDirectory pacientes,
 			OfertaDirectory ofertas,
 			SoporteEnAgenda soporte,
-			PrepagoDeRecepcion prepago) {
+			PrepagoDeRecepcion prepago,
+			ConsultorioMembershipDirectory memberships,
+			AccountIdentityDirectory identidades) {
 
 		this.turnos = turnos;
 		this.recepciones = recepciones;
@@ -83,6 +95,8 @@ public class RecepcionService {
 		this.ofertas = ofertas;
 		this.soporte = soporte;
 		this.prepago = prepago;
+		this.memberships = memberships;
+		this.identidades = identidades;
 	}
 
 	/**
@@ -117,6 +131,72 @@ public class RecepcionService {
 				fecha,
 				sede.timezone(),
 				delDia.isEmpty() ? List.of() : componer(organizationId, consultorioId, delDia));
+	}
+
+	/**
+	 * Los turnos de una sede que empiezan en {@code [desde, hasta)}, para el calendario (DP-45).
+	 *
+	 * <p>Las fechas son dias locales de la sede, igual que {@link #delDia}; {@code hasta} es
+	 * exclusivo y el rango tiene tope ({@link VentanaDeAgenda#VENTANA_MAXIMA_TURNOS_DIAS}), asi que
+	 * la respuesta va sin paginar. Los cancelados quedan afuera salvo {@code incluirCancelados}:
+	 * el calendario muestra lo reservado, a diferencia de la recepcion del dia.
+	 *
+	 * <p>Mismo permiso que la agenda del dia: {@code turno:read}. Reusa {@link #componer}, asi que
+	 * pacientes, ofertas, recepciones y prepago se piden en lote; los nombres de profesional, en dos
+	 * consultas mas para todo el rango.
+	 *
+	 * @param profesionalId membership del profesional para acotar, o {@code null}
+	 * @param ofertaId      oferta para acotar, o {@code null}
+	 */
+	@Transactional(readOnly = true)
+	public TurnosDeSedeView delRango(
+			OperatingActor actor, long consultorioId, LocalDate desde, LocalDate hasta,
+			Long profesionalId, Long ofertaId, boolean incluirCancelados) {
+
+		long organizationId = exigirContexto(actor);
+		ConsultorioSnapshot sede = exigirSede(organizationId, consultorioId);
+		soporte.exigir(actor, PermissionCodes.TURNO_READ, organizationId, consultorioId);
+		VentanaDeAgenda.exigirValida(desde, hasta, VentanaDeAgenda.VENTANA_MAXIMA_TURNOS_DIAS);
+
+		ZoneId zona = ZoneId.of(sede.timezone());
+		List<Turno> lote = turnos.findDeLaSedeEnVentana(
+						organizationId, consultorioId,
+						desde.atStartOfDay(zona).toInstant(), hasta.atStartOfDay(zona).toInstant())
+				.stream()
+				.filter(t -> incluirCancelados || t.getEstado() != EstadoTurno.CANCELADO)
+				.filter(t -> profesionalId == null || profesionalId.equals(t.getProfesionalMembershipId()))
+				.filter(t -> ofertaId == null || ofertaId.equals(t.getOfertaId()))
+				.toList();
+
+		if (lote.isEmpty()) {
+			return new TurnosDeSedeView(desde, hasta, sede.timezone(), List.of());
+		}
+		Map<Long, String> profesionales = nombresDeProfesionales(organizationId,
+				lote.stream().map(Turno::getProfesionalMembershipId).filter(Objects::nonNull)
+						.collect(Collectors.toSet()));
+		return new TurnosDeSedeView(desde, hasta, sede.timezone(),
+				componer(organizationId, consultorioId, lote).stream()
+						.map(t -> new TurnoDeCalendarioView(t, profesionales.get(t.profesionalId())))
+						.toList());
+	}
+
+	/** Membership -> cuenta -> nombre, en dos consultas para todo el rango. */
+	private Map<Long, String> nombresDeProfesionales(long organizationId, Set<Long> membershipIds) {
+		if (membershipIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<Long, ConsultorioMembershipSnapshot> vinculos =
+				memberships.findTodas(organizationId, membershipIds);
+		Map<Long, AccountIdentity> cuentas = identidades.identidadesDe(
+				vinculos.values().stream().map(ConsultorioMembershipSnapshot::accountId).toList());
+		Map<Long, String> nombres = new HashMap<>();
+		vinculos.forEach((id, vinculo) -> {
+			AccountIdentity cuenta = cuentas.get(vinculo.accountId());
+			if (cuenta != null && cuenta.nombreCompleto() != null) {
+				nombres.put(id, cuenta.nombreCompleto());
+			}
+		});
+		return nombres;
 	}
 
 	/**

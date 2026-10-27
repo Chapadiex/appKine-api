@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.144.0
+  version: 0.145.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -13342,6 +13342,104 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: La sede no existe o es de otro tenant
       summary: Agenda del dia de la sede
+      tags:
+      - Turnos
+  /api/v1/consultorios/{consultorioId}/turnos/calendario:
+    get:
+      description: |-
+        Los turnos reservados de la sede que empiezan en `[desde, hasta)`, del mas temprano al mas tarde (desempate por id). Es la fuente del calendario semanal con panel de detalle.
+
+        Las fechas son dias locales de la **zona de la sede**, que viaja en la respuesta. `hasta` es **exclusivo**, como en la busqueda de horarios. **El rango tiene un maximo de 42 dias**: mas que eso responde 400 `validation-error`. No hay paginacion, el tope la hace innecesaria.
+
+        **Los cancelados no vienen** salvo `incluirCancelados=true`. Cada turno trae lo mismo que la agenda del dia (paciente, oferta, espacio, recepcion, serie, cobertura elegida) mas el nombre del profesional. **Nada clinico.**
+
+        Exige `turno:read`, igual que la agenda del dia.
+      operationId: listarTurnosDeSede
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Primer dia, inclusivo, en la zona de la sede"
+        example: 2026-10-26
+        in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Ultimo dia, EXCLUSIVO. Maximo 42 dias desde `desde`"
+        example: 2026-11-02
+        in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Membership del profesional, para ver solo sus turnos"
+        example: 31
+        in: query
+        name: profesionalId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: "Oferta, para ver solo sus turnos"
+        example: 42
+        in: query
+        name: ofertaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: Incluir los turnos cancelados (por defecto no)
+        in: query
+        name: incluirCancelados
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TurnosDeSede"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/TurnosDeSede"
+          description: Turnos del rango
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Fechas ausentes o mal formadas, `hasta` no posterior a `desde`,\
+            \ o rango de mas de 42 dias"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `turno:read` en esa sede, o sin contexto de trabajo activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Turnos de la sede en un rango de fechas
       tags:
       - Turnos
   /api/v1/consultorios/{consultorioId}/turnos/ofertas/{ofertaId}:
@@ -39096,6 +39194,20 @@ components:
           format: int64
           description: Id del turno
           example: 41
+    TurnoDeCalendario:
+      type: object
+      description: "Un turno del calendario de la sede: el turno de la recepcion (PHI\
+        \ minima, nada clinico) y el nombre del profesional."
+      properties:
+        profesionalNombre:
+          type: string
+          description: Nombre del profesional (`turno.profesionalId` es su membership).
+            Ausente si el turno no tiene profesional o su cuenta no se resuelve.
+          example: "Gomez, Laura"
+        turno:
+          $ref: "#/components/schemas/TurnoDelDia"
+          description: "El turno, con paciente, oferta, espacio, recepcion, serie\
+            \ y cobertura ya resueltos"
     TurnoDelDia:
       type: object
       description: "Turno de la agenda del dia de una sede, con el paciente resuelto.\
@@ -39219,6 +39331,31 @@ components:
           example: YA_EMPEZO
         turno:
           $ref: "#/components/schemas/Turno"
+    TurnosDeSede:
+      type: object
+      description: "Los turnos reservados de una sede en un rango de fechas, con la\
+        \ zona con la que hay que mostrarlos. PHI minima: ningun dato clinico."
+      properties:
+        desde:
+          type: string
+          format: date
+          description: "Primer dia, inclusivo, en la zona de la sede"
+          example: 2026-10-26
+        hasta:
+          type: string
+          format: date
+          description: "Ultimo dia, EXCLUSIVO, en la zona de la sede"
+          example: 2026-11-02
+        timezone:
+          type: string
+          description: Zona horaria de la sede
+          example: America/Argentina/Cordoba
+        turnos:
+          type: array
+          description: "Turnos que empiezan en el rango, por hora de inicio y despues\
+            \ por id"
+          items:
+            $ref: "#/components/schemas/TurnoDeCalendario"
     UpdateArancelRequest:
       type: object
       description: Cambios a aplicar sobre un arancel. Los campos nulos no se tocan
