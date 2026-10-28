@@ -15,6 +15,9 @@ import com.akine.resource.application.VigenciaAltaCommand;
 import com.akine.resource.domain.CatalogoAlcanceFiltro;
 import com.akine.resource.domain.CatalogoEstadoFiltro;
 import com.akine.resource.domain.CatalogoTipo;
+import com.akine.platform.spi.listado.ListadoEnMemoria;
+import com.akine.platform.spi.listado.OrdenDeListado;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -39,7 +42,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Catalogo clinico: especialidades, practicas, nomencladores y vigencias (M06).
@@ -265,7 +270,10 @@ public class CatalogoController {
 					especialidadId solo aplica a practicas y se ignora en los otros tipos.
 
 					El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un \
-					error.""")
+					error.
+
+					DP-45: sort ordena por codigo, nombre o alcance; sin el, el orden de \
+					siempre.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -277,8 +285,8 @@ public class CatalogoController {
 									implementation = CatalogoConceptoPageResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "Tipo de ruta desconocido, o valor de estado o alcance fuera "
-							+ "del catalogo",
+					description = "Tipo de ruta desconocido, valor de estado o alcance fuera "
+							+ "del catalogo, o sort fuera del enum",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -313,16 +321,34 @@ public class CatalogoController {
 			@RequestParam(defaultValue = ApiPaging.PAGINA_POR_DEFECTO) int page,
 
 			@Parameter(description = "Elementos por pagina, acotado a 100", example = "20")
-			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size) {
+			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size,
 
-		List<CatalogoConceptoView> encontrados = catalogoService.buscar(
-				apiActor.current(),
-				CatalogoTipo.desdeRuta(tipo),
-				new CatalogoBusqueda(q, estado, alcance, especialidadId));
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "el de la consulta del "
+					+ "catalogo.",
+					schema = @Schema(allowableValues = {"codigo,asc", "codigo,desc", "nombre,asc",
+							"nombre,desc", "alcance,asc", "alcance,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
+
+		var orden = OrdenDeListado.leer(sort, ORDEN_DE_CONCEPTOS.keySet());
+		List<CatalogoConceptoView> encontrados = ListadoEnMemoria.filtrarYOrdenar(
+				catalogoService.buscar(
+						apiActor.current(),
+						CatalogoTipo.desdeRuta(tipo),
+						new CatalogoBusqueda(q, estado, alcance, especialidadId)),
+				concepto -> true,
+				orden,
+				ORDEN_DE_CONCEPTOS,
+				Comparator.comparingLong(CatalogoConceptoView::id));
 
 		return ResponseEntity.ok(CatalogoConceptoPageResponse.of(
 				encontrados, ApiPaging.pagina(page), ApiPaging.tamano(size)));
 	}
+
+	/** DP-45: los campos por los que se ordena la busqueda, con su comparador ascendente. */
+	private static final Map<String, Comparator<CatalogoConceptoView>> ORDEN_DE_CONCEPTOS = Map.of(
+			"codigo", TextoDeBusqueda.comparadorDeTexto(CatalogoConceptoView::codigo),
+			"nombre", TextoDeBusqueda.comparadorDeTexto(CatalogoConceptoView::name),
+			"alcance", TextoDeBusqueda.comparadorDeTexto(CatalogoConceptoView::alcance));
 
 	@GetMapping("/{tipo}/{conceptoId}")
 	@Operation(

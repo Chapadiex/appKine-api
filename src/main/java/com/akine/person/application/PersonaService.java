@@ -121,6 +121,7 @@ public class PersonaService {
 				filtros.patronClave(),
 				filtros.activoFiltro(),
 				filtros.perfilFiltro(),
+				filtros.ordenClave(),
 				page * size,
 				size);
 

@@ -133,7 +133,8 @@ class ColaboradorInvitacionServiceTest {
 				invitacionRepository, cuentaRepository, membershipProvisioning, contextDirectory,
 				organizationDirectory, consultorioDirectory, permissionGuard, tokenGenerator,
 				linkBuilder, notificationOutbox, passwordHasher, new PasswordPolicy(), auditTrail,
-				clock);
+				clock, new TerminosService(
+						com.akine.identity.domain.TerminosSettings.sinTerminos(), aceptacion -> aceptacion));
 	}
 
 	@Test

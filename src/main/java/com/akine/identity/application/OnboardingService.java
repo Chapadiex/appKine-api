@@ -1,5 +1,6 @@
 package com.akine.identity.application;
 
+import com.akine.identity.domain.AceptacionTerminos;
 import com.akine.identity.domain.Cuenta;
 import com.akine.identity.domain.EmailNormalizado;
 import com.akine.identity.domain.OnboardingRegistro;
@@ -84,6 +85,7 @@ public class OnboardingService {
 	private final PasswordHasher passwordHasher;
 	private final TokenGenerator tokenGenerator;
 	private final AuditTrail auditTrail;
+	private final TerminosService terminosService;
 
 	public OnboardingService(
 			TransactionTemplate transactionTemplate,
@@ -96,7 +98,8 @@ public class OnboardingService {
 			PasswordPolicy passwordPolicy,
 			PasswordHasher passwordHasher,
 			TokenGenerator tokenGenerator,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			TerminosService terminosService) {
 		this.transactionTemplate = transactionTemplate;
 		this.cuentaRepository = cuentaRepository;
 		this.onboardingRepository = onboardingRepository;
@@ -108,6 +111,7 @@ public class OnboardingService {
 		this.passwordHasher = passwordHasher;
 		this.tokenGenerator = tokenGenerator;
 		this.auditTrail = auditTrail;
+		this.terminosService = terminosService;
 	}
 
 	/**
@@ -129,11 +133,16 @@ public class OnboardingService {
 	 *         explicito ya esta tomado. Tambien antes de mirar el email, y por el mismo motivo
 	 */
 	public ResultadoRegistro registrar(RegistroCuentaCommand command) {
+		// Terminos primero, y antes de mirar el email como todo lo que rechaza el pedido (ADR-0018):
+		// el mismo 400 con email libre o tomado. Sin version vigente devuelve null y no exige nada.
+		String versionTerminos = terminosService.exigirAceptacion(
+				command.aceptaTerminos(), command.versionTerminos());
 		passwordPolicy.validar(command.password());
 		String passwordHash = passwordHasher.hash(command.password());
 
 		try {
-			return transactionTemplate.execute(status -> ejecutarAlta(command, passwordHash));
+			return transactionTemplate.execute(
+					status -> ejecutarAlta(command, passwordHash, versionTerminos));
 		} catch (EmailTomadoPorOtroHilo colision) {
 			// La transaccion de arriba ya murio: su flush fallo y con el se rompio la sesion.
 			// El camino del duplicado se rehace ACA, en una transaccion nueva y por lo tanto
@@ -200,7 +209,8 @@ public class OnboardingService {
 		return ResultadoRegistro.sinAlta();
 	}
 
-	private ResultadoRegistro ejecutarAlta(RegistroCuentaCommand command, String passwordHash) {
+	private ResultadoRegistro ejecutarAlta(
+			RegistroCuentaCommand command, String passwordHash, String versionTerminos) {
 		// 1. Reintento con la misma clave: se devuelve el mismo desenlace sin repetir nada.
 		//    Incluye el caso "ya existia": sin esto, cada reintento mandaria otro correo de
 		//    "ya tenes cuenta" y el endpoint seria un amplificador de spam gratuito.
@@ -251,7 +261,8 @@ public class OnboardingService {
 			return registrarDuplicado(command, emailNormalizado, ahora);
 		}
 
-		return crearCuentaYTenant(command, emailNormalizado, passwordHash, ahora, datosDeRender);
+		return crearCuentaYTenant(
+				command, emailNormalizado, passwordHash, ahora, datosDeRender, versionTerminos);
 	}
 
 	/**
@@ -273,7 +284,8 @@ public class OnboardingService {
 			String emailNormalizado,
 			String passwordHash,
 			Instant ahora,
-			Map<String, String> datosDeRender) {
+			Map<String, String> datosDeRender,
+			String versionTerminos) {
 
 		Cuenta cuenta;
 		try {
@@ -312,6 +324,11 @@ public class OnboardingService {
 
 		emitirActivacion(cuenta, tenant.organizationId(), ahora, datosDeRender);
 
+		// La constancia va con la cuenta y en su misma transaccion: si el alta se revierte, no queda
+		// una aceptacion apuntando a una cuenta que no existe.
+		terminosService.registrar(
+				cuenta.getId(), versionTerminos, AceptacionTerminos.Origen.REGISTRO, ahora);
+
 		registrarIdempotencia(OnboardingRegistro.completado(
 				command.claveIdempotencia(), emailNormalizado, cuenta.getId(),
 				tenant.organizationId(), tenant.consultorioId(), command.requestHash(), ahora));
@@ -319,6 +336,9 @@ public class OnboardingService {
 		Map<String, String> details = new LinkedHashMap<>();
 		details.put("origen", ORIGEN_REGISTRO);
 		details.put("organizationId", String.valueOf(tenant.organizationId()));
+		if (versionTerminos != null) {
+			details.put("versionTerminos", versionTerminos);
+		}
 		IdentityAuditEvents.registrar(auditTrail, IdentityAuditEvents.CUENTA_CREADA,
 				tenant.organizationId(), cuenta.getId(), cuenta.getId(),
 				null, cuenta.getEstado().name(), details, null, ahora);

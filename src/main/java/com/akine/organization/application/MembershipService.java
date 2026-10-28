@@ -35,16 +35,22 @@ import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.identity.AccountIdentity;
 import com.akine.platform.spi.identity.AccountIdentityDirectory;
+import com.akine.platform.spi.listado.ListadoEnMemoria;
+import com.akine.platform.spi.listado.OrdenDeListado;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -196,6 +202,58 @@ public class MembershipService implements MembershipProvisioning {
 
 		return pagina.map(membership ->
 				MembershipView.de(membership, cuentas.get(membership.getAccountId())));
+	}
+
+	/** DP-45: los campos por los que se ordena el listado de colaboradores. */
+	public static final Map<String, Comparator<MembershipView>> ORDEN_DE_COLABORADORES = Map.of(
+			"nombre", TextoDeBusqueda.comparadorDeTexto(MembershipView::accountName),
+			"email", TextoDeBusqueda.comparadorDeTexto(MembershipView::accountEmail),
+			"rol", TextoDeBusqueda.comparadorDeTexto(MembershipView::roleCode),
+			"estado", TextoDeBusqueda.comparadorDeTexto(MembershipView::estado),
+			"vigenteDesde", Comparator.comparing(MembershipView::validFrom,
+					Comparator.nullsLast(Comparator.naturalOrder())));
+
+	/**
+	 * Colaboradores con busqueda y orden (DP-45, punto 1). Sin {@code q} ni orden es exactamente
+	 * {@link #list(OperatingActor, long, Pageable)}.
+	 *
+	 * <p><b>Por que en memoria.</b> El nombre y el correo de cada colaborador son de
+	 * {@code identity}, y {@code organization} no puede leer esa tabla (AGENT.md seccion 4,
+	 * regla 1): los pregunta por {@link AccountIdentityDirectory}. Buscar o ordenar por ellos
+	 * exige tenerlos todos, asi que se leen las memberships del tenant completas —estan acotadas
+	 * por el limite de miembros del plan—, se resuelven las cuentas en UNA consulta y se corta la
+	 * pagina despues.
+	 *
+	 * @param q "contiene" en el nombre o el correo de la cuenta, sin mayusculas ni acentos
+	 */
+	@Transactional(readOnly = true)
+	public Page<MembershipView> list(
+			OperatingActor actor, long organizationId, String q, Optional<OrdenDeListado> orden,
+			Pageable pageable) {
+
+		if (!TextoDeBusqueda.hay(q) && orden.isEmpty()) {
+			return list(actor, organizationId, pageable);
+		}
+		exigirEnLectura(actor, organizationId, PermissionCode.COLABORADOR_READ, null);
+
+		List<Membership> todas = membershipRepository.findAllByOrganizationId(
+				organizationId, Pageable.unpaged(Sort.by(Sort.Direction.ASC, "id"))).getContent();
+		Map<Long, AccountIdentity> cuentas = accountDirectory.identidadesDe(
+				todas.stream().map(Membership::getAccountId).distinct().toList());
+
+		List<MembershipView> filas = ListadoEnMemoria.filtrarYOrdenar(
+				todas.stream()
+						.map(membership -> MembershipView.de(
+								membership, cuentas.get(membership.getAccountId())))
+						.toList(),
+				vista -> TextoDeBusqueda.algunoContiene(q, vista.accountName(), vista.accountEmail()),
+				orden,
+				ORDEN_DE_COLABORADORES,
+				Comparator.comparingLong(MembershipView::id));
+
+		int desde = (int) Math.min(pageable.getOffset(), filas.size());
+		int hasta = Math.min(desde + pageable.getPageSize(), filas.size());
+		return new PageImpl<>(filas.subList(desde, hasta), pageable, filas.size());
 	}
 
 	/**

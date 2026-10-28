@@ -1,5 +1,6 @@
 package com.akine.scheduling.domain.port;
 
+import com.akine.platform.spi.listado.OrdenDeListado;
 import com.akine.scheduling.domain.AgendaSede;
 import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.OcupacionDeTurno;
@@ -248,6 +249,24 @@ public final class SchedulingRepositoryPorts {
 
 		/** El total del mismo filtro que {@link #listar}. */
 		long contar(long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado, Instant ahora);
+
+		/**
+		 * DP-45: la misma pagina con el orden que pide el cliente, por campo del contrato
+		 * ({@code creadaEn}, {@code fechaDesde}, {@code fechaHasta}) y con desempate por id. Vacio
+		 * es el orden de {@link #listar}: las mas nuevas primero.
+		 */
+		List<TurnoSerie> listar(
+				long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado,
+				Instant ahora, Optional<OrdenDeListado> orden, int pagina, int tamano);
+
+		/**
+		 * DP-45: todas las series del filtro, sin paginar y en el orden de {@link #listar}. Para
+		 * buscar por texto en el paciente, el profesional y la oferta, que viven en otros modulos y
+		 * se resuelven en lote: las series de una sede son pocas comparadas con sus turnos.
+		 */
+		List<TurnoSerie> todas(
+				long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado,
+				Instant ahora);
 	}
 
 	/** Ocurrencias que el alta de una serie no reservo (U-22). Append-only. */

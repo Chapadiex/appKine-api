@@ -132,7 +132,14 @@ public interface MovimientoCajaRepository
 	@Query(value = """
 			SELECT medio,
 			       SUM(CASE WHEN tipo IN ('INGRESO', 'REVERSION_DE_EGRESO')
-			                THEN importe ELSE -importe END) AS total
+			                THEN importe ELSE -importe END) AS total,
+			       SUM(CASE WHEN tipo = 'INGRESO' THEN importe
+			                WHEN tipo = 'REVERSION_DE_INGRESO' THEN -importe
+			                ELSE 0 END) AS ingresos,
+			       SUM(CASE WHEN tipo = 'EGRESO' THEN importe
+			                WHEN tipo = 'REVERSION_DE_EGRESO' THEN -importe
+			                ELSE 0 END) AS egresos,
+			       COUNT(*) AS cantidad
 			  FROM movimiento_caja
 			 WHERE organization_id = :organizationId
 			   AND jornada_caja_id = :jornadaCajaId
@@ -198,6 +205,30 @@ public interface MovimientoCajaRepository
 			   AND m.tipo = :tipo
 			""", nativeQuery = true)
 	BigDecimal sumarEfectivoPorTipoEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") LocalDate desde,
+			@Param("hasta") LocalDate hasta,
+			@Param("tipo") String tipo);
+
+	/**
+	 * {@link #sumarEfectivoPorTipoEnElReporte} abierto por {@code fecha_negocio} (DP-45). Mismo
+	 * recorte; la fecha ya es la del dia de la sede y no se convierte.
+	 *
+	 * @return filas {@code [fecha_negocio, importe]}
+	 */
+	@Query(value = """
+			SELECT m.fecha_negocio AS dia, SUM(m.importe) AS total
+			  FROM movimiento_caja m
+			 WHERE m.organization_id = :organizationId
+			   AND m.consultorio_id = :consultorioId
+			   AND m.fecha_negocio >= :desde
+			   AND m.fecha_negocio <= :hasta
+			   AND m.afecta_arqueo = 1
+			   AND m.tipo = :tipo
+			 GROUP BY m.fecha_negocio
+			""", nativeQuery = true)
+	List<Object[]> sumarEfectivoPorTipoYDiaEnElReporte(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") LocalDate desde,

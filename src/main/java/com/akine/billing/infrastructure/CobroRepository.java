@@ -211,6 +211,29 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 			@Param("hasta") Instant hasta);
 
 	/**
+	 * {@link #sumarCobradoEnElReporte} abierto por dia de la sede (DP-45). Mismo recorte; el dia sale
+	 * de {@code cobrado_en} con el desfase numerico del tramo.
+	 *
+	 * @return filas {@code [dia, total]}
+	 */
+	@Query(value = """
+			SELECT DATE(CONVERT_TZ(c.cobrado_en, '+00:00', :desfase)) AS dia, SUM(c.total) AS total
+			  FROM cobro c
+			 WHERE c.organization_id = :organizationId
+			   AND c.consultorio_id = :consultorioId
+			   AND c.deleted_at IS NULL
+			   AND c.cobrado_en >= :desde
+			   AND c.cobrado_en < :hasta
+			 GROUP BY dia
+			""", nativeQuery = true)
+	List<Object[]> sumarCobradoPorDiaEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("desfase") String desfase);
+
+	/**
 	 * Lo cobrado por un medio concreto. Es la <b>mitad izquierda de la reconciliacion</b>.
 	 *
 	 * <p>Con {@code EFECTIVO} da lo que, segun M19, deberia haber entrado a algun cajon. La otra

@@ -236,6 +236,27 @@ public class AutorizacionService {
 			int pagina,
 			int tamano,
 			LocalDate fecha) {
+		return historial(actor, personaId, autorizacionId, "", pagina, tamano, fecha);
+	}
+
+	/** DP-45: los campos por los que se ordena el historial. */
+	public static final java.util.Set<String> CAMPOS_DE_ORDEN_DEL_HISTORIAL =
+			java.util.Set.of("ocurridoEn", "tipo");
+
+	/**
+	 * El mismo historial con el orden que pide el cliente (DP-45).
+	 *
+	 * @param orden la clave {@code campo,dir} ya validada, o vacio para el orden de siempre
+	 */
+	@Transactional(readOnly = true)
+	public HistorialDeAutorizacionView historial(
+			OperatingActor actor,
+			long personaId,
+			long autorizacionId,
+			String orden,
+			int pagina,
+			int tamano,
+			LocalDate fecha) {
 
 		long organizationId =
 				AutorizacionDePadron.exigirLecturaDelPadron(
@@ -244,7 +265,7 @@ public class AutorizacionService {
 		Autorizacion autorizacion = cargar(organizationId, personaId, autorizacionId);
 
 		List<EventoDeAutorizacionView> contenido = eventos
-				.pagina(organizationId, autorizacionId, pagina * tamano, tamano).stream()
+				.pagina(organizationId, autorizacionId, orden, pagina * tamano, tamano).stream()
 				.map(EventoDeAutorizacionView::de)
 				.toList();
 		return HistorialDeAutorizacionView.de(

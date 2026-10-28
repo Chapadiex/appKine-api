@@ -19,6 +19,7 @@ import com.akine.reporting.spi.AporteDeReporte;
 import com.akine.reporting.spi.ConsultaDeReporte;
 import com.akine.reporting.spi.ReporteCode;
 import com.akine.reporting.spi.ReporteContributor;
+import com.akine.reporting.spi.SerieDiaria;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -109,6 +111,16 @@ public class ReporteService {
 	 */
 	static final int LIMITE_FILAS = 500;
 
+	/**
+	 * Tope de puntos de una serie (DP-45).
+	 *
+	 * <p>Un grafico de barras con mas de cien barras no se lee, y el tope deja pasar lo que una
+	 * pantalla pide de verdad: un trimestre por dia o la ventana maxima de 366 dias por semana
+	 * (54 puntos). Con {@code DIA} sobre un periodo mas largo, 400 y la sugerencia de agrupar por
+	 * semana.
+	 */
+	static final int MAXIMO_PUNTOS = 100;
+
 	private static final String EVENTO_REPORTE_CONSULTADO = "REPORTE_CONSULTADO";
 	private static final String ENTIDAD_REPORTE = "Reporte";
 	private static final String MDC_TRACE_ID = "traceId";
@@ -164,13 +176,111 @@ public class ReporteService {
 			OperatingActor actor, long consultorioId, ReporteCode reporte,
 			LocalDate desde, LocalDate hasta) {
 
+		Preparacion preparacion = preparar(actor, consultorioId, reporte, desde, hasta, "generar");
+		ConsultaDeReporte consulta = preparacion.consulta();
+
+		List<AporteDeReporte> secciones = new ArrayList<>();
+		List<AdvertenciaDeReporte> advertencias = new ArrayList<>(preparacion.advertencias());
+
+		for (ReporteContributor contribuyente : preparacion.visibles()) {
+			AporteDeReporte aporte = contribuyente.aportar(consulta);
+			if (aporte == null) {
+				aporte = AporteDeReporte.vacio(contribuyente.seccion());
+			}
+			secciones.add(aporte);
+			advertencias.addAll(aporte.advertencias());
+		}
+
+		if (preparacion.alcanzaDatosClinicos()) {
+			auditarAccesoClinico(actor, preparacion.organizationId(), consultorioId, reporte,
+					consulta, null);
+		}
+
+		log.debug("Reporte resuelto: reporte={} sede={} secciones={} omitidas={} advertencias={}",
+				reporte, consultorioId, secciones.size(), preparacion.omitidas().size(),
+				advertencias.size());
+
+		return new ReporteView(
+				reporte, consultorioId, consulta.desde(), consulta.hasta(),
+				consulta.zona().getId(), Instant.now(), secciones, preparacion.omitidas(),
+				advertencias);
+	}
+
+	/**
+	 * Las series temporales de un reporte, para el grafico de barras (DP-45).
+	 *
+	 * <p><b>Mismas precondiciones, mismo recorte y mismas omisiones que {@link #generar}</b>, porque
+	 * las comparte: una seccion que el reporte no muestra tampoco tiene serie, y la omision se
+	 * declara igual. Cada serie la calcula el modulo duenio con la fuente y el criterio de fecha del
+	 * indicador que dibuja, asi que la suma de sus puntos es ese indicador.
+	 *
+	 * <p>El tope de puntos ({@link #MAXIMO_PUNTOS}) se valida <b>despues</b> del gate, por la misma
+	 * razon que el rango: un actor sin permiso no distingue un pedido bueno de uno malo.
+	 *
+	 * <p>Sin {@code readOnly}: una serie clinica se audita igual que el reporte.
+	 */
+	@Transactional
+	public SerieDeReporteView generarSerie(
+			OperatingActor actor, long consultorioId, ReporteCode reporte,
+			LocalDate desde, LocalDate hasta, AgrupacionDeSerie agrupacion) {
+
+		AgrupacionDeSerie como = agrupacion == null ? AgrupacionDeSerie.DIA : agrupacion;
+		Preparacion preparacion = preparar(actor, consultorioId, reporte, desde, hasta, "serie");
+		ConsultaDeReporte consulta = preparacion.consulta();
+
+		long puntos = AgrupadorDeSerie.cantidadDePuntos(consulta.desde(), consulta.hasta(), como);
+		if (puntos > MAXIMO_PUNTOS) {
+			throw new RangoDeReporteInvalidoException(
+					"La serie pedida tiene " + puntos + " puntos y el maximo es " + MAXIMO_PUNTOS
+							+ ": para un periodo mas largo, agrupar por SEMANA",
+					MAXIMO_PUNTOS);
+		}
+
+		List<SerieDeReporteView.Serie> series = new ArrayList<>();
+		for (ReporteContributor contribuyente : preparacion.visibles()) {
+			List<SerieDiaria> diarias = contribuyente.seriesDiarias(consulta);
+			if (diarias == null) {
+				continue;
+			}
+			for (SerieDiaria diaria : diarias) {
+				List<SerieDeReporteView.Punto> agrupados = AgrupadorDeSerie.agrupar(
+						consulta.desde(), consulta.hasta(), como, diaria.porDia());
+				BigDecimal total = agrupados.stream()
+						.map(SerieDeReporteView.Punto::valor)
+						.reduce(BigDecimal.ZERO, BigDecimal::add);
+				series.add(new SerieDeReporteView.Serie(
+						contribuyente.seccion(), diaria.clave(), diaria.etiqueta(), diaria.tipo(),
+						diaria.moneda(), diaria.fuente(), diaria.criterioDeFecha(), total,
+						agrupados));
+			}
+		}
+
+		if (preparacion.alcanzaDatosClinicos()) {
+			auditarAccesoClinico(actor, preparacion.organizationId(), consultorioId, reporte,
+					consulta, como);
+		}
+
+		return new SerieDeReporteView(
+				reporte, consultorioId, consulta.desde(), consulta.hasta(),
+				consulta.zona().getId(), como, Instant.now(), series, preparacion.omitidas(),
+				preparacion.advertencias());
+	}
+
+	/**
+	 * Lo que {@link #generar} y {@link #generarSerie} comparten: tenant, sede, permiso, soporte,
+	 * recorte, periodo, y que secciones se invocan y cuales se omiten.
+	 */
+	private Preparacion preparar(
+			OperatingActor actor, long consultorioId, ReporteCode reporte,
+			LocalDate desde, LocalDate hasta, String operacion) {
+
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 
 		// El gate del tablero va ANTES de validar el rango: un actor sin permiso no debe poder
 		// distinguir un rango bueno de uno malo, porque eso ya es informacion sobre el sistema.
 		PermissionDecision decision = exigirReporteRead(actor, organizationId, consultorioId);
-		registrarSoporte(decision, actor, organizationId, consultorioId, "generar", reporte);
+		registrarSoporte(decision, actor, organizationId, consultorioId, operacion, reporte);
 
 		// El recorte se resuelve ANTES de construir la consulta y ANTES de invocar a nadie: una
 		// consulta limitada que saliera sin sus memberships seria el reporte de toda la sede.
@@ -189,9 +299,8 @@ public class ReporteService {
 		Set<String> permisos = permissionEvaluator.effectivePermissions(
 				actor.accountId(), organizationId, consultorioId);
 
-		List<AporteDeReporte> secciones = new ArrayList<>();
+		List<ReporteContributor> visibles = new ArrayList<>();
 		List<ReporteView.SeccionOmitida> omitidas = new ArrayList<>();
-		List<AdvertenciaDeReporte> advertencias = new ArrayList<>();
 		boolean alcanzaDatosClinicos = false;
 
 		for (ReporteContributor contribuyente : contribuyentes) {
@@ -212,36 +321,32 @@ public class ReporteService {
 				continue;
 			}
 			alcanzaDatosClinicos |= contribuyente.esClinica();
-
-			AporteDeReporte aporte = contribuyente.aportar(consulta);
-			if (aporte == null) {
-				aporte = AporteDeReporte.vacio(contribuyente.seccion());
-			}
-			secciones.add(aporte);
-			advertencias.addAll(aporte.advertencias());
+			visibles.add(contribuyente);
 		}
 
+		List<AdvertenciaDeReporte> advertencias = new ArrayList<>();
 		if (consulta.recortadaAActividadPropia()) {
 			// Sin esto el profesional lee "12 turnos" y entiende que son los de la sede. Va como
 			// advertencia y no como campo nuevo para no cambiar el contrato: la pantalla ya
 			// muestra las advertencias, y el CSV tambien.
-			advertencias.add(0, new AdvertenciaDeReporte(
+			advertencias.add(new AdvertenciaDeReporte(
 					null,
 					ADVERTENCIA_ACTIVIDAD_PROPIA,
 					"Reporte limitado a tu propia actividad: turnos, sesiones, casos y clases que "
 							+ "atendiste o te fueron asignados. No incluye al resto del equipo."));
 		}
 
-		if (alcanzaDatosClinicos) {
-			auditarAccesoClinico(actor, organizationId, consultorioId, reporte, consulta);
-		}
+		return new Preparacion(organizationId, consulta, visibles, omitidas, advertencias,
+				alcanzaDatosClinicos);
+	}
 
-		log.debug("Reporte resuelto: reporte={} sede={} secciones={} omitidas={} advertencias={}",
-				reporte, consultorioId, secciones.size(), omitidas.size(), advertencias.size());
-
-		return new ReporteView(
-				reporte, consultorioId, consulta.desde(), consulta.hasta(), zona.getId(),
-				Instant.now(), secciones, omitidas, advertencias);
+	private record Preparacion(
+			long organizationId,
+			ConsultaDeReporte consulta,
+			List<ReporteContributor> visibles,
+			List<ReporteView.SeccionOmitida> omitidas,
+			List<AdvertenciaDeReporte> advertencias,
+			boolean alcanzaDatosClinicos) {
 	}
 
 	/**
@@ -412,10 +517,25 @@ public class ReporteService {
 	 *
 	 * <p>El detalle lleva el periodo y el reporte, <b>nunca contenido clinico</b>: la tabla de
 	 * auditoria termina en backups y meter ahi un dato sensible lo multiplica sin control.
+	 *
+	 * @param agrupacion {@code null} para el reporte; la de la serie cuando es una serie (DP-45)
 	 */
 	private void auditarAccesoClinico(
 			OperatingActor actor, long organizationId, long consultorioId,
-			ReporteCode reporte, ConsultaDeReporte consulta) {
+			ReporteCode reporte, ConsultaDeReporte consulta, AgrupacionDeSerie agrupacion) {
+
+		Map<String, String> detalle = new LinkedHashMap<>();
+		detalle.put("reporte", reporte.name());
+		detalle.put("desde", consulta.desde().toString());
+		detalle.put("hasta", consulta.hasta().toString());
+		// G-1: quien audite tiene que poder distinguir el tablero de la sede del de la actividad
+		// propia de un profesional.
+		detalle.put("alcance", consulta.recortadaAActividadPropia()
+				? PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA
+				: "SEDE");
+		if (agrupacion != null) {
+			detalle.put("serie", agrupacion.name());
+		}
 
 		auditTrail.record(new AuditEntry(
 				organizationId,
@@ -426,15 +546,7 @@ public class ReporteService {
 				null,
 				null,
 				null,
-				Map.of(
-						"reporte", reporte.name(),
-						"desde", consulta.desde().toString(),
-						"hasta", consulta.hasta().toString(),
-						// G-1: quien audite tiene que poder distinguir el tablero de la sede del
-						// de la actividad propia de un profesional.
-						"alcance", consulta.recortadaAActividadPropia()
-								? PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA
-								: "SEDE"),
+				detalle,
 				null,
 				MDC.get(MDC_TRACE_ID),
 				Instant.now()));

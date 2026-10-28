@@ -135,6 +135,11 @@ public class InvitacionPublicaController {
 					Si ya tiene cuenta, nombre y contrasena se IGNORAN. Reescribirlos seria una \
 					via para tomarle la cuenta a otro con solo invitarlo.
 
+					TERMINOS (DP-45): si hay que crear la cuenta y el despliegue tiene una version \
+					vigente (GET /api/v1/terms), se exigen aceptaTerminos=true y versionTerminos \
+					igual a esa version, con el mismo 400 validation-error que el registro, y la \
+					aceptacion queda registrada con la cuenta. Con cuenta previa se ignoran.
+
 					NO DEVUELVE SESION. Quien acepta con una cuenta que ya tenia probo que llega \
 					al buzon, no que la cuenta sea suya: una casilla abierta en una maquina \
 					compartida alcanza para lo primero y no para lo segundo. La pantalla \
@@ -152,7 +157,8 @@ public class InvitacionPublicaController {
 			@ApiResponse(
 					responseCode = "400",
 					description = "Falta el token, o faltan nombre y contrasena cuando hay que "
-							+ "crear la cuenta, o la contrasena no cumple la politica",
+							+ "crear la cuenta, la contrasena no cumple la politica, o no se aceptaron "
+							+ "los terminos vigentes",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -175,7 +181,8 @@ public class InvitacionPublicaController {
 
 		return ResponseEntity.ok(AcceptedInvitacionResponse.de(
 				invitacionService.aceptar(new InvitacionAceptacionCommand(
-						request.token(), request.nombre(), request.apellido(), request.password()))));
+						request.token(), request.nombre(), request.apellido(), request.password(),
+						request.aceptaTerminos(), request.versionTerminos()))));
 	}
 
 	// Produces explicito por lo mismo que en AccountRegistrationController.activate: sin cuerpo

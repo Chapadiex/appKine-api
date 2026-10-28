@@ -1,12 +1,17 @@
 package com.akine.notification.infrastructure;
 
 import com.akine.notification.domain.NotificationOutboxEntry;
+import com.akine.notification.domain.OutboxStatus;
 import com.akine.notification.domain.port.NotificationOutboxRepositoryPort;
+import com.akine.notification.spi.NotificationType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -72,4 +77,19 @@ public interface NotificationOutboxRepository
 			""", nativeQuery = true)
 	List<NotificationOutboxEntry> reclamarLeasesVencidos(
 			@Param("limite") Instant limite, @Param("maximo") int maximo);
+
+	@Override
+	@Query("""
+			select e from NotificationOutboxEntry e
+			 where e.organizationId = :organizationId
+			   and e.estado in :estados
+			   and ((:porTipo = true and e.tipo in :tipos) or e.destinatario = :destinatario)
+			""")
+	Page<NotificationOutboxEntry> buscarPorTexto(
+			@Param("organizationId") Long organizationId,
+			@Param("estados") Collection<OutboxStatus> estados,
+			@Param("porTipo") boolean porTipo,
+			@Param("tipos") Collection<NotificationType> tipos,
+			@Param("destinatario") String destinatario,
+			Pageable pageable);
 }

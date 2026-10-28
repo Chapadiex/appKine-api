@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.143.0
+  version: 0.148.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -455,6 +455,8 @@ paths:
 
         Si ya tiene cuenta, nombre y contrasena se IGNORAN. Reescribirlos seria una via para tomarle la cuenta a otro con solo invitarlo.
 
+        TERMINOS (DP-45): si hay que crear la cuenta y el despliegue tiene una version vigente (GET /api/v1/terms), se exigen aceptaTerminos=true y versionTerminos igual a esa version, con el mismo 400 validation-error que el registro, y la aceptacion queda registrada con la cuenta. Con cuenta previa se ignoran.
+
         NO DEVUELVE SESION. Quien acepta con una cuenta que ya tenia probo que llega al buzon, no que la cuenta sea suya: una casilla abierta en una maquina compartida alcanza para lo primero y no para lo segundo. La pantalla siguiente es el login.
 
         Aceptar consume cupo del plan. Si el tenant llego al tope, la respuesta es 409 y la invitacion queda pendiente.
@@ -478,7 +480,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Falta el token, o faltan nombre y contrasena cuando hay que\
-            \ crear la cuenta, o la contrasena no cumple la politica"
+            \ crear la cuenta, la contrasena no cumple la politica, o no se aceptaron\
+            \ los terminos vigentes"
         "404":
           content:
             application/problem+json:
@@ -595,6 +598,8 @@ paths:
         El access token sale en el cuerpo y dura diez minutos. El refresh token NO sale en el cuerpo: viaja en la cookie akine_rt, que es httpOnly, Secure, SameSite=Strict y esta acotada a Path=/api/v1/auth. El cliente no puede leerla ni necesita hacerlo; para renovar solo llama a POST /auth/refresh con credentials incluidas.
 
         El token sale con alcance pre_context: autentica la identidad y no habilita ninguna operacion de negocio. El paso siguiente es GET /api/v1/me/contexts y despues POST /api/v1/auth/context.
+
+        MANTENER LA SESION INICIADA (DP-45): con recordarme=true el refresh vive la vigencia larga configurada (30 dias por defecto) en vez de doce horas, y la cookie lleva ese Max-Age. Sin el campo, o en false, todo es como siempre. En los dos casos la vigencia es ABSOLUTA desde este login: renovar hereda el vencimiento y la eleccion, y nunca los extiende.
 
         RECHAZO UNIFORME (ADR-0018): email inexistente, contrasena incorrecta y contrasena correcta sobre una cuenta bloqueada, desactivada o pendiente de activacion devuelven las tres el MISMO 401 con el MISMO cuerpo, y con un tiempo de respuesta equivalente. No hay forma de distinguir los tres casos desde el cliente, y es deliberado: la diferencia convertiria este endpoint en un verificador de direcciones y de credenciales filtradas de otros sitios. Quien tenga la cuenta bloqueada se entera por el canal administrativo.
       operationId: login
@@ -731,7 +736,7 @@ paths:
       description: |-
         Canjea el refresh de la cookie akine_rt por un par nuevo. No lleva cuerpo: la credencial es la cookie, y ponerla ademas en el body la expondria al JavaScript de la pagina.
 
-        ROTACION ESTRICTA: cada canje invalida el refresh presentado y entrega uno nuevo en la misma familia, heredando el vencimiento ABSOLUTO de la sesion. Renovar no extiende la sesion: a las doce horas del login cae aunque se haya refrescado sin parar.
+        ROTACION ESTRICTA: cada canje invalida el refresh presentado y entrega uno nuevo en la misma familia, heredando el vencimiento ABSOLUTO de la sesion. Renovar no extiende la sesion: a las doce horas del login cae aunque se haya refrescado sin parar (o a la vigencia larga, si se abrio con recordarme).
 
         DETECCION DE REUSO: presentar un refresh ya canjeado revoca la familia completa —victima y atacante quedan afuera— y responde 401. Ese 401 es IDENTICO al de un token inexistente o vencido: el cliente no puede distinguir "te detectamos" de "no servia", y es a proposito.
 
@@ -783,6 +788,8 @@ paths:
         El header Idempotency-Key es obligatorio. Reintentar el alta con la misma clave devuelve el mismo desenlace sin crear una segunda cuenta ni mandar un segundo correo; el cliente debe generarlo una vez al abrir el formulario y reusarlo en cada reintento. Reusar la clave con OTRO contenido no es un reintento: responde 409 idempotency-key-conflict. La contrasena no entra en esa comparacion.
 
         Los rechazos posibles no dicen nada sobre el email: 400 por contrasena que no cumple la politica o por campos ausentes, 404 por un planCode que no existe o ya no se contrata, y 409 por un organizationSlug ya tomado. Los tres se evaluan ANTES de mirar si el email tiene cuenta, justamente para que la respuesta sea la misma en los dos casos: validarlos despues convertiria el endpoint en un verificador de direcciones de correo.
+
+        TERMINOS (DP-45): si el despliegue tiene una version vigente de los terminos (GET /api/v1/terms, aceptacionObligatoria=true), el alta exige aceptaTerminos=true y versionTerminos igual a esa version; si no, 400 validation-error con el campo en errors. Tambien se evalua antes de mirar el email. La aceptacion queda registrada con la cuenta, con su version y su fecha. Sin version vigente, los dos campos se ignoran.
       operationId: registerAccount
       parameters:
       - description: "Identificador unico del intento, generado por el cliente. Reintentar\
@@ -811,8 +818,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Campos invalidos, contrasena que no cumple la politica, o\
-            \ falta el header Idempotency-Key"
+          description: "Campos invalidos, contrasena que no cumple la politica, terminos\
+            \ vigentes no aceptados, o falta el header Idempotency-Key"
         "404":
           content:
             application/problem+json:
@@ -2090,6 +2097,8 @@ paths:
         especialidadId solo aplica a practicas y se ignora en los otros tipos.
 
         El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un error.
+
+        DP-45: sort ordena por codigo, nombre o alcance; sin el, el orden de siempre.
       operationId: searchCatalogo
       parameters:
       - description: Coleccion del catalogo
@@ -2160,6 +2169,23 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: el de la\
+          \ consulta del catalogo."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "codigo,asc"
+          - "codigo,desc"
+          - "nombre,asc"
+          - "nombre,desc"
+          - "alcance,asc"
+          - "alcance,desc"
       responses:
         "200":
           content:
@@ -2173,8 +2199,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Tipo de ruta desconocido, o valor de estado o alcance fuera\
-            \ del catalogo"
+          description: "Tipo de ruta desconocido, valor de estado o alcance fuera\
+            \ del catalogo, o sort fuera del enum"
         "403":
           content:
             application/problem+json:
@@ -2735,7 +2761,9 @@ paths:
       description: "Devuelve el saldo teorico (RF-M20-005) y el desglose por medio\
         \ de pago. **El desglose no es adorno**: sin el, un arqueo de 60.000 sobre\
         \ un dia en que se facturaron 120.000 parece un faltante gigante, cuando la\
-        \ mitad entro por tarjeta y nunca estuvo en el cajon."
+        \ mitad entro por tarjeta y nunca estuvo en el cajon. Desde DP-45 trae tambien\
+        \ `resumen`: ingresos y egresos de la jornada, en efectivo y por los demas\
+        \ medios, netos de reversiones. Es caja: no es lo cobrado ni la deuda."
       operationId: verJornada
       parameters:
       - in: path
@@ -3944,6 +3972,8 @@ paths:
         **Lo que no lleva es la mitad del punto** (RNF-M28-002): ni un dato clinico, ni cobertura, ni deuda, ni pase, ni abono. Lo clinico porque quien toma lista no puede ver a que se atiende nadie; lo economico porque todavia no existe.
 
         Exige `inscripcion:read`, **que no es `clase:read`**: quien mira la grilla del dia no necesita saber quien esta anotado.
+
+        DP-45: `sort` ordena por apellido, inscriptoEn, estado o posicionEspera. Sin `q`: una clase tiene a lo sumo su capacidad mas la espera, y la pantalla la recorre entera.
       operationId: detalleOperativo
       parameters:
       - in: path
@@ -3972,6 +4002,25 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: la lista\
+          \ de espera por posicion y el resto por orden de inscripcion."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "apellido,asc"
+          - "apellido,desc"
+          - "inscriptoEn,asc"
+          - "inscriptoEn,desc"
+          - "estado,asc"
+          - "estado,desc"
+          - "posicionEspera,asc"
+          - "posicionEspera,desc"
       responses:
         "200":
           content:
@@ -3982,6 +4031,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/DetalleOperativoDeClase"
           description: Pagina de participantes
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`sort` fuera del enum'
         "403":
           content:
             application/json:
@@ -6199,6 +6257,8 @@ paths:
         **Sin los pagos de cada fila**: traerlos seria el N+1 del primer listado que lo use. El detalle los tiene.
 
         **Los periodos superpuestos no se impiden, se muestran.** Dos liquidaciones del mismo profesional para el mismo mes son legitimas —una correccion, un segundo concepto—, y un unique sobre el periodo convertiria un caso normal en un error. Filtrar por beneficiario las pone una al lado de la otra, que es la unica respuesta honesta.
+
+        DP-45: `q` busca "contiene", sin distinguir mayusculas ni acentos, en el nombre y el documento del beneficiario, en el concepto y en el numero de comprobante. Ya pagina con `limite` y `desplazamiento` (el corte de 50 es el limite por defecto): no se agregan `page` y `size`, que serian dos formas de pedir lo mismo.
       operationId: buscarEgreso
       parameters:
       - in: path
@@ -6249,6 +6309,11 @@ paths:
           type: integer
           format: int32
           default: 0
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
       responses:
         "200":
           content:
@@ -6341,6 +6406,75 @@ paths:
           description: "`beneficiario-no-vinculado`, `egreso-comprobante-duplicado`\
             \ o clave de idempotencia reusada con otro pedido"
       summary: Registrar un egreso
+      tags:
+      - Egresos
+  /api/v1/consultorios/{consultorioId}/egresos/resumen:
+    get:
+      description: |-
+        Lo registrado, pagado y pendiente de los egresos del periodo, por moneda y por categoria, para la tira de la pantalla de egresos (DP-45).
+
+        **Sin `desde` ni `hasta`, el mes en curso en la zona de la sede.** Con solo `desde`, hasta el fin de ese mes. Las fechas se interpretan igual que en la bandeja: el instante de registro en el dia de la sede.
+
+        **Es egreso, no caja.** `registrado` son los egresos `CONFIRMADO` y `PAGADO` —lo comprometido—; `pagado` es lo saldado **hoy** (un pago anulado devuelve su importe) y `pendiente` lo que falta. Los borradores y los anulados se cuentan aparte. Ventana maxima: 366 dias.
+      operationId: resumirEgresos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: desde
+        required: false
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: hasta
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumenDeEgresos"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ResumenDeEgresos"
+          description: Los totales
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Periodo invertido o de mas de 366 dias
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `caja:operate` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Totales de egresos del periodo
       tags:
       - Egresos
   /api/v1/consultorios/{consultorioId}/egresos/{egresoId}:
@@ -9126,10 +9260,10 @@ paths:
       - Pases
   /api/v1/consultorios/{consultorioId}/pases/{paseId}/movimientos:
     get:
-      description: "Los movimientos del pase del mas viejo al mas nuevo, de a paginas\
-        \ (RF-M29-009, desde 0.116.0): el orden en que se lee `saldoResultante`. `size`\
-        \ se acota a 100 por request. Para un pase con historia larga reemplaza al\
-        \ ledger entero que trae `verPase`, que no cambia."
+      description: |-
+        Los movimientos del pase del mas viejo al mas nuevo, de a paginas (RF-M29-009, desde 0.116.0): el orden en que se lee `saldoResultante`. `size` se acota a 100 por request. Para un pase con historia larga reemplaza al ledger entero que trae `verPase`, que no cambia.
+
+        DP-45: `sort` ordena por ocurridoEn, tipo o cantidad. Sin `q`: el ledger de un pase no tiene texto en el que buscar, se lee por tipo y fecha.
       operationId: listarMovimientosDePase
       parameters:
       - in: path
@@ -9162,6 +9296,23 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: ocurridoEn\
+          \ ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "ocurridoEn,asc"
+          - "ocurridoEn,desc"
+          - "tipo,asc"
+          - "tipo,desc"
+          - "cantidad,asc"
+          - "cantidad,desc"
       responses:
         "200":
           content:
@@ -9172,6 +9323,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaginaDeMovimientosDePase"
           description: Una pagina del ledger
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`sort` fuera del enum'
         "403":
           content:
             application/json:
@@ -9332,6 +9492,8 @@ paths:
         Lista los lotes de la sede, filtrados y paginados.
 
         Es la pantalla principal de M21: una bandeja por estado deja ver de un vistazo que falta presentar, que espera respuesta y que quedo sin conciliar.
+
+        DP-45: `q` busca "contiene" en el numero de factura y, si es un numero, tambien el lote con ese numero. No busca en el nombre del financiador, que es de otro modulo: para eso esta `financiadorId`. Ya pagina con `limite` y `desplazamiento`.
       operationId: buscarPresentacion
       parameters:
       - in: path
@@ -9377,6 +9539,11 @@ paths:
           type: integer
           format: int32
           default: 0
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
       responses:
         "200":
           content:
@@ -11402,6 +11569,104 @@ paths:
       summary: Exportar un reporte a CSV
       tags:
       - Reportes
+  /api/v1/consultorios/{consultorioId}/reportes/{reporte}/serie:
+    get:
+      description: |-
+        Los indicadores sumables del reporte abiertos por dia o por semana, para el grafico de barras (DP-45).
+
+        **Cada serie usa la fuente y el criterio de fecha de su indicador**, y la suma de sus puntos es el valor que el reporte muestra para ese indicador en el mismo periodo. Los dias son **de la sede**. `SEMANA` es la semana ISO (lunes a domingo), recortada al periodo en los extremos.
+
+        **Mismo permiso y mismas omisiones que el reporte**: exige `reporte:read`, una seccion cuyo permiso falta no tiene serie y se declara en `omitidas`, y el `PROFESIONAL` ve solo su propia actividad.
+
+        No tienen serie los saldos actuales (deuda vigente, egresos por pagar), que no se reconstruyen a una fecha, ni los porcentajes, que no se suman.
+
+        Hasta **100 puntos**: con `DIA` el periodo puede tener hasta 100 dias; para la ventana maxima de 366 dias, `SEMANA`.
+      operationId: generarSerieDeReporte
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: reporte
+        required: true
+        schema:
+          type: string
+          enum:
+          - OPERATIVO
+          - TURNOS
+          - CLINICO
+          - ECONOMICO
+          - FINANCIADORES
+          - CLASES
+          - PASES
+          - CONTINUIDAD
+          - SERVICIOS
+      - in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: agrupacion
+        required: false
+        schema:
+          type: string
+          default: DIA
+          enum:
+          - DIA
+          - SEMANA
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SerieDeReporte"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/SerieDeReporte"
+          description: Las series
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`rango-de-reporte-invalido`: periodo invertido, mas ancho\
+            \ que la ventana maxima o con mas de 100 puntos; o `agrupacion` desconocida"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `reporte:read` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Serie temporal de un reporte
+      tags:
+      - Reportes
   /api/v1/consultorios/{consultorioId}/series-de-turnos:
     get:
       description: |-
@@ -11411,6 +11676,8 @@ paths:
         - `estado`: la serie **no tiene estado propio** (DP-04); se deriva de sus turnos al leer. `VIGENTE` = le queda algun turno RESERVADO o CONFIRMADO que todavia no empezo; `FINALIZADA` = no le queda ninguno.
 
         Paginado base cero; `size` se acota a 100. Exige `turno:read`. PHI minima: nombre y documento del paciente, nada clinico.
+
+        DP-45: `q` busca "contiene", sin distinguir mayusculas ni acentos, en el apellido, el nombre y el documento del paciente, en el nombre comercial de la oferta y en el nombre del profesional. `sort` ordena por creadaEn, fechaDesde o fechaHasta.
       operationId: listarSeriesDeTurnos
       parameters:
       - in: path
@@ -11454,6 +11721,30 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Texto a buscar en el paciente, la oferta o el profesional"
+        example: perez
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: las mas nuevas\
+          \ primero."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "creadaEn,asc"
+          - "creadaEn,desc"
+          - "fechaDesde,asc"
+          - "fechaDesde,desc"
+          - "fechaHasta,asc"
+          - "fechaHasta,desc"
       responses:
         "200":
           content:
@@ -11464,6 +11755,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/SerieDeTurnosPage"
           description: Una pagina de series
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`sort` fuera del enum'
         "403":
           content:
             application/json:
@@ -13218,6 +13518,104 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: La sede no existe o es de otro tenant
       summary: Agenda del dia de la sede
+      tags:
+      - Turnos
+  /api/v1/consultorios/{consultorioId}/turnos/calendario:
+    get:
+      description: |-
+        Los turnos reservados de la sede que empiezan en `[desde, hasta)`, del mas temprano al mas tarde (desempate por id). Es la fuente del calendario semanal con panel de detalle.
+
+        Las fechas son dias locales de la **zona de la sede**, que viaja en la respuesta. `hasta` es **exclusivo**, como en la busqueda de horarios. **El rango tiene un maximo de 42 dias**: mas que eso responde 400 `validation-error`. No hay paginacion, el tope la hace innecesaria.
+
+        **Los cancelados no vienen** salvo `incluirCancelados=true`. Cada turno trae lo mismo que la agenda del dia (paciente, oferta, espacio, recepcion, serie, cobertura elegida) mas el nombre del profesional. **Nada clinico.**
+
+        Exige `turno:read`, igual que la agenda del dia.
+      operationId: listarTurnosDeSede
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Primer dia, inclusivo, en la zona de la sede"
+        example: 2026-10-26
+        in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Ultimo dia, EXCLUSIVO. Maximo 42 dias desde `desde`"
+        example: 2026-11-02
+        in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Membership del profesional, para ver solo sus turnos"
+        example: 31
+        in: query
+        name: profesionalId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: "Oferta, para ver solo sus turnos"
+        example: 42
+        in: query
+        name: ofertaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: Incluir los turnos cancelados (por defecto no)
+        in: query
+        name: incluirCancelados
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TurnosDeSede"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/TurnosDeSede"
+          description: Turnos del rango
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Fechas ausentes o mal formadas, `hasta` no posterior a `desde`,\
+            \ o rango de mas de 42 dias"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `turno:read` en esa sede, o sin contexto de trabajo activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Turnos de la sede en un rango de fechas
       tags:
       - Turnos
   /api/v1/consultorios/{consultorioId}/turnos/ofertas/{ofertaId}:
@@ -15617,6 +16015,8 @@ paths:
         NO TRAE NINGUNA RUTA NI LA CLAVE DE ALMACENAMIENTO (RN-M25-002).
 
         Es lectura clinica: exige hc:read mas relacion asistencial o motivo declarado, y queda auditada. Lo que revela —cuantos estudios tiene este paciente y de que clase— ya es informacion sensible aunque no sea contenido.
+
+        DP-45: sort ordena por subidoEn, titulo, categoria o tamano; el orden no cambia la autorizacion ni la auditoria de la lectura. Sin q: los adjuntos de una historia ya se filtran por categoria y por entrada, y buscar en sus titulos seria una lectura clinica mas sin necesidad.
       operationId: listarAdjuntosClinicos
       parameters:
       - description: Historia clinica cuyos adjuntos se piden
@@ -15681,6 +16081,25 @@ paths:
         required: false
         schema:
           type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: subidoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "subidoEn,asc"
+          - "subidoEn,desc"
+          - "titulo,asc"
+          - "titulo,desc"
+          - "categoria,asc"
+          - "categoria,desc"
+          - "tamano,asc"
+          - "tamano,desc"
       responses:
         "200":
           content:
@@ -15688,6 +16107,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdjuntoClinicoPageResponse"
           description: Pagina de adjuntos clinicos
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort fuera del enum
         "403":
           content:
             application/problem+json:
@@ -16430,6 +16855,29 @@ paths:
       summary: Ver el timeline de una Historia Clinica
       tags:
       - Timeline clinico
+  /api/v1/me:
+    get:
+      description: |-
+        Devuelve nombre, apellido y correo de la cuenta que hace el request y, si el token esta acotado a un contexto de trabajo, la organizacion, la sede y el rol de la membership en ese contexto. Sin contexto activo (token pre_context, o administrador de plataforma sin contexto) el campo context es null y la respuesta sigue siendo 200.
+
+        No requiere contexto ni permiso: la cuenta se lee a si misma y el identificador sale del principal, no hay parametro que lo cambie. No expone credenciales ni estado interno.
+      operationId: getMe
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyProfileResponse"
+          description: Perfil propio
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin sesion
+      summary: Perfil de la cuenta autenticada
+      tags:
+      - Mi cuenta
   /api/v1/me/contexts:
     get:
       description: |-
@@ -16530,6 +16978,8 @@ paths:
         alcance vale TODOS por defecto: al elegir una medida no importa si la sembro la plataforma o el centro. GLOBAL y ORGANIZACION existen para la pantalla de administracion, que si tiene que separarlas porque lo global no lo puede editar el tenant.
 
         El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un error.
+
+        DP-45: sort ordena por codigo, nombre o tipo; sin el, por nombre.
       operationId: searchMedicionDefiniciones
       parameters:
       - description: Texto a buscar en el nombre o en el codigo
@@ -16581,6 +17031,22 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: nombre ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "codigo,asc"
+          - "codigo,desc"
+          - "nombre,asc"
+          - "nombre,desc"
+          - "tipo,asc"
+          - "tipo,desc"
       responses:
         "200":
           content:
@@ -16594,7 +17060,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Valor de estado o de alcance fuera del catalogo
+          description: "Valor de estado o de alcance fuera del catalogo, o sort fuera\
+            \ del enum"
         "403":
           content:
             application/problem+json:
@@ -17020,6 +17487,8 @@ paths:
         size se recorta a 100 por request: un cliente que pide diez mil filas esta mal configurado, no atacando, y devolverle cien le sirve mas que un error.
 
         Quien tiene el permiso con alcance de sede ve solo su sede. Ese recorte lo decide el evaluador de permisos, no un parametro.
+
+        DP-45: q refina cualquiera de los tres filtros. Busca "contiene" en el tipo de evento y en el tipo de entidad, sin distinguir mayusculas ni acentos, y si es un numero tambien coincide con el id de la entidad o con el de la cuenta actora. No busca en el nombre del actor (vive en la identidad, no en la auditoria) ni en el motivo o los detalles: sin auditoria:read-clinica esos campos se redactan, y buscar en ellos dejaria adivinar lo redactado. sort ordena por ocurridoEn, tipoEvento o tipoEntidad; sin el, del hecho mas nuevo al mas viejo.
       operationId: listAuditEvents
       parameters:
       - description: Identificador de la organizacion
@@ -17088,6 +17557,31 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Texto que refina el filtro elegido: tipo de evento, tipo de\
+          \ entidad, o un id"
+        example: MEMBERSHIP
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: ocurridoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "ocurridoEn,asc"
+          - "ocurridoEn,desc"
+          - "tipoEvento,asc"
+          - "tipoEvento,desc"
+          - "tipoEntidad,asc"
+          - "tipoEntidad,desc"
       responses:
         "200":
           content:
@@ -17101,7 +17595,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "No se eligio exactamente un filtro, el rango esta invertido,\
-            \ o excede los 90 dias"
+            \ excede los 90 dias, o sort no es uno de los valores del enum"
         "403":
           content:
             application/problem+json:
@@ -17350,7 +17844,8 @@ paths:
         \ y su valor por defecto, ACTIVO, conserva el comportamiento historico del\
         \ endpoint: un cliente que no lo manda ve exactamente lo mismo que antes.\
         \ El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un\
-        \ error."
+        \ error. DP-45: q busca \"contiene\" en el nombre de la sede, sin distinguir\
+        \ mayusculas ni acentos; sort ordena por nombre."
       operationId: listOrganizationConsultorios
       parameters:
       - description: Identificador de la organizacion
@@ -17394,6 +17889,26 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: Texto a buscar en el nombre de la sede
+        example: centro
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: el de alta\
+          \ de las sedes."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "nombre,asc"
+          - "nombre,desc"
       responses:
         "200":
           content:
@@ -17407,7 +17922,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El valor de estado no pertenece al catalogo
+          description: "El valor de estado no pertenece al catalogo, o sort fuera\
+            \ del enum"
         "403":
           content:
             application/problem+json:
@@ -17696,6 +18212,8 @@ paths:
         El parametro estado por defecto vale ACTIVO, y eso es lo que hace que un selector de reserva NUNCA ofrezca un espacio dado de baja (RN-M04-002). Los inactivos hay que pedirlos explicitamente, y la pantalla de administracion los necesita para explicar por que un nombre esta tomado o libre.
 
         El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un error.
+
+        DP-45: q busca "contiene" en el nombre del espacio, sin distinguir mayusculas ni acentos. sort ordena por nombre, tipo o capacidad; sin el, por nombre.
       operationId: listEspacios
       parameters:
       - description: Identificador de la organizacion
@@ -17745,6 +18263,29 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: Texto a buscar en el nombre del espacio
+        example: box
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: nombre ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "nombre,asc"
+          - "nombre,desc"
+          - "tipo,asc"
+          - "tipo,desc"
+          - "capacidad,asc"
+          - "capacidad,desc"
       responses:
         "200":
           content:
@@ -17758,7 +18299,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El valor de estado no pertenece al catalogo
+          description: "El valor de estado no pertenece al catalogo, o sort no es\
+            \ uno de los valores del enum"
         "403":
           content:
             application/problem+json:
@@ -18141,6 +18683,8 @@ paths:
         Requiere colaborador:read. Devuelve TAMBIEN los vinculos suspendidos y revocados: quien administra tiene que poder ver quien estuvo, quien lo desvinculo y por que. Para eso existe la baja logica. El cliente distingue por el campo estado, no por ausencia.
 
         size se acota a 100 por request. Pedir 500 devuelve 100, no un error.
+
+        DP-45: q busca "contiene" en el nombre y en el correo de la cuenta, sin distinguir mayusculas ni acentos. sort ordena por nombre, email, rol, estado o vigenteDesde; sin el, por id.
       operationId: listMemberships
       parameters:
       - description: Identificador de la organizacion
@@ -18169,6 +18713,33 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: Texto a buscar en el nombre o el correo del colaborador
+        example: perez
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: id ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "nombre,asc"
+          - "nombre,desc"
+          - "email,asc"
+          - "email,desc"
+          - "rol,asc"
+          - "rol,desc"
+          - "estado,asc"
+          - "estado,desc"
+          - "vigenteDesde,asc"
+          - "vigenteDesde,desc"
       responses:
         "200":
           content:
@@ -18176,6 +18747,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/MembershipPageResponse"
           description: Pagina de colaboradores
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort no es uno de los valores del enum
         "403":
           content:
             application/problem+json:
@@ -18737,6 +19314,8 @@ paths:
         Requiere `colaborador:manage`, el mismo permiso que el reintento. Solo alcanza notificaciones de la organizacion del contexto. Las que nacen sin tenant (recuperacion de contraseña, activaciones fuera del alta de la organizacion) no aparecen; la activacion del fundador en el alta si, porque es de la organizacion.
 
         **Sin datos clinicos ni contenido:** el destinatario va enmascarado, el cuerpo no sale nunca y el ultimo error es un resumen ya sanitizado. De la mas nueva a la mas vieja. `size` se acota a 100 por request.
+
+        DP-45: `q` coincide con el tipo de notificacion que contiene el texto (sin distinguir mayusculas ni acentos) o con el destinatario EXACTO: como el listado lo enmascara, un "contiene" sobre la casilla real dejaria reconstruirla preguntando letra por letra. `sort` ordena por creadaEn, estado, tipo o intentos.
       operationId: listNotifications
       parameters:
       - description: Identificador de la organizacion
@@ -18780,6 +19359,32 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: Tipo de notificacion o destinatario exacto
+        example: INVITACION
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: creadaEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "creadaEn,asc"
+          - "creadaEn,desc"
+          - "estado,asc"
+          - "estado,desc"
+          - "tipo,asc"
+          - "tipo,desc"
+          - "intentos,asc"
+          - "intentos,desc"
       responses:
         "200":
           content:
@@ -18792,7 +19397,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Un `estado` que no es un valor legal
+          description: "Un `estado` que no es un valor legal, o `sort` fuera del enum"
         "403":
           content:
             application/problem+json:
@@ -19021,7 +19626,9 @@ paths:
         \ centro y cuando' meses despues, y por eso ninguna fila se edita ni se borra.\
         \ La primera fila de toda suscripcion tiene fromStatus ausente y significa\
         \ el alta. Requiere administrar esa organizacion. El tamano de pagina se acota\
-        \ a 100: pedir mas devuelve ese maximo, no un error."
+        \ a 100: pedir mas devuelve ese maximo, no un error. DP-45: sort ordena por\
+        \ ocurridoEn o estadoNuevo. Sin q: el historico de una sola suscripcion son\
+        \ pocas filas y no hay texto en el que buscar."
       operationId: listSubscriptionTransitions
       parameters:
       - description: Identificador de la organizacion
@@ -19050,6 +19657,21 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: ocurridoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "ocurridoEn,asc"
+          - "ocurridoEn,desc"
+          - "estadoNuevo,asc"
+          - "estadoNuevo,desc"
       responses:
         "200":
           content:
@@ -19057,6 +19679,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/SubscriptionTransitionPageResponse"
           description: "Pagina del historico, del hecho mas reciente al mas viejo"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort no es uno de los valores del enum
         "403":
           content:
             application/problem+json:
@@ -19145,6 +19773,8 @@ paths:
         estado filtra por ciclo de vida y por defecto trae solo las ACTIVAS. perfil filtra por perfil clinico y por defecto no filtra: la busqueda del mostrador no sabe de antemano si quien busca es paciente.
 
         OJO: esPaciente es DERIVADO y de solo lectura. Una persona sin perfil clinico es una persona valida y completa —RN-M07-006—, no una ficha a medio cargar.
+
+        DP-45: sort ordena por apellido, nombre, documento, nacimiento o alta; detras va siempre apellido, nombre e id.
       operationId: buscarPersonas
       parameters:
       - description: "Texto libre: documento, apellido, nombre, telefono o numero\
@@ -19190,6 +19820,27 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: apellido,\
+          \ nombre e id."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "apellido,asc"
+          - "apellido,desc"
+          - "nombre,asc"
+          - "nombre,desc"
+          - "documento,asc"
+          - "documento,desc"
+          - "nacimiento,asc"
+          - "nacimiento,desc"
+          - "alta,asc"
+          - "alta,desc"
       responses:
         "200":
           content:
@@ -19197,6 +19848,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/PersonaPageResponse"
           description: Pagina de personas del padron
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort fuera del enum
         "403":
           content:
             application/problem+json:
@@ -19408,6 +20065,8 @@ paths:
         Por defecto trae solo los VIGENTES. Los dados de baja se piden con incluirDadosDeBaja y siguen resolviendo, que es RN-M07-004 aplicada al documento en vez de a la persona.
 
         Una persona INACTIVA lista igual: sus documentos siguen siendo consultables.
+
+        DP-45: sort ordena por subidoEn, titulo, categoria o tamano. Sin q: los adjuntos de UNA persona son pocos y ya se filtran por categoria.
       operationId: listarAdjuntosDePersona
       parameters:
       - description: Persona duenia de los adjuntos
@@ -19454,6 +20113,25 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: subidoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "subidoEn,asc"
+          - "subidoEn,desc"
+          - "titulo,asc"
+          - "titulo,desc"
+          - "categoria,asc"
+          - "categoria,desc"
+          - "tamano,asc"
+          - "tamano,desc"
       responses:
         "200":
           content:
@@ -19461,6 +20139,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdjuntoPageResponse"
           description: Pagina de adjuntos
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort fuera del enum
         "403":
           content:
             application/problem+json:
@@ -20269,6 +20953,8 @@ paths:
         Las autorizaciones cargadas antes del historial (V85) traen un solo ALTA reconstruido con el estado que tenian ese dia, declarado en detalle.
 
         Mismo permiso que leer la autorizacion: pertenencia al tenant.
+
+        DP-45: sort ordena por ocurridoEn o tipo. Sin q: el historial de UNA autorizacion son pocos hechos y se lee en orden.
       operationId: getHistorialDeAutorizacion
       parameters:
       - description: Identificador de la persona
@@ -20311,6 +20997,21 @@ paths:
         schema:
           type: string
           format: date
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: ocurridoEn\
+          \ ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "ocurridoEn,asc"
+          - "ocurridoEn,desc"
+          - "tipo,asc"
+          - "tipo,desc"
       responses:
         "200":
           content:
@@ -20318,6 +21019,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/HistorialDeAutorizacionResponse"
           description: Pagina del historial
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: sort fuera del enum
         "403":
           content:
             application/problem+json:
@@ -22402,7 +23109,7 @@ paths:
         \ miembros, sedes, consumo de limites ni datos de pacientes. Reservado a la\
         \ administracion de plataforma, igual que la lectura y el cambio del plan.\
         \ El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un\
-        \ error."
+        \ error. DP-45: sort ordena por nombre, slug o creadaEn; sin el, por nombre."
       operationId: listPlatformOrganizations
       parameters:
       - description: Texto a buscar en el nombre o el slug del centro
@@ -22441,6 +23148,22 @@ paths:
           type: integer
           format: int32
           default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: nombre ascendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "nombre,asc"
+          - "nombre,desc"
+          - "slug,asc"
+          - "slug,desc"
+          - "creadaEn,asc"
+          - "creadaEn,desc"
       responses:
         "200":
           content:
@@ -22453,7 +23176,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: El estado pedido no es un estado de suscripcion
+          description: "El estado pedido no es un estado de suscripcion, o sort fuera\
+            \ del enum"
         "403":
           content:
             application/problem+json:
@@ -23023,6 +23747,24 @@ paths:
       summary: Editar un servicio del catalogo global
       tags:
       - Servicios y ofertas
+  /api/v1/terms:
+    get:
+      description: |-
+        Publico. Devuelve la version de los terminos que el alta self-service y la aceptacion de invitacion con cuenta nueva exigen aceptar, y el enlace donde se publica el texto. El texto legal no lo sirve el backend.
+
+        Con aceptacionObligatoria=false (ninguna version configurada) el alta no exige nada y versionVigente viene null.
+      operationId: getCurrentTerms
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TermsResponse"
+          description: Terminos vigentes
+      security: []
+      summary: Version vigente de los terminos y condiciones
+      tags:
+      - Registro y activacion
   /api/v1/version:
     get:
       description: Devuelve la identidad tecnica del backend en ejecucion y la version
@@ -23108,6 +23850,11 @@ components:
       type: object
       description: "Aceptacion de una invitacion, con los datos de alta si hacen falta"
       properties:
+        aceptaTerminos:
+          type: boolean
+          description: Acepto los terminos y condiciones (DP-45). Se exige en true
+            solo si el invitado no tiene cuenta y GET /api/v1/terms informa aceptacionObligatoria
+          example: true
         apellido:
           type: string
           description: Apellido. Opcional
@@ -23131,6 +23878,13 @@ components:
           type: string
           description: Token recibido por correo
           maxLength: 512
+          minLength: 0
+        versionTerminos:
+          type: string
+          description: "Version de los terminos aceptados: la versionVigente de GET\
+            \ /api/v1/terms. Mismas condiciones que aceptaTerminos"
+          example: 2026-10
+          maxLength: 40
           minLength: 0
       required:
       - token
@@ -23292,6 +24046,36 @@ components:
           minLength: 0
       required:
       - token
+    ActiveWorkContext:
+      type: object
+      description: "Organizacion, sede y rol de la cuenta en el contexto activo"
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Identificador de la sede
+          example: 11
+        consultorioName:
+          type: string
+          description: Nombre de la sede
+          example: Sede Centro
+        organizationId:
+          type: integer
+          format: int64
+          description: Identificador de la organizacion
+          example: 7
+        organizationName:
+          type: string
+          description: Nombre de la organizacion
+          example: Centro Kine
+        roleCode:
+          type: string
+          description: Codigo del rol de la membership en este contexto
+          example: ORG_ADMIN
+        roleLabel:
+          type: string
+          description: Nombre del rol para mostrar
+          example: Administrador de la organizacion
     ActualizarResumenRequest:
       type: object
       description: Reemplazo del resumen clinico minimo de la historia
@@ -25041,6 +25825,9 @@ components:
           type: string
           description: Null si no entra ninguna clase
           example: ARS
+        resumen:
+          $ref: "#/components/schemas/ResumenDeHonorarios"
+          description: Los numeros de la tira del borrador (DP-45)
     CalendarioSedeResponse:
       type: object
       description: Politica de calendario de la sede y feriados de la ventana consultada
@@ -31930,6 +32717,11 @@ components:
           example: ARS
         motivoDiferencia:
           type: string
+        resumen:
+          $ref: "#/components/schemas/ResumenDeJornadaCaja"
+          description: "Los totales de la jornada para la tira de la pantalla (DP-45).\
+            \ **Solo en el detalle; `null` en los listados.** Es caja: no es lo cobrado\
+            \ ni la deuda."
         saldoDeclarado:
           type: number
           description: Lo que se conto fisicamente.
@@ -32107,6 +32899,9 @@ components:
           format: int64
           description: La oferta a la que se imputo el egreso (DP-39)
           example: 34
+        resumen:
+          $ref: "#/components/schemas/ResumenDeHonorarios"
+          description: Los numeros de la tira de la liquidacion (DP-45)
     LoginRequest:
       type: object
       description: Credenciales para abrir una sesion
@@ -32124,6 +32919,13 @@ components:
           example: una-contrasena-larga-y-unica
           maxLength: 256
           minLength: 0
+        recordarme:
+          type: boolean
+          description: "Mantener la sesion iniciada (DP-45). Con true la sesion dura\
+            \ la vigencia larga configurada (30 dias por defecto) en vez de la jornada\
+            \ (12 horas). Ausente o false: la sesion de siempre. En los dos casos\
+            \ la vigencia es absoluta desde el login y renovar no la extiende"
+          example: false
       required:
       - email
       - password
@@ -32966,6 +33768,34 @@ components:
           description: "true si la cuenta tiene el rol PLATFORM_ADMIN vigente en este\
             \ instante, revalidado contra la base en este request"
           example: false
+    MyProfileResponse:
+      type: object
+      description: "Perfil propio: cuenta y, si hay contexto de trabajo activo, organizacion,\
+        \ sede y rol"
+      properties:
+        accountId:
+          type: integer
+          format: int64
+          description: Identificador de la cuenta
+          example: 42
+        context:
+          type: "null"
+          $ref: "#/components/schemas/ActiveWorkContext"
+          description: Contexto de trabajo activo del request. Null si el token todavia
+            no esta acotado a un contexto (pre_context) o si es un administrador de
+            plataforma sin contexto
+        email:
+          type: string
+          description: Correo con el que ingreso
+          example: ana@centro.test
+        firstName:
+          type: string
+          description: Nombre
+          example: Ana
+        lastName:
+          type: string
+          description: Apellido
+          example: Perez
     NotificationPageResponse:
       type: object
       description: Pagina de notificaciones de la organizacion
@@ -35570,6 +36400,19 @@ components:
       - capacidad
       - fin
       - inicio
+    PuntoDeSerieDeReporte:
+      type: object
+      description: "Una barra: los dias `desde`..`hasta` inclusive y su valor. Cero\
+        \ explicito si no hubo actividad. Una semana se recorta al periodo pedido"
+      properties:
+        desde:
+          type: string
+          format: date
+        hasta:
+          type: string
+          format: date
+        valor:
+          type: number
     ReabrirCasoClinicoRequest:
       type: object
       description: Reapertura de un Caso Clinico cerrado
@@ -35814,6 +36657,11 @@ components:
       type: object
       description: "Alta self-service de cuenta, organizacion y primer consultorio"
       properties:
+        aceptaTerminos:
+          type: boolean
+          description: La persona acepto los terminos y condiciones (DP-45). Obligatorio
+            en true cuando GET /api/v1/terms informa aceptacionObligatoria
+          example: true
         consultorioName:
           type: string
           description: Nombre de la primera sede. Si se omite se usa el de la organizacion
@@ -35864,6 +36712,13 @@ components:
             \ omite se usa el plan por defecto"
           example: BASICO
           maxLength: 32
+          minLength: 0
+        versionTerminos:
+          type: string
+          description: "Version de los terminos aceptados: la versionVigente de GET\
+            \ /api/v1/terms. Tiene que coincidir exacta cuando la aceptacion es obligatoria"
+          example: 2026-10
+          maxLength: 40
           minLength: 0
       required:
       - email
@@ -37118,6 +37973,108 @@ components:
           $ref: "#/components/schemas/DeudaDeVenta"
         pase:
           $ref: "#/components/schemas/Pase"
+    ResumenDeEgresos:
+      type: object
+      description: "Totales de los egresos registrados en el periodo, por moneda y\
+        \ por categoria. `registrado` son los CONFIRMADO y PAGADO; `pagado` es lo\
+        \ saldado hoy y `pendiente` lo que falta. No es caja: un pago por transferencia\
+        \ no toco el cajon"
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+        desde:
+          type: string
+          format: date
+          description: "Primer dia del periodo, en la zona de la sede"
+          example: 2026-10-01
+        hasta:
+          type: string
+          format: date
+          description: "Ultimo dia del periodo, inclusive"
+          example: 2026-10-31
+        porCategoria:
+          type: array
+          description: Solo categorias con egresos confirmados o pagados
+          items:
+            $ref: "#/components/schemas/TotalesDeEgresosPorCategoria"
+        porMoneda:
+          type: array
+          description: Una fila por moneda. Vacio si no hubo egresos en el periodo
+          items:
+            $ref: "#/components/schemas/TotalesDeEgresos"
+    ResumenDeHonorarios:
+      type: object
+      description: "Los numeros de la tira de honorarios (DP-45). Es honorario y su\
+        \ egreso (M22), no caja: lo pagado no dice por que medio salio ni si toco\
+        \ el cajon"
+      properties:
+        cantidadClases:
+          type: integer
+          format: int32
+          description: Clases que entran
+          example: 12
+        cantidadExcluidas:
+          type: integer
+          format: int32
+          description: Clases dictadas que no entran. Solo en el borrador
+          example: 2
+        importePagado:
+          type: number
+          description: "Lo pagado del egreso, hoy. Solo en la liquidacion"
+          example: 3000.0
+        importeTotal:
+          type: number
+          example: 5250.0
+        regla:
+          type: string
+          description: "Regla de calculo: la tarifa por participante por los presentes,\
+            \ repartida en partes iguales entre los instructores, con el resto del\
+            \ redondeo al principal"
+          enum:
+          - POR_PARTICIPANTE_PRESENTE
+        saldoPendiente:
+          type: number
+          description: Lo que falta pagar del egreso. Solo en la liquidacion
+          example: 2250.0
+        totalPresentes:
+          type: integer
+          format: int32
+          description: Suma de presentes de las clases que entran
+          example: 87
+    ResumenDeJornadaCaja:
+      type: object
+      description: "Lo que entro y salio en la jornada, en efectivo y por los demas\
+        \ medios. Las reversiones restan de lo que revierten: un ingreso anulado no\
+        \ es un egreso. Para el efectivo, `saldoInicial + efectivoIngresos - efectivoEgresos\
+        \ = saldoTeorico`"
+      properties:
+        cantidadMovimientos:
+          type: integer
+          format: int64
+          example: 14
+        efectivoEgresos:
+          type: number
+          example: 5000.0
+        efectivoIngresos:
+          type: number
+          description: "Solo efectivo: lo que se arquea"
+          example: 60000.0
+        egresos:
+          type: number
+          description: Todos los medios
+          example: 5000.0
+        ingresos:
+          type: number
+          description: Todos los medios
+          example: 120000.0
+        otrosMediosEgresos:
+          type: number
+          example: 0.0
+        otrosMediosIngresos:
+          type: number
+          description: "Transferencias, tarjetas y otros: no estan en el cajon"
+          example: 60000.0
     ResumenDePersonaResponse:
       type: object
       description: "Ficha administrativa consolidada de una persona, recortada por\
@@ -37426,6 +38383,92 @@ components:
       required:
       - consultorioId
       - organizationId
+    SerieDeIndicadorDeReporte:
+      type: object
+      description: "La serie de un indicador. La suma de los puntos es `total`, y\
+        \ coincide con el valor del indicador `clave` de la seccion sobre el mismo\
+        \ periodo"
+      properties:
+        clave:
+          type: string
+          description: La clave del indicador que dibuja
+          example: cobrado
+        criterioDeFecha:
+          type: string
+          example: "cobrado_en, instante proyectado a la zona de la sede"
+        etiqueta:
+          type: string
+          example: Cobrado
+        fuente:
+          type: string
+          example: M19 cobro
+        moneda:
+          type: string
+          description: ISO-4217 cuando el tipo es DINERO
+          example: ARS
+        puntos:
+          type: array
+          items:
+            $ref: "#/components/schemas/PuntoDeSerieDeReporte"
+        seccion:
+          type: string
+          example: economia
+        tipo:
+          type: string
+          enum:
+          - DINERO
+          - CONTEO
+          example: DINERO
+        total:
+          type: number
+          description: Suma de los puntos. Decimal exacto
+          example: 125000.0
+    SerieDeReporte:
+      type: object
+      description: "Series por dia o por semana de los indicadores de un reporte,\
+        \ en la zona de la sede, con las mismas omisiones por permiso que el reporte"
+      properties:
+        advertencias:
+          type: array
+          description: "Aclaraciones de alcance, por ejemplo `alcance-actividad-propia`"
+          items:
+            $ref: "#/components/schemas/AdvertenciaResponse"
+        agrupacion:
+          type: string
+          enum:
+          - DIA
+          - SEMANA
+          example: DIA
+        consultorioId:
+          type: integer
+          format: int64
+        desde:
+          type: string
+          format: date
+          description: "Primer dia del periodo, inclusive, en la zona de la sede"
+        generadoEn:
+          type: string
+          format: date-time
+        hasta:
+          type: string
+          format: date
+          description: "Ultimo dia del periodo, inclusive, en la zona de la sede"
+        omitidas:
+          type: array
+          description: "Secciones que el actor no puede ver: no tienen serie y no\
+            \ producen 403"
+          items:
+            $ref: "#/components/schemas/SeccionOmitidaDeReporteResponse"
+        reporte:
+          type: string
+          example: ECONOMICO
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/SerieDeIndicadorDeReporte"
+        zona:
+          type: string
+          example: America/Argentina/Cordoba
     SerieDeTurnos:
       type: object
       description: "La regla con la que se generaron los turnos y los turnos tal como\
@@ -38267,6 +39310,30 @@ components:
       required:
       - expectedVersion
       - motivo
+    TermsResponse:
+      type: object
+      description: Terminos y condiciones vigentes para el alta de cuentas
+      properties:
+        aceptacionObligatoria:
+          type: boolean
+          description: true si el registro y la aceptacion de invitacion con cuenta
+            nueva exigen aceptaTerminos=true con versionVigente
+          example: true
+        url:
+          type:
+          - string
+          - "null"
+          description: Donde se publica el texto de los terminos. null si no se configuro
+          example: https://akine.example.test/terminos
+        versionVigente:
+          type:
+          - string
+          - "null"
+          description: "Version que el alta exige aceptar, tal cual hay que mandarla\
+            \ en versionTerminos. null si el despliegue no exige terminos"
+          example: 2026-10
+      required:
+      - aceptacionObligatoria
     TimelineResponse:
       type: object
       description: "Pagina del timeline clinico, mas nuevos primero"
@@ -38288,6 +39355,19 @@ components:
         afectaArqueo:
           type: boolean
           description: Si suma al saldo que se cuenta al arquear. Solo el efectivo.
+        cantidad:
+          type: integer
+          format: int64
+          description: "Movimientos del medio, reversiones incluidas (DP-45)"
+          example: 12
+        egresos:
+          type: number
+          description: "Egresos del medio, netos de sus reversiones (DP-45)"
+          example: 5000.0
+        ingresos:
+          type: number
+          description: "Ingresos del medio, netos de sus reversiones (DP-45)"
+          example: 60000.0
         medio:
           type: string
           enum:
@@ -38297,6 +39377,68 @@ components:
           - TARJETA_CREDITO
           - OTRO
         total:
+          type: number
+          description: '`ingresos - egresos` del medio'
+    TotalesDeEgresos:
+      type: object
+      properties:
+        cantidad:
+          type: integer
+          format: int64
+          description: Cantidad de egresos CONFIRMADO y PAGADO
+          example: 9
+        cantidadAnulados:
+          type: integer
+          format: int64
+          example: 1
+        cantidadBorrador:
+          type: integer
+          format: int64
+          description: "Borradores del periodo: todavia no son compromiso"
+          example: 2
+        importeBorrador:
+          type: number
+          example: 15000.0
+        moneda:
+          type: string
+          example: ARS
+        pagado:
+          type: number
+          description: "Lo ya saldado, hoy"
+          example: 180000.0
+        pendiente:
+          type: number
+          description: Lo que falta pagar de esos egresos
+          example: 70000.0
+        registrado:
+          type: number
+          description: Importe de los egresos CONFIRMADO y PAGADO
+          example: 250000.0
+    TotalesDeEgresosPorCategoria:
+      type: object
+      properties:
+        cantidad:
+          type: integer
+          format: int64
+        categoria:
+          type: string
+          enum:
+          - HONORARIOS_PROFESIONALES
+          - SUELDOS
+          - ALQUILER
+          - SERVICIOS
+          - INSUMOS
+          - IMPUESTOS
+          - MANTENIMIENTO
+          - OTRO
+        moneda:
+          type: string
+          example: ARS
+        pagado:
+          type: number
+        pendiente:
+          type: number
+        registrado:
           type: number
     TransicionDePlan:
       type: object
@@ -38669,6 +39811,20 @@ components:
           format: int64
           description: Id del turno
           example: 41
+    TurnoDeCalendario:
+      type: object
+      description: "Un turno del calendario de la sede: el turno de la recepcion (PHI\
+        \ minima, nada clinico) y el nombre del profesional."
+      properties:
+        profesionalNombre:
+          type: string
+          description: Nombre del profesional (`turno.profesionalId` es su membership).
+            Ausente si el turno no tiene profesional o su cuenta no se resuelve.
+          example: "Gomez, Laura"
+        turno:
+          $ref: "#/components/schemas/TurnoDelDia"
+          description: "El turno, con paciente, oferta, espacio, recepcion, serie\
+            \ y cobertura ya resueltos"
     TurnoDelDia:
       type: object
       description: "Turno de la agenda del dia de una sede, con el paciente resuelto.\
@@ -38792,6 +39948,31 @@ components:
           example: YA_EMPEZO
         turno:
           $ref: "#/components/schemas/Turno"
+    TurnosDeSede:
+      type: object
+      description: "Los turnos reservados de una sede en un rango de fechas, con la\
+        \ zona con la que hay que mostrarlos. PHI minima: ningun dato clinico."
+      properties:
+        desde:
+          type: string
+          format: date
+          description: "Primer dia, inclusivo, en la zona de la sede"
+          example: 2026-10-26
+        hasta:
+          type: string
+          format: date
+          description: "Ultimo dia, EXCLUSIVO, en la zona de la sede"
+          example: 2026-11-02
+        timezone:
+          type: string
+          description: Zona horaria de la sede
+          example: America/Argentina/Cordoba
+        turnos:
+          type: array
+          description: "Turnos que empiezan en el rango, por hora de inicio y despues\
+            \ por id"
+          items:
+            $ref: "#/components/schemas/TurnoDeCalendario"
     UpdateArancelRequest:
       type: object
       description: Cambios a aplicar sobre un arancel. Los campos nulos no se tocan

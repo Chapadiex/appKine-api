@@ -256,10 +256,13 @@ public class SubscriptionService {
 	public Page<SubscriptionTransitionView> history(long organizationId, Pageable pageable) {
 		organizationService.requireActive(organizationId);
 		Subscription subscription = require(organizationId);
-		return transitionRepository
-				.findAllByOrganizationIdAndSubscriptionIdOrderByOccurredAtDesc(
+		// DP-45: un orden pedido viaja en el Pageable; sin el, el de siempre.
+		Page<SubscriptionTransition> pagina = pageable.getSort().isSorted()
+				? transitionRepository.findAllByOrganizationIdAndSubscriptionId(
 						organizationId, subscription.getId(), pageable)
-				.map(this::toTransitionView);
+				: transitionRepository.findAllByOrganizationIdAndSubscriptionIdOrderByOccurredAtDesc(
+						organizationId, subscription.getId(), pageable);
+		return pagina.map(this::toTransitionView);
 	}
 
 	/**

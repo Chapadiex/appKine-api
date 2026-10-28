@@ -11,6 +11,9 @@ import com.akine.resource.application.EspacioEdicionCommand;
 import com.akine.resource.application.EspacioEstadoFiltro;
 import com.akine.resource.application.EspacioService;
 import com.akine.resource.application.EspacioView;
+import com.akine.platform.spi.listado.ListadoEnMemoria;
+import com.akine.platform.spi.listado.OrdenDeListado;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -37,7 +40,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Administracion de los espacios fisicos de una sede (M04).
@@ -219,7 +224,11 @@ public class EspacioController {
 					los necesita para explicar por que un nombre esta tomado o libre.
 
 					El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un \
-					error.""")
+					error.
+
+					DP-45: q busca "contiene" en el nombre del espacio, sin distinguir \
+					mayusculas ni acentos. sort ordena por nombre, tipo o capacidad; sin el, \
+					por nombre.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -230,7 +239,8 @@ public class EspacioController {
 							schema = @Schema(implementation = EspacioPageResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "El valor de estado no pertenece al catalogo",
+					description = "El valor de estado no pertenece al catalogo, o sort no es uno "
+							+ "de los valores del enum",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -264,14 +274,33 @@ public class EspacioController {
 			@RequestParam(defaultValue = ApiPaging.PAGINA_POR_DEFECTO) int page,
 
 			@Parameter(description = "Elementos por pagina, acotado a 100", example = "20")
-			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size) {
+			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size,
 
-		List<EspacioView> espacios =
-				espacioService.list(apiActor.current(), orgId, consultorioId, estado);
+			@Parameter(description = "Texto a buscar en el nombre del espacio", example = "box")
+			@RequestParam(required = false) String q,
+
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "nombre ascendente.",
+					schema = @Schema(allowableValues = {"nombre,asc", "nombre,desc", "tipo,asc",
+							"tipo,desc", "capacidad,asc", "capacidad,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
+
+		var orden = OrdenDeListado.leer(sort, ORDEN_DE_ESPACIOS.keySet());
+		List<EspacioView> espacios = ListadoEnMemoria.filtrarYOrdenar(
+				espacioService.list(apiActor.current(), orgId, consultorioId, estado),
+				espacio -> TextoDeBusqueda.contiene(espacio.name(), q),
+				orden,
+				ORDEN_DE_ESPACIOS,
+				Comparator.comparingLong(EspacioView::id));
 
 		return ResponseEntity.ok(
 				EspacioPageResponse.of(espacios, ApiPaging.pagina(page), ApiPaging.tamano(size)));
 	}
+
+	/** DP-45: los campos por los que se ordena el listado, con su comparador ascendente. */
+	private static final Map<String, Comparator<EspacioView>> ORDEN_DE_ESPACIOS = Map.of(
+			"nombre", TextoDeBusqueda.comparadorDeTexto(EspacioView::name),
+			"tipo", TextoDeBusqueda.comparadorDeTexto(EspacioView::tipo),
+			"capacidad", Comparator.comparingInt(EspacioView::capacidad));
 
 	@GetMapping("/{espacioId}")
 	@Operation(

@@ -334,7 +334,8 @@ public class HonorariosDeClasesService {
 
 	private static LiquidacionDeHonorariosView vista(Liquidacion l) {
 		return new LiquidacionDeHonorariosView(
-				l.id(), l.consultorioId(), l.egresoId(), l.egresoEstado(), l.colaboradorMembershipId(),
+				l.id(), l.consultorioId(), l.egresoId(), l.egresoEstado(), l.egresoSaldoPendiente(),
+				l.colaboradorMembershipId(),
 				l.colaboradorNombre(), l.ofertaId(), l.periodoDesde(), l.periodoHasta(), l.importeTotal(), l.moneda(),
 				l.estado(), l.confirmadaEn(), l.confirmadaPorCuentaId(), l.liberadaEn(),
 				l.clases().stream()
