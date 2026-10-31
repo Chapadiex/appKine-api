@@ -2,6 +2,8 @@ package com.akine.scheduling.infrastructure;
 
 import com.akine.scheduling.domain.OcupacionDeTurno;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
+import com.akine.scheduling.spi.EventoExternoDeAgenda;
+import com.akine.scheduling.spi.ReservaProbe;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -82,8 +84,32 @@ class ReservaProbeSobreTurnosTest {
 				ORG_ID, CONSULTORIO_ID, OFERTA_ID, List.of(), NUEVE, DIEZ)).isEmpty();
 	}
 
+	@Test
+	@DisplayName("una clase ocupa al profesional y al box igual que un turno; una cancelada ya no")
+	void las_clases_ocupan() {
+		EventoExternoDeAgenda eventos = org.mockito.Mockito.mock(EventoExternoDeAgenda.class);
+		given(turnos.findVivosDeRecursosEnVentana(anyLong(), any(), any(), any(), any())).willReturn(List.of());
+		given(eventos.enVentana(ORG_ID, CONSULTORIO_ID, NUEVE, ONCE)).willReturn(List.of(
+				clase("CANCELADA", NUEVE), clase("PROGRAMADA", DIEZ)));
+
+		List<ReservaProbe.OcupacionDeRecurso> ocupacion = new ReservaProbeSobreTurnos(turnos, eventos)
+				.ocupacionDeRecursos(ORG_ID, CONSULTORIO_ID, List.of(), List.of(), NUEVE, ONCE);
+
+		assertThat(ocupacion).singleElement().satisfies(ocupada -> {
+			assertThat(ocupada.inicio()).isEqualTo(DIEZ);
+			assertThat(ocupada.profesionalId()).isEqualTo(PROFESIONAL_ID);
+			assertThat(ocupada.espacioId()).isEqualTo(55L);
+			assertThat(ocupada.ofertaId()).as("no es de ninguna oferta de turnos: nunca es el propio grupo").isNull();
+		});
+	}
+
+	private static EventoExternoDeAgenda.EventoDeAgendaExterno clase(String estado, Instant inicio) {
+		return new EventoExternoDeAgenda.EventoDeAgendaExterno("CLASE", 8L, inicio, inicio.plus(Duration.ofHours(1)), estado,
+				OFERTA_ID, "Pilates", "Pilates de la manana", PROFESIONAL_ID, 55L, 8, 3);
+	}
+
 	private ReservaProbeSobreTurnos sonda() {
-		return new ReservaProbeSobreTurnos(turnos);
+		return new ReservaProbeSobreTurnos(turnos, org.mockito.Mockito.mock(com.akine.scheduling.spi.EventoExternoDeAgenda.class));
 	}
 
 	private void dados(OcupacionDeTurno... encontrados) {

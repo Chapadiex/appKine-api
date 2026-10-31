@@ -1,5 +1,10 @@
 package com.akine.scheduling.application;
 
+import java.util.Objects;
+import java.util.Map;
+import com.akine.scheduling.domain.RecepcionEvento;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
+import com.akine.platform.spi.identity.AccountIdentity;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
@@ -68,6 +73,7 @@ public class CicloDeRecepcionService {
 	static final String PREPAGO_PENDIENTE = "PREPAGO_PENDIENTE";
 
 	private final TurnoRepositoryPort turnos;
+	private final AccountIdentityDirectory identidades;
 	private final BloqueoDeTurnoPort bloqueos;
 	private final RegistroDeRecepcion registro;
 	private final RecepcionEventoRepositoryPort eventos;
@@ -89,8 +95,10 @@ public class CicloDeRecepcionService {
 			PracticasDeOfertaDirectory practicas,
 			CoberturasAplicablesDirectory coberturas,
 			ElegibilidadAdministrativaDirectory elegibilidad,
-			PrepagoDeRecepcion prepago) {
+			PrepagoDeRecepcion prepago,
+			AccountIdentityDirectory identidades) {
 
+		this.identidades = identidades;
 		this.turnos = turnos;
 		this.bloqueos = bloqueos;
 		this.registro = registro;
@@ -376,8 +384,19 @@ public class CicloDeRecepcionService {
 		exigirSede(organizationId, consultorioId);
 		exigirLectura(actor, organizationId, consultorioId);
 		exigirTurno(organizationId, consultorioId, turnoId);
-		return eventos.historial(organizationId, turnoId).stream()
-				.map(EventoDeRecepcionView::de)
+		List<RecepcionEvento> historial = eventos.historial(organizationId, turnoId);
+		Map<Long, AccountIdentity> actores = identidades.identidadesDe(historial.stream()
+				.map(RecepcionEvento::getActorCuentaId)
+				.filter(Objects::nonNull)
+				.distinct()
+				.toList());
+		return historial.stream()
+				.map(evento -> {
+					AccountIdentity quien = evento.getActorCuentaId() == null
+							? null
+							: actores.get(evento.getActorCuentaId());
+					return EventoDeRecepcionView.de(evento, quien == null ? null : quien.nombreCompleto());
+				})
 				.toList();
 	}
 

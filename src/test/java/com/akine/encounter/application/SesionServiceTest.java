@@ -1184,6 +1184,117 @@ class SesionServiceTest {
 		verify(sesiones, never()).saveAndFlush(any());
 	}
 
+	// =================================================================================
+	// El caso del turno al iniciar (flujo unico de turnos, TURNO - Tecnico §76)
+	// =================================================================================
+
+	@Test
+	@DisplayName("Si el turno se reservo para un caso activo, la atencion es de ese caso: no se vuelve a elegir")
+	void iniciar_hereda_el_caso_del_turno() {
+		dadoElTurnoDelCaso(CASO_ID);
+		given(casos.find(ORG_ID, CASO_ID)).willReturn(Optional.of(new CasoSnapshot(CASO_ID, ORG_ID, HISTORIA_ID, 2, true)));
+
+		assertThat(service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, null).casoId()).isEqualTo(CASO_ID);
+	}
+
+	@Test
+	@DisplayName("Si ese caso se cerro despues de reservar se inicia sin caso: si no, la atencion quedaria sin salida")
+	void iniciar_con_el_caso_del_turno_cerrado() {
+		dadoElTurnoDelCaso(CASO_ID);
+		given(casos.find(ORG_ID, CASO_ID)).willReturn(Optional.of(new CasoSnapshot(CASO_ID, ORG_ID, HISTORIA_ID, 2, false)));
+
+		SesionView vista = service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, null);
+
+		assertThat(vista.casoId()).isNull();
+		verify(sesiones).save(any());
+	}
+
+	@Test
+	@DisplayName("Si el caso del turno ya no existe tambien se inicia sin caso, sin rechazar la atencion")
+	void iniciar_con_el_caso_del_turno_inexistente() {
+		dadoElTurnoDelCaso(CASO_ID);
+		given(casos.find(ORG_ID, CASO_ID)).willReturn(Optional.empty());
+
+		assertThat(service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, null).casoId()).isNull();
+	}
+
+	@Test
+	@DisplayName("Lo que manda quien inicia gana sobre el caso del turno: es quien esta viendo al paciente")
+	void el_caso_de_quien_inicia_gana() {
+		dadoElTurnoDelCaso(CASO_ID);
+		given(casos.find(ORG_ID, CASO_ID + 1)).willReturn(Optional.of(new CasoSnapshot(CASO_ID + 1, ORG_ID, HISTORIA_ID, 3, true)));
+
+		assertThat(service.iniciar(actor, CONSULTORIO_ID, TURNO_ID, CASO_ID + 1).casoId()).isEqualTo(CASO_ID + 1);
+		verify(casos, never()).find(ORG_ID, CASO_ID);
+	}
+
+	private void dadoElTurnoDelCaso(long casoId) {
+		given(sesiones.findVivaPorTurno(ORG_ID, TURNO_ID)).willReturn(Optional.empty());
+		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(new TurnoSnapshot(
+				TURNO_ID, ORG_ID, CONSULTORIO_ID, OFERTA_ID, PERSONA_ID, MEMBERSHIP_PROPIA, null,
+				Instant.EPOCH, Instant.EPOCH.plusSeconds(3600), "CONFIRMADO", true, casoId, null)));
+	}
+
+	// =================================================================================
+	// Lo que se sabe para programar la proxima sesion (flujo unico de turnos, §7)
+	// =================================================================================
+
+	@Test
+	@DisplayName("La proxima sesion sale de esta atencion: paciente, caso, plan del turno, prestacion y profesional")
+	void contexto_de_proxima_sesion() {
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(sesionConCaso()));
+		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(new TurnoSnapshot(
+				TURNO_ID, ORG_ID, CONSULTORIO_ID, OFERTA_ID, PERSONA_ID, MEMBERSHIP_PROPIA, null,
+				Instant.EPOCH, Instant.EPOCH.plusSeconds(3600), "CONFIRMADO", true, CASO_ID, 57L)));
+
+		ContextoDeProximaSesionView vista = service.contextoDeProximaSesion(actor, CONSULTORIO_ID, 1L);
+
+		assertThat(vista).isEqualTo(new ContextoDeProximaSesionView(
+				PERSONA_ID, CASO_ID, 57L, OFERTA_ID, MEMBERSHIP_PROPIA));
+	}
+
+	@Test
+	@DisplayName("Una atencion sin turno, o con un turno que ya no resuelve, no tiene plan que heredar")
+	void contexto_de_proxima_sesion_sin_plan() {
+		Sesion sinTurno = new Sesion(ORG_ID, CONSULTORIO_ID, HISTORIA_ID, null, TURNO_ID, OFERTA_ID,
+				MEMBERSHIP_PROPIA, Instant.EPOCH, CUENTA_PROPIA);
+		ReflectionTestUtils.setField(sinTurno, "turnoId", null);
+		ReflectionTestUtils.setField(sinTurno, "id", 1L);
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(sinTurno));
+		assertThat(service.contextoDeProximaSesion(actor, CONSULTORIO_ID, 1L).planId()).isNull();
+		verify(turnos, never()).find(anyLong(), anyLong(), anyLong());
+
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(turnos.find(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.empty());
+		assertThat(service.contextoDeProximaSesion(actor, CONSULTORIO_ID, 1L).planId()).isNull();
+	}
+
+	@Test
+	@DisplayName("Una sesion ajena es 404, sin sesion:register es 403, y una historia que no resuelve no se disimula")
+	void contexto_de_proxima_sesion_rechazos() {
+		assertThatThrownBy(() -> service.contextoDeProximaSesion(actor, CONSULTORIO_ID, 999L))
+				.isInstanceOf(SesionNotAccessibleException.class);
+
+		Sesion dadaDeBaja = sesionExistente(MEMBERSHIP_PROPIA);
+		ReflectionTestUtils.setField(dadaDeBaja, "deletedAt", Instant.EPOCH);
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(dadaDeBaja));
+		assertThatThrownBy(() -> service.contextoDeProximaSesion(actor, CONSULTORIO_ID, 1L))
+				.as("una sesion dada de baja no sirve de punto de partida")
+				.isInstanceOf(SesionNotAccessibleException.class);
+
+		given(sesiones.findByIdInScope(ORG_ID, CONSULTORIO_ID, 1L)).willReturn(Optional.of(sesionExistente(MEMBERSHIP_PROPIA)));
+		given(historias.findPorId(ORG_ID, HISTORIA_ID)).willReturn(Optional.empty());
+		assertThatThrownBy(() -> service.contextoDeProximaSesion(actor, CONSULTORIO_ID, 1L))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("historia");
+
+		given(permissionGuard.requirePermission(any())).willThrow(new AccessDeniedException("sin permiso"));
+		assertThatThrownBy(() -> service.contextoDeProximaSesion(actor, CONSULTORIO_ID, 1L))
+				.isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.contextoDeProximaSesion(actor, 8L, 1L))
+				.isInstanceOf(ConsultorioNoAccesibleException.class);
+	}
+
 	@Test
 	@DisplayName("Un caso cerrado o de otra historia no se asocia a la atencion")
 	void caso_no_asignable_al_cambiar() {

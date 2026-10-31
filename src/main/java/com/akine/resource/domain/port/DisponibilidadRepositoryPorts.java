@@ -108,6 +108,10 @@ public final class DisponibilidadRepositoryPorts {
 		List<DisponibilidadExcepcion> findDeSedeQueCubren(
 				Long organizationId, Long consultorioId, LocalDate desde, LocalDate hasta);
 
+		/** Los cierres vigentes de la sede que tocan la ventana, de sede y de cada profesional. */
+		List<DisponibilidadExcepcion> findCierresDeLaSedeEnVentana(
+				Long organizationId, Long consultorioId, LocalDate desde, LocalDate hasta);
+
 		/**
 		 * Una excepcion por id, acotada al tenant y a la sede, activa o no. Deliberadamente NO
 		 * acotada por membership: una excepcion de sede entera no tiene una unica membership

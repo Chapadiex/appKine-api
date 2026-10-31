@@ -42,5 +42,12 @@ public record ExcepcionAltaCommand(
 		LocalTime horaDesde,
 		LocalTime horaHasta,
 		Long feriadoId,
-		String notes) {
+		String notes,
+		boolean confirmaTurnosAfectados) {
+
+	public ExcepcionAltaCommand(Long membershipId, TipoExcepcion tipo, MotivoExcepcion motivo,
+			LocalDate fechaDesde, LocalDate fechaHasta, LocalTime horaDesde, LocalTime horaHasta,
+			Long feriadoId, String notes) {
+		this(membershipId, tipo, motivo, fechaDesde, fechaHasta, horaDesde, horaHasta, feriadoId, notes, false);
+	}
 }

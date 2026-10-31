@@ -1,13 +1,16 @@
 package com.akine.offering.application;
 
+import com.akine.offering.application.HabilitacionesView.DuracionPropiaView;
 import com.akine.offering.application.HabilitacionesView.EspacioHabilitadoView;
 import com.akine.offering.application.HabilitacionesView.ProfesionalHabilitadoView;
 import com.akine.offering.application.ValidacionDeOfertaView.MotivoDeRechazo;
 import com.akine.offering.domain.Habilitacion;
+import com.akine.offering.domain.OfertaDuracionProfesional;
 import com.akine.offering.domain.OfertaEspacioHabilitado;
 import com.akine.offering.domain.OfertaProfesionalHabilitado;
 import com.akine.offering.domain.OfertaServicioConsultorio;
 import com.akine.offering.domain.exception.HabilitacionNoAccesibleException;
+import com.akine.offering.domain.port.OfferingRepositoryPorts.OfertaDuracionProfesionalRepositoryPort;
 import com.akine.offering.domain.port.OfferingRepositoryPorts.OfertaEspacioHabilitadoRepositoryPort;
 import com.akine.offering.domain.port.OfferingRepositoryPorts.OfertaProfesionalHabilitadoRepositoryPort;
 import com.akine.offering.domain.port.OfferingRepositoryPorts.OfertaRepositoryPort;
@@ -39,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Quien puede prestar cada Oferta y donde puede prestarse (AKINE-02.07).
@@ -83,8 +87,15 @@ public class OfertaHabilitacionService {
 	private static final String MOTIVO_REEMPLAZO =
 			"Quitada al reconfigurar las habilitaciones de la oferta";
 
+	private static final String MOTIVO_REEMPLAZO_DURACION =
+			"Quitada al reconfigurar las duraciones de la oferta: vuelve a la de la oferta";
+
+	/** El mismo techo que {@code OfertaService} le pone a la duracion de una oferta. */
+	private static final int DURACION_MAXIMA_MINUTOS = 1440;
+
 	private final OfertaProfesionalHabilitadoRepositoryPort profesionales;
 	private final OfertaEspacioHabilitadoRepositoryPort espacios;
+	private final OfertaDuracionProfesionalRepositoryPort duraciones;
 	private final ConsultorioMembershipDirectory membershipDirectory;
 	private final AccountIdentityDirectory identityDirectory;
 	private final EspacioDirectory espacioDirectory;
@@ -95,6 +106,7 @@ public class OfertaHabilitacionService {
 			OfertaRepositoryPort ofertas,
 			OfertaProfesionalHabilitadoRepositoryPort profesionales,
 			OfertaEspacioHabilitadoRepositoryPort espacios,
+			OfertaDuracionProfesionalRepositoryPort duraciones,
 			ConsultorioDirectory consultorioDirectory,
 			ConsultorioMembershipDirectory membershipDirectory,
 			AccountContextDirectory accountContextDirectory,
@@ -105,6 +117,7 @@ public class OfertaHabilitacionService {
 
 		this.profesionales = profesionales;
 		this.espacios = espacios;
+		this.duraciones = duraciones;
 		this.membershipDirectory = membershipDirectory;
 		this.identityDirectory = identityDirectory;
 		this.espacioDirectory = espacioDirectory;
@@ -292,6 +305,79 @@ public class OfertaHabilitacionService {
 				ofertaId, pedidos.size());
 
 		return vistaTrasReemplazo(oferta, organizationId, ofertaId);
+	}
+
+	/**
+	 * Reemplaza el conjunto de duraciones propias (TURNO - Tecnico §47): quien no viene vuelve a la
+	 * duracion de la oferta. Mismo permiso, misma version y mismo diff que los otros dos reemplazos.
+	 *
+	 * @param pedidas minutos por membership
+	 */
+	@Transactional
+	public HabilitacionesView reemplazarDuraciones(
+			OperatingActor actor,
+			long organizationId,
+			long consultorioId,
+			long ofertaId,
+			Map<Long, Integer> pedidas,
+			long expectedVersion) {
+
+		OfertaServicioConsultorio oferta = exigirOfertaConfigurable(
+				actor, organizationId, consultorioId, ofertaId, expectedVersion);
+
+		List<OfertaDuracionProfesional> filas =
+				duraciones.findAllByOrganizationIdAndOfertaIdAndActive(organizationId, ofertaId, true);
+		Map<Long, Integer> guardadas = filas.stream().collect(Collectors.toMap(
+				OfertaDuracionProfesional::getMembershipId, OfertaDuracionProfesional::getDuracionMinutos));
+
+		for (Map.Entry<Long, Integer> pedida : pedidas.entrySet()) {
+			if (pedida.getValue() < 1 || pedida.getValue() > DURACION_MAXIMA_MINUTOS) {
+				throw new IllegalArgumentException(
+						"La duracion propia de un profesional debe estar entre 1 minuto y 24 horas");
+			}
+			// Lo que no cambia no se vuelve a juzgar: si no, alguien que se paso a otra sede trabaria las
+			// duraciones de todos, sin que nadie este tocando la suya.
+			if (!pedida.getValue().equals(guardadas.get(pedida.getKey()))) {
+				exigirMembershipDeLaSede(organizationId, consultorioId, pedida.getKey());
+			}
+		}
+
+		Instant ahora = Instant.now();
+		Set<Long> vigentes = new LinkedHashSet<>();
+		for (OfertaDuracionProfesional fila : filas) {
+			vigentes.add(fila.getMembershipId());
+			Integer pedida = pedidas.get(fila.getMembershipId());
+			int anterior = fila.getDuracionMinutos();
+			if (pedida == null) {
+				fila.deactivate(ahora, MOTIVO_REEMPLAZO_DURACION);
+			} else if (pedida != anterior) {
+				fila.cambiarDuracion(pedida);
+			} else {
+				continue;
+			}
+			duraciones.save(fila);
+			auditarDuracion(oferta, actor, fila.getMembershipId(), anterior, pedida);
+		}
+
+		for (Map.Entry<Long, Integer> pedida : pedidas.entrySet()) {
+			if (!vigentes.contains(pedida.getKey())) {
+				duraciones.save(new OfertaDuracionProfesional(
+						organizationId, consultorioId, ofertaId, pedida.getKey(), pedida.getValue()));
+				auditarDuracion(oferta, actor, pedida.getKey(), null, pedida.getValue());
+			}
+		}
+
+		log.info("Duraciones propias reconfiguradas: ofertaId={} con duracion propia={}", ofertaId, pedidas.size());
+		return vistaTrasReemplazo(oferta, organizationId, ofertaId);
+	}
+
+	private void auditarDuracion(
+			OfertaServicioConsultorio oferta, OperatingActor actor, long membershipId, Integer anterior, Integer nueva) {
+
+		auditar(AuditEvents.OFERTA_DURACION_PROPIA_CHANGED, oferta, actor, Map.of(
+				"membershipId", String.valueOf(membershipId),
+				"anterior", anterior == null ? "la de la oferta" : String.valueOf(anterior),
+				"nueva", nueva == null ? "la de la oferta" : String.valueOf(nueva)));
 	}
 
 	/**
@@ -557,7 +643,10 @@ public class OfertaHabilitacionService {
 				vistasDeEspacio(filasEspacio, organizationId, ahora),
 				oferta.getCapacidad(),
 				capacidadEfectiva(oferta, filasEspacio, organizationId, ahora),
-				espacioQueLimita(oferta, filasEspacio, organizationId, ahora));
+				espacioQueLimita(oferta, filasEspacio, organizationId, ahora),
+				duraciones.findAllByOrganizationIdAndOfertaIdAndActive(organizationId, ofertaId, true).stream()
+						.map(fila -> new DuracionPropiaView(fila.getMembershipId(), fila.getDuracionMinutos()))
+						.toList());
 	}
 
 	// =================================================================================

@@ -27,6 +27,7 @@ import java.util.List;
  *                           {@code OPTIMISTIC_FORCE_INCREMENT} la sube al cerrar la transaccion,
  *                           cuando esta vista ya se armo. Devolver la leida haria que encadenar dos
  *                           reemplazos sin releer diera 409 siempre
+ * @param duracionesPropias  las duraciones vigentes por profesional (TURNO - Tecnico §47)
  */
 public record HabilitacionesView(
 		long ofertaId,
@@ -37,7 +38,16 @@ public record HabilitacionesView(
 		List<EspacioHabilitadoView> espacios,
 		int capacidadComercial,
 		int capacidadEfectiva,
-		String espacioQueLimita) {
+		String espacioQueLimita,
+		List<DuracionPropiaView> duracionesPropias) {
+
+	/**
+	 * Cuanto tarda un profesional en esta oferta, cuando no es lo que dura la oferta. Quien no aparece
+	 * usa la de la oferta. Es una lista aparte de {@link #profesionales} porque una oferta sin
+	 * restringir no tiene filas de habilitacion y sus profesionales igual pueden tener duracion propia.
+	 */
+	public record DuracionPropiaView(long membershipId, int duracionMinutos) {
+	}
 
 	/**
 	 * Un profesional habilitado.

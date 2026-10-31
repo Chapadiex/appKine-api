@@ -493,6 +493,25 @@ class SerieDeTurnosIT {
 	}
 
 	@Test
+	@DisplayName("U-22: con ocurrencias elegidas el feriado que quedo afuera tambien queda registrado")
+	void el_feriado_afuera_de_lo_elegido_queda_registrado() {
+		Fixture fixture = fixtures.crear(1);
+		insertarFeriadoSintetico();
+
+		SerieView serie = serieService.crear(fixture.actor(), fixture.consultorioId(), new AltaDeSerieCommand(
+				fixture.ofertaId(), fixture.personaA(), fixture.profesionalMembershipId(),
+				new ReglaDeRecurrencia(Set.of(DayOfWeek.MONDAY), LocalTime.of(9, 0), LUNES_JUNIO_2031, null, 3),
+				"u22-elegidas-" + fixture.organizationId(),
+				java.util.List.of(
+						new AltaDeSerieCommand.OcurrenciaElegida(hora(LUNES_JUNIO_2031, 9), null),
+						new AltaDeSerieCommand.OcurrenciaElegida(hora(LUNES_JUNIO_2031.plusWeeks(2), 9), null)),
+				null, null, null)).serie();
+
+		assertThat(serie.turnos()).hasSize(2);
+		assertThat(serie.omitidas()).extracting(OcurrenciaOmitidaView::fecha).containsExactly(FERIADO_SINTETICO);
+	}
+
+	@Test
 	@DisplayName("U-22: si todas las ocurrencias caen en feriado no se crea nada")
 	void si_todas_caen_en_feriado_no_se_crea_nada() {
 		Fixture fixture = fixtures.crear(1);

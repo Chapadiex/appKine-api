@@ -1,5 +1,6 @@
 package com.akine.scheduling.api.dto;
 
+import com.akine.scheduling.domain.OrigenDeTurno;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -50,5 +51,37 @@ public record ReservarTurnoRequest(
 						+ "no el turno anterior. Omitirla desactiva la proteccion, que es legitimo "
 						+ "en una carga manual.",
 				example = "b3f1c2a4-5d6e-4f70-8a91-2c3d4e5f6a7b")
-		@Size(max = 80) String idempotencyKey) {
+		@Size(max = 80) String idempotencyKey,
+
+		@Schema(
+				description = "Box elegido a mano. Omitirlo es lo normal: el sistema asigna el primero "
+						+ "libre. Si se indica pasa por los mismos controles que el automatico.",
+				example = "55")
+		@Positive Long espacioId,
+
+		@Schema(
+				description = "Caso clinico para el que se reserva. Opcional: una primera consulta no "
+						+ "tiene caso. Tiene que ser de esta persona y estar activo.",
+				example = "9")
+		@Positive Long casoId,
+
+		@Schema(
+				description = "Plan de tratamiento para el que se reserva. Opcional. Tiene que ser de esta "
+						+ "persona, estar activo, incluir la oferta y tener sesiones pendientes. Si se "
+						+ "omite el caso, sale del plan.",
+				example = "57")
+		@Positive Long planId,
+
+		@Schema(
+				description = "Desde donde se inicio la reserva. Solo trazabilidad: no cambia ninguna regla.",
+				example = "AGENDA")
+		OrigenDeTurno origen,
+
+		@Schema(
+				description = "Por que se autoriza ocupar un horario tomado. Exige el permiso "
+						+ "`turno:sobreturno`. Saltea el cupo y el solapamiento y nada mas: el profesional "
+						+ "sigue teniendo que estar habilitado y atender en ese horario. Se ve en la agenda: "
+						+ "sin informacion clinica.",
+				example = "Se acordo atenderlo entre turnos")
+		@Size(max = 300) String sobreturnoMotivo) {
 }

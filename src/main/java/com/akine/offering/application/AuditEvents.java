@@ -85,6 +85,9 @@ final class AuditEvents {
 
 	static final String HABILITACION_ESPACIO_REVOKED = "HABILITACION_ESPACIO_REVOKED";
 
+	/** Se fijo, cambio o quito la duracion propia de un profesional. Detalle con antes y despues. */
+	static final String OFERTA_DURACION_PROPIA_CHANGED = "OFERTA_DURACION_PROPIA_CHANGED";
+
 	// --- Practicas de Oferta (A-9, DP-11) -------------------------------------------------
 	// Misma entidad auditada que las habilitaciones: la OFERTA. Detalle con el practicaId.
 

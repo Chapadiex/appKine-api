@@ -1,5 +1,6 @@
 package com.akine.scheduling.api.dto;
 
+import com.akine.scheduling.domain.OrigenDeCancelacion;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -23,6 +24,12 @@ public record CancelarTurnoRequest(
 		@NotBlank(message = "El motivo de cancelacion es obligatorio")
 		@Size(max = 300)
 		String motivo,
+
+		@Schema(
+				description = "A quien se le atribuye la cancelacion. Opcional: omitirlo es no decirlo.",
+				allowableValues = {"PACIENTE", "PROFESIONAL", "INSTITUCION"},
+				example = "PACIENTE")
+		OrigenDeCancelacion origen,
 
 		@Schema(
 				description = "Version que devolvio la ultima lectura del turno. Si otro operador "

@@ -63,4 +63,12 @@ public interface RealizadoEnElCasoProbe {
 	 *         esta sonda tenga que saber que ofertas planifico un plan que no conoce
 	 */
 	List<RealizadoPorOferta> contarPorOfertaEnElCaso(long organizationId, long casoId);
+
+	/**
+	 * Lo mismo, contando sólo lo cerrado desde {@code desde}. Es lo que le corresponde a un plan: un caso
+	 * tiene planes sucesivos, y lo atendido con el anterior no es avance del que se activó después.
+	 *
+	 * @param desde {@code null} cuenta todo: un plan que todavía no se activó no tiene de dónde partir
+	 */
+	List<RealizadoPorOferta> contarPorOfertaEnElCasoDesde(long organizationId, long casoId, java.time.Instant desde);
 }

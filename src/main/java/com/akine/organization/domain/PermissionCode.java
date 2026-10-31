@@ -148,6 +148,13 @@ public enum PermissionCode {
 	 */
 	TURNO_MANAGE("turno:manage"),
 
+	/**
+	 * Autorizar un turno sobre un horario ya ocupado (TURNO.md §21). Aparte de {@link #TURNO_MANAGE}:
+	 * dar turnos es de recepcion y pisar uno es de quien puede autorizarlo. Lo tienen
+	 * {@code ORG_ADMIN} y {@code CONSULTORIO_ADMIN}.
+	 */
+	TURNO_SOBRETURNO("turno:sobreturno"),
+
 	/** Ver Historia Clinica. F4. Sin asignacion base todavia: deniega. */
 	HC_READ("hc:read"),
 

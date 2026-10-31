@@ -94,6 +94,8 @@ class OfertaHabilitacionServiceTest {
 	@Mock
 	private OfertaEspacioHabilitadoRepositoryPort espacios;
 	@Mock
+	private com.akine.offering.domain.port.OfferingRepositoryPorts.OfertaDuracionProfesionalRepositoryPort duraciones;
+	@Mock
 	private ConsultorioDirectory consultorioDirectory;
 	@Mock
 	private ConsultorioMembershipDirectory membershipDirectory;
@@ -117,7 +119,7 @@ class OfertaHabilitacionServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new OfertaHabilitacionService(
-				ofertas, profesionales, espacios, consultorioDirectory, membershipDirectory,
+				ofertas, profesionales, espacios, duraciones, consultorioDirectory, membershipDirectory,
 				accountContextDirectory, identityDirectory, espacioDirectory, permissionGuard,
 				auditTrail);
 
@@ -253,6 +255,26 @@ class OfertaHabilitacionServiceTest {
 				actor(), ORG, SEDE, OFERTA_ID, Set.of(), 0L);
 
 		assertThat(resultado.restringidaPorProfesional()).isFalse();
+	}
+
+	@Test
+	@DisplayName("una duracion propia sin cambios no se vuelve a juzgar: quien se paso a otra sede no traba a los demas")
+	void duracion_sin_cambios_no_se_revalida() {
+		given(duraciones.findAllByOrganizationIdAndOfertaIdAndActive(ORG, OFERTA_ID, true))
+				.willReturn(List.of(new com.akine.offering.domain.OfertaDuracionProfesional(
+						ORG, SEDE, OFERTA_ID, MEMBERSHIP_C, 30)));
+		given(membershipDirectory.find(ORG, MEMBERSHIP_C))
+				.willReturn(Optional.of(vinculoVigente(MEMBERSHIP_C, SEDE + 1)));
+
+		service.reemplazarDuraciones(
+				actor(), ORG, SEDE, OFERTA_ID, Map.of(MEMBERSHIP_C, 30, MEMBERSHIP_A, 20), 0L);
+
+		then(duraciones).should().save(any());
+
+		assertThatThrownBy(() -> service.reemplazarDuraciones(
+				actor(), ORG, SEDE, OFERTA_ID, Map.of(MEMBERSHIP_C, 45), 0L))
+				.as("cambiarle la duracion a quien ya no atiende aca si se rechaza")
+				.isInstanceOf(HabilitacionNoAccesibleException.class);
 	}
 
 	@Test

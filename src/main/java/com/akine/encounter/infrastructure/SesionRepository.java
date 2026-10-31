@@ -149,6 +149,17 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 
 	@Override
 	@Query("""
+			SELECT s FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.turnoId IN :turnoIds
+			   AND s.deletedAt IS NULL
+			""")
+	List<Sesion> findVivasPorTurnos(
+			@Param("organizationId") long organizationId,
+			@Param("turnoIds") Collection<Long> turnoIds);
+
+	@Override
+	@Query("""
 			SELECT COUNT(s) > 0 FROM Sesion s
 			 WHERE s.organizationId = :organizationId
 			   AND s.consultorioId = :consultorioId
@@ -252,6 +263,27 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 	List<ConteoDeSesionesPorOferta> contarCerradasPorOferta(
 			@Param("organizationId") long organizationId,
 			@Param("casoId") long casoId);
+
+	@Override
+	@Query("""
+			SELECT new com.akine.encounter.domain.ConteoDeSesionesPorOferta(
+			           s.ofertaId,
+			           SUM(CASE WHEN s.asistencia = com.akine.encounter.domain.Asistencia.PRESENTE
+			                    THEN 1L ELSE 0L END),
+			           SUM(CASE WHEN s.asistencia = com.akine.encounter.domain.Asistencia.AUSENTE
+			                    THEN 1L ELSE 0L END))
+			  FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.casoId = :casoId
+			   AND s.estado = com.akine.encounter.domain.EstadoSesion.CERRADA
+			   AND s.deletedAt IS NULL
+			   AND s.cerradaEn >= :desde
+			 GROUP BY s.ofertaId
+			""")
+	List<ConteoDeSesionesPorOferta> contarCerradasPorOfertaDesde(
+			@Param("organizationId") long organizationId,
+			@Param("casoId") long casoId,
+			@Param("desde") java.time.Instant desde);
 
 	// =================================================================================
 	// M23 — agregaciones de reporte (AKINE-07.06)

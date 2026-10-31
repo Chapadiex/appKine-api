@@ -1,7 +1,9 @@
 package com.akine.scheduling.api.dto;
 
+import com.akine.scheduling.domain.OrigenDeTurno;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
@@ -9,6 +11,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -55,5 +58,26 @@ public record CrearSerieDeTurnosRequest(
 				description = "Clave del cliente para que un reintento no cree una segunda serie. "
 						+ "Reusarla con **otro** contenido devuelve 409 `idempotency-key-conflict`.",
 				example = "1c9e7b2a-3f4d-4e5f-8a91-2c3d4e5f6a7b")
-		@Size(max = 80) String idempotencyKey) {
+		@Size(max = 80) String idempotencyKey,
+
+		@Schema(
+				description = "Lo que quedo despues de revisar la previsualizacion: se reservan EXACTAMENTE "
+						+ "estos horarios, sin omitir feriados, y la regla queda como dato de la serie. "
+						+ "Omitirlo reserva lo que produce la regla.")
+		@Size(max = 52) List<@Valid OcurrenciaElegidaRequest> ocurrencias,
+
+		@Schema(description = "Caso clinico para el que se programan", example = "9")
+		@Positive Long casoId,
+
+		@Schema(description = "Plan para el que se programan. El total no puede pasar sus sesiones pendientes.", example = "57")
+		@Positive Long planId,
+
+		@Schema(description = "Desde donde se inicio. Solo trazabilidad.", example = "PLAN")
+		OrigenDeTurno origen) {
+
+	@Schema(name = "OcurrenciaElegida", description = "Un horario de la serie, tal como quedo despues de revisarla.")
+	public record OcurrenciaElegidaRequest(
+			@Schema(example = "2026-11-02T13:00:00Z") @NotNull Instant inicio,
+			@Schema(description = "Omitirlo es el profesional de la serie.", example = "31") @Positive Long profesionalId) {
+	}
 }

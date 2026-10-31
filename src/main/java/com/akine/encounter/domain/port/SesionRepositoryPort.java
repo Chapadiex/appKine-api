@@ -2,6 +2,8 @@ package com.akine.encounter.domain.port;
 
 import com.akine.encounter.domain.Sesion;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -97,6 +99,9 @@ public interface SesionRepositoryPort {
 	 */
 	Optional<Sesion> findVivaPorTurno(long organizationId, long turnoId);
 
+	/** Las sesiones vivas de esos turnos, en una sola consulta. Para pintar una agenda. */
+	List<Sesion> findVivasPorTurnos(long organizationId, Collection<Long> turnoIds);
+
 	/**
 	 * {@code true} si hay una sesion no borrada de esa historia clinica en esa sede atendida por
 	 * esa membership o iniciada por esa cuenta.
@@ -168,6 +173,10 @@ public interface SesionRepositoryPort {
 	 */
 	java.util.List<com.akine.encounter.domain.ConteoDeSesionesPorOferta> contarCerradasPorOferta(
 			long organizationId, long casoId);
+
+	/** Lo mismo, sólo lo cerrado desde {@code desde}: lo que le corresponde a un plan activado entonces. */
+	java.util.List<com.akine.encounter.domain.ConteoDeSesionesPorOferta> contarCerradasPorOfertaDesde(
+			long organizationId, long casoId, java.time.Instant desde);
 
 	/**
 	 * La Sesion viva que cuelga de esa derivacion, si existe (AKINE-08.05).

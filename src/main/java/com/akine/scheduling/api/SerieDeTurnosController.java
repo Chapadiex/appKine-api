@@ -6,7 +6,9 @@ import com.akine.scheduling.api.dto.CrearSerieDeTurnosRequest;
 import com.akine.scheduling.api.dto.ReprogramarSerieDeTurnosRequest;
 import com.akine.scheduling.api.dto.SerieDeTurnosPageResponse;
 import com.akine.scheduling.api.dto.SerieDeTurnosResponse;
+import com.akine.scheduling.api.dto.PrevisualizacionDeSerieResponse;
 import com.akine.scheduling.application.AltaDeSerieCommand;
+import com.akine.scheduling.application.PrevisualizacionDeSerieService;
 import com.akine.scheduling.application.OperacionDeSerieCommand;
 import com.akine.scheduling.application.SerieDeTurnosService;
 import com.akine.scheduling.domain.AlcanceDeSerie;
@@ -54,11 +56,59 @@ public class SerieDeTurnosController {
 	private static final int TAMANO_MAXIMO = 100;
 
 	private final SerieDeTurnosService service;
+	private final PrevisualizacionDeSerieService previsualizacion;
 	private final SchedulingApiActor apiActor;
 
-	public SerieDeTurnosController(SerieDeTurnosService service, SchedulingApiActor apiActor) {
+	public SerieDeTurnosController(
+			SerieDeTurnosService service,
+			PrevisualizacionDeSerieService previsualizacion,
+			SchedulingApiActor apiActor) {
 		this.service = service;
+		this.previsualizacion = previsualizacion;
 		this.apiActor = apiActor;
+	}
+
+	@PostMapping("/previsualizacion")
+	@Operation(
+			operationId = "previsualizarSerieDeTurnos",
+			summary = "Ver que se reservaria, sin crear nada",
+			description = """
+					Evalua cada ocurrencia de la regla con los mismos controles de la reserva y, si una no se \
+					puede, **sugiere el horario mas cercano**. No crea nada: lo que se confirma en el alta es lo \
+					que quede de esto despues de revisarlo. Con plan, informa cuantas sesiones le quedan.
+
+					Exige `turno:read`. Es informativo: el alta revalida todo bajo el lock de la sede.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "La propuesta"),
+			@ApiResponse(responseCode = "400", description = "Regla invalida", content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "Sin `turno:read` en esa sede", content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "La sede o la oferta no existen, o son de otro tenant", content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "El caso o el plan no sirven para esta prestacion", content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<PrevisualizacionDeSerieResponse> previsualizar(
+			@PathVariable long consultorioId,
+			@RequestBody @Valid CrearSerieDeTurnosRequest request) {
+
+		return ResponseEntity.ok(PrevisualizacionDeSerieResponse.de(
+				previsualizacion.previsualizar(apiActor.current(), consultorioId, comando(request))));
+	}
+
+	private static AltaDeSerieCommand comando(CrearSerieDeTurnosRequest request) {
+		EnumSet<DayOfWeek> dias = EnumSet.noneOf(DayOfWeek.class);
+		request.diasSemana().forEach(dia -> dias.add(DayOfWeek.of(dia)));
+		return new AltaDeSerieCommand(
+				request.ofertaId(),
+				request.personaId(),
+				request.profesionalId(),
+				new ReglaDeRecurrencia(dias, request.hora(), request.fechaDesde(),
+						request.fechaHasta(), request.cantidad()),
+				request.idempotencyKey(),
+				request.ocurrencias() == null ? null : request.ocurrencias().stream()
+						.map(ocurrencia -> new AltaDeSerieCommand.OcurrenciaElegida(
+								ocurrencia.inicio(), ocurrencia.profesionalId()))
+						.toList(),
+				request.casoId(),
+				request.planId(),
+				request.origen());
 	}
 
 	@PostMapping
@@ -112,16 +162,7 @@ public class SerieDeTurnosController {
 			@PathVariable long consultorioId,
 			@RequestBody @Valid CrearSerieDeTurnosRequest request) {
 
-		EnumSet<DayOfWeek> dias = EnumSet.noneOf(DayOfWeek.class);
-		request.diasSemana().forEach(dia -> dias.add(DayOfWeek.of(dia)));
-
-		var resultado = service.crear(apiActor.current(), consultorioId, new AltaDeSerieCommand(
-				request.ofertaId(),
-				request.personaId(),
-				request.profesionalId(),
-				new ReglaDeRecurrencia(dias, request.hora(), request.fechaDesde(),
-						request.fechaHasta(), request.cantidad()),
-				request.idempotencyKey()));
+		var resultado = service.crear(apiActor.current(), consultorioId, comando(request));
 
 		SerieDeTurnosResponse cuerpo = SerieDeTurnosResponse.de(resultado.serie());
 		if (!resultado.creada()) {
