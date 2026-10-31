@@ -8,6 +8,8 @@ import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.domain.DisponibilidadExcepcion;
 import com.akine.resource.domain.PermissionCodes;
+import com.akine.resource.domain.TipoExcepcion;
+import com.akine.resource.domain.exception.BloqueoConTurnosAfectadosException;
 import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
 import com.akine.resource.domain.exception.ConsultorioNotOperableException;
 import com.akine.resource.domain.exception.ExcepcionInactivaException;
@@ -164,6 +166,21 @@ public class ExcepcionService {
 			log.info("Alta de excepcion idempotente: consultorioId={} excepcionId={}",
 					consultorioId, yaCargada.get().getId());
 			return ExcepcionView.de(yaCargada.get());
+		}
+
+		// TURNO.md §22: un cierre que deja turnos en conflicto no se guarda en silencio. Va bajo el lock
+		// de la sede y despues de la idempotencia: el reintento de un cierre ya cargado no se rechaza.
+		if (command.tipo() == TipoExcepcion.CIERRE && !command.confirmaTurnosAfectados()) {
+			DisponibilidadExcepcion propuesta = new DisponibilidadExcepcion(
+					organizationId, consultorioId, membershipId, command.tipo(), command.motivo(),
+					command.fechaDesde(), command.fechaHasta(), command.horaDesde(), command.horaHasta(),
+					command.feriadoId(), command.notes());
+			long afectados = simulador.deAltaDeExcepcion(
+					AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId),
+					propuesta, ahora).turnosAfectados();
+			if (afectados > 0) {
+				throw new BloqueoConTurnosAfectadosException(afectados);
+			}
 		}
 
 		DisponibilidadExcepcion guardada = excepciones.save(new DisponibilidadExcepcion(

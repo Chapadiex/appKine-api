@@ -259,6 +259,7 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.PACIENTE_READ, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.TURNO_SOBRETURNO, PermissionScope.ORGANIZACION),
 				// `cobro:register` entra con asignacion base en AKINE-07.01, la etapa que crea la
 				// deuda. La matriz Â§2 le dice "Si" al ORG_ADMIN, al CONSULTORIO_ADMIN y al
 				// ADMINISTRATIVO en la fila Registrar Cobro; al PROFESIONAL "No por defecto" y al
@@ -335,6 +336,7 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.PACIENTE_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.TURNO_SOBRETURNO, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO),
 				// AKINE-07.03. Su sede, que es el alcance de su membership.
 				Map.entry(PermissionCode.CAJA_OPERATE, PermissionScope.CONSULTORIO),

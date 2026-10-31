@@ -88,7 +88,7 @@ public final class Fixture {
 	}
 
 	private static Object valor(Class<?> tipo, Type generico, String nombre, int profundidad) {
-		if (profundidad > 6) {
+		if (profundidad > 8) {
 			return null;
 		}
 		if (tipo == long.class || tipo == Long.class) {

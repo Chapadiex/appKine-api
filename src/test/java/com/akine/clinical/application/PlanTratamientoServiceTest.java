@@ -182,7 +182,7 @@ class PlanTratamientoServiceTest {
 		given(items.buscarDeVersion(anyLong(), anyLong())).willReturn(List.of());
 		given(eventos.save(any())).willAnswer(i -> i.getArgument(0));
 		given(planes.buscarQueOcupaElLugarDelCaso(ORG_ID, CASO_ID)).willReturn(Optional.empty());
-		given(realizado.contarPorOfertaEnElCaso(anyLong(), anyLong())).willReturn(List.of());
+		given(realizado.contarPorOfertaEnElCasoDesde(anyLong(), anyLong(), org.mockito.ArgumentMatchers.any())).willReturn(List.of());
 	}
 
 	// =================================================================================
@@ -603,7 +603,7 @@ class PlanTratamientoServiceTest {
 		@DisplayName("lo realizado sale de la sonda y no de ninguna columna")
 		void el_avance_se_deriva() {
 			prepararAvance(version(plan(EstadoPlan.ACTIVO), 1, null));
-			given(realizado.contarPorOfertaEnElCaso(ORG_ID, CASO_ID))
+			given(realizado.contarPorOfertaEnElCasoDesde(org.mockito.ArgumentMatchers.eq(ORG_ID), org.mockito.ArgumentMatchers.eq(CASO_ID), org.mockito.ArgumentMatchers.any()))
 					.willReturn(List.of(new RealizadoPorOferta(OFERTA_ID, 8, 2)));
 
 			AvanceDelPlanView avance = service.avance(profesional, PLAN_ID, null, null);
@@ -622,7 +622,7 @@ class PlanTratamientoServiceTest {
 		@DisplayName("una practica sin sesiones resuelve en cero, no desaparece")
 		void sin_sesiones_es_cero() {
 			prepararAvance(version(plan(EstadoPlan.ACTIVO), 1, null));
-			given(realizado.contarPorOfertaEnElCaso(ORG_ID, CASO_ID)).willReturn(List.of());
+			given(realizado.contarPorOfertaEnElCasoDesde(org.mockito.ArgumentMatchers.eq(ORG_ID), org.mockito.ArgumentMatchers.eq(CASO_ID), org.mockito.ArgumentMatchers.any())).willReturn(List.of());
 
 			assertThat(service.avance(profesional, PLAN_ID, null, null).items().get(0).realizadas())
 					.isZero();
@@ -636,7 +636,7 @@ class PlanTratamientoServiceTest {
 			// realizado en la direccion contraria.
 			PlanTratamiento plan = plan(EstadoPlan.ACTIVO);
 			prepararAvance(version(plan, 1, null));
-			given(realizado.contarPorOfertaEnElCaso(ORG_ID, CASO_ID))
+			given(realizado.contarPorOfertaEnElCasoDesde(org.mockito.ArgumentMatchers.eq(ORG_ID), org.mockito.ArgumentMatchers.eq(CASO_ID), org.mockito.ArgumentMatchers.any()))
 					.willReturn(List.of(new RealizadoPorOferta(OFERTA_ID, 25, 0)));
 
 			AvanceDelPlanView avance = service.avance(profesional, PLAN_ID, null, null);
@@ -913,7 +913,7 @@ class PlanTratamientoServiceTest {
 			given(versiones.buscarPorNumero(ORG_ID, PLAN_ID, 1))
 					.willReturn(Optional.of(version(plan, 1, null)));
 			given(items.buscarDeVersion(ORG_ID, VERSION_ID)).willReturn(List.of(item()));
-			given(realizado.contarPorOfertaEnElCaso(ORG_ID, CASO_ID)).willReturn(List.of(
+			given(realizado.contarPorOfertaEnElCasoDesde(org.mockito.ArgumentMatchers.eq(ORG_ID), org.mockito.ArgumentMatchers.eq(CASO_ID), org.mockito.ArgumentMatchers.any())).willReturn(List.of(
 					new RealizadoPorOferta(OFERTA_ID, 5, 1),
 					new RealizadoPorOferta(OTRA_OFERTA_ID, 9, 0)));
 

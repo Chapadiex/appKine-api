@@ -13,11 +13,19 @@ import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.scheduling.domain.AgendaSede;
 import com.akine.scheduling.domain.AlcanceDeSerie;
 import com.akine.scheduling.domain.EstadoDeSerie;
+import com.akine.scheduling.domain.OrigenDeTurno;
 import com.akine.scheduling.domain.ReglaDeRecurrencia;
 import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.TurnoSerie;
+import com.akine.clinical.spi.ContextoClinicoDeAgenda;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
+import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
+import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
+import com.akine.scheduling.domain.exception.PersonaSinPerfilPacienteException;
+import com.akine.scheduling.domain.exception.PlanSinSesionesException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
+import com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.AgendaSedeRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.OcurrenciaOmitidaRepositoryPort;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoEventoRepositoryPort;
@@ -28,11 +36,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import com.akine.scheduling.domain.exception.CantidadConfirmadaDesactualizadaException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.DayOfWeek;
@@ -89,6 +99,8 @@ class SerieDeTurnosServiceTest {
 	@Mock private OcurrenciaOmitidaRepositoryPort omisiones;
 	@Mock private com.akine.organization.spi.ConsultorioMembershipDirectory membresias;
 	@Mock private com.akine.platform.spi.identity.AccountIdentityDirectory identidades;
+	@Mock private ContextoClinicoDeAgenda contextoDeAgenda;
+	@Mock private SesionesDelPlan sesionesDelPlan;
 
 	private SerieDeTurnosService service;
 	private final OperatingActor actor = new OperatingActor(9L, false, ORG_ID, CONSULTORIO_ID);
@@ -100,8 +112,12 @@ class SerieDeTurnosServiceTest {
 		service = new SerieDeTurnosService(series, turnos, eventos, agendas, ofertas, pacientes,
 				consultorios, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), iniciador, revalidador, atenciones, ciclo, auditTrail, avisos,
 				recepciones, omisiones, mock(PlatformTransactionManager.class),
-				membresias, identidades);
+				membresias, identidades,
+				new ContextoClinicoDeTurno(contextoDeAgenda),
+				sesionesDelPlan);
 
+		given(revalidador.feriadosQueCierran(anyLong(), any(), any(), any(), any(), any())).willReturn(Set.of());
+		given(revalidador.revalidar(any())).willReturn(new RevalidadorDeSlot.Asignacion(31L, null));
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", ZONA, true)));
 		given(agendas.lockByScope(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(mock(AgendaSede.class)));
@@ -330,6 +346,286 @@ class SerieDeTurnosServiceTest {
 		SerieResumenView terminada = SerieDeTurnosService.resumen(serieConId(20L),
 				List.of(cancelado, ausente), null, "Kinesiologia", Instant.now());
 		assertThat(terminada.estado()).isEqualTo(EstadoDeSerie.FINALIZADA);
+	}
+
+	// =================================================================================
+	// Alta: lo que se revisa antes de crear (flujo unico, §4 y §7)
+	// =================================================================================
+
+	@Test
+	@DisplayName("la misma clave con otra serie es 409, y no crea ni devuelve nada")
+	void clave_con_otra_serie() {
+		TurnoSerie existente = serieConId(SERIE_ID);
+		ReflectionTestUtils.setField(existente, "requestHash", "otra-huella");
+		given(series.findByIdempotencyKey(ORG_ID, "clave-1")).willReturn(Optional.of(existente));
+
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, "clave-1")))
+				.isInstanceOf(IdempotencyKeyConflictException.class);
+
+		verify(series, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("se reservan exactamente las ocurrencias revisadas, cada una con su profesional si lo eligio")
+	void ocurrencias_elegidas() {
+		Instant primera = Instant.now().plus(Duration.ofDays(3));
+		Instant segunda = Instant.now().plus(Duration.ofDays(5));
+		AltaDeSerieCommand pedido = new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null, List.of(
+				new AltaDeSerieCommand.OcurrenciaElegida(segunda, 32L),
+				new AltaDeSerieCommand.OcurrenciaElegida(primera, null)), null, null, OrigenDeTurno.PLAN);
+
+		ResultadoDeSerie resultado = service.crear(actor, CONSULTORIO_ID, pedido);
+
+		assertThat(resultado.serie().turnos()).extracting(TurnoView::inicio).containsExactly(primera, segunda);
+		ArgumentCaptor<RevalidadorDeSlot.Pedido> revalidado = ArgumentCaptor.forClass(RevalidadorDeSlot.Pedido.class);
+		verify(revalidador, org.mockito.Mockito.times(2)).revalidar(revalidado.capture());
+		assertThat(revalidado.getAllValues()).extracting(RevalidadorDeSlot.Pedido::profesionalId).containsExactly(31L, 32L);
+	}
+
+	@Test
+	@DisplayName("un horario repetido en las ocurrencias elegidas es 400: cada sesion va en el suyo")
+	void horario_repetido() {
+		Instant repetido = Instant.now().plus(Duration.ofDays(3));
+		AltaDeSerieCommand pedido = new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null, List.of(
+				new AltaDeSerieCommand.OcurrenciaElegida(repetido, 31L),
+				new AltaDeSerieCommand.OcurrenciaElegida(repetido, 32L)), null, null, null);
+
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, pedido))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("repite un horario");
+
+		verify(series, never()).save(any());
+		verify(turnos, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("con ocurrencias elegidas, el feriado de la regla que quedo afuera se registra como omitido, y uno elegido no")
+	void feriado_con_ocurrencias_elegidas() {
+		java.time.ZoneId zona = java.time.ZoneId.of(ZONA);
+		List<Instant> deLaRegla = tresLunes.ocurrencias().stream().map(local -> local.atZone(zona).toInstant()).toList();
+		LocalDate segundoLunes = tresLunes.ocurrencias().get(1).toLocalDate();
+		given(revalidador.feriadosQueCierran(eq(ORG_ID), any(), any(), eq(31L), any(), any())).willReturn(Set.of(segundoLunes));
+		given(omisiones.registrar(any())).willAnswer(invocacion -> invocacion.getArgument(0));
+
+		SerieView sinElFeriado = service.crear(actor, CONSULTORIO_ID, new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null, List.of(
+				new AltaDeSerieCommand.OcurrenciaElegida(deLaRegla.get(0), null),
+				new AltaDeSerieCommand.OcurrenciaElegida(deLaRegla.get(2), null)), null, null, null)).serie();
+		assertThat(sinElFeriado.turnos()).hasSize(2);
+		assertThat(sinElFeriado.omitidas()).singleElement()
+				.satisfies(omitida -> assertThat(omitida.fecha()).isEqualTo(segundoLunes));
+
+		SerieView conElFeriado = service.crear(actor, CONSULTORIO_ID, new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null, List.of(
+				new AltaDeSerieCommand.OcurrenciaElegida(deLaRegla.get(1), null)), null, null, null)).serie();
+		assertThat(conElFeriado.turnos()).as("si lo eligio se intenta, y que lo rechace la revalidacion").hasSize(1);
+		assertThat(conElFeriado.omitidas()).isEmpty();
+	}
+
+	@Test
+	@DisplayName("una primera ocurrencia en el pasado es 400: el pasado no se reserva")
+	void primera_ocurrencia_pasada() {
+		AltaDeSerieCommand pedido = new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null, List.of(
+				new AltaDeSerieCommand.OcurrenciaElegida(Instant.now().minus(Duration.ofDays(1)), null)), null, null, null);
+
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, pedido))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("ya paso");
+
+		verify(series, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("el tope del plan se exige por el total de la serie, antes de crear nada")
+	void tope_del_plan() {
+		var plan = dadoElPlan();
+		org.mockito.Mockito.doThrow(new PlanSinSesionesException(57L, 2, 3)).when(sesionesDelPlan)
+				.exigirDisponibles(ORG_ID, plan, 42L, 3);
+
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, conPlan()))
+				.isInstanceOfSatisfying(PlanSinSesionesException.class, sinSesiones -> {
+					assertThat(sinSesiones.getPendientes()).isEqualTo(2);
+					assertThat(sinSesiones.getPedidas()).isEqualTo(3);
+				});
+
+		verify(series, never()).save(any());
+		verify(turnos, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("cada turno de una serie con plan queda con caso y plan")
+	void turnos_con_caso_y_plan() {
+		dadoElPlan();
+
+		ResultadoDeSerie resultado = service.crear(actor, CONSULTORIO_ID, conPlan());
+
+		assertThat(resultado.serie().turnos()).hasSize(3).allSatisfy(turno -> {
+			assertThat(turno.casoId()).isEqualTo(9L);
+			assertThat(turno.planId()).isEqualTo(57L);
+		});
+	}
+
+	@Test
+	@DisplayName("no se crea una serie para quien no es paciente o para una persona ajena")
+	void persona_no_paciente() {
+		given(pacientes.find(ORG_ID, 128L)).willReturn(Optional.of(new PacienteSnapshot(
+				128L, ORG_ID, "Sintetico", "Persona", null, null, null, true, false, null, null)));
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null)))
+				.isInstanceOf(PersonaSinPerfilPacienteException.class);
+
+		given(pacientes.find(ORG_ID, 128L)).willReturn(Optional.empty());
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null)))
+				.isInstanceOf(PersonaNotAccessibleException.class);
+	}
+
+	@Test
+	@DisplayName("una oferta vencida o de baja en una ocurrencia nombra esa ocurrencia, con la causa de la reserva")
+	void ocurrencia_fuera_de_vigencia() {
+		LocalDate primeraOcurrencia = tresLunes.ocurrencias().getFirst().toLocalDate();
+		given(ofertas.find(ORG_ID, CONSULTORIO_ID, 42L)).willReturn(Optional.of(new OfertaSnapshot(
+				42L, ORG_ID, CONSULTORIO_ID, 3L, "Kinesiologia", 60, 1, false, true, false, false, false,
+				LocalDate.now().minusYears(1), primeraOcurrencia, true)));
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null)))
+				.isInstanceOf(OcurrenciaSinLugarException.class)
+				.hasCauseInstanceOf(OfertaNoAgendableException.class)
+				.hasMessageContaining("no esta vigente");
+
+		given(ofertas.find(ORG_ID, CONSULTORIO_ID, 42L)).willReturn(Optional.of(new OfertaSnapshot(
+				42L, ORG_ID, CONSULTORIO_ID, 3L, "Kinesiologia", 60, 1, false, true, false, false, false,
+				LocalDate.now().minusYears(1), null, false)));
+		assertThatThrownBy(() -> service.crear(actor, CONSULTORIO_ID, new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null)))
+				.isInstanceOf(OcurrenciaSinLugarException.class)
+				.hasMessageContaining("dada de baja");
+	}
+
+	@Test
+	@DisplayName("sin contexto de trabajo es 403 y no 401")
+	void sin_contexto() {
+		assertThatThrownBy(() -> service.crear(new OperatingActor(9L, false, null, null), CONSULTORIO_ID,
+				new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null)))
+				.isInstanceOf(AccessDeniedException.class);
+	}
+
+	// =================================================================================
+	// Operaciones por alcance
+	// =================================================================================
+
+	@Test
+	@DisplayName("el alcance se exige para previsualizar, y uno que se cuenta desde un turno necesita el turno")
+	void alcance_obligatorio() {
+		assertThatThrownBy(() -> service.previsualizar(actor, CONSULTORIO_ID, SERIE_ID, null, null))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("obligatorio");
+
+		dadaLaSerie(futuro(301L, 3));
+		assertThatThrownBy(() -> service.previsualizar(actor, CONSULTORIO_ID, SERIE_ID, AlcanceDeSerie.ESTE_Y_SIGUIENTES, null))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("falta turnoId");
+		assertThatThrownBy(() -> service.previsualizar(actor, CONSULTORIO_ID, SERIE_ID, AlcanceDeSerie.ESTE_Y_SIGUIENTES, 999L))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("no pertenece");
+	}
+
+	@Test
+	@DisplayName("sin nada pendiente en el alcance es 409: no hay que confirmar una operacion vacia")
+	void nada_pendiente_en_el_alcance() {
+		dadaLaSerie();
+
+		assertThatThrownBy(() -> service.cancelar(actor, CONSULTORIO_ID, SERIE_ID,
+				OperacionDeSerieCommand.cancelacion(AlcanceDeSerie.TODA_LA_SERIE, null, "Baja", 0)))
+				.isInstanceOf(TransicionDeTurnoNoPermitidaException.class);
+	}
+
+	@Test
+	@DisplayName("reprogramar necesita pivote y horario nuevo, y mover al mismo horario sin cambiar profesional es 400")
+	void reprogramar_rechazos() {
+		Turno pivote = futuro(301L, 3);
+		TurnoSerie serie = dadaLaSerie(pivote);
+		ReflectionTestUtils.setField(pivote, "serieId", serie.getId());
+		given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, 301L)).willReturn(Optional.of(pivote));
+
+		assertThatThrownBy(() -> service.reprogramar(actor, CONSULTORIO_ID, SERIE_ID, new OperacionDeSerieCommand(
+				AlcanceDeSerie.TODA_LA_SERIE, null, "Mover", 1, pivote.getInicio(), null)))
+				.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> service.reprogramar(actor, CONSULTORIO_ID, SERIE_ID, new OperacionDeSerieCommand(
+				AlcanceDeSerie.TODA_LA_SERIE, 301L, "Mover", 1, null, null)))
+				.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> service.reprogramar(actor, CONSULTORIO_ID, SERIE_ID, new OperacionDeSerieCommand(
+				AlcanceDeSerie.TODA_LA_SERIE, 301L, "Mover", 1, pivote.getInicio(), null)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("mismo que el actual");
+
+		verify(ciclo, never()).aplicarReprogramacion(any(), any(), any(), any(), any(), any(), any(), any());
+	}
+
+	@Test
+	@DisplayName("el profesional nuevo se aplica a cada turno movido, aunque el horario sea el mismo")
+	void reprogramar_solo_el_profesional() {
+		Turno pivote = futuro(301L, 3);
+		TurnoSerie serie = dadaLaSerie(pivote);
+		ReflectionTestUtils.setField(pivote, "serieId", serie.getId());
+		given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, 301L)).willReturn(Optional.of(pivote));
+		given(ciclo.aplicarReprogramacion(any(), any(), any(), any(), any(), any(), any(), any())).willReturn(pivote);
+
+		service.reprogramar(actor, CONSULTORIO_ID, SERIE_ID, new OperacionDeSerieCommand(
+				AlcanceDeSerie.TODA_LA_SERIE, 301L, "Cambia de profesional", 1, pivote.getInicio(), 32L));
+
+		verify(ciclo).aplicarReprogramacion(any(), any(), any(), eq(pivote), any(), eq(32L), eq("Cambia de profesional"), any());
+	}
+
+	@Test
+	@DisplayName("un turno que no es de esa serie no sirve de pivote")
+	void pivote_de_otra_serie() {
+		Turno pivote = futuro(301L, 3);
+		dadaLaSerie(pivote);
+		given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, 301L)).willReturn(Optional.of(pivote));
+
+		assertThatThrownBy(() -> service.reprogramar(actor, CONSULTORIO_ID, SERIE_ID, new OperacionDeSerieCommand(
+				AlcanceDeSerie.TODA_LA_SERIE, 301L, "Mover", 1, pivote.getInicio().plus(Duration.ofHours(1)), null)))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("no pertenece");
+	}
+
+	@Test
+	@DisplayName("la bandeja con busqueda se ordena tambien por fechas de la regla")
+	void orden_por_fechas_de_la_regla() {
+		TurnoSerie antes = serieConId(20L);
+		TurnoSerie despues = serieConId(21L);
+		ReflectionTestUtils.setField(despues, "fechaDesde", LocalDate.now().plusDays(30));
+		ReflectionTestUtils.setField(despues, "fechaHasta", LocalDate.now().plusDays(60));
+		ReflectionTestUtils.setField(despues, "cantidad", null);
+		given(series.todas(eq(ORG_ID), eq(CONSULTORIO_ID), isNull(), isNull(), any())).willReturn(List.of(antes, despues));
+		given(pacientes.findAll(eq(ORG_ID), any())).willReturn(java.util.Map.of(128L, new PacienteSnapshot(
+				128L, ORG_ID, "Sintetico", "Paciente", "DNI", "30111222", null, true, true, 5L, Instant.now())));
+		given(ofertas.findTodas(eq(ORG_ID), eq(CONSULTORIO_ID), any())).willReturn(java.util.Map.of());
+		given(membresias.findTodas(eq(ORG_ID), any())).willReturn(java.util.Map.of());
+		given(identidades.identidadesDe(any())).willReturn(java.util.Map.of());
+
+		assertThat(service.listar(actor, CONSULTORIO_ID, null, null, "sintetico",
+				OrdenDeListado.leer("fechaDesde,desc", "fechaDesde"), 0, 20).contenido())
+				.extracting(SerieResumenView::id).containsExactly(21L, 20L);
+		assertThat(service.listar(actor, CONSULTORIO_ID, null, null, "sintetico",
+				OrdenDeListado.leer("fechaHasta,asc", "fechaHasta"), 0, 20).contenido())
+				.as("sin fecha fin va al final")
+				.extracting(SerieResumenView::id).containsExactly(21L, 20L);
+	}
+
+	private TurnoSerie dadaLaSerie(Turno... deLaSerie) {
+		TurnoSerie serie = serieConId(SERIE_ID);
+		given(series.findByIdInScope(ORG_ID, CONSULTORIO_ID, SERIE_ID)).willReturn(Optional.of(serie));
+		given(turnos.findDeLaSerie(ORG_ID, SERIE_ID)).willReturn(List.of(deLaSerie));
+		return serie;
+	}
+
+	private ContextoClinicoDeAgenda.PlanAgendable dadoElPlan() {
+		var plan = new ContextoClinicoDeAgenda.PlanAgendable(57L, 9L, 128L, 1, "ACTIVO", 3, 4, List.of(
+				new ContextoClinicoDeAgenda.ItemAgendable(42L, CONSULTORIO_ID, "Kinesiologia", 10, 0)));
+		given(contextoDeAgenda.plan(ORG_ID, 57L)).willReturn(Optional.of(plan));
+		given(contextoDeAgenda.caso(ORG_ID, 9L)).willReturn(Optional.of(
+				new ContextoClinicoDeAgenda.CasoAgendable(9L, 128L, 1, 42L, true, null, List.of(plan))));
+		return plan;
+	}
+
+	private AltaDeSerieCommand conPlan() {
+		return new AltaDeSerieCommand(42L, 128L, 31L, tresLunes, null, null, null, 57L, OrigenDeTurno.PLAN);
 	}
 
 	private TurnoSerie serieConId(long id) {

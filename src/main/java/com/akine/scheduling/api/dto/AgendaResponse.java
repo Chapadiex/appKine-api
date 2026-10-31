@@ -29,7 +29,9 @@ public record AgendaResponse(
 		@Schema(description = "Nombre comercial de la oferta", example = "Kinesiologia deportiva")
 		String nombreComercial,
 
-		@Schema(description = "Duracion de cada turno, en minutos", example = "45")
+		@Schema(description = "Duracion de cada turno, en minutos: la del profesional si se pidio uno, y si no "
+				+ "la de la oferta. Un profesional con duracion propia tiene otra: cada slot trae su fin.",
+				example = "45")
 		int duracionMinutos,
 
 		@Schema(
@@ -87,11 +89,10 @@ public record AgendaResponse(
 			Long profesionalId,
 
 			@Schema(
-					description = "Espacio asignado. **Siempre ausente por ahora**: el motor "
-							+ "verifica que exista al menos un espacio habilitado y en servicio, "
-							+ "pero no elige cual. Elegirlo es parte de la reserva y tiene que "
-							+ "ocurrir bajo el mismo lock que la crea, o dos busquedas "
-							+ "concurrentes prometen el mismo box.")
+					description = "Box que tomaria el turno si se reservara ahora, cuando la oferta "
+							+ "requiere espacio. **Es una sugerencia para mostrar**: lo clava la reserva "
+							+ "bajo el lock de la sede, y puede ser otro si alguien tomo este mientras "
+							+ "tanto.")
 			Long espacioId,
 
 			@Schema(description = "Cuantas reservas admite el turno. 1 individual, mas grupal", example = "1")

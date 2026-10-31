@@ -123,6 +123,9 @@ public class SerieDeTurnosService {
 	private final ConsultorioMembershipDirectory membresias;
 	private final AccountIdentityDirectory identidades;
 
+	private final ContextoClinicoDeTurno contextoClinico;
+	private final SesionesDelPlan sesionesDelPlan;
+
 	public SerieDeTurnosService(
 			TurnoSerieRepositoryPort series,
 			TurnoRepositoryPort turnos,
@@ -142,8 +145,12 @@ public class SerieDeTurnosService {
 			OcurrenciaOmitidaRepositoryPort omisiones,
 			PlatformTransactionManager transactionManager,
 			ConsultorioMembershipDirectory membresias,
-			AccountIdentityDirectory identidades) {
+			AccountIdentityDirectory identidades,
+			ContextoClinicoDeTurno contextoClinico,
+			SesionesDelPlan sesionesDelPlan) {
 
+		this.contextoClinico = contextoClinico;
+		this.sesionesDelPlan = sesionesDelPlan;
 		this.membresias = membresias;
 		this.identidades = identidades;
 
@@ -212,29 +219,53 @@ public class SerieDeTurnosService {
 		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, command.ofertaId())
 				.orElseThrow(() -> new OfertaNotAccessibleException(command.ofertaId()));
 		exigirPacienteVigente(organizationId, command.personaId());
+		ContextoClinicoDeTurno.Resuelto contexto = contextoClinico.resolver(
+				organizationId, command.personaId(), command.ofertaId(), command.casoId(), command.planId());
 
 		ZoneId zona = ZoneId.of(sede.timezone());
 		Instant ahora = Instant.now();
-		List<Instant> inicios = command.regla().ocurrencias().stream()
+		// Con ocurrencias elegidas se reserva lo que el operador reviso (TURNO - Tecnico §20), y un
+		// feriado elegido no se omite: si eligio ese dia, que lo rechace la revalidacion.
+		List<Instant> deLaRegla = command.regla().ocurrencias().stream()
 				.map(local -> local.atZone(zona).toInstant())
 				.toList();
+		Map<Instant, Long> profesionalElegido = new HashMap<>();
+		List<Instant> inicios = command.conOcurrenciasElegidas()
+				? command.ocurrencias().stream()
+						.peek(ocurrencia -> {
+							if (ocurrencia.profesionalId() != null) {
+								profesionalElegido.put(ocurrencia.inicio(), ocurrencia.profesionalId());
+							}
+						})
+						.map(AltaDeSerieCommand.OcurrenciaElegida::inicio)
+						.sorted()
+						.toList()
+				: deLaRegla;
 		if (!inicios.getFirst().isAfter(ahora)) {
 			throw new IllegalArgumentException(
 					"La primera ocurrencia de la serie ya paso: el pasado no se reserva");
+		}
+		if (inicios.stream().distinct().count() < inicios.size()) {
+			throw new IllegalArgumentException("La serie repite un horario: cada sesion va en el suyo");
 		}
 
 		// U-22: las ocurrencias que caen en un dia que la sede cierra por feriado se OMITEN, en vez
 		// de hacer fallar la serie entera. Todo o nada sigue valiendo para cualquier otra causa.
 		Set<LocalDate> feriados = revalidador.feriadosQueCierran(
 				organizationId, sede, oferta, command.profesionalId(),
-				fechaLocal(inicios.getFirst(), zona), fechaLocal(inicios.getLast(), zona).plusDays(1));
-		List<Instant> aReservar = inicios.stream()
-				.filter(inicio -> !feriados.contains(fechaLocal(inicio, zona)))
-				.toList();
+				fechaLocal(deLaRegla.getFirst(), zona), fechaLocal(deLaRegla.getLast(), zona).plusDays(1));
+		List<Instant> aReservar = command.conOcurrenciasElegidas()
+				? inicios
+				: inicios.stream().filter(inicio -> !feriados.contains(fechaLocal(inicio, zona))).toList();
 		if (aReservar.isEmpty()) {
 			// Una serie sin un solo turno no es una serie: no se crea nada, como en todo o nada.
 			throw new OcurrenciaSinLugarException(inicios.getFirst(), new SlotNoDisponibleException(
 					"todas las ocurrencias de la serie caen en dias que la sede cierra por feriado"));
+		}
+
+		// TURNO - Tecnico §70: bajo el lock, y por el total. El plan decide antes de crear nada.
+		if (contexto.plan() != null) {
+			sesionesDelPlan.exigirDisponibles(organizationId, contexto.plan(), command.ofertaId(), aReservar.size());
 		}
 
 		TurnoSerie serie = series.save(new TurnoSerie(
@@ -243,20 +274,25 @@ public class SerieDeTurnosService {
 				actor.accountId(), ahora, command.idempotencyKey(),
 				command.idempotencyKey() == null ? null : command.huella(consultorioId)));
 
-		List<OcurrenciaOmitida> omitidas = inicios.stream()
-				.filter(inicio -> feriados.contains(fechaLocal(inicio, zona)))
+		// Lo que la regla pedia y no se reservo por el feriado, venga o no de una seleccion del operador:
+		// el detalle de la serie tiene que poder decir por que falta esa fecha.
+		List<OcurrenciaOmitida> omitidas = deLaRegla.stream()
+				.filter(inicio -> feriados.contains(fechaLocal(inicio, zona)) && !aReservar.contains(inicio))
 				.map(inicio -> omisiones.registrar(new OcurrenciaOmitida(
 						serie, inicio, fechaLocal(inicio, zona), OcurrenciaOmitida.Motivo.FERIADO)))
 				.toList();
 
+		Map<Long, Integer> duracionesPropias =
+				ofertas.duracionesPropias(organizationId, consultorioId, command.ofertaId());
 		List<Turno> creados = new ArrayList<>();
 		for (Instant inicio : aReservar) {
-			Instant fin = inicio.plusSeconds(oferta.duracionMinutos() * 60L);
+			// Una ocurrencia puede ir con otro profesional que el de la serie, y dura lo que dura con el.
+			Long profesional = profesionalElegido.getOrDefault(inicio, command.profesionalId());
+			Instant fin = inicio.plusSeconds(oferta.duracionCon(duracionesPropias, profesional) * 60L);
 			RevalidadorDeSlot.Asignacion asignacion = sinLugarNombraLaOcurrencia(inicio, () -> {
 				exigirVigencia(oferta, inicio, zona);
 				return revalidador.revalidar(new RevalidadorDeSlot.Pedido(
-						organizationId, consultorioId, sede, oferta, inicio, fin,
-						command.profesionalId(), null));
+						organizationId, consultorioId, sede, oferta, inicio, fin, profesional, null));
 			});
 
 			Turno turno = new Turno(
@@ -264,6 +300,12 @@ public class SerieDeTurnosService {
 					asignacion.profesionalId(), asignacion.espacioId(), inicio, fin,
 					actor.accountId(), ahora, null, null);
 			turno.vincularASerie(serie.getId());
+			if (contexto.casoId() != null) {
+				turno.asociarContexto(contexto.casoId(), contexto.planId());
+			}
+			if (command.origen() != null) {
+				turno.declararOrigen(command.origen());
+			}
 			// save y no saveAndFlush alcanza: con IDENTITY el INSERT sale ya, y la revalidacion de
 			// la ocurrencia siguiente lo ve.
 			Turno creado = turnos.save(turno);

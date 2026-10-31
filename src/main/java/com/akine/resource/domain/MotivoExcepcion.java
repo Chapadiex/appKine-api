@@ -15,6 +15,9 @@ public enum MotivoExcepcion {
 	/** Ausencia programada y autorizada de antemano. */
 	LICENCIA,
 
+	/** Capacitacion o congreso: una ausencia programada que no es licencia. */
+	CAPACITACION,
+
 	/**
 	 * La excepcion nace de un feriado del calendario nacional ({@link Feriado}). Suele venir
 	 * acompanada de {@code feriadoId} para trazar el origen.

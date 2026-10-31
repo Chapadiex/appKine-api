@@ -126,6 +126,15 @@ class AgendaServiceTest {
 		return new DiaDisponible(fecha, razon, List.of());
 	}
 
+	/** Turnos de una hora de esta oferta y este profesional, empezando en esos instantes. */
+	private void conTurnosEn(Instant... inicios) {
+		given(reservas.ocupacionDeRecursos(anyLong(), anyLong(), any(), any(), any(), any()))
+				.willReturn(java.util.Arrays.stream(inicios)
+						.map(inicio -> new com.akine.scheduling.spi.ReservaProbe.OcupacionDeRecurso(
+								1L, OFERTA_ID, PROFESIONAL_ID, null, inicio, inicio.plusSeconds(3600)))
+						.toList());
+	}
+
 	private void conDisponibilidad(List<DiaDisponible> dias) {
 		given(disponibilidad.efectiva(anyLong(), any(), anyLong(), any(), any()))
 				.willReturn(dias);
@@ -306,9 +315,7 @@ class AgendaServiceTest {
 		given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
 				.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
 		conDisponibilidad(List.of(atiende(LUNES, "09:00", "11:00")));
-		given(reservas.reservasPorInicio(anyLong(), anyLong(), anyLong(), any(), any(), any()))
-				.willReturn(Map.of(
-						LUNES.atTime(9, 0).atZone(ZONA).toInstant(), 1));
+		conTurnosEn(LUNES.atTime(9, 0).atZone(ZONA).toInstant());
 
 		var slots = buscarUnDia().dias().get(0).slots();
 
@@ -396,8 +403,7 @@ class AgendaServiceTest {
 			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
 					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
 			conDisponibilidad(List.of(atiende(LUNES, "09:00", "11:00")));
-			given(reservas.reservasPorInicio(anyLong(), anyLong(), anyLong(), any(), any(), any()))
-					.willReturn(Map.of(local(LUNES, "09:00"), 1, local(LUNES, "10:00"), 1));
+			conTurnosEn(local(LUNES, "09:00"), local(LUNES, "10:00"));
 
 			var dia = buscarUnDia().dias().get(0);
 
@@ -413,8 +419,7 @@ class AgendaServiceTest {
 			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
 					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
 			conDisponibilidad(List.of(atiende(LUNES, "09:00", "11:00")));
-			given(reservas.reservasPorInicio(anyLong(), anyLong(), anyLong(), any(), any(), any()))
-					.willReturn(Map.of(local(LUNES, "10:00"), 1));
+			conTurnosEn(local(LUNES, "10:00"));
 
 			assertThat(buscarUnDia().dias().get(0).motivoSinSlots()).isEqualTo("COMPLETO");
 		}
@@ -480,6 +485,55 @@ class AgendaServiceTest {
 	}
 
 	@Nested
+	@DisplayName("Los motivos que quedaban sin ejercitar")
+	class OtrosMotivos {
+
+		@BeforeEach
+		void conProfesional() {
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(ofertaDe(30)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+		}
+
+		@Test
+		@DisplayName("Una oferta sin profesional no da horarios: el limite conocido, declarado con su motivo")
+		void oferta_sin_profesional() {
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(
+					oferta(30, false, false, LUNES.minusYears(1), null, true)));
+
+			assertThat(buscarUnDia().dias().get(0).motivoSinSlots()).isEqualTo("SIN_HORARIO");
+		}
+
+		@Test
+		@DisplayName("Si M05 no devuelve el dia del profesional, el dia sale SIN_HORARIO y no vacio sin explicacion")
+		void disponibilidad_sin_el_dia() {
+			conDisponibilidad(List.of());
+
+			assertThat(buscarUnDia().dias().get(0).motivoSinSlots()).isEqualTo("SIN_HORARIO");
+		}
+
+		@Test
+		@DisplayName("El vinculo vencido se traduce, y una razon nueva de M05 cae en SIN_HORARIO en vez de romper la lectura")
+		void razones_de_la_disponibilidad() {
+			conDisponibilidad(List.of(noAtiende(LUNES, "VINCULO")));
+			assertThat(buscarUnDia().dias().get(0).motivoSinSlots()).isEqualTo("VINCULO");
+
+			conDisponibilidad(List.of(noAtiende(LUNES, "RAZON_NUEVA")));
+			assertThat(buscarUnDia().dias().get(0).motivoSinSlots()).isEqualTo("SIN_HORARIO");
+		}
+
+		@Test
+		@DisplayName("Una franja hasta medianoche termina al empezar el dia siguiente, no a las 00:00 de ese dia")
+		void franja_hasta_medianoche() {
+			conDisponibilidad(List.of(new DiaDisponible(LUNES, null, List.of(new Franja(
+					local(LUNES, "23:30"), MARTES.atStartOfDay(ZONA).toInstant())))));
+
+			assertThat(buscarUnDia().dias().get(0).slots()).singleElement()
+					.satisfies(slot -> assertThat(slot.hasta()).isEqualTo(MARTES.atStartOfDay(ZONA).toInstant()));
+		}
+	}
+
+	@Nested
 	@DisplayName("El espacio")
 	class Espacios {
 
@@ -500,10 +554,47 @@ class AgendaServiceTest {
 		}
 
 		@Test
-		@DisplayName("El motor no clava un espacio: elegirlo es de la reserva")
-		void no_asigna_espacio() {
-			// Elegirlo aca, fuera de la transaccion que crea el turno, seria una promesa que dos
-			// busquedas concurrentes rompen: las dos verian el mismo box libre.
+		@DisplayName("Sin habilitaciones de box son todos los de la sede: lista vacia significa todos")
+		void sin_habilitaciones_de_box() {
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(
+					oferta(30, true, true, LUNES.minusYears(1), null, true)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+			given(ofertas.espaciosHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(List.of());
+			given(espacios.enServicio(anyLong(), anyLong(), any(), any())).willReturn(List.of(
+					new EspacioSnapshot(ESPACIO_ID, ORG_ID, CONSULTORIO_ID, "Box 1", "BOX", 1, Instant.EPOCH, null, true, true),
+					new EspacioSnapshot(99L, ORG_ID, CONSULTORIO_ID, "En obra", "BOX", 1, Instant.EPOCH, null, true, false)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "09:30")));
+
+			assertThat(buscarUnDia().dias().get(0).slots()).singleElement()
+					.satisfies(slot -> assertThat(slot.espacioId()).isEqualTo(ESPACIO_ID));
+		}
+
+		@Test
+		@DisplayName("Sin box libre a esa hora el cupo es cero: el dia lleno es COMPLETO y no un horario que la reserva rechaza")
+		void sin_box_libre_el_cupo_es_cero() {
+			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(
+					oferta(30, true, true, LUNES.minusYears(1), null, true)));
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(PROFESIONAL_ID, null)));
+			given(ofertas.espaciosHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
+					.willReturn(List.of(habilitacion(ESPACIO_ID, null)));
+			given(espacios.find(anyLong(), anyLong(), any())).willReturn(Optional.of(new EspacioSnapshot(
+					ESPACIO_ID, ORG_ID, CONSULTORIO_ID, "Box 1", "BOX", 1, Instant.EPOCH, null, true, true)));
+			conDisponibilidad(List.of(atiende(LUNES, "09:00", "09:30")));
+			// Lo ocupa otro profesional: el suyo esta libre, lo que falta es un box.
+			given(reservas.ocupacionDeRecursos(anyLong(), anyLong(), any(), any(), any(), any())).willReturn(List.of(
+					new com.akine.scheduling.spi.ReservaProbe.OcupacionDeRecurso(1L, OFERTA_ID + 1, 99L, ESPACIO_ID,
+							local(LUNES, "09:00"), local(LUNES, "09:30"))));
+
+			assertThat(buscarUnDia().dias().get(0).motivoSinSlots()).isEqualTo("COMPLETO");
+		}
+
+		@Test
+		@DisplayName("El motor sugiere un box libre para mostrarlo: clavarlo es de la reserva")
+		void sugiere_espacio() {
+			// Es una sugerencia y no una promesa: dos busquedas concurrentes ven el mismo box libre, y
+			// lo que decide es la reserva, bajo el lock.
 			given(ofertas.find(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(Optional.of(
 					oferta(30, true, true, LUNES.minusYears(1), null, true)));
 			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
@@ -518,8 +609,7 @@ class AgendaServiceTest {
 			conDisponibilidad(List.of(atiende(LUNES, "09:00", "10:00")));
 
 			assertThat(buscarUnDia().dias().get(0).slots())
-					.isNotEmpty()
-					.allSatisfy(slot -> assertThat(slot.espacioId()).isNull());
+					.allMatch(slot -> Long.valueOf(ESPACIO_ID).equals(slot.espacioId()));
 		}
 	}
 
@@ -561,6 +651,13 @@ class AgendaServiceTest {
 			given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.empty());
 
 			assertThatThrownBy(this::buscar).isInstanceOf(ConsultorioNoAccesibleException.class);
+		}
+
+		@Test
+		@DisplayName("Sin contexto de trabajo es 403 y nunca 401")
+		void sin_contexto() {
+			assertThatThrownBy(() -> service.buscar(null, CONSULTORIO_ID, OFERTA_ID, LUNES, MARTES, null))
+					.isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
 		}
 
 		@Test

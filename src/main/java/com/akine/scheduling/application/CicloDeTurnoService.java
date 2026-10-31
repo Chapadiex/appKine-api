@@ -6,9 +6,12 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.identity.AccountIdentity;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.domain.EstadoRecepcion;
 import com.akine.scheduling.domain.EstadoTurno;
+import com.akine.scheduling.domain.OrigenDeCancelacion;
 import com.akine.scheduling.domain.PermissionCodes;
 import com.akine.scheduling.domain.TipoEventoTurno;
 import com.akine.scheduling.domain.Turno;
@@ -41,6 +44,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Cancelacion, reprogramacion, ausencia e historial de Turno (M12, AKINE-05.03).
@@ -101,6 +105,7 @@ public class CicloDeTurnoService {
 	private final AuditTrail auditTrail;
 	private final AvisosDeTurno avisos;
 	private final RegistroDeRecepcion recepciones;
+	private final AccountIdentityDirectory identidades;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public CicloDeTurnoService(
@@ -116,6 +121,7 @@ public class CicloDeTurnoService {
 			AuditTrail auditTrail,
 			AvisosDeTurno avisos,
 			RegistroDeRecepcion recepciones,
+			AccountIdentityDirectory identidades,
 			PlatformTransactionManager transactionManager) {
 
 		this.turnos = turnos;
@@ -130,6 +136,7 @@ public class CicloDeTurnoService {
 		this.auditTrail = auditTrail;
 		this.avisos = avisos;
 		this.recepciones = recepciones;
+		this.identidades = identidades;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -152,6 +159,20 @@ public class CicloDeTurnoService {
 	public TurnoView cancelar(
 			OperatingActor actor, long consultorioId, long turnoId,
 			String motivo, long expectedVersion) {
+		return cancelarValidando(actor, consultorioId, turnoId, motivo, null, expectedVersion);
+	}
+
+	/** {@link #cancelar} declarando a quien se le atribuye la cancelacion (TURNO - Tecnico §23). */
+	@Transactional
+	public TurnoView cancelar(
+			OperatingActor actor, long consultorioId, long turnoId,
+			String motivo, OrigenDeCancelacion origen, long expectedVersion) {
+		return cancelarValidando(actor, consultorioId, turnoId, motivo, origen, expectedVersion);
+	}
+
+	private TurnoView cancelarValidando(
+			OperatingActor actor, long consultorioId, long turnoId,
+			String motivo, OrigenDeCancelacion origen, long expectedVersion) {
 
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
@@ -161,7 +182,7 @@ public class CicloDeTurnoService {
 		exigirVersion(turno, expectedVersion);
 		exigirSinAtencion(organizationId, consultorioId, turno);
 
-		return TurnoView.de(aplicarCancelacion(actor, sede, turno, motivo, Instant.now()));
+		return TurnoView.de(aplicarCancelacion(actor, sede, turno, motivo, origen, Instant.now()));
 	}
 
 	/**
@@ -177,9 +198,15 @@ public class CicloDeTurnoService {
 	 */
 	public Turno aplicarCancelacion(
 			OperatingActor actor, ConsultorioSnapshot sede, Turno turno, String motivo, Instant ahora) {
+		return aplicarCancelacion(actor, sede, turno, motivo, null, ahora);
+	}
+
+	public Turno aplicarCancelacion(
+			OperatingActor actor, ConsultorioSnapshot sede, Turno turno, String motivo,
+			OrigenDeCancelacion origen, Instant ahora) {
 
 		EstadoTurno anterior = turno.getEstado();
-		turno.cancelar(motivo, actor.accountId(), ahora);
+		turno.cancelar(motivo, origen, actor.accountId(), ahora);
 		Turno cancelado = turnos.saveAndFlush(turno);
 
 		eventos.registrar(TurnoEvento.de(
@@ -223,6 +250,23 @@ public class CicloDeTurnoService {
 	public TurnoView marcarAusente(
 			OperatingActor actor, long consultorioId, long turnoId,
 			String motivo, long expectedVersion) {
+		return marcarAusenteValidando(actor, consultorioId, turnoId, motivo, null, expectedVersion);
+	}
+
+	/**
+	 * {@link #marcarAusente} decidiendo si consume una sesion del plan (TURNO.md §19). No hay una regla
+	 * institucional configurable: lo decide quien la registra, y sin decision no consume.
+	 */
+	@Transactional
+	public TurnoView marcarAusente(
+			OperatingActor actor, long consultorioId, long turnoId,
+			String motivo, Boolean consumeSesion, long expectedVersion) {
+		return marcarAusenteValidando(actor, consultorioId, turnoId, motivo, consumeSesion, expectedVersion);
+	}
+
+	private TurnoView marcarAusenteValidando(
+			OperatingActor actor, long consultorioId, long turnoId,
+			String motivo, Boolean consumeSesion, long expectedVersion) {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
@@ -239,7 +283,7 @@ public class CicloDeTurnoService {
 
 		EstadoTurno anterior = turno.getEstado();
 		Instant ahora = Instant.now();
-		turno.marcarAusente(ahora);
+		turno.marcarAusente(consumeSesion, ahora);
 		Turno ausente = turnos.saveAndFlush(turno);
 
 		eventos.registrar(TurnoEvento.de(
@@ -317,19 +361,23 @@ public class CicloDeTurnoService {
 			OperatingActor actor, ConsultorioSnapshot sede, OfertaSnapshot oferta, Turno turno,
 			Instant nuevoInicio, Long profesionalId, String motivo, Instant ahora) {
 
-		Instant nuevoFin = nuevoInicio.plusSeconds(oferta.duracionMinutos() * 60L);
+		// Paquete E-2. El contrato declara el profesional opcional: sin el, el turno se mueve con el
+		// que ya tenia. Antes viajaba null al revalidador, que respondia slot-no-disponible ("la
+		// oferta exige profesional y no se indico ninguno") al caso mas comun de todos: correr el
+		// turno de hora con el mismo profesional. La reprogramacion de serie ya lo resolvia asi.
+		Long profesionalDestino = profesionalId != null ? profesionalId : turno.getProfesionalMembershipId();
+
+		// Con la duracion de quien va a atender: pasar el turno a otro profesional, o a uno que ahora
+		// tiene duracion propia, le cambia el fin aunque no cambie la hora.
+		Instant nuevoFin = nuevoInicio.plusSeconds(oferta.duracionCon(
+				ofertas.duracionesPropias(turno.getOrganizationId(), turno.getConsultorioId(), oferta.id()),
+				profesionalDestino) * 60L);
 		LocalDate fecha = nuevoInicio.atZone(ZoneId.of(sede.timezone())).toLocalDate();
 		if (!oferta.vigenteEl(fecha)) {
 			throw new OfertaNoAgendableException(oferta.id(), oferta.active()
 					? "no esta vigente el " + fecha
 					: "esta dada de baja");
 		}
-
-		// Paquete E-2. El contrato declara el profesional opcional: sin el, el turno se mueve con el
-		// que ya tenia. Antes viajaba null al revalidador, que respondia slot-no-disponible ("la
-		// oferta exige profesional y no se indico ninguno") al caso mas comun de todos: correr el
-		// turno de hora con el mismo profesional. La reprogramacion de serie ya lo resolvia asi.
-		Long profesionalDestino = profesionalId != null ? profesionalId : turno.getProfesionalMembershipId();
 
 		RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(new RevalidadorDeSlot.Pedido(
 				turno.getOrganizationId(), turno.getConsultorioId(), sede, oferta, nuevoInicio, nuevoFin,
@@ -383,8 +431,19 @@ public class CicloDeTurnoService {
 		// es una forma sutil de confirmar que el id no existe aca.
 		exigirTurno(organizationId, consultorioId, turnoId);
 
-		return eventos.historial(organizationId, turnoId).stream()
-				.map(EventoDeTurnoView::de)
+		List<TurnoEvento> historial = eventos.historial(organizationId, turnoId);
+		Map<Long, AccountIdentity> actores = identidades.identidadesDe(historial.stream()
+				.map(TurnoEvento::getActorCuentaId)
+				.filter(Objects::nonNull)
+				.distinct()
+				.toList());
+		return historial.stream()
+				.map(evento -> {
+					AccountIdentity quien = evento.getActorCuentaId() == null
+							? null
+							: actores.get(evento.getActorCuentaId());
+					return EventoDeTurnoView.de(evento, quien == null ? null : quien.nombreCompleto());
+				})
 				.toList();
 	}
 

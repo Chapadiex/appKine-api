@@ -3,6 +3,7 @@ package com.akine.scheduling.application;
 import com.akine.platform.spi.audit.AuditoriaAparte;
 import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.offering.spi.OfertaDirectory;
+import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
@@ -10,6 +11,7 @@ import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.scheduling.domain.EstadoTurno;
 import com.akine.scheduling.domain.Recepcion;
 import com.akine.scheduling.domain.Turno;
+import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.domain.exception.TurnoConAtencionException;
 import com.akine.scheduling.domain.exception.TurnoNotAccessibleException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.AgendaSedeRepositoryPort;
@@ -25,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
@@ -72,6 +75,7 @@ class CicloDeTurnoServiceTest {
 	@Mock private AuditTrail auditTrail;
 	@Mock private AvisosDeTurno avisos;
 	@Mock private RegistroDeRecepcion recepciones;
+	@Mock private com.akine.platform.spi.identity.AccountIdentityDirectory identidades;
 
 	private CicloDeTurnoService service;
 	private final OperatingActor actor = new OperatingActor(9L, false, ORG_ID, CONSULTORIO_ID);
@@ -79,7 +83,7 @@ class CicloDeTurnoServiceTest {
 	@BeforeEach
 	void prepararServicio() {
 		service = new CicloDeTurnoService(turnos, eventos, agendas, ofertas, consultorios,
-				new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), iniciador, revalidador, atenciones, auditTrail, avisos, recepciones, mock(PlatformTransactionManager.class));
+				new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), iniciador, revalidador, atenciones, auditTrail, avisos, recepciones, identidades, mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -227,6 +231,54 @@ class CicloDeTurnoServiceTest {
 		assertThat(pedido.getValue().profesionalId())
 				.as("el profesional que ya tenia el turno, no ninguno")
 				.isEqualTo(31L);
+	}
+
+	@Test
+	@DisplayName("la ausencia de un turno de plan consume una sesion si lo decide quien la registra")
+	void ausencia_que_consume_sesion() {
+		Turno turno = new Turno(ORG_ID, CONSULTORIO_ID, 42L, 128L, 31L, null, Instant.now().minus(Duration.ofHours(1)),
+				Instant.now(), 9L, Instant.now().minus(Duration.ofDays(1)), null, null);
+		ReflectionTestUtils.setField(turno, "id", TURNO_ID);
+		turno.asociarContexto(9L, 57L);
+		given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(turno));
+		given(turnos.saveAndFlush(turno)).willReturn(turno);
+
+		service.marcarAusente(actor, CONSULTORIO_ID, TURNO_ID, "No vino", true, 0L);
+
+		assertThat(turno.getEstado()).isEqualTo(EstadoTurno.AUSENTE);
+		assertThat(turno.getAusenciaConsumeSesion()).isTrue();
+	}
+
+	@Test
+	@DisplayName("no se mueve un turno a un dia en que la oferta no esta vigente o esta de baja, y no se toca nada")
+	void reprogramar_a_una_oferta_que_no_agenda() {
+		Turno turno = turnoFuturo();
+		ConsultorioSnapshot sede = new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true);
+		Instant destino = Instant.now().plus(Duration.ofDays(5));
+		java.time.LocalDate hoy = java.time.LocalDate.now();
+
+		assertThatThrownBy(() -> service.aplicarReprogramacion(actor, sede, ofertaHasta(hoy, true), turno, destino, 31L, "Mover", Instant.now()))
+				.isInstanceOf(OfertaNoAgendableException.class)
+				.hasMessageContaining("no esta vigente");
+		assertThatThrownBy(() -> service.aplicarReprogramacion(actor, sede, ofertaHasta(null, false), turno, destino, 31L, "Mover", Instant.now()))
+				.isInstanceOf(OfertaNoAgendableException.class)
+				.hasMessageContaining("dada de baja");
+
+		verify(turnos, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("sin contexto de trabajo es 403 y nunca 401")
+	void sin_contexto() {
+		assertThatThrownBy(() -> service.cancelar(null, CONSULTORIO_ID, TURNO_ID, "motivo", 0L))
+				.isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.marcarAusente(new OperatingActor(9L, false, null, null), CONSULTORIO_ID, TURNO_ID, null, 0L))
+				.isInstanceOf(AccessDeniedException.class);
+	}
+
+	private static OfertaSnapshot ofertaHasta(java.time.LocalDate hasta, boolean activa) {
+		return new OfertaSnapshot(42L, ORG_ID, CONSULTORIO_ID, 3L, "Kinesiologia", 45, 1, false, true, false, false, false,
+				java.time.LocalDate.now().minusYears(1), hasta, activa);
 	}
 
 	private static Turno turnoFuturo() {

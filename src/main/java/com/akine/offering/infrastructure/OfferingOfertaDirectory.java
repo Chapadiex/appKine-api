@@ -3,6 +3,7 @@ package com.akine.offering.infrastructure;
 import com.akine.offering.application.OfertaPrecioParticularService;
 import com.akine.offering.domain.Habilitacion;
 import com.akine.offering.domain.Modalidad;
+import com.akine.offering.domain.OfertaDuracionProfesional;
 import com.akine.offering.domain.OfertaServicioConsultorio;
 import com.akine.offering.domain.Servicio;
 import com.akine.offering.spi.ClasificacionDeOferta;
@@ -46,6 +47,7 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 	private final OfertaRepository ofertas;
 	private final OfertaProfesionalHabilitadoRepository profesionales;
 	private final OfertaEspacioHabilitadoRepository espacios;
+	private final OfertaDuracionProfesionalRepository duraciones;
 	private final OfertaPrecioParticularService precios;
 	private final ConsultorioDirectory consultorios;
 	private final ServicioRepository servicios;
@@ -54,6 +56,7 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 			OfertaRepository ofertas,
 			OfertaProfesionalHabilitadoRepository profesionales,
 			OfertaEspacioHabilitadoRepository espacios,
+			OfertaDuracionProfesionalRepository duraciones,
 			OfertaPrecioParticularService precios,
 			ConsultorioDirectory consultorios,
 			ServicioRepository servicios) {
@@ -62,6 +65,7 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 		this.servicios = servicios;
 		this.profesionales = profesionales;
 		this.espacios = espacios;
+		this.duraciones = duraciones;
 		this.precios = precios;
 		this.consultorios = consultorios;
 	}
@@ -162,6 +166,13 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 
 		return proyectar(espacios
 				.findAllByOrganizationIdAndOfertaIdAndActive(organizationId, ofertaId, true));
+	}
+
+	@Override
+	public Map<Long, Integer> duracionesPropias(long organizationId, long consultorioId, long ofertaId) {
+		return duraciones.findAllByOrganizationIdAndOfertaIdAndActive(organizationId, ofertaId, true).stream()
+				.collect(Collectors.toMap(
+						OfertaDuracionProfesional::getMembershipId, OfertaDuracionProfesional::getDuracionMinutos));
 	}
 
 	@Override

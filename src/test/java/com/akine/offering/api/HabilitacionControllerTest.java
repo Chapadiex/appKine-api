@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -116,6 +117,43 @@ class HabilitacionControllerTest {
 	}
 
 	@Test
+	@DisplayName("duraciones: el cuerpo llega como minutos por profesional, y la respuesta las publica")
+	void reemplazar_duraciones() throws Exception {
+		given(habilitacionService.reemplazarDuraciones(
+				any(), anyLong(), anyLong(), anyLong(), any(), anyLong())).willReturn(new HabilitacionesView(
+						77L, 5L, false, false, List.of(), List.of(), 6, 6, null,
+						List.of(new HabilitacionesView.DuracionPropiaView(215L, 30))));
+
+		mockMvc.perform(put(RUTA + "/habilitaciones/duraciones").with(miembro())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"duraciones\":[{\"membershipId\":215,\"duracionMinutos\":30}],\"expectedVersion\":4}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.ofertaVersion").value(5))
+				.andExpect(jsonPath("$.duracionesPropias[0].membershipId").value(215))
+				.andExpect(jsonPath("$.duracionesPropias[0].duracionMinutos").value(30));
+
+		verify(habilitacionService).reemplazarDuraciones(
+				any(), eq(ORG_ID), eq(CONSULTORIO_ID), eq(77L), eq(Map.of(215L, 30)), eq(4L));
+	}
+
+	@Test
+	@DisplayName("duraciones: cero, sin minutos o el mismo profesional dos veces es 400 y no llega al servicio")
+	void duraciones_invalidas() throws Exception {
+		for (String duraciones : List.of(
+				"[{\"membershipId\":215,\"duracionMinutos\":0}]",
+				"[{\"membershipId\":215}]",
+				"[{\"membershipId\":215,\"duracionMinutos\":30},{\"membershipId\":215,\"duracionMinutos\":45}]",
+				"[null]")) {
+			mockMvc.perform(put(RUTA + "/habilitaciones/duraciones").with(miembro())
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("{\"duraciones\":" + duraciones + ",\"expectedVersion\":4}"))
+					.andExpect(status().isBadRequest());
+		}
+
+		verifyNoInteractions(habilitacionService);
+	}
+
+	@Test
 	@DisplayName("sin la lista es 400: omitirla no es lo mismo que mandarla vacia")
 	void sin_lista() throws Exception {
 		mockMvc.perform(put(RUTA + "/habilitaciones/espacios").with(miembro())
@@ -193,7 +231,7 @@ class HabilitacionControllerTest {
 						"PROFESIONAL", desde, null, "ACTIVO", true, true, null, null, 0L)),
 				List.of(new HabilitacionesView.EspacioHabilitadoView(2L, 40L, "Box 2", "BOX", 4,
 						desde, null, "ACTIVO", true, true, null, null, 0L)),
-				6, 4, "Box 2");
+				6, 4, "Box 2", List.of());
 	}
 
 	private record PrincipalDePrueba(long accountId) implements AuthenticatedPrincipal {

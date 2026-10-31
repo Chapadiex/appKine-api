@@ -801,7 +801,7 @@ public class PlanTratamientoService {
 
 		Map<Long, RealizadoPorOferta> porOferta = new LinkedHashMap<>();
 		for (RealizadoPorOferta conteo
-				: realizado.contarPorOfertaEnElCaso(organizationId, plan.getCasoClinicoId())) {
+				: realizado.contarPorOfertaEnElCasoDesde(organizationId, plan.getCasoClinicoId(), plan.getActivadoEn())) {
 			porOferta.put(conteo.ofertaId(), conteo);
 		}
 

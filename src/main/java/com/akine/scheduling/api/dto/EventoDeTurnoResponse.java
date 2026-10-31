@@ -32,7 +32,7 @@ public record EventoDeTurnoResponse(
 						+ "que las distingue.",
 				allowableValues = {
 						"RESERVA", "CONFIRMACION", "CANCELACION", "REPROGRAMACION", "AUSENCIA",
-						"LLEGADA", "LLEGADA_DESHECHA"},
+						"LLEGADA", "LLEGADA_DESHECHA", "CAMBIO_DE_CONTEXTO"},
 				example = "CANCELACION")
 		String tipo,
 
@@ -63,6 +63,12 @@ public record EventoDeTurnoResponse(
 				example = "12")
 		Long actorCuentaId,
 
+		@Schema(
+				description = "Nombre de esa cuenta. Ausente si lo hizo el sistema o la cuenta ya no "
+						+ "resuelve.",
+				example = "Ana Recepcion")
+		String actorNombre,
+
 		@Schema(example = "2026-09-10T11:20:00Z")
 		Instant ocurridoEn) {
 
@@ -70,6 +76,7 @@ public record EventoDeTurnoResponse(
 		return new EventoDeTurnoResponse(
 				vista.id(), vista.tipo(), vista.estadoAnterior(), vista.estadoNuevo(),
 				vista.motivo(), vista.inicioAnterior(), vista.finAnterior(),
-				vista.inicioNuevo(), vista.finNuevo(), vista.actorCuentaId(), vista.ocurridoEn());
+				vista.inicioNuevo(), vista.finNuevo(), vista.actorCuentaId(), vista.actorNombre(),
+				vista.ocurridoEn());
 	}
 }

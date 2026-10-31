@@ -209,7 +209,10 @@ public class SimuladorDeImpacto {
 			HorarioDeSede horarioDespuesPedido) {
 
 		ZoneId zona = zonaDe(sede);
-		LocalDate horizonte = LocalDate.ofInstant(ahora, zona).plusDays(DIAS_DE_HORIZONTE);
+		// Desde donde empieza el cambio y no desde hoy: un cierre cargado para dentro de cuatro meses
+		// quedaba entero despues del horizonte y salia "sin turnos afectados" sin mirar ninguno.
+		LocalDate hoy = LocalDate.ofInstant(ahora, zona);
+		LocalDate horizonte = (desde.isAfter(hoy) ? desde : hoy).plusDays(DIAS_DE_HORIZONTE);
 		LocalDate hasta = finPedido == null || finPedido.isAfter(horizonte) ? horizonte : finPedido;
 		Instant hastaInstante = hasta.atStartOfDay(zona).toInstant();
 		if (!desde.isBefore(hasta) || !hastaInstante.isAfter(ahora)) {

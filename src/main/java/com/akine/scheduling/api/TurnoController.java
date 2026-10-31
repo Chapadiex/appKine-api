@@ -1,6 +1,8 @@
 package com.akine.scheduling.api;
 
 import com.akine.scheduling.api.dto.AgendaDelDiaResponse;
+import com.akine.scheduling.api.dto.AsociarContextoDeTurnoRequest;
+import com.akine.scheduling.api.dto.TurnosDePersonaResponse;
 import com.akine.scheduling.api.dto.CancelarTurnoRequest;
 import com.akine.scheduling.api.dto.EventoDeTurnoResponse;
 import com.akine.scheduling.api.dto.RegistrarAusenciaRequest;
@@ -24,6 +26,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -125,7 +129,12 @@ public class TurnoController {
 						request.inicio(),
 						request.profesionalId(),
 						request.idempotencyKey(),
-						request.coberturaId()));
+						request.coberturaId(),
+						request.espacioId(),
+						request.casoId(),
+						request.planId(),
+						request.origen(),
+						request.sobreturnoMotivo()));
 
 		TurnoResponse cuerpo = TurnoResponse.de(resultado.turno());
 
@@ -224,7 +233,42 @@ public class TurnoController {
 
 		return ResponseEntity.ok(TurnoResponse.de(cicloService.cancelar(
 				apiActor.current(), consultorioId, turnoId,
-				request.motivo(), request.expectedVersion())));
+				request.motivo(), request.origen(), request.expectedVersion())));
+	}
+
+	@PostMapping("/{turnoId}/contexto")
+	@Operation(
+			operationId = "asociarContextoDeTurno",
+			summary = "Asociar un turno a un caso y un plan",
+			description = """
+					Cambia para que es el turno: la primera consulta que ya tiene caso, o el turno que se \
+					dio sin asociarlo al plan. Omitir los dos lo desasocia.
+
+					**No mueve nada de la agenda**, asi que no compite con ninguna reserva. El caso y el \
+					plan se validan igual que al reservar, incluidas las sesiones pendientes del plan.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Turno actualizado"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:manage` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El turno o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "El caso o el plan no sirven para este turno, el plan no tiene sesiones, "
+							+ "el turno ya cerro su ciclo, o la version quedo vieja",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TurnoResponse> asociarContexto(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId,
+			@RequestBody @Valid AsociarContextoDeTurnoRequest request) {
+
+		return ResponseEntity.ok(TurnoResponse.de(turnoService.asociarContexto(
+				apiActor.current(), consultorioId, turnoId,
+				request.casoId(), request.planId(), request.expectedVersion())));
 	}
 
 	@PostMapping("/{turnoId}/reprogramacion")
@@ -308,7 +352,7 @@ public class TurnoController {
 
 		return ResponseEntity.ok(TurnoResponse.de(cicloService.marcarAusente(
 				apiActor.current(), consultorioId, turnoId,
-				request.motivo(), request.expectedVersion())));
+				request.motivo(), request.consumeSesionDelPlan(), request.expectedVersion())));
 	}
 
 	@GetMapping("/{turnoId}/historial")
@@ -489,6 +533,37 @@ public class TurnoController {
 		return ResponseEntity.ok(TurnosDeSedeResponse.de(recepcionService.delRango(
 				apiActor.current(), consultorioId, desde, hasta,
 				profesionalId, ofertaId, incluirCancelados)));
+	}
+
+	@GetMapping("/personas/{personaId}")
+	@Operation(
+			operationId = "listarTurnosDePersona",
+			summary = "Turnos de una persona en la sede",
+			description = """
+					Los turnos de la persona en esta sede, los mas nuevos primero, con lo mismo que trae el \
+					calendario. Con `soloFuturos=true` deja afuera lo que ya paso y lo cancelado, y el \
+					orden es el inverso: el mas cercano primero.
+
+					Exige `turno:read`. **Nada clinico.**""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Pagina de turnos"),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `turno:read` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede no existe o es de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TurnosDePersonaResponse> listarTurnosDePersona(
+			@PathVariable long consultorioId,
+			@PathVariable long personaId,
+			@RequestParam(defaultValue = "false") boolean soloFuturos,
+			@RequestParam(defaultValue = "0") @Min(0) int page,
+			@RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+
+		return ResponseEntity.ok(TurnosDePersonaResponse.de(recepcionService.deLaPersona(
+				apiActor.current(), consultorioId, personaId, soloFuturos, page, size)));
 	}
 
 	/**

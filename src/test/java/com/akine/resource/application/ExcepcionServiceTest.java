@@ -94,12 +94,20 @@ class ExcepcionServiceTest {
 	private final OperatingActor actor =
 			new OperatingActor(ACCOUNT_ID, false, ORG_ID, CONSULTORIO_ID);
 
+	private static SimuladorDeImpacto simuladorSinTurnosAfectados() {
+		SimuladorDeImpacto simulador = org.mockito.Mockito.mock(SimuladorDeImpacto.class);
+		org.mockito.Mockito.when(simulador.deAltaDeExcepcion(org.mockito.ArgumentMatchers.any(),
+						org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+				.thenReturn(new ImpactoDeDisponibilidad(0, null, java.util.List.of(), null));
+		return simulador;
+	}
+
 	@BeforeEach
 	void setUp() {
 		service = new ExcepcionService(
 				excepciones, calendarios, new CalendarioSedeIniciador(calendarios, mock(PlatformTransactionManager.class)),
 				consultorioDirectory, membershipDirectory,
-				permissionGuard, auditTrail, org.mockito.Mockito.mock(SimuladorDeImpacto.class), mock(PlatformTransactionManager.class));
+				permissionGuard, auditTrail, simuladorSinTurnosAfectados(), mock(PlatformTransactionManager.class));
 
 		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede Sintetica",

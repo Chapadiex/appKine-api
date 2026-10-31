@@ -281,6 +281,17 @@ public class SesionService {
 
 		long profesionalMembershipId = resolverProfesional(actor, organizationId, consultorioId, turno);
 
+		// Si el turno se reservo para un caso, la atencion es de ese caso: el profesional no tiene que
+		// volver a elegir lo que la reserva ya dijo (TURNO - Tecnico §76). Lo que manda quien inicia
+		// gana, porque es quien esta viendo al paciente.
+		//
+		// Si ese caso se cerro despues de reservar ya no sirve de dato: se sigue como si no lo hubiera,
+		// y si no, la atencion quedaria sin salida (elegir "sin caso" manda null y volveria a tomarlo).
+		if (casoId == null && turno.casoId() != null && casos.find(organizationId, turno.casoId())
+				.filter(caso -> caso.activo()).isPresent()) {
+			casoId = turno.casoId();
+		}
+
 		// U-09 (DP-43, RF-M10-007): ANTES de asegurar la historia, para que un rechazo no le abra
 		// historia clinica a nadie. Y DESPUES de la idempotencia: una atencion que ya estaba
 		// abierta sin caso se devuelve igual, no se le niega al profesional lo que venia escribiendo.
@@ -1330,6 +1341,32 @@ public class SesionService {
 					"La sesion " + sesion.getId() + " cambio desde que se leyo: version "
 							+ expectedVersion + " contra " + sesion.getVersion());
 		}
+	}
+
+	/**
+	 * Lo que se sabe para programar la proxima sesion (TURNO - Tecnico §76). Sin contenido clinico, asi
+	 * que no se audita como lectura: es lo que el profesional ve en su agenda.
+	 */
+	@Transactional(readOnly = true)
+	public ContextoDeProximaSesionView contextoDeProximaSesion(
+			OperatingActor actor, long consultorioId, long sesionId) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirRegistro(actor, organizationId, consultorioId);
+		Sesion sesion = sesiones.findByIdInScope(organizationId, consultorioId, sesionId)
+				.filter(Sesion::estaViva)
+				.orElseThrow(() -> new SesionNotAccessibleException(sesionId));
+		long personaId = historias.findPorId(organizationId, sesion.getHistoriaClinicaId())
+				.orElseThrow(() -> new IllegalStateException(
+						"La sesion " + sesionId + " cuelga de una historia que no existe"))
+				.personaId();
+		Long planId = sesion.getTurnoId() == null ? null
+				: turnos.find(organizationId, consultorioId, sesion.getTurnoId())
+						.map(TurnoSnapshot::planId)
+						.orElse(null);
+		return new ContextoDeProximaSesionView(personaId, sesion.getCasoId(), planId,
+				sesion.getOfertaId(), sesion.getProfesionalMembershipId());
 	}
 
 	/**

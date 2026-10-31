@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.148.0
+  version: 0.150.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -50,12 +50,16 @@ tags:
   name: Obligaciones
 - description: "Bloqueo, desbloqueo y baja logica de cuentas de la propia organizacion"
   name: Administracion de cuentas
+- description: Quienes esperan lugar para una prestacion
+  name: Lista de espera
 - description: "Tableros operativos, clinicos y economicos del MVP (M23)"
   name: Reportes
 - description: Turnos recurrentes con identidad propia y operaciones con alcance (DP-04)
   name: Series de turnos
 - description: Alta self-service y habilitacion de la cuenta
   name: Registro y activacion
+- description: "Que horarios se pueden reservar, y si uno puntual se puede"
+  name: Disponibilidad
 - description: "Estudios, informes y documentos de una Historia Clinica (M09/M25)"
   name: Adjuntos clinicos
 - description: Documentos administrativos de una persona (M07/M25)
@@ -2535,6 +2539,96 @@ paths:
       summary: Ver la agenda del dia con turnos y clases
       tags:
       - Agenda unificada
+  /api/v1/consultorios/{consultorioId}/agenda/operativa:
+    get:
+      description: "Todo lo que dibuja la agenda en una ventana de hasta 14 dias:\
+        \ quien atiende y cuando, en que boxes, los turnos con su estado, las clases\
+        \ y los bloqueos. `hasta` es **exclusivo**. Los cancelados no vienen salvo\
+        \ `incluirCancelados=true`. Exige `turno:read`."
+      operationId: agendaOperativa
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: desde
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: hasta
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: profesionalId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: ofertaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: espacioId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: incluirCancelados
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgendaOperativa"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/AgendaOperativa"
+          description: La agenda
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Fechas ausentes o mal formadas, o ventana de mas de 14 dias"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: La agenda de la sede para operar
+      tags:
+      - Disponibilidad
   /api/v1/consultorios/{consultorioId}/aranceles/efectivo:
     get:
       description: |-
@@ -6247,6 +6341,173 @@ paths:
       summary: Editar un arancel
       tags:
       - Convenios y aranceles
+  /api/v1/consultorios/{consultorioId}/disponibilidad/busqueda:
+    post:
+      description: |-
+        Horarios que se pueden reservar **ahora** para una prestacion, del mas cercano al mas lejano. Considera horario del profesional, sede, feriados, cierres y licencias, habilitaciones, box, clases y turnos existentes: **lo mismo que controla la reserva**.
+
+        Sin profesional busca entre todos los habilitados. Con `limite = 1` es el primer turno disponible. **Es informativo**: la reserva revalida todo bajo el lock de la sede.
+
+        Exige `turno:read`.
+      operationId: buscarDisponibilidadDeTurnos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuscarDisponibilidadDeTurnos"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisponibilidadDeTurnos"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/DisponibilidadDeTurnos"
+          description: Horarios disponibles
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o la oferta no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La oferta no puede agendar en ningun dia de la ventana
+      summary: Buscar horarios disponibles
+      tags:
+      - Disponibilidad
+  /api/v1/consultorios/{consultorioId}/disponibilidad/profesionales:
+    get:
+      description: "Con `ofertaId`, los habilitados y vigentes para esa prestacion\
+        \ en esta sede: **una oferta sin habilitaciones declaradas la prestan todos**.\
+        \ Sin `ofertaId`, todos los de la sede. Exige `turno:read`."
+      operationId: profesionalesParaTurnos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: ofertaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecursoLibre"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecursoLibre"
+          description: "Profesionales, por nombre"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o la oferta no existen, o son de otro tenant"
+      summary: Profesionales que pueden atender
+      tags:
+      - Disponibilidad
+  /api/v1/consultorios/{consultorioId}/disponibilidad/validacion:
+    post:
+      description: |-
+        Si un horario puntual se puede reservar y, si no, **por que y que hay en su lugar**: los horarios mas cercanos en `alternativas`. Con quien puede atender y que boxes hay libres.
+
+        **No reserva ni bloquea nada**, y dos consultas pueden ver el mismo horario libre. Quien decide es la reserva. Exige `turno:read`.
+      operationId: validarHorarioDeTurno
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidarHorarioDeTurno"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidacionDeHorario"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidacionDeHorario"
+          description: El resultado. Un horario que no se puede es un 200 con `NO_DISPONIBLE`
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o la oferta no existen, o son de otro tenant"
+      summary: Consultar si un horario se puede reservar
+      tags:
+      - Disponibilidad
   /api/v1/consultorios/{consultorioId}/egresos:
     get:
       description: |-
@@ -7478,6 +7739,355 @@ paths:
       summary: Ver una liquidacion de honorarios por clase
       tags:
       - Egresos
+  /api/v1/consultorios/{consultorioId}/lista-de-espera:
+    get:
+      description: "Primero las mas urgentes y, a igual prioridad, las mas viejas.\
+        \ Exige `turno:read`."
+      operationId: listarListaDeEspera
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVA
+          - ASIGNADA
+          - DESCARTADA
+      - in: query
+        name: ofertaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: personaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+          maximum: 100
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaDeEsperaPage"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ListaDeEsperaPage"
+          description: Pagina de la lista
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Lista de espera de la sede
+      tags:
+      - Lista de espera
+    post:
+      operationId: anotarEnListaDeEspera
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AltaEnListaDeEspera"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntradaDeListaDeEspera"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/EntradaDeListaDeEspera"
+          description: Anotada
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, la oferta o la persona no existen, o son de otro\
+            \ tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La persona no es paciente, o el caso o el plan no sirven para\
+            \ esta prestacion"
+      summary: Anotar a una persona en la lista de espera
+      tags:
+      - Lista de espera
+  /api/v1/consultorios/{consultorioId}/lista-de-espera/coincidencias:
+    get:
+      description: "Las entradas activas a las que les sirve un horario: el de un\
+        \ turno (`turnoId`, tipicamente el que se acaba de cancelar) o el que se indique\
+        \ (`ofertaId` e `inicio`). Primero las mas urgentes. Exige `turno:read`."
+      operationId: coincidenciasEnListaDeEspera
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: turnoId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: ofertaId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: inicio
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: profesionalId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EntradaDeListaDeEspera"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EntradaDeListaDeEspera"
+          description: Entradas compatibles
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta decir con que comparar: un turno o una oferta con su\
+            \ horario"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede, el turno o la oferta no existen, o son de otro tenant"
+      summary: Quienes esperan un lugar como ese
+      tags:
+      - Lista de espera
+  /api/v1/consultorios/{consultorioId}/lista-de-espera/{entradaId}/asignacion:
+    post:
+      description: "Crea un turno comun con todas sus validaciones: estar en la lista\
+        \ no da un lugar que no existe. Los conflictos son los de cualquier reserva,\
+        \ y la entrada queda activa si fallan. Reintentar con la misma version no\
+        \ reserva un segundo turno."
+      operationId: asignarDesdeListaDeEspera
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: entradaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AsignarDesdeListaDeEspera"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntradaDeListaDeEspera"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/EntradaDeListaDeEspera"
+          description: Turno asignado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o la entrada no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El horario no se puede reservar, la entrada ya se resolvio,\
+            \ o la version quedo vieja"
+      summary: Darle un turno a quien espera
+      tags:
+      - Lista de espera
+  /api/v1/consultorios/{consultorioId}/lista-de-espera/{entradaId}/descarte:
+    post:
+      operationId: descartarDeListaDeEspera
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: entradaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DescartarDeListaDeEspera"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntradaDeListaDeEspera"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/EntradaDeListaDeEspera"
+          description: Descartada
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o la entrada no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La entrada ya se resolvio, o la version quedo vieja"
+      summary: Sacar a alguien de la lista sin darle turno
+      tags:
+      - Lista de espera
   /api/v1/consultorios/{consultorioId}/obligaciones:
     get:
       description: |-
@@ -8006,6 +8616,8 @@ paths:
         Lo mismo con las que apuntan a un recurso que ya no sirve. vinculoVigente en false es un colaborador que se desvinculo; enServicio en false es un espacio que se dio de baja en su propio modulo. La habilitacion sigue existiendo y la fila lo dice.
 
         capacidadEfectiva es el minimo entre la capacidad de la oferta y la de los espacios habilitados que estan en servicio. Sin espacios habilitados es igual a la comercial: no hay ningun espacio concreto contra el cual acotarla. espacioQueLimita nombra cual la acota, y mostrar un numero mas chico sin ese nombre es un defecto de la pantalla.
+
+        duracionesPropias dice cuanto tarda cada profesional que no tarda lo que dura la oferta. Quien no aparece usa la de la oferta.
       operationId: getHabilitaciones
       parameters:
       - description: Sede de la oferta
@@ -8044,6 +8656,77 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "La oferta o la sede no existen, o son de otro tenant"
       summary: Ver quien puede prestar la oferta y donde
+      tags:
+      - Servicios y ofertas
+  /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/habilitaciones/duraciones:
+    put:
+      description: |-
+        REEMPLAZA EL CONJUNTO COMPLETO. Quien no viene vuelve a la duracion de la oferta. Se leen en duracionesPropias de getHabilitaciones.
+
+        NO RESTRINGE NADA: que un profesional tenga duracion propia no lo habilita ni deja afuera a los demas. Por eso se puede cargar en una oferta sin restringir.
+
+        Vale para lo que se ofrece y se reserva de ahi en mas. Los turnos ya dados conservan su fin.
+
+        expectedVersion es la de la OFERTA, la misma de los otros dos reemplazos.
+      operationId: reemplazarDuracionesPropias
+      parameters:
+      - description: Sede de la oferta
+        example: 3
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Oferta configurada
+        example: 34
+        in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReemplazarDuracionesPropiasRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HabilitacionesResponse"
+          description: Configuracion resultante
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta la lista o expectedVersion, un profesional viene dos\
+            \ veces, o una duracion no esta entre 1 y 1440 minutos"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto de trabajo, o sin consultorio:manage en la sede"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La oferta, la sede o alguna membership no existen, no son\
+            \ de este tenant, o la membership esta acotada a otra sede"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Version desactualizada (concurrent-modification), oferta dada\
+            \ de baja (oferta-inactiva), o sede no operable (consultorio-no-operable)"
+      summary: Fijar cuanto tarda cada profesional en la oferta
       tags:
       - Servicios y ofertas
   /api/v1/consultorios/{consultorioId}/ofertas/{ofertaId}/habilitaciones/espacios:
@@ -9432,6 +10115,57 @@ paths:
       summary: Prender o apagar la renovacion automatica de un abono
       tags:
       - Pases
+  /api/v1/consultorios/{consultorioId}/personas/{personaId}/contexto-de-agenda:
+    get:
+      description: |-
+        Sus casos activos, con sus planes activos y **cuantas sesiones le quedan a cada prestacion**: realizadas, programadas y pendientes. Las pendientes son el tope que aplica la reserva.
+
+        Exige `turno:read` y no `hc:read`: **no lleva nada clinico**, ni diagnostico ni objetivos.
+      operationId: contextoDeAgendaDePersona
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextoDeAgenda"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ContextoDeAgenda"
+          description: El contexto. Sin casos es el caso normal de una primera consulta
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o la persona no existen, o son de otro tenant"
+      summary: Casos y planes de una persona para programarle turnos
+      tags:
+      - Disponibilidad
   /api/v1/consultorios/{consultorioId}/personas/{personaId}/pases:
     get:
       description: "Los que compro en esta sede, el que vence mas tarde primero. Una\
@@ -11872,6 +12606,75 @@ paths:
       summary: Crear una serie semanal de turnos
       tags:
       - Series de turnos
+  /api/v1/consultorios/{consultorioId}/series-de-turnos/previsualizacion:
+    post:
+      description: |-
+        Evalua cada ocurrencia de la regla con los mismos controles de la reserva y, si una no se puede, **sugiere el horario mas cercano**. No crea nada: lo que se confirma en el alta es lo que quede de esto despues de revisarlo. Con plan, informa cuantas sesiones le quedan.
+
+        Exige `turno:read`. Es informativo: el alta revalida todo bajo el lock de la sede.
+      operationId: previsualizarSerieDeTurnos
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearSerieDeTurnos"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrevisualizacionDeSerie"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PrevisualizacionDeSerie"
+          description: La propuesta
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Regla invalida
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o la oferta no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El caso o el plan no sirven para esta prestacion
+      summary: "Ver que se reservaria, sin crear nada"
+      tags:
+      - Series de turnos
   /api/v1/consultorios/{consultorioId}/series-de-turnos/{serieId}:
     get:
       description: "La regla con la que se genero y los turnos **tal como estan hoy**,\
@@ -13117,6 +13920,48 @@ paths:
       summary: Reemplazar al profesional de una atencion abierta
       tags:
       - Sesiones
+  /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}/proxima-sesion:
+    get:
+      description: "Paciente, caso, plan, prestacion y profesional de esta atencion:\
+        \ lo que hace falta para programar la proxima sin volver a preguntar nada\
+        \ (TURNO - Tecnico §76). **Nada clinico.** Exige `sesion:register`, igual\
+        \ que ver la sesion."
+      operationId: contextoDeProximaSesion
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: sesionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextoDeProximaSesion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ContextoDeProximaSesion"
+          description: El contexto
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sesion o la sede no existen, o son de otro tenant"
+      summary: Lo que se sabe para programar la proxima sesion
+      tags:
+      - Sesiones
   /api/v1/consultorios/{consultorioId}/sesiones/{sesionId}/tratamientos:
     get:
       description: |-
@@ -13702,6 +14547,80 @@ paths:
       summary: Reservar un turno
       tags:
       - Turnos
+  /api/v1/consultorios/{consultorioId}/turnos/personas/{personaId}:
+    get:
+      description: |-
+        Los turnos de la persona en esta sede, los mas nuevos primero, con lo mismo que trae el calendario. Con `soloFuturos=true` deja afuera lo que ya paso y lo cancelado, y el orden es el inverso: el mas cercano primero.
+
+        Exige `turno:read`. **Nada clinico.**
+      operationId: listarTurnosDePersona
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: soloFuturos
+        required: false
+        schema:
+          type: boolean
+          default: false
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+          maximum: 100
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TurnosDePersona"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/TurnosDePersona"
+          description: Pagina de turnos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:read` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La sede no existe o es de otro tenant
+      summary: Turnos de una persona en la sede
+      tags:
+      - Turnos
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}:
     get:
       description: |-
@@ -13944,6 +14863,73 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "El turno o la sede no existen, o son de otro tenant"
       summary: Confirmar un turno reservado
+      tags:
+      - Turnos
+  /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/contexto:
+    post:
+      description: |-
+        Cambia para que es el turno: la primera consulta que ya tiene caso, o el turno que se dio sin asociarlo al plan. Omitir los dos lo desasocia.
+
+        **No mueve nada de la agenda**, asi que no compite con ninguna reserva. El caso y el plan se validan igual que al reservar, incluidas las sesiones pendientes del plan.
+      operationId: asociarContextoDeTurno
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: turnoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AsociarContextoDeTurno"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Turno"
+          description: Turno actualizado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `turno:manage` en esa sede
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El turno o la sede no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El caso o el plan no sirven para este turno, el plan no tiene\
+            \ sesiones, el turno ya cerro su ciclo, o la version quedo vieja"
+      summary: Asociar un turno a un caso y un plan
       tags:
       - Turnos
   /api/v1/consultorios/{consultorioId}/turnos/{turnoId}/historial:
@@ -24384,7 +25370,9 @@ components:
         duracionMinutos:
           type: integer
           format: int32
-          description: "Duracion de cada turno, en minutos"
+          description: "Duracion de cada turno, en minutos: la del profesional si\
+            \ se pidio uno, y si no la de la oferta. Un profesional con duracion propia\
+            \ tiene otra: cada slot trae su fin."
           example: 45
         nombreComercial:
           type: string
@@ -24423,6 +25411,42 @@ components:
             \ cancelados."
           items:
             $ref: "#/components/schemas/TurnoDelDia"
+    AgendaOperativa:
+      type: object
+      description: Todo lo que dibuja la agenda de una sede en una ventana.
+      properties:
+        bloqueos:
+          type: array
+          items:
+            $ref: "#/components/schemas/BloqueoEnAgenda"
+        clases:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClaseEnAgenda"
+        desde:
+          type: string
+          format: date
+          example: 2026-10-26
+        espacios:
+          type: array
+          items:
+            $ref: "#/components/schemas/EspacioDeAgenda"
+        hasta:
+          type: string
+          format: date
+          description: EXCLUSIVO
+          example: 2026-11-02
+        profesionales:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfesionalDeAgenda"
+        timezone:
+          type: string
+          example: America/Argentina/Cordoba
+        turnos:
+          type: array
+          items:
+            $ref: "#/components/schemas/TurnoDeCalendario"
     AgendaUnificada:
       type: object
       description: "Turnos y clases de una sede en un dia local, ordenados por hora."
@@ -24582,6 +25606,83 @@ components:
           enum:
           - CONSUMO_A_REVISAR
           example: CONSUMO_A_REVISAR
+    AltaEnListaDeEspera:
+      type: object
+      description: Que lugar le serviria a esta persona.
+      properties:
+        casoId:
+          type: integer
+          format: int64
+          example: 9
+          exclusiveMinimum: 0
+        dias:
+          type: array
+          description: "Dias posibles, ISO: 1 = lunes ... 7 = domingo. Omitirlo es\
+            \ cualquiera."
+          items:
+            type: integer
+            format: int32
+            example: 1
+            maximum: 7
+            minimum: 1
+          maxItems: 7
+          minItems: 0
+        fechaDesde:
+          type: string
+          format: date
+          example: 2026-11-02
+        fechaHasta:
+          type: string
+          format: date
+          description: "Ultimo dia que le sirve, INCLUSIVO"
+          example: 2026-11-30
+        horaDesde:
+          type: string
+          format: time
+          example: 14:00:00
+        horaHasta:
+          type: string
+          format: time
+          description: EXCLUSIVA. Viene junto con horaDesde o no viene ninguna.
+          example: 18:00:00
+        notas:
+          type: string
+          description: Preferencias operativas. NUNCA informacion clinica.
+          maxLength: 300
+          minLength: 0
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+          exclusiveMinimum: 0
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+          exclusiveMinimum: 0
+        planId:
+          type: integer
+          format: int64
+          example: 57
+          exclusiveMinimum: 0
+        prioridad:
+          type: string
+          description: Por defecto NORMAL
+          enum:
+          - NORMAL
+          - ALTA
+          - URGENTE
+        profesionalId:
+          type: integer
+          format: int64
+          description: Profesional preferido. Omitirlo es cualquiera habilitado.
+          example: 31
+          exclusiveMinimum: 0
+      required:
+      - fechaDesde
+      - fechaHasta
+      - ofertaId
+      - personaId
     AltaSedeFranjaHorariaRequest:
       type: object
       description: Franja semanal del horario general de la sede
@@ -24951,6 +26052,33 @@ components:
           type: boolean
           description: Si la fecha consultada cae dentro de la vigencia. DISTINTO
             de estado
+    AsignarDesdeListaDeEspera:
+      type: object
+      description: El horario que se le da. Pasa por las mismas validaciones que cualquier
+        reserva.
+      properties:
+        espacioId:
+          type: integer
+          format: int64
+          example: 55
+          exclusiveMinimum: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          example: 0
+          minimum: 0
+        inicio:
+          type: string
+          format: date-time
+          example: 2026-11-03T19:00:00Z
+        profesionalId:
+          type: integer
+          format: int64
+          example: 31
+          exclusiveMinimum: 0
+      required:
+      - expectedVersion
+      - inicio
     Asistencia:
       type: object
       description: Registro operativo de participacion (RF-M28-007). No crea Sesion
@@ -25006,6 +26134,28 @@ components:
           type: integer
           format: int64
           example: 0
+    AsociarContextoDeTurno:
+      type: object
+      description: Caso y plan del turno. Omitir los dos lo desasocia.
+      properties:
+        casoId:
+          type: integer
+          format: int64
+          example: 9
+          exclusiveMinimum: 0
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Version que devolvio la ultima lectura del turno.
+          example: 1
+          minimum: 0
+        planId:
+          type: integer
+          format: int64
+          example: 57
+          exclusiveMinimum: 0
+      required:
+      - expectedVersion
     AssignGrantRequest:
       type: object
       description: Permiso adicional a otorgar sobre un vinculo
@@ -25790,6 +26940,40 @@ components:
           description: "Primer dia en que el bloque ya NO rige, EXCLUSIVO. null =\
             \ sin fin previsto"
           example: 2027-01-01
+    BloqueoEnAgenda:
+      type: object
+      description: "Un cierre de agenda, un tramo por dia."
+      properties:
+        desde:
+          type: string
+          format: date-time
+        excepcionId:
+          type: integer
+          format: int64
+          description: "El cierre: se da de baja una sola vez aunque abarque varios\
+            \ dias"
+          example: 14
+        hasta:
+          type: string
+          format: date-time
+        membershipId:
+          type: integer
+          format: int64
+          description: Ausente = sede entera
+          example: 31
+        motivo:
+          type: string
+          enum:
+          - AUSENCIA
+          - LICENCIA
+          - CAPACITACION
+          - FERIADO
+          - BLOQUEO
+          - AMPLIACION
+          - OTRO
+          example: CAPACITACION
+        notas:
+          type: string
     BorradorDeHonorarios:
       type: object
       description: El borrador de honorarios por clase de un colaborador en un periodo.
@@ -25828,6 +27012,64 @@ components:
         resumen:
           $ref: "#/components/schemas/ResumenDeHonorarios"
           description: Los numeros de la tira del borrador (DP-45)
+    BuscarDisponibilidadDeTurnos:
+      type: object
+      description: "Criterios de la busqueda. Solo la oferta es obligatoria. Sin profesional\
+        \ busca entre todos los habilitados. Sin `hasta` sigue buscando hasta llenar\
+        \ `limite` o agotar 62 dias: con `limite = 1` es el primer turno disponible."
+      properties:
+        desde:
+          type: string
+          format: date
+          description: "Primer dia, en la zona de la sede. Por defecto, hoy."
+          example: 2026-10-30
+        dias:
+          type: array
+          description: "Dias de la semana que sirven, ISO: 1 = lunes ... 7 = domingo.\
+            \ Omitirlo es cualquiera."
+          items:
+            type: integer
+            format: int32
+            example: 1
+            maximum: 7
+            minimum: 1
+          maxItems: 7
+          minItems: 0
+        hasta:
+          type: string
+          format: date
+          description: "Ultimo dia, EXCLUSIVO. Maximo 62 dias desde `desde`."
+          example: 2026-11-30
+        horaDesde:
+          type: string
+          format: time
+          description: "Franja horaria local: no antes de esta hora"
+          example: 14:00:00
+        horaHasta:
+          type: string
+          format: time
+          description: "Franja horaria local: empezar antes de esta hora"
+          example: 18:00:00
+        limite:
+          type: integer
+          format: int32
+          description: "Cuantos horarios devolver. Por defecto 20, maximo 200."
+          example: 20
+          maximum: 200
+          minimum: 1
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+          exclusiveMinimum: 0
+        profesionalId:
+          type: integer
+          format: int64
+          description: Membership del profesional. Omitirlo es "cualquier profesional".
+          example: 31
+          exclusiveMinimum: 0
+      required:
+      - ofertaId
     CalendarioSedeResponse:
       type: object
       description: Politica de calendario de la sede y feriados de la ventana consultada
@@ -26036,6 +27278,15 @@ components:
           example: El paciente aviso que no puede venir
           maxLength: 300
           minLength: 0
+        origen:
+          type: string
+          description: "A quien se le atribuye la cancelacion. Opcional: omitirlo\
+            \ es no decirlo."
+          enum:
+          - PACIENTE
+          - PROFESIONAL
+          - INSTITUCION
+          example: PACIENTE
       required:
       - expectedVersion
       - motivo
@@ -26173,6 +27424,36 @@ components:
           description: "Devolvela al editar, cerrar, reabrir o cambiar el equipo.\
             \ Dos profesionales del equipo sobre el mismo caso son el caso normal"
           example: 3
+    CasoDeAgenda:
+      type: object
+      properties:
+        casoId:
+          type: integer
+          format: int64
+          example: 9
+        numeroCaso:
+          type: integer
+          format: int32
+          example: 2
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        ofertaNombre:
+          type: string
+          example: Kinesiologia
+        planes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanDeAgenda"
+        responsableId:
+          type: integer
+          format: int64
+          description: "Profesional responsable vigente: el que se ofrece por defecto"
+          example: 31
+        responsableNombre:
+          type: string
+          example: "Gomez, Laura"
     CasoEvento:
       type: object
       description: Transicion asentada en el historial de un Caso Clinico. Append-only
@@ -26822,6 +28103,39 @@ components:
           format: int64
           description: Se manda de vuelta al reprogramar
           example: 3
+    ClaseEnAgenda:
+      type: object
+      description: "Una clase grupal: ocupa profesional y box igual que un turno."
+      properties:
+        capacidad:
+          type: integer
+          format: int32
+        claseId:
+          type: integer
+          format: int64
+          example: 7
+        espacioId:
+          type: integer
+          format: int64
+        estado:
+          type: string
+          example: PROGRAMADA
+        fin:
+          type: string
+          format: date-time
+        inicio:
+          type: string
+          format: date-time
+        ocupados:
+          type: integer
+          format: int32
+        ofertaNombre:
+          type: string
+        profesionalId:
+          type: integer
+          format: int64
+        titulo:
+          type: string
     ClaseExcluidaDeHonorarios:
       type: object
       description: Una clase dictada que no entra en el borrador
@@ -27586,6 +28900,50 @@ components:
             en la sede; sin el permiso viaja ausente aunque haya habido movimiento
             (U-46 c).
           example: 7
+    ContextoDeAgenda:
+      type: object
+      description: "Los casos activos de una persona con sus planes y las sesiones\
+        \ que les quedan. **Nada clinico**: un caso se nombra por su numero y su prestacion."
+      properties:
+        casos:
+          type: array
+          items:
+            $ref: "#/components/schemas/CasoDeAgenda"
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+        ultimoProfesionalId:
+          type: integer
+          format: int64
+          description: "Quien la atendio por ultimo en esta sede. Solo precarga: nunca\
+            \ bloquea otra eleccion."
+          example: 31
+    ContextoDeProximaSesion:
+      type: object
+      description: Lo que se sabe para programar la proxima sesion. Nada clinico.
+      properties:
+        casoId:
+          type: integer
+          format: int64
+          example: 9
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+        planId:
+          type: integer
+          format: int64
+          description: "El plan del turno que se atendio, si tenia"
+          example: 57
+        profesionalId:
+          type: integer
+          format: int64
+          example: 31
     ConvenioAplicado:
       type: object
       description: "Convenio y arancel aplicados a la prestacion, **congelados al\
@@ -27922,6 +29280,12 @@ components:
           example: 10
           maximum: 52
           minimum: 1
+        casoId:
+          type: integer
+          format: int64
+          description: Caso clinico para el que se programan
+          example: 9
+          exclusiveMinimum: 0
         diasSemana:
           type: array
           description: "Dias de la semana, ISO: 1 = lunes ... 7 = domingo"
@@ -27957,17 +29321,47 @@ components:
           example: 1c9e7b2a-3f4d-4e5f-8a91-2c3d4e5f6a7b
           maxLength: 80
           minLength: 0
+        ocurrencias:
+          type: array
+          description: "Lo que quedo despues de revisar la previsualizacion: se reservan\
+            \ EXACTAMENTE estos horarios, sin omitir feriados, y la regla queda como\
+            \ dato de la serie. Omitirlo reserva lo que produce la regla."
+          items:
+            $ref: "#/components/schemas/OcurrenciaElegida"
+          maxItems: 52
+          minItems: 0
         ofertaId:
           type: integer
           format: int64
           description: Oferta de la sede
           example: 42
           exclusiveMinimum: 0
+        origen:
+          type: string
+          description: Desde donde se inicio. Solo trazabilidad.
+          enum:
+          - AGENDA
+          - DISPONIBILIDAD
+          - PACIENTE
+          - CASO
+          - PLAN
+          - PROFESIONAL
+          - SESION
+          - LISTA_DE_ESPERA
+          - TURNO_ANTERIOR
+          example: PLAN
         personaId:
           type: integer
           format: int64
           description: "Persona del padron, con perfil de paciente vigente"
           example: 128
+          exclusiveMinimum: 0
+        planId:
+          type: integer
+          format: int64
+          description: Plan para el que se programan. El total no puede pasar sus
+            sesiones pendientes.
+          example: 57
           exclusiveMinimum: 0
         profesionalId:
           type: integer
@@ -28528,6 +29922,11 @@ components:
       type: object
       description: Datos para dar de alta un cierre o una apertura puntual
       properties:
+        confirmaTurnosAfectados:
+          type: boolean
+          description: "Confirma que se quiere cargar un CIERRE aunque deje afuera\
+            \ turnos pendientes. Sin esto, un cierre con turnos afectados responde\
+            \ 409 `bloqueo-con-turnos-afectados`: no se guarda en silencio."
         fechaDesde:
           type: string
           format: date
@@ -28569,6 +29968,7 @@ components:
           enum:
           - AUSENCIA
           - LICENCIA
+          - CAPACITACION
           - FERIADO
           - BLOQUEO
           - AMPLIACION
@@ -29678,6 +31078,22 @@ components:
           description: Plan de Tratamiento del Caso. Opcional (RF-M11-007)
           example: 12
           exclusiveMinimum: 0
+    DescartarDeListaDeEspera:
+      type: object
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          example: 0
+          minimum: 0
+        motivo:
+          type: string
+          description: Opcional
+          example: Ya consiguio turno
+          maxLength: 300
+          minLength: 0
+      required:
+      - expectedVersion
     DesvinculacionImpactoResponse:
       type: object
       description: Trabajo pendiente que quedaria sin dueño al desvincular
@@ -29957,6 +31373,48 @@ components:
             \ linkearla. null cuando la regla no tiene id que ofrecer: un feriado\
             \ se resuelve por fecha, no por id de excepcion"
           example: 7
+    DisponibilidadDeTurnos:
+      type: object
+      description: "Horarios libres de una prestacion, del mas cercano al mas lejano."
+      properties:
+        buscadoHasta:
+          type: string
+          format: date
+          description: "Ultimo dia que se miro, EXCLUSIVO"
+          example: 2026-11-30
+        duracionMinutos:
+          type: integer
+          format: int32
+          description: "La del profesional si se pidio uno, y si no la de la prestacion.\
+            \ Un profesional con duracion propia tiene otra: cada horario trae su\
+            \ `hasta`."
+          example: 45
+        horarios:
+          type: array
+          items:
+            $ref: "#/components/schemas/HorarioDisponible"
+        motivosSinHorario:
+          type: array
+          description: "Por que hubo dias sin horarios, sin repetir. Explica una busqueda\
+            \ vacia. Mismos valores que `DiaDeAgenda.motivoSinSlots`."
+          items:
+            type: string
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        ofertaNombre:
+          type: string
+          example: Kinesiologia - sesion individual
+        requiereEspacio:
+          type: boolean
+          description: '`true` si el turno ocupa un box'
+        timezone:
+          type: string
+          example: America/Argentina/Cordoba
+        truncado:
+          type: boolean
+          description: '`true` si habia mas horarios que el limite pedido'
     DisponibilidadEfectivaResponse:
       type: object
       description: "Disponibilidad efectiva de un profesional en una sede, dia por\
@@ -29985,6 +31443,40 @@ components:
             bug de huso se vea en la respuesta en vez de deducirse de instantes corridos
             una hora
           example: America/Argentina/Cordoba
+    DuracionPropia:
+      type: object
+      description: "Cuanto tarda un profesional en esta oferta, cuando no es lo que\
+        \ dura la oferta"
+      properties:
+        duracionMinutos:
+          type: integer
+          format: int32
+          description: "Duracion de un turno con este profesional, en minutos"
+          example: 30
+        membershipId:
+          type: integer
+          format: int64
+          description: Vinculo del profesional con la organizacion
+          example: 215
+    DuracionPropiaPedida:
+      type: object
+      description: Cuanto tarda un profesional en esta oferta
+      properties:
+        duracionMinutos:
+          type: integer
+          format: int32
+          description: "Duracion de un turno con este profesional, en minutos. Entre\
+            \ 1 y 1440"
+          example: 30
+          exclusiveMinimum: 0
+        membershipId:
+          type: integer
+          format: int64
+          description: Vinculo del profesional con la organizacion
+          example: 215
+      required:
+      - duracionMinutos
+      - membershipId
     EditarCasoClinicoRequest:
       type: object
       description: Edicion del diagnostico y el objetivo de un Caso Clinico
@@ -30629,6 +32121,92 @@ components:
           format: int64
           description: Cuenta que la escribio
           example: 8
+    EntradaDeListaDeEspera:
+      type: object
+      description: Alguien que espera lugar para una prestacion. No ocupa la agenda.
+      properties:
+        casoId:
+          type: integer
+          format: int64
+        creadaEn:
+          type: string
+          format: date-time
+        dias:
+          type: array
+          description: "Dias posibles, ISO. Vacio es cualquiera."
+          items:
+            type: integer
+            format: int32
+        documento:
+          type: string
+          example: DNI 30111222
+        estado:
+          type: string
+          enum:
+          - ACTIVA
+          - ASIGNADA
+          - DESCARTADA
+        fechaDesde:
+          type: string
+          format: date
+        fechaHasta:
+          type: string
+          format: date
+          description: INCLUSIVA
+        horaDesde:
+          type: string
+          format: time
+        horaHasta:
+          type: string
+          format: time
+        id:
+          type: integer
+          format: int64
+          example: 14
+        motivoCierre:
+          type: string
+        notas:
+          type: string
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        ofertaNombre:
+          type: string
+          example: Kinesiologia
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+        personaNombre:
+          type: string
+          example: "Perez, Ana"
+        planId:
+          type: integer
+          format: int64
+        prioridad:
+          type: string
+          enum:
+          - NORMAL
+          - ALTA
+          - URGENTE
+        profesionalId:
+          type: integer
+          format: int64
+          example: 31
+        profesionalNombre:
+          type: string
+          example: "Gomez, Laura"
+        telefono:
+          type: string
+          example: 351 555-1234
+        turnoId:
+          type: integer
+          format: int64
+          description: El turno que se le asigno
+        version:
+          type: integer
+          format: int64
     EquipoDelCasoRequest:
       type: object
       description: Reemplazo completo del equipo tratante de un caso
@@ -30699,6 +32277,19 @@ components:
         tipo:
           type: string
           description: Clasificacion fisica del recurso
+          example: BOX
+    EspacioDeAgenda:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 55
+        nombre:
+          type: string
+          example: Box 3
+        tipo:
+          type: string
           example: BOX
     EspacioHabilitado:
       type: object
@@ -31165,6 +32756,11 @@ components:
           type: integer
           format: int64
           example: 12
+        actorNombre:
+          type: string
+          description: Nombre de esa cuenta. Ausente si lo hizo el sistema o la cuenta
+            ya no resuelve.
+          example: Ana Recepcion
         estadoAnterior:
           type: string
           description: Ausente solo en la LLEGADA.
@@ -31214,6 +32810,11 @@ components:
           description: "Cuenta que lo hizo. Ausente cuando lo hizo el sistema, o —\
             en los eventos reconstruidos por la migracion V38— cuando el dato no existia."
           example: 12
+        actorNombre:
+          type: string
+          description: Nombre de esa cuenta. Ausente si lo hizo el sistema o la cuenta
+            ya no resuelve.
+          example: Ana Recepcion
         estadoAnterior:
           type: string
           description: Ausente solo en el evento de RESERVA.
@@ -31262,6 +32863,7 @@ components:
           - AUSENCIA
           - LLEGADA
           - LLEGADA_DESHECHA
+          - CAMBIO_DE_CONTEXTO
           example: CANCELACION
     ExcepcionResponse:
       type: object
@@ -31585,6 +33187,15 @@ components:
           format: int64
           description: Version a reenviar para editar
           example: 0
+    FranjaDeAgenda:
+      type: object
+      properties:
+        desde:
+          type: string
+          format: date-time
+        hasta:
+          type: string
+          format: date-time
     FranjaResueltaResponse:
       type: object
       description: "Una franja de atencion resuelta, con la regla que la produjo"
@@ -31791,6 +33402,14 @@ components:
             \ que estan en servicio. Sin espacios habilitados es igual a la comercial:\
             \ no hay ningun espacio concreto contra el cual acotarla todavia"
           example: 6
+        duracionesPropias:
+          type: array
+          description: Duraciones propias vigentes por profesional. Quien no aparece
+            usa la duracion de la oferta. Es una lista aparte de profesionales porque
+            una oferta sin restringir no tiene habilitaciones y sus profesionales
+            igual pueden tener duracion propia
+          items:
+            $ref: "#/components/schemas/DuracionPropia"
         espacioQueLimita:
           type: string
           description: "Nombre del espacio que fija la efectiva, o null si ninguno\
@@ -32035,6 +33654,38 @@ components:
         vigente:
           type: boolean
           description: Si es el que rige hoy
+    HorarioDisponible:
+      type: object
+      description: Un horario que se puede reservar ahora.
+      properties:
+        cupoLibre:
+          type: integer
+          format: int32
+          example: 1
+        desde:
+          type: string
+          format: date-time
+          example: 2026-10-30T17:30:00Z
+        espacioId:
+          type: integer
+          format: int64
+          description: "Box que tomaria si se reservara ahora. Sugerencia: lo clava\
+            \ la reserva."
+          example: 55
+        espacioNombre:
+          type: string
+          example: Box 3
+        hasta:
+          type: string
+          format: date-time
+          example: 2026-10-30T18:15:00Z
+        profesionalId:
+          type: integer
+          format: int64
+          example: 31
+        profesionalNombre:
+          type: string
+          example: "Gomez, Laura"
     HorarioGeneralFranjaRequest:
       type: object
       description: Franja semanal del horario general de la sede
@@ -32902,6 +34553,25 @@ components:
         resumen:
           $ref: "#/components/schemas/ResumenDeHonorarios"
           description: Los numeros de la tira de la liquidacion (DP-45)
+    ListaDeEsperaPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntradaDeListaDeEspera"
+        page:
+          type: integer
+          format: int32
+          example: 0
+        size:
+          type: integer
+          format: int32
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          example: 3
     LoginRequest:
       type: object
       description: Credenciales para abrir una sesion
@@ -34051,6 +35721,22 @@ components:
           format: int64
           description: Version para el control optimista
           example: 0
+    OcurrenciaElegida:
+      type: object
+      description: "Un horario de la serie, tal como quedo despues de revisarla."
+      properties:
+        inicio:
+          type: string
+          format: date-time
+          example: 2026-11-02T13:00:00Z
+        profesionalId:
+          type: integer
+          format: int64
+          description: Omitirlo es el profesional de la serie.
+          example: 31
+          exclusiveMinimum: 0
+      required:
+      - inicio
     OcurrenciaOmitidaDeSerie:
       type: object
       description: "Ocurrencia que la regla producia y que el alta no reservo, con\
@@ -34073,6 +35759,42 @@ components:
           enum:
           - FERIADO
           example: FERIADO
+    OcurrenciaPrevista:
+      type: object
+      properties:
+        espacioNombre:
+          type: string
+          example: Box 3
+        estado:
+          type: string
+          enum:
+          - DISPONIBLE
+          - NO_DISPONIBLE
+          - FERIADO
+          example: DISPONIBLE
+        fin:
+          type: string
+          format: date-time
+        inicio:
+          type: string
+          format: date-time
+        motivo:
+          type: string
+          description: Por que no se puede
+        numero:
+          type: integer
+          format: int32
+          example: 1
+        profesionalId:
+          type: integer
+          format: int64
+          example: 31
+        profesionalNombre:
+          type: string
+          example: "Gomez, Laura"
+        sugerencia:
+          $ref: "#/components/schemas/HorarioDisponible"
+          description: El horario mas cercano si este no se puede
     OfertaResponse:
       type: object
       description: Oferta de un servicio en una sede concreta
@@ -34197,6 +35919,84 @@ components:
           type: boolean
           description: "Si HOY cae dentro de la ventana de vigencia, en la zona horaria\
             \ de la sede. Distinto de estado: ver la descripcion del esquema"
+    OperativoDeTurno:
+      type: object
+      description: "Lo que la agenda muestra de un turno ademas de la reserva. PHI\
+        \ minima: del caso viaja el numero y del plan, que sesion es."
+      properties:
+        ausenciaConsumeSesion:
+          type: boolean
+          description: Si la ausencia consume una sesion del plan. Ausente si no se
+            decidio.
+        casoId:
+          type: integer
+          format: int64
+          description: Caso clinico para el que se reservo. Ausente en una primera
+            consulta.
+          example: 9
+        espacioNombre:
+          type: string
+          description: Nombre del box asignado
+          example: Box 3
+        estadoOperativo:
+          type: string
+          description: "Foto combinada de reserva, recepcion y atencion. **Se deriva\
+            \ al leer**: no es un estado guardado y no reemplaza a ninguna de las\
+            \ tres maquinas (DP-05)."
+          enum:
+          - RESERVADO
+          - CONFIRMADO
+          - PRESENTE
+          - RETIRADO
+          - EN_ATENCION
+          - ATENDIDO
+          - AUSENTE
+          - CANCELADO
+          example: PRESENTE
+        numeroCaso:
+          type: integer
+          format: int32
+          description: Numero del caso dentro de la historia
+          example: 2
+        origenCancelacion:
+          type: string
+          description: A quien se le atribuye la cancelacion
+          enum:
+          - PACIENTE
+          - PROFESIONAL
+          - INSTITUCION
+        planId:
+          type: integer
+          format: int64
+          description: Plan de tratamiento para el que se reservo
+          example: 57
+        profesionalNombre:
+          type: string
+          description: Nombre del profesional. Ausente si el turno no tiene o no se
+            resuelve.
+          example: "Gomez, Laura"
+        sesionId:
+          type: integer
+          format: int64
+          description: "La atencion del turno, si ya empezo"
+          example: 501
+        sesionNumero:
+          type: integer
+          format: int32
+          description: Que sesion de su prestacion es este turno dentro del plan
+          example: 4
+        sesionesPlanificadas:
+          type: integer
+          format: int32
+          description: Cuantas sesiones planifica el plan para esa prestacion
+          example: 10
+        sobreturno:
+          type: boolean
+          description: "`true` si se reservo sobre un horario ocupado, con autorizacion"
+        sobreturnoMotivo:
+          type: string
+          description: Por que se autorizo el sobreturno
+          example: Urgencia clinica
     OrdenResponse:
       type: object
       description: Orden medica de un paciente
@@ -35147,6 +36947,32 @@ components:
           type: boolean
           description: "Si la fecha consultada cae dentro de la vigencia. DISTINTO\
             \ de estado: un plan ACTIVO con la vigencia cerrada devuelve false"
+    PlanDeAgenda:
+      type: object
+      description: Un plan activo del caso.
+      properties:
+        duracionSemanas:
+          type: integer
+          format: int32
+          example: 4
+        frecuenciaSemanal:
+          type: integer
+          format: int32
+          description: "Sugerida: precarga la programacion multiple, no agenda nada"
+          example: 3
+        numeroPlan:
+          type: integer
+          format: int32
+          example: 1
+        planId:
+          type: integer
+          format: int64
+          example: 57
+        prestaciones:
+          type: array
+          description: Solo las de esta sede
+          items:
+            $ref: "#/components/schemas/SesionesDePrestacion"
     PlanItem:
       type: object
       description: "Practica planificada dentro de un Plan de Tratamiento, con sus\
@@ -35973,6 +37799,36 @@ components:
           format: int64
           description: Version para el control optimista
           example: 0
+    PrevisualizacionDeSerie:
+      type: object
+      description: "Lo que se reservaria. No crea nada: lo que se confirma es lo que\
+        \ quede de esto."
+      properties:
+        duracionMinutos:
+          type: integer
+          format: int32
+          description: "La del profesional de la serie, que puede tener duracion propia."
+          example: 45
+        ocurrencias:
+          type: array
+          items:
+            $ref: "#/components/schemas/OcurrenciaPrevista"
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        ofertaNombre:
+          type: string
+          example: Kinesiologia
+        pendientesDelPlan:
+          type: integer
+          format: int32
+          description: "Sesiones que le quedan al plan para esa prestacion, si hay\
+            \ plan. Es el tope del alta."
+          example: 5
+        timezone:
+          type: string
+          example: America/Argentina/Cordoba
     ProblemDetail:
       type: object
       properties:
@@ -36068,6 +37924,11 @@ components:
       - https://akine.app/problems/slot-no-disponible
       - https://akine.app/problems/slot-completo
       - https://akine.app/problems/recurso-ocupado
+      - https://akine.app/problems/plan-sin-sesiones
+      - https://akine.app/problems/contexto-clinico-invalido
+      - https://akine.app/problems/espacio-no-elegible
+      - https://akine.app/problems/lista-de-espera-cerrada
+      - https://akine.app/problems/bloqueo-con-turnos-afectados
       - https://akine.app/problems/persona-sin-perfil-paciente
       - https://akine.app/problems/turno-transicion-no-permitida
       - https://akine.app/problems/turno-con-atencion
@@ -36283,6 +38144,23 @@ components:
           type: string
           format: date
           description: "Hasta cuando se vende, inclusive. Ausente: sin fin"
+    ProfesionalDeAgenda:
+      type: object
+      description: "Una columna de la agenda: quien atiende y cuando."
+      properties:
+        franjas:
+          type: array
+          description: Cuando atiende en la ventana. Lo que no esta aca no se puede
+            reservar.
+          items:
+            $ref: "#/components/schemas/FranjaDeAgenda"
+        membershipId:
+          type: integer
+          format: int64
+          example: 31
+        nombre:
+          type: string
+          example: "Gomez, Laura"
     ProfesionalHabilitado:
       type: object
       description: Profesional habilitado para prestar la oferta
@@ -36554,6 +38432,45 @@ components:
           description: "Titulo nuevo. Si no viene, no se toca"
           maxLength: 160
           minLength: 0
+    RecursoLibre:
+      type: object
+      description: "Un profesional o un box, con su nombre."
+      properties:
+        duracionPropiaMinutos:
+          type: integer
+          format: int32
+          description: "Lo que tarda ese profesional en la prestacion, si no es lo\
+            \ que dura la prestacion. Ausente en un box, en quien usa la de la prestacion\
+            \ y al listar profesionales sin indicar prestacion."
+          example: 30
+        id:
+          type: integer
+          format: int64
+          example: 31
+        nombre:
+          type: string
+          example: "Gomez, Laura"
+    ReemplazarDuracionesPropiasRequest:
+      type: object
+      description: "Conjunto completo de duraciones propias de una oferta. Reemplaza,\
+        \ no agrega"
+      properties:
+        duraciones:
+          type: array
+          description: Las duraciones que quedan. Quien no viene vuelve a la duracion
+            de la oferta. Lista vacia = nadie tiene duracion propia
+          items:
+            $ref: "#/components/schemas/DuracionPropiaPedida"
+        expectedVersion:
+          type: integer
+          format: int64
+          description: "Version de la OFERTA que el cliente cree estar configurando:\
+            \ la misma que usan los reemplazos de habilitaciones"
+          example: 0
+          minimum: 0
+      required:
+      - duraciones
+      - expectedVersion
     ReemplazarHabilitacionesRequest:
       type: object
       description: "Conjunto completo de recursos habilitados. Reemplaza, no agrega"
@@ -36811,6 +38728,11 @@ components:
       description: Registro de no asistencia. NO libera el lugar y no altera ningun
         otro turno (DP-04).
       properties:
+        consumeSesionDelPlan:
+          type: boolean
+          description: Si la ausencia consume una sesion del plan del turno. Se ignora
+            si el turno no tiene plan. Omitirlo es que no consume.
+          example: false
         expectedVersion:
           type: integer
           format: int64
@@ -37703,6 +39625,13 @@ components:
         \ entre que la pantalla mostro la agenda y el usuario confirmo pudo cambiar\
         \ el horario del profesional, entrar un feriado o vencer la oferta."
       properties:
+        casoId:
+          type: integer
+          format: int64
+          description: "Caso clinico para el que se reserva. Opcional: una primera\
+            \ consulta no tiene caso. Tiene que ser de esta persona y estar activo."
+          example: 9
+          exclusiveMinimum: 0
         coberturaId:
           type: integer
           format: int64
@@ -37712,6 +39641,14 @@ components:
             \ de ESA persona; si no, 404 `not-found`. Si aplica a la practica lo decide\
             \ la recepcion, que la usa por defecto al validar."
           example: 412
+          exclusiveMinimum: 0
+        espacioId:
+          type: integer
+          format: int64
+          description: "Box elegido a mano. Omitirlo es lo normal: el sistema asigna\
+            \ el primero libre. Si se indica pasa por los mismos controles que el\
+            \ automatico."
+          example: 55
           exclusiveMinimum: 0
         idempotencyKey:
           type: string
@@ -37728,11 +39665,34 @@ components:
           description: "Instante de inicio del slot elegido, UTC, tal como lo devolvio\
             \ la agenda"
           example: 2026-09-15T12:00:00Z
+        origen:
+          type: string
+          description: "Desde donde se inicio la reserva. Solo trazabilidad: no cambia\
+            \ ninguna regla."
+          enum:
+          - AGENDA
+          - DISPONIBILIDAD
+          - PACIENTE
+          - CASO
+          - PLAN
+          - PROFESIONAL
+          - SESION
+          - LISTA_DE_ESPERA
+          - TURNO_ANTERIOR
+          example: AGENDA
         personaId:
           type: integer
           format: int64
           description: "Persona del padron, que debe tener perfil de paciente vigente"
           example: 128
+          exclusiveMinimum: 0
+        planId:
+          type: integer
+          format: int64
+          description: "Plan de tratamiento para el que se reserva. Opcional. Tiene\
+            \ que ser de esta persona, estar activo, incluir la oferta y tener sesiones\
+            \ pendientes. Si se omite el caso, sale del plan."
+          example: 57
           exclusiveMinimum: 0
         profesionalId:
           type: integer
@@ -37740,6 +39700,15 @@ components:
           description: Membership del profesional. Obligatorio si la oferta lo requiere.
           example: 31
           exclusiveMinimum: 0
+        sobreturnoMotivo:
+          type: string
+          description: "Por que se autoriza ocupar un horario tomado. Exige el permiso\
+            \ `turno:sobreturno`. Saltea el cupo y el solapamiento y nada mas: el\
+            \ profesional sigue teniendo que estar habilitado y atender en ese horario.\
+            \ Se ve en la agenda: sin informacion clinica."
+          example: Se acordo atenderlo entre turnos
+          maxLength: 300
+          minLength: 0
       required:
       - inicio
       - personaId
@@ -38999,6 +40968,41 @@ components:
             \ que dice esta version (C-6)"
           items:
             $ref: "#/components/schemas/TratamientoEnVersion"
+    SesionesDePrestacion:
+      type: object
+      description: Cuantas sesiones de una prestacion quedan por programar.
+      properties:
+        ausenciasQueConsumen:
+          type: integer
+          format: int32
+          description: Ausencias marcadas como que consumen una sesion
+          example: 0
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+        ofertaNombre:
+          type: string
+          example: Kinesiologia
+        pendientes:
+          type: integer
+          format: int32
+          description: Lo que queda por programar. Es el tope que aplica la reserva.
+          example: 5
+        planificadas:
+          type: integer
+          format: int32
+          example: 10
+        programadas:
+          type: integer
+          format: int32
+          description: Turnos vivos sin atencion cerrada
+          example: 2
+        realizadas:
+          type: integer
+          format: int32
+          description: Sesiones cerradas con el paciente presente
+          example: 3
     SimularEdicionBloqueRequest:
       type: object
       description: "Edicion propuesta de un bloque de disponibilidad, para evaluar\
@@ -39061,11 +41065,10 @@ components:
         espacioId:
           type: integer
           format: int64
-          description: "Espacio asignado. **Siempre ausente por ahora**: el motor\
-            \ verifica que exista al menos un espacio habilitado y en servicio, pero\
-            \ no elige cual. Elegirlo es parte de la reserva y tiene que ocurrir bajo\
-            \ el mismo lock que la crea, o dos busquedas concurrentes prometen el\
-            \ mismo box."
+          description: "Box que tomaria el turno si se reservara ahora, cuando la\
+            \ oferta requiere espacio. **Es una sugerencia para mostrar**: lo clava\
+            \ la reserva bajo el lock de la sede, y puede ser otro si alguien tomo\
+            \ este mientras tanto."
         hasta:
           type: string
           format: date-time
@@ -39683,6 +41686,12 @@ components:
           type: string
           format: date-time
           example: 2026-09-10T11:20:00Z
+        casoId:
+          type: integer
+          format: int64
+          description: Caso clinico para el que se reservo. Ausente en una primera
+            consulta.
+          example: 9
         coberturaId:
           type: integer
           format: int64
@@ -39761,6 +41770,11 @@ components:
           format: int64
           description: Persona del padron para la que se reservo
           example: 128
+        planId:
+          type: integer
+          format: int64
+          description: Plan de tratamiento para el que se reservo
+          example: 57
         profesionalId:
           type: integer
           format: int64
@@ -39783,6 +41797,9 @@ components:
             \ suelto. Un turno de una serie conserva identidad, estado e historial\
             \ propios: se cancela o se mueve solo, o junto con otros por `/series-de-turnos/{serieId}`."
           example: 12
+        sobreturno:
+          type: boolean
+          description: "`true` si se reservo sobre un horario ocupado, con autorizacion"
         version:
           type: integer
           format: int64
@@ -39893,6 +41910,10 @@ components:
         ofertaNombre:
           type: string
           example: Kinesiologia - sesion individual
+        operativo:
+          $ref: "#/components/schemas/OperativoDeTurno"
+          description: "Para que es el turno y en que anda, combinando reserva, recepcion\
+            \ y atencion."
         personaId:
           type: integer
           format: int64
@@ -39948,6 +41969,23 @@ components:
           example: YA_EMPEZO
         turno:
           $ref: "#/components/schemas/Turno"
+    TurnosDePersona:
+      type: object
+      description: Una pagina de los turnos de una persona en una sede.
+      properties:
+        timezone:
+          type: string
+          description: "Zona de la sede, para mostrar las horas"
+          example: America/Argentina/Cordoba
+        total:
+          type: integer
+          format: int64
+          description: Total de turnos que cumplen el filtro
+          example: 12
+        turnos:
+          type: array
+          items:
+            $ref: "#/components/schemas/TurnoDeCalendario"
     TurnosDeSede:
       type: object
       description: "Los turnos reservados de una sede en un rango de fechas, con la\
@@ -40812,6 +42850,73 @@ components:
           description: Default de caso clinico nuevo. Null deja el actual
       required:
       - expectedVersion
+    ValidacionDeHorario:
+      type: object
+      description: "Si un horario se puede reservar. **Es informativo**: quien decide\
+        \ es la reserva, que revalida todo bajo el lock de la sede."
+      properties:
+        alternativas:
+          type: array
+          description: "Los horarios mas cercanos, si este no se puede"
+          items:
+            $ref: "#/components/schemas/HorarioDisponible"
+        avisos:
+          type: array
+          description: Lo que hay que saber y no impide reservar
+          items:
+            type: string
+        causa:
+          type: string
+          description: Por que no se puede. Ausente si se puede.
+          enum:
+          - PASADO
+          - OFERTA_NO_AGENDABLE
+          - CONTEXTO_CLINICO
+          - SLOT_NO_DISPONIBLE
+          - SLOT_COMPLETO
+          - PROFESIONAL_OCUPADO
+          - ESPACIO_OCUPADO
+        conflictoFin:
+          type: string
+          format: date-time
+        conflictoInicio:
+          type: string
+          format: date-time
+        espaciosLibres:
+          type: array
+          description: "Boxes libres a esa hora, para ofrecer cambiar el asignado"
+          items:
+            $ref: "#/components/schemas/RecursoLibre"
+        estado:
+          type: string
+          enum:
+          - DISPONIBLE
+          - NO_DISPONIBLE
+          - DISPONIBLE_CON_AVISO
+          example: DISPONIBLE
+        fin:
+          type: string
+          format: date-time
+          description: "El fin con quien atiende. Con cualquier profesional y varios\
+            \ libres todavia no hay quien atienda: es el de la oferta, y el de cada\
+            \ uno sale de su duracionPropiaMinutos."
+        inicio:
+          type: string
+          format: date-time
+        motivo:
+          type: string
+          description: "La misma causa, para mostrarla"
+          example: El profesional ya tiene otro turno en ese horario.
+        profesionales:
+          type: array
+          description: Quien puede atender a esa hora
+          items:
+            $ref: "#/components/schemas/RecursoLibre"
+        turnoEnConflictoId:
+          type: integer
+          format: int64
+          description: "Turno con el que choca, si es un turno"
+          example: 301
     ValidacionDeOfertaResponse:
       type: object
       description: "Si la combinacion puede prestarse, y todos los motivos por los\
@@ -40871,6 +42976,54 @@ components:
           type: integer
           format: int64
           example: 1204
+    ValidarHorarioDeTurno:
+      type: object
+      description: El horario que se quiere reservar y para que.
+      properties:
+        casoId:
+          type: integer
+          format: int64
+          example: 9
+          exclusiveMinimum: 0
+        espacioId:
+          type: integer
+          format: int64
+          example: 55
+          exclusiveMinimum: 0
+        inicio:
+          type: string
+          format: date-time
+          example: 2026-10-30T17:30:00Z
+        ofertaId:
+          type: integer
+          format: int64
+          example: 42
+          exclusiveMinimum: 0
+        personaId:
+          type: integer
+          format: int64
+          example: 128
+          exclusiveMinimum: 0
+        planId:
+          type: integer
+          format: int64
+          example: 57
+          exclusiveMinimum: 0
+        profesionalId:
+          type: integer
+          format: int64
+          description: Omitirlo es "cualquier profesional".
+          example: 31
+          exclusiveMinimum: 0
+        turnoExcluidoId:
+          type: integer
+          format: int64
+          description: "El turno que se esta moviendo: no choca contra si mismo."
+          example: 301
+          exclusiveMinimum: 0
+      required:
+      - inicio
+      - ofertaId
     ValidarRecepcion:
       type: object
       description: "Validacion de cobertura y documentacion (RF-M13-003/004). El servidor\

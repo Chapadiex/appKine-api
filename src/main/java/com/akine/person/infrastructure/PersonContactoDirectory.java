@@ -42,6 +42,6 @@ public class PersonContactoDirectory implements ContactoDirectory {
 				.collect(Collectors.toMap(
 						Persona::getId,
 						persona -> new ContactoDePersona(
-								persona.getId(), persona.getEmail(), persona.getNombre())));
+								persona.getId(), persona.getEmail(), persona.getNombre(), persona.getTelefono())));
 	}
 }

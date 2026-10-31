@@ -8,7 +8,11 @@ package com.akine.person.spi;
  *              saltearlas sin fallar
  * @param nombre nombre de pila, unico dato personal que viaja al template (RN-M26-002)
  */
-public record ContactoDePersona(long personaId, String email, String nombre) {
+public record ContactoDePersona(long personaId, String email, String nombre, String telefono) {
+
+	public ContactoDePersona(long personaId, String email, String nombre) {
+		this(personaId, email, nombre, null);
+	}
 
 	/** {@code true} si esta persona se puede notificar por correo. */
 	public boolean notificable() {

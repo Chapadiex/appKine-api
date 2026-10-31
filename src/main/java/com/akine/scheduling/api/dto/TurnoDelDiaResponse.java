@@ -92,7 +92,10 @@ public record TurnoDelDiaResponse(
 				+ "como particular\" —la cobertura la resuelve la validacion— y un turno cancelado o "
 				+ "ausente es `NO_EXIGIDO` salvo que tenga un anticipo vigente (`REGISTRADO`). Con "
 				+ "recepcion vigente es el mismo que `recepcion.prepago`. Es una alerta: no bloquea nada (DP-06).")
-		PrepagoDeRecepcionResponse prepago) {
+		PrepagoDeRecepcionResponse prepago,
+
+		@Schema(description = "Para que es el turno y en que anda, combinando reserva, recepcion y atencion.")
+		OperativoDeTurnoResponse operativo) {
 
 	public static TurnoDelDiaResponse de(TurnoDelDiaView vista) {
 		return new TurnoDelDiaResponse(
@@ -102,6 +105,7 @@ public record TurnoDelDiaResponse(
 				vista.profesionalId(), vista.espacioId(), vista.llegadaEn(),
 				vista.motivoCancelacion(), vista.serieId(), vista.coberturaId(), vista.version(),
 				vista.recepcion() == null ? null : RecepcionResponse.de(vista.recepcion()),
-				PrepagoDeRecepcionResponse.de(vista.prepago()));
+				PrepagoDeRecepcionResponse.de(vista.prepago()),
+				OperativoDeTurnoResponse.de(vista.operativo()));
 	}
 }

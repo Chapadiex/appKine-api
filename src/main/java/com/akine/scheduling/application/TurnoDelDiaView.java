@@ -58,5 +58,6 @@ public record TurnoDelDiaView(
 		Long coberturaId,
 		long version,
 		RecepcionView recepcion,
-		PrepagoView prepago) {
+		PrepagoView prepago,
+		OperativoDeTurnoView operativo) {
 }

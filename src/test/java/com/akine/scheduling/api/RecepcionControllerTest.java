@@ -183,7 +183,7 @@ class RecepcionControllerTest {
 	void lecturas() throws Exception {
 		given(recepcion.ver(any(), eq(7L), eq(301L))).willReturn(vista("EN_ESPERA"));
 		given(recepcion.historial(any(), eq(7L), eq(301L))).willReturn(List.of(
-				new EventoDeRecepcionView(1L, 77L, "LLEGADA", null, "LLEGO", null, 12L, Instant.now())));
+				new EventoDeRecepcionView(1L, 77L, "LLEGADA", null, "LLEGO", null, 12L, "Ana Recepcion", Instant.now())));
 
 		mockMvc.perform(get(RUTA).with(miembro()))
 				.andExpect(status().isOk())

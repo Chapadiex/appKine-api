@@ -21,6 +21,12 @@ public record RegistrarAusenciaRequest(
 		@Size(max = 300)
 		String motivo,
 
+		@Schema(
+				description = "Si la ausencia consume una sesion del plan del turno. Se ignora si el "
+						+ "turno no tiene plan. Omitirlo es que no consume.",
+				example = "false")
+		Boolean consumeSesionDelPlan,
+
 		@Schema(description = "Version que devolvio la ultima lectura del turno.", example = "1")
 		@NotNull(message = "expectedVersion es obligatorio")
 		@Min(0)

@@ -143,6 +143,106 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("ofertaId") long ofertaId,
 			@Param("inicio") Instant inicio);
 
+	@Override
+	@Query("""
+			SELECT COUNT(t) FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.ofertaId = :ofertaId
+			   AND t.profesionalMembershipId = :profesionalMembershipId
+			   AND t.inicio = :inicio
+			   AND t.deletedAt IS NULL
+			""")
+	long contarVivosEnSlotDelProfesional(
+			@Param("organizationId") long organizationId,
+			@Param("ofertaId") long ofertaId,
+			@Param("profesionalMembershipId") long profesionalMembershipId,
+			@Param("inicio") Instant inicio);
+
+	/** Por solapamiento y sin filtrar por sede: un profesional no se desdobla entre dos sedes. */
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.deletedAt IS NULL
+			   AND (t.profesionalMembershipId IN :profesionalIds OR t.espacioId IN :espacioIds)
+			   AND t.inicio < :hasta
+			   AND t.fin > :desde
+			""")
+	List<Turno> findVivosDeRecursosEnVentana(
+			@Param("organizationId") long organizationId,
+			@Param("profesionalIds") Collection<Long> profesionalIds,
+			@Param("espacioIds") Collection<Long> espacioIds,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.planId IN :planIds
+			 ORDER BY t.inicio ASC, t.id ASC
+			""")
+	List<Turno> findDeLosPlanes(
+			@Param("organizationId") long organizationId,
+			@Param("planIds") Collection<Long> planIds);
+
+	@Override
+	default List<Turno> findDeLaPersonaEnSede(
+			long organizationId, long consultorioId, long personaId, boolean soloFuturos, Instant ahora,
+			int pagina, int tamano) {
+		org.springframework.data.domain.PageRequest pedido =
+				org.springframework.data.domain.PageRequest.of(pagina, tamano);
+		// Lo que viene se lee del mas cercano al mas lejano; el historial, del mas nuevo al mas viejo.
+		// Con un solo orden, pedir "los proximos cinco" devolvia los cinco mas lejanos.
+		return soloFuturos
+				? proximosDeLaPersonaEnSede(organizationId, consultorioId, personaId, ahora, pedido)
+				: paginaDeLaPersonaEnSede(organizationId, consultorioId, personaId, pedido);
+	}
+
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.personaId = :personaId
+			   AND t.deletedAt IS NULL
+			   AND t.inicio >= :ahora
+			 ORDER BY t.inicio ASC, t.id ASC
+			""")
+	List<Turno> proximosDeLaPersonaEnSede(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("personaId") long personaId,
+			@Param("ahora") Instant ahora,
+			org.springframework.data.domain.Pageable pagina);
+
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.personaId = :personaId
+			 ORDER BY t.inicio DESC, t.id DESC
+			""")
+	List<Turno> paginaDeLaPersonaEnSede(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("personaId") long personaId,
+			org.springframework.data.domain.Pageable pagina);
+
+	@Override
+	@Query("""
+			SELECT COUNT(t) FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.personaId = :personaId
+			   AND (:soloFuturos = FALSE OR (t.deletedAt IS NULL AND t.inicio >= :ahora))
+			""")
+	long contarDeLaPersonaEnSede(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("personaId") long personaId,
+			@Param("soloFuturos") boolean soloFuturos,
+			@Param("ahora") Instant ahora);
+
 	/**
 	 * <p>Se filtra por {@code inicio} dentro de la ventana y no por solapamiento: lo que el motor
 	 * necesita es el cupo consumido de cada SLOT, y un slot se identifica por su instante de inicio.
