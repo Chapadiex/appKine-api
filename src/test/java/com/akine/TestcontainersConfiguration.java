@@ -10,6 +10,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -34,6 +35,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
 
+	private static final String USUARIO = "test";
+
 	/**
 	 * El servidor, con la misma configuracion que {@code compose.yaml}. No es un bean: si lo fuera,
 	 * cerrar un contexto lo apagaria para los demas. Lo baja Ryuk al terminar la JVM.
@@ -54,13 +57,25 @@ public class TestcontainersConfiguration {
 	 * <p>{@code --max-connections} si difiere, y es por este diseño: la cache de Spring guarda hasta
 	 * 32 contextos con su pool abierto contra este unico servidor, y el default de 151 no alcanza.
 	 *
+	 * <p>El directorio en memoria y las tres banderas de durabilidad tampoco son las de produccion:
+	 * sobrevivir a un corte de luz no le importa a un test y no cambia locks, aislamiento ni SQL. Las
+	 * migraciones son casi todas DDL, que fuerza el disco en cada sentencia.
+	 *
 	 * <p>{@code withCommand} reemplaza el CMD de la imagen, asi que {@code mysqld} tiene que ir
 	 * explicito: sin el, el contenedor arrancaria la bandera como si fuera el ejecutable.
 	 */
 	private static final MySQLContainer MYSQL = new MySQLContainer(DockerImageName.parse("mysql:8.4"))
-			.withCommand("mysqld", "--log-bin-trust-function-creators=1", "--max-connections=1000");
+			.withUsername(USUARIO)
+			.withTmpFs(Map.of("/var/lib/mysql", "rw"))
+			.withCommand("mysqld", "--log-bin-trust-function-creators=1", "--max-connections=1000",
+					"--innodb-flush-log-at-trx-commit=0", "--sync-binlog=0", "--innodb-doublewrite=0");
 
 	private static final AtomicInteger BASES = new AtomicInteger();
+
+	/** Para el test que crea sus propias bases descartables, con el usuario root. */
+	public static MySQLContainer servidor() {
+		return MYSQL;
+	}
 
 	/**
 	 * Se evalua una vez por contexto: cada uno migra y usa su propia base.
@@ -74,8 +89,9 @@ public class TestcontainersConfiguration {
 	@Bean
 	JdbcConnectionDetails baseDelContexto() {
 		MYSQL.start();
-		String base = crearBase("akine_it_" + BASES.incrementAndGet());
-		String url = MYSQL.getJdbcUrl().replace("/" + MYSQL.getDatabaseName(), "/" + base);
+		int numero = BASES.incrementAndGet();
+		crearBase(numero);
+		String url = MYSQL.getJdbcUrl().replace("/" + MYSQL.getDatabaseName(), "/akine_it_" + numero);
 		return new JdbcConnectionDetails() {
 			@Override
 			public String getUsername() {
@@ -94,14 +110,13 @@ public class TestcontainersConfiguration {
 		};
 	}
 
-	private static String crearBase(String base) {
+	private static void crearBase(int numero) {
 		try (Connection root = DriverManager.getConnection(MYSQL.getJdbcUrl(), "root", MYSQL.getPassword());
 				Statement sql = root.createStatement()) {
-			sql.execute("CREATE DATABASE " + base);
-			sql.execute("GRANT ALL ON " + base + ".* TO '" + MYSQL.getUsername() + "'@'%'");
-			return base;
+			sql.execute("CREATE DATABASE akine_it_" + numero);
+			sql.execute("GRANT ALL ON akine_it_" + numero + ".* TO '" + USUARIO + "'@'%'");
 		} catch (SQLException e) {
-			throw new IllegalStateException("No se pudo crear la base " + base, e);
+			throw new IllegalStateException("No se pudo crear la base akine_it_" + numero, e);
 		}
 	}
 }
