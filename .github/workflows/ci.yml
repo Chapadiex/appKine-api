@@ -19,8 +19,39 @@ env:
   SONAR_MAVEN_VERSION: '5.8.0.7211'
 
 jobs:
+  # Un PR que sólo toca documentación no compila ni corre nada: los jobs quedan "skipped", que para
+  # los checks obligatorios cuenta como éxito. En un push a main corre siempre todo. Si no se puede
+  # leer la lista de archivos, también: ante la duda se prueba.
+  cambios:
+    name: Detectar si el PR toca código
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      codigo: ${{ steps.filtro.outputs.codigo }}
+
+    steps:
+      - name: Mirar los archivos del PR
+        id: filtro
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          codigo=true
+          if [ -n "$PR" ] && archivos=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)'); then
+            if [ -n "$archivos" ] && ! echo "$archivos" | grep -qvE '^(docs/|\.claude/)|\.md$'; then
+              codigo=false
+            fi
+          fi
+          echo "codigo=$codigo" >> "$GITHUB_OUTPUT"
+          echo "Toca código: $codigo"
+
   build:
     name: Build, test y contrato
+    needs: cambios
+    if: needs.cambios.outputs.codigo == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -96,6 +127,8 @@ jobs:
   # de dependencias que viaja dentro del jar construido, no uno de un build paralelo.
   imagen:
     name: Imagen Docker y SBOM
+    needs: cambios
+    if: needs.cambios.outputs.codigo == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -133,6 +166,8 @@ jobs:
   # sin el, el job analiza contra OSV.dev. Detalle en docs/calidad.md §2.
   vulnerabilidades:
     name: Vulnerabilidades de dependencias (OWASP / OSV)
+    needs: cambios
+    if: needs.cambios.outputs.codigo == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
 

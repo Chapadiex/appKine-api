@@ -12,7 +12,7 @@ Workflow de trabajo y comportamiento esperado del agente en el backend de AKINE.
 1. `/caveman` — activar modo de ahorro de tokens.
 2. `mem_search` con keywords del tema (Engram) — recuperar contexto de sesiones anteriores.
 3. Leer `AGENT.md` completo (o confirmarlo en memoria).
-4. Verificar estado del repo — correr tests antes de tocar código.
+4. Verificar estado del repo con `git status` y `git log`. **No correr tests al arrancar** (ver §4).
 5. Identificar el próximo paso — ver §7 "Estado actual".
 
 ## 2. Skills instaladas y sus triggers
@@ -24,7 +24,7 @@ Workflow de trabajo y comportamiento esperado del agente en el backend de AKINE.
 | `superpowers:brainstorming` | **Obligatorio** antes de cualquier trabajo creativo: feature nueva, componente, cambio de comportamiento |
 | `superpowers:writing-plans` | Ya hay spec/requisitos y falta el plan, antes de tocar código |
 | `superpowers:executing-plans` | Ejecutar un plan escrito con checkpoints de revisión |
-| `superpowers:test-driven-development` | **Obligatorio** al implementar feature o bugfix — tests primero |
+| `superpowers:test-driven-development` | Opcional, sólo si se pide: por defecto, código primero (ver §4) |
 | `superpowers:systematic-debugging` | **Obligatorio** ante cualquier bug, test que falla o comportamiento inesperado, antes de proponer un fix |
 | `superpowers:subagent-driven-development` | Tareas independientes dentro de la misma sesión |
 | `superpowers:dispatching-parallel-agents` | 2+ tareas sin estado compartido ni dependencia secuencial |
@@ -69,7 +69,7 @@ Todo cambio no trivial pasa por exploración y especificación antes de tocar c�
 
 ```
 brainstorming → explore → propose → spec → design → DESIGN CHALLENGE
-              → tasks → apply (TDD) → /simplify → verify
+              → tasks → apply → /simplify → verify
               → verification-before-completion → archive
 ```
 
@@ -82,7 +82,7 @@ brainstorming → explore → propose → spec → design → DESIGN CHALLENGE
 | design | Decisiones de arquitectura: módulo propietario, tablas, contrato API, eventos | `engram-sdd-flow` + `AGENT.md` |
 | **design challenge** | Revisión adversarial del diseño — ver abajo | **obligatorio**, paso manual |
 | tasks | Checklist implementable y ordenada | `superpowers:writing-plans` |
-| apply | Código real, tests primero | `superpowers:test-driven-development` |
+| apply | Código real, con los tests que la regla exige (ver §4) | — |
 | simplify | Reuso, simplificación, eficiencia, deuda | `/simplify` — **obligatorio** |
 | verify | Validación de la implementación contra la spec | tests + `/code-review` |
 | verification-before-completion | Evidencia de completitud antes de cerrar | `superpowers:verification-before-completion` — **obligatorio** |
@@ -109,14 +109,14 @@ Si alguna respuesta es insatisfactoria, se vuelve a `design`. No se avanza a `ta
 **Feature nueva**
 ```
 /caveman → brainstorming → engram-sdd-flow (explore/propose/spec/design)
-→ DESIGN CHALLENGE → writing-plans → TDD → /simplify → tests + /code-review
+→ DESIGN CHALLENGE → writing-plans → código → /simplify → tests de lo tocado + /code-review
 → verification-before-completion → mem_save
 ```
 
 **Fix o cambio pequeño**
 ```
-/caveman → systematic-debugging → TDD (test que reproduce primero)
-→ fix → /simplify → tests → mem_save
+/caveman → systematic-debugging → fix + test que lo reproduce
+→ /simplify → tests de lo tocado → mem_save
 ```
 
 **Refactor o cambio complejo**
@@ -143,13 +143,43 @@ Nunca asumir commit atómico entre repos. Ver `../CLAUDE.md`.
 ## 4. Protocolo de cambios
 
 - **Nada de código sin un RF/RN que lo respalde.** Si no existe, se pregunta antes de inventar.
-- **Tests primero.** TDD no es opcional en este repo.
+- **Tests después y pocos.** Ver "Qué correr y cuándo", abajo.
 - **ArchUnit se corre en cada cambio que toque estructura de módulos.**
 - **Baja lógica siempre.** Nunca `DELETE` sobre información histórica relevante.
 - **Datos sintéticos únicamente.** Jamás datos reales de pacientes en tests, seeds o fixtures.
 - **Sin secretos versionados.**
 - `main` siempre desplegable. Trabajo incompleto detrás de feature flag.
 - Commits y PRs se escriben en prosa normal, no en caveman.
+
+### Qué correr y cuándo
+
+La suite completa es del CI, no de la sesión. **No se corre al arrancar ni antes de cada commit.**
+
+| Momento | Qué se corre |
+|---|---|
+| Al arrancar | Nada. `git status` y `git log`; el estado de `main` lo dice su CI |
+| Mientras se trabaja | Sólo lo que toca el cambio, con los comandos de abajo |
+| Al abrir el PR | Nada más: el CI corre todo. Se lee su resultado en vez de repetirlo en local |
+| Antes del deploy | La suite completa y el QA manual del §6 |
+
+Unitarias de un módulo:
+
+```bash
+./mvnw -o test -Dtest="com.akine.billing.**.*Test" -Djacoco.skip=true
+```
+
+Un test de integración (necesita Docker):
+
+```bash
+./mvnw -o verify -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=CobroConcurrenteIT -Djacoco.skip=true
+```
+
+Los tests de integración corren en 2 procesos, cada uno con su MySQL en memoria. Cambiar la API exige además regenerar el contrato: `./mvnw verify -Dakine.contract.update=true`.
+
+**Sin TDD obligatorio:** código primero, tests después y pocos. Van tests para reglas de negocio,
+concurrencia y lo que reproduce un defecto; no para comportamiento del framework ni para subir un
+número. Los que corren contra el motor real —integración, concurrencia, E2E— son los que encuentran
+defectos: ésos no se recortan.
 
 ## 5. Memoria — Engram
 
@@ -1187,7 +1217,7 @@ Pendientes que arrastra el backend:
 
 ## 8. Checklist de cierre de tarea
 
-- [ ] Tests en verde (unit + integración + ArchUnit)
+- [ ] Tests de lo tocado en verde en local, y **el CI del PR** en verde (unit + integración + ArchUnit)
 - [ ] `/simplify` corrido
 - [ ] `/code-review` sin hallazgos abiertos
 - [ ] Contrato OpenAPI actualizado si cambió la API
