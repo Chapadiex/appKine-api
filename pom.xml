@@ -285,8 +285,8 @@
 					<includes>
 						<include>**/*IT.java</include>
 					</includes>
-					<!-- Cada proceso tiene su servidor MySQL y sus directorios de adjuntos. En local se
-					     sube con -Dakine.it.procesos=4. -->
+					<!-- Cada proceso tiene su servidor MySQL y sus directorios de adjuntos. Con 4 en local,
+					     Testcontainers no encontro Docker al arrancar en paralelo: no subirlo sin probarlo. -->
 					<forkCount>${akine.it.procesos}</forkCount>
 					<systemPropertyVariables>
 						<akine.person.adjuntos.base-dir>${project.build.directory}/it-adjuntos-${surefire.forkNumber}/personas</akine.person.adjuntos.base-dir>

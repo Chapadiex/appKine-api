@@ -174,8 +174,7 @@ Un test de integración (necesita Docker):
 ./mvnw -o verify -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=CobroConcurrenteIT -Djacoco.skip=true
 ```
 
-Los tests de integración corren en 2 procesos, cada uno con su MySQL en memoria; en local se sube con
-`-Dakine.it.procesos=4`. Cambiar la API exige además regenerar el contrato: `./mvnw verify -Dakine.contract.update=true`.
+Los tests de integración corren en 2 procesos, cada uno con su MySQL en memoria. Cambiar la API exige además regenerar el contrato: `./mvnw verify -Dakine.contract.update=true`.
 
 **Sin TDD obligatorio:** código primero, tests después y pocos. Van tests para reglas de negocio,
 concurrencia y lo que reproduce un defecto; no para comportamiento del framework ni para subir un
