@@ -21,22 +21,24 @@ import java.time.Instant;
 public record ReprogramarClaseRequest(
 
 		@Schema(description = "Nuevo instante de inicio, UTC", example = "2026-10-06T12:00:00Z")
-		@NotNull Instant inicio,
+		@NotNull(message = "El inicio es obligatorio") Instant inicio,
 
 		@Schema(description = "Nuevo instante de fin, UTC y exclusivo", example = "2026-10-06T13:00:00Z")
-		@NotNull Instant fin,
+		@NotNull(message = "El fin es obligatorio") Instant fin,
 
 		@Schema(description = "Membership del profesional. Obligatorio si la oferta lo requiere.", example = "31")
-		@Positive Long profesionalId,
+		@Positive(message = "El profesional no es valido") Long profesionalId,
 
 		@Schema(
 				description = "Nuevo cupo. **No puede quedar por debajo de los participantes ya "
 						+ "confirmados** (RF-M12-012).",
 				example = "10")
-		@NotNull @Min(2) Integer capacidad,
+		@NotNull(message = "La capacidad es obligatoria")
+		@Min(value = 2, message = "La capacidad no puede ser menor que 2") Integer capacidad,
 
 		@Schema(description = "Version leida de la clase, para el control optimista", example = "3")
-		@NotNull @PositiveOrZero Long version,
+		@NotNull(message = "La version es obligatoria")
+		@PositiveOrZero(message = "La version no puede ser negativa") Long version,
 
 		@Schema(
 				description = "Box elegido. **Opcional**, pero sin el el servidor vuelve a elegir el "
@@ -44,5 +46,5 @@ public record ReprogramarClaseRequest(
 						+ "el box, manda el `espacioId` que tiene la clase. Con el, se valida igual "
 						+ "que al programar.",
 				example = "8")
-		@Positive Long espacioId) {
+		@Positive(message = "El espacio no es valido") Long espacioId) {
 }

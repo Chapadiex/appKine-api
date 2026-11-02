@@ -25,7 +25,8 @@ public record RegistrarPagoEgresoRequest(
 				description = "Puede ser menor que el saldo: el pago parcial esta previsto. Nunca "
 						+ "mayor — 409 `egreso-saldo-insuficiente`.",
 				example = "100000.00")
-		@NotNull @DecimalMin(value = "0.01") BigDecimal importe,
+		@NotNull(message = "El importe es obligatorio")
+		@DecimalMin(value = "0.01", message = "El importe tiene que ser mayor que cero") BigDecimal importe,
 
 		@Schema(
 				description = "**Solo `EFECTIVO` afecta el arqueo y exige caja abierta.** Los demas "
@@ -33,19 +34,19 @@ public record RegistrarPagoEgresoRequest(
 						+ "completa— y no tocan el cajon: esa plata nunca estuvo ahi.",
 				allowableValues = {"EFECTIVO", "TRANSFERENCIA", "TARJETA_DEBITO", "TARJETA_CREDITO", "OTRO"},
 				example = "TRANSFERENCIA")
-		@NotNull MedioDePago medio,
+		@NotNull(message = "El medio de pago es obligatorio") MedioDePago medio,
 
 		@Schema(
 				description = "Numero de transferencia o de recibo. Es lo que hace conciliable un "
 						+ "pago que no es en efectivo.",
 				example = "TRF-99213847")
-		@Size(max = 80) String referencia,
+		@Size(max = 80, message = "La referencia no puede superar los 80 caracteres") String referencia,
 
 		@Schema(
 				description = "**Manda esta clave.** Sin ella, un doble click saca la plata del "
 						+ "cajon dos veces.",
 				example = "3b7e9a01-6c44-4a8d-9f21-0e5c8b2d7143")
-		@Size(max = 80) String idempotencyKey) {
+		@Size(max = 80, message = "La clave de idempotencia no puede superar los 80 caracteres") String idempotencyKey) {
 
 	public PagoEgresoCommand aDominio() {
 		return new PagoEgresoCommand(importe, medio, referencia, idempotencyKey);

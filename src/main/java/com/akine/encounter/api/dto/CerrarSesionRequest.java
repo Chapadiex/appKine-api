@@ -29,17 +29,18 @@ public record CerrarSesionRequest(
 						+ "resultado de una atencion que no ocurrio seria pedir que se invente.",
 				allowableValues = {"PRESENTE", "AUSENTE"},
 				example = "PRESENTE")
-		@NotNull Asistencia asistencia,
+		@NotNull(message = "La asistencia es obligatoria") Asistencia asistencia,
 
 		@Schema(
 				description = "**Obligatorio si el paciente asistio.** El detalle estructurado de "
 						+ "tratamientos es AKINE-06.04, fuera de alcance, asi que esta nota es lo "
 						+ "unico que registra que se hizo.",
 				example = "Terapia manual lumbar, ejercicios de estabilizacion, 30 minutos")
-		@Size(max = 2000) String notaDeCierre,
+		@Size(max = 2000, message = "La nota de cierre no puede superar los 2000 caracteres") String notaDeCierre,
 
 		@Schema(description = "Como respondio a lo realizado hoy", example = "Alivio inmediato del dolor")
-		@Size(max = 500) String respuestaTratamiento,
+		@Size(max = 500, message = "La respuesta al tratamiento no puede superar los 500 caracteres")
+		String respuestaTratamiento,
 
 		@Schema(
 				description = "Como tolero lo que se le hizo. Es distinto del resultado: se puede "
@@ -49,7 +50,7 @@ public record CerrarSesionRequest(
 		Tolerancia tolerancia,
 
 		@Schema(description = "Lo que el paciente se lleva", example = "Repetir el ejercicio 2 veces por dia")
-		@Size(max = 1000) String indicaciones,
+		@Size(max = 1000, message = "Las indicaciones no pueden superar los 1000 caracteres") String indicaciones,
 
 		@Schema(
 				description = "Que sigue. Es lo que convierte una sesion suelta en un tratamiento.",
@@ -58,7 +59,8 @@ public record CerrarSesionRequest(
 		ProximaConducta proximaConducta,
 
 		@Schema(description = "Version que el cliente leyo", example = "4")
-		@NotNull @PositiveOrZero Long version) {
+		@NotNull(message = "La version es obligatoria")
+		@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 
 	public CierreDeSesion aDominio() {
 		return new CierreDeSesion(

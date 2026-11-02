@@ -19,10 +19,12 @@ import java.util.List;
 				+ "agotar 62 dias: con `limite = 1` es el primer turno disponible.")
 public record BuscarDisponibilidadRequest(
 
-		@Schema(example = "42") @NotNull @Positive Long ofertaId,
+		@Schema(example = "42")
+		@NotNull(message = "La oferta es obligatoria")
+		@Positive(message = "La oferta no es valida") Long ofertaId,
 
 		@Schema(description = "Membership del profesional. Omitirlo es \"cualquier profesional\".", example = "31")
-		@Positive Long profesionalId,
+		@Positive(message = "El profesional no es valido") Long profesionalId,
 
 		@Schema(description = "Primer dia, en la zona de la sede. Por defecto, hoy.", example = "2026-10-30")
 		LocalDate desde,
@@ -39,8 +41,13 @@ public record BuscarDisponibilidadRequest(
 		@ArraySchema(
 				arraySchema = @Schema(description = "Dias de la semana que sirven, ISO: 1 = lunes ... 7 = domingo. Omitirlo es cualquiera."),
 				schema = @Schema(example = "1", minimum = "1", maximum = "7"))
-		@Size(max = 7) List<@NotNull @Min(1) @Max(7) Integer> dias,
+		@Size(max = 7, message = "Los dias no pueden ser mas de 7")
+		List<@NotNull(message = "Los dias no pueden tener valores vacios")
+				@Min(value = 1, message = "Cada uno de los dias debe estar entre 1 y 7")
+				@Max(value = 7, message = "Cada uno de los dias debe estar entre 1 y 7")
+				Integer> dias,
 
 		@Schema(description = "Cuantos horarios devolver. Por defecto 20, maximo 200.", example = "20")
-		@Min(1) @Max(200) Integer limite) {
+		@Min(value = 1, message = "El limite no puede ser menor que 1")
+		@Max(value = 200, message = "El limite no puede superar 200") Integer limite) {
 }

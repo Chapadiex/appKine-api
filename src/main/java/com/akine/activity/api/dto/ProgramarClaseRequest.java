@@ -22,34 +22,35 @@ import java.time.Instant;
 public record ProgramarClaseRequest(
 
 		@Schema(description = "Instante de inicio, UTC", example = "2026-10-05T12:00:00Z")
-		@NotNull Instant inicio,
+		@NotNull(message = "El inicio es obligatorio") Instant inicio,
 
 		@Schema(description = "Instante de fin, UTC y exclusivo", example = "2026-10-05T13:00:00Z")
-		@NotNull Instant fin,
+		@NotNull(message = "El fin es obligatorio") Instant fin,
 
 		@Schema(
 				description = "Membership del profesional o instructor. Obligatorio si la oferta lo requiere.",
 				example = "31")
-		@Positive Long profesionalId,
+		@Positive(message = "El profesional no es valido") Long profesionalId,
 
 		@Schema(
 				description = "Cupo propio de la clase. Queda ademas limitado por la capacidad de la "
 						+ "oferta y la del espacio (RN-M28-002). **Minimo 2**: una clase de "
 						+ "capacidad 1 es un turno individual mal rotulado.",
 				example = "8")
-		@NotNull @Min(2) Integer capacidad,
+		@NotNull(message = "La capacidad es obligatoria")
+		@Min(value = 2, message = "La capacidad no puede ser menor que 2") Integer capacidad,
 
 		@Schema(
 				description = "Rotulo de esta ocurrencia. El nombre comercial lo da la oferta.",
 				example = "Pilates - grupo avanzado")
-		@Size(max = 120) String titulo,
+		@Size(max = 120, message = "El titulo no puede superar los 120 caracteres") String titulo,
 
 		@Schema(
 				description = "Clave del cliente para que un reintento no programe dos clases. "
 						+ "Reusarla con **otro** contenido devuelve 409 `idempotency-key-conflict`, "
 						+ "no la clase anterior.",
 				example = "b3f1c2a4-5d6e-4f70-8a91-2c3d4e5f6a7b")
-		@Size(max = 80) String idempotencyKey,
+		@Size(max = 80, message = "La clave de idempotencia no puede superar los 80 caracteres") String idempotencyKey,
 
 		@Schema(
 				description = "Box elegido. **Opcional**: sin el, el servidor elige el primer box apto "
@@ -60,5 +61,5 @@ public record ProgramarClaseRequest(
 						+ "`recurso-ocupado` con `recurso = espacio`. Se admite aunque la oferta no "
 						+ "exija espacio.",
 				example = "8")
-		@Positive Long espacioId) {
+		@Positive(message = "El espacio no es valido") Long espacioId) {
 }

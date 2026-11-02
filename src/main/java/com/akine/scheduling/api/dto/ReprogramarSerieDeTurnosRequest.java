@@ -19,33 +19,33 @@ import java.time.Instant;
 public record ReprogramarSerieDeTurnosRequest(
 
 		@Schema(description = "Sobre que turnos de la serie actua", example = "ESTE_Y_SIGUIENTES")
-		@NotNull AlcanceDeSerie alcance,
+		@NotNull(message = "El alcance es obligatorio") AlcanceDeSerie alcance,
 
 		@Schema(
 				description = "Turno pivote: de su horario actual y el nuevo sale el desplazamiento. "
 						+ "Obligatorio en los tres alcances.",
 				example = "301")
-		@NotNull @Positive Long turnoId,
+		@NotNull(message = "El turno es obligatorio") @Positive(message = "El turno no es valido") Long turnoId,
 
 		@Schema(description = "Horario nuevo DEL PIVOTE, UTC", example = "2026-10-13T13:00:00Z")
-		@NotNull Instant inicio,
+		@NotNull(message = "El inicio es obligatorio") Instant inicio,
 
 		@Schema(
 				description = "Si viene, todos los afectados pasan a este profesional. Si no, cada uno "
 						+ "conserva el suyo.",
 				example = "31")
-		@Positive Long profesionalId,
+		@Positive(message = "El profesional no es valido") Long profesionalId,
 
 		@Schema(description = "Por que se mueve. **Obligatorio** (DP-04).", example = "El profesional deja de atender los lunes")
 		@NotBlank(message = "El motivo de reprogramacion es obligatorio")
-		@Size(max = 300)
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres")
 		String motivo,
 
 		@Schema(
 				description = "**Confirmacion explicita**: la cantidad de turnos afectados que mostro la "
 						+ "previsualizacion.",
 				example = "6")
-		@NotNull(message = "cantidadConfirmada es obligatoria")
-		@Min(1)
+		@NotNull(message = "La cantidad confirmada es obligatoria")
+		@Min(value = 1, message = "La cantidad confirmada no puede ser menor que 1")
 		Integer cantidadConfirmada) {
 }

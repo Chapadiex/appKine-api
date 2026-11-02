@@ -65,7 +65,7 @@ public final class HonorariosDtos {
 	public record ReemplazarInstructoresRequest(
 			@Schema(description = "Memberships de los adicionales, sin repetir y sin el principal",
 					example = "[44, 45]", requiredMode = Schema.RequiredMode.REQUIRED)
-			@NotNull(message = "La lista de instructores es obligatoria (vacia para quitarlos)")
+			@NotNull(message = "La lista de instructores adicionales es obligatoria (vacia para quitarlos)")
 			@Size(max = 10, message = "Una clase admite hasta 10 instructores adicionales")
 			List<Long> adicionales) {
 	}
@@ -156,11 +156,11 @@ public final class HonorariosDtos {
 			Long colaboradorMembershipId,
 
 			@Schema(example = "2026-10-01", requiredMode = Schema.RequiredMode.REQUIRED)
-			@NotNull(message = "desde es obligatorio")
+			@NotNull(message = "La fecha desde es obligatoria")
 			LocalDate desde,
 
 			@Schema(example = "2026-10-31", requiredMode = Schema.RequiredMode.REQUIRED)
-			@NotNull(message = "hasta es obligatorio")
+			@NotNull(message = "La fecha hasta es obligatoria")
 			LocalDate hasta,
 
 			@Schema(description = "Las clases del borrador que se miro", example = "[501, 503]",

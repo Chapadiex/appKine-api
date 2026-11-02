@@ -22,7 +22,7 @@ public record CancelarTurnoRequest(
 				description = "Por que se cancela. **Obligatorio** (DP-04).",
 				example = "El paciente aviso que no puede venir")
 		@NotBlank(message = "El motivo de cancelacion es obligatorio")
-		@Size(max = 300)
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres")
 		String motivo,
 
 		@Schema(
@@ -36,7 +36,7 @@ public record CancelarTurnoRequest(
 						+ "lo modifico entre medio, la cancelacion se rechaza con 409 en vez de "
 						+ "pisarlo.",
 				example = "0")
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(0)
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }

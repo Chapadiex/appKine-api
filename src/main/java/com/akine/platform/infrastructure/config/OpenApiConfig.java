@@ -12,6 +12,8 @@ import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.media.MapSchema;
+import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
@@ -120,6 +122,31 @@ public class OpenApiConfig {
 
 							Agregar un valor es un cambio aditivo; quitarlo o resignificarlo es \
 							incompatible y exige version mayor del contrato."""));
+		};
+	}
+
+	/**
+	 * Declara el {@code errors} que un 400 de validacion agrega al {@code ProblemDetail}.
+	 *
+	 * <p>{@code GlobalExceptionHandler} lo escribe con {@code setProperty}, que Jackson aplana a la
+	 * raiz del JSON. springdoc solo lee la clase de Spring, asi que el cliente generado no lo veia.
+	 * Es aditivo: las demas respuestas de error simplemente no lo traen.
+	 */
+	@Bean
+	public OpenApiCustomizer akineErroresDeValidacion() {
+		return openApi -> {
+			if (openApi.getComponents() == null || openApi.getComponents().getSchemas() == null) {
+				return;
+			}
+			Schema<?> problema = openApi.getComponents().getSchemas().get("ProblemDetail");
+			if (problema != null) {
+				problema.addProperty("errors", new MapSchema()
+						.additionalProperties(new StringSchema())
+						.description("""
+								Solo en un 400 validation-error: el primer mensaje de cada campo \
+								rechazado, por ruta del campo (motivo, items[0].importe). Cada \
+								mensaje nombra su campo y se puede mostrar tal cual."""));
+			}
 		};
 	}
 

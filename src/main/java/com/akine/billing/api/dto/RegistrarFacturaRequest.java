@@ -21,8 +21,9 @@ import java.time.LocalDate;
 public record RegistrarFacturaRequest(
 
 		@Schema(description = "Numero del comprobante, tal como se emitio", example = "0001-00004521")
-		@NotBlank @Size(max = 40) String numero,
+		@NotBlank(message = "El numero es obligatorio")
+		@Size(max = 40, message = "El numero no puede superar los 40 caracteres") String numero,
 
 		@Schema(description = "Fecha del comprobante", example = "2026-09-05")
-		@NotNull LocalDate fecha) {
+		@NotNull(message = "La fecha es obligatoria") LocalDate fecha) {
 }

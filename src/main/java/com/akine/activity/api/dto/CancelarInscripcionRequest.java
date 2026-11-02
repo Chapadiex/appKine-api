@@ -17,5 +17,6 @@ import jakarta.validation.constraints.Size;
 public record CancelarInscripcionRequest(
 
 		@Schema(description = "Por que se da de baja", example = "La paciente aviso que no viene")
-		@NotBlank @Size(max = 300) String motivo) {
+		@NotBlank(message = "El motivo es obligatorio")
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres") String motivo) {
 }

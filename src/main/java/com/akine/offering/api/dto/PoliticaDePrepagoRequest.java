@@ -17,12 +17,12 @@ public record PoliticaDePrepagoRequest(
 				description = "Si la recepcion tiene que alertar cuando el paciente no dejo un "
 						+ "anticipo antes de ser atendido. Alerta, nunca bloquea (DP-06)",
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "exigePrepago es obligatorio")
+		@NotNull(message = "Indicar si exige prepago es obligatorio")
 		Boolean exigePrepago,
 
 		@Schema(description = "Version de la oferta que se leyo", example = "3",
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "expectedVersion es obligatorio")
-		@PositiveOrZero
+		@NotNull(message = "La version esperada es obligatoria")
+		@PositiveOrZero(message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }

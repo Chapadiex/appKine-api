@@ -52,13 +52,14 @@ public record EnmendarSesionRequest(
 
 		@Schema(description = "Lo que trae al paciente, en palabras del profesional. No es un diagnostico",
 				example = "Dolor lumbar al agacharse, desde hace dos semanas")
-		@Size(max = 500) String motivoClinico,
+		@Size(max = 500, message = "El motivo clinico no puede superar los 500 caracteres") String motivoClinico,
 
 		@Schema(description = "Escala visual analogica, 0 a 10", example = "4")
-		@Min(0) @Max(10) Integer dolorEva,
+		@Min(value = 0, message = "El dolor (EVA) no puede ser menor que 0")
+		@Max(value = 10, message = "El dolor (EVA) no puede superar 10") Integer dolorEva,
 
 		@Schema(description = "Zona corporal referida", example = "Lumbar")
-		@Size(max = 120) String dolorZona,
+		@Size(max = 120, message = "La zona del dolor no puede superar los 120 caracteres") String dolorZona,
 
 		@Schema(description = "De que lado. **Exige zona**: \"derecha\" de que",
 				allowableValues = {"IZQUIERDA", "DERECHA", "BILATERAL", "NO_APLICA"},
@@ -71,27 +72,28 @@ public record EnmendarSesionRequest(
 		Evolucion evolucion,
 
 		@Schema(description = "Que se buscaba en esa sesion", example = "Reducir dolor en flexion")
-		@Size(max = 500) String objetivoSesion,
+		@Size(max = 500, message = "El objetivo de la sesion no puede superar los 500 caracteres") String objetivoSesion,
 
 		@Schema(description = "Que no podia hacer el paciente", example = "No podia atarse los cordones")
-		@Size(max = 500) String limitacionFuncional,
+		@Size(max = 500, message = "La limitacion funcional no puede superar los 500 caracteres") String limitacionFuncional,
 
 		@Schema(
 				description = "Que se hizo. **Sigue siendo obligatorio si el paciente asistio**: "
 						+ "una enmienda no puede vaciar la nota de cierre de una prestacion que "
 						+ "ocurrio, porque dejaria el registro sin nada que diga que se hizo.",
 				example = "Terapia manual lumbar, ejercicios de estabilizacion, 30 minutos")
-		@Size(max = 2000) String notaDeCierre,
+		@Size(max = 2000, message = "La nota de cierre no puede superar los 2000 caracteres") String notaDeCierre,
 
 		@Schema(description = "Como respondio a lo realizado", example = "Alivio inmediato del dolor")
-		@Size(max = 500) String respuestaTratamiento,
+		@Size(max = 500, message = "La respuesta al tratamiento no puede superar los 500 caracteres")
+		String respuestaTratamiento,
 
 		@Schema(description = "Como tolero lo que se le hizo",
 				allowableValues = {"BUENA", "REGULAR", "MALA"}, example = "BUENA")
 		Tolerancia tolerancia,
 
 		@Schema(description = "Lo que el paciente se llevo", example = "Repetir el ejercicio 2 veces por dia")
-		@Size(max = 1000) String indicaciones,
+		@Size(max = 1000, message = "Las indicaciones no pueden superar los 1000 caracteres") String indicaciones,
 
 		@Schema(description = "Que seguia",
 				allowableValues = {"CONTINUA", "ALTA", "DERIVA", "REEVALUA"}, example = "CONTINUA")
@@ -133,7 +135,8 @@ public record EnmendarSesionRequest(
 						+ "una version sobre un contenido que el autor nunca vio. **No es "
 						+ "`ultimoNumeroVersion`.**",
 				example = "5", requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull @PositiveOrZero Long version) {
+		@NotNull(message = "La version es obligatoria")
+		@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 
 	/**
 	 * El contenido enmendado, sin la asistencia ni el modo: los pone la sesion.
@@ -151,32 +154,38 @@ public record EnmendarSesionRequest(
 
 			@Schema(description = "Tratamiento vigente que se corrige. **Ausente si es uno nuevo**. "
 					+ "Uno que no es de esta sesion o ya estaba dado de baja es 404", example = "301")
-			@Positive Long tratamientoId,
+			@Positive(message = "El tratamiento no es valido") Long tratamientoId,
 
 			@Schema(description = "Practica realizada. Si cambia, el conjunto de practicas de la "
 					+ "sesion tiene que seguir siendo el mismo", example = "41")
-			@NotNull @Positive Long practicaId,
+			@NotNull(message = "La practica es obligatoria")
+			@Positive(message = "La practica no es valida") Long practicaId,
 
-			@Schema(example = "TENS convencional") @Size(max = 160) String tecnica,
+			@Schema(example = "TENS convencional")
+			@Size(max = 160, message = "La tecnica no puede superar los 160 caracteres") String tecnica,
 
-			@Schema(example = "Lumbar") @Size(max = 120) String zona,
+			@Schema(example = "Lumbar")
+			@Size(max = 120, message = "La zona no puede superar los 120 caracteres") String zona,
 
 			@Schema(description = "**Exige zona**",
 					allowableValues = {"IZQUIERDA", "DERECHA", "BILATERAL", "NO_APLICA"},
 					example = "BILATERAL")
 			Lateralidad lateralidad,
 
-			@Schema(example = "20") @Min(1) @Max(1440) Integer duracionMinutos,
+			@Schema(example = "20")
+			@Min(value = 1, message = "La duracion en minutos no puede ser menor que 1")
+			@Max(value = 1440, message = "La duracion en minutos no puede superar 1440") Integer duracionMinutos,
 
 			@Schema(description = "Co-atencion. Si no cambia se conserva aunque hoy no tenga "
 					+ "membership vigente; si cambia, tiene que tenerla", example = "88")
-			@Positive Long profesionalMembershipId,
+			@Positive(message = "El profesional no es valido") Long profesionalMembershipId,
 
 			@Schema(description = "Espacio realmente utilizado. Si no cambia se conserva aunque "
 					+ "hoy este dado de baja", example = "12")
-			@Positive Long espacioId,
+			@Positive(message = "El espacio no es valido") Long espacioId,
 
-			@Schema(example = "Tolero bien") @Size(max = 500) String observacion,
+			@Schema(example = "Tolero bien")
+			@Size(max = 500, message = "La observacion no puede superar los 500 caracteres") String observacion,
 
 			@Schema(description = "Parametros tipados. Reemplazan a los anteriores")
 			@Valid List<RegistrarTratamientoRequest.ParametroRequest> parametros) {
@@ -206,7 +215,8 @@ public record EnmendarSesionRequest(
 	public record MedicionEnmiendaRequest(
 
 			@Schema(description = "Medida del catalogo", example = "7")
-			@NotNull @Positive Long definicionId,
+			@NotNull(message = "La definicion es obligatoria")
+			@Positive(message = "La definicion no es valida") Long definicionId,
 
 			@Schema(description = "Lado. Ausente es `NO_APLICA`",
 					allowableValues = {"IZQUIERDA", "DERECHA", "NO_APLICA"}, example = "DERECHA")
@@ -215,11 +225,12 @@ public record EnmendarSesionRequest(
 			@Schema(example = "92.5") BigDecimal valorNumerico,
 
 			@Schema(example = "Marcha antalgica")
-			@Size(max = 500) String valorTexto,
+			@Size(max = 500, message = "El valor de texto no puede superar los 500 caracteres") String valorTexto,
 
 			@Schema(example = "true") Boolean valorBooleano,
 
-			@Schema(example = "Con dolor al final del rango") @Size(max = 280) String nota) {
+			@Schema(example = "Con dolor al final del rango")
+			@Size(max = 280, message = "La nota no puede superar los 280 caracteres") String nota) {
 
 		MedicionEnmendada aDominio() {
 			return new MedicionEnmendada(definicionId, lateralidad,

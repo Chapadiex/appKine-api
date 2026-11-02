@@ -18,6 +18,6 @@ public record CambiarFinPrecioParticularRequest(
 
 		@Schema(description = "Version del precio que se esta editando", example = "0",
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "expectedVersion es obligatoria")
+		@NotNull(message = "La version esperada es obligatoria")
 		Long expectedVersion) {
 }

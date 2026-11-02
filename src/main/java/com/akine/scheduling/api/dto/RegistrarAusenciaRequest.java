@@ -18,7 +18,7 @@ import jakarta.validation.constraints.Size;
 public record RegistrarAusenciaRequest(
 
 		@Schema(description = "Opcional.", example = "No aviso")
-		@Size(max = 300)
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres")
 		String motivo,
 
 		@Schema(
@@ -28,7 +28,7 @@ public record RegistrarAusenciaRequest(
 		Boolean consumeSesionDelPlan,
 
 		@Schema(description = "Version que devolvio la ultima lectura del turno.", example = "1")
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(0)
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }

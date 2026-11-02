@@ -18,27 +18,29 @@ public record IniciarSesionSinTurnoRequest(
 
 		@Schema(description = "Persona que se atiende. Tiene que tener perfil de paciente vigente.",
 				example = "88")
-		@NotNull @Positive Long personaId,
+		@NotNull(message = "La persona es obligatoria")
+		@Positive(message = "La persona no es valida") Long personaId,
 
 		@Schema(description = "Oferta de la sede que se presta. Vigente hoy y con quien atiende "
 				+ "habilitado.", example = "42")
-		@NotNull @Positive Long ofertaId,
+		@NotNull(message = "La oferta es obligatoria") @Positive(message = "La oferta no es valida") Long ofertaId,
 
 		@Schema(description = "Caso activo de la historia del paciente. **Obligatorio** si la oferta "
 				+ "tiene `requiereCasoClinico` (409 `caso-clinico-requerido`); opcional en las demas.",
 				example = "12", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		@Positive Long casoId,
+		@Positive(message = "El caso no es valido") Long casoId,
 
 		@Schema(description = "Por que se atiende sin turno. Obligatorio, hasta 500 caracteres. No "
 				+ "va a la auditoria.", example = "Paciente con dolor agudo que espero sin turno")
-		@NotBlank @Size(max = 500) String motivo,
+		@NotBlank(message = "El motivo es obligatorio")
+		@Size(max = 500, message = "El motivo no puede superar los 500 caracteres") String motivo,
 
 		@Schema(description = "Clave del cliente para que un reintento —el doble click— no abra una "
 				+ "segunda atencion. Reusarla con **otro** paciente, oferta o caso devuelve 409 "
 				+ "`idempotency-key-conflict`. Omitirla desactiva la proteccion.",
 				example = "b3f1c2a4-5d6e-4f70-8a91-2c3d4e5f6a7b",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		@Size(max = 80) String idempotencyKey) {
+		@Size(max = 80, message = "La clave de idempotencia no puede superar los 80 caracteres") String idempotencyKey) {
 
 	public InicioSinTurno aDominio() {
 		return new InicioSinTurno(personaId, ofertaId, casoId, motivo);

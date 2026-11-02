@@ -172,6 +172,10 @@ Las reglas 1–4 y 6 **se verifican automáticamente** en
 - El pipeline lo valida contra la implementación y lo publica como artefacto versionado (SemVer).
 - El frontend genera su cliente desde una versión fijada. Cambio incompatible → versión mayor
   + ventana de compatibilidad. Ver `../CLAUDE.md` § "Regla de coordinación entre repos".
+- Toda restricción de Bean Validation de la capa `api` lleva un `message` propio que nombra el
+  campo, con mayúscula inicial y sin el identificador técnico: "La version esperada es obligatoria",
+  no "expectedVersion es obligatorio". `errors` se muestra tal cual, y el mensaje por defecto ni nombra
+  el campo ni es estable (sigue `Accept-Language`). Lo exige `MensajesDeValidacionTest`.
 
 ## 8. Reglas funcionales maestras
 

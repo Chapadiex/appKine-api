@@ -115,7 +115,7 @@ public record UpdateOfertaRequest(
 						+ "desde entonces, responde 409 concurrent-modification y no pisa nada",
 				example = "0",
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(value = 0, message = "expectedVersion no puede ser negativo")
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }

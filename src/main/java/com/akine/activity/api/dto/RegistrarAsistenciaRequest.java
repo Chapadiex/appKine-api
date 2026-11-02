@@ -20,14 +20,15 @@ import jakarta.validation.constraints.Size;
 public record RegistrarAsistenciaRequest(
 
 		@Schema(description = "La inscripcion del participante, no la persona", example = "412")
-		@NotNull @Positive Long inscripcionId,
+		@NotNull(message = "La inscripcion es obligatoria")
+		@Positive(message = "La inscripcion no es valida") Long inscripcionId,
 
 		@Schema(
 				description = "`PRESENTE`, `PRESENTE_TARDE` o `AUSENTE`. **`TARDE` no es un estado "
 						+ "de inscripcion**: RN-M28-004 enumera seis y el matiz operativo vive en "
 						+ "el hecho. Los dos presentes dejan la inscripcion en `ASISTIO`.",
 				example = "PRESENTE")
-		@NotNull ResultadoAsistenciaApi resultado,
+		@NotNull(message = "El resultado es obligatorio") ResultadoAsistenciaApi resultado,
 
 		@Schema(
 				description = "Nota **operativa, no clinica**. La ve cualquiera con "
@@ -35,11 +36,11 @@ public record RegistrarAsistenciaRequest(
 						+ "diagnosticos, ni sintomas, ni el motivo de una ausencia medica. El servidor "
 						+ "no puede verificarlo; la pantalla lo avisa al cargarla.",
 				example = "Llego a los 10 minutos")
-		@Size(max = 500) String observaciones,
+		@Size(max = 500, message = "Las observaciones no pueden superar los 500 caracteres") String observaciones,
 
 		@Schema(
 				description = "Obligatorio **solo para corregir**. Registrar por primera vez no "
 						+ "necesita explicacion; cambiar un hecho ya afirmado si.",
 				example = "Se habia marcado ausente por error")
-		@Size(max = 300) String motivo) {
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres") String motivo) {
 }

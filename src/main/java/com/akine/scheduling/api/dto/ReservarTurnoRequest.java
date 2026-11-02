@@ -24,17 +24,18 @@ import java.time.Instant;
 public record ReservarTurnoRequest(
 
 		@Schema(description = "Persona del padron, que debe tener perfil de paciente vigente", example = "128")
-		@NotNull @Positive Long personaId,
+		@NotNull(message = "La persona es obligatoria")
+		@Positive(message = "La persona no es valida") Long personaId,
 
 		@Schema(
 				description = "Instante de inicio del slot elegido, UTC, tal como lo devolvio la agenda",
 				example = "2026-09-15T12:00:00Z")
-		@NotNull Instant inicio,
+		@NotNull(message = "El inicio es obligatorio") Instant inicio,
 
 		@Schema(
 				description = "Membership del profesional. Obligatorio si la oferta lo requiere.",
 				example = "31")
-		@Positive Long profesionalId,
+		@Positive(message = "El profesional no es valido") Long profesionalId,
 
 		@Schema(
 				description = "Cobertura del paciente con la que se piensa atender. Opcional: "
@@ -43,7 +44,7 @@ public record ReservarTurnoRequest(
 						+ "persona; si no, 404 `not-found`. Si aplica a la practica lo decide la "
 						+ "recepcion, que la usa por defecto al validar.",
 				example = "412")
-		@Positive Long coberturaId,
+		@Positive(message = "La cobertura no es valida") Long coberturaId,
 
 		@Schema(
 				description = "Clave del cliente para que un reintento no cree un segundo turno. "
@@ -51,26 +52,26 @@ public record ReservarTurnoRequest(
 						+ "no el turno anterior. Omitirla desactiva la proteccion, que es legitimo "
 						+ "en una carga manual.",
 				example = "b3f1c2a4-5d6e-4f70-8a91-2c3d4e5f6a7b")
-		@Size(max = 80) String idempotencyKey,
+		@Size(max = 80, message = "La clave de idempotencia no puede superar los 80 caracteres") String idempotencyKey,
 
 		@Schema(
 				description = "Box elegido a mano. Omitirlo es lo normal: el sistema asigna el primero "
 						+ "libre. Si se indica pasa por los mismos controles que el automatico.",
 				example = "55")
-		@Positive Long espacioId,
+		@Positive(message = "El espacio no es valido") Long espacioId,
 
 		@Schema(
 				description = "Caso clinico para el que se reserva. Opcional: una primera consulta no "
 						+ "tiene caso. Tiene que ser de esta persona y estar activo.",
 				example = "9")
-		@Positive Long casoId,
+		@Positive(message = "El caso no es valido") Long casoId,
 
 		@Schema(
 				description = "Plan de tratamiento para el que se reserva. Opcional. Tiene que ser de esta "
 						+ "persona, estar activo, incluir la oferta y tener sesiones pendientes. Si se "
 						+ "omite el caso, sale del plan.",
 				example = "57")
-		@Positive Long planId,
+		@Positive(message = "El plan no es valido") Long planId,
 
 		@Schema(
 				description = "Desde donde se inicio la reserva. Solo trazabilidad: no cambia ninguna regla.",
@@ -83,5 +84,5 @@ public record ReservarTurnoRequest(
 						+ "sigue teniendo que estar habilitado y atender en ese horario. Se ve en la agenda: "
 						+ "sin informacion clinica.",
 				example = "Se acordo atenderlo entre turnos")
-		@Size(max = 300) String sobreturnoMotivo) {
+		@Size(max = 300, message = "El motivo del sobreturno no puede superar los 300 caracteres") String sobreturnoMotivo) {
 }

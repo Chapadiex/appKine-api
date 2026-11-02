@@ -101,6 +101,17 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	@DisplayName("El mensaje de un campo no cambia con el Accept-Language")
+	void el_mensaje_no_sigue_el_idioma_del_pedido() throws Exception {
+		mockMvc.perform(post("/test/validar")
+						.header("Accept-Language", "en")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"nombre\":\"\",\"email\":\"a@b.test\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors.nombre").value("El nombre es obligatorio"));
+	}
+
+	@Test
 	@DisplayName("Una excepcion inesperada devuelve 500 generico")
 	void excepcion_inesperada_responde_generico() throws Exception {
 		mockMvc.perform(post("/test/explotar")
@@ -273,7 +284,7 @@ class GlobalExceptionHandlerTest {
 	// =================================================================================
 
 	record CuerpoDePrueba(
-			@NotBlank(message = "el nombre es obligatorio") String nombre,
+			@NotBlank(message = "El nombre es obligatorio") String nombre,
 			@Email(message = "debe ser una direccion valida") String email) {
 	}
 

@@ -21,11 +21,12 @@ public record GuardarBorradorRequest(
 		@Schema(
 				description = "Contenido parcial de la atencion, como JSON. Opaco para el servidor.",
 				example = "{\"motivoConsulta\":\"dolor lumbar\",\"observaciones\":\"\"}")
-		@Size(max = 65_000) String contenido,
+		@Size(max = 65_000, message = "El contenido no puede superar los 65000 caracteres") String contenido,
 
 		@Schema(
 				description = "Version que el cliente leyo. Un 409 `concurrent-modification` "
 						+ "significa que alguien guardo antes y hay que recargar.",
 				example = "3")
-		@NotNull @PositiveOrZero Long version) {
+		@NotNull(message = "La version es obligatoria")
+		@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 }

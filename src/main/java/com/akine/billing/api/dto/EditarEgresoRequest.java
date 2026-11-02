@@ -29,7 +29,7 @@ public record EditarEgresoRequest(
 
 		@Schema(description = "En que se fue la plata. Filtra y totaliza (RF-M22-004).",
 				example = "HONORARIOS_PROFESIONALES")
-		@NotNull CategoriaEgreso categoria,
+		@NotNull(message = "La categoria es obligatoria") CategoriaEgreso categoria,
 
 		@Schema(description = "Periodo liquidado. Los dos o ninguno.", example = "2026-09-01")
 		LocalDate periodoDesde,
@@ -38,35 +38,38 @@ public record EditarEgresoRequest(
 		LocalDate periodoHasta,
 
 		@Schema(example = "Honorarios de septiembre 2026")
-		@NotBlank @Size(max = 280) String concepto,
+		@NotBlank(message = "El concepto es obligatorio")
+		@Size(max = 280, message = "El concepto no puede superar los 280 caracteres") String concepto,
 
 		@Schema(description = "Decimal exacto, nunca float.", example = "185000.00")
-		@NotNull @DecimalMin(value = "0.01") BigDecimal importeTotal,
+		@NotNull(message = "El importe total es obligatorio")
+		@DecimalMin(value = "0.01", message = "El importe total tiene que ser mayor que cero") BigDecimal importeTotal,
 
 		@Schema(
 				description = "Tipo de comprobante. **Opcional en borrador y obligatorio para "
 						+ "confirmar**.",
 				example = "FACTURA_C")
-		@Size(max = 24) String comprobanteTipo,
+		@Size(max = 24, message = "El tipo de comprobante no puede superar los 24 caracteres") String comprobanteTipo,
 
 		@Schema(
 				description = "El mismo comprobante del mismo beneficiario no se carga dos veces: "
 						+ "409 `egreso-comprobante-duplicado`.",
 				example = "0001-00000123")
-		@Size(max = 40) String comprobanteNumero,
+		@Size(max = 40, message = "El numero de comprobante no puede superar los 40 caracteres") String comprobanteNumero,
 
 		@Schema(example = "2026-10-03")
 		LocalDate comprobanteFecha,
 
 		@Schema(description = "Version que el cliente leyo. **Requerida.**", example = "0")
-		@NotNull @PositiveOrZero Long version,
+		@NotNull(message = "La version es obligatoria")
+		@PositiveOrZero(message = "La version no puede ser negativa") Long version,
 
 		@Schema(
 				description = "Oferta de esta sede a la que se imputa el costo (DP-39). La correccion "
 						+ "**reemplaza** el valor: sin `ofertaId` el egreso queda sin imputar. Una oferta de "
 						+ "otra sede o de otro tenant es 404.",
 				example = "18")
-		@Positive Long ofertaId) {
+		@Positive(message = "La oferta no es valida") Long ofertaId) {
 
 	/** Solo los campos editables: el servicio no lee beneficiario, moneda ni clave al corregir. */
 	public EgresoCommand aDominio() {
