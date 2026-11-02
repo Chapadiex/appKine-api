@@ -12,11 +12,11 @@ import jakarta.validation.constraints.Size;
 public record AnularRecepcionRequest(
 
 		@Schema(description = "Por que se anula. Opcional.", example = "Se marco la llegada en el turno equivocado")
-		@Size(max = 300)
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres")
 		String motivo,
 
 		@Schema(description = "Version que devolvio la ultima lectura de la recepcion.", example = "0")
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(0)
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }

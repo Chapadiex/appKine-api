@@ -23,11 +23,13 @@ public record AbrirCajaRequest(
 				description = "Lo que habia en el cajon al abrir. **Decimal exacto, nunca float.** "
 						+ "Cero es un valor legitimo: una caja puede arrancar vacia.",
 				example = "15000.00")
-		@NotNull @DecimalMin(value = "0.00") BigDecimal saldoInicial,
+		@NotNull(message = "El saldo inicial es obligatorio")
+		@DecimalMin(value = "0.00", message = "El saldo inicial no puede ser negativo") BigDecimal saldoInicial,
 
 		@Schema(
 				description = "Moneda de la jornada, ISO 4217. Se fija al abrir: un arqueo que suma "
 						+ "pesos con dolares no se puede contar.",
 				example = "ARS")
-		@NotNull @Pattern(regexp = "^[A-Z]{3}$") String moneda) {
+		@NotNull(message = "La moneda es obligatoria")
+		@Pattern(regexp = "^[A-Z]{3}$", message = "La moneda debe ser un codigo de 3 letras") String moneda) {
 }

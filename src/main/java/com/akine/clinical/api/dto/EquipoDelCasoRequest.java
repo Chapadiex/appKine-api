@@ -23,7 +23,7 @@ public record EquipoDelCasoRequest(
 		@Schema(description = "Equipo completo despues del cambio. Vacia deja el caso sin equipo "
 				+ "vigente; nadie desaparece del historial",
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "El equipo es obligatorio: una lista vacia es explicita, ausente no")
+		@NotNull(message = "Los integrantes del equipo son obligatorios: una lista vacia es explicita, ausente no")
 		@Valid
 		List<IntegranteDelEquipoRequest> integrantes,
 

@@ -22,23 +22,24 @@ import java.util.List;
 public record CrearPresentacionRequest(
 
 		@Schema(description = "A quien se le va a reclamar", example = "31")
-		@NotNull Long financiadorId,
+		@NotNull(message = "El financiador es obligatorio") Long financiadorId,
 
 		@Schema(
 				description = "Primer dia del periodo que el lote abarca. Es un filtro declarado: "
 						+ "dos lotes del mismo periodo son legitimos (uno complementario, un "
 						+ "reenvio de rechazados).",
 				example = "2026-08-01")
-		@NotNull LocalDate periodoDesde,
+		@NotNull(message = "El inicio del periodo es obligatorio") LocalDate periodoDesde,
 
 		@Schema(description = "Ultimo dia del periodo, INCLUSIVE", example = "2026-08-31")
-		@NotNull LocalDate periodoHasta,
+		@NotNull(message = "El fin del periodo es obligatorio") LocalDate periodoHasta,
 
 		@Schema(
 				description = "Moneda del lote, ISO 4217. Se fija al crear: un total que suma "
 						+ "pesos con dolares no significa nada.",
 				example = "ARS")
-		@NotNull @Pattern(regexp = "^[A-Z]{3}$") String moneda,
+		@NotNull(message = "La moneda es obligatoria")
+		@Pattern(regexp = "^[A-Z]{3}$", message = "La moneda debe ser un codigo de 3 letras") String moneda,
 
 		@Schema(
 				description = "Las prestaciones con las que arranca. Puede venir vacio: armar el "

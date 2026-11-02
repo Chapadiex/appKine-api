@@ -16,8 +16,10 @@ public record AnularObligacionRequest(
 						+ "exactamente lo que una auditoria busca, porque alguien anulo un cargo y "
 						+ "no hay forma de saber si fue un error de carga, una cortesia u otra cosa.",
 				example = "Cargada por error: la sesion se cerro con la oferta equivocada")
-		@NotBlank @Size(max = 280) String motivo,
+		@NotBlank(message = "El motivo es obligatorio")
+		@Size(max = 280, message = "El motivo no puede superar los 280 caracteres") String motivo,
 
 		@Schema(description = "Version que el cliente leyo", example = "0")
-		@NotNull @PositiveOrZero Long version) {
+		@NotNull(message = "La version es obligatoria")
+		@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 }

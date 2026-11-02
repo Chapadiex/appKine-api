@@ -24,60 +24,69 @@ import java.util.List;
 public record CrearSerieDeTurnosRequest(
 
 		@Schema(description = "Oferta de la sede", example = "42")
-		@NotNull @Positive Long ofertaId,
+		@NotNull(message = "La oferta es obligatoria") @Positive(message = "La oferta no es valida") Long ofertaId,
 
 		@Schema(description = "Persona del padron, con perfil de paciente vigente", example = "128")
-		@NotNull @Positive Long personaId,
+		@NotNull(message = "La persona es obligatoria")
+		@Positive(message = "La persona no es valida") Long personaId,
 
 		@Schema(
 				description = "Membership del profesional de todas las ocurrencias. Obligatorio si la "
 						+ "oferta lo requiere.",
 				example = "31")
-		@Positive Long profesionalId,
+		@Positive(message = "El profesional no es valido") Long profesionalId,
 
 		@ArraySchema(
 				arraySchema = @Schema(description = "Dias de la semana, ISO: 1 = lunes ... 7 = domingo"),
 				schema = @Schema(example = "1", minimum = "1", maximum = "7"))
-		@NotEmpty @Size(max = 7) List<@NotNull @Min(1) @Max(7) Integer> diasSemana,
+		@NotEmpty(message = "Los dias de la semana son obligatorios")
+		@Size(max = 7, message = "Los dias de la semana no pueden ser mas de 7")
+		List<@NotNull(message = "Los dias de la semana no pueden tener valores vacios")
+				@Min(value = 1, message = "Cada uno de los dias de la semana debe estar entre 1 y 7")
+				@Max(value = 7, message = "Cada uno de los dias de la semana debe estar entre 1 y 7")
+				Integer> diasSemana,
 
 		@Schema(
 				description = "Hora de inicio, en la zona de la sede",
 				type = "string", format = "time", example = "09:00:00")
-		@NotNull LocalTime hora,
+		@NotNull(message = "La hora es obligatoria") LocalTime hora,
 
 		@Schema(description = "Primer dia en que puede caer una ocurrencia, en la zona de la sede", example = "2026-10-12")
-		@NotNull LocalDate fechaDesde,
+		@NotNull(message = "La fecha desde es obligatoria") LocalDate fechaDesde,
 
 		@Schema(description = "Ultimo dia en que puede caer una ocurrencia. Excluyente con `cantidad`.", example = "2026-12-21")
 		LocalDate fechaHasta,
 
 		@Schema(description = "Cantidad de turnos. Excluyente con `fechaHasta`. Maximo 52.", example = "10")
-		@Min(1) @Max(52) Integer cantidad,
+		@Min(value = 1, message = "La cantidad no puede ser menor que 1")
+		@Max(value = 52, message = "La cantidad no puede superar 52") Integer cantidad,
 
 		@Schema(
 				description = "Clave del cliente para que un reintento no cree una segunda serie. "
 						+ "Reusarla con **otro** contenido devuelve 409 `idempotency-key-conflict`.",
 				example = "1c9e7b2a-3f4d-4e5f-8a91-2c3d4e5f6a7b")
-		@Size(max = 80) String idempotencyKey,
+		@Size(max = 80, message = "La clave de idempotencia no puede superar los 80 caracteres") String idempotencyKey,
 
 		@Schema(
 				description = "Lo que quedo despues de revisar la previsualizacion: se reservan EXACTAMENTE "
 						+ "estos horarios, sin omitir feriados, y la regla queda como dato de la serie. "
 						+ "Omitirlo reserva lo que produce la regla.")
-		@Size(max = 52) List<@Valid OcurrenciaElegidaRequest> ocurrencias,
+		@Size(max = 52, message = "Las ocurrencias no pueden ser mas de 52")
+		List<@Valid OcurrenciaElegidaRequest> ocurrencias,
 
 		@Schema(description = "Caso clinico para el que se programan", example = "9")
-		@Positive Long casoId,
+		@Positive(message = "El caso no es valido") Long casoId,
 
 		@Schema(description = "Plan para el que se programan. El total no puede pasar sus sesiones pendientes.", example = "57")
-		@Positive Long planId,
+		@Positive(message = "El plan no es valido") Long planId,
 
 		@Schema(description = "Desde donde se inicio. Solo trazabilidad.", example = "PLAN")
 		OrigenDeTurno origen) {
 
 	@Schema(name = "OcurrenciaElegida", description = "Un horario de la serie, tal como quedo despues de revisarla.")
 	public record OcurrenciaElegidaRequest(
-			@Schema(example = "2026-11-02T13:00:00Z") @NotNull Instant inicio,
-			@Schema(description = "Omitirlo es el profesional de la serie.", example = "31") @Positive Long profesionalId) {
+			@Schema(example = "2026-11-02T13:00:00Z") @NotNull(message = "El inicio es obligatorio") Instant inicio,
+			@Schema(description = "Omitirlo es el profesional de la serie.", example = "31")
+			@Positive(message = "El profesional no es valido") Long profesionalId) {
 	}
 }

@@ -16,14 +16,14 @@ import jakarta.validation.constraints.Size;
 public record CancelarSerieDeTurnosRequest(
 
 		@Schema(description = "Sobre que turnos de la serie actua", example = "ESTE_Y_SIGUIENTES")
-		@NotNull AlcanceDeSerie alcance,
+		@NotNull(message = "El alcance es obligatorio") AlcanceDeSerie alcance,
 
 		@Schema(description = "Turno desde el que se cuenta. Obligatorio salvo en `TODA_LA_SERIE`.", example = "301")
-		@Positive Long turnoId,
+		@Positive(message = "El turno no es valido") Long turnoId,
 
 		@Schema(description = "Por que se cancela. **Obligatorio** (DP-04).", example = "El paciente termino el tratamiento")
 		@NotBlank(message = "El motivo de cancelacion es obligatorio")
-		@Size(max = 300)
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres")
 		String motivo,
 
 		@Schema(
@@ -31,7 +31,7 @@ public record CancelarSerieDeTurnosRequest(
 						+ "mostro la previsualizacion (`GET .../alcance`). Si ya no coincide, 409 y no "
 						+ "se cancela nada.",
 				example = "6")
-		@NotNull(message = "cantidadConfirmada es obligatoria")
-		@Min(1)
+		@NotNull(message = "La cantidad confirmada es obligatoria")
+		@Min(value = 1, message = "La cantidad confirmada no puede ser menor que 1")
 		Integer cantidadConfirmada) {
 }

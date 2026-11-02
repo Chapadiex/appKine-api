@@ -37,7 +37,7 @@ public record UpdateArancelRequest(
 
 		@Schema(description = "La parte que paga el paciente", example = "2600.00")
 		@DecimalMin(value = "0.00", message = "El coseguro no puede ser negativo")
-		@Digits(integer = 10, fraction = 2, message = "Los importes admiten 2 decimales")
+		@Digits(integer = 10, fraction = 2, message = "El coseguro admite 2 decimales")
 		BigDecimal coseguro,
 
 		@Schema(description = "Primer dia en que este importe se aplica", example = "2026-01-01")

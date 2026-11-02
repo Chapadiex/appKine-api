@@ -19,5 +19,6 @@ public record AnularEgresoRequest(
 		@Schema(
 				description = "Por que se anula. Queda en la fila y en la auditoria.",
 				example = "Cargado con el importe equivocado")
-		@NotBlank @Size(max = 280) String motivo) {
+		@NotBlank(message = "El motivo es obligatorio")
+		@Size(max = 280, message = "El motivo no puede superar los 280 caracteres") String motivo) {
 }

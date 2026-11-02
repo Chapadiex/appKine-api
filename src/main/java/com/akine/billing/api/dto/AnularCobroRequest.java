@@ -22,5 +22,6 @@ public record AnularCobroRequest(
 				description = "Por que se anula. Queda en el cobro, en las reversiones de caja y en "
 						+ "la auditoria.",
 				example = "Cobrado al paciente equivocado")
-		@NotBlank @Size(max = 280) String motivo) {
+		@NotBlank(message = "El motivo es obligatorio")
+		@Size(max = 280, message = "El motivo no puede superar los 280 caracteres") String motivo) {
 }

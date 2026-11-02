@@ -19,9 +19,10 @@ public record CambiarCasoDeSesionRequest(
 		@Schema(description = "Caso activo de la misma historia clinica. **Nulo quita el caso**: "
 				+ "la atencion sin caso es legitima (RF-M14-002)", example = "12",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		@Positive Long casoId,
+		@Positive(message = "El caso no es valido") Long casoId,
 
 		@Schema(description = "Version de la sesion que el cliente leyo. Un 409 "
 				+ "`concurrent-modification` significa recargar.", example = "3")
-		@NotNull @PositiveOrZero Long version) {
+		@NotNull(message = "La version es obligatoria")
+		@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 }

@@ -67,7 +67,7 @@ public record CreateAutorizacionRequest(
 				allowableValues = {"PENDIENTE", "APROBADA"},
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		@Pattern(regexp = "PENDIENTE|APROBADA",
-				message = "Una autorizacion se carga PENDIENTE o APROBADA")
+				message = "El estado inicial de una autorizacion es PENDIENTE o APROBADA")
 		String estadoInicial,
 
 		@Schema(
@@ -82,7 +82,7 @@ public record CreateAutorizacionRequest(
 				description = "Primer dia en que la autorizacion habilita",
 				example = "2026-09-01",
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "La autorizacion necesita una fecha de inicio")
+		@NotNull(message = "La vigencia de la autorizacion necesita una fecha de inicio")
 		LocalDate vigenciaDesde,
 
 		@Schema(

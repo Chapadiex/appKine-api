@@ -18,11 +18,11 @@ public record AtenderComoParticularRequest(
 						+ "del operador y tiene que quedar explicada.",
 				example = "Sin orden medica; el paciente prefiere abonar la sesion")
 		@NotBlank(message = "El motivo es obligatorio para atender como Particular")
-		@Size(max = 300)
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres")
 		String motivo,
 
 		@Schema(description = "Version que devolvio la ultima lectura de la recepcion.", example = "1")
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(0)
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }

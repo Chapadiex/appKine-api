@@ -26,17 +26,21 @@ public record CerrarCajaRequest(
 						+ "con 409 `caja-saldo-cambio` en vez de registrar una diferencia que nunca "
 						+ "existio. Es el control optimista del cierre.",
 				example = "142500.00")
-		@NotNull @DecimalMin(value = "0.00") BigDecimal saldoTeoricoEsperado,
+		@NotNull(message = "El saldo teorico esperado es obligatorio")
+		@DecimalMin(value = "0.00", message = "El saldo teorico esperado no puede ser negativo")
+		BigDecimal saldoTeoricoEsperado,
 
 		@Schema(
 				description = "Lo que se conto fisicamente. **Decimal exacto, nunca float.**",
 				example = "142500.00")
-		@NotNull @DecimalMin(value = "0.00") BigDecimal saldoDeclarado,
+		@NotNull(message = "El saldo declarado es obligatorio")
+		@DecimalMin(value = "0.00", message = "El saldo declarado no puede ser negativo") BigDecimal saldoDeclarado,
 
 		@Schema(
 				description = "Por que no cuadra. **Obligatorio cuando hay diferencia** (RN-M20-004) "
 						+ "y se ignora cuando la diferencia es cero: un motivo que a veces adorna un "
 						+ "cierre correcto deja de leerse en los cierres que si importan.",
 				example = "Faltan 500 del vuelto de la tarde")
-		@Size(max = 280) String motivoDiferencia) {
+		@Size(max = 280, message = "El motivo de la diferencia no puede superar los 280 caracteres")
+		String motivoDiferencia) {
 }

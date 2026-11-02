@@ -18,11 +18,11 @@ public record ValidarRecepcionRequest(
 						+ "usa la elegida al reservar el turno y, si no se eligio ninguna, la primera "
 						+ "que aplique a la practica (la principal va primera).",
 				example = "412")
-		@Positive
+		@Positive(message = "La cobertura no es valida")
 		Long coberturaId,
 
 		@Schema(description = "Version que devolvio la ultima lectura de la recepcion.", example = "0")
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(0)
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }

@@ -17,11 +17,11 @@ public record RetirarRecepcionRequest(
 						+ "que un turno con llegada quedo sin atender.",
 				example = "No quiso esperar la demora de 40 minutos")
 		@NotBlank(message = "El motivo es obligatorio para registrar que la persona se retiro")
-		@Size(max = 300)
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres")
 		String motivo,
 
 		@Schema(description = "Version que devolvio la ultima lectura de la recepcion.", example = "2")
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(0)
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }

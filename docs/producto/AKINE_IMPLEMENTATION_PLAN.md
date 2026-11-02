@@ -11567,3 +11567,26 @@ decide quien la registra; responsable distinto es aviso y no bloqueo; lista de e
 motivo "Otro" exige observación; la duración del profesional manda sobre la de la prestación.
 
 **Afuera:** autogestión y portal del paciente, "todas mis sucursales".
+
+## Registro de avance — `errors` de validación en el contrato (01/11/2026)
+
+Rama `akine-validacion-por-campo`, contrato `0.151.0` (aditivo), sin migraciones ni operaciones nuevas.
+
+**Entró:** el schema `ProblemDetail` declara `errors` (mapa campo a mensaje), que hasta ahora viajaba sin
+estar en el contrato. Las 377 anotaciones de `*/api/dto` sin `message` tienen uno propio que nombra el
+campo, y se reescribieron los 8 textos redactados en minúscula ("expectedVersion es obligatorio") y 7 que
+no nombraban su campo. `MensajesDeValidacionTest` falla ante un mensaje por defecto, en minúscula, con un
+identificador técnico o sin una palabra del campo.
+
+**Decisión tomada sin consulta, a confirmar:** anotaciones más test, y no resolverlo en
+`GlobalExceptionHandler.handleValidation`. El handler sólo podría anteponer el campo humanizado
+("Oferta: es obligatorio"): sin género ni número, y con el mensaje por defecto en el idioma de
+`Accept-Language`. Con `message` literal el texto es el mismo en todo idioma.
+
+**Límites:** "nombra el campo" se comprueba por raíz de palabra más un glosario de los campos en inglés, así
+que detecta el mensaje que no lo menciona, no el que lo menciona mal. Los `@Min`/`@Max` de `page` y `size`
+en controllers no pasan por `errors`: responden el 400 genérico de `handleProtocolo`.
+
+**Pendiente en `appKine-web`:** regenerar el cliente a `0.151.0`. Con este contrato desplegado,
+`fraseDelCampo` y `nombreDelCampo` de `src/app/core/interceptors/error.interceptor.ts` se pueden borrar: el
+frontend deja de adivinar por la minúscula inicial y muestra el mensaje tal cual.

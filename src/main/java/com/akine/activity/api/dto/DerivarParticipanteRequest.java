@@ -19,18 +19,18 @@ public record DerivarParticipanteRequest(
 
 		@Schema(description = "Caso Clinico destino, activo y de la historia de esa persona",
 				example = "88")
-		@Positive long casoClinicoId,
+		@Positive(message = "El caso clinico no es valido") long casoClinicoId,
 
 		@Schema(description = "Plan de Tratamiento del Caso. Opcional (RF-M11-007)", example = "12")
-		@Positive Long planTratamientoId,
+		@Positive(message = "El plan de tratamiento no es valido") Long planTratamientoId,
 
 		@Schema(description = "Autorizacion declarada. Opcional (RF-M11-008); si viene, tiene que "
 				+ "habilitar el dia de la clase. No se consume", example = "7")
-		@Positive Long autorizacionId,
+		@Positive(message = "La autorizacion no es valida") Long autorizacionId,
 
 		@Schema(description = "Por que se deriva. Opcional: el motivo clinico vive en el Caso",
 				example = "Indicacion del kinesiologo tras la clase")
-		@Size(max = 300) String motivo,
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres") String motivo,
 
 		@Schema(description = "true activa el perfil de paciente si la persona no lo tiene (exige "
 				+ "paciente:manage). Si falta o es false, una persona sin perfil es 409 "

@@ -42,13 +42,14 @@ public record GuardarEvaluacionRequest(
 						+ "diagnostico**: el diagnostico es un acto medico que este sistema no "
 						+ "registra.",
 				example = "Dolor lumbar al agacharse, desde hace dos semanas")
-		@Size(max = 500) String motivoClinico,
+		@Size(max = 500, message = "El motivo clinico no puede superar los 500 caracteres") String motivoClinico,
 
 		@Schema(description = "Escala visual analogica, 0 a 10", example = "6")
-		@Min(0) @Max(10) Integer dolorEva,
+		@Min(value = 0, message = "El dolor (EVA) no puede ser menor que 0")
+		@Max(value = 10, message = "El dolor (EVA) no puede superar 10") Integer dolorEva,
 
 		@Schema(description = "Zona corporal referida", example = "Lumbar")
-		@Size(max = 120) String dolorZona,
+		@Size(max = 120, message = "La zona del dolor no puede superar los 120 caracteres") String dolorZona,
 
 		@Schema(
 				description = "De que lado. `NO_APLICA` no es lo mismo que dejarlo vacio: una zona "
@@ -70,16 +71,17 @@ public record GuardarEvaluacionRequest(
 				description = "Que se busca en ESTA sesion. Distinto del objetivo del Plan de "
 						+ "Tratamiento (M11), que es del tratamiento completo.",
 				example = "Reducir dolor en flexion")
-		@Size(max = 500) String objetivoSesion,
+		@Size(max = 500, message = "El objetivo de la sesion no puede superar los 500 caracteres") String objetivoSesion,
 
 		@Schema(description = "Que no puede hacer el paciente hoy", example = "No puede atarse los cordones")
-		@Size(max = 500) String limitacionFuncional,
+		@Size(max = 500, message = "La limitacion funcional no puede superar los 500 caracteres") String limitacionFuncional,
 
 		@Schema(
 				description = "Version que el cliente leyo. Un 409 `concurrent-modification` "
 						+ "significa que alguien guardo antes y hay que recargar.",
 				example = "3")
-		@NotNull @PositiveOrZero Long version) {
+		@NotNull(message = "La version es obligatoria")
+		@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 
 	public EvaluacionBase aDominio() {
 		return new EvaluacionBase(

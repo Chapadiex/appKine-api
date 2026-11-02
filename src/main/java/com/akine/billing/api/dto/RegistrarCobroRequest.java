@@ -30,15 +30,17 @@ import java.util.List;
 public record RegistrarCobroRequest(
 
 		@Schema(description = "Quien paga", example = "128")
-		@NotNull @Positive Long personaId,
+		@NotNull(message = "La persona es obligatoria")
+		@Positive(message = "La persona no es valida") Long personaId,
 
 		@Schema(description = "Total recibido. Decimal exacto, nunca float.", example = "8500.00")
-		@NotNull @DecimalMin(value = "0.01") BigDecimal total,
+		@NotNull(message = "El total es obligatorio")
+		@DecimalMin(value = "0.01", message = "El total tiene que ser mayor que cero") BigDecimal total,
 
 		@Schema(
 				description = "Por que via entro. Puede ser mas de uno: mitad efectivo y mitad "
 						+ "tarjeta es normal. **Su suma tiene que dar el total.**")
-		@NotEmpty @Valid List<MedioRequest> medios,
+		@NotEmpty(message = "Los medios de pago son obligatorios") @Valid List<MedioRequest> medios,
 
 		@Schema(
 				description = "Contra que deudas se aplica. Un cobro puede saldar varias sesiones "
@@ -50,7 +52,7 @@ public record RegistrarCobroRequest(
 				description = "Clave del cliente para que un reintento no cobre dos veces. "
 						+ "Reusarla con **otro** contenido devuelve 409, no el cobro anterior.",
 				example = "c4e2a1b0-7d3f-4e59-9a12-6b7c8d9e0f1a")
-		@Size(max = 80) String idempotencyKey,
+		@Size(max = 80, message = "La clave de idempotencia no puede superar los 80 caracteres") String idempotencyKey,
 
 		@Schema(
 				description = "Lo que queda **a favor** del paciente (anticipo, DP-06). Se declara: "
@@ -58,14 +60,14 @@ public record RegistrarCobroRequest(
 						+ "saldo a favor silencioso. Entra a la caja ahora y se imputa despues con "
 						+ "`imputarSaldoAFavor`. Por defecto cero.",
 				example = "0.00")
-		@DecimalMin(value = "0.00") BigDecimal anticipo,
+		@DecimalMin(value = "0.00", message = "El anticipo no puede ser negativo") BigDecimal anticipo,
 
 		@Schema(
 				description = "Moneda del cobro. **Obligatoria si no hay imputaciones**: sin deudas no "
 						+ "hay de donde tomarla. Con imputaciones sale de ellas y, si viene, tiene "
 						+ "que coincidir.",
 				example = "ARS")
-		@Pattern(regexp = "[A-Za-z]{3}") String moneda,
+		@Pattern(regexp = "[A-Za-z]{3}", message = "La moneda debe ser un codigo de 3 letras") String moneda,
 
 		@Schema(
 				description = "Prepago de recepcion (E-6, DP-06): el turno en cuya recepcion se "
@@ -75,7 +77,7 @@ public record RegistrarCobroRequest(
 						+ "sesion de ese turno el anticipo se imputa solo a la deuda del paciente; lo "
 						+ "que sobra queda a favor.",
 				example = "301")
-		@Positive Long turnoId) {
+		@Positive(message = "El turno no es valido") Long turnoId) {
 
 	@Schema(name = "MedioDeCobro")
 	public record MedioRequest(
@@ -87,23 +89,26 @@ public record RegistrarCobroRequest(
 							+ "nadie podria rastrear.",
 					allowableValues = {"EFECTIVO", "TRANSFERENCIA", "TARJETA_DEBITO", "TARJETA_CREDITO", "OTRO"},
 					example = "EFECTIVO")
-			@NotNull MedioDePago medio,
+			@NotNull(message = "El medio de pago es obligatorio") MedioDePago medio,
 
 			@Schema(example = "8500.00")
-			@NotNull @DecimalMin(value = "0.01") BigDecimal importe,
+			@NotNull(message = "El importe es obligatorio")
+			@DecimalMin(value = "0.01", message = "El importe tiene que ser mayor que cero") BigDecimal importe,
 
 			@Schema(description = "Numero de operacion, ultimos digitos, lo que corresponda", example = "op-99182")
-			@Size(max = 120) String referencia) {
+			@Size(max = 120, message = "La referencia no puede superar los 120 caracteres") String referencia) {
 	}
 
 	@Schema(name = "ImputacionDeCobro")
 	public record ImputacionRequest(
 
 			@Schema(example = "9001")
-			@NotNull @Positive Long obligacionId,
+			@NotNull(message = "La obligacion es obligatoria")
+			@Positive(message = "La obligacion no es valida") Long obligacionId,
 
 			@Schema(description = "Cuanto de este cobro paga esa deuda", example = "8500.00")
-			@NotNull @DecimalMin(value = "0.01") BigDecimal importe) {
+			@NotNull(message = "El importe es obligatorio")
+			@DecimalMin(value = "0.01", message = "El importe tiene que ser mayor que cero") BigDecimal importe) {
 	}
 
 	public CobroCommand aDominio() {

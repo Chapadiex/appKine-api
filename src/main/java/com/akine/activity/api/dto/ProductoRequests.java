@@ -26,29 +26,33 @@ public final class ProductoRequests {
 	public record Crear(
 
 			@Schema(description = "Oferta de la sede cuyos creditos vende el producto", example = "42")
-			@Positive long ofertaId,
+			@Positive(message = "La oferta no es valida") long ofertaId,
 
 			@Schema(description = "Unico entre los productos vigentes de la sede", example = "Pack Pilates 8 clases")
-			@NotBlank @Size(max = 160) String nombre,
+			@NotBlank(message = "El nombre es obligatorio")
+			@Size(max = 160, message = "El nombre no puede superar los 160 caracteres") String nombre,
 
 			@Schema(description = "Descripcion comercial. Nunca contenido clinico.")
-			@Size(max = 500) String descripcion,
+			@Size(max = 500, message = "La descripcion no puede superar los 500 caracteres") String descripcion,
 
 			@Schema(description = "Creditos que otorga la compra", example = "8")
-			@Positive int creditos,
+			@Positive(message = "Los creditos tienen que ser mayores que cero") int creditos,
 
 			@Schema(description = "Precio de venta, decimal exacto", example = "40000.00")
-			@NotNull @Positive BigDecimal precio,
+			@NotNull(message = "El precio es obligatorio")
+			@Positive(message = "El precio tiene que ser mayor que cero") BigDecimal precio,
 
 			@Schema(description = "ISO 4217", example = "ARS")
-			@NotBlank @Size(min = 3, max = 3) String moneda,
+			@NotBlank(message = "La moneda es obligatoria")
+			@Size(min = 3, max = 3, message = "La moneda debe tener 3 letras") String moneda,
 
 			@Schema(description = "Dias corridos que vale el pase desde la compra, contando el dia "
 					+ "de la compra", example = "60")
-			@Positive @Max(3660) int vigenciaDias,
+			@Positive(message = "La vigencia en dias tiene que ser mayor que cero")
+			@Max(value = 3660, message = "La vigencia en dias no puede superar 3660") int vigenciaDias,
 
 			@Schema(description = "Desde cuando se puede vender", example = "2026-10-01")
-			@NotNull LocalDate vigenciaDesde,
+			@NotNull(message = "El inicio de la vigencia es obligatorio") LocalDate vigenciaDesde,
 
 			@Schema(description = "Hasta cuando se puede vender, inclusive. Ausente: sin fin.")
 			LocalDate vigenciaHasta,
@@ -66,17 +70,18 @@ public final class ProductoRequests {
 					+ "vendidos no cambian**: llevan su propio snapshot.")
 	public record Editar(
 
-			@Size(max = 160) String nombre,
+			@Size(max = 160, message = "El nombre no puede superar los 160 caracteres") String nombre,
 
-			@Size(max = 500) String descripcion,
+			@Size(max = 500, message = "La descripcion no puede superar los 500 caracteres") String descripcion,
 
-			@Positive Integer creditos,
+			@Positive(message = "Los creditos tienen que ser mayores que cero") Integer creditos,
 
-			@Positive BigDecimal precio,
+			@Positive(message = "El precio tiene que ser mayor que cero") BigDecimal precio,
 
-			@Size(min = 3, max = 3) String moneda,
+			@Size(min = 3, max = 3, message = "La moneda debe tener 3 letras") String moneda,
 
-			@Positive @Max(3660) Integer vigenciaDias,
+			@Positive(message = "La vigencia en dias tiene que ser mayor que cero")
+			@Max(value = 3660, message = "La vigencia en dias no puede superar 3660") Integer vigenciaDias,
 
 			LocalDate vigenciaDesde,
 
@@ -86,7 +91,8 @@ public final class ProductoRequests {
 			Boolean limpiarVigenciaHasta,
 
 			@Schema(description = "Version que el cliente leyo", example = "0")
-			@NotNull @PositiveOrZero Long version) {
+			@NotNull(message = "La version es obligatoria")
+			@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 	}
 
 	@Schema(
@@ -96,7 +102,8 @@ public final class ProductoRequests {
 	public record Baja(
 
 			@Schema(description = "Obligatorio", example = "Se discontinua el pack de 8")
-			@NotBlank @Size(max = 280) String motivo) {
+			@NotBlank(message = "El motivo es obligatorio")
+			@Size(max = 280, message = "El motivo no puede superar los 280 caracteres") String motivo) {
 	}
 
 	@Schema(
@@ -106,16 +113,16 @@ public final class ProductoRequests {
 	public record Vender(
 
 			@Schema(description = "Producto vigente de la sede", example = "12")
-			@Positive long productoId,
+			@Positive(message = "El producto no es valido") long productoId,
 
 			@Schema(description = "Titular, del padron de la organizacion", example = "512")
-			@Positive long personaId,
+			@Positive(message = "La persona no es valida") long personaId,
 
 			@Schema(
 					description = "Clave del cliente para que un reintento no venda dos veces. "
 							+ "Reusarla con otro pedido es un 409.",
 					example = "c0a8-venta-512")
-			@Size(max = 80) String idempotencyKey,
+			@Size(max = 80, message = "La clave de idempotencia no puede superar los 80 caracteres") String idempotencyKey,
 
 			@Schema(description = "Solo abonos (desde 0.109.0): primer dia del periodo que cubre. "
 					+ "Obligatorio para un abono y prohibido para un pack", example = "2026-11-01")
@@ -140,14 +147,17 @@ public final class ProductoRequests {
 
 			@Schema(description = "Creditos con signo: positivo suma, negativo resta. Nunca cero",
 					example = "-1")
-			@Min(-10000) @Max(10000) int cantidad,
+			@Min(value = -10000, message = "La cantidad no puede ser menor que -10000")
+			@Max(value = 10000, message = "La cantidad no puede superar 10000") int cantidad,
 
 			@Schema(description = "Obligatorio: queda en el ledger y en la auditoria (CA-M29-005-06)",
 					example = "Clase de cortesia descontada por error")
-			@NotBlank @Size(max = 280) String motivo,
+			@NotBlank(message = "El motivo es obligatorio")
+			@Size(max = 280, message = "El motivo no puede superar los 280 caracteres") String motivo,
 
 			@Schema(description = "Version del pase que el cliente leyo", example = "3")
-			@NotNull @PositiveOrZero Long version) {
+			@NotNull(message = "La version es obligatoria")
+			@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 	}
 
 	@Schema(
@@ -157,10 +167,12 @@ public final class ProductoRequests {
 	public record Anular(
 
 			@Schema(description = "Obligatorio", example = "Se vendio a la persona equivocada")
-			@NotBlank @Size(max = 280) String motivo,
+			@NotBlank(message = "El motivo es obligatorio")
+			@Size(max = 280, message = "El motivo no puede superar los 280 caracteres") String motivo,
 
 			@Schema(description = "Version del pase que el cliente leyo", example = "1")
-			@NotNull @PositiveOrZero Long version) {
+			@NotNull(message = "La version es obligatoria")
+			@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 	}
 
 	@Schema(name = "ConfiguracionDeRenovacionDeAbono",
@@ -170,9 +182,10 @@ public final class ProductoRequests {
 			@Schema(description = "true: el sistema vende el periodo siguiente, con su obligacion, al "
 					+ "acercarse el fin de este, a nombre de quien la prende. false: no se renueva",
 					example = "true")
-			@NotNull Boolean activa,
+			@NotNull(message = "Indicar si esta activa es obligatorio") Boolean activa,
 
 			@Schema(description = "Version del pase que el cliente leyo", example = "1")
-			@NotNull @PositiveOrZero Long version) {
+			@NotNull(message = "La version es obligatoria")
+			@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 	}
 }
