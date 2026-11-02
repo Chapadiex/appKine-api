@@ -19,11 +19,11 @@
 	<properties>
 		<java.version>21</java.version>
 		<archunit.version>1.5.1</archunit.version>
-		<springdoc.version>3.1.1</springdoc.version>
-		<jacoco.version>0.8.15</jacoco.version>
-		<maven-enforcer.version>3.6.3</maven-enforcer.version>
+		<springdoc.version>3.2.0</springdoc.version>
+		<jacoco.version>0.8.16</jacoco.version>
+		<maven-enforcer.version>3.7.0</maven-enforcer.version>
 		<bouncycastle.version>1.86</bouncycastle.version>
-		<greenmail.version>2.1.14</greenmail.version>
+		<greenmail.version>2.1.15</greenmail.version>
 		<dependency-check.version>12.2.2</dependency-check.version>
 		<akine.it.procesos>2</akine.it.procesos>
 		<!-- Parches de seguridad por encima de lo que gestiona Spring Boot 4.1.1 (G-6, 09/10/2026).
