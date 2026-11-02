@@ -49,12 +49,13 @@ class DebitoYPagoConcurrenteIT {
 	private static final int RONDAS = 6;
 
 	/**
-	 * Ventaja que se le da al debito en las rondas pares. Sin ella gana siempre la transferencia:
-	 * el debito carga y valida el item antes de su UPDATE, y la mitad "gano el debito" de la regla
-	 * quedaba sin ejercer. Con la ventaja el pago llega con la fila ya tomada o ya commiteada, y su
-	 * WHERE se re-evalua igual contra el saldo nuevo.
+	 * Ventaja que se le da a un lado en dos de cada tres rondas; la tercera es la carrera pareja. Sin
+	 * ella el ganador depende de cuanto tarda cada uno antes de su UPDATE, y una de las dos mitades de
+	 * la regla puede quedar sin ejercer: con la base en disco ganaba siempre la transferencia, y con
+	 * la base en memoria llego a ganar siempre el debito. El que llega tarde encuentra la fila tomada
+	 * o ya commiteada, y su WHERE se re-evalua igual contra el saldo nuevo.
 	 */
-	private static final long VENTAJA_DEL_DEBITO_MS = 200;
+	private static final long VENTAJA_MS = 200;
 
 	@Autowired private PresentacionService presentacionService;
 	@Autowired private FinanciadorPagoService pagoService;
@@ -78,9 +79,13 @@ class DebitoYPagoConcurrenteIT {
 			PresentacionView lote = fixture.loteConfirmado(tenant, "100000.00");
 			long itemId = lote.items().getFirst().id();
 
-			long demoraDelPago = ronda % 2 == 0 ? VENTAJA_DEL_DEBITO_MS : 0;
+			long demoraDelPago = ronda % 3 == 1 ? VENTAJA_MS : 0;
+			long demoraDelDebito = ronda % 3 == 2 ? VENTAJA_MS : 0;
 			List<Desenlace> desenlaces = PresentacionItFixture.enParalelo(List.<Callable<?>>of(
-					() -> debitar(tenant, lote.id(), itemId, "15000.00"),
+					() -> {
+						Thread.sleep(demoraDelDebito);
+						return debitar(tenant, lote.id(), itemId, "15000.00");
+					},
 					() -> {
 						Thread.sleep(demoraDelPago);
 						return pagar(tenant, lote.id(), "100000.00");
