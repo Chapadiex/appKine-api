@@ -1,6 +1,8 @@
 package com.akine.activity.infrastructure;
 
+import com.akine.LogEstructuradoEnElTest;
 import com.akine.TestcontainersConfiguration;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.client.RestTestClient;
 import tools.jackson.databind.JsonNode;
@@ -51,6 +54,12 @@ class ObservacionDeJobsIT {
 	@Autowired private VencimientoDePasesWorker vencimiento;
 	@Autowired private RenovacionDeAbonosWorker renovacion;
 	@Autowired private AvisosDePasesWorker avisos;
+	@Autowired private ConfigurableEnvironment entorno;
+
+	@BeforeEach
+	void logEnJson() {
+		LogEstructuradoEnElTest.aplicar(entorno);
+	}
 
 	@Test
 	@DisplayName("cada job publica sus contadores por resultado y su timer, sin ids en las etiquetas")
