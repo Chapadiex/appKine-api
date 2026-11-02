@@ -31,6 +31,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -43,6 +44,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -334,6 +336,58 @@ class ColaboradorInvitacionServiceTest {
 		assertThat(invitacion.getResolucionNota()).isEqualTo("Ya no estoy disponible");
 		verify(cuentaRepository, never()).save(any());
 		verify(membershipProvisioning, never()).createFromInvitation(anyLong(), any());
+	}
+
+	@Test
+	@DisplayName("dos altas simultaneas chocan contra el unique: 409 de duplicada, no un 500")
+	void el_unique_de_la_invitacion_se_traduce() {
+		given(cuentaRepository.findByEmailNormalizado(EMAIL_NORMALIZADO))
+				.willReturn(Optional.empty());
+		willThrow(new DataIntegrityViolationException("uq_invitacion_pendiente"))
+				.given(invitacionRepository).saveAndFlush(any());
+
+		assertThatThrownBy(() -> servicio.invitar(
+				actor, new InvitacionAltaCommand(EMAIL_TIPEADO, ROL, CONSULTORIO_ID)))
+				.isInstanceOf(InvitacionPendienteDuplicadaException.class);
+
+		verify(notificationOutbox, never()).encolar(any());
+	}
+
+	@Test
+	@DisplayName("si entre medio la dieron de alta por el camino directo, aceptar es 409 de ya vinculada")
+	void aceptar_con_vinculo_creado_entre_medio() {
+		ColaboradorInvitacion invitacion = pendiente();
+		given(invitacionRepository.findByTokenHash(TokenDigest.of(TOKEN_PLANO)))
+				.willReturn(Optional.of(invitacion));
+		given(cuentaRepository.findByEmailNormalizado(EMAIL_NORMALIZADO))
+				.willReturn(Optional.empty());
+		given(membershipProvisioning.createFromInvitation(eq(ORG_ID), any()))
+				.willThrow(new MembershipAlreadyExistsException());
+
+		assertThatThrownBy(() -> servicio.aceptar(new InvitacionAceptacionCommand(
+				TOKEN_PLANO, "Ana", "Gomez", PASSWORD)))
+				.isInstanceOf(ColaboradorYaVinculadoException.class);
+
+		assertThat(invitacion.getEstado()).isEqualTo(EstadoInvitacion.PENDIENTE);
+	}
+
+	@Test
+	@DisplayName("cualquier otro rechazo del vinculo sale tal cual: no se disfraza de ya vinculada")
+	void aceptar_con_otro_rechazo_del_vinculo() {
+		given(invitacionRepository.findByTokenHash(TokenDigest.of(TOKEN_PLANO)))
+				.willReturn(Optional.of(pendiente()));
+		given(cuentaRepository.findByEmailNormalizado(EMAIL_NORMALIZADO))
+				.willReturn(Optional.empty());
+		IllegalStateException topeDePlan = new IllegalStateException("tope de plan");
+		given(membershipProvisioning.createFromInvitation(eq(ORG_ID), any())).willThrow(topeDePlan);
+
+		assertThatThrownBy(() -> servicio.aceptar(new InvitacionAceptacionCommand(
+				TOKEN_PLANO, "Ana", "Gomez", PASSWORD)))
+				.isSameAs(topeDePlan);
+	}
+
+	/** El servicio la reconoce por el nombre simple: ArchUnit le prohibe importar la de organization. */
+	private static final class MembershipAlreadyExistsException extends RuntimeException {
 	}
 
 	private ColaboradorInvitacion pendiente() {
