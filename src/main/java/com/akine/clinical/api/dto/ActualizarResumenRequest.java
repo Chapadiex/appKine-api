@@ -17,7 +17,7 @@ public record ActualizarResumenRequest(
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		@NotNull(message = "El texto del resumen es obligatorio")
 		// 2000 es el largo de historia_clinica.resumen: un tope mayor solo cambia donde explota.
-		@Size(max = 2000, message = "El resumen no puede superar los 2000 caracteres")
+		@Size(max = 2000, message = "El texto del resumen no puede superar los 2000 caracteres")
 		String texto,
 
 		@Schema(description = "Version de la historia que el operador leyo",

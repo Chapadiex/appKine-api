@@ -55,7 +55,7 @@ public final class HonorarioPorClaseDtos {
 
 			@Schema(description = "Version del honorario que se esta editando", example = "0",
 					requiredMode = Schema.RequiredMode.REQUIRED)
-			@NotNull(message = "expectedVersion es obligatoria")
+			@NotNull(message = "La version esperada es obligatoria")
 			Long expectedVersion) {
 	}
 

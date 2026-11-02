@@ -18,5 +18,6 @@ import jakarta.validation.constraints.Size;
 public record RevertirMovimientoRequest(
 
 		@Schema(example = "Se cargo el egreso con un cero de mas")
-		@NotBlank @Size(max = 280) String motivo) {
+		@NotBlank(message = "El motivo es obligatorio")
+		@Size(max = 280, message = "El motivo no puede superar los 280 caracteres") String motivo) {
 }

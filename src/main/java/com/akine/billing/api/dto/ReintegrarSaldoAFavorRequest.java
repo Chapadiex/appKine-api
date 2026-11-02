@@ -18,27 +18,29 @@ import java.math.BigDecimal;
 public record ReintegrarSaldoAFavorRequest(
 
 		@Schema(description = "Cuanto se devuelve. No puede superar el saldo a favor.", example = "1500.00")
-		@NotNull @DecimalMin(value = "0.01") BigDecimal importe,
+		@NotNull(message = "El importe es obligatorio")
+		@DecimalMin(value = "0.01", message = "El importe tiene que ser mayor que cero") BigDecimal importe,
 
 		@Schema(
 				description = "Por donde sale la plata. Puede no ser el medio por el que entro.",
 				allowableValues = {"EFECTIVO", "TRANSFERENCIA", "TARJETA_DEBITO", "TARJETA_CREDITO", "OTRO"},
 				example = "EFECTIVO")
-		@NotNull MedioDePago medio,
+		@NotNull(message = "El medio de pago es obligatorio") MedioDePago medio,
 
 		@Schema(description = "Numero de operacion o lo que corresponda", example = "trf-55120")
-		@Size(max = 120) String referencia,
+		@Size(max = 120, message = "La referencia no puede superar los 120 caracteres") String referencia,
 
 		@Schema(
 				description = "Por que se devuelve. Queda en el reintegro y en la auditoria.",
 				example = "El paciente suspendio el tratamiento")
-		@NotBlank @Size(max = 280) String motivo,
+		@NotBlank(message = "El motivo es obligatorio")
+		@Size(max = 280, message = "El motivo no puede superar los 280 caracteres") String motivo,
 
 		@Schema(
 				description = "Clave del cliente para que un reintento no devuelva dos veces. "
 						+ "Reusarla con **otro** contenido devuelve 409.",
 				example = "a1b2c3d4-0000-4000-8000-000000000002")
-		@Size(max = 80) String idempotencyKey) {
+		@Size(max = 80, message = "La clave de idempotencia no puede superar los 80 caracteres") String idempotencyKey) {
 
 	public ReintegroCommand aDominio() {
 		return new ReintegroCommand(importe, medio, referencia, motivo, idempotencyKey);

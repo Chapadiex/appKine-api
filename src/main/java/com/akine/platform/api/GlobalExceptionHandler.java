@@ -94,6 +94,9 @@ public class GlobalExceptionHandler {
 	/**
 	 * Falla de validacion de un {@code @Valid}. Devuelve los campos rechazados: es
 	 * informacion que el cliente necesita para corregir, y no revela nada interno.
+	 *
+	 * <p>El texto de cada campo es el {@code message} de su anotacion, que lo nombra y no depende del
+	 * {@code Accept-Language}. Lo exige {@code MensajesDeValidacionTest}.
 	 */
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	public ProblemDetail handleValidation(MethodArgumentNotValidException exception) {

@@ -26,22 +26,22 @@ public record ReprogramarTurnoRequest(
 		@Schema(
 				description = "Instante de inicio del slot nuevo, UTC, tal como lo devolvio la agenda",
 				example = "2026-09-22T12:00:00Z")
-		@NotNull Instant inicio,
+		@NotNull(message = "El inicio es obligatorio") Instant inicio,
 
 		@Schema(
 				description = "Membership del profesional en el horario nuevo. **Puede ser otro**: "
 						+ "mover un turno porque el profesional se ausento es el caso mas frecuente. "
 						+ "Si se omite, el turno conserva el profesional que ya tenia.",
 				example = "31")
-		@Positive Long profesionalId,
+		@Positive(message = "El profesional no es valido") Long profesionalId,
 
 		@Schema(description = "Por que se mueve. **Obligatorio** (DP-04).", example = "El profesional pidio el dia")
 		@NotBlank(message = "El motivo de reprogramacion es obligatorio")
-		@Size(max = 300)
+		@Size(max = 300, message = "El motivo no puede superar los 300 caracteres")
 		String motivo,
 
 		@Schema(description = "Version que devolvio la ultima lectura del turno.", example = "0")
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(0)
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }

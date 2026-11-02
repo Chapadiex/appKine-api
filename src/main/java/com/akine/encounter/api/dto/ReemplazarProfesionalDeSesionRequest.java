@@ -17,14 +17,17 @@ public record ReemplazarProfesionalDeSesionRequest(
 
 		@Schema(description = "Membership del profesional que continua la atencion. Vigente en la "
 				+ "sede, con `sesion:register` y habilitado para la oferta.", example = "31")
-		@NotNull @Positive Long profesionalId,
+		@NotNull(message = "El profesional es obligatorio")
+		@Positive(message = "El profesional no es valido") Long profesionalId,
 
 		@Schema(description = "Por que se reemplaza. Obligatorio, hasta 500 caracteres. Queda en el "
 				+ "registro del reemplazo, no en la auditoria.",
 				example = "La profesional se retiro por una urgencia familiar")
-		@NotBlank @Size(max = 500) String motivo,
+		@NotBlank(message = "El motivo es obligatorio")
+		@Size(max = 500, message = "El motivo no puede superar los 500 caracteres") String motivo,
 
 		@Schema(description = "Version de la sesion que el cliente leyo. Un 409 "
 				+ "`concurrent-modification` significa recargar.", example = "3")
-		@NotNull @PositiveOrZero Long version) {
+		@NotNull(message = "La version es obligatoria")
+		@PositiveOrZero(message = "La version no puede ser negativa") Long version) {
 }

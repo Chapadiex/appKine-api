@@ -18,7 +18,7 @@ import jakarta.validation.constraints.Size;
 public record InscribirRequest(
 
 		@Schema(description = "Persona del padron de la organizacion", example = "512")
-		@Positive long personaId,
+		@Positive(message = "La persona no es valida") long personaId,
 
 		@Schema(
 				description = "Si no hay lugar: true la deja en la lista de espera, false "
@@ -31,7 +31,7 @@ public record InscribirRequest(
 				description = "Clave del cliente para que un reintento no inscriba dos veces. "
 						+ "Reusarla con otra persona es un 409, no un reintento.",
 				example = "9f1c2b7e-inscripcion-512")
-		@Size(max = 80) String idempotencyKey) {
+		@Size(max = 80, message = "La clave de idempotencia no puede superar los 80 caracteres") String idempotencyKey) {
 
 	/**
 	 * Ausente se lee como {@code false}: la omision nunca encola. Es {@link Boolean} y no

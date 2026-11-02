@@ -19,14 +19,15 @@ import jakarta.validation.constraints.Size;
 public record IngresoSinInscripcionRequest(
 
 		@Schema(description = "Persona del padron. **No se exige perfil de paciente.**", example = "301")
-		@NotNull @Positive Long personaId,
+		@NotNull(message = "La persona es obligatoria")
+		@Positive(message = "La persona no es valida") Long personaId,
 
 		@Schema(description = "Normalmente PRESENTE o PRESENTE_TARDE", example = "PRESENTE_TARDE")
-		@NotNull ResultadoAsistenciaApi resultado,
+		@NotNull(message = "El resultado es obligatorio") ResultadoAsistenciaApi resultado,
 
 		@Schema(
 				description = "Nota **operativa, no clinica**: la ve cualquiera con "
 						+ "`inscripcion:read`, asi que **no debe llevar datos de salud** (U-46 d).",
 				example = "Se sumo sin anotarse")
-		@Size(max = 500) String observaciones) {
+		@Size(max = 500, message = "Las observaciones no pueden superar los 500 caracteres") String observaciones) {
 }

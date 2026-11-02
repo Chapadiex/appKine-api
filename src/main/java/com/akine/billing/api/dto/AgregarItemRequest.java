@@ -17,5 +17,5 @@ import jakarta.validation.constraints.NotNull;
 public record AgregarItemRequest(
 
 		@Schema(description = "La deuda que se va a reclamar", example = "9001")
-		@NotNull Long obligacionId) {
+		@NotNull(message = "La obligacion es obligatoria") Long obligacionId) {
 }

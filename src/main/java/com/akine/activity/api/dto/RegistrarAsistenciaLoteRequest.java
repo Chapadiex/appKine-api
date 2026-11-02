@@ -21,5 +21,7 @@ import java.util.List;
 public record RegistrarAsistenciaLoteRequest(
 
 		@Schema(description = "Hasta 200 participantes")
-		@NotEmpty @Size(max = 200) List<@NotNull @Valid RegistrarAsistenciaRequest> items) {
+		@NotEmpty(message = "Los items son obligatorios")
+		@Size(max = 200, message = "Los items no pueden ser mas de 200")
+		List<@NotNull(message = "Los items no pueden tener valores vacios") @Valid RegistrarAsistenciaRequest> items) {
 }

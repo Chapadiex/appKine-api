@@ -9,11 +9,12 @@ import jakarta.validation.constraints.Positive;
 public record AsociarContextoDeTurnoRequest(
 
 		@Schema(example = "9")
-		@Positive Long casoId,
+		@Positive(message = "El caso no es valido") Long casoId,
 
 		@Schema(example = "57")
-		@Positive Long planId,
+		@Positive(message = "El plan no es valido") Long planId,
 
 		@Schema(description = "Version que devolvio la ultima lectura del turno.", example = "1")
-		@NotNull @Min(0) Long expectedVersion) {
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa") Long expectedVersion) {
 }

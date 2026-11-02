@@ -24,11 +24,13 @@ public record RegistrarDebitoRequest(
 				description = "Lo rechazado. **Decimal exacto, nunca float.** Puede ser menor que "
 						+ "lo presentado: un debito parcial es normal.",
 				example = "1500.00")
-		@NotNull @DecimalMin(value = "0.01") BigDecimal importe,
+		@NotNull(message = "El importe es obligatorio")
+		@DecimalMin(value = "0.01", message = "El importe tiene que ser mayor que cero") BigDecimal importe,
 
 		@Schema(
 				description = "Por que lo rechazo. **Obligatorio**: una prestacion que desaparece "
 						+ "del reclamo sin explicacion es lo que una auditoria busca.",
 				example = "Falta autorizacion previa")
-		@NotBlank @Size(max = 280) String motivo) {
+		@NotBlank(message = "El motivo es obligatorio")
+		@Size(max = 280, message = "El motivo no puede superar los 280 caracteres") String motivo) {
 }

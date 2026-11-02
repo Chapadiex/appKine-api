@@ -27,7 +27,7 @@ public record ResolveCatalogoSolicitudRequest(
 				example = "APROBADA",
 				allowableValues = {"APROBADA", "RECHAZADA"},
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "El desenlace de la resolucion es obligatorio")
+		@NotNull(message = "El estado de la resolucion es obligatorio")
 		SolicitudEstado estado,
 
 		@Schema(description = "Motivo de la decision", requiredMode = Schema.RequiredMode.REQUIRED)

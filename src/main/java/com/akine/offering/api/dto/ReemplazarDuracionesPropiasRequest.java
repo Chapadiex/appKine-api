@@ -20,15 +20,15 @@ public record ReemplazarDuracionesPropiasRequest(
 						+ "oferta. Lista vacia = nadie tiene duracion propia",
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		@NotNull(message = "La lista de duraciones es obligatoria; para quitarlas todas, mandala vacia")
-		List<@Valid @NotNull DuracionPropiaPedida> duraciones,
+		List<@Valid @NotNull(message = "Las duraciones no pueden tener valores vacios") DuracionPropiaPedida> duraciones,
 
 		@Schema(
 				description = "Version de la OFERTA que el cliente cree estar configurando: la misma "
 						+ "que usan los reemplazos de habilitaciones",
 				example = "0",
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(value = 0, message = "expectedVersion no puede ser negativo")
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 
 	/** Cuanto tarda un profesional. */
@@ -37,7 +37,7 @@ public record ReemplazarDuracionesPropiasRequest(
 
 			@Schema(description = "Vinculo del profesional con la organizacion", example = "215",
 					requiredMode = Schema.RequiredMode.REQUIRED)
-			@NotNull(message = "membershipId es obligatorio")
+			@NotNull(message = "La membership es obligatoria")
 			Long membershipId,
 
 			@Schema(description = "Duracion de un turno con este profesional, en minutos. Entre 1 y 1440",

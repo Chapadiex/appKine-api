@@ -35,7 +35,7 @@ public record ReemplazarPracticasRequest(
 						+ "que usan los reemplazos de habilitaciones",
 				example = "0",
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(value = 0, message = "expectedVersion no puede ser negativo")
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }

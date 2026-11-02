@@ -14,7 +14,7 @@ public record TransicionDeRecepcionRequest(
 				description = "Version que devolvio la ultima lectura de la recepcion. Si otro "
 						+ "operador la movio entre medio, la transicion se rechaza con 409.",
 				example = "1")
-		@NotNull(message = "expectedVersion es obligatorio")
-		@Min(0)
+		@NotNull(message = "La version esperada es obligatoria")
+		@Min(value = 0, message = "La version esperada no puede ser negativa")
 		Long expectedVersion) {
 }
