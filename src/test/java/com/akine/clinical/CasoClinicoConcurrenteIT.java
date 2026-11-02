@@ -99,14 +99,15 @@ class CasoClinicoConcurrenteIT {
 	@Test
 	@DisplayName("dos altas concurrentes sobre la misma historia entran las dos, con 1 y 2")
 	void dos_altas_concurrentes_no_numeran_igual() {
-		// Las dos pasan el pre-chequeo de duplicado porque cuando lo evaluan no hay ningun caso
-		// activo todavia: esa es la ventana declarada del challenge §8 punto 2. Lo que este test
-		// exige es que la ventana produzca DOS CASOS BIEN NUMERADOS y no un numero repetido ni un
-		// 500.
+		// Las dos confirman el duplicado. Sin confirmar, entrar las dos depende de solaparse en la
+		// ventana del pre-chequeo (challenge §8 punto 2): si la segunda llega despues del commit de
+		// la primera, su 409 es correcto y el test fallaba sin que nada estuviera mal. Lo que este
+		// test exige es que dos altas simultaneas produzcan DOS CASOS BIEN NUMERADOS y no un numero
+		// repetido ni un 500.
 		Fixture fixture = crearFixture();
 
-		Callable<CasoClinicoView> unAdministrativo = () -> abrir(fixture, "Gonalgia derecha", false);
-		Callable<CasoClinicoView> otroAdministrativo = () -> abrir(fixture, "Omalgia izquierda", false);
+		Callable<CasoClinicoView> unAdministrativo = () -> abrir(fixture, "Gonalgia derecha", true);
+		Callable<CasoClinicoView> otroAdministrativo = () -> abrir(fixture, "Omalgia izquierda", true);
 
 		List<Desenlace> desenlaces = enParalelo(List.of(unAdministrativo, otroAdministrativo));
 
