@@ -6,6 +6,7 @@ import com.akine.billing.api.dto.EgresoResponse;
 import com.akine.billing.api.dto.PagoEgresoResponse;
 import com.akine.billing.api.dto.RegistrarEgresoRequest;
 import com.akine.billing.api.dto.RegistrarPagoEgresoRequest;
+import com.akine.billing.api.dto.ResumenDeEgresosResponse;
 import com.akine.billing.application.EgresoService;
 import com.akine.billing.application.PagoEgresoService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -255,6 +256,45 @@ public class EgresoController {
 						apiActor.current(), consultorioId, egresoId, request.motivo())));
 	}
 
+	@GetMapping("/resumen")
+	@Operation(
+			operationId = "resumirEgresos",
+			summary = "Totales de egresos del periodo",
+			description = """
+					Lo registrado, pagado y pendiente de los egresos del periodo, por moneda y por \
+					categoria, para la tira de la pantalla de egresos (DP-45).
+
+					**Sin `desde` ni `hasta`, el mes en curso en la zona de la sede.** Con solo \
+					`desde`, hasta el fin de ese mes. Las fechas se interpretan igual que en la \
+					bandeja: el instante de registro en el dia de la sede.
+
+					**Es egreso, no caja.** `registrado` son los egresos `CONFIRMADO` y `PAGADO` \
+					—lo comprometido—; `pagado` es lo saldado **hoy** (un pago anulado devuelve su \
+					importe) y `pendiente` lo que falta. Los borradores y los anulados se cuentan \
+					aparte. Ventana maxima: 366 dias.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Los totales"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Periodo invertido o de mas de 366 dias",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `caja:operate` en esa sede, o sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede no existe o es de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ResumenDeEgresosResponse> resumir(
+			@PathVariable long consultorioId,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+
+		return ResponseEntity.ok(ResumenDeEgresosResponse.de(
+				egresoService.resumir(apiActor.current(), consultorioId, desde, hasta)));
+	}
+
 	@GetMapping("/{egresoId}")
 	@Operation(
 			operationId = "verEgreso",
@@ -295,7 +335,13 @@ public class EgresoController {
 					mismo profesional para el mismo mes son legitimas —una correccion, un segundo \
 					concepto—, y un unique sobre el periodo convertiria un caso normal en un error. \
 					Filtrar por beneficiario las pone una al lado de la otra, que es la unica \
-					respuesta honesta.""")
+					respuesta honesta.
+
+					DP-45: `q` busca "contiene", sin distinguir mayusculas ni acentos, en el \
+					nombre y el documento del beneficiario, en el concepto y en el numero de \
+					comprobante. Ya pagina con `limite` y `desplazamiento` (el corte de 50 es el \
+					limite por defecto): no se agregan `page` y `size`, que serian dos formas de \
+					pedir lo mismo.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Egresos"),
 			@ApiResponse(
@@ -311,12 +357,13 @@ public class EgresoController {
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
 			@RequestParam(defaultValue = "50") int limite,
-			@RequestParam(defaultValue = "0") int desplazamiento) {
+			@RequestParam(defaultValue = "0") int desplazamiento,
+			@RequestParam(required = false) String q) {
 
 		return ResponseEntity.ok(
 				egresoService.buscar(
 								apiActor.current(), consultorioId, estado, categoria,
-								beneficiarioMembershipId, desde, hasta, limite, desplazamiento)
+								beneficiarioMembershipId, desde, hasta, q, limite, desplazamiento)
 						.stream()
 						.map(EgresoResponse::de)
 						.toList());

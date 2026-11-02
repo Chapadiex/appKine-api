@@ -299,7 +299,7 @@ class M17ControllersTest {
 		@Test
 		@DisplayName("el historial pagina, acota el tamano y trae el vencimiento calculado (DP-23)")
 		void historial() throws Exception {
-			given(autorizacionService.historial(any(), anyLong(), anyLong(), anyInt(), anyInt(),
+			given(autorizacionService.historial(any(), anyLong(), anyLong(), any(), anyInt(), anyInt(),
 					any()))
 					.willReturn(new HistorialDeAutorizacionView(77L, "APROBADA", true, true,
 							LocalDate.of(2028, 1, 1),
@@ -317,7 +317,7 @@ class M17ControllersTest {
 					.andExpect(jsonPath("$.vencidaDesde").value("2028-01-01"))
 					.andExpect(jsonPath("$.size").value(100))
 					.andExpect(jsonPath("$.totalPages").value(3));
-			verify(autorizacionService).historial(any(), eq(1204L), eq(77L), eq(1), eq(100),
+			verify(autorizacionService).historial(any(), eq(1204L), eq(77L), any(), eq(1), eq(100),
 					any());
 		}
 

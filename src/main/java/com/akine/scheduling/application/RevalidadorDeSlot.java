@@ -8,6 +8,7 @@ import com.akine.resource.spi.DisponibilidadDirectory;
 import com.akine.resource.spi.EspacioDirectory;
 import com.akine.resource.spi.EspacioSnapshot;
 import com.akine.scheduling.domain.Turno;
+import com.akine.scheduling.domain.exception.EspacioNoElegibleException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.SlotCompletoException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
@@ -74,6 +75,10 @@ class RevalidadorDeSlot {
 	 * @param turnoExcluidoId turno que NO cuenta como ocupacion. Es el que se esta moviendo: sigue
 	 *                        vivo en su intervalo viejo mientras se lo revalida, y sin excluirlo un
 	 *                        turno que se corre media hora chocaria contra si mismo
+	 * @param espacioElegidoId box elegido a mano, o {@code null} para que lo asigne el sistema
+	 * @param sobreturno      {@code true} si se autorizo ocupar un horario tomado. Saltea el cupo y
+	 *                        el solapamiento y <b>nada mas</b>: el profesional sigue teniendo que
+	 *                        estar habilitado y atender a esa hora
 	 */
 	record Pedido(
 			long organizationId,
@@ -83,7 +88,15 @@ class RevalidadorDeSlot {
 			Instant inicio,
 			Instant fin,
 			Long profesionalId,
-			Long turnoExcluidoId) {
+			Long turnoExcluidoId,
+			Long espacioElegidoId,
+			boolean sobreturno) {
+
+		Pedido(long organizationId, long consultorioId, ConsultorioSnapshot sede, OfertaSnapshot oferta,
+				Instant inicio, Instant fin, Long profesionalId, Long turnoExcluidoId) {
+			this(organizationId, consultorioId, sede, oferta, inicio, fin, profesionalId, turnoExcluidoId,
+					null, false);
+		}
 	}
 
 	/** Los recursos que quedaron clavados para ese intervalo. */
@@ -159,17 +172,83 @@ class RevalidadorDeSlot {
 	 * @throws RecursoOcupadoException el profesional o todos los espacios estan tomados
 	 */
 	Asignacion revalidarBajoLock(Pedido pedido, Previa previa) {
+		return evaluar(pedido, previa, true);
+	}
+
+	/**
+	 * Los mismos controles, <b>sin lock y sin efectos</b>: lo que la pantalla pregunta antes de
+	 * confirmar (TURNO - Tecnico §85). Es informativo, igual que la agenda: dos consultas concurrentes
+	 * ven el mismo hueco libre, y quien decide es la reserva.
+	 *
+	 * @throws SlotNoDisponibleException el hueco no existe
+	 * @throws SlotCompletoException     no queda cupo
+	 * @throws RecursoOcupadoException   el profesional o todos los espacios estan tomados
+	 */
+	Asignacion evaluarSinLock(Pedido pedido) {
+		return evaluar(pedido, prevalidar(pedido), false);
+	}
+
+	/** Los espacios que se podrian usar para ese pedido, para que la pantalla ofrezca "Cambiar". */
+	List<EspacioSnapshot> espaciosLibres(Pedido pedido) {
+		if (!pedido.oferta().requiereEspacio()) {
+			return List.of();
+		}
+		List<HabilitacionSnapshot> habilitados = ofertas.espaciosHabilitados(
+				pedido.organizationId(), pedido.consultorioId(), pedido.oferta().id());
+		List<EspacioSnapshot> candidatos = habilitados.isEmpty()
+				? espacios.enServicio(
+						pedido.organizationId(), pedido.consultorioId(), pedido.inicio(), pedido.fin())
+				: habilitados.stream()
+						.filter(habilitacion -> habilitacion.vigenteEn(pedido.inicio()))
+						.map(habilitacion -> espacios.find(
+								pedido.organizationId(), habilitacion.recursoId(), pedido.inicio()))
+						.flatMap(Optional::stream)
+						.toList();
+		return candidatos.stream()
+				.filter(EspacioSnapshot::active)
+				.filter(EspacioSnapshot::enServicio)
+				.filter(espacio -> espacio.consultorioId() == pedido.consultorioId())
+				.filter(espacio -> primerTurnoQueOcupa(pedido, espacio.id()).isEmpty())
+				.filter(espacio -> espacioLibreDeEventosExternos(pedido, espacio.id()))
+				.toList();
+	}
+
+	private Asignacion evaluar(Pedido pedido, Previa previa, boolean bajoLock) {
 		Long profesionalId = previa.profesionalId();
 
+		if (!pedido.sobreturno()) {
+			exigirLugarDelProfesional(pedido, profesionalId);
+		}
+
+		Long espacioId = null;
+		if (pedido.oferta().requiereEspacio()) {
+			try {
+				espacioId = elegirEspacio(pedido, profesionalId, bajoLock);
+			} catch (RecursoOcupadoException sinBoxLibre) {
+				// Un sobreturno ocupa un horario tomado: que no quede box libre es parte del caso, y
+				// el turno queda sin box asignado en vez de rechazarse.
+				if (!pedido.sobreturno()) {
+					throw sinBoxLibre;
+				}
+			}
+		}
+		return new Asignacion(profesionalId, espacioId);
+	}
+
+	private void exigirLugarDelProfesional(Pedido pedido, Long profesionalId) {
 		// Cupo primero: es una sola consulta y descarta el caso mas frecuente —el slot grupal
 		// lleno— sin recorrer habilitaciones ni espacios.
-		long ocupados = contarOcupacion(pedido);
+		long ocupados = contarOcupacion(pedido, profesionalId);
 		if (ocupados >= pedido.oferta().capacidad()) {
 			throw new SlotCompletoException(pedido.oferta().capacidad());
 		}
 
-		if (profesionalId != null && hayConflictoRealDeProfesional(pedido, profesionalId)) {
-			throw new RecursoOcupadoException("profesional");
+		if (profesionalId != null) {
+			Optional<Turno> conflicto = conflictoRealDeProfesional(pedido, profesionalId);
+			if (conflicto.isPresent()) {
+				throw new RecursoOcupadoException("profesional", conflicto.get().getId(),
+						conflicto.get().getInicio(), conflicto.get().getFin());
+			}
 		}
 
 		// AKINE-08.01. Una CLASE ocupa al profesional exactamente igual que un turno, y sin este
@@ -184,9 +263,6 @@ class RevalidadorDeSlot {
 				pedido.organizationId(), profesionalId, pedido.inicio(), pedido.fin())) {
 			throw new RecursoOcupadoException("profesional");
 		}
-
-		Long espacioId = pedido.oferta().requiereEspacio() ? elegirEspacio(pedido) : null;
-		return new Asignacion(profesionalId, espacioId);
 	}
 
 	/**
@@ -247,10 +323,18 @@ class RevalidadorDeSlot {
 		return pedido.profesionalId();
 	}
 
-	/** Cuantos turnos vivos ocupan el slot, sin contar el que se esta moviendo. */
-	private long contarOcupacion(Pedido pedido) {
-		long ocupados = turnos.contarVivosEnSlot(
-				pedido.organizationId(), pedido.oferta().id(), pedido.inicio());
+	/**
+	 * Cuantos turnos vivos ocupan el slot, sin contar el que se esta moviendo.
+	 *
+	 * <p>Con profesional, el cupo es el <b>suyo</b>: dos profesionales que prestan la misma oferta a la
+	 * misma hora son dos lugares aunque la capacidad sea uno. Antes se contaba por oferta e inicio, y
+	 * el segundo profesional recibia slot-completo con la agenda libre.
+	 */
+	private long contarOcupacion(Pedido pedido, Long profesionalId) {
+		long ocupados = profesionalId == null
+				? turnos.contarVivosEnSlot(pedido.organizationId(), pedido.oferta().id(), pedido.inicio())
+				: turnos.contarVivosEnSlotDelProfesional(
+						pedido.organizationId(), pedido.oferta().id(), profesionalId, pedido.inicio());
 		if (pedido.turnoExcluidoId() == null) {
 			return ocupados;
 		}
@@ -262,25 +346,28 @@ class RevalidadorDeSlot {
 				.filter(Turno::estaVivo)
 				.filter(turno -> turno.getOfertaId().equals(pedido.oferta().id()))
 				.filter(turno -> turno.getInicio().equals(pedido.inicio()))
+				.filter(turno -> profesionalId == null
+						|| profesionalId.equals(turno.getProfesionalMembershipId()))
 				.isPresent();
 		return estabaEnEsteSlot ? ocupados - 1 : ocupados;
 	}
 
 	/**
-	 * {@code true} si el profesional tiene otro turno que se cruza y que NO es del mismo grupo.
+	 * El otro turno del profesional que se cruza y que NO es del mismo grupo, si lo hay.
 	 *
 	 * <p>Sin esta distincion, la segunda inscripcion a una clase grupal fallaria por "profesional
 	 * ocupado" contra la primera: los turnos de un mismo slot grupal comparten profesional, oferta
 	 * y hora a proposito. Lo que es conflicto es cualquier OTRO turno que se cruce.
 	 */
-	private boolean hayConflictoRealDeProfesional(Pedido pedido, long profesionalId) {
+	private Optional<Turno> conflictoRealDeProfesional(Pedido pedido, long profesionalId) {
 		return turnos
 				.findVivosDeProfesionalQueCruzan(
 						pedido.organizationId(), profesionalId, pedido.inicio(), pedido.fin())
 				.stream()
 				.filter(otro -> !esElExcluido(otro, pedido))
-				.anyMatch(otro -> !(otro.getOfertaId().equals(pedido.oferta().id())
-						&& otro.getInicio().equals(pedido.inicio())));
+				.filter(otro -> !(otro.getOfertaId().equals(pedido.oferta().id())
+						&& otro.getInicio().equals(pedido.inicio())))
+				.findFirst();
 	}
 
 	/**
@@ -294,14 +381,26 @@ class RevalidadorDeSlot {
 	 * <p>El orden es el que devuelve el directorio, que es estable: la asignacion es determinista
 	 * para el mismo estado de la base.
 	 */
-	private Long elegirEspacio(Pedido pedido) {
+	private Long elegirEspacio(Pedido pedido, Long profesionalId, boolean bajoLock) {
+		if (pedido.espacioElegidoId() != null) {
+			return validarEspacioElegido(pedido, bajoLock);
+		}
+
 		// Paquete E-1. Una franja grupal ocupa UN box con todas sus personas. Sin esto, la segunda
 		// inscripcion veia el box "ocupado por un turno que se cruza" —el de su propio grupo— y se
 		// rechazaba con recurso-ocupado: una oferta grupal que exige espacio no admitia mas de una
 		// persona. Es la misma distincion que hayConflictoRealDeProfesional hace para el
 		// profesional. El cupo ya lo controlo contarOcupacion contra la capacidad de la oferta.
-		Optional<Long> delGrupo = espacioDelGrupo(pedido);
+		Optional<Long> delGrupo = espacioDelGrupo(pedido, profesionalId)
+				.filter(espacioId -> !bajoLock || sigueActivoBajoLock(pedido, espacioId));
 		if (delGrupo.isPresent()) {
+			// El grupo comparte inicio pero no siempre fin: si la duracion cambio con el grupo armado, quien
+			// se suma puede terminar despues que el resto, y a esa hora el box puede ser de otro. Un grupo
+			// ocupa un solo box, asi que no se lo reparte: se rechaza.
+			if (otroOcupaElBoxDelGrupo(pedido, delGrupo.get(), profesionalId)
+					|| !espacioLibreDeEventosExternos(pedido, delGrupo.get())) {
+				throw new RecursoOcupadoException("espacio");
+			}
 			return delGrupo.get();
 		}
 
@@ -316,13 +415,14 @@ class RevalidadorDeSlot {
 					.filter(EspacioSnapshot::active)
 					.filter(EspacioSnapshot::enServicio)
 					.map(EspacioSnapshot::id)
-					.filter(espacioId -> turnos.findVivosDeEspacioQueCruzan(
-							pedido.organizationId(), espacioId, pedido.inicio(), pedido.fin()).isEmpty())
+					// Sin el turno que se mueve: mover un turno media hora con un solo box lo hacia chocar
+					// contra si mismo. La rama de abajo, con espacios declarados, ya lo excluia.
+					.filter(espacioId -> primerTurnoQueOcupa(pedido, espacioId).isEmpty())
 					// AKINE-08.01: un box tomado por una clase no es un box libre. Ver
 					// espacioLibreDeEventosExternos.
 					.filter(espacioId -> espacioLibreDeEventosExternos(pedido, espacioId))
 					// El ultimo filtro, y perezoso: toma lock compartido solo sobre el que se elige.
-					.filter(espacioId -> sigueActivoBajoLock(pedido, espacioId))
+					.filter(espacioId -> !bajoLock || sigueActivoBajoLock(pedido, espacioId))
 					.findFirst()
 					.orElseThrow(() -> new RecursoOcupadoException("espacio"));
 		}
@@ -341,19 +441,58 @@ class RevalidadorDeSlot {
 			if (!utilizable) {
 				continue;
 			}
-			boolean libre = turnos
-					.findVivosDeEspacioQueCruzan(pedido.organizationId(), habilitacion.recursoId(),
-							pedido.inicio(), pedido.fin())
-					.stream()
-					.allMatch(otro -> esElExcluido(otro, pedido));
+			boolean libre = primerTurnoQueOcupa(pedido, habilitacion.recursoId()).isEmpty();
 			if (libre && espacioLibreDeEventosExternos(pedido, habilitacion.recursoId())
-					&& sigueActivoBajoLock(pedido, habilitacion.recursoId())) {
+					&& (!bajoLock || sigueActivoBajoLock(pedido, habilitacion.recursoId()))) {
 				return habilitacion.recursoId();
 			}
 		}
 		// Se distingue de SlotNoDisponible: el hueco existe y el profesional atiende; lo que falta
 		// es un box. La pantalla puede ofrecer otro horario en vez de mandar a recargar la agenda.
 		throw new RecursoOcupadoException("espacio");
+	}
+
+	/**
+	 * El box elegido a mano (TURNO - Tecnico §17, "Cambiar"). Pasa por los mismos filtros que el
+	 * automatico: elegirlo no habilita un box que la oferta no admite ni uno que esta ocupado.
+	 */
+	private Long validarEspacioElegido(Pedido pedido, boolean bajoLock) {
+		long elegido = pedido.espacioElegidoId();
+		List<HabilitacionSnapshot> habilitados = ofertas.espaciosHabilitados(
+				pedido.organizationId(), pedido.consultorioId(), pedido.oferta().id());
+		boolean habilitado = habilitados.isEmpty() || habilitados.stream()
+				.filter(habilitacion -> habilitacion.recursoId() == elegido)
+				.anyMatch(habilitacion -> habilitacion.vigenteEn(pedido.inicio()));
+		boolean utilizable = habilitado && espacios.find(pedido.organizationId(), elegido, pedido.inicio())
+				.filter(EspacioSnapshot::active)
+				.filter(EspacioSnapshot::enServicio)
+				.filter(espacio -> espacio.consultorioId() == pedido.consultorioId())
+				.isPresent();
+		if (!utilizable) {
+			throw new EspacioNoElegibleException(elegido);
+		}
+		Optional<Turno> ocupante = primerTurnoQueOcupa(pedido, elegido);
+		if (ocupante.isPresent()) {
+			throw new RecursoOcupadoException("espacio", ocupante.get().getId(),
+					ocupante.get().getInicio(), ocupante.get().getFin());
+		}
+		if (!espacioLibreDeEventosExternos(pedido, elegido)) {
+			throw new RecursoOcupadoException("espacio");
+		}
+		if (bajoLock && !sigueActivoBajoLock(pedido, elegido)) {
+			throw new EspacioNoElegibleException(elegido);
+		}
+		return elegido;
+	}
+
+	/** El turno que ocupa ese box en el intervalo, sin contar el que se esta moviendo. */
+	private Optional<Turno> primerTurnoQueOcupa(Pedido pedido, long espacioId) {
+		return turnos
+				.findVivosDeEspacioQueCruzan(
+						pedido.organizationId(), espacioId, pedido.inicio(), pedido.fin())
+				.stream()
+				.filter(otro -> !esElExcluido(otro, pedido))
+				.findFirst();
 	}
 
 	/**
@@ -389,21 +528,35 @@ class RevalidadorDeSlot {
 	}
 
 	/**
-	 * El box de los otros turnos vivos de la misma franja —misma oferta, mismo inicio—, si los hay.
+	 * El box de los otros turnos vivos de la misma franja —misma oferta, mismo inicio y <b>mismo
+	 * profesional</b>—, si los hay. Dos profesionales a la misma hora son dos grupos: si no, el segundo
+	 * caeria en el box del primero, encima de su turno.
 	 *
 	 * <p>La ventana es de un microsegundo porque {@code inicio} se guarda en {@code DATETIME(6)} y
 	 * la consulta filtra {@code [desde, hasta)}: es la forma de pedir "exactamente este inicio" sin
 	 * agregar otra consulta al puerto.
 	 */
-	private Optional<Long> espacioDelGrupo(Pedido pedido) {
+	private Optional<Long> espacioDelGrupo(Pedido pedido, Long profesionalId) {
 		return turnos.findVivosDeLaOfertaEnVentana(pedido.organizationId(), pedido.oferta().id(),
 						pedido.inicio(), pedido.inicio().plus(1, ChronoUnit.MICROS))
 				.stream()
 				.filter(otro -> !esElExcluido(otro, pedido))
 				.filter(otro -> otro.getInicio().equals(pedido.inicio()))
+				.filter(otro -> Objects.equals(otro.getProfesionalMembershipId(), profesionalId))
 				.map(Turno::getEspacioId)
 				.filter(Objects::nonNull)
 				.findFirst();
+	}
+
+	private boolean otroOcupaElBoxDelGrupo(Pedido pedido, long espacioId, Long profesionalId) {
+		return turnos
+				.findVivosDeEspacioQueCruzan(
+						pedido.organizationId(), espacioId, pedido.inicio(), pedido.fin())
+				.stream()
+				.filter(otro -> !esElExcluido(otro, pedido))
+				.anyMatch(otro -> !(otro.getOfertaId().equals(pedido.oferta().id())
+						&& otro.getInicio().equals(pedido.inicio())
+						&& Objects.equals(otro.getProfesionalMembershipId(), profesionalId)));
 	}
 
 	private static boolean esElExcluido(Turno turno, Pedido pedido) {

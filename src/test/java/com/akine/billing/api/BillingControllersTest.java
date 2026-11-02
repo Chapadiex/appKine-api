@@ -135,6 +135,7 @@ class BillingControllersTest extends SliceRestDeModulo {
 				op("POST", "/egresos/6/anulacion", AnularEgresoRequest.class, 200),
 				op("GET", "/egresos/6", null, 200),
 				op("GET", "/egresos?estado=CONFIRMADO", null, 200),
+				op("GET", "/egresos/resumen?desde=2026-10-01", null, 200),
 				op("POST", "/egresos/6/pagos", RegistrarPagoEgresoRequest.class, 201),
 				op("POST", "/egresos/6/pagos/2/anulacion", AnularEgresoRequest.class, 200),
 				// obligaciones
@@ -186,7 +187,7 @@ class BillingControllersTest extends SliceRestDeModulo {
 				.andExpect(status().isOk());
 
 		verify(presentaciones).buscar(any(), eq(7L), eq("CONFIRMADA"), eq(3L),
-				eq(LocalDate.of(2026, 9, 1)), isNull(), eq(10), eq(20));
+				eq(LocalDate.of(2026, 9, 1)), isNull(), isNull(), eq(10), eq(20));
 		verify(presentaciones).elegibles(any(), eq(7L), eq(3L), isNull(), isNull(), eq(50), eq(0));
 	}
 
@@ -200,6 +201,16 @@ class BillingControllersTest extends SliceRestDeModulo {
 						org.hamcrest.Matchers.startsWith("attachment; filename=\"presentacion-")));
 
 		verify(presentaciones).detalle(any(), eq(7L), eq(11L));
+	}
+
+	@Test
+	@DisplayName("DP-45: /egresos/resumen va al resumen y no al detalle de un egreso; sin fechas viaja null")
+	void resumen_de_egresos_no_choca_con_el_detalle() throws Exception {
+		mockMvc.perform(get(SEDE + "/egresos/resumen").with(miembro()))
+				.andExpect(status().isOk());
+
+		verify(egresos).resumir(any(), eq(7L), isNull(), isNull());
+		verify(egresos, org.mockito.Mockito.never()).ver(any(), anyLong(), anyLong());
 	}
 
 	@Test

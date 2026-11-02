@@ -10,6 +10,8 @@ import com.akine.person.spi.ContactoDePersona;
 import com.akine.person.spi.CoberturasAplicablesDirectory;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
+import com.akine.platform.spi.audit.AuditEntry;
+import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.domain.EstadoTurno;
 import com.akine.scheduling.domain.PermissionCodes;
@@ -18,6 +20,7 @@ import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.TurnoEvento;
 import com.akine.scheduling.domain.exception.CoberturaNoAccesibleException;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.scheduling.domain.exception.ContextoClinicoInvalidoException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
 import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
@@ -31,6 +34,7 @@ import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoEventoRep
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -41,6 +45,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -100,6 +105,9 @@ import java.util.Optional;
 @Service
 public class TurnoService {
 
+	/** Ancho de {@code turno_evento.motivo} (V38). El motivo completo queda en el turno. */
+	private static final int LARGO_DE_MOTIVO_DE_EVENTO = 300;
+
 	private static final Logger log = LoggerFactory.getLogger(TurnoService.class);
 
 	private final TurnoRepositoryPort turnos;
@@ -113,6 +121,9 @@ public class TurnoService {
 	private final AgendaSedeIniciador iniciador;
 	private final RevalidadorDeSlot revalidador;
 	private final AvisosDeTurno avisos;
+	private final ContextoClinicoDeTurno contextoClinico;
+	private final SesionesDelPlan sesionesDelPlan;
+	private final AuditTrail auditTrail;
 	private final TransactionTemplate transaccionDeReserva;
 
 	public TurnoService(
@@ -127,6 +138,9 @@ public class TurnoService {
 			AgendaSedeIniciador iniciador,
 			RevalidadorDeSlot revalidador,
 			AvisosDeTurno avisos,
+			ContextoClinicoDeTurno contextoClinico,
+			SesionesDelPlan sesionesDelPlan,
+			AuditTrail auditTrail,
 			PlatformTransactionManager transactionManager) {
 
 		this.turnos = turnos;
@@ -140,6 +154,9 @@ public class TurnoService {
 		this.iniciador = iniciador;
 		this.revalidador = revalidador;
 		this.avisos = avisos;
+		this.contextoClinico = contextoClinico;
+		this.sesionesDelPlan = sesionesDelPlan;
+		this.auditTrail = auditTrail;
 		this.transaccionDeReserva = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -168,6 +185,12 @@ public class TurnoService {
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestion(actor, organizationId, consultorioId);
+		if (command.esSobreturno()) {
+			// El permiso se pide aparte de turno:manage: dar un turno es de recepcion y pisar uno es de
+			// quien puede autorizarlo (TURNO.md §21). El backend lo exige aunque la pantalla esconda la
+			// accion.
+			exigirSobreturno(actor, organizationId, consultorioId);
+		}
 
 		// PASO 0. En su PROPIA transaccion y ANTES de abrir la de la reserva: crearla dentro de
 		// esta deadlockea entre las primeras reservas concurrentes de una sede (AgendaSedeIniciador),
@@ -186,6 +209,11 @@ public class TurnoService {
 		return resultado;
 	}
 
+	private static String motivoDeEventoDeSobreturno(String motivo) {
+		String texto = "Sobreturno: " + motivo;
+		return texto.length() <= LARGO_DE_MOTIVO_DE_EVENTO ? texto : texto.substring(0, LARGO_DE_MOTIVO_DE_EVENTO);
+	}
+
 	/**
 	 * Lo que la reserva lee ANTES del lock (paso 0 de la cabecera).
 	 *
@@ -197,8 +225,11 @@ public class TurnoService {
 
 		/** {@code null}: la oferta no existe en la sede. */
 		private OfertaSnapshot oferta;
+		/** Con la duracion de quien atiende. {@code null} si la oferta no existe. */
+		private Instant fin;
 		private RevalidadorDeSlot.Previa previa;
 		private ContactoDePersona contacto;
+		private ContextoClinicoDeTurno.Resuelto contexto = ContextoClinicoDeTurno.Resuelto.NINGUNO;
 		/** El primer rechazo de negocio, o {@code null}. */
 		private RuntimeException rechazo;
 	}
@@ -227,7 +258,11 @@ public class TurnoService {
 		}
 		OfertaSnapshot oferta = preparacion.oferta;
 		Instant inicio = command.inicio();
-		Instant fin = inicio.plusSeconds(oferta.duracionMinutos() * 60L);
+		// La reserva no asigna profesional: lo trae el pedido, y sin el una oferta que lo requiere se
+		// rechaza mas abajo. No hay forma de que este fin salga con la duracion de otro.
+		Instant fin = inicio.plusSeconds(oferta.duracionCon(
+				ofertas.duracionesPropias(organizationId, consultorioId, ofertaId), command.profesionalId()) * 60L);
+		preparacion.fin = fin;
 		LocalDate fecha = inicio.atZone(ZoneId.of(sede.timezone())).toLocalDate();
 
 		try {
@@ -247,6 +282,11 @@ public class TurnoService {
 				throw new CoberturaNoAccesibleException(command.coberturaId());
 			}
 
+			// Caso y plan: de esta persona, vigentes y con esta prestacion. Las sesiones que le quedan
+			// al plan se miran bajo el lock, porque ahi si se leen turnos.
+			preparacion.contexto = contextoClinico.resolver(
+					organizationId, command.personaId(), ofertaId, command.casoId(), command.planId());
+
 			// La mitad de la revalidacion que no lee turnos: habilitacion y franja del profesional,
 			// u horario de la sede. Ver RevalidadorDeSlot#prevalidar.
 			preparacion.previa = revalidador.prevalidar(new RevalidadorDeSlot.Pedido(
@@ -254,7 +294,7 @@ public class TurnoService {
 					command.profesionalId(), null));
 		} catch (OfertaNoAgendableException | PersonaNotAccessibleException
 				| PersonaSinPerfilPacienteException | CoberturaNoAccesibleException
-				| SlotNoDisponibleException rechazo) {
+				| ContextoClinicoInvalidoException | SlotNoDisponibleException rechazo) {
 			preparacion.rechazo = rechazo;
 			return preparacion;
 		}
@@ -290,7 +330,7 @@ public class TurnoService {
 		}
 
 		Instant inicio = command.inicio();
-		Instant fin = inicio.plusSeconds(oferta.duracionMinutos() * 60L);
+		Instant fin = preparacion.fin;
 
 		// Defecto encontrado en E-3. Reprogramar ya rechazaba un destino pasado y la reserva no: el
 		// motor de 05.01 dibuja tambien los slots de hoy que ya pasaron, y el revalidador solo mira
@@ -311,20 +351,50 @@ public class TurnoService {
 		RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidarBajoLock(
 				new RevalidadorDeSlot.Pedido(
 						organizationId, consultorioId, sede, oferta, inicio, fin,
-						command.profesionalId(), null),
+						command.profesionalId(), null, command.espacioId(), command.esSobreturno()),
 				preparacion.previa);
 
+		// Bajo el lock y despues del lugar: dos programaciones simultaneas del mismo plan se
+		// serializan aca, y un horario ocupado se informa antes que un plan sin sesiones.
+		if (preparacion.contexto.plan() != null) {
+			// Se relee aca: lo realizado del paso 0 es de antes del lock, y una sesion del plan que cierra
+			// mientras se espera deja de contar como programada sin haberse contado como realizada.
+			ContextoClinicoDeTurno.Resuelto vigente = contextoClinico.resolver(
+					organizationId, command.personaId(), ofertaId, command.casoId(), command.planId());
+			sesionesDelPlan.exigirDisponibles(organizationId, vigente.plan(), ofertaId, 1);
+		}
+
 		Instant ahora = Instant.now();
-		Turno turno = turnos.save(conCobertura(new Turno(
+		Turno nuevo = conCobertura(new Turno(
 				organizationId, consultorioId, ofertaId, command.personaId(),
 				asignacion.profesionalId(), asignacion.espacioId(), inicio, fin,
 				actor.accountId(), ahora,
 				command.idempotencyKey(),
 				command.idempotencyKey() == null ? null : command.huella(consultorioId, ofertaId)),
-				command.coberturaId()));
+				command.coberturaId());
+		if (preparacion.contexto.casoId() != null) {
+			nuevo.asociarContexto(preparacion.contexto.casoId(), preparacion.contexto.planId());
+		}
+		if (command.origen() != null) {
+			nuevo.declararOrigen(command.origen());
+		}
+		if (command.esSobreturno()) {
+			nuevo.autorizarSobreturno(command.sobreturnoMotivo(), actor.accountId());
+		}
+		Turno turno = turnos.save(nuevo);
 
 		eventos.registrar(TurnoEvento.de(
-				turno, TipoEventoTurno.RESERVA, null, null, actor.accountId(), ahora));
+				turno, TipoEventoTurno.RESERVA, null,
+				turno.isSobreturno() ? motivoDeEventoDeSobreturno(turno.getSobreturnoMotivo()) : null,
+				actor.accountId(), ahora));
+		if (turno.isSobreturno()) {
+			auditTrail.record(new AuditEntry(
+					organizationId, consultorioId, actor.accountId(), "TURNO_SOBRETURNO", "Turno", turno.getId(),
+					null, turno.getEstado().name(),
+					Map.of("personaId", String.valueOf(turno.getPersonaId()),
+							"inicio", String.valueOf(turno.getInicio())),
+					turno.getSobreturnoMotivo(), null, ahora));
+		}
 		// RF-M26-002. En esta misma transaccion: si la reserva hace rollback, el aviso tambien.
 		// El reintento idempotente de arriba retorna antes y no encola de nuevo.
 		avisos.avisarReserva(turno, sede, oferta.nombreComercial(), preparacion.contacto);
@@ -364,6 +434,50 @@ public class TurnoService {
 
 		log.info("Turno confirmado: turnoId={} consultorioId={}", turnoId, consultorioId);
 		return TurnoView.de(confirmado);
+	}
+
+	/**
+	 * Asocia un turno vivo a un caso y un plan, o se los quita: la primera consulta que ya tiene caso,
+	 * o el turno que se dio sin pensar en el plan. <b>Bajo el lock de la sede</b>, aunque no ocupe nada:
+	 * gasta una sesion del plan, y dos pedidos simultaneos no pueden gastar la misma.
+	 */
+	public TurnoView asociarContexto(
+			OperatingActor actor, long consultorioId, long turnoId, Long casoId, Long planId,
+			long expectedVersion) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId);
+		iniciador.asegurar(organizationId, consultorioId);
+		return transaccionDeReserva.execute(estado -> {
+			BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
+			return asociarContextoBajoLock(actor, organizationId, consultorioId, turnoId, casoId, planId, expectedVersion);
+		});
+	}
+
+	private TurnoView asociarContextoBajoLock(
+			OperatingActor actor, long organizationId, long consultorioId, long turnoId, Long casoId, Long planId,
+			long expectedVersion) {
+
+		Turno turno = turnos.findByIdInScope(organizationId, consultorioId, turnoId)
+				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
+		if (turno.getVersion() != expectedVersion) {
+			throw new OptimisticLockingFailureException(
+					"El turno " + turnoId + " cambio desde que se leyo");
+		}
+		ContextoClinicoDeTurno.Resuelto contexto = contextoClinico.resolver(
+				organizationId, turno.getPersonaId(), turno.getOfertaId(), casoId, planId);
+		if (contexto.plan() != null && !contexto.planId().equals(turno.getPlanId())) {
+			sesionesDelPlan.exigirDisponibles(organizationId, contexto.plan(), turno.getOfertaId(), 1);
+		}
+
+		EstadoTurno anterior = turno.getEstado();
+		Instant ahora = Instant.now();
+		turno.asociarContexto(contexto.casoId(), contexto.planId());
+		Turno guardado = turnos.saveAndFlush(turno);
+		eventos.registrar(TurnoEvento.de(
+				guardado, TipoEventoTurno.CAMBIO_DE_CONTEXTO, anterior, null, actor.accountId(), ahora));
+		return TurnoView.de(guardado);
 	}
 
 	// =================================================================================
@@ -433,6 +547,16 @@ public class TurnoService {
 		permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(),
 				PermissionCodes.TURNO_MANAGE,
+				organizationId,
+				consultorioId,
+				null,
+				Instant.now()));
+	}
+
+	private void exigirSobreturno(OperatingActor actor, long organizationId, long consultorioId) {
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(),
+				PermissionCodes.TURNO_SOBRETURNO,
 				organizationId,
 				consultorioId,
 				null,

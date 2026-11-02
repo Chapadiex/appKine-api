@@ -19,6 +19,9 @@ import com.akine.clinical.domain.exception.PlanNoEditableException;
 import com.akine.clinical.domain.exception.PlanSinItemsException;
 import com.akine.clinical.domain.exception.PlanTratamientoNotAccessibleException;
 import com.akine.clinical.domain.exception.TransicionDePlanInvalidaException;
+import com.akine.clinical.spi.ContextoClinicoDeAgenda;
+import com.akine.clinical.spi.RealizadoEnElCasoProbe;
+import com.akine.clinical.spi.RealizadoPorOferta;
 import com.akine.encounter.application.SesionService;
 import com.akine.encounter.application.SesionView;
 import com.akine.encounter.domain.Asistencia;
@@ -104,6 +107,8 @@ class PlanTratamientoIT {
 	@Autowired private CasoClinicoService casos;
 	@Autowired private PlanTratamientoService planes;
 	@Autowired private SesionService sesiones;
+	@Autowired private RealizadoEnElCasoProbe realizado;
+	@Autowired private ContextoClinicoDeAgenda contextoDeAgenda;
 	@Autowired private JdbcTemplate jdbc;
 
 	// =================================================================================
@@ -490,6 +495,60 @@ class PlanTratamientoIT {
 				.hasSize(2)
 				.extracting(PlanVersionView::numeroVersion)
 				.containsExactlyInAnyOrder(1, 2);
+	}
+
+	@Test
+	@DisplayName("lo cerrado antes de activar el plan no es avance suyo: un caso tiene planes sucesivos")
+	void lo_cerrado_antes_de_activar_no_cuenta() {
+		// El caso del flujo unico de turnos: la evaluacion se cierra antes de que exista el plan. Si
+		// contara, un plan de diez sesiones naceria con una hecha, y la agenda ofreceria nueve.
+		Fixture fixture = crearFixture();
+		CasoClinicoView caso = abrirCaso(fixture);
+		cerrarSesionDelCaso(fixture, caso.id());
+		cerrarSesionDelCaso(fixture, caso.id(), Asistencia.AUSENTE);
+
+		PlanTratamientoView plan = crearYActivar(fixture, caso, 10);
+
+		assertThat(planes.avance(fixture.actorClinico(), plan.id(), null, JUSTIFICACION).items())
+				.singleElement()
+				.satisfies(item -> {
+					assertThat(item.realizadas()).as("recien activado no tiene nada hecho").isZero();
+					assertThat(item.canceladas()).isZero();
+				});
+
+		cerrarSesionDelCaso(fixture, caso.id());
+		cerrarSesionDelCaso(fixture, caso.id(), Asistencia.AUSENTE);
+
+		assertThat(planes.avance(fixture.actorClinico(), plan.id(), null, JUSTIFICACION).items())
+				.singleElement()
+				.satisfies(item -> {
+					assertThat(item.realizadas()).isEqualTo(1);
+					assertThat(item.canceladas()).isEqualTo(1);
+				});
+
+		// La consulta contra el motor, con los dos cortes: es la que da de comer al avance y a la agenda.
+		assertThat(realizado.contarPorOfertaEnElCasoDesde(fixture.organizationId(), caso.id(), plan.activadoEn()))
+				.containsExactly(new RealizadoPorOferta(fixture.ofertaId(), 1, 1));
+		assertThat(realizado.contarPorOfertaEnElCasoDesde(fixture.organizationId(), caso.id(), null))
+				.as("sin desde cuenta todo")
+				.containsExactly(new RealizadoPorOferta(fixture.ofertaId(), 2, 2));
+		assertThat(realizado.contarPorOfertaEnElCaso(fixture.organizationId(), caso.id()))
+				.containsExactly(new RealizadoPorOferta(fixture.ofertaId(), 2, 2));
+
+		// Y la agenda ve lo mismo que el avance: el tope del plan sale de aca.
+		assertThat(contextoDeAgenda.plan(fixture.organizationId(), plan.id()).orElseThrow().items())
+				.singleElement()
+				.satisfies(item -> {
+					assertThat(item.planificadas()).isEqualTo(10);
+					assertThat(item.realizadas()).isEqualTo(1);
+				});
+		assertThat(contextoDeAgenda.casosActivosDe(fixture.organizationId(), fixture.personaId()))
+				.singleElement()
+				.satisfies(agendable -> {
+					assertThat(agendable.responsableMembershipId()).isEqualTo(fixture.membershipId());
+					assertThat(agendable.planes()).singleElement()
+							.satisfies(delCaso -> assertThat(delCaso.planId()).isEqualTo(plan.id()));
+				});
 	}
 
 	@Test

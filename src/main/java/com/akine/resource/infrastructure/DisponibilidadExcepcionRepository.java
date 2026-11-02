@@ -76,6 +76,23 @@ public interface DisponibilidadExcepcionRepository
 			@Param("desde") LocalDate desde,
 			@Param("hasta") LocalDate hasta);
 
+	@Query("""
+			SELECT e FROM DisponibilidadExcepcion e
+			 WHERE e.organizationId = :organizationId
+			   AND e.consultorioId = :consultorioId
+			   AND e.tipo = com.akine.resource.domain.TipoExcepcion.CIERRE
+			   AND e.active = true
+			   AND e.fechaDesde < :hasta
+			   AND e.fechaHasta > :desde
+			 ORDER BY e.fechaDesde ASC
+			""")
+	@Override
+	List<DisponibilidadExcepcion> findCierresDeLaSedeEnVentana(
+			@Param("organizationId") Long organizationId,
+			@Param("consultorioId") Long consultorioId,
+			@Param("desde") LocalDate desde,
+			@Param("hasta") LocalDate hasta);
+
 	/**
 	 * Una excepcion por id, acotada al tenant y a la sede, activa o no. Sin acotar por
 	 * membership: una excepcion de sede entera no tiene una unica duena, y la ruta ya fija la

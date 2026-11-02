@@ -174,7 +174,9 @@ public class CajaController {
 			description = "Devuelve el saldo teorico (RF-M20-005) y el desglose por medio de pago. "
 					+ "**El desglose no es adorno**: sin el, un arqueo de 60.000 sobre un dia en "
 					+ "que se facturaron 120.000 parece un faltante gigante, cuando la mitad entro "
-					+ "por tarjeta y nunca estuvo en el cajon.")
+					+ "por tarjeta y nunca estuvo en el cajon. Desde DP-45 trae tambien `resumen`: "
+					+ "ingresos y egresos de la jornada, en efectivo y por los demas medios, netos de "
+					+ "reversiones. Es caja: no es lo cobrado ni la deuda.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Jornada con sus totales"),
 			@ApiResponse(

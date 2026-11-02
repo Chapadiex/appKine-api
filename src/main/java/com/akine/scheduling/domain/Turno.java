@@ -75,6 +75,36 @@ public class Turno {
 	@Column(name = "cobertura_id", updatable = false)
 	private Long coberturaId;
 
+	/**
+	 * Caso clinico para el que se reservo (flujo unico de turnos, V125). {@code null} en una primera
+	 * consulta o un turno suelto: la reserva no le exige a nadie informacion clinica que todavia no
+	 * existe (TURNO.md §11). Reprogramar lo conserva: es el mismo turno.
+	 */
+	@Column(name = "caso_id")
+	private Long casoId;
+
+	/** Plan de tratamiento para el que se reservo, o {@code null} (TURNO - Tecnico §72). */
+	@Column(name = "plan_id")
+	private Long planId;
+
+	/** Desde donde se inicio la reserva. Solo trazabilidad: ver {@link OrigenDeTurno}. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "origen", length = 16, updatable = false)
+	private OrigenDeTurno origen;
+
+	/**
+	 * {@code true} si se reservo sobre un horario ocupado, con autorizacion (TURNO.md §21). Mover el
+	 * turno a un horario libre lo deja de ser: el evento de la reprogramacion conserva la historia.
+	 */
+	@Column(name = "sobreturno", nullable = false)
+	private boolean sobreturno;
+
+	@Column(name = "sobreturno_motivo", length = 300)
+	private String sobreturnoMotivo;
+
+	@Column(name = "sobreturno_autorizado_por_cuenta_id")
+	private Long sobreturnoAutorizadoPorCuentaId;
+
 	@Column(name = "inicio", nullable = false)
 	private Instant inicio;
 
@@ -109,8 +139,20 @@ public class Turno {
 	@Column(name = "cancelado_por_cuenta_id")
 	private Long canceladoPorCuentaId;
 
+	/** A quien se le atribuye la cancelacion. {@code null} en las anteriores a V125. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "origen_cancelacion", length = 16)
+	private OrigenDeCancelacion origenCancelacion;
+
 	@Column(name = "ausente_en")
 	private Instant ausenteEn;
+
+	/**
+	 * Si esta ausencia consume una sesion del plan (TURNO.md §19). {@code null} si no se decidio o el
+	 * turno no tiene plan, y cuenta como que no consume.
+	 */
+	@Column(name = "ausencia_consume_sesion")
+	private Boolean ausenciaConsumeSesion;
 
 	@Column(name = "reprogramado_en")
 	private Instant reprogramadoEn;
@@ -178,6 +220,9 @@ public class Turno {
 		if (estado == EstadoTurno.CONFIRMADO) {
 			return;
 		}
+		// Sin este control un turno cancelado volvia a CONFIRMADO con su baja logica todavia puesta:
+		// figuraba confirmado y no ocupaba el lugar.
+		exigirEstadoTransitable("ya esta " + estado.name().toLowerCase());
 		this.estado = EstadoTurno.CONFIRMADO;
 		this.confirmadoEn = occurredAt;
 	}
@@ -197,6 +242,11 @@ public class Turno {
 	 * @throws TransicionDeTurnoNoPermitidaException si el turno ya termino su ciclo o ya empezo
 	 */
 	public void cancelar(String motivo, long cuentaId, Instant occurredAt) {
+		cancelar(motivo, null, cuentaId, occurredAt);
+	}
+
+	/** {@link #cancelar(String, long, Instant)} declarando a quien se le atribuye. */
+	public void cancelar(String motivo, OrigenDeCancelacion origen, long cuentaId, Instant occurredAt) {
 		// Un paciente que ya hizo el check-in y al que el centro no va a poder atender se cancela SIN
 		// anular antes su recepcion (desde E-4 la cancelacion la CIERRA conservando la llegada,
 		// ver CicloDeTurnoService). El control de "ya empezo" de mas abajo sigue
@@ -215,6 +265,7 @@ public class Turno {
 			throw new IllegalArgumentException("El motivo de cancelacion es obligatorio (DP-04)");
 		}
 		this.estado = EstadoTurno.CANCELADO;
+		this.origenCancelacion = origen;
 		this.motivoCancelacion = motivo.strip();
 		this.canceladoEn = occurredAt;
 		this.canceladoPorCuentaId = cuentaId;
@@ -232,6 +283,11 @@ public class Turno {
 	 * @throws TransicionDeTurnoNoPermitidaException si el turno todavia no empezo o ya cerro
 	 */
 	public void marcarAusente(Instant occurredAt) {
+		marcarAusente(null, occurredAt);
+	}
+
+	/** {@link #marcarAusente(Instant)} decidiendo si consume una sesion del plan. */
+	public void marcarAusente(Boolean consumeSesion, Instant occurredAt) {
 		exigirEstadoTransitable("ya esta " + estado.name().toLowerCase());
 		if (inicio.isAfter(occurredAt)) {
 			throw new TransicionDeTurnoNoPermitidaException(
@@ -239,6 +295,7 @@ public class Turno {
 		}
 		this.estado = EstadoTurno.AUSENTE;
 		this.ausenteEn = occurredAt;
+		this.ausenciaConsumeSesion = planId == null ? null : consumeSesion;
 	}
 
 	/**
@@ -279,6 +336,9 @@ public class Turno {
 		this.estado = EstadoTurno.RESERVADO;
 		this.confirmadoEn = null;
 		this.reprogramadoEn = occurredAt;
+		this.sobreturno = false;
+		this.sobreturnoMotivo = null;
+		this.sobreturnoAutorizadoPorCuentaId = null;
 	}
 
 	/**
@@ -319,6 +379,40 @@ public class Turno {
 		this.coberturaId = coberturaId;
 	}
 
+	/** Fija desde donde se reservo. Solo antes de persistir el turno. */
+	public void declararOrigen(OrigenDeTurno origen) {
+		if (id != null) {
+			throw new IllegalStateException("El origen de un turno se fija al reservarlo");
+		}
+		this.origen = origen;
+	}
+
+	/**
+	 * Asocia el turno a un caso y a un plan, o los quita. Es un dato de la reserva y no de la agenda:
+	 * no ocupa nada, asi que no toma el lock de la sede.
+	 */
+	public void asociarContexto(Long casoId, Long planId) {
+		if (estado.esTerminal()) {
+			throw new TransicionDeTurnoNoPermitidaException(
+					id, "ya esta " + estado.name().toLowerCase() + " y no admite cambios");
+		}
+		this.casoId = casoId;
+		this.planId = planId;
+	}
+
+	/** Marca el turno como sobreturno autorizado. Solo antes de persistirlo. */
+	public void autorizarSobreturno(String motivo, long cuentaId) {
+		if (id != null) {
+			throw new IllegalStateException("Un sobreturno se declara al reservarlo");
+		}
+		if (motivo == null || motivo.isBlank()) {
+			throw new IllegalArgumentException("El motivo del sobreturno es obligatorio");
+		}
+		this.sobreturno = true;
+		this.sobreturnoMotivo = motivo.strip();
+		this.sobreturnoAutorizadoPorCuentaId = cuentaId;
+	}
+
 	public boolean estaVivo() {
 		return deletedAt == null;
 	}
@@ -354,6 +448,34 @@ public class Turno {
 
 	public Long getCoberturaId() {
 		return coberturaId;
+	}
+
+	public Long getCasoId() {
+		return casoId;
+	}
+
+	public Long getPlanId() {
+		return planId;
+	}
+
+	public OrigenDeTurno getOrigen() {
+		return origen;
+	}
+
+	public boolean isSobreturno() {
+		return sobreturno;
+	}
+
+	public String getSobreturnoMotivo() {
+		return sobreturnoMotivo;
+	}
+
+	public OrigenDeCancelacion getOrigenCancelacion() {
+		return origenCancelacion;
+	}
+
+	public Boolean getAusenciaConsumeSesion() {
+		return ausenciaConsumeSesion;
 	}
 
 	public Long getProfesionalMembershipId() {

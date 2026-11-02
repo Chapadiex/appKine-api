@@ -222,6 +222,7 @@ public final class ClinicalRepositoryPorts {
 				String categoria,
 				Long entradaId,
 				int activoFiltro,
+				String orden,
 				int offset,
 				int limite);
 

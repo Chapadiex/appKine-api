@@ -95,7 +95,7 @@ class MembershipControllerTest {
 	@Test
 	@DisplayName("El listado incluye a los revocados, ordena por id y arma el actor con la sede del contexto")
 	void listado_devuelve_la_pagina_y_arma_el_actor() throws Exception {
-		given(membershipService.list(any(), eq(1L), any(Pageable.class)))
+		given(membershipService.list(any(), eq(1L), any(), any(), any(Pageable.class)))
 				.willReturn(new PageImpl<>(
 						List.of(vinculo(10L, "ACTIVA"), vinculo(11L, "REVOCADA")),
 						PageRequest.of(0, 20), 2));
@@ -112,7 +112,7 @@ class MembershipControllerTest {
 
 		ArgumentCaptor<OperatingActor> actor = ArgumentCaptor.forClass(OperatingActor.class);
 		ArgumentCaptor<Pageable> pagina = ArgumentCaptor.forClass(Pageable.class);
-		verify(membershipService).list(actor.capture(), eq(1L), pagina.capture());
+		verify(membershipService).list(actor.capture(), eq(1L), any(), any(), pagina.capture());
 		assertThat(actor.getValue()).isEqualTo(ACTOR);
 		assertThat(pagina.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.ASC, "id"));
 	}
@@ -120,7 +120,7 @@ class MembershipControllerTest {
 	@Test
 	@DisplayName("El paginado del listado se normaliza: pagina negativa a cero y tamano al maximo")
 	void listado_acota_el_paginado() throws Exception {
-		given(membershipService.list(any(), anyLong(), any(Pageable.class)))
+		given(membershipService.list(any(), anyLong(), any(), any(), any(Pageable.class)))
 				.willReturn(new PageImpl<>(List.of(), PageRequest.of(0, 100), 0));
 
 		mockMvc.perform(get(BASE).param("page", "-1").param("size", "500")
@@ -128,7 +128,7 @@ class MembershipControllerTest {
 				.andExpect(status().isOk());
 
 		ArgumentCaptor<Pageable> pagina = ArgumentCaptor.forClass(Pageable.class);
-		verify(membershipService).list(any(), eq(1L), pagina.capture());
+		verify(membershipService).list(any(), eq(1L), any(), any(), pagina.capture());
 		assertThat(pagina.getValue().getPageNumber()).isZero();
 		assertThat(pagina.getValue().getPageSize()).isEqualTo(ApiPaging.TAMANO_MAXIMO);
 	}
@@ -146,7 +146,7 @@ class MembershipControllerTest {
 	@Test
 	@DisplayName("Sin colaborador:read es 403 y publica el permiso que falta")
 	void listado_sin_permiso_publica_el_permiso_faltante() throws Exception {
-		given(membershipService.list(any(), anyLong(), any(Pageable.class)))
+		given(membershipService.list(any(), anyLong(), any(), any(), any(Pageable.class)))
 				.willThrow(new PermissionDeniedException("colaborador:read", 7L, 1L));
 
 		mockMvc.perform(get(BASE).with(ApiActors.miembro(7L)))

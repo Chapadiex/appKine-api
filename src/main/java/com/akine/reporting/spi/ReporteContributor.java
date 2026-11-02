@@ -1,5 +1,6 @@
 package com.akine.reporting.spi;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -102,4 +103,18 @@ public interface ReporteContributor {
 
 	/** El aporte de este modulo. Nunca {@code null}: usar {@link AporteDeReporte#vacio(String)}. */
 	AporteDeReporte aportar(ConsultaDeReporte consulta);
+
+	/**
+	 * Las series por dia de los indicadores de esta seccion que la admiten (DP-45). Por defecto
+	 * ninguna.
+	 *
+	 * <p>Recibe la misma consulta que {@link #aportar} y {@code reporting} la invoca con las mismas
+	 * omisiones: una seccion sin permiso, o que no sabe recortarse a la actividad propia, no se
+	 * invoca. Cada serie usa la fuente y el criterio de fecha de su indicador (ver
+	 * {@link SerieDiaria}). Para agrupar por dia de la sede sobre un instante, usar
+	 * {@link ConsultaDeReporte#tramosHorarios()}.
+	 */
+	default List<SerieDiaria> seriesDiarias(ConsultaDeReporte consulta) {
+		return List.of();
+	}
 }

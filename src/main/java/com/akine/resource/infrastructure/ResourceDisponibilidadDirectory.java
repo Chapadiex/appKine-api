@@ -4,7 +4,9 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.resource.application.DisponibilidadEfectivaService;
 import com.akine.resource.application.DisponibilidadEfectivaView;
 import com.akine.resource.spi.DisponibilidadDirectory;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -26,9 +28,25 @@ import java.util.List;
 public class ResourceDisponibilidadDirectory implements DisponibilidadDirectory {
 
 	private final DisponibilidadEfectivaService disponibilidad;
+	private final DisponibilidadExcepcionRepositoryPort excepciones;
 
-	public ResourceDisponibilidadDirectory(DisponibilidadEfectivaService disponibilidad) {
+	public ResourceDisponibilidadDirectory(
+			DisponibilidadEfectivaService disponibilidad,
+			DisponibilidadExcepcionRepositoryPort excepciones) {
 		this.disponibilidad = disponibilidad;
+		this.excepciones = excepciones;
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<CierreDeAgenda> cierresEnVentana(
+			long organizationId, long consultorioId, LocalDate desde, LocalDate hasta) {
+		return excepciones.findCierresDeLaSedeEnVentana(organizationId, consultorioId, desde, hasta).stream()
+				.map(cierre -> new CierreDeAgenda(
+						cierre.getId(), cierre.getMembershipId(), cierre.getMotivo().name(),
+						cierre.getFechaDesde(), cierre.getFechaHasta(),
+						cierre.getHoraDesde(), cierre.getHoraHasta(), cierre.getNotes()))
+				.toList();
 	}
 
 	@Override

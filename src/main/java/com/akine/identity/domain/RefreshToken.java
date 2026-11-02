@@ -76,6 +76,13 @@ public class RefreshToken {
 	@Column(name = "user_agent", length = 200)
 	private String userAgent;
 
+	/**
+	 * La sesion se abrio con "mantener la sesion iniciada" (DP-45). La vida ya esta fijada en
+	 * {@link #expiraEn}; la marca la hace visible y la rotacion la copia al sucesor.
+	 */
+	@Column(name = "recordar_sesion", nullable = false, updatable = false)
+	private boolean recordarSesion;
+
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -100,6 +107,28 @@ public class RefreshToken {
 			Long contextConsultorioId,
 			String ip,
 			String userAgent) {
+		this(cuentaId, familiaId, tokenHash, emitidoEn, expiraEn, contextOrganizationId,
+				contextConsultorioId, ip, userAgent, false);
+	}
+
+	/**
+	 * Igual que el anterior, con la marca de sesion recordada (DP-45).
+	 *
+	 * @param recordarSesion la sesion se abrio con "mantener la sesion iniciada". Al rotar se
+	 *                       pasa el valor del token anterior
+	 */
+	public RefreshToken(
+			Long cuentaId,
+			String familiaId,
+			String tokenHash,
+			Instant emitidoEn,
+			Instant expiraEn,
+			Long contextOrganizationId,
+			Long contextConsultorioId,
+			String ip,
+			String userAgent,
+			boolean recordarSesion) {
+		this.recordarSesion = recordarSesion;
 		this.cuentaId = cuentaId;
 		this.familiaId = familiaId;
 		this.tokenHash = tokenHash;
@@ -214,6 +243,10 @@ public class RefreshToken {
 
 	public String getUserAgent() {
 		return userAgent;
+	}
+
+	public boolean isRecordarSesion() {
+		return recordarSesion;
 	}
 
 	public Instant getCreatedAt() {

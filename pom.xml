@@ -25,6 +25,7 @@
 		<bouncycastle.version>1.86</bouncycastle.version>
 		<greenmail.version>2.1.14</greenmail.version>
 		<dependency-check.version>12.2.2</dependency-check.version>
+		<akine.it.procesos>2</akine.it.procesos>
 		<!-- Parches de seguridad por encima de lo que gestiona Spring Boot 4.1.1 (G-6, 09/10/2026).
 		     Tomcat 11.0.24: tres CVE criticos (CVE-2026-65905, -65182, -68525), corregidos en
 		     11.0.25. Jackson 3.1.5 / 2.21.5: altas en databind y core (CVE-2026-68497, -91776,
@@ -43,7 +44,7 @@
 		<mysql.version>9.6.0</mysql.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
-		<akine.contract.version>0.143.0</akine.contract.version>
+		<akine.contract.version>0.150.0</akine.contract.version>
 	</properties>
 
 	<dependencies>
@@ -284,6 +285,13 @@
 					<includes>
 						<include>**/*IT.java</include>
 					</includes>
+					<!-- Cada proceso tiene su servidor MySQL y sus directorios de adjuntos. Con 4 en local,
+					     Testcontainers no encontro Docker al arrancar en paralelo: no subirlo sin probarlo. -->
+					<forkCount>${akine.it.procesos}</forkCount>
+					<systemPropertyVariables>
+						<akine.person.adjuntos.base-dir>${project.build.directory}/it-adjuntos-${surefire.forkNumber}/personas</akine.person.adjuntos.base-dir>
+						<akine.clinical.adjuntos.base-dir>${project.build.directory}/it-adjuntos-${surefire.forkNumber}/clinicos</akine.clinical.adjuntos.base-dir>
+					</systemPropertyVariables>
 				</configuration>
 				<executions>
 					<execution>

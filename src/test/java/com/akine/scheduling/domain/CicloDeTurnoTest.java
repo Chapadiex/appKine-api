@@ -4,6 +4,7 @@ import com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaExcepti
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -184,6 +185,108 @@ class CicloDeTurnoTest {
 			assertThatThrownBy(() ->
 					turno.reprogramar(destino, destino.plus(Duration.ofMinutes(45)), 31L, null, AHORA))
 					.isInstanceOf(TransicionDeTurnoNoPermitidaException.class);
+		}
+	}
+
+	@Nested
+	@DisplayName("Lo que un turno no admite")
+	class Invariantes {
+
+		@Test
+		@DisplayName("no se crea con el fin antes del inicio, ni con clave de idempotencia sin hash")
+		void al_crearlo() {
+			assertThatThrownBy(() -> new Turno(1L, 7L, 42L, 128L, 31L, null, EN_UNA_HORA, EN_UNA_HORA,
+					7L, AHORA, null, null)).isInstanceOf(IllegalArgumentException.class);
+			assertThatThrownBy(() -> new Turno(1L, 7L, 42L, 128L, 31L, null, EN_UNA_HORA, EN_UNA_HORA.plusSeconds(60),
+					7L, AHORA, "clave", null)).isInstanceOf(IllegalArgumentException.class);
+		}
+
+		@Test
+		@DisplayName("un turno que ya empezo no se mueve, y el horario nuevo tiene que terminar despues de empezar")
+		void al_reprogramar() {
+			Turno empezado = turnoQueEmpiezaEn(AHORA.minus(Duration.ofMinutes(30)));
+			assertThatThrownBy(() -> empezado.reprogramar(EN_UNA_HORA, EN_UNA_HORA.plusSeconds(60), 31L, null, AHORA))
+					.isInstanceOf(TransicionDeTurnoNoPermitidaException.class)
+					.hasMessageContaining("ya empezo");
+
+			Turno futuro = turnoQueEmpiezaEn(EN_UNA_HORA);
+			assertThatThrownBy(() -> futuro.reprogramar(EN_UNA_HORA, EN_UNA_HORA, 31L, null, AHORA))
+					.isInstanceOf(IllegalArgumentException.class);
+		}
+
+		@Test
+		@DisplayName("reprogramar limpia la marca de sobreturno: en el horario nuevo no hay nada que autorizar")
+		void reprogramar_limpia_el_sobreturno() {
+			Turno turno = turnoQueEmpiezaEn(EN_UNA_HORA);
+			turno.autorizarSobreturno(" Urgencia ", 7L);
+			assertThat(turno.getSobreturnoMotivo()).isEqualTo("Urgencia");
+
+			turno.reprogramar(EN_UNA_HORA.plusSeconds(3600), EN_UNA_HORA.plusSeconds(7200), 31L, null, AHORA);
+
+			assertThat(turno.isSobreturno()).isFalse();
+			assertThat(turno.getSobreturnoMotivo()).isNull();
+		}
+
+		@Test
+		@DisplayName("serie, cobertura, origen y sobreturno se fijan al reservar y no despues")
+		void lo_que_se_fija_al_reservar() {
+			Turno persistido = turnoQueEmpiezaEn(EN_UNA_HORA);
+			ReflectionTestUtils.setField(persistido, "id", 301L);
+
+			assertThatThrownBy(() -> persistido.vincularASerie(5L)).isInstanceOf(IllegalStateException.class);
+			assertThatThrownBy(() -> persistido.elegirCobertura(5L)).isInstanceOf(IllegalStateException.class);
+			assertThatThrownBy(() -> persistido.declararOrigen(OrigenDeTurno.PLAN)).isInstanceOf(IllegalStateException.class);
+			assertThatThrownBy(() -> persistido.autorizarSobreturno("Urgencia", 7L)).isInstanceOf(IllegalStateException.class);
+
+			Turno nuevo = turnoQueEmpiezaEn(EN_UNA_HORA);
+			nuevo.vincularASerie(5L);
+			nuevo.elegirCobertura(6L);
+			assertThatThrownBy(() -> nuevo.vincularASerie(5L)).isInstanceOf(IllegalStateException.class);
+			assertThatThrownBy(() -> nuevo.elegirCobertura(6L)).isInstanceOf(IllegalStateException.class);
+		}
+
+		@Test
+		@DisplayName("un sobreturno sin motivo no se autoriza")
+		void sobreturno_sin_motivo() {
+			assertThatThrownBy(() -> turnoQueEmpiezaEn(EN_UNA_HORA).autorizarSobreturno("  ", 7L))
+					.isInstanceOf(IllegalArgumentException.class);
+			assertThatThrownBy(() -> turnoQueEmpiezaEn(EN_UNA_HORA).autorizarSobreturno(null, 7L))
+					.isInstanceOf(IllegalArgumentException.class);
+		}
+
+		@Test
+		@DisplayName("un turno cerrado no cambia de caso ni de plan, y confirmar uno cerrado no lo revive")
+		void un_turno_cerrado() {
+			Turno cancelado = turnoQueEmpiezaEn(EN_UNA_HORA);
+			cancelado.cancelar("No puede venir", OrigenDeCancelacion.PACIENTE, 7L, AHORA);
+
+			assertThat(cancelado.getOrigenCancelacion()).isEqualTo(OrigenDeCancelacion.PACIENTE);
+			assertThatThrownBy(() -> cancelado.asociarContexto(9L, 57L)).isInstanceOf(TransicionDeTurnoNoPermitidaException.class);
+			assertThatThrownBy(() -> cancelado.confirmar(AHORA)).isInstanceOf(TransicionDeTurnoNoPermitidaException.class);
+			assertThat(cancelado.getEstado()).isEqualTo(EstadoTurno.CANCELADO);
+		}
+
+		@Test
+		@DisplayName("una ausencia consume sesion solo si el turno tiene plan: sin plan no hay nada que consumir")
+		void ausencia_que_consume() {
+			Turno sinPlan = turnoQueEmpiezaEn(AHORA.minus(Duration.ofMinutes(5)));
+			sinPlan.marcarAusente(true, AHORA);
+			assertThat(sinPlan.getAusenciaConsumeSesion()).isNull();
+
+			Turno conPlan = turnoQueEmpiezaEn(AHORA.minus(Duration.ofMinutes(5)));
+			conPlan.asociarContexto(9L, 57L);
+			conPlan.marcarAusente(true, AHORA);
+			assertThat(conPlan.getAusenciaConsumeSesion()).isTrue();
+		}
+
+		@Test
+		@DisplayName("se cruza con un intervalo solo si se solapan: los extremos superiores son exclusivos")
+		void solapamiento() {
+			Turno turno = turnoQueEmpiezaEn(EN_UNA_HORA);
+
+			assertThat(turno.seCruzaCon(EN_UNA_HORA, EN_UNA_HORA.plusSeconds(1))).isTrue();
+			assertThat(turno.seCruzaCon(EN_UNA_HORA.minusSeconds(60), EN_UNA_HORA)).isFalse();
+			assertThat(turno.seCruzaCon(turno.getFin(), turno.getFin().plusSeconds(60))).isFalse();
 		}
 	}
 

@@ -215,6 +215,23 @@ class SessionServiceTest {
 					.isNotEqualTo(REFRESH_NUEVO);
 			assertThat(guardados.get(0).getFamiliaId()).isEqualTo(FAMILIA);
 			assertThat(guardados.get(0).getExpiraEn()).isEqualTo(AHORA.plus(TTL));
+			// Sin pedirlo, la sesion de siempre.
+			assertThat(guardados.get(0).isRecordarSesion()).isFalse();
+		}
+
+		@Test
+		@DisplayName("DP-45: con recordar, la sesion vive la vigencia larga y queda marcada")
+		void con_recordar_vive_la_vigencia_larga() {
+			given(authenticationService.autenticar(EMAIL, PASSWORD_VALIDA))
+					.willReturn(cuentaActiva());
+
+			SessionService.SesionEmitida sesion =
+					service.abrirSesion(EMAIL, PASSWORD_VALIDA, true, null);
+
+			Instant esperado = AHORA.plus(SessionSettings.REFRESH_TTL_RECORDADA_POR_DEFECTO);
+			assertThat(sesion.refreshExpiraEn()).isEqualTo(esperado);
+			assertThat(guardados.get(0).getExpiraEn()).isEqualTo(esperado);
+			assertThat(guardados.get(0).isRecordarSesion()).isTrue();
 		}
 
 		@Test
@@ -285,6 +302,24 @@ class SessionServiceTest {
 			assertThat(sucesor.getFamiliaId()).isEqualTo(FAMILIA);
 			assertThat(presentado.getReemplazadoPorId()).isEqualTo(sucesor.getId());
 			assertThat(seAudito("SESION_REFRESCADA")).isTrue();
+		}
+
+		@Test
+		@DisplayName("DP-45: una sesion recordada rota heredando la marca y el vencimiento largo")
+		void la_rotacion_hereda_la_sesion_recordada() {
+			Instant vencimientoLargo = AHORA.plus(29, ChronoUnit.DAYS);
+			RefreshToken presentado = IdentityFixtures.conId(new RefreshToken(
+					CUENTA_ID, FAMILIA, TokenDigest.of(REFRESH_PLANO),
+					AHORA.minus(1, ChronoUnit.DAYS), vencimientoLargo,
+					null, null, "10.0.0.9", "agente-de-prueba", true), 801L);
+			laFilaEstaEnLaBase(presentado);
+
+			SessionService.SesionEmitida sesion = service.refrescar(REFRESH_PLANO, null);
+
+			RefreshToken sucesor = guardados.get(0);
+			assertThat(sucesor.isRecordarSesion()).isTrue();
+			assertThat(sucesor.getExpiraEn()).isEqualTo(vencimientoLargo);
+			assertThat(sesion.refreshExpiraEn()).isEqualTo(vencimientoLargo);
 		}
 
 		@Test

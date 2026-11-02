@@ -306,17 +306,17 @@ class ClinicalApiTest {
 		@Test
 		@DisplayName("el tamano de pagina lo decide el servidor: se acota a 100 y nunca es 0")
 		void el_tamano_de_pagina_se_acota() {
-			given(adjuntoService.listar(any(), anyLong(), any(), any(), anyBoolean(), anyInt(),
+			given(adjuntoService.listar(any(), anyLong(), any(), any(), anyBoolean(), any(), anyInt(),
 					anyInt(), any()))
 					.willReturn(new AdjuntoClinicoPagina(List.of(unAdjunto(true)), 1));
 
 			AdjuntoClinicoPageResponse enorme =
-					adjuntos.listar(HISTORIA_ID, null, null, false, -3, 100000, MOTIVO);
+					adjuntos.listar(HISTORIA_ID, null, null, false, -3, 100000, MOTIVO, null);
 
 			assertThat(enorme.size()).isEqualTo(100);
 			assertThat(enorme.page()).isZero();
 			verify(adjuntoService).listar(any(), eq(HISTORIA_ID), isNull(), isNull(), eq(false),
-					eq(0), eq(100), eq(MOTIVO));
+					eq(""), eq(0), eq(100), eq(MOTIVO));
 		}
 	}
 

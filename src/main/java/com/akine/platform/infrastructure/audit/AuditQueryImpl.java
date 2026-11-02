@@ -5,8 +5,11 @@ import com.akine.platform.infrastructure.AuditEventRepository;
 import com.akine.platform.spi.audit.AuditEventFilter;
 import com.akine.platform.spi.audit.AuditEventSummary;
 import com.akine.platform.spi.audit.AuditQuery;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,8 +61,8 @@ public class AuditQueryImpl implements AuditQuery {
 	@Transactional(readOnly = true)
 	public Page<AuditEventSummary> porEntidad(AuditEventFilter filtro, Pageable pageable) {
 		return auditEventRepository
-				.findAllByOrganizationIdAndEntityTypeAndEntityIdOrderByOccurredAtDesc(
-						filtro.organizationId(), filtro.entityType(), filtro.entityId(), pageable)
+				.porEntidad(filtro.organizationId(), filtro.entityType(), filtro.entityId(),
+						patron(filtro), numero(filtro), conOrden(pageable))
 				.map(this::resumir);
 	}
 
@@ -67,8 +70,8 @@ public class AuditQueryImpl implements AuditQuery {
 	@Transactional(readOnly = true)
 	public Page<AuditEventSummary> porActor(AuditEventFilter filtro, Pageable pageable) {
 		return auditEventRepository
-				.findAllByOrganizationIdAndActorAccountIdOrderByOccurredAtDesc(
-						filtro.organizationId(), filtro.actorAccountId(), pageable)
+				.porActor(filtro.organizationId(), filtro.actorAccountId(),
+						patron(filtro), numero(filtro), conOrden(pageable))
 				.map(this::resumir);
 	}
 
@@ -86,15 +89,42 @@ public class AuditQueryImpl implements AuditQuery {
 	public Page<AuditEventSummary> porPeriodo(AuditEventFilter filtro, Pageable pageable) {
 		if (filtro.consultorioId() != null) {
 			return auditEventRepository
-					.findAllByOrganizationIdAndConsultorioIdAndOccurredAtBetweenOrderByOccurredAtDesc(
-							filtro.organizationId(), filtro.consultorioId(),
-							filtro.desde(), filtro.hasta(), pageable)
+					.porPeriodoEnSede(filtro.organizationId(), filtro.consultorioId(),
+							filtro.desde(), filtro.hasta(), patron(filtro), numero(filtro),
+							conOrden(pageable))
 					.map(this::resumir);
 		}
 		return auditEventRepository
-				.findAllByOrganizationIdAndOccurredAtBetweenOrderByOccurredAtDesc(
-						filtro.organizationId(), filtro.desde(), filtro.hasta(), pageable)
+				.porPeriodo(filtro.organizationId(), filtro.desde(), filtro.hasta(),
+						patron(filtro), numero(filtro), conOrden(pageable))
 				.map(this::resumir);
+	}
+
+	/**
+	 * El orden de siempre —del hecho mas nuevo al mas viejo— cuando el llamador no pide otro.
+	 * Hasta DP-45 vivia en el nombre del metodo derivado ({@code OrderByOccurredAtDesc}).
+	 */
+	private static Pageable conOrden(Pageable pageable) {
+		if (pageable.getSort().isSorted()) {
+			return pageable;
+		}
+		Sort porDefecto = Sort.by(Sort.Direction.DESC, "occurredAt");
+		return pageable.isPaged()
+				? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), porDefecto)
+				: Pageable.unpaged(porDefecto);
+	}
+
+	private static String patron(AuditEventFilter filtro) {
+		return TextoDeBusqueda.patronLike(filtro.texto());
+	}
+
+	/** El texto como id, si es un numero; si no, {@code null}, que no coincide con nada. */
+	private static Long numero(AuditEventFilter filtro) {
+		String texto = filtro.texto() == null ? "" : filtro.texto().strip();
+		if (texto.isEmpty() || texto.length() > 18 || !texto.chars().allMatch(Character::isDigit)) {
+			return null;
+		}
+		return Long.parseLong(texto);
 	}
 
 	/**

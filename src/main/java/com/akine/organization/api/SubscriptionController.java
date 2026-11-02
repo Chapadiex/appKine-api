@@ -8,6 +8,7 @@ import com.akine.organization.api.dto.SubscriptionTransitionRequest;
 import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.SubscriptionService;
 import com.akine.platform.spi.tenant.TenantContextHolder;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -17,6 +18,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -190,8 +192,16 @@ public class SubscriptionController {
 					+ "cuando' meses despues, y por eso ninguna fila se edita ni se borra. La "
 					+ "primera fila de toda suscripcion tiene fromStatus ausente y significa el "
 					+ "alta. Requiere administrar esa organizacion. El tamano de pagina se acota a "
-					+ ApiPaging.TAMANO_MAXIMO + ": pedir mas devuelve ese maximo, no un error.")
+					+ ApiPaging.TAMANO_MAXIMO + ": pedir mas devuelve ese maximo, no un error. "
+					+ "DP-45: sort ordena por ocurridoEn o estadoNuevo. Sin q: el historico de "
+					+ "una sola suscripcion son pocas filas y no hay texto en el que buscar.")
 	@ApiResponses({
+			@ApiResponse(
+					responseCode = "400",
+					description = "sort no es uno de los valores del enum",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "200",
 					description = "Pagina del historico, del hecho mas reciente al mas viejo",
@@ -219,15 +229,24 @@ public class SubscriptionController {
 			@RequestParam(defaultValue = ApiPaging.PAGINA_POR_DEFECTO) int page,
 
 			@Parameter(description = "Elementos por pagina, acotado a 100", example = "20")
-			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size) {
+			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size,
+
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "ocurridoEn descendente.",
+					schema = @Schema(allowableValues = {"ocurridoEn,asc", "ocurridoEn,desc",
+							"estadoNuevo,asc", "estadoNuevo,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
 
 		ApiActor actor = ApiActor.current(tenantContextHolder);
 		authorizationGuard.requireOrgAdmin(
 				actor.accountId(), orgId, actor.contextOrganizationId(), actor.platformAdmin());
 
+		Sort orden = OrdenDeListado.leer(sort, "ocurridoEn", "estadoNuevo")
+				.map(pedido -> pedido.aSort(
+						"ocurridoEn".equals(pedido.campo()) ? "occurredAt" : "toStatus", "id"))
+				.orElse(Sort.unsorted());
 		return ResponseEntity.ok(SubscriptionTransitionPageResponse.from(
-				subscriptionService.history(
-						orgId, PageRequest.of(ApiPaging.pagina(page), ApiPaging.tamano(size)))));
+				subscriptionService.history(orgId,
+						PageRequest.of(ApiPaging.pagina(page), ApiPaging.tamano(size), orden))));
 	}
 
 	@PostMapping(path = "/plan-changes", consumes = MediaType.APPLICATION_JSON_VALUE)

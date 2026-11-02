@@ -58,6 +58,15 @@ record IdentityApiActor(long accountId, boolean platformAdmin, Long contextOrgan
 	 * se declara autenticado y su principal es un {@code String}, que no sabe responder
 	 * {@code accountId()}. Lo unico que sirve es un principal de AKINE.
 	 */
+	/** Principal autenticado; lanza si no hay sesion. */
+	static AuthenticatedPrincipal principal() {
+		AuthenticatedPrincipal principal = principalAutenticado();
+		if (principal == null) {
+			throw new AccessDeniedException("La operacion requiere una sesion autenticada");
+		}
+		return principal;
+	}
+
 	private static AuthenticatedPrincipal principalAutenticado() {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		if (authentication == null || !authentication.isAuthenticated()) {

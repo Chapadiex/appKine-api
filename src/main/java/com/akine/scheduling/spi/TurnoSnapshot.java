@@ -23,5 +23,14 @@ public record TurnoSnapshot(
 		Instant inicio,
 		Instant fin,
 		String estado,
-		boolean vivo) {
+		boolean vivo,
+		Long casoId,
+		Long planId) {
+
+	public TurnoSnapshot(long id, long organizationId, long consultorioId, long ofertaId, long personaId,
+			Long profesionalMembershipId, Long espacioId, Instant inicio, Instant fin, String estado,
+			boolean vivo) {
+		this(id, organizationId, consultorioId, ofertaId, personaId, profesionalMembershipId, espacioId,
+				inicio, fin, estado, vivo, null, null);
+	}
 }

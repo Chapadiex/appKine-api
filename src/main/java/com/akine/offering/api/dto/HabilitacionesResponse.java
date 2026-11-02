@@ -59,7 +59,25 @@ public record HabilitacionesResponse(
 				description = "Nombre del espacio que fija la efectiva, o null si ninguno la "
 						+ "acota. Un numero mas chico sin este dato es un defecto de la pantalla",
 				example = "Sala grupal chica")
-		String espacioQueLimita) {
+		String espacioQueLimita,
+
+		@Schema(
+				description = "Duraciones propias vigentes por profesional. Quien no aparece usa la "
+						+ "duracion de la oferta. Es una lista aparte de profesionales porque una "
+						+ "oferta sin restringir no tiene habilitaciones y sus profesionales igual "
+						+ "pueden tener duracion propia")
+		List<DuracionPropia> duracionesPropias) {
+
+	/** Cuanto tarda un profesional en esta oferta, cuando no es lo que dura la oferta. */
+	@Schema(description = "Cuanto tarda un profesional en esta oferta, cuando no es lo que dura la oferta")
+	public record DuracionPropia(
+
+			@Schema(description = "Vinculo del profesional con la organizacion", example = "215")
+			long membershipId,
+
+			@Schema(description = "Duracion de un turno con este profesional, en minutos", example = "30")
+			int duracionMinutos) {
+	}
 
 	/** Un profesional habilitado. */
 	@Schema(description = "Profesional habilitado para prestar la oferta")
@@ -180,6 +198,9 @@ public record HabilitacionesResponse(
 						.toList(),
 				view.capacidadComercial(),
 				view.capacidadEfectiva(),
-				view.espacioQueLimita());
+				view.espacioQueLimita(),
+				view.duracionesPropias().stream()
+						.map(d -> new DuracionPropia(d.membershipId(), d.duracionMinutos()))
+						.toList());
 	}
 }

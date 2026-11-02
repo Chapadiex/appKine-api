@@ -108,24 +108,26 @@ public class AuditQueryService {
 			long organizationId,
 			String entityType,
 			long entityId,
+			String q,
 			Pageable pageable) {
 
 		Alcance alcance = alcanceDeLectura(actor, organizationId);
 		return redactar(auditQuery.porEntidad(
 				new AuditEventFilter(
-						organizationId, alcance.sede(), entityType, entityId, null, null, null),
+						organizationId, alcance.sede(), entityType, entityId, null, null, null, q),
 				acotar(pageable)), alcance);
 	}
 
 	/** Actividad de un actor dentro del tenant (RF-M24-003). */
 	@Transactional(readOnly = true)
 	public Page<AuditEventSummary> porActor(
-			OperatingActor actor, long organizationId, long actorAccountId, Pageable pageable) {
+			OperatingActor actor, long organizationId, long actorAccountId, String q,
+			Pageable pageable) {
 
 		Alcance alcance = alcanceDeLectura(actor, organizationId);
 		return redactar(auditQuery.porActor(
 				new AuditEventFilter(
-						organizationId, alcance.sede(), null, null, actorAccountId, null, null),
+						organizationId, alcance.sede(), null, null, actorAccountId, null, null, q),
 				acotar(pageable)), alcance);
 	}
 
@@ -140,14 +142,38 @@ public class AuditQueryService {
 			long organizationId,
 			Instant desde,
 			Instant hasta,
+			String q,
 			Pageable pageable) {
 
 		validarRango(desde, hasta);
 		Alcance alcance = alcanceDeLectura(actor, organizationId);
 		return redactar(auditQuery.porPeriodo(
 				new AuditEventFilter(
-						organizationId, alcance.sede(), null, null, null, desde, hasta),
+						organizationId, alcance.sede(), null, null, null, desde, hasta, q),
 				acotar(pageable)), alcance);
+	}
+
+	/** Sin texto: la forma de antes de DP-45. */
+	@Transactional(readOnly = true)
+	public Page<AuditEventSummary> porEntidad(
+			OperatingActor actor, long organizationId, String entityType, long entityId,
+			Pageable pageable) {
+		return porEntidad(actor, organizationId, entityType, entityId, null, pageable);
+	}
+
+	/** Sin texto: la forma de antes de DP-45. */
+	@Transactional(readOnly = true)
+	public Page<AuditEventSummary> porActor(
+			OperatingActor actor, long organizationId, long actorAccountId, Pageable pageable) {
+		return porActor(actor, organizationId, actorAccountId, null, pageable);
+	}
+
+	/** Sin texto: la forma de antes de DP-45. */
+	@Transactional(readOnly = true)
+	public Page<AuditEventSummary> porPeriodo(
+			OperatingActor actor, long organizationId, Instant desde, Instant hasta,
+			Pageable pageable) {
+		return porPeriodo(actor, organizationId, desde, hasta, null, pageable);
 	}
 
 	/**

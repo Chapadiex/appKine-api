@@ -45,7 +45,6 @@ public interface MovimientoPaseRepository
 			SELECT m FROM MovimientoPase m
 			 WHERE m.organizationId = :organizationId
 			   AND m.paseId = :paseId
-			 ORDER BY m.ocurridoEn ASC, m.id ASC
 			""",
 			countQuery = """
 			SELECT COUNT(m) FROM MovimientoPase m

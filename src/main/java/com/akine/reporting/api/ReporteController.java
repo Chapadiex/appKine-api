@@ -2,6 +2,8 @@ package com.akine.reporting.api;
 
 import com.akine.reporting.api.dto.CatalogoDeReportesResponse;
 import com.akine.reporting.api.dto.ReporteResponse;
+import com.akine.reporting.api.dto.SerieDeReporteResponse;
+import com.akine.reporting.application.AgrupacionDeSerie;
 import com.akine.reporting.application.ExportadorCsv;
 import com.akine.reporting.application.ReporteService;
 import com.akine.reporting.application.ReporteView;
@@ -136,6 +138,54 @@ public class ReporteController {
 
 		return ReporteResponse.de(
 				reporteService.generar(apiActor.current(), consultorioId, reporte, desde, hasta));
+	}
+
+	@GetMapping("/{reporte}/serie")
+	@Operation(
+			operationId = "generarSerieDeReporte",
+			summary = "Serie temporal de un reporte",
+			description = """
+					Los indicadores sumables del reporte abiertos por dia o por semana, para el \
+					grafico de barras (DP-45).
+
+					**Cada serie usa la fuente y el criterio de fecha de su indicador**, y la suma \
+					de sus puntos es el valor que el reporte muestra para ese indicador en el mismo \
+					periodo. Los dias son **de la sede**. `SEMANA` es la semana ISO (lunes a \
+					domingo), recortada al periodo en los extremos.
+
+					**Mismo permiso y mismas omisiones que el reporte**: exige `reporte:read`, una \
+					seccion cuyo permiso falta no tiene serie y se declara en `omitidas`, y el \
+					`PROFESIONAL` ve solo su propia actividad.
+
+					No tienen serie los saldos actuales (deuda vigente, egresos por pagar), que no \
+					se reconstruyen a una fecha, ni los porcentajes, que no se suman.
+
+					Hasta **100 puntos**: con `DIA` el periodo puede tener hasta 100 dias; para la \
+					ventana maxima de 366 dias, `SEMANA`.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Las series"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "`rango-de-reporte-invalido`: periodo invertido, mas ancho que la "
+							+ "ventana maxima o con mas de 100 puntos; o `agrupacion` desconocida",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `reporte:read` en esa sede, o sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede no existe o es de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public SerieDeReporteResponse generarSerieDeReporte(
+			@PathVariable long consultorioId,
+			@PathVariable ReporteCode reporte,
+			@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+			@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+			@RequestParam(defaultValue = "DIA") AgrupacionDeSerie agrupacion) {
+
+		return SerieDeReporteResponse.de(reporteService.generarSerie(
+				apiActor.current(), consultorioId, reporte, desde, hasta, agrupacion));
 	}
 
 	/**

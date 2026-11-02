@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,5 +39,20 @@ class EncounterRealizadoEnElCasoProbeTest {
 		assertThat(conteos).containsExactly(
 				new RealizadoPorOferta(42L, 6, 1),
 				new RealizadoPorOferta(43L, 0, 0));
+	}
+
+	@Test
+	@DisplayName("Desde una fecha cuenta solo lo cerrado desde entonces; un plan sin activar no tiene de donde partir y cuenta todo")
+	void cuenta_desde_la_activacion() {
+		Instant activacion = Instant.parse("2027-03-08T12:00:00Z");
+		given(sesiones.contarCerradasPorOfertaDesde(1L, 55L, activacion)).willReturn(List.of(
+				new ConteoDeSesionesPorOferta(42L, 2L, null)));
+		given(sesiones.contarCerradasPorOferta(1L, 55L)).willReturn(List.of(
+				new ConteoDeSesionesPorOferta(42L, 6L, 1L)));
+
+		EncounterRealizadoEnElCasoProbe sonda = new EncounterRealizadoEnElCasoProbe(sesiones);
+
+		assertThat(sonda.contarPorOfertaEnElCasoDesde(1L, 55L, activacion)).containsExactly(new RealizadoPorOferta(42L, 2, 0));
+		assertThat(sonda.contarPorOfertaEnElCasoDesde(1L, 55L, null)).containsExactly(new RealizadoPorOferta(42L, 6, 1));
 	}
 }

@@ -9,6 +9,7 @@ import com.akine.person.application.AdjuntoService;
 import com.akine.person.application.AdjuntoService.AdjuntoAlta;
 import com.akine.person.application.ContenidoDeAdjunto;
 import com.akine.person.domain.CategoriaAdjunto;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -111,12 +112,18 @@ public class AdjuntoController {
 					incluirDadosDeBaja y siguen resolviendo, que es RN-M07-004 aplicada al \
 					documento en vez de a la persona.
 
-					Una persona INACTIVA lista igual: sus documentos siguen siendo consultables.""")
+					Una persona INACTIVA lista igual: sus documentos siguen siendo consultables.
+
+					DP-45: sort ordena por subidoEn, titulo, categoria o tamano. Sin q: los \
+					adjuntos de UNA persona son pocos y ya se filtran por categoria.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Pagina de adjuntos",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = AdjuntoPageResponse.class))),
+			@ApiResponse(responseCode = "400", description = "sort fuera del enum",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo, o sin paciente:read",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -139,14 +146,21 @@ public class AdjuntoController {
 			@RequestParam(defaultValue = PAGINA_POR_DEFECTO) int page,
 
 			@Parameter(description = "Tamano de pagina, acotado a 100")
-			@RequestParam(defaultValue = TAMANO_POR_DEFECTO) int size) {
+			@RequestParam(defaultValue = TAMANO_POR_DEFECTO) int size,
+
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "subidoEn descendente.",
+					schema = @Schema(allowableValues = {"subidoEn,asc", "subidoEn,desc",
+							"titulo,asc", "titulo,desc", "categoria,asc", "categoria,desc",
+							"tamano,asc", "tamano,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
 
 		int pagina = Math.max(page, 0);
 		int tamano = Math.min(Math.max(size, 1), TAMANO_MAXIMO);
+		String orden = OrdenDeListado.claveDe(OrdenDeListado.leer(sort, AdjuntoService.CAMPOS_DE_ORDEN));
 
 		return AdjuntoPageResponse.of(
 				adjuntoService.listar(apiActor.current(), personaId, categoria,
-						incluirDadosDeBaja, pagina, tamano),
+						incluirDadosDeBaja, orden, pagina, tamano),
 				pagina,
 				tamano);
 	}

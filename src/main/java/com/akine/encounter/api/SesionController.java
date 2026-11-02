@@ -1,5 +1,6 @@
 package com.akine.encounter.api;
 
+import com.akine.encounter.api.dto.ContextoDeProximaSesionResponse;
 import com.akine.encounter.api.dto.CambiarCasoDeSesionRequest;
 import com.akine.encounter.api.dto.CerrarSesionRequest;
 import com.akine.encounter.api.dto.EnmendarSesionRequest;
@@ -250,6 +251,28 @@ public class SesionController {
 
 		return ResponseEntity.ok(SesionResponse.de(
 				sesionService.ver(apiActor.current(), consultorioId, sesionId)));
+	}
+
+	@GetMapping("/{sesionId}/proxima-sesion")
+	@Operation(
+			operationId = "contextoDeProximaSesion",
+			summary = "Lo que se sabe para programar la proxima sesion",
+			description = """
+					Paciente, caso, plan, prestacion y profesional de esta atencion: lo que hace falta para \
+					programar la proxima sin volver a preguntar nada (TURNO - Tecnico §76). **Nada clinico.** \
+					Exige `sesion:register`, igual que ver la sesion.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "El contexto"),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sesion o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ContextoDeProximaSesionResponse> contextoDeProximaSesion(
+			@PathVariable long consultorioId,
+			@PathVariable long sesionId) {
+
+		return ResponseEntity.ok(ContextoDeProximaSesionResponse.de(
+				sesionService.contextoDeProximaSesion(apiActor.current(), consultorioId, sesionId)));
 	}
 
 	@PutMapping("/{sesionId}/borrador")

@@ -85,6 +85,15 @@ public interface OfertaDirectory {
 			long organizationId, long consultorioId, long ofertaId);
 
 	/**
+	 * Los minutos de cada profesional con duracion propia en esa oferta, por membership (TURNO - Tecnico
+	 * §47). Quien no esta usa la de la oferta: {@link OfertaSnapshot#duracionCon} resuelve las dos cosas.
+	 *
+	 * <p>Una consulta para todos los profesionales, a proposito: el motor de agenda corta un dia entero
+	 * con el mismo mapa en vez de preguntar profesional por profesional.
+	 */
+	Map<Long, Integer> duracionesPropias(long organizationId, long consultorioId, long ofertaId);
+
+	/**
 	 * El esquema economico declarado por la oferta (RN-M27-006). Vacio si la oferta no existe en
 	 * esa sede o no declaro esquema. Lo lee {@code activity} para decidir si una asistencia consume
 	 * credito de un pase (RN-M29-005).

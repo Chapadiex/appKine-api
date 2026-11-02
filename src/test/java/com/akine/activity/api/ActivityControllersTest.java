@@ -479,7 +479,7 @@ class ActivityControllersTest {
 		@Test
 		@DisplayName("El detalle operativo recorta pagina y tamano antes de llamar al servicio")
 		void detalle_recorta_la_paginacion() throws Exception {
-			given(asistenciaService.detalleOperativo(any(), anyLong(), anyLong(), anyInt(), anyInt()))
+			given(asistenciaService.detalleOperativo(any(), anyLong(), anyLong(), any(), anyInt(), anyInt()))
 					.willReturn(detalle());
 
 			autenticado(get(CLASE + "/detalle-operativo?page=-3&size=5000"))
@@ -488,9 +488,9 @@ class ActivityControllersTest {
 			autenticado(get(CLASE + "/detalle-operativo?size=0")).andExpect(status().isOk());
 			autenticado(get(CLASE + "/detalle-operativo")).andExpect(status().isOk());
 
-			verify(asistenciaService).detalleOperativo(any(), eq(SEDE_ID), eq(CLASE_ID), eq(0), eq(100));
-			verify(asistenciaService).detalleOperativo(any(), eq(SEDE_ID), eq(CLASE_ID), eq(0), eq(1));
-			verify(asistenciaService).detalleOperativo(any(), eq(SEDE_ID), eq(CLASE_ID), eq(0), eq(20));
+			verify(asistenciaService).detalleOperativo(any(), eq(SEDE_ID), eq(CLASE_ID), any(), eq(0), eq(100));
+			verify(asistenciaService).detalleOperativo(any(), eq(SEDE_ID), eq(CLASE_ID), any(), eq(0), eq(1));
+			verify(asistenciaService).detalleOperativo(any(), eq(SEDE_ID), eq(CLASE_ID), any(), eq(0), eq(20));
 		}
 
 		@Test

@@ -98,6 +98,47 @@ public final class AgendaFixtures {
 				new OperatingActor(adminAccountId, false, organizationId, consultorioId));
 	}
 
+	/** Otro profesional de la misma sede, habilitado para la oferta y con el mismo horario. */
+	public long agregarProfesional(Fixture fixture) {
+		String sufijo = UUID.randomUUID().toString().substring(0, 8);
+		long cuentaId = insertarCuenta("pro-" + sufijo);
+		long membershipId = insertarMembership(
+				fixture.organizationId(), fixture.consultorioId(), cuentaId, "PROFESIONAL");
+		insertarHabilitacion(fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(), membershipId);
+		insertarDisponibilidad(fixture.organizationId(), fixture.consultorioId(), membershipId);
+		return membershipId;
+	}
+
+	/** Otra prestacion de la misma sede, que atiende el mismo profesional. */
+	public long agregarOferta(Fixture fixture) {
+		String sufijo = UUID.randomUUID().toString().substring(0, 8);
+		long ofertaId = insertarOferta(
+				fixture.organizationId(), fixture.consultorioId(), insertarServicio(sufijo), 1, false, sufijo);
+		insertarHabilitacion(
+				fixture.organizationId(), fixture.consultorioId(), ofertaId, fixture.profesionalMembershipId());
+		return ofertaId;
+	}
+
+	/** Un box en servicio de la sede. Sin habilitaciones declaradas, sirve para cualquier oferta. */
+	public long agregarEspacio(Fixture fixture, String nombre) {
+		jdbc.update("""
+				INSERT INTO espacio (organization_id, consultorio_id, name, tipo, capacidad, valid_from,
+				                     active, version, created_at, updated_at)
+				VALUES (?, ?, ?, 'BOX', 1, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 1, 0,
+				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", fixture.organizationId(), fixture.consultorioId(), nombre);
+		return jdbc.queryForObject("""
+				SELECT id FROM espacio WHERE organization_id = ? AND consultorio_id = ? AND name = ?
+				""", Long.class, fixture.organizationId(), fixture.consultorioId(), nombre);
+	}
+
+	/** Una cuenta con ese rol en la sede. */
+	public OperatingActor actorDe(Fixture fixture, String rol) {
+		long cuentaId = insertarCuenta(rol.toLowerCase() + "-" + UUID.randomUUID().toString().substring(0, 8));
+		insertarMembership(fixture.organizationId(), fixture.consultorioId(), cuentaId, rol);
+		return new OperatingActor(cuentaId, false, fixture.organizationId(), fixture.consultorioId());
+	}
+
 	// =================================================================================
 	// Ejecucion concurrente
 	// =================================================================================

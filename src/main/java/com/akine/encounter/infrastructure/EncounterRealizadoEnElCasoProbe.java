@@ -57,6 +57,18 @@ public class EncounterRealizadoEnElCasoProbe implements RealizadoEnElCasoProbe {
 				.toList();
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public List<RealizadoPorOferta> contarPorOfertaEnElCasoDesde(
+			long organizationId, long casoId, java.time.Instant desde) {
+		if (desde == null) {
+			return contarPorOfertaEnElCaso(organizationId, casoId);
+		}
+		return sesiones.contarCerradasPorOfertaDesde(organizationId, casoId, desde).stream()
+				.map(EncounterRealizadoEnElCasoProbe::traducir)
+				.toList();
+	}
+
 	private static RealizadoPorOferta traducir(ConteoDeSesionesPorOferta conteo) {
 		return new RealizadoPorOferta(
 				conteo.ofertaId(),

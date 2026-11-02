@@ -244,6 +244,22 @@ public enum ProblemType {
 	 */
 	RECURSO_OCUPADO("recurso-ocupado"),
 	/**
+	 * El plan no tiene sesiones por programar para esa prestacion. Lleva {@code pendientes} y
+	 * {@code pedidas}: la pantalla dice cuantas quedan en vez de "no se puede".
+	 */
+	PLAN_SIN_SESIONES("plan-sin-sesiones"),
+	/** El caso o el plan del turno son de otra persona, estan cerrados o no incluyen la prestacion. */
+	CONTEXTO_CLINICO_INVALIDO("contexto-clinico-invalido"),
+	/** El box elegido a mano no esta habilitado para la oferta, no esta en servicio o es de otra sede. */
+	ESPACIO_NO_ELEGIBLE("espacio-no-elegible"),
+	/** La entrada de la lista de espera ya se asigno o se descarto. */
+	LISTA_DE_ESPERA_CERRADA("lista-de-espera-cerrada"),
+	/**
+	 * El bloqueo deja afuera turnos pendientes y no se confirmo. Lleva {@code turnosAfectados}: no se
+	 * guarda en silencio un bloqueo que deja turnos en conflicto (TURNO.md §22).
+	 */
+	BLOQUEO_CON_TURNOS_AFECTADOS("bloqueo-con-turnos-afectados"),
+	/**
 	 * La persona existe en el padron pero no tiene perfil de paciente vigente.
 	 *
 	 * <p>RF-M07-010: una Persona no es un Paciente. La reserva no activa el perfil en silencio, asi

@@ -1,5 +1,6 @@
 package com.akine.offering.domain.port;
 
+import com.akine.offering.domain.OfertaDuracionProfesional;
 import com.akine.offering.domain.OfertaEspacioHabilitado;
 import com.akine.offering.domain.OfertaHonorarioClase;
 import com.akine.offering.domain.OfertaPractica;
@@ -250,6 +251,15 @@ public final class OfferingRepositoryPorts {
 		/** Cuantas habilitaciones vigentes deja colgando desvincular a este profesional. */
 		long countByOrganizationIdAndMembershipIdAndActive(
 				Long organizationId, Long membershipId, boolean active);
+	}
+
+	/** Duracion propia de un profesional en una oferta (TURNO - Tecnico §47). */
+	public interface OfertaDuracionProfesionalRepositoryPort {
+
+		OfertaDuracionProfesional save(OfertaDuracionProfesional duracion);
+
+		List<OfertaDuracionProfesional> findAllByOrganizationIdAndOfertaIdAndActive(
+				Long organizationId, Long ofertaId, boolean active);
 	}
 
 	/** Habilitaciones de espacios por Oferta (AKINE-02.07). Mismo criterio de lectura. */

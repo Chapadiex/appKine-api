@@ -6,6 +6,7 @@ import com.akine.reporting.spi.FilaDeReporte;
 import com.akine.reporting.spi.IndicadorDeReporte;
 import com.akine.reporting.spi.ReporteCode;
 import com.akine.reporting.spi.ReporteContributor;
+import com.akine.reporting.spi.SerieDiaria;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -145,5 +146,26 @@ public class SesionesEnElReporte implements ReporteContributor {
 		return new AporteDeReporte(
 				SECCION, titulo(), indicadores,
 				List.of("Caso", "Sesiones cerradas"), filas, List.of());
+	}
+
+	/**
+	 * La serie por dia de {@code sesiones-cerradas} (DP-45): el mismo recorte que el indicador
+	 * —{@code cerrada_en} en el dia de la sede, sin bajas, con el recorte por actividad propia—,
+	 * pedido por tramo horario. Las demas no tienen serie: son cortes del mismo conjunto o, las
+	 * abiertas, un estado de hoy.
+	 *
+	 * <p>Es una lectura clinica agregada y {@code reporting} la audita igual que el reporte.
+	 */
+	@Override
+	public List<SerieDiaria> seriesDiarias(ConsultaDeReporte consulta) {
+		SerieDiaria.Acumulador cerradas = new SerieDiaria.Acumulador();
+		for (ConsultaDeReporte.TramoHorario tramo : consulta.tramosHorarios()) {
+			cerradas.sumar(sesiones.contarCerradasPorDiaEnElReporte(
+					consulta.organizationId(), consulta.consultorioId(),
+					tramo.desde(), tramo.hasta(), tramo.desfase(),
+					consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte()));
+		}
+		return List.of(new SerieDiaria("sesiones-cerradas", "Sesiones cerradas",
+				IndicadorDeReporte.Tipo.CONTEO, null, FUENTE, CRITERIO_CIERRE, cerradas.porDia()));
 	}
 }

@@ -44,10 +44,13 @@ public interface PresentacionRepositoryPort {
 	 *
 	 * @param estado        {@code null} no filtra
 	 * @param financiadorId {@code null} no filtra
+	 * @param patron        DP-45: {@code LIKE} sobre el numero de factura, o {@code null}
+	 * @param numero        DP-45: el numero del lote si el texto es un numero, o {@code null}
 	 */
 	List<Presentacion> buscar(
 			long organizationId, long consultorioId, String estado, Long financiadorId,
-			LocalDate desde, LocalDate hasta, int limite, int desplazamiento);
+			LocalDate desde, LocalDate hasta, String patron, Integer numero, int limite,
+			int desplazamiento);
 
 	/** Si ese numero de factura ya esta tomado por otro lote del mismo financiador. */
 	boolean existeFactura(long organizationId, long financiadorId, String facturaNumero);

@@ -1,8 +1,13 @@
 package com.akine.encounter.infrastructure;
 
+import com.akine.encounter.domain.Sesion;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
 import com.akine.scheduling.spi.AtencionProbe;
 import org.springframework.stereotype.Component;
+
+import java.util.Collection;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Contesta {@link AtencionProbe} desde el modulo que es dueno de la Sesion.
@@ -31,5 +36,16 @@ public class EncounterAtencionProbe implements AtencionProbe {
 	@Override
 	public boolean tieneAtencion(long organizationId, long consultorioId, long turnoId) {
 		return sesiones.findVivaPorTurno(organizationId, turnoId).isPresent();
+	}
+
+	@Override
+	public Map<Long, AtencionDeTurno> atencionesDe(long organizationId, Collection<Long> turnoIds) {
+		if (turnoIds == null || turnoIds.isEmpty()) {
+			return Map.of();
+		}
+		return sesiones.findVivasPorTurnos(organizationId, turnoIds).stream()
+				.collect(Collectors.toMap(
+						Sesion::getTurnoId,
+						sesion -> new AtencionDeTurno(sesion.getId(), sesion.estaCerrada())));
 	}
 }

@@ -17,6 +17,7 @@ import com.akine.person.application.DocumentoEstadoFiltro;
 import com.akine.person.application.ResolucionDeAutorizacionCommand;
 import com.akine.person.domain.AccionSobreAutorizacion;
 import com.akine.person.domain.EstadoAutorizacion;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -235,7 +236,10 @@ public class AutorizacionController {
 					Las autorizaciones cargadas antes del historial (V85) traen un solo ALTA \
 					reconstruido con el estado que tenian ese dia, declarado en detalle.
 
-					Mismo permiso que leer la autorizacion: pertenencia al tenant.""")
+					Mismo permiso que leer la autorizacion: pertenencia al tenant.
+
+					DP-45: sort ordena por ocurridoEn o tipo. Sin q: el historial de UNA \
+					autorizacion son pocos hechos y se lee en orden.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -244,6 +248,12 @@ public class AutorizacionController {
 							mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(
 									implementation = HistorialDeAutorizacionResponse.class))),
+			@ApiResponse(
+					responseCode = "400",
+					description = "sort fuera del enum",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
 					description = "Sin contexto de trabajo activo",
@@ -274,14 +284,21 @@ public class AutorizacionController {
 			@Parameter(description = "Dia contra el que se calcula el vencimiento. Si se omite, "
 					+ "hoy", example = "2026-09-03")
 			@RequestParam(required = false)
-			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
+			@DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "ocurridoEn ascendente.",
+					schema = @Schema(allowableValues = {"ocurridoEn,asc", "ocurridoEn,desc",
+							"tipo,asc", "tipo,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
 
 		int pagina = Math.max(page, 0);
 		int tamano = Math.min(Math.max(size, 1), HISTORIAL_TAMANO_MAXIMO);
+		String orden = OrdenDeListado.claveDe(OrdenDeListado.leer(
+				sort, AutorizacionService.CAMPOS_DE_ORDEN_DEL_HISTORIAL));
 
 		return ResponseEntity.ok(HistorialDeAutorizacionResponse.of(
 				autorizacionService.historial(
-						apiActor.current(), personaId, autorizacionId, pagina, tamano, fecha),
+						apiActor.current(), personaId, autorizacionId, orden, pagina, tamano, fecha),
 				pagina,
 				tamano));
 	}

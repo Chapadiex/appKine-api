@@ -272,7 +272,10 @@ public class CajaService {
 					return new JornadaCajaView.TotalPorMedio(
 							medio,
 							(BigDecimal) fila[1],
-							MedioDePago.EFECTIVO.name().equals(medio));
+							MedioDePago.EFECTIVO.name().equals(medio),
+							(BigDecimal) fila[2],
+							(BigDecimal) fila[3],
+							((Number) fila[4]).longValue());
 				})
 				.toList();
 	}

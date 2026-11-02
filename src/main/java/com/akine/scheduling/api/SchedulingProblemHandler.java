@@ -3,6 +3,11 @@ package com.akine.scheduling.api;
 import com.akine.platform.spi.problem.ProblemType;
 import com.akine.scheduling.domain.exception.CantidadConfirmadaDesactualizadaException;
 import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.scheduling.domain.exception.ContextoClinicoInvalidoException;
+import com.akine.scheduling.domain.exception.EntradaDeEsperaCerradaException;
+import com.akine.scheduling.domain.exception.EntradaDeEsperaNotAccessibleException;
+import com.akine.scheduling.domain.exception.EspacioNoElegibleException;
+import com.akine.scheduling.domain.exception.PlanSinSesionesException;
 import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
 import com.akine.scheduling.domain.exception.SedeDadaDeBajaException;
 import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
@@ -59,6 +64,10 @@ public class SchedulingProblemHandler {
 	private static final URI TURNO_CON_ATENCION = ProblemType.TURNO_CON_ATENCION.uri();
 	private static final URI RECEPCION_TRANSICION_NO_PERMITIDA =
 			ProblemType.RECEPCION_TRANSICION_NO_PERMITIDA.uri();
+	private static final URI PLAN_SIN_SESIONES = ProblemType.PLAN_SIN_SESIONES.uri();
+	private static final URI CONTEXTO_CLINICO_INVALIDO = ProblemType.CONTEXTO_CLINICO_INVALIDO.uri();
+	private static final URI ESPACIO_NO_ELEGIBLE = ProblemType.ESPACIO_NO_ELEGIBLE.uri();
+	private static final URI LISTA_DE_ESPERA_CERRADA = ProblemType.LISTA_DE_ESPERA_CERRADA.uri();
 
 	// =================================================================================
 	// No accesibles — 404
@@ -191,6 +200,12 @@ public class SchedulingProblemHandler {
 		problem.setType(RECURSO_OCUPADO);
 		problem.setTitle("El recurso ya esta ocupado en ese horario");
 		problem.setProperty("recurso", exception.getRecurso());
+		// Con que choca, si es un turno: "ya tiene un turno entre las 10:00 y las 10:45" (TURNO.md §36).
+		if (exception.getConflictoInicio() != null) {
+			problem.setProperty("turnoEnConflictoId", exception.getTurnoEnConflictoId());
+			problem.setProperty("conflictoInicio", exception.getConflictoInicio().toString());
+			problem.setProperty("conflictoFin", exception.getConflictoFin().toString());
+		}
 		return problem;
 	}
 
@@ -295,6 +310,51 @@ public class SchedulingProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(IDEMPOTENCY_KEY_CONFLICT);
 		problem.setTitle("La clave de idempotencia se reuso con otro pedido");
+		return problem;
+	}
+
+	// =================================================================================
+	// Flujo unico de turnos
+	// =================================================================================
+
+	/** Lleva los dos numeros: "el plan tiene unicamente 3 sesiones pendientes" (TURNO - Tecnico §70). */
+	@ExceptionHandler(PlanSinSesionesException.class)
+	public ProblemDetail handlePlanSinSesiones(PlanSinSesionesException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(PLAN_SIN_SESIONES);
+		problem.setTitle("El plan no tiene sesiones disponibles");
+		problem.setProperty("pendientes", exception.getPendientes());
+		problem.setProperty("pedidas", exception.getPedidas());
+		return problem;
+	}
+
+	@ExceptionHandler(ContextoClinicoInvalidoException.class)
+	public ProblemDetail handleContextoClinicoInvalido(ContextoClinicoInvalidoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(CONTEXTO_CLINICO_INVALIDO);
+		problem.setTitle("El caso o el plan no sirven para este turno");
+		return problem;
+	}
+
+	@ExceptionHandler(EspacioNoElegibleException.class)
+	public ProblemDetail handleEspacioNoElegible(EspacioNoElegibleException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(ESPACIO_NO_ELEGIBLE);
+		problem.setTitle("Ese box no se puede usar");
+		problem.setProperty("espacioId", exception.getEspacioId());
+		return problem;
+	}
+
+	@ExceptionHandler(EntradaDeEsperaNotAccessibleException.class)
+	public ProblemDetail handleEntradaDeEsperaNoAccesible(EntradaDeEsperaNotAccessibleException exception) {
+		return noEncontrado("La entrada de la lista de espera no existe.");
+	}
+
+	@ExceptionHandler(EntradaDeEsperaCerradaException.class)
+	public ProblemDetail handleEntradaDeEsperaCerrada(EntradaDeEsperaCerradaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(LISTA_DE_ESPERA_CERRADA);
+		problem.setTitle("La entrada ya se resolvio");
 		return problem;
 	}
 

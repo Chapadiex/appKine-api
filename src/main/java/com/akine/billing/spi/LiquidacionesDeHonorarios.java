@@ -93,6 +93,7 @@ public interface LiquidacionesDeHonorarios {
 			long consultorioId,
 			long egresoId,
 			String egresoEstado,
+			BigDecimal egresoSaldoPendiente,
 			long colaboradorMembershipId,
 			String colaboradorNombre,
 			Long ofertaId,

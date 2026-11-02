@@ -248,5 +248,16 @@ class ReintentoConEnlaceSeguroTest {
 				org.springframework.data.domain.Pageable pageable) {
 			throw new UnsupportedOperationException("este test no lista");
 		}
+
+		@Override
+		public org.springframework.data.domain.Page<NotificationOutboxEntry> buscarPorTexto(
+				Long organizationId,
+				java.util.Collection<com.akine.notification.domain.OutboxStatus> estados,
+				boolean porTipo,
+				java.util.Collection<com.akine.notification.spi.NotificationType> tipos,
+				String destinatario,
+				org.springframework.data.domain.Pageable pageable) {
+			throw new UnsupportedOperationException("este test no lista");
+		}
 	}
 }

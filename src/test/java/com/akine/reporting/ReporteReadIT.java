@@ -3,10 +3,13 @@ package com.akine.reporting;
 import com.akine.testsupport.InsertarConId;
 import com.akine.TestcontainersConfiguration;
 import com.akine.organization.domain.exception.PermissionDeniedException;
+import com.akine.reporting.application.AgrupacionDeSerie;
 import com.akine.reporting.application.OperatingActor;
 import com.akine.reporting.application.ReporteService;
 import com.akine.reporting.application.ReporteView;
+import com.akine.reporting.application.SerieDeReporteView;
 import com.akine.reporting.domain.exception.ConsultorioNoAccesibleException;
+import com.akine.reporting.domain.exception.RangoDeReporteInvalidoException;
 import com.akine.reporting.spi.AdvertenciaDeReporte;
 import com.akine.reporting.spi.AporteDeReporte;
 import com.akine.reporting.spi.IndicadorDeReporte;
@@ -267,6 +270,79 @@ class ReporteReadIT {
 				.singleElement()
 				.satisfies(fila -> assertThat(String.valueOf(fila.get("details")))
 						.contains("reporte:read"));
+	}
+
+	// =================================================================================
+	// DP-45 — la serie temporal: mismo permiso, mismo recorte, mismas omisiones
+	// =================================================================================
+
+	@Test
+	@DisplayName("DP-45 · la serie del ORG_ADMIN suma lo mismo que el reporte y omite lo mismo")
+	void la_serie_del_org_admin_omite_lo_mismo_que_el_reporte() {
+		SerieDeReporteView serie = serie(centro.orgAdmin(), ReporteCode.OPERATIVO, AgrupacionDeSerie.DIA);
+
+		assertThat(totalDe(serie, "turnos-totales")).isEqualByComparingTo("5");
+		assertThat(serie.omitidas())
+				.extracting(ReporteView.SeccionOmitida::seccion, ReporteView.SeccionOmitida::permisoRequerido)
+				.containsExactly(tuple("sesiones", "sesion:register"));
+		assertThat(serie.series()).extracting(SerieDeReporteView.Serie::seccion)
+				.doesNotContain("sesiones").contains("turnos", "economia");
+		assertThat(serie.series()).allSatisfy(s -> assertThat(s.puntos()).hasSize(11));
+	}
+
+	@Test
+	@DisplayName("DP-45 · la serie del PROFESIONAL cuenta solo lo suyo, lo declara, y la clinica se audita")
+	void la_serie_del_profesional_se_recorta_y_se_audita() {
+		SerieDeReporteView serie = serie(centro.profesionalA(), ReporteCode.OPERATIVO, AgrupacionDeSerie.SEMANA);
+
+		assertThat(totalDe(serie, "turnos-totales")).isEqualByComparingTo("2");
+		assertThat(totalDe(serie, "sesiones-cerradas")).isEqualByComparingTo("1");
+		assertThat(serie.omitidas()).extracting(ReporteView.SeccionOmitida::seccion).contains("economia");
+		assertThat(serie.advertencias()).extracting(AdvertenciaDeReporte::codigo)
+				.contains("alcance-actividad-propia");
+
+		assertThat(jdbc.queryForList("""
+				SELECT details FROM audit_event
+				 WHERE event_type = 'REPORTE_CONSULTADO'
+				   AND organization_id = ? AND actor_account_id = ?
+				""", centro.organizationId(), centro.profesionalA().accountId()))
+				.singleElement()
+				.satisfies(fila -> assertThat(String.valueOf(fila.get("details")))
+						.contains("ACTIVIDAD_PROPIA").contains("SEMANA"));
+	}
+
+	@Test
+	@DisplayName("DP-45 · serie: PACIENTE 403, sede de otro tenant 404, mas de 100 puntos por dia 400")
+	void la_serie_rechaza_igual_que_el_reporte() {
+		assertThatThrownBy(() -> serie(centro.paciente(), ReporteCode.OPERATIVO, AgrupacionDeSerie.DIA))
+				.isInstanceOf(PermissionDeniedException.class);
+
+		Centro otro = crearCentro();
+		assertThatThrownBy(() -> reportes.generarSerie(otro.orgAdmin(), centro.consultorioId(),
+				ReporteCode.TURNOS, desde, hasta, AgrupacionDeSerie.DIA))
+				.isInstanceOf(ConsultorioNoAccesibleException.class);
+
+		LocalDate inicio = LocalDate.of(2026, 1, 1);
+		assertThatThrownBy(() -> reportes.generarSerie(centro.orgAdmin(), centro.consultorioId(),
+				ReporteCode.TURNOS, inicio, inicio.plusDays(100), AgrupacionDeSerie.DIA))
+				.isInstanceOf(RangoDeReporteInvalidoException.class)
+				.hasMessageContaining("101 puntos");
+		assertThat(reportes.generarSerie(centro.orgAdmin(), centro.consultorioId(),
+				ReporteCode.TURNOS, inicio, inicio.plusDays(365), AgrupacionDeSerie.SEMANA).series())
+				.as("la ventana maxima por semana entra")
+				.isNotEmpty();
+	}
+
+	private SerieDeReporteView serie(OperatingActor actor, ReporteCode reporte, AgrupacionDeSerie agrupacion) {
+		return reportes.generarSerie(actor, centro.consultorioId(), reporte, desde, hasta, agrupacion);
+	}
+
+	private static BigDecimal totalDe(SerieDeReporteView vista, String clave) {
+		return vista.series().stream()
+				.filter(s -> s.clave().equals(clave))
+				.map(SerieDeReporteView.Serie::total)
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("No hay serie " + clave));
 	}
 
 	// =================================================================================

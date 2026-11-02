@@ -121,3 +121,28 @@ prohíbe, y esa tabla sería un depósito de credenciales que va a los backups.
 - **Deuda:** la purga de `refresh_token` expirados o revocados hace más de 30 días se implementa en la
   etapa de observabilidad e infraestructura, no en 01.02 — son artefactos de sesión, no información
   histórica: la traza vive en la auditoría. **Deuda:** procedimiento de rotación del secreto HS256.
+
+## Enmienda — DP-45, "mantener la sesion iniciada" (23/10/2026)
+
+El usuario decidio (DP-45 punto 5) que la vida del refresh se elija al ingresar. Se agrega una
+**segunda vigencia absoluta**, opt-in por login, y nada mas cambia:
+
+| | Login sin `recordarme` (default) | Login con `recordarme: true` |
+|---|---|---|
+| Vida absoluta | `akine.identity.session.refresh-ttl`, **12 h** | `akine.identity.session.refresh-ttl-recordada`, **30 d** |
+| Cookie `akine_rt` | la de siempre (`Max-Age` hasta el vencimiento absoluto) | igual, con el `Max-Age` largo |
+
+- **La rotacion sigue sin extender nada**: el sucesor hereda `expira_en` y tambien la marca
+  `refresh_token.recordar_sesion` (V124). La alternativa descartada mas arriba —el refresh
+  deslizante— sigue descartada: una sesion recordada que se usa a diario igual cae a los 30 dias
+  del login.
+- Logout, cierre masivo, deteccion de reuso y la revocacion por bloqueo, desactivacion o reset
+  no cambian: operan por familia o por cuenta y no miran la vida.
+- `refresh-ttl-recordada` tiene que ser mayor o igual que `refresh-ttl`; si no, la aplicacion no
+  arranca.
+- **Costo aceptado:** una cookie robada de una sesion recordada vale hasta 30 dias en vez de 12 h.
+  Lo acotan la rotacion estricta con deteccion de reuso, el vencimiento absoluto y que sea una
+  eleccion explicita de la persona en cada login.
+- **No se hizo:** convertir la cookie de la sesion comun en cookie de sesion del navegador (sin
+  `Max-Age`). Cambiaria la conducta de hoy para todo cliente que no mande el campo; queda como
+  decision del usuario.

@@ -564,7 +564,7 @@ class PermissionEvaluatorServiceTest {
 					.containsExactlyInAnyOrder(
 							"tenant:read", "tenant:update", "consultorio:manage", "espacio:read",
 							"colaborador:manage", "colaborador:read", "auditoria:read",
-							"paciente:manage", "turno:read", "turno:manage", "cobro:register",
+							"paciente:manage", "turno:read", "turno:manage", "turno:sobreturno", "cobro:register",
 							// `paciente:read` lo sumo AKINE-DU-6 (DP-22): todo el personal lee el padron.
 							"paciente:read",
 							// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`,

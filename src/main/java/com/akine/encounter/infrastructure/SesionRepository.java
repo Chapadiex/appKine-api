@@ -149,6 +149,17 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 
 	@Override
 	@Query("""
+			SELECT s FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.turnoId IN :turnoIds
+			   AND s.deletedAt IS NULL
+			""")
+	List<Sesion> findVivasPorTurnos(
+			@Param("organizationId") long organizationId,
+			@Param("turnoIds") Collection<Long> turnoIds);
+
+	@Override
+	@Query("""
 			SELECT COUNT(s) > 0 FROM Sesion s
 			 WHERE s.organizationId = :organizationId
 			   AND s.consultorioId = :consultorioId
@@ -253,6 +264,27 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("organizationId") long organizationId,
 			@Param("casoId") long casoId);
 
+	@Override
+	@Query("""
+			SELECT new com.akine.encounter.domain.ConteoDeSesionesPorOferta(
+			           s.ofertaId,
+			           SUM(CASE WHEN s.asistencia = com.akine.encounter.domain.Asistencia.PRESENTE
+			                    THEN 1L ELSE 0L END),
+			           SUM(CASE WHEN s.asistencia = com.akine.encounter.domain.Asistencia.AUSENTE
+			                    THEN 1L ELSE 0L END))
+			  FROM Sesion s
+			 WHERE s.organizationId = :organizationId
+			   AND s.casoId = :casoId
+			   AND s.estado = com.akine.encounter.domain.EstadoSesion.CERRADA
+			   AND s.deletedAt IS NULL
+			   AND s.cerradaEn >= :desde
+			 GROUP BY s.ofertaId
+			""")
+	List<ConteoDeSesionesPorOferta> contarCerradasPorOfertaDesde(
+			@Param("organizationId") long organizationId,
+			@Param("casoId") long casoId,
+			@Param("desde") java.time.Instant desde);
+
 	// =================================================================================
 	// M23 — agregaciones de reporte (AKINE-07.06)
 	// =================================================================================
@@ -280,6 +312,32 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("consultorioId") long consultorioId,
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta,
+			@Param("recortar") boolean recortar,
+			@Param("memberships") Collection<Long> memberships);
+
+	/**
+	 * {@link #contarCerradasEnElReporte} abierto por dia de la sede (DP-45). Mismo recorte; el dia
+	 * sale de {@code cerrada_en} con el desfase numerico del tramo.
+	 *
+	 * @return filas {@code [dia, cantidad]}
+	 */
+	@Query(value = """
+			SELECT DATE(CONVERT_TZ(s.cerrada_en, '+00:00', :desfase)) AS dia, COUNT(*) AS cantidad
+			  FROM sesion s
+			 WHERE s.organization_id = :organizationId
+			   AND s.consultorio_id = :consultorioId
+			   AND s.cerrada_en >= :desde
+			   AND s.cerrada_en < :hasta
+			   AND s.deleted_at IS NULL
+			   AND (:recortar = FALSE OR s.profesional_membership_id IN (:memberships))
+			 GROUP BY dia
+			""", nativeQuery = true)
+	List<Object[]> contarCerradasPorDiaEnElReporte(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("desfase") String desfase,
 			@Param("recortar") boolean recortar,
 			@Param("memberships") Collection<Long> memberships);
 

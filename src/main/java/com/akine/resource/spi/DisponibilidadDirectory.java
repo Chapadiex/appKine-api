@@ -57,6 +57,31 @@ public interface DisponibilidadDirectory {
 	 *                   regla lo abrio. El motor de agenda traduce ese {@code null} con franjas
 	 *                   vacias a {@code SIN_HORARIO}, que es un motivo propio suyo
 	 */
+	/**
+	 * Los cierres vigentes de la sede que tocan la ventana, de la sede entera y de cada profesional. Es
+	 * lo que la agenda dibuja como bloqueo (TURNO - Tecnico §34).
+	 *
+	 * @param hasta fecha local <b>EXCLUSIVA</b>
+	 */
+	List<CierreDeAgenda> cierresEnVentana(
+			long organizationId, long consultorioId, LocalDate desde, LocalDate hasta);
+
+	/**
+	 * @param membershipId {@code null} = sede entera
+	 * @param fechaHasta   EXCLUSIVA
+	 * @param horaDesde    {@code null} junto con {@code horaHasta} = dia completo
+	 */
+	record CierreDeAgenda(
+			long id,
+			Long membershipId,
+			String motivo,
+			LocalDate fechaDesde,
+			LocalDate fechaHasta,
+			java.time.LocalTime horaDesde,
+			java.time.LocalTime horaHasta,
+			String notas) {
+	}
+
 	record DiaDisponible(LocalDate fecha, String razonVacio, List<Franja> franjas) {
 
 		public DiaDisponible {

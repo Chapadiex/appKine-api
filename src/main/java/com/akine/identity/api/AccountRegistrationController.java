@@ -114,7 +114,14 @@ public class AccountRegistrationController {
 					existe o ya no se contrata, y 409 por un organizationSlug ya tomado. Los \
 					tres se evaluan ANTES de mirar si el email tiene cuenta, justamente para \
 					que la respuesta sea la misma en los dos casos: validarlos despues \
-					convertiria el endpoint en un verificador de direcciones de correo.""")
+					convertiria el endpoint en un verificador de direcciones de correo.
+
+					TERMINOS (DP-45): si el despliegue tiene una version vigente de los \
+					terminos (GET /api/v1/terms, aceptacionObligatoria=true), el alta exige \
+					aceptaTerminos=true y versionTerminos igual a esa version; si no, 400 \
+					validation-error con el campo en errors. Tambien se evalua antes de mirar \
+					el email. La aceptacion queda registrada con la cuenta, con su version y su \
+					fecha. Sin version vigente, los dos campos se ignoran.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "202",
@@ -124,8 +131,8 @@ public class AccountRegistrationController {
 							schema = @Schema(implementation = AcceptedResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "Campos invalidos, contrasena que no cumple la politica, o "
-							+ "falta el header Idempotency-Key",
+					description = "Campos invalidos, contrasena que no cumple la politica, "
+							+ "terminos vigentes no aceptados, o falta el header Idempotency-Key",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -184,7 +191,9 @@ public class AccountRegistrationController {
 				request.organizationName(),
 				request.organizationSlug(),
 				request.consultorioName(),
-				request.planCode()));
+				request.planCode(),
+				request.aceptaTerminos(),
+				request.versionTerminos()));
 
 		// El desenlace se loguea y NO se responde. Es la linea que hay que mirar cuando alguien
 		// reporte "me registre y no paso nada": ahi se ve si se creo o si el email ya existia.

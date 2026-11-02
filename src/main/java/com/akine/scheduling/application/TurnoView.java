@@ -36,7 +36,10 @@ public record TurnoView(
 		Instant ausenteEn,
 		Instant reprogramadoEn,
 		Instant llegadaEn,
-		long version) {
+		long version,
+		Long casoId,
+		Long planId,
+		boolean sobreturno) {
 
 	public static TurnoView de(Turno turno) {
 		return new TurnoView(
@@ -58,7 +61,10 @@ public record TurnoView(
 				turno.getAusenteEn(),
 				turno.getReprogramadoEn(),
 				null,
-				turno.getVersion());
+				turno.getVersion(),
+				turno.getCasoId(),
+				turno.getPlanId(),
+				turno.isSobreturno());
 	}
 
 	/** La misma vista con la hora de llegada de la recepcion, para el check-in deprecado de 05.04. */
@@ -66,6 +72,6 @@ public record TurnoView(
 		return new TurnoView(id, consultorioId, ofertaId, personaId, serieId, coberturaId, profesionalId,
 				espacioId,
 				inicio, fin, estado, reservadoEn, confirmadoEn, motivoCancelacion, canceladoEn,
-				ausenteEn, reprogramadoEn, llegada, version);
+				ausenteEn, reprogramadoEn, llegada, version, casoId, planId, sobreturno);
 	}
 }

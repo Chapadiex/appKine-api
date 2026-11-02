@@ -6,6 +6,7 @@ import com.akine.reporting.spi.ConsultaDeReporte;
 import com.akine.reporting.spi.IndicadorDeReporte;
 import com.akine.reporting.spi.ReporteCode;
 import com.akine.reporting.spi.ReporteContributor;
+import com.akine.reporting.spi.SerieDiaria;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -192,6 +193,68 @@ public class EconomiaEnElReporte implements ReporteContributor {
 								+ "en efectivo que no entro a ninguna caja, o al reves"));
 
 		return AporteDeReporte.de(SECCION, titulo(), indicadores);
+	}
+
+	/**
+	 * Las series por dia del grafico (DP-45). Una por concepto, <b>nunca una que sume dos</b>.
+	 *
+	 * <p>Tienen serie los cinco indicadores que ocurren en una fecha: {@code devengado} (M18),
+	 * {@code cobrado} (M19), {@code caja-ingresos-efectivo} y {@code caja-egresos-efectivo} (M20) y
+	 * {@code egresos-confirmados} (M22). Cada una repite el recorte de su indicador con la misma
+	 * columna de fecha. No la tienen los saldos actuales ({@code deuda-vigente},
+	 * {@code egresos-saldo-pendiente}), que no se reconstruyen a una fecha, ni la conciliacion, que
+	 * es una comparacion y no un hecho; tampoco el devengado anulado ni las diferencias de arqueo,
+	 * que la pantalla no grafica.
+	 */
+	@Override
+	public List<SerieDiaria> seriesDiarias(ConsultaDeReporte consulta) {
+		long org = consulta.organizationId();
+		long sede = consulta.consultorioId();
+
+		SerieDiaria.Acumulador devengado = new SerieDiaria.Acumulador();
+		SerieDiaria.Acumulador cobrado = new SerieDiaria.Acumulador();
+		SerieDiaria.Acumulador egresosConfirmados = new SerieDiaria.Acumulador();
+		for (ConsultaDeReporte.TramoHorario tramo : consulta.tramosHorarios()) {
+			devengado.sumar(obligaciones.sumarDevengadoPorDiaEnElReporte(
+					org, sede, tramo.desde(), tramo.hasta(), tramo.desfase()));
+			cobrado.sumar(cobros.sumarCobradoPorDiaEnElReporte(
+					org, sede, tramo.desde(), tramo.hasta(), tramo.desfase()));
+			egresosConfirmados.sumar(egresos.sumarConfirmadosPorDiaEnElReporte(
+					org, sede, tramo.desde(), tramo.hasta(), tramo.desfase()));
+		}
+		SerieDiaria.Acumulador cajaIngresos = new SerieDiaria.Acumulador().sumar(
+				movimientos.sumarEfectivoPorTipoYDiaEnElReporte(
+						org, sede, consulta.desde(), consulta.hasta(), "INGRESO"));
+		SerieDiaria.Acumulador cajaEgresos = new SerieDiaria.Acumulador().sumar(
+				movimientos.sumarEfectivoPorTipoYDiaEnElReporte(
+						org, sede, consulta.desde(), consulta.hasta(), "EGRESO"));
+
+		String moneda = MONEDA_POR_DEFECTO;
+		return List.of(
+				dinero("devengado", "Producido (devengado)", moneda, "M18 obligacion",
+						"devengada_en, " + CRITERIO_INSTANTE_SEDE + "; excluye ANULADA y la baja logica",
+						devengado),
+				dinero("cobrado", "Cobrado", moneda, "M19 cobro",
+						"cobrado_en, " + CRITERIO_INSTANTE_SEDE + "; excluye la baja logica", cobrado),
+				dinero("caja-ingresos-efectivo", "Ingresos de caja (efectivo)", moneda,
+						"M20 movimiento_caja",
+						CRITERIO_FECHA_NEGOCIO + "; tipo INGRESO, solo lo que afecta el arqueo",
+						cajaIngresos),
+				dinero("caja-egresos-efectivo", "Egresos de caja (efectivo)", moneda,
+						"M20 movimiento_caja",
+						CRITERIO_FECHA_NEGOCIO + "; tipo EGRESO, solo lo que afecta el arqueo",
+						cajaEgresos),
+				dinero("egresos-confirmados", "Egresos confirmados", moneda, "M22 egreso",
+						"registrado_en, " + CRITERIO_INSTANTE_SEDE + "; estados CONFIRMADO y PAGADO",
+						egresosConfirmados));
+	}
+
+	private static SerieDiaria dinero(
+			String clave, String etiqueta, String moneda, String fuente, String criterio,
+			SerieDiaria.Acumulador acumulado) {
+
+		return new SerieDiaria(clave, etiqueta, IndicadorDeReporte.Tipo.DINERO, moneda, fuente,
+				criterio, acumulado.porDia());
 	}
 
 	/**

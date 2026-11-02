@@ -75,6 +75,7 @@ public interface PresentacionRepository
 			   AND (:financiadorId IS NULL OR financiador_id = :financiadorId)
 			   AND (:desde IS NULL OR periodo_hasta >= :desde)
 			   AND (:hasta IS NULL OR periodo_desde <= :hasta)
+			   AND (:patron IS NULL OR factura_numero LIKE :patron OR numero = :numero)
 			 ORDER BY periodo_hasta DESC, id DESC
 			 LIMIT :limite OFFSET :desplazamiento
 			""", nativeQuery = true)
@@ -85,6 +86,8 @@ public interface PresentacionRepository
 			@Param("financiadorId") Long financiadorId,
 			@Param("desde") LocalDate desde,
 			@Param("hasta") LocalDate hasta,
+			@Param("patron") String patron,
+			@Param("numero") Integer numero,
 			@Param("limite") int limite,
 			@Param("desplazamiento") int desplazamiento);
 

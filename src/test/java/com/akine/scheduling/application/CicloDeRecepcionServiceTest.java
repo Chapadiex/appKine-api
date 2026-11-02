@@ -94,7 +94,8 @@ class CicloDeRecepcionServiceTest {
 	void preparar() {
 		service = new CicloDeRecepcionService(turnos, bloqueos, registro, eventos, consultorios,
 				new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), practicas, coberturas, elegibilidad,
-				new PrepagoDeRecepcion(ofertas, prepagos));
+				new PrepagoDeRecepcion(ofertas, prepagos),
+				mock(com.akine.platform.spi.identity.AccountIdentityDirectory.class));
 
 		Instant inicio = Instant.now().plus(Duration.ofDays(2));
 		turno = new Turno(ORG, SEDE, OFERTA, PERSONA, 31L, null,

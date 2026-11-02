@@ -917,3 +917,21 @@ recibe 200; `CONSULTORIO_ADMIN`, `PROFESIONAL`, `ADMINISTRATIVO` y `PACIENTE`, 4
 
 Sólo descripciones de `updateOrganization`: el permiso que pide, el 403 de la plataforma y el 400
 de una zona que no es IANA. Sin operaciones, schemas ni `problemType` nuevos.
+
+## 20. Enmiendas — flujo único de turnos (`turno:sobreturno`)
+
+El §32 no tiene fila de sobreturno; TURNO.md §21 lo pide con permiso. Es un permiso propio y no parte de
+`turno:manage` porque autoriza a pasar por encima de la agenda: quien opera la agenda no necesariamente
+puede saltearla.
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `turno:sobreturno` | — | Org | Consultorio | — | — | — |
+
+- **Exige motivo** y se audita (`TURNO_SOBRETURNO`) con quién lo autorizó. Sin permiso, 403.
+- **Sólo salva la ocupación.** No sirve fuera de la disponibilidad, contra un bloqueo ni contra el tope del
+  plan.
+
+La lista de espera no suma permisos: lee con `turno:read` y opera con `turno:manage`.
+
+**Lo verifican** `PermissionEvaluatorServiceTest`, `PermisosEsquemaIT` y `FlujoUnicoDeTurnosIT`.

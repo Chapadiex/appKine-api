@@ -1,6 +1,7 @@
 package com.akine.offering.spi;
 
 import java.time.LocalDate;
+import java.util.Map;
 
 /**
  * Lo que otro modulo necesita saber de una Oferta sin depender de su entidad.
@@ -10,7 +11,7 @@ import java.time.LocalDate;
  * y ese acoplamiento tiene que ser explicito y no llegar de arrastre por este record.
  *
  * @param duracionMinutos duracion de UN turno de esta oferta. Es lo que determina el tamano del
- *                        slot
+ *                        slot, salvo para un profesional con duracion propia: ver {@link #duracionCon}
  * @param capacidad       cuantos pacientes admite un turno. 1 individual, mas grupal
  * @param grupal          la modalidad de la oferta es {@code GRUPAL}. <b>No es derivable de
  *                        {@link #capacidad}</b>: {@code V24} obliga a que una GRUPAL tenga
@@ -49,6 +50,20 @@ public record OfertaSnapshot(
 		LocalDate vigenciaDesde,
 		LocalDate vigenciaHasta,
 		boolean active) {
+
+	/**
+	 * Cuanto dura un turno de esta oferta con ese profesional (TURNO - Tecnico §47): su duracion propia
+	 * si la tiene, y si no la de la oferta. Sin profesional —una oferta que no lo requiere, o porque
+	 * todavia no se eligio— es la de la oferta.
+	 *
+	 * @param propias lo que devolvio {@link OfertaDirectory#duracionesPropias}
+	 */
+	public int duracionCon(Map<Long, Integer> propias, Long membershipId) {
+		if (!requiereProfesional || membershipId == null) {
+			return duracionMinutos;
+		}
+		return propias.getOrDefault(membershipId, duracionMinutos);
+	}
 
 	/**
 	 * La oferta esta operativa y vigente ese dia local.

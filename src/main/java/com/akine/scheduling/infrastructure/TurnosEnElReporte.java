@@ -6,6 +6,7 @@ import com.akine.reporting.spi.FilaDeReporte;
 import com.akine.reporting.spi.IndicadorDeReporte;
 import com.akine.reporting.spi.ReporteCode;
 import com.akine.reporting.spi.ReporteContributor;
+import com.akine.reporting.spi.SerieDiaria;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -150,6 +151,56 @@ public class TurnosEnElReporte implements ReporteContributor {
 		return new AporteDeReporte(
 				SECCION, titulo(), indicadores,
 				List.of("Dia", "Estado", "Turnos"), filas, List.of());
+	}
+
+	/**
+	 * Tope de filas por tramo en la serie (DP-45). La serie se pide por a lo sumo 366 dias, y cada
+	 * dia trae una fila por estado: el tope existe para que la consulta no quede sin limite, no para
+	 * recortar.
+	 */
+	private static final int LIMITE_FILAS_SERIE = 10_000;
+
+	/**
+	 * Las series por dia de los turnos (DP-45): {@code turnos-totales}, {@code turnos-cancelados} y
+	 * {@code turnos-ausentes}. Salen de <b>la misma consulta</b> que el indicador y el detalle
+	 * —{@code inicio} en el dia de la sede, con el mismo recorte por actividad propia—, pedida por
+	 * tramo horario con el desfase numerico en lugar del nombre de la zona, que es lo que hace exacta
+	 * la asignacion al dia aun sin las tablas de zonas de MySQL.
+	 *
+	 * <p>No tienen serie los reservados ni los confirmados —son el estado de hoy de turnos que
+	 * todavia pueden cambiar—, ni el ausentismo, que es un porcentaje, ni la espera.
+	 */
+	@Override
+	public List<SerieDiaria> seriesDiarias(ConsultaDeReporte consulta) {
+		SerieDiaria.Acumulador totales = new SerieDiaria.Acumulador();
+		SerieDiaria.Acumulador cancelados = new SerieDiaria.Acumulador();
+		SerieDiaria.Acumulador ausentes = new SerieDiaria.Acumulador();
+
+		for (ConsultaDeReporte.TramoHorario tramo : consulta.tramosHorarios()) {
+			for (Object[] fila : turnos.contarPorDiaYEstadoEnElReporte(
+					consulta.organizationId(), consulta.consultorioId(),
+					tramo.desde(), tramo.hasta(), tramo.desfase(), LIMITE_FILAS_SERIE,
+					consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte())) {
+
+				String estado = String.valueOf(fila[1]);
+				totales.sumar(fila[0], fila[2]);
+				if (EstadoTurnoClave.CANCELADO.name().equals(estado)) {
+					cancelados.sumar(fila[0], fila[2]);
+				} else if (EstadoTurnoClave.AUSENTE.name().equals(estado)) {
+					ausentes.sumar(fila[0], fila[2]);
+				}
+			}
+		}
+
+		return List.of(
+				conteo("turnos-totales", "Turnos", totales),
+				conteo("turnos-cancelados", "Cancelados", cancelados),
+				conteo("turnos-ausentes", "Ausentes", ausentes));
+	}
+
+	private static SerieDiaria conteo(String clave, String etiqueta, SerieDiaria.Acumulador acumulado) {
+		return new SerieDiaria(clave, etiqueta, IndicadorDeReporte.Tipo.CONTEO, null, FUENTE, CRITERIO,
+				acumulado.porDia());
 	}
 
 	/**

@@ -23,6 +23,7 @@ import com.akine.scheduling.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
 import com.akine.scheduling.spi.ReservaProbe;
+import com.akine.scheduling.spi.ReservaProbe.OcupacionDeRecurso;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,8 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Motor de slots: que turnos concretos ofrece una oferta en una ventana (M12, RF-M12-001).
@@ -181,7 +184,11 @@ public class AgendaService {
 		}
 
 		ZoneId zona = ZoneId.of(sede.timezone());
-		Duration duracion = Duration.ofMinutes(oferta.duracionMinutos());
+		// Una lectura para toda la ventana: cada profesional corta sus franjas con la suya (TURNO -
+		// Tecnico §47), asi que dos profesionales de la misma oferta pueden tener grillas distintas.
+		Map<Long, Integer> duracionesPropias = oferta.requiereProfesional()
+				? ofertas.duracionesPropias(organizationId, consultorioId, ofertaId)
+				: Map.of();
 
 		List<HabilitacionSnapshot> profesionales = oferta.requiereProfesional()
 				? filtrarPorProfesional(
@@ -210,7 +217,7 @@ public class AgendaService {
 		List<DiaDeAgenda> dias = new ArrayList<>();
 		for (LocalDate fecha = desde; fecha.isBefore(hasta); fecha = fecha.plusDays(1)) {
 			DiaDeSlots dia = resolver(
-					fecha, oferta, zona, duracion, profesionales, espaciosHabilitados,
+					fecha, oferta, zona, duracionesPropias, profesionales, espaciosHabilitados,
 					porProfesional, organizationId, consultorioId, ahora);
 			dias.add(proyectar(dia, fecha, zona));
 		}
@@ -222,7 +229,7 @@ public class AgendaService {
 				oferta.id(),
 				oferta.consultorioId(),
 				oferta.nombreComercial(),
-				oferta.duracionMinutos(),
+				oferta.duracionCon(duracionesPropias, profesionalId),
 				zona.getId(),
 				dias);
 	}
@@ -266,7 +273,7 @@ public class AgendaService {
 			LocalDate fecha,
 			OfertaSnapshot oferta,
 			ZoneId zona,
-			Duration duracion,
+			Map<Long, Integer> duracionesPropias,
 			List<HabilitacionSnapshot> profesionales,
 			List<HabilitacionSnapshot> espaciosHabilitados,
 			Map<Long, Map<LocalDate, DiaDisponible>> porProfesional,
@@ -296,9 +303,11 @@ public class AgendaService {
 		// con que toque el dia.
 		Instant mediodia = fecha.atTime(12, 0).atZone(zona).toInstant();
 
-		if (oferta.requiereEspacio()
-				&& !hayEspacio(espaciosHabilitados, organizationId, consultorioId, mediodia,
-						inicioDelDia, finDelDia)) {
+		List<Long> candidatos = oferta.requiereEspacio()
+				? espaciosCandidatos(espaciosHabilitados, organizationId, consultorioId, mediodia,
+						inicioDelDia, finDelDia)
+				: List.of();
+		if (oferta.requiereEspacio() && candidatos.isEmpty()) {
 			return DiaDeSlots.sin(fecha, MotivoSinSlots.SIN_ESPACIO);
 		}
 
@@ -340,6 +349,7 @@ public class AgendaService {
 				continue;
 			}
 			huboFranjas = true;
+			Duration duracion = Duration.ofMinutes(oferta.duracionCon(duracionesPropias, habilitacion.recursoId()));
 			for (Slot slot : cortar(dia, habilitacion.recursoId(), oferta, duracion, zona, fecha)) {
 				huboCortes = true;
 				Instant inicio = fecha.atTime(slot.desde()).atZone(zona).toInstant();
@@ -356,8 +366,8 @@ public class AgendaService {
 		}
 
 		if (!slots.isEmpty()) {
-			List<Slot> conCupo = descontarReservas(
-					slots, organizationId, consultorioId, oferta.id(), fecha, zona);
+			List<Slot> conCupo = descontarOcupacion(
+					slots, organizationId, consultorioId, oferta, candidatos, fecha, zona);
 			return conCupo.stream().anyMatch(slot -> slot.cupoLibre() > 0)
 					? DiaDeSlots.con(fecha, conCupo)
 					: DiaDeSlots.sin(fecha, MotivoSinSlots.COMPLETO);
@@ -451,40 +461,93 @@ public class AgendaService {
 	 * necesita poder mostrar "14:00 completo" en vez de un hueco en la grilla, que el usuario leeria
 	 * como "no atiende a esa hora".
 	 */
-	private List<Slot> descontarReservas(
-			List<Slot> slots, long organizationId, long consultorioId, long ofertaId,
-			LocalDate fecha, ZoneId zona) {
+	private List<Slot> descontarOcupacion(
+			List<Slot> slots, long organizationId, long consultorioId, OfertaSnapshot oferta,
+			List<Long> espaciosCandidatos, LocalDate fecha, ZoneId zona) {
 
 		if (slots.isEmpty()) {
 			return slots;
 		}
 		Instant desde = fecha.atStartOfDay(zona).toInstant();
 		Instant hasta = fecha.plusDays(1).atStartOfDay(zona).toInstant();
-		Map<Instant, Integer> tomados = reservas.reservasPorInicio(
-				organizationId, consultorioId, ofertaId, List.of(), desde, hasta);
-		if (tomados.isEmpty()) {
-			return slots;
-		}
+		List<Long> profesionales = slots.stream()
+				.map(Slot::profesionalId).filter(Objects::nonNull).distinct().toList();
+		List<OcupacionDeRecurso> ocupacion = reservas.ocupacionDeRecursos(
+				organizationId, consultorioId, profesionales, espaciosCandidatos, desde, hasta);
 
 		List<Slot> conCupo = new ArrayList<>(slots.size());
 		for (Slot slot : slots) {
 			Instant inicio = fecha.atTime(slot.desde()).atZone(zona).toInstant();
-			int ocupados = tomados.getOrDefault(inicio, 0);
-			conCupo.add(new Slot(
-					slot.desde(), slot.hasta(), slot.profesionalId(), slot.espacioId(),
-					slot.cupoTotal(), Math.max(0, slot.cupoTotal() - ocupados)));
+			Instant fin = finInstante(slot.hasta(), fecha, zona);
+			conCupo.add(conLoQueLeQueda(slot, inicio, fin, oferta, espaciosCandidatos, ocupacion));
 		}
 		return conCupo;
 	}
 
 	/**
-	 * {@code true} si al menos un espacio habilitado esta en servicio y es de esta sede.
+	 * Un slot con el cupo que realmente le queda y el box que tomaria (TURNO - Tecnico §16 y §46).
+	 *
+	 * <p>El cupo es <b>por profesional</b>: con capacidad uno y dos profesionales, las 09:00 son dos
+	 * lugares. Antes el conteo era por oferta e inicio, y el primer turno de las 09:00 dejaba al otro
+	 * profesional sin ese horario aunque estuviera libre, que es exactamente lo contrario de "cualquier
+	 * profesional". Lo que comparte lugar es la franja grupal: misma oferta, mismo inicio, mismo
+	 * profesional.
+	 *
+	 * <p>El box que viaja es una <b>sugerencia para mostrar</b>, no una reserva: lo clava la reserva,
+	 * bajo el lock, y puede ser otro si alguien tomo este mientras tanto.
+	 */
+	private static Slot conLoQueLeQueda(
+			Slot slot, Instant inicio, Instant fin, OfertaSnapshot oferta,
+			List<Long> espaciosCandidatos, List<OcupacionDeRecurso> ocupacion) {
+
+		List<OcupacionDeRecurso> delGrupo = ocupacion.stream()
+				.filter(otro -> oferta.id() == (otro.ofertaId() == null ? -1L : otro.ofertaId()))
+				.filter(otro -> otro.inicio().equals(inicio))
+				.filter(otro -> Objects.equals(otro.profesionalId(), slot.profesionalId()))
+				.toList();
+		int libre = Math.max(0, slot.cupoTotal() - delGrupo.size());
+
+		boolean profesionalOcupado = slot.profesionalId() != null && ocupacion.stream()
+				.filter(otro -> !delGrupo.contains(otro))
+				.filter(otro -> slot.profesionalId().equals(otro.profesionalId()))
+				.anyMatch(otro -> otro.seCruzaCon(inicio, fin));
+		if (profesionalOcupado) {
+			libre = 0;
+		}
+
+		Long espacio = null;
+		if (oferta.requiereEspacio()) {
+			Optional<Long> boxDelGrupo = delGrupo.stream()
+					.map(OcupacionDeRecurso::espacioId)
+					.filter(Objects::nonNull)
+					.findFirst();
+			espacio = boxDelGrupo.isPresent()
+					// Quien se suma al grupo puede terminar despues que el resto: ver RevalidadorDeSlot.
+					? boxDelGrupo.filter(box -> ocupacion.stream()
+							.filter(otro -> !delGrupo.contains(otro))
+							.filter(otro -> box.equals(otro.espacioId()))
+							.noneMatch(otro -> otro.seCruzaCon(inicio, fin))).orElse(null)
+					: espaciosCandidatos.stream()
+							.filter(candidato -> ocupacion.stream()
+									.filter(otro -> candidato.equals(otro.espacioId()))
+									.noneMatch(otro -> otro.seCruzaCon(inicio, fin)))
+							.findFirst()
+							.orElse(null);
+			if (espacio == null) {
+				libre = 0;
+			}
+		}
+		return new Slot(slot.desde(), slot.hasta(), slot.profesionalId(), espacio, slot.cupoTotal(), libre);
+	}
+
+	/**
+	 * Los espacios habilitados, en servicio y de esta sede. Vacio: la oferta no se puede prestar ese dia.
 	 *
 	 * <p>El filtro por {@code consultorioId} es redundante —una habilitacion de esta oferta apunta
 	 * a un espacio de esta sede— y se deja igual: cuesta una comparacion y cierra el unico camino
 	 * por el que un espacio de otra sede podria colarse si alguna vez se afloja el unique de 02.07.
 	 */
-	private boolean hayEspacio(
+	private List<Long> espaciosCandidatos(
 			List<HabilitacionSnapshot> habilitados,
 			long organizationId,
 			long consultorioId,
@@ -496,16 +559,19 @@ public class AgendaService {
 			// Lista vacia significa TODOS: la oferta se puede prestar en cualquier espacio en
 			// servicio de la sede. Ver habilitadosOTodos.
 			return espacios.enServicio(organizationId, consultorioId, at, at.plusSeconds(1)).stream()
-					.anyMatch(espacio -> espacio.active() && espacio.enServicio());
+					.filter(espacio -> espacio.active() && espacio.enServicio())
+					.map(EspacioSnapshot::id)
+					.toList();
 		}
 		return habilitados.stream()
 				.filter(habilitacion -> vigenteDurante(habilitacion, inicioDelDia, finDelDia))
 				.map(habilitacion -> espacios.find(organizationId, habilitacion.recursoId(), at))
-				.anyMatch(espacio -> espacio
-						.filter(EspacioSnapshot::active)
-						.filter(EspacioSnapshot::enServicio)
-						.filter(candidato -> candidato.consultorioId() == consultorioId)
-						.isPresent());
+				.flatMap(java.util.Optional::stream)
+				.filter(EspacioSnapshot::active)
+				.filter(EspacioSnapshot::enServicio)
+				.filter(candidato -> candidato.consultorioId() == consultorioId)
+				.map(EspacioSnapshot::id)
+				.toList();
 	}
 
 	/**

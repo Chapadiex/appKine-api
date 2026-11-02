@@ -106,6 +106,7 @@ public final class PersonRepositoryPorts {
 				String patronClave,
 				int activoFiltro,
 				int perfilFiltro,
+				String orden,
 				int offset,
 				int limite);
 
@@ -219,6 +220,7 @@ public final class PersonRepositoryPorts {
 				Long personaId,
 				String categoria,
 				int activoFiltro,
+				String orden,
 				int offset,
 				int limite);
 
@@ -456,9 +458,12 @@ public final class PersonRepositoryPorts {
 
 		AutorizacionEvento registrar(AutorizacionEvento evento);
 
-		/** Una pagina del historial, del hecho mas viejo al mas nuevo. */
+		/**
+		 * Una pagina del historial, del hecho mas viejo al mas nuevo. DP-45: {@code orden} es la
+		 * clave {@code campo,dir} ya validada ({@code ocurridoEn}, {@code tipo}) o vacio.
+		 */
 		List<AutorizacionEvento> pagina(
-				long organizationId, long autorizacionId, int offset, int limite);
+				long organizationId, long autorizacionId, String orden, int offset, int limite);
 
 		long contar(long organizationId, long autorizacionId);
 	}

@@ -1,11 +1,16 @@
 package com.akine.scheduling.infrastructure;
 
 import com.akine.scheduling.domain.OcupacionDeTurno;
+import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
+import com.akine.scheduling.spi.EventoExternoDeAgenda;
+import com.akine.scheduling.spi.EventoExternoDeAgenda.EventoDeAgendaExterno;
 import com.akine.scheduling.spi.ReservaProbe;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,10 +50,49 @@ import java.util.Map;
 @Component
 public class ReservaProbeSobreTurnos implements ReservaProbe {
 
-	private final TurnoRepositoryPort turnos;
+	private static final List<Long> NINGUNO = List.of(-1L);
+	private static final String CLASE_CANCELADA = "CANCELADA";
 
-	public ReservaProbeSobreTurnos(TurnoRepositoryPort turnos) {
+	private final TurnoRepositoryPort turnos;
+	private final EventoExternoDeAgenda eventosExternos;
+
+	public ReservaProbeSobreTurnos(TurnoRepositoryPort turnos, EventoExternoDeAgenda eventosExternos) {
 		this.turnos = turnos;
+		this.eventosExternos = eventosExternos;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Los turnos se leen por recurso y en toda la organizacion: un profesional no se desdobla entre
+	 * dos sedes. Las clases, por sede, que es lo que publica {@code activity}; una clase de otra sede
+	 * la sigue atajando la reserva, bajo el lock.
+	 */
+	@Override
+	public List<OcupacionDeRecurso> ocupacionDeRecursos(
+			long organizationId,
+			long consultorioId,
+			Collection<Long> profesionalIds,
+			Collection<Long> espacioIds,
+			Instant desde,
+			Instant hasta) {
+
+		List<OcupacionDeRecurso> ocupacion = new ArrayList<>();
+		for (Turno turno : turnos.findVivosDeRecursosEnVentana(organizationId,
+				profesionalIds.isEmpty() ? NINGUNO : profesionalIds,
+				espacioIds.isEmpty() ? NINGUNO : espacioIds,
+				desde, hasta)) {
+			ocupacion.add(new OcupacionDeRecurso(turno.getId(), turno.getOfertaId(),
+					turno.getProfesionalMembershipId(), turno.getEspacioId(),
+					turno.getInicio(), turno.getFin()));
+		}
+		for (EventoDeAgendaExterno evento : eventosExternos.enVentana(organizationId, consultorioId, desde, hasta)) {
+			if (!CLASE_CANCELADA.equals(evento.estado())) {
+				ocupacion.add(new OcupacionDeRecurso(null, null, evento.profesionalId(), evento.espacioId(),
+						evento.inicio(), evento.fin()));
+			}
+		}
+		return ocupacion;
 	}
 
 	@Override

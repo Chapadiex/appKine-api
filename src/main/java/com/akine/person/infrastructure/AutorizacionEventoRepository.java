@@ -22,12 +22,17 @@ public interface AutorizacionEventoRepository
 			SELECT * FROM autorizacion_evento e
 			 WHERE e.organization_id = :organizationId
 			   AND e.autorizacion_id = :autorizacionId
-			 ORDER BY e.ocurrido_en ASC, e.id ASC
+			 ORDER BY
+			   CASE WHEN :orden = 'ocurridoEn,desc' THEN e.ocurrido_en END DESC,
+			   CASE WHEN :orden = 'tipo,asc' THEN e.tipo END ASC,
+			   CASE WHEN :orden = 'tipo,desc' THEN e.tipo END DESC,
+			   e.ocurrido_en ASC, e.id ASC
 			 LIMIT :limite OFFSET :offset
 			""", nativeQuery = true)
 	List<AutorizacionEvento> pagina(
 			@Param("organizationId") long organizationId,
 			@Param("autorizacionId") long autorizacionId,
+			@Param("orden") String orden,
 			@Param("offset") int offset,
 			@Param("limite") int limite);
 

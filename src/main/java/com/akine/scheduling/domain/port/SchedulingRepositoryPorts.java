@@ -1,6 +1,9 @@
 package com.akine.scheduling.domain.port;
 
+import com.akine.platform.spi.listado.OrdenDeListado;
 import com.akine.scheduling.domain.AgendaSede;
+import com.akine.scheduling.domain.EntradaDeListaDeEspera;
+import com.akine.scheduling.domain.EstadoListaDeEspera;
 import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.OcupacionDeTurno;
 import com.akine.scheduling.domain.OcurrenciaOmitida;
@@ -123,6 +126,29 @@ public final class SchedulingRepositoryPorts {
 		long contarVivosEnSlot(long organizationId, long ofertaId, Instant inicio);
 
 		/**
+		 * El cupo de un slot con profesional: el suyo y no el de la oferta. Dos profesionales que
+		 * atienden la misma oferta a la misma hora son dos lugares, aunque la capacidad sea uno.
+		 */
+		long contarVivosEnSlotDelProfesional(
+				long organizationId, long ofertaId, long profesionalMembershipId, Instant inicio);
+
+		/** Lo que ocupa a esos profesionales o a esos espacios en la ventana, en cualquier sede. */
+		List<Turno> findVivosDeRecursosEnVentana(
+				long organizationId, Collection<Long> profesionalIds, Collection<Long> espacioIds,
+				Instant desde, Instant hasta);
+
+		/** Todos los turnos asociados a esos planes, cancelados incluidos. */
+		List<Turno> findDeLosPlanes(long organizationId, Collection<Long> planIds);
+
+		/** Los turnos de una persona en una sede: los mas nuevos primero, o con {@code soloFuturos} el mas cercano. */
+		List<Turno> findDeLaPersonaEnSede(
+				long organizationId, long consultorioId, long personaId, boolean soloFuturos, Instant ahora,
+				int pagina, int tamano);
+
+		long contarDeLaPersonaEnSede(
+				long organizationId, long consultorioId, long personaId, boolean soloFuturos, Instant ahora);
+
+		/**
 		 * Los turnos vivos de una oferta dentro de una ventana.
 		 *
 		 * <p>Es lo que el motor de slots usa para descontar el cupo ya vendido. Sin esta lectura la
@@ -216,6 +242,29 @@ public final class SchedulingRepositoryPorts {
 	 * unica garantia real de que el historial sea inmutable. La misma decision que
 	 * {@code platform.spi.audit.AuditTrail} tomo para la auditoria.
 	 */
+	/** La lista de espera de turnos. Sin {@code delete}: la fila queda como historia. */
+	public interface ListaDeEsperaRepositoryPort {
+
+		EntradaDeListaDeEspera save(EntradaDeListaDeEspera entrada);
+
+		/** Con flush: la vista que se devuelve lleva la version que deja el cambio. */
+		EntradaDeListaDeEspera saveAndFlush(EntradaDeListaDeEspera entrada);
+
+		Optional<EntradaDeListaDeEspera> findByIdInScope(
+				long organizationId, long consultorioId, long entradaId);
+
+		List<EntradaDeListaDeEspera> listar(
+				long organizationId, long consultorioId, EstadoListaDeEspera estado, Long ofertaId,
+				Long personaId, int pagina, int tamano);
+
+		long contar(
+				long organizationId, long consultorioId, EstadoListaDeEspera estado, Long ofertaId,
+				Long personaId);
+
+		List<EntradaDeListaDeEspera> findActivasDeLaOferta(
+				long organizationId, long consultorioId, long ofertaId);
+	}
+
 	public interface TurnoEventoRepositoryPort {
 
 		TurnoEvento registrar(TurnoEvento evento);
@@ -248,6 +297,24 @@ public final class SchedulingRepositoryPorts {
 
 		/** El total del mismo filtro que {@link #listar}. */
 		long contar(long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado, Instant ahora);
+
+		/**
+		 * DP-45: la misma pagina con el orden que pide el cliente, por campo del contrato
+		 * ({@code creadaEn}, {@code fechaDesde}, {@code fechaHasta}) y con desempate por id. Vacio
+		 * es el orden de {@link #listar}: las mas nuevas primero.
+		 */
+		List<TurnoSerie> listar(
+				long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado,
+				Instant ahora, Optional<OrdenDeListado> orden, int pagina, int tamano);
+
+		/**
+		 * DP-45: todas las series del filtro, sin paginar y en el orden de {@link #listar}. Para
+		 * buscar por texto en el paciente, el profesional y la oferta, que viven en otros modulos y
+		 * se resuelven en lote: las series de una sede son pocas comparadas con sus turnos.
+		 */
+		List<TurnoSerie> todas(
+				long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado,
+				Instant ahora);
 	}
 
 	/** Ocurrencias que el alta de una serie no reservo (U-22). Append-only. */

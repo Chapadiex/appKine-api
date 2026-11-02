@@ -250,7 +250,8 @@ public class ExcepcionController {
 						request.horaDesde(),
 						request.horaHasta(),
 						request.feriadoId(),
-						request.notes()));
+						request.notes(),
+						Boolean.TRUE.equals(request.confirmaTurnosAfectados())));
 
 		ExcepcionResponse cuerpo = ExcepcionResponse.from(resultado);
 		if (!resultado.nuevo()) {

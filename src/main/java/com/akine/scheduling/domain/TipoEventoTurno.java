@@ -34,5 +34,8 @@ public enum TipoEventoTurno {
 	 * unico que queda del error: la fila del turno se limpia —vuelve a no tener hora de llegada—
 	 * y sin este evento no habria forma de saber que alguien marco por equivocacion y lo corrigio.
 	 */
-	LLEGADA_DESHECHA
+	LLEGADA_DESHECHA,
+
+	/** Se asocio o se quito el caso o el plan del turno. No mueve nada de la agenda. */
+	CAMBIO_DE_CONTEXTO
 }

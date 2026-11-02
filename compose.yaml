@@ -77,7 +77,7 @@ services:
   # verdad y reciben host, usuario y contrasena por variable de entorno.
   mailpit:
     # Version fijada, no "latest": misma regla que MySQL.
-    image: axllent/mailpit:v1.31.6
+    image: axllent/mailpit:v1.32.0
     container_name: akine-mailpit
     restart: unless-stopped
     environment:

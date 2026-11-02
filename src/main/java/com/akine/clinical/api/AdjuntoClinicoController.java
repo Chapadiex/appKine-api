@@ -9,6 +9,7 @@ import com.akine.clinical.application.AdjuntoClinicoService;
 import com.akine.clinical.application.AdjuntoClinicoService.AdjuntoClinicoAlta;
 import com.akine.clinical.application.ContenidoDeAdjuntoClinico;
 import com.akine.clinical.domain.CategoriaAdjuntoClinico;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -251,12 +252,20 @@ public class AdjuntoClinicoController {
 
 					Es lectura clinica: exige hc:read mas relacion asistencial o motivo \
 					declarado, y queda auditada. Lo que revela —cuantos estudios tiene este \
-					paciente y de que clase— ya es informacion sensible aunque no sea contenido.""")
+					paciente y de que clase— ya es informacion sensible aunque no sea contenido.
+
+					DP-45: sort ordena por subidoEn, titulo, categoria o tamano; el orden no \
+					cambia la autorizacion ni la auditoria de la lectura. Sin q: los adjuntos de \
+					una historia ya se filtran por categoria y por entrada, y buscar en sus \
+					titulos seria una lectura clinica mas sin necesidad.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Pagina de adjuntos clinicos",
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(
 									implementation = AdjuntoClinicoPageResponse.class))),
+			@ApiResponse(responseCode = "400", description = "sort fuera del enum",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403", description = "Sin contexto, sin hc:read, o sin "
 					+ "relacion asistencial ni motivo declarado",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -287,14 +296,22 @@ public class AdjuntoClinicoController {
 
 			@Parameter(description = AccesoClinicoHeaders.JUSTIFICACION_DOC)
 			@RequestHeader(name = AccesoClinicoHeaders.JUSTIFICACION, required = false)
-			String justificacion) {
+			String justificacion,
+
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "subidoEn descendente.",
+					schema = @Schema(allowableValues = {"subidoEn,asc", "subidoEn,desc",
+							"titulo,asc", "titulo,desc", "categoria,asc", "categoria,desc",
+							"tamano,asc", "tamano,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
 
 		int pagina = Math.max(page, 0);
 		int tamano = Math.min(Math.max(size, 1), TAMANO_MAXIMO);
+		String orden = OrdenDeListado.claveDe(
+				OrdenDeListado.leer(sort, AdjuntoClinicoService.CAMPOS_DE_ORDEN));
 
 		return AdjuntoClinicoPageResponse.of(
 				adjuntoService.listar(apiActor.current(), historiaClinicaId, categoria,
-						entradaClinicaId, incluirDadosDeBaja, pagina, tamano, justificacion),
+						entradaClinicaId, incluirDadosDeBaja, orden, pagina, tamano, justificacion),
 				pagina,
 				tamano);
 	}

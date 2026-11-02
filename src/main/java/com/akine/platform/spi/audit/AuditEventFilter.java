@@ -27,6 +27,9 @@ import java.time.Instant;
  * @param actorAccountId  actor cuya actividad se investiga (RF-M24-003)
  * @param desde           inicio del periodo (RF-M24-004)
  * @param hasta           fin del periodo (RF-M24-004)
+ * @param texto           DP-45: texto que refina cualquiera de los tres modos. "Contiene" en el
+ *                        tipo de evento y en el tipo de entidad; si es un numero, ademas igual al
+ *                        id de la entidad o al de la cuenta actora. {@code null} no refina
  */
 public record AuditEventFilter(
 		long organizationId,
@@ -35,5 +38,18 @@ public record AuditEventFilter(
 		Long entityId,
 		Long actorAccountId,
 		Instant desde,
-		Instant hasta) {
+		Instant hasta,
+		String texto) {
+
+	/** Sin texto: la forma de antes de DP-45. */
+	public AuditEventFilter(
+			long organizationId,
+			Long consultorioId,
+			String entityType,
+			Long entityId,
+			Long actorAccountId,
+			Instant desde,
+			Instant hasta) {
+		this(organizationId, consultorioId, entityType, entityId, actorAccountId, desde, hasta, null);
+	}
 }

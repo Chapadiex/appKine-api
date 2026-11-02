@@ -29,6 +29,7 @@ import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
@@ -290,13 +292,33 @@ public class VentaDePaseService {
 	@Transactional(readOnly = true)
 	public Page<MovimientoPaseView> movimientos(
 			OperatingActor actor, long consultorioId, long paseId, int pagina, int tamano) {
+		return movimientos(actor, consultorioId, paseId, Optional.empty(), pagina, tamano);
+	}
+
+	/** DP-45: campo del contrato → propiedad del movimiento. */
+	public static final Map<String, String> ORDEN_DE_MOVIMIENTOS = Map.of(
+			"ocurridoEn", "ocurridoEn",
+			"tipo", "tipo",
+			"cantidad", "cantidad");
+
+	/**
+	 * La misma pagina con el orden que pide el cliente (DP-45). Sin orden, el de siempre: del mas
+	 * viejo al mas nuevo, que es en el que se lee {@code saldoResultante}.
+	 */
+	@Transactional(readOnly = true)
+	public Page<MovimientoPaseView> movimientos(
+			OperatingActor actor, long consultorioId, long paseId, Optional<OrdenDeListado> orden,
+			int pagina, int tamano) {
 
 		long organizationId = ProductoService.exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigir(actor, organizationId, consultorioId, PermissionCodes.PASE_READ);
 		pases.findByIdInScope(organizationId, consultorioId, paseId)
 				.orElseThrow(() -> new PaseNotAccessibleException(paseId));
-		return movimientos.historial(organizationId, paseId, PageRequest.of(pagina, tamano))
+		Sort sort = orden
+				.map(pedido -> pedido.aSort(ORDEN_DE_MOVIMIENTOS.get(pedido.campo()), "id"))
+				.orElse(Sort.by(Sort.Direction.ASC, "ocurridoEn").and(Sort.by(Sort.Direction.ASC, "id")));
+		return movimientos.historial(organizationId, paseId, PageRequest.of(pagina, tamano, sort))
 				.map(MovimientoPaseView::de);
 	}
 

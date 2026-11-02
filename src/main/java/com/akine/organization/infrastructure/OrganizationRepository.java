@@ -50,6 +50,9 @@ public interface OrganizationRepository extends JpaRepository<Organization, Long
 	 * invertida, que es el escape por defecto de MySQL, igual que en
 	 * {@code FinanciadorRepository.buscar}. La comparacion no distingue mayusculas porque la
 	 * collation de las columnas tampoco.
+	 *
+	 * <p>DP-45: el orden lo trae el {@code Pageable} —antes era {@code order by o.name, o.id} fijo, y
+	 * un orden pedido se agregaba detras—. El controller pide ese mismo orden cuando no hay sort.
 	 */
 	@Override
 	@Query(value = """
@@ -61,7 +64,6 @@ public interface OrganizationRepository extends JpaRepository<Organization, Long
 			 where o.active = true
 			   and (:status is null or s.status = :status)
 			   and (o.name like :patron or o.slug like :patron)
-			 order by o.name asc, o.id asc
 			""",
 			countQuery = """
 			select count(o)

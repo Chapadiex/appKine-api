@@ -61,6 +61,14 @@ public final class HonorariosViews {
 			Long egresoId) {
 	}
 
+	/**
+	 * La regla con la que se calcula cada linea (DP-38): la tarifa por participante de la oferta por
+	 * los presentes de la clase, repartida en partes iguales entre sus instructores, con el resto del
+	 * redondeo al principal. Es la unica regla vigente; viaja como codigo estable para que la pantalla
+	 * la explique y para que una regla futura no se confunda con esta.
+	 */
+	public static final String REGLA_POR_PARTICIPANTE_PRESENTE = "POR_PARTICIPANTE_PRESENTE";
+
 	/** El borrador: calculado al pedirlo, no se guarda. */
 	public record BorradorDeHonorariosView(
 			long consultorioId,
@@ -71,14 +79,26 @@ public final class HonorariosViews {
 			String moneda,
 			List<LineaDeHonorarioView> clases,
 			List<ClaseExcluidaView> excluidas) {
+
+		/** Los numeros de la tira del borrador (DP-45), derivados de sus lineas. */
+		public ResumenDeHonorariosView resumen() {
+			return new ResumenDeHonorariosView(clases.size(), excluidas.size(), presentes(clases),
+					importeTotal, null, null, REGLA_POR_PARTICIPANTE_PRESENTE);
+		}
 	}
 
-	/** Una liquidacion confirmada, con su snapshot. */
+	/**
+	 * Una liquidacion confirmada, con su snapshot.
+	 *
+	 * @param egresoSaldoPendiente lo que falta pagar del egreso, hoy; {@code null} si el egreso no se
+	 *                             encontro (DP-45)
+	 */
 	public record LiquidacionDeHonorariosView(
 			long id,
 			long consultorioId,
 			long egresoId,
 			String egresoEstado,
+			BigDecimal egresoSaldoPendiente,
 			long colaboradorMembershipId,
 			String colaboradorNombre,
 			Long ofertaId,
@@ -91,6 +111,39 @@ public final class HonorariosViews {
 			long confirmadaPorCuentaId,
 			Instant liberadaEn,
 			List<LineaDeHonorarioView> clases) {
+
+		/**
+		 * Los numeros de la tira de la liquidacion (DP-45). Lo pagado sale del egreso que la
+		 * confirmacion creo, cuyo importe es el de la liquidacion y no se edita
+		 * ({@code egreso-de-liquidacion}): {@code importeTotal - saldoPendiente}.
+		 */
+		public ResumenDeHonorariosView resumen() {
+			BigDecimal pagado = egresoSaldoPendiente == null ? null : importeTotal.subtract(egresoSaldoPendiente);
+			return new ResumenDeHonorariosView(clases.size(), null, presentes(clases), importeTotal,
+					pagado, egresoSaldoPendiente, REGLA_POR_PARTICIPANTE_PRESENTE);
+		}
+	}
+
+	/**
+	 * Los numeros que la pantalla de honorarios muestra en su tira (DP-45). Es honorario y su egreso
+	 * (M22), no caja: lo pagado no dice por que medio ni si toco el cajon.
+	 *
+	 * @param cantidadExcluidas solo en el borrador
+	 * @param importePagado     solo en la liquidacion
+	 * @param saldoPendiente    solo en la liquidacion
+	 */
+	public record ResumenDeHonorariosView(
+			int cantidadClases,
+			Integer cantidadExcluidas,
+			int totalPresentes,
+			BigDecimal importeTotal,
+			BigDecimal importePagado,
+			BigDecimal saldoPendiente,
+			String regla) {
+	}
+
+	private static int presentes(List<LineaDeHonorarioView> lineas) {
+		return lineas.stream().mapToInt(LineaDeHonorarioView::presentes).sum();
 	}
 
 	/** La liquidacion y si se creo ahora ({@code false}: reintento con la misma clave). */

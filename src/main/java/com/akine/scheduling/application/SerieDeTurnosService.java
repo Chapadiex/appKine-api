@@ -3,11 +3,17 @@ package com.akine.scheduling.application;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.identity.AccountIdentity;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
+import com.akine.platform.spi.listado.OrdenDeListado;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.scheduling.domain.AlcanceDeSerie;
 import com.akine.scheduling.domain.EstadoDeSerie;
@@ -114,6 +120,11 @@ public class SerieDeTurnosService {
 	private final RegistroDeRecepcion recepciones;
 	private final OcurrenciaOmitidaRepositoryPort omisiones;
 	private final TransactionTemplate transaccionReadCommitted;
+	private final ConsultorioMembershipDirectory membresias;
+	private final AccountIdentityDirectory identidades;
+
+	private final ContextoClinicoDeTurno contextoClinico;
+	private final SesionesDelPlan sesionesDelPlan;
 
 	public SerieDeTurnosService(
 			TurnoSerieRepositoryPort series,
@@ -132,7 +143,16 @@ public class SerieDeTurnosService {
 			AvisosDeTurno avisos,
 			RegistroDeRecepcion recepciones,
 			OcurrenciaOmitidaRepositoryPort omisiones,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			ConsultorioMembershipDirectory membresias,
+			AccountIdentityDirectory identidades,
+			ContextoClinicoDeTurno contextoClinico,
+			SesionesDelPlan sesionesDelPlan) {
+
+		this.contextoClinico = contextoClinico;
+		this.sesionesDelPlan = sesionesDelPlan;
+		this.membresias = membresias;
+		this.identidades = identidades;
 
 		this.series = series;
 		this.turnos = turnos;
@@ -199,29 +219,53 @@ public class SerieDeTurnosService {
 		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, command.ofertaId())
 				.orElseThrow(() -> new OfertaNotAccessibleException(command.ofertaId()));
 		exigirPacienteVigente(organizationId, command.personaId());
+		ContextoClinicoDeTurno.Resuelto contexto = contextoClinico.resolver(
+				organizationId, command.personaId(), command.ofertaId(), command.casoId(), command.planId());
 
 		ZoneId zona = ZoneId.of(sede.timezone());
 		Instant ahora = Instant.now();
-		List<Instant> inicios = command.regla().ocurrencias().stream()
+		// Con ocurrencias elegidas se reserva lo que el operador reviso (TURNO - Tecnico §20), y un
+		// feriado elegido no se omite: si eligio ese dia, que lo rechace la revalidacion.
+		List<Instant> deLaRegla = command.regla().ocurrencias().stream()
 				.map(local -> local.atZone(zona).toInstant())
 				.toList();
+		Map<Instant, Long> profesionalElegido = new HashMap<>();
+		List<Instant> inicios = command.conOcurrenciasElegidas()
+				? command.ocurrencias().stream()
+						.peek(ocurrencia -> {
+							if (ocurrencia.profesionalId() != null) {
+								profesionalElegido.put(ocurrencia.inicio(), ocurrencia.profesionalId());
+							}
+						})
+						.map(AltaDeSerieCommand.OcurrenciaElegida::inicio)
+						.sorted()
+						.toList()
+				: deLaRegla;
 		if (!inicios.getFirst().isAfter(ahora)) {
 			throw new IllegalArgumentException(
 					"La primera ocurrencia de la serie ya paso: el pasado no se reserva");
+		}
+		if (inicios.stream().distinct().count() < inicios.size()) {
+			throw new IllegalArgumentException("La serie repite un horario: cada sesion va en el suyo");
 		}
 
 		// U-22: las ocurrencias que caen en un dia que la sede cierra por feriado se OMITEN, en vez
 		// de hacer fallar la serie entera. Todo o nada sigue valiendo para cualquier otra causa.
 		Set<LocalDate> feriados = revalidador.feriadosQueCierran(
 				organizationId, sede, oferta, command.profesionalId(),
-				fechaLocal(inicios.getFirst(), zona), fechaLocal(inicios.getLast(), zona).plusDays(1));
-		List<Instant> aReservar = inicios.stream()
-				.filter(inicio -> !feriados.contains(fechaLocal(inicio, zona)))
-				.toList();
+				fechaLocal(deLaRegla.getFirst(), zona), fechaLocal(deLaRegla.getLast(), zona).plusDays(1));
+		List<Instant> aReservar = command.conOcurrenciasElegidas()
+				? inicios
+				: inicios.stream().filter(inicio -> !feriados.contains(fechaLocal(inicio, zona))).toList();
 		if (aReservar.isEmpty()) {
 			// Una serie sin un solo turno no es una serie: no se crea nada, como en todo o nada.
 			throw new OcurrenciaSinLugarException(inicios.getFirst(), new SlotNoDisponibleException(
 					"todas las ocurrencias de la serie caen en dias que la sede cierra por feriado"));
+		}
+
+		// TURNO - Tecnico §70: bajo el lock, y por el total. El plan decide antes de crear nada.
+		if (contexto.plan() != null) {
+			sesionesDelPlan.exigirDisponibles(organizationId, contexto.plan(), command.ofertaId(), aReservar.size());
 		}
 
 		TurnoSerie serie = series.save(new TurnoSerie(
@@ -230,20 +274,25 @@ public class SerieDeTurnosService {
 				actor.accountId(), ahora, command.idempotencyKey(),
 				command.idempotencyKey() == null ? null : command.huella(consultorioId)));
 
-		List<OcurrenciaOmitida> omitidas = inicios.stream()
-				.filter(inicio -> feriados.contains(fechaLocal(inicio, zona)))
+		// Lo que la regla pedia y no se reservo por el feriado, venga o no de una seleccion del operador:
+		// el detalle de la serie tiene que poder decir por que falta esa fecha.
+		List<OcurrenciaOmitida> omitidas = deLaRegla.stream()
+				.filter(inicio -> feriados.contains(fechaLocal(inicio, zona)) && !aReservar.contains(inicio))
 				.map(inicio -> omisiones.registrar(new OcurrenciaOmitida(
 						serie, inicio, fechaLocal(inicio, zona), OcurrenciaOmitida.Motivo.FERIADO)))
 				.toList();
 
+		Map<Long, Integer> duracionesPropias =
+				ofertas.duracionesPropias(organizationId, consultorioId, command.ofertaId());
 		List<Turno> creados = new ArrayList<>();
 		for (Instant inicio : aReservar) {
-			Instant fin = inicio.plusSeconds(oferta.duracionMinutos() * 60L);
+			// Una ocurrencia puede ir con otro profesional que el de la serie, y dura lo que dura con el.
+			Long profesional = profesionalElegido.getOrDefault(inicio, command.profesionalId());
+			Instant fin = inicio.plusSeconds(oferta.duracionCon(duracionesPropias, profesional) * 60L);
 			RevalidadorDeSlot.Asignacion asignacion = sinLugarNombraLaOcurrencia(inicio, () -> {
 				exigirVigencia(oferta, inicio, zona);
 				return revalidador.revalidar(new RevalidadorDeSlot.Pedido(
-						organizationId, consultorioId, sede, oferta, inicio, fin,
-						command.profesionalId(), null));
+						organizationId, consultorioId, sede, oferta, inicio, fin, profesional, null));
 			});
 
 			Turno turno = new Turno(
@@ -251,6 +300,12 @@ public class SerieDeTurnosService {
 					asignacion.profesionalId(), asignacion.espacioId(), inicio, fin,
 					actor.accountId(), ahora, null, null);
 			turno.vincularASerie(serie.getId());
+			if (contexto.casoId() != null) {
+				turno.asociarContexto(contexto.casoId(), contexto.planId());
+			}
+			if (command.origen() != null) {
+				turno.declararOrigen(command.origen());
+			}
 			// save y no saveAndFlush alcanza: con IDENTITY el INSERT sale ya, y la revalidacion de
 			// la ocurrencia siguiente lo ve.
 			Turno creado = turnos.save(turno);
@@ -313,18 +368,54 @@ public class SerieDeTurnosService {
 	public SeriePagina listar(
 			OperatingActor actor, long consultorioId, Long personaId, EstadoDeSerie estado,
 			int pagina, int tamano) {
+		return listar(actor, consultorioId, personaId, estado, null, Optional.empty(), pagina, tamano);
+	}
+
+	/** DP-45: los campos por los que se ordena la bandeja. */
+	public static final Set<String> ORDEN_DE_SERIES = Set.of("creadaEn", "fechaDesde", "fechaHasta");
+
+	/**
+	 * La bandeja con busqueda y orden (DP-45, punto 1).
+	 *
+	 * <p>{@code q} busca "contiene", sin mayusculas ni acentos, en el apellido, el nombre y el
+	 * documento del paciente, en el nombre comercial de la oferta y en el nombre del profesional.
+	 * Los tres viven en otros modulos ({@code person}, {@code offering}, {@code identity}) y se
+	 * preguntan por su {@code spi}: con {@code q} se leen todas las series del filtro, se resuelven
+	 * los nombres en lote —una consulta por modulo, no una por fila— y la pagina se corta en
+	 * memoria. Sin {@code q} el camino es el de siempre, recortado en la base.
+	 */
+	@Transactional(readOnly = true)
+	public SeriePagina listar(
+			OperatingActor actor, long consultorioId, Long personaId, EstadoDeSerie estado,
+			String q, Optional<OrdenDeListado> orden, int pagina, int tamano) {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_READ);
 
 		Instant ahora = Instant.now();
-		long total = series.contar(organizationId, consultorioId, personaId, estado, ahora);
-		if (total == 0 || (long) pagina * tamano >= total) {
-			return new SeriePagina(List.of(), total);
+		long total;
+		List<TurnoSerie> deLaPagina;
+		if (TextoDeBusqueda.hay(q)) {
+			List<TurnoSerie> coinciden = coincidenConElTexto(organizationId, consultorioId,
+					series.todas(organizationId, consultorioId, personaId, estado, ahora), q);
+			total = coinciden.size();
+			deLaPagina = orden.map(pedido -> coinciden.stream()
+							.sorted(pedido.aplicar(comparadorDeSeries(pedido.campo()),
+									Comparator.comparingLong(TurnoSerie::getId)))
+							.toList())
+					.orElse(coinciden).stream()
+					.skip((long) pagina * tamano)
+					.limit(tamano)
+					.toList();
+		} else {
+			total = series.contar(organizationId, consultorioId, personaId, estado, ahora);
+			if (total == 0 || (long) pagina * tamano >= total) {
+				return new SeriePagina(List.of(), total);
+			}
+			deLaPagina = series.listar(
+					organizationId, consultorioId, personaId, estado, ahora, orden, pagina, tamano);
 		}
-		List<TurnoSerie> deLaPagina =
-				series.listar(organizationId, consultorioId, personaId, estado, ahora, pagina, tamano);
 		if (deLaPagina.isEmpty()) {
 			return new SeriePagina(List.of(), total);
 		}
@@ -349,6 +440,56 @@ public class SerieDeTurnosService {
 		return new SeriePagina(filas, total);
 	}
 
+
+	/**
+	 * DP-45: las series cuyo paciente, oferta o profesional contienen {@code q}. Tres consultas en
+	 * lote, una por modulo duenio del nombre, sin importar cuantas series haya.
+	 */
+	private List<TurnoSerie> coincidenConElTexto(
+			long organizationId, long consultorioId, List<TurnoSerie> candidatas, String q) {
+
+		if (candidatas.isEmpty()) {
+			return candidatas;
+		}
+		Map<Long, PacienteSnapshot> personas = pacientes.findAll(organizationId,
+				candidatas.stream().map(TurnoSerie::getPersonaId).distinct().toList());
+		Map<Long, OfertaSnapshot> ofertasDeLaSede = ofertas.findTodas(organizationId, consultorioId,
+				candidatas.stream().map(TurnoSerie::getOfertaId).distinct().toList());
+		Map<Long, ConsultorioMembershipSnapshot> profesionales = membresias.findTodas(organizationId,
+				candidatas.stream().map(TurnoSerie::getProfesionalMembershipId)
+						.filter(java.util.Objects::nonNull).distinct().toList());
+		Map<Long, AccountIdentity> cuentas = identidades.identidadesDe(profesionales.values().stream()
+				.map(ConsultorioMembershipSnapshot::accountId).distinct().toList());
+
+		return candidatas.stream()
+				.filter(serie -> {
+					PacienteSnapshot persona = personas.get(serie.getPersonaId());
+					OfertaSnapshot oferta = ofertasDeLaSede.get(serie.getOfertaId());
+					ConsultorioMembershipSnapshot profesional = serie.getProfesionalMembershipId() == null
+							? null : profesionales.get(serie.getProfesionalMembershipId());
+					AccountIdentity cuenta = profesional == null ? null : cuentas.get(profesional.accountId());
+					return TextoDeBusqueda.algunoContiene(q,
+							persona == null ? null : persona.apellido(),
+							persona == null ? null : persona.nombre(),
+							persona == null ? null : persona.numeroDocumento(),
+							oferta == null ? null : oferta.nombreComercial(),
+							cuenta == null ? null : cuenta.nombreCompleto());
+				})
+				.toList();
+	}
+
+	/** El comparador ascendente de cada campo de {@link #ORDEN_DE_SERIES}. */
+	private static Comparator<TurnoSerie> comparadorDeSeries(String campo) {
+		return switch (campo) {
+			case "creadaEn" -> Comparator.comparing(TurnoSerie::getCreadaEn,
+					Comparator.nullsLast(Comparator.naturalOrder()));
+			case "fechaDesde" -> Comparator.comparing((TurnoSerie s) -> s.getRegla().desde(),
+					Comparator.nullsLast(Comparator.naturalOrder()));
+			case "fechaHasta" -> Comparator.comparing((TurnoSerie s) -> s.getRegla().hasta(),
+					Comparator.nullsLast(Comparator.naturalOrder()));
+			default -> throw new IllegalStateException("Campo de orden sin comparador: " + campo);
+		};
+	}
 	/**
 	 * Una fila de la bandeja. "Pendiente" y el estado son exactamente el predicado del filtro de
 	 * estado en la base ({@link EstadoDeSerie#de}, DP-20), con el mismo instante. Si divergieran,

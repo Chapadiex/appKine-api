@@ -11549,3 +11549,21 @@ Medido el 17/10 sobre `appKine-api` `main` `4530d6f` (778 commits, PR hasta **#1
 - **Decisiones del usuario:** **48** (U-01 a U-49; U-47 no existe), en `docs/fases/decisiones-pendientes.md`. La tarea que originó este registro hablaba de 49: la medición da 48 identificadores distintos y la tabla-resumen del documento suma 48.
 - **Abierto sin DP:** la apertura de F9 el 14/10 (el orden de DP-07) sigue sin decisión escrita.
 - **Pendiente de este registro:** la matriz del §5 (por área) se dejó como foto del arranque; la fuente del estado por etapa es el §23.
+
+## Registro de avance — Flujo único de turnos (30/10/2026)
+
+Pedido del usuario sobre `TURNO.md` y `TURNO - Tecnico.md`. Ramas `akine-turnos-api` y `akine-turnos-web`.
+Migraciones `V125` a `V128`, contrato `0.150.0`. Diseño: `docs/diseno/AKINE-turnos-flujo-unico.md`.
+
+**Entró:** contexto clínico en el turno, sobreturno con permiso propio, lista de espera, búsqueda y
+validación de disponibilidad con alternativas, agenda operativa, previsualización de serie, tope del plan
+bajo lock, bloqueos que avisan sus turnos afectados, estado operativo derivado. En pantalla, un único
+panel para todos los puntos de entrada y una grilla de agenda que reemplaza a la pantalla de reserva, al
+alta de serie y al calendario. Duración propia por profesional y prestación (`V128`), y agenda que muestra
+sólo el horario de atención, con lo no disponible en gris rayado y los bloqueos en rojo.
+
+**Decisiones tomadas sin consulta, a confirmar:** sin override del tope del plan; ausencia que consume la
+decide quien la registra; responsable distinto es aviso y no bloqueo; lista de espera sin permiso propio;
+motivo "Otro" exige observación; la duración del profesional manda sobre la de la prestación.
+
+**Afuera:** autogestión y portal del paciente, "todas mis sucursales".

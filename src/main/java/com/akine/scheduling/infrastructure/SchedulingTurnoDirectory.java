@@ -59,6 +59,8 @@ public class SchedulingTurnoDirectory implements TurnoDirectory {
 				turno.getInicio(),
 				turno.getFin(),
 				turno.getEstado().name(),
-				turno.estaVivo());
+				turno.estaVivo(),
+				turno.getCasoId(),
+				turno.getPlanId());
 	}
 }

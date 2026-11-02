@@ -8,6 +8,7 @@ import com.akine.resource.spi.DisponibilidadDirectory;
 import com.akine.resource.spi.EspacioDirectory;
 import com.akine.resource.spi.EspacioSnapshot;
 import com.akine.scheduling.domain.Turno;
+import com.akine.scheduling.domain.exception.EspacioNoElegibleException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.SlotCompletoException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
@@ -88,6 +89,7 @@ class RevalidadorDeSlotTest {
 		given(disponibilidad.efectiva(anyLong(), any(), anyLong(), any(), any()))
 				.willReturn(List.of(diaConFranja(INICIO, FIN)));
 		given(turnos.contarVivosEnSlot(anyLong(), anyLong(), any())).willReturn(0L);
+		given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(0L);
 		given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of());
 		given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
@@ -118,6 +120,7 @@ class RevalidadorDeSlotTest {
 		void slot_completo() {
 			// El motor leyo hace un segundo y otro recepcionista confirmo en el medio.
 			given(turnos.contarVivosEnSlot(ORG_ID, OFERTA_ID, INICIO)).willReturn(1L);
+			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
 
 			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
 					.isInstanceOf(SlotCompletoException.class);
@@ -127,6 +130,7 @@ class RevalidadorDeSlotTest {
 		@DisplayName("Una oferta grupal admite hasta su capacidad: el segundo turno entra")
 		void grupal_con_lugar() {
 			given(turnos.contarVivosEnSlot(ORG_ID, OFERTA_ID, INICIO)).willReturn(1L);
+			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
 
 			assertThat(revalidador.revalidar(pedidoDe(ofertaCon(3)))).isNotNull();
 		}
@@ -138,6 +142,7 @@ class RevalidadorDeSlotTest {
 			// el turno chocara contra si mismo y el usuario recibiria un slot-completo imposible de
 			// entender.
 			given(turnos.contarVivosEnSlot(ORG_ID, OFERTA_ID, INICIO)).willReturn(1L);
+			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
 			given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID))
 					.willReturn(Optional.of(turnoVivoEnElSlot()));
 
@@ -295,6 +300,7 @@ class RevalidadorDeSlotTest {
 			// y la segunda inscripcion salia con recurso-ocupado.
 			Turno delGrupo = turno(OFERTA_ID, INICIO, TURNO_ID + 5);
 			given(turnos.contarVivosEnSlot(ORG_ID, OFERTA_ID, INICIO)).willReturn(1L);
+			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
 			given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
 					.willReturn(List.of(delGrupo));
 			given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
@@ -307,6 +313,59 @@ class RevalidadorDeSlotTest {
 		}
 
 		@Test
+		@DisplayName("Quien se suma al grupo y termina despues no hereda un box que a esa hora es de otro")
+		void el_box_del_grupo_ocupado_por_otro_mas_tarde() {
+			// La duracion cambio con el grupo armado: el nuevo termina despues que el resto y se cruza con el
+			// turno siguiente de ese box. Un grupo ocupa un solo box, asi que no se lo reparte.
+			Turno delGrupo = turno(OFERTA_ID, INICIO, TURNO_ID + 5);
+			Turno siguiente = turno(OFERTA_ID + 1, INICIO.plusSeconds(1_800), TURNO_ID + 6);
+			given(turnos.contarVivosEnSlot(ORG_ID, OFERTA_ID, INICIO)).willReturn(1L);
+			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
+			given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
+					.willReturn(List.of(delGrupo));
+			given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
+					.willReturn(List.of(delGrupo, siguiente));
+			given(turnos.findVivosDeLaOfertaEnVentana(eq(ORG_ID), eq(OFERTA_ID), eq(INICIO), any()))
+					.willReturn(List.of(delGrupo));
+
+			assertThatThrownBy(() -> revalidador.revalidar(pedidoDe(ofertaCon(3))))
+					.isInstanceOfSatisfying(RecursoOcupadoException.class,
+							ocupado -> assertThat(ocupado.getRecurso()).isEqualTo("espacio"));
+		}
+
+		@Test
+		@DisplayName("Dos profesionales a la misma hora son dos grupos: el segundo no cae en el box del primero")
+		void otro_profesional_no_comparte_el_box() {
+			Turno delOtro = new Turno(ORG_ID, CONSULTORIO_ID, OFERTA_ID, PERSONA_ID, 999L, ESPACIO_ID,
+					INICIO, FIN, CUENTA, Instant.EPOCH, null, null);
+			ReflectionTestUtils.setField(delOtro, "id", TURNO_ID + 5);
+			given(turnos.findVivosDeLaOfertaEnVentana(eq(ORG_ID), eq(OFERTA_ID), eq(INICIO), any())).willReturn(List.of(delOtro));
+			given(turnos.findVivosDeEspacioQueCruzan(ORG_ID, ESPACIO_ID, INICIO, FIN)).willReturn(List.of(delOtro));
+			given(espacios.enServicio(anyLong(), anyLong(), any(), any()))
+					.willReturn(List.of(espacio(true), espacioDe(ESPACIO_ID + 1)));
+
+			assertThat(revalidador.revalidar(pedido(null)).espacioId()).isEqualTo(ESPACIO_ID + 1);
+
+			given(espacios.enServicio(anyLong(), anyLong(), any(), any())).willReturn(List.of(espacio(true)));
+			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
+					.as("con un solo box el segundo se queda sin lugar, en vez de quedar encima del primero")
+					.isInstanceOfSatisfying(RecursoOcupadoException.class,
+							ocupado -> assertThat(ocupado.getRecurso()).isEqualTo("espacio"));
+		}
+
+		@Test
+		@DisplayName("El box de un grupo dado de baja mientras se reservaba no se hereda bajo el lock; consultar no lo relee")
+		void box_del_grupo_dado_de_baja() {
+			Turno delGrupo = turno(OFERTA_ID, INICIO, TURNO_ID + 5);
+			given(turnos.findVivosDeLaOfertaEnVentana(eq(ORG_ID), eq(OFERTA_ID), eq(INICIO), any())).willReturn(List.of(delGrupo));
+			given(espacios.inactivoBajoLockCompartido(ORG_ID, ESPACIO_ID)).willReturn(true);
+			given(espacios.enServicio(anyLong(), anyLong(), any(), any())).willReturn(List.of(espacioDe(ESPACIO_ID + 1)));
+
+			assertThat(revalidador.revalidar(pedidoDe(ofertaCon(3))).espacioId()).isEqualTo(ESPACIO_ID + 1);
+			assertThat(revalidador.evaluarSinLock(pedidoDe(ofertaCon(3))).espacioId()).isEqualTo(ESPACIO_ID);
+		}
+
+		@Test
 		@DisplayName("Una CLASE en el box tambien lo ocupa")
 		void espacio_ocupado_por_una_clase() {
 			given(ocupacionExterna.espacioOcupado(ORG_ID, ESPACIO_ID, INICIO, FIN))
@@ -315,6 +374,363 @@ class RevalidadorDeSlotTest {
 			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
 					.isInstanceOf(RecursoOcupadoException.class);
 		}
+	}
+
+	@Nested
+	@DisplayName("El turno que se mueve (05.03)")
+	class TurnoExcluido {
+
+		@Test
+		@DisplayName("Un turno que viene de OTRO horario no descuenta cupo: restarlo dejaria entrar uno de mas")
+		void el_que_viene_de_otro_horario_no_descuenta() {
+			Turno enOtroHorario = turno(OFERTA_ID, INICIO.plus(Duration.ofDays(1)), TURNO_ID);
+			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
+			given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(enOtroHorario));
+
+			assertThatThrownBy(() -> revalidador.revalidar(pedido(TURNO_ID)))
+					.isInstanceOf(SlotCompletoException.class);
+		}
+
+		@Test
+		@DisplayName("Tampoco descuenta si ya no existe, si es de otra oferta o si es de otro profesional")
+		void el_que_no_estaba_en_este_slot_no_descuenta() {
+			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
+
+			given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.empty());
+			assertThatThrownBy(() -> revalidador.revalidar(pedido(TURNO_ID))).isInstanceOf(SlotCompletoException.class);
+
+			given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(turnoDeOtraOferta()));
+			assertThatThrownBy(() -> revalidador.revalidar(pedido(TURNO_ID))).isInstanceOf(SlotCompletoException.class);
+
+			Turno deOtroProfesional = new Turno(ORG_ID, CONSULTORIO_ID, OFERTA_ID, PERSONA_ID, 999L, null,
+					INICIO, FIN, CUENTA, Instant.EPOCH, null, null);
+			given(turnos.findByIdInScope(ORG_ID, CONSULTORIO_ID, TURNO_ID)).willReturn(Optional.of(deOtroProfesional));
+			assertThatThrownBy(() -> revalidador.revalidar(pedido(TURNO_ID))).isInstanceOf(SlotCompletoException.class);
+		}
+
+		@Test
+		@DisplayName("No choca contra si mismo ni por el profesional ni por el box")
+		void no_choca_contra_si_mismo() {
+			Turno elMismo = turno(OFERTA_ID + 1, INICIO.minus(Duration.ofMinutes(30)), TURNO_ID);
+			given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any())).willReturn(List.of(elMismo));
+			given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any())).willReturn(List.of(elMismo));
+
+			assertThat(revalidador.revalidar(pedido(TURNO_ID)).espacioId()).isEqualTo(ESPACIO_ID);
+		}
+	}
+
+	@Nested
+	@DisplayName("El choque con otro turno")
+	class Choque {
+
+		@Test
+		@DisplayName("Un profesional ocupado por un turno dice con cual y cuando: la pantalla ofrece alternativas con eso")
+		void con_los_datos_del_choque() {
+			Turno otro = turnoDeOtraOferta();
+			given(turnos.findVivosDeProfesionalQueCruzan(ORG_ID, PROFESIONAL_ID, INICIO, FIN)).willReturn(List.of(otro));
+
+			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
+					.isInstanceOfSatisfying(RecursoOcupadoException.class, ocupado -> {
+						assertThat(ocupado.getRecurso()).isEqualTo("profesional");
+						assertThat(ocupado.getTurnoEnConflictoId()).isEqualTo(otro.getId());
+						assertThat(ocupado.getConflictoInicio()).isEqualTo(otro.getInicio());
+						assertThat(ocupado.getConflictoFin()).isEqualTo(otro.getFin());
+					});
+		}
+
+		@Test
+		@DisplayName("Un profesional habilitado por una fila vencida es lo mismo que uno no habilitado")
+		void habilitacion_vencida() {
+			given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(List.of(
+					new HabilitacionSnapshot(1L, PROFESIONAL_ID, Instant.EPOCH, INICIO.minusSeconds(1), true)));
+
+			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
+					.isInstanceOfSatisfying(SlotNoDisponibleException.class,
+							sinHueco -> assertThat(sinHueco.getMotivo()).contains("habilitado"));
+		}
+
+		@Test
+		@DisplayName("Una oferta sin profesional cuenta el cupo por oferta, y no pregunta por nadie")
+		void oferta_sin_profesional_cuenta_por_oferta() {
+			given(turnos.contarVivosEnSlot(ORG_ID, OFERTA_ID, INICIO)).willReturn(1L);
+
+			assertThatThrownBy(() -> revalidador.revalidar(pedidoDe(oferta(1, false, false))))
+					.isInstanceOf(SlotCompletoException.class);
+			org.mockito.Mockito.verify(turnos, org.mockito.Mockito.never())
+					.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any());
+		}
+	}
+
+	@Nested
+	@DisplayName("El box elegido a mano (TURNO - Tecnico §17)")
+	class BoxElegido {
+
+		@Test
+		@DisplayName("Un box libre y habilitado queda asignado")
+		void box_libre() {
+			conEspacio(espacio(true));
+
+			assertThat(revalidador.revalidar(conBoxElegido()).espacioId()).isEqualTo(ESPACIO_ID);
+		}
+
+		@Test
+		@DisplayName("Elegirlo no habilita un box que la oferta no admite: rechazo de espacio no elegible")
+		void box_que_la_oferta_no_admite() {
+			conEspacio(espacio(true));
+			given(ofertas.espaciosHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(List.of(
+					new HabilitacionSnapshot(1L, ESPACIO_ID + 1, Instant.EPOCH, null, true)));
+
+			assertThatThrownBy(() -> revalidador.revalidar(conBoxElegido()))
+					.isInstanceOfSatisfying(EspacioNoElegibleException.class,
+							noElegible -> assertThat(noElegible.getEspacioId()).isEqualTo(ESPACIO_ID));
+		}
+
+		@Test
+		@DisplayName("Tampoco uno habilitado de manera vencida")
+		void habilitacion_de_box_vencida() {
+			conEspacio(espacio(true));
+			given(ofertas.espaciosHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(List.of(
+					new HabilitacionSnapshot(1L, ESPACIO_ID, Instant.EPOCH, INICIO.minusSeconds(1), true)));
+
+			assertThatThrownBy(() -> revalidador.revalidar(conBoxElegido())).isInstanceOf(EspacioNoElegibleException.class);
+		}
+
+		@Test
+		@DisplayName("Ni uno que no existe, esta de baja, fuera de servicio o es de otra sede")
+		void box_no_utilizable() {
+			given(espacios.find(ORG_ID, ESPACIO_ID, INICIO)).willReturn(Optional.empty());
+			assertThatThrownBy(() -> revalidador.revalidar(conBoxElegido())).isInstanceOf(EspacioNoElegibleException.class);
+
+			conEspacio(espacio(false));
+			assertThatThrownBy(() -> revalidador.revalidar(conBoxElegido())).isInstanceOf(EspacioNoElegibleException.class);
+
+			conEspacio(new EspacioSnapshot(ESPACIO_ID, ORG_ID, CONSULTORIO_ID, "Box 1", "BOX", 1, Instant.EPOCH, null, false, true));
+			assertThatThrownBy(() -> revalidador.revalidar(conBoxElegido())).isInstanceOf(EspacioNoElegibleException.class);
+
+			conEspacio(new EspacioSnapshot(ESPACIO_ID, ORG_ID, 99L, "Box 1", "BOX", 1, Instant.EPOCH, null, true, true));
+			assertThatThrownBy(() -> revalidador.revalidar(conBoxElegido())).isInstanceOf(EspacioNoElegibleException.class);
+		}
+
+		@Test
+		@DisplayName("Ocupado por un turno devuelve con quien choca")
+		void box_ocupado_por_un_turno() {
+			conEspacio(espacio(true));
+			Turno ocupante = turnoDeOtraOferta();
+			given(turnos.findVivosDeEspacioQueCruzan(ORG_ID, ESPACIO_ID, INICIO, FIN)).willReturn(List.of(ocupante));
+
+			assertThatThrownBy(() -> revalidador.revalidar(conBoxElegido()))
+					.isInstanceOfSatisfying(RecursoOcupadoException.class, ocupado -> {
+						assertThat(ocupado.getRecurso()).isEqualTo("espacio");
+						assertThat(ocupado.getTurnoEnConflictoId()).isEqualTo(ocupante.getId());
+					});
+		}
+
+		@Test
+		@DisplayName("Ocupado por una clase es igual de ocupado, aunque no haya turno que nombrar")
+		void box_ocupado_por_una_clase() {
+			conEspacio(espacio(true));
+			given(ocupacionExterna.espacioOcupado(ORG_ID, ESPACIO_ID, INICIO, FIN)).willReturn(true);
+
+			assertThatThrownBy(() -> revalidador.revalidar(conBoxElegido()))
+					.isInstanceOfSatisfying(RecursoOcupadoException.class,
+							ocupado -> assertThat(ocupado.getTurnoEnConflictoId()).isNull());
+		}
+
+		@Test
+		@DisplayName("Dado de baja mientras se reservaba: lo atrapa la relectura con lock, y consultar no la hace")
+		void baja_concurrente_del_box() {
+			conEspacio(espacio(true));
+			given(espacios.inactivoBajoLockCompartido(ORG_ID, ESPACIO_ID)).willReturn(true);
+
+			assertThatThrownBy(() -> revalidador.revalidar(conBoxElegido())).isInstanceOf(EspacioNoElegibleException.class);
+
+			assertThat(revalidador.evaluarSinLock(conBoxElegido()).espacioId())
+					.as("sin lock no toma el compartido: es lo que pregunta una pantalla")
+					.isEqualTo(ESPACIO_ID);
+		}
+	}
+
+	@Nested
+	@DisplayName("Los boxes habilitados de la oferta")
+	class BoxesHabilitados {
+
+		@Test
+		@DisplayName("Toma el primero utilizable y libre, salteando el vencido, el de otra sede y el ocupado")
+		void primero_utilizable_y_libre() {
+			long vencido = 21L;
+			long deOtraSede = 22L;
+			long ocupado = 23L;
+			long ocupadoPorClase = 24L;
+			long libre = 25L;
+			given(ofertas.espaciosHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(List.of(
+					new HabilitacionSnapshot(1L, vencido, Instant.EPOCH, INICIO.minusSeconds(1), true),
+					new HabilitacionSnapshot(2L, deOtraSede, Instant.EPOCH, null, true),
+					new HabilitacionSnapshot(3L, ocupado, Instant.EPOCH, null, true),
+					new HabilitacionSnapshot(4L, ocupadoPorClase, Instant.EPOCH, null, true),
+					new HabilitacionSnapshot(5L, libre, Instant.EPOCH, null, true)));
+			given(espacios.find(ORG_ID, deOtraSede, INICIO)).willReturn(Optional.of(
+					new EspacioSnapshot(deOtraSede, ORG_ID, 99L, "Otra", "BOX", 1, Instant.EPOCH, null, true, true)));
+			given(espacios.find(ORG_ID, ocupado, INICIO)).willReturn(Optional.of(espacioDe(ocupado)));
+			given(espacios.find(ORG_ID, ocupadoPorClase, INICIO)).willReturn(Optional.of(espacioDe(ocupadoPorClase)));
+			given(espacios.find(ORG_ID, libre, INICIO)).willReturn(Optional.of(espacioDe(libre)));
+			given(turnos.findVivosDeEspacioQueCruzan(ORG_ID, ocupado, INICIO, FIN)).willReturn(List.of(turnoDeOtraOferta()));
+			given(ocupacionExterna.espacioOcupado(ORG_ID, ocupadoPorClase, INICIO, FIN)).willReturn(true);
+
+			assertThat(revalidador.revalidar(pedido(null)).espacioId()).isEqualTo(libre);
+		}
+
+		@Test
+		@DisplayName("Si ninguno sirve es recurso-ocupado: el horario existe, lo que falta es un box")
+		void ninguno_sirve() {
+			given(ofertas.espaciosHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(List.of(
+					new HabilitacionSnapshot(1L, ESPACIO_ID, Instant.EPOCH, null, true)));
+			given(espacios.find(ORG_ID, ESPACIO_ID, INICIO)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
+					.isInstanceOfSatisfying(RecursoOcupadoException.class,
+							ocupado -> assertThat(ocupado.getRecurso()).isEqualTo("espacio"));
+		}
+
+		@Test
+		@DisplayName("Un box dado de baja mientras se reservaba no se elige, bajo el lock; pasa al siguiente")
+		void baja_concurrente_pasa_al_siguiente() {
+			EspacioSnapshot otro = espacioDe(ESPACIO_ID + 1);
+			given(espacios.enServicio(anyLong(), anyLong(), any(), any())).willReturn(List.of(espacio(true), otro));
+			given(espacios.inactivoBajoLockCompartido(ORG_ID, ESPACIO_ID)).willReturn(true);
+
+			assertThat(revalidador.revalidar(pedido(null)).espacioId()).isEqualTo(ESPACIO_ID + 1);
+			assertThat(revalidador.evaluarSinLock(pedido(null)).espacioId())
+					.as("sin lock no se relee")
+					.isEqualTo(ESPACIO_ID);
+		}
+	}
+
+	@Nested
+	@DisplayName("Sobreturno (§5): solo salva la ocupacion")
+	class Sobreturno {
+
+		@Test
+		@DisplayName("Entra con el horario lleno y el profesional ocupado, y sin box libre queda sin box")
+		void salva_la_ocupacion() {
+			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
+			given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any())).willReturn(List.of(turnoDeOtraOferta()));
+			given(ocupacionExterna.profesionalOcupado(anyLong(), anyLong(), any(), any())).willReturn(true);
+			given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any())).willReturn(List.of(turnoDeOtraOferta()));
+
+			RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(sobreturno());
+
+			assertThat(asignacion.profesionalId()).isEqualTo(PROFESIONAL_ID);
+			assertThat(asignacion.espacioId()).isNull();
+		}
+
+		@Test
+		@DisplayName("No salva un horario fuera de la disponibilidad")
+		void no_salva_un_horario_que_no_existe() {
+			given(disponibilidad.efectiva(anyLong(), any(), anyLong(), any(), any())).willReturn(List.of());
+
+			assertThatThrownBy(() -> revalidador.revalidar(sobreturno())).isInstanceOf(SlotNoDisponibleException.class);
+		}
+
+		@Test
+		@DisplayName("No salva un box que la oferta no admite")
+		void no_salva_un_box_no_elegible() {
+			given(espacios.find(ORG_ID, ESPACIO_ID, INICIO)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> revalidador.revalidar(new RevalidadorDeSlot.Pedido(ORG_ID, CONSULTORIO_ID, sede(), ofertaCon(1),
+					INICIO, FIN, PROFESIONAL_ID, null, ESPACIO_ID, true)))
+					.isInstanceOf(EspacioNoElegibleException.class);
+		}
+
+		private RevalidadorDeSlot.Pedido sobreturno() {
+			return new RevalidadorDeSlot.Pedido(ORG_ID, CONSULTORIO_ID, sede(), ofertaCon(1), INICIO, FIN, PROFESIONAL_ID, null, null, true);
+		}
+	}
+
+	@Nested
+	@DisplayName("Los boxes para la opcion Cambiar")
+	class EspaciosLibres {
+
+		@Test
+		@DisplayName("Una oferta sin box no ofrece ninguno, y no pregunta")
+		void oferta_sin_box() {
+			assertThat(revalidador.espaciosLibres(pedidoDe(oferta(1, true, false)))).isEmpty();
+
+			org.mockito.Mockito.verifyNoInteractions(espacios);
+		}
+
+		@Test
+		@DisplayName("Sin habilitaciones son los de la sede en servicio, sin el ocupado ni el fuera de servicio")
+		void los_de_la_sede() {
+			long ocupado = 21L;
+			long ocupadoPorClase = 22L;
+			given(espacios.enServicio(anyLong(), anyLong(), any(), any())).willReturn(List.of(
+					espacio(true), espacioDe(ocupado), espacioDe(ocupadoPorClase),
+					new EspacioSnapshot(23L, ORG_ID, CONSULTORIO_ID, "En obra", "BOX", 1, Instant.EPOCH, null, true, false),
+					new EspacioSnapshot(24L, ORG_ID, 99L, "Otra sede", "BOX", 1, Instant.EPOCH, null, true, true)));
+			given(turnos.findVivosDeEspacioQueCruzan(ORG_ID, ocupado, INICIO, FIN)).willReturn(List.of(turnoDeOtraOferta()));
+			given(ocupacionExterna.espacioOcupado(ORG_ID, ocupadoPorClase, INICIO, FIN)).willReturn(true);
+
+			assertThat(revalidador.espaciosLibres(pedido(null))).extracting(EspacioSnapshot::id).containsExactly(ESPACIO_ID);
+		}
+
+		@Test
+		@DisplayName("Con habilitaciones son las vigentes que resuelven, y el turno que se mueve no ocupa su propio box")
+		void los_habilitados() {
+			Turno elMismo = turno(OFERTA_ID, INICIO, TURNO_ID);
+			given(ofertas.espaciosHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID)).willReturn(List.of(
+					new HabilitacionSnapshot(1L, ESPACIO_ID, Instant.EPOCH, null, true),
+					new HabilitacionSnapshot(2L, 21L, Instant.EPOCH, INICIO.minusSeconds(1), true),
+					new HabilitacionSnapshot(3L, 22L, Instant.EPOCH, null, true)));
+			given(espacios.find(ORG_ID, ESPACIO_ID, INICIO)).willReturn(Optional.of(espacio(true)));
+			given(espacios.find(ORG_ID, 22L, INICIO)).willReturn(Optional.empty());
+			given(turnos.findVivosDeEspacioQueCruzan(ORG_ID, ESPACIO_ID, INICIO, FIN)).willReturn(List.of(elMismo));
+
+			assertThat(revalidador.espaciosLibres(pedido(TURNO_ID))).extracting(EspacioSnapshot::id).containsExactly(ESPACIO_ID);
+		}
+	}
+
+	@Nested
+	@DisplayName("Los feriados de una serie (U-22)")
+	class Feriados {
+
+		@Test
+		@DisplayName("Son los dias vacios por feriado, no los vacios por otra razon, en una sola consulta")
+		void solo_los_feriados() {
+			LocalDate lunes = LocalDate.of(2026, 10, 5);
+			LocalDate martes = lunes.plusDays(1);
+			LocalDate miercoles = lunes.plusDays(2);
+			given(disponibilidad.efectiva(ORG_ID, sede(), PROFESIONAL_ID, lunes, lunes.plusDays(3))).willReturn(List.of(
+					new DisponibilidadDirectory.DiaDisponible(lunes, "FERIADO", List.of()),
+					new DisponibilidadDirectory.DiaDisponible(martes, "CIERRE", List.of()),
+					diaConFranja(miercoles.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+							miercoles.atStartOfDay(java.time.ZoneOffset.UTC).plusHours(1).toInstant())));
+
+			assertThat(revalidador.feriadosQueCierran(ORG_ID, sede(), ofertaCon(1), PROFESIONAL_ID, lunes, lunes.plusDays(3)))
+					.containsExactly(lunes);
+		}
+
+		@Test
+		@DisplayName("Sin profesional no hay nada que omitir: esa reserva no pasa por la disponibilidad")
+		void sin_profesional_no_omite_nada() {
+			LocalDate lunes = LocalDate.of(2026, 10, 5);
+
+			assertThat(revalidador.feriadosQueCierran(ORG_ID, sede(), oferta(1, false, false), null, lunes, lunes.plusDays(1))).isEmpty();
+			assertThat(revalidador.feriadosQueCierran(ORG_ID, sede(), ofertaCon(1), null, lunes, lunes.plusDays(1))).isEmpty();
+			org.mockito.Mockito.verifyNoInteractions(disponibilidad);
+		}
+	}
+
+	private void conEspacio(EspacioSnapshot espacio) {
+		given(espacios.find(ORG_ID, ESPACIO_ID, INICIO)).willReturn(Optional.of(espacio));
+	}
+
+	private static RevalidadorDeSlot.Pedido conBoxElegido() {
+		return new RevalidadorDeSlot.Pedido(ORG_ID, CONSULTORIO_ID, sede(), ofertaCon(1), INICIO, FIN,
+				PROFESIONAL_ID, null, ESPACIO_ID, false);
+	}
+
+	private static EspacioSnapshot espacioDe(long id) {
+		return new EspacioSnapshot(id, ORG_ID, CONSULTORIO_ID, "Box " + id, "BOX", 1, Instant.EPOCH, null, true, true);
 	}
 
 	// =================================================================================

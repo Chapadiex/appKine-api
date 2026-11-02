@@ -1,5 +1,8 @@
 package com.akine.scheduling.spi;
 
+import java.util.Collection;
+import java.util.Map;
+
 /**
  * Pregunta si un turno ya tiene una atencion registrada. Es la costura hacia M14.
  *
@@ -34,4 +37,14 @@ public interface AtencionProbe {
 	 *                      equivocado obtiene una respuesta que no falla, miente
 	 */
 	boolean tieneAtencion(long organizationId, long consultorioId, long turnoId);
+
+	/**
+	 * La atencion de cada turno que la tenga, en una sola consulta. Es lo que le permite a la agenda
+	 * decir "en atencion" o "atendido" sin preguntar turno por turno. Un turno sin atencion no aparece.
+	 */
+	Map<Long, AtencionDeTurno> atencionesDe(long organizationId, Collection<Long> turnoIds);
+
+	/** @param cerrada {@code true} si la Sesion ya se cerro: es la prueba de que se atendio (DP-05) */
+	record AtencionDeTurno(long sesionId, boolean cerrada) {
+	}
 }

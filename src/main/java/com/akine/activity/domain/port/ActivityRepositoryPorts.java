@@ -591,7 +591,8 @@ public final class ActivityRepositoryPorts {
 		/**
 		 * Una pagina del ledger, del movimiento mas viejo al mas nuevo (AKINE-08.08, RF-M29-009):
 		 * el orden en que se lee {@code saldoResultante}. El desempate por id hace estable el corte
-		 * entre paginas aunque dos movimientos compartan instante.
+		 * entre paginas aunque dos movimientos compartan instante. DP-45: el orden lo trae
+		 * {@code pagina} —el servicio pide ese mismo por defecto—, no la consulta.
 		 */
 		Page<MovimientoPase> historial(long organizationId, long paseId, Pageable pagina);
 

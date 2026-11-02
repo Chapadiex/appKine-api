@@ -6,12 +6,15 @@ import com.akine.scheduling.api.dto.CrearSerieDeTurnosRequest;
 import com.akine.scheduling.api.dto.ReprogramarSerieDeTurnosRequest;
 import com.akine.scheduling.api.dto.SerieDeTurnosPageResponse;
 import com.akine.scheduling.api.dto.SerieDeTurnosResponse;
+import com.akine.scheduling.api.dto.PrevisualizacionDeSerieResponse;
 import com.akine.scheduling.application.AltaDeSerieCommand;
+import com.akine.scheduling.application.PrevisualizacionDeSerieService;
 import com.akine.scheduling.application.OperacionDeSerieCommand;
 import com.akine.scheduling.application.SerieDeTurnosService;
 import com.akine.scheduling.domain.AlcanceDeSerie;
 import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.ReglaDeRecurrencia;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -53,11 +56,59 @@ public class SerieDeTurnosController {
 	private static final int TAMANO_MAXIMO = 100;
 
 	private final SerieDeTurnosService service;
+	private final PrevisualizacionDeSerieService previsualizacion;
 	private final SchedulingApiActor apiActor;
 
-	public SerieDeTurnosController(SerieDeTurnosService service, SchedulingApiActor apiActor) {
+	public SerieDeTurnosController(
+			SerieDeTurnosService service,
+			PrevisualizacionDeSerieService previsualizacion,
+			SchedulingApiActor apiActor) {
 		this.service = service;
+		this.previsualizacion = previsualizacion;
 		this.apiActor = apiActor;
+	}
+
+	@PostMapping("/previsualizacion")
+	@Operation(
+			operationId = "previsualizarSerieDeTurnos",
+			summary = "Ver que se reservaria, sin crear nada",
+			description = """
+					Evalua cada ocurrencia de la regla con los mismos controles de la reserva y, si una no se \
+					puede, **sugiere el horario mas cercano**. No crea nada: lo que se confirma en el alta es lo \
+					que quede de esto despues de revisarlo. Con plan, informa cuantas sesiones le quedan.
+
+					Exige `turno:read`. Es informativo: el alta revalida todo bajo el lock de la sede.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "La propuesta"),
+			@ApiResponse(responseCode = "400", description = "Regla invalida", content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "Sin `turno:read` en esa sede", content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "La sede o la oferta no existen, o son de otro tenant", content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "El caso o el plan no sirven para esta prestacion", content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<PrevisualizacionDeSerieResponse> previsualizar(
+			@PathVariable long consultorioId,
+			@RequestBody @Valid CrearSerieDeTurnosRequest request) {
+
+		return ResponseEntity.ok(PrevisualizacionDeSerieResponse.de(
+				previsualizacion.previsualizar(apiActor.current(), consultorioId, comando(request))));
+	}
+
+	private static AltaDeSerieCommand comando(CrearSerieDeTurnosRequest request) {
+		EnumSet<DayOfWeek> dias = EnumSet.noneOf(DayOfWeek.class);
+		request.diasSemana().forEach(dia -> dias.add(DayOfWeek.of(dia)));
+		return new AltaDeSerieCommand(
+				request.ofertaId(),
+				request.personaId(),
+				request.profesionalId(),
+				new ReglaDeRecurrencia(dias, request.hora(), request.fechaDesde(),
+						request.fechaHasta(), request.cantidad()),
+				request.idempotencyKey(),
+				request.ocurrencias() == null ? null : request.ocurrencias().stream()
+						.map(ocurrencia -> new AltaDeSerieCommand.OcurrenciaElegida(
+								ocurrencia.inicio(), ocurrencia.profesionalId()))
+						.toList(),
+				request.casoId(),
+				request.planId(),
+				request.origen());
 	}
 
 	@PostMapping
@@ -111,16 +162,7 @@ public class SerieDeTurnosController {
 			@PathVariable long consultorioId,
 			@RequestBody @Valid CrearSerieDeTurnosRequest request) {
 
-		EnumSet<DayOfWeek> dias = EnumSet.noneOf(DayOfWeek.class);
-		request.diasSemana().forEach(dia -> dias.add(DayOfWeek.of(dia)));
-
-		var resultado = service.crear(apiActor.current(), consultorioId, new AltaDeSerieCommand(
-				request.ofertaId(),
-				request.personaId(),
-				request.profesionalId(),
-				new ReglaDeRecurrencia(dias, request.hora(), request.fechaDesde(),
-						request.fechaHasta(), request.cantidad()),
-				request.idempotencyKey()));
+		var resultado = service.crear(apiActor.current(), consultorioId, comando(request));
 
 		SerieDeTurnosResponse cuerpo = SerieDeTurnosResponse.de(resultado.serie());
 		if (!resultado.creada()) {
@@ -148,9 +190,16 @@ public class SerieDeTurnosController {
 					empezo; `FINALIZADA` = no le queda ninguno.
 
 					Paginado base cero; `size` se acota a 100. Exige `turno:read`. PHI minima: \
-					nombre y documento del paciente, nada clinico.""")
+					nombre y documento del paciente, nada clinico.
+
+					DP-45: `q` busca "contiene", sin distinguir mayusculas ni acentos, en el \
+					apellido, el nombre y el documento del paciente, en el nombre comercial de la \
+					oferta y en el nombre del profesional. `sort` ordena por creadaEn, fechaDesde \
+					o fechaHasta.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Una pagina de series"),
+			@ApiResponse(responseCode = "400", description = "`sort` fuera del enum",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
 					description = "Sin `turno:read` en esa sede",
@@ -166,12 +215,22 @@ public class SerieDeTurnosController {
 			@RequestParam(required = false) @Parameter(description = "Estado derivado de sus turnos", example = "VIGENTE")
 			EstadoDeSerie estado,
 			@RequestParam(defaultValue = "0") @Parameter(description = "Pagina, base cero") int page,
-			@RequestParam(defaultValue = "20") @Parameter(description = "Tamano de pagina, maximo 100") int size) {
+			@RequestParam(defaultValue = "20") @Parameter(description = "Tamano de pagina, maximo 100") int size,
+			@RequestParam(required = false) @Parameter(
+					description = "Texto a buscar en el paciente, la oferta o el profesional", example = "perez")
+			String q,
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) @Parameter(
+					description = OrdenDeListado.DESCRIPCION + "las mas nuevas primero.",
+					schema = @Schema(allowableValues = {"creadaEn,asc", "creadaEn,desc",
+							"fechaDesde,asc", "fechaDesde,desc", "fechaHasta,asc", "fechaHasta,desc"}))
+			String sort) {
 
 		int pagina = Math.max(page, 0);
 		int tamano = Math.min(Math.max(size, 1), TAMANO_MAXIMO);
+		var orden = OrdenDeListado.leer(sort, SerieDeTurnosService.ORDEN_DE_SERIES);
 		return ResponseEntity.ok(SerieDeTurnosPageResponse.of(
-				service.listar(apiActor.current(), consultorioId, personaId, estado, pagina, tamano),
+				service.listar(apiActor.current(), consultorioId, personaId, estado, q, orden,
+						pagina, tamano),
 				pagina, tamano));
 	}
 

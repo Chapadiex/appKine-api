@@ -14,7 +14,9 @@ import com.akine.activity.application.IngresoSinInscripcionCommand;
 import com.akine.activity.application.RegistrarAsistenciaCommand;
 import com.akine.activity.application.ResultadoDeAsistencia;
 import com.akine.activity.domain.OrigenAsistencia;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -331,9 +333,15 @@ public class AsistenciaController {
 					no puede ver a que se atiende nadie; lo economico porque todavia no existe.
 
 					Exige `inscripcion:read`, **que no es `clase:read`**: quien mira la grilla del \
-					dia no necesita saber quien esta anotado.""")
+					dia no necesita saber quien esta anotado.
+
+					DP-45: `sort` ordena por apellido, inscriptoEn, estado o posicionEspera. Sin \
+					`q`: una clase tiene a lo sumo su capacidad mas la espera, y la pantalla la \
+					recorre entera.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Pagina de participantes"),
+			@ApiResponse(responseCode = "400", description = "`sort` fuera del enum",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
 					description = "Sin `inscripcion:read` en esa sede, o sin contexto activo",
@@ -346,13 +354,20 @@ public class AsistenciaController {
 			@PathVariable long consultorioId,
 			@PathVariable long claseId,
 			@RequestParam(defaultValue = PAGINA_POR_DEFECTO) int page,
-			@RequestParam(defaultValue = TAMANO_POR_DEFECTO) int size) {
+			@RequestParam(defaultValue = TAMANO_POR_DEFECTO) int size,
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "la lista de espera por "
+					+ "posicion y el resto por orden de inscripcion.",
+					schema = @Schema(allowableValues = {"apellido,asc", "apellido,desc",
+							"inscriptoEn,asc", "inscriptoEn,desc", "estado,asc", "estado,desc",
+							"posicionEspera,asc", "posicionEspera,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
 
 		int pagina = Math.max(page, 0);
 		int tamano = Math.min(Math.max(size, 1), TAMANO_MAXIMO);
+		var orden = OrdenDeListado.leer(sort, AsistenciaService.ORDEN_DE_PARTICIPANTES);
 
 		return DetalleOperativoResponse.de(asistenciaService.detalleOperativo(
-				apiActor.current(), consultorioId, claseId, pagina, tamano));
+				apiActor.current(), consultorioId, claseId, orden, pagina, tamano));
 	}
 
 	@GetMapping("/asistencias/{asistenciaId}/historial")

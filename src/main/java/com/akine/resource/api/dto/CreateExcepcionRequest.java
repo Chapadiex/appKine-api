@@ -100,5 +100,12 @@ public record CreateExcepcionRequest(
 				description = "Texto libre operativo. NUNCA informacion clinica",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		@Size(max = 280, message = "La observacion no puede superar los 280 caracteres")
-		String notes) {
+		String notes,
+
+		@Schema(
+				description = "Confirma que se quiere cargar un CIERRE aunque deje afuera turnos pendientes. "
+						+ "Sin esto, un cierre con turnos afectados responde 409 "
+						+ "`bloqueo-con-turnos-afectados`: no se guarda en silencio.",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean confirmaTurnosAfectados) {
 }

@@ -11,6 +11,7 @@ import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.MembershipService;
 import com.akine.organization.application.OperatingActor;
 import com.akine.platform.spi.tenant.TenantContextHolder;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -100,7 +101,11 @@ public class MembershipController {
 					desvinculo y por que. Para eso existe la baja logica. El cliente distingue por \
 					el campo estado, no por ausencia.
 
-					size se acota a 100 por request. Pedir 500 devuelve 100, no un error.""")
+					size se acota a 100 por request. Pedir 500 devuelve 100, no un error.
+
+					DP-45: q busca "contiene" en el nombre y en el correo de la cuenta, sin \
+					distinguir mayusculas ni acentos. sort ordena por nombre, email, rol, estado \
+					o vigenteDesde; sin el, por id.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -108,6 +113,12 @@ public class MembershipController {
 					content = @Content(
 							mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = MembershipPageResponse.class))),
+			@ApiResponse(
+					responseCode = "400",
+					description = "sort no es uno de los valores del enum",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
 					description = "No hay sesion autenticada, no hay contexto de trabajo activo, "
@@ -129,13 +140,25 @@ public class MembershipController {
 			@RequestParam(defaultValue = ApiPaging.PAGINA_POR_DEFECTO) int page,
 
 			@Parameter(description = "Elementos por pagina. Se acota a 100", example = "20")
-			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size) {
+			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size,
 
+			@Parameter(description = "Texto a buscar en el nombre o el correo del colaborador",
+					example = "perez")
+			@RequestParam(required = false) String q,
+
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "id ascendente.",
+					schema = @Schema(allowableValues = {"nombre,asc", "nombre,desc", "email,asc",
+							"email,desc", "rol,asc", "rol,desc", "estado,asc", "estado,desc",
+							"vigenteDesde,asc", "vigenteDesde,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
+
+		OperatingActor actor = actor(orgId);
+		var orden = OrdenDeListado.leer(sort, MembershipService.ORDEN_DE_COLABORADORES.keySet());
 		PageRequest pagina = PageRequest.of(
 				ApiPaging.pagina(page), ApiPaging.tamano(size), Sort.by(Sort.Direction.ASC, "id"));
 
 		return ResponseEntity.ok(MembershipPageResponse.from(
-				membershipService.list(actor(orgId), orgId, pagina)));
+				membershipService.list(actor, orgId, q, orden, pagina)));
 	}
 
 	@GetMapping("/{membershipId}")

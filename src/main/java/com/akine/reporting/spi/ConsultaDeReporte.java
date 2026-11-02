@@ -3,6 +3,10 @@ package com.akine.reporting.spi;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.zone.ZoneOffsetTransition;
+import java.time.zone.ZoneRules;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -121,5 +125,47 @@ public record ConsultaDeReporte(
 	 */
 	public Collection<Long> membershipsDelRecorte() {
 		return recortadaAActividadPropia() ? actividadPropiaDe : List.of(SIN_RECORTE);
+	}
+
+	/**
+	 * El periodo partido en tramos de desfase constante respecto de UTC (DP-45, serie temporal).
+	 *
+	 * <p>Existe para agrupar <b>por dia de la sede</b> en SQL sin depender de que MySQL tenga
+	 * cargadas las tablas de zonas horarias: {@code CONVERT_TZ(col, '+00:00', '-03:00')} con un
+	 * desfase numerico funciona siempre, mientras que con un nombre IANA devuelve {@code NULL} si
+	 * las tablas faltan. Una zona con horario de verano cambia de desfase a mitad del periodo, y por
+	 * eso el periodo se parte en cada transicion: dentro de cada tramo el desfase es exacto.
+	 *
+	 * <p>Los tramos cubren {@code [desdeInstante, hastaInstante)} sin huecos ni solapes, asi que la
+	 * suma de lo que cuenta cada tramo es lo que cuenta el indicador sobre la ventana entera.
+	 */
+	public List<TramoHorario> tramosHorarios() {
+		ZoneRules reglas = zona.getRules();
+		List<TramoHorario> tramos = new ArrayList<>();
+		Instant inicio = desdeInstante;
+		while (inicio.isBefore(hastaInstante)) {
+			ZoneOffsetTransition transicion = reglas.nextTransition(inicio);
+			Instant fin = transicion == null || !transicion.getInstant().isBefore(hastaInstante)
+					? hastaInstante
+					: transicion.getInstant();
+			tramos.add(new TramoHorario(inicio, fin, desfaseSql(reglas.getOffset(inicio))));
+			inicio = fin;
+		}
+		return tramos;
+	}
+
+	/** {@code ZoneOffset.UTC.getId()} es {@code "Z"}, que {@code CONVERT_TZ} no entiende. */
+	static String desfaseSql(ZoneOffset desfase) {
+		return desfase.getTotalSeconds() == 0 ? "+00:00" : desfase.getId();
+	}
+
+	/**
+	 * Un tramo del periodo con desfase constante.
+	 *
+	 * @param desde   inclusive
+	 * @param hasta   exclusivo
+	 * @param desfase {@code "+HH:MM"} o {@code "-HH:MM"}, listo para {@code CONVERT_TZ}
+	 */
+	public record TramoHorario(Instant desde, Instant hasta, String desfase) {
 	}
 }

@@ -13,9 +13,10 @@ public record EventoDeRecepcionView(
 		String estadoNuevo,
 		String motivo,
 		Long actorCuentaId,
+		String actorNombre,
 		Instant ocurridoEn) {
 
-	public static EventoDeRecepcionView de(RecepcionEvento evento) {
+	public static EventoDeRecepcionView de(RecepcionEvento evento, String actorNombre) {
 		return new EventoDeRecepcionView(
 				evento.getId(),
 				evento.getRecepcionId(),
@@ -24,6 +25,7 @@ public record EventoDeRecepcionView(
 				evento.getEstadoNuevo().name(),
 				evento.getMotivo(),
 				evento.getActorCuentaId(),
+				actorNombre,
 				evento.getOcurridoEn());
 	}
 }

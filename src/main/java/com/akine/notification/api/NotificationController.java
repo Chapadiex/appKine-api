@@ -4,6 +4,7 @@ import com.akine.notification.api.dto.NotificationPageResponse;
 import com.akine.notification.application.ConsultaDeNotificacionesService;
 import com.akine.notification.application.ReintentoDeNotificacionService;
 import com.akine.notification.domain.OutboxStatus;
+import com.akine.platform.spi.listado.OrdenDeListado;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -71,7 +72,13 @@ public class NotificationController {
 
 					**Sin datos clinicos ni contenido:** el destinatario va enmascarado, el cuerpo \
 					no sale nunca y el ultimo error es un resumen ya sanitizado. De la mas nueva a \
-					la mas vieja. `size` se acota a 100 por request.""")
+					la mas vieja. `size` se acota a 100 por request.
+
+					DP-45: `q` coincide con el tipo de notificacion que contiene el texto (sin \
+					distinguir mayusculas ni acentos) o con el destinatario EXACTO: como el \
+					listado lo enmascara, un "contiene" sobre la casilla real dejaria \
+					reconstruirla preguntando letra por letra. `sort` ordena por creadaEn, \
+					estado, tipo o intentos.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -81,7 +88,7 @@ public class NotificationController {
 							schema = @Schema(implementation = NotificationPageResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "Un `estado` que no es un valor legal",
+					description = "Un `estado` que no es un valor legal, o `sort` fuera del enum",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -108,10 +115,22 @@ public class NotificationController {
 			@RequestParam(defaultValue = "0") int page,
 
 			@Parameter(description = "Elementos por pagina. Se acota a 100", example = "20")
-			@RequestParam(defaultValue = "20") int size) {
+			@RequestParam(defaultValue = "20") int size,
 
+			@Parameter(description = "Tipo de notificacion o destinatario exacto",
+					example = "INVITACION")
+			@RequestParam(required = false) String q,
+
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "creadaEn descendente.",
+					schema = @Schema(allowableValues = {"creadaEn,asc", "creadaEn,desc",
+							"estado,asc", "estado,desc", "tipo,asc", "tipo,desc", "intentos,asc",
+							"intentos,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
+
+		var orden = OrdenDeListado.leer(
+				sort, ConsultaDeNotificacionesService.ORDEN_DE_NOTIFICACIONES.keySet());
 		return ResponseEntity.ok(NotificationPageResponse.de(consultas.listar(
-				apiActor.current(), orgId, estado,
+				apiActor.current(), orgId, estado, q, orden,
 				Math.max(page, 0), Math.min(Math.max(size, 1), TAMANO_MAXIMO))));
 	}
 

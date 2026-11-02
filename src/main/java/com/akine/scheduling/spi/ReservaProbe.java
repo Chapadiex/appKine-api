@@ -1,6 +1,7 @@
 package com.akine.scheduling.spi;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -50,4 +51,29 @@ public interface ReservaProbe {
 			List<Long> recursoIds,
 			Instant desde,
 			Instant hasta);
+
+	/**
+	 * Lo que tiene ocupados a esos profesionales o a esos espacios en la ventana: turnos vivos de
+	 * cualquier oferta, y clases de la sede.
+	 *
+	 * <p>Es lo que hace que la agenda no ofrezca un horario que la reserva despues rechaza. Un slot
+	 * libre de ESTA oferta no alcanza: el profesional puede estar con otra prestacion a esa hora, o
+	 * todos los boxes pueden estar tomados.
+	 */
+	List<OcupacionDeRecurso> ocupacionDeRecursos(
+			long organizationId,
+			long consultorioId,
+			Collection<Long> profesionalIds,
+			Collection<Long> espacioIds,
+			Instant desde,
+			Instant hasta);
+
+	/** @param ofertaId {@code null} si no es un turno: una clase nunca es del mismo grupo */
+	record OcupacionDeRecurso(
+			Long turnoId, Long ofertaId, Long profesionalId, Long espacioId, Instant inicio, Instant fin) {
+
+		public boolean seCruzaCon(Instant desde, Instant hasta) {
+			return inicio.isBefore(hasta) && desde.isBefore(fin);
+		}
+	}
 }

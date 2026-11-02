@@ -35,6 +35,8 @@ import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.listado.OrdenDeListado;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +49,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -659,6 +662,23 @@ public class AsistenciaService {
 	@Transactional(readOnly = true)
 	public DetalleOperativoView detalleOperativo(
 			OperatingActor actor, long consultorioId, long claseId, int page, int size) {
+		return detalleOperativo(actor, consultorioId, claseId, Optional.empty(), page, size);
+	}
+
+	/** DP-45: los campos por los que se ordenan los participantes. */
+	public static final java.util.Set<String> ORDEN_DE_PARTICIPANTES =
+			java.util.Set.of("apellido", "inscriptoEn", "estado", "posicionEspera");
+
+	/**
+	 * El detalle operativo con el orden que pide el cliente (DP-45). Sin orden, el de siempre: la
+	 * lista de espera por posicion y despues el resto por id. Ordenar por apellido resuelve los
+	 * nombres de TODOS los inscriptos en una consulta: la clase esta acotada por su capacidad y su
+	 * espera, y la pagina sola no alcanza para ordenar.
+	 */
+	@Transactional(readOnly = true)
+	public DetalleOperativoView detalleOperativo(
+			OperatingActor actor, long consultorioId, long claseId, Optional<OrdenDeListado> orden,
+			int page, int size) {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
@@ -672,7 +692,20 @@ public class AsistenciaService {
 				.collect(Collectors.toMap(
 						AsistenciaActividad::getInscripcionId, asistencia -> asistencia));
 
-		List<InscripcionClase> pagina = todas.stream()
+		Map<Long, PacienteSnapshot> nombresDeTodas = orden
+				.filter(pedido -> "apellido".equals(pedido.campo()))
+				.map(pedido -> personas.findAll(organizationId,
+						todas.stream().map(InscripcionClase::getPersonaId).distinct().toList()))
+				.orElse(Map.of());
+		List<InscripcionClase> ordenadas = orden
+				.map(pedido -> todas.stream()
+						.sorted(pedido.aplicar(
+								comparadorDeParticipantes(pedido.campo(), nombresDeTodas),
+								Comparator.comparingLong(InscripcionClase::getId)))
+						.toList())
+				.orElse(todas);
+
+		List<InscripcionClase> pagina = ordenadas.stream()
 				.skip((long) page * size)
 				.limit(size)
 				.toList();
@@ -815,6 +848,23 @@ public class AsistenciaService {
 	 * Una persona que no vuelve del padron no rompe la lista: la inscripcion existe y hay que poder
 	 * verla. Que falte el nombre es un dato, no un error.
 	 */
+
+	/** El comparador ascendente de cada campo de {@link #ORDEN_DE_PARTICIPANTES}. */
+	private static Comparator<InscripcionClase> comparadorDeParticipantes(
+			String campo, Map<Long, PacienteSnapshot> nombres) {
+		return switch (campo) {
+			case "apellido" -> TextoDeBusqueda.comparadorDeTexto(
+					(InscripcionClase i) -> nombreDe(nombres.get(i.getPersonaId()), true));
+			case "inscriptoEn" -> Comparator.comparing(
+					InscripcionClase::getInscriptoEn, Comparator.nullsLast(Comparator.naturalOrder()));
+			case "estado" -> TextoDeBusqueda.comparadorDeTexto(
+					(InscripcionClase i) -> i.getEstado() == null ? null : i.getEstado().name());
+			case "posicionEspera" -> Comparator.comparing(
+					InscripcionClase::getPosicionEspera, Comparator.nullsLast(Comparator.naturalOrder()));
+			default -> throw new IllegalStateException("Campo de orden sin comparador: " + campo);
+		};
+	}
+
 	private static String nombreDe(PacienteSnapshot persona, boolean apellido) {
 		if (persona == null) {
 			return null;

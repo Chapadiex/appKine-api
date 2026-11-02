@@ -20,4 +20,11 @@ public interface SubscriptionTransitionRepositoryPort {
 	/** Historico paginado de una suscripcion, del hecho mas reciente al mas viejo. */
 	Page<SubscriptionTransition> findAllByOrganizationIdAndSubscriptionIdOrderByOccurredAtDesc(
 			Long organizationId, Long subscriptionId, Pageable pageable);
+
+	/**
+	 * DP-45: el mismo historico con el orden que trae el {@link Pageable}. Lo usa el listado
+	 * cuando el cliente pide {@code sort}; sin el, sigue el de arriba.
+	 */
+	Page<SubscriptionTransition> findAllByOrganizationIdAndSubscriptionId(
+			Long organizationId, Long subscriptionId, Pageable pageable);
 }

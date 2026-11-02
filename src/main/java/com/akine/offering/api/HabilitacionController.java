@@ -1,6 +1,7 @@
 package com.akine.offering.api;
 
 import com.akine.offering.api.dto.HabilitacionesResponse;
+import com.akine.offering.api.dto.ReemplazarDuracionesPropiasRequest;
 import com.akine.offering.api.dto.ReemplazarHabilitacionesRequest;
 import com.akine.offering.api.dto.ValidacionDeOfertaResponse;
 import com.akine.offering.application.OfertaHabilitacionService;
@@ -27,8 +28,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -127,7 +130,10 @@ public class HabilitacionController {
 					espacios habilitados que estan en servicio. Sin espacios habilitados es igual \
 					a la comercial: no hay ningun espacio concreto contra el cual acotarla. \
 					espacioQueLimita nombra cual la acota, y mostrar un numero mas chico sin ese \
-					nombre es un defecto de la pantalla.""")
+					nombre es un defecto de la pantalla.
+
+					duracionesPropias dice cuanto tarda cada profesional que no tarda lo que dura la \
+					oferta. Quien no aparece usa la de la oferta.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -316,6 +322,82 @@ public class HabilitacionController {
 				habilitacionService.reemplazarEspacios(
 						actor, organizationId, consultorioId, ofertaId,
 						comoConjunto(request.ids()), request.expectedVersion())));
+	}
+
+	@PutMapping(path = "/habilitaciones/duraciones", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "reemplazarDuracionesPropias",
+			summary = "Fijar cuanto tarda cada profesional en la oferta",
+			description = """
+					REEMPLAZA EL CONJUNTO COMPLETO. Quien no viene vuelve a la duracion de la oferta. \
+					Se leen en duracionesPropias de getHabilitaciones.
+
+					NO RESTRINGE NADA: que un profesional tenga duracion propia no lo habilita ni deja \
+					afuera a los demas. Por eso se puede cargar en una oferta sin restringir.
+
+					Vale para lo que se ofrece y se reserva de ahi en mas. Los turnos ya dados conservan \
+					su fin.
+
+					expectedVersion es la de la OFERTA, la misma de los otros dos reemplazos.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "200",
+					description = "Configuracion resultante",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = HabilitacionesResponse.class))),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Falta la lista o expectedVersion, un profesional viene dos veces, o "
+							+ "una duracion no esta entre 1 y 1440 minutos",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin contexto de trabajo, o sin consultorio:manage en la sede",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La oferta, la sede o alguna membership no existen, no son de este "
+							+ "tenant, o la membership esta acotada a otra sede",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "Version desactualizada (concurrent-modification), oferta dada de baja "
+							+ "(oferta-inactiva), o sede no operable (consultorio-no-operable)",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<HabilitacionesResponse> reemplazarDuraciones(
+
+			@Parameter(description = "Sede de la oferta", example = "3")
+			@PathVariable long consultorioId,
+
+			@Parameter(description = "Oferta configurada", example = "34")
+			@PathVariable long ofertaId,
+
+			@Valid @RequestBody ReemplazarDuracionesPropiasRequest request) {
+
+		OperatingActor actor = apiActor.current();
+		long organizationId = exigirContexto(actor);
+
+		Map<Long, Integer> pedidas = new LinkedHashMap<>();
+		for (ReemplazarDuracionesPropiasRequest.DuracionPropiaPedida pedida : request.duraciones()) {
+			// A diferencia de un id repetido en las habilitaciones, dos duraciones para la misma persona
+			// no son la misma intencion: quedarse con una seria elegir por el usuario.
+			if (pedidas.put(pedida.membershipId(), pedida.duracionMinutos()) != null) {
+				throw new IllegalArgumentException("Un profesional viene dos veces en la lista de duraciones");
+			}
+		}
+
+		return ResponseEntity.ok(HabilitacionesResponse.de(
+				habilitacionService.reemplazarDuraciones(
+						actor, organizationId, consultorioId, ofertaId, pedidas, request.expectedVersion())));
 	}
 
 	@GetMapping("/validacion")

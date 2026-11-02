@@ -223,7 +223,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				tenant.cuentaId(), tenant.organizationId(), tenant.consultorioId()))
 				.containsExactlyInAnyOrder("tenant:read", "tenant:update", "consultorio:manage", "espacio:read",
 						"colaborador:manage", "colaborador:read", "auditoria:read",
-						"paciente:manage", "turno:read", "turno:manage", "cobro:register",
+						"paciente:manage", "turno:read", "turno:manage", "turno:sobreturno", "cobro:register",
 						// `paciente:read` lo sumo AKINE-DU-6 (DP-22): todo el personal lee el padron; el
 						// rol PACIENTE no.
 						"paciente:read",

@@ -1,6 +1,7 @@
 package com.akine.identity.infrastructure;
 
 import com.akine.identity.domain.SessionSettings;
+import com.akine.identity.domain.TerminosSettings;
 import com.akine.identity.domain.port.IdentityClock;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -29,7 +30,17 @@ public class IdentityConfig {
 	 */
 	@Bean
 	public SessionSettings sessionSettings(IdentityProperties properties) {
-		return new SessionSettings(properties.getSession().getRefreshTtl());
+		return new SessionSettings(
+				properties.getSession().getRefreshTtl(),
+				properties.getSession().getRefreshTtlRecordada());
+	}
+
+	/** Terminos vigentes del alta (DP-45), traducidos de la configuracion al dominio. */
+	@Bean
+	public TerminosSettings terminosSettings(IdentityProperties properties) {
+		return new TerminosSettings(
+				properties.getTerminos().getVersionVigente(),
+				properties.getTerminos().getUrl());
 	}
 
 	/**

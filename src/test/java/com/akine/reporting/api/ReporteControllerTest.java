@@ -2,10 +2,12 @@ package com.akine.reporting.api;
 
 import com.akine.platform.spi.tenant.AuthenticatedPrincipal;
 import com.akine.platform.spi.tenant.TenantContextHolder;
+import com.akine.reporting.application.AgrupacionDeSerie;
 import com.akine.reporting.application.ExportadorCsv;
 import com.akine.reporting.application.OperatingActor;
 import com.akine.reporting.application.ReporteService;
 import com.akine.reporting.application.ReporteView;
+import com.akine.reporting.application.SerieDeReporteView;
 import com.akine.reporting.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.reporting.domain.exception.RangoDeReporteInvalidoException;
 import com.akine.reporting.spi.AdvertenciaDeReporte;
@@ -166,6 +168,62 @@ class ReporteControllerTest {
 				.andExpect(jsonPath("$.type", endsWith("rango-de-reporte-invalido")))
 				.andExpect(jsonPath("$.detail").value("El periodo esta invertido"))
 				.andExpect(jsonPath("$.maximoDias").value(366));
+	}
+
+	@Test
+	@DisplayName("DP-45: la serie publica sus puntos como decimal exacto y la agrupacion viaja al servicio")
+	void serie_mapea_puntos_y_agrupacion() throws Exception {
+		given(reporteService.generarSerie(any(), anyLong(), any(), any(), any(), any()))
+				.willReturn(new SerieDeReporteView(
+						ReporteCode.ECONOMICO, 7L, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 14),
+						"America/Argentina/Cordoba", AgrupacionDeSerie.SEMANA,
+						Instant.parse("2026-10-01T12:00:00Z"),
+						List.of(new SerieDeReporteView.Serie("economia", "cobrado", "Cobrado",
+								IndicadorDeReporte.Tipo.DINERO, "ARS", "M19 cobro", "cobrado_en",
+								new BigDecimal("1500.50"),
+								List.of(new SerieDeReporteView.Punto(LocalDate.of(2026, 9, 1),
+												LocalDate.of(2026, 9, 6), new BigDecimal("1500.50")),
+										new SerieDeReporteView.Punto(LocalDate.of(2026, 9, 7),
+												LocalDate.of(2026, 9, 13), BigDecimal.ZERO)))),
+						List.of(new ReporteView.SeccionOmitida("sesiones", "sesion:register")),
+						List.of()));
+
+		mockMvc.perform(get(RUTA + "/ECONOMICO/serie")
+						.param("desde", "2026-09-01").param("hasta", "2026-09-14")
+						.param("agrupacion", "SEMANA")
+						.with(miembro(8L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.agrupacion").value("SEMANA"))
+				.andExpect(jsonPath("$.series[0].clave").value("cobrado"))
+				.andExpect(jsonPath("$.series[0].total").value(1500.50))
+				.andExpect(jsonPath("$.series[0].puntos[0].hasta").value("2026-09-06"))
+				.andExpect(jsonPath("$.series[0].puntos[1].valor").value(0))
+				.andExpect(jsonPath("$.omitidas[0].seccion").value("sesiones"));
+
+		verify(reporteService).generarSerie(any(), eq(7L), eq(ReporteCode.ECONOMICO),
+				eq(LocalDate.of(2026, 9, 1)), eq(LocalDate.of(2026, 9, 14)), eq(AgrupacionDeSerie.SEMANA));
+	}
+
+	@Test
+	@DisplayName("DP-45: sin agrupacion la serie va por DIA; una agrupacion desconocida es 400")
+	void serie_agrupacion_por_defecto_y_desconocida() throws Exception {
+		given(reporteService.generarSerie(any(), anyLong(), any(), any(), any(), any()))
+				.willReturn(new SerieDeReporteView(ReporteCode.TURNOS, 7L, LocalDate.of(2026, 9, 1),
+						LocalDate.of(2026, 9, 1), "UTC", AgrupacionDeSerie.DIA, Instant.now(),
+						List.of(), List.of(), List.of()));
+
+		mockMvc.perform(get(RUTA + "/TURNOS/serie")
+						.param("desde", "2026-09-01").param("hasta", "2026-09-01")
+						.with(miembro(8L)))
+				.andExpect(status().isOk());
+		verify(reporteService).generarSerie(any(), eq(7L), eq(ReporteCode.TURNOS),
+				any(), any(), eq(AgrupacionDeSerie.DIA));
+
+		mockMvc.perform(get(RUTA + "/TURNOS/serie")
+						.param("desde", "2026-09-01").param("hasta", "2026-09-01")
+						.param("agrupacion", "MES")
+						.with(miembro(8L)))
+				.andExpect(status().isBadRequest());
 	}
 
 	@Test

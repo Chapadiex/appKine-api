@@ -94,7 +94,16 @@ public record TurnoResponse(
 		Instant llegadaEn,
 
 		@Schema(description = "Version para el control optimista. Se envia al cancelar, mover o marcar ausencia.", example = "0")
-		long version) {
+		long version,
+
+		@Schema(description = "Caso clinico para el que se reservo. Ausente en una primera consulta.", example = "9")
+		Long casoId,
+
+		@Schema(description = "Plan de tratamiento para el que se reservo", example = "57")
+		Long planId,
+
+		@Schema(description = "`true` si se reservo sobre un horario ocupado, con autorizacion")
+		boolean sobreturno) {
 
 	public static TurnoResponse de(TurnoView vista) {
 		return new TurnoResponse(
@@ -103,6 +112,7 @@ public record TurnoResponse(
 				vista.profesionalId(), vista.espacioId(), vista.inicio(), vista.fin(),
 				vista.estado(), vista.reservadoEn(), vista.confirmadoEn(),
 				vista.motivoCancelacion(), vista.canceladoEn(), vista.ausenteEn(),
-				vista.reprogramadoEn(), vista.llegadaEn(), vista.version());
+				vista.reprogramadoEn(), vista.llegadaEn(), vista.version(),
+				vista.casoId(), vista.planId(), vista.sobreturno());
 	}
 }

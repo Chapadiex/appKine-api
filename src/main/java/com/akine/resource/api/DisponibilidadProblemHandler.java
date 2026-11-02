@@ -4,6 +4,7 @@ import com.akine.platform.spi.problem.ProblemType;
 import com.akine.resource.domain.exception.BloqueInactivoException;
 import com.akine.resource.domain.exception.BloqueNotAccessibleException;
 import com.akine.resource.domain.exception.BloqueSolapadoException;
+import com.akine.resource.domain.exception.BloqueoConTurnosAfectadosException;
 import com.akine.resource.domain.exception.ExcepcionInactivaException;
 import com.akine.resource.domain.exception.ExcepcionNotAccessibleException;
 import com.akine.resource.domain.exception.ProfesionalNoVinculadoException;
@@ -85,6 +86,7 @@ public class DisponibilidadProblemHandler {
 
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI BLOQUE_SOLAPADO = ProblemType.BLOQUE_SOLAPADO.uri();
+	private static final URI BLOQUEO_CON_TURNOS_AFECTADOS = ProblemType.BLOQUEO_CON_TURNOS_AFECTADOS.uri();
 	private static final URI BLOQUE_INACTIVO = ProblemType.BLOQUE_INACTIVO.uri();
 	private static final URI BLOQUE_ALREADY_INACTIVE = ProblemType.BLOQUE_ALREADY_INACTIVE.uri();
 	private static final URI PROFESIONAL_NO_VINCULADO = ProblemType.PROFESIONAL_NO_VINCULADO.uri();
@@ -160,6 +162,15 @@ public class DisponibilidadProblemHandler {
 	 * <p><b>Las excepciones de disponibilidad NO producen este conflicto</b>, y es deliberado:
 	 * dos cierres que se pisan son los dos legitimos.
 	 */
+	@ExceptionHandler(BloqueoConTurnosAfectadosException.class)
+	public ProblemDetail handleBloqueoConTurnosAfectados(BloqueoConTurnosAfectadosException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(BLOQUEO_CON_TURNOS_AFECTADOS);
+		problem.setTitle("El bloqueo afecta turnos");
+		problem.setProperty("turnosAfectados", exception.getTurnosAfectados());
+		return problem;
+	}
+
 	@ExceptionHandler(BloqueSolapadoException.class)
 	public ProblemDetail handleBloqueSolapado(BloqueSolapadoException exception) {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(

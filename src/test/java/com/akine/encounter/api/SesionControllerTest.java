@@ -1,5 +1,7 @@
 package com.akine.encounter.api;
 
+import com.akine.encounter.application.ContextoDeProximaSesionView;
+import com.akine.encounter.application.InicioSinTurno;
 import com.akine.encounter.application.SesionService;
 import com.akine.encounter.application.SesionVersionView;
 import com.akine.encounter.application.SesionView;
@@ -16,6 +18,7 @@ import com.akine.encounter.domain.TratamientoEnmendado;
 import com.akine.encounter.domain.Tolerancia;
 import com.akine.platform.spi.tenant.AuthenticatedPrincipal;
 import com.akine.platform.spi.tenant.TenantContextHolder;
+import com.akine.testsupport.Fixture;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -355,6 +358,60 @@ class SesionControllerTest {
 				.andExpect(status().isBadRequest());
 
 		verify(sesionService, never()).cambiarCaso(any(), anyLong(), anyLong(), any(), anyLong());
+	}
+
+	@Test
+	@DisplayName("Cada version publica la foto de sus tratamientos y mediciones: lo que se enmendo, no lo que hay hoy")
+	void la_version_publica_su_foto_clinica() throws Exception {
+		given(sesionService.versiones(any(), anyLong(), anyLong()))
+				.willReturn(List.of(Fixture.de(SesionVersionView.class)));
+
+		mockMvc.perform(get(RUTA + "/501/versiones").with(miembro(8L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].tratamientos[0].tratamientoId").value(1))
+				.andExpect(jsonPath("$[0].tratamientos[0].practicaCodigo").value("practicaCodigo"))
+				.andExpect(jsonPath("$[0].tratamientos[0].parametros").isArray())
+				.andExpect(jsonPath("$[0].mediciones[0].codigo").value("codigo"))
+				.andExpect(jsonPath("$[0].mediciones[0].valorTexto").value("valorTexto"));
+	}
+
+	@Test
+	@DisplayName("Una atencion sin turno responde 201 con Location y exige motivo: no hay reserva que la explique")
+	void iniciar_sin_turno() throws Exception {
+		given(sesionService.iniciarSinTurno(any(), anyLong(), any(), any())).willReturn(SesionView.de(abierta()));
+
+		mockMvc.perform(post(RUTA).with(miembro(8L))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"personaId\":88,\"ofertaId\":42,\"motivo\":\"Dolor agudo\",\"idempotencyKey\":\"clave-1\"}"))
+				.andExpect(status().isCreated())
+				.andExpect(header().string("Location", "/api/v1/consultorios/7/sesiones/501"));
+		verify(sesionService).iniciarSinTurno(any(), eq(7L), eq(new InicioSinTurno(88L, 42L, null, "Dolor agudo")), eq("clave-1"));
+
+		mockMvc.perform(post(RUTA).with(miembro(8L))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"personaId\":88,\"ofertaId\":42}"))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	@DisplayName("La proxima sesion publica lo que hace falta para programarla, y un caso o plan ausente no viaja")
+	void contexto_de_proxima_sesion() throws Exception {
+		given(sesionService.contextoDeProximaSesion(any(), eq(7L), eq(501L)))
+				.willReturn(new ContextoDeProximaSesionView(128L, 9L, 57L, 42L, 31L));
+		given(sesionService.contextoDeProximaSesion(any(), eq(7L), eq(502L)))
+				.willReturn(new ContextoDeProximaSesionView(128L, null, null, 42L, 31L));
+
+		mockMvc.perform(get(RUTA + "/501/proxima-sesion").with(miembro(8L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.personaId").value(128))
+				.andExpect(jsonPath("$.casoId").value(9))
+				.andExpect(jsonPath("$.planId").value(57))
+				.andExpect(jsonPath("$.ofertaId").value(42))
+				.andExpect(jsonPath("$.profesionalId").value(31));
+		mockMvc.perform(get(RUTA + "/502/proxima-sesion").with(miembro(8L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.casoId").doesNotExist())
+				.andExpect(jsonPath("$.planId").doesNotExist());
 	}
 
 	private static Sesion abierta() {

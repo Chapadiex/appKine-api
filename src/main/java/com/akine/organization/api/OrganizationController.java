@@ -10,6 +10,9 @@ import com.akine.organization.application.OrganizationService;
 import com.akine.organization.application.OrganizationView;
 import com.akine.organization.application.AuthorizationGuard;
 import com.akine.platform.spi.tenant.TenantContextHolder;
+import com.akine.platform.spi.listado.ListadoEnMemoria;
+import com.akine.platform.spi.listado.OrdenDeListado;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -34,7 +37,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Administracion del tenant: alta, lectura, edicion y sus sedes.
@@ -284,7 +289,9 @@ public class OrganizationController {
 					+ "su valor por defecto, ACTIVO, conserva el comportamiento historico del "
 					+ "endpoint: un cliente que no lo manda ve exactamente lo mismo que antes. "
 					+ "El tamano de pagina se acota a "
-					+ ApiPaging.TAMANO_MAXIMO + ": pedir mas devuelve ese maximo, no un error.")
+					+ ApiPaging.TAMANO_MAXIMO + ": pedir mas devuelve ese maximo, no un error. "
+					+ "DP-45: q busca \"contiene\" en el nombre de la sede, sin distinguir "
+					+ "mayusculas ni acentos; sort ordena por nombre.")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -294,7 +301,7 @@ public class OrganizationController {
 							schema = @Schema(implementation = ConsultorioPageResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "El valor de estado no pertenece al catalogo",
+					description = "El valor de estado no pertenece al catalogo, o sort fuera del enum",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -327,14 +334,30 @@ public class OrganizationController {
 			@RequestParam(defaultValue = ApiPaging.PAGINA_POR_DEFECTO) int page,
 
 			@Parameter(description = "Elementos por pagina, acotado a 100", example = "20")
-			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size) {
+			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size,
+
+			@Parameter(description = "Texto a buscar en el nombre de la sede", example = "centro")
+			@RequestParam(required = false) String q,
+
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "el de alta de las sedes.",
+					schema = @Schema(allowableValues = {"nombre,asc", "nombre,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
 
 		ApiActor actor = ApiActor.current(tenantContextHolder);
 		authorizationGuard.requireMember(
 				actor.accountId(), orgId, actor.contextOrganizationId(), actor.platformAdmin());
 
-		List<ConsultorioView> sedes = organizationService.consultorios(orgId, estado);
+		List<ConsultorioView> sedes = ListadoEnMemoria.filtrarYOrdenar(
+				organizationService.consultorios(orgId, estado),
+				sede -> TextoDeBusqueda.contiene(sede.name(), q),
+				OrdenDeListado.leer(sort, ORDEN_DE_SEDES.keySet()),
+				ORDEN_DE_SEDES,
+				Comparator.comparingLong(ConsultorioView::id));
 		return ResponseEntity.ok(
 				ConsultorioPageResponse.of(sedes, ApiPaging.pagina(page), ApiPaging.tamano(size)));
 	}
+
+	/** DP-45: los campos por los que se ordenan las sedes, con su comparador ascendente. */
+	private static final Map<String, Comparator<ConsultorioView>> ORDEN_DE_SEDES = Map.of(
+			"nombre", TextoDeBusqueda.comparadorDeTexto(ConsultorioView::name));
 }

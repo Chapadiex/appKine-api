@@ -132,14 +132,29 @@ public class SessionService {
 	// rechazo se pierdan. Ver AuthenticationService.autenticar.
 	@Transactional(noRollbackFor = InvalidCredentialsException.class)
 	public SesionEmitida abrirSesion(String email, String password, DatosDeCliente cliente) {
+		return abrirSesion(email, password, false, cliente);
+	}
+
+	/**
+	 * Igual que {@link #abrirSesion(String, String, DatosDeCliente)}, eligiendo la vida de la
+	 * sesion (DP-45, "mantener la sesion iniciada").
+	 *
+	 * <p>{@code recordar} solo cambia el vencimiento ABSOLUTO de la familia: la rotacion lo hereda
+	 * igual que hoy, asi que tampoco una sesion recordada se vuelve eterna por usarla. Que la
+	 * credencial sea la correcta se decide antes, sin mirar este flag: el rechazo es el mismo 401
+	 * con o sin el (ADR-0018).
+	 */
+	@Transactional(noRollbackFor = InvalidCredentialsException.class)
+	public SesionEmitida abrirSesion(
+			String email, String password, boolean recordar, DatosDeCliente cliente) {
 		Cuenta cuenta = authenticationService.autenticar(email, password);
 
 		Instant ahora = clock.now();
-		Instant expiraEn = ahora.plus(settings.refreshTtl());
+		Instant expiraEn = ahora.plus(settings.vigencia(recordar));
 		String familiaId = tokenGenerator.nuevaFamilia();
 
 		RefreshEmitido refresh = emitirRefresh(
-				cuenta.getId(), familiaId, ahora, expiraEn, null, null, cliente);
+				cuenta.getId(), familiaId, ahora, expiraEn, null, null, recordar, cliente);
 		AccesoEmitido acceso = emitirAcceso(
 				cuenta.getId(), AccessTokenScope.PRE_CONTEXT, null, null, null, familiaId);
 
@@ -147,10 +162,14 @@ public class SessionService {
 		details.put("familiaId", familiaId);
 		// El id de la fila, jamas el token: un id no sirve para autenticarse.
 		details.put("refreshTokenId", String.valueOf(refresh.fila().getId()));
+		if (recordar) {
+			details.put("sesionRecordada", "true");
+		}
 		IdentityAuditEvents.registrar(auditTrail, IdentityAuditEvents.SESION_ABIERTA,
 				null, cuenta.getId(), cuenta.getId(), null, null, details, null, ahora);
 
-		log.info("Sesion abierta: cuentaId={} familiaId={}", cuenta.getId(), familiaId);
+		log.info("Sesion abierta: cuentaId={} familiaId={} recordada={}",
+				cuenta.getId(), familiaId, recordar);
 		return new SesionEmitida(acceso, refresh.plano(), expiraEn);
 	}
 
@@ -227,6 +246,8 @@ public class SessionService {
 				presentado.getExpiraEn(),
 				contexto.organizationId(),
 				contexto.consultorioId(),
+				// Heredada tambien: la eleccion se hizo al abrir la sesion, no en cada canje.
+				presentado.isRecordarSesion(),
 				cliente);
 
 		presentado.marcarRotado(sucesor.fila().getId(), ahora);
@@ -487,6 +508,7 @@ public class SessionService {
 			Instant expiraEn,
 			Long organizationId,
 			Long consultorioId,
+			boolean recordar,
 			DatosDeCliente cliente) {
 
 		String plano = tokenGenerator.nuevoToken();
@@ -502,7 +524,8 @@ public class SessionService {
 				organizationId,
 				consultorioId,
 				datos.ip(),
-				datos.userAgent()));
+				datos.userAgent(),
+				recordar));
 
 		return new RefreshEmitido(plano, fila);
 	}

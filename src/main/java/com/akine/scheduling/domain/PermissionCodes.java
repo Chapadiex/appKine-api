@@ -16,6 +16,9 @@ public final class PermissionCodes {
 	/** Reservar, confirmar y —desde 05.03— cancelar turnos. */
 	public static final String TURNO_MANAGE = "turno:manage";
 
+	/** Autorizar un turno sobre un horario ya ocupado (TURNO.md §21). */
+	public static final String TURNO_SOBRETURNO = "turno:sobreturno";
+
 	private PermissionCodes() {
 	}
 }

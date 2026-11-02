@@ -610,7 +610,7 @@ class OrdenYAutorizacionServiceTest {
 			Autorizacion vencida = autorizacion(EstadoAutorizacion.APROBADA);
 			given(autorizaciones.findByIdAndOrganizationIdAndPersonaId(77L, ORG, PERSONA))
 					.willReturn(Optional.of(vencida));
-			given(eventos.pagina(ORG, 77L, 20, 10)).willReturn(List.of());
+			given(eventos.pagina(ORG, 77L, "", 20, 10)).willReturn(List.of());
 			given(eventos.contar(ORG, 77L)).willReturn(25L);
 
 			HistorialDeAutorizacionView historial = autorizacionService.historial(

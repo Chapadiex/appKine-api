@@ -12,6 +12,9 @@ import com.akine.resource.application.MedicionDefinicionService;
 import com.akine.resource.application.MedicionDefinicionView;
 import com.akine.resource.domain.CatalogoAlcanceFiltro;
 import com.akine.resource.domain.CatalogoEstadoFiltro;
+import com.akine.platform.spi.listado.ListadoEnMemoria;
+import com.akine.platform.spi.listado.OrdenDeListado;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -36,7 +39,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Catalogo de definiciones de medida del examen fisico (M06, al servicio de RF-M14-004).
@@ -134,7 +139,9 @@ public class MedicionDefinicionController {
 					editar el tenant.
 
 					El tamano de pagina se acota a 100: pedir mas devuelve ese maximo, no un \
-					error.""")
+					error.
+
+					DP-45: sort ordena por codigo, nombre o tipo; sin el, por nombre.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -146,7 +153,8 @@ public class MedicionDefinicionController {
 									implementation = MedicionDefinicionPageResponse.class))),
 			@ApiResponse(
 					responseCode = "400",
-					description = "Valor de estado o de alcance fuera del catalogo",
+					description = "Valor de estado o de alcance fuera del catalogo, o sort fuera "
+							+ "del enum",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -174,14 +182,33 @@ public class MedicionDefinicionController {
 			@RequestParam(defaultValue = ApiPaging.PAGINA_POR_DEFECTO) int page,
 
 			@Parameter(description = "Elementos por pagina, acotado a 100", example = "20")
-			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size) {
+			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size,
 
-		List<MedicionDefinicionView> encontradas = definicionService.listar(
-				apiActor.current(), new CatalogoBusqueda(q, estado, alcance, null));
+			@Parameter(description = OrdenDeListado.DESCRIPCION + "nombre ascendente.",
+					schema = @Schema(allowableValues = {"codigo,asc", "codigo,desc", "nombre,asc",
+							"nombre,desc", "tipo,asc", "tipo,desc"}))
+			@RequestParam(name = OrdenDeListado.PARAMETRO, required = false) String sort) {
+
+		var orden = OrdenDeListado.leer(sort, ORDEN_DE_DEFINICIONES.keySet());
+		List<MedicionDefinicionView> encontradas = ListadoEnMemoria.filtrarYOrdenar(
+				definicionService.listar(
+						apiActor.current(), new CatalogoBusqueda(q, estado, alcance, null)),
+				definicion -> true,
+				orden,
+				ORDEN_DE_DEFINICIONES,
+				Comparator.comparingLong(MedicionDefinicionView::id));
 
 		return ResponseEntity.ok(MedicionDefinicionPageResponse.of(
 				encontradas, ApiPaging.pagina(page), ApiPaging.tamano(size)));
 	}
+
+	/** DP-45: los campos por los que se ordena el listado, con su comparador ascendente. */
+	private static final Map<String, Comparator<MedicionDefinicionView>> ORDEN_DE_DEFINICIONES =
+			Map.of(
+					"codigo", TextoDeBusqueda.comparadorDeTexto(MedicionDefinicionView::codigo),
+					"nombre", TextoDeBusqueda.comparadorDeTexto(MedicionDefinicionView::name),
+					"tipo", TextoDeBusqueda.comparadorDeTexto(
+							(MedicionDefinicionView d) -> d.tipo() == null ? null : d.tipo().name()));
 
 	@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
 	@Operation(

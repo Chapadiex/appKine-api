@@ -1,16 +1,19 @@
 package com.akine.scheduling.infrastructure;
 
+import com.akine.platform.spi.listado.OrdenDeListado;
 import com.akine.scheduling.domain.EstadoDeSerie;
 import com.akine.scheduling.domain.TurnoSerie;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoSerieRepositoryPort;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public interface TurnoSerieRepository
@@ -46,9 +49,39 @@ public interface TurnoSerieRepository
 			long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado,
 			Instant ahora, int pagina, int tamano) {
 
-		return buscarBandeja(organizationId, consultorioId, filtroPersona(personaId),
-				filtroEstado(estado), ahora, PageRequest.of(pagina, tamano));
+		return listar(organizationId, consultorioId, personaId, estado, ahora, Optional.empty(),
+				pagina, tamano);
 	}
+
+	@Override
+	default List<TurnoSerie> listar(
+			long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado,
+			Instant ahora, Optional<OrdenDeListado> orden, int pagina, int tamano) {
+
+		Sort sort = orden
+				.map(pedido -> pedido.aSort(PROPIEDAD_DE_ORDEN.get(pedido.campo()), "id"))
+				.orElse(MAS_NUEVAS_PRIMERO);
+		return buscarBandeja(organizationId, consultorioId, filtroPersona(personaId),
+				filtroEstado(estado), ahora, PageRequest.of(pagina, tamano, sort));
+	}
+
+	@Override
+	default List<TurnoSerie> todas(
+			long organizationId, long consultorioId, Long personaId, EstadoDeSerie estado,
+			Instant ahora) {
+
+		return buscarBandeja(organizationId, consultorioId, filtroPersona(personaId),
+				filtroEstado(estado), ahora, Pageable.unpaged(MAS_NUEVAS_PRIMERO));
+	}
+
+	/** El orden de la bandeja desde E-8: las mas nuevas primero. */
+	Sort MAS_NUEVAS_PRIMERO = Sort.by(Sort.Direction.DESC, "id");
+
+	/** DP-45: campo del contrato → propiedad de la serie. */
+	Map<String, String> PROPIEDAD_DE_ORDEN = Map.of(
+			"creadaEn", "creadaEn",
+			"fechaDesde", "fechaDesde",
+			"fechaHasta", "fechaHasta");
 
 	@Override
 	default long contar(
@@ -108,8 +141,8 @@ public interface TurnoSerieRepository
 			))
 			""";
 
-	/** La bandeja de series (E-8), mas nuevas primero. */
-	@Query("SELECT s FROM TurnoSerie s " + WHERE_BANDEJA + " ORDER BY s.id DESC")
+	/** La bandeja de series (E-8). DP-45: el orden lo trae {@code pagina}; por defecto, las mas nuevas primero. */
+	@Query("SELECT s FROM TurnoSerie s " + WHERE_BANDEJA)
 	List<TurnoSerie> buscarBandeja(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,

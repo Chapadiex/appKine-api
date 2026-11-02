@@ -47,7 +47,7 @@ vivo en ese horario.
 
 ### AGE-02 · Confirmar — `[E2E agenda-ciclo]`
 
-**Pantalla:** `/agenda/turnos/<id>` → confirmar.
+**Pantalla:** `/agenda/turnos/<id>` (abre el panel del turno sobre la agenda) → confirmar.
 
 ```sql
 SELECT estado, confirmado_en, version FROM turno WHERE id = @turno;
@@ -98,7 +98,7 @@ Esperado: solo los turnos que reservaste cuando el horario todavía era futuro.
 Sobre un turno nuevo de hoy (reservalo con un horario cercano y esperá a que pase, o usá uno
 reservado temprano).
 
-**Pantalla:** `/agenda/turnos/<id>` → marcar ausente.
+**Pantalla:** `/agenda/turnos/<id>` (abre el panel del turno sobre la agenda) → Más acciones → Marcar ausente.
 
 ```sql
 SET @turno_ausente := (SELECT MAX(id) FROM turno WHERE consultorio_id = @sede_a AND estado = 'AUSENTE');

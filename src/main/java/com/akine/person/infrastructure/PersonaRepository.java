@@ -46,6 +46,11 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 	 * final, dos personas homonimas pueden salir en distinto orden entre la pagina 1 y la 2 y una
 	 * de ellas aparece dos veces mientras otra no aparece nunca. Es un bug de paginado clasico y
 	 * silencioso.
+	 *
+	 * <p>DP-45: {@code :orden} elige otro campo primero con un {@code CASE} por valor de la lista
+	 * blanca; los que no coinciden valen {@code NULL} para todas las filas y no ordenan nada. El
+	 * cliente nunca escribe SQL: {@code :orden} solo se compara contra literales. Detras queda
+	 * siempre el orden de siempre, que termina en el id y hace estable el paginado.
 	 */
 	@Override
 	@Query(value = """
@@ -71,7 +76,17 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			                      AND cp.active = 1
 			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado), '[^A-Z0-9]', '')
 			                          LIKE :patronClave))
-			 ORDER BY p.apellido_clave ASC, p.nombre_clave ASC, p.id ASC
+			 ORDER BY
+			   CASE WHEN :orden = 'apellido,desc' THEN p.apellido_clave END DESC,
+			   CASE WHEN :orden = 'nombre,asc' THEN p.nombre_clave END ASC,
+			   CASE WHEN :orden = 'nombre,desc' THEN p.nombre_clave END DESC,
+			   CASE WHEN :orden = 'documento,asc' THEN p.documento_clave END ASC,
+			   CASE WHEN :orden = 'documento,desc' THEN p.documento_clave END DESC,
+			   CASE WHEN :orden = 'nacimiento,asc' THEN p.fecha_nacimiento END ASC,
+			   CASE WHEN :orden = 'nacimiento,desc' THEN p.fecha_nacimiento END DESC,
+			   CASE WHEN :orden = 'alta,asc' THEN p.created_at END ASC,
+			   CASE WHEN :orden = 'alta,desc' THEN p.created_at END DESC,
+			   p.apellido_clave ASC, p.nombre_clave ASC, p.id ASC
 			 LIMIT :limite OFFSET :offset
 			""", nativeQuery = true)
 	List<Persona> buscar(
@@ -80,6 +95,7 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			@Param("patronClave") String patronClave,
 			@Param("activoFiltro") int activoFiltro,
 			@Param("perfilFiltro") int perfilFiltro,
+			@Param("orden") String orden,
 			@Param("offset") int offset,
 			@Param("limite") int limite);
 

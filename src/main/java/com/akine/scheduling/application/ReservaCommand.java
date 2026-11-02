@@ -1,5 +1,7 @@
 package com.akine.scheduling.application;
 
+import com.akine.scheduling.domain.OrigenDeTurno;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -14,13 +16,32 @@ import java.util.HexFormat;
  * @param idempotencyKey clave del cliente para que un reintento no cree un segundo turno.
  *                       {@code null} la desactiva, y eso es legitimo: una reserva hecha a mano
  *                       desde una pantalla administrativa no siempre tiene de donde sacarla
+ * @param espacioId      box elegido a mano, o {@code null} para que lo asigne el sistema
+ * @param casoId         caso clinico para el que se reserva, o {@code null}
+ * @param planId         plan para el que se reserva, o {@code null}
+ * @param origen         desde donde se inicio. Solo trazabilidad: no entra en ninguna regla
+ * @param sobreturnoMotivo por que se autoriza ocupar un horario tomado. {@code null} = reserva comun
  */
 public record ReservaCommand(
 		long personaId,
 		Instant inicio,
 		Long profesionalId,
 		String idempotencyKey,
-		Long coberturaId) {
+		Long coberturaId,
+		Long espacioId,
+		Long casoId,
+		Long planId,
+		OrigenDeTurno origen,
+		String sobreturnoMotivo) {
+
+	public ReservaCommand(
+			long personaId, Instant inicio, Long profesionalId, String idempotencyKey, Long coberturaId) {
+		this(personaId, inicio, profesionalId, idempotencyKey, coberturaId, null, null, null, null, null);
+	}
+
+	public boolean esSobreturno() {
+		return sobreturnoMotivo != null && !sobreturnoMotivo.isBlank();
+	}
 
 	/** Reserva sin cobertura elegida: la forma anterior a AKINE-05.02, que siguen usando las series. */
 	public ReservaCommand(long personaId, Instant inicio, Long profesionalId, String idempotencyKey) {
@@ -49,7 +70,12 @@ public record ReservaCommand(
 				+ "|" + profesionalId
 				// Solo si se eligio: asi la huella de un pedido sin cobertura es la misma que antes de
 				// AKINE-05.02 y el reintento de una clave vieja no se vuelve un 409 por el despliegue.
-				+ (coberturaId == null ? "" : "|c" + coberturaId);
+				+ (coberturaId == null ? "" : "|c" + coberturaId)
+				// Mismo criterio: lo nuevo solo entra si viene, para no volver 409 un reintento viejo.
+				+ (espacioId == null ? "" : "|e" + espacioId)
+				+ (casoId == null ? "" : "|k" + casoId)
+				+ (planId == null ? "" : "|p" + planId)
+				+ (esSobreturno() ? "|s" : "");
 		try {
 			byte[] digest = MessageDigest.getInstance("SHA-256")
 					.digest(canonico.getBytes(StandardCharsets.UTF_8));

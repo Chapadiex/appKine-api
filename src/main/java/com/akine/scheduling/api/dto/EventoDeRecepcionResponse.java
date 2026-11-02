@@ -40,12 +40,18 @@ public record EventoDeRecepcionResponse(
 		@Schema(example = "12")
 		Long actorCuentaId,
 
+		@Schema(
+				description = "Nombre de esa cuenta. Ausente si lo hizo el sistema o la cuenta ya no "
+						+ "resuelve.",
+				example = "Ana Recepcion")
+		String actorNombre,
+
 		@Schema(example = "2026-09-15T11:52:00Z")
 		Instant ocurridoEn) {
 
 	public static EventoDeRecepcionResponse de(EventoDeRecepcionView vista) {
 		return new EventoDeRecepcionResponse(
 				vista.id(), vista.recepcionId(), vista.tipo(), vista.estadoAnterior(),
-				vista.estadoNuevo(), vista.motivo(), vista.actorCuentaId(), vista.ocurridoEn());
+				vista.estadoNuevo(), vista.motivo(), vista.actorCuentaId(), vista.actorNombre(), vista.ocurridoEn());
 	}
 }

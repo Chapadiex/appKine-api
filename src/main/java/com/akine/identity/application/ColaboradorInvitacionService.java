@@ -1,5 +1,6 @@
 package com.akine.identity.application;
 
+import com.akine.identity.domain.AceptacionTerminos;
 import com.akine.identity.domain.ColaboradorInvitacion;
 import com.akine.identity.domain.Cuenta;
 import com.akine.identity.domain.EmailNormalizado;
@@ -115,6 +116,7 @@ public class ColaboradorInvitacionService {
 	private final PasswordPolicy passwordPolicy;
 	private final AuditTrail auditTrail;
 	private final IdentityClock clock;
+	private final TerminosService terminosService;
 
 	@SuppressWarnings("java:S107")
 	public ColaboradorInvitacionService(
@@ -131,7 +133,8 @@ public class ColaboradorInvitacionService {
 			PasswordHasher passwordHasher,
 			PasswordPolicy passwordPolicy,
 			AuditTrail auditTrail,
-			IdentityClock clock) {
+			IdentityClock clock,
+			TerminosService terminosService) {
 
 		this.invitacionRepository = invitacionRepository;
 		this.cuentaRepository = cuentaRepository;
@@ -147,6 +150,7 @@ public class ColaboradorInvitacionService {
 		this.passwordPolicy = passwordPolicy;
 		this.auditTrail = auditTrail;
 		this.clock = clock;
+		this.terminosService = terminosService;
 	}
 
 	// =================================================================================
@@ -511,6 +515,10 @@ public class ColaboradorInvitacionService {
 	private Cuenta crearCuentaDelInvitado(
 			ColaboradorInvitacion invitacion, InvitacionAceptacionCommand command, Instant ahora) {
 
+		// DP-45: la misma regla que el registro self-service, porque nace una cuenta igual. No
+		// abre ningun oraculo: el preview ya le dice al portador del token si hace falta alta.
+		String versionTerminos = terminosService.exigirAceptacion(
+				command.aceptaTerminos(), command.versionTerminos());
 		if (command.nombre() == null || command.nombre().isBlank()) {
 			throw new IllegalArgumentException(
 					"El nombre es obligatorio para crear la cuenta del invitado");
@@ -528,10 +536,15 @@ public class ColaboradorInvitacionService {
 		// construirla activa mantiene la maquina de estados como unico camino.
 		cuenta.transicionarA(EstadoCuenta.ACTIVA, null, ahora);
 		Cuenta persistida = cuentaRepository.save(cuenta);
+		terminosService.registrar(
+				persistida.getId(), versionTerminos, AceptacionTerminos.Origen.INVITACION, ahora);
 
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("origen", "invitacion");
 		detalles.put("invitacionId", String.valueOf(invitacion.getId()));
+		if (versionTerminos != null) {
+			detalles.put("versionTerminos", versionTerminos);
+		}
 		IdentityAuditEvents.registrar(
 				auditTrail, IdentityAuditEvents.CUENTA_CREADA, invitacion.getOrganizationId(),
 				persistida.getId(), persistida.getId(), null, EstadoCuenta.ACTIVA.name(),

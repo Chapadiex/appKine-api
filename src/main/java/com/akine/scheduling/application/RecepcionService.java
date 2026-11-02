@@ -4,6 +4,12 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.clinical.spi.ContextoClinicoDeAgenda;
+import com.akine.scheduling.application.SesionesDelPlan.ResumenDelPlan;
+import com.akine.scheduling.domain.EstadoRecepcion;
+import com.akine.scheduling.domain.EstadoTurno;
+import com.akine.scheduling.spi.AtencionProbe;
+import com.akine.scheduling.spi.AtencionProbe.AtencionDeTurno;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.scheduling.domain.PermissionCodes;
@@ -20,8 +26,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -66,6 +74,10 @@ public class RecepcionService {
 	private final OfertaDirectory ofertas;
 	private final SoporteEnAgenda soporte;
 	private final PrepagoDeRecepcion prepago;
+	private final NombresDeAgenda nombres;
+	private final AtencionProbe atenciones;
+	private final ContextoClinicoDeAgenda contextoClinico;
+	private final SesionesDelPlan sesionesDelPlan;
 
 	public RecepcionService(
 			TurnoRepositoryPort turnos,
@@ -74,7 +86,11 @@ public class RecepcionService {
 			PacienteDirectory pacientes,
 			OfertaDirectory ofertas,
 			SoporteEnAgenda soporte,
-			PrepagoDeRecepcion prepago) {
+			PrepagoDeRecepcion prepago,
+			NombresDeAgenda nombres,
+			AtencionProbe atenciones,
+			ContextoClinicoDeAgenda contextoClinico,
+			SesionesDelPlan sesionesDelPlan) {
 
 		this.turnos = turnos;
 		this.recepciones = recepciones;
@@ -83,6 +99,10 @@ public class RecepcionService {
 		this.ofertas = ofertas;
 		this.soporte = soporte;
 		this.prepago = prepago;
+		this.nombres = nombres;
+		this.atenciones = atenciones;
+		this.contextoClinico = contextoClinico;
+		this.sesionesDelPlan = sesionesDelPlan;
 	}
 
 	/**
@@ -117,6 +137,139 @@ public class RecepcionService {
 				fecha,
 				sede.timezone(),
 				delDia.isEmpty() ? List.of() : componer(organizationId, consultorioId, delDia));
+	}
+
+	/**
+	 * Los turnos de una sede que empiezan en {@code [desde, hasta)}, para el calendario (DP-45).
+	 *
+	 * <p>Las fechas son dias locales de la sede, igual que {@link #delDia}; {@code hasta} es
+	 * exclusivo y el rango tiene tope ({@link VentanaDeAgenda#VENTANA_MAXIMA_TURNOS_DIAS}), asi que
+	 * la respuesta va sin paginar. Los cancelados quedan afuera salvo {@code incluirCancelados}:
+	 * el calendario muestra lo reservado, a diferencia de la recepcion del dia.
+	 *
+	 * <p>Mismo permiso que la agenda del dia: {@code turno:read}. Reusa {@link #componer}, asi que
+	 * pacientes, ofertas, recepciones y prepago se piden en lote; los nombres de profesional, en dos
+	 * consultas mas para todo el rango.
+	 *
+	 * @param profesionalId membership del profesional para acotar, o {@code null}
+	 * @param ofertaId      oferta para acotar, o {@code null}
+	 */
+	@Transactional(readOnly = true)
+	public TurnosDeSedeView delRango(
+			OperatingActor actor, long consultorioId, LocalDate desde, LocalDate hasta,
+			Long profesionalId, Long ofertaId, boolean incluirCancelados) {
+
+		long organizationId = exigirContexto(actor);
+		ConsultorioSnapshot sede = exigirSede(organizationId, consultorioId);
+		soporte.exigir(actor, PermissionCodes.TURNO_READ, organizationId, consultorioId);
+		VentanaDeAgenda.exigirValida(desde, hasta, VentanaDeAgenda.VENTANA_MAXIMA_TURNOS_DIAS);
+
+		ZoneId zona = ZoneId.of(sede.timezone());
+		List<Turno> lote = turnos.findDeLaSedeEnVentana(
+						organizationId, consultorioId,
+						desde.atStartOfDay(zona).toInstant(), hasta.atStartOfDay(zona).toInstant())
+				.stream()
+				.filter(t -> incluirCancelados || t.getEstado() != EstadoTurno.CANCELADO)
+				.filter(t -> profesionalId == null || profesionalId.equals(t.getProfesionalMembershipId()))
+				.filter(t -> ofertaId == null || ofertaId.equals(t.getOfertaId()))
+				.toList();
+
+		if (lote.isEmpty()) {
+			return new TurnosDeSedeView(desde, hasta, sede.timezone(), List.of());
+		}
+		return new TurnosDeSedeView(desde, hasta, sede.timezone(),
+				componer(organizationId, consultorioId, lote).stream()
+						.map(t -> new TurnoDeCalendarioView(t, t.operativo().profesionalNombre()))
+						.toList());
+	}
+
+	/**
+	 * Los turnos de una persona en una sede (TURNO.md §2, Paciente 360): el historial, los mas nuevos
+	 * primero; con {@code soloFuturos}, el mas cercano primero.
+	 *
+	 * @param soloFuturos {@code true} deja afuera lo que ya paso y lo cancelado
+	 */
+	@Transactional(readOnly = true)
+	public TurnosDePersonaView deLaPersona(
+			OperatingActor actor, long consultorioId, long personaId, boolean soloFuturos, int pagina, int tamano) {
+
+		long organizationId = exigirContexto(actor);
+		ConsultorioSnapshot sede = exigirSede(organizationId, consultorioId);
+		soporte.exigir(actor, PermissionCodes.TURNO_READ, organizationId, consultorioId);
+
+		Instant ahora = Instant.now();
+		long total = turnos.contarDeLaPersonaEnSede(organizationId, consultorioId, personaId, soloFuturos, ahora);
+		List<Turno> lote = total == 0
+				? List.of()
+				: turnos.findDeLaPersonaEnSede(organizationId, consultorioId, personaId, soloFuturos, ahora, pagina, tamano);
+		return new TurnosDePersonaView(sede.timezone(), total,
+				lote.isEmpty() ? List.of() : componer(organizationId, consultorioId, lote).stream()
+						.map(t -> new TurnoDeCalendarioView(t, t.operativo().profesionalNombre()))
+						.toList());
+	}
+
+	/** Lo operativo de cada turno, en una consulta por fuente y nunca una por turno. */
+	private Map<Long, OperativoDeTurnoView> operativoDe(
+			long organizationId, List<Turno> lote, Map<Long, Recepcion> recepcionDe) {
+
+		Map<Long, AtencionDeTurno> atencionDe = atenciones.atencionesDe(
+				organizationId, lote.stream().map(Turno::getId).toList());
+		Map<Long, String> profesionales = nombres.profesionales(organizationId,
+				lote.stream().map(Turno::getProfesionalMembershipId).filter(Objects::nonNull)
+						.collect(Collectors.toSet()));
+		Map<Long, String> espacios = nombres.espacios(organizationId,
+				lote.stream().map(Turno::getEspacioId).filter(Objects::nonNull).collect(Collectors.toSet()),
+				Instant.now());
+		Map<Long, Integer> numerosDeCaso = contextoClinico.numerosDeCaso(organizationId,
+				lote.stream().map(Turno::getCasoId).filter(Objects::nonNull).collect(Collectors.toSet()));
+
+		Map<Long, ResumenDelPlan> resumenes = new HashMap<>();
+		for (Long planId : lote.stream().map(Turno::getPlanId).filter(Objects::nonNull).collect(Collectors.toSet())) {
+			contextoClinico.plan(organizationId, planId).ifPresent(
+					plan -> resumenes.put(planId, sesionesDelPlan.resumir(organizationId, plan)));
+		}
+
+		Map<Long, OperativoDeTurnoView> operativos = new HashMap<>();
+		for (Turno turno : lote) {
+			AtencionDeTurno atencion = atencionDe.get(turno.getId());
+			ResumenDelPlan resumen = turno.getPlanId() == null ? null : resumenes.get(turno.getPlanId());
+			var item = resumen == null ? null : resumen.item(turno.getOfertaId());
+			operativos.put(turno.getId(), new OperativoDeTurnoView(
+					estadoOperativo(turno, recepcionDe.get(turno.getId()), atencion),
+					turno.getCasoId(),
+					turno.getCasoId() == null ? null : numerosDeCaso.get(turno.getCasoId()),
+					turno.getPlanId(),
+					resumen == null ? null : resumen.numeroDeTurno().get(turno.getId()),
+					item == null ? null : item.planificadas(),
+					turno.isSobreturno(),
+					turno.getSobreturnoMotivo(),
+					turno.getProfesionalMembershipId() == null ? null : profesionales.get(turno.getProfesionalMembershipId()),
+					turno.getEspacioId() == null ? null : espacios.get(turno.getEspacioId()),
+					atencion == null ? null : atencion.sesionId(),
+					turno.getOrigenCancelacion() == null ? null : turno.getOrigenCancelacion().name(),
+					turno.getAusenciaConsumeSesion()));
+		}
+		return operativos;
+	}
+
+	/** La foto combinada de las tres maquinas. Ver {@link OperativoDeTurnoView}. */
+	static String estadoOperativo(Turno turno, Recepcion recepcion, AtencionDeTurno atencion) {
+		if (turno.getEstado() == EstadoTurno.CANCELADO) {
+			return "CANCELADO";
+		}
+		if (atencion != null) {
+			return atencion.cerrada() ? "ATENDIDO" : "EN_ATENCION";
+		}
+		if (turno.getEstado() == EstadoTurno.AUSENTE) {
+			return "AUSENTE";
+		}
+		if (recepcion != null && recepcion.getEstado() == EstadoRecepcion.RETIRADO) {
+			return "RETIRADO";
+		}
+		if (recepcion != null && recepcion.estaAbierta()) {
+			return "PRESENTE";
+		}
+		return turno.getEstado().name();
 	}
 
 	/**
@@ -169,6 +322,7 @@ public class RecepcionService {
 
 		Map<Long, OfertaSnapshot> ofertaDe = ofertas.findTodas(organizationId, consultorioId,
 				lote.stream().map(Turno::getOfertaId).distinct().toList());
+		Map<Long, OperativoDeTurnoView> operativos = operativoDe(organizationId, lote, recepcionDe);
 		return lote.stream()
 				.map(turno -> new TurnoDelDiaView(
 						turno.getId(),
@@ -191,7 +345,8 @@ public class RecepcionService {
 								? RecepcionView.de(recepcionDe.get(turno.getId()),
 										prepagoDe.get(turno.getId()))
 								: null,
-						prepagoDe.get(turno.getId())))
+						prepagoDe.get(turno.getId()),
+						operativos.get(turno.getId())))
 				.toList();
 	}
 
