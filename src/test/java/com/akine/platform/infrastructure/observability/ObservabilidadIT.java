@@ -10,6 +10,7 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,9 +21,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
+import com.akine.LogEstructuradoEnElTest;
 import com.akine.TestcontainersConfiguration;
 
 import tools.jackson.databind.JsonNode;
@@ -50,6 +53,14 @@ class ObservabilidadIT {
 
 	@Autowired
 	private RestTestClient restTestClient;
+
+	@Autowired
+	private ConfigurableEnvironment entorno;
+
+	@BeforeEach
+	void logEnJson() {
+		LogEstructuradoEnElTest.aplicar(entorno);
+	}
 
 	@Test
 	@DisplayName("el X-Request-Id recibido vuelve en la respuesta; si no viene, se genera uno")
