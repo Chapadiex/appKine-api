@@ -110,7 +110,7 @@ class SerieDeTurnosServiceTest {
 	@BeforeEach
 	void prepararServicio() {
 		service = new SerieDeTurnosService(series, turnos, eventos, agendas, ofertas, pacientes,
-				consultorios, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), iniciador, revalidador, atenciones, ciclo, auditTrail, avisos,
+				consultorios, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class), mock(AgendaDelProfesional.class)), iniciador, revalidador, atenciones, ciclo, auditTrail, avisos,
 				recepciones, omisiones, mock(PlatformTransactionManager.class),
 				membresias, identidades,
 				new ContextoClinicoDeTurno(contextoDeAgenda),

@@ -113,6 +113,21 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 	@Query("""
 			SELECT t FROM Turno t
 			 WHERE t.organizationId = :organizationId
+			   AND t.profesionalMembershipId IN :profesionalMembershipIds
+			   AND t.deletedAt IS NULL
+			   AND t.inicio < :fin
+			   AND :inicio < t.fin
+			""")
+	List<Turno> findVivosDeProfesionalesQueCruzan(
+			@Param("organizationId") long organizationId,
+			@Param("profesionalMembershipIds") Collection<Long> profesionalMembershipIds,
+			@Param("inicio") Instant inicio,
+			@Param("fin") Instant fin);
+
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
 			   AND t.espacioId = :espacioId
 			   AND t.deletedAt IS NULL
 			   AND t.inicio < :fin

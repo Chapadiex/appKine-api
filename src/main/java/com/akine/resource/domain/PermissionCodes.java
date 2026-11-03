@@ -41,6 +41,21 @@ public final class PermissionCodes {
 	public static final String CATALOGO_READ = "catalogo:read";
 
 	/**
+	 * Horario habitual de un profesional: bloques de disponibilidad y el impacto de editarlos o
+	 * darlos de baja (agenda de profesionales, checklist §14.5). Reemplaza a
+	 * {@link #CONSULTORIO_MANAGE} en esas mutaciones. El {@code PROFESIONAL} lo tiene con alcance
+	 * {@code ACTIVIDAD_PROPIA}: solo su propio horario.
+	 */
+	public static final String AGENDA_HORARIO = "agenda:horario";
+
+	/**
+	 * Excepciones y bloqueos de disponibilidad y su impacto (checklist §14.4). Reemplaza a
+	 * {@link #CONSULTORIO_MANAGE} en esas mutaciones. Lo tiene tambien el {@code ADMINISTRATIVO};
+	 * el {@code PROFESIONAL}, solo sobre las suyas. Una excepcion de sede exige alcance no propio.
+	 */
+	public static final String AGENDA_EXCEPCIONES = "agenda:excepciones";
+
+	/**
 	 * Administrar los conceptos del catalogo clinico y las solicitudes de alta (U-08, matriz
 	 * §11.1 y §18.2).
 	 *

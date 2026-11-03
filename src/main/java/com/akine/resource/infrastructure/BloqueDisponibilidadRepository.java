@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -66,6 +67,17 @@ public interface BloqueDisponibilidadRepository
 			@Param("organizationId") Long organizationId,
 			@Param("consultorioId") Long consultorioId,
 			@Param("membershipId") Long membershipId);
+
+	@Query("""
+			SELECT b FROM BloqueDisponibilidad b
+			 WHERE b.organizationId = :organizationId
+			   AND b.membershipId IN :membershipIds
+			   AND b.active = true
+			""")
+	@Override
+	List<BloqueDisponibilidad> findActivosDeLasMemberships(
+			@Param("organizationId") Long organizationId,
+			@Param("membershipIds") Collection<Long> membershipIds);
 
 	/** Un bloque por id, acotado al tenant y a la sede, activo o no. */
 	@Query("""

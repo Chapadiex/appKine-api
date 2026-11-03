@@ -4,6 +4,7 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.ContactoDePersona;
@@ -45,7 +46,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Map;
+import java.util.Arrays;
 import java.util.Optional;
 
 /**
@@ -124,6 +125,7 @@ public class TurnoService {
 	private final ContextoClinicoDeTurno contextoClinico;
 	private final SesionesDelPlan sesionesDelPlan;
 	private final AuditTrail auditTrail;
+	private final AgendaDelProfesional agendaDelProfesional;
 	private final TransactionTemplate transaccionDeReserva;
 
 	public TurnoService(
@@ -141,7 +143,8 @@ public class TurnoService {
 			ContextoClinicoDeTurno contextoClinico,
 			SesionesDelPlan sesionesDelPlan,
 			AuditTrail auditTrail,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			AgendaDelProfesional agendaDelProfesional) {
 
 		this.turnos = turnos;
 		this.eventos = eventos;
@@ -157,6 +160,7 @@ public class TurnoService {
 		this.contextoClinico = contextoClinico;
 		this.sesionesDelPlan = sesionesDelPlan;
 		this.auditTrail = auditTrail;
+		this.agendaDelProfesional = agendaDelProfesional;
 		this.transaccionDeReserva = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -184,7 +188,9 @@ public class TurnoService {
 		// commiteado, asi que leerlas en la suya no cambia lo que ven.
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
+		// Alcance propio (agenda de profesionales): el PROFESIONAL reserva solo en su agenda.
+		agendaDelProfesional.exigirPropio(gestion, actor, organizationId, command.profesionalId());
 		if (command.esSobreturno()) {
 			// El permiso se pide aparte de turno:manage: dar un turno es de recepcion y pisar uno es de
 			// quien puede autorizarlo (TURNO.md §21). El backend lo exige aunque la pantalla esconda la
@@ -196,6 +202,8 @@ public class TurnoService {
 		// esta deadlockea entre las primeras reservas concurrentes de una sede (AgendaSedeIniciador),
 		// y abrirla anidada retiene dos conexiones por pedido y traba el pool (FilaLockPrevia).
 		iniciador.asegurar(organizationId, consultorioId);
+		// Y la de la persona que va a atender (V129), que el revalidador toma despues de la de la sede.
+		iniciador.asegurarProfesionales(organizationId, Arrays.asList(command.profesionalId()));
 
 		ResultadoDeReserva resultado = transaccionDeReserva.execute(estado -> reservarBajoLock(
 				actor, organizationId, sede, consultorioId, ofertaId, command));
@@ -391,8 +399,7 @@ public class TurnoService {
 			auditTrail.record(new AuditEntry(
 					organizationId, consultorioId, actor.accountId(), "TURNO_SOBRETURNO", "Turno", turno.getId(),
 					null, turno.getEstado().name(),
-					Map.of("personaId", String.valueOf(turno.getPersonaId()),
-							"inicio", String.valueOf(turno.getInicio())),
+					CicloDeTurnoService.detallesDeAuditoria(actor, turno),
 					turno.getSobreturnoMotivo(), null, ahora));
 		}
 		// RF-M26-002. En esta misma transaccion: si la reserva hace rollback, el aviso tambien.
@@ -414,10 +421,11 @@ public class TurnoService {
 	public TurnoView confirmar(OperatingActor actor, long consultorioId, long turnoId) {
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 
 		Turno turno = turnos.findByIdInScope(organizationId, consultorioId, turnoId)
 				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
+		agendaDelProfesional.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 
 		EstadoTurno anterior = turno.getEstado();
 		Instant ahora = Instant.now();
@@ -447,20 +455,21 @@ public class TurnoService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 		iniciador.asegurar(organizationId, consultorioId);
 		return transaccionDeReserva.execute(estado -> {
 			BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
-			return asociarContextoBajoLock(actor, organizationId, consultorioId, turnoId, casoId, planId, expectedVersion);
+			return asociarContextoBajoLock(actor, gestion, organizationId, consultorioId, turnoId, casoId, planId, expectedVersion);
 		});
 	}
 
 	private TurnoView asociarContextoBajoLock(
-			OperatingActor actor, long organizationId, long consultorioId, long turnoId, Long casoId, Long planId,
+			OperatingActor actor, PermissionDecision gestion, long organizationId, long consultorioId, long turnoId, Long casoId, Long planId,
 			long expectedVersion) {
 
 		Turno turno = turnos.findByIdInScope(organizationId, consultorioId, turnoId)
 				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
+		agendaDelProfesional.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 		if (turno.getVersion() != expectedVersion) {
 			throw new OptimisticLockingFailureException(
 					"El turno " + turnoId + " cambio desde que se leyo");
@@ -543,8 +552,8 @@ public class TurnoService {
 	 * <p>Es distinto de {@code turno:read}, que alcanza para mirar la agenda. Reservar compromete
 	 * un recurso del centro y no es una lectura.
 	 */
-	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		permissionGuard.requirePermission(new PermissionQuery(
+	private PermissionDecision exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
+		return permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(),
 				PermissionCodes.TURNO_MANAGE,
 				organizationId,

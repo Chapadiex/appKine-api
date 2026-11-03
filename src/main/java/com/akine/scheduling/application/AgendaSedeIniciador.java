@@ -2,6 +2,7 @@ package com.akine.scheduling.application;
 
 
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
+import com.akine.resource.spi.BloqueoDeAgendaDeProfesional;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.AgendaSedeRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +10,8 @@ import org.slf4j.LoggerFactory;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
+
+import java.util.Collection;
 
 /**
  * Crea la fila de {@code agenda_sede} en su PROPIA transaccion, antes de que la reserva empiece.
@@ -49,11 +52,24 @@ public class AgendaSedeIniciador {
 
 	private final AgendaSedeRepositoryPort agendas;
 	private final FilaLockPrevia filaAgendaSede;
+	private final BloqueoDeAgendaDeProfesional agendasDeProfesional;
 
 	public AgendaSedeIniciador(AgendaSedeRepositoryPort agendas,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			BloqueoDeAgendaDeProfesional agendasDeProfesional) {
 		this.agendas = agendas;
 		this.filaAgendaSede = new FilaLockPrevia("agenda_sede", transactionManager);
+		this.agendasDeProfesional = agendasDeProfesional;
+	}
+
+	/**
+	 * La fila de cada persona detras de esos profesionales ({@code agenda_profesional}, V129), que
+	 * {@link RevalidadorDeSlot} bloquea DESPUES de la de la sede para que la misma persona no quede
+	 * con dos turnos a la vez en dos sedes. Mismas reglas que {@link #asegurar}: sin transaccion
+	 * abierta. Los {@code null} se ignoran: una oferta sin profesional no tiene agenda de persona.
+	 */
+	public void asegurarProfesionales(long organizationId, Collection<Long> profesionales) {
+		agendasDeProfesional.asegurar(organizationId, profesionales);
 	}
 
 	/**

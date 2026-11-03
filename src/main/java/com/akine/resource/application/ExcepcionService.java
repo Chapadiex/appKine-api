@@ -137,7 +137,7 @@ public class ExcepcionService {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		exigirSedeOperable(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, command.membershipId());
 
 		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
 		calendarioIniciador.asegurar(organizationId, consultorioId);
@@ -208,7 +208,7 @@ public class ExcepcionService {
 				? "DIA COMPLETO"
 				: command.horaDesde() + " -> " + command.horaHasta());
 		auditar(AuditEvents.DISPONIBILIDAD_EXCEPCION_CREATED, guardada, actor.accountId(),
-				null, "ACTIVO", null, detalles, ahora);
+				null, "ACTIVO", null, AuditEvents.conActor(actor, guardada.getMembershipId(), detalles), ahora);
 
 		log.info("Excepcion de disponibilidad creada: consultorioId={} excepcionId={} alcance={}",
 				consultorioId, guardada.getId(), membershipId == null ? "SEDE" : membershipId);
@@ -240,7 +240,7 @@ public class ExcepcionService {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestionDeExcepcion(actor, organizationId, consultorioId, excepcionId);
 
 		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
 		calendarioIniciador.asegurar(organizationId, consultorioId);
@@ -272,7 +272,7 @@ public class ExcepcionService {
 		detalles.put("alcance", guardada.esDeSede() ? "SEDE" : "PROFESIONAL");
 		detalles.put("tipo", guardada.getTipo().name());
 		auditar(AuditEvents.DISPONIBILIDAD_EXCEPCION_DEACTIVATED, guardada, actor.accountId(),
-				"ACTIVO", "INACTIVO", motivo, detalles, ahora);
+				"ACTIVO", "INACTIVO", motivo, AuditEvents.conActor(actor, guardada.getMembershipId(), detalles), ahora);
 
 		log.info("Excepcion de disponibilidad dada de baja: consultorioId={} excepcionId={}",
 				consultorioId, excepcionId);
@@ -302,7 +302,7 @@ public class ExcepcionService {
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		var sede = AutorizacionDeSede.exigirSedeDelTenant(
 				consultorioDirectory, organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, command.membershipId());
 		if (command.membershipId() != null) {
 			exigirProfesionalDelTenant(organizationId, command.membershipId());
 		}
@@ -329,7 +329,7 @@ public class ExcepcionService {
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		var sede = AutorizacionDeSede.exigirSedeDelTenant(
 				consultorioDirectory, organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestionDeExcepcion(actor, organizationId, consultorioId, excepcionId);
 
 		DisponibilidadExcepcion excepcion = excepciones
 				.findByIdScoped(excepcionId, organizationId, consultorioId)
@@ -460,9 +460,40 @@ public class ExcepcionService {
 		return organizationId;
 	}
 
+	/**
+	 * {@code agenda:excepciones} sobre la sede, para una operacion que no nombra profesional: la
+	 * trata como de SEDE, asi que un alcance propio no alcanza (403).
+	 */
 	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
-				PermissionCodes.CONSULTORIO_MANAGE, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, null);
+	}
+
+	/**
+	 * {@code agenda:excepciones} sobre la sede y, con alcance propio (el {@code PROFESIONAL}), sobre
+	 * SU agenda: {@code membershipId} tiene que ser suyo, y una excepcion de sede ({@code null}) no
+	 * se le permite. Agenda de profesionales, checklist §14.4.
+	 */
+	private void exigirGestion(
+			OperatingActor actor, long organizationId, long consultorioId, Long membershipId) {
+		AutorizacionDeSede.exigirPermisoSobreProfesional(permissionGuard, membershipDirectory, actor,
+				PermissionCodes.AGENDA_EXCEPCIONES, organizationId, consultorioId, membershipId);
+	}
+
+	/**
+	 * {@link #exigirGestion} sobre una excepcion ya cargada: el profesional es el suyo. Se lee sin
+	 * lock solo para decidir el permiso; si no existe en la sede, se exige el permiso sin recorte y
+	 * el 404 lo da la operacion, igual que antes.
+	 */
+	private void exigirGestionDeExcepcion(
+			OperatingActor actor, long organizationId, long consultorioId, long excepcionId) {
+		Optional<DisponibilidadExcepcion> excepcion =
+				excepciones.findByIdScoped(excepcionId, organizationId, consultorioId);
+		if (excepcion.isEmpty()) {
+			AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
+					PermissionCodes.AGENDA_EXCEPCIONES, organizationId, consultorioId);
+			return;
+		}
+		exigirGestion(actor, organizationId, consultorioId, excepcion.get().getMembershipId());
 	}
 
 	/**

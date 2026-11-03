@@ -854,7 +854,8 @@ class MembershipServiceTest {
 			// paciente:manage lo tiene por base: otorgarlo es redundante e inocuo, y la regla lo
 			// admite para no romper un grant previo a un cambio de rol.
 			assertThat(service.permisosOtorgables(actor, ORG_ID, "CONSULTORIO_ADMIN"))
-					.containsExactly("auditoria:read-clinica", "hc:read", "hc:write", "paciente:manage");
+					.containsExactly("agenda:excepciones", "agenda:horario", "auditoria:read-clinica", "hc:read",
+						"hc:write", "paciente:manage", "turno:manage", "turno:sobreturno");
 			assertThat(service.permisosOtorgables(actor, ORG_ID, "PACIENTE")).isEmpty();
 		}
 

@@ -8,6 +8,7 @@ import com.akine.platform.spi.identity.AccountIdentity;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.person.spi.CoberturaAplicable;
 import com.akine.person.spi.CoberturasAplicablesDirectory;
 import com.akine.person.spi.ElegibilidadAdministrativaDirectory;
@@ -137,10 +138,11 @@ public class CicloDeRecepcionService {
 	public ResultadoDeLlegada registrarLlegada(OperatingActor actor, long consultorioId, long turnoId) {
 		long organizationId = exigirContexto(actor);
 		exigirSede(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 
 		Turno turno = bloqueos.bloquear(organizationId, consultorioId, turnoId)
 				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
+		soporte.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 
 		Optional<Recepcion> vigente = registro.vigente(organizationId, turnoId);
 		if (vigente.isPresent() && vigente.get().estaAbierta()) {
@@ -191,8 +193,9 @@ public class CicloDeRecepcionService {
 
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSede(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
+		soporte.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 		Recepcion recepcion = exigirAbierta(organizationId, turnoId);
 		exigirVersion(recepcion, expectedVersion);
 
@@ -421,8 +424,9 @@ public class CicloDeRecepcionService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSede(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
+		soporte.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 		Recepcion recepcion = exigirAbierta(organizationId, turnoId);
 		if (expectedVersion != null) {
 			exigirVersion(recepcion, expectedVersion);
@@ -482,8 +486,8 @@ public class CicloDeRecepcionService {
 				.orElseThrow(() -> new ConsultorioNoAccesibleException(consultorioId));
 	}
 
-	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
+	private PermissionDecision exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
+		return soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
 	}
 
 	private void exigirLectura(OperatingActor actor, long organizationId, long consultorioId) {

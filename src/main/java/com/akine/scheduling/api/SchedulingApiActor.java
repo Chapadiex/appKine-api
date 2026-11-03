@@ -36,7 +36,8 @@ class SchedulingApiActor {
 				principal.accountId(),
 				principal.platformAdmin(),
 				contexto == null ? null : contexto.organizationId(),
-				contexto == null ? null : contexto.consultorioId());
+				contexto == null ? null : contexto.consultorioId(),
+				contexto == null ? null : contexto.roleCode());
 	}
 
 	private static AuthenticatedPrincipal principalAutenticado() {

@@ -4,6 +4,7 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.identity.AccountIdentity;
@@ -42,6 +43,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -176,9 +179,10 @@ public class CicloDeTurnoService {
 
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
+		soporte.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 		exigirVersion(turno, expectedVersion);
 		exigirSinAtencion(organizationId, consultorioId, turno);
 
@@ -270,9 +274,10 @@ public class CicloDeTurnoService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
+		soporte.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 		exigirVersion(turno, expectedVersion);
 		// Una atencion registrada es la prueba de que el paciente SI vino (DP-05). Marcarlo ausente
 		// dejaria la agenda contradiciendo a la historia clinica.
@@ -319,22 +324,35 @@ public class CicloDeTurnoService {
 
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 
-		// PASO 0 y 1, en el mismo orden que la reserva y por los mismos motivos.
+		// PASO 0 y 1, en el mismo orden que la reserva y por los mismos motivos. Con la fila de la
+		// persona que va a atender (V129): la del pedido, o la que ya tiene el turno. Se lee sin lock
+		// a proposito; si el turno cambia de profesional en el medio, el revalidador responde 409.
+		Long destinoLeido = command.profesionalId() != null
+				? command.profesionalId()
+				: turnos.findByIdInScope(organizationId, consultorioId, turnoId)
+						.map(Turno::getProfesionalMembershipId)
+						.orElse(null);
 		iniciador.asegurar(organizationId, consultorioId);
+		iniciador.asegurarProfesionales(organizationId, Arrays.asList(destinoLeido));
 
 		return transaccionReadCommitted.execute(estado -> reprogramarEnTransaccion(
-				actor, consultorioId, turnoId, command, organizationId, sede));
+				actor, consultorioId, turnoId, command, organizationId, sede, gestion));
 	}
 
 	private TurnoView reprogramarEnTransaccion(
 			OperatingActor actor, long consultorioId, long turnoId,
-			ReprogramacionCommand command, long organizationId, ConsultorioSnapshot sede) {
+			ReprogramacionCommand command, long organizationId, ConsultorioSnapshot sede,
+			PermissionDecision gestion) {
 
 		BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
 
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
+		// Alcance propio: el turno tiene que ser suyo y el destino tambien. No puede pasarle su turno
+		// a otro profesional ni tomar uno ajeno.
+		soporte.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId(),
+				command.profesionalId() != null ? command.profesionalId() : turno.getProfesionalMembershipId());
 		exigirVersion(turno, command.expectedVersion());
 		exigirSinAtencion(organizationId, consultorioId, turno);
 		// Mover un turno cuyo paciente ya llego no tiene sentido (era la regla de EN_ESPERA).
@@ -521,11 +539,27 @@ public class CicloDeTurnoService {
 				turno.getId(),
 				anterior.name(),
 				turno.getEstado().name(),
-				Map.of("personaId", String.valueOf(turno.getPersonaId()),
-						"inicio", String.valueOf(turno.getInicio())),
+				detallesDeAuditoria(actor, turno),
 				motivo,
 				null,
 				ahora));
+	}
+
+	/**
+	 * Persona, horario, profesional del turno y rol de quien opero (checklist de agenda §12.4): con
+	 * profesionales operando su propia agenda, "quien" no alcanza para saber con que perfil lo hizo.
+	 */
+	static Map<String, String> detallesDeAuditoria(OperatingActor actor, Turno turno) {
+		Map<String, String> detalles = new LinkedHashMap<>();
+		detalles.put("personaId", String.valueOf(turno.getPersonaId()));
+		detalles.put("inicio", String.valueOf(turno.getInicio()));
+		if (turno.getProfesionalMembershipId() != null) {
+			detalles.put("profesionalMembershipId", String.valueOf(turno.getProfesionalMembershipId()));
+		}
+		if (actor.roleCode() != null) {
+			detalles.put("rol", actor.roleCode());
+		}
+		return detalles;
 	}
 
 	// =================================================================================
@@ -546,8 +580,12 @@ public class CicloDeTurnoService {
 				.orElseThrow(() -> new ConsultorioNoAccesibleException(consultorioId));
 	}
 
-	/** Cancelar, mover y marcar ausencia comprometen un recurso del centro: {@code turno:manage}. */
-	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
+	/**
+	 * Cancelar, mover y marcar ausencia comprometen un recurso del centro: {@code turno:manage}.
+	 * Devuelve la decision para que, con alcance propio, quien llama exija despues que el turno sea
+	 * del actor ({@link SoporteEnAgenda#exigirPropio}).
+	 */
+	private PermissionDecision exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
+		return soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
 	}
 }

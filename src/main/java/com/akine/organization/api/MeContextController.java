@@ -170,11 +170,10 @@ public class MeContextController {
 					"Los permisos efectivos se calculan sobre un contexto de trabajo");
 		}
 
+		Long consultorioId = authorizationGuard.consultorioDelContexto();
 		return ResponseEntity.ok(EffectivePermissionsResponse.of(
-				permissionEvaluator.effectivePermissions(
-						actor.accountId(),
-						organizationId,
-						authorizationGuard.consultorioDelContexto())));
+				permissionEvaluator.effectivePermissions(actor.accountId(), organizationId, consultorioId),
+				permissionEvaluator.ownScopedPermissions(actor.accountId(), organizationId, consultorioId)));
 	}
 
 	@GetMapping("/platform-role")

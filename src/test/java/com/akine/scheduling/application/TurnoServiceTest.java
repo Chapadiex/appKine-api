@@ -99,6 +99,7 @@ class TurnoServiceTest {
 	@Mock private ContextoClinicoDeAgenda contextoDeAgenda;
 	@Mock private SesionesDelPlan sesionesDelPlan;
 	@Mock private AuditTrail auditTrail;
+	@Mock private AgendaDelProfesional agendaDelProfesional;
 
 	private TurnoService service;
 	private final OperatingActor actor = new OperatingActor(9L, false, ORG_ID, CONSULTORIO_ID);
@@ -111,7 +112,7 @@ class TurnoServiceTest {
 		service = new TurnoService(turnos, eventos, agendas, ofertas, pacientes, coberturas, consultorios,
 				permissionGuard, iniciador, revalidador, avisos,
 				new ContextoClinicoDeTurno(contextoDeAgenda),
-				sesionesDelPlan, auditTrail, transacciones);
+				sesionesDelPlan, auditTrail, transacciones, agendaDelProfesional);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));

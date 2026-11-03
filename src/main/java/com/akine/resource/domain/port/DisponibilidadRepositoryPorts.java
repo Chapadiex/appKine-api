@@ -7,6 +7,7 @@ import com.akine.resource.domain.Feriado;
 import com.akine.resource.domain.FranjaHorarioGeneral;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -65,6 +66,13 @@ public final class DisponibilidadRepositoryPorts {
 		 * vigente todavia, y ese solapamiento hay que rechazarlo igual en el alta.
 		 */
 		List<BloqueDisponibilidad> findActivosDe(Long organizationId, Long consultorioId, Long membershipId);
+
+		/**
+		 * Bloques ACTIVOS de esas memberships en CUALQUIER sede de la organizacion. Son las de una
+		 * misma persona: es lo que impide cargarle el mismo horario habitual en dos sedes (agenda de
+		 * profesionales §9.3).
+		 */
+		List<BloqueDisponibilidad> findActivosDeLasMemberships(Long organizationId, Collection<Long> membershipIds);
 
 		/** Un bloque por id, acotado al tenant y a la sede, activo o no. */
 		Optional<BloqueDisponibilidad> findByIdScoped(Long id, Long organizationId, Long consultorioId);

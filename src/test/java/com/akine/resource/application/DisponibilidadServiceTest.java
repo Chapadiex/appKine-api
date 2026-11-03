@@ -43,6 +43,8 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import com.akine.resource.spi.BloqueoDeAgendaDeProfesional;
 
 import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -123,6 +125,8 @@ class DisponibilidadServiceTest {
 	private final OperatingActor actor =
 			new OperatingActor(ACCOUNT_ID, false, ORG_ID, CONSULTORIO_ID);
 
+	private final BloqueoDeAgendaDeProfesional agendasDeProfesional = mock(BloqueoDeAgendaDeProfesional.class);
+
 	@BeforeEach
 	void setUp() {
 		// El iniciador real sobre el puerto mockeado: su transaccion es un no-op con el gestor
@@ -134,7 +138,8 @@ class DisponibilidadServiceTest {
 				permissionGuard, auditTrail,
 				new SimuladorDeImpacto(
 						bloques, excepciones, feriados, calendarios, impactProbe, horarios),
-				transactionManager);
+				transactionManager, agendasDeProfesional);
+		given(agendasDeProfesional.bloquear(anyLong(), anyLong())).willAnswer(inv -> Set.of((Long) inv.getArgument(1)));
 
 		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID))
 				.willReturn(Optional.of(new ConsultorioSnapshot(
@@ -186,11 +191,11 @@ class DisponibilidadServiceTest {
 	}
 
 	@Test
-	@DisplayName("Un profesional no puede cargar su propio bloque: el codigo exigido es consultorio:manage")
-	void un_profesional_no_puede_crear_su_propio_bloque() {
-		// La matriz seccion 6 le NIEGA consultorio:manage a PROFESIONAL, asi que el evaluador
-		// rechaza. Lo que este test fija es que el servicio pida ESE codigo y no uno de lectura:
-		// si alguien lo cambiara por colaborador:read, el profesional pasaria.
+	@DisplayName("El alta de un bloque exige agenda:horario, no consultorio:manage ni una lectura")
+	void el_alta_de_un_bloque_exige_agenda_horario() {
+		// Agenda de profesionales (§14.5): el horario habitual tiene codigo propio. Lo que este test
+		// fija es que el servicio pida ESE codigo: con colaborador:read el administrativo pasaria, y
+		// con consultorio:manage el profesional no podria ordenar el suyo.
 		given(permissionGuard.requirePermission(any()))
 				.willThrow(new AccessDeniedException("PROFESIONAL no gestiona la sede"));
 
@@ -199,7 +204,7 @@ class DisponibilidadServiceTest {
 
 		ArgumentCaptor<PermissionQuery> consulta = ArgumentCaptor.forClass(PermissionQuery.class);
 		verify(permissionGuard).requirePermission(consulta.capture());
-		assertThat(consulta.getValue().permissionCode()).isEqualTo("consultorio:manage");
+		assertThat(consulta.getValue().permissionCode()).isEqualTo("agenda:horario");
 		assertThat(consulta.getValue().consultorioId()).isEqualTo(CONSULTORIO_ID);
 	}
 
