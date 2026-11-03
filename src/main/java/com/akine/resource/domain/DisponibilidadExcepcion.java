@@ -94,6 +94,10 @@ public class DisponibilidadExcepcion extends MarcaTemporal {
 	@Column(name = "notes", length = 280)
 	private String notes;
 
+	/** Cuenta que la cargo (V132). {@code null} en las anteriores: el dato no existia. */
+	@Column(name = "created_by_cuenta_id", updatable = false)
+	private Long createdByCuentaId;
+
 	@Column(name = "active", nullable = false)
 	private boolean active = true;
 
@@ -138,6 +142,7 @@ public class DisponibilidadExcepcion extends MarcaTemporal {
 		this.active = true;
 		exigirFechasCoherentes(this.fechaDesde, this.fechaHasta);
 		exigirHorarioCoherente(horaDesde, horaHasta);
+		exigirNotasSiEsOtro(this.motivo, this.notes);
 	}
 
 	/**
@@ -182,6 +187,29 @@ public class DisponibilidadExcepcion extends MarcaTemporal {
 		}
 		exigirFechasCoherentes(this.fechaDesde, this.fechaHasta);
 		exigirHorarioCoherente(this.horaDesde, this.horaHasta);
+		exigirNotasSiEsOtro(this.motivo, this.notes);
+	}
+
+	/** Fija quien la cargo (V132). Solo antes de persistirla, y una vez. */
+	public void registrarAutor(long cuentaId) {
+		if (id != null || this.createdByCuentaId != null) {
+			throw new IllegalStateException("El autor de una excepcion se fija al cargarla");
+		}
+		this.createdByCuentaId = cuentaId;
+	}
+
+	public Long getCreatedByCuentaId() {
+		return createdByCuentaId;
+	}
+
+	/**
+	 * "Otro" sin explicacion es un motivo que nadie puede leer despues (checklist de agenda §13.2).
+	 * Se controla al cargar y al editar; las filas viejas no se tocan hasta que alguien las edite.
+	 */
+	private static void exigirNotasSiEsOtro(MotivoExcepcion motivo, String notes) {
+		if (motivo == MotivoExcepcion.OTRO && (notes == null || notes.isBlank())) {
+			throw new com.akine.resource.domain.exception.MotivoOtroSinNotasException();
+		}
 	}
 
 	/**

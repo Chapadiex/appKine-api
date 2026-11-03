@@ -136,6 +136,18 @@ public final class AgendaFixtures {
 				new OperatingActor(adminAccountId, false, organizationId, consultorioId));
 	}
 
+	/**
+	 * Otra sede de la misma organizacion, completa como la primera: profesional con horario los lunes de
+	 * 09:00 a 13:00, oferta y pacientes. La cuenta de {@code base} tambien es ORG_ADMIN ahi, asi que el
+	 * mismo actor opera en las dos (cambio de sede).
+	 */
+	public Fixture agregarSede(Fixture base) {
+		String sufijo = UUID.randomUUID().toString().substring(0, 8);
+		long consultorioId = insertarConsultorio(base.organizationId(), sufijo);
+		insertarMembership(base.organizationId(), consultorioId, base.actor().accountId(), "ORG_ADMIN");
+		return poblar(base.organizationId(), consultorioId, base.actor().accountId(), 1, false);
+	}
+
 	/** Otra prestacion de la misma sede, que atiende el mismo profesional. */
 	public long agregarOferta(Fixture fixture) {
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);

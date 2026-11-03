@@ -18,6 +18,9 @@ public enum MotivoExcepcion {
 	/** Capacitacion o congreso: una ausencia programada que no es licencia. */
 	CAPACITACION,
 
+	/** Vacaciones del profesional (V132). Distinto de LICENCIA para que un reporte las separe. */
+	VACACIONES,
+
 	/**
 	 * La excepcion nace de un feriado del calendario nacional ({@link Feriado}). Suele venir
 	 * acompanada de {@code feriadoId} para trazar el origen.

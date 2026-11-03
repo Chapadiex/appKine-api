@@ -247,9 +247,11 @@ public class DisponibilidadService {
 				deLaMismaPersonaEnOtrasSedes(organizationId, consultorioId, membershipId, mismaPersona),
 				null, dia, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta);
 
-		BloqueDisponibilidad guardado = bloques.save(new BloqueDisponibilidad(
+		BloqueDisponibilidad nuevo = new BloqueDisponibilidad(
 				organizationId, consultorioId, membershipId,
-				dia, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta));
+				dia, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta);
+		nuevo.registrarAutor(actor.accountId());
+		BloqueDisponibilidad guardado = bloques.save(nuevo);
 
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("membershipId", String.valueOf(membershipId));
@@ -343,6 +345,11 @@ public class DisponibilidadService {
 		// LEJANO de los dos —los turnos que una edicion deja huerfanos son justamente los que caen
 		// despues del nuevo fin—. Despues de mutar, "antes" ya no existiria.
 		ImpactoDeDisponibilidad impacto = simulador.deEdicion(sede, bloque, command, ahora);
+		// Checklist de agenda §6.6: el mismo control que el alta de un cierre. Un cambio de horario que
+		// deja turnos afuera no se guarda sin que nadie lo haya visto; vuelve el 409 con la lista.
+		if (impacto.hayAlgo() && !command.confirmaTurnosAfectados()) {
+			throw impacto.comoRechazo();
+		}
 
 		bloque.updateDatos(
 				command.diaSemana(), command.horaDesde(), command.horaHasta(),
@@ -398,6 +405,22 @@ public class DisponibilidadService {
 			long membershipId,
 			long bloqueId,
 			String motivo) {
+		// La forma anterior a la agenda operativa: quien la llama ya decidio. La API pasa por la de abajo.
+		return darDeBaja(actor, consultorioId, membershipId, bloqueId, motivo, true);
+	}
+
+	/**
+	 * Da de baja un bloque. Si deja turnos fuera de la disponibilidad y no se confirmo, 409
+	 * {@code bloqueo-con-turnos-afectados} con la lista (checklist de agenda §6.6), igual que el alta de
+	 * un cierre. Los turnos no se tocan: quedan reservados y la agenda los marca fuera de disponibilidad.
+	 */
+	public BloqueView darDeBaja(
+			OperatingActor actor,
+			long consultorioId,
+			long membershipId,
+			long bloqueId,
+			String motivo,
+			boolean confirmaTurnosAfectados) {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
@@ -410,12 +433,13 @@ public class DisponibilidadService {
 		agendasDeProfesional.asegurar(organizationId, List.of(membershipId));
 
 		return transaccionReadCommitted.execute(estado -> darDeBajaEnTransaccion(
-				actor, consultorioId, membershipId, bloqueId, motivo, organizationId, sede));
+				actor, consultorioId, membershipId, bloqueId, motivo, organizationId, sede,
+				confirmaTurnosAfectados));
 	}
 
 	private BloqueView darDeBajaEnTransaccion(
 			OperatingActor actor, long consultorioId, long membershipId, long bloqueId,
-			String motivo, long organizationId, ConsultorioSnapshot sede) {
+			String motivo, long organizationId, ConsultorioSnapshot sede, boolean confirmaTurnosAfectados) {
 
 		exigirMotivo(motivo);
 
@@ -432,6 +456,9 @@ public class DisponibilidadService {
 		// El impacto se calcula ANTES de la baja: despues, la disponibilidad de "antes" ya no
 		// contendria la franja y la comparacion perderia su referencia.
 		ImpactoDeDisponibilidad impacto = simulador.deBaja(sede, bloque, ahora);
+		if (impacto.hayAlgo() && !confirmaTurnosAfectados) {
+			throw impacto.comoRechazo();
+		}
 
 		bloque.deactivate(ahora, motivo);
 		BloqueDisponibilidad guardado = bloques.save(bloque);

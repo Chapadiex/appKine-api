@@ -1,5 +1,7 @@
 package com.akine.resource.application;
 
+import com.akine.resource.domain.exception.BloqueoConTurnosAfectadosException;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -30,8 +32,17 @@ public record ImpactoDeDisponibilidad(
 		turnos = turnos == null ? List.of() : List.copyOf(turnos);
 	}
 
-	/** Un turno pendiente que el cambio deja afuera. Sin datos del paciente. */
-	public record TurnoAfectado(long turnoId, long membershipId, Instant inicio, Instant fin) {
+	/**
+	 * Un turno pendiente que el cambio deja afuera. Desde la agenda operativa lleva tambien quien es el
+	 * paciente, con quien y en que estado (checklist §6.2): la pantalla de afectados los reubica uno por
+	 * uno y sin el paciente no sabe a quien llamar. Nada clinico.
+	 */
+	public record TurnoAfectado(long turnoId, long membershipId, Instant inicio, Instant fin, Long personaId,
+			String personaNombre, String profesionalNombre, String estado) {
+
+		public TurnoAfectado(long turnoId, long membershipId, Instant inicio, Instant fin) {
+			this(turnoId, membershipId, inicio, fin, null, null, null, null);
+		}
 	}
 
 	public static ImpactoDeDisponibilidad ninguno(LocalDate evaluadoHasta) {
@@ -40,5 +51,15 @@ public record ImpactoDeDisponibilidad(
 
 	public boolean hayAlgo() {
 		return turnosAfectados > 0;
+	}
+
+	/** El 409 que rechaza un cambio sin confirmar, con la cuenta y la lista (checklist de agenda §6). */
+	public BloqueoConTurnosAfectadosException comoRechazo() {
+		return new BloqueoConTurnosAfectadosException(turnosAfectados,
+				turnos.stream()
+						.map(turno -> new BloqueoConTurnosAfectadosException.Turno(
+								turno.turnoId(), turno.membershipId(), turno.inicio(), turno.fin(), turno.personaId(),
+								turno.personaNombre(), turno.profesionalNombre(), turno.estado()))
+				.toList());
 	}
 }

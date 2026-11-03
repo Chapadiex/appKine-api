@@ -43,5 +43,12 @@ public record ReprogramarTurnoRequest(
 		@Schema(description = "Version que devolvio la ultima lectura del turno.", example = "0")
 		@NotNull(message = "La version esperada es obligatoria")
 		@Min(value = 0, message = "La version esperada no puede ser negativa")
-		Long expectedVersion) {
+		Long expectedVersion,
+
+		@Schema(
+				description = "Box elegido a mano en el horario nuevo. Si se omite, el sistema asigna el primero "
+						+ "libre. Se valida igual que al reservar (`espacio-no-elegible`). El historial guarda "
+						+ "el profesional y el box de antes y de despues.",
+				example = "5")
+		@Positive(message = "El espacio elegido no es valido") Long espacioId) {
 }

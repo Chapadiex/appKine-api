@@ -47,6 +47,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -389,17 +390,23 @@ public class TurnoService {
 		if (command.esSobreturno()) {
 			nuevo.autorizarSobreturno(command.sobreturnoMotivo(), actor.accountId());
 		}
+		nuevo.anotarObservaciones(command.observaciones());
 		Turno turno = turnos.save(nuevo);
 
 		eventos.registrar(TurnoEvento.de(
 				turno, TipoEventoTurno.RESERVA, null,
 				turno.isSobreturno() ? motivoDeEventoDeSobreturno(turno.getSobreturnoMotivo()) : null,
 				actor.accountId(), ahora));
+		// Toda reserva va al log transversal (checklist de agenda §12.1), no solo el sobreturno: es el
+		// que consulta un administrador buscando que hizo una cuenta sobre la agenda.
+		auditTrail.record(new AuditEntry(
+				organizationId, consultorioId, actor.accountId(), "TURNO_RESERVADO", "Turno", turno.getId(),
+				null, turno.getEstado().name(), DetallesDeAuditoriaDeTurno.de(actor, turno), null, null, ahora));
 		if (turno.isSobreturno()) {
 			auditTrail.record(new AuditEntry(
 					organizationId, consultorioId, actor.accountId(), "TURNO_SOBRETURNO", "Turno", turno.getId(),
 					null, turno.getEstado().name(),
-					CicloDeTurnoService.detallesDeAuditoria(actor, turno),
+					DetallesDeAuditoriaDeTurno.de(actor, turno),
 					turno.getSobreturnoMotivo(), null, ahora));
 		}
 		// RF-M26-002. En esta misma transaccion: si la reserva hace rollback, el aviso tambien.
@@ -438,6 +445,10 @@ public class TurnoService {
 			eventos.registrar(TurnoEvento.de(
 					confirmado, TipoEventoTurno.CONFIRMACION, anterior, null,
 					actor.accountId(), ahora));
+			auditTrail.record(new AuditEntry(
+					organizationId, consultorioId, actor.accountId(), "TURNO_CONFIRMADO", "Turno",
+					confirmado.getId(), anterior.name(), confirmado.getEstado().name(),
+					DetallesDeAuditoriaDeTurno.de(actor, confirmado), null, null, ahora));
 		}
 
 		log.info("Turno confirmado: turnoId={} consultorioId={}", turnoId, consultorioId);
@@ -486,6 +497,49 @@ public class TurnoService {
 		Turno guardado = turnos.saveAndFlush(turno);
 		eventos.registrar(TurnoEvento.de(
 				guardado, TipoEventoTurno.CAMBIO_DE_CONTEXTO, anterior, null, actor.accountId(), ahora));
+		return TurnoView.de(guardado);
+	}
+
+	/**
+	 * Cambia las observaciones administrativas de un turno vivo (checklist de agenda §1.5). <b>Sin lock
+	 * de sede</b>: no ocupa ni libera nada, igual que confirmar. El control es el optimista de la fila,
+	 * con la version que el cliente leyo. Queda en el historial del turno y en la auditoria, con el texto
+	 * de antes y el de despues.
+	 *
+	 * @throws TurnoNotAccessibleException           el turno no existe en esa sede (404)
+	 * @throws OptimisticLockingFailureException     la version quedo vieja (409)
+	 * @throws com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException cancelado o ausente (409)
+	 */
+	@Transactional
+	public TurnoView actualizarObservaciones(
+			OperatingActor actor, long consultorioId, long turnoId, String observaciones, long expectedVersion) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId);
+
+		Turno turno = turnos.findByIdInScope(organizationId, consultorioId, turnoId)
+				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
+		if (turno.getVersion() != expectedVersion) {
+			throw new OptimisticLockingFailureException(
+					"El turno " + turnoId + " cambio desde que se leyo");
+		}
+
+		String antes = turno.getObservaciones();
+		turno.anotarObservaciones(observaciones);
+		if (java.util.Objects.equals(antes, turno.getObservaciones())) {
+			return TurnoView.de(turno);
+		}
+		Instant ahora = Instant.now();
+		Turno guardado = turnos.saveAndFlush(turno);
+		eventos.registrar(TurnoEvento.de(
+				guardado, TipoEventoTurno.OBSERVACIONES, guardado.getEstado(), null, actor.accountId(), ahora));
+		Map<String, String> detalles = DetallesDeAuditoriaDeTurno.de(actor, guardado);
+		detalles.put("observacionesAntes", antes == null ? "" : antes);
+		detalles.put("observacionesDespues", guardado.getObservaciones() == null ? "" : guardado.getObservaciones());
+		auditTrail.record(new AuditEntry(
+				organizationId, consultorioId, actor.accountId(), "TURNO_OBSERVACIONES", "Turno", guardado.getId(),
+				guardado.getEstado().name(), guardado.getEstado().name(), detalles, null, null, ahora));
 		return TurnoView.de(guardado);
 	}
 

@@ -36,8 +36,8 @@ public record ExcepcionResponse(
 		String tipo,
 
 		@Schema(description = "Motivo declarado, de lista cerrada", example = "LICENCIA",
-				allowableValues = {"AUSENCIA", "LICENCIA", "FERIADO", "BLOQUEO", "AMPLIACION",
-						"OTRO"})
+				allowableValues = {"AUSENCIA", "LICENCIA", "VACACIONES", "CAPACITACION", "FERIADO", "BLOQUEO",
+						"AMPLIACION", "OTRO"})
 		String motivo,
 
 		@Schema(description = "Primer dia cubierto", example = "2026-09-07")
@@ -73,7 +73,14 @@ public record ExcepcionResponse(
 		String deactivationReason,
 
 		@Schema(description = "Version de la fila", example = "0")
-		long version) {
+		long version,
+
+		@Schema(description = "Cuenta que cargo la excepcion. Ausente en las anteriores a la migracion V132",
+				example = "12")
+		Long createdByCuentaId,
+
+		@Schema(description = "Nombre de esa cuenta. Ausente si no se resuelve", example = "Ana Recepcion")
+		String createdByNombre) {
 
 	/** {@code ExcepcionView.nuevo()} no se copia: es la senal interna de 201 contra 200. */
 	public static ExcepcionResponse from(ExcepcionView view) {
@@ -93,6 +100,8 @@ public record ExcepcionResponse(
 				view.estado(),
 				view.deletedAt(),
 				view.deactivationReason(),
-				view.version());
+				view.version(),
+				view.createdByCuentaId(),
+				view.createdByNombre());
 	}
 }

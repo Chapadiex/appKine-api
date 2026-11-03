@@ -297,6 +297,10 @@ public class DisponibilidadController {
 					simultaneas se pisan y el segundo en guardar borra el cambio del primero sin \
 					que nadie se entere.
 
+					Desde 0.154.0 una edicion que deja turnos pendientes fuera de la disponibilidad y no \
+					trae confirmaTurnosAfectados=true responde 409 bloqueo-con-turnos-afectados con la \
+					lista, igual que el alta de un cierre. Confirmada, los turnos no se tocan.
+
 					AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA \
 					disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El \
 					impacto se INFORMA, no bloquea: quien decide que hacer con esos turnos es la \
@@ -365,7 +369,8 @@ public class DisponibilidadController {
 						request.vigenciaDesde(),
 						request.vigenciaHasta(),
 						Boolean.TRUE.equals(request.limpiarVigenciaHasta()),
-						request.version()));
+						request.version(),
+						Boolean.TRUE.equals(request.confirmaTurnosAfectados())));
 
 		return ResponseEntity.ok(BloqueResponse.from(actualizado));
 	}
@@ -385,8 +390,10 @@ public class DisponibilidadController {
 
 					Devuelve el bloque dado de baja, no un 204 vacio, porque el cuerpo trae \
 					turnosAfectados: la baja QUITA disponibilidad y los turnos que caian ahi \
-					quedan en conflicto (RN-M05-004). El impacto se INFORMA, no bloquea —ADR-0011 \
-					prohibe decidir en cascada por el usuario—. Cuenta los turnos pendientes de \
+					quedan en conflicto (RN-M05-004). Desde 0.154.0, si deja turnos afuera y no viene \
+					confirmaTurnosAfectados=true, responde 409 bloqueo-con-turnos-afectados con la \
+					lista; confirmada, los turnos no se tocan (ADR-0011 prohibe decidir en cascada \
+					por el usuario) y la agenda los marca fuera de disponibilidad. Cuenta los turnos pendientes de \
 					ese profesional en esa sede desde ahora hasta el fin de vigencia del bloque \
 					(noventa dias si no tiene fin) que la baja deja fuera de la disponibilidad \
 					efectiva: desde 0.70.0 un turno cubierto por otro bloque suyo no cuenta. \
@@ -441,7 +448,8 @@ public class DisponibilidadController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "Ya estaba dado de baja (bloque-already-inactive)",
+					description = "Ya estaba dado de baja (bloque-already-inactive), o deja turnos afuera "
+							+ "sin confirmar (bloqueo-con-turnos-afectados, con la lista)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
@@ -458,7 +466,8 @@ public class DisponibilidadController {
 			@Valid @RequestBody DeactivateBloqueRequest request) {
 
 		BloqueView baja = disponibilidadService.darDeBaja(
-				apiActor.current(), consultorioId, membershipId, bloqueId, request.reason());
+				apiActor.current(), consultorioId, membershipId, bloqueId, request.reason(),
+				Boolean.TRUE.equals(request.confirmaTurnosAfectados()));
 
 		return ResponseEntity.ok(BloqueResponse.from(baja));
 	}

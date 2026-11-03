@@ -33,6 +33,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
@@ -275,14 +276,14 @@ class DisponibilidadControllerTest {
 				.andExpect(status().isBadRequest());
 
 		verify(disponibilidadService, never())
-				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyBoolean());
 	}
 
 	@Test
 	@DisplayName("La baja devuelve el bloque con turnosAfectados, no un 204 vacio: el impacto se "
 			+ "informa y no bloquea (RN-M05-004)")
 	void la_baja_devuelve_el_bloque_con_el_impacto() throws Exception {
-		given(disponibilidadService.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any()))
+		given(disponibilidadService.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyBoolean()))
 				.willReturn(bloqueDadoDeBaja());
 
 		mockMvc.perform(delete(RUTA + "/50")
@@ -295,7 +296,7 @@ class DisponibilidadControllerTest {
 				.andExpect(jsonPath("$.turnosAfectados").value(0));
 
 		verify(disponibilidadService)
-				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyBoolean());
 	}
 
 	@Test
@@ -306,7 +307,7 @@ class DisponibilidadControllerTest {
 				.andExpect(status().isUnsupportedMediaType());
 
 		verify(disponibilidadService, never())
-				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyBoolean());
 	}
 
 	// =====================================================================================
@@ -334,7 +335,7 @@ class DisponibilidadControllerTest {
 	void la_baja_repetida_dice_bloque_already_inactive() throws Exception {
 		willThrow(new BloqueInactivoException(50L, BloqueInactivoException.Operacion.BAJA))
 				.given(disponibilidadService)
-				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyBoolean());
 
 		mockMvc.perform(delete(RUTA + "/50")
 						.contentType(MediaType.APPLICATION_JSON)

@@ -4,7 +4,9 @@ import com.akine.resource.api.dto.CreateExcepcionRequest;
 import com.akine.resource.api.dto.DeactivateExcepcionRequest;
 import com.akine.resource.api.dto.ExcepcionResponse;
 import com.akine.resource.api.dto.ImpactoDisponibilidadResponse;
+import com.akine.resource.api.dto.UpdateExcepcionRequest;
 import com.akine.resource.application.ExcepcionAltaCommand;
+import com.akine.resource.application.ExcepcionEdicionCommand;
 import com.akine.resource.application.ExcepcionService;
 import com.akine.resource.application.ExcepcionView;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -264,6 +267,66 @@ public class ExcepcionController {
 				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/excepciones/"
 						+ resultado.id()))
 				.body(cuerpo);
+	}
+
+	@PutMapping(path = "/{excepcionId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "updateExcepcion",
+			summary = "Edicion de una excepcion de disponibilidad",
+			description = """
+					Reemplaza motivo, fechas, horario y notas de una excepcion ACTIVA. El tipo y el \
+					alcance no se editan: pasar un cierre a apertura, o de un profesional a la sede, es \
+					cargar otra excepcion.
+
+					version es obligatoria y se compara antes de mutar (409 concurrent-modification).
+
+					Si el cambio deja turnos pendientes fuera de la disponibilidad y no viene \
+					confirmaTurnosAfectados=true, responde 409 bloqueo-con-turnos-afectados con la cuenta \
+					y la lista, igual que el alta. Confirmado, los turnos NO se tocan: quedan reservados \
+					y la agenda operativa los marca fuera de disponibilidad.
+
+					Con motivo OTRO las notas son obligatorias: 400 validation-error con el error en \
+					`errors.notes`. Queda auditado con el antes y el despues de cada campo que cambio.
+
+					Exige consultorio:manage sobre esa sede.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Excepcion editada",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = ExcepcionResponse.class))),
+			@ApiResponse(responseCode = "400", description = "Datos incoherentes, o motivo OTRO sin notas",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "La excepcion no existe, es de otra sede o de otro tenant",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "Ya estaba dada de baja (excepcion-already-inactive), "
+					+ "la version quedo vieja (concurrent-modification), o el cambio deja turnos afuera sin "
+					+ "confirmar (bloqueo-con-turnos-afectados, con la lista)",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ExcepcionResponse> update(
+			@Parameter(description = "Identificador de la sede", example = "1")
+			@PathVariable long consultorioId,
+
+			@Parameter(description = "Identificador de la excepcion", example = "1")
+			@PathVariable long excepcionId,
+
+			@Valid @RequestBody UpdateExcepcionRequest request) {
+
+		return ResponseEntity.ok(ExcepcionResponse.from(excepcionService.editar(
+				apiActor.current(), consultorioId, excepcionId,
+				new ExcepcionEdicionCommand(
+						request.motivo(),
+						request.fechaDesde(),
+						request.fechaHasta(),
+						request.horaDesde(),
+						request.horaHasta(),
+						request.notes(),
+						request.version(),
+						Boolean.TRUE.equals(request.confirmaTurnosAfectados())))));
 	}
 
 	@DeleteMapping(path = "/{excepcionId}", consumes = MediaType.APPLICATION_JSON_VALUE)

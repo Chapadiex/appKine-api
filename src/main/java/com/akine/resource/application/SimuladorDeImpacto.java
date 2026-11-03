@@ -176,6 +176,28 @@ public class SimuladorDeImpacto {
 	 * @param anterior franjas vigentes hoy; vacia si la sede no tenia horario (sin limite)
 	 * @param nuevo    franjas propuestas; vacia es "sin horario", que no deja nada afuera
 	 */
+	/**
+	 * Que turnos deja afuera EDITAR una excepcion: la actual sale y la editada entra (checklist de agenda
+	 * §2.5). Se evalua desde el primero de los dos inicios y hasta el ultimo de los dos fines: correr un
+	 * cierre de dia puede liberar unos turnos y dejar afuera otros.
+	 *
+	 * @param editada transitoria, sin id: nunca se guarda
+	 */
+	public ImpactoDeDisponibilidad deEdicionDeExcepcion(
+			ConsultorioSnapshot sede, DisponibilidadExcepcion actual, DisponibilidadExcepcion editada,
+			Instant ahora) {
+
+		LocalDate hoy = LocalDate.ofInstant(ahora, zonaDe(sede));
+		LocalDate desde = actual.getFechaDesde().isBefore(editada.getFechaDesde())
+				? actual.getFechaDesde()
+				: editada.getFechaDesde();
+		UnaryOperator<List<DisponibilidadExcepcion>> quitar = quitando(actual.getId());
+		UnaryOperator<List<DisponibilidadExcepcion>> agregar = agregando(editada);
+		return simular(sede, actual.getMembershipId(), max(hoy, desde),
+				max(actual.getFechaHasta(), editada.getFechaHasta()), ahora,
+				UnaryOperator.identity(), lista -> agregar.apply(quitar.apply(lista)), null, null);
+	}
+
 	public ImpactoDeDisponibilidad deCambioDeHorarioDeSede(
 			ConsultorioSnapshot sede,
 			List<FranjaHorarioGeneral.Franja> anterior,
@@ -265,7 +287,8 @@ public class SimuladorDeImpacto {
 			for (TurnoPendiente turno : entrada.getValue()) {
 				if (cubre(antes, turno, zona) && !cubre(despues, turno, zona)) {
 					afectados.add(new TurnoAfectado(
-							turno.turnoId(), turno.membershipId(), turno.inicio(), turno.fin()));
+							turno.turnoId(), turno.membershipId(), turno.inicio(), turno.fin(),
+							turno.personaId(), null, null, turno.estado()));
 				}
 			}
 		}
@@ -278,8 +301,25 @@ public class SimuladorDeImpacto {
 		return new ImpactoDeDisponibilidad(
 				afectados.size(),
 				afectados.get(0).inicio(),
-				afectados.subList(0, Math.min(LIMITE_DE_LISTA, afectados.size())),
+				conNombres(organizationId, afectados.subList(0, Math.min(LIMITE_DE_LISTA, afectados.size()))),
 				hasta);
+	}
+
+	/** Los nombres de paciente y profesional, solo de los afectados que viajan: a lo sumo cincuenta. */
+	private List<TurnoAfectado> conNombres(long organizationId, List<TurnoAfectado> lista) {
+		DisponibilidadImpactProbe.NombresDeTurnos nombres = sonda.nombres(organizationId,
+				lista.stream().map(TurnoAfectado::personaId).filter(Objects::nonNull).collect(Collectors.toSet()),
+				lista.stream().map(TurnoAfectado::membershipId).collect(Collectors.toSet()));
+		if (nombres == null) {
+			return lista;
+		}
+		return lista.stream()
+				.map(turno -> new TurnoAfectado(turno.turnoId(), turno.membershipId(), turno.inicio(), turno.fin(),
+						turno.personaId(),
+						turno.personaId() == null ? null : nombres.personas().get(turno.personaId()),
+						nombres.profesionales().get(turno.membershipId()),
+						turno.estado()))
+				.toList();
 	}
 
 	/**

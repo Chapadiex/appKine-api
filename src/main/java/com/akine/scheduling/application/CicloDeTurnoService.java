@@ -44,7 +44,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -363,7 +362,7 @@ public class CicloDeTurnoService {
 				.orElseThrow(() -> new OfertaNotAccessibleException(turno.getOfertaId()));
 
 		return TurnoView.de(aplicarReprogramacion(
-				actor, sede, oferta, turno, command.inicio(), command.profesionalId(),
+				actor, sede, oferta, turno, command.inicio(), command.profesionalId(), command.espacioId(),
 				command.motivo(), Instant.now()));
 	}
 
@@ -378,6 +377,17 @@ public class CicloDeTurnoService {
 	public Turno aplicarReprogramacion(
 			OperatingActor actor, ConsultorioSnapshot sede, OfertaSnapshot oferta, Turno turno,
 			Instant nuevoInicio, Long profesionalId, String motivo, Instant ahora) {
+		return aplicarReprogramacion(actor, sede, oferta, turno, nuevoInicio, profesionalId, null, motivo, ahora);
+	}
+
+	/**
+	 * {@link #aplicarReprogramacion(OperatingActor, ConsultorioSnapshot, OfertaSnapshot, Turno, Instant,
+	 * Long, String, Instant)} eligiendo el box a mano (checklist de agenda §7.3). {@code null} deja que
+	 * el sistema asigne el primero libre. El box elegido pasa por la misma validacion que en la reserva.
+	 */
+	public Turno aplicarReprogramacion(
+			OperatingActor actor, ConsultorioSnapshot sede, OfertaSnapshot oferta, Turno turno,
+			Instant nuevoInicio, Long profesionalId, Long espacioId, String motivo, Instant ahora) {
 
 		// Paquete E-2. El contrato declara el profesional opcional: sin el, el turno se mueve con el
 		// que ya tenia. Antes viajaba null al revalidador, que respondia slot-no-disponible ("la
@@ -399,20 +409,28 @@ public class CicloDeTurnoService {
 
 		RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(new RevalidadorDeSlot.Pedido(
 				turno.getOrganizationId(), turno.getConsultorioId(), sede, oferta, nuevoInicio, nuevoFin,
-				profesionalDestino, turno.getId()));
+				profesionalDestino, turno.getId(), espacioId, false));
 
 		EstadoTurno anterior = turno.getEstado();
 		Instant inicioAnterior = turno.getInicio();
 		Instant finAnterior = turno.getFin();
+		Long profesionalAnterior = turno.getProfesionalMembershipId();
+		Long espacioAnterior = turno.getEspacioId();
 
 		turno.reprogramar(nuevoInicio, nuevoFin,
 				asignacion.profesionalId(), asignacion.espacioId(), ahora);
 		Turno movido = turnos.saveAndFlush(turno);
 
 		eventos.registrar(TurnoEvento.reprogramacion(
-				movido, anterior, inicioAnterior, finAnterior,
+				movido, anterior, inicioAnterior, finAnterior, profesionalAnterior, espacioAnterior,
 				motivo, actor.accountId(), ahora));
-		auditar(actor, movido, "TURNO_REPROGRAMADO", anterior, motivo, ahora);
+		// El antes y el despues de lo que se movio, para que la auditoria responda "lo atendia Gomez en
+		// el Box 2 a las 10" sin ir al historial del turno (checklist de agenda §18.2).
+		Map<String, String> detalles = DetallesDeAuditoriaDeTurno.de(actor, movido);
+		detalles.put("inicioAnterior", String.valueOf(inicioAnterior));
+		detalles.put("profesionalAnteriorId", String.valueOf(profesionalAnterior));
+		detalles.put("espacioAnteriorId", String.valueOf(espacioAnterior));
+		auditar(actor, movido, "TURNO_REPROGRAMADO", anterior, motivo, detalles, ahora);
 		// RF-M26-003. Despues del saveAndFlush: la clave idempotente lleva la version que deja
 		// este cambio.
 		avisos.avisarReprogramacion(movido, sede, oferta.nombreComercial(), inicioAnterior);
@@ -529,6 +547,12 @@ public class CicloDeTurnoService {
 	private void auditar(
 			OperatingActor actor, Turno turno, String evento,
 			EstadoTurno anterior, String motivo, Instant ahora) {
+		auditar(actor, turno, evento, anterior, motivo, DetallesDeAuditoriaDeTurno.de(actor, turno), ahora);
+	}
+
+	private void auditar(
+			OperatingActor actor, Turno turno, String evento,
+			EstadoTurno anterior, String motivo, Map<String, String> detalles, Instant ahora) {
 
 		auditTrail.record(new AuditEntry(
 				turno.getOrganizationId(),
@@ -539,27 +563,10 @@ public class CicloDeTurnoService {
 				turno.getId(),
 				anterior.name(),
 				turno.getEstado().name(),
-				detallesDeAuditoria(actor, turno),
+				detalles,
 				motivo,
 				null,
 				ahora));
-	}
-
-	/**
-	 * Persona, horario, profesional del turno y rol de quien opero (checklist de agenda §12.4): con
-	 * profesionales operando su propia agenda, "quien" no alcanza para saber con que perfil lo hizo.
-	 */
-	static Map<String, String> detallesDeAuditoria(OperatingActor actor, Turno turno) {
-		Map<String, String> detalles = new LinkedHashMap<>();
-		detalles.put("personaId", String.valueOf(turno.getPersonaId()));
-		detalles.put("inicio", String.valueOf(turno.getInicio()));
-		if (turno.getProfesionalMembershipId() != null) {
-			detalles.put("profesionalMembershipId", String.valueOf(turno.getProfesionalMembershipId()));
-		}
-		if (actor.roleCode() != null) {
-			detalles.put("rol", actor.roleCode());
-		}
-		return detalles;
 	}
 
 	// =================================================================================

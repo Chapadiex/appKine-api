@@ -40,7 +40,24 @@ public record ExcepcionView(
 		Instant deletedAt,
 		String deactivationReason,
 		long version,
-		boolean nuevo) {
+		boolean nuevo,
+		Long createdByCuentaId,
+		String createdByNombre) {
+
+	public ExcepcionView(long id, long organizationId, long consultorioId, Long membershipId, String tipo,
+			String motivo, LocalDate fechaDesde, LocalDate fechaHasta, LocalTime horaDesde, LocalTime horaHasta,
+			Long feriadoId, String notes, String estado, Instant deletedAt, String deactivationReason, long version,
+			boolean nuevo) {
+		this(id, organizationId, consultorioId, membershipId, tipo, motivo, fechaDesde, fechaHasta, horaDesde,
+				horaHasta, feriadoId, notes, estado, deletedAt, deactivationReason, version, nuevo, null, null);
+	}
+
+	/** La misma vista con el nombre de quien la cargo, resuelto en lote por el servicio. */
+	public ExcepcionView conAutor(String nombre) {
+		return new ExcepcionView(id, organizationId, consultorioId, membershipId, tipo, motivo, fechaDesde,
+				fechaHasta, horaDesde, horaHasta, feriadoId, notes, estado, deletedAt, deactivationReason, version,
+				nuevo, createdByCuentaId, nombre);
+	}
 
 	/** Lectura, baja, o el alta IDEMPOTENTE que devolvio la fila que ya existia. */
 	public static ExcepcionView de(DisponibilidadExcepcion excepcion) {
@@ -70,6 +87,8 @@ public record ExcepcionView(
 				excepcion.getDeletedAt(),
 				excepcion.getDeactivationReason(),
 				excepcion.getVersion(),
-				nuevo);
+				nuevo,
+				excepcion.getCreatedByCuentaId(),
+				null);
 	}
 }

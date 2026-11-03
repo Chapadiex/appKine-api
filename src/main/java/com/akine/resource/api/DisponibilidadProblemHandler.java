@@ -1,12 +1,14 @@
 package com.akine.resource.api;
 
 import com.akine.platform.spi.problem.ProblemType;
+import com.akine.resource.api.dto.ImpactoDisponibilidadResponse;
 import com.akine.resource.domain.exception.BloqueInactivoException;
 import com.akine.resource.domain.exception.BloqueNotAccessibleException;
 import com.akine.resource.domain.exception.BloqueSolapadoException;
 import com.akine.resource.domain.exception.BloqueoConTurnosAfectadosException;
 import com.akine.resource.domain.exception.ExcepcionInactivaException;
 import com.akine.resource.domain.exception.ExcepcionNotAccessibleException;
+import com.akine.resource.domain.exception.MotivoOtroSinNotasException;
 import com.akine.resource.domain.exception.ProfesionalNoVinculadoException;
 import com.akine.resource.domain.exception.ProfesionalNotAccessibleException;
 import com.akine.resource.domain.exception.VentanaDemasiadoAmpliaException;
@@ -94,6 +96,21 @@ public class DisponibilidadProblemHandler {
 			ProblemType.VENTANA_DEMASIADO_AMPLIA.uri();
 	private static final URI EXCEPCION_ALREADY_INACTIVE =
 			ProblemType.EXCEPCION_ALREADY_INACTIVE.uri();
+	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
+
+	/**
+	 * Motivo {@code OTRO} sin notas: 400 {@code validation-error} con el error en el campo, la misma
+	 * forma que un {@code @Valid} que falla, para que la pantalla lo pinte debajo del campo.
+	 */
+	@ExceptionHandler(MotivoOtroSinNotasException.class)
+	public ProblemDetail handleMotivoOtroSinNotas(MotivoOtroSinNotasException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, "La solicitud contiene campos invalidos");
+		problem.setTitle("Error de validacion");
+		problem.setType(VALIDATION_ERROR);
+		problem.setProperty("errors", java.util.Map.of(MotivoOtroSinNotasException.CAMPO, exception.getMessage()));
+		return problem;
+	}
 
 	// =================================================================================
 	// 404 — inexistente, de otro tenant, de otra sede o de otro profesional
@@ -168,6 +185,13 @@ public class DisponibilidadProblemHandler {
 		problem.setType(BLOQUEO_CON_TURNOS_AFECTADOS);
 		problem.setTitle("El bloqueo afecta turnos");
 		problem.setProperty("turnosAfectados", exception.getTurnosAfectados());
+		// La lista, con la misma forma que la consulta previa de impacto: la pantalla arma la tabla de
+		// afectados con el 409 sin otra vuelta (checklist de agenda §6.2).
+		problem.setProperty("turnos", exception.getTurnos().stream()
+				.map(turno -> new ImpactoDisponibilidadResponse.TurnoAfectadoResponse(
+						turno.turnoId(), turno.membershipId(), turno.inicio(), turno.fin(), turno.personaId(),
+						turno.personaNombre(), turno.profesionalNombre(), turno.estado()))
+				.toList());
 		return problem;
 	}
 

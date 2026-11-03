@@ -103,7 +103,15 @@ public record TurnoResponse(
 		Long planId,
 
 		@Schema(description = "`true` si se reservo sobre un horario ocupado, con autorizacion")
-		boolean sobreturno) {
+		boolean sobreturno,
+
+		@Schema(description = "Observaciones administrativas del turno. **Nunca informacion clinica.**",
+				example = "Trae los estudios")
+		String observaciones,
+
+		@Schema(description = "Turno original cuando este nace de un cambio de sede. Ausente si no es un "
+				+ "traslado.", example = "4100")
+		Long turnoOrigenId) {
 
 	public static TurnoResponse de(TurnoView vista) {
 		return new TurnoResponse(
@@ -113,6 +121,7 @@ public record TurnoResponse(
 				vista.estado(), vista.reservadoEn(), vista.confirmadoEn(),
 				vista.motivoCancelacion(), vista.canceladoEn(), vista.ausenteEn(),
 				vista.reprogramadoEn(), vista.llegadaEn(), vista.version(),
-				vista.casoId(), vista.planId(), vista.sobreturno());
+				vista.casoId(), vista.planId(), vista.sobreturno(),
+				vista.observaciones(), vista.turnoOrigenId());
 	}
 }

@@ -37,5 +37,8 @@ public enum TipoEventoTurno {
 	LLEGADA_DESHECHA,
 
 	/** Se asocio o se quito el caso o el plan del turno. No mueve nada de la agenda. */
-	CAMBIO_DE_CONTEXTO
+	CAMBIO_DE_CONTEXTO,
+
+	/** Se cambiaron las observaciones administrativas del turno. No mueve nada de la agenda. */
+	OBSERVACIONES
 }
