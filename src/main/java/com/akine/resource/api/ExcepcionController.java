@@ -51,8 +51,9 @@ import java.util.List;
  *
  * <h2>Autorizacion</h2>
  *
- * <p>Lectura {@code colaborador:read}, mutacion {@code consultorio:manage}, los mismos dos
- * codigos que el resto de M05. Sin codigos nuevos.
+ * <p>Lectura {@code colaborador:read}, mutacion {@code agenda:excepciones}, los mismos dos
+ * codigos que el resto de M05 desde la agenda de profesionales. La secretaria la tiene sobre la
+ * sede; el {@code PROFESIONAL}, solo sobre las suyas (una excepcion de sede le da 403).
  */
 @RestController
 @RequestMapping("/api/v1/consultorios/{consultorioId}/excepciones")
@@ -162,7 +163,7 @@ public class ExcepcionController {
 			summary = "Alta de un cierre o de una apertura puntual",
 			description = """
 					Carga una excepcion al horario base: una ausencia, una licencia, un bloqueo o \
-					una ampliacion excepcional (RF-M05-004). Exige consultorio:manage sobre ESA \
+					una ampliacion excepcional (RF-M05-004). Exige agenda:excepciones sobre ESA \
 					sede.
 
 					RESPONDE 201 O 200, Y UN CLIENTE QUE SOLO CONTEMPLE 201 SE ROMPE. El alta es \
@@ -212,7 +213,8 @@ public class ExcepcionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:excepciones sobre esa sede (con alcance propio: la excepcion "
+							+ "es de otro profesional o de la sede entera), o no hay contexto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -283,7 +285,7 @@ public class ExcepcionController {
 					Dar de baja dos veces es 409 excepcion-already-inactive: "ya estaba dada de \
 					baja" es informacion distinta de "no existe".
 
-					Exige consultorio:manage sobre esa sede.""")
+					Exige agenda:excepciones sobre esa sede.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -308,7 +310,8 @@ public class ExcepcionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:excepciones sobre esa sede (con alcance propio: la excepcion "
+							+ "es de otro profesional o de la sede entera), o no hay contexto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -355,7 +358,7 @@ public class ExcepcionController {
 					se miro.
 
 					No adelanta los 409 del alta (sede dada de baja, profesional sin vinculo \
-					vigente): esos los responde el alta. Exige consultorio:manage sobre esa \
+					vigente): esos los responde el alta. Exige agenda:excepciones sobre esa \
 					sede.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Impacto calculado",
@@ -367,7 +370,8 @@ public class ExcepcionController {
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:excepciones sobre esa sede (con alcance propio: la excepcion "
+							+ "es de otro profesional o de la sede entera), o no hay contexto",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",
@@ -402,13 +406,14 @@ public class ExcepcionController {
 					Consulta previa SIN EFECTOS (A-11, RN-M05-004). Solo quitar una APERTURA \
 					puede dejar turnos afuera; quitar un CIERRE responde cero. Misma cuenta \
 					exacta y misma ventana que la consulta previa del alta. Exige \
-					consultorio:manage sobre esa sede.""")
+					agenda:excepciones sobre esa sede.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Impacto calculado",
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = ImpactoDisponibilidadResponse.class))),
 			@ApiResponse(responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:excepciones sobre esa sede (con alcance propio: la excepcion "
+							+ "es de otro profesional o de la sede entera), o no hay contexto",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",

@@ -78,9 +78,10 @@ import java.util.List;
  * <h2>Autorizacion: mutar y leer no piden lo mismo</h2>
  *
  * <ul>
- *   <li><b>Mutar</b> exige {@code consultorio:manage} sobre esa sede: pasan {@code ORG_ADMIN} y
- *       el {@code CONSULTORIO_ADMIN} de esa sede. De ahi sale sola la politica "el profesional no
- *       edita su propia disponibilidad": la matriz no le da ese codigo.</li>
+ *   <li><b>Mutar</b> exige {@code agenda:horario} sobre esa sede: pasan {@code ORG_ADMIN} y
+ *       el {@code CONSULTORIO_ADMIN} de esa sede, y el {@code PROFESIONAL} sobre SU horario
+ *       (alcance {@code ACTIVIDAD_PROPIA}, agenda de profesionales). El {@code ADMINISTRATIVO} no,
+ *       salvo por grant.</li>
  *   <li><b>Leer</b> exige {@code colaborador:read} sobre esa sede. Sin esa lectura un profesional
  *       no puede ver su propio horario.</li>
  * </ul>
@@ -119,7 +120,7 @@ public class DisponibilidadController {
 					lectura del RESULTADO —que dias y horas concretas atiende— es \
 					/disponibilidad/efectiva, y las dos conviven a proposito.
 
-					Exige colaborador:read sobre esa sede, no consultorio:manage: sin eso un \
+					Exige colaborador:read sobre esa sede, no agenda:horario: sin eso un \
 					profesional no podria ver su propio horario.
 
 					Un profesional DESVINCULADO se sigue pudiendo consultar: RN-M05-003 dice que \
@@ -170,7 +171,7 @@ public class DisponibilidadController {
 			summary = "Alta de un bloque recurrente de disponibilidad",
 			description = """
 					Carga un tramo del horario semanal del profesional en esa sede: "los martes \
-					de 09 a 13, desde marzo" (RF-M05-003). Exige consultorio:manage sobre ESA \
+					de 09 a 13, desde marzo" (RF-M05-003). Exige agenda:horario sobre ESA \
 					sede.
 
 					RESPONDE 201 O 200, Y UN CLIENTE QUE SOLO CONTEMPLE 201 SE ROMPE. El alta es \
@@ -222,7 +223,8 @@ public class DisponibilidadController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto de "
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de otro "
+							+ "profesional), o no hay contexto de "
 							+ "trabajo seleccionado",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -321,7 +323,8 @@ public class DisponibilidadController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de "
+							+ "otro profesional), o no hay contexto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -399,7 +402,7 @@ public class DisponibilidadController {
 					baja" es informacion distinta de "no existe", y es la unica que le sirve al \
 					administrador que apreto el boton dos veces.
 
-					Exige consultorio:manage sobre esa sede.""")
+					Exige agenda:horario sobre esa sede.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -424,7 +427,8 @@ public class DisponibilidadController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de "
+							+ "otro profesional), o no hay contexto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -569,7 +573,7 @@ public class DisponibilidadController {
 
 					El cuerpo es el de la edicion sin version. Un turno reservado entre esta \
 					consulta y el PUT lo informa igual la respuesta del PUT. Exige \
-					consultorio:manage sobre esa sede, igual que la edicion.""")
+					agenda:horario sobre esa sede, igual que la edicion.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Impacto calculado",
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -579,7 +583,8 @@ public class DisponibilidadController {
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de "
+							+ "otro profesional), o no hay contexto",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",
@@ -625,13 +630,14 @@ public class DisponibilidadController {
 					quedarian fuera de la disponibilidad efectiva si el bloque se diera de baja. \
 					Misma cuenta exacta que la consulta previa de edicion; la ventana va de ahora \
 					al fin de vigencia del bloque, con un horizonte de noventa dias. Exige \
-					consultorio:manage sobre esa sede, igual que la baja.""")
+					agenda:horario sobre esa sede, igual que la baja.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Impacto calculado",
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = ImpactoDisponibilidadResponse.class))),
 			@ApiResponse(responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de "
+							+ "otro profesional), o no hay contexto",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",

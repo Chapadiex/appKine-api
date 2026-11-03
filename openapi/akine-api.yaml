@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.151.0
+  version: 0.153.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -7207,7 +7207,7 @@ paths:
       - Excepciones de disponibilidad
     post:
       description: |-
-        Carga una excepcion al horario base: una ausencia, una licencia, un bloqueo o una ampliacion excepcional (RF-M05-004). Exige consultorio:manage sobre ESA sede.
+        Carga una excepcion al horario base: una ausencia, una licencia, un bloqueo o una ampliacion excepcional (RF-M05-004). Exige agenda:excepciones sobre ESA sede.
 
         RESPONDE 201 O 200, Y UN CLIENTE QUE SOLO CONTEMPLE 201 SE ROMPE. El alta es IDEMPOTENTE sin Idempotency-Key (CA-M05-004-05): un pedido que coincide EXACTAMENTE con una excepcion activa que ya existe devuelve 200 con esa fila, no crea nada y no vuelve a auditar. notes y feriadoId quedan FUERA de esa comparacion. Solo el alta que crea la fila responde 201, y solo ella trae Location.
 
@@ -7260,7 +7260,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+          description: "Falta agenda:excepciones sobre esa sede (con alcance propio:\
+            \ la excepcion es de otro profesional o de la sede entera), o no hay contexto"
         "404":
           content:
             application/problem+json:
@@ -7285,7 +7286,7 @@ paths:
 
         Un CIERRE de un profesional evalua sus turnos; uno sin membershipId (SEDE ENTERA) evalua los de todos los profesionales de la sede. Una APERTURA responde cero: solo agrega disponibilidad. Cuenta exacta: un turno cuenta si la disponibilidad lo cubria antes y no despues. La ventana es la de la excepcion desde hoy, acotada a noventa dias; evaluadoHasta dice hasta donde se miro.
 
-        No adelanta los 409 del alta (sede dada de baja, profesional sin vinculo vigente): esos los responde el alta. Exige consultorio:manage sobre esa sede.
+        No adelanta los 409 del alta (sede dada de baja, profesional sin vinculo vigente): esos los responde el alta. Exige agenda:excepciones sobre esa sede.
       operationId: simularImpactoAltaExcepcion
       parameters:
       - description: Identificador de la sede
@@ -7321,7 +7322,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+          description: "Falta agenda:excepciones sobre esa sede (con alcance propio:\
+            \ la excepcion es de otro profesional o de la sede entera), o no hay contexto"
         "404":
           content:
             application/problem+json:
@@ -7342,7 +7344,7 @@ paths:
 
         Dar de baja dos veces es 409 excepcion-already-inactive: "ya estaba dada de baja" es informacion distinta de "no existe".
 
-        Exige consultorio:manage sobre esa sede.
+        Exige agenda:excepciones sobre esa sede.
       operationId: deactivateExcepcion
       parameters:
       - description: Identificador de la sede
@@ -7385,7 +7387,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+          description: "Falta agenda:excepciones sobre esa sede (con alcance propio:\
+            \ la excepcion es de otro profesional o de la sede entera), o no hay contexto"
         "404":
           content:
             application/problem+json:
@@ -7413,7 +7416,7 @@ paths:
     get:
       description: "Consulta previa SIN EFECTOS (A-11, RN-M05-004). Solo quitar una\
         \ APERTURA puede dejar turnos afuera; quitar un CIERRE responde cero. Misma\
-        \ cuenta exacta y misma ventana que la consulta previa del alta. Exige consultorio:manage\
+        \ cuenta exacta y misma ventana que la consulta previa del alta. Exige agenda:excepciones\
         \ sobre esa sede."
       operationId: simularImpactoBajaExcepcion
       parameters:
@@ -7445,7 +7448,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+          description: "Falta agenda:excepciones sobre esa sede (con alcance propio:\
+            \ la excepcion es de otro profesional o de la sede entera), o no hay contexto"
         "404":
           content:
             application/problem+json:
@@ -11564,7 +11568,7 @@ paths:
       description: |-
         Devuelve los bloques ACTIVOS del profesional en esa sede, ordenados por dia y hora (RF-M05-003). Es la lectura de las REGLAS: que horario tiene cargado. La lectura del RESULTADO —que dias y horas concretas atiende— es /disponibilidad/efectiva, y las dos conviven a proposito.
 
-        Exige colaborador:read sobre esa sede, no consultorio:manage: sin eso un profesional no podria ver su propio horario.
+        Exige colaborador:read sobre esa sede, no agenda:horario: sin eso un profesional no podria ver su propio horario.
 
         Un profesional DESVINCULADO se sigue pudiendo consultar: RN-M05-003 dice que desvincular no borra bloques ni autoria, y exigir vinculo vigente para leer dejaria al administrador sin poder revisar el horario de quien se fue.
 
@@ -11615,7 +11619,7 @@ paths:
       - Disponibilidad profesional
     post:
       description: |-
-        Carga un tramo del horario semanal del profesional en esa sede: "los martes de 09 a 13, desde marzo" (RF-M05-003). Exige consultorio:manage sobre ESA sede.
+        Carga un tramo del horario semanal del profesional en esa sede: "los martes de 09 a 13, desde marzo" (RF-M05-003). Exige agenda:horario sobre ESA sede.
 
         RESPONDE 201 O 200, Y UN CLIENTE QUE SOLO CONTEMPLE 201 SE ROMPE. El alta es IDEMPOTENTE sin Idempotency-Key: si el pedido reproduce EXACTAMENTE un bloque activo que ya existe —mismo dia, mismas horas, misma vigencia— la respuesta es 200 con ese bloque, no se crea ninguna fila y no se vuelve a auditar. Es el reintento de red, y el historial tiene que quedar como lo dejo el primer intento. Solo el alta que CREA la fila responde 201, y solo ella trae la cabecera Location.
 
@@ -11677,8 +11681,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta consultorio:manage sobre esa sede, o no hay contexto\
-            \ de trabajo seleccionado"
+          description: "Falta agenda:horario sobre esa sede (con alcance propio: el\
+            \ horario es de otro profesional), o no hay contexto de trabajo seleccionado"
         "404":
           content:
             application/problem+json:
@@ -11791,7 +11795,7 @@ paths:
 
         Dar de baja dos veces es 409 bloque-already-inactive: "ya estaba dado de baja" es informacion distinta de "no existe", y es la unica que le sirve al administrador que apreto el boton dos veces.
 
-        Exige consultorio:manage sobre esa sede.
+        Exige agenda:horario sobre esa sede.
       operationId: deactivateBloqueDisponibilidad
       parameters:
       - description: Identificador de la sede
@@ -11842,7 +11846,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+          description: "Falta agenda:horario sobre esa sede (con alcance propio: el\
+            \ horario es de otro profesional), o no hay contexto"
         "404":
           content:
             application/problem+json:
@@ -11928,7 +11933,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+          description: "Falta agenda:horario sobre esa sede (con alcance propio: el\
+            \ horario es de otro profesional), o no hay contexto"
         "404":
           content:
             application/problem+json:
@@ -11953,7 +11959,7 @@ paths:
         \ que quedarian fuera de la disponibilidad efectiva si el bloque se diera\
         \ de baja. Misma cuenta exacta que la consulta previa de edicion; la ventana\
         \ va de ahora al fin de vigencia del bloque, con un horizonte de noventa dias.\
-        \ Exige consultorio:manage sobre esa sede, igual que la baja."
+        \ Exige agenda:horario sobre esa sede, igual que la baja."
       operationId: simularImpactoBajaBloque
       parameters:
       - description: Identificador de la sede
@@ -11992,7 +11998,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+          description: "Falta agenda:horario sobre esa sede (con alcance propio: el\
+            \ horario es de otro profesional), o no hay contexto"
         "404":
           content:
             application/problem+json:
@@ -12016,7 +12023,7 @@ paths:
 
         Cuenta EXACTA dentro de la ventana: un turno cuenta si la disponibilidad lo cubria antes del cambio y no despues. Uno que cae en otro bloque vigente del mismo profesional sigue cubierto y no cuenta. La ventana va de ahora al fin de vigencia mas lejano entre el bloque actual y el editado, con un horizonte de noventa dias; evaluadoHasta dice hasta donde se miro.
 
-        El cuerpo es el de la edicion sin version. Un turno reservado entre esta consulta y el PUT lo informa igual la respuesta del PUT. Exige consultorio:manage sobre esa sede, igual que la edicion.
+        El cuerpo es el de la edicion sin version. Un turno reservado entre esta consulta y el PUT lo informa igual la respuesta del PUT. Exige agenda:horario sobre esa sede, igual que la edicion.
       operationId: simularImpactoEdicionBloque
       parameters:
       - description: Identificador de la sede
@@ -12067,7 +12074,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta consultorio:manage sobre esa sede, o no hay contexto"
+          description: "Falta agenda:horario sobre esa sede (con alcance propio: el\
+            \ horario es de otro profesional), o no hay contexto"
         "404":
           content:
             application/problem+json:
@@ -25045,6 +25053,16 @@ components:
           type: string
           description: Nombre de la sede
           example: Sede Centro
+        membershipId:
+          type:
+          - integer
+          - "null"
+          format: int64
+          description: "Membership de la cuenta que gobierna este contexto. Es el\
+            \ id con el que la agenda nombra a un profesional (profesionalId de turnos,\
+            \ membershipId de horarios y excepciones): la agenda de un PROFESIONAL\
+            \ abre en el suyo. Null si no se resuelve"
+          example: 31
         organizationId:
           type: integer
           format: int64
@@ -31626,6 +31644,18 @@ components:
       type: object
       description: Permisos efectivos de la cuenta en su contexto de trabajo activo
       properties:
+        ownScopedPermissions:
+          type: array
+          description: "Subconjunto de permissions que la cuenta tiene SOLO sobre\
+            \ su propia actividad: con turno:manage aqui, opera unicamente los turnos\
+            \ que atiende (los ajenos responden 403). Vacio si ninguno esta recortado.\
+            \ Orden alfabetico estable"
+          example:
+          - agenda:excepciones
+          - agenda:horario
+          - turno:manage
+          items:
+            type: string
         permissions:
           type: array
           description: "Codigos del catalogo que la cuenta tiene vigentes en este\
