@@ -4,6 +4,7 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.person.spi.CoberturasAplicablesDirectory;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
@@ -42,6 +43,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -66,6 +69,15 @@ import java.util.Map;
  *
  * <p>La sede de origen se bloquea <b>sin</b> exigir que este activa: sacar a los pacientes de una sede
  * que se esta cerrando es justamente uno de los usos. La de destino si tiene que estar activa.
+ *
+ * <h2>Alcance propio y la persona de destino</h2>
+ *
+ * <p>{@code turno:manage} se exige en las dos sedes. Si alguna decision viene recortada a la actividad
+ * propia (el {@code PROFESIONAL}), el turno de origen tiene que ser suyo y el {@code profesionalId} de
+ * destino tambien —su membership en la otra sede, comparada por cuenta—; si no, 403. Despues de los
+ * locks de sede se toma el de la persona de destino ({@code agenda_profesional}, V129), en el mismo
+ * orden que el resto del modulo, y el revalidador mira el solapamiento contra TODAS las memberships de
+ * esa cuenta: la misma persona no queda con dos turnos a la vez en dos sedes.
  *
  * <h2>Lo que se rechaza</h2>
  *
@@ -162,13 +174,20 @@ public class TrasladoDeTurnoService {
 		ConsultorioSnapshot origen = exigirSede(organizationId, consultorioId);
 		ConsultorioSnapshot destino = exigirSede(organizationId, command.consultorioDestinoId());
 		// Se cancela en una sede y se reserva en otra: hace falta poder hacer las dos cosas.
-		soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
-		soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, destino.id());
+		PermissionDecision enOrigen = soporte.exigir(
+				actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
+		PermissionDecision enDestino = soporte.exigir(
+				actor, PermissionCodes.TURNO_MANAGE, organizationId, destino.id());
+		// Alcance propio (agenda de profesionales): el PROFESIONAL solo se lleva SU turno y solo a SU
+		// agenda en la otra sede. El destino se mira aca; el origen, bajo el lock, con el turno leido.
+		soporte.exigirPropio(enDestino, actor, organizationId, command.profesionalId());
 
 		long primera = Math.min(origen.id(), destino.id());
 		long segunda = Math.max(origen.id(), destino.id());
 		iniciador.asegurar(organizationId, primera);
 		iniciador.asegurar(organizationId, segunda);
+		// Y la fila de la persona que va a atender en destino (V129), que se bloquea despues de las sedes.
+		iniciador.asegurarProfesionales(organizationId, Arrays.asList(command.profesionalId()));
 
 		TrasladoView resultado = transaccion.execute(estado -> {
 			for (long sede : new long[] {primera, segunda}) {
@@ -178,7 +197,14 @@ public class TrasladoDeTurnoService {
 					BloqueoDeAgenda.tomar(agendas, organizationId, sede);
 				}
 			}
-			return trasladarBajoLock(actor, organizationId, origen, destino, turnoId, command);
+			// Orden fijo de todo el modulo: sedes por id ascendente, despues personas por cuenta. El
+			// revalidador vuelve a tomar la misma fila (ya es nuestra) y mira el cruce con TODAS las
+			// memberships de esa persona: el profesional de destino no queda con dos turnos a la vez en dos
+			// sedes.
+			if (command.profesionalId() != null) {
+				revalidador.bloquearProfesionales(organizationId, List.of(command.profesionalId()));
+			}
+			return trasladarBajoLock(actor, enOrigen, organizationId, origen, destino, turnoId, command);
 		});
 		log.info("Turno trasladado de sede: turnoId={} de={} a={} turnoNuevoId={}",
 				turnoId, consultorioId, destino.id(), resultado.nuevo().id());
@@ -186,11 +212,13 @@ public class TrasladoDeTurnoService {
 	}
 
 	private TrasladoView trasladarBajoLock(
-			OperatingActor actor, long organizationId, ConsultorioSnapshot origen, ConsultorioSnapshot destino,
+			OperatingActor actor, PermissionDecision enOrigen, long organizationId,
+			ConsultorioSnapshot origen, ConsultorioSnapshot destino,
 			long turnoId, TrasladoCommand command) {
 
 		Turno original = turnos.findByIdInScope(organizationId, origen.id(), turnoId)
 				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
+		soporte.exigirPropio(enOrigen, actor, organizationId, original.getProfesionalMembershipId());
 		if (original.getVersion() != command.expectedVersion()) {
 			throw new OptimisticLockingFailureException(
 					"El turno " + turnoId + " cambio desde que se leyo: version "

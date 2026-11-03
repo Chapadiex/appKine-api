@@ -108,12 +108,13 @@ public class TurnoController {
 					ausentes las borran. No mueve nada de la agenda. Queda en el historial del turno \
 					(`OBSERVACIONES`) y en la auditoria con el texto de antes y el de despues.
 
-					Exige `turno:manage` y la version leida.""")
+					Exige `turno:manage` y la version leida. Con alcance propio (el `PROFESIONAL`), solo en los turnos \
+					que atiende: los ajenos responden 403.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Turno actualizado"),
 			@ApiResponse(responseCode = "400", description = "Mas de 500 caracteres o sin version",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
-			@ApiResponse(responseCode = "403", description = "Sin `turno:manage` en esa sede",
+			@ApiResponse(responseCode = "403", description = "Sin `turno:manage` en esa sede, o el turno es de otro profesional (alcance propio)",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404", description = "El turno o la sede no existen, o son de otro tenant",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
@@ -143,12 +144,14 @@ public class TurnoController {
 					destino. La cobertura elegida, el caso, el plan y las observaciones viajan con el turno.
 
 					Rechaza un original con Sesion (`turno-con-atencion`) o con recepcion registrada \
-					(`turno-transicion-no-permitida`). Exige `turno:manage` en las dos sedes.""")
+					(`turno-transicion-no-permitida`). Exige `turno:manage` en las dos sedes. Con alcance propio (el \
+					`PROFESIONAL`), el turno tiene que ser suyo y el `profesionalId` de destino tambien: su \
+					membership en la otra sede. Si no, 403.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "El original cancelado y el turno nuevo"),
 			@ApiResponse(responseCode = "400", description = "Datos invalidos, o la sede de destino es la misma",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
-			@ApiResponse(responseCode = "403", description = "Sin `turno:manage` en alguna de las dos sedes",
+			@ApiResponse(responseCode = "403", description = "Sin `turno:manage` en alguna de las dos sedes, o con alcance propio el turno o el destino son de otro profesional",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404", description = "El turno, una de las sedes o la oferta no existen, o son de otro tenant",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
@@ -176,7 +179,8 @@ public class TurnoController {
 					demas y vuelve con el `problemType` que habria recibido solo.
 
 					**Reintento seguro:** un turno que ya estaba cancelado vuelve `YA_CANCELADO`, no como error. \
-					Hasta 200 turnos por pedido. Exige `turno:manage`.""")
+					Hasta 200 turnos por pedido. Exige `turno:manage`; con alcance propio, los turnos de otro profesional \
+					vuelven `RECHAZADO` con `forbidden`, cada uno por separado.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Un resultado por turno"),
 			@ApiResponse(responseCode = "400", description = "Lote vacio, de mas de 200, o sin motivo",

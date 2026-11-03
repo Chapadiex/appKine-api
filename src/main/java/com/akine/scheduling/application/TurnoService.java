@@ -516,10 +516,12 @@ public class TurnoService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 
 		Turno turno = turnos.findByIdInScope(organizationId, consultorioId, turnoId)
 				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
+		// Alcance propio: el PROFESIONAL anota solo en los turnos de su agenda.
+		agendaDelProfesional.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 		if (turno.getVersion() != expectedVersion) {
 			throw new OptimisticLockingFailureException(
 					"El turno " + turnoId + " cambio desde que se leyo");

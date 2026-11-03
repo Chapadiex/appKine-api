@@ -1,6 +1,9 @@
 # Agenda de profesionales — roles y permisos
 
 Rama `akine-agenda-permisos`, contrato **0.153.0**, migración **`V129`** (`V130` reservada y vacía).
+Integrada con la agenda operativa (`akine-agenda-turnos`, `V131`, `V132`): contrato **0.154.0**. Las
+operaciones de esa rama —traslado de sede, observaciones, cancelación en lote, edición de
+excepciones— y cómo quedaron sus permisos: [`AKINE-agenda-operativa.md`](AKINE-agenda-operativa.md).
 Checklist de origen: `AGENDA-checklist.md` §1, §3, §9, §12.4 y §14 (raíz del workspace). Matriz:
 `docs/seguridad/matriz-permisos-minima.md` §21.
 
@@ -46,9 +49,12 @@ cuenta** que el actor. Lo ajeno responde **403 `forbidden`**.
 - **Frontend.** `GET /me` suma `context.membershipId` (la membership que gobierna el contexto, la de
   sede si la hay; si no hay membership de organización, el rol sale de esa). `GET /me/permissions`
   suma `ownScopedPermissions`.
-- **Auditoría.** Los eventos de turno (`TURNO_CANCELADO`, `TURNO_AUSENTE`, `TURNO_REPROGRAMADO`,
-  `TURNO_SOBRETURNO`) y de disponibilidad y excepciones llevan en `details` el `rol` del actor (del
-  contexto ya revalidado por `TenantContextFilter`) y `profesionalMembershipId` / `membershipId`.
+- **Auditoría.** Los eventos de turno (`TURNO_RESERVADO`, `TURNO_CONFIRMADO`, `TURNO_CANCELADO`,
+  `TURNO_AUSENTE`, `TURNO_REPROGRAMADO`, `TURNO_SOBRETURNO`, `TURNO_TRASLADADO`, `TURNO_OBSERVACIONES`)
+  y de disponibilidad y excepciones llevan en `details` el `rol` del actor (del contexto ya revalidado
+  por `TenantContextFilter`) y `profesionalMembershipId` / `membershipId`. Los de turno salen todos de
+  `DetallesDeAuditoriaDeTurno.de(actor, turno)`, que suma persona, oferta, inicio, box y turno de
+  origen (agenda operativa).
 
 ## Doble turno entre sedes (defecto §9.2) y horario entre sedes (§9.3)
 
@@ -68,12 +74,23 @@ cruce de turnos miraba una membership: dos reservas a la misma hora en dos sedes
 - Si la fila de la persona no existe al bloquear (el turno cambió de profesional entre la lectura sin
   lock y la transacción), la operación responde 409 `concurrent-modification`: recargar y reintentar.
 
+## Operaciones de la agenda operativa
+
+Al integrar `akine-agenda-turnos` se aplicó el mismo recorte a sus operaciones (detalle en
+[`AKINE-agenda-operativa.md`](AKINE-agenda-operativa.md), "Permisos después de integrar"):
+
+- **Traslado de sede:** `turno:manage` en las dos sedes; con alcance propio, el turno de origen y el
+  profesional de destino tienen que ser de su cuenta. Toma el lock de la persona de destino después de
+  los de las sedes y cruza contra todas sus memberships.
+- **Observaciones:** `turno:manage`, solo en sus turnos.
+- **Cancelación en lote:** el 403 propio se reporta por ítem (`RECHAZADO`, `forbidden`).
+- **Edición de excepciones:** `agenda:excepciones` con la `membershipId` de la excepción, igual que
+  el alta y la baja.
+
 ## Lo que no se hizo
 
 - Las **clases** (`activity`) siguen cruzando por membership: una clase en otra sede no bloquea un
   turno de la misma persona.
 - El 403 del recorte propio no deja fila `PERMISSION_DENIED` (el evaluador concedió; el rechazo es del
   servicio).
-- La **edición de excepciones** (`PUT`, otra rama) llama a `exigirGestion` sin profesional: hasta que
-  pase el `membershipId`, el profesional recibe 403 ahí (cerrado por defecto).
 - Duración propia por profesional: sigue en `consultorio:manage`.

@@ -265,7 +265,7 @@ public class ExcepcionService {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestionDeExcepcion(actor, organizationId, consultorioId, excepcionId);
 
 		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
 		calendarioIniciador.asegurar(organizationId, consultorioId);
@@ -328,7 +328,7 @@ public class ExcepcionService {
 		DisponibilidadExcepcion guardada = excepciones.save(excepcion);
 
 		auditar(AuditEvents.DISPONIBILIDAD_EXCEPCION_UPDATED, guardada, actor.accountId(),
-				"ACTIVO", "ACTIVO", null, detalles, ahora);
+				"ACTIVO", "ACTIVO", null, AuditEvents.conActor(actor, guardada.getMembershipId(), detalles), ahora);
 
 		log.info("Excepcion de disponibilidad editada: consultorioId={} excepcionId={} turnosAfectados={}",
 				consultorioId, excepcionId, impacto.turnosAfectados());
@@ -616,14 +616,6 @@ public class ExcepcionService {
 		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
 				PermissionCodes.COLABORADOR_READ, organizationId, consultorioId);
 		return organizationId;
-	}
-
-	/**
-	 * {@code agenda:excepciones} sobre la sede, para una operacion que no nombra profesional: la
-	 * trata como de SEDE, asi que un alcance propio no alcanza (403).
-	 */
-	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		exigirGestion(actor, organizationId, consultorioId, null);
 	}
 
 	/**

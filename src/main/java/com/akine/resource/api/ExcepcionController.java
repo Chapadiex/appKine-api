@@ -288,7 +288,8 @@ public class ExcepcionController {
 					Con motivo OTRO las notas son obligatorias: 400 validation-error con el error en \
 					`errors.notes`. Queda auditado con el antes y el despues de cada campo que cambio.
 
-					Exige consultorio:manage sobre esa sede.""")
+					Exige agenda:excepciones sobre esa sede; con alcance propio, la excepcion tiene que ser del \
+					profesional que opera (la de la sede entera responde 403).""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Excepcion editada",
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -296,7 +297,7 @@ public class ExcepcionController {
 			@ApiResponse(responseCode = "400", description = "Datos incoherentes, o motivo OTRO sin notas",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
-			@ApiResponse(responseCode = "403", description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+			@ApiResponse(responseCode = "403", description = "Falta agenda:excepciones sobre esa sede (con alcance propio: la excepcion es de otro profesional o de la sede entera), o no hay contexto",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404", description = "La excepcion no existe, es de otra sede o de otro tenant",

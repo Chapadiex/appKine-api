@@ -246,7 +246,10 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// AKINE-08.07: ajustar y anular pases, permiso reforzado.
 						"pase:adjust",
 						// `reporte:read` lo sumo G-1 (DP-15): la matriz da "Si" al ORG_ADMIN en Ver Reportes.
-						"reporte:read");
+						"reporte:read",
+						// Agenda de profesionales: horario habitual y excepciones, separados de
+						// consultorio:manage (docs/diseno/AKINE-agenda-roles.md).
+						"agenda:horario", "agenda:excepciones");
 	}
 
 	@Test
@@ -269,6 +272,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// U-25 (DP-43): enmendar es un permiso propio, con el reparto de Registrar Sesion.
 						"sesion:amend",
 						"hc:read", "hc:write",
+						// Agenda de profesionales: su horario y sus excepciones (alcance propio).
+						"agenda:horario", "agenda:excepciones",
 						// AKINE-DU-6 (DP-22): por base y no por grant, a diferencia de paciente:manage.
 						"paciente:read",
 						// U-07 y U-08: ve coberturas y aranceles, y elige practicas del catalogo.

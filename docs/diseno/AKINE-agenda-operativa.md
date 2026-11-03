@@ -1,9 +1,10 @@
 # Agenda operativa — turnos, bloqueos y trazabilidad (contrato 0.154.0)
 
 Relevamiento: `AGENDA-checklist.md` del 03/11/2026 (§1.5, §2.5, §2.9, §5.4, §6, §7, §12, §13.2, §16, §18).
-Migraciones `V131` y `V132` (`V133` reservada y sin usar). Los permisos nuevos (`agenda:horario`,
-`agenda:excepciones`, alcance propio del profesional) van en otra rama: acá todo usa los códigos
-existentes (`turno:manage`, `turno:read`, `consultorio:manage`, `colaborador:read`).
+Migraciones `V131` y `V132` (`V133` reservada y sin usar). Nació en la rama `akine-agenda-turnos` con
+los códigos existentes y se integró sobre `akine-agenda-permisos`: los permisos y el alcance propio
+del profesional están en [`AKINE-agenda-roles.md`](AKINE-agenda-roles.md), y la sección "Permisos
+después de integrar" de abajo dice cómo quedó cada operación de este documento.
 
 ## Decisiones
 
@@ -31,12 +32,14 @@ existentes (`turno:manage`, `turno:read`, `consultorio:manage`, `colaborador:rea
   su propia transacción: mismos controles, evento, auditoría y aviso que la cancelación suelta. Un
   rechazo no deshace los demás y vuelve con el `problemType` que habría recibido solo. Un turno que
   ya estaba cancelado vuelve `YA_CANCELADO` (reintento seguro). Un id repetido se procesa una vez.
-  Sede ajena = 404 del lote entero; sin permiso = rechazo por ítem (prepara el alcance propio).
+  Sede ajena = 404 del lote entero; sin permiso = rechazo por ítem: con alcance propio, los turnos
+  de otro profesional vuelven `RECHAZADO` con `forbidden` y los suyos se cancelan.
 - **Reprogramación masiva:** no hay endpoint; la pantalla reprograma fila por fila con
   `reprogramarTurno`, que ahora acepta `espacioId`.
 - **Auditoría transversal:** `TURNO_RESERVADO` y `TURNO_CONFIRMADO` se suman a lo que ya se
   auditaba. Todos los eventos de turno llevan en `details` `personaId`, `ofertaId`, `inicio`,
-  `profesionalMembershipId`, `espacioId` y, si aplica, `turnoOrigenId`.
+  `profesionalMembershipId`, `espacioId`, el `rol` de quien operó (de la agenda de profesionales) y,
+  si aplica, `turnoOrigenId`: los arma `DetallesDeAuditoriaDeTurno.de(actor, turno)`.
 - **Observaciones del turno:** `turno.observaciones` (500), administrativas, **nunca clínicas**. Se
   cargan al reservar o con su propio endpoint (versión obligatoria, evento `OBSERVACIONES`, auditoría
   `TURNO_OBSERVACIONES` con antes y después). No entran en la huella de idempotencia.
@@ -51,10 +54,10 @@ existentes (`turno:manage`, `turno:read`, `consultorio:manage`, `colaborador:rea
 
 | Operación | Ruta | Qué |
 |---|---|---|
-| `actualizarObservacionesDeTurno` (nuevo) | `PUT /consultorios/{c}/turnos/{t}/observaciones` | `{observaciones, expectedVersion}`, `turno:manage` |
-| `trasladarTurno` (nuevo) | `POST /consultorios/{c}/turnos/{t}/traslado` | `{consultorioDestinoId, ofertaId, inicio, profesionalId?, espacioId?, motivo, expectedVersion}` → `{original, nuevo}`; `turno:manage` en las dos sedes |
+| `actualizarObservacionesDeTurno` (nuevo) | `PUT /consultorios/{c}/turnos/{t}/observaciones` | `{observaciones, expectedVersion}`, `turno:manage` (propio: solo sus turnos) |
+| `trasladarTurno` (nuevo) | `POST /consultorios/{c}/turnos/{t}/traslado` | `{consultorioDestinoId, ofertaId, inicio, profesionalId?, espacioId?, motivo, expectedVersion}` → `{original, nuevo}`; `turno:manage` en las dos sedes (propio: origen y destino suyos) |
 | `cancelarTurnosEnLote` (nuevo) | `POST /consultorios/{c}/turnos/cancelacion-en-lote` | `{items:[{turnoId, expectedVersion}], motivo, origen?}` → resultado por ítem |
-| `updateExcepcion` (nuevo) | `PUT /consultorios/{c}/excepciones/{id}` | `{motivo, fechaDesde, fechaHasta, horaDesde?, horaHasta?, notes?, version, confirmaTurnosAfectados?}` |
+| `updateExcepcion` (nuevo) | `PUT /consultorios/{c}/excepciones/{id}` | `{motivo, fechaDesde, fechaHasta, horaDesde?, horaHasta?, notes?, version, confirmaTurnosAfectados?}`; `agenda:excepciones` |
 | `reservar` | `POST …/turnos/ofertas/{o}` | + `observaciones` |
 | `reprogramarTurno` | `POST …/turnos/{t}/reprogramacion` | + `espacioId` |
 | `historialTurno` | `GET …/turnos/{t}/historial` | + `profesionalAnteriorId/NuevoId`, `espacioAnteriorId/NuevoId`; tipo `OBSERVACIONES` |
@@ -66,6 +69,24 @@ existentes (`turno:manage`, `turno:read`, `consultorio:manage`, `colaborador:rea
 
 Todo aditivo salvo una conducta: **editar o dar de baja un bloque con turnos afectados ahora
 responde 409** si no se confirma (antes guardaba e informaba).
+
+## Permisos después de integrar con la agenda de profesionales
+
+Al integrar las dos ramas (contrato **0.154.0**), las operaciones nuevas de este documento pasaron al
+modelo de [`AKINE-agenda-roles.md`](AKINE-agenda-roles.md):
+
+| Operación | Permiso | Alcance propio (`PROFESIONAL`) |
+|---|---|---|
+| `trasladarTurno` | `turno:manage` en las dos sedes | El turno de origen y el `profesionalId` de destino tienen que ser de su cuenta; si no, 403. Sin `profesionalId` también es 403 (un turno sin profesional no es de nadie) |
+| `actualizarObservacionesDeTurno` | `turno:manage` | Solo en sus turnos (403) |
+| `cancelarTurnosEnLote` | `turno:manage`, por ítem | Los ajenos vuelven `RECHAZADO` con `forbidden`; no cortan el lote |
+| `updateExcepcion` | `agenda:excepciones` (antes `consultorio:manage`) | Con la `membershipId` de la excepción, igual que el alta y la baja: la de sede entera exige alcance no propio |
+| `updateBloqueDisponibilidad`, `deactivateBloqueDisponibilidad` con `confirmaTurnosAfectados` | `agenda:horario` | Solo su horario |
+
+**Lock de la persona en el traslado.** Después de los locks de `agenda_sede` (por id ascendente) se
+toma el de `agenda_profesional` (V129) de la persona de destino, como en la reserva, y
+`RevalidadorDeSlot` cruza contra todas las memberships de esa cuenta: el traslado no puede dejar a
+la misma persona con dos turnos a la vez en dos sedes.
 
 ## Límites conocidos
 
