@@ -67,6 +67,17 @@ class PersonaTest {
 	}
 
 	@Test
+	@DisplayName("Un numero sin tipo de documento se rechaza: la reciproca del par")
+	void un_numero_sin_tipo_se_rechaza() {
+		// Antes llegaba al CHECK y persistir() lo traducia como "documento en uso" (409), con lo
+		// que el operador buscaba en el padron una ficha que no existia.
+		assertThatThrownBy(() -> new Persona(
+				ORG_ID, null, "31007055", "Perez", "Ana", null, null, null, null))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("tipo de documento");
+	}
+
+	@Test
 	@DisplayName("El documento se guarda como se tipeo y se compara normalizado")
 	void el_documento_conserva_su_forma_y_normaliza_su_clave() {
 		Persona persona = new Persona(
