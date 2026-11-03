@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -179,6 +180,30 @@ public class PermissionEvaluatorService implements PermissionEvaluator, Permissi
 
 	@Override
 	@Transactional(readOnly = true)
+	public Set<String> ownScopedPermissions(long accountId, long organizationId, Long consultorioId) {
+		Instant ahora = Instant.now();
+		if (isPlatformAdmin(accountId, ahora)) {
+			return Set.of();
+		}
+		Optional<Membership> gobernante = membershipGobernante(accountId, organizationId, consultorioId, ahora);
+		if (gobernante.isEmpty()) {
+			return Set.of();
+		}
+		Membership membership = gobernante.get();
+		Set<PermissionCode> ampliadosPorGrant = EnumSet.noneOf(PermissionCode.class);
+		grantsVigentes(membership, ahora).forEach(g -> ampliadosPorGrant.add(g.getPermissionCode()));
+
+		Set<String> propios = new LinkedHashSet<>();
+		RolePermissions.baseOf(membership.getRoleCode()).forEach((codigo, alcance) -> {
+			if (alcance == PermissionScope.ACTIVIDAD_PROPIA && !ampliadosPorGrant.contains(codigo)) {
+				propios.add(codigo.code());
+			}
+		});
+		return Set.copyOf(propios);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
 	public boolean isPlatformAdmin(long accountId, Instant at) {
 		return LecturasDeAcceso.rolesDePlataforma(platformRoleRepository, accountId).stream()
 				.anyMatch(rol -> rol.isValidAt(at));
@@ -298,24 +323,44 @@ public class PermissionEvaluatorService implements PermissionEvaluator, Permissi
 				return PermissionDecision.rechazada(DenialKind.NO_PERMISSION);
 			}
 			if (alcanceCubre(alcance, membership, query.consultorioId())) {
+				// Agenda de profesionales: ACTIVIDAD_PROPIA es el alcance mas angosto que concede.
+				// Si un grant del mismo codigo cubre el recurso, gana el grant: quien tiene las dos
+				// cosas tiene la mas amplia, no la que aparece primero.
+				if (alcance == PermissionScope.ACTIVIDAD_PROPIA) {
+					Optional<PermissionScope> porGrant = alcancePorGrant(membership, permiso, query.consultorioId(), at);
+					if (porGrant.isPresent()) {
+						return PermissionDecision.concedida(porGrant.get().name(), false);
+					}
+				}
 				return PermissionDecision.concedida(alcance.name(), false);
 			}
 		}
 
-		// El grant esta atado a la membership, asi que hereda su alcance: un grant sobre una
-		// membership de sede no puede habilitar mas alla de esa sede.
+		return alcancePorGrant(membership, permiso, query.consultorioId(), at)
+				.map(alcance -> PermissionDecision.concedida(alcance.name(), false))
+				.orElseGet(() -> PermissionDecision.rechazada(DenialKind.NO_PERMISSION));
+	}
+
+	/**
+	 * El alcance con el que un grant vigente concede el permiso sobre el recurso, si lo concede.
+	 *
+	 * <p>El grant esta atado a la membership, asi que hereda su alcance: un grant sobre una
+	 * membership de sede no puede habilitar mas alla de esa sede.
+	 */
+	private Optional<PermissionScope> alcancePorGrant(
+			Membership membership, PermissionCode permiso, Long consultorioId, Instant at) {
+
 		boolean porGrant = grantsVigentes(membership, at).stream()
 				.anyMatch(g -> g.getPermissionCode() == permiso);
-		if (porGrant) {
-			PermissionScope alcanceDelGrant = membership.isOrganizationScoped()
-					? PermissionScope.ORGANIZACION
-					: PermissionScope.CONSULTORIO;
-			if (alcanceCubre(alcanceDelGrant, membership, query.consultorioId())) {
-				return PermissionDecision.concedida(alcanceDelGrant.name(), false);
-			}
+		if (!porGrant) {
+			return Optional.empty();
 		}
-
-		return PermissionDecision.rechazada(DenialKind.NO_PERMISSION);
+		PermissionScope alcanceDelGrant = membership.isOrganizationScoped()
+				? PermissionScope.ORGANIZACION
+				: PermissionScope.CONSULTORIO;
+		return alcanceCubre(alcanceDelGrant, membership, consultorioId)
+				? Optional.of(alcanceDelGrant)
+				: Optional.empty();
 	}
 
 	/**

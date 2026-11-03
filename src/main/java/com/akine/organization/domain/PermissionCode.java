@@ -145,15 +145,46 @@ public enum PermissionCode {
 	 * {@code CONSULTORIO_ADMIN}, el {@code ADMINISTRATIVO} —dar turnos es literalmente su trabajo—
 	 * y el {@code PROFESIONAL}, que agenda a sus propios pacientes. Parte de la enmienda §13, que
 	 * sigue pendiente de aprobacion.
+	 *
+	 * <p><b>El del {@code PROFESIONAL} es {@link PermissionScope#ACTIVIDAD_PROPIA}</b> desde la
+	 * etapa de agenda de profesionales: ve la agenda de la sede entera ({@code turno:read}) pero
+	 * reserva, cancela, mueve, confirma y recibe solo los turnos que atiende el. Un grant de
+	 * {@code turno:manage} sobre su membership le da la sede entera.
 	 */
 	TURNO_MANAGE("turno:manage"),
 
 	/**
 	 * Autorizar un turno sobre un horario ya ocupado (TURNO.md §21). Aparte de {@link #TURNO_MANAGE}:
 	 * dar turnos es de recepcion y pisar uno es de quien puede autorizarlo. Lo tienen
-	 * {@code ORG_ADMIN} y {@code CONSULTORIO_ADMIN}.
+	 * {@code ORG_ADMIN} y {@code CONSULTORIO_ADMIN}, y se le puede otorgar por grant al
+	 * {@code ADMINISTRATIVO} y al {@code PROFESIONAL}.
 	 */
 	TURNO_SOBRETURNO("turno:sobreturno"),
+
+	/**
+	 * Cargar, editar y dar de baja el horario habitual de un profesional (bloques de
+	 * {@code profesional_disponibilidad}) y consultar el impacto de esos cambios. Agenda de
+	 * profesionales, checklist §14.5.
+	 *
+	 * <p>Hasta esta etapa lo cubria {@code consultorio:manage}, que es configurar la sede entera:
+	 * darle eso al profesional para que ordene su horario le daba tambien el calendario de la sede.
+	 * Lo tienen el {@code ORG_ADMIN} (organizacion), el {@code CONSULTORIO_ADMIN} (su sede) y el
+	 * {@code PROFESIONAL} con alcance {@link PermissionScope#ACTIVIDAD_PROPIA}: solo su propio
+	 * horario. El {@code ADMINISTRATIVO} no lo tiene por base —la secretaria no cambia el horario
+	 * habitual— y se le puede otorgar por grant.
+	 */
+	AGENDA_HORARIO("agenda:horario"),
+
+	/**
+	 * Cargar y dar de baja excepciones y bloqueos de disponibilidad
+	 * ({@code disponibilidad_excepcion}) y consultar su impacto. Checklist §14.4.
+	 *
+	 * <p>Lo tienen el {@code ORG_ADMIN}, el {@code CONSULTORIO_ADMIN} y el {@code ADMINISTRATIVO}
+	 * con alcance de sede —bloquear una agenda por una licencia es trabajo de la secretaria— y el
+	 * {@code PROFESIONAL} con {@link PermissionScope#ACTIVIDAD_PROPIA}: solo las suyas. Una
+	 * excepcion de SEDE (sin profesional) exige un alcance que no sea el propio.
+	 */
+	AGENDA_EXCEPCIONES("agenda:excepciones"),
 
 	/** Ver Historia Clinica. F4. Sin asignacion base todavia: deniega. */
 	HC_READ("hc:read"),

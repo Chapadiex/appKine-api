@@ -45,22 +45,34 @@ public class SoporteEnAgenda {
 
 	private final PermissionGuard permissionGuard;
 	private final AuditoriaAparte auditoria;
+	private final AgendaDelProfesional agendaDelProfesional;
 
-	public SoporteEnAgenda(PermissionGuard permissionGuard, AuditoriaAparte auditoria) {
+	public SoporteEnAgenda(PermissionGuard permissionGuard, AuditoriaAparte auditoria,
+			AgendaDelProfesional agendaDelProfesional) {
 		this.permissionGuard = permissionGuard;
 		this.auditoria = auditoria;
+		this.agendaDelProfesional = agendaDelProfesional;
 	}
 
 	/**
 	 * Exige el permiso con la sede como alcance y, si se concedio por soporte, deja la fila.
 	 *
+	 * @return la decision, para que quien opera sobre un turno pueda exigir despues con
+	 *         {@link #exigirPropio} que sea de la agenda del actor cuando el alcance es el propio
 	 * @throws org.springframework.security.access.AccessDeniedException sin el permiso (403)
 	 */
-	public void exigir(OperatingActor actor, String permiso, long organizationId, long consultorioId) {
+	public PermissionDecision exigir(OperatingActor actor, String permiso, long organizationId, long consultorioId) {
 		Instant ahora = Instant.now();
 		PermissionDecision decision = permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(), permiso, organizationId, consultorioId, null, ahora));
 		registrarSiCorresponde(decision, actor.accountId(), organizationId, consultorioId, permiso, ahora);
+		return decision;
+	}
+
+	/** Ver {@link AgendaDelProfesional#exigirPropio}. */
+	public void exigirPropio(
+			PermissionDecision decision, OperatingActor actor, long organizationId, Long... profesionales) {
+		agendaDelProfesional.exigirPropio(decision, actor, organizationId, profesionales);
 	}
 
 	/** No hace nada si la decision no vino por soporte (o si no hay decision). */

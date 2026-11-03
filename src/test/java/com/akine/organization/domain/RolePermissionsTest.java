@@ -81,7 +81,19 @@ class RolePermissionsTest {
 			"PROFESIONAL,        HC_READ,                 CONSULTORIO",
 			"PROFESIONAL,        HC_WRITE,                CONSULTORIO",
 			"ADMINISTRATIVO,     COLABORADOR_READ,        CONSULTORIO",
-			"ADMINISTRATIVO,     ESPACIO_READ,            CONSULTORIO"})
+			"ADMINISTRATIVO,     ESPACIO_READ,            CONSULTORIO",
+
+			// Agenda de profesionales (decision del usuario del 03/11/2026, checklist §14).
+			"ORG_ADMIN,          AGENDA_HORARIO,          ORGANIZACION",
+			"ORG_ADMIN,          AGENDA_EXCEPCIONES,      ORGANIZACION",
+			"CONSULTORIO_ADMIN,  AGENDA_HORARIO,          CONSULTORIO",
+			"CONSULTORIO_ADMIN,  AGENDA_EXCEPCIONES,      CONSULTORIO",
+			"ADMINISTRATIVO,     AGENDA_EXCEPCIONES,      CONSULTORIO",
+			"ADMINISTRATIVO,     TURNO_MANAGE,            CONSULTORIO",
+			"PROFESIONAL,        TURNO_MANAGE,            ACTIVIDAD_PROPIA",
+			"PROFESIONAL,        AGENDA_HORARIO,          ACTIVIDAD_PROPIA",
+			"PROFESIONAL,        AGENDA_EXCEPCIONES,      ACTIVIDAD_PROPIA",
+			"PROFESIONAL,        TURNO_READ,              CONSULTORIO"})
 	@DisplayName("Cada celda que concede lo hace con el alcance que dice la matriz")
 	void las_celdas_que_conceden(RoleCode rol, PermissionCode permiso, PermissionScope alcance) {
 		assertThat(RolePermissions.baseScope(rol, permiso)).contains(alcance);
@@ -116,7 +128,13 @@ class RolePermissionsTest {
 			"ADMINISTRATIVO,     HC_READ",
 			"ADMINISTRATIVO,     HC_WRITE",
 			"ORG_ADMIN,          HC_READ",
-			"CONSULTORIO_ADMIN,  HC_READ"})
+			"CONSULTORIO_ADMIN,  HC_READ",
+			// La secretaria no cambia el horario habitual ni autoriza sobreturnos por base: grant.
+			"ADMINISTRATIVO,     AGENDA_HORARIO",
+			"ADMINISTRATIVO,     TURNO_SOBRETURNO",
+			"PROFESIONAL,        TURNO_SOBRETURNO",
+			"PACIENTE,           AGENDA_HORARIO",
+			"PACIENTE,           AGENDA_EXCEPCIONES"})
 	@DisplayName("Cada celda que deniega devuelve vacio, y vacio significa denegado")
 	void las_celdas_que_deniegan(RoleCode rol, PermissionCode permiso) {
 		assertThat(RolePermissions.baseScope(rol, permiso)).isEmpty();
@@ -289,7 +307,13 @@ class RolePermissionsTest {
 						PermissionCode.AUDITORIA_READ_CLINICA,
 						PermissionCode.PACIENTE_MANAGE,
 						PermissionCode.HC_READ,
-						PermissionCode.HC_WRITE);
+						PermissionCode.HC_WRITE,
+						// Agenda de profesionales (03/11/2026): ampliar al profesional, y horario y
+						// sobreturno para la secretaria.
+						PermissionCode.AGENDA_HORARIO,
+						PermissionCode.AGENDA_EXCEPCIONES,
+						PermissionCode.TURNO_MANAGE,
+						PermissionCode.TURNO_SOBRETURNO);
 	}
 
 	@Test
@@ -427,6 +451,16 @@ class RolePermissionsTest {
 			"PROFESIONAL,       HC_WRITE,               true",
 			"ADMINISTRATIVO,    PACIENTE_MANAGE,        true",
 			// Fuera del catalogo de grants: nunca, aunque el rol lo tenga por base.
+			// Agenda de profesionales: horario y sobreturno a la secretaria y al profesional; ampliar
+			// turno:manage y agenda:excepciones al profesional. Al paciente, nada.
+			"ADMINISTRATIVO,    AGENDA_HORARIO,         true",
+			"ADMINISTRATIVO,    TURNO_SOBRETURNO,       true",
+			"PROFESIONAL,       AGENDA_HORARIO,         true",
+			"PROFESIONAL,       TURNO_SOBRETURNO,       true",
+			"PROFESIONAL,       TURNO_MANAGE,           true",
+			"PROFESIONAL,       AGENDA_EXCEPCIONES,     true",
+			"PACIENTE,          AGENDA_HORARIO,         false",
+			"PACIENTE,          TURNO_SOBRETURNO,       false",
 			"ORG_ADMIN,         CAJA_OPERATE,           false",
 			"PLATFORM_ADMIN,    AUDITORIA_READ_CLINICA, false"
 	})

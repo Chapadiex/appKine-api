@@ -31,10 +31,20 @@ public record EffectivePermissionsResponse(
 				description = "Codigos del catalogo que la cuenta tiene vigentes en este contexto, "
 						+ "en orden alfabetico estable",
 				example = "[\"auditoria:read\", \"colaborador:manage\", \"colaborador:read\"]")
-		List<String> permissions) {
+		List<String> permissions,
+
+		@Schema(
+				description = "Subconjunto de permissions que la cuenta tiene SOLO sobre su propia "
+						+ "actividad: con turno:manage aqui, opera unicamente los turnos que atiende "
+						+ "(los ajenos responden 403). Vacio si ninguno esta recortado. Orden "
+						+ "alfabetico estable",
+				example = "[\"agenda:excepciones\", \"agenda:horario\", \"turno:manage\"]")
+		List<String> ownScopedPermissions) {
 
 	/** Ordena para que dos respuestas iguales se serialicen igual: un {@code Set} no lo garantiza. */
-	public static EffectivePermissionsResponse of(Set<String> permisos) {
-		return new EffectivePermissionsResponse(permisos.stream().sorted().toList());
+	public static EffectivePermissionsResponse of(Set<String> permisos, Set<String> propios) {
+		return new EffectivePermissionsResponse(
+				permisos.stream().sorted().toList(),
+				propios.stream().filter(permisos::contains).sorted().toList());
 	}
 }

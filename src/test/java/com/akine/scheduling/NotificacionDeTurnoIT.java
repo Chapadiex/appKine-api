@@ -103,6 +103,9 @@ class NotificacionDeTurnoIT {
 		// La fila de agenda_sede tiene que existir antes de abrir la transaccion de afuera: dentro de
 		// una transaccion ajena la reserva no puede crearla sin pedir otra conexion (FilaLockPrevia).
 		agendaSedeIniciador.asegurar(fixture.organizationId(), fixture.consultorioId());
+		// Lo mismo para la fila de agenda_profesional del profesional del turno.
+		agendaSedeIniciador.asegurarProfesionales(
+				fixture.organizationId(), List.of(fixture.profesionalMembershipId()));
 
 		Long turnoId = new TransactionTemplate(transactionManager).execute(estado -> {
 			TurnoView turno = reservar(fixture, fixture.personaA(), a(9, 0), null);

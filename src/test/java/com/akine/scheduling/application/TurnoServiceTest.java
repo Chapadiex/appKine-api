@@ -99,6 +99,7 @@ class TurnoServiceTest {
 	@Mock private ContextoClinicoDeAgenda contextoDeAgenda;
 	@Mock private SesionesDelPlan sesionesDelPlan;
 	@Mock private AuditTrail auditTrail;
+	@Mock private AgendaDelProfesional agendaDelProfesional;
 
 	private TurnoService service;
 	private final OperatingActor actor = new OperatingActor(9L, false, ORG_ID, CONSULTORIO_ID);
@@ -111,7 +112,7 @@ class TurnoServiceTest {
 		service = new TurnoService(turnos, eventos, agendas, ofertas, pacientes, coberturas, consultorios,
 				permissionGuard, iniciador, revalidador, avisos,
 				new ContextoClinicoDeTurno(contextoDeAgenda),
-				sesionesDelPlan, auditTrail, transacciones);
+				sesionesDelPlan, auditTrail, transacciones, agendaDelProfesional);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));
@@ -362,7 +363,9 @@ class TurnoServiceTest {
 		assertThat(guardado.getValue().getOrigen()).isEqualTo(OrigenDeTurno.AGENDA);
 
 		ArgumentCaptor<AuditEntry> auditoria = ArgumentCaptor.forClass(AuditEntry.class);
-		verify(auditTrail).record(auditoria.capture());
+		// Toda reserva va a la auditoria (TURNO_RESERVADO); el sobreturno deja ademas su propio evento.
+		verify(auditTrail, org.mockito.Mockito.times(2)).record(auditoria.capture());
+		assertThat(auditoria.getAllValues().get(0).eventType()).isEqualTo("TURNO_RESERVADO");
 		assertThat(auditoria.getValue().eventType()).isEqualTo("TURNO_SOBRETURNO");
 		assertThat(auditoria.getValue().reason()).isEqualTo("Urgencia clinica");
 		ArgumentCaptor<TurnoEvento> evento = ArgumentCaptor.forClass(TurnoEvento.class);

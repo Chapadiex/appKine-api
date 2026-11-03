@@ -32,7 +32,7 @@ public record EventoDeTurnoResponse(
 						+ "que las distingue.",
 				allowableValues = {
 						"RESERVA", "CONFIRMACION", "CANCELACION", "REPROGRAMACION", "AUSENCIA",
-						"LLEGADA", "LLEGADA_DESHECHA", "CAMBIO_DE_CONTEXTO"},
+						"LLEGADA", "LLEGADA_DESHECHA", "CAMBIO_DE_CONTEXTO", "OBSERVACIONES"},
 				example = "CANCELACION")
 		String tipo,
 
@@ -70,13 +70,28 @@ public record EventoDeTurnoResponse(
 		String actorNombre,
 
 		@Schema(example = "2026-09-10T11:20:00Z")
-		Instant ocurridoEn) {
+		Instant ocurridoEn,
+
+		@Schema(description = "Solo en una reprogramacion: membership del profesional antes del cambio. "
+				+ "Ausente en las reprogramaciones anteriores a la migracion V131.", example = "31")
+		Long profesionalAnteriorId,
+
+		@Schema(description = "Solo en una reprogramacion: membership del profesional despues del cambio.",
+				example = "32")
+		Long profesionalNuevoId,
+
+		@Schema(description = "Solo en una reprogramacion: box antes del cambio.", example = "4")
+		Long espacioAnteriorId,
+
+		@Schema(description = "Solo en una reprogramacion: box despues del cambio.", example = "5")
+		Long espacioNuevoId) {
 
 	public static EventoDeTurnoResponse de(EventoDeTurnoView vista) {
 		return new EventoDeTurnoResponse(
 				vista.id(), vista.tipo(), vista.estadoAnterior(), vista.estadoNuevo(),
 				vista.motivo(), vista.inicioAnterior(), vista.finAnterior(),
 				vista.inicioNuevo(), vista.finNuevo(), vista.actorCuentaId(), vista.actorNombre(),
-				vista.ocurridoEn());
+				vista.ocurridoEn(), vista.profesionalAnteriorId(), vista.profesionalNuevoId(),
+				vista.espacioAnteriorId(), vista.espacioNuevoId());
 	}
 }

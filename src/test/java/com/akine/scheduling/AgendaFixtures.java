@@ -109,6 +109,45 @@ public final class AgendaFixtures {
 		return membershipId;
 	}
 
+	/**
+	 * Una SEGUNDA sede de la misma organizacion donde atiende la MISMA PERSONA que en {@code fixture},
+	 * con otra membership (una por sede) y su propia oferta; con {@code conHorarioDeLosLunes}, tambien
+	 * el mismo horario de los lunes que en la primera. El
+	 * administrador del fixture recibe tambien membership en esta sede. Es el escenario del doble
+	 * turno entre sedes (agenda de profesionales §9.2).
+	 */
+	public Fixture otraSedeDelMismoProfesional(Fixture fixture, boolean conHorarioDeLosLunes) {
+		String sufijo = UUID.randomUUID().toString().substring(0, 8);
+		long organizationId = fixture.organizationId();
+		long consultorioId = insertarConsultorio(organizationId, sufijo);
+		long adminAccountId = fixture.actor().accountId();
+		insertarMembership(organizationId, consultorioId, adminAccountId, "ORG_ADMIN");
+		long profesionalAccountId = jdbc.queryForObject(
+				"SELECT account_id FROM membership WHERE id = ?", Long.class, fixture.profesionalMembershipId());
+		long membershipId = insertarMembership(organizationId, consultorioId, profesionalAccountId, "PROFESIONAL");
+		long ofertaId = insertarOferta(organizationId, consultorioId, insertarServicio(sufijo), 1, false, sufijo);
+		insertarHabilitacion(organizationId, consultorioId, ofertaId, membershipId);
+		if (conHorarioDeLosLunes) {
+			// Directo a la tabla: es el dato heredado (o una apertura) que el servicio ya no deja cargar.
+			insertarDisponibilidad(organizationId, consultorioId, membershipId);
+		}
+		return new Fixture(organizationId, consultorioId, ofertaId, membershipId,
+				fixture.personaA(), fixture.personaB(), fixture.personaC(),
+				new OperatingActor(adminAccountId, false, organizationId, consultorioId));
+	}
+
+	/**
+	 * Otra sede de la misma organizacion, completa como la primera: profesional con horario los lunes de
+	 * 09:00 a 13:00, oferta y pacientes. La cuenta de {@code base} tambien es ORG_ADMIN ahi, asi que el
+	 * mismo actor opera en las dos (cambio de sede).
+	 */
+	public Fixture agregarSede(Fixture base) {
+		String sufijo = UUID.randomUUID().toString().substring(0, 8);
+		long consultorioId = insertarConsultorio(base.organizationId(), sufijo);
+		insertarMembership(base.organizationId(), consultorioId, base.actor().accountId(), "ORG_ADMIN");
+		return poblar(base.organizationId(), consultorioId, base.actor().accountId(), 1, false);
+	}
+
 	/** Otra prestacion de la misma sede, que atiende el mismo profesional. */
 	public long agregarOferta(Fixture fixture) {
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);

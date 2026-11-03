@@ -4,6 +4,7 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.identity.AccountIdentity;
@@ -42,6 +43,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -176,9 +178,10 @@ public class CicloDeTurnoService {
 
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
+		soporte.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 		exigirVersion(turno, expectedVersion);
 		exigirSinAtencion(organizationId, consultorioId, turno);
 
@@ -270,9 +273,10 @@ public class CicloDeTurnoService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
+		soporte.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 		exigirVersion(turno, expectedVersion);
 		// Una atencion registrada es la prueba de que el paciente SI vino (DP-05). Marcarlo ausente
 		// dejaria la agenda contradiciendo a la historia clinica.
@@ -319,22 +323,35 @@ public class CicloDeTurnoService {
 
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 
-		// PASO 0 y 1, en el mismo orden que la reserva y por los mismos motivos.
+		// PASO 0 y 1, en el mismo orden que la reserva y por los mismos motivos. Con la fila de la
+		// persona que va a atender (V129): la del pedido, o la que ya tiene el turno. Se lee sin lock
+		// a proposito; si el turno cambia de profesional en el medio, el revalidador responde 409.
+		Long destinoLeido = command.profesionalId() != null
+				? command.profesionalId()
+				: turnos.findByIdInScope(organizationId, consultorioId, turnoId)
+						.map(Turno::getProfesionalMembershipId)
+						.orElse(null);
 		iniciador.asegurar(organizationId, consultorioId);
+		iniciador.asegurarProfesionales(organizationId, Arrays.asList(destinoLeido));
 
 		return transaccionReadCommitted.execute(estado -> reprogramarEnTransaccion(
-				actor, consultorioId, turnoId, command, organizationId, sede));
+				actor, consultorioId, turnoId, command, organizationId, sede, gestion));
 	}
 
 	private TurnoView reprogramarEnTransaccion(
 			OperatingActor actor, long consultorioId, long turnoId,
-			ReprogramacionCommand command, long organizationId, ConsultorioSnapshot sede) {
+			ReprogramacionCommand command, long organizationId, ConsultorioSnapshot sede,
+			PermissionDecision gestion) {
 
 		BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
 
 		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
+		// Alcance propio: el turno tiene que ser suyo y el destino tambien. No puede pasarle su turno
+		// a otro profesional ni tomar uno ajeno.
+		soporte.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId(),
+				command.profesionalId() != null ? command.profesionalId() : turno.getProfesionalMembershipId());
 		exigirVersion(turno, command.expectedVersion());
 		exigirSinAtencion(organizationId, consultorioId, turno);
 		// Mover un turno cuyo paciente ya llego no tiene sentido (era la regla de EN_ESPERA).
@@ -345,7 +362,7 @@ public class CicloDeTurnoService {
 				.orElseThrow(() -> new OfertaNotAccessibleException(turno.getOfertaId()));
 
 		return TurnoView.de(aplicarReprogramacion(
-				actor, sede, oferta, turno, command.inicio(), command.profesionalId(),
+				actor, sede, oferta, turno, command.inicio(), command.profesionalId(), command.espacioId(),
 				command.motivo(), Instant.now()));
 	}
 
@@ -360,6 +377,17 @@ public class CicloDeTurnoService {
 	public Turno aplicarReprogramacion(
 			OperatingActor actor, ConsultorioSnapshot sede, OfertaSnapshot oferta, Turno turno,
 			Instant nuevoInicio, Long profesionalId, String motivo, Instant ahora) {
+		return aplicarReprogramacion(actor, sede, oferta, turno, nuevoInicio, profesionalId, null, motivo, ahora);
+	}
+
+	/**
+	 * {@link #aplicarReprogramacion(OperatingActor, ConsultorioSnapshot, OfertaSnapshot, Turno, Instant,
+	 * Long, String, Instant)} eligiendo el box a mano (checklist de agenda §7.3). {@code null} deja que
+	 * el sistema asigne el primero libre. El box elegido pasa por la misma validacion que en la reserva.
+	 */
+	public Turno aplicarReprogramacion(
+			OperatingActor actor, ConsultorioSnapshot sede, OfertaSnapshot oferta, Turno turno,
+			Instant nuevoInicio, Long profesionalId, Long espacioId, String motivo, Instant ahora) {
 
 		// Paquete E-2. El contrato declara el profesional opcional: sin el, el turno se mueve con el
 		// que ya tenia. Antes viajaba null al revalidador, que respondia slot-no-disponible ("la
@@ -381,20 +409,28 @@ public class CicloDeTurnoService {
 
 		RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(new RevalidadorDeSlot.Pedido(
 				turno.getOrganizationId(), turno.getConsultorioId(), sede, oferta, nuevoInicio, nuevoFin,
-				profesionalDestino, turno.getId()));
+				profesionalDestino, turno.getId(), espacioId, false));
 
 		EstadoTurno anterior = turno.getEstado();
 		Instant inicioAnterior = turno.getInicio();
 		Instant finAnterior = turno.getFin();
+		Long profesionalAnterior = turno.getProfesionalMembershipId();
+		Long espacioAnterior = turno.getEspacioId();
 
 		turno.reprogramar(nuevoInicio, nuevoFin,
 				asignacion.profesionalId(), asignacion.espacioId(), ahora);
 		Turno movido = turnos.saveAndFlush(turno);
 
 		eventos.registrar(TurnoEvento.reprogramacion(
-				movido, anterior, inicioAnterior, finAnterior,
+				movido, anterior, inicioAnterior, finAnterior, profesionalAnterior, espacioAnterior,
 				motivo, actor.accountId(), ahora));
-		auditar(actor, movido, "TURNO_REPROGRAMADO", anterior, motivo, ahora);
+		// El antes y el despues de lo que se movio, para que la auditoria responda "lo atendia Gomez en
+		// el Box 2 a las 10" sin ir al historial del turno (checklist de agenda §18.2).
+		Map<String, String> detalles = DetallesDeAuditoriaDeTurno.de(actor, movido);
+		detalles.put("inicioAnterior", String.valueOf(inicioAnterior));
+		detalles.put("profesionalAnteriorId", String.valueOf(profesionalAnterior));
+		detalles.put("espacioAnteriorId", String.valueOf(espacioAnterior));
+		auditar(actor, movido, "TURNO_REPROGRAMADO", anterior, motivo, detalles, ahora);
 		// RF-M26-003. Despues del saveAndFlush: la clave idempotente lleva la version que deja
 		// este cambio.
 		avisos.avisarReprogramacion(movido, sede, oferta.nombreComercial(), inicioAnterior);
@@ -511,6 +547,12 @@ public class CicloDeTurnoService {
 	private void auditar(
 			OperatingActor actor, Turno turno, String evento,
 			EstadoTurno anterior, String motivo, Instant ahora) {
+		auditar(actor, turno, evento, anterior, motivo, DetallesDeAuditoriaDeTurno.de(actor, turno), ahora);
+	}
+
+	private void auditar(
+			OperatingActor actor, Turno turno, String evento,
+			EstadoTurno anterior, String motivo, Map<String, String> detalles, Instant ahora) {
 
 		auditTrail.record(new AuditEntry(
 				turno.getOrganizationId(),
@@ -521,8 +563,7 @@ public class CicloDeTurnoService {
 				turno.getId(),
 				anterior.name(),
 				turno.getEstado().name(),
-				Map.of("personaId", String.valueOf(turno.getPersonaId()),
-						"inicio", String.valueOf(turno.getInicio())),
+				detalles,
 				motivo,
 				null,
 				ahora));
@@ -546,8 +587,12 @@ public class CicloDeTurnoService {
 				.orElseThrow(() -> new ConsultorioNoAccesibleException(consultorioId));
 	}
 
-	/** Cancelar, mover y marcar ausencia comprometen un recurso del centro: {@code turno:manage}. */
-	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
+	/**
+	 * Cancelar, mover y marcar ausencia comprometen un recurso del centro: {@code turno:manage}.
+	 * Devuelve la decision para que, con alcance propio, quien llama exija despues que el turno sea
+	 * del actor ({@link SoporteEnAgenda#exigirPropio}).
+	 */
+	private PermissionDecision exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
+		return soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
 	}
 }

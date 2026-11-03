@@ -118,6 +118,13 @@ public final class SchedulingRepositoryPorts {
 		List<Turno> findVivosDeProfesionalQueCruzan(
 				long organizationId, long profesionalMembershipId, Instant inicio, Instant fin);
 
+		/**
+		 * Lo mismo para todas las memberships de una misma persona, en cualquier sede: es el cruce
+		 * que impide darle dos turnos a la misma hora en dos sedes (agenda de profesionales §9.2).
+		 */
+		List<Turno> findVivosDeProfesionalesQueCruzan(
+				long organizationId, Collection<Long> profesionalMembershipIds, Instant inicio, Instant fin);
+
 		/** Lo mismo para un espacio. Ver {@link #findVivosDeProfesionalQueCruzan}. */
 		List<Turno> findVivosDeEspacioQueCruzan(
 				long organizationId, long espacioId, Instant inicio, Instant fin);

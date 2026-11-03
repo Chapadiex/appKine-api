@@ -59,6 +59,6 @@ public class MyProfileController {
 				p.accountId(), p.email(), p.nombre(), p.apellido(),
 				c == null ? null : new MyProfileResponse.ActiveWorkContext(
 						c.organizationId(), c.organizationName(), c.consultorioId(),
-						c.consultorioName(), c.roleCode(), c.roleLabel())));
+						c.consultorioName(), c.roleCode(), c.roleLabel(), c.membershipId())));
 	}
 }

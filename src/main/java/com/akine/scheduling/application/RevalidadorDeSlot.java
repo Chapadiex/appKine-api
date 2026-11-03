@@ -54,19 +54,22 @@ class RevalidadorDeSlot {
 	private final DisponibilidadDirectory disponibilidad;
 	private final EspacioDirectory espacios;
 	private final OcupacionExternaProbe ocupacionExterna;
+	private final AgendaDelProfesional agendaDelProfesional;
 
 	RevalidadorDeSlot(
 			TurnoRepositoryPort turnos,
 			OfertaDirectory ofertas,
 			DisponibilidadDirectory disponibilidad,
 			EspacioDirectory espacios,
-			OcupacionExternaProbe ocupacionExterna) {
+			OcupacionExternaProbe ocupacionExterna,
+			AgendaDelProfesional agendaDelProfesional) {
 
 		this.turnos = turnos;
 		this.ofertas = ofertas;
 		this.disponibilidad = disponibilidad;
 		this.espacios = espacios;
 		this.ocupacionExterna = ocupacionExterna;
+		this.agendaDelProfesional = agendaDelProfesional;
 	}
 
 	/**
@@ -97,6 +100,15 @@ class RevalidadorDeSlot {
 			this(organizationId, consultorioId, sede, oferta, inicio, fin, profesionalId, turnoExcluidoId,
 					null, false);
 		}
+	}
+
+	/**
+	 * Toma de una vez, en orden de cuenta, el lock de todas las personas que una operacion de serie
+	 * va a revalidar (V129). Va despues del lock de la sede y antes de la primera revalidacion: con
+	 * varias personas, tomarlas en el orden de las ocurrencias podria cruzarse con otra serie.
+	 */
+	void bloquearProfesionales(long organizationId, java.util.Collection<Long> profesionales) {
+		agendaDelProfesional.bloquearEnOrden(organizationId, profesionales);
 	}
 
 	/** Los recursos que quedaron clavados para ese intervalo. */
@@ -217,7 +229,7 @@ class RevalidadorDeSlot {
 		Long profesionalId = previa.profesionalId();
 
 		if (!pedido.sobreturno()) {
-			exigirLugarDelProfesional(pedido, profesionalId);
+			exigirLugarDelProfesional(pedido, profesionalId, bajoLock);
 		}
 
 		Long espacioId = null;
@@ -235,7 +247,7 @@ class RevalidadorDeSlot {
 		return new Asignacion(profesionalId, espacioId);
 	}
 
-	private void exigirLugarDelProfesional(Pedido pedido, Long profesionalId) {
+	private void exigirLugarDelProfesional(Pedido pedido, Long profesionalId, boolean bajoLock) {
 		// Cupo primero: es una sola consulta y descarta el caso mas frecuente —el slot grupal
 		// lleno— sin recorrer habilitaciones ni espacios.
 		long ocupados = contarOcupacion(pedido, profesionalId);
@@ -244,7 +256,14 @@ class RevalidadorDeSlot {
 		}
 
 		if (profesionalId != null) {
-			Optional<Turno> conflicto = conflictoRealDeProfesional(pedido, profesionalId);
+			// Agenda de profesionales (checklist §9.2). La misma PERSONA tiene una membership por sede, y
+			// el lock de agenda_sede no ve la otra sede: sin esto se le daban dos turnos a la misma hora
+			// en dos sedes. Bajo el lock se toma la fila de la persona (V129) DESPUES de la de la sede
+			// —orden fijo, sin deadlock entre sedes— y el cruce mira todas sus memberships.
+			Set<Long> mismaPersona = bajoLock
+					? agendaDelProfesional.bloquear(pedido.organizationId(), profesionalId)
+					: agendaDelProfesional.deLaMismaPersona(pedido.organizationId(), profesionalId);
+			Optional<Turno> conflicto = conflictoRealDeProfesional(pedido, profesionalId, mismaPersona);
 			if (conflicto.isPresent()) {
 				throw new RecursoOcupadoException("profesional", conflicto.get().getId(),
 						conflicto.get().getInicio(), conflicto.get().getFin());
@@ -359,13 +378,14 @@ class RevalidadorDeSlot {
 	 * ocupado" contra la primera: los turnos de un mismo slot grupal comparten profesional, oferta
 	 * y hora a proposito. Lo que es conflicto es cualquier OTRO turno que se cruce.
 	 */
-	private Optional<Turno> conflictoRealDeProfesional(Pedido pedido, long profesionalId) {
+	private Optional<Turno> conflictoRealDeProfesional(Pedido pedido, long profesionalId, Set<Long> mismaPersona) {
 		return turnos
-				.findVivosDeProfesionalQueCruzan(
-						pedido.organizationId(), profesionalId, pedido.inicio(), pedido.fin())
+				.findVivosDeProfesionalesQueCruzan(
+						pedido.organizationId(), mismaPersona, pedido.inicio(), pedido.fin())
 				.stream()
 				.filter(otro -> !esElExcluido(otro, pedido))
 				.filter(otro -> !(otro.getOfertaId().equals(pedido.oferta().id())
+						&& Objects.equals(otro.getProfesionalMembershipId(), profesionalId)
 						&& otro.getInicio().equals(pedido.inicio())))
 				.findFirst();
 	}

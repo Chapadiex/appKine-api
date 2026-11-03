@@ -11,8 +11,10 @@ import com.akine.scheduling.application.AgendaOperativaService;
 import com.akine.scheduling.application.BusquedaDeDisponibilidad;
 import com.akine.scheduling.application.ContextoDeAgendaService;
 import com.akine.scheduling.application.DisponibilidadDeTurnosService;
+import com.akine.scheduling.application.FiltroDeTurnos;
 import com.akine.scheduling.application.ValidacionDeHorarioCommand;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -172,7 +174,15 @@ public class DisponibilidadDeTurnosController {
 			description = """
 					Todo lo que dibuja la agenda en una ventana de hasta 14 dias: quien atiende y cuando, en \
 					que boxes, los turnos con su estado, las clases y los bloqueos. `hasta` es **exclusivo**. \
-					Los cancelados no vienen salvo `incluirCancelados=true`. Exige `turno:read`.""")
+					Los cancelados no vienen salvo `incluirCancelados=true` o `estado=CANCELADO`. Exige `turno:read`.
+
+					`estado` (repetible) filtra por el **estado operativo** que la agenda muestra (`RESERVADO`, \
+					`CONFIRMADO`, `PRESENTE`, `RETIRADO`, `EN_ATENCION`, `ATENDIDO`, `AUSENTE`, `CANCELADO`) y \
+					`personaId` por paciente.
+
+					Cada turno reservado o confirmado con profesional trae `fueraDeDisponibilidad`: `true` si un \
+					bloqueo o un cambio de horario lo dejo fuera de las franjas del profesional (**pendiente de \
+					reubicacion**). Se calcula al leer; el turno nunca se pierde ni cambia de estado.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "La agenda"),
 			@ApiResponse(responseCode = "400", description = "Fechas ausentes o mal formadas, o ventana de mas de 14 dias", content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
@@ -185,9 +195,16 @@ public class DisponibilidadDeTurnosController {
 			@RequestParam(required = false) Long profesionalId,
 			@RequestParam(required = false) Long ofertaId,
 			@RequestParam(required = false) Long espacioId,
-			@RequestParam(defaultValue = "false") boolean incluirCancelados) {
+			@RequestParam(defaultValue = "false") boolean incluirCancelados,
+			@RequestParam(required = false)
+			@Parameter(description = "Estados operativos a mostrar; repetible. Vacio = todos", example = "RESERVADO")
+			List<String> estado,
+			@RequestParam(required = false)
+			@Parameter(description = "Persona, para ver solo sus turnos", example = "77")
+			Long personaId) {
 
 		return ResponseEntity.ok(AgendaOperativaResponse.de(agendaOperativa.ver(
-				apiActor.current(), consultorioId, desde, hasta, profesionalId, ofertaId, espacioId, incluirCancelados)));
+				apiActor.current(), consultorioId, desde, hasta, profesionalId, ofertaId, espacioId, incluirCancelados,
+				FiltroDeTurnos.de(estado, personaId))));
 	}
 }

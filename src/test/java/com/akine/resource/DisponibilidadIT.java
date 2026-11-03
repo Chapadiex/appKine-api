@@ -89,7 +89,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>Los servicios se inyectan como beans REALES —con su proxy transaccional, que es lo que hace
  * posible el escenario de concurrencia— y el {@code PermissionGuard} tambien es el real: el actor
  * que opera es el fundador {@code ORG_ADMIN} de un tenant sintetico, y la matriz seccion 6 le
- * concede {@code consultorio:manage} con alcance ORGANIZACION sin ningun caso especial. No hace
+ * concede {@code agenda:horario} con alcance ORGANIZACION sin ningun caso especial. No hace
  * falta simular la autorizacion porque se cumple de verdad.
  *
  * <p>Tampoco se pasa por HTTP: el token, el filtro de contexto y el mapeo de excepciones a codigos
@@ -873,10 +873,10 @@ class DisponibilidadIT {
 	 * Un tenant sintetico completo: una sede, un {@code ORG_ADMIN} que opera y un
 	 * {@code PROFESIONAL} cuyo horario se administra.
 	 *
-	 * <p>Hacen falta dos personas distintas y no una: la matriz seccion 6 le niega
-	 * {@code consultorio:manage} a {@code PROFESIONAL}, o sea que un profesional NO edita su
-	 * propia disponibilidad. Un fixture con una sola cuenta que hiciera las dos cosas escondria
-	 * esa regla.
+	 * <p>Hacen falta dos personas distintas y no una: desde la agenda de profesionales el
+	 * {@code PROFESIONAL} tiene {@code agenda:horario} solo sobre SU horario (alcance propio), y el
+	 * administrador lo edita sobre la sede. Un fixture con una sola cuenta que hiciera las dos cosas
+	 * esconderia esa diferencia.
 	 */
 	private record Fixture(
 			long organizationId,

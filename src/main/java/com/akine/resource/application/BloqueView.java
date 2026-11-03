@@ -49,7 +49,17 @@ public record BloqueView(
 		long version,
 		long turnosAfectados,
 		Instant primerTurnoAfectado,
-		boolean nuevo) {
+		boolean nuevo,
+		Long createdByCuentaId) {
+
+	public BloqueView(long id, long organizationId, long consultorioId, long membershipId, int diaSemana,
+			LocalTime horaDesde, LocalTime horaHasta, LocalDate vigenciaDesde, LocalDate vigenciaHasta,
+			String estado, Instant deletedAt, String deactivationReason, long version, long turnosAfectados,
+			Instant primerTurnoAfectado, boolean nuevo) {
+		this(id, organizationId, consultorioId, membershipId, diaSemana, horaDesde, horaHasta, vigenciaDesde,
+				vigenciaHasta, estado, deletedAt, deactivationReason, version, turnosAfectados, primerTurnoAfectado,
+				nuevo, null);
+	}
 
 	/**
 	 * Vista de un bloque que no cambia disponibilidad hacia atras: lectura, edicion, o el alta
@@ -91,6 +101,7 @@ public record BloqueView(
 				bloque.getVersion(),
 				impacto.turnosAfectados(),
 				impacto.primerTurnoAfectado(),
-				nuevo);
+				nuevo,
+				bloque.getCreatedByCuentaId());
 	}
 }

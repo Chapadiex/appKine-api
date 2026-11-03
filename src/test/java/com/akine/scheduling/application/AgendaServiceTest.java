@@ -144,7 +144,7 @@ class AgendaServiceTest {
 	/** "Ahora" fijo, en hora local de la sede. */
 	private AgendaService conReloj(java.time.LocalDateTime ahoraLocal) {
 		return new AgendaService(
-				ofertas, disponibilidad, espacios, consultorios, memberships, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)), reservas,
+				ofertas, disponibilidad, espacios, consultorios, memberships, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class), mock(AgendaDelProfesional.class)), reservas,
 				Clock.fixed(ahoraLocal.atZone(ZONA).toInstant(), ZONA));
 	}
 

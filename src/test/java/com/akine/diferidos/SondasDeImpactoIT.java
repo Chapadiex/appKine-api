@@ -226,17 +226,32 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 		TurnoView cancelado = reservar(fixture, fixture.personaB(), hora(sesion, 10));
 		cancelar(fixture, cancelado);
 
-		HttpRequest baja = HttpRequest.newBuilder(uri("/api/v1/consultorios/" + sesion.consultorioId()
-						+ "/profesionales/" + fixture.profesionalMembershipId()
-						+ "/disponibilidad/" + bloqueId))
+		String ruta = "/api/v1/consultorios/" + sesion.consultorioId()
+				+ "/profesionales/" + fixture.profesionalMembershipId() + "/disponibilidad/" + bloqueId;
+
+		// Desde 0.154.0 (agenda operativa) la baja sin confirmar no se guarda: 409 con la lista.
+		Respuesta sinConfirmar = ejecutar(HttpRequest.newBuilder(uri(ruta))
 				.header("Content-Type", "application/json")
 				.header("Authorization", "Bearer " + sesion.token())
 				.method("DELETE", HttpRequest.BodyPublishers.ofString(
 						"{\"reason\":\"Deja de atender los lunes\"}"))
-				.build();
-		Respuesta respuesta = ejecutar(baja);
+				.build());
+		assertThat(sinConfirmar.status()).as("sin confirmar: %s", sinConfirmar.body()).isEqualTo(409);
+		assertThat(sinConfirmar.json().get("turnosAfectados").asLong()).isEqualTo(1L);
+		assertThat(sinConfirmar.json().get("turnos").get(0).get("turnoId").asLong()).isEqualTo(pendiente.id());
+		assertThat(sinConfirmar.json().get("turnos").get(0).get("personaId").asLong())
+				.isEqualTo(fixture.personaA());
+		assertThat(jdbc.queryForObject("SELECT active FROM profesional_disponibilidad WHERE id = ?",
+				Boolean.class, bloqueId)).as("el 409 no da de baja nada").isTrue();
 
-		assertThat(respuesta.status()).as("informa, no bloquea: %s", respuesta.body()).isEqualTo(200);
+		Respuesta respuesta = ejecutar(HttpRequest.newBuilder(uri(ruta))
+				.header("Content-Type", "application/json")
+				.header("Authorization", "Bearer " + sesion.token())
+				.method("DELETE", HttpRequest.BodyPublishers.ofString(
+						"{\"reason\":\"Deja de atender los lunes\",\"confirmaTurnosAfectados\":true}"))
+				.build());
+
+		assertThat(respuesta.status()).as("confirmada, informa: %s", respuesta.body()).isEqualTo(200);
 		assertThat(respuesta.json().get("turnosAfectados").asLong())
 				.as("el cancelado no cuenta").isEqualTo(1L);
 		assertThat(Instant.parse(respuesta.texto("primerTurnoAfectado")))

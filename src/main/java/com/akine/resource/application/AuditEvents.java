@@ -113,6 +113,9 @@ final class AuditEvents {
 	/** Alta de un cierre o de una apertura puntual (RF-M05-004). */
 	static final String DISPONIBILIDAD_EXCEPCION_CREATED = "DISPONIBILIDAD_EXCEPCION_CREATED";
 
+	/** Edicion de una excepcion: antes y despues de cada campo que cambio (agenda operativa). */
+	static final String DISPONIBILIDAD_EXCEPCION_UPDATED = "DISPONIBILIDAD_EXCEPCION_UPDATED";
+
 	/** Baja logica de una excepcion. Motivo obligatorio. */
 	static final String DISPONIBILIDAD_EXCEPCION_DEACTIVATED = "DISPONIBILIDAD_EXCEPCION_DEACTIVATED";
 
@@ -156,5 +159,26 @@ final class AuditEvents {
 	 */
 	static String correlationId() {
 		return MDC.get(MDC_TRACE_ID);
+	}
+
+	/**
+	 * Los detalles de una fila de agenda con el rol de quien opero y el profesional afectado
+	 * (agenda de profesionales, checklist §12.4): con profesionales que gestionan su propia agenda,
+	 * la cuenta sola no dice con que perfil se hizo el cambio. Devuelve una copia; el original puede
+	 * ser inmutable.
+	 */
+	static java.util.Map<String, String> conActor(
+			OperatingActor actor, Long membershipId, java.util.Map<String, String> detalles) {
+		java.util.Map<String, String> copia = new java.util.LinkedHashMap<>();
+		if (detalles != null) {
+			copia.putAll(detalles);
+		}
+		if (membershipId != null) {
+			copia.putIfAbsent("membershipId", String.valueOf(membershipId));
+		}
+		if (actor != null && actor.roleCode() != null) {
+			copia.put("rol", actor.roleCode());
+		}
+		return copia;
 	}
 }

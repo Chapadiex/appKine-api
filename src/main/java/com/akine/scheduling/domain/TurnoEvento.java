@@ -71,6 +71,20 @@ public class TurnoEvento {
 	@Column(name = "fin_nuevo", updatable = false)
 	private Instant finNuevo;
 
+	// Desde V131, solo en REPROGRAMACION: quien atendia y en que box, antes y despues. Sin esto,
+	// "lo atendia Gomez en el Box 2" se perdia en cuanto el turno se movia.
+	@Column(name = "profesional_anterior_id", updatable = false)
+	private Long profesionalAnteriorId;
+
+	@Column(name = "profesional_nuevo_id", updatable = false)
+	private Long profesionalNuevoId;
+
+	@Column(name = "espacio_anterior_id", updatable = false)
+	private Long espacioAnteriorId;
+
+	@Column(name = "espacio_nuevo_id", updatable = false)
+	private Long espacioNuevoId;
+
 	@Column(name = "actor_cuenta_id", updatable = false)
 	private Long actorCuentaId;
 
@@ -137,6 +151,25 @@ public class TurnoEvento {
 			Long actorCuentaId,
 			Instant ocurridoEn) {
 
+		return reprogramacion(turno, estadoAnterior, inicioAnterior, finAnterior, null, null,
+				motivo, actorCuentaId, ocurridoEn);
+	}
+
+	/**
+	 * {@link #reprogramacion(Turno, EstadoTurno, Instant, Instant, String, Long, Instant)} guardando
+	 * ademas el profesional y el box de antes (V131). Los de despues se leen del turno ya movido.
+	 */
+	public static TurnoEvento reprogramacion(
+			Turno turno,
+			EstadoTurno estadoAnterior,
+			Instant inicioAnterior,
+			Instant finAnterior,
+			Long profesionalAnteriorId,
+			Long espacioAnteriorId,
+			String motivo,
+			Long actorCuentaId,
+			Instant ocurridoEn) {
+
 		TurnoEvento evento = new TurnoEvento(
 				turno.getOrganizationId(), turno.getConsultorioId(), turno.getId(),
 				TipoEventoTurno.REPROGRAMACION, estadoAnterior, turno.getEstado(),
@@ -145,7 +178,27 @@ public class TurnoEvento {
 		evento.finAnterior = finAnterior;
 		evento.inicioNuevo = turno.getInicio();
 		evento.finNuevo = turno.getFin();
+		evento.profesionalAnteriorId = profesionalAnteriorId;
+		evento.profesionalNuevoId = turno.getProfesionalMembershipId();
+		evento.espacioAnteriorId = espacioAnteriorId;
+		evento.espacioNuevoId = turno.getEspacioId();
 		return evento;
+	}
+
+	public Long getProfesionalAnteriorId() {
+		return profesionalAnteriorId;
+	}
+
+	public Long getProfesionalNuevoId() {
+		return profesionalNuevoId;
+	}
+
+	public Long getEspacioAnteriorId() {
+		return espacioAnteriorId;
+	}
+
+	public Long getEspacioNuevoId() {
+		return espacioNuevoId;
 	}
 
 	public Long getId() {

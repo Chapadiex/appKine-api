@@ -21,6 +21,8 @@ import java.util.HexFormat;
  * @param planId         plan para el que se reserva, o {@code null}
  * @param origen         desde donde se inicio. Solo trazabilidad: no entra en ninguna regla
  * @param sobreturnoMotivo por que se autoriza ocupar un horario tomado. {@code null} = reserva comun
+ * @param observaciones  texto administrativo del turno, nunca clinico. No entra en la huella: es una
+ *                       anotacion sobre la misma reserva, no otra reserva
  */
 public record ReservaCommand(
 		long personaId,
@@ -32,7 +34,15 @@ public record ReservaCommand(
 		Long casoId,
 		Long planId,
 		OrigenDeTurno origen,
-		String sobreturnoMotivo) {
+		String sobreturnoMotivo,
+		String observaciones) {
+
+	public ReservaCommand(
+			long personaId, Instant inicio, Long profesionalId, String idempotencyKey, Long coberturaId,
+			Long espacioId, Long casoId, Long planId, OrigenDeTurno origen, String sobreturnoMotivo) {
+		this(personaId, inicio, profesionalId, idempotencyKey, coberturaId, espacioId, casoId, planId, origen,
+				sobreturnoMotivo, null);
+	}
 
 	public ReservaCommand(
 			long personaId, Instant inicio, Long profesionalId, String idempotencyKey, Long coberturaId) {

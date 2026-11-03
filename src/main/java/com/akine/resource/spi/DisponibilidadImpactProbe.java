@@ -1,7 +1,9 @@
 package com.akine.resource.spi;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Los turnos pendientes sobre los que {@code resource} evalua un cambio de disponibilidad
@@ -42,8 +44,16 @@ public interface DisponibilidadImpactProbe {
 	 * @param membershipId profesional del turno
 	 * @param inicio       instante de inicio
 	 * @param fin          instante de fin, exclusivo
+	 * @param personaId    paciente del turno (agenda operativa: la pantalla de afectados lo muestra).
+	 *                     {@code null} solo en dobles de test anteriores
+	 * @param estado       estado del turno, {@code RESERVADO} o {@code CONFIRMADO}
 	 */
-	record TurnoPendiente(long turnoId, long membershipId, Instant inicio, Instant fin) {
+	record TurnoPendiente(long turnoId, long membershipId, Instant inicio, Instant fin, Long personaId,
+			String estado) {
+
+		public TurnoPendiente(long turnoId, long membershipId, Instant inicio, Instant fin) {
+			this(turnoId, membershipId, inicio, fin, null, null);
+		}
 	}
 
 	/**
@@ -55,4 +65,27 @@ public interface DisponibilidadImpactProbe {
 	 */
 	List<TurnoPendiente> pendientesEn(
 			long organizationId, long consultorioId, Long membershipId, Instant desde, Instant hasta);
+
+	/**
+	 * Nombres para mostrar de pacientes y profesionales, para la lista de turnos afectados (checklist de
+	 * agenda §6.2). Se pide <b>solo para los afectados</b> que viajan en la respuesta —a lo sumo
+	 * cincuenta—, no para todos los pendientes de la ventana. Un id que no resuelve no aparece.
+	 *
+	 * <p>Lo contesta {@code scheduling}, que ya conoce {@code person.spi}: {@code resource} no lo importa
+	 * y la arista no cambia de sentido.
+	 */
+	default NombresDeTurnos nombres(long organizationId, Collection<Long> personaIds, Collection<Long> membershipIds) {
+		return NombresDeTurnos.NINGUNO;
+	}
+
+	/** Lo que devuelve {@link #nombres}. */
+	record NombresDeTurnos(Map<Long, String> personas, Map<Long, String> profesionales) {
+
+		public static final NombresDeTurnos NINGUNO = new NombresDeTurnos(Map.of(), Map.of());
+
+		public NombresDeTurnos {
+			personas = personas == null ? Map.of() : Map.copyOf(personas);
+			profesionales = profesionales == null ? Map.of() : Map.copyOf(profesionales);
+		}
+	}
 }

@@ -131,6 +131,11 @@ public final class RolePermissions {
 	 *       metadatos, sin codigo propio) y el {@code PACIENTE} "Propia autorizada" ({@code OWN}).</li>
 	 *   <li>{@code hc:write}: "No por defecto" del {@code CONSULTORIO_ADMIN} en Editar HC. El
 	 *       {@code ORG_ADMIN}, el {@code ADMINISTRATIVO} y el {@code PACIENTE} son "No".</li>
+	 *   <li>Agenda de profesionales (decision del usuario del 03/11/2026, checklist §14):
+	 *       {@code agenda:horario} y {@code turno:sobreturno} se otorgan al {@code ADMINISTRATIVO}
+	 *       y al {@code PROFESIONAL}; {@code turno:manage} y {@code agenda:excepciones} al
+	 *       {@code PROFESIONAL}, que los tiene por base solo sobre su agenda: el grant hereda el
+	 *       alcance de la membership (la sede) y es lo que lo amplia.</li>
 	 * </ul>
 	 */
 	private static final Map<PermissionCode, Set<RoleCode>> GRANT_POR_ROL = Map.of(
@@ -138,7 +143,11 @@ public final class RolePermissions {
 			Set.of(RoleCode.ORG_ADMIN, RoleCode.CONSULTORIO_ADMIN),
 			PermissionCode.PACIENTE_MANAGE, Set.of(RoleCode.PROFESIONAL),
 			PermissionCode.HC_READ, Set.of(RoleCode.ORG_ADMIN, RoleCode.CONSULTORIO_ADMIN),
-			PermissionCode.HC_WRITE, Set.of(RoleCode.CONSULTORIO_ADMIN));
+			PermissionCode.HC_WRITE, Set.of(RoleCode.CONSULTORIO_ADMIN),
+			PermissionCode.AGENDA_HORARIO, Set.of(RoleCode.ADMINISTRATIVO, RoleCode.PROFESIONAL),
+			PermissionCode.TURNO_SOBRETURNO, Set.of(RoleCode.ADMINISTRATIVO, RoleCode.PROFESIONAL),
+			PermissionCode.TURNO_MANAGE, Set.of(RoleCode.PROFESIONAL),
+			PermissionCode.AGENDA_EXCEPCIONES, Set.of(RoleCode.PROFESIONAL));
 
 	private static Map<RoleCode, Map<PermissionCode, PermissionScope>> base() {
 		Map<RoleCode, Map<PermissionCode, PermissionScope>> tabla = new EnumMap<>(RoleCode.class);
@@ -260,6 +269,10 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.TURNO_SOBRETURNO, PermissionScope.ORGANIZACION),
+				// Agenda de profesionales (checklist §14): horario habitual y excepciones dejan de
+				// colgar de consultorio:manage. El ORG_ADMIN los tiene sobre toda la organizacion.
+				Map.entry(PermissionCode.AGENDA_HORARIO, PermissionScope.ORGANIZACION),
+				Map.entry(PermissionCode.AGENDA_EXCEPCIONES, PermissionScope.ORGANIZACION),
 				// `cobro:register` entra con asignacion base en AKINE-07.01, la etapa que crea la
 				// deuda. La matriz Â§2 le dice "Si" al ORG_ADMIN, al CONSULTORIO_ADMIN y al
 				// ADMINISTRATIVO en la fila Registrar Cobro; al PROFESIONAL "No por defecto" y al
@@ -337,6 +350,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_SOBRETURNO, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.AGENDA_HORARIO, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.AGENDA_EXCEPCIONES, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO),
 				// AKINE-07.03. Su sede, que es el alcance de su membership.
 				Map.entry(PermissionCode.CAJA_OPERATE, PermissionScope.CONSULTORIO),
@@ -413,7 +428,14 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.HC_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.HC_WRITE, PermissionScope.CONSULTORIO),
-				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO),
+				// Agenda de profesionales (decision del usuario del 03/11/2026): el profesional VE la
+				// agenda de la sede entera (turno:read) y OPERA solo la suya. ACTIVIDAD_PROPIA cubre la
+				// sede como CONSULTORIO y le avisa a scheduling y resource que comparen el profesional
+				// del turno, del bloque o de la excepcion con el actor: ajeno es 403. Un grant del mismo
+				// codigo sobre su membership le da la sede entera (gana el alcance mas amplio).
+				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.ACTIVIDAD_PROPIA),
+				Map.entry(PermissionCode.AGENDA_HORARIO, PermissionScope.ACTIVIDAD_PROPIA),
+				Map.entry(PermissionCode.AGENDA_EXCEPCIONES, PermissionScope.ACTIVIDAD_PROPIA),
 				// AKINE-08.01: es quien dicta la clase. M28 Â§2 lo nombra como
 				// "Profesional / Instructor".
 				Map.entry(PermissionCode.CLASE_READ, PermissionScope.CONSULTORIO),
@@ -452,6 +474,9 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.CATALOGO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO),
+				// Agenda de profesionales: la secretaria carga bloqueos y licencias de cualquier
+				// profesional de su sede y NO cambia el horario habitual (agenda:horario, por grant).
+				Map.entry(PermissionCode.AGENDA_EXCEPCIONES, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.COBRO_REGISTER, PermissionScope.CONSULTORIO),
 				// AKINE-08.01: armar la grilla del centro es literalmente su trabajo, igual que
 				// dar turnos.

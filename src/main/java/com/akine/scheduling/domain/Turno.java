@@ -105,6 +105,21 @@ public class Turno {
 	@Column(name = "sobreturno_autorizado_por_cuenta_id")
 	private Long sobreturnoAutorizadoPorCuentaId;
 
+	/**
+	 * Observaciones administrativas del turno (V131): "trae estudios", "viene acompanado". <b>Nunca
+	 * clinicas</b>: lo clinico es de la Sesion y de la HC (DP-05). Reprogramar las conserva.
+	 */
+	@Column(name = "observaciones", length = 500)
+	private String observaciones;
+
+	/**
+	 * El turno del que nace este por un cambio de sede (V131). {@code null} en todo turno que no es un
+	 * traslado. Reprogramar mueve el mismo turno; la sede no se puede mover, y ese unico caso cancela
+	 * el original y reserva este apuntando a el.
+	 */
+	@Column(name = "turno_origen_id", updatable = false)
+	private Long turnoOrigenId;
+
 	@Column(name = "inicio", nullable = false)
 	private Instant inicio;
 
@@ -411,6 +426,43 @@ public class Turno {
 		this.sobreturno = true;
 		this.sobreturnoMotivo = motivo.strip();
 		this.sobreturnoAutorizadoPorCuentaId = cuentaId;
+	}
+
+	/** Largo maximo de las observaciones, el de la columna de V131. */
+	public static final int LARGO_DE_OBSERVACIONES = 500;
+
+	/**
+	 * Fija o cambia las observaciones. Vacio las borra. No toca la agenda: no ocupa ni libera nada.
+	 *
+	 * @throws TransicionDeTurnoNoPermitidaException si el turno ya cerro su ciclo
+	 */
+	public void anotarObservaciones(String texto) {
+		if (id != null && estado.esTerminal()) {
+			throw new TransicionDeTurnoNoPermitidaException(
+					id, "ya esta " + estado.name().toLowerCase() + " y no admite cambios");
+		}
+		String limpio = texto == null || texto.isBlank() ? null : texto.strip();
+		if (limpio != null && limpio.length() > LARGO_DE_OBSERVACIONES) {
+			throw new IllegalArgumentException(
+					"Las observaciones no pueden superar los " + LARGO_DE_OBSERVACIONES + " caracteres");
+		}
+		this.observaciones = limpio;
+	}
+
+	/** Declara de que turno nace este por un cambio de sede. Solo antes de persistirlo, y una vez. */
+	public void trasladadoDesde(long turnoOrigenId) {
+		if (id != null || this.turnoOrigenId != null) {
+			throw new IllegalStateException("El turno de origen se fija al reservar el traslado");
+		}
+		this.turnoOrigenId = turnoOrigenId;
+	}
+
+	public String getObservaciones() {
+		return observaciones;
+	}
+
+	public Long getTurnoOrigenId() {
+		return turnoOrigenId;
 	}
 
 	public boolean estaVivo() {
