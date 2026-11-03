@@ -27,7 +27,11 @@ public record EventoDeTurnoView(
 		Instant finNuevo,
 		Long actorCuentaId,
 		String actorNombre,
-		Instant ocurridoEn) {
+		Instant ocurridoEn,
+		Long profesionalAnteriorId,
+		Long profesionalNuevoId,
+		Long espacioAnteriorId,
+		Long espacioNuevoId) {
 
 	public static EventoDeTurnoView de(TurnoEvento evento, String actorNombre) {
 		return new EventoDeTurnoView(
@@ -42,6 +46,10 @@ public record EventoDeTurnoView(
 				evento.getFinNuevo(),
 				evento.getActorCuentaId(),
 				actorNombre,
-				evento.getOcurridoEn());
+				evento.getOcurridoEn(),
+				evento.getProfesionalAnteriorId(),
+				evento.getProfesionalNuevoId(),
+				evento.getEspacioAnteriorId(),
+				evento.getEspacioNuevoId());
 	}
 }

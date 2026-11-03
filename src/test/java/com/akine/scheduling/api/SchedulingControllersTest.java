@@ -15,6 +15,9 @@ import com.akine.scheduling.application.AltaDeSerieCommand;
 import com.akine.scheduling.application.AltaEnListaDeEsperaCommand;
 import com.akine.scheduling.application.BusquedaDeDisponibilidad;
 import com.akine.scheduling.application.CicloDeRecepcionService;
+import com.akine.scheduling.application.CancelacionEnLoteService;
+import com.akine.scheduling.application.FiltroDeTurnos;
+import com.akine.scheduling.application.TrasladoDeTurnoService;
 import com.akine.scheduling.application.CicloDeTurnoService;
 import com.akine.scheduling.application.ContextoDeAgendaService;
 import com.akine.scheduling.application.ContextoDeAgendaView;
@@ -382,7 +385,7 @@ class SchedulingControllersTest extends SliceRestDeModulo {
 	@Test
 	@DisplayName("la agenda operativa exige la ventana, pasa los filtros y proyecta cada parte de la grilla")
 	void agenda_operativa_por_el_json() throws Exception {
-		given(agendaOperativa.ver(any(), anyLong(), any(), any(), any(), any(), any(), anyBoolean())).willReturn(new AgendaOperativaView(
+		given(agendaOperativa.ver(any(), anyLong(), any(), any(), any(), any(), any(), anyBoolean(), any())).willReturn(new AgendaOperativaView(
 				LocalDate.of(2026, 10, 5), LocalDate.of(2026, 10, 6), "America/Argentina/Cordoba",
 				List.of(new AgendaOperativaView.ProfesionalDeAgendaView(31L, "Perez, Ana",
 						List.of(new AgendaOperativaView.FranjaDeAgendaView(NUEVE, NUEVE.plusSeconds(3600))))),
@@ -395,7 +398,7 @@ class SchedulingControllersTest extends SliceRestDeModulo {
 		mockMvc.perform(get(SEDE + "/agenda/operativa").with(miembro())
 						.param("desde", "2026-10-05").param("hasta", "2026-10-06")
 						.param("profesionalId", "31").param("ofertaId", "4").param("espacioId", "55")
-						.param("incluirCancelados", "true"))
+						.param("incluirCancelados", "true").param("estado", "reservado", "PRESENTE").param("personaId", "77"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.profesionales[0].franjas[0].desde").value("2026-10-05T12:00:00Z"))
 				.andExpect(jsonPath("$.espacios[0].nombre").value("Box 1"))
@@ -403,7 +406,8 @@ class SchedulingControllersTest extends SliceRestDeModulo {
 				.andExpect(jsonPath("$.bloqueos[0].motivo").value("CAPACITACION"));
 
 		verify(agendaOperativa).ver(any(), eq(7L), eq(LocalDate.of(2026, 10, 5)), eq(LocalDate.of(2026, 10, 6)),
-				eq(31L), eq(4L), eq(55L), eq(true));
+				eq(31L), eq(4L), eq(55L), eq(true),
+				eq(new FiltroDeTurnos(java.util.Set.of("RESERVADO", "PRESENTE"), 77L)));
 
 		mockMvc.perform(get(SEDE + "/agenda/operativa").with(miembro()).param("desde", "2026-10-05"))
 				.andExpect(status().isBadRequest());
@@ -598,7 +602,7 @@ class SchedulingControllersTest extends SliceRestDeModulo {
 				.andExpect(status().isBadRequest());
 
 		verify(recepcion).delRango(any(), eq(7L), eq(LocalDate.of(2026, 10, 1)),
-				eq(LocalDate.of(2026, 10, 8)), eq(31L), eq(4L), eq(true));
+				eq(LocalDate.of(2026, 10, 8)), eq(31L), eq(4L), eq(true), eq(FiltroDeTurnos.NINGUNO));
 	}
 
 	@Test
@@ -672,6 +676,14 @@ class SchedulingControllersTest extends SliceRestDeModulo {
 
 		@Bean TurnoService turnoService() {
 			return Fixture.mockQueResponde(TurnoService.class);
+		}
+
+		@Bean TrasladoDeTurnoService trasladoDeTurnoService() {
+			return Fixture.mockQueResponde(TrasladoDeTurnoService.class);
+		}
+
+		@Bean CancelacionEnLoteService cancelacionEnLoteService() {
+			return Fixture.mockQueResponde(CancelacionEnLoteService.class);
 		}
 
 		@Bean CicloDeTurnoService cicloDeTurnoService() {

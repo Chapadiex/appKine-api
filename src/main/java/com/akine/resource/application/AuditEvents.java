@@ -113,6 +113,9 @@ final class AuditEvents {
 	/** Alta de un cierre o de una apertura puntual (RF-M05-004). */
 	static final String DISPONIBILIDAD_EXCEPCION_CREATED = "DISPONIBILIDAD_EXCEPCION_CREATED";
 
+	/** Edicion de una excepcion: antes y despues de cada campo que cambio (agenda operativa). */
+	static final String DISPONIBILIDAD_EXCEPCION_UPDATED = "DISPONIBILIDAD_EXCEPCION_UPDATED";
+
 	/** Baja logica de una excepcion. Motivo obligatorio. */
 	static final String DISPONIBILIDAD_EXCEPCION_DEACTIVATED = "DISPONIBILIDAD_EXCEPCION_DEACTIVATED";
 

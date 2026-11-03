@@ -23,6 +23,9 @@ import java.time.LocalTime;
  *                             vieja, 409 {@code concurrent-modification} y el cliente recarga.
  *                             Sin esto dos ediciones simultaneas se pisan y el segundo en
  *                             guardar borra el cambio del primero sin que nadie se entere
+ * @param confirmaTurnosAfectados {@code true} para guardar aunque el cambio deje turnos pendientes
+ *                             fuera de la disponibilidad. Sin esto, 409 con la lista
+ *                             (checklist de agenda §6.6)
  */
 public record BloqueEdicionCommand(
 		Integer diaSemana,
@@ -31,5 +34,13 @@ public record BloqueEdicionCommand(
 		LocalDate vigenciaDesde,
 		LocalDate vigenciaHasta,
 		boolean limpiarVigenciaHasta,
-		long expectedVersion) {
+		long expectedVersion,
+		boolean confirmaTurnosAfectados) {
+
+	/** La forma anterior a la agenda operativa, y la de la simulacion: confirma por construccion. */
+	public BloqueEdicionCommand(Integer diaSemana, LocalTime horaDesde, LocalTime horaHasta,
+			LocalDate vigenciaDesde, LocalDate vigenciaHasta, boolean limpiarVigenciaHasta, long expectedVersion) {
+		this(diaSemana, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta, limpiarVigenciaHasta, expectedVersion,
+				true);
+	}
 }

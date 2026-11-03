@@ -158,6 +158,19 @@ public class RecepcionService {
 	public TurnosDeSedeView delRango(
 			OperatingActor actor, long consultorioId, LocalDate desde, LocalDate hasta,
 			Long profesionalId, Long ofertaId, boolean incluirCancelados) {
+		return delRango(actor, consultorioId, desde, hasta, profesionalId, ofertaId, incluirCancelados,
+				FiltroDeTurnos.NINGUNO);
+	}
+
+	/**
+	 * {@link #delRango(OperatingActor, long, LocalDate, LocalDate, Long, Long, boolean)} acotado ademas
+	 * por estado y por persona (agenda operativa). Un {@code CANCELADO} pedido en el filtro trae los
+	 * cancelados aunque {@code incluirCancelados} sea {@code false}.
+	 */
+	@Transactional(readOnly = true)
+	public TurnosDeSedeView delRango(
+			OperatingActor actor, long consultorioId, LocalDate desde, LocalDate hasta,
+			Long profesionalId, Long ofertaId, boolean incluirCancelados, FiltroDeTurnos filtro) {
 
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSede(organizationId, consultorioId);
@@ -169,9 +182,10 @@ public class RecepcionService {
 						organizationId, consultorioId,
 						desde.atStartOfDay(zona).toInstant(), hasta.atStartOfDay(zona).toInstant())
 				.stream()
-				.filter(t -> incluirCancelados || t.getEstado() != EstadoTurno.CANCELADO)
+				.filter(t -> filtro.incluyeCancelados(incluirCancelados) || t.getEstado() != EstadoTurno.CANCELADO)
 				.filter(t -> profesionalId == null || profesionalId.equals(t.getProfesionalMembershipId()))
 				.filter(t -> ofertaId == null || ofertaId.equals(t.getOfertaId()))
+				.filter(t -> filtro.admitePersona(t.getPersonaId()))
 				.toList();
 
 		if (lote.isEmpty()) {
@@ -179,6 +193,7 @@ public class RecepcionService {
 		}
 		return new TurnosDeSedeView(desde, hasta, sede.timezone(),
 				componer(organizationId, consultorioId, lote).stream()
+						.filter(filtro::admite)
 						.map(t -> new TurnoDeCalendarioView(t, t.operativo().profesionalNombre()))
 						.toList());
 	}
@@ -247,7 +262,9 @@ public class RecepcionService {
 					turno.getEspacioId() == null ? null : espacios.get(turno.getEspacioId()),
 					atencion == null ? null : atencion.sesionId(),
 					turno.getOrigenCancelacion() == null ? null : turno.getOrigenCancelacion().name(),
-					turno.getAusenciaConsumeSesion()));
+					turno.getAusenciaConsumeSesion(),
+					turno.getObservaciones(),
+					turno.getTurnoOrigenId()));
 		}
 		return operativos;
 	}

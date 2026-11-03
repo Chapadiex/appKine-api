@@ -35,5 +35,7 @@ public record OperativoDeTurnoView(
 		String espacioNombre,
 		Long sesionId,
 		String origenCancelacion,
-		Boolean ausenciaConsumeSesion) {
+		Boolean ausenciaConsumeSesion,
+		String observaciones,
+		Long turnoOrigenId) {
 }

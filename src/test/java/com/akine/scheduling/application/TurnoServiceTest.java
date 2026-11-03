@@ -362,7 +362,9 @@ class TurnoServiceTest {
 		assertThat(guardado.getValue().getOrigen()).isEqualTo(OrigenDeTurno.AGENDA);
 
 		ArgumentCaptor<AuditEntry> auditoria = ArgumentCaptor.forClass(AuditEntry.class);
-		verify(auditTrail).record(auditoria.capture());
+		// Toda reserva va a la auditoria (TURNO_RESERVADO); el sobreturno deja ademas su propio evento.
+		verify(auditTrail, org.mockito.Mockito.times(2)).record(auditoria.capture());
+		assertThat(auditoria.getAllValues().get(0).eventType()).isEqualTo("TURNO_RESERVADO");
 		assertThat(auditoria.getValue().eventType()).isEqualTo("TURNO_SOBRETURNO");
 		assertThat(auditoria.getValue().reason()).isEqualTo("Urgencia clinica");
 		ArgumentCaptor<TurnoEvento> evento = ArgumentCaptor.forClass(TurnoEvento.class);

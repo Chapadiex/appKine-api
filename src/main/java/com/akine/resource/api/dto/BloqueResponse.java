@@ -88,7 +88,11 @@ public record BloqueResponse(
 
 		@Schema(description = "Instante del primero de esos turnos, para que la pantalla pueda "
 				+ "decir \"desde el martes\". null cuando no hay ninguno")
-		Instant primerTurnoAfectado) {
+		Instant primerTurnoAfectado,
+
+		@Schema(description = "Cuenta que cargo el bloque. Ausente en los anteriores a la migracion V132",
+				example = "12")
+		Long createdByCuentaId) {
 
 	/**
 	 * Proyeccion de la vista de aplicacion.
@@ -113,6 +117,7 @@ public record BloqueResponse(
 				view.deactivationReason(),
 				view.version(),
 				view.turnosAfectados(),
-				view.primerTurnoAfectado());
+				view.primerTurnoAfectado(),
+				view.createdByCuentaId());
 	}
 }

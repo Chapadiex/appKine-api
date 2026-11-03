@@ -80,5 +80,12 @@ public record UpdateBloqueRequest(
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		@NotNull(message = "La version del bloque es obligatoria")
 		@PositiveOrZero(message = "La version no puede ser negativa")
-		Long version) {
+		Long version,
+
+		@Schema(
+				description = "Confirma el cambio aunque deje turnos pendientes fuera de la disponibilidad. "
+						+ "Sin esto, un cambio con turnos afectados responde 409 `bloqueo-con-turnos-afectados` "
+						+ "con la lista: no se guarda en silencio. Los turnos nunca se tocan",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean confirmaTurnosAfectados) {
 }

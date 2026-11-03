@@ -54,13 +54,21 @@ public record OperativoDeTurnoResponse(
 		String origenCancelacion,
 
 		@Schema(description = "Si la ausencia consume una sesion del plan. Ausente si no se decidio.")
-		Boolean ausenciaConsumeSesion) {
+		Boolean ausenciaConsumeSesion,
+
+		@Schema(description = "Observaciones administrativas del turno. **Nunca informacion clinica.**",
+				example = "Trae los estudios")
+		String observaciones,
+
+		@Schema(description = "Turno original cuando este nace de un cambio de sede.", example = "4100")
+		Long turnoOrigenId) {
 
 	public static OperativoDeTurnoResponse de(OperativoDeTurnoView vista) {
 		return vista == null ? null : new OperativoDeTurnoResponse(
 				vista.estadoOperativo(), vista.casoId(), vista.numeroCaso(), vista.planId(),
 				vista.sesionNumero(), vista.sesionesPlanificadas(), vista.sobreturno(), vista.sobreturnoMotivo(),
 				vista.profesionalNombre(), vista.espacioNombre(), vista.sesionId(),
-				vista.origenCancelacion(), vista.ausenciaConsumeSesion());
+				vista.origenCancelacion(), vista.ausenciaConsumeSesion(),
+				vista.observaciones(), vista.turnoOrigenId());
 	}
 }

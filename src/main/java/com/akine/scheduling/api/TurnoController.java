@@ -11,8 +11,17 @@ import com.akine.scheduling.api.dto.ReservarTurnoRequest;
 import com.akine.scheduling.api.dto.TurnoDelDiaResponse;
 import com.akine.scheduling.api.dto.TurnoResponse;
 import com.akine.scheduling.api.dto.TurnosDeSedeResponse;
+import com.akine.scheduling.api.dto.ActualizarObservacionesDeTurnoRequest;
+import com.akine.scheduling.api.dto.CancelacionEnLoteResponse;
+import com.akine.scheduling.api.dto.CancelarTurnosEnLoteRequest;
+import com.akine.scheduling.api.dto.TrasladarTurnoRequest;
+import com.akine.scheduling.api.dto.TrasladoDeTurnoResponse;
+import com.akine.scheduling.application.CancelacionEnLoteService;
 import com.akine.scheduling.application.CicloDeRecepcionService;
 import com.akine.scheduling.application.CicloDeTurnoService;
+import com.akine.scheduling.application.FiltroDeTurnos;
+import com.akine.scheduling.application.TrasladoCommand;
+import com.akine.scheduling.application.TrasladoDeTurnoService;
 import com.akine.scheduling.application.ReprogramacionCommand;
 import com.akine.scheduling.application.RecepcionService;
 import com.akine.scheduling.application.ReservaCommand;
@@ -36,6 +45,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -63,6 +73,8 @@ public class TurnoController {
 	private final CicloDeTurnoService cicloService;
 	private final RecepcionService recepcionService;
 	private final CicloDeRecepcionService cicloDeRecepcion;
+	private final TrasladoDeTurnoService trasladoService;
+	private final CancelacionEnLoteService cancelacionEnLote;
 	private final SchedulingApiActor apiActor;
 
 	public TurnoController(
@@ -70,13 +82,119 @@ public class TurnoController {
 			CicloDeTurnoService cicloService,
 			RecepcionService recepcionService,
 			CicloDeRecepcionService cicloDeRecepcion,
+			TrasladoDeTurnoService trasladoService,
+			CancelacionEnLoteService cancelacionEnLote,
 			SchedulingApiActor apiActor) {
 
 		this.turnoService = turnoService;
 		this.cicloService = cicloService;
 		this.recepcionService = recepcionService;
 		this.cicloDeRecepcion = cicloDeRecepcion;
+		this.trasladoService = trasladoService;
+		this.cancelacionEnLote = cancelacionEnLote;
 		this.apiActor = apiActor;
+	}
+
+	// =================================================================================
+	// Agenda operativa — observaciones, cambio de sede y cancelacion en lote
+	// =================================================================================
+
+	@PutMapping("/{turnoId}/observaciones")
+	@Operation(
+			operationId = "actualizarObservacionesDeTurno",
+			summary = "Cambiar las observaciones de un turno",
+			description = """
+					Observaciones administrativas ("trae estudios"). **Nunca informacion clinica.** Vacias o \
+					ausentes las borran. No mueve nada de la agenda. Queda en el historial del turno \
+					(`OBSERVACIONES`) y en la auditoria con el texto de antes y el de despues.
+
+					Exige `turno:manage` y la version leida.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Turno actualizado"),
+			@ApiResponse(responseCode = "400", description = "Mas de 500 caracteres o sin version",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "Sin `turno:manage` en esa sede",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "El turno o la sede no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "El turno esta cancelado o ausente, o la version quedo vieja",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TurnoResponse> actualizarObservaciones(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId,
+			@RequestBody @Valid ActualizarObservacionesDeTurnoRequest request) {
+
+		return ResponseEntity.ok(TurnoResponse.de(turnoService.actualizarObservaciones(
+				apiActor.current(), consultorioId, turnoId, request.observaciones(), request.expectedVersion())));
+	}
+
+	@PostMapping("/{turnoId}/traslado")
+	@Operation(
+			operationId = "trasladarTurno",
+			summary = "Pasar un turno a otra sede",
+			description = """
+					Reprogramar mueve el **mismo** turno, pero la sede no se puede mover. Esta operacion \
+					**cancela el original** (atribuido a `INSTITUCION`, con el motivo) y **reserva uno nuevo** \
+					en la sede de destino con `origen = TURNO_ANTERIOR` y `turnoOrigenId` apuntando al \
+					original. Las dos cosas ocurren en una sola transaccion: si el destino no tiene lugar, el \
+					original queda como estaba.
+
+					El destino se revalida entero, igual que una reserva. La oferta es la de la sede de \
+					destino. La cobertura elegida, el caso, el plan y las observaciones viajan con el turno.
+
+					Rechaza un original con Sesion (`turno-con-atencion`) o con recepcion registrada \
+					(`turno-transicion-no-permitida`). Exige `turno:manage` en las dos sedes.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "El original cancelado y el turno nuevo"),
+			@ApiResponse(responseCode = "400", description = "Datos invalidos, o la sede de destino es la misma",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "Sin `turno:manage` en alguna de las dos sedes",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "El turno, una de las sedes o la oferta no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "El destino no tiene lugar, el original tiene atencion o "
+					+ "recepcion, ya empezo o cerro su ciclo, o la version quedo vieja",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TrasladoDeTurnoResponse> trasladar(
+			@PathVariable long consultorioId,
+			@PathVariable long turnoId,
+			@RequestBody @Valid TrasladarTurnoRequest request) {
+
+		return ResponseEntity.ok(TrasladoDeTurnoResponse.de(trasladoService.trasladar(
+				apiActor.current(), consultorioId, turnoId,
+				new TrasladoCommand(request.consultorioDestinoId(), request.ofertaId(), request.inicio(),
+						request.profesionalId(), request.espacioId(), request.motivo(), request.expectedVersion()))));
+	}
+
+	@PostMapping("/cancelacion-en-lote")
+	@Operation(
+			operationId = "cancelarTurnosEnLote",
+			summary = "Cancelar varios turnos con un mismo motivo",
+			description = """
+					Para los turnos que un bloqueo dejo afuera. Cada turno se cancela **por separado**, con los \
+					mismos controles, evento, auditoria y aviso que `cancelarTurno`: un rechazo no deshace los \
+					demas y vuelve con el `problemType` que habria recibido solo.
+
+					**Reintento seguro:** un turno que ya estaba cancelado vuelve `YA_CANCELADO`, no como error. \
+					Hasta 200 turnos por pedido. Exige `turno:manage`.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Un resultado por turno"),
+			@ApiResponse(responseCode = "400", description = "Lote vacio, de mas de 200, o sin motivo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "Sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "La sede no existe o es de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<CancelacionEnLoteResponse> cancelarEnLote(
+			@PathVariable long consultorioId,
+			@RequestBody @Valid CancelarTurnosEnLoteRequest request) {
+
+		return ResponseEntity.ok(CancelacionEnLoteResponse.de(cancelacionEnLote.cancelar(
+				apiActor.current(), consultorioId,
+				request.items().stream()
+						.map(item -> new CancelacionEnLoteService.Item(item.turnoId(), item.expectedVersion()))
+						.toList(),
+				request.motivo(), request.origen())));
 	}
 
 	@PostMapping("/ofertas/{ofertaId}")
@@ -134,7 +252,8 @@ public class TurnoController {
 						request.casoId(),
 						request.planId(),
 						request.origen(),
-						request.sobreturnoMotivo()));
+						request.sobreturnoMotivo(),
+						request.observaciones()));
 
 		TurnoResponse cuerpo = TurnoResponse.de(resultado.turno());
 
@@ -311,7 +430,7 @@ public class TurnoController {
 				apiActor.current(), consultorioId, turnoId,
 				new ReprogramacionCommand(
 						request.inicio(), request.profesionalId(),
-						request.motivo(), request.expectedVersion()))));
+						request.motivo(), request.expectedVersion(), request.espacioId()))));
 	}
 
 	@PostMapping("/{turnoId}/ausencia")
@@ -528,11 +647,19 @@ public class TurnoController {
 			Long ofertaId,
 			@RequestParam(defaultValue = "false")
 			@Parameter(description = "Incluir los turnos cancelados (por defecto no)")
-			boolean incluirCancelados) {
+			boolean incluirCancelados,
+			@RequestParam(required = false)
+			@Parameter(description = "Estados operativos a mostrar (RESERVADO, CONFIRMADO, PRESENTE, RETIRADO, "
+					+ "EN_ATENCION, ATENDIDO, AUSENTE, CANCELADO); repetible. Vacio = todos. CANCELADO trae los "
+					+ "cancelados sin `incluirCancelados`", example = "CONFIRMADO")
+			List<String> estado,
+			@RequestParam(required = false)
+			@Parameter(description = "Persona, para ver solo sus turnos", example = "77")
+			Long personaId) {
 
 		return ResponseEntity.ok(TurnosDeSedeResponse.de(recepcionService.delRango(
 				apiActor.current(), consultorioId, desde, hasta,
-				profesionalId, ofertaId, incluirCancelados)));
+				profesionalId, ofertaId, incluirCancelados, FiltroDeTurnos.de(estado, personaId))));
 	}
 
 	@GetMapping("/personas/{personaId}")
