@@ -39,6 +39,10 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 	 * digito ASCII, igual que {@code ClaveDeBusqueda.deDocumento}— y se compara contra
 	 * {@code patronClave}. Sin migracion: no hay columna de clave materializada.
 	 *
+	 * <p>Y por correo, contra {@code patronNombre}: la clave de nombre conserva {@code @} y
+	 * {@code .} y viene en mayusculas, asi que el {@code UPPER} del email la hace comparable sin
+	 * depender de la colacion. Sin indice, como el resto: el patron ya es {@code %texto%}.
+	 *
 	 * <p>El {@code LIMIT/OFFSET} esta en la consulta y no se recorta en memoria: el padron es la
 	 * primera tabla del sistema con volumen real (RNF-M07-004).
 	 *
@@ -70,6 +74,7 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			        OR p.apellido_clave LIKE :patronNombre
 			        OR p.nombre_clave LIKE :patronNombre
 			        OR p.telefono_clave LIKE :patronClave
+			        OR UPPER(p.email) LIKE :patronNombre
 			        OR EXISTS (SELECT 1 FROM cobertura_paciente cp
 			                    WHERE cp.persona_id = p.id
 			                      AND cp.organization_id = p.organization_id
@@ -118,6 +123,7 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			        OR p.apellido_clave LIKE :patronNombre
 			        OR p.nombre_clave LIKE :patronNombre
 			        OR p.telefono_clave LIKE :patronClave
+			        OR UPPER(p.email) LIKE :patronNombre
 			        OR EXISTS (SELECT 1 FROM cobertura_paciente cp
 			                    WHERE cp.persona_id = p.id
 			                      AND cp.organization_id = p.organization_id

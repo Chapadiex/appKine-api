@@ -145,7 +145,7 @@ public class PersonaController {
 					Busca por documento, apellido, nombre o telefono, todo con el mismo parametro \
 					q. La comparacion ignora mayusculas y acentos, y los separadores del \
 					documento y del telefono: buscar 12345678, 12.345.678 o Perez encuentra a la \
-					misma persona.
+					misma persona. Tambien encuentra por correo, completo o en parte.
 
 					Sin q devuelve el padron completo, paginado y ordenado por apellido.
 
