@@ -7,6 +7,9 @@ excepciones— y cómo quedaron sus permisos: [`AKINE-agenda-operativa.md`](AKIN
 Checklist de origen: `AGENDA-checklist.md` §1, §3, §9, §12.4 y §14 (raíz del workspace). Matriz:
 `docs/seguridad/matriz-permisos-minima.md` §21.
 
+Historial de cambios por profesional e indicador "reprogramado" (contrato **0.155.0**, `V134`):
+[`AKINE-agenda-historial.md`](AKINE-agenda-historial.md).
+
 ## Decisiones del usuario (03/11/2026)
 
 1. El `PROFESIONAL` **ve** todas las agendas de su sede y **opera solo sus turnos**.

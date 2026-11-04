@@ -83,6 +83,16 @@ public class OrganizationConsultorioMembershipDirectory implements ConsultorioMe
 
 	@Override
 	@Transactional(readOnly = true)
+	public List<ConsultorioMembershipSnapshot> findTodasDeLaCuenta(long organizationId, long accountId) {
+		return membershipRepository
+				.findAllByOrganizationIdAndAccountIdOrderByIdAsc(organizationId, accountId)
+				.stream()
+				.map(OrganizationConsultorioMembershipDirectory::snapshot)
+				.toList();
+	}
+
+	@Override
+	@Transactional(readOnly = true)
 	public List<ConsultorioMembershipSnapshot> findPorRolEnSede(
 			long organizationId, long consultorioId, String roleCode) {
 

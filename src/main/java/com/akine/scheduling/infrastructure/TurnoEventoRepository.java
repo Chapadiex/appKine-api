@@ -40,4 +40,29 @@ public interface TurnoEventoRepository
 	List<TurnoEvento> historial(
 			@Param("organizationId") long organizationId,
 			@Param("turnoId") long turnoId);
+
+	/** Usa {@code ix_turno_evento_turno} (organization_id, turno_id, ...). */
+	@Override
+	@Query("""
+			SELECT e FROM TurnoEvento e
+			 WHERE e.organizationId = :organizationId
+			   AND e.turnoId IN :turnoIds
+			 ORDER BY e.ocurridoEn ASC, e.id ASC
+			""")
+	List<TurnoEvento> historialDe(
+			@Param("organizationId") long organizationId,
+			@Param("turnoIds") java.util.Collection<Long> turnoIds);
+
+	@Override
+	@Query("""
+			SELECT e FROM TurnoEvento e
+			 WHERE e.organizationId = :organizationId
+			   AND e.turnoId IN :turnoIds
+			   AND e.tipo IN (com.akine.scheduling.domain.TipoEventoTurno.REPROGRAMACION,
+			                  com.akine.scheduling.domain.TipoEventoTurno.RESERVA)
+			 ORDER BY e.ocurridoEn ASC, e.id ASC
+			""")
+	List<TurnoEvento> reprogramacionesYReservas(
+			@Param("organizationId") long organizationId,
+			@Param("turnoIds") java.util.Collection<Long> turnoIds);
 }

@@ -82,6 +82,12 @@ public final class SchedulingRepositoryPorts {
 		Optional<Turno> findByIdInScope(long organizationId, long consultorioId, long turnoId);
 
 		/**
+		 * Turnos por id en cualquier sede de la organizacion, cancelados incluidos. Para seguir la
+		 * cadena de traslados ({@code turno_origen_id}) y resolver el turno nuevo de un traslado.
+		 */
+		List<Turno> findTodosPorId(long organizationId, Collection<Long> turnoIds);
+
+		/**
 		 * Los turnos de una sede que empiezan dentro de {@code [desde, hasta)}, del mas temprano
 		 * al mas tarde. Es la agenda del dia de la recepcion (M13).
 		 *
@@ -278,6 +284,18 @@ public final class SchedulingRepositoryPorts {
 
 		/** Los eventos de un turno, del mas viejo al mas nuevo. */
 		List<TurnoEvento> historial(long organizationId, long turnoId);
+
+		/**
+		 * Los eventos de varios turnos (de cualquier sede de la organizacion), del mas viejo al mas
+		 * nuevo. Una consulta para todo el lote: el historial que sigue la cadena de traslados.
+		 */
+		List<TurnoEvento> historialDe(long organizationId, Collection<Long> turnoIds);
+
+		/**
+		 * Las reprogramaciones y las reservas de varios turnos en UNA consulta, del mas viejo al mas
+		 * nuevo: lo que necesita el indicador "reprogramado" de la agenda (sin N+1).
+		 */
+		List<TurnoEvento> reprogramacionesYReservas(long organizationId, Collection<Long> turnoIds);
 	}
 
 	/** Reglas de serie de turnos (AKINE E-3). Sin {@code delete}: una serie no se borra nunca. */

@@ -258,6 +258,7 @@ public class DisponibilidadService {
 		detalles.put("diaSemana", String.valueOf(dia));
 		detalles.put("horario", horaDesde + " -> " + horaHasta);
 		detalles.put("vigenciaDesde", String.valueOf(vigenciaDesde));
+		ResumenDeAgendaParaAuditoria.con(detalles, null, ResumenDeAgendaParaAuditoria.de(guardado));
 		auditar(AuditEvents.DISPONIBILIDAD_BLOQUE_CREATED, guardado, actor.accountId(),
 				null, "ACTIVO", null, AuditEvents.conActor(actor, guardado.getMembershipId(), detalles), ahora);
 
@@ -339,6 +340,7 @@ public class DisponibilidadService {
 		}
 
 		Map<String, String> detalles = cambios(bloque, command);
+		String resumenAntes = ResumenDeAgendaParaAuditoria.de(bloque);
 
 		// El impacto se calcula ANTES de mutar: el simulador compara la disponibilidad con el
 		// bloque como esta y con una copia editada, y la ventana llega al fin de vigencia MAS
@@ -371,6 +373,7 @@ public class DisponibilidadService {
 		if (impacto.hayAlgo()) {
 			detalles.put("turnosAfectados", String.valueOf(impacto.turnosAfectados()));
 		}
+		ResumenDeAgendaParaAuditoria.con(detalles, resumenAntes, ResumenDeAgendaParaAuditoria.de(guardado));
 
 		auditar(AuditEvents.DISPONIBILIDAD_BLOQUE_UPDATED, guardado, actor.accountId(),
 				null, null, null, AuditEvents.conActor(actor, guardado.getMembershipId(), detalles), ahora);
@@ -465,6 +468,7 @@ public class DisponibilidadService {
 
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("turnosAfectados", String.valueOf(impacto.turnosAfectados()));
+		ResumenDeAgendaParaAuditoria.con(detalles, ResumenDeAgendaParaAuditoria.de(guardado), null);
 		auditar(AuditEvents.DISPONIBILIDAD_BLOQUE_DEACTIVATED, guardado, actor.accountId(),
 				"ACTIVO", "INACTIVO", motivo, AuditEvents.conActor(actor, guardado.getMembershipId(), detalles), ahora);
 

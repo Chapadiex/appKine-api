@@ -17,6 +17,7 @@ import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
 import com.akine.scheduling.domain.exception.CoberturaNoAccesibleException;
 import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
 import com.akine.scheduling.domain.exception.PersonaSinPerfilPacienteException;
+import com.akine.scheduling.domain.exception.ProfesionalNotAccessibleException;
 import com.akine.scheduling.domain.exception.RecepcionNotAccessibleException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.TransicionDeRecepcionNoPermitidaException;
@@ -166,6 +167,27 @@ public class SchedulingProblemHandler {
 	public ProblemDetail handlePersonaNoAccesible(PersonaNotAccessibleException exception) {
 		log.debug("Persona no accesible desde la agenda: personaId={}", exception.getPersonaId());
 		return noEncontrado("La persona no existe.");
+	}
+
+	/**
+	 * 403 {@code forbidden}, el mismo tipo que cualquier permiso denegado, con {@code alcance = "PROPIO"}:
+	 * el lector solo ve su propia agenda (historial de agenda).
+	 */
+	@ExceptionHandler(com.akine.scheduling.application.AgendaAjenaException.class)
+	public ProblemDetail handleAgendaAjena(com.akine.scheduling.application.AgendaAjenaException exception) {
+		log.info("Acceso denegado a una agenda ajena con alcance propio");
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				org.springframework.http.HttpStatus.FORBIDDEN, exception.getMessage());
+		problem.setTitle("Acceso denegado");
+		problem.setType(ProblemType.FORBIDDEN.uri());
+		problem.setProperty("alcance", "PROPIO");
+		return problem;
+	}
+
+	@ExceptionHandler(ProfesionalNotAccessibleException.class)
+	public ProblemDetail handleProfesionalNoAccesible(ProfesionalNotAccessibleException exception) {
+		log.debug("Profesional no accesible desde la agenda: profesionalId={}", exception.getProfesionalId());
+		return noEncontrado("El profesional no existe.");
 	}
 
 	/**

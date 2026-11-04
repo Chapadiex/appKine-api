@@ -83,7 +83,7 @@ class CicloDeTurnoServiceTest {
 	@BeforeEach
 	void prepararServicio() {
 		service = new CicloDeTurnoService(turnos, eventos, agendas, ofertas, consultorios,
-				new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class), mock(AgendaDelProfesional.class)), iniciador, revalidador, atenciones, auditTrail, avisos, recepciones, identidades, mock(PlatformTransactionManager.class));
+				new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class), mock(AgendaDelProfesional.class)), iniciador, revalidador, atenciones, auditTrail, avisos, recepciones, identidades, mock(PlatformTransactionManager.class), mock(ReprogramacionesDeTurnos.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true)));

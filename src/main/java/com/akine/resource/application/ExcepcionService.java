@@ -230,6 +230,7 @@ public class ExcepcionService {
 		detalles.put("horario", command.horaDesde() == null
 				? "DIA COMPLETO"
 				: command.horaDesde() + " -> " + command.horaHasta());
+		ResumenDeAgendaParaAuditoria.con(detalles, null, ResumenDeAgendaParaAuditoria.de(guardada));
 		auditar(AuditEvents.DISPONIBILIDAD_EXCEPCION_CREATED, guardada, actor.accountId(),
 				null, "ACTIVO", null, AuditEvents.conActor(actor, guardada.getMembershipId(), detalles), ahora);
 
@@ -320,6 +321,8 @@ public class ExcepcionService {
 		if (impacto.hayAlgo()) {
 			detalles.put("turnosAfectados", String.valueOf(impacto.turnosAfectados()));
 		}
+		ResumenDeAgendaParaAuditoria.con(detalles, ResumenDeAgendaParaAuditoria.de(excepcion),
+				ResumenDeAgendaParaAuditoria.de(propuesta));
 
 		excepcion.updateDatos(
 				propuesta.getMotivo(), propuesta.getFechaDesde(), propuesta.getFechaHasta(),
@@ -400,6 +403,7 @@ public class ExcepcionService {
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("alcance", guardada.esDeSede() ? "SEDE" : "PROFESIONAL");
 		detalles.put("tipo", guardada.getTipo().name());
+		ResumenDeAgendaParaAuditoria.con(detalles, ResumenDeAgendaParaAuditoria.de(guardada), null);
 		auditar(AuditEvents.DISPONIBILIDAD_EXCEPCION_DEACTIVATED, guardada, actor.accountId(),
 				"ACTIVO", "INACTIVO", motivo, AuditEvents.conActor(actor, guardada.getMembershipId(), detalles), ahora);
 

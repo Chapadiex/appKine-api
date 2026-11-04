@@ -47,6 +47,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 /**
  * Cancelacion, reprogramacion, ausencia e historial de Turno (M12, AKINE-05.03).
@@ -108,6 +109,7 @@ public class CicloDeTurnoService {
 	private final AvisosDeTurno avisos;
 	private final RegistroDeRecepcion recepciones;
 	private final AccountIdentityDirectory identidades;
+	private final ReprogramacionesDeTurnos cadenaDeTraslados;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public CicloDeTurnoService(
@@ -124,7 +126,8 @@ public class CicloDeTurnoService {
 			AvisosDeTurno avisos,
 			RegistroDeRecepcion recepciones,
 			AccountIdentityDirectory identidades,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			ReprogramacionesDeTurnos cadenaDeTraslados) {
 
 		this.turnos = turnos;
 		this.eventos = eventos;
@@ -139,6 +142,7 @@ public class CicloDeTurnoService {
 		this.avisos = avisos;
 		this.recepciones = recepciones;
 		this.identidades = identidades;
+		this.cadenaDeTraslados = cadenaDeTraslados;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -465,9 +469,15 @@ public class CicloDeTurnoService {
 		// Se exige que el turno exista y sea de esta sede ANTES de leer el historial: sin esto,
 		// pedir el historial de un turno de otro tenant devolveria una lista vacia con 200, que
 		// es una forma sutil de confirmar que el id no existe aca.
-		exigirTurno(organizationId, consultorioId, turnoId);
+		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
 
-		List<TurnoEvento> historial = eventos.historial(organizationId, turnoId);
+		// Un turno que nacio de un cambio de sede trae tambien la historia de sus turnos de origen, de
+		// las sedes que el lector ve (AKINE-agenda-historial): reprogramaciones y reserva original.
+		List<Turno> origenes = cadenaDeTraslados.origenesLegibles(actor, organizationId, turno);
+		List<TurnoEvento> historial = origenes.isEmpty()
+				? eventos.historial(organizationId, turnoId)
+				: eventos.historialDe(organizationId, Stream.concat(Stream.of(turno), origenes.stream())
+						.map(Turno::getId).toList());
 		Map<Long, AccountIdentity> actores = identidades.identidadesDe(historial.stream()
 				.map(TurnoEvento::getActorCuentaId)
 				.filter(Objects::nonNull)

@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.154.0
+  version: 0.155.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -71,6 +71,8 @@ tags:
   name: Cobros
 - description: Coberturas particulares y financiadas de un paciente (M08)
   name: Coberturas del paciente
+- description: Historial de cambios de la agenda de un profesional
+  name: Agenda
 - description: "Que se aplico REALMENTE en la atencion, donde, por quien y con que\
     \ parametros (M14, RF-M14-005 y RF-M04-005)"
   name: Tratamientos realizados
@@ -18798,6 +18800,167 @@ paths:
       summary: Editar los datos mutables de la organizacion
       tags:
       - Organizaciones
+  /api/v1/organizations/{orgId}/agenda/historial:
+    get:
+      description: |-
+        Horario habitual (alta, edicion, baja), excepciones y bloqueos —ausencias, licencias y vacaciones incluidas; un desbloqueo es la baja de una excepcion— y turnos (reserva, sobreturno, confirmacion, cancelacion, ausencia, reprogramacion, cambio de sede, observaciones) del profesional, con quien lo hizo y con que rol, cuando, el motivo y como estaba antes y como quedo despues, ya armado para mostrar.
+
+        `profesionalId` es la membership del profesional en cualquier sede: se leen todas las de esa persona en la organizacion. Una reprogramacion que le saco un turno tambien aparece.
+
+        Exige `agenda:excepciones` con su alcance: el `ORG_ADMIN` lee la organizacion, el `CONSULTORIO_ADMIN` y el `ADMINISTRATIVO` sus sedes, y el `PROFESIONAL` solo su propia agenda (403 sobre la de otro). El paciente de un turno viaja solo a quien tiene `turno:read` en esa sede.
+
+        `desde` y `hasta` son instantes UTC (ISO-8601) sobre cuando se hizo el cambio, no sobre la fecha del turno: `desde` inclusivo, `hasta` exclusivo. Para "el dia de la sede" el cliente convierte la medianoche local a UTC. Las fechas de `antes`/`despues` ya vienen en la zona de la sede de cada cambio.
+
+        `actorRol` es el rol de quien opero: `ORG_ADMIN`, `CONSULTORIO_ADMIN`, `ADMINISTRATIVO`, `PROFESIONAL` (o `PLATFORM_ADMIN` con acceso de soporte); ausente en cambios anteriores a la agenda de profesionales.
+
+        Es una lectura de la auditoria transversal: una sola fuente. Un cambio de sede tambien deja la cancelacion del turno original como fila propia.
+      operationId: listarHistorialDeAgenda
+      parameters:
+      - description: Organizacion del contexto
+        example: 7
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Membership del profesional, en cualquiera de sus sedes"
+        example: 31
+        in: query
+        name: profesionalId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Acota a una sede
+        example: 3
+        in: query
+        name: consultorioId
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - description: "Tipos de cambio; repetible. Sin el, todos"
+        in: query
+        name: tipo
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - HORARIO_ALTA
+            - HORARIO_EDICION
+            - HORARIO_BAJA
+            - EXCEPCION_ALTA
+            - EXCEPCION_EDICION
+            - EXCEPCION_BAJA
+            - TURNO_RESERVA
+            - TURNO_SOBRETURNO
+            - TURNO_CONFIRMACION
+            - TURNO_CANCELACION
+            - TURNO_AUSENCIA
+            - TURNO_REPROGRAMACION
+            - TURNO_TRASLADO
+            - TURNO_OBSERVACIONES
+      - description: "Desde (inclusivo), sobre cuando se hizo el cambio"
+        example: 2026-11-01T03:00:00Z
+        in: query
+        name: desde
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - description: Hasta (exclusivo)
+        example: 2026-12-01T03:00:00Z
+        in: query
+        name: hasta
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - description: "Texto: contiene, en el motivo y en el tipo de evento"
+        example: licencia
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: Elementos por pagina. Por defecto 10; se recorta a 100
+        example: 10
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 10
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: ocurridoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "ocurridoEn,asc"
+          - "ocurridoEn,desc"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistorialDeAgendaPage"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/HistorialDeAgendaPage"
+          description: "Pagina de cambios, del mas nuevo al mas viejo por defecto"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`tipo` o `sort` fuera del enum, o `hasta` no posterior a `desde`"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, o sin `agenda:excepciones` sobre ninguna sede\
+            \ del pedido (con alcance propio: la agenda es de otro profesional; en\
+            \ ese caso el problema `forbidden` lleva la extension `alcance: \"PROPIO\"\
+            `)"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La organizacion no es la del contexto, o el profesional o\
+            \ la sede no son de ella"
+      summary: Historial de cambios de la agenda de un profesional
+      tags:
+      - Agenda
   /api/v1/organizations/{orgId}/audit-events:
     get:
       description: |-
@@ -27557,6 +27720,115 @@ components:
           example: 2027-02-28
       required:
       - expectedVersion
+    CambioDeAgenda:
+      type: object
+      description: "Un cambio en la agenda de un profesional: horario habitual, excepcion\
+        \ o bloqueo, o un turno. `antes` y `despues` ya vienen armados para mostrar."
+      properties:
+        actorCuentaId:
+          type: integer
+          format: int64
+          description: Cuenta que hizo el cambio. Ausente si lo hizo el sistema
+          example: 12
+        actorNombre:
+          type: string
+          example: Ana Recepcion
+        actorRol:
+          type: string
+          description: Rol con el que opero. Ausente en cambios anteriores a la agenda
+            de profesionales
+          example: ADMINISTRATIVO
+        antes:
+          type: string
+          description: Como estaba. Ausente en un alta
+          example: "Lun 10/11 10:00 · Sede Centro · Gomez, Laura"
+        cambioDeProfesional:
+          type: boolean
+          description: '`true` en una reprogramacion que paso el turno a otro profesional'
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede del cambio
+          example: 3
+        consultorioNombre:
+          type: string
+          example: Sede Centro
+        despues:
+          type: string
+          description: Como quedo. Ausente en una baja
+          example: "Lun 10/11 11:00 · Sede Centro · Gomez, Laura"
+        entidad:
+          type: string
+          description: Sobre que es el cambio
+          enum:
+          - HORARIO
+          - EXCEPCION
+          - TURNO
+        entidadId:
+          type: integer
+          format: int64
+          description: "Id del bloque, de la excepcion o del turno"
+          example: 4100
+        id:
+          type: integer
+          format: int64
+          description: Id del hecho en la auditoria
+          example: 9812
+        motivo:
+          type: string
+          description: Motivo declarado
+          example: Licencia
+        ocurridoEn:
+          type: string
+          format: date-time
+          example: 2026-11-04T15:20:00Z
+        personaId:
+          type: integer
+          format: int64
+          description: Paciente del turno. Solo si quien lee tiene `turno:read` en
+            esa sede
+          example: 77
+        personaNombre:
+          type: string
+          description: "Nombre del paciente, con la misma condicion"
+          example: "Perez, Juan"
+        profesionalId:
+          type: integer
+          format: int64
+          description: Membership del profesional en esa sede
+          example: 31
+        profesionalNombre:
+          type: string
+          example: "Gomez, Laura"
+        tipo:
+          type: string
+          description: Que cambio
+          enum:
+          - HORARIO_ALTA
+          - HORARIO_EDICION
+          - HORARIO_BAJA
+          - EXCEPCION_ALTA
+          - EXCEPCION_EDICION
+          - EXCEPCION_BAJA
+          - TURNO_RESERVA
+          - TURNO_SOBRETURNO
+          - TURNO_CONFIRMACION
+          - TURNO_CANCELACION
+          - TURNO_AUSENCIA
+          - TURNO_REPROGRAMACION
+          - TURNO_TRASLADO
+          - TURNO_OBSERVACIONES
+          example: TURNO_REPROGRAMACION
+        turnoId:
+          type: integer
+          format: int64
+          description: "El turno, en los cambios de turno"
+          example: 4100
+        turnoInicio:
+          type: string
+          format: date-time
+          description: "Horario del turno, en los cambios de turno"
+          example: 2026-11-10T14:00:00Z
     CancelInvitacionRequest:
       type: object
       description: Motivo con el que se retira una invitacion pendiente
@@ -33256,6 +33528,11 @@ components:
           description: Nombre de esa cuenta. Ausente si lo hizo el sistema o la cuenta
             ya no resuelve.
           example: Ana Recepcion
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede de ese turno
+          example: 3
         espacioAnteriorId:
           type: integer
           format: int64
@@ -33330,6 +33607,13 @@ components:
           - CAMBIO_DE_CONTEXTO
           - OBSERVACIONES
           example: CANCELACION
+        turnoId:
+          type: integer
+          format: int64
+          description: "Turno al que pertenece el evento. Distinto del pedido cuando\
+            \ el turno nacio de un cambio de sede: el historial incluye los eventos\
+            \ de sus turnos de origen, de las sedes que el lector puede ver."
+          example: 4100
     ExcepcionResponse:
       type: object
       description: Cierre o apertura puntual de disponibilidad
@@ -33988,6 +34272,35 @@ components:
           description: Version de la historia. Se devuelve como expectedVersion al
             actualizar el resumen
           example: 0
+    HistorialDeAgendaPage:
+      type: object
+      description: Pagina del historial de agenda de un profesional
+      properties:
+        content:
+          type: array
+          description: Cambios de esta pagina
+          items:
+            $ref: "#/components/schemas/CambioDeAgenda"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina devuelta, base cero"
+          example: 0
+        size:
+          type: integer
+          format: int32
+          description: Elementos por pagina. Nunca mayor a 100
+          example: 10
+        totalElements:
+          type: integer
+          format: int64
+          description: Cambios que cumplen el filtro
+          example: 37
+        totalPages:
+          type: integer
+          format: int32
+          description: Paginas disponibles
+          example: 4
     HistorialDeAutorizacionResponse:
       type: object
       description: Pagina del historial de estados de una autorizacion
@@ -36457,6 +36770,18 @@ components:
           description: Nombre del profesional. Ausente si el turno no tiene o no se
             resuelve.
           example: "Gomez, Laura"
+        reprogramacion:
+          $ref: "#/components/schemas/ReprogramacionDeTurno"
+          description: Horario original y ultima reprogramacion. Ausente si nunca
+            se movio.
+        reprogramaciones:
+          type: integer
+          format: int32
+          description: "Cuantas veces se movio el turno, contando sus traslados de\
+            \ sede: las reprogramaciones del turno y de sus turnos de origen, mas\
+            \ una por traslado. 0 si nunca. **Es un indicador, no un estado**: `estadoOperativo`\
+            \ no cambia."
+          example: 2
         sesionId:
           type: integer
           format: int64
@@ -39918,6 +40243,46 @@ components:
           type: string
           description: Zona IANA con la que se recorto el periodo
           example: America/Argentina/Cordoba
+    ReprogramacionDeTurno:
+      type: object
+      description: "Indicador \"reprogramado\" de un turno, derivado al leer de su\
+        \ historial y del de sus turnos de origen (cambio de sede). No es un estado."
+      properties:
+        cantidad:
+          type: integer
+          format: int32
+          description: "Reprogramaciones del turno y de su cadena de traslados, mas\
+            \ una por traslado"
+          example: 2
+        inicioOriginal:
+          type: string
+          format: date-time
+          description: Horario con el que se reservo el turno original de la cadena
+          example: 2026-11-10T13:00:00Z
+        ultimaEn:
+          type: string
+          format: date-time
+          description: Cuando ocurrio la ultima
+          example: 2026-11-04T15:20:00Z
+        ultimoActorCuentaId:
+          type: integer
+          format: int64
+          description: Cuenta que la hizo. Ausente si no consta
+          example: 12
+        ultimoActorNombre:
+          type: string
+          description: Nombre de esa cuenta. Ausente si no resuelve
+          example: Ana Recepcion
+        ultimoMotivo:
+          type: string
+          description: Motivo declarado de la ultima
+          example: Licencia del profesional
+        ultimoTipo:
+          type: string
+          description: Que fue la ultima
+          enum:
+          - REPROGRAMACION
+          - TRASLADO
     ReprogramarClase:
       type: object
       description: "Mueve la clase conservando su identidad y sus participantes. No\

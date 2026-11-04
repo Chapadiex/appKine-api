@@ -21,6 +21,9 @@ package com.akine.scheduling.application;
  * @param sesionNumero         que sesion de su prestacion es este turno dentro del plan, o {@code null}
  * @param sesionesPlanificadas cuantas planifica el plan para esa prestacion, o {@code null}
  * @param sesionId             la atencion del turno, si ya empezo
+ * @param reprogramaciones     cuantas veces se movio el turno, contando su cadena de traslados; 0 si
+ *                             nunca. Indicador derivado, no un estado (AKINE-agenda-historial)
+ * @param reprogramacion       horario original y ultima reprogramacion, o {@code null} si nunca se movio
  */
 public record OperativoDeTurnoView(
 		String estadoOperativo,
@@ -37,5 +40,7 @@ public record OperativoDeTurnoView(
 		String origenCancelacion,
 		Boolean ausenciaConsumeSesion,
 		String observaciones,
-		Long turnoOrigenId) {
+		Long turnoOrigenId,
+		int reprogramaciones,
+		ReprogramacionDeTurnoView reprogramacion) {
 }

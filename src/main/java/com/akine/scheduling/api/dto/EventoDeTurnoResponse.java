@@ -84,7 +84,15 @@ public record EventoDeTurnoResponse(
 		Long espacioAnteriorId,
 
 		@Schema(description = "Solo en una reprogramacion: box despues del cambio.", example = "5")
-		Long espacioNuevoId) {
+		Long espacioNuevoId,
+
+		@Schema(description = "Turno al que pertenece el evento. Distinto del pedido cuando el turno nacio "
+				+ "de un cambio de sede: el historial incluye los eventos de sus turnos de origen, de las sedes "
+				+ "que el lector puede ver.", example = "4100")
+		Long turnoId,
+
+		@Schema(description = "Sede de ese turno", example = "3")
+		Long consultorioId) {
 
 	public static EventoDeTurnoResponse de(EventoDeTurnoView vista) {
 		return new EventoDeTurnoResponse(
@@ -92,6 +100,6 @@ public record EventoDeTurnoResponse(
 				vista.motivo(), vista.inicioAnterior(), vista.finAnterior(),
 				vista.inicioNuevo(), vista.finNuevo(), vista.actorCuentaId(), vista.actorNombre(),
 				vista.ocurridoEn(), vista.profesionalAnteriorId(), vista.profesionalNuevoId(),
-				vista.espacioAnteriorId(), vista.espacioNuevoId());
+				vista.espacioAnteriorId(), vista.espacioNuevoId(), vista.turnoId(), vista.consultorioId());
 	}
 }
