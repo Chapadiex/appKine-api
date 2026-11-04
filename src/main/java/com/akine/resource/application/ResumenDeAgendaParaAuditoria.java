@@ -47,9 +47,11 @@ final class ResumenDeAgendaParaAuditoria {
 	static String de(DisponibilidadExcepcion excepcion) {
 		String tipo = excepcion.getTipo() == null ? "Excepcion" : capital(excepcion.getTipo().name());
 		String motivo = excepcion.getMotivo() == null ? "" : " por " + excepcion.getMotivo().name().toLowerCase(Locale.ROOT);
-		String fechas = excepcion.getFechaHasta() == null || excepcion.getFechaHasta().equals(excepcion.getFechaDesde())
+		// fecha_hasta es exclusiva: el ultimo dia afectado es el anterior.
+		LocalDate ultimoDia = excepcion.getFechaHasta() == null ? null : excepcion.getFechaHasta().minusDays(1);
+		String fechas = ultimoDia == null || !ultimoDia.isAfter(excepcion.getFechaDesde())
 				? fecha(excepcion.getFechaDesde())
-				: fecha(excepcion.getFechaDesde()) + " al " + fecha(excepcion.getFechaHasta());
+				: fecha(excepcion.getFechaDesde()) + " al " + fecha(ultimoDia);
 		String horario = excepcion.getHoraDesde() == null
 				? "dia completo"
 				: rango(excepcion.getHoraDesde(), excepcion.getHoraHasta());
