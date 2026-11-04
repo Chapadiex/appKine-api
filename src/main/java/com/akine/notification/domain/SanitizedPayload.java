@@ -51,6 +51,11 @@ public final class SanitizedPayload {
 			"turnoInicio",
 			"turnoInicioAnterior",
 			"servicioNombre",
+			// Aviso "tu turno cambio" (reprogramacion y cambio de sede): la sede de antes, y dos
+			// marcas ("si") de que cambio el profesional o el box. Las marcas no nombran a nadie.
+			"consultorioNombreAnterior",
+			"cambioProfesional",
+			"cambioEspacio",
 			// AKINE-08.08 (RF-M26-008): el aviso de un pase dice que producto es, cuando vence y
 			// cuanto saldo le queda. El nombre comercial del producto, no un dato clinico ni un id.
 			"productoNombre",

@@ -186,6 +186,29 @@ class EmailTemplatesTest {
 				.contains("del 01/03/2027 a las 09:00 paso al 08/03/2027 a las 10:30");
 	}
 
+	@Test
+	@DisplayName("el cambio de sede dice en un solo aviso que cambio: sede, hora y profesional, sin nombrarlo")
+	void el_turno_modificado_lista_los_cambios() {
+		EmailMessage mensaje = EmailTemplates.render(
+				NotificationType.TURNO_REPROGRAMADO,
+				DESTINATARIO,
+				SanitizedPayload.of(Map.of(
+						"turnoInicio", "08/03/2027 a las 10:30",
+						"turnoInicioAnterior", "01/03/2027 a las 09:00",
+						"consultorioNombre", "Sede Norte",
+						"consultorioNombreAnterior", "Sede Centro",
+						"cambioProfesional", "si")),
+				null);
+
+		assertThat(mensaje.asunto()).isEqualTo("Cambio tu turno en Sede Norte");
+		assertThat(mensaje.cuerpo())
+				.contains("- Sede: antes Sede Centro, ahora Sede Norte")
+				.contains("- Fecha y hora: antes 01/03/2027 a las 09:00, ahora 08/03/2027 a las 10:30")
+				.contains("- Profesional: te va a atender otro profesional")
+				.doesNotContain("Box")
+				.doesNotContain("cancel");
+	}
+
 	@ParameterizedTest(name = "{0}")
 	@EnumSource(value = NotificationType.class, names = {
 			"TURNO_RESERVADO", "TURNO_CANCELADO", "TURNO_REPROGRAMADO"})

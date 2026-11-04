@@ -88,9 +88,35 @@ toma el de `agenda_profesional` (V129) de la persona de destino, como en la rese
 `RevalidadorDeSlot` cruza contra todas las memberships de esa cuenta: el traslado no puede dejar a
 la misma persona con dos turnos a la vez en dos sedes.
 
+## Avisos al paciente: una operación, un aviso
+
+Hasta la rama `akine-agenda-aviso-unico` el traslado mandaba **dos** avisos: la cancelación del
+original (`CicloDeTurnoService.aplicarCancelacion` encola `TURNO_CANCELADO`) y la reserva del nuevo
+(`avisarReserva`, `TURNO_RESERVADO`). Ahora:
+
+- **Un solo constructor**: `AvisosDeTurno.avisarModificacion(resultante, sede, servicio, Antes)`. Lo
+  usan la reprogramación (`aplicarReprogramacion`, también la de serie) y el traslado. Tipo
+  `TURNO_REPROGRAMADO` (sin tipo nuevo: el contrato no cambia, sigue **0.154.0**).
+- **Qué dice**: sólo lo que cambió, de antes a ahora — sede (`consultorioNombreAnterior` →
+  `consultorioNombre`), fecha y hora (`turnoInicioAnterior` → `turnoInicio`), y las marcas
+  `cambioProfesional`/`cambioEspacio` (`"si"`), **sin nombrar** al profesional ni al box (PHI mínima,
+  RN-M26-002). El profesional se compara por **cuenta** (en otra sede la misma persona tiene otra
+  membership); el box sólo dentro de la misma sede. Si sólo cambió la hora, el texto es el de siempre.
+- **El traslado** cancela el original con `aplicarCancelacion(..., avisarAlPaciente = false)` y encola
+  el aviso combinado al final, **en la misma transacción** (outbox con propagación `MANDATORY`): si el
+  destino no tiene lugar, el rollback se lleva el aviso.
+- **Idempotencia y trazabilidad**: reprogramar → `turno-reprogramado:<id>:v<version>`; traslado →
+  `turno-trasladado:<nuevoId>:desde:<origenId>` (única por operación; el `UNIQUE` de
+  `notification_outbox.clave_idempotente` descarta un reintento). Un reintento HTTP del traslado ya
+  terminado responde 409 por versión y no encola nada. `VigenciaDeAvisoDeTurno` lee el segundo
+  segmento —el turno que queda— y descarta el aviso si ese turno se canceló antes de salir. El
+  `TURNO_RESERVADO` todavía pendiente del original también se descarta (el original quedó cancelado).
+- **Lotes, sin cambio**: la cancelación en lote, la de serie y la reprogramación de serie mandan un
+  aviso **por turno** afectado (son N turnos, no una operación sobre uno). El alta de una serie,
+  uno de reserva por ocurrencia. Si se quiere un resumen por paciente es otra decisión.
+
 ## Límites conocidos
 
-- El traslado manda dos avisos al paciente (cancelación del original y reserva del nuevo).
 - `fueraDeDisponibilidad` no se calcula en el calendario (`listarTurnosDeSede`), sólo en la agenda
   operativa, que es la que ya trae las franjas.
 - Los nombres de los afectados se resuelven sólo para los ≤50 que viajan en la lista.
