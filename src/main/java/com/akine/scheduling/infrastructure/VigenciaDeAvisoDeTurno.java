@@ -23,7 +23,9 @@ import java.util.Optional;
  * (EstadoTurno.CANCELADO es terminal), asi que lo que anuncia sigue siendo cierto.
  *
  * <p>La clave la arma {@code AvisosDeTurno}: {@code turno-reservado:<id>} y
- * {@code turno-reprogramado:<id>:v<version>}. Se parsea aca porque es este modulo el que la armo.
+ * {@code turno-reprogramado:<id>:v<version>}, y el cambio de sede (tambien {@code TURNO_REPROGRAMADO})
+ * {@code turno-trasladado:<nuevoId>:desde:<origenId>}: en las tres el segundo segmento es el turno que
+ * queda. Se parsea aca porque es este modulo el que la armo.
  */
 @Component
 public class VigenciaDeAvisoDeTurno implements VigenciaDeNotificacion {

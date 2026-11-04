@@ -3,6 +3,8 @@ package com.akine.scheduling.application;
 import com.akine.notification.spi.NotificationEnqueueCommand;
 import com.akine.notification.spi.NotificationOutbox;
 import com.akine.notification.spi.NotificationType;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.person.spi.ContactoDePersona;
 import com.akine.person.spi.ContactoDirectory;
@@ -17,6 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Los avisos de turno al paciente: reserva (RF-M26-002), cancelacion y reprogramacion
@@ -58,6 +61,15 @@ import java.util.Map;
  * una vez, asi que alcanza con su id. Una reprogramacion puede repetirse sobre el mismo turno —y
  * volver a un horario anterior—, asi que lleva ademas la version que la reprogramacion dejo: es
  * unica por cambio y estable ante un reintento de la misma transaccion.
+ *
+ * <h2>Una operacion, un aviso: "tu turno cambio"</h2>
+ *
+ * <p>Reprogramar y cambiar de sede le dicen al paciente lo mismo —su turno ya no es el que era— y
+ * los dos pasan por {@link #avisarModificacion}, el unico lugar que arma ese aviso. El cambio de
+ * sede cancela un turno y reserva otro, pero el paciente no se entera de eso: recibe UN aviso
+ * {@code TURNO_REPROGRAMADO} con lo que cambio (sede, fecha y hora, otro profesional, otro box),
+ * nunca una cancelacion mas una reserva. El profesional y el box se anuncian sin nombre, por la
+ * misma regla de PHI minima de arriba.
  */
 @Component
 public class AvisosDeTurno {
@@ -68,12 +80,38 @@ public class AvisosDeTurno {
 	private static final DateTimeFormatter FORMATO =
 			DateTimeFormatter.ofPattern("dd/MM/yyyy 'a las' HH:mm");
 
+	/** Valor de las marcas {@code cambioProfesional} y {@code cambioEspacio}. */
+	private static final String SI = "si";
+
 	private final NotificationOutbox outbox;
 	private final ContactoDirectory contactos;
+	private final ConsultorioMembershipDirectory memberships;
 
-	public AvisosDeTurno(NotificationOutbox outbox, ContactoDirectory contactos) {
+	public AvisosDeTurno(
+			NotificationOutbox outbox, ContactoDirectory contactos, ConsultorioMembershipDirectory memberships) {
 		this.outbox = outbox;
 		this.contactos = contactos;
+		this.memberships = memberships;
+	}
+
+	/**
+	 * Como era el turno antes del cambio. En una reprogramacion es el mismo turno; en un cambio de sede
+	 * es el original, ya cancelado.
+	 *
+	 * @param turnoId                 el turno de antes (en el cambio de sede, el original)
+	 * @param sede                    su sede
+	 * @param inicio                  su inicio
+	 * @param profesionalMembershipId su profesional, o {@code null}
+	 * @param espacioId               su box, o {@code null}
+	 */
+	public record Antes(
+			long turnoId, ConsultorioSnapshot sede, Instant inicio, Long profesionalMembershipId, Long espacioId) {
+
+		/** La foto de un turno antes de tocarlo. */
+		public static Antes de(Turno turno, ConsultorioSnapshot sede) {
+			return new Antes(turno.getId(), sede, turno.getInicio(),
+					turno.getProfesionalMembershipId(), turno.getEspacioId());
+		}
 	}
 
 	/** RF-M26-002. */
@@ -94,7 +132,7 @@ public class AvisosDeTurno {
 			Turno turno, ConsultorioSnapshot sede, String servicioNombre, ContactoDePersona contacto) {
 		encolar(NotificationType.TURNO_RESERVADO,
 				"turno-reservado:" + turno.getId(),
-				turno, sede, servicioNombre, null, contacto);
+				turno, sede, servicioNombre, Map.of(), contacto);
 	}
 
 	/** El contacto de una persona, o {@code null} si no tiene. */
@@ -106,22 +144,68 @@ public class AvisosDeTurno {
 	public void avisarCancelacion(Turno turno, ConsultorioSnapshot sede, String servicioNombre) {
 		encolar(NotificationType.TURNO_CANCELADO,
 				"turno-cancelado:" + turno.getId(),
-				turno, sede, servicioNombre, null,
+				turno, sede, servicioNombre, Map.of(),
 				contactoDe(turno.getOrganizationId(), turno.getPersonaId()));
 	}
 
 	/**
-	 * RF-M26-003, reprogramacion.
+	 * RF-M26-003: el turno cambio. El UNICO aviso de una reprogramacion y de un cambio de sede.
 	 *
-	 * @param turno         el turno YA movido y flusheado: su version es la que deja este cambio
-	 * @param inicioAnterior de donde vino, para que el mail diga "tu turno del X paso al Y"
+	 * <p>Dice lo que cambio, de antes a ahora: la sede, la fecha y hora, y si lo atiende otro
+	 * profesional o en otro box (sin nombrarlos). Lo que no cambio no se menciona. El profesional se
+	 * compara por cuenta, no por membership: en otra sede la misma persona tiene otro id. El box solo
+	 * se menciona dentro de la misma sede: en otra sede es otro box siempre, y la sede ya lo dice.
+	 *
+	 * <p>Clave idempotente: reprogramar mueve el mismo turno, asi que es
+	 * {@code turno-reprogramado:<id>:v<version>} (la version que deja el cambio, unica por cambio).
+	 * El cambio de sede crea un turno, asi que es {@code turno-trasladado:<nuevoId>:desde:<origenId>}:
+	 * unica por operacion y con los dos ids para rastrear el aviso. {@code VigenciaDeAvisoDeTurno}
+	 * lee el segundo segmento —el turno que queda— para no mandarlo si ese turno se cancelo antes.
+	 *
+	 * @param resultante el turno como queda, YA flusheado: su version es la que deja este cambio
+	 * @param sede       la sede del turno como queda
+	 * @param antes      como era antes del cambio
 	 */
-	public void avisarReprogramacion(
-			Turno turno, ConsultorioSnapshot sede, String servicioNombre, Instant inicioAnterior) {
-		encolar(NotificationType.TURNO_REPROGRAMADO,
-				"turno-reprogramado:" + turno.getId() + ":v" + turno.getVersion(),
-				turno, sede, servicioNombre, inicioAnterior,
-				contactoDe(turno.getOrganizationId(), turno.getPersonaId()));
+	public void avisarModificacion(
+			Turno resultante, ConsultorioSnapshot sede, String servicioNombre, Antes antes) {
+
+		boolean otroTurno = antes.turnoId() != resultante.getId();
+		String clave = otroTurno
+				? "turno-trasladado:" + resultante.getId() + ":desde:" + antes.turnoId()
+				: "turno-reprogramado:" + resultante.getId() + ":v" + resultante.getVersion();
+
+		boolean otraSede = antes.sede().id() != sede.id();
+		Map<String, String> cambios = new LinkedHashMap<>();
+		if (otraSede) {
+			cambios.put("consultorioNombreAnterior", antes.sede().name());
+		}
+		if (!antes.inicio().equals(resultante.getInicio())) {
+			cambios.put("turnoInicioAnterior",
+					FORMATO.format(antes.inicio().atZone(ZoneId.of(antes.sede().timezone()))));
+		}
+		if (!mismaPersona(resultante.getOrganizationId(),
+				antes.profesionalMembershipId(), resultante.getProfesionalMembershipId())) {
+			cambios.put("cambioProfesional", SI);
+		}
+		if (!otraSede && !Objects.equals(antes.espacioId(), resultante.getEspacioId())) {
+			cambios.put("cambioEspacio", SI);
+		}
+		encolar(NotificationType.TURNO_REPROGRAMADO, clave, resultante, sede, servicioNombre, cambios,
+				contactoDe(resultante.getOrganizationId(), resultante.getPersonaId()));
+	}
+
+	/** Si las dos memberships son de la misma cuenta. Dos {@code null} son "sin profesional": iguales. */
+	private boolean mismaPersona(long organizationId, Long antes, Long ahora) {
+		if (Objects.equals(antes, ahora)) {
+			return true;
+		}
+		if (antes == null || ahora == null) {
+			return false;
+		}
+		Long cuentaAntes = memberships.find(organizationId, antes)
+				.map(ConsultorioMembershipSnapshot::accountId).orElse(null);
+		return cuentaAntes != null && cuentaAntes.equals(memberships.find(organizationId, ahora)
+				.map(ConsultorioMembershipSnapshot::accountId).orElse(null));
 	}
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
@@ -131,7 +215,7 @@ public class AvisosDeTurno {
 			Turno turno,
 			ConsultorioSnapshot sede,
 			String servicioNombre,
-			Instant inicioAnterior,
+			Map<String, String> cambios,
 			ContactoDePersona contacto) {
 
 		if (contacto == null || !contacto.notificable()) {
@@ -144,11 +228,9 @@ public class AvisosDeTurno {
 		Map<String, String> datos = new LinkedHashMap<>();
 		datos.put("nombre", contacto.nombre());
 		datos.put("turnoInicio", FORMATO.format(turno.getInicio().atZone(zona)));
-		if (inicioAnterior != null) {
-			datos.put("turnoInicioAnterior", FORMATO.format(inicioAnterior.atZone(zona)));
-		}
 		datos.put("consultorioNombre", sede.name());
 		datos.put("servicioNombre", servicioNombre);
+		datos.putAll(cambios);
 
 		outbox.enqueue(new NotificationEnqueueCommand(
 				tipo,

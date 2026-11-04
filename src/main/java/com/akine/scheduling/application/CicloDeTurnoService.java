@@ -207,6 +207,18 @@ public class CicloDeTurnoService {
 	public Turno aplicarCancelacion(
 			OperatingActor actor, ConsultorioSnapshot sede, Turno turno, String motivo,
 			OrigenDeCancelacion origen, Instant ahora) {
+		return aplicarCancelacion(actor, sede, turno, motivo, origen, ahora, true);
+	}
+
+	/**
+	 * {@link #aplicarCancelacion(OperatingActor, ConsultorioSnapshot, Turno, String, OrigenDeCancelacion,
+	 * Instant)} decidiendo si el paciente recibe el aviso de cancelacion. Sin aviso solo lo pide el
+	 * cambio de sede ({@link TrasladoDeTurnoService}): la cancelacion es la mitad de una operacion cuyo
+	 * unico aviso es "tu turno cambio" ({@link AvisosDeTurno#avisarModificacion}).
+	 */
+	public Turno aplicarCancelacion(
+			OperatingActor actor, ConsultorioSnapshot sede, Turno turno, String motivo,
+			OrigenDeCancelacion origen, Instant ahora, boolean avisarAlPaciente) {
 
 		EstadoTurno anterior = turno.getEstado();
 		turno.cancelar(motivo, origen, actor.accountId(), ahora);
@@ -224,10 +236,12 @@ public class CicloDeTurnoService {
 		auditar(actor, cancelado, "TURNO_CANCELADO", anterior, cancelado.getMotivoCancelacion(), ahora);
 		// RF-M26-003. Sin el motivo: ver AvisosDeTurno. La oferta solo pone el nombre del servicio,
 		// y si ya no resuelve el aviso sale igual, sin el.
-		avisos.avisarCancelacion(cancelado, sede, ofertas
-				.find(cancelado.getOrganizationId(), cancelado.getConsultorioId(), cancelado.getOfertaId())
-				.map(OfertaSnapshot::nombreComercial)
-				.orElse(null));
+		if (avisarAlPaciente) {
+			avisos.avisarCancelacion(cancelado, sede, ofertas
+					.find(cancelado.getOrganizationId(), cancelado.getConsultorioId(), cancelado.getOfertaId())
+					.map(OfertaSnapshot::nombreComercial)
+					.orElse(null));
+		}
 
 		log.info("Turno cancelado: turnoId={} consultorioId={} estadoAnterior={}",
 				cancelado.getId(), cancelado.getConsultorioId(), anterior);
@@ -432,8 +446,9 @@ public class CicloDeTurnoService {
 		detalles.put("espacioAnteriorId", String.valueOf(espacioAnterior));
 		auditar(actor, movido, "TURNO_REPROGRAMADO", anterior, motivo, detalles, ahora);
 		// RF-M26-003. Despues del saveAndFlush: la clave idempotente lleva la version que deja
-		// este cambio.
-		avisos.avisarReprogramacion(movido, sede, oferta.nombreComercial(), inicioAnterior);
+		// este cambio. Un solo aviso con todo lo que cambio (hora, profesional, box).
+		avisos.avisarModificacion(movido, sede, oferta.nombreComercial(), new AvisosDeTurno.Antes(
+				movido.getId(), sede, inicioAnterior, profesionalAnterior, espacioAnterior));
 
 		log.info("Turno reprogramado: turnoId={} consultorioId={} de={} a={}",
 				movido.getId(), movido.getConsultorioId(), inicioAnterior, nuevoInicio);

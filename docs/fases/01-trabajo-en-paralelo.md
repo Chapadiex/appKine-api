@@ -164,6 +164,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V131` | Agenda operativa — turnos (`akine-agenda-turnos`) | **Usada**: `V131__m12_turno_observaciones_traslado_e_historial.sql` — `turno.observaciones` (administrativas, nunca clínicas), `turno.turno_origen_id` (`fk_turno_turno_origen`, `ix_turno_turno_origen`) para el cambio de sede, y profesional y box antes/después en `turno_evento`. Todo aditivo |
 | `V132` | Agenda operativa — excepciones (`akine-agenda-turnos`) | **Usada**: `V132__m05_autor_de_disponibilidad_y_vacaciones.sql` — `created_by_cuenta_id` en `disponibilidad_excepcion` y `profesional_disponibilidad`, y `VACACIONES` en `ck_disponibilidad_excepcion_motivo` (repite todos los valores vigentes de `V127`) |
 | `V133` | Agenda operativa — turnos | **Vacía**: reservada por el paquete de turnos y excepciones y no usada al integrarlo con el de permisos. No se reusa |
+| `V138` | Agenda — aviso único del cambio de sede (`akine-agenda-aviso-unico`) | **Vacía**: el aviso "tu turno cambio" reusa el tipo `TURNO_REPROGRAMADO` y `notification_outbox` (la clave idempotente ya es `UNIQUE`, `tipo` es `VARCHAR` sin CHECK); no hizo falta tabla ni columna. No se reusa |
 
 ## 7. Paquetes de trabajo
 

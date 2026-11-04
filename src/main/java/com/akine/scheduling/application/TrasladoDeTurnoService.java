@@ -251,13 +251,15 @@ public class TrasladoDeTurnoService {
 				: contextoClinico.resolver(organizationId, original.getPersonaId(), oferta.id(),
 						original.getCasoId(), original.getPlanId());
 
-		// 1. Cancelar el original, con el mismo codigo que cualquier cancelacion: evento, recepcion,
-		// auditoria y aviso. Primero, para que el profesional o el box que ocupaba no cuenten si el
-		// destino comparte alguno; si el destino no tiene lugar, el rollback deshace todo.
+		// 1. Cancelar el original, con el mismo codigo que cualquier cancelacion: evento, recepcion y
+		// auditoria, pero SIN aviso: el paciente recibe uno solo, "tu turno cambio", al final. Primero,
+		// para que el profesional o el box que ocupaba no cuenten si el destino comparte alguno; si el
+		// destino no tiene lugar, el rollback deshace todo.
+		AvisosDeTurno.Antes antes = AvisosDeTurno.Antes.de(original, origen);
 		EstadoTurno estadoOriginal = original.getEstado();
 		Turno cancelado = ciclo.aplicarCancelacion(actor, origen, original,
 				recortar("Cambio de sede a " + destino.name() + ": " + command.motivo()),
-				OrigenDeCancelacion.INSTITUCION, ahora);
+				OrigenDeCancelacion.INSTITUCION, ahora, false);
 
 		// 2. Reservar en el destino, con la revalidacion entera.
 		Instant fin = inicio.plusSeconds(oferta.duracionCon(
@@ -298,7 +300,9 @@ public class TrasladoDeTurnoService {
 				"Turno", cancelado.getId(), estadoOriginal.name(), cancelado.getEstado().name(), detallesOriginal,
 				command.motivo(), null, ahora));
 
-		avisos.avisarReserva(reservado, destino, oferta.nombreComercial());
+		// Un solo aviso para el paciente, en esta misma transaccion (outbox): lo que cambio de antes a
+		// ahora. Ni la cancelacion del original ni la reserva del nuevo avisan por su cuenta.
+		avisos.avisarModificacion(reservado, destino, oferta.nombreComercial(), antes);
 		return new TrasladoView(TurnoView.de(cancelado), TurnoView.de(reservado));
 	}
 
