@@ -1,6 +1,7 @@
 package com.akine.activity.application;
 
 import com.akine.activity.domain.ClaseEvento;
+import com.akine.activity.domain.ClaseInstructor;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.EstadoClase;
 import com.akine.activity.domain.InscripcionClase;
@@ -16,6 +17,7 @@ import com.akine.activity.domain.exception.RecursoOcupadoException;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseEventoRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseProgramadaRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.InscripcionClaseRepositoryPort;
+import com.akine.activity.domain.port.HonorariosRepositoryPorts.ClaseInstructorRepositoryPort;
 import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
@@ -26,6 +28,7 @@ import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
+import com.akine.resource.spi.BloqueoDeAgendaDeProfesional;
 import com.akine.resource.spi.DisponibilidadDirectory;
 import com.akine.resource.spi.EspacioDirectory;
 import com.akine.resource.spi.EspacioSnapshot;
@@ -45,9 +48,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Programar, reprogramar y cancelar clases (M28, RF-M28-001, RF-M28-005 y RF-M28-006).
@@ -120,6 +127,8 @@ public class ClaseService {
 	private final ProyeccionDeClase proyeccion;
 	private final ConsumoDePaseService consumoDePases;
 	private final DevengoPorClaseService devengoPorClase;
+	private final BloqueoDeAgendaDeProfesional bloqueos;
+	private final ClaseInstructorRepositoryPort instructores;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public ClaseService(
@@ -138,6 +147,8 @@ public class ClaseService {
 			ProyeccionDeClase proyeccion,
 			ConsumoDePaseService consumoDePases,
 			DevengoPorClaseService devengoPorClase,
+			BloqueoDeAgendaDeProfesional bloqueos,
+			ClaseInstructorRepositoryPort instructores,
 			PlatformTransactionManager transactionManager) {
 
 		this.clases = clases;
@@ -155,6 +166,8 @@ public class ClaseService {
 		this.proyeccion = proyeccion;
 		this.consumoDePases = consumoDePases;
 		this.devengoPorClase = devengoPorClase;
+		this.bloqueos = bloqueos;
+		this.instructores = instructores;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -185,6 +198,8 @@ public class ClaseService {
 		// con la plantilla: anidada, el pedido retenia dos conexiones y trababa el pool
 		// (FilaLockPrevia). Ver la cabecera para por que no puede crearse adentro.
 		agenda.asegurar(organizationId, consultorioId);
+		// Y la fila de la persona (agenda_profesional, V129), por lo mismo: se bloquea adentro.
+		bloqueos.asegurar(organizationId, Arrays.asList(command.profesionalId()));
 
 		return transaccionReadCommitted.execute(estado -> programarEnTransaccion(
 				actor, consultorioId, ofertaId, command, organizationId, sede));
@@ -225,7 +240,7 @@ public class ClaseService {
 				organizationId, oferta, espacioId, command.capacidad(), command.inicio(), 0);
 
 		exigirRecursosLibres(
-				organizationId, consultorioId, profesionalId, espacioId,
+				organizationId, consultorioId, personas(profesionalId, List.of()), espacioId,
 				command.inicio(), command.fin(), null);
 
 		Instant ahora = Instant.now();
@@ -271,6 +286,13 @@ public class ClaseService {
 
 		// Mismo orden que programar, y por los mismos motivos. Ver la cabecera.
 		agenda.asegurar(organizationId, consultorioId);
+		// Las personas que la clase ocupa en el horario nuevo: el profesional pedido y los instructores
+		// adicionales que tiene hoy. Si un adicional cambia entre esta lectura y la transaccion y su fila
+		// no existe, el bloqueo responde concurrent-modification: recargar y reintentar.
+		List<Long> aAsegurar = new ArrayList<>();
+		aAsegurar.add(command.profesionalId());
+		instructores.vigentesDe(organizationId, claseId).forEach(i -> aAsegurar.add(i.getMembershipId()));
+		bloqueos.asegurar(organizationId, aAsegurar);
 
 		return transaccionReadCommitted.execute(estado -> reprogramarEnTransaccion(
 				actor, consultorioId, claseId, command, organizationId, sede));
@@ -310,8 +332,10 @@ public class ClaseService {
 				organizationId, oferta, espacioId, command.capacidad(), command.inicio(), ocupados);
 
 		exigirRecursosLibres(
-				organizationId, consultorioId, profesionalId, espacioId,
-				command.inicio(), command.fin(), claseId);
+				organizationId, consultorioId,
+				personas(profesionalId, instructores.vigentesDe(organizationId, claseId).stream()
+						.map(ClaseInstructor::getMembershipId).toList()),
+				espacioId, command.inicio(), command.fin(), claseId);
 
 		Instant inicioAnterior = clase.getInicio();
 		Instant finAnterior = clase.getFin();
@@ -771,25 +795,38 @@ public class ClaseService {
 	 * mitad de las clases, dos clases se pisan. Las dos consultas son necesarias y ninguna alcanza
 	 * sola.
 	 */
+	/** Principal (si hay) y adicionales, sin repetir: las memberships que la clase ocupa. */
+	private static List<Long> personas(Long profesionalId, List<Long> adicionales) {
+		Set<Long> todas = new LinkedHashSet<>();
+		if (profesionalId != null) {
+			todas.add(profesionalId);
+		}
+		todas.addAll(adicionales);
+		return List.copyOf(todas);
+	}
+
+	/**
+	 * El profesional, cada instructor y el box tienen que estar libres en {@code [inicio, fin)}.
+	 *
+	 * <p><b>Por persona y en toda la organizacion</b> (agenda de clases y avisos, 0.156.0). La misma
+	 * persona tiene una membership por sede: se toma la fila de cada una en {@code agenda_profesional}
+	 * —despues del lock de la sede y, al reprogramar, del de la clase; en orden de cuenta, el mismo
+	 * orden que usan los turnos— y se cruza contra sus turnos y sus clases de cualquier sede, como
+	 * principal o como adicional. Con los dos locks un turno que se reserva a la vez en otra sede espera
+	 * a esta transaccion, o esta a el, y el segundo ve al primero.
+	 */
 	private void exigirRecursosLibres(
 			long organizationId,
 			long consultorioId,
-			Long profesionalId,
+			List<Long> instructoresDeLaClase,
 			Long espacioId,
 			Instant inicio,
 			Instant fin,
 			Long claseExcluidaId) {
 
-		if (profesionalId != null) {
-			List<OcupacionDeAgenda> turnos = agenda.turnosDeProfesionalQueCruzan(
-					organizationId, profesionalId, inicio, fin);
-			boolean otraClase = clases
-					.findVivasDeProfesionalQueCruzan(organizationId, profesionalId, inicio, fin)
-					.stream()
-					.anyMatch(otra -> !otra.getId().equals(claseExcluidaId));
-			if (!turnos.isEmpty() || otraClase) {
-				throw new RecursoOcupadoException("profesional");
-			}
+		bloqueos.bloquearEnOrden(organizationId, instructoresDeLaClase);
+		for (Long membershipId : instructoresDeLaClase) {
+			exigirPersonaLibre(organizationId, consultorioId, membershipId, inicio, fin, claseExcluidaId);
 		}
 
 		if (espacioId != null && !espacioLibre(
@@ -799,6 +836,37 @@ public class ClaseService {
 		}
 
 		log.debug("Recursos libres para la clase en {} de la sede {}", inicio, consultorioId);
+	}
+
+	/**
+	 * Ninguna membership de la misma persona tiene un turno vivo ni otra clase viva que se cruce.
+	 * Paquete-privado para que {@link InstructoresDeClaseService} aplique la
+	 * misma regla al sumar un adicional. Se llama con la fila de la persona ya bloqueada.
+	 */
+	void exigirPersonaLibre(
+			long organizationId, long consultorioId, long membershipId, Instant inicio, Instant fin,
+			Long claseExcluidaId) {
+
+		Set<Long> mismaPersona = bloqueos.deLaMismaPersona(organizationId, membershipId);
+		Optional<OcupacionDeAgenda> turno = agenda
+				.turnosDeProfesionalesQueCruzan(organizationId, mismaPersona, inicio, fin)
+				.stream()
+				.findFirst();
+		if (turno.isPresent()) {
+			Long sede = turno.get().consultorioId();
+			throw new RecursoOcupadoException("profesional", "TURNO", turno.get().eventoId(), sede,
+					sede != null && sede != consultorioId, turno.get().inicio(), turno.get().fin());
+		}
+		Optional<ClaseProgramada> otra = clases
+				.findVivasDeMembershipsQueCruzan(organizationId, mismaPersona, inicio, fin)
+				.stream()
+				.filter(clase -> !clase.getId().equals(claseExcluidaId))
+				.findFirst();
+		if (otra.isPresent()) {
+			throw new RecursoOcupadoException("profesional", "CLASE", otra.get().getId(),
+					otra.get().getConsultorioId(), otra.get().getConsultorioId() != consultorioId,
+					otra.get().getInicio(), otra.get().getFin());
+		}
 	}
 
 	private boolean espacioLibre(

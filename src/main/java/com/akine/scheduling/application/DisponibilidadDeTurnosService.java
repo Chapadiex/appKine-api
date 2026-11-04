@@ -323,7 +323,7 @@ public class DisponibilidadDeTurnosService {
 			return noDisponible(actor, consultorioId, pedido, inicio, fin,
 					"profesional".equals(ocupado.getRecurso()) ? "PROFESIONAL_OCUPADO" : "ESPACIO_OCUPADO",
 					"profesional".equals(ocupado.getRecurso())
-							? "El profesional ya tiene otro turno en ese horario."
+							? motivoDeProfesionalOcupado(consultorioId, ocupado)
 							: "No queda ningun box libre en ese horario.",
 					fecha, ocupado);
 		}
@@ -350,7 +350,28 @@ public class DisponibilidadDeTurnosService {
 				ocupado == null ? null : ocupado.getTurnoEnConflictoId(),
 				ocupado == null ? null : ocupado.getConflictoInicio(),
 				ocupado == null ? null : ocupado.getConflictoFin(),
-				List.of(), alternativas);
+				List.of(), alternativas,
+				ocupado == null ? null : ocupado.getConflictoTipo(),
+				ocupado == null ? null : ocupado.getClaseEnConflictoId(),
+				ocupado == null ? null : ocupado.getConflictoConsultorioId());
+	}
+
+	/**
+	 * Agenda de clases y avisos (0.156.0): si choca con una clase no se dice "otro turno", y si es de otra
+	 * sede se dice. Sin saber con que choca, un texto neutro.
+	 */
+	private static String motivoDeProfesionalOcupado(long consultorioId, RecursoOcupadoException ocupado) {
+		if (RecursoOcupadoException.CLASE.equals(ocupado.getConflictoTipo())) {
+			boolean otraSede = ocupado.getConflictoConsultorioId() != null
+					&& ocupado.getConflictoConsultorioId() != consultorioId;
+			return otraSede
+					? "El profesional tiene una clase en otra sede en ese horario."
+					: "El profesional tiene una clase en ese horario.";
+		}
+		if (RecursoOcupadoException.TURNO.equals(ocupado.getConflictoTipo())) {
+			return "El profesional ya tiene otro turno en ese horario.";
+		}
+		return "El profesional ya esta ocupado en ese horario.";
 	}
 
 	/**

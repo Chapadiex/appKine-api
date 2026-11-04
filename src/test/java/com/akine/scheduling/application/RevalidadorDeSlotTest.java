@@ -101,8 +101,8 @@ class RevalidadorDeSlotTest {
 				.willReturn(List.of());
 		given(espacios.enServicio(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of(espacio(true)));
-		given(ocupacionExterna.profesionalOcupado(anyLong(), anyLong(), any(), any()))
-				.willReturn(false);
+		given(ocupacionExterna.ocupacionDeProfesionales(anyLong(), any(), any(), any()))
+				.willReturn(List.of());
 		given(ocupacionExterna.espacioOcupado(anyLong(), anyLong(), any(), any()))
 				.willReturn(false);
 	}
@@ -249,8 +249,9 @@ class RevalidadorDeSlotTest {
 		void ocupacion_externa() {
 			// La agenda de turnos y la de clases comparten profesional: sin esta sonda, M28 podria
 			// vender la misma hora que M12.
-			given(ocupacionExterna.profesionalOcupado(ORG_ID, PROFESIONAL_ID, INICIO, FIN))
-					.willReturn(true);
+			given(ocupacionExterna.ocupacionDeProfesionales(anyLong(), any(), any(), any()))
+					.willReturn(List.of(new com.akine.scheduling.spi.OcupacionExternaProbe.OcupacionExterna(
+						"CLASE", 9L, 999L, PROFESIONAL_ID, INICIO, FIN)));
 
 			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
 					.isInstanceOf(RecursoOcupadoException.class);
@@ -619,13 +620,26 @@ class RevalidadorDeSlotTest {
 		void salva_la_ocupacion() {
 			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
 			given(turnos.findVivosDeProfesionalesQueCruzan(anyLong(), any(), any(), any())).willReturn(List.of(turnoDeOtraOferta()));
-			given(ocupacionExterna.profesionalOcupado(anyLong(), anyLong(), any(), any())).willReturn(true);
 			given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any())).willReturn(List.of(turnoDeOtraOferta()));
 
 			RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(sobreturno());
 
 			assertThat(asignacion.profesionalId()).isEqualTo(PROFESIONAL_ID);
 			assertThat(asignacion.espacioId()).isNull();
+		}
+
+		@Test
+		@DisplayName("No salva una CLASE de la misma persona, ni en otra sede: la persona no se desdobla")
+		void no_salva_una_clase() {
+			given(ocupacionExterna.ocupacionDeProfesionales(anyLong(), any(), any(), any())).willReturn(List.of(
+					new com.akine.scheduling.spi.OcupacionExternaProbe.OcupacionExterna("CLASE", 9L, 999L, PROFESIONAL_ID, INICIO, FIN)));
+
+			assertThatThrownBy(() -> revalidador.revalidar(sobreturno()))
+					.isInstanceOfSatisfying(RecursoOcupadoException.class, e -> {
+						assertThat(e.getConflictoTipo()).isEqualTo("CLASE");
+						assertThat(e.getConflictoConsultorioId()).isEqualTo(999L);
+						assertThat(e.getMessage()).contains("otra sede");
+					});
 		}
 
 		@Test

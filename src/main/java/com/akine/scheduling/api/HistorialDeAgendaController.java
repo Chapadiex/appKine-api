@@ -39,7 +39,13 @@ import java.util.stream.Collectors;
 @RequestMapping(
 		path = "/api/v1/organizations/{orgId}/agenda/historial",
 		produces = {MediaType.APPLICATION_JSON_VALUE, "application/problem+json"})
-@Tag(name = "Agenda", description = "Historial de cambios de la agenda de un profesional")
+// Mismo nombre Y misma descripcion que AgendaController: springdoc deduplica los tags por igualdad
+// completa, y una descripcion distinta publica un segundo tag "Agenda" que el generador del
+// frontend rechaza ("attribute tags.Agenda is repeated").
+@Tag(
+		name = "Agenda",
+		description = "Turnos disponibles calculados a partir de disponibilidad, oferta y "
+				+ "habilitaciones (M12)")
 public class HistorialDeAgendaController {
 
 	static final int TAMANO_POR_DEFECTO = 10;

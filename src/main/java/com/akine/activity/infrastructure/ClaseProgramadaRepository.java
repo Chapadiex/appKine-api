@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -72,6 +73,27 @@ public interface ClaseProgramadaRepository
 			@Param("fin") Instant fin);
 
 	/** Ver {@link #findVivasDeProfesionalQueCruzan}. */
+	@Override
+	@Query("""
+			SELECT c FROM ClaseProgramada c
+			 WHERE c.organizationId = :organizationId
+			   AND c.deletedAt IS NULL
+			   AND c.inicio < :fin
+			   AND :inicio < c.fin
+			   AND (c.profesionalMembershipId IN :membershipIds
+			        OR EXISTS (SELECT 1 FROM ClaseInstructor i
+			                    WHERE i.organizationId = c.organizationId
+			                      AND i.claseId = c.id
+			                      AND i.removidoEn IS NULL
+			                      AND i.membershipId IN :membershipIds))
+			 ORDER BY c.inicio ASC, c.id ASC
+			""")
+	List<ClaseProgramada> findVivasDeMembershipsQueCruzan(
+			@Param("organizationId") long organizationId,
+			@Param("membershipIds") Collection<Long> membershipIds,
+			@Param("inicio") Instant inicio,
+			@Param("fin") Instant fin);
+
 	@Override
 	@Query("""
 			SELECT c FROM ClaseProgramada c

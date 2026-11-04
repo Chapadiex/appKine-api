@@ -1,6 +1,7 @@
 package com.akine.scheduling.spi;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -78,6 +79,14 @@ public interface AgendaDeSede {
 	 */
 	List<OcupacionDeAgenda> turnosDeProfesionalQueCruzan(
 			long organizationId, long profesionalMembershipId, Instant inicio, Instant fin);
+
+	/**
+	 * Turnos vivos de cualquiera de esas memberships —todas las de una persona, en cualquier sede de la
+	 * organizacion— que se cruzan con {@code [inicio, fin)}. Lo usa la clase para no pisar un turno de
+	 * la misma persona en otra sede. Bajo el lock de la persona ({@code agenda_profesional}).
+	 */
+	List<OcupacionDeAgenda> turnosDeProfesionalesQueCruzan(
+			long organizationId, Collection<Long> membershipIds, Instant inicio, Instant fin);
 
 	/** Lo mismo para un espacio. Ver {@link #turnosDeProfesionalQueCruzan}. */
 	List<OcupacionDeAgenda> turnosDeEspacioQueCruzan(
