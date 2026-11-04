@@ -17,7 +17,13 @@ public record AgendaOperativaResponse(
 		List<EspacioDeAgendaResponse> espacios,
 		List<TurnoDeCalendarioResponse> turnos,
 		List<ClaseEnAgendaResponse> clases,
-		List<BloqueoEnAgendaResponse> bloqueos) {
+		List<BloqueoEnAgendaResponse> bloqueos,
+		@Schema(description = "Intervalos en que la persona de una columna esta ocupada en OTRA sede de la "
+				+ "organizacion (turno o clase). La celda no esta libre aunque en esta sede no haya nada.")
+		List<OcupacionEnOtraSedeResponse> ocupacionesEnOtrasSedes,
+		@Schema(description = "Turnos y clases de la misma persona que ya se pisan (datos anteriores a la "
+				+ "regla entre sedes). Se calculan al leer; nada se modifica.")
+		List<ConflictoDeAgendaResponse> conflictos) {
 
 	public static AgendaOperativaResponse de(AgendaOperativaView vista) {
 		return new AgendaOperativaResponse(vista.desde(), vista.hasta(), vista.timezone(),
@@ -33,7 +39,34 @@ public record AgendaOperativaResponse(
 						clase.profesionalId(), clase.espacioId(), clase.capacidad(), clase.ocupados())).toList(),
 				vista.bloqueos().stream().map(bloqueo -> new BloqueoEnAgendaResponse(
 						bloqueo.excepcionId(), bloqueo.membershipId(), bloqueo.motivo(), bloqueo.notas(),
-						bloqueo.desde(), bloqueo.hasta())).toList());
+						bloqueo.desde(), bloqueo.hasta())).toList(),
+				vista.ocupacionesEnOtrasSedes().stream().map(o -> new OcupacionEnOtraSedeResponse(
+						o.membershipId(), o.tipo(), o.consultorioId(), o.inicio(), o.fin())).toList(),
+				vista.conflictos().stream().map(c -> new ConflictoDeAgendaResponse(
+						c.membershipId(), c.turnoId(), c.turnoConsultorioId(), c.claseId(), c.claseConsultorioId(),
+						c.inicio(), c.fin())).toList());
+	}
+
+	@Schema(name = "OcupacionEnOtraSede", description = "La persona de la columna esta ocupada en otra sede. "
+			+ "Sin paciente ni id.")
+	public record OcupacionEnOtraSedeResponse(
+			@Schema(description = "La columna: membership de esta sede", example = "31") Long membershipId,
+			@Schema(allowableValues = {"TURNO", "CLASE"}, example = "CLASE") String tipo,
+			@Schema(example = "12") long consultorioId,
+			Instant inicio,
+			Instant fin) {
+	}
+
+	@Schema(name = "ConflictoDeAgenda", description = "Un turno y una clase de la misma persona que se pisan. "
+			+ "El id viaja solo del lado que es de esta sede.")
+	public record ConflictoDeAgendaResponse(
+			@Schema(description = "La columna: membership de esta sede", example = "31") Long membershipId,
+			@Schema(description = "Ausente si el turno es de otra sede", example = "501") Long turnoId,
+			long turnoConsultorioId,
+			@Schema(description = "Ausente si la clase es de otra sede", example = "7") Long claseId,
+			long claseConsultorioId,
+			@Schema(description = "Comienzo del tramo en que se pisan") Instant inicio,
+			@Schema(description = "Fin del tramo en que se pisan") Instant fin) {
 	}
 
 	@Schema(name = "ProfesionalDeAgenda", description = "Una columna de la agenda: quien atiende y cuando.")

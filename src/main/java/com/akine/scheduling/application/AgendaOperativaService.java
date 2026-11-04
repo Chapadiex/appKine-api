@@ -56,6 +56,7 @@ public class AgendaOperativaService {
 	private final EventoExternoDeAgenda eventosExternos;
 	private final NombresDeAgenda nombres;
 	private final SoporteEnAgenda soporte;
+	private final OcupacionEntreSedes ocupacionEntreSedes;
 
 	public AgendaOperativaService(
 			RecepcionService recepcion,
@@ -65,8 +66,10 @@ public class AgendaOperativaService {
 			EspacioDirectory espacios,
 			EventoExternoDeAgenda eventosExternos,
 			NombresDeAgenda nombres,
-			SoporteEnAgenda soporte) {
+			SoporteEnAgenda soporte,
+			OcupacionEntreSedes ocupacionEntreSedes) {
 
+		this.ocupacionEntreSedes = ocupacionEntreSedes;
 		this.recepcion = recepcion;
 		this.consultorios = consultorios;
 		this.memberships = memberships;
@@ -178,7 +181,12 @@ public class AgendaOperativaService {
 			}
 		}
 
-		return new AgendaOperativaView(desde, hasta, sede.timezone(), columnas, boxes, turnos, clases, bloqueos);
+		// Agenda de clases y avisos (0.156.0): lo que la misma persona tiene en otras sedes, para que la
+		// celda no se vea libre, y los choques turno–clase que ya estaban guardados.
+		OcupacionEntreSedes.Resultado entreSedes = ocupacionEntreSedes.de(organizationId, consultorioId,
+				columnas.stream().map(ProfesionalDeAgendaView::membershipId).toList(), inicio, fin);
+		return new AgendaOperativaView(desde, hasta, sede.timezone(), columnas, boxes, turnos, clases, bloqueos,
+				entreSedes.ocupaciones(), entreSedes.conflictos());
 	}
 
 	/** Dia completo sin hora; una hora de fin a medianoche (24:00 en M05) es el inicio del dia siguiente. */

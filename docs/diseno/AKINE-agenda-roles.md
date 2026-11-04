@@ -89,8 +89,8 @@ Al integrar `akine-agenda-turnos` se aplicó el mismo recorte a sus operaciones 
 
 ## Lo que no se hizo
 
-- Las **clases** (`activity`) siguen cruzando por membership: una clase en otra sede no bloquea un
-  turno de la misma persona.
+- ~~Las **clases** (`activity`) siguen cruzando por membership: una clase en otra sede no bloquea un
+  turno de la misma persona.~~ Cerrado en 0.156.0: [`AKINE-agenda-clases-y-avisos.md`](AKINE-agenda-clases-y-avisos.md).
 - El 403 del recorte propio no deja fila `PERMISSION_DENIED` (el evaluador concedió; el rechazo es del
   servicio).
 - Duración propia por profesional: sigue en `consultorio:manage`.

@@ -14,6 +14,8 @@ import java.time.Instant;
  *                 clase 7 existen a la vez
  * @param fin      exclusivo, igual que en todo el proyecto: un evento que termina exactamente
  *                 cuando empieza el otro <b>no</b> se cruza con el
+ * @param consultorioId sede del evento; puede ser otra que la del llamador cuando la pregunta es por
+ *                 persona (agenda de clases y avisos)
  */
 public record OcupacionDeAgenda(
 		String tipo,
@@ -21,7 +23,15 @@ public record OcupacionDeAgenda(
 		Long profesionalMembershipId,
 		Long espacioId,
 		Instant inicio,
-		Instant fin) {
+		Instant fin,
+		Long consultorioId) {
+
+	/** Sin sede: para quien no la necesita (la sede la conoce el llamador). */
+	public OcupacionDeAgenda(
+			String tipo, long eventoId, Long profesionalMembershipId, Long espacioId,
+			Instant inicio, Instant fin) {
+		this(tipo, eventoId, profesionalMembershipId, espacioId, inicio, fin, null);
+	}
 
 	/** {@code true} si esta ocupacion se cruza con {@code [desde, hasta)}. */
 	public boolean seCruzaCon(Instant desde, Instant hasta) {

@@ -164,6 +164,8 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V131` | Agenda operativa — turnos (`akine-agenda-turnos`) | **Usada**: `V131__m12_turno_observaciones_traslado_e_historial.sql` — `turno.observaciones` (administrativas, nunca clínicas), `turno.turno_origen_id` (`fk_turno_turno_origen`, `ix_turno_turno_origen`) para el cambio de sede, y profesional y box antes/después en `turno_evento`. Todo aditivo |
 | `V132` | Agenda operativa — excepciones (`akine-agenda-turnos`) | **Usada**: `V132__m05_autor_de_disponibilidad_y_vacaciones.sql` — `created_by_cuenta_id` en `disponibilidad_excepcion` y `profesional_disponibilidad`, y `VACACIONES` en `ck_disponibilidad_excepcion_motivo` (repite todos los valores vigentes de `V127`) |
 | `V133` | Agenda operativa — turnos | **Vacía**: reservada por el paquete de turnos y excepciones y no usada al integrarlo con el de permisos. No se reusa |
+| `V136` | Agenda: clases contra turnos entre sedes (`akine-agenda-clases-avisos`) | **Vacía**: reservada y no usada. El cruce por persona usa la fila de `agenda_profesional` (`V129`) y los índices existentes (`ix_clase_instructor_membership` de `V114`). No se reusa |
+| `V137` | Agenda: clases contra turnos entre sedes (`akine-agenda-clases-avisos`) | **Vacía**: reservada para el aviso único del traslado, que pasó a otra rama; no se usó acá. No se reusa sin confirmarlo con esa rama |
 
 ## 7. Paquetes de trabajo
 

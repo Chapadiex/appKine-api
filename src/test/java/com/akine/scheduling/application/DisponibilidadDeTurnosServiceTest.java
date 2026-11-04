@@ -448,8 +448,13 @@ class DisponibilidadDeTurnosServiceTest {
 
 	static Stream<Arguments> rechazos() {
 		return Stream.of(
-				Arguments.of(new RecursoOcupadoException("profesional"), "PROFESIONAL_OCUPADO",
+				Arguments.of(new RecursoOcupadoException("profesional", 301L, null, null), "PROFESIONAL_OCUPADO",
 						"El profesional ya tiene otro turno en ese horario."),
+				// Agenda de clases y avisos (0.156.0): una clase no se nombra como "otro turno".
+				Arguments.of(RecursoOcupadoException.porClase("profesional", 7L, 999L, true, null, null),
+						"PROFESIONAL_OCUPADO", "El profesional tiene una clase en otra sede en ese horario."),
+				Arguments.of(new RecursoOcupadoException("profesional"), "PROFESIONAL_OCUPADO",
+						"El profesional ya esta ocupado en ese horario."),
 				Arguments.of(new RecursoOcupadoException("espacio"), "ESPACIO_OCUPADO",
 						"No queda ningun box libre en ese horario."),
 				Arguments.of(new SlotCompletoException(1), "SLOT_COMPLETO", "Ese horario ya no tiene lugar."),

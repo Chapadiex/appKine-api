@@ -202,9 +202,21 @@ public class SchedulingProblemHandler {
 		problem.setProperty("recurso", exception.getRecurso());
 		// Con que choca, si es un turno: "ya tiene un turno entre las 10:00 y las 10:45" (TURNO.md §36).
 		if (exception.getConflictoInicio() != null) {
-			problem.setProperty("turnoEnConflictoId", exception.getTurnoEnConflictoId());
+			if (exception.getTurnoEnConflictoId() != null) {
+				problem.setProperty("turnoEnConflictoId", exception.getTurnoEnConflictoId());
+			}
 			problem.setProperty("conflictoInicio", exception.getConflictoInicio().toString());
 			problem.setProperty("conflictoFin", exception.getConflictoFin().toString());
+		}
+		// Agenda de clases y avisos (0.156.0): una clase, quiza de otra sede. Mismo type, mas datos.
+		if (exception.getConflictoTipo() != null) {
+			problem.setProperty("conflictoTipo", exception.getConflictoTipo());
+		}
+		if (exception.getClaseEnConflictoId() != null) {
+			problem.setProperty("claseEnConflictoId", exception.getClaseEnConflictoId());
+		}
+		if (exception.getConflictoConsultorioId() != null) {
+			problem.setProperty("conflictoConsultorioId", exception.getConflictoConsultorioId());
 		}
 		return problem;
 	}

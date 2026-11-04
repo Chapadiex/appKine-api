@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.154.0
+  version: 0.156.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -25790,6 +25790,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ClaseEnAgenda"
+        conflictos:
+          type: array
+          description: Turnos y clases de la misma persona que ya se pisan (datos
+            anteriores a la regla entre sedes). Se calculan al leer; nada se modifica.
+          items:
+            $ref: "#/components/schemas/ConflictoDeAgenda"
         desde:
           type: string
           format: date
@@ -25803,6 +25809,13 @@ components:
           format: date
           description: EXCLUSIVO
           example: 2026-11-02
+        ocupacionesEnOtrasSedes:
+          type: array
+          description: Intervalos en que la persona de una columna esta ocupada en
+            OTRA sede de la organizacion (turno o clase). La celda no esta libre aunque
+            en esta sede no haya nada.
+          items:
+            $ref: "#/components/schemas/OcupacionEnOtraSede"
         profesionales:
           type: array
           items:
@@ -29190,6 +29203,40 @@ components:
       - desde
       - hasta
       - importeTotal
+    ConflictoDeAgenda:
+      type: object
+      description: Un turno y una clase de la misma persona que se pisan. El id viaja
+        solo del lado que es de esta sede.
+      properties:
+        claseConsultorioId:
+          type: integer
+          format: int64
+        claseId:
+          type: integer
+          format: int64
+          description: Ausente si la clase es de otra sede
+          example: 7
+        fin:
+          type: string
+          format: date-time
+          description: Fin del tramo en que se pisan
+        inicio:
+          type: string
+          format: date-time
+          description: Comienzo del tramo en que se pisan
+        membershipId:
+          type: integer
+          format: int64
+          description: "La columna: membership de esta sede"
+          example: 31
+        turnoConsultorioId:
+          type: integer
+          format: int64
+        turnoId:
+          type: integer
+          format: int64
+          description: Ausente si el turno es de otra sede
+          example: 501
     ConsultorioPageResponse:
       type: object
       description: "Pagina de sedes de la organizacion, segun el filtro de estado\
@@ -36198,6 +36245,32 @@ components:
           format: int64
           description: Version para el control optimista
           example: 0
+    OcupacionEnOtraSede:
+      type: object
+      description: La persona de la columna esta ocupada en otra sede. Sin paciente
+        ni id.
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          example: 12
+        fin:
+          type: string
+          format: date-time
+        inicio:
+          type: string
+          format: date-time
+        membershipId:
+          type: integer
+          format: int64
+          description: "La columna: membership de esta sede"
+          example: 31
+        tipo:
+          type: string
+          enum:
+          - TURNO
+          - CLASE
+          example: CLASE
     OcurrenciaElegida:
       type: object
       description: "Un horario de la serie, tal como quedo despues de revisarla."
@@ -43606,12 +43679,31 @@ components:
           - SLOT_COMPLETO
           - PROFESIONAL_OCUPADO
           - ESPACIO_OCUPADO
+        claseEnConflictoId:
+          type: integer
+          format: int64
+          description: "Clase con la que choca, si es una clase"
+          example: 7
+        conflictoConsultorioId:
+          type: integer
+          format: int64
+          description: Sede del evento con el que choca (puede ser otra)
+          example: 12
         conflictoFin:
           type: string
           format: date-time
         conflictoInicio:
           type: string
           format: date-time
+        conflictoTipo:
+          type: string
+          description: "Con que choca un PROFESIONAL_OCUPADO: un turno o una clase,\
+            \ de esta sede o de otra de la organizacion (la misma persona). Ausente\
+            \ si no se sabe."
+          enum:
+          - TURNO
+          - CLASE
+          example: CLASE
         espaciosLibres:
           type: array
           description: "Boxes libres a esa hora, para ofrecer cambiar el asignado"
@@ -43636,7 +43728,7 @@ components:
         motivo:
           type: string
           description: "La misma causa, para mostrarla"
-          example: El profesional ya tiene otro turno en ese horario.
+          example: El profesional tiene una clase en otra sede en ese horario.
         profesionales:
           type: array
           description: Quien puede atender a esa hora
