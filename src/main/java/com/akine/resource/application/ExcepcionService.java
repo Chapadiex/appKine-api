@@ -345,6 +345,7 @@ public class ExcepcionService {
 		if (deUnaPersona(membershipId)) {
 			entreSedes.asegurarPersona(organizationId, membershipId);
 		}
+		asegurarRecortadas(previa, organizationId);
 
 		ExcepcionView editada = transaccionReadCommitted.execute(estado -> editarEnTransaccion(
 				actor, consultorioId, excepcionId, command, organizationId, sedes, membershipId));
@@ -404,11 +405,27 @@ public class ExcepcionService {
 		ResumenDeAgendaParaAuditoria.con(detalles, ResumenDeAgendaParaAuditoria.de(excepcion),
 				ResumenDeAgendaParaAuditoria.de(propuesta));
 
+		// D-1: achicar o mover un CIERRE devuelve horario. La foto de como estaba, antes de mutarlo; las
+		// personas: la del cierre (ya bloqueada arriba) o, si es de sede, las que tienen horario ahi.
+		DisponibilidadExcepcion anterior = new DisponibilidadExcepcion(
+				organizationId, consultorioId, excepcion.getMembershipId(), excepcion.getTipo(), excepcion.getMotivo(),
+				excepcion.getFechaDesde(), excepcion.getFechaHasta(), excepcion.getHoraDesde(), excepcion.getHoraHasta(),
+				excepcion.getFeriadoId(), excepcion.getNotes());
+		Map<Long, Set<Long>> recortadas = excepcion.esDeSede()
+				? bloquearRecortadas(organizationId, excepcion)
+				: excepcion.getTipo() == TipoExcepcion.CIERRE && deUnaPersona(membershipId)
+						? Map.of(membershipId, mismaPersona)
+						: Map.of();
+
 		excepcion.updateDatos(
 				propuesta.getMotivo(), propuesta.getFechaDesde(), propuesta.getFechaHasta(),
 				propuesta.getHoraDesde(), propuesta.getHoraHasta(), propuesta.getHoraDesde() == null,
 				propuesta.getNotes() == null ? "" : propuesta.getNotes());
 		DisponibilidadExcepcion guardada = excepciones.save(excepcion);
+		// D-3: sin el flush la respuesta lleva la version LEIDA y el segundo guardado encadenado da 409.
+		// Y la efectiva de la sede ya refleja el cierre editado para validar lo que libero.
+		excepciones.flush();
+		validarLiberacion(organizationId, consultorioId, anterior, recortadas, ahora);
 
 		// Disponibilidad central (0.158.0): la apertura editada vuelve a validarse contra las otras sedes.
 		List<DisponibilidadExcepcion> sustituidas = validarAperturaEntreSedes(
@@ -441,6 +458,38 @@ public class ExcepcionService {
 		ConsultorioSnapshot sede =
 				AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId);
 		return entreSedes.validarApertura(actor, sede, apertura, mismaPersona, sustituir, ahora);
+	}
+
+	/**
+	 * Las filas de las personas a las que el CIERRE recorta, sin transaccion (FilaLockPrevia). La de un
+	 * profesional ya la asegura quien llama; esto agrega las de un cierre de sede entera.
+	 */
+	private void asegurarRecortadas(Optional<DisponibilidadExcepcion> previa, long organizationId) {
+		if (entreSedes != null && previa.isPresent() && previa.get().isOperable()) {
+			entreSedes.asegurarPersonas(organizationId, entreSedes.recortadasPorElCierre(previa.get()));
+		}
+	}
+
+	/**
+	 * Bajo el lock de la sede: las personas a las que el CIERRE recorta, recalculadas, bloqueadas en orden de
+	 * cuenta (sede → persona, como el alta). Vacio si no es un cierre o sin el validador.
+	 */
+	private Map<Long, Set<Long>> bloquearRecortadas(long organizationId, DisponibilidadExcepcion cierre) {
+		if (entreSedes == null) {
+			return Map.of();
+		}
+		return entreSedes.bloquearPersonas(organizationId, entreSedes.recortadasPorElCierre(cierre));
+	}
+
+	/** Ver {@link DisponibilidadEntreSedes#validarLiberacion}. */
+	private void validarLiberacion(long organizationId, long consultorioId, DisponibilidadExcepcion anterior,
+			Map<Long, Set<Long>> recortadas, Instant ahora) {
+		if (entreSedes == null || recortadas.isEmpty() || anterior.getTipo() != TipoExcepcion.CIERRE) {
+			return;
+		}
+		ConsultorioSnapshot sede =
+				AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId);
+		entreSedes.validarLiberacion(sede, anterior, recortadas, ahora);
 	}
 
 	/** Ver {@link DisponibilidadEntreSedes#clasesAfectadas}. Vacio en una apertura o sin el validador. */
@@ -488,8 +537,10 @@ public class ExcepcionService {
 		exigirSedeDelTenant(organizationId, consultorioId);
 		exigirGestionDeExcepcion(actor, organizationId, consultorioId, excepcionId);
 
-		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
+		// Las filas-lock ANTES de abrir la transaccion (FilaLockPrevia): la de la sede y, si es un CIERRE,
+		// las de las personas a las que la baja les devuelve horario (D-1, disponibilidad central).
 		calendarioIniciador.asegurar(organizationId, consultorioId);
+		asegurarRecortadas(excepciones.findByIdScoped(excepcionId, organizationId, consultorioId), organizationId);
 
 		return transaccionReadCommitted.execute(estado -> darDeBajaEnTransaccion(
 				actor, consultorioId, excepcionId, motivo, organizationId));
@@ -510,9 +561,14 @@ public class ExcepcionService {
 		if (!excepcion.isOperable()) {
 			throw new ExcepcionInactivaException(excepcionId);
 		}
+		Map<Long, Set<Long>> recortadas = bloquearRecortadas(organizationId, excepcion);
 
 		excepcion.deactivate(ahora, motivo);
 		DisponibilidadExcepcion guardada = excepciones.save(excepcion);
+		// La version nueva en la respuesta (save() antes del flush devuelve la leida) y la efectiva de la
+		// sede ya sin el cierre para la validacion de abajo.
+		excepciones.flush();
+		validarLiberacion(organizationId, consultorioId, excepcion, recortadas, ahora);
 
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("alcance", guardada.esDeSede() ? "SEDE" : "PROFESIONAL");

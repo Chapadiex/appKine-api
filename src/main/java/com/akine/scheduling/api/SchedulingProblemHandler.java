@@ -428,7 +428,8 @@ public class SchedulingProblemHandler {
 			default -> throw new IllegalStateException(
 					"Causa no prevista para una ocurrencia sin lugar", exception.getCausa());
 		};
-		problem.setDetail(exception.getMessage());
+		// La ocurrencia en hora de la sede y la causa con el mismo texto que en una reserva suelta.
+		problem.setDetail(exception.detalleCon(problem.getDetail()));
 		problem.setProperty("ocurrenciaInicio", exception.getOcurrenciaInicio().toString());
 		return problem;
 	}

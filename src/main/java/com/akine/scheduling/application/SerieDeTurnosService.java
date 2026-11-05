@@ -281,7 +281,7 @@ public class SerieDeTurnosService {
 				: inicios.stream().filter(inicio -> !feriados.contains(fechaLocal(inicio, zona))).toList();
 		if (aReservar.isEmpty()) {
 			// Una serie sin un solo turno no es una serie: no se crea nada, como en todo o nada.
-			throw new OcurrenciaSinLugarException(inicios.getFirst(), new SlotNoDisponibleException(
+			throw new OcurrenciaSinLugarException(inicios.getFirst(), zona, new SlotNoDisponibleException(
 					"todas las ocurrencias de la serie caen en dias que la sede cierra por feriado"));
 		}
 
@@ -311,7 +311,7 @@ public class SerieDeTurnosService {
 			// Una ocurrencia puede ir con otro profesional que el de la serie, y dura lo que dura con el.
 			Long profesional = profesionalElegido.getOrDefault(inicio, command.profesionalId());
 			Instant fin = inicio.plusSeconds(oferta.duracionCon(duracionesPropias, profesional) * 60L);
-			RevalidadorDeSlot.Asignacion asignacion = sinLugarNombraLaOcurrencia(inicio, () -> {
+			RevalidadorDeSlot.Asignacion asignacion = sinLugarNombraLaOcurrencia(inicio, zona, () -> {
 				exigirVigencia(oferta, inicio, zona);
 				return revalidador.revalidar(new RevalidadorDeSlot.Pedido(
 						organizationId, consultorioId, sede, oferta, inicio, fin, profesional, null));
@@ -694,7 +694,7 @@ public class SerieDeTurnosService {
 			Long profesionalId = command.profesionalId() != null
 					? command.profesionalId()
 					: turno.getProfesionalMembershipId();
-			movidos.add(sinLugarNombraLaOcurrencia(destino, () -> ciclo.aplicarReprogramacion(
+			movidos.add(sinLugarNombraLaOcurrencia(destino, zona, () -> ciclo.aplicarReprogramacion(
 					actor, sede, oferta, turno, destino, profesionalId, command.motivo(), ahora)));
 		}
 		movidos.sort(Comparator.comparing(Turno::getInicio).thenComparing(Turno::getId));
@@ -780,12 +780,13 @@ public class SerieDeTurnosService {
 	 * demas —un turno con atencion, una transicion imposible— no son "falta de lugar" y pasan tal
 	 * cual.
 	 */
-	private static <T> T sinLugarNombraLaOcurrencia(Instant inicio, java.util.function.Supplier<T> paso) {
+	private static <T> T sinLugarNombraLaOcurrencia(
+			Instant inicio, ZoneId zona, java.util.function.Supplier<T> paso) {
 		try {
 			return paso.get();
 		} catch (SlotNoDisponibleException | SlotCompletoException
 				| RecursoOcupadoException | OfertaNoAgendableException sinLugar) {
-			throw new OcurrenciaSinLugarException(inicio, sinLugar);
+			throw new OcurrenciaSinLugarException(inicio, zona, sinLugar);
 		}
 	}
 

@@ -15,6 +15,7 @@ import com.akine.resource.domain.TipoExcepcion;
 import com.akine.resource.domain.exception.ActividadReservadaEnConflictoException;
 import com.akine.resource.domain.exception.BloqueoConTurnosAfectadosException;
 import com.akine.resource.domain.exception.DisponibilidadSuperpuestaException;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDisponibilidadRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.spi.ActividadDePersonaProbe;
 import com.akine.resource.spi.BloqueoDeAgendaDeProfesional;
@@ -75,6 +76,7 @@ public class DisponibilidadEntreSedes {
 	private final DisponibilidadExcepcionRepositoryPort excepciones;
 	private final BloqueoDeAgendaDeProfesional agendas;
 	private final AuditTrail auditTrail;
+	private final BloqueDisponibilidadRepositoryPort bloques;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public DisponibilidadEntreSedes(
@@ -85,7 +87,8 @@ public class DisponibilidadEntreSedes {
 			PermissionGuard permissionGuard,
 			DisponibilidadExcepcionRepositoryPort excepciones,
 			BloqueoDeAgendaDeProfesional agendas,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			BloqueDisponibilidadRepositoryPort bloques) {
 		this.efectiva = efectiva;
 		this.actividad = actividad;
 		this.consultorios = consultorios;
@@ -94,6 +97,7 @@ public class DisponibilidadEntreSedes {
 		this.excepciones = excepciones;
 		this.agendas = agendas;
 		this.auditTrail = auditTrail;
+		this.bloques = bloques;
 	}
 
 	/** La fila de la persona, ANTES de la transaccion de negocio (FilaLockPrevia). */
@@ -194,7 +198,7 @@ public class DisponibilidadEntreSedes {
 		DisponibilidadExcepcion cierre = new DisponibilidadExcepcion(
 				superposicion.sede().organizationId(), superposicion.sede().id(), superposicion.membershipId(),
 				TipoExcepcion.CIERRE, MotivoExcepcion.BLOQUEO, fecha, fecha.plusDays(1), desde.toLocalTime(), horaHasta,
-				null, recortar("Sustituida por una apertura en la sede " + sedeDeLaApertura.name()));
+				null, recortar(motivoDeSustitucion(sedeDeLaApertura)));
 		cierre.registrarAutor(actor.accountId());
 		DisponibilidadExcepcion guardado = excepciones.save(cierre);
 
@@ -210,13 +214,21 @@ public class DisponibilidadEntreSedes {
 		}
 		detalles.put("fechas", fecha + " -> " + fecha.plusDays(1));
 		detalles.put("horario", desde.toLocalTime() + " -> " + horaHasta);
+		// El historial lo lee como cualquier cierre ("Cierre por bloqueo, 09/11/2026, 10:00–12:00") y el
+		// origen va en castellano en el motivo; las claves de arriba quedan para trazabilidad.
+		ResumenDeAgendaParaAuditoria.con(detalles, null, ResumenDeAgendaParaAuditoria.de(guardado));
 		auditTrail.record(new AuditEntry(
 				guardado.getOrganizationId(), guardado.getConsultorioId(), actor.accountId(),
 				AuditEvents.DISPONIBILIDAD_EXCEPCION_CREATED, AuditEvents.ENTITY_EXCEPCION_DISPONIBILIDAD,
 				guardado.getId(), null, "ACTIVO",
-				AuditEvents.conActor(actor, guardado.getMembershipId(), detalles), null,
-				AuditEvents.correlationId(), ahora));
+				AuditEvents.conActor(actor, guardado.getMembershipId(), detalles),
+				motivoDeSustitucion(sedeDeLaApertura), AuditEvents.correlationId(), ahora));
 		return guardado;
+	}
+
+	/** "Sustituida por una apertura en la sede Norte": la nota del cierre y el motivo de su auditoria. */
+	private static String motivoDeSustitucion(ConsultorioSnapshot sedeDeLaApertura) {
+		return "Sustituida por una apertura en la sede " + sedeDeLaApertura.name();
 	}
 
 	private static String recortar(String texto) {
@@ -290,6 +302,101 @@ public class DisponibilidadEntreSedes {
 							clase.claseId(), clase.instructorMembershipId(), clase.inicio(), clase.fin())));
 		}
 		return clases.stream().distinct().toList();
+	}
+
+	// =================================================================================
+	// Liberacion: baja o achique de un CIERRE
+	// =================================================================================
+
+	/**
+	 * Las memberships a las que un CIERRE recorta en su sede: la suya si es de un profesional; si es de la
+	 * sede entera, las que tienen horario habitual o una apertura propia ahi en esas fechas. Sin lock:
+	 * {@link #bloquearPersonas} la vuelve a calcular bajo el de la sede.
+	 */
+	Set<Long> recortadasPorElCierre(DisponibilidadExcepcion cierre) {
+		if (cierre.getTipo() != TipoExcepcion.CIERRE) {
+			return Set.of();
+		}
+		if (!cierre.esDeSede()) {
+			return Set.of(cierre.getMembershipId());
+		}
+		Set<Long> ids = new TreeSet<>(bloques.findMembershipsConBloquesVigentesEn(cierre.getOrganizationId(),
+				cierre.getConsultorioId(), cierre.getFechaDesde(), cierre.getFechaHasta()));
+		ids.addAll(excepciones.findMembershipsConAperturasEn(cierre.getOrganizationId(), cierre.getConsultorioId(),
+				cierre.getFechaDesde(), cierre.getFechaHasta()));
+		return ids;
+	}
+
+	/** Las filas de esas personas, ANTES de la transaccion de negocio (FilaLockPrevia). */
+	void asegurarPersonas(long organizationId, Set<Long> membershipIds) {
+		if (!membershipIds.isEmpty()) {
+			agendas.asegurar(organizationId, membershipIds);
+		}
+	}
+
+	/**
+	 * Locks de las personas en orden de cuenta, DESPUES del de la sede (mismo orden sede → persona que el
+	 * alta). Devuelve, por membership, todas las de la misma persona en la organizacion.
+	 */
+	Map<Long, Set<Long>> bloquearPersonas(long organizationId, Set<Long> membershipIds) {
+		Map<Long, Set<Long>> personas = new LinkedHashMap<>();
+		if (membershipIds.isEmpty()) {
+			return personas;
+		}
+		agendas.bloquearEnOrden(organizationId, membershipIds);
+		membershipIds.forEach(id -> personas.put(id, agendas.deLaMismaPersona(organizationId, id)));
+		return personas;
+	}
+
+	/**
+	 * Dar de baja o achicar un CIERRE devuelve disponibilidad: la franja que vuelve a ofrecerse en esta sede
+	 * no puede pisar la disponibilidad efectiva (habitual o apertura) de la misma persona en otra sede. Se
+	 * llama bajo los locks y DESPUES de escribir el cambio (con flush): la efectiva de esta sede ya es la
+	 * nueva, y lo que se mira es lo que de la franja del cierre ANTERIOR quedo ofrecido. Solo el futuro: un
+	 * cierre pasado se puede ordenar sin mirar nada.
+	 *
+	 * @param anterior el cierre como estaba antes de la baja o la edicion
+	 * @throws DisponibilidadSuperpuestaException 409 {@code bloque-solapado}, con la sede real y la franja
+	 */
+	void validarLiberacion(
+			ConsultorioSnapshot sede, DisponibilidadExcepcion anterior, Map<Long, Set<Long>> personas, Instant ahora) {
+
+		ZoneId zona = ZoneId.of(ZonaSede.de(sede).getId());
+		List<Instant[]> liberados = tramos(anterior, zona).stream()
+				.filter(tramo -> tramo[1].isAfter(ahora))
+				.map(tramo -> new Instant[] {tramo[0].isAfter(ahora) ? tramo[0] : ahora, tramo[1]})
+				.toList();
+		if (liberados.isEmpty()) {
+			return;
+		}
+		LocalDate hoy = ahora.atZone(zona).toLocalDate();
+		LocalDate desde = anterior.getFechaDesde().isBefore(hoy) ? hoy : anterior.getFechaDesde();
+		for (Map.Entry<Long, Set<Long>> persona : personas.entrySet()) {
+			List<Instant[]> ofrecidos = new ArrayList<>();
+			efectiva.sinAutorizar(sede.organizationId(), sede, persona.getKey(), desde.minusDays(1),
+							anterior.getFechaHasta().plusDays(1))
+					.dias().stream()
+					.flatMap(dia -> dia.franjas().stream())
+					.forEach(franja -> {
+						for (Instant[] tramo : liberados) {
+							Instant inicio = franja.desde().isAfter(tramo[0]) ? franja.desde() : tramo[0];
+							Instant fin = franja.hasta().isBefore(tramo[1]) ? franja.hasta() : tramo[1];
+							if (inicio.isBefore(fin)) {
+								ofrecidos.add(new Instant[] {inicio, fin});
+							}
+						}
+					});
+			if (ofrecidos.isEmpty()) {
+				continue;
+			}
+			List<Superposicion> superposiciones = superposiciones(sede.organizationId(), sede.id(), persona.getKey(),
+					persona.getValue(), desde, anterior.getFechaHasta(), ofrecidos);
+			if (!superposiciones.isEmpty()) {
+				throw new DisponibilidadSuperpuestaException(
+						superposiciones.stream().map(Superposicion::comoConflicto).toList(),
+						DisponibilidadSuperpuestaException.AL_LIBERAR);
+			}
+		}
 	}
 
 	// =================================================================================

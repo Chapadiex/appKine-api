@@ -128,6 +128,84 @@ class DisponibilidadCentralIT {
 	}
 
 	@Test
+	@DisplayName("D-1/D-2: el cierre de la sustitucion se lee como un cierre; darlo de baja o achicarlo es 409 con la sede de la apertura")
+	void baja_o_achique_del_cierre_de_sustitucion() {
+		Fixture centro = fixtures.crear(1);
+		Fixture norte = fixtures.otraSedeDelMismoProfesional(centro, false);
+		abrir(norte, true);
+		long cierre = jdbc.queryForObject("""
+				SELECT id FROM disponibilidad_excepcion
+				 WHERE consultorio_id = ? AND tipo = 'CIERRE' AND active = 1
+				""", Long.class, centro.consultorioId());
+
+		// D-2: el historial lo muestra como un cierre normal, con el origen en castellano.
+		var auditoria = jdbc.queryForMap("""
+				SELECT reason, JSON_UNQUOTE(JSON_EXTRACT(details, '$.despues')) AS despues FROM audit_event
+				 WHERE entity_id = ? AND event_type = 'DISPONIBILIDAD_EXCEPCION_CREATED'
+				""", cierre);
+		assertThat(auditoria.get("despues")).isEqualTo("Cierre por bloqueo, 08/03/2027, 10:00–12:00");
+		assertThat(auditoria.get("reason")).isEqualTo("Sustituida por una apertura en la sede " + nombre(norte));
+
+		// D-1: la baja devolveria a Centro la franja que Norte ya ofrece.
+		assertThatThrownBy(() -> excepciones.darDeBaja(actorDeResource(centro), centro.consultorioId(), cierre,
+				"Probando la baja"))
+				.isInstanceOfSatisfying(DisponibilidadSuperpuestaException.class, e -> {
+					ConflictoDeAgenda primera = e.getSuperposiciones().getFirst();
+					assertThat(primera.consultorioId()).isEqualTo(norte.consultorioId());
+					assertThat(primera.desde()).isEqualTo(a(10, 0));
+					assertThat(primera.hasta()).isEqualTo(a(12, 0));
+					assertThat(e.getMessage()).contains("en la sede " + nombre(norte))
+							.contains(DisponibilidadSuperpuestaException.AL_LIBERAR);
+				});
+		// Achicarlo a 10:00–10:30 libera 10:30–12:00: tambien 409.
+		assertThatThrownBy(() -> excepciones.editar(actorDeResource(centro), centro.consultorioId(), cierre,
+				new com.akine.resource.application.ExcepcionEdicionCommand(MotivoExcepcion.BLOQUEO, LUNES,
+						LUNES.plusDays(1), LocalTime.of(10, 0), LocalTime.of(10, 30), null, 0, false)))
+				.isInstanceOfSatisfying(DisponibilidadSuperpuestaException.class,
+						e -> assertThat(e.getSuperposiciones().getFirst().desde()).isEqualTo(a(10, 30)));
+		assertThat(excepcionesVivas(centro, "CIERRE")).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT hora_hasta FROM disponibilidad_excepcion WHERE id = ?",
+				LocalTime.class, cierre)).isEqualTo(LocalTime.of(12, 0));
+	}
+
+	@Test
+	@DisplayName("D-1: la baja de un cierre de sede entera revalida a cada profesional con horario ahi")
+	void baja_de_cierre_de_sede_revalida_a_cada_profesional() {
+		Fixture centro = fixtures.crear(1);
+		Fixture norte = fixtures.otraSedeDelMismoProfesional(centro, false);
+		long cierreDeSede = excepciones.crear(actorDeResource(centro), centro.consultorioId(), new ExcepcionAltaCommand(
+				null, TipoExcepcion.CIERRE, MotivoExcepcion.BLOQUEO, LUNES, LUNES.plusDays(1),
+				LocalTime.of(10, 0), LocalTime.of(12, 0), null, null)).id();
+		// Con Centro cerrado de 10 a 12, la apertura en Norte no pisa nada.
+		abrir(norte, false);
+
+		assertThatThrownBy(() -> excepciones.darDeBaja(actorDeResource(centro), centro.consultorioId(), cierreDeSede,
+				"Probando la baja"))
+				.isInstanceOfSatisfying(DisponibilidadSuperpuestaException.class,
+						e -> assertThat(e.getSuperposiciones().getFirst().consultorioId()).isEqualTo(norte.consultorioId()));
+		assertThat(excepcionesVivas(centro, "CIERRE")).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("D-3: editar devuelve la version nueva y un segundo guardado encadenado entra")
+	void edicion_encadenada_con_la_version_devuelta() {
+		Fixture centro = fixtures.crear(1);
+		var alta = excepciones.crear(actorDeResource(centro), centro.consultorioId(), new ExcepcionAltaCommand(
+				centro.profesionalMembershipId(), TipoExcepcion.CIERRE, MotivoExcepcion.BLOQUEO, LUNES,
+				LUNES.plusDays(1), LocalTime.of(12, 0), LocalTime.of(13, 0), null, null));
+
+		var primera = excepciones.editar(actorDeResource(centro), centro.consultorioId(), alta.id(),
+				new com.akine.resource.application.ExcepcionEdicionCommand(MotivoExcepcion.BLOQUEO, LUNES,
+						LUNES.plusDays(1), LocalTime.of(12, 0), LocalTime.of(13, 0), "Primera", alta.version(), false));
+		assertThat(primera.version()).isEqualTo(alta.version() + 1);
+		var segunda = excepciones.editar(actorDeResource(centro), centro.consultorioId(), alta.id(),
+				new com.akine.resource.application.ExcepcionEdicionCommand(MotivoExcepcion.BLOQUEO, LUNES,
+						LUNES.plusDays(1), LocalTime.of(12, 0), LocalTime.of(13, 0), "Segunda", primera.version(), false));
+		assertThat(segunda.version()).isEqualTo(jdbc.queryForObject(
+				"SELECT version FROM disponibilidad_excepcion WHERE id = ?", Long.class, alta.id()));
+	}
+
+	@Test
 	@DisplayName("Apertura contra un turno de la misma persona en otra sede: siempre 409, aun con sustitucion")
 	void apertura_contra_turno_en_otra_sede() {
 		Fixture centro = fixtures.crear(1);

@@ -80,6 +80,13 @@ public final class DisponibilidadRepositoryPorts {
 		 */
 		List<BloqueDisponibilidad> findTodosDeLasMemberships(Long organizationId, Collection<Long> membershipIds);
 
+		/**
+		 * Las memberships con algun bloque ACTIVO en esa sede cuya vigencia toca {@code [desde, hasta)}.
+		 * Son las que un cierre de sede entera recorta, y a las que su baja o achique les devuelve horario.
+		 */
+		List<Long> findMembershipsConBloquesVigentesEn(
+				Long organizationId, Long consultorioId, LocalDate desde, LocalDate hasta);
+
 		/** Un bloque por id, acotado al tenant y a la sede, activo o no. */
 		Optional<BloqueDisponibilidad> findByIdScoped(Long id, Long organizationId, Long consultorioId);
 
@@ -140,6 +147,16 @@ public final class DisponibilidadRepositoryPorts {
 		 */
 		List<DisponibilidadExcepcion> findAperturasActivasDeLasMemberships(
 				Long organizationId, Collection<Long> membershipIds, LocalDate desde);
+
+		/**
+		 * Las memberships con una APERTURA activa propia en esa sede que toca {@code [desde, hasta)}. Un
+		 * cierre de sede entera tambien recorta las aperturas (RN-M05-002: CIERRE va ultimo).
+		 */
+		List<Long> findMembershipsConAperturasEn(
+				Long organizationId, Long consultorioId, LocalDate desde, LocalDate hasta);
+
+		/** Escribe lo pendiente: la version de una fila editada queda en la entidad que se devuelve. */
+		void flush();
 
 		/**
 		 * Una excepcion por id, acotada al tenant y a la sede, activa o no. Deliberadamente NO

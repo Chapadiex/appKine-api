@@ -151,6 +151,18 @@ cuando cambia la persona, que V134 ya indexa para las dos).
 - **El aviso único al paciente no cambió** (`turno-trasladado:<nuevo>:desde:<origen>`):
   `NotificacionDeTurnoIT` lo sigue verificando.
 
+### 3. El cierre creado por una sustitución se leía técnico (QA del 05/11/2026, D-2)
+
+**Causa.** La sustitución de disponibilidad (contrato 0.158.0) auditaba el CIERRE que crea en la otra sede
+sin `antes`/`despues` y sin `reason`, así que la fila caía en `lado(...)` y mostraba los `details` crudos
+("origen SUSTITUCION_POR_APERTURA · aperturaConsultorioId 575 · …"), con motivo vacío.
+
+**Solución.** `DisponibilidadEntreSedes.cerrar` escribe `despues` con `ResumenDeAgendaParaAuditoria`
+("Cierre por bloqueo, 09/11/2026, 10:00–12:00") y `reason` "Sustituida por una apertura en la sede Norte".
+`origen`, `aperturaConsultorioId`, `aperturaId` (y `cierresPorSustitucion`, `clasesAfectadas` de la apertura
+y la edición) quedan en `details` para trazabilidad y `lado` los trata como claves técnicas, lo que también
+limpia las filas escritas antes de la corrección (que siguen sin motivo: no se reescribe la auditoría).
+
 ## Límites
 
 - Los cierres **automáticos por feriado** del calendario de la sede (`cierraPorFeriado`, sin fila en

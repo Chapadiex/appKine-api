@@ -586,7 +586,8 @@ public class HistorialDeAgendaService {
 	 * "a -> b", partidos por lado. Las claves tecnicas no se muestran.
 	 */
 	static String lado(Map<String, String> detalles, boolean antes) {
-		Set<String> tecnicas = Set.of("membershipId", "rol", "alcance", "tipo", "turnosAfectados");
+		Set<String> tecnicas = Set.of("membershipId", "rol", "alcance", "tipo", "turnosAfectados", "origen",
+				"aperturaConsultorioId", "aperturaId", "cierresPorSustitucion", "clasesAfectadas");
 		List<String> partes = new ArrayList<>();
 		detalles.forEach((clave, valor) -> {
 			if (tecnicas.contains(clave) || valor == null) {
