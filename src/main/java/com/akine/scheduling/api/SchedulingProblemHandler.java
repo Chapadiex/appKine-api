@@ -17,6 +17,7 @@ import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
 import com.akine.scheduling.domain.exception.CoberturaNoAccesibleException;
 import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
 import com.akine.scheduling.domain.exception.PersonaSinPerfilPacienteException;
+import com.akine.scheduling.domain.exception.ProfesionalNotAccessibleException;
 import com.akine.scheduling.domain.exception.RecepcionNotAccessibleException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.TransicionDeRecepcionNoPermitidaException;
@@ -169,6 +170,27 @@ public class SchedulingProblemHandler {
 	}
 
 	/**
+	 * 403 {@code forbidden}, el mismo tipo que cualquier permiso denegado, con {@code alcance = "PROPIO"}:
+	 * el lector solo ve su propia agenda (historial de agenda).
+	 */
+	@ExceptionHandler(com.akine.scheduling.application.AgendaAjenaException.class)
+	public ProblemDetail handleAgendaAjena(com.akine.scheduling.application.AgendaAjenaException exception) {
+		log.info("Acceso denegado a una agenda ajena con alcance propio");
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				org.springframework.http.HttpStatus.FORBIDDEN, exception.getMessage());
+		problem.setTitle("Acceso denegado");
+		problem.setType(ProblemType.FORBIDDEN.uri());
+		problem.setProperty("alcance", "PROPIO");
+		return problem;
+	}
+
+	@ExceptionHandler(ProfesionalNotAccessibleException.class)
+	public ProblemDetail handleProfesionalNoAccesible(ProfesionalNotAccessibleException exception) {
+		log.debug("Profesional no accesible desde la agenda: profesionalId={}", exception.getProfesionalId());
+		return noEncontrado("El profesional no existe.");
+	}
+
+	/**
 	 * <b>Un tipo propio y no un {@code conflict} generico.</b> "El hueco ya no existe" manda a la
 	 * pantalla a recargar la agenda; "no hay cupo" manda a ofrecer el turno siguiente. Con un tipo
 	 * unico el cliente tendria que adivinar leyendo prosa en castellano.
@@ -202,9 +224,21 @@ public class SchedulingProblemHandler {
 		problem.setProperty("recurso", exception.getRecurso());
 		// Con que choca, si es un turno: "ya tiene un turno entre las 10:00 y las 10:45" (TURNO.md §36).
 		if (exception.getConflictoInicio() != null) {
-			problem.setProperty("turnoEnConflictoId", exception.getTurnoEnConflictoId());
+			if (exception.getTurnoEnConflictoId() != null) {
+				problem.setProperty("turnoEnConflictoId", exception.getTurnoEnConflictoId());
+			}
 			problem.setProperty("conflictoInicio", exception.getConflictoInicio().toString());
 			problem.setProperty("conflictoFin", exception.getConflictoFin().toString());
+		}
+		// Agenda de clases y avisos (0.156.0): una clase, quiza de otra sede. Mismo type, mas datos.
+		if (exception.getConflictoTipo() != null) {
+			problem.setProperty("conflictoTipo", exception.getConflictoTipo());
+		}
+		if (exception.getClaseEnConflictoId() != null) {
+			problem.setProperty("claseEnConflictoId", exception.getClaseEnConflictoId());
+		}
+		if (exception.getConflictoConsultorioId() != null) {
+			problem.setProperty("conflictoConsultorioId", exception.getConflictoConsultorioId());
 		}
 		return problem;
 	}

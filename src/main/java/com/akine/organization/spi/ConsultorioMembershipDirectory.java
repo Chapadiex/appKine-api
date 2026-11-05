@@ -47,6 +47,13 @@ public interface ConsultorioMembershipDirectory {
 	List<ConsultorioMembershipSnapshot> findByAccount(long organizationId, long accountId);
 
 	/**
+	 * Todas las memberships de una cuenta en la organizacion, <b>incluidas las dadas de baja</b>, en
+	 * orden por id. Para leer historia (el historial de agenda de una persona): un vinculo que ya no
+	 * existe sigue siendo de quien fueron los cambios que se hicieron con el.
+	 */
+	List<ConsultorioMembershipSnapshot> findTodasDeLaCuenta(long organizationId, long accountId);
+
+	/**
 	 * Los vinculos activos con un rol dado que cubren una sede.
 	 *
 	 * <p>Existe por la regla de V28: <b>una lista de habilitaciones vacia significa "todos", no

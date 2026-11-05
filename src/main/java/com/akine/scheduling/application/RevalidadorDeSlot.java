@@ -230,6 +230,8 @@ class RevalidadorDeSlot {
 
 		if (!pedido.sobreturno()) {
 			exigirLugarDelProfesional(pedido, profesionalId, bajoLock);
+		} else {
+			exigirSobreturnoSinClases(pedido, profesionalId, bajoLock);
 		}
 
 		Long espacioId = null;
@@ -265,23 +267,46 @@ class RevalidadorDeSlot {
 					: agendaDelProfesional.deLaMismaPersona(pedido.organizationId(), profesionalId);
 			Optional<Turno> conflicto = conflictoRealDeProfesional(pedido, profesionalId, mismaPersona);
 			if (conflicto.isPresent()) {
-				throw new RecursoOcupadoException("profesional", conflicto.get().getId(),
-						conflicto.get().getInicio(), conflicto.get().getFin());
+				Turno otro = conflicto.get();
+				throw RecursoOcupadoException.porTurno("profesional", otro.getId(), otro.getConsultorioId(),
+						otro.getConsultorioId() != pedido.consultorioId(), otro.getInicio(), otro.getFin());
 			}
-		}
 
-		// AKINE-08.01. Una CLASE ocupa al profesional exactamente igual que un turno, y sin este
-		// control se reserva un turno encima de una clase sin que nada falle: ningun unique puede
-		// expresar un solapamiento de intervalos. Corre aca, BAJO EL LOCK de agenda_sede —el mismo
-		// que toma la clase al programarse— y por eso las dos escrituras se serializan entre si.
-		//
-		// El error es el recurso-ocupado que esta operacion ya publica, y no uno nuevo: para la
-		// pantalla el desenlace es identico —ese profesional esta tomado en ese horario— y que el
-		// evento conflictivo sea una clase no cambia lo que el usuario puede hacer.
-		if (profesionalId != null && ocupacionExterna.profesionalOcupado(
-				pedido.organizationId(), profesionalId, pedido.inicio(), pedido.fin())) {
-			throw new RecursoOcupadoException("profesional");
+			// AKINE-08.01, y desde la agenda de clases y avisos (0.156.0) por PERSONA. Una clase ocupa
+			// al profesional igual que un turno, en cualquier sede y sea principal o instructor
+			// adicional. Corre bajo los mismos dos locks —sede y persona— que toma la clase al
+			// programarse, asi que las dos escrituras se serializan aunque sean de sedes distintas.
+			// Antes miraba una sola membership: una clase de 10 a 11 en la Sede Centro dejaba reservar a
+			// la misma persona a las 10:30 en la Sede Norte.
+			exigirSinClases(pedido, mismaPersona);
 		}
+	}
+
+	private void exigirSinClases(Pedido pedido, Set<Long> mismaPersona) {
+		Optional<OcupacionExternaProbe.OcupacionExterna> clase = ocupacionExterna
+				.ocupacionDeProfesionales(pedido.organizationId(), mismaPersona, pedido.inicio(), pedido.fin())
+				.stream()
+				.findFirst();
+		if (clase.isPresent()) {
+			throw RecursoOcupadoException.porClase("profesional", clase.get().eventoId(),
+					clase.get().consultorioId(), clase.get().consultorioId() != pedido.consultorioId(),
+					clase.get().inicio(), clase.get().fin());
+		}
+	}
+
+	/**
+	 * El sobreturno salva la ocupacion de TURNOS (atender a dos pacientes en el mismo horario), no la de
+	 * una clase: la persona no puede estar a la vez dando una clase, en otra sala o en otra sede (agenda
+	 * de clases y avisos, 0.156.0). Toma igual el lock de la persona, para serializar con la clase.
+	 */
+	private void exigirSobreturnoSinClases(Pedido pedido, Long profesionalId, boolean bajoLock) {
+		if (profesionalId == null) {
+			return;
+		}
+		Set<Long> mismaPersona = bajoLock
+				? agendaDelProfesional.bloquear(pedido.organizationId(), profesionalId)
+				: agendaDelProfesional.deLaMismaPersona(pedido.organizationId(), profesionalId);
+		exigirSinClases(pedido, mismaPersona);
 	}
 
 	/**

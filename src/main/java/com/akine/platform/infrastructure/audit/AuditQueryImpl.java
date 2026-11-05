@@ -2,6 +2,7 @@ package com.akine.platform.infrastructure.audit;
 
 import com.akine.platform.domain.AuditEvent;
 import com.akine.platform.infrastructure.AuditEventRepository;
+import com.akine.platform.spi.audit.AuditAgendaFilter;
 import com.akine.platform.spi.audit.AuditEventFilter;
 import com.akine.platform.spi.audit.AuditEventSummary;
 import com.akine.platform.spi.audit.AuditQuery;
@@ -17,6 +18,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -97,6 +99,23 @@ public class AuditQueryImpl implements AuditQuery {
 		return auditEventRepository
 				.porPeriodo(filtro.organizationId(), filtro.desde(), filtro.hasta(),
 						patron(filtro), numero(filtro), conOrden(pageable))
+				.map(this::resumir);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Page<AuditEventSummary> deAgenda(AuditAgendaFilter filtro, Pageable pageable) {
+		boolean todas = filtro.sedes() == null;
+		// Una lista vacia en un IN no es portable: si el lector no alcanza ninguna sede, no hay consulta.
+		if (!todas && filtro.sedes().isEmpty()) {
+			return Page.empty(pageable);
+		}
+		return auditEventRepository
+				.deAgenda(filtro.organizationId(),
+						filtro.memberships().stream().map(String::valueOf).toList(),
+						filtro.eventTypes(), todas, todas ? List.of(-1L) : filtro.sedes(),
+						filtro.desde(), filtro.hasta(), TextoDeBusqueda.patronLike(filtro.texto()),
+						conOrden(pageable))
 				.map(this::resumir);
 	}
 

@@ -109,4 +109,33 @@ public interface AuditEventRepository extends Repository<AuditEvent, Long> {
 			@Param("patron") String patron,
 			@Param("numero") Long numero,
 			Pageable pageable);
+
+	/**
+	 * Historial de agenda de UNA PERSONA (V134): los eventos de esos tipos cuyo profesional —o el de
+	 * antes, en una reprogramacion— es alguna de sus memberships. Usa {@code ix_audit_event_agenda} y
+	 * {@code ix_audit_event_agenda_anterior}.
+	 *
+	 * <p>Aca si se busca en el motivo: quien lee este historial ya puede ver la agenda de esa persona
+	 * y no hay nada redactado que adivinar (a diferencia de {@link #TEXTO}).
+	 *
+	 * @param todasLasSedes {@code true} ignora {@code sedes}: el lector alcanza la organizacion entera
+	 */
+	@Query("select e from AuditEvent e where e.organizationId = :organizationId"
+			+ " and (e.agendaMembershipRef in :memberships or e.agendaMembershipAnteriorRef in :memberships)"
+			+ " and e.eventType in :tipos"
+			+ " and (:todasLasSedes = true or e.consultorioId in :sedes)"
+			+ " and (:desde is null or e.occurredAt >= :desde)"
+			+ " and (:hasta is null or e.occurredAt < :hasta)"
+			+ " and (:patron is null or e.reason like :patron escape '\\'"
+			+ "      or e.eventType like :patron escape '\\')")
+	Page<AuditEvent> deAgenda(
+			@Param("organizationId") Long organizationId,
+			@Param("memberships") java.util.Collection<String> memberships,
+			@Param("tipos") java.util.Collection<String> tipos,
+			@Param("todasLasSedes") boolean todasLasSedes,
+			@Param("sedes") java.util.Collection<Long> sedes,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta,
+			@Param("patron") String patron,
+			Pageable pageable);
 }

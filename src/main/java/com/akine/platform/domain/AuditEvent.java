@@ -75,6 +75,17 @@ public class AuditEvent {
 	@Column(name = "occurred_at", nullable = false, updatable = false)
 	private Instant occurredAt;
 
+	/**
+	 * Columnas GENERADAS por MySQL desde {@code details} (V134): el profesional de un evento de agenda,
+	 * y el de antes en una reprogramacion. Nunca se escriben —la base rechaza un valor explicito—; solo
+	 * se mapean para filtrar el historial de agenda por profesional con un indice.
+	 */
+	@Column(name = "agenda_membership_ref", insertable = false, updatable = false, length = 32)
+	private String agendaMembershipRef;
+
+	@Column(name = "agenda_membership_anterior_ref", insertable = false, updatable = false, length = 32)
+	private String agendaMembershipAnteriorRef;
+
 	protected AuditEvent() {
 		// Requerido por JPA.
 	}

@@ -78,6 +78,7 @@ public class RecepcionService {
 	private final AtencionProbe atenciones;
 	private final ContextoClinicoDeAgenda contextoClinico;
 	private final SesionesDelPlan sesionesDelPlan;
+	private final ReprogramacionesDeTurnos reprogramaciones;
 
 	public RecepcionService(
 			TurnoRepositoryPort turnos,
@@ -90,7 +91,8 @@ public class RecepcionService {
 			NombresDeAgenda nombres,
 			AtencionProbe atenciones,
 			ContextoClinicoDeAgenda contextoClinico,
-			SesionesDelPlan sesionesDelPlan) {
+			SesionesDelPlan sesionesDelPlan,
+			ReprogramacionesDeTurnos reprogramaciones) {
 
 		this.turnos = turnos;
 		this.recepciones = recepciones;
@@ -103,6 +105,7 @@ public class RecepcionService {
 		this.atenciones = atenciones;
 		this.contextoClinico = contextoClinico;
 		this.sesionesDelPlan = sesionesDelPlan;
+		this.reprogramaciones = reprogramaciones;
 	}
 
 	/**
@@ -244,6 +247,8 @@ public class RecepcionService {
 					plan -> resumenes.put(planId, sesionesDelPlan.resumir(organizationId, plan)));
 		}
 
+		Map<Long, ReprogramacionDeTurnoView> movidos = reprogramaciones.de(organizationId, lote);
+
 		Map<Long, OperativoDeTurnoView> operativos = new HashMap<>();
 		for (Turno turno : lote) {
 			AtencionDeTurno atencion = atencionDe.get(turno.getId());
@@ -264,7 +269,9 @@ public class RecepcionService {
 					turno.getOrigenCancelacion() == null ? null : turno.getOrigenCancelacion().name(),
 					turno.getAusenciaConsumeSesion(),
 					turno.getObservaciones(),
-					turno.getTurnoOrigenId()));
+					turno.getTurnoOrigenId(),
+					movidos.containsKey(turno.getId()) ? movidos.get(turno.getId()).cantidad() : 0,
+					movidos.get(turno.getId())));
 		}
 		return operativos;
 	}

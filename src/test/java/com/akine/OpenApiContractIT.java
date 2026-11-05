@@ -203,6 +203,42 @@ class OpenApiContractIT {
 	}
 
 	/**
+	 * Ningun tag de primer nivel puede repetirse.
+	 *
+	 * <p>Springdoc deduplica los {@code @Tag} por igualdad completa (nombre <b>y</b> descripcion):
+	 * dos controllers con el mismo nombre y descripciones distintas publican dos entradas
+	 * {@code tags} con el mismo {@code name}. El drift no lo ve —el YAML es coherente con las
+	 * anotaciones— pero el generador del frontend rechaza el documento ("attribute tags.X is
+	 * repeated"). Paso con {@code HistorialDeAgendaController} y el tag {@code Agenda} (0.155.0).
+	 */
+	@Test
+	@DisplayName("Ningun tag de primer nivel esta repetido")
+	void los_tags_no_se_repiten() {
+		String contrato = normalizar(descargarContrato());
+		// El bloque termina en la proxima clave de primer nivel (una letra en la columna 0): los
+		// items de la lista empiezan con "- " y no lo cortan.
+		Matcher bloque = Pattern.compile("(?ms)^tags:\\n(.*?)(?=^[A-Za-z])").matcher(contrato);
+		assertThat(bloque.find()).as("el contrato no tiene bloque tags de primer nivel").isTrue();
+
+		Matcher nombre = Pattern.compile("(?m)^(?:- |  )name: (.+)$").matcher(bloque.group(1));
+		java.util.Set<String> vistos = new java.util.HashSet<>();
+		java.util.Set<String> repetidos = new java.util.TreeSet<>();
+		while (nombre.find()) {
+			String n = nombre.group(1).trim();
+			if (!vistos.add(n)) {
+				repetidos.add(n);
+			}
+		}
+		assertThat(vistos).as("el bloque tags no se leyo: el gate pasaria vacio").hasSizeGreaterThan(10);
+
+		assertThat(repetidos)
+				.as("""
+						Tags repetidos en el contrato: %s. Los controllers que comparten un tag \
+						tienen que declararlo con el mismo nombre Y la misma descripcion.""".formatted(repetidos))
+				.isEmpty();
+	}
+
+	/**
 	 * Los enums que el contrato publica no pueden quedarse cortos respecto del dominio.
 	 *
 	 * <p>Springdoc no deriva los valores de un enum de dominio cuando el DTO expone el campo como

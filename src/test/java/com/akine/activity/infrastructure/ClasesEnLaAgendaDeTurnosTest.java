@@ -47,6 +47,7 @@ class ClasesEnLaAgendaDeTurnosTest {
 	private static final Instant FIN = INICIO.plus(1, ChronoUnit.HOURS);
 
 	@Mock private ClaseProgramadaRepository clases;
+	@Mock private ClaseInstructorRepository instructores;
 	@Mock private OfertaDirectory ofertas;
 	@Mock private EspacioDirectory espacios;
 
@@ -54,7 +55,7 @@ class ClasesEnLaAgendaDeTurnosTest {
 
 	@BeforeEach
 	void setUp() {
-		probe = new ClasesEnLaAgendaDeTurnos(clases, ofertas, new CapacidadDeClase(ofertas, espacios));
+		probe = new ClasesEnLaAgendaDeTurnos(clases, instructores, ofertas, new CapacidadDeClase(ofertas, espacios));
 	}
 
 	@Test
@@ -93,12 +94,18 @@ class ClasesEnLaAgendaDeTurnosTest {
 	@Test
 	@DisplayName("Un recurso esta ocupado si alguna clase viva se le cruza")
 	void ocupacion_de_recursos() {
-		given(clases.findVivasDeProfesionalQueCruzan(ORG_ID, 31L, INICIO, FIN))
+		given(clases.findVivasDeMembershipsQueCruzan(ORG_ID, java.util.Set.of(31L, 40L), INICIO, FIN))
 				.willReturn(List.of(clase(8, 0)));
 		given(clases.findVivasDeEspacioQueCruzan(any(Long.class), any(Long.class), any(), any()))
 				.willReturn(List.of());
 
-		assertThat(probe.profesionalOcupado(ORG_ID, 31L, INICIO, FIN)).isTrue();
+		given(instructores.vigentesDeLasClases(ORG_ID, java.util.Set.of(77L)))
+				.willReturn(List.of(new com.akine.activity.domain.ClaseInstructor(ORG_ID, SEDE_ID, 77L, 40L, INICIO, 99L)));
+
+		// Una fila por membership ocupada: el principal (31) y el instructor adicional (40), con la sede.
+		assertThat(probe.ocupacionDeProfesionales(ORG_ID, java.util.Set.of(31L, 40L), INICIO, FIN))
+				.extracting(o -> o.profesionalMembershipId() + "@" + o.consultorioId())
+				.containsExactlyInAnyOrder("31@" + SEDE_ID, "40@" + SEDE_ID);
 		assertThat(probe.espacioOcupado(ORG_ID, ESPACIO_ID, INICIO, FIN)).isFalse();
 	}
 

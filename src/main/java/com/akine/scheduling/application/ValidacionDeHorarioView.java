@@ -33,7 +33,21 @@ public record ValidacionDeHorarioView(
 		Instant conflictoInicio,
 		Instant conflictoFin,
 		List<String> avisos,
-		List<HorarioDisponibleView> alternativas) {
+		List<HorarioDisponibleView> alternativas,
+		String conflictoTipo,
+		Long claseEnConflictoId,
+		Long conflictoConsultorioId) {
+
+	/** Sin el detalle de 0.156.0 (con que tipo de evento choca y en que sede). */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public ValidacionDeHorarioView(
+			String estado, String causa, String motivo, Instant inicio, Instant fin,
+			List<RecursoLibreView> profesionales, List<RecursoLibreView> espaciosLibres, Long turnoEnConflictoId,
+			Instant conflictoInicio, Instant conflictoFin, List<String> avisos,
+			List<HorarioDisponibleView> alternativas) {
+		this(estado, causa, motivo, inicio, fin, profesionales, espaciosLibres, turnoEnConflictoId,
+				conflictoInicio, conflictoFin, avisos, alternativas, null, null, null);
+	}
 
 	/**
 	 * @param duracionPropiaMinutos lo que tarda ese profesional en la oferta, si no es lo que dura la

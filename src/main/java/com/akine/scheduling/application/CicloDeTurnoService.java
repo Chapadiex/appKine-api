@@ -47,6 +47,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 /**
  * Cancelacion, reprogramacion, ausencia e historial de Turno (M12, AKINE-05.03).
@@ -108,6 +109,7 @@ public class CicloDeTurnoService {
 	private final AvisosDeTurno avisos;
 	private final RegistroDeRecepcion recepciones;
 	private final AccountIdentityDirectory identidades;
+	private final ReprogramacionesDeTurnos cadenaDeTraslados;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public CicloDeTurnoService(
@@ -124,7 +126,8 @@ public class CicloDeTurnoService {
 			AvisosDeTurno avisos,
 			RegistroDeRecepcion recepciones,
 			AccountIdentityDirectory identidades,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			ReprogramacionesDeTurnos cadenaDeTraslados) {
 
 		this.turnos = turnos;
 		this.eventos = eventos;
@@ -139,6 +142,7 @@ public class CicloDeTurnoService {
 		this.avisos = avisos;
 		this.recepciones = recepciones;
 		this.identidades = identidades;
+		this.cadenaDeTraslados = cadenaDeTraslados;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -207,6 +211,18 @@ public class CicloDeTurnoService {
 	public Turno aplicarCancelacion(
 			OperatingActor actor, ConsultorioSnapshot sede, Turno turno, String motivo,
 			OrigenDeCancelacion origen, Instant ahora) {
+		return aplicarCancelacion(actor, sede, turno, motivo, origen, ahora, true);
+	}
+
+	/**
+	 * {@link #aplicarCancelacion(OperatingActor, ConsultorioSnapshot, Turno, String, OrigenDeCancelacion,
+	 * Instant)} decidiendo si el paciente recibe el aviso de cancelacion. Sin aviso solo lo pide el
+	 * cambio de sede ({@link TrasladoDeTurnoService}): la cancelacion es la mitad de una operacion cuyo
+	 * unico aviso es "tu turno cambio" ({@link AvisosDeTurno#avisarModificacion}).
+	 */
+	public Turno aplicarCancelacion(
+			OperatingActor actor, ConsultorioSnapshot sede, Turno turno, String motivo,
+			OrigenDeCancelacion origen, Instant ahora, boolean avisarAlPaciente) {
 
 		EstadoTurno anterior = turno.getEstado();
 		turno.cancelar(motivo, origen, actor.accountId(), ahora);
@@ -224,10 +240,12 @@ public class CicloDeTurnoService {
 		auditar(actor, cancelado, "TURNO_CANCELADO", anterior, cancelado.getMotivoCancelacion(), ahora);
 		// RF-M26-003. Sin el motivo: ver AvisosDeTurno. La oferta solo pone el nombre del servicio,
 		// y si ya no resuelve el aviso sale igual, sin el.
-		avisos.avisarCancelacion(cancelado, sede, ofertas
-				.find(cancelado.getOrganizationId(), cancelado.getConsultorioId(), cancelado.getOfertaId())
-				.map(OfertaSnapshot::nombreComercial)
-				.orElse(null));
+		if (avisarAlPaciente) {
+			avisos.avisarCancelacion(cancelado, sede, ofertas
+					.find(cancelado.getOrganizationId(), cancelado.getConsultorioId(), cancelado.getOfertaId())
+					.map(OfertaSnapshot::nombreComercial)
+					.orElse(null));
+		}
 
 		log.info("Turno cancelado: turnoId={} consultorioId={} estadoAnterior={}",
 				cancelado.getId(), cancelado.getConsultorioId(), anterior);
@@ -432,8 +450,9 @@ public class CicloDeTurnoService {
 		detalles.put("espacioAnteriorId", String.valueOf(espacioAnterior));
 		auditar(actor, movido, "TURNO_REPROGRAMADO", anterior, motivo, detalles, ahora);
 		// RF-M26-003. Despues del saveAndFlush: la clave idempotente lleva la version que deja
-		// este cambio.
-		avisos.avisarReprogramacion(movido, sede, oferta.nombreComercial(), inicioAnterior);
+		// este cambio. Un solo aviso con todo lo que cambio (hora, profesional, box).
+		avisos.avisarModificacion(movido, sede, oferta.nombreComercial(), new AvisosDeTurno.Antes(
+				movido.getId(), sede, inicioAnterior, profesionalAnterior, espacioAnterior));
 
 		log.info("Turno reprogramado: turnoId={} consultorioId={} de={} a={}",
 				movido.getId(), movido.getConsultorioId(), inicioAnterior, nuevoInicio);
@@ -465,9 +484,15 @@ public class CicloDeTurnoService {
 		// Se exige que el turno exista y sea de esta sede ANTES de leer el historial: sin esto,
 		// pedir el historial de un turno de otro tenant devolveria una lista vacia con 200, que
 		// es una forma sutil de confirmar que el id no existe aca.
-		exigirTurno(organizationId, consultorioId, turnoId);
+		Turno turno = exigirTurno(organizationId, consultorioId, turnoId);
 
-		List<TurnoEvento> historial = eventos.historial(organizationId, turnoId);
+		// Un turno que nacio de un cambio de sede trae tambien la historia de sus turnos de origen, de
+		// las sedes que el lector ve (AKINE-agenda-historial): reprogramaciones y reserva original.
+		List<Turno> origenes = cadenaDeTraslados.origenesLegibles(actor, organizationId, turno);
+		List<TurnoEvento> historial = origenes.isEmpty()
+				? eventos.historial(organizationId, turnoId)
+				: eventos.historialDe(organizationId, Stream.concat(Stream.of(turno), origenes.stream())
+						.map(Turno::getId).toList());
 		Map<Long, AccountIdentity> actores = identidades.identidadesDe(historial.stream()
 				.map(TurnoEvento::getActorCuentaId)
 				.filter(Objects::nonNull)

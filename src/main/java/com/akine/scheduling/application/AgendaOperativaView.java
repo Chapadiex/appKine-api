@@ -16,7 +16,41 @@ public record AgendaOperativaView(
 		List<EspacioDeAgendaView> espacios,
 		List<TurnoDeCalendarioView> turnos,
 		List<ClaseEnAgendaView> clases,
-		List<BloqueoEnAgendaView> bloqueos) {
+		List<BloqueoEnAgendaView> bloqueos,
+		List<OcupacionEnOtraSedeView> ocupacionesEnOtrasSedes,
+		List<ConflictoDeAgendaView> conflictos) {
+
+	/** Sin las dos listas de 0.156.0: para quien arma la vista sin consultar otras sedes. */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public AgendaOperativaView(
+			LocalDate desde, LocalDate hasta, String timezone, List<ProfesionalDeAgendaView> profesionales,
+			List<EspacioDeAgendaView> espacios, List<TurnoDeCalendarioView> turnos, List<ClaseEnAgendaView> clases,
+			List<BloqueoEnAgendaView> bloqueos) {
+		this(desde, hasta, timezone, profesionales, espacios, turnos, clases, bloqueos, List.of(), List.of());
+	}
+
+	/**
+	 * La persona de una columna esta ocupada en OTRA sede (agenda de clases y avisos, 0.156.0): la celda
+	 * no esta libre aunque en esta sede no haya nada. Sin paciente ni id: es de otra sede.
+	 *
+	 * @param membershipId la columna (membership de esta sede)
+	 * @param tipo         {@code TURNO} o {@code CLASE}
+	 */
+	public record OcupacionEnOtraSedeView(
+			Long membershipId, String tipo, long consultorioId, Instant inicio, Instant fin) {
+	}
+
+	/**
+	 * Un turno y una clase de la misma persona que se pisan, ya guardados (datos anteriores a 0.156.0).
+	 * Derivado al leer, nada se modifica. El id viaja solo del lado que es de esta sede.
+	 *
+	 * @param inicio comienzo del tramo en que se pisan
+	 * @param fin    fin del tramo en que se pisan
+	 */
+	public record ConflictoDeAgendaView(
+			Long membershipId, Long turnoId, long turnoConsultorioId, Long claseId, long claseConsultorioId,
+			Instant inicio, Instant fin) {
+	}
 
 	/** @param franjas cuando atiende: lo que no esta aca no se puede reservar */
 	public record ProfesionalDeAgendaView(long membershipId, String nombre, List<FranjaDeAgendaView> franjas) {

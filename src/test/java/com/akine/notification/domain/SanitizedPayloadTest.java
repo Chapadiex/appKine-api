@@ -37,6 +37,8 @@ class SanitizedPayloadTest {
 						"claseInicio", "consultorioNombre",
 						// AKINE E-5: los avisos de turno. Fecha, hora y servicio; nada clinico.
 						"turnoInicio", "turnoInicioAnterior", "servicioNombre",
+						// "Tu turno cambio": sede de antes y marcas sin nombre de profesional o box.
+						"consultorioNombreAnterior", "cambioProfesional", "cambioEspacio",
 						// AKINE-08.08: los avisos de pases (RF-M26-008). Producto, vencimiento y saldo.
 						"productoNombre", "paseVencimiento", "creditosDisponibles", "renovacionAutomatica",
 						// DP-40 (U-43): al administrador, cuantos abonos y quien los habia autorizado.

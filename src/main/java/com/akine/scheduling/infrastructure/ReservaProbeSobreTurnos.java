@@ -1,10 +1,12 @@
 package com.akine.scheduling.infrastructure;
 
+import com.akine.resource.spi.BloqueoDeAgendaDeProfesional;
 import com.akine.scheduling.domain.OcupacionDeTurno;
 import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import com.akine.scheduling.spi.EventoExternoDeAgenda;
 import com.akine.scheduling.spi.EventoExternoDeAgenda.EventoDeAgendaExterno;
+import com.akine.scheduling.spi.OcupacionExternaProbe;
 import com.akine.scheduling.spi.ReservaProbe;
 import org.springframework.stereotype.Component;
 
@@ -12,8 +14,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Cuenta las reservas vivas por instante de inicio, sobre la tabla {@code turno}.
@@ -55,18 +59,24 @@ public class ReservaProbeSobreTurnos implements ReservaProbe {
 
 	private final TurnoRepositoryPort turnos;
 	private final EventoExternoDeAgenda eventosExternos;
+	private final OcupacionExternaProbe clasesDeLasPersonas;
+	private final BloqueoDeAgendaDeProfesional agendas;
 
-	public ReservaProbeSobreTurnos(TurnoRepositoryPort turnos, EventoExternoDeAgenda eventosExternos) {
+	public ReservaProbeSobreTurnos(
+			TurnoRepositoryPort turnos, EventoExternoDeAgenda eventosExternos,
+			OcupacionExternaProbe clasesDeLasPersonas, BloqueoDeAgendaDeProfesional agendas) {
 		this.turnos = turnos;
 		this.eventosExternos = eventosExternos;
+		this.clasesDeLasPersonas = clasesDeLasPersonas;
+		this.agendas = agendas;
 	}
 
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Los turnos se leen por recurso y en toda la organizacion: un profesional no se desdobla entre
-	 * dos sedes. Las clases, por sede, que es lo que publica {@code activity}; una clase de otra sede
-	 * la sigue atajando la reserva, bajo el lock.
+	 * <p>Los turnos se leen por recurso y en toda la organizacion, y desde la agenda de clases y avisos
+	 * tambien por persona: los turnos de sus otras memberships y todas sus clases, de cualquier sede.
+	 * Los boxes, con las clases de esta sede (un box es de una sola sede).
 	 */
 	@Override
 	public List<OcupacionDeRecurso> ocupacionDeRecursos(
@@ -86,11 +96,54 @@ public class ReservaProbeSobreTurnos implements ReservaProbe {
 					turno.getProfesionalMembershipId(), turno.getEspacioId(),
 					turno.getInicio(), turno.getFin()));
 		}
+		// Los boxes de la sede tomados por sus clases.
 		for (EventoDeAgendaExterno evento : eventosExternos.enVentana(organizationId, consultorioId, desde, hasta)) {
-			if (!CLASE_CANCELADA.equals(evento.estado())) {
-				ocupacion.add(new OcupacionDeRecurso(null, null, evento.profesionalId(), evento.espacioId(),
+			if (!CLASE_CANCELADA.equals(evento.estado()) && evento.espacioId() != null) {
+				ocupacion.add(new OcupacionDeRecurso(null, null, null, evento.espacioId(),
 						evento.inicio(), evento.fin()));
 			}
+		}
+		ocupacion.addAll(ocupacionDeLasPersonas(organizationId, profesionalIds, desde, hasta));
+		return ocupacion;
+	}
+
+	/**
+	 * Lo que tiene tomada a cada PERSONA en toda la organizacion (agenda de clases y avisos, 0.156.0):
+	 * sus turnos con las memberships de OTRAS sedes y todas sus clases, como principal o instructor
+	 * adicional. Cada ocupacion se devuelve a nombre de la membership pedida —la de esta sede—, que es
+	 * con la que el motor compara, y sin oferta: nunca es del mismo grupo.
+	 *
+	 * <p>Antes la agenda leia las clases solo de la sede y los turnos solo de la membership pedida, y
+	 * ofrecia libre a quien tenia una clase o un turno en otra sede; la reserva lo rechazaba despues.
+	 */
+	private List<OcupacionDeRecurso> ocupacionDeLasPersonas(
+			long organizationId, Collection<Long> profesionalIds, Instant desde, Instant hasta) {
+
+		List<OcupacionDeRecurso> ocupacion = new ArrayList<>();
+		Map<Long, Long> pedidaPorMembership = new HashMap<>();
+		Set<Long> otras = new HashSet<>();
+		for (Long pedida : profesionalIds) {
+			for (Long misma : agendas.deLaMismaPersona(organizationId, pedida)) {
+				pedidaPorMembership.putIfAbsent(misma, pedida);
+				if (!misma.equals(pedida)) {
+					otras.add(misma);
+				}
+			}
+		}
+		if (pedidaPorMembership.isEmpty()) {
+			return ocupacion;
+		}
+		if (!otras.isEmpty()) {
+			for (Turno turno : turnos.findVivosDeProfesionalesQueCruzan(organizationId, otras, desde, hasta)) {
+				ocupacion.add(new OcupacionDeRecurso(turno.getId(), null,
+						pedidaPorMembership.get(turno.getProfesionalMembershipId()), null,
+						turno.getInicio(), turno.getFin()));
+			}
+		}
+		for (OcupacionExternaProbe.OcupacionExterna clase : clasesDeLasPersonas.ocupacionDeProfesionales(
+				organizationId, pedidaPorMembership.keySet(), desde, hasta)) {
+			ocupacion.add(new OcupacionDeRecurso(null, null,
+					pedidaPorMembership.get(clase.profesionalMembershipId()), null, clase.inicio(), clase.fin()));
 		}
 		return ocupacion;
 	}

@@ -19,6 +19,13 @@ public final class PermissionCodes {
 	/** Autorizar un turno sobre un horario ya ocupado (TURNO.md §21). */
 	public static final String TURNO_SOBRETURNO = "turno:sobreturno";
 
+	/**
+	 * Gestionar bloqueos y excepciones de la agenda de un profesional. En {@code scheduling} solo se
+	 * evalua para LEER el historial de agenda: quien administra la agenda de alguien ve sus cambios, con
+	 * el mismo alcance (el {@code PROFESIONAL}, la suya; ver AKINE-agenda-historial).
+	 */
+	public static final String AGENDA_EXCEPCIONES = "agenda:excepciones";
+
 	private PermissionCodes() {
 	}
 }

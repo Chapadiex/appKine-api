@@ -7,6 +7,9 @@ excepciones— y cómo quedaron sus permisos: [`AKINE-agenda-operativa.md`](AKIN
 Checklist de origen: `AGENDA-checklist.md` §1, §3, §9, §12.4 y §14 (raíz del workspace). Matriz:
 `docs/seguridad/matriz-permisos-minima.md` §21.
 
+Historial de cambios por profesional e indicador "reprogramado" (contrato **0.155.0**, `V134`):
+[`AKINE-agenda-historial.md`](AKINE-agenda-historial.md).
+
 ## Decisiones del usuario (03/11/2026)
 
 1. El `PROFESIONAL` **ve** todas las agendas de su sede y **opera solo sus turnos**.
@@ -89,8 +92,8 @@ Al integrar `akine-agenda-turnos` se aplicó el mismo recorte a sus operaciones 
 
 ## Lo que no se hizo
 
-- Las **clases** (`activity`) siguen cruzando por membership: una clase en otra sede no bloquea un
-  turno de la misma persona.
+- ~~Las **clases** (`activity`) siguen cruzando por membership: una clase en otra sede no bloquea un
+  turno de la misma persona.~~ Cerrado en 0.156.0: [`AKINE-agenda-clases-y-avisos.md`](AKINE-agenda-clases-y-avisos.md).
 - El 403 del recorte propio no deja fila `PERMISSION_DENIED` (el evaluador concedió; el rechazo es del
   servicio).
 - Duración propia por profesional: sigue en `consultorio:manage`.

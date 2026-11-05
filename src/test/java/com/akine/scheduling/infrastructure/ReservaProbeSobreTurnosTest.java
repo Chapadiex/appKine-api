@@ -92,13 +92,25 @@ class ReservaProbeSobreTurnosTest {
 		given(eventos.enVentana(ORG_ID, CONSULTORIO_ID, NUEVE, ONCE)).willReturn(List.of(
 				clase("CANCELADA", NUEVE), clase("PROGRAMADA", DIEZ)));
 
-		List<ReservaProbe.OcupacionDeRecurso> ocupacion = new ReservaProbeSobreTurnos(turnos, eventos)
-				.ocupacionDeRecursos(ORG_ID, CONSULTORIO_ID, List.of(), List.of(), NUEVE, ONCE);
+		var clases = org.mockito.Mockito.mock(com.akine.scheduling.spi.OcupacionExternaProbe.class);
+		var agendas = org.mockito.Mockito.mock(com.akine.resource.spi.BloqueoDeAgendaDeProfesional.class);
+		given(agendas.deLaMismaPersona(ORG_ID, PROFESIONAL_ID)).willReturn(java.util.Set.of(PROFESIONAL_ID));
+		given(clases.ocupacionDeProfesionales(ORG_ID, java.util.Set.of(PROFESIONAL_ID), NUEVE, ONCE)).willReturn(List.of(
+				new com.akine.scheduling.spi.OcupacionExternaProbe.OcupacionExterna(
+						"CLASE", 8L, CONSULTORIO_ID, PROFESIONAL_ID, DIEZ, ONCE)));
 
-		assertThat(ocupacion).singleElement().satisfies(ocupada -> {
+		List<ReservaProbe.OcupacionDeRecurso> ocupacion = new ReservaProbeSobreTurnos(turnos, eventos, clases, agendas)
+				.ocupacionDeRecursos(ORG_ID, CONSULTORIO_ID, List.of(PROFESIONAL_ID), List.of(), NUEVE, ONCE);
+
+		// El box sale de las clases de la sede (sin la cancelada); el profesional, de la sonda por persona.
+		assertThat(ocupacion).filteredOn(o -> o.espacioId() != null).singleElement().satisfies(ocupada -> {
+			assertThat(ocupada.inicio()).isEqualTo(DIEZ);
+			assertThat(ocupada.espacioId()).isEqualTo(55L);
+			assertThat(ocupada.ofertaId()).isNull();
+		});
+		assertThat(ocupacion).filteredOn(o -> o.profesionalId() != null).singleElement().satisfies(ocupada -> {
 			assertThat(ocupada.inicio()).isEqualTo(DIEZ);
 			assertThat(ocupada.profesionalId()).isEqualTo(PROFESIONAL_ID);
-			assertThat(ocupada.espacioId()).isEqualTo(55L);
 			assertThat(ocupada.ofertaId()).as("no es de ninguna oferta de turnos: nunca es el propio grupo").isNull();
 		});
 	}
@@ -109,7 +121,9 @@ class ReservaProbeSobreTurnosTest {
 	}
 
 	private ReservaProbeSobreTurnos sonda() {
-		return new ReservaProbeSobreTurnos(turnos, org.mockito.Mockito.mock(com.akine.scheduling.spi.EventoExternoDeAgenda.class));
+		return new ReservaProbeSobreTurnos(turnos, org.mockito.Mockito.mock(com.akine.scheduling.spi.EventoExternoDeAgenda.class),
+				org.mockito.Mockito.mock(com.akine.scheduling.spi.OcupacionExternaProbe.class),
+				org.mockito.Mockito.mock(com.akine.resource.spi.BloqueoDeAgendaDeProfesional.class));
 	}
 
 	private void dados(OcupacionDeTurno... encontrados) {

@@ -164,6 +164,11 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V131` | Agenda operativa — turnos (`akine-agenda-turnos`) | **Usada**: `V131__m12_turno_observaciones_traslado_e_historial.sql` — `turno.observaciones` (administrativas, nunca clínicas), `turno.turno_origen_id` (`fk_turno_turno_origen`, `ix_turno_turno_origen`) para el cambio de sede, y profesional y box antes/después en `turno_evento`. Todo aditivo |
 | `V132` | Agenda operativa — excepciones (`akine-agenda-turnos`) | **Usada**: `V132__m05_autor_de_disponibilidad_y_vacaciones.sql` — `created_by_cuenta_id` en `disponibilidad_excepcion` y `profesional_disponibilidad`, y `VACACIONES` en `ck_disponibilidad_excepcion_motivo` (repite todos los valores vigentes de `V127`) |
 | `V133` | Agenda operativa — turnos | **Vacía**: reservada por el paquete de turnos y excepciones y no usada al integrarlo con el de permisos. No se reusa |
+| `V134` | Agenda — historial por profesional (`akine-agenda-historial`) | **Usada**: `V134__platform_auditoria_por_profesional_de_agenda.sql` — columnas generadas `VIRTUAL` `agenda_membership_ref` y `agenda_membership_anterior_ref` en `audit_event` (derivadas de `details`, sin backfill: la tabla es append-only) con `ix_audit_event_agenda` e `ix_audit_event_agenda_anterior` |
+| `V135` | Agenda — historial por profesional | **Vacía**: reservada por si el indicador "reprogramado" necesitaba un índice; `ix_turno_evento_turno` alcanza. No se reusa |
+| `V136` | Agenda: clases contra turnos entre sedes (`akine-agenda-clases-avisos`) | **Vacía**: reservada y no usada. El cruce por persona usa la fila de `agenda_profesional` (`V129`) y los índices existentes (`ix_clase_instructor_membership` de `V114`). No se reusa |
+| `V137` | Agenda: clases contra turnos entre sedes (`akine-agenda-clases-avisos`) | **Vacía**: reservada para el aviso único del traslado, que pasó a otra rama (`akine-agenda-aviso-unico`, que registró `V138` vacía); no se usó acá. No se reusa |
+| `V138` | Agenda — aviso único del cambio de sede (`akine-agenda-aviso-unico`) | **Vacía**: el aviso "tu turno cambio" reusa el tipo `TURNO_REPROGRAMADO` y `notification_outbox` (la clave idempotente ya es `UNIQUE`, `tipo` es `VARCHAR` sin CHECK); no hizo falta tabla ni columna. No se reusa |
 
 ## 7. Paquetes de trabajo
 

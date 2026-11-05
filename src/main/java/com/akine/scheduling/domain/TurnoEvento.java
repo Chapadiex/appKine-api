@@ -209,6 +209,10 @@ public class TurnoEvento {
 		return turnoId;
 	}
 
+	public Long getConsultorioId() {
+		return consultorioId;
+	}
+
 	public TipoEventoTurno getTipo() {
 		return tipo;
 	}
