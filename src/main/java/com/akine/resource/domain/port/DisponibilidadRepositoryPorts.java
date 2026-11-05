@@ -74,6 +74,12 @@ public final class DisponibilidadRepositoryPorts {
 		 */
 		List<BloqueDisponibilidad> findActivosDeLasMemberships(Long organizationId, Collection<Long> membershipIds);
 
+		/**
+		 * TODOS los bloques de esas memberships, activos o dados de baja. Para el historial de agenda: la
+		 * asignacion historica manda, y un bloque dado de baja despues de un cierre igual lo tocaba.
+		 */
+		List<BloqueDisponibilidad> findTodosDeLasMemberships(Long organizationId, Collection<Long> membershipIds);
+
 		/** Un bloque por id, acotado al tenant y a la sede, activo o no. */
 		Optional<BloqueDisponibilidad> findByIdScoped(Long id, Long organizationId, Long consultorioId);
 
@@ -119,6 +125,13 @@ public final class DisponibilidadRepositoryPorts {
 		/** Los cierres vigentes de la sede que tocan la ventana, de sede y de cada profesional. */
 		List<DisponibilidadExcepcion> findCierresDeLaSedeEnVentana(
 				Long organizationId, Long consultorioId, LocalDate desde, LocalDate hasta);
+
+		/**
+		 * TODOS los cierres de alcance SEDE ENTERA ({@code membershipId IS NULL}) de esas sedes, activos o
+		 * dados de baja y de cualquier fecha. Para el historial de agenda: una baja tambien es un cambio
+		 * que se muestra, y el periodo es el de la fila.
+		 */
+		List<DisponibilidadExcepcion> findCierresDeSedeDeLasSedes(Long organizationId, Collection<Long> consultorioIds);
 
 		/**
 		 * Una excepcion por id, acotada al tenant y a la sede, activa o no. Deliberadamente NO

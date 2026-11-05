@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.156.0
+  version: 0.157.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -18811,7 +18811,11 @@ paths:
 
         `actorRol` es el rol de quien opero: `ORG_ADMIN`, `CONSULTORIO_ADMIN`, `ADMINISTRATIVO`, `PROFESIONAL` (o `PLATFORM_ADMIN` con acceso de soporte); ausente en cambios anteriores a la agenda de profesionales.
 
-        Es una lectura de la auditoria transversal: una sola fuente. Un cambio de sede tambien deja la cancelacion del turno original como fila propia.
+        Es una lectura de la auditoria transversal: una sola fuente.
+
+        **Un cambio de sede es una sola fila** `TURNO_TRASLADO`, con el antes (sede, hora, profesional y box de origen) y el despues; la cancelacion del original y la reserva del nuevo no aparecen como filas propias y viajan en `eventosRelacionados`. Si el traslado paso el turno a otra persona, la fila aparece en el historial de las dos (`cambioDeProfesional`). Una cancelacion que no es parte de un traslado sigue siendo `TURNO_CANCELACION`.
+
+        **Cierres de la sede entera** (`CIERRE_DE_SEDE_ALTA/EDICION/BAJA`): una excepcion de sede sin profesional aparece en el historial de cada profesional al que afecto —tenia horario habitual en esa sede en el periodo, o turnos o clases ahi—, resuelto al leer. Un cierre de otra sede, o de una en la que la persona no atendia ese periodo, no aparece. `cierreDeSede` trae el periodo (`ultimoDia` inclusive), el motivo y los turnos del profesional en el periodo, para ir a la agenda operativa de esa sede y fecha.
       operationId: listarHistorialDeAgenda
       parameters:
       - description: Organizacion del contexto
@@ -18853,6 +18857,9 @@ paths:
             - EXCEPCION_ALTA
             - EXCEPCION_EDICION
             - EXCEPCION_BAJA
+            - CIERRE_DE_SEDE_ALTA
+            - CIERRE_DE_SEDE_EDICION
+            - CIERRE_DE_SEDE_BAJA
             - TURNO_RESERVA
             - TURNO_SOBRETURNO
             - TURNO_CONFIRMACION
@@ -27734,7 +27741,9 @@ components:
     CambioDeAgenda:
       type: object
       description: "Un cambio en la agenda de un profesional: horario habitual, excepcion\
-        \ o bloqueo, o un turno. `antes` y `despues` ya vienen armados para mostrar."
+        \ o bloqueo, cierre de la sede entera que lo afecto, o un turno. `antes` y\
+        \ `despues` ya vienen armados para mostrar. Un cambio de sede es UNA fila\
+        \ `TURNO_TRASLADO` (la cancelacion y la reserva que deja viajan en `eventosRelacionados`)."
       properties:
         actorCuentaId:
           type: integer
@@ -27755,11 +27764,16 @@ components:
           example: "Lun 10/11 10:00 · Sede Centro · Gomez, Laura"
         cambioDeProfesional:
           type: boolean
-          description: '`true` en una reprogramacion que paso el turno a otro profesional'
+          description: '`true` en una reprogramacion o un traslado que paso el turno
+            a otra persona'
+        cierreDeSede:
+          $ref: "#/components/schemas/CierreDeSedeEnHistorial"
+          description: "Solo en `CIERRE_DE_SEDE_*`: el cierre y lo que le dejo al\
+            \ profesional"
         consultorioId:
           type: integer
           format: int64
-          description: Sede del cambio
+          description: "Sede del cambio (en un traslado, la de origen)"
           example: 3
         consultorioNombre:
           type: string
@@ -27774,12 +27788,20 @@ components:
           enum:
           - HORARIO
           - EXCEPCION
+          - CIERRE_DE_SEDE
           - TURNO
         entidadId:
           type: integer
           format: int64
-          description: "Id del bloque, de la excepcion o del turno"
+          description: "Id del bloque, de la excepcion (tambien en un cierre de sede)\
+            \ o del turno"
           example: 4100
+        eventosRelacionados:
+          type: array
+          description: "Los hechos de la auditoria que esta fila resume (en un traslado:\
+            \ la cancelacion del original y la reserva del nuevo). Vacio en el resto"
+          items:
+            $ref: "#/components/schemas/EventoRelacionadoDeAgenda"
         id:
           type: integer
           format: int64
@@ -27793,11 +27815,16 @@ components:
           type: string
           format: date-time
           example: 2026-11-04T15:20:00Z
+        operacionId:
+          type: string
+          description: Id comun de los hechos auditados de una misma operacion. Ausente
+            en operaciones anteriores a 0.157.0
+          example: 6c1c0f8e-3f2a-4a51-9a3e-2f9f6f2e8a10
         personaId:
           type: integer
           format: int64
-          description: Paciente del turno. Solo si quien lee tiene `turno:read` en
-            esa sede
+          description: "Paciente del turno. Solo si quien lee tiene `turno:read` en\
+            \ esa sede (en un traslado, en la de origen o en la de destino)"
           example: 77
         personaNombre:
           type: string
@@ -27806,7 +27833,8 @@ components:
         profesionalId:
           type: integer
           format: int64
-          description: Membership del profesional en esa sede
+          description: "Membership del profesional en esa sede. En un cierre de sede,\
+            \ la del profesional consultado en esa sede"
           example: 31
         profesionalNombre:
           type: string
@@ -27821,6 +27849,9 @@ components:
           - EXCEPCION_ALTA
           - EXCEPCION_EDICION
           - EXCEPCION_BAJA
+          - CIERRE_DE_SEDE_ALTA
+          - CIERRE_DE_SEDE_EDICION
+          - CIERRE_DE_SEDE_BAJA
           - TURNO_RESERVA
           - TURNO_SOBRETURNO
           - TURNO_CONFIRMACION
@@ -27833,13 +27864,18 @@ components:
         turnoId:
           type: integer
           format: int64
-          description: "El turno, en los cambios de turno"
+          description: "El turno, en los cambios de turno (en un traslado, el original)"
           example: 4100
         turnoInicio:
           type: string
           format: date-time
           description: "Horario del turno, en los cambios de turno"
           example: 2026-11-10T14:00:00Z
+        turnoNuevoId:
+          type: integer
+          format: int64
+          description: "En un traslado, el turno que nacio en la sede de destino"
+          example: 4101
     CancelInvitacionRequest:
       type: object
       description: Motivo con el que se retira una invitacion pendiente
@@ -28696,6 +28732,63 @@ components:
           example: CONSULTORIO_ADMIN
       required:
       - reason
+    CierreDeSedeEnHistorial:
+      type: object
+      description: "Un cierre de la sede entera visto desde la agenda de un profesional.\
+        \ Los conteos se calculan al leer, sobre los turnos de ese profesional en\
+        \ esa sede que empiezan en el periodo. Para ir a los turnos: la agenda operativa\
+        \ de `consultorioId` desde `fechaDesde`; los pendientes son los que muestra\
+        \ con `fueraDeDisponibilidad`."
+      properties:
+        conHorarioHabitual:
+          type: boolean
+          description: El profesional tenia horario habitual en esa sede en el periodo
+        excepcionId:
+          type: integer
+          format: int64
+          description: La excepcion de sede
+          example: 512
+        fechaDesde:
+          type: string
+          format: date
+          description: Primer dia afectado
+          example: 2026-11-16
+        horaDesde:
+          type: string
+          description: "HH:mm. Ausente junto con `horaHasta`: dia completo"
+          example: 09:00
+        horaHasta:
+          type: string
+          description: "HH:mm, exclusiva"
+          example: 13:00
+        motivo:
+          type: string
+          description: Motivo de la excepcion
+          example: FERIADO
+        turnosCancelados:
+          type: integer
+          format: int32
+          description: Cancelados
+          example: 4
+        turnosEnElPeriodo:
+          type: integer
+          format: int32
+          description: "Turnos del profesional que empiezan en el periodo, en cualquier\
+            \ estado"
+          example: 6
+        turnosPendientes:
+          type: integer
+          format: int32
+          description: "Reservados o confirmados que siguen ahi: pendientes de reubicacion"
+          example: 2
+        ultimoDia:
+          type: string
+          format: date
+          description: "Ultimo dia afectado, inclusive"
+          example: 2026-11-16
+        vigente:
+          type: boolean
+          description: '`false` si el cierre ya se dio de baja'
     CierreDeSesion:
       type: object
       description: Resultado y proxima conducta
@@ -33658,6 +33751,33 @@ components:
           description: "Turno al que pertenece el evento. Distinto del pedido cuando\
             \ el turno nacio de un cambio de sede: el historial incluye los eventos\
             \ de sus turnos de origen, de las sedes que el lector puede ver."
+          example: 4100
+    EventoRelacionadoDeAgenda:
+      type: object
+      description: Un hecho de la auditoria que una fila del historial resume
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede del hecho
+          example: 3
+        eventType:
+          type: string
+          description: Tipo de evento de la auditoria
+          example: TURNO_CANCELADO
+        id:
+          type: integer
+          format: int64
+          description: Id del hecho en la auditoria
+          example: 9811
+        ocurridoEn:
+          type: string
+          format: date-time
+          example: 2026-11-04T15:20:00Z
+        turnoId:
+          type: integer
+          format: int64
+          description: El turno del hecho
           example: 4100
     ExcepcionResponse:
       type: object

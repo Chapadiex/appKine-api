@@ -13,7 +13,12 @@ import com.akine.platform.spi.audit.AuditAgendaFilter;
 import com.akine.platform.spi.audit.AuditEventSummary;
 import com.akine.platform.spi.audit.AuditQuery;
 import com.akine.platform.spi.identity.AccountIdentityDirectory;
+import com.akine.resource.spi.CierresDeSedeDirectory;
+import com.akine.resource.spi.CierresDeSedeDirectory.CierreDeSede;
+import com.akine.scheduling.domain.EstadoTurno;
 import com.akine.scheduling.domain.PermissionCodes;
+import com.akine.scheduling.domain.Turno;
+import com.akine.scheduling.spi.OcupacionExternaProbe;
 import com.akine.scheduling.domain.exception.ProfesionalNotAccessibleException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,13 +77,15 @@ class HistorialDeAgendaServiceTest {
 	@Mock private NombresDeAgenda nombres;
 	@Mock private PacienteDirectory pacientes;
 	@Mock private TurnoRepositoryPort turnos;
+	@Mock private CierresDeSedeDirectory cierresDeSede;
+	@Mock private OcupacionExternaProbe clases;
 
 	private HistorialDeAgendaService service;
 
 	@BeforeEach
 	void setUp() {
 		service = new HistorialDeAgendaService(memberships, consultorios, permisos, auditoria, identidades, nombres,
-				pacientes, turnos);
+				pacientes, turnos, cierresDeSede, clases);
 		given(memberships.find(ORG, PRO_EN_A)).willReturn(Optional.of(membership(PRO_EN_A, CUENTA_PRO, SEDE_A)));
 		given(memberships.find(ORG, OTRO_PRO_EN_A)).willReturn(Optional.of(membership(OTRO_PRO_EN_A, CUENTA_OTRO_PRO, SEDE_A)));
 		given(memberships.findTodasDeLaCuenta(ORG, CUENTA_PRO)).willReturn(List.of(
@@ -174,6 +181,114 @@ class HistorialDeAgendaServiceTest {
 		assertThat(cambio.personaId()).isNull();
 		assertThat(cambio.personaNombre()).isNull();
 		verify(pacientes, never()).findAll(anyLong(), any());
+	}
+
+	@Test
+	@DisplayName("cierre de sede: viaja solo el que afecta (horario o turnos) y de las sedes que el lector alcanza")
+	void cierre_de_sede_solo_el_que_afecta() {
+		concede(CUENTA_SECRETARIA, PermissionCodes.AGENDA_EXCEPCIONES, SEDE_A, "CONSULTORIO");
+		CierreDeSede conHorario = cierre(600L, Set.of(PRO_EN_A));
+		CierreDeSede sinNada = cierre(601L, Set.of());
+		CierreDeSede conTurno = cierre(602L, Set.of());
+		given(cierresDeSede.cierresDeSede(anyLong(), any())).willReturn(List.of(conHorario, sinNada, conTurno));
+		Turno turno = org.mockito.Mockito.mock(Turno.class);
+		given(turno.getInicio()).willReturn(Instant.parse("2026-11-16T13:00:00Z"));
+		given(turno.getFin()).willReturn(Instant.parse("2026-11-16T14:00:00Z"));
+		given(turno.getEstado()).willReturn(EstadoTurno.RESERVADO);
+		given(turnos.findDeProfesionalesEnSedeEnVentana(anyLong(), anyLong(), any(), any(), any()))
+				.willAnswer(i -> List.of());
+		// Solo el 602 tiene un turno de la persona adentro; el 601 no la toca.
+		given(turnos.findDeProfesionalesEnSedeEnVentana(anyLong(), anyLong(), any(),
+				argThat(desde -> desde != null && desde.equals(medianoche("2026-11-23"))), any()))
+				.willReturn(List.of(turno));
+		AuditEventSummary alta = new AuditEventSummary(2L, ORG, SEDE_A, CUENTA_SECRETARIA,
+				"DISPONIBILIDAD_EXCEPCION_CREATED", HistorialDeAgendaService.ENTIDAD_EXCEPCION, 602L, null, "ACTIVO",
+				Map.of("alcance", "SEDE", "despues", "Cierre por feriado, 23/11/2026, dia completo"),
+				null, null, Instant.parse("2026-11-04T12:00:00Z"));
+		given(auditoria.deAgenda(any(), any())).willReturn(new PageImpl<>(List.of(alta), PAGINA, 1));
+
+		CambioDeAgendaView cambio = service.listar(actor(CUENTA_SECRETARIA), ORG, filtro(PRO_EN_A, null), PAGINA)
+				.getContent().get(0);
+
+		verify(cierresDeSede).cierresDeSede(ORG, Map.of(SEDE_A, Set.of(PRO_EN_A)));
+		AuditAgendaFilter pedido = pedidoALaAuditoria();
+		assertThat(pedido.eventosDeSede().entityIds()).containsExactlyInAnyOrder(600L, 602L);
+		assertThat(pedido.eventosDeSede().eventTypes()).containsExactlyInAnyOrder("DISPONIBILIDAD_EXCEPCION_CREATED",
+				"DISPONIBILIDAD_EXCEPCION_UPDATED", "DISPONIBILIDAD_EXCEPCION_DEACTIVATED");
+		assertThat(pedido.traslados()).isEqualTo(HistorialDeAgendaService.TRASLADOS);
+		assertThat(cambio.tipo()).isEqualTo(TipoDeCambioDeAgenda.CIERRE_DE_SEDE_ALTA);
+		assertThat(cambio.profesionalId()).isEqualTo(PRO_EN_A);
+		assertThat(cambio.cierreDeSede().ultimoDia()).isEqualTo(java.time.LocalDate.of(2026, 11, 23));
+		assertThat(cambio.cierreDeSede().turnosPendientes()).isEqualTo(1);
+		assertThat(cambio.cierreDeSede().conHorarioHabitual()).isFalse();
+	}
+
+	@Test
+	@DisplayName("pedir solo EXCEPCION_* no trae cierres de sede, y solo CIERRE_DE_SEDE_* no trae los propios")
+	void tipos_de_excepcion_y_de_cierre_no_se_mezclan() {
+		concede(CUENTA_SECRETARIA, PermissionCodes.AGENDA_EXCEPCIONES, SEDE_A, "CONSULTORIO");
+		given(cierresDeSede.cierresDeSede(anyLong(), any())).willReturn(List.of(cierre(600L, Set.of(PRO_EN_A))));
+
+		service.listar(actor(CUENTA_SECRETARIA), ORG, new FiltroDeHistorialDeAgenda(PRO_EN_A, null,
+				Set.of(TipoDeCambioDeAgenda.EXCEPCION_ALTA), null, null, null), PAGINA);
+		verify(cierresDeSede, never()).cierresDeSede(anyLong(), any());
+
+		service.listar(actor(CUENTA_SECRETARIA), ORG, new FiltroDeHistorialDeAgenda(PRO_EN_A, null,
+				Set.of(TipoDeCambioDeAgenda.CIERRE_DE_SEDE_BAJA), null, null, null), PAGINA);
+		ArgumentCaptor<AuditAgendaFilter> captor = ArgumentCaptor.forClass(AuditAgendaFilter.class);
+		verify(auditoria, org.mockito.Mockito.times(2)).deAgenda(captor.capture(), any());
+		assertThat(captor.getAllValues().get(0).eventTypes()).containsExactly("DISPONIBILIDAD_EXCEPCION_CREATED");
+		assertThat(captor.getAllValues().get(0).eventosDeSede()).isNull();
+		assertThat(captor.getAllValues().get(1).eventTypes()).isEmpty();
+		assertThat(captor.getAllValues().get(1).eventosDeSede().eventTypes())
+				.containsExactly("DISPONIBILIDAD_EXCEPCION_DEACTIVATED");
+	}
+
+	@Test
+	@DisplayName("traslado: una fila con el destino, los hechos absorbidos como relacionados, misma persona = sin cambio")
+	void traslado_es_una_fila() {
+		concede(CUENTA_SECRETARIA, PermissionCodes.AGENDA_EXCEPCIONES, null, "ORGANIZACION");
+		AuditEventSummary traslado = new AuditEventSummary(10L, ORG, SEDE_A, CUENTA_SECRETARIA, "TURNO_TRASLADADO",
+				"Turno", 500L, "RESERVADO", "CANCELADO",
+				Map.of("personaId", "77", "profesionalMembershipId", String.valueOf(PRO_EN_A),
+						"inicio", "2026-11-10T13:00:00Z", "turnoNuevoId", "501", "consultorioDestinoId",
+						String.valueOf(SEDE_B), "operacionId", "op-1"),
+				"Se mudo", null, Instant.parse("2026-11-04T12:00:00Z"));
+		given(auditoria.deAgenda(any(), any())).willReturn(new PageImpl<>(List.of(traslado), PAGINA, 1));
+		Turno nuevo = org.mockito.Mockito.mock(Turno.class);
+		given(nuevo.getId()).willReturn(501L);
+		given(nuevo.getConsultorioId()).willReturn(SEDE_B);
+		given(nuevo.getProfesionalMembershipId()).willReturn(PRO_EN_B);
+		given(nuevo.getInicio()).willReturn(Instant.parse("2026-11-10T14:00:00Z"));
+		given(turnos.findTodosPorId(ORG, Set.of(501L))).willReturn(List.of(nuevo));
+		given(auditoria.absorbidasDeTraslados(ORG, HistorialDeAgendaService.TRASLADOS, "Turno", Set.of(500L)))
+				.willReturn(List.of(
+						new AuditEventSummary(8L, ORG, SEDE_A, CUENTA_SECRETARIA, "TURNO_CANCELADO", "Turno", 500L,
+								"RESERVADO", "CANCELADO", Map.of(), null, null, Instant.parse("2026-11-04T12:00:00Z")),
+						new AuditEventSummary(9L, ORG, SEDE_B, CUENTA_SECRETARIA, "TURNO_RESERVADO", "Turno", 501L,
+								null, "RESERVADO", Map.of("turnoOrigenId", "500"), null, null,
+								Instant.parse("2026-11-04T12:00:00Z"))));
+
+		CambioDeAgendaView cambio = service.listar(actor(CUENTA_SECRETARIA), ORG, filtro(PRO_EN_A, null), PAGINA)
+				.getContent().get(0);
+
+		assertThat(cambio.tipo()).isEqualTo(TipoDeCambioDeAgenda.TURNO_TRASLADO);
+		assertThat(cambio.antes()).startsWith("Mar 10/11 10:00 · Sede 3");
+		assertThat(cambio.despues()).startsWith("Mar 10/11 11:00 · Sede 4");
+		assertThat(cambio.turnoNuevoId()).isEqualTo(501L);
+		assertThat(cambio.operacionId()).isEqualTo("op-1");
+		assertThat(cambio.cambioDeProfesional()).isFalse();
+		assertThat(cambio.eventosRelacionados()).extracting(CambioDeAgendaView.EventoRelacionadoView::id)
+				.containsExactly(8L, 9L);
+	}
+
+	private static CierreDeSede cierre(long id, Set<Long> conHorario) {
+		java.time.LocalDate dia = java.time.LocalDate.of(2026, 11, id == 600L ? 16 : id == 602L ? 23 : 30);
+		return new CierreDeSede(id, SEDE_A, "FERIADO", dia, dia.plusDays(1), null, null, true, conHorario);
+	}
+
+	private static Instant medianoche(String fecha) {
+		return java.time.LocalDate.parse(fecha).atStartOfDay(java.time.ZoneId.of("America/Argentina/Cordoba")).toInstant();
 	}
 
 	private void concede(long cuenta, String permiso, Long sede, String alcance) {

@@ -7,6 +7,10 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.organization.spi.ZonaDeSede;
+import com.akine.resource.spi.CierresDeSedeDirectory;
+import com.akine.scheduling.domain.EstadoTurno;
+import com.akine.scheduling.spi.OcupacionExternaProbe;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditAgendaFilter;
@@ -26,12 +30,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -67,6 +73,17 @@ public class HistorialDeAgendaService {
 	private static final String[] DIAS = {"Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"};
 	private static final String SEPARADOR = " · ";
 
+	/** {@code entity_type} con que {@code resource} audita una excepcion de disponibilidad. */
+	static final String ENTIDAD_EXCEPCION = "DisponibilidadExcepcion";
+	/** {@code entity_type} de los eventos de turno ({@code CicloDeTurnoService}, {@code TrasladoDeTurnoService}). */
+	static final String ENTIDAD_TURNO = "Turno";
+
+	/** Un cambio de sede = una fila: la cancelacion y la reserva que deja se absorben en el traslado. */
+	static final AuditAgendaFilter.Traslados TRASLADOS = new AuditAgendaFilter.Traslados(
+			TipoDeCambioDeAgenda.TURNO_TRASLADO.eventType(),
+			TipoDeCambioDeAgenda.TURNO_CANCELACION.eventType(),
+			TipoDeCambioDeAgenda.TURNO_RESERVA.eventType());
+
 	private final ConsultorioMembershipDirectory memberships;
 	private final ConsultorioDirectory consultorios;
 	private final PermissionEvaluator permisos;
@@ -75,6 +92,8 @@ public class HistorialDeAgendaService {
 	private final NombresDeAgenda nombres;
 	private final PacienteDirectory pacientes;
 	private final TurnoRepositoryPort turnos;
+	private final CierresDeSedeDirectory cierresDeSede;
+	private final OcupacionExternaProbe clases;
 
 	public HistorialDeAgendaService(
 			ConsultorioMembershipDirectory memberships,
@@ -84,7 +103,11 @@ public class HistorialDeAgendaService {
 			AccountIdentityDirectory identidades,
 			NombresDeAgenda nombres,
 			PacienteDirectory pacientes,
-			TurnoRepositoryPort turnos) {
+			TurnoRepositoryPort turnos,
+			CierresDeSedeDirectory cierresDeSede,
+			OcupacionExternaProbe clases) {
+		this.cierresDeSede = cierresDeSede;
+		this.clases = clases;
 		this.memberships = memberships;
 		this.consultorios = consultorios;
 		this.permisos = permisos;
@@ -119,14 +142,117 @@ public class HistorialDeAgendaService {
 		Alcance alcance = alcance(actor, organizationId, profesional.accountId(), filtro.consultorioId());
 
 		Set<Long> deLaPersona = new LinkedHashSet<>();
+		Map<Long, Set<Long>> porSede = new HashMap<>();
 		deLaPersona.add(profesional.membershipId());
-		memberships.findTodasDeLaCuenta(organizationId, profesional.accountId())
-				.forEach(m -> deLaPersona.add(m.membershipId()));
+		if (profesional.consultorioId() != null) {
+			porSede.computeIfAbsent(profesional.consultorioId(), s -> new LinkedHashSet<>()).add(profesional.membershipId());
+		}
+		memberships.findTodasDeLaCuenta(organizationId, profesional.accountId()).forEach(m -> {
+			deLaPersona.add(m.membershipId());
+			if (m.consultorioId() != null) {
+				porSede.computeIfAbsent(m.consultorioId(), s -> new LinkedHashSet<>()).add(m.membershipId());
+			}
+		});
+		Persona persona = new Persona(deLaPersona, porSede);
+
+		Set<String> propios = TipoDeCambioDeAgenda.eventTypes(filtro.tipos());
+		Set<String> deCierre = TipoDeCambioDeAgenda.eventTypesDeCierreDeSede(filtro.tipos());
+		Map<Long, CierreAfectado> cierres = deCierre.isEmpty()
+				? Map.of()
+				: cierresQueAfectan(organizationId, persona, alcance, filtro.consultorioId());
+		AuditAgendaFilter.EventosDeSede deSede = cierres.isEmpty()
+				? null
+				: new AuditAgendaFilter.EventosDeSede(ENTIDAD_EXCEPCION, cierres.keySet(), deCierre);
+		if (propios.isEmpty() && deSede == null) {
+			return Page.empty(pagina);
+		}
 
 		Page<AuditEventSummary> hechos = auditoria.deAgenda(new AuditAgendaFilter(organizationId, deLaPersona,
-				TipoDeCambioDeAgenda.eventTypes(filtro.tipos()), alcance.sedes(), filtro.desde(), filtro.hasta(),
-				filtro.texto()), pagina);
-		return componer(organizationId, hechos, alcance);
+				propios, alcance.sedes(), filtro.desde(), filtro.hasta(), filtro.texto(), deSede, TRASLADOS), pagina);
+		return componer(organizationId, hechos, alcance, persona, cierres);
+	}
+
+	/** Las memberships de la persona consultada, todas y por sede. */
+	record Persona(Set<Long> memberships, Map<Long, Set<Long>> porSede) {
+
+		boolean es(Long membershipId) {
+			return membershipId != null && memberships.contains(membershipId);
+		}
+
+		Long enSede(Long sede) {
+			Set<Long> deEsa = sede == null ? null : porSede.get(sede);
+			return deEsa == null || deEsa.isEmpty() ? null : deEsa.iterator().next();
+		}
+	}
+
+	// =================================================================================
+	// Cierres de la sede entera que tocan a la persona
+	// =================================================================================
+
+	/** Un cierre de sede que tocaba a la persona y por que. */
+	record CierreAfectado(CierresDeSedeDirectory.CierreDeSede cierre, ZoneId zona) {
+	}
+
+	/**
+	 * Los cierres de sede entera que afectaron a la persona, resueltos al leer (no se copian a la
+	 * auditoria de cada profesional): tenia horario habitual en esa sede y periodo, o turnos, o clases.
+	 * Solo de las sedes donde la persona tuvo membership, el lector alcanza y el filtro pide.
+	 */
+	Map<Long, CierreAfectado> cierresQueAfectan(
+			long organizationId, Persona persona, Alcance alcance, Long consultorioPedido) {
+		Map<Long, Set<Long>> candidatas = new HashMap<>();
+		persona.porSede().forEach((sede, ids) -> {
+			if ((consultorioPedido == null || consultorioPedido.equals(sede))
+					&& (alcance.sedes() == null || alcance.sedes().contains(sede))) {
+				candidatas.put(sede, ids);
+			}
+		});
+		if (candidatas.isEmpty()) {
+			return Map.of();
+		}
+		Map<Long, ZoneId> zonas = new HashMap<>();
+		Map<Long, CierreAfectado> afectados = new LinkedHashMap<>();
+		for (CierresDeSedeDirectory.CierreDeSede cierre : cierresDeSede.cierresDeSede(organizationId, candidatas)) {
+			ZoneId zona = zonas.computeIfAbsent(cierre.consultorioId(),
+					sede -> ZonaDeSede.de(consultorios, organizationId, sede));
+			Set<Long> ids = candidatas.get(cierre.consultorioId());
+			boolean afecta = !cierre.membershipsConHorario().isEmpty()
+					|| !turnosDelCierre(organizationId, cierre, ids, zona).isEmpty()
+					|| tieneClases(organizationId, cierre, ids, zona);
+			if (afecta) {
+				afectados.put(cierre.id(), new CierreAfectado(cierre, zona));
+			}
+		}
+		return afectados;
+	}
+
+	/** Los turnos de esas memberships que empiezan dentro del cierre (en sus horas, si es parcial). */
+	private List<Turno> turnosDelCierre(
+			long organizationId, CierresDeSedeDirectory.CierreDeSede cierre, Set<Long> ids, ZoneId zona) {
+		return turnos.findDeProfesionalesEnSedeEnVentana(organizationId, cierre.consultorioId(), ids,
+						cierre.fechaDesde().atStartOfDay(zona).toInstant(),
+						cierre.fechaHasta().atStartOfDay(zona).toInstant()).stream()
+				.filter(t -> cruzaLasHoras(cierre, t.getInicio(), t.getFin(), zona))
+				.toList();
+	}
+
+	private boolean tieneClases(
+			long organizationId, CierresDeSedeDirectory.CierreDeSede cierre, Set<Long> ids, ZoneId zona) {
+		return clases.ocupacionDeProfesionales(organizationId, ids,
+						cierre.fechaDesde().atStartOfDay(zona).toInstant(),
+						cierre.fechaHasta().atStartOfDay(zona).toInstant()).stream()
+				.anyMatch(c -> c.consultorioId() == cierre.consultorioId()
+						&& cruzaLasHoras(cierre, c.inicio(), c.fin(), zona));
+	}
+
+	static boolean cruzaLasHoras(CierresDeSedeDirectory.CierreDeSede cierre, Instant inicio, Instant fin, ZoneId zona) {
+		if (!cierre.parcial()) {
+			return true;
+		}
+		var desde = inicio.atZone(zona);
+		var hasta = fin.atZone(zona);
+		LocalTime finLocal = hasta.toLocalDate().isAfter(desde.toLocalDate()) ? LocalTime.MAX : hasta.toLocalTime();
+		return desde.toLocalTime().isBefore(cierre.horaHasta()) && cierre.horaDesde().isBefore(finLocal);
 	}
 
 	// =================================================================================
@@ -204,18 +330,44 @@ public class HistorialDeAgendaService {
 	// Armado de la vista: nombres en lote, una consulta por fuente
 	// =================================================================================
 
-	private Page<CambioDeAgendaView> componer(long organizationId, Page<AuditEventSummary> hechos, Alcance alcance) {
+	private Page<CambioDeAgendaView> componer(long organizationId, Page<AuditEventSummary> hechos, Alcance alcance,
+			Persona persona, Map<Long, CierreAfectado> cierres) {
 		List<AuditEventSummary> filas = hechos.getContent();
 		if (filas.isEmpty()) {
 			return hechos.map(fila -> null);
 		}
 
-		// Los turnos nuevos de los traslados, para decir a donde fueron.
+		// Los turnos nuevos de los traslados, para decir a donde fueron, y las filas que cada traslado absorbe.
 		Set<Long> turnosNuevos = new HashSet<>();
-		filas.forEach(f -> idDe(f, "turnoNuevoId").ifPresent(turnosNuevos::add));
+		Set<Long> trasladados = new HashSet<>();
+		for (AuditEventSummary fila : filas) {
+			if (TipoDeCambioDeAgenda.TURNO_TRASLADO.eventType().equals(fila.eventType()) && fila.entityId() != null) {
+				trasladados.add(fila.entityId());
+				idDe(fila, "turnoNuevoId").ifPresent(turnosNuevos::add);
+			}
+		}
 		Map<Long, Turno> nuevos = new HashMap<>();
 		if (!turnosNuevos.isEmpty()) {
 			turnos.findTodosPorId(organizationId, turnosNuevos).forEach(t -> nuevos.put(t.getId(), t));
+		}
+		Map<Long, List<AuditEventSummary>> absorbidas = new HashMap<>();
+		for (AuditEventSummary absorbida
+				: auditoria.absorbidasDeTraslados(organizationId, TRASLADOS, ENTIDAD_TURNO, trasladados)) {
+			Long origen = TipoDeCambioDeAgenda.TURNO_CANCELACION.eventType().equals(absorbida.eventType())
+					? absorbida.entityId()
+					: idDe(absorbida, "turnoOrigenId").orElse(null);
+			if (origen != null) {
+				absorbidas.computeIfAbsent(origen, k -> new ArrayList<>()).add(absorbida);
+			}
+		}
+
+		// Lo que cada cierre de la pagina le dejo a la persona, contado ahora.
+		Map<Long, CambioDeAgendaView.CierreDeSedeView> cierresVistos = new HashMap<>();
+		for (AuditEventSummary fila : filas) {
+			CierreAfectado afectado = esDeSede(fila) ? cierres.get(fila.entityId()) : null;
+			if (afectado != null && !cierresVistos.containsKey(fila.entityId())) {
+				cierresVistos.put(fila.entityId(), cierreVisto(organizationId, afectado, persona));
+			}
 		}
 
 		Set<Long> profesionales = new HashSet<>();
@@ -236,8 +388,8 @@ public class HistorialDeAgendaService {
 			if (fila.actorAccountId() != null) {
 				cuentas.add(fila.actorAccountId());
 			}
-			if (alcance.veePaciente(fila.consultorioId())) {
-				idDe(fila, "personaId").ifPresent(personas::add);
+			if (esDeSede(fila) && persona.enSede(fila.consultorioId()) != null) {
+				profesionales.add(persona.enSede(fila.consultorioId()));
 			}
 		}
 		for (Turno nuevo : nuevos.values()) {
@@ -249,6 +401,11 @@ public class HistorialDeAgendaService {
 			}
 			sedes.add(nuevo.getConsultorioId());
 		}
+		for (AuditEventSummary fila : filas) {
+			if (veePaciente(fila, nuevos, alcance)) {
+				idDe(fila, "personaId").ifPresent(personas::add);
+			}
+		}
 
 		Nombres resueltos = new Nombres(
 				nombres.profesionales(organizationId, profesionales),
@@ -257,7 +414,34 @@ public class HistorialDeAgendaService {
 				identidades.identidadesDe(cuentas),
 				personas.isEmpty() ? Map.of() : pacientes.findAll(organizationId, personas),
 				nuevos);
-		return hechos.map(fila -> vista(fila, resueltos, alcance));
+		return hechos.map(fila -> vista(fila, resueltos, alcance, persona, cierresVistos,
+				fila.entityId() == null ? List.of() : absorbidas.getOrDefault(fila.entityId(), List.of())));
+	}
+
+	/** Una excepcion de la sede entera: no lleva profesional. */
+	private static boolean esDeSede(AuditEventSummary fila) {
+		return ENTIDAD_EXCEPCION.equals(fila.entityType()) && !fila.details().containsKey("membershipId");
+	}
+
+	/** El paciente de un traslado viaja si el lector lo ve en la sede de origen o en la de destino. */
+	private static boolean veePaciente(AuditEventSummary fila, Map<Long, Turno> nuevos, Alcance alcance) {
+		if (alcance.veePaciente(fila.consultorioId())) {
+			return true;
+		}
+		Turno nuevo = idDe(fila, "turnoNuevoId").map(nuevos::get).orElse(null);
+		return nuevo != null && alcance.veePaciente(nuevo.getConsultorioId());
+	}
+
+	private CambioDeAgendaView.CierreDeSedeView cierreVisto(long organizationId, CierreAfectado afectado, Persona persona) {
+		CierresDeSedeDirectory.CierreDeSede cierre = afectado.cierre();
+		Set<Long> ids = persona.porSede().getOrDefault(cierre.consultorioId(), Set.of());
+		List<Turno> adentro = ids.isEmpty() ? List.of() : turnosDelCierre(organizationId, cierre, ids, afectado.zona());
+		int pendientes = (int) adentro.stream().filter(t -> t.getEstado() == EstadoTurno.RESERVADO
+				|| t.getEstado() == EstadoTurno.CONFIRMADO).count();
+		int cancelados = (int) adentro.stream().filter(t -> t.getEstado() == EstadoTurno.CANCELADO).count();
+		return new CambioDeAgendaView.CierreDeSedeView(cierre.id(), cierre.motivo(), cierre.fechaDesde(),
+				cierre.ultimoDia(), cierre.horaDesde(), cierre.horaHasta(), cierre.activo(),
+				!cierre.membershipsConHorario().isEmpty(), adentro.size(), pendientes, cancelados);
 	}
 
 	private Map<Long, ConsultorioSnapshot> sedesDe(long organizationId, Collection<Long> ids) {
@@ -289,16 +473,24 @@ public class HistorialDeAgendaService {
 		}
 	}
 
-	private CambioDeAgendaView vista(AuditEventSummary fila, Nombres n, Alcance alcance) {
-		TipoDeCambioDeAgenda tipo = TipoDeCambioDeAgenda.deEvento(fila.eventType()).orElseThrow();
+	private CambioDeAgendaView vista(AuditEventSummary fila, Nombres n, Alcance alcance, Persona persona,
+			Map<Long, CambioDeAgendaView.CierreDeSedeView> cierres, List<AuditEventSummary> absorbidas) {
+		boolean deSede = esDeSede(fila);
+		TipoDeCambioDeAgenda tipo = TipoDeCambioDeAgenda.deEvento(fila.eventType(), deSede).orElseThrow();
 		Map<String, String> d = fila.details();
-		Long profesional = idDe(fila, "profesionalMembershipId").or(() -> idDe(fila, "membershipId")).orElse(null);
+		Long profesional = deSede
+				? persona.enSede(fila.consultorioId())
+				: idDe(fila, "profesionalMembershipId").or(() -> idDe(fila, "membershipId")).orElse(null);
 		Long profesionalAnterior = idDe(fila, "profesionalAnteriorId").orElse(null);
 		boolean esTurno = tipo.entidad() == TipoDeCambioDeAgenda.Entidad.TURNO;
 		Instant inicio = esTurno ? instante(d.get("inicio")) : null;
+		Turno nuevo = tipo == TipoDeCambioDeAgenda.TURNO_TRASLADO
+				? idDe(fila, "turnoNuevoId").map(n.turnosNuevos()::get).orElse(null)
+				: null;
 
 		String antes;
 		String despues;
+		boolean cambioDeProfesional = false;
 		switch (tipo) {
 			case TURNO_RESERVA, TURNO_SOBRETURNO -> {
 				antes = null;
@@ -308,14 +500,17 @@ public class HistorialDeAgendaService {
 				antes = turno(instante(d.get("inicioAnterior")), fila.consultorioId(), profesionalAnterior,
 						idDe(fila, "espacioAnteriorId").orElse(null), n);
 				despues = turno(inicio, fila.consultorioId(), profesional, idDe(fila, "espacioId").orElse(null), n);
+				cambioDeProfesional = profesionalAnterior != null && !profesionalAnterior.equals(profesional);
 			}
 			case TURNO_TRASLADO -> {
 				antes = turno(inicio, fila.consultorioId(), profesional, idDe(fila, "espacioId").orElse(null), n);
-				Turno nuevo = idDe(fila, "turnoNuevoId").map(n.turnosNuevos()::get).orElse(null);
 				despues = nuevo != null
 						? turno(nuevo.getInicio(), nuevo.getConsultorioId(), nuevo.getProfesionalMembershipId(),
 								nuevo.getEspacioId(), n)
 						: n.sede(idDe(fila, "consultorioDestinoId").orElse(null));
+				// Memberships distintas en dos sedes pueden ser la misma persona: se mira contra la consultada.
+				cambioDeProfesional = nuevo != null && nuevo.getProfesionalMembershipId() != null && profesional != null
+						&& persona.es(profesional) != persona.es(nuevo.getProfesionalMembershipId());
 			}
 			case TURNO_OBSERVACIONES -> {
 				antes = vacioANull(d.get("observacionesAntes"));
@@ -331,9 +526,15 @@ public class HistorialDeAgendaService {
 			}
 		}
 
-		Long personaId = esTurno && alcance.veePaciente(fila.consultorioId()) ? idDe(fila, "personaId").orElse(null) : null;
+		Long personaId = esTurno && veePaciente(fila, n.turnosNuevos(), alcance)
+				? idDe(fila, "personaId").orElse(null)
+				: null;
 		PacienteSnapshot paciente = personaId == null ? null : n.pacientes().get(personaId);
 		AccountIdentity actor = fila.actorAccountId() == null ? null : n.cuentas().get(fila.actorAccountId());
+		List<CambioDeAgendaView.EventoRelacionadoView> relacionados = tipo != TipoDeCambioDeAgenda.TURNO_TRASLADO
+				? List.of()
+				: absorbidas.stream().map(a -> new CambioDeAgendaView.EventoRelacionadoView(
+						a.id(), a.occurredAt(), a.eventType(), a.entityId(), a.consultorioId())).toList();
 		return new CambioDeAgendaView(
 				fila.id(),
 				fila.occurredAt(),
@@ -354,8 +555,11 @@ public class HistorialDeAgendaService {
 				inicio,
 				personaId,
 				paciente == null ? null : paciente.nombreCompleto(),
-				tipo == TipoDeCambioDeAgenda.TURNO_REPROGRAMACION && profesionalAnterior != null
-						&& !profesionalAnterior.equals(profesional));
+				cambioDeProfesional,
+				nuevo != null ? nuevo.getId() : idDe(fila, "turnoNuevoId").orElse(null),
+				deSede ? cierres.get(fila.entityId()) : null,
+				vacioANull(d.get(TrasladoDeTurnoService.OPERACION_ID)),
+				relacionados);
 	}
 
 	/** "Lun 10/11 10:00 · Sede Centro · Gomez, Laura · Box 2", en la zona de la sede. */

@@ -122,4 +122,14 @@ public interface BloqueDisponibilidadRepository
 			@Param("organizationId") Long organizationId,
 			@Param("membershipId") Long membershipId,
 			@Param("fecha") LocalDate fecha);
+
+	@Query("""
+			SELECT b FROM BloqueDisponibilidad b
+			 WHERE b.organizationId = :organizationId
+			   AND b.membershipId IN :membershipIds
+			""")
+	@Override
+	List<BloqueDisponibilidad> findTodosDeLasMemberships(
+			@Param("organizationId") Long organizationId,
+			@Param("membershipIds") Collection<Long> membershipIds);
 }

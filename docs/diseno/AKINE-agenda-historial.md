@@ -76,11 +76,93 @@ de `agenda:excepciones` al profesional le amplía la lectura a su sede, igual qu
   incluye los eventos de los turnos de origen, cortando en la primera sede donde el lector no tiene
   `turno:read`. Cada evento suma `turnoId` y `consultorioId` para distinguirlos.
 
+## Cierres de sede y traslado en una fila (contrato 0.157.0)
+
+Rama `akine-agenda-historial-2`. Migración **`V139`** (`V140` reservada y sin usar).
+
+### 1. Los cierres de la sede entera no aparecían en el historial del profesional
+
+**Causa.** El historial filtra `audit_event` por las columnas generadas de V134, que salen de
+`profesionalMembershipId` o `membershipId` en `details`. Una excepción de sede entera
+(`disponibilidad_excepcion.membership_id IS NULL`, p. ej. el feriado de toda la sede Centro del
+16/11) se audita **sin** `membershipId`: su `agenda_membership_ref` es `NULL` y ninguna consulta por
+profesional podía alcanzarla. No era un filtro mal puesto: el evento no nombra a nadie, y "a quién
+afectó" no estaba escrito en ningún lado.
+
+**Solución: se resuelve al leer, no se copia.** La auditoría queda como está —un evento por alta,
+edición o baja del cierre— y el historial decide, en cada lectura, qué cierres tocaron a la persona:
+
+- `resource.spi.CierresDeSedeDirectory` (nuevo, `ResourceCierresDeSedeDirectory`) devuelve **todos**
+  los cierres de sede entera de las sedes donde la persona tuvo membership —activos o dados de
+  baja, de cualquier fecha— y, por cada uno, sus memberships con **horario habitual** en el
+  período: un bloque de esa sede cuya vigencia cruza el cierre (las dos `hasta` son exclusivas), en
+  un día de la semana que el bloque atiende (y en horas que se cruzan si el cierre es parcial), y
+  que no estaba dado de baja antes de que el cierre empezara. **La asignación histórica manda:** se
+  leen todas las memberships de la persona (vigentes o no) y todos sus bloques, también los dados
+  de baja después; un cambio de sede posterior ni borra ni agrega filas.
+- Si no tenía horario, `scheduling` mira si tenía **turnos** (cualquier estado, también cancelados:
+  `TurnoRepositoryPort#findDeProfesionalesEnSedeEnVentana`) o **clases**
+  (`OcupacionExternaProbe`) de esa sede en el período.
+- Los ids de los cierres afectados viajan a `AuditQuery#deAgenda` como `EventosDeSede`
+  (`entity_type = 'DisponibilidadExcepcion'`, ids, tipos de evento) y la consulta los suma con un
+  `OR` sobre `ix_audit_event_entity`. **El paginado, el total, el orden, `desde`/`hasta`, `q` y la
+  sede siguen siendo SQL** sobre una sola consulta: no hay mezcla en memoria.
+
+Tipos nuevos: `CIERRE_DE_SEDE_ALTA`, `CIERRE_DE_SEDE_EDICION`, `CIERRE_DE_SEDE_BAJA` (entidad
+`CIERRE_DE_SEDE`). Comparten `event_type` con `EXCEPCION_*` y se distinguen por la ausencia de
+`membershipId`: pedir sólo `EXCEPCION_*` no trae cierres de sede y viceversa. La fila lleva la sede,
+el actor, el motivo declarado, `antes`/`despues` y, en `profesionalId`, la membership de la persona
+**en esa sede**. `cierreDeSede` trae `excepcionId`, `motivo` (`FERIADO`, …), `fechaDesde`,
+`ultimoDia` (**inclusive**: la tabla guarda el fin exclusivo), horas si es parcial, `vigente`,
+`conHorarioHabitual` y los turnos de la persona en el período contados al leer
+(`turnosEnElPeriodo`, `turnosPendientes` —reservados o confirmados, los que la agenda operativa
+marca `fueraDeDisponibilidad`— y `turnosCancelados`). Para llegar a ellos, el frontend abre
+`agendaOperativa` de `consultorioId` desde `fechaDesde` hasta `ultimoDia + 1`.
+
+### 2. Un traslado aparecía como dos (o tres) filas
+
+**Causa.** `TrasladoDeTurnoService` audita tres hechos en una transacción: `TURNO_CANCELADO` (vía
+`aplicarCancelacion`, sin aviso) y `TURNO_TRASLADADO` sobre el turno original, y `TURNO_RESERVADO`
+sobre el nuevo. Las tres llevan profesional, así que el historial del profesional de origen
+mostraba cancelación + traslado, y si el destino era la misma persona (otra membership) además la
+reserva; el profesional de destino sólo veía una "reserva" suelta. **Reprogramación y cambio de
+profesional no sufren esto:** auditan un único `TURNO_REPROGRAMADO` (con `profesionalAnteriorId`
+cuando cambia la persona, que V134 ya indexa para las dos).
+
+**Solución.**
+
+- **Vínculo para los eventos viejos y nuevos: `turnoOrigenId`.** La reserva del turno nuevo ya lo
+  llevaba en `details` (la imagen de `turno.turno_origen_id`, desde V131). **V139** lo expone como
+  columna generada `agenda_turno_origen_ref`, sin backfill (append-only, igual que V134).
+- **Vínculo explícito para los nuevos: `operacionId`** (UUID) en `details` de las tres filas
+  (`CicloDeTurnoService.aplicarCancelacion` gana una sobrecarga con detalles extra). No se usa para
+  filtrar —el vínculo estructural alcanza a todo— sino para trazabilidad; viaja en la fila.
+- **La consulta absorbe en SQL** la `TURNO_CANCELADO` de un turno que tiene `TURNO_TRASLADADO` y la
+  `TURNO_RESERVADO` con `agenda_turno_origen_ref`, y hace aparecer el `TURNO_TRASLADADO` también
+  para el profesional de **destino** (la membership de esa reserva) y para un lector que sólo
+  alcanza la sede de destino. Un traslado = una fila para cada persona involucrada; el total y el
+  paginado siguen exactos.
+- La fila `TURNO_TRASLADO` trae antes (sede, fecha/hora, profesional y box de origen) y después
+  (los del turno nuevo), `turnoNuevoId`, `operacionId`, `cambioDeProfesional` (comparado contra
+  las memberships de la persona consultada: dos memberships de la misma persona no son un cambio) y
+  `eventosRelacionados` (la cancelación y la reserva absorbidas, con id de auditoría, tipo, turno y
+  sede). **No se borra ni se reescribe ninguna fila de auditoría.**
+- Una cancelación independiente sigue siendo `TURNO_CANCELACION`.
+- **El aviso único al paciente no cambió** (`turno-trasladado:<nuevo>:desde:<origen>`):
+  `NotificacionDeTurnoIT` lo sigue verificando.
+
 ## Límites
 
-- Un traslado deja dos filas en el historial del profesional de origen: la cancelación y el
-  traslado (son dos hechos auditados).
-- Las excepciones de **sede entera** (sin profesional) no aparecen en el historial del profesional.
+- Los cierres **automáticos por feriado** del calendario de la sede (`cierraPorFeriado`, sin fila en
+  `disponibilidad_excepcion`) no son eventos auditados y no aparecen; sí los feriados cargados como
+  excepción de sede.
+- El período y los conteos de un cierre de sede son los de la fila **actual** de la excepción (si
+  se editó, el `antes`/`despues` de cada edición muestra el período de ese momento). Los turnos que
+  se reprogramaron fuera del período ya no cuentan en `turnosEnElPeriodo`.
+- La baja de un bloque se compara contra el inicio del cierre en la zona de la sede; un bloque
+  cargado **después** del cierre con vigencia retroactiva también cuenta como horario.
+- Afectación por turnos/clases: una consulta por cierre sin horario habitual, en cada lectura. Con
+  muchos años de cierres en una sede donde la persona no tiene horario, el costo crece lineal.
 - `q` no busca por nombre de paciente ni de actor (viven en otros módulos).
 - `TURNO_CAMBIO_DE_PROFESIONAL` no es un tipo filtrable: se filtra `TURNO_REPROGRAMACION` y se mira
   `cambioDeProfesional`.

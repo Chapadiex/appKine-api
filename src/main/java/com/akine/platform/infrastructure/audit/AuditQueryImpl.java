@@ -110,14 +110,44 @@ public class AuditQueryImpl implements AuditQuery {
 		if (!todas && filtro.sedes().isEmpty()) {
 			return Page.empty(pageable);
 		}
+		// Ningun IN vacio: un centinela que no coincide con nada y la bandera que apaga la rama.
+		AuditAgendaFilter.EventosDeSede deSede = filtro.eventosDeSede();
+		boolean conSede = deSede != null && !deSede.entityIds().isEmpty() && !deSede.eventTypes().isEmpty();
+		AuditAgendaFilter.Traslados traslados = filtro.traslados();
+		boolean unificar = traslados != null;
 		return auditEventRepository
 				.deAgenda(filtro.organizationId(),
 						filtro.memberships().stream().map(String::valueOf).toList(),
-						filtro.eventTypes(), todas, todas ? List.of(-1L) : filtro.sedes(),
+						filtro.eventTypes().isEmpty() ? List.of(NINGUNO) : filtro.eventTypes(),
+						todas, todas ? List.of(-1L) : filtro.sedes(),
+						conSede, conSede ? deSede.entityType() : NINGUNO,
+						conSede ? deSede.entityIds() : List.of(-1L),
+						conSede ? deSede.eventTypes() : List.of(NINGUNO),
+						unificar,
+						unificar ? traslados.visible() : NINGUNO,
+						unificar ? traslados.cancelacion() : NINGUNO,
+						unificar ? traslados.reserva() : NINGUNO,
 						filtro.desde(), filtro.hasta(), TextoDeBusqueda.patronLike(filtro.texto()),
 						conOrden(pageable))
 				.map(this::resumir);
 	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<AuditEventSummary> absorbidasDeTraslados(
+			long organizationId, AuditAgendaFilter.Traslados traslados, String entityType,
+			java.util.Collection<Long> turnosDeOrigen) {
+		if (turnosDeOrigen == null || turnosDeOrigen.isEmpty()) {
+			return List.of();
+		}
+		return auditEventRepository
+				.absorbidasDeTraslados(organizationId, traslados.cancelacion(), traslados.reserva(), entityType,
+						turnosDeOrigen, turnosDeOrigen.stream().map(String::valueOf).toList())
+				.stream().map(this::resumir).toList();
+	}
+
+	/** Valor de relleno para un parametro de texto que no aplica: ningun tipo de evento se llama asi. */
+	private static final String NINGUNO = "-";
 
 	/**
 	 * El orden de siempre —del hecho mas nuevo al mas viejo— cuando el llamador no pide otro.

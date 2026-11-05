@@ -223,6 +223,16 @@ public class CicloDeTurnoService {
 	public Turno aplicarCancelacion(
 			OperatingActor actor, ConsultorioSnapshot sede, Turno turno, String motivo,
 			OrigenDeCancelacion origen, Instant ahora, boolean avisarAlPaciente) {
+		return aplicarCancelacion(actor, sede, turno, motivo, origen, ahora, avisarAlPaciente, Map.of());
+	}
+
+	/**
+	 * La misma cancelacion, sumando {@code detallesExtra} a su auditoria. El cambio de sede la usa para
+	 * dejar el {@code operacionId} que la une con la reserva del turno nuevo (historial de agenda).
+	 */
+	public Turno aplicarCancelacion(
+			OperatingActor actor, ConsultorioSnapshot sede, Turno turno, String motivo,
+			OrigenDeCancelacion origen, Instant ahora, boolean avisarAlPaciente, Map<String, String> detallesExtra) {
 
 		EstadoTurno anterior = turno.getEstado();
 		turno.cancelar(motivo, origen, actor.accountId(), ahora);
@@ -237,7 +247,9 @@ public class CicloDeTurnoService {
 		// forzo la version, asi que si llegamos aca ningun check-in se colo entre medio.
 		recepciones.cerrarPorCancelacion(cancelado.getOrganizationId(), cancelado.getId(),
 				cancelado.getMotivoCancelacion(), actor.accountId(), ahora);
-		auditar(actor, cancelado, "TURNO_CANCELADO", anterior, cancelado.getMotivoCancelacion(), ahora);
+		Map<String, String> detalles = DetallesDeAuditoriaDeTurno.de(actor, cancelado);
+		detalles.putAll(detallesExtra);
+		auditar(actor, cancelado, "TURNO_CANCELADO", anterior, cancelado.getMotivoCancelacion(), detalles, ahora);
 		// RF-M26-003. Sin el motivo: ver AvisosDeTurno. La oferta solo pone el nombre del servicio,
 		// y si ya no resuelve el aviso sale igual, sin el.
 		if (avisarAlPaciente) {

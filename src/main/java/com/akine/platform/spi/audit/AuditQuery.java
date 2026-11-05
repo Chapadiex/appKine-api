@@ -43,4 +43,16 @@ public interface AuditQuery {
 	 * mas nuevo al mas viejo.
 	 */
 	Page<AuditEventSummary> deAgenda(AuditAgendaFilter filtro, Pageable pageable);
+
+	/**
+	 * Las filas que {@link #deAgenda} absorbe en un traslado (la cancelacion del turno de origen y la
+	 * reserva del nuevo), para mostrarlas como eventos relacionados de la fila visible. Del mas viejo al
+	 * mas nuevo.
+	 *
+	 * @param entityType     {@code entity_type} del turno
+	 * @param turnosDeOrigen ids de los turnos trasladados
+	 */
+	java.util.List<AuditEventSummary> absorbidasDeTraslados(
+			long organizationId, AuditAgendaFilter.Traslados traslados, String entityType,
+			java.util.Collection<Long> turnosDeOrigen);
 }

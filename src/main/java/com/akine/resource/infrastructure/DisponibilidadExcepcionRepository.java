@@ -134,4 +134,16 @@ public interface DisponibilidadExcepcionRepository
 			@Param("organizationId") Long organizationId,
 			@Param("membershipId") Long membershipId,
 			@Param("fecha") LocalDate fecha);
+
+	@Query("""
+			SELECT e FROM DisponibilidadExcepcion e
+			 WHERE e.organizationId = :organizationId
+			   AND e.consultorioId IN :consultorioIds
+			   AND e.membershipId IS NULL
+			   AND e.tipo = com.akine.resource.domain.TipoExcepcion.CIERRE
+			""")
+	@Override
+	List<DisponibilidadExcepcion> findCierresDeSedeDeLasSedes(
+			@Param("organizationId") Long organizationId,
+			@Param("consultorioIds") java.util.Collection<Long> consultorioIds);
 }

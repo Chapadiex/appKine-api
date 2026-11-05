@@ -64,6 +64,22 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta);
 
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.profesionalMembershipId IN :profesionalMembershipIds
+			   AND t.inicio >= :desde
+			   AND t.inicio < :hasta
+			""")
+	List<Turno> findDeProfesionalesEnSedeEnVentana(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("profesionalMembershipIds") Collection<Long> profesionalMembershipIds,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
 	/**
 	 * <p>Cuentan RESERVADO y CONFIRMADO (un turno con el paciente en la recepcion sigue en uno de los dos) con {@code deletedAt IS NULL}; CANCELADO y
 	 * AUSENTE quedan afuera.

@@ -169,6 +169,8 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V136` | Agenda: clases contra turnos entre sedes (`akine-agenda-clases-avisos`) | **Vacía**: reservada y no usada. El cruce por persona usa la fila de `agenda_profesional` (`V129`) y los índices existentes (`ix_clase_instructor_membership` de `V114`). No se reusa |
 | `V137` | Agenda: clases contra turnos entre sedes (`akine-agenda-clases-avisos`) | **Vacía**: reservada para el aviso único del traslado, que pasó a otra rama (`akine-agenda-aviso-unico`, que registró `V138` vacía); no se usó acá. No se reusa |
 | `V138` | Agenda — aviso único del cambio de sede (`akine-agenda-aviso-unico`) | **Vacía**: el aviso "tu turno cambio" reusa el tipo `TURNO_REPROGRAMADO` y `notification_outbox` (la clave idempotente ya es `UNIQUE`, `tipo` es `VARCHAR` sin CHECK); no hizo falta tabla ni columna. No se reusa |
+| `V139` | Agenda — historial, cierres de sede y traslado en una fila (`akine-agenda-historial-2`) | **Usada**: `V139__platform_auditoria_turno_de_origen_de_un_traslado.sql` — columna generada `VIRTUAL` `agenda_turno_origen_ref` en `audit_event` (derivada de `details.turnoOrigenId`, sin backfill) con `ix_audit_event_agenda_turno_origen`: une la reserva del turno nuevo con el `TURNO_TRASLADADO` del original |
+| `V140` | Agenda — historial (`akine-agenda-historial-2`) | **Vacía**: reservada por si los cierres de sede necesitaban un índice o una tabla; se resuelven al leer con las tablas e índices existentes. No se reusa |
 
 ## 7. Paquetes de trabajo
 

@@ -88,8 +88,21 @@ public class HistorialDeAgendaController {
 					`PROFESIONAL` (o `PLATFORM_ADMIN` con acceso de soporte); ausente en cambios anteriores \
 					a la agenda de profesionales.
 
-					Es una lectura de la auditoria transversal: una sola fuente. Un cambio de sede \
-					tambien deja la cancelacion del turno original como fila propia.""")
+					Es una lectura de la auditoria transversal: una sola fuente.
+
+					**Un cambio de sede es una sola fila** `TURNO_TRASLADO`, con el antes (sede, hora, \
+					profesional y box de origen) y el despues; la cancelacion del original y la reserva del \
+					nuevo no aparecen como filas propias y viajan en `eventosRelacionados`. Si el traslado \
+					paso el turno a otra persona, la fila aparece en el historial de las dos \
+					(`cambioDeProfesional`). Una cancelacion que no es parte de un traslado sigue siendo \
+					`TURNO_CANCELACION`.
+
+					**Cierres de la sede entera** (`CIERRE_DE_SEDE_ALTA/EDICION/BAJA`): una excepcion de sede \
+					sin profesional aparece en el historial de cada profesional al que afecto —tenia horario \
+					habitual en esa sede en el periodo, o turnos o clases ahi—, resuelto al leer. Un cierre de \
+					otra sede, o de una en la que la persona no atendia ese periodo, no aparece. `cierreDeSede` \
+					trae el periodo (`ultimoDia` inclusive), el motivo y los turnos del profesional en el periodo, \
+					para ir a la agenda operativa de esa sede y fecha.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Pagina de cambios, del mas nuevo al mas viejo por defecto",
 					content = @Content(schema = @Schema(implementation = HistorialDeAgendaPageResponse.class))),
@@ -117,7 +130,8 @@ public class HistorialDeAgendaController {
 
 			@Parameter(description = "Tipos de cambio; repetible. Sin el, todos",
 					array = @ArraySchema(schema = @Schema(allowableValues = {"HORARIO_ALTA", "HORARIO_EDICION",
-							"HORARIO_BAJA", "EXCEPCION_ALTA", "EXCEPCION_EDICION", "EXCEPCION_BAJA", "TURNO_RESERVA",
+							"HORARIO_BAJA", "EXCEPCION_ALTA", "EXCEPCION_EDICION", "EXCEPCION_BAJA", "CIERRE_DE_SEDE_ALTA",
+							"CIERRE_DE_SEDE_EDICION", "CIERRE_DE_SEDE_BAJA", "TURNO_RESERVA",
 							"TURNO_SOBRETURNO", "TURNO_CONFIRMACION", "TURNO_CANCELACION", "TURNO_AUSENCIA",
 							"TURNO_REPROGRAMACION", "TURNO_TRASLADO", "TURNO_OBSERVACIONES"})))
 			@RequestParam(required = false) List<String> tipo,
