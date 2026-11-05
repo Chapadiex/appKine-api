@@ -79,6 +79,21 @@ public interface BloqueDisponibilidadRepository
 			@Param("organizationId") Long organizationId,
 			@Param("membershipIds") Collection<Long> membershipIds);
 
+	@Query("""
+			SELECT DISTINCT b.membershipId FROM BloqueDisponibilidad b
+			 WHERE b.organizationId = :organizationId
+			   AND b.consultorioId = :consultorioId
+			   AND b.active = true
+			   AND b.vigenciaDesde < :hasta
+			   AND (b.vigenciaHasta IS NULL OR b.vigenciaHasta > :desde)
+			""")
+	@Override
+	List<Long> findMembershipsConBloquesVigentesEn(
+			@Param("organizationId") Long organizationId,
+			@Param("consultorioId") Long consultorioId,
+			@Param("desde") LocalDate desde,
+			@Param("hasta") LocalDate hasta);
+
 	/** Un bloque por id, acotado al tenant y a la sede, activo o no. */
 	@Query("""
 			SELECT b FROM BloqueDisponibilidad b
@@ -122,4 +137,14 @@ public interface BloqueDisponibilidadRepository
 			@Param("organizationId") Long organizationId,
 			@Param("membershipId") Long membershipId,
 			@Param("fecha") LocalDate fecha);
+
+	@Query("""
+			SELECT b FROM BloqueDisponibilidad b
+			 WHERE b.organizationId = :organizationId
+			   AND b.membershipId IN :membershipIds
+			""")
+	@Override
+	List<BloqueDisponibilidad> findTodosDeLasMemberships(
+			@Param("organizationId") Long organizationId,
+			@Param("membershipIds") Collection<Long> membershipIds);
 }

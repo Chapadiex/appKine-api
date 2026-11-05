@@ -13,7 +13,10 @@ import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.SlotCompletoException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
+import com.akine.platform.spi.problem.ConflictoDeAgenda;
+import com.akine.scheduling.spi.OcupacionDePersona;
 import com.akine.scheduling.spi.OcupacionExternaProbe;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -55,6 +58,7 @@ class RevalidadorDeSlot {
 	private final EspacioDirectory espacios;
 	private final OcupacionExternaProbe ocupacionExterna;
 	private final AgendaDelProfesional agendaDelProfesional;
+	private final OcupacionDePersona ocupacion;
 
 	RevalidadorDeSlot(
 			TurnoRepositoryPort turnos,
@@ -63,6 +67,19 @@ class RevalidadorDeSlot {
 			EspacioDirectory espacios,
 			OcupacionExternaProbe ocupacionExterna,
 			AgendaDelProfesional agendaDelProfesional) {
+		this(turnos, ofertas, disponibilidad, espacios, ocupacionExterna, agendaDelProfesional,
+				new OcupacionDePersonaService(turnos, ocupacionExterna, agendaDelProfesional, disponibilidad, null));
+	}
+
+	@Autowired
+	RevalidadorDeSlot(
+			TurnoRepositoryPort turnos,
+			OfertaDirectory ofertas,
+			DisponibilidadDirectory disponibilidad,
+			EspacioDirectory espacios,
+			OcupacionExternaProbe ocupacionExterna,
+			AgendaDelProfesional agendaDelProfesional,
+			OcupacionDePersona ocupacion) {
 
 		this.turnos = turnos;
 		this.ofertas = ofertas;
@@ -70,6 +87,7 @@ class RevalidadorDeSlot {
 		this.espacios = espacios;
 		this.ocupacionExterna = ocupacionExterna;
 		this.agendaDelProfesional = agendaDelProfesional;
+		this.ocupacion = ocupacion;
 	}
 
 	/**
@@ -80,8 +98,9 @@ class RevalidadorDeSlot {
 	 *                        turno que se corre media hora chocaria contra si mismo
 	 * @param espacioElegidoId box elegido a mano, o {@code null} para que lo asigne el sistema
 	 * @param sobreturno      {@code true} si se autorizo ocupar un horario tomado. Saltea el cupo y
-	 *                        el solapamiento y <b>nada mas</b>: el profesional sigue teniendo que
-	 *                        estar habilitado y atender a esa hora
+	 *                        el solapamiento con turnos <b>de esta sede</b> y <b>nada mas</b>: el
+	 *                        profesional sigue teniendo que estar habilitado y atender a esa hora, y
+	 *                        un turno suyo en otra sede o una clase lo siguen rechazando
 	 */
 	record Pedido(
 			long organizationId,
@@ -231,7 +250,7 @@ class RevalidadorDeSlot {
 		if (!pedido.sobreturno()) {
 			exigirLugarDelProfesional(pedido, profesionalId, bajoLock);
 		} else {
-			exigirSobreturnoSinClases(pedido, profesionalId, bajoLock);
+			exigirSobreturnoSinOtrasObligaciones(pedido, profesionalId, bajoLock);
 		}
 
 		Long espacioId = null;
@@ -259,54 +278,62 @@ class RevalidadorDeSlot {
 
 		if (profesionalId != null) {
 			// Agenda de profesionales (checklist §9.2). La misma PERSONA tiene una membership por sede, y
-			// el lock de agenda_sede no ve la otra sede: sin esto se le daban dos turnos a la misma hora
-			// en dos sedes. Bajo el lock se toma la fila de la persona (V129) DESPUES de la de la sede
-			// —orden fijo, sin deadlock entre sedes— y el cruce mira todas sus memberships.
-			Set<Long> mismaPersona = bajoLock
-					? agendaDelProfesional.bloquear(pedido.organizationId(), profesionalId)
-					: agendaDelProfesional.deLaMismaPersona(pedido.organizationId(), profesionalId);
-			Optional<Turno> conflicto = conflictoRealDeProfesional(pedido, profesionalId, mismaPersona);
+			// el lock de agenda_sede no ve la otra sede. Bajo el lock se toma la fila de la persona (V129)
+			// DESPUES de la de la sede —orden fijo, sin deadlock entre sedes—.
+			tomarPersona(pedido, profesionalId, bajoLock);
+			// Disponibilidad central (0.158.0): turnos y clases (principal o adicional) de la misma persona
+			// en cualquier sede, preguntados a la logica unica que tambien usan las clases y las aperturas.
+			// Un turno del mismo grupo (oferta grupal, mismo profesional e inicio) no es un choque.
+			Optional<ConflictoDeAgenda> conflicto = ocupacion.actividadReservada(new OcupacionDePersona.Consulta(
+							pedido.organizationId(), pedido.consultorioId(), profesionalId, pedido.inicio(),
+							pedido.fin(), pedido.turnoExcluidoId(), null, pedido.oferta().id()))
+					.stream()
+					.findFirst();
 			if (conflicto.isPresent()) {
-				Turno otro = conflicto.get();
-				throw RecursoOcupadoException.porTurno("profesional", otro.getId(), otro.getConsultorioId(),
-						otro.getConsultorioId() != pedido.consultorioId(), otro.getInicio(), otro.getFin());
+				throw RecursoOcupadoException.por("profesional", conflicto.get());
 			}
-
-			// AKINE-08.01, y desde la agenda de clases y avisos (0.156.0) por PERSONA. Una clase ocupa
-			// al profesional igual que un turno, en cualquier sede y sea principal o instructor
-			// adicional. Corre bajo los mismos dos locks —sede y persona— que toma la clase al
-			// programarse, asi que las dos escrituras se serializan aunque sean de sedes distintas.
-			// Antes miraba una sola membership: una clase de 10 a 11 en la Sede Centro dejaba reservar a
-			// la misma persona a las 10:30 en la Sede Norte.
-			exigirSinClases(pedido, mismaPersona);
-		}
-	}
-
-	private void exigirSinClases(Pedido pedido, Set<Long> mismaPersona) {
-		Optional<OcupacionExternaProbe.OcupacionExterna> clase = ocupacionExterna
-				.ocupacionDeProfesionales(pedido.organizationId(), mismaPersona, pedido.inicio(), pedido.fin())
-				.stream()
-				.findFirst();
-		if (clase.isPresent()) {
-			throw RecursoOcupadoException.porClase("profesional", clase.get().eventoId(),
-					clase.get().consultorioId(), clase.get().consultorioId() != pedido.consultorioId(),
-					clase.get().inicio(), clase.get().fin());
+			// La franja se leyo antes del lock de la persona (prevalidar). Una apertura con sustitucion en
+			// otra sede pudo cerrar esta franja mientras se esperaba: bajo el lock se vuelve a mirar.
+			if (bajoLock) {
+				exigirDentroDeFranja(pedido);
+			}
 		}
 	}
 
 	/**
-	 * El sobreturno salva la ocupacion de TURNOS (atender a dos pacientes en el mismo horario), no la de
-	 * una clase: la persona no puede estar a la vez dando una clase, en otra sala o en otra sede (agenda
-	 * de clases y avisos, 0.156.0). Toma igual el lock de la persona, para serializar con la clase.
+	 * El sobreturno salva la ocupacion de TURNOS <b>de esta sede</b> (atender a dos pacientes en el mismo
+	 * horario, en el mismo lugar), y nada mas. No salva una clase —la persona no puede estar a la vez dando
+	 * una clase, en otra sala o en otra sede (agenda de clases y avisos, 0.156.0)— ni un turno de la misma
+	 * persona en <b>otra</b> sede (D-5, QA del 05/11/2026): no puede atender en dos sedes a la vez, y hasta
+	 * entonces el filtro solo miraba {@code CLASE} y el turno de la otra sede pasaba con 201. Los cierres y
+	 * la franja ya los exigio {@link #prevalidar}. Toma igual el lock de la persona, para serializar con la
+	 * otra sede y con la clase.
 	 */
-	private void exigirSobreturnoSinClases(Pedido pedido, Long profesionalId, boolean bajoLock) {
+	private void exigirSobreturnoSinOtrasObligaciones(Pedido pedido, Long profesionalId, boolean bajoLock) {
 		if (profesionalId == null) {
 			return;
 		}
-		Set<Long> mismaPersona = bajoLock
-				? agendaDelProfesional.bloquear(pedido.organizationId(), profesionalId)
-				: agendaDelProfesional.deLaMismaPersona(pedido.organizationId(), profesionalId);
-		exigirSinClases(pedido, mismaPersona);
+		tomarPersona(pedido, profesionalId, bajoLock);
+		Optional<ConflictoDeAgenda> conflicto = ocupacion.actividadReservada(new OcupacionDePersona.Consulta(
+						pedido.organizationId(), pedido.consultorioId(), profesionalId, pedido.inicio(),
+						pedido.fin(), pedido.turnoExcluidoId(), null, pedido.oferta().id()))
+				.stream()
+				.filter(RevalidadorDeSlot::noLoSalvaElSobreturno)
+				.findFirst();
+		if (conflicto.isPresent()) {
+			throw RecursoOcupadoException.por("profesional", conflicto.get());
+		}
+	}
+
+	/** Lo unico que un sobreturno puede pisar es un turno de la misma sede. */
+	static boolean noLoSalvaElSobreturno(ConflictoDeAgenda conflicto) {
+		return !(conflicto.tipo() == ConflictoDeAgenda.Tipo.TURNO && conflicto.mismaSede());
+	}
+
+	private void tomarPersona(Pedido pedido, long profesionalId, boolean bajoLock) {
+		if (bajoLock) {
+			agendaDelProfesional.bloquear(pedido.organizationId(), profesionalId);
+		}
 	}
 
 	/**
@@ -350,6 +377,16 @@ class RevalidadorDeSlot {
 					"el profesional ya no esta habilitado para esta oferta en esa fecha");
 		}
 
+		exigirDentroDeFranja(pedido);
+		return pedido.profesionalId();
+	}
+
+	/**
+	 * Que {@code [inicio, fin)} caiga DENTRO de una franja de la disponibilidad efectiva del profesional
+	 * en la sede. Si no cae y lo que la recorta es un cierre —un bloqueo o una ausencia suyos, o el
+	 * cierre de la sede—, el rechazo lo nombra con su franja (disponibilidad central, 0.158.0).
+	 */
+	private void exigirDentroDeFranja(Pedido pedido) {
 		LocalDate fecha = pedido.inicio()
 				.atZone(ZoneId.of(pedido.sede().timezone())).toLocalDate();
 		boolean dentroDeFranja = disponibilidad
@@ -361,10 +398,12 @@ class RevalidadorDeSlot {
 				.anyMatch(franja -> !franja.desde().isAfter(pedido.inicio())
 						&& !franja.hasta().isBefore(pedido.fin()));
 		if (!dentroDeFranja) {
-			throw new SlotNoDisponibleException("el profesional ya no atiende en ese horario");
+			Optional<ConflictoDeAgenda> cierre = ocupacion.cierres(OcupacionDePersona.Consulta.de(
+					pedido.organizationId(), pedido.consultorioId(), pedido.profesionalId(), pedido.inicio(),
+					pedido.fin())).stream().findFirst();
+			throw cierre.map(SlotNoDisponibleException::por)
+					.orElseGet(() -> new SlotNoDisponibleException("el profesional ya no atiende en ese horario"));
 		}
-
-		return pedido.profesionalId();
 	}
 
 	/**
@@ -396,24 +435,6 @@ class RevalidadorDeSlot {
 		return estabaEnEsteSlot ? ocupados - 1 : ocupados;
 	}
 
-	/**
-	 * El otro turno del profesional que se cruza y que NO es del mismo grupo, si lo hay.
-	 *
-	 * <p>Sin esta distincion, la segunda inscripcion a una clase grupal fallaria por "profesional
-	 * ocupado" contra la primera: los turnos de un mismo slot grupal comparten profesional, oferta
-	 * y hora a proposito. Lo que es conflicto es cualquier OTRO turno que se cruce.
-	 */
-	private Optional<Turno> conflictoRealDeProfesional(Pedido pedido, long profesionalId, Set<Long> mismaPersona) {
-		return turnos
-				.findVivosDeProfesionalesQueCruzan(
-						pedido.organizationId(), mismaPersona, pedido.inicio(), pedido.fin())
-				.stream()
-				.filter(otro -> !esElExcluido(otro, pedido))
-				.filter(otro -> !(otro.getOfertaId().equals(pedido.oferta().id())
-						&& Objects.equals(otro.getProfesionalMembershipId(), profesionalId)
-						&& otro.getInicio().equals(pedido.inicio())))
-				.findFirst();
-	}
 
 	/**
 	 * Elige el primer espacio habilitado, en servicio y libre en ese intervalo.

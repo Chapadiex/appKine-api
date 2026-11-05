@@ -1,5 +1,7 @@
 package com.akine.activity.domain.exception;
 
+import com.akine.platform.spi.problem.ConflictoDeAgenda;
+
 import java.time.Instant;
 
 /**
@@ -23,6 +25,7 @@ public class RecursoOcupadoException extends RuntimeException {
 	private final Long conflictoConsultorioId;
 	private final Instant conflictoInicio;
 	private final Instant conflictoFin;
+	private final ConflictoDeAgenda conflicto;
 
 	public RecursoOcupadoException(String recurso) {
 		super("El " + recurso + " ya esta ocupado en ese horario");
@@ -32,6 +35,7 @@ public class RecursoOcupadoException extends RuntimeException {
 		this.conflictoConsultorioId = null;
 		this.conflictoInicio = null;
 		this.conflictoFin = null;
+		this.conflicto = null;
 	}
 
 	/**
@@ -52,6 +56,27 @@ public class RecursoOcupadoException extends RuntimeException {
 		this.conflictoConsultorioId = conflictoConsultorioId;
 		this.conflictoInicio = conflictoInicio;
 		this.conflictoFin = conflictoFin;
+		this.conflicto = null;
+	}
+
+	/**
+	 * Disponibilidad central (0.158.0): el conflicto real de un instructor (principal o adicional), con
+	 * causa, sede y franja, y el detail en castellano. Nunca datos del paciente.
+	 */
+	public RecursoOcupadoException(String recurso, ConflictoDeAgenda conflicto) {
+		super(conflicto.detalle("No es posible asignarle la clase en ese horario."));
+		this.recurso = recurso;
+		this.conflictoTipo = conflicto.tipo().name();
+		this.conflictoId = conflicto.eventoId();
+		this.conflictoConsultorioId = conflicto.consultorioId();
+		this.conflictoInicio = conflicto.desde();
+		this.conflictoFin = conflicto.hasta();
+		this.conflicto = conflicto;
+	}
+
+	/** {@code null} en las formas anteriores a 0.158.0. */
+	public ConflictoDeAgenda getConflicto() {
+		return conflicto;
 	}
 
 	public String getRecurso() {

@@ -8,6 +8,8 @@ import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.domain.BloqueDisponibilidad;
+import com.akine.resource.domain.DisponibilidadExcepcion;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.domain.IntervaloLocal;
 import com.akine.resource.domain.PermissionCodes;
 import com.akine.resource.domain.exception.BloqueInactivoException;
@@ -127,6 +129,7 @@ public class DisponibilidadService {
 	private final AuditTrail auditTrail;
 	private final SimuladorDeImpacto simulador;
 	private final BloqueoDeAgendaDeProfesional agendasDeProfesional;
+	private final DisponibilidadExcepcionRepositoryPort excepciones;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public DisponibilidadService(
@@ -140,7 +143,26 @@ public class DisponibilidadService {
 			SimuladorDeImpacto simulador,
 			PlatformTransactionManager transactionManager,
 			BloqueoDeAgendaDeProfesional agendasDeProfesional) {
+		this(bloques, calendarios, calendarioIniciador, consultorioDirectory, membershipDirectory, permissionGuard,
+				auditTrail, simulador, transactionManager, agendasDeProfesional, null);
+	}
 
+	@org.springframework.beans.factory.annotation.Autowired
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public DisponibilidadService(
+			BloqueDisponibilidadRepositoryPort bloques,
+			CalendarioSedeRepositoryPort calendarios,
+			CalendarioSedeIniciador calendarioIniciador,
+			ConsultorioDirectory consultorioDirectory,
+			ConsultorioMembershipDirectory membershipDirectory,
+			PermissionGuard permissionGuard,
+			AuditTrail auditTrail,
+			SimuladorDeImpacto simulador,
+			PlatformTransactionManager transactionManager,
+			BloqueoDeAgendaDeProfesional agendasDeProfesional,
+			DisponibilidadExcepcionRepositoryPort excepciones) {
+
+		this.excepciones = excepciones;
 		this.bloques = bloques;
 		this.calendarios = calendarios;
 		this.calendarioIniciador = calendarioIniciador;
@@ -241,11 +263,13 @@ public class DisponibilidadService {
 			return BloqueView.de(yaCargado.get());
 		}
 
-		exigirSinSolapamiento(
+		exigirSinSolapamiento(consultorioId,
 				activos, null, dia, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta);
-		exigirSinSolapamiento(
+		exigirSinSolapamiento(consultorioId,
 				deLaMismaPersonaEnOtrasSedes(organizationId, consultorioId, membershipId, mismaPersona),
 				null, dia, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta);
+		exigirSinAperturasEnOtrasSedes(organizationId, consultorioId, mismaPersona, dia, horaDesde, horaHasta,
+				vigenciaDesde, vigenciaHasta, hoy);
 
 		BloqueDisponibilidad nuevo = new BloqueDisponibilidad(
 				organizationId, consultorioId, membershipId,
@@ -358,16 +382,19 @@ public class DisponibilidadService {
 				command.vigenciaDesde(), command.vigenciaHasta(), command.limpiarVigenciaHasta());
 
 		// El propio bloque se excluye de la comparacion: solapa consigo mismo por definicion.
-		exigirSinSolapamiento(
+		exigirSinSolapamiento(consultorioId,
 				bloques.findActivosDe(organizationId, consultorioId, membershipId),
 				bloqueId,
 				bloque.getDiaSemana(), bloque.getHoraDesde(), bloque.getHoraHasta(),
 				bloque.getVigenciaDesde(), bloque.getVigenciaHasta());
-		exigirSinSolapamiento(
+		exigirSinSolapamiento(consultorioId,
 				deLaMismaPersonaEnOtrasSedes(organizationId, consultorioId, membershipId, mismaPersona),
 				bloqueId,
 				bloque.getDiaSemana(), bloque.getHoraDesde(), bloque.getHoraHasta(),
 				bloque.getVigenciaDesde(), bloque.getVigenciaHasta());
+		exigirSinAperturasEnOtrasSedes(organizationId, consultorioId, mismaPersona, bloque.getDiaSemana(),
+				bloque.getHoraDesde(), bloque.getHoraHasta(), bloque.getVigenciaDesde(), bloque.getVigenciaHasta(),
+				LocalDate.ofInstant(ahora, zonaDe(sede)));
 
 		BloqueDisponibilidad guardado = bloques.save(bloque);
 		if (impacto.hayAlgo()) {
@@ -693,7 +720,8 @@ public class DisponibilidadService {
 	 * "martes de 09 a 13" cargado para marzo y para septiembre no es un conflicto, es un horario
 	 * que cambia de temporada.
 	 */
-	private static void exigirSinSolapamiento(
+	private void exigirSinSolapamiento(
+			long consultorioId,
 			List<BloqueDisponibilidad> activos,
 			Long bloqueEditadoId,
 			int dia,
@@ -720,8 +748,54 @@ public class DisponibilidadService {
 					vigenciaDesde, vigenciaHasta, otro.getVigenciaDesde(), otro.getVigenciaHasta())) {
 				continue;
 			}
-			throw new BloqueSolapadoException(otro.getId(), dia, horaDesde, horaHasta);
+			// Disponibilidad central (0.158.0): con la sede real del choque, que puede ser otra.
+			throw new BloqueSolapadoException(otro.getId(), dia, horaDesde, horaHasta,
+					BloqueSolapadoException.Origen.BLOQUE, otro.getConsultorioId(),
+					nombreDeSede(otro.getOrganizationId(), otro.getConsultorioId()),
+					otro.getConsultorioId() == consultorioId, otro.getHoraDesde(), otro.getHoraHasta(), null);
 		}
+	}
+
+	/**
+	 * Las APERTURAS de la misma persona en OTRAS sedes que caen en ese dia de la semana, dentro de la
+	 * vigencia y se pisan con el horario (disponibilidad central, 0.158.0). Un horario habitual en Centro
+	 * de lunes de 8 a 14 no puede convivir con una apertura en Norte el lunes 10/03 de 10 a 12: seria
+	 * doble oferta. Una apertura de dia completo se pisa con cualquier horario de ese dia.
+	 */
+	private void exigirSinAperturasEnOtrasSedes(
+			long organizationId, long consultorioId, Set<Long> mismaPersona, int dia, LocalTime horaDesde,
+			LocalTime horaHasta, LocalDate vigenciaDesde, LocalDate vigenciaHasta, LocalDate hoy) {
+
+		if (excepciones == null) {
+			return;
+		}
+		IntervaloLocal intervalo = new IntervaloLocal(horaDesde, horaHasta);
+		for (DisponibilidadExcepcion apertura
+				: excepciones.findAperturasActivasDeLasMemberships(organizationId, mismaPersona, hoy)) {
+			if (apertura.getConsultorioId() == consultorioId) {
+				continue;
+			}
+			boolean seCruzaEnHorario = apertura.intervalo().map(intervalo::solapaCon).orElse(true);
+			if (!seCruzaEnHorario) {
+				continue;
+			}
+			for (LocalDate fecha = apertura.getFechaDesde(); fecha.isBefore(apertura.getFechaHasta());
+					fecha = fecha.plusDays(1)) {
+				boolean enVigencia = !fecha.isBefore(vigenciaDesde)
+						&& (vigenciaHasta == null || fecha.isBefore(vigenciaHasta));
+				if (fecha.getDayOfWeek().getValue() == dia && enVigencia && !fecha.isBefore(hoy)) {
+					throw new BloqueSolapadoException(apertura.getId(), dia, horaDesde, horaHasta,
+							BloqueSolapadoException.Origen.APERTURA, apertura.getConsultorioId(),
+							nombreDeSede(organizationId, apertura.getConsultorioId()), false,
+							apertura.getHoraDesde() == null ? LocalTime.MIDNIGHT : apertura.getHoraDesde(),
+							apertura.getHoraHasta() == null ? LocalTime.MIDNIGHT : apertura.getHoraHasta(), fecha);
+				}
+			}
+		}
+	}
+
+	private String nombreDeSede(long organizationId, long consultorioId) {
+		return consultorioDirectory.find(organizationId, consultorioId).map(ConsultorioSnapshot::name).orElse(null);
 	}
 
 	/**

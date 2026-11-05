@@ -125,7 +125,10 @@ public class PrevisualizacionDeSerieService {
 							command.profesionalId(), null)).espacioId();
 				} catch (RecursoOcupadoException ocupado) {
 					estado = "NO_DISPONIBLE";
-					motivo = "profesional".equals(ocupado.getRecurso())
+					// Disponibilidad central (0.158.0): que ocurrencia choca con que, en que sede y a que hora.
+					motivo = ocupado.getConflicto() != null
+							? ocupado.getConflicto().detalle(null)
+							: "profesional".equals(ocupado.getRecurso())
 							? "El profesional ya tiene otro turno en ese horario."
 							: "No queda ningun box libre en ese horario.";
 				} catch (SlotCompletoException completo) {

@@ -46,6 +46,7 @@ import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Cambio de sede de un turno (checklist de agenda §7.4, decision D1).
@@ -93,6 +94,9 @@ public class TrasladoDeTurnoService {
 
 	/** Ancho de {@code turno.motivo_cancelacion} y de {@code turno_evento.motivo}. */
 	private static final int LARGO_DE_MOTIVO = 300;
+
+	/** Clave de {@code details} que une las filas de auditoria de un mismo cambio de sede. */
+	static final String OPERACION_ID = "operacionId";
 
 	private final TurnoRepositoryPort turnos;
 	private final TurnoEventoRepositoryPort eventos;
@@ -257,9 +261,12 @@ public class TrasladoDeTurnoService {
 		// destino no tiene lugar, el rollback deshace todo.
 		AvisosDeTurno.Antes antes = AvisosDeTurno.Antes.de(original, origen);
 		EstadoTurno estadoOriginal = original.getEstado();
+		// Un id comun a las tres filas de auditoria de esta operacion (cancelacion, reserva y traslado):
+		// el historial de agenda las muestra como un solo movimiento y las lista como relacionadas.
+		Map<String, String> operacion = Map.of(OPERACION_ID, UUID.randomUUID().toString());
 		Turno cancelado = ciclo.aplicarCancelacion(actor, origen, original,
 				recortar("Cambio de sede a " + destino.name() + ": " + command.motivo()),
-				OrigenDeCancelacion.INSTITUCION, ahora, false);
+				OrigenDeCancelacion.INSTITUCION, ahora, false, operacion);
 
 		// 2. Reservar en el destino, con la revalidacion entera.
 		Instant fin = inicio.plusSeconds(oferta.duracionCon(
@@ -290,12 +297,14 @@ public class TrasladoDeTurnoService {
 				actor.accountId(), ahora));
 
 		Map<String, String> detallesNuevo = DetallesDeAuditoriaDeTurno.de(actor, reservado);
+		detallesNuevo.putAll(operacion);
 		auditTrail.record(new AuditEntry(organizationId, destino.id(), actor.accountId(), "TURNO_RESERVADO",
 				"Turno", reservado.getId(), null, reservado.getEstado().name(), detallesNuevo,
 				command.motivo(), null, ahora));
 		Map<String, String> detallesOriginal = DetallesDeAuditoriaDeTurno.de(actor, cancelado);
 		detallesOriginal.put("consultorioDestinoId", String.valueOf(destino.id()));
 		detallesOriginal.put("turnoNuevoId", String.valueOf(reservado.getId()));
+		detallesOriginal.putAll(operacion);
 		auditTrail.record(new AuditEntry(organizationId, origen.id(), actor.accountId(), "TURNO_TRASLADADO",
 				"Turno", cancelado.getId(), estadoOriginal.name(), cancelado.getEstado().name(), detallesOriginal,
 				command.motivo(), null, ahora));

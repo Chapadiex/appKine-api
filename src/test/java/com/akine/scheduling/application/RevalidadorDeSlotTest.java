@@ -643,6 +643,23 @@ class RevalidadorDeSlotTest {
 		}
 
 		@Test
+		@DisplayName("D-5: no salva un TURNO de la misma persona en otra sede")
+		void no_salva_un_turno_de_otra_sede() {
+			Turno enOtraSede = new Turno(ORG_ID, 999L, OFERTA_ID + 1, PERSONA_ID, PROFESIONAL_ID, null, INICIO,
+					INICIO.plus(Duration.ofMinutes(45)), CUENTA, Instant.EPOCH, null, null);
+			ReflectionTestUtils.setField(enOtraSede, "id", TURNO_ID + 7);
+			given(turnos.findVivosDeProfesionalesQueCruzan(anyLong(), any(), any(), any())).willReturn(List.of(enOtraSede));
+
+			assertThatThrownBy(() -> revalidador.revalidar(sobreturno()))
+					.isInstanceOfSatisfying(RecursoOcupadoException.class, e -> {
+						assertThat(e.getConflictoTipo()).isEqualTo("TURNO");
+						assertThat(e.getTurnoEnConflictoId()).isEqualTo(TURNO_ID + 7);
+						assertThat(e.getConflicto().mismaSede()).isFalse();
+						assertThat(e.getConflictoConsultorioId()).isEqualTo(999L);
+					});
+		}
+
+		@Test
 		@DisplayName("No salva un horario fuera de la disponibilidad")
 		void no_salva_un_horario_que_no_existe() {
 			given(disponibilidad.efectiva(anyLong(), any(), anyLong(), any(), any())).willReturn(List.of());

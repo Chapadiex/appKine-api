@@ -124,7 +124,7 @@ public class ProyeccionDeClase {
 	}
 
 	/** Membership -> cuenta -> nombre, en dos consultas para toda la lista. */
-	private Map<Long, String> nombresDeProfesionales(
+	Map<Long, String> nombresDeProfesionales(
 			long organizationId, Collection<Long> membershipIds) {
 
 		if (membershipIds.isEmpty()) {

@@ -104,6 +104,15 @@ public final class SchedulingRepositoryPorts {
 				long organizationId, long consultorioId, Instant desde, Instant hasta);
 
 		/**
+		 * Los turnos de esas memberships en la sede que EMPIEZAN en {@code [desde, hasta)}, en cualquier
+		 * estado y aunque esten cancelados: para el historial de agenda, que pregunta si un cierre de sede
+		 * toco a la persona y cuantos turnos suyos cayeron adentro.
+		 */
+		List<Turno> findDeProfesionalesEnSedeEnVentana(
+				long organizationId, long consultorioId, Collection<Long> profesionalMembershipIds,
+				Instant desde, Instant hasta);
+
+		/**
 		 * El turno creado con esa clave de idempotencia, si existe.
 		 *
 		 * <p>El alcance es la ORGANIZACION y no la sede, igual que el unique de V30: una clave

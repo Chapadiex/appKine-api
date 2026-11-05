@@ -111,9 +111,16 @@ public interface AuditEventRepository extends Repository<AuditEvent, Long> {
 			Pageable pageable);
 
 	/**
-	 * Historial de agenda de UNA PERSONA (V134): los eventos de esos tipos cuyo profesional —o el de
-	 * antes, en una reprogramacion— es alguna de sus memberships. Usa {@code ix_audit_event_agenda} y
-	 * {@code ix_audit_event_agenda_anterior}.
+	 * Historial de agenda de UNA PERSONA (V134, V139): los eventos de esos tipos cuyo profesional —o el
+	 * de antes, en una reprogramacion— es alguna de sus memberships; los eventos de sede que el llamador
+	 * ya resolvio que la tocan ({@code idsSede}); y, con {@code unificar}, un cambio de sede como UNA
+	 * fila. Usa {@code ix_audit_event_agenda}, {@code ix_audit_event_agenda_anterior},
+	 * {@code ix_audit_event_entity} e {@code ix_audit_event_agenda_turno_origen}.
+	 *
+	 * <p>Unificar el traslado: la cancelacion del turno original que tiene un {@code traslado} se
+	 * absorbe, la reserva que lleva {@code turnoOrigenId} tambien, y el {@code traslado} aparece ademas
+	 * para el profesional de destino (el de esa reserva). Todo en SQL, para que el paginado y el total
+	 * sigan siendo exactos.
 	 *
 	 * <p>Aca si se busca en el motivo: quien lee este historial ya puede ver la agenda de esa persona
 	 * y no hay nada redactado que adivinar (a diferencia de {@link #TEXTO}).
@@ -121,9 +128,23 @@ public interface AuditEventRepository extends Repository<AuditEvent, Long> {
 	 * @param todasLasSedes {@code true} ignora {@code sedes}: el lector alcanza la organizacion entera
 	 */
 	@Query("select e from AuditEvent e where e.organizationId = :organizationId"
-			+ " and (e.agendaMembershipRef in :memberships or e.agendaMembershipAnteriorRef in :memberships)"
-			+ " and e.eventType in :tipos"
-			+ " and (:todasLasSedes = true or e.consultorioId in :sedes)"
+			+ " and ("
+			+ "   (e.eventType in :tipos"
+			+ "    and (e.agendaMembershipRef in :memberships or e.agendaMembershipAnteriorRef in :memberships)"
+			+ "    and (:todasLasSedes = true or e.consultorioId in :sedes))"
+			+ "   or (:conSede = true and e.entityType = :entidadSede and e.entityId in :idsSede"
+			+ "    and e.eventType in :tiposSede"
+			+ "    and (:todasLasSedes = true or e.consultorioId in :sedes))"
+			+ "   or (:unificar = true and e.eventType = :traslado and e.eventType in :tipos and exists ("
+			+ "    select r.id from AuditEvent r where r.organizationId = e.organizationId"
+			+ "     and r.eventType = :reserva and r.agendaTurnoOrigenRef = cast(e.entityId as String)"
+			+ "     and r.agendaMembershipRef in :memberships"
+			+ "     and (:todasLasSedes = true or r.consultorioId in :sedes or e.consultorioId in :sedes)))"
+			+ " )"
+			+ " and (:unificar = false or e.eventType <> :cancelacion or not exists ("
+			+ "    select t.id from AuditEvent t where t.organizationId = e.organizationId"
+			+ "     and t.eventType = :traslado and t.entityType = e.entityType and t.entityId = e.entityId))"
+			+ " and (:unificar = false or e.eventType <> :reserva or e.agendaTurnoOrigenRef is null)"
 			+ " and (:desde is null or e.occurredAt >= :desde)"
 			+ " and (:hasta is null or e.occurredAt < :hasta)"
 			+ " and (:patron is null or e.reason like :patron escape '\\'"
@@ -134,8 +155,32 @@ public interface AuditEventRepository extends Repository<AuditEvent, Long> {
 			@Param("tipos") java.util.Collection<String> tipos,
 			@Param("todasLasSedes") boolean todasLasSedes,
 			@Param("sedes") java.util.Collection<Long> sedes,
+			@Param("conSede") boolean conSede,
+			@Param("entidadSede") String entidadSede,
+			@Param("idsSede") java.util.Collection<Long> idsSede,
+			@Param("tiposSede") java.util.Collection<String> tiposSede,
+			@Param("unificar") boolean unificar,
+			@Param("traslado") String traslado,
+			@Param("cancelacion") String cancelacion,
+			@Param("reserva") String reserva,
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta,
 			@Param("patron") String patron,
 			Pageable pageable);
+
+	/**
+	 * Las filas absorbidas de los traslados de esos turnos de origen: su cancelacion y la reserva del
+	 * turno nuevo (V139). Para el detalle de la fila visible, no para paginar.
+	 */
+	@Query("select e from AuditEvent e where e.organizationId = :organizationId"
+			+ " and ((e.eventType = :cancelacion and e.entityType = :entidad and e.entityId in :turnos)"
+			+ "   or (e.eventType = :reserva and e.agendaTurnoOrigenRef in :turnosTexto))"
+			+ " order by e.occurredAt asc, e.id asc")
+	java.util.List<AuditEvent> absorbidasDeTraslados(
+			@Param("organizationId") Long organizationId,
+			@Param("cancelacion") String cancelacion,
+			@Param("reserva") String reserva,
+			@Param("entidad") String entidad,
+			@Param("turnos") java.util.Collection<Long> turnos,
+			@Param("turnosTexto") java.util.Collection<String> turnosTexto);
 }

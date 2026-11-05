@@ -254,6 +254,7 @@ public class DisponibilidadDeTurnosService {
 		RuntimeException primerRechazo = null;
 		List<Long> libres = new ArrayList<>();
 		RevalidadorDeSlot.Pedido paraEspacios = null;
+		List<RevalidadorDeSlot.Pedido> ocupados = new ArrayList<>();
 		for (Long candidato : candidatos) {
 			RevalidadorDeSlot.Pedido evaluado = new RevalidadorDeSlot.Pedido(
 					organizationId, consultorioId, sede, oferta, inicio,
@@ -263,14 +264,18 @@ public class DisponibilidadDeTurnosService {
 				revalidador.evaluarSinLock(evaluado);
 				libres.add(candidato);
 				paraEspacios = paraEspacios == null ? evaluado : paraEspacios;
-			} catch (SlotNoDisponibleException | SlotCompletoException | RecursoOcupadoException
+			} catch (SlotCompletoException | RecursoOcupadoException rechazo) {
+				primerRechazo = primerRechazo == null ? rechazo : primerRechazo;
+				ocupados.add(evaluado);
+			} catch (SlotNoDisponibleException
 					| com.akine.scheduling.domain.exception.EspacioNoElegibleException rechazo) {
 				primerRechazo = primerRechazo == null ? rechazo : primerRechazo;
 			}
 		}
 
 		if (libres.isEmpty()) {
-			return noDisponibleDesde(actor, consultorioId, pedido, inicio, fin, fecha, primerRechazo);
+			return noDisponibleDesde(actor, consultorioId, pedido, inicio, fin, fecha, primerRechazo,
+					ocupados.stream().anyMatch(this::entraComoSobreturno));
 		}
 
 		Map<Long, String> nombresDeProfesionales = nombres.profesionales(
@@ -315,9 +320,29 @@ public class DisponibilidadDeTurnosService {
 				.map(responsable -> "El turno queda con un profesional distinto del responsable del caso.");
 	}
 
+	/**
+	 * D-5 (QA del 05/11/2026): si ese mismo pedido entraria como sobreturno, que es lo que la pantalla
+	 * ofrece al recibir un horario ocupado. Corre los mismos controles que la reserva con sobreturno, sin
+	 * lock: un turno de la misma persona en otra sede, una clase o un cierre lo siguen rechazando, y antes
+	 * la pantalla lo ofrecia para despues recibir un 201 que no debia existir (o un 409, para la clase).
+	 */
+	private boolean entraComoSobreturno(RevalidadorDeSlot.Pedido ocupado) {
+		RevalidadorDeSlot.Pedido sobreturno = new RevalidadorDeSlot.Pedido(
+				ocupado.organizationId(), ocupado.consultorioId(), ocupado.sede(), ocupado.oferta(),
+				ocupado.inicio(), ocupado.fin(), ocupado.profesionalId(), ocupado.turnoExcluidoId(),
+				ocupado.espacioElegidoId(), true);
+		try {
+			revalidador.evaluarSinLock(sobreturno);
+			return true;
+		} catch (SlotNoDisponibleException | SlotCompletoException | RecursoOcupadoException
+				| com.akine.scheduling.domain.exception.EspacioNoElegibleException rechazo) {
+			return false;
+		}
+	}
+
 	private ValidacionDeHorarioView noDisponibleDesde(
 			OperatingActor actor, long consultorioId, ValidacionDeHorarioCommand pedido,
-			Instant inicio, Instant fin, LocalDate fecha, RuntimeException rechazo) {
+			Instant inicio, Instant fin, LocalDate fecha, RuntimeException rechazo, boolean admiteSobreturno) {
 
 		if (rechazo instanceof RecursoOcupadoException ocupado) {
 			return noDisponible(actor, consultorioId, pedido, inicio, fin,
@@ -325,11 +350,11 @@ public class DisponibilidadDeTurnosService {
 					"profesional".equals(ocupado.getRecurso())
 							? motivoDeProfesionalOcupado(consultorioId, ocupado)
 							: "No queda ningun box libre en ese horario.",
-					fecha, ocupado);
+					fecha, ocupado, admiteSobreturno);
 		}
 		if (rechazo instanceof SlotCompletoException) {
 			return noDisponible(actor, consultorioId, pedido, inicio, fin, "SLOT_COMPLETO",
-					"Ese horario ya no tiene lugar.", fecha, null);
+					"Ese horario ya no tiene lugar.", fecha, null, admiteSobreturno);
 		}
 		String motivo = rechazo instanceof SlotNoDisponibleException sinHueco
 				? sinHueco.getMotivo()
@@ -341,6 +366,14 @@ public class DisponibilidadDeTurnosService {
 			OperatingActor actor, long consultorioId, ValidacionDeHorarioCommand pedido,
 			Instant inicio, Instant fin, String causa, String motivo, LocalDate fecha,
 			RecursoOcupadoException ocupado) {
+		return noDisponible(actor, consultorioId, pedido, inicio, fin, causa, motivo, fecha, ocupado, false);
+	}
+
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	private ValidacionDeHorarioView noDisponible(
+			OperatingActor actor, long consultorioId, ValidacionDeHorarioCommand pedido,
+			Instant inicio, Instant fin, String causa, String motivo, LocalDate fecha,
+			RecursoOcupadoException ocupado, boolean admiteSobreturno) {
 
 		List<HorarioDisponibleView> alternativas = "CONTEXTO_CLINICO".equals(causa)
 				? List.of()
@@ -353,7 +386,8 @@ public class DisponibilidadDeTurnosService {
 				List.of(), alternativas,
 				ocupado == null ? null : ocupado.getConflictoTipo(),
 				ocupado == null ? null : ocupado.getClaseEnConflictoId(),
-				ocupado == null ? null : ocupado.getConflictoConsultorioId());
+				ocupado == null ? null : ocupado.getConflictoConsultorioId(),
+				admiteSobreturno);
 	}
 
 	/**
@@ -361,6 +395,10 @@ public class DisponibilidadDeTurnosService {
 	 * sede se dice. Sin saber con que choca, un texto neutro.
 	 */
 	private static String motivoDeProfesionalOcupado(long consultorioId, RecursoOcupadoException ocupado) {
+		// Disponibilidad central (0.158.0): la causa con su franja y su sede.
+		if (ocupado.getConflicto() != null) {
+			return ocupado.getConflicto().detalle(null);
+		}
 		if (RecursoOcupadoException.CLASE.equals(ocupado.getConflictoTipo())) {
 			boolean otraSede = ocupado.getConflictoConsultorioId() != null
 					&& ocupado.getConflictoConsultorioId() != consultorioId;

@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.156.0
+  version: 0.158.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -7292,8 +7292,13 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Sede dada de baja (consultorio-inactive), o profesional sin\
-            \ vinculo vigente en esa sede (profesional-no-vinculado). NUNCA por solapamiento:\
+          description: "Sede dada de baja (consultorio-inactive), profesional sin\
+            \ vinculo vigente en esa sede (profesional-no-vinculado); un CIERRE que\
+            \ deja turnos o clases sin confirmar (bloqueo-con-turnos-afectados, con\
+            \ turnos y clases); o una APERTURA de profesional que choca con un turno\
+            \ o una clase de la misma persona en otra sede (recurso-ocupado, siempre)\
+            \ o con su horario en otra sede (bloque-solapado, salvo sustituirDisponibilidadSuperpuesta).\
+            \ Las extensiones conflicto* nombran causa, sede y franja. NUNCA por solapamiento:\
             \ dos excepciones que se pisan son las dos validas"
       summary: Alta de un cierre o de una apertura puntual
       tags:
@@ -7499,7 +7504,9 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Ya estaba dada de baja (excepcion-already-inactive), la version\
             \ quedo vieja (concurrent-modification), o el cambio deja turnos afuera\
-            \ sin confirmar (bloqueo-con-turnos-afectados, con la lista)"
+            \ sin confirmar (bloqueo-con-turnos-afectados, con turnos y clases), o\
+            \ una APERTURA que choca en otra sede con lo reservado (recurso-ocupado)\
+            \ o con su horario (bloque-solapado, salvo sustitucion)"
       summary: Edicion de una excepcion de disponibilidad
       tags:
       - Excepciones de disponibilidad
@@ -18811,7 +18818,11 @@ paths:
 
         `actorRol` es el rol de quien opero: `ORG_ADMIN`, `CONSULTORIO_ADMIN`, `ADMINISTRATIVO`, `PROFESIONAL` (o `PLATFORM_ADMIN` con acceso de soporte); ausente en cambios anteriores a la agenda de profesionales.
 
-        Es una lectura de la auditoria transversal: una sola fuente. Un cambio de sede tambien deja la cancelacion del turno original como fila propia.
+        Es una lectura de la auditoria transversal: una sola fuente.
+
+        **Un cambio de sede es una sola fila** `TURNO_TRASLADO`, con el antes (sede, hora, profesional y box de origen) y el despues; la cancelacion del original y la reserva del nuevo no aparecen como filas propias y viajan en `eventosRelacionados`. Si el traslado paso el turno a otra persona, la fila aparece en el historial de las dos (`cambioDeProfesional`). Una cancelacion que no es parte de un traslado sigue siendo `TURNO_CANCELACION`.
+
+        **Cierres de la sede entera** (`CIERRE_DE_SEDE_ALTA/EDICION/BAJA`): una excepcion de sede sin profesional aparece en el historial de cada profesional al que afecto —tenia horario habitual en esa sede en el periodo, o turnos o clases ahi—, resuelto al leer. Un cierre de otra sede, o de una en la que la persona no atendia ese periodo, no aparece. `cierreDeSede` trae el periodo (`ultimoDia` inclusive), el motivo y los turnos del profesional en el periodo, para ir a la agenda operativa de esa sede y fecha.
       operationId: listarHistorialDeAgenda
       parameters:
       - description: Organizacion del contexto
@@ -18853,6 +18864,9 @@ paths:
             - EXCEPCION_ALTA
             - EXCEPCION_EDICION
             - EXCEPCION_BAJA
+            - CIERRE_DE_SEDE_ALTA
+            - CIERRE_DE_SEDE_EDICION
+            - CIERRE_DE_SEDE_BAJA
             - TURNO_RESERVA
             - TURNO_SOBRETURNO
             - TURNO_CONFIRMACION
@@ -25953,8 +25967,10 @@ components:
             $ref: "#/components/schemas/ClaseEnAgenda"
         conflictos:
           type: array
-          description: Turnos y clases de la misma persona que ya se pisan (datos
-            anteriores a la regla entre sedes). Se calculan al leer; nada se modifica.
+          description: "Conflictos ya guardados: turno y clase de la misma persona\
+            \ que se pisan, clase con un instructor en cierre y doble oferta entre\
+            \ sedes (datos anteriores a la regla entre sedes). Se calculan al leer;\
+            \ nada se modifica."
           items:
             $ref: "#/components/schemas/ConflictoDeAgenda"
         desde:
@@ -27734,7 +27750,9 @@ components:
     CambioDeAgenda:
       type: object
       description: "Un cambio en la agenda de un profesional: horario habitual, excepcion\
-        \ o bloqueo, o un turno. `antes` y `despues` ya vienen armados para mostrar."
+        \ o bloqueo, cierre de la sede entera que lo afecto, o un turno. `antes` y\
+        \ `despues` ya vienen armados para mostrar. Un cambio de sede es UNA fila\
+        \ `TURNO_TRASLADO` (la cancelacion y la reserva que deja viajan en `eventosRelacionados`)."
       properties:
         actorCuentaId:
           type: integer
@@ -27755,11 +27773,16 @@ components:
           example: "Lun 10/11 10:00 · Sede Centro · Gomez, Laura"
         cambioDeProfesional:
           type: boolean
-          description: '`true` en una reprogramacion que paso el turno a otro profesional'
+          description: '`true` en una reprogramacion o un traslado que paso el turno
+            a otra persona'
+        cierreDeSede:
+          $ref: "#/components/schemas/CierreDeSedeEnHistorial"
+          description: "Solo en `CIERRE_DE_SEDE_*`: el cierre y lo que le dejo al\
+            \ profesional"
         consultorioId:
           type: integer
           format: int64
-          description: Sede del cambio
+          description: "Sede del cambio (en un traslado, la de origen)"
           example: 3
         consultorioNombre:
           type: string
@@ -27774,12 +27797,20 @@ components:
           enum:
           - HORARIO
           - EXCEPCION
+          - CIERRE_DE_SEDE
           - TURNO
         entidadId:
           type: integer
           format: int64
-          description: "Id del bloque, de la excepcion o del turno"
+          description: "Id del bloque, de la excepcion (tambien en un cierre de sede)\
+            \ o del turno"
           example: 4100
+        eventosRelacionados:
+          type: array
+          description: "Los hechos de la auditoria que esta fila resume (en un traslado:\
+            \ la cancelacion del original y la reserva del nuevo). Vacio en el resto"
+          items:
+            $ref: "#/components/schemas/EventoRelacionadoDeAgenda"
         id:
           type: integer
           format: int64
@@ -27793,11 +27824,16 @@ components:
           type: string
           format: date-time
           example: 2026-11-04T15:20:00Z
+        operacionId:
+          type: string
+          description: Id comun de los hechos auditados de una misma operacion. Ausente
+            en operaciones anteriores a 0.157.0
+          example: 6c1c0f8e-3f2a-4a51-9a3e-2f9f6f2e8a10
         personaId:
           type: integer
           format: int64
-          description: Paciente del turno. Solo si quien lee tiene `turno:read` en
-            esa sede
+          description: "Paciente del turno. Solo si quien lee tiene `turno:read` en\
+            \ esa sede (en un traslado, en la de origen o en la de destino)"
           example: 77
         personaNombre:
           type: string
@@ -27806,7 +27842,8 @@ components:
         profesionalId:
           type: integer
           format: int64
-          description: Membership del profesional en esa sede
+          description: "Membership del profesional en esa sede. En un cierre de sede,\
+            \ la del profesional consultado en esa sede"
           example: 31
         profesionalNombre:
           type: string
@@ -27821,6 +27858,9 @@ components:
           - EXCEPCION_ALTA
           - EXCEPCION_EDICION
           - EXCEPCION_BAJA
+          - CIERRE_DE_SEDE_ALTA
+          - CIERRE_DE_SEDE_EDICION
+          - CIERRE_DE_SEDE_BAJA
           - TURNO_RESERVA
           - TURNO_SOBRETURNO
           - TURNO_CONFIRMACION
@@ -27833,13 +27873,18 @@ components:
         turnoId:
           type: integer
           format: int64
-          description: "El turno, en los cambios de turno"
+          description: "El turno, en los cambios de turno (en un traslado, el original)"
           example: 4100
         turnoInicio:
           type: string
           format: date-time
           description: "Horario del turno, en los cambios de turno"
           example: 2026-11-10T14:00:00Z
+        turnoNuevoId:
+          type: integer
+          format: int64
+          description: "En un traslado, el turno que nacio en la sede de destino"
+          example: 4101
     CancelInvitacionRequest:
       type: object
       description: Motivo con el que se retira una invitacion pendiente
@@ -28696,6 +28741,63 @@ components:
           example: CONSULTORIO_ADMIN
       required:
       - reason
+    CierreDeSedeEnHistorial:
+      type: object
+      description: "Un cierre de la sede entera visto desde la agenda de un profesional.\
+        \ Los conteos se calculan al leer, sobre los turnos de ese profesional en\
+        \ esa sede que empiezan en el periodo. Para ir a los turnos: la agenda operativa\
+        \ de `consultorioId` desde `fechaDesde`; los pendientes son los que muestra\
+        \ con `fueraDeDisponibilidad`."
+      properties:
+        conHorarioHabitual:
+          type: boolean
+          description: El profesional tenia horario habitual en esa sede en el periodo
+        excepcionId:
+          type: integer
+          format: int64
+          description: La excepcion de sede
+          example: 512
+        fechaDesde:
+          type: string
+          format: date
+          description: Primer dia afectado
+          example: 2026-11-16
+        horaDesde:
+          type: string
+          description: "HH:mm. Ausente junto con `horaHasta`: dia completo"
+          example: 09:00
+        horaHasta:
+          type: string
+          description: "HH:mm, exclusiva"
+          example: 13:00
+        motivo:
+          type: string
+          description: Motivo de la excepcion
+          example: FERIADO
+        turnosCancelados:
+          type: integer
+          format: int32
+          description: Cancelados
+          example: 4
+        turnosEnElPeriodo:
+          type: integer
+          format: int32
+          description: "Turnos del profesional que empiezan en el periodo, en cualquier\
+            \ estado"
+          example: 6
+        turnosPendientes:
+          type: integer
+          format: int32
+          description: "Reservados o confirmados que siguen ahi: pendientes de reubicacion"
+          example: 2
+        ultimoDia:
+          type: string
+          format: date
+          description: "Ultimo dia afectado, inclusive"
+          example: 2026-11-16
+        vigente:
+          type: boolean
+          description: '`false` si el cierre ya se dio de baja'
     CierreDeSesion:
       type: object
       description: Resultado y proxima conducta
@@ -29475,17 +29577,34 @@ components:
       - importeTotal
     ConflictoDeAgenda:
       type: object
-      description: Un turno y una clase de la misma persona que se pisan. El id viaja
-        solo del lado que es de esta sede.
+      description: "Un conflicto que ya esta guardado, calculado al leer (nada se\
+        \ modifica). TURNO_CLASE: un turno y una clase de la misma persona que se\
+        \ pisan; el id viaja solo del lado que es de esta sede. CLASE_EN_CIERRE: una\
+        \ clase de esta sede cuyo instructor (principal o adicional) tiene un cierre\
+        \ que la alcanza. DISPONIBILIDAD_DOBLE: la persona atiende a la vez en esta\
+        \ sede y en otra (doble oferta, p. ej. una apertura anterior a 0.158.0)."
       properties:
+        causa:
+          type: string
+          description: "CLASE_EN_CIERRE: BLOQUEO, AUSENCIA o CIERRE_DE_SEDE"
+          enum:
+          - BLOQUEO
+          - AUSENCIA
+          - CIERRE_DE_SEDE
         claseConsultorioId:
           type: integer
           format: int64
+          description: En TURNO_CLASE y CLASE_EN_CIERRE
         claseId:
           type: integer
           format: int64
           description: Ausente si la clase es de otra sede
           example: 7
+        excepcionId:
+          type: integer
+          format: int64
+          description: "CLASE_EN_CIERRE: el cierre"
+          example: 14
         fin:
           type: string
           format: date-time
@@ -29499,9 +29618,22 @@ components:
           format: int64
           description: "La columna: membership de esta sede"
           example: 31
+        otraSedeConsultorioId:
+          type: integer
+          format: int64
+          description: "DISPONIBILIDAD_DOBLE: la otra sede"
+          example: 12
+        tipo:
+          type: string
+          enum:
+          - TURNO_CLASE
+          - CLASE_EN_CIERRE
+          - DISPONIBILIDAD_DOBLE
+          example: CLASE_EN_CIERRE
         turnoConsultorioId:
           type: integer
           format: int64
+          description: Solo en TURNO_CLASE
         turnoId:
           type: integer
           format: int64
@@ -30720,6 +30852,16 @@ components:
           description: Texto libre operativo. NUNCA informacion clinica
           maxLength: 280
           minLength: 0
+        sustituirDisponibilidadSuperpuesta:
+          type: boolean
+          description: "Solo APERTURA de un profesional. Si la franja se superpone\
+            \ con su horario de atencion en OTRA sede, sin esto responde 409 `bloque-solapado`\
+            \ con cada superposicion (`superposiciones`). Con `true`, en la misma\
+            \ operacion se carga un CIERRE en la otra sede para cada franja superpuesta\
+            \ (auditado, motivo BLOQUEO); exige agenda:excepciones sobre ese profesional\
+            \ en esa sede (403 si no). Nunca sustituye lo reservado: un turno o una\
+            \ clase de la misma persona en otra sede en esa franja es siempre 409\
+            \ `recurso-ocupado`."
         tipo:
           type: string
           description: "CIERRE recorta disponibilidad; APERTURA la habilita donde\
@@ -33658,6 +33800,33 @@ components:
           description: "Turno al que pertenece el evento. Distinto del pedido cuando\
             \ el turno nacio de un cambio de sede: el historial incluye los eventos\
             \ de sus turnos de origen, de las sedes que el lector puede ver."
+          example: 4100
+    EventoRelacionadoDeAgenda:
+      type: object
+      description: Un hecho de la auditoria que una fila del historial resume
+      properties:
+        consultorioId:
+          type: integer
+          format: int64
+          description: Sede del hecho
+          example: 3
+        eventType:
+          type: string
+          description: Tipo de evento de la auditoria
+          example: TURNO_CANCELADO
+        id:
+          type: integer
+          format: int64
+          description: Id del hecho en la auditoria
+          example: 9811
+        ocurridoEn:
+          type: string
+          format: date-time
+          example: 2026-11-04T15:20:00Z
+        turnoId:
+          type: integer
+          format: int64
+          description: El turno del hecho
           example: 4100
     ExcepcionResponse:
       type: object
@@ -38715,6 +38884,71 @@ components:
     ProblemDetail:
       type: object
       properties:
+        claseEnConflictoId:
+          type: integer
+          format: int64
+          description: "conflictoTipo CLASE: la clase."
+        clases:
+          type: array
+          description: "bloqueo-con-turnos-afectados: claseId, instructorMembershipId\
+            \ (ausente en un cierre de sede), inicio y fin de cada clase afectada.\
+            \ Sin participantes."
+          items:
+            type: object
+        clasesAfectadas:
+          type: integer
+          format: int32
+          description: "bloqueo-con-turnos-afectados: cuantas clases quedan sin instructor."
+        conflictoConsultorioId:
+          type: integer
+          format: int64
+          description: Sede donde esta el conflicto.
+        conflictoConsultorioNombre:
+          type: string
+          description: Nombre de la sede del conflicto.
+        conflictoFecha:
+          type: string
+          format: date
+          description: "bloque-solapado contra una apertura: el dia que choca."
+        conflictoFin:
+          type: string
+          format: date-time
+          description: Fin (exclusivo) de la franja en conflicto.
+        conflictoHoraDesde:
+          type: string
+          description: "bloque-solapado: hora local de inicio del horario que choca\
+            \ (HH:mm)."
+        conflictoHoraHasta:
+          type: string
+          description: "bloque-solapado: hora local de fin del horario que choca (HH:mm,\
+            \ 24:00)."
+        conflictoInicio:
+          type: string
+          format: date-time
+          description: Inicio de la franja en conflicto.
+        conflictoMismaSede:
+          type: boolean
+          description: true si el conflicto es en la sede de la operacion.
+        conflictoOrigen:
+          type: string
+          description: "bloque-solapado: si lo que choca es un bloque habitual o una\
+            \ apertura."
+          enum:
+          - BLOQUE
+          - APERTURA
+        conflictoTipo:
+          type: string
+          description: "Causa del conflicto de agenda: TURNO, CLASE (principal o adicional),\
+            \ BLOQUEO o AUSENCIA del profesional, CIERRE_DE_SEDE, o DISPONIBILIDAD\
+            \ (su horario en otra sede; con conflictoMismaSede true, un instructor\
+            \ fuera de su horario en esta sede)."
+          enum:
+          - TURNO
+          - CLASE
+          - BLOQUEO
+          - AUSENCIA
+          - CIERRE_DE_SEDE
+          - DISPONIBILIDAD
         detail:
           type: string
         errors:
@@ -38724,17 +38958,38 @@ components:
           description: "Solo en un 400 validation-error: el primer mensaje de cada\
             \ campo rechazado, por ruta del campo (motivo, items[0].importe). Cada\
             \ mensaje nombra su campo y se puede mostrar tal cual."
+        excepcionEnConflictoId:
+          type: integer
+          format: int64
+          description: "BLOQUEO, AUSENCIA o CIERRE_DE_SEDE: el cierre."
         instance:
           type: string
           format: uri
+        instructorMembershipId:
+          type: integer
+          format: int64
+          description: "En una clase: el instructor (principal o adicional) que choca."
+        instructorNombre:
+          type: string
+          description: "En una clase: nombre del instructor que choca."
         properties:
           type: object
           additionalProperties: {}
         status:
           type: integer
           format: int32
+        superposiciones:
+          type: array
+          description: "bloque-solapado de una apertura: cada franja superpuesta con\
+            \ su horario en otra sede, con las mismas claves conflicto*."
+          items:
+            type: object
         title:
           type: string
+        turnoEnConflictoId:
+          type: integer
+          format: int64
+          description: "conflictoTipo TURNO: el turno."
         type:
           type: string
           format: uri
@@ -43584,6 +43839,11 @@ components:
             con motivo OTRO
           maxLength: 280
           minLength: 0
+        sustituirDisponibilidadSuperpuesta:
+          type: boolean
+          description: "Solo APERTURA de un profesional: igual que en el alta, cierra\
+            \ la otra sede en las franjas superpuestas con su horario alla. Lo reservado\
+            \ alla nunca se sustituye (409 `recurso-ocupado`)"
         version:
           type: integer
           format: int64
@@ -44021,6 +44281,15 @@ components:
       description: "Si un horario se puede reservar. **Es informativo**: quien decide\
         \ es la reserva, que revalida todo bajo el lock de la sede."
       properties:
+        admiteSobreturno:
+          type: boolean
+          description: "Si un sobreturno a esa hora entraria: lo unico que lo impide\
+            \ es ocupacion de ESTA sede (otro turno, el cupo o el box). false si choca\
+            \ con algo que el sobreturno no salva (un turno de la misma persona en\
+            \ otra sede, una clase, un cierre, fuera de horario) y en un horario libre.\
+            \ Informativo: no mira el permiso turno:sobreturno y la reserva revalida\
+            \ todo."
+          example: false
         alternativas:
           type: array
           description: "Los horarios mas cercanos, si este no se puede"

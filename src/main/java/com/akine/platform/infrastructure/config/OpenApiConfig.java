@@ -150,6 +150,70 @@ public class OpenApiConfig {
 		};
 	}
 
+	/**
+	 * Declara las extensiones de conflicto de agenda que {@code recurso-ocupado}, {@code slot-no-disponible},
+	 * {@code bloque-solapado} y {@code bloqueo-con-turnos-afectados} agregan al {@code ProblemDetail}
+	 * (disponibilidad central, contrato 0.158.0). Salen de
+	 * {@link com.akine.platform.spi.problem.ConflictoDeAgenda#propiedades()} y de los handlers de M05. Todas
+	 * opcionales: cada respuesta trae las que aplican. Nunca datos del paciente.
+	 */
+	@Bean
+	public OpenApiCustomizer akineConflictosDeAgenda() {
+		return openApi -> {
+			if (openApi.getComponents() == null || openApi.getComponents().getSchemas() == null) {
+				return;
+			}
+			Schema<?> problema = openApi.getComponents().getSchemas().get("ProblemDetail");
+			if (problema == null) {
+				return;
+			}
+			problema.addProperty("conflictoTipo", new StringSchema()
+					._enum(java.util.Arrays.stream(com.akine.platform.spi.problem.ConflictoDeAgenda.Tipo.values())
+							.map(Enum::name).toList())
+					.description("Causa del conflicto de agenda: TURNO, CLASE (principal o adicional), BLOQUEO o "
+							+ "AUSENCIA del profesional, CIERRE_DE_SEDE, o DISPONIBILIDAD (su horario en otra sede; con "
+							+ "conflictoMismaSede true, un instructor fuera de su horario en esta sede)."));
+			problema.addProperty("conflictoConsultorioId", new io.swagger.v3.oas.models.media.IntegerSchema()
+					.format("int64").description("Sede donde esta el conflicto."));
+			problema.addProperty("conflictoConsultorioNombre", new StringSchema()
+					.description("Nombre de la sede del conflicto."));
+			problema.addProperty("conflictoMismaSede", new io.swagger.v3.oas.models.media.BooleanSchema()
+					.description("true si el conflicto es en la sede de la operacion."));
+			problema.addProperty("conflictoInicio", new StringSchema().format("date-time")
+					.description("Inicio de la franja en conflicto."));
+			problema.addProperty("conflictoFin", new StringSchema().format("date-time")
+					.description("Fin (exclusivo) de la franja en conflicto."));
+			problema.addProperty("turnoEnConflictoId", new io.swagger.v3.oas.models.media.IntegerSchema()
+					.format("int64").description("conflictoTipo TURNO: el turno."));
+			problema.addProperty("claseEnConflictoId", new io.swagger.v3.oas.models.media.IntegerSchema()
+					.format("int64").description("conflictoTipo CLASE: la clase."));
+			problema.addProperty("excepcionEnConflictoId", new io.swagger.v3.oas.models.media.IntegerSchema()
+					.format("int64").description("BLOQUEO, AUSENCIA o CIERRE_DE_SEDE: el cierre."));
+			problema.addProperty("instructorMembershipId", new io.swagger.v3.oas.models.media.IntegerSchema()
+					.format("int64").description("En una clase: el instructor (principal o adicional) que choca."));
+			problema.addProperty("instructorNombre", new StringSchema()
+					.description("En una clase: nombre del instructor que choca."));
+			problema.addProperty("conflictoOrigen", new StringSchema()._enum(List.of("BLOQUE", "APERTURA"))
+					.description("bloque-solapado: si lo que choca es un bloque habitual o una apertura."));
+			problema.addProperty("conflictoHoraDesde", new StringSchema()
+					.description("bloque-solapado: hora local de inicio del horario que choca (HH:mm)."));
+			problema.addProperty("conflictoHoraHasta", new StringSchema()
+					.description("bloque-solapado: hora local de fin del horario que choca (HH:mm, 24:00)."));
+			problema.addProperty("conflictoFecha", new StringSchema().format("date")
+					.description("bloque-solapado contra una apertura: el dia que choca."));
+			problema.addProperty("superposiciones", new io.swagger.v3.oas.models.media.ArraySchema()
+					.items(new io.swagger.v3.oas.models.media.ObjectSchema())
+					.description("bloque-solapado de una apertura: cada franja superpuesta con su horario en otra "
+							+ "sede, con las mismas claves conflicto*."));
+			problema.addProperty("clasesAfectadas", new io.swagger.v3.oas.models.media.IntegerSchema()
+					.description("bloqueo-con-turnos-afectados: cuantas clases quedan sin instructor."));
+			problema.addProperty("clases", new io.swagger.v3.oas.models.media.ArraySchema()
+					.items(new io.swagger.v3.oas.models.media.ObjectSchema())
+					.description("bloqueo-con-turnos-afectados: claseId, instructorMembershipId (ausente en un "
+							+ "cierre de sede), inicio y fin de cada clase afectada. Sin participantes."));
+		};
+	}
+
 	/** Nombre del esquema de token de acceso, tal como lo referencian las operaciones. */
 	static final String ESQUEMA_BEARER = "bearerAuth";
 

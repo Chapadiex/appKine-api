@@ -74,6 +74,19 @@ public final class DisponibilidadRepositoryPorts {
 		 */
 		List<BloqueDisponibilidad> findActivosDeLasMemberships(Long organizationId, Collection<Long> membershipIds);
 
+		/**
+		 * TODOS los bloques de esas memberships, activos o dados de baja. Para el historial de agenda: la
+		 * asignacion historica manda, y un bloque dado de baja despues de un cierre igual lo tocaba.
+		 */
+		List<BloqueDisponibilidad> findTodosDeLasMemberships(Long organizationId, Collection<Long> membershipIds);
+
+		/**
+		 * Las memberships con algun bloque ACTIVO en esa sede cuya vigencia toca {@code [desde, hasta)}.
+		 * Son las que un cierre de sede entera recorta, y a las que su baja o achique les devuelve horario.
+		 */
+		List<Long> findMembershipsConBloquesVigentesEn(
+				Long organizationId, Long consultorioId, LocalDate desde, LocalDate hasta);
+
 		/** Un bloque por id, acotado al tenant y a la sede, activo o no. */
 		Optional<BloqueDisponibilidad> findByIdScoped(Long id, Long organizationId, Long consultorioId);
 
@@ -119,6 +132,31 @@ public final class DisponibilidadRepositoryPorts {
 		/** Los cierres vigentes de la sede que tocan la ventana, de sede y de cada profesional. */
 		List<DisponibilidadExcepcion> findCierresDeLaSedeEnVentana(
 				Long organizationId, Long consultorioId, LocalDate desde, LocalDate hasta);
+
+		/**
+		 * TODOS los cierres de alcance SEDE ENTERA ({@code membershipId IS NULL}) de esas sedes, activos o
+		 * dados de baja y de cualquier fecha. Para el historial de agenda: una baja tambien es un cambio
+		 * que se muestra, y el periodo es el de la fila.
+		 */
+		List<DisponibilidadExcepcion> findCierresDeSedeDeLasSedes(Long organizationId, Collection<Long> consultorioIds);
+
+		/**
+		 * Las APERTURAS activas de profesional de esas memberships (la misma persona en sus sedes) que
+		 * terminan despues de {@code desde}. Disponibilidad central (0.158.0): un horario habitual nuevo
+		 * no puede pisar una apertura de la misma persona en otra sede.
+		 */
+		List<DisponibilidadExcepcion> findAperturasActivasDeLasMemberships(
+				Long organizationId, Collection<Long> membershipIds, LocalDate desde);
+
+		/**
+		 * Las memberships con una APERTURA activa propia en esa sede que toca {@code [desde, hasta)}. Un
+		 * cierre de sede entera tambien recorta las aperturas (RN-M05-002: CIERRE va ultimo).
+		 */
+		List<Long> findMembershipsConAperturasEn(
+				Long organizationId, Long consultorioId, LocalDate desde, LocalDate hasta);
+
+		/** Escribe lo pendiente: la version de una fila editada queda en la entidad que se devuelve. */
+		void flush();
 
 		/**
 		 * Una excepcion por id, acotada al tenant y a la sede, activa o no. Deliberadamente NO

@@ -58,7 +58,14 @@ public record ValidacionDeHorarioResponse(
 		Long claseEnConflictoId,
 
 		@Schema(description = "Sede del evento con el que choca (puede ser otra)", example = "12")
-		Long conflictoConsultorioId) {
+		Long conflictoConsultorioId,
+
+		@Schema(description = "Si un sobreturno a esa hora entraria: lo unico que lo impide es ocupacion de "
+				+ "ESTA sede (otro turno, el cupo o el box). false si choca con algo que el sobreturno no salva "
+				+ "(un turno de la misma persona en otra sede, una clase, un cierre, fuera de horario) y en un "
+				+ "horario libre. Informativo: no mira el permiso turno:sobreturno y la reserva revalida todo.",
+				example = "false")
+		boolean admiteSobreturno) {
 
 	public static ValidacionDeHorarioResponse de(ValidacionDeHorarioView vista) {
 		return new ValidacionDeHorarioResponse(
@@ -68,7 +75,8 @@ public record ValidacionDeHorarioResponse(
 				vista.turnoEnConflictoId(), vista.conflictoInicio(), vista.conflictoFin(),
 				vista.avisos(),
 				vista.alternativas().stream().map(HorarioDisponibleResponse::de).toList(),
-				vista.conflictoTipo(), vista.claseEnConflictoId(), vista.conflictoConsultorioId());
+				vista.conflictoTipo(), vista.claseEnConflictoId(), vista.conflictoConsultorioId(),
+				vista.admiteSobreturno());
 	}
 
 	@Schema(name = "RecursoLibre", description = "Un profesional o un box, con su nombre.")
