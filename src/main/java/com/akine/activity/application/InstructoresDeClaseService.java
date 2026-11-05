@@ -187,7 +187,8 @@ public class InstructoresDeClaseService {
 			Map<Long, String> nombresDeNuevos = nombres(organizationId, nuevos);
 			for (Long membershipId : nuevos) {
 				claseService.exigirPersonaLibre(organizationId, consultorioId, membershipId,
-						clase.getInicio(), clase.getFin(), claseId, true, nombresDeNuevos.get(membershipId));
+						clase.getInicio(), clase.getFin(), claseId,
+						clase.getEstado() == EstadoClase.PROGRAMADA, nombresDeNuevos.get(membershipId));
 			}
 		}
 

@@ -87,7 +87,7 @@ class ClaseYTurnoEntreSedesIT {
 					assertThat(e.getConflictoTipo()).isEqualTo("CLASE");
 					assertThat(e.getClaseEnConflictoId()).isEqualTo(clase.clase().id());
 					assertThat(e.getConflictoConsultorioId()).isEqualTo(sedeA.consultorioId());
-					assertThat(e.getMessage()).contains("otra sede");
+					assertThat(e.getMessage()).contains("ya tiene una clase").contains("en la sede ");
 				});
 		// El sobreturno tampoco la salva: la persona no puede estar dando la clase en otra sede.
 		assertThatThrownBy(() -> turnoService.reservar(sedeB.actor(), sedeB.consultorioId(), sedeB.ofertaId(),
@@ -105,7 +105,8 @@ class ClaseYTurnoEntreSedesIT {
 			assertThat(o.consultorioId()).isEqualTo(sedeA.consultorioId());
 			assertThat(o.inicio()).isEqualTo(a(9, 30));
 		});
-		assertThat(operativa.conflictos()).isEmpty();
+		// El horario de los lunes en las dos sedes es doble oferta heredada (DISPONIBILIDAD_DOBLE, 0.158.0); turno-clase no hay.
+		assertThat(operativa.conflictos()).noneMatch(c -> "TURNO_CLASE".equals(c.tipo()));
 	}
 
 	@Test

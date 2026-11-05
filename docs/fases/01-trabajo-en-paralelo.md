@@ -169,6 +169,8 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V136` | Agenda: clases contra turnos entre sedes (`akine-agenda-clases-avisos`) | **Vacía**: reservada y no usada. El cruce por persona usa la fila de `agenda_profesional` (`V129`) y los índices existentes (`ix_clase_instructor_membership` de `V114`). No se reusa |
 | `V137` | Agenda: clases contra turnos entre sedes (`akine-agenda-clases-avisos`) | **Vacía**: reservada para el aviso único del traslado, que pasó a otra rama (`akine-agenda-aviso-unico`, que registró `V138` vacía); no se usó acá. No se reusa |
 | `V138` | Agenda — aviso único del cambio de sede (`akine-agenda-aviso-unico`) | **Vacía**: el aviso "tu turno cambio" reusa el tipo `TURNO_REPROGRAMADO` y `notification_outbox` (la clave idempotente ya es `UNIQUE`, `tipo` es `VARCHAR` sin CHECK); no hizo falta tabla ni columna. No se reusa |
+| `V141` | Agenda — disponibilidad central por persona (`akine-agenda-disponibilidad`) | **Vacía**: la lógica central no tiene tablas (lee turnos, clases y excepciones) y el lock es `agenda_profesional` (`V129`); la sustitución de una apertura escribe filas comunes de `disponibilidad_excepcion` con el motivo `BLOQUEO` existente. No se reusa |
+| `V142` | Agenda — disponibilidad central por persona | **Vacía**: reservada por si la consulta de aperturas por persona necesitaba índice; las aperturas de una persona son pocas filas y alcanza la FK de `membership_id`. No se reusa |
 
 ## 7. Paquetes de trabajo
 
