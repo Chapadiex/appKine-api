@@ -51,7 +51,10 @@ public record ConflictoDeAgenda(
 		AUSENCIA,
 		/** Un cierre de la sede entera (o feriado). */
 		CIERRE_DE_SEDE,
-		/** Horario de atencion (habitual o apertura) de la misma persona en otra sede. */
+		/**
+		 * Horario de atencion (habitual o apertura) de la misma persona en otra sede; con {@code mismaSede},
+		 * un instructor que no atiende en esta sede en todo el horario de la clase (D-6).
+		 */
 		DISPONIBILIDAD
 	}
 

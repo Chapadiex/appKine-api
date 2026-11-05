@@ -878,20 +878,26 @@ public class ClaseService {
 		if (cierre.isPresent()) {
 			throw HorarioNoDisponibleException.por(cierre.get().conInstructor(membershipId, nombre));
 		}
-		if (exigirFranja && !dentroDeFranja(organizationId, consultorioId, membershipId, inicio, fin)) {
-			throw new HorarioNoDisponibleException("el instructor "
-					+ (nombre == null ? "#" + membershipId : nombre) + " no atiende en ese horario en esta sede");
+		if (!exigirFranja) {
+			return;
+		}
+		Optional<ConsultorioSnapshot> sede = consultorios.find(organizationId, consultorioId);
+		if (sede.isEmpty() || !dentroDeFranja(organizationId, sede.get(), membershipId, inicio, fin)) {
+			// D-6 (QA del 05/11/2026): con las mismas extensiones que el resto de los conflictos de agenda
+			// (instructor, conflictoTipo DISPONIBILIDAD, sede y la franja de la clase), no solo en el texto.
+			ConflictoDeAgenda fueraDeHorario = new ConflictoDeAgenda(ConflictoDeAgenda.Tipo.DISPONIBILIDAD, null,
+					consultorioId, sede.map(ConsultorioSnapshot::name).orElse(null), true, inicio, fin,
+					sede.map(ConsultorioSnapshot::timezone).orElse(null), membershipId, nombre);
+			throw new HorarioNoDisponibleException("El instructor "
+					+ (nombre == null ? "#" + membershipId : nombre) + " no atiende en esta sede en todo el horario "
+					+ "de la clase. No es posible asignarle la clase en ese horario.", fueraDeHorario);
 		}
 	}
 
 	private boolean dentroDeFranja(
-			long organizationId, long consultorioId, long membershipId, Instant inicio, Instant fin) {
-		Optional<ConsultorioSnapshot> sede = consultorios.find(organizationId, consultorioId);
-		if (sede.isEmpty()) {
-			return false;
-		}
-		LocalDate fecha = inicio.atZone(ZoneId.of(sede.get().timezone())).toLocalDate();
-		return disponibilidad.efectiva(organizationId, sede.get(), membershipId, fecha, fecha.plusDays(1)).stream()
+			long organizationId, ConsultorioSnapshot sede, long membershipId, Instant inicio, Instant fin) {
+		LocalDate fecha = inicio.atZone(ZoneId.of(sede.timezone())).toLocalDate();
+		return disponibilidad.efectiva(organizationId, sede, membershipId, fecha, fecha.plusDays(1)).stream()
 				.flatMap(dia -> dia.franjas().stream())
 				.anyMatch(franja -> !franja.desde().isAfter(inicio) && !franja.hasta().isBefore(fin));
 	}

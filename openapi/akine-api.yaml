@@ -38940,7 +38940,8 @@ components:
           type: string
           description: "Causa del conflicto de agenda: TURNO, CLASE (principal o adicional),\
             \ BLOQUEO o AUSENCIA del profesional, CIERRE_DE_SEDE, o DISPONIBILIDAD\
-            \ (su horario en otra sede)."
+            \ (su horario en otra sede; con conflictoMismaSede true, un instructor\
+            \ fuera de su horario en esta sede)."
           enum:
           - TURNO
           - CLASE
@@ -44280,6 +44281,15 @@ components:
       description: "Si un horario se puede reservar. **Es informativo**: quien decide\
         \ es la reserva, que revalida todo bajo el lock de la sede."
       properties:
+        admiteSobreturno:
+          type: boolean
+          description: "Si un sobreturno a esa hora entraria: lo unico que lo impide\
+            \ es ocupacion de ESTA sede (otro turno, el cupo o el box). false si choca\
+            \ con algo que el sobreturno no salva (un turno de la misma persona en\
+            \ otra sede, una clase, un cierre, fuera de horario) y en un horario libre.\
+            \ Informativo: no mira el permiso turno:sobreturno y la reserva revalida\
+            \ todo."
+          example: false
         alternativas:
           type: array
           description: "Los horarios mas cercanos, si este no se puede"

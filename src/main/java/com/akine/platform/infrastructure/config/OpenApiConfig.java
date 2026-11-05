@@ -171,7 +171,8 @@ public class OpenApiConfig {
 					._enum(java.util.Arrays.stream(com.akine.platform.spi.problem.ConflictoDeAgenda.Tipo.values())
 							.map(Enum::name).toList())
 					.description("Causa del conflicto de agenda: TURNO, CLASE (principal o adicional), BLOQUEO o "
-							+ "AUSENCIA del profesional, CIERRE_DE_SEDE, o DISPONIBILIDAD (su horario en otra sede)."));
+							+ "AUSENCIA del profesional, CIERRE_DE_SEDE, o DISPONIBILIDAD (su horario en otra sede; con "
+							+ "conflictoMismaSede true, un instructor fuera de su horario en esta sede)."));
 			problema.addProperty("conflictoConsultorioId", new io.swagger.v3.oas.models.media.IntegerSchema()
 					.format("int64").description("Sede donde esta el conflicto."));
 			problema.addProperty("conflictoConsultorioNombre", new StringSchema()

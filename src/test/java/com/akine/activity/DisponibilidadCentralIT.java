@@ -30,6 +30,9 @@ import com.akine.scheduling.application.PrevisualizacionDeSerieView;
 import com.akine.scheduling.application.ReservaCommand;
 import com.akine.scheduling.application.ResultadoDeReserva;
 import com.akine.scheduling.application.TurnoService;
+import com.akine.scheduling.application.DisponibilidadDeTurnosService;
+import com.akine.scheduling.application.ValidacionDeHorarioCommand;
+import com.akine.scheduling.application.ValidacionDeHorarioView;
 import com.akine.scheduling.domain.ReglaDeRecurrencia;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,6 +81,7 @@ class DisponibilidadCentralIT {
 	@Autowired private InstructoresDeClaseService instructores;
 	@Autowired private PrevisualizacionDeSerieService previsualizacion;
 	@Autowired private AgendaOperativaService agendaOperativa;
+	@Autowired private DisponibilidadDeTurnosService validacionDeHorario;
 	@Autowired private JdbcTemplate jdbc;
 
 	private AgendaFixtures fixtures;
@@ -238,6 +242,40 @@ class DisponibilidadCentralIT {
 	}
 
 	@Test
+	@DisplayName("D-5: el sobreturno no salva un turno de la misma persona en otra sede; en la misma sede si")
+	void sobreturno_contra_turno_de_otra_sede() {
+		Fixture centro = fixtures.crear(1);
+		Fixture norte = fixtures.otraSedeDelMismoProfesional(centro, true);
+		ResultadoDeReserva enNorte = reservar(norte, a(10, 0));
+
+		// La validacion previa no lo ofrece: lo ocupa la misma persona en Norte.
+		ValidacionDeHorarioView validacion = validar(centro, a(10, 0));
+		assertThat(validacion.causa()).isEqualTo("PROFESIONAL_OCUPADO");
+		assertThat(validacion.conflictoConsultorioId()).isEqualTo(norte.consultorioId());
+		assertThat(validacion.admiteSobreturno()).isFalse();
+
+		// Y la reserva con sobreturno es 409 recurso-ocupado con el turno de Norte.
+		assertThatThrownBy(() -> sobreturno(centro, centro.personaA(), a(10, 0)))
+				.isInstanceOfSatisfying(RecursoOcupadoException.class, e -> {
+					assertThat(e.getConflictoTipo()).isEqualTo("TURNO");
+					assertThat(e.getTurnoEnConflictoId()).isEqualTo(enNorte.turno().id());
+					assertThat(e.getConflicto().mismaSede()).isFalse();
+					assertThat(e.getConflicto().consultorioId()).isEqualTo(norte.consultorioId());
+					assertThat(e.getConflicto().consultorioNombre()).isEqualTo(nombre(norte));
+					assertThat(e.getMessage()).contains("en la sede " + nombre(norte));
+				});
+		assertThat(turnosVivos(centro)).isZero();
+
+		// Un turno de la MISMA sede si se sobreturna: ese es su sentido.
+		reservar(centro, a(11, 0));
+		ValidacionDeHorarioView mismaSede = validar(centro, a(11, 0));
+		assertThat(mismaSede.estado()).isEqualTo("NO_DISPONIBLE");
+		assertThat(mismaSede.admiteSobreturno()).isTrue();
+		assertThat(sobreturno(centro, centro.personaB(), a(11, 0)).turno().sobreturno()).isTrue();
+		assertThat(turnosVivos(centro)).isEqualTo(2);
+	}
+
+	@Test
 	@DisplayName("Horario habitual en Norte que pisa el de Centro: bloque-solapado nombra Centro, no 'esta sede'")
 	void bloque_solapado_con_la_sede_real() {
 		Fixture centro = fixtures.crear(1);
@@ -292,6 +330,35 @@ class DisponibilidadCentralIT {
 							assertThat(c.claseId()).isEqualTo(otraClase.clase().id());
 							assertThat(c.instructorMembershipId()).isEqualTo(otroAdicional);
 						}));
+	}
+
+	@Test
+	@DisplayName("D-6: un adicional que no atiende en toda la clase es 409 con el instructor, DISPONIBILIDAD, la sede y la franja")
+	void instructor_adicional_fuera_de_su_horario() {
+		Fixture centro = fixtures.crear(1);
+		long adicional = fixtures.agregarProfesional(centro);
+		// Su horario termina 10:30: no cubre la clase de 10 a 11.
+		jdbc.update("UPDATE profesional_disponibilidad SET hora_hasta = '10:30:00' WHERE membership_id = ?", adicional);
+		ResultadoDeProgramacion clase = programar(centro, ofertaGrupal(centro), a(10, 0), a(11, 0));
+
+		assertThatThrownBy(() -> instructores.reemplazar(actorDeActividad(centro), centro.consultorioId(),
+				clase.clase().id(), List.of(adicional)))
+				.isInstanceOfSatisfying(HorarioNoDisponibleException.class, e -> {
+					ConflictoDeAgenda conflicto = e.getConflicto();
+					assertThat(conflicto).isNotNull();
+					assertThat(conflicto.tipo()).isEqualTo(ConflictoDeAgenda.Tipo.DISPONIBILIDAD);
+					assertThat(conflicto.instructorMembershipId()).isEqualTo(adicional);
+					assertThat(conflicto.instructorNombre()).isNotBlank();
+					assertThat(conflicto.consultorioId()).isEqualTo(centro.consultorioId());
+					assertThat(conflicto.consultorioNombre()).isEqualTo(nombre(centro));
+					assertThat(conflicto.mismaSede()).isTrue();
+					assertThat(conflicto.desde()).isEqualTo(a(10, 0));
+					assertThat(conflicto.hasta()).isEqualTo(a(11, 0));
+					assertThat(conflicto.propiedades()).containsEntry("conflictoTipo", "DISPONIBILIDAD")
+							.containsEntry("instructorMembershipId", adicional)
+							.containsKeys("instructorNombre", "conflictoInicio", "conflictoFin");
+					assertThat(e.getMotivo()).startsWith("El instructor ").contains("no atiende en esta sede");
+				});
 	}
 
 	@Test
@@ -401,6 +468,17 @@ class DisponibilidadCentralIT {
 	private ResultadoDeReserva reservar(Fixture sede, Instant inicio) {
 		return turnoService.reservar(sede.actor(), sede.consultorioId(), sede.ofertaId(),
 				new ReservaCommand(sede.personaA(), inicio, sede.profesionalMembershipId(), null));
+	}
+
+	private ResultadoDeReserva sobreturno(Fixture sede, long personaId, Instant inicio) {
+		return turnoService.reservar(sede.actor(), sede.consultorioId(), sede.ofertaId(),
+				new ReservaCommand(personaId, inicio, sede.profesionalMembershipId(), null, null, null, null, null,
+						null, "Urgencia", null));
+	}
+
+	private ValidacionDeHorarioView validar(Fixture sede, Instant inicio) {
+		return validacionDeHorario.validar(sede.actor(), sede.consultorioId(), new ValidacionDeHorarioCommand(
+				sede.ofertaId(), inicio, sede.profesionalMembershipId(), null, null, null, null, null));
 	}
 
 	private ResultadoDeProgramacion programar(Fixture sede, long ofertaId, Instant inicio, Instant fin) {

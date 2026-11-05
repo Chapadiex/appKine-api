@@ -98,8 +98,9 @@ class RevalidadorDeSlot {
 	 *                        turno que se corre media hora chocaria contra si mismo
 	 * @param espacioElegidoId box elegido a mano, o {@code null} para que lo asigne el sistema
 	 * @param sobreturno      {@code true} si se autorizo ocupar un horario tomado. Saltea el cupo y
-	 *                        el solapamiento y <b>nada mas</b>: el profesional sigue teniendo que
-	 *                        estar habilitado y atender a esa hora
+	 *                        el solapamiento con turnos <b>de esta sede</b> y <b>nada mas</b>: el
+	 *                        profesional sigue teniendo que estar habilitado y atender a esa hora, y
+	 *                        un turno suyo en otra sede o una clase lo siguen rechazando
 	 */
 	record Pedido(
 			long organizationId,
@@ -249,7 +250,7 @@ class RevalidadorDeSlot {
 		if (!pedido.sobreturno()) {
 			exigirLugarDelProfesional(pedido, profesionalId, bajoLock);
 		} else {
-			exigirSobreturnoSinClases(pedido, profesionalId, bajoLock);
+			exigirSobreturnoSinOtrasObligaciones(pedido, profesionalId, bajoLock);
 		}
 
 		Long espacioId = null;
@@ -300,23 +301,33 @@ class RevalidadorDeSlot {
 	}
 
 	/**
-	 * El sobreturno salva la ocupacion de TURNOS (atender a dos pacientes en el mismo horario), no la de
-	 * una clase: la persona no puede estar a la vez dando una clase, en otra sala o en otra sede (agenda
-	 * de clases y avisos, 0.156.0). Toma igual el lock de la persona, para serializar con la clase.
+	 * El sobreturno salva la ocupacion de TURNOS <b>de esta sede</b> (atender a dos pacientes en el mismo
+	 * horario, en el mismo lugar), y nada mas. No salva una clase —la persona no puede estar a la vez dando
+	 * una clase, en otra sala o en otra sede (agenda de clases y avisos, 0.156.0)— ni un turno de la misma
+	 * persona en <b>otra</b> sede (D-5, QA del 05/11/2026): no puede atender en dos sedes a la vez, y hasta
+	 * entonces el filtro solo miraba {@code CLASE} y el turno de la otra sede pasaba con 201. Los cierres y
+	 * la franja ya los exigio {@link #prevalidar}. Toma igual el lock de la persona, para serializar con la
+	 * otra sede y con la clase.
 	 */
-	private void exigirSobreturnoSinClases(Pedido pedido, Long profesionalId, boolean bajoLock) {
+	private void exigirSobreturnoSinOtrasObligaciones(Pedido pedido, Long profesionalId, boolean bajoLock) {
 		if (profesionalId == null) {
 			return;
 		}
 		tomarPersona(pedido, profesionalId, bajoLock);
-		Optional<ConflictoDeAgenda> clase = ocupacion.actividadReservada(OcupacionDePersona.Consulta.de(
-						pedido.organizationId(), pedido.consultorioId(), profesionalId, pedido.inicio(), pedido.fin()))
+		Optional<ConflictoDeAgenda> conflicto = ocupacion.actividadReservada(new OcupacionDePersona.Consulta(
+						pedido.organizationId(), pedido.consultorioId(), profesionalId, pedido.inicio(),
+						pedido.fin(), pedido.turnoExcluidoId(), null, pedido.oferta().id()))
 				.stream()
-				.filter(conflicto -> conflicto.tipo() == ConflictoDeAgenda.Tipo.CLASE)
+				.filter(RevalidadorDeSlot::noLoSalvaElSobreturno)
 				.findFirst();
-		if (clase.isPresent()) {
-			throw RecursoOcupadoException.por("profesional", clase.get());
+		if (conflicto.isPresent()) {
+			throw RecursoOcupadoException.por("profesional", conflicto.get());
 		}
+	}
+
+	/** Lo unico que un sobreturno puede pisar es un turno de la misma sede. */
+	static boolean noLoSalvaElSobreturno(ConflictoDeAgenda conflicto) {
+		return !(conflicto.tipo() == ConflictoDeAgenda.Tipo.TURNO && conflicto.mismaSede());
 	}
 
 	private void tomarPersona(Pedido pedido, long profesionalId, boolean bajoLock) {

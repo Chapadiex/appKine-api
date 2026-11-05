@@ -49,7 +49,8 @@ Causas concretas de los cuatro problemas:
   o no), franja, zona e instructor. `detalle(...)` arma el `detail` en castellano y `propiedades()` las
   extensiones del Problem Detail. **Nunca datos del paciente.**
 - Quién la usa:
-  - `RevalidadorDeSlot` (todos los caminos de turno y el sobreturno, que filtra solo `CLASE`).
+  - `RevalidadorDeSlot` (todos los caminos de turno y el sobreturno, que sólo deja pasar turnos de la
+    **misma** sede: D-5).
   - `ClaseService.exigirPersonaLibre` (programar, reprogramar) e `InstructoresDeClaseService.reemplazar`.
   - `resource` por **`resource.spi.ActividadDePersonaProbe`**, que contesta
     `scheduling.infrastructure.ActividadDePersonaSobreAgenda` delegando en la misma lógica (inversión, como
@@ -147,7 +148,7 @@ El **cierre** de un profesional (o de la sede) informa las clases afectadas en e
 
 ## Defectos de la QA contra MySQL real (05/11/2026)
 
-Sin cambio de contrato (sigue **0.158.0**, `OpenApiContractIT` en verde sin regenerar): cambian conductas y
+D-1 a D-4 sin cambio de contrato (sigue **0.158.0**, `OpenApiContractIT` en verde sin regenerar): cambian conductas y
 textos, no schemas.
 
 ### D-1 (media): dar de baja o achicar un CIERRE volvía a abrir la doble oferta
@@ -205,6 +206,53 @@ incrementara `@Version`, y un segundo guardado encadenado daba 409 `concurrent-m
 **Causa.** `OcurrenciaSinLugarException` escribía `Instant.toString()`. **Corrección.** Recibe la zona de la sede
 y el `detail` dice "La ocurrencia del 13/11/2026 14:30 no tiene lugar: " más el `detail` de la causa (el
 mismo de una reserva suelta). `ocurrenciaInicio` sigue en UTC.
+
+### D-5 (alta): el sobreturno salvaba un turno de la misma persona en otra sede
+
+**Causa.** `RevalidadorDeSlot.exigirSobreturnoSinClases` preguntaba a `OcupacionDePersona.actividadReservada`
+y se quedaba **sólo con las `CLASE`**: un turno vivo de la misma persona (otra membership, misma cuenta) en
+otra sede pasaba el filtro. Repro de la QA: Norte con un turno de la persona el 09/11 a las 10:00 y
+`POST .../consultorios/{centro}/turnos/ofertas/{oferta}` con `sobreturnoMotivo` a esa hora → **201**. Contra
+una clase sí daba 409. La regla del usuario: un mismo profesional no puede tener obligaciones simultáneas en
+distintas sedes, y el sobreturno sólo existe para superponerse con turnos de **la misma sede**.
+
+**Corrección**, en la lógica central y no en el controller:
+
+- `exigirSobreturnoSinOtrasObligaciones` descarta de `actividadReservada` **únicamente** los `TURNO` con
+  `mismaSede = true` (`RevalidadorDeSlot.noLoSalvaElSobreturno`). Todo lo demás —turno en otra sede, clase en
+  cualquier sede— es 409 **`recurso-ocupado`** con `conflictoTipo = TURNO`, `turnoEnConflictoId`,
+  `conflictoMismaSede = false`, `conflictoConsultorioId`/`Nombre` de la sede real y la franja; el `detail`
+  es "El profesional ya tiene un turno el 09/11/2026 de 10:00 a 10:45 en la sede Norte. No es posible
+  asignarle otro turno en ese horario.". La consulta pasa además `turnoExcluidoId` y el grupo de la oferta,
+  igual que la reserva común.
+- Cierres y franja ya los exigía `prevalidar` (y la franja se revalida bajo el lock de la persona): sin
+  cambios. El lock de `agenda_profesional` se seguía tomando: la carrera con la otra sede está serializada.
+- **Reprogramar, trasladar, series y lista de espera** no tienen sobreturno: construyen el `Pedido` con
+  `sobreturno = false` y pasan por el chequeo completo (turnos de todas las sedes). Revisado, sin cambios.
+  Reprogramar un turno que nació como sobreturno exige, entonces, un lugar libre de verdad.
+
+**La validación previa** (`POST /api/v1/consultorios/{c}/disponibilidad/validacion`, `validarHorarioDeTurno`, schema `ValidacionDeHorario`) no decía si
+se podía sobreturnar: la pantalla lo infería de `causa = PROFESIONAL_OCUPADO` y `conflictoTipo != CLASE`,
+así que ofrecía "Crear sobreturno" contra el turno de otra sede. **Contrato 0.158.0, aditivo, sin subir la
+versión:** `ValidacionDeHorario.admiteSobreturno` (boolean). Se calcula corriendo sin lock los mismos
+controles que la reserva con sobreturno sobre cada candidato rechazado por ocupación (`SLOT_COMPLETO`,
+`PROFESIONAL_OCUPADO`, `ESPACIO_OCUPADO`): `true` sólo si lo que lo impide es ocupación de esta sede.
+`false` en un horario libre, por un cierre, fuera de horario, por una clase o por un turno en otra sede. No
+mira el permiso `turno:sobreturno` (el botón ya lo gatea el frontend). **El frontend debería pasar a
+ramificar por `admiteSobreturno`** en vez de por `conflictoTipo`.
+
+### D-6 (baja): el 409 del instructor fuera de su horario no traía las extensiones
+
+**Causa.** `ClaseService.exigirPersonaLibre` (que usan programar, reprogramar e
+`InstructoresDeClaseService.reemplazar`) lanzaba `HorarioNoDisponibleException` sólo con texto cuando la clase
+no cabía en la disponibilidad efectiva del instructor en la sede: sin `ConflictoDeAgenda`, el handler no
+escribía ninguna extensión. **Corrección.** Viaja un `ConflictoDeAgenda` `DISPONIBILIDAD` con
+`mismaSede = true`, la sede (id, nombre, zona), la franja **de la clase** e `instructorMembershipId`/
+`instructorNombre`; `slot-no-disponible` lleva `conflictoTipo`, `conflictoConsultorioId`/`Nombre`,
+`conflictoMismaSede`, `conflictoInicio`/`Fin` e `instructor*`, y el `detail`/`motivo` "El instructor X no
+atiende en esta sede en todo el horario de la clase. No es posible asignarle la clase en ese horario.". La
+descripción de `conflictoTipo` en `ProblemDetail` suma ese uso de `DISPONIBILIDAD`. El caso equivalente del
+**principal** (`resolverProfesional`, sin cierre que lo explique) sigue sólo con texto: no lo pidió la QA.
 
 ## Límites
 
