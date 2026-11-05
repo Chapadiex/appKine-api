@@ -17,7 +17,7 @@ public class DisponibilidadSuperpuestaException extends RuntimeException {
 	/** Lo que se le dice a quien da de baja o achica un cierre y con eso vuelve la doble oferta. */
 	public static final String AL_LIBERAR = "No es posible dar de baja o achicar el cierre: el profesional quedaria "
 			+ "ofreciendo disponibilidad simultanea en dos sedes. Si el cierre se creo al sustituir por una apertura "
-			+ "en esa sede, primero de de baja o achique esa apertura.";
+			+ "en esa sede, hay que dar de baja o achicar primero esa apertura.";
 
 	public DisponibilidadSuperpuestaException(List<ConflictoDeAgenda> superposiciones) {
 		this(superposiciones, "No es posible ofrecer disponibilidad simultanea en dos sedes: pida la sustitucion "
