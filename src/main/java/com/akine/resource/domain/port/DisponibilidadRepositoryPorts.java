@@ -121,6 +121,14 @@ public final class DisponibilidadRepositoryPorts {
 				Long organizationId, Long consultorioId, LocalDate desde, LocalDate hasta);
 
 		/**
+		 * Las APERTURAS activas de profesional de esas memberships (la misma persona en sus sedes) que
+		 * terminan despues de {@code desde}. Disponibilidad central (0.158.0): un horario habitual nuevo
+		 * no puede pisar una apertura de la misma persona en otra sede.
+		 */
+		List<DisponibilidadExcepcion> findAperturasActivasDeLasMemberships(
+				Long organizationId, Collection<Long> membershipIds, LocalDate desde);
+
+		/**
 		 * Una excepcion por id, acotada al tenant y a la sede, activa o no. Deliberadamente NO
 		 * acotada por membership: una excepcion de sede entera no tiene una unica membership
 		 * duena, y el llamador ya sabe a que sede pertenece por la ruta.

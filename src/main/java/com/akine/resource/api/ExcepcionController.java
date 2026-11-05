@@ -229,8 +229,12 @@ public class ExcepcionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "Sede dada de baja (consultorio-inactive), o profesional sin "
-							+ "vinculo vigente en esa sede (profesional-no-vinculado). NUNCA por "
+					description = "Sede dada de baja (consultorio-inactive), profesional sin "
+							+ "vinculo vigente en esa sede (profesional-no-vinculado); un CIERRE que deja turnos o clases "
+							+ "sin confirmar (bloqueo-con-turnos-afectados, con turnos y clases); o una APERTURA de "
+							+ "profesional que choca con un turno o una clase de la misma persona en otra sede "
+							+ "(recurso-ocupado, siempre) o con su horario en otra sede (bloque-solapado, salvo "
+							+ "sustituirDisponibilidadSuperpuesta). Las extensiones conflicto* nombran causa, sede y franja. NUNCA por "
 							+ "solapamiento: dos excepciones que se pisan son las dos validas",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -256,7 +260,8 @@ public class ExcepcionController {
 						request.horaHasta(),
 						request.feriadoId(),
 						request.notes(),
-						Boolean.TRUE.equals(request.confirmaTurnosAfectados())));
+						Boolean.TRUE.equals(request.confirmaTurnosAfectados()),
+						Boolean.TRUE.equals(request.sustituirDisponibilidadSuperpuesta())));
 
 		ExcepcionResponse cuerpo = ExcepcionResponse.from(resultado);
 		if (!resultado.nuevo()) {
@@ -305,7 +310,8 @@ public class ExcepcionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "409", description = "Ya estaba dada de baja (excepcion-already-inactive), "
 					+ "la version quedo vieja (concurrent-modification), o el cambio deja turnos afuera sin "
-					+ "confirmar (bloqueo-con-turnos-afectados, con la lista)",
+					+ "confirmar (bloqueo-con-turnos-afectados, con turnos y clases), o una APERTURA que choca en otra "
+					+ "sede con lo reservado (recurso-ocupado) o con su horario (bloque-solapado, salvo sustitucion)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<ExcepcionResponse> update(
@@ -327,7 +333,8 @@ public class ExcepcionController {
 						request.horaHasta(),
 						request.notes(),
 						request.version(),
-						Boolean.TRUE.equals(request.confirmaTurnosAfectados())))));
+						Boolean.TRUE.equals(request.confirmaTurnosAfectados()),
+						Boolean.TRUE.equals(request.sustituirDisponibilidadSuperpuesta())))));
 	}
 
 	@DeleteMapping(path = "/{excepcionId}", consumes = MediaType.APPLICATION_JSON_VALUE)

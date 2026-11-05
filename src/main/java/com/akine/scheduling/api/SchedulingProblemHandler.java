@@ -202,6 +202,11 @@ public class SchedulingProblemHandler {
 		problem.setType(SLOT_NO_DISPONIBLE);
 		problem.setTitle("El horario elegido ya no esta disponible");
 		problem.setProperty("motivo", exception.getMotivo());
+		// Disponibilidad central (0.158.0): un cierre con su franja y su sede, y el detail que lo dice.
+		if (exception.getConflicto() != null) {
+			problem.setDetail(exception.getMotivo());
+			exception.getConflicto().propiedades().forEach(problem::setProperty);
+		}
 		return problem;
 	}
 
@@ -239,6 +244,10 @@ public class SchedulingProblemHandler {
 		}
 		if (exception.getConflictoConsultorioId() != null) {
 			problem.setProperty("conflictoConsultorioId", exception.getConflictoConsultorioId());
+		}
+		// Disponibilidad central (0.158.0): nombre de la sede, si es la misma, y el detail con la franja.
+		if (exception.getConflicto() != null) {
+			exception.getConflicto().propiedades().forEach(problem::setProperty);
 		}
 		return problem;
 	}
