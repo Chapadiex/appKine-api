@@ -26,5 +26,14 @@ public record ExcepcionEdicionCommand(
 		LocalTime horaHasta,
 		String notes,
 		long expectedVersion,
-		boolean confirmaTurnosAfectados) {
+		boolean confirmaTurnosAfectados,
+		boolean sustituirDisponibilidadSuperpuesta) {
+
+	/** Sin sustitucion (disponibilidad central, 0.158.0). */
+	public ExcepcionEdicionCommand(MotivoExcepcion motivo, LocalDate fechaDesde, LocalDate fechaHasta,
+			LocalTime horaDesde, LocalTime horaHasta, String notes, long expectedVersion,
+			boolean confirmaTurnosAfectados) {
+		this(motivo, fechaDesde, fechaHasta, horaDesde, horaHasta, notes, expectedVersion, confirmaTurnosAfectados,
+				false);
+	}
 }

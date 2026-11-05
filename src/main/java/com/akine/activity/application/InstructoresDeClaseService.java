@@ -182,9 +182,13 @@ public class InstructoresDeClaseService {
 		List<Long> nuevos = pedidos.stream().filter(id -> !actuales.contains(id)).toList();
 		if (!nuevos.isEmpty() && clase.getEstado() != EstadoClase.REALIZADA) {
 			bloqueos.bloquearEnOrden(organizationId, nuevos);
+			// Disponibilidad central (0.158.0): la misma regla que el principal —turnos, clases, cierres y
+			// franja en esta sede— y el 409 nombra al instructor.
+			Map<Long, String> nombresDeNuevos = nombres(organizationId, nuevos);
 			for (Long membershipId : nuevos) {
 				claseService.exigirPersonaLibre(organizationId, consultorioId, membershipId,
-						clase.getInicio(), clase.getFin(), claseId);
+						clase.getInicio(), clase.getFin(), claseId,
+						clase.getEstado() == EstadoClase.PROGRAMADA, nombresDeNuevos.get(membershipId));
 			}
 		}
 

@@ -223,6 +223,10 @@ public class ActivityProblemHandler {
 			problem.setProperty("conflictoInicio", exception.getConflictoInicio().toString());
 			problem.setProperty("conflictoFin", exception.getConflictoFin().toString());
 		}
+		// Disponibilidad central (0.158.0): el instructor, el nombre de la sede y si es la misma.
+		if (exception.getConflicto() != null) {
+			exception.getConflicto().propiedades().forEach(problem::setProperty);
+		}
 		return problem;
 	}
 
@@ -231,6 +235,10 @@ public class ActivityProblemHandler {
 		ProblemDetail problem = conflicto(exception.getMessage(), SLOT_NO_DISPONIBLE);
 		problem.setTitle("El horario elegido no esta disponible");
 		problem.setProperty("motivo", exception.getMotivo());
+		if (exception.getConflicto() != null) {
+			problem.setDetail(exception.getMotivo());
+			exception.getConflicto().propiedades().forEach(problem::setProperty);
+		}
 		return problem;
 	}
 

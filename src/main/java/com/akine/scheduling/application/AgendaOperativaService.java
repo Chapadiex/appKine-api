@@ -57,6 +57,7 @@ public class AgendaOperativaService {
 	private final NombresDeAgenda nombres;
 	private final SoporteEnAgenda soporte;
 	private final OcupacionEntreSedes ocupacionEntreSedes;
+	private final ConflictosDeDisponibilidad conflictosDeDisponibilidad;
 
 	public AgendaOperativaService(
 			RecepcionService recepcion,
@@ -68,7 +69,25 @@ public class AgendaOperativaService {
 			NombresDeAgenda nombres,
 			SoporteEnAgenda soporte,
 			OcupacionEntreSedes ocupacionEntreSedes) {
+		this(recepcion, consultorios, memberships, disponibilidad, espacios, eventosExternos, nombres, soporte,
+				ocupacionEntreSedes, null);
+	}
 
+	@org.springframework.beans.factory.annotation.Autowired
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public AgendaOperativaService(
+			RecepcionService recepcion,
+			ConsultorioDirectory consultorios,
+			ConsultorioMembershipDirectory memberships,
+			DisponibilidadDirectory disponibilidad,
+			EspacioDirectory espacios,
+			EventoExternoDeAgenda eventosExternos,
+			NombresDeAgenda nombres,
+			SoporteEnAgenda soporte,
+			OcupacionEntreSedes ocupacionEntreSedes,
+			ConflictosDeDisponibilidad conflictosDeDisponibilidad) {
+
+		this.conflictosDeDisponibilidad = conflictosDeDisponibilidad;
 		this.ocupacionEntreSedes = ocupacionEntreSedes;
 		this.recepcion = recepcion;
 		this.consultorios = consultorios;
@@ -185,8 +204,16 @@ public class AgendaOperativaService {
 		// celda no se vea libre, y los choques turno–clase que ya estaban guardados.
 		OcupacionEntreSedes.Resultado entreSedes = ocupacionEntreSedes.de(organizationId, consultorioId,
 				columnas.stream().map(ProfesionalDeAgendaView::membershipId).toList(), inicio, fin);
+		// Disponibilidad central (0.158.0): tambien las clases con un instructor en cierre y la doble oferta
+		// entre sedes que ya estaban guardadas. Se marcan, no se corrigen.
+		List<AgendaOperativaView.ConflictoDeAgendaView> conflictos = new ArrayList<>(entreSedes.conflictos());
+		if (conflictosDeDisponibilidad != null) {
+			conflictos.addAll(conflictosDeDisponibilidad.de(organizationId, sede, columnas, bloqueos, inicio, fin,
+					desde, hasta));
+			conflictos.sort(Comparator.comparing(AgendaOperativaView.ConflictoDeAgendaView::inicio));
+		}
 		return new AgendaOperativaView(desde, hasta, sede.timezone(), columnas, boxes, turnos, clases, bloqueos,
-				entreSedes.ocupaciones(), entreSedes.conflictos());
+				entreSedes.ocupaciones(), List.copyOf(conflictos));
 	}
 
 	/** Dia completo sin hora; una hora de fin a medianoche (24:00 en M05) es el inicio del dia siguiente. */

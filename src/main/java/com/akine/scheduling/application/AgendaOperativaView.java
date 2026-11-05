@@ -48,8 +48,25 @@ public record AgendaOperativaView(
 	 * @param fin    fin del tramo en que se pisan
 	 */
 	public record ConflictoDeAgendaView(
-			Long membershipId, Long turnoId, long turnoConsultorioId, Long claseId, long claseConsultorioId,
-			Instant inicio, Instant fin) {
+			Long membershipId, Long turnoId, Long turnoConsultorioId, Long claseId, Long claseConsultorioId,
+			Instant inicio, Instant fin, String tipo, Long excepcionId, String causa, Long otraSedeConsultorioId) {
+
+		/** Un turno y una clase de la misma persona que se pisan (0.156.0). */
+		public static final String TURNO_CLASE = "TURNO_CLASE";
+		/**
+		 * Una clase de esta sede cuyo instructor (principal o adicional, la columna) tiene un cierre que la
+		 * alcanza: un bloqueo o una ausencia suyos, o el cierre de la sede (disponibilidad central, 0.158.0).
+		 */
+		public static final String CLASE_EN_CIERRE = "CLASE_EN_CIERRE";
+		/** La columna atiende en esta sede y en otra a la vez: doble oferta (disponibilidad central, 0.158.0). */
+		public static final String DISPONIBILIDAD_DOBLE = "DISPONIBILIDAD_DOBLE";
+
+		public ConflictoDeAgendaView(
+				Long membershipId, Long turnoId, long turnoConsultorioId, Long claseId, long claseConsultorioId,
+				Instant inicio, Instant fin) {
+			this(membershipId, turnoId, turnoConsultorioId, claseId, claseConsultorioId, inicio, fin, TURNO_CLASE,
+					null, null, null);
+		}
 	}
 
 	/** @param franjas cuando atiende: lo que no esta aca no se puede reservar */

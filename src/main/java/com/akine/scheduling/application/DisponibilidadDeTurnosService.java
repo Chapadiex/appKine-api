@@ -361,6 +361,10 @@ public class DisponibilidadDeTurnosService {
 	 * sede se dice. Sin saber con que choca, un texto neutro.
 	 */
 	private static String motivoDeProfesionalOcupado(long consultorioId, RecursoOcupadoException ocupado) {
+		// Disponibilidad central (0.158.0): la causa con su franja y su sede.
+		if (ocupado.getConflicto() != null) {
+			return ocupado.getConflicto().detalle(null);
+		}
 		if (RecursoOcupadoException.CLASE.equals(ocupado.getConflictoTipo())) {
 			boolean otraSede = ocupado.getConflictoConsultorioId() != null
 					&& ocupado.getConflictoConsultorioId() != consultorioId;

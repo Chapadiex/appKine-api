@@ -58,5 +58,11 @@ public record UpdateExcepcionRequest(
 				+ "Sin esto, un cambio con turnos afectados responde 409 `bloqueo-con-turnos-afectados` con "
 				+ "la lista. Los turnos nunca se tocan",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		Boolean confirmaTurnosAfectados) {
+		Boolean confirmaTurnosAfectados,
+
+		@Schema(description = "Solo APERTURA de un profesional: igual que en el alta, cierra la otra sede en "
+				+ "las franjas superpuestas con su horario alla. Lo reservado alla nunca se sustituye (409 "
+				+ "`recurso-ocupado`)",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean sustituirDisponibilidadSuperpuesta) {
 }

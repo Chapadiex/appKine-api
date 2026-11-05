@@ -171,6 +171,8 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V138` | Agenda — aviso único del cambio de sede (`akine-agenda-aviso-unico`) | **Vacía**: el aviso "tu turno cambio" reusa el tipo `TURNO_REPROGRAMADO` y `notification_outbox` (la clave idempotente ya es `UNIQUE`, `tipo` es `VARCHAR` sin CHECK); no hizo falta tabla ni columna. No se reusa |
 | `V139` | Agenda — historial, cierres de sede y traslado en una fila (`akine-agenda-historial-2`) | **Usada**: `V139__platform_auditoria_turno_de_origen_de_un_traslado.sql` — columna generada `VIRTUAL` `agenda_turno_origen_ref` en `audit_event` (derivada de `details.turnoOrigenId`, sin backfill) con `ix_audit_event_agenda_turno_origen`: une la reserva del turno nuevo con el `TURNO_TRASLADADO` del original |
 | `V140` | Agenda — historial (`akine-agenda-historial-2`) | **Vacía**: reservada por si los cierres de sede necesitaban un índice o una tabla; se resuelven al leer con las tablas e índices existentes. No se reusa |
+| `V141` | Agenda — disponibilidad central por persona (`akine-agenda-disponibilidad`) | **Vacía**: la lógica central no tiene tablas (lee turnos, clases y excepciones) y el lock es `agenda_profesional` (`V129`); la sustitución de una apertura escribe filas comunes de `disponibilidad_excepcion` con el motivo `BLOQUEO` existente. No se reusa |
+| `V142` | Agenda — disponibilidad central por persona | **Vacía**: reservada por si la consulta de aperturas por persona necesitaba índice; las aperturas de una persona son pocas filas y alcanza la FK de `membership_id`. No se reusa |
 
 ## 7. Paquetes de trabajo
 

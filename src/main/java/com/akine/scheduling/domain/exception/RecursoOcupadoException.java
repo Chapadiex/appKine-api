@@ -1,5 +1,7 @@
 package com.akine.scheduling.domain.exception;
 
+import com.akine.platform.spi.problem.ConflictoDeAgenda;
+
 import java.time.Instant;
 
 /**
@@ -29,6 +31,7 @@ public class RecursoOcupadoException extends RuntimeException {
 	private final String conflictoTipo;
 	private final Long claseEnConflictoId;
 	private final Long conflictoConsultorioId;
+	private final ConflictoDeAgenda conflicto;
 
 	public RecursoOcupadoException(String recurso) {
 		this(recurso, null, null, null);
@@ -45,7 +48,17 @@ public class RecursoOcupadoException extends RuntimeException {
 	private RecursoOcupadoException(
 			String mensaje, String recurso, Long turnoEnConflictoId, Instant conflictoInicio,
 			Instant conflictoFin, String conflictoTipo, Long claseEnConflictoId, Long conflictoConsultorioId) {
+		this(mensaje, recurso, turnoEnConflictoId, conflictoInicio, conflictoFin, conflictoTipo, claseEnConflictoId,
+				conflictoConsultorioId, null);
+	}
+
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	private RecursoOcupadoException(
+			String mensaje, String recurso, Long turnoEnConflictoId, Instant conflictoInicio,
+			Instant conflictoFin, String conflictoTipo, Long claseEnConflictoId, Long conflictoConsultorioId,
+			ConflictoDeAgenda conflicto) {
 		super(mensaje);
+		this.conflicto = conflicto;
 		this.recurso = recurso;
 		this.turnoEnConflictoId = turnoEnConflictoId;
 		this.conflictoInicio = conflictoInicio;
@@ -53,6 +66,25 @@ public class RecursoOcupadoException extends RuntimeException {
 		this.conflictoTipo = conflictoTipo;
 		this.claseEnConflictoId = claseEnConflictoId;
 		this.conflictoConsultorioId = conflictoConsultorioId;
+	}
+
+	/**
+	 * Disponibilidad central (0.158.0): el conflicto real, con causa, sede y franja, y el detail en
+	 * castellano ("El profesional ya tiene una clase el 08/03/2027 de 10:00 a 11:00 en la sede Norte. No
+	 * es posible asignarle otro turno en ese horario."). Nunca datos del paciente.
+	 */
+	public static RecursoOcupadoException por(String recurso, ConflictoDeAgenda conflicto) {
+		boolean esTurno = conflicto.tipo() == ConflictoDeAgenda.Tipo.TURNO;
+		boolean esClase = conflicto.tipo() == ConflictoDeAgenda.Tipo.CLASE;
+		return new RecursoOcupadoException(
+				conflicto.detalle("No es posible asignarle otro turno en ese horario."),
+				recurso, esTurno ? conflicto.eventoId() : null, conflicto.desde(), conflicto.hasta(),
+				conflicto.tipo().name(), esClase ? conflicto.eventoId() : null, conflicto.consultorioId(), conflicto);
+	}
+
+	/** El conflicto completo si se construyo con {@link #por}; {@code null} en las formas anteriores. */
+	public ConflictoDeAgenda getConflicto() {
+		return conflicto;
 	}
 
 	/** Choca con un turno de la misma persona, quiza de otra sede. */
