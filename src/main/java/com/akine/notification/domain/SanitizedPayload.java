@@ -56,6 +56,13 @@ public final class SanitizedPayload {
 			"consultorioNombreAnterior",
 			"cambioProfesional",
 			"cambioEspacio",
+			// V140: la direccion fisica de la sede y sus coordenadas, SOLO cuando la sede las publica
+			// (ConsultorioSnapshot.direccionPublica). Es dato del centro, no de la persona. Las
+			// coordenadas van como texto decimal: el enlace "como llegar" lo arma el template, porque
+			// una URL en el payload la rechaza FRAGMENTOS_PROHIBIDOS, y eso esta bien.
+			"consultorioDireccion",
+			"consultorioLatitud",
+			"consultorioLongitud",
 			// AKINE-08.08 (RF-M26-008): el aviso de un pase dice que producto es, cuando vence y
 			// cuanto saldo le queda. El nombre comercial del producto, no un dato clinico ni un id.
 			"productoNombre",

@@ -29,6 +29,7 @@ import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
 import com.akine.scheduling.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.scheduling.domain.exception.PlanSinSesionesException;
 import com.akine.scheduling.domain.exception.SedeDadaDeBajaException;
+import com.akine.scheduling.domain.exception.SedeSinAgendaException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
 import com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException;
 import com.akine.scheduling.domain.exception.TurnoNotAccessibleException;
@@ -559,6 +560,21 @@ class TurnoServiceTest {
 		assertThatThrownBy(() -> service.asociarContexto(actor, CONSULTORIO_ID, TURNO_ID, null, null, 0L))
 				.isInstanceOf(SedeDadaDeBajaException.class);
 
+		verify(turnos, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("V140: en una sede activa pero sin agenda habilitada no se reserva, y no se toca ningun lock")
+	void reservar_en_una_sede_sin_agenda() {
+		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(new ConsultorioSnapshot(
+				CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true, false, null, null, null)));
+
+		assertThatThrownBy(() -> service.reservar(actor, CONSULTORIO_ID, 42L,
+				reserva(Instant.now().plus(Duration.ofDays(1)))))
+				.isInstanceOf(SedeSinAgendaException.class);
+
+		verify(iniciador, never()).asegurar(ORG_ID, CONSULTORIO_ID);
+		verify(agendas, never()).lockByScope(ORG_ID, CONSULTORIO_ID);
 		verify(turnos, never()).saveAndFlush(any());
 	}
 

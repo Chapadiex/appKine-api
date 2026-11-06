@@ -230,6 +230,16 @@ public class AvisosDeTurno {
 		datos.put("turnoInicio", FORMATO.format(turno.getInicio().atZone(zona)));
 		datos.put("consultorioNombre", sede.name());
 		datos.put("servicioNombre", servicioNombre);
+		// V140: la direccion y las coordenadas de la sede, SOLO si la sede las publica. El snapshot ya
+		// viene filtrado por esa decision (null = no publicar), y el enlace "como llegar" lo arma el
+		// template: una URL aca la rechazaria el outbox, y esa regla sigue valiendo.
+		if (sede.direccionPublica() != null) {
+			datos.put("consultorioDireccion", sede.direccionPublica());
+			if (sede.latitud() != null && sede.longitud() != null) {
+				datos.put("consultorioLatitud", sede.latitud().toPlainString());
+				datos.put("consultorioLongitud", sede.longitud().toPlainString());
+			}
+		}
 		datos.putAll(cambios);
 
 		outbox.enqueue(new NotificationEnqueueCommand(

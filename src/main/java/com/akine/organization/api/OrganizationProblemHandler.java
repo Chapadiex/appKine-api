@@ -1,7 +1,9 @@
 package com.akine.organization.api;
 
 import com.akine.platform.spi.problem.ProblemType;
+import com.akine.organization.application.CampoInvalidoException;
 import com.akine.organization.application.ConsultorioAltaEnCursoException;
+import com.akine.organization.application.GeocodificadorNoDisponibleException;
 import com.akine.organization.application.IdempotencyKeyConflictException;
 import com.akine.organization.application.PlanNotFoundException;
 import com.akine.organization.domain.exception.ConsultorioHasActiveReferencesException;
@@ -32,12 +34,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.net.URI;
+import java.util.Map;
 
 /**
  * Traduccion de las excepciones de dominio de {@code organization} a Problem Details.
@@ -114,6 +119,8 @@ public class OrganizationProblemHandler {
 			ProblemType.CONSULTORIO_HAS_ACTIVE_REFERENCES.uri();
 	private static final URI MISSING_TENANT_CONTEXT =
 			ProblemType.MISSING_TENANT_CONTEXT.uri();
+	private static final URI GEOCODIFICADOR_NO_DISPONIBLE =
+			ProblemType.GEOCODIFICADOR_NO_DISPONIBLE.uri();
 
 	/**
 	 * Organizacion inexistente, dada de baja, o de otro tenant.
@@ -649,6 +656,46 @@ public class OrganizationProblemHandler {
 		problem.setTitle("Alta en curso");
 		problem.setType(CONFLICT);
 		return problem;
+	}
+
+	/**
+	 * Un campo que Bean Validation no puede evaluar sola: el CUIT con digito verificador, la
+	 * ubicacion a medias (V140).
+	 *
+	 * <p>Misma forma que el 400 de un {@code @Valid}: {@code validation-error} con el campo en
+	 * {@code errors}, para que el formulario lo marque como a cualquier otro.
+	 */
+	@ExceptionHandler(CampoInvalidoException.class)
+	public ProblemDetail handleCampoInvalido(CampoInvalidoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, "La solicitud contiene campos invalidos");
+		problem.setTitle("Error de validacion");
+		problem.setType(VALIDATION_ERROR);
+		problem.setProperty("errors", Map.of(exception.getCampo(), exception.getMessage()));
+		return problem;
+	}
+
+	/**
+	 * El geocodificador no respondio o esta apagado (V140).
+	 *
+	 * <p>503 y no 502 ni 500: no es un error de este sistema ni del cliente, es un servicio de
+	 * terceros que hoy no esta. {@code Retry-After} le dice a la pantalla cuando volver a intentar; la
+	 * sede se puede guardar igual sin coordenadas. La causa va al log y nunca a la respuesta.
+	 */
+	@ExceptionHandler(GeocodificadorNoDisponibleException.class)
+	public ResponseEntity<ProblemDetail> handleGeocodificadorNoDisponible(
+			GeocodificadorNoDisponibleException exception) {
+		log.warn("Geocodificador no disponible: {}", exception.getMessage());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.SERVICE_UNAVAILABLE,
+				"La busqueda de direcciones no esta disponible en este momento. Podes guardar la sede "
+						+ "con la direccion escrita y ubicarla despues, o fijar la ubicacion a mano.");
+		problem.setTitle("Geocodificador no disponible");
+		problem.setType(GEOCODIFICADOR_NO_DISPONIBLE);
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+				.header(HttpHeaders.RETRY_AFTER,
+						Integer.toString(GeocodificadorNoDisponibleException.SEGUNDOS_PARA_REINTENTAR))
+				.body(problem);
 	}
 
 	/** Cuerpo unico de 404: mismo texto para no existe, dado de baja y de otro tenant. */

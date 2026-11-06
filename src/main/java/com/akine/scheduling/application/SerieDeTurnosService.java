@@ -193,6 +193,8 @@ public class SerieDeTurnosService {
 	public ResultadoDeSerie crear(OperatingActor actor, long consultorioId, AltaDeSerieCommand command) {
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
+		// V140: misma puerta que reservar un turno. Una sede sin agenda habilitada no recibe series.
+		BloqueoDeAgenda.exigirAgendaHabilitada(sede);
 		PermissionDecision gestion =
 				exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_MANAGE);
 		// Alcance propio: la serie y cada ocurrencia elegida van con el propio profesional.

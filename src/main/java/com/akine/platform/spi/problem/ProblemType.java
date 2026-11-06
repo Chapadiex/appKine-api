@@ -126,6 +126,18 @@ public enum ProblemType {
 	LAST_CONSULTORIO_REQUIRED("last-consultorio-required"),
 	/** La sede tiene referencias vigentes que impiden darla de baja. */
 	CONSULTORIO_HAS_ACTIVE_REFERENCES("consultorio-has-active-references"),
+	/**
+	 * La sede existe y esta activa pero todavia no esta habilitada para agenda (409, V140). Reservar
+	 * un turno, crear una serie o trasladar un turno hacia ella se rechaza hasta que
+	 * {@code agendaHabilitada} pase a {@code true}.
+	 */
+	CONSULTORIO_SIN_AGENDA("consultorio-sin-agenda"),
+	/**
+	 * El geocodificador de direcciones no respondio o esta apagado en este despliegue (503, con
+	 * {@code Retry-After}). La sede se puede guardar igual con la direccion escrita y sin
+	 * coordenadas, o fijando la ubicacion a mano.
+	 */
+	GEOCODIFICADOR_NO_DISPONIBLE("geocodificador-no-disponible"),
 
 	// --- Espacios (M04) -------------------------------------------------------------------
 	/** Ya hay un espacio vigente con ese nombre en esa sede. */

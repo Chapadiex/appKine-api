@@ -273,7 +273,9 @@ public class OrganizationController {
 				actor.accountId(), orgId, actor.contextOrganizationId(), actor.platformAdmin());
 
 		OrganizationView actualizada = organizationService.update(
-				orgId, request.name(), request.timezone(), request.version(), actor.accountId());
+				orgId, request.name(), request.timezone(),
+				request.legalName(), request.taxId(), request.fiscalAddressLine(),
+				request.version(), actor.accountId());
 
 		return ResponseEntity.ok(OrganizationResponse.from(actualizada));
 	}

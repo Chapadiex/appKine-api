@@ -1,8 +1,10 @@
 package com.akine.scheduling.application;
 
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.scheduling.domain.AgendaSede;
 import com.akine.scheduling.domain.exception.SedeDadaDeBajaException;
+import com.akine.scheduling.domain.exception.SedeSinAgendaException;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.AgendaSedeRepositoryPort;
 
 /**
@@ -18,6 +20,23 @@ final class BloqueoDeAgenda {
 
 	private BloqueoDeAgenda() {
 		// Utilidad de concurrencia.
+	}
+
+	/**
+	 * Rechaza ocupar la agenda de una sede que todavia no la abrio (V140, {@code agendaHabilitada}).
+	 *
+	 * <p>Se evalua sobre el snapshot ya leido y ANTES del lock, sin relectura: habilitar la agenda es
+	 * un acto administrativo poco frecuente y una reserva que se cuele en el instante en que se apaga
+	 * no deja ningun invariante roto, a diferencia de la baja. Lo usan reservar, crear una serie y
+	 * trasladar un turno hacia la sede; reprogramar dentro de la misma sede no, porque el turno ya
+	 * estaba ahi.
+	 *
+	 * @throws SedeSinAgendaException 409 {@code consultorio-sin-agenda}
+	 */
+	static void exigirAgendaHabilitada(ConsultorioSnapshot sede) {
+		if (!sede.agendaHabilitada()) {
+			throw new SedeSinAgendaException(sede.id());
+		}
 	}
 
 	static AgendaSede tomar(

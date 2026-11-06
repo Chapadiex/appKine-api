@@ -262,6 +262,72 @@ class ConsultoriosIT extends BaseEscenarioDiferido {
 				.id();
 	}
 
+	@Test
+	@DisplayName("V140: la sede nace con direccion estructurada, ubicacion y sin agenda; el PATCH borra la "
+			+ "ubicacion y un CUIT mal tipeado es 400 con el campo")
+	void la_sede_nace_con_direccion_y_ubicacion() {
+		Sesion sesion = altaCompleta("sede-ubicacion");
+		habilitarMasDeUnaSede(sesion);
+		String base = "/api/v1/organizations/" + sesion.organizationId() + "/consultorios";
+
+		Respuesta alta = post(base, sesion.token(), """
+				{"name":"Sede Ubicada","timezone":"America/Argentina/Cordoba",
+				 "alias":"Norte","pais":"ar","provincia":"Cordoba","ciudad":"Cordoba",
+				 "calle":"Av. Colon","numero":"1234","codigoPostal":"X5000","piso":"Piso 2",
+				 "referencias":"Frente a la plaza",
+				 "ubicacion":{"latitud":-31.420083,"longitud":-64.188776,"origen":"GEOCODIFICADA"},
+				 "agendaHabilitada":false,"direccionPublica":true,"datosFiscalesPropios":false}""",
+				Map.of("Idempotency-Key", UUID.randomUUID().toString()));
+		assertThat(alta.status()).as("alta: %s", alta.body()).isEqualTo(201);
+		long sedeId = alta.json().get("id").asLong();
+		assertThat(alta.json().get("pais").asString()).as("el pais se guarda en mayusculas").isEqualTo("AR");
+		assertThat(alta.json().get("direccionFormateada").asString())
+				.isEqualTo("Av. Colon 1234, Piso 2, Cordoba, Cordoba, X5000, AR");
+		assertThat(alta.json().get("ubicacion").get("latitud").decimalValue()).isEqualByComparingTo("-31.420083");
+		assertThat(alta.json().get("ubicacion").get("origen").asString()).isEqualTo("GEOCODIFICADA");
+		assertThat(alta.json().get("ubicacionPendiente").asBoolean()).isFalse();
+		assertThat(alta.json().get("agendaHabilitada").asBoolean()).isFalse();
+		assertThat(alta.json().get("datosFiscalesEfectivos").get("origen").asString())
+				.as("sin datos fiscales propios factura con los de la organizacion")
+				.isEqualTo("ORGANIZACION");
+
+		// Lo que quedo en la base, no lo que dijo el 201.
+		assertThat(jdbc.queryForMap(
+				"SELECT pais, calle, numero, latitud, longitud, ubicacion_origen, agenda_habilitada, "
+						+ "datos_fiscales_propios FROM consultorio WHERE id = ?", sedeId))
+				.containsEntry("pais", "AR")
+				.containsEntry("calle", "Av. Colon")
+				.containsEntry("numero", "1234")
+				.containsEntry("ubicacion_origen", "GEOCODIFICADA")
+				.containsEntry("agenda_habilitada", false)
+				.containsEntry("datos_fiscales_propios", false);
+
+		Respuesta lectura = get(base + "/" + sedeId, sesion.token());
+		assertThat(lectura.status()).isEqualTo(200);
+		assertThat(lectura.json().get("ubicacion").get("longitud").decimalValue()).isEqualByComparingTo("-64.188776");
+
+		// Borrar la ubicacion: las dos coordenadas en null. La direccion queda y pasa a "pendiente".
+		Respuesta borrado = patch(base + "/" + sedeId, sesion.token(),
+				"{\"ubicacion\":{\"latitud\":null,\"longitud\":null},\"agendaHabilitada\":true,\"version\":0}");
+		assertThat(borrado.status()).as("patch: %s", borrado.body()).isEqualTo(200);
+		// La respuesta omite los null, asi que "sin ubicacion" es la clave ausente o nula.
+		assertThat(borrado.json().path("ubicacion").isMissingNode() || borrado.json().path("ubicacion").isNull())
+				.as("ubicacion borrada: %s", borrado.body()).isTrue();
+		assertThat(borrado.json().get("ubicacionPendiente").asBoolean()).isTrue();
+		assertThat(borrado.json().get("agendaHabilitada").asBoolean()).isTrue();
+		assertThat(jdbc.queryForMap("SELECT latitud, ubicacion_origen FROM consultorio WHERE id = ?", sedeId))
+				.containsEntry("latitud", null)
+				.containsEntry("ubicacion_origen", null);
+
+		// Un CUIT con el verificador mal es 400 con el campo, como cualquier otro error de formulario.
+		Respuesta cuit = patch(base + "/" + sedeId, sesion.token(),
+				"{\"taxId\":\"20-12345678-5\",\"version\":1}");
+		assertThat(cuit.status()).as("cuit invalido: %s", cuit.body()).isEqualTo(400);
+		assertThat(cuit.json().get("errors").get("taxId").asString()).isEqualTo("El CUIT no es valido");
+		assertThat(jdbc.queryForObject("SELECT tax_id FROM consultorio WHERE id = ?", String.class, sedeId))
+				.isNull();
+	}
+
 	private Respuesta crearSede(Sesion sesion, String nombre) {
 		return crearSede(sesion, nombre, UUID.randomUUID().toString());
 	}
