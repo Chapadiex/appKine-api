@@ -122,6 +122,21 @@ class SanitizedPayloadTest {
 	}
 
 	@Test
+	@DisplayName("V140: la direccion formateada de la sede puede pasar de 200 sin perderse")
+	void la_direccion_de_la_sede_tiene_tope_propio() {
+		String direccion = ("Avenida Presidente Doctor Raul Ricardo Alfonsin 12345, "
+				+ "Torre 2 piso 14 oficina 1401, Ciudad Autonoma de Buenos Aires, "
+				+ "Provincia de Buenos Aires, C1426AAN ").repeat(3).trim();
+		assertThat(direccion.length()).isBetween(201, 500);
+
+		assertThatCode(() -> SanitizedPayload.of(Map.of("consultorioDireccion", direccion)))
+				.doesNotThrowAnyException();
+		assertThatThrownBy(() -> SanitizedPayload.of(Map.of("consultorioDireccion", "a".repeat(501))))
+				.isInstanceOf(SensitiveContentException.class)
+				.hasMessageContaining("500");
+	}
+
+	@Test
 	@DisplayName("Los nombres propios normales pasan sin problema")
 	void los_nombres_normales_pasan() {
 		// Si la heuristica fuera demasiado agresiva, encolar una invitacion legitima fallaria

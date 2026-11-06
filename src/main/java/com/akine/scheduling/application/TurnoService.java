@@ -189,10 +189,6 @@ public class TurnoService {
 		// commiteado, asi que leerlas en la suya no cambia lo que ven.
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		// V140: una sede activa puede no haber abierto su agenda todavia. Se mira sobre el snapshot y
-		// sin lock, a diferencia de la baja: habilitarla es un acto administrativo y una reserva que se
-		// cuele en el instante en que se apaga no rompe ningun invariante.
-		BloqueoDeAgenda.exigirAgendaHabilitada(sede);
 		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 		// Alcance propio (agenda de profesionales): el PROFESIONAL reserva solo en su agenda.
 		agendaDelProfesional.exigirPropio(gestion, actor, organizationId, command.profesionalId());
@@ -337,6 +333,12 @@ public class TurnoService {
 		}
 
 		// PASO 3. Los rechazos del paso 0, en el orden en que se evaluaban bajo el lock.
+		// V140, primero: una sede activa puede no haber abierto su agenda todavia. Va DESPUES de la
+		// idempotencia por la misma regla que los demas rechazos: si el turno ya se creo y la agenda
+		// se apago despues, el reintento con la misma clave sigue devolviendo ese turno. Se mira sobre
+		// el snapshot, sin relectura: habilitarla es un acto administrativo y una reserva que se cuele
+		// en el instante en que se apaga no rompe ningun invariante.
+		BloqueoDeAgenda.exigirAgendaHabilitada(sede);
 		OfertaSnapshot oferta = preparacion.oferta;
 		if (oferta == null) {
 			throw new OfertaNotAccessibleException(ofertaId);

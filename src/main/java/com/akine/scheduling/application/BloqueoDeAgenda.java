@@ -25,11 +25,12 @@ final class BloqueoDeAgenda {
 	/**
 	 * Rechaza ocupar la agenda de una sede que todavia no la abrio (V140, {@code agendaHabilitada}).
 	 *
-	 * <p>Se evalua sobre el snapshot ya leido y ANTES del lock, sin relectura: habilitar la agenda es
-	 * un acto administrativo poco frecuente y una reserva que se cuele en el instante en que se apaga
-	 * no deja ningun invariante roto, a diferencia de la baja. Lo usan reservar, crear una serie y
-	 * trasladar un turno hacia la sede; reprogramar dentro de la misma sede no, porque el turno ya
-	 * estaba ahi.
+	 * <p>Se evalua sobre el snapshot ya leido, sin relectura: habilitar la agenda es un acto
+	 * administrativo poco frecuente y una reserva que se cuele en el instante en que se apaga no deja
+	 * ningun invariante roto, a diferencia de la baja. Y va DESPUES de resolver la idempotencia: un
+	 * reintento de algo ya creado devuelve lo creado aunque la agenda se haya apagado despues. Lo usan
+	 * reservar, crear una serie y trasladar un turno hacia la sede; reprogramar dentro de la misma
+	 * sede no, porque el turno ya estaba ahi.
 	 *
 	 * @throws SedeSinAgendaException 409 {@code consultorio-sin-agenda}
 	 */
