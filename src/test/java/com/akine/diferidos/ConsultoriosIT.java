@@ -282,7 +282,8 @@ class ConsultoriosIT extends BaseEscenarioDiferido {
 		long sedeId = alta.json().get("id").asLong();
 		assertThat(alta.json().get("pais").asString()).as("el pais se guarda en mayusculas").isEqualTo("AR");
 		assertThat(alta.json().get("direccionFormateada").asString())
-				.isEqualTo("Av. Colon 1234, Piso 2, Cordoba, Cordoba, X5000, AR");
+				.as("sin el pais, que es Argentina, ni la provincia, que repite la ciudad")
+				.isEqualTo("Av. Colon 1234, Piso 2, Cordoba, X5000");
 		assertThat(alta.json().get("ubicacion").get("latitud").decimalValue()).isEqualByComparingTo("-31.420083");
 		assertThat(alta.json().get("ubicacion").get("origen").asString()).isEqualTo("GEOCODIFICADA");
 		assertThat(alta.json().get("ubicacionPendiente").asBoolean()).isFalse();
