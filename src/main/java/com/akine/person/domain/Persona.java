@@ -245,6 +245,12 @@ public class Persona extends MarcaTemporal {
 			throw new IllegalArgumentException(
 					"El numero de documento es obligatorio cuando se declara un tipo de documento");
 		}
+		// La reciproca. Sin ella el par incompleto llegaba al CHECK y persistir() lo traducia
+		// como "documento en uso": el operador buscaba en el padron una ficha que no existia.
+		if (tipo == null && numeroLimpio != null) {
+			throw new IllegalArgumentException(
+					"El tipo de documento es obligatorio cuando se carga un numero de documento");
+		}
 		this.tipoDocumento = numeroLimpio == null ? null : tipo;
 		this.numeroDocumento = numeroLimpio;
 	}
