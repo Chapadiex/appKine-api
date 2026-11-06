@@ -54,6 +54,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -258,6 +259,75 @@ class DisponibilidadServiceTest {
 				.isInstanceOf(ProfesionalNoVinculadoException.class);
 
 		verify(bloques, never()).save(any());
+	}
+
+	// =================================================================================
+	// Alta en lote (carga rapida del horario semanal)
+	// =================================================================================
+
+	@Test
+	@DisplayName("Un lote de lunes a viernes guarda cinco bloques y audita cinco, con un solo lock de sede")
+	void un_lote_de_lunes_a_viernes_guarda_un_bloque_por_dia() {
+		given(bloques.findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID)).willReturn(List.of());
+
+		List<BloqueView> vistas = service.crearVarios(actor, CONSULTORIO_ID, MEMBERSHIP_ID,
+				new BloquesAltaCommand(Set.of(5, 3, 1, 4, 2), LocalTime.of(9, 0), LocalTime.of(13, 0),
+						DESDE_MARZO, null));
+
+		assertThat(vistas).hasSize(5);
+		// En orden de dia aunque el conjunto venga desordenado: el 409 nombra "el primer dia que falla".
+		assertThat(vistas).extracting(BloqueView::diaSemana).containsExactly(1, 2, 3, 4, 5);
+		assertThat(vistas).allMatch(BloqueView::nuevo);
+		verify(bloques, times(5)).save(any());
+		// Un bloque, una fila de auditoria, igual que suelto: el historial por bloque no cambia.
+		ArgumentCaptor<AuditEntry> auditadas = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail, times(5)).record(auditadas.capture());
+		assertThat(auditadas.getAllValues()).allSatisfy(entrada ->
+				assertThat(entrada.details()).containsEntry("diasDelLote", "1,2,3,4,5"));
+		// Los locks se toman UNA vez para todo el lote, no una por dia.
+		verify(calendarios).lockByScope(ORG_ID, CONSULTORIO_ID);
+		verify(agendasDeProfesional).bloquear(ORG_ID, MEMBERSHIP_ID);
+	}
+
+	@Test
+	@DisplayName("Un lote en el que un dia se pisa lanza el 409 de ESE dia y no sigue con los demas")
+	void un_lote_con_un_dia_solapado_lanza_el_409_de_ese_dia() {
+		// El miercoles ya tiene la manana cargada: lunes y martes pasarian, el miercoles choca.
+		given(bloques.findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID))
+				.willReturn(List.of(bloque(BLOQUE_ID, 3, LocalTime.of(9, 0), LocalTime.of(12, 0))));
+
+		assertThatThrownBy(() -> service.crearVarios(actor, CONSULTORIO_ID, MEMBERSHIP_ID,
+				new BloquesAltaCommand(Set.of(1, 2, 3, 4, 5), LocalTime.of(11, 0), LocalTime.of(13, 0),
+						DESDE_MARZO, null)))
+				.isInstanceOf(BloqueSolapadoException.class)
+				.satisfies(error -> assertThat(((BloqueSolapadoException) error).getDiaSemana()).isEqualTo(3));
+
+		// Lunes y martes se guardaron dentro de la transaccion; jueves y viernes no llegaron. Que lo
+		// del lunes y el martes NO quede en la base es trabajo del rollback, y lo prueba el IT.
+		verify(bloques, times(2)).save(any());
+	}
+
+	@Test
+	@DisplayName("Un dia del lote que ya existe identico se devuelve sin crearlo: el resto si se crea")
+	void un_dia_del_lote_que_ya_existe_no_se_duplica() {
+		given(bloques.findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID))
+				.willReturn(List.of(bloque(BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0))));
+
+		List<BloqueView> vistas = service.crearVarios(actor, CONSULTORIO_ID, MEMBERSHIP_ID,
+				new BloquesAltaCommand(Set.of(1, 2), LocalTime.of(9, 0), LocalTime.of(12, 0), DESDE_MARZO, null));
+
+		assertThat(vistas).extracting(BloqueView::nuevo).containsExactly(true, false);
+		verify(bloques, times(1)).save(any());
+		verify(auditTrail, times(1)).record(any());
+	}
+
+	@Test
+	@DisplayName("Un lote sin dias es un pedido invalido, antes de tocar nada")
+	void un_lote_sin_dias_es_invalido() {
+		assertThatThrownBy(() -> service.crearVarios(actor, CONSULTORIO_ID, MEMBERSHIP_ID,
+				new BloquesAltaCommand(Set.of(), LocalTime.of(9, 0), LocalTime.of(12, 0), DESDE_MARZO, null)))
+				.isInstanceOf(IllegalArgumentException.class);
+		verifyNoInteractions(bloques);
 	}
 
 	// =================================================================================
