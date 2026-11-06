@@ -18,13 +18,13 @@ import java.math.BigDecimal;
 		+ "ubicacion; omitir el objeto entero la deja como esta")
 public record UbicacionRequest(
 
-		@Schema(description = "Latitud, entre -90 y 90", example = "-31.420083",
+		@Schema(description = "Latitud, entre -90 y 90. En un PATCH, latitud y longitud en null borran el punto", example = "-31.420083", nullable = true,
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		@DecimalMin(value = "-90", message = "La latitud tiene que estar entre -90 y 90")
 		@DecimalMax(value = "90", message = "La latitud tiene que estar entre -90 y 90")
 		BigDecimal latitud,
 
-		@Schema(description = "Longitud, entre -180 y 180", example = "-64.188776",
+		@Schema(description = "Longitud, entre -180 y 180", example = "-64.188776", nullable = true,
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		@DecimalMin(value = "-180", message = "La longitud tiene que estar entre -180 y 180")
 		@DecimalMax(value = "180", message = "La longitud tiene que estar entre -180 y 180")

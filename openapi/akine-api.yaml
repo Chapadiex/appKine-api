@@ -43833,13 +43833,18 @@ components:
         \ se borra la ubicacion; omitir el objeto entero la deja como esta"
       properties:
         latitud:
-          type: number
-          description: "Latitud, entre -90 y 90"
+          type:
+          - number
+          - "null"
+          description: "Latitud, entre -90 y 90. En un PATCH, latitud y longitud en\
+            \ null borran el punto"
           example: -31.420083
           maximum: 90
           minimum: -90
         longitud:
-          type: number
+          type:
+          - number
+          - "null"
           description: "Longitud, entre -180 y 180"
           example: -64.188776
           maximum: 180
