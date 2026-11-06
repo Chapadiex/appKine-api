@@ -177,6 +177,8 @@ public class TrasladoDeTurnoService {
 		}
 		ConsultorioSnapshot origen = exigirSede(organizationId, consultorioId);
 		ConsultorioSnapshot destino = exigirSede(organizationId, command.consultorioDestinoId());
+		// V140: el destino tiene que tener la agenda abierta; el origen no importa, de ahi se sale.
+		BloqueoDeAgenda.exigirAgendaHabilitada(destino);
 		// Se cancela en una sede y se reserva en otra: hace falta poder hacer las dos cosas.
 		PermissionDecision enOrigen = soporte.exigir(
 				actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);

@@ -288,7 +288,7 @@ class OrganizationControllerTest {
 	@Test
 	@DisplayName("La edicion devuelve la organizacion con la version nueva")
 	void edicion_devuelve_la_version_nueva() throws Exception {
-		given(organizationService.update(eq(1L), any(), any(), eq(3L), any()))
+		given(organizationService.update(eq(1L), any(), any(), any(), any(), any(), eq(3L), any()))
 				.willReturn(vista(1L, 4L));
 
 		mockMvc.perform(patch("/api/v1/organizations/1")
@@ -303,7 +303,7 @@ class OrganizationControllerTest {
 
 		verify(authorizationGuard).requireOrgDataEditor(7L, 1L, null, false);
 		verify(organizationService).update(
-				1L, "Centro Kinesico Belgrano Norte", "America/Argentina/Cordoba", 3L, 7L);
+				1L, "Centro Kinesico Belgrano Norte", "America/Argentina/Cordoba", null, null, null, 3L, 7L);
 	}
 
 	@Test
@@ -333,7 +333,7 @@ class OrganizationControllerTest {
 	@Test
 	@DisplayName("Una version vieja responde 409: releer y reintentar, nunca pisar el cambio ajeno")
 	void edicion_con_version_vieja_es_409() throws Exception {
-		given(organizationService.update(eq(1L), any(), any(), eq(2L), any()))
+		given(organizationService.update(eq(1L), any(), any(), any(), any(), any(), eq(2L), any()))
 				.willThrow(new OptimisticLockingFailureException(
 						"La organizacion fue modificada por otra operacion"));
 
@@ -367,7 +367,7 @@ class OrganizationControllerTest {
 	@Test
 	@DisplayName("Editar una organizacion dada de baja o ajena responde 404 generico")
 	void edicion_de_organizacion_no_accesible_es_404() throws Exception {
-		given(organizationService.update(eq(1L), any(), any(), anyLong(), any()))
+		given(organizationService.update(eq(1L), any(), any(), any(), any(), any(), anyLong(), any()))
 				.willThrow(new OrganizationNotFoundException(1L));
 
 		mockMvc.perform(patch("/api/v1/organizations/1")

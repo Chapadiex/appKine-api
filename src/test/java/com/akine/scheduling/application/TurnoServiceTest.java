@@ -29,6 +29,7 @@ import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
 import com.akine.scheduling.domain.exception.PersonaSinPerfilPacienteException;
 import com.akine.scheduling.domain.exception.PlanSinSesionesException;
 import com.akine.scheduling.domain.exception.SedeDadaDeBajaException;
+import com.akine.scheduling.domain.exception.SedeSinAgendaException;
 import com.akine.scheduling.domain.exception.SlotNoDisponibleException;
 import com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException;
 import com.akine.scheduling.domain.exception.TurnoNotAccessibleException;
@@ -560,6 +561,42 @@ class TurnoServiceTest {
 				.isInstanceOf(SedeDadaDeBajaException.class);
 
 		verify(turnos, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("V140: en una sede activa pero sin agenda habilitada no se reserva")
+	void reservar_en_una_sede_sin_agenda() {
+		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(new ConsultorioSnapshot(
+				CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true, false, null, null, null)));
+
+		assertThatThrownBy(() -> service.reservar(actor, CONSULTORIO_ID, 42L,
+				reserva(Instant.now().plus(Duration.ofDays(1)))))
+				.isInstanceOf(SedeSinAgendaException.class);
+
+		verify(turnos, never()).save(any());
+		verify(turnos, never()).saveAndFlush(any());
+	}
+
+	@Test
+	@DisplayName("V140: si la agenda se apago despues de reservar, el reintento con la misma clave devuelve el turno")
+	void el_reintento_sobrevive_a_la_agenda_apagada() {
+		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(new ConsultorioSnapshot(
+				CONSULTORIO_ID, ORG_ID, "Sede", "America/Argentina/Cordoba", true, false, null, null, null)));
+		Instant manana = Instant.now().plus(Duration.ofDays(1));
+		ReservaCommand command = new ReservaCommand(128L, manana, 31L, "clave-1");
+		Turno existente = new Turno(ORG_ID, CONSULTORIO_ID, 42L, 128L, 31L, null,
+				manana, manana.plus(Duration.ofHours(1)), 9L, Instant.now(),
+				"clave-1", command.huella(CONSULTORIO_ID, 42L));
+		org.springframework.test.util.ReflectionTestUtils.setField(existente, "id", 900L);
+		given(turnos.findByIdempotencyKey(ORG_ID, "clave-1")).willReturn(Optional.of(existente));
+
+		// La puerta de la agenda sale DESPUES de la idempotencia, como todo rechazo leido antes del
+		// lock (carga §10): un reintento no es una reserva nueva y no tiene por que chocar.
+		ResultadoDeReserva reintento = service.reservar(actor, CONSULTORIO_ID, 42L, command);
+
+		assertThat(reintento.creado()).isFalse();
+		assertThat(reintento.turno().id()).isEqualTo(900L);
+		verify(turnos, never()).save(any());
 	}
 
 	@Test

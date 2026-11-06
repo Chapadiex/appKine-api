@@ -4,6 +4,7 @@ import com.akine.organization.api.dto.AltaSedeFranjaHorariaRequest;
 import com.akine.organization.api.dto.ConsultorioResponse;
 import com.akine.organization.api.dto.CreateConsultorioRequest;
 import com.akine.organization.api.dto.DeactivateConsultorioRequest;
+import com.akine.organization.api.dto.UbicacionRequest;
 import com.akine.organization.api.dto.UpdateConsultorioRequest;
 import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.ConsultorioAltaCommand;
@@ -11,6 +12,7 @@ import com.akine.organization.application.ConsultorioEdicionCommand;
 import com.akine.organization.application.ConsultorioService;
 import com.akine.organization.application.ConsultorioView;
 import com.akine.organization.application.OperatingActor;
+import com.akine.organization.application.SedeDatosCommand;
 import com.akine.organization.spi.AltaDeSedeExtension.Complemento;
 import com.akine.organization.spi.AltaDeSedeExtension.FranjaHoraria;
 import com.akine.organization.spi.AltaDeSedeExtension.PrimerBox;
@@ -217,7 +219,13 @@ public class ConsultorioController {
 						request.contactEmail(),
 						idempotencyKey,
 						hashDe(request),
-						complementoDe(request)));
+						complementoDe(request),
+						new SedeDatosCommand(
+								request.alias(), request.pais(), request.provincia(), request.ciudad(),
+								request.calle(), request.numero(), request.codigoPostal(), request.piso(),
+								request.referencias(), ubicacionDe(request.ubicacion()),
+								request.agendaHabilitada(), request.direccionPublica(),
+								request.datosFiscalesPropios())));
 
 		return ResponseEntity
 				.created(URI.create("/api/v1/organizations/" + orgId + "/consultorios/" + creada.id()))
@@ -340,7 +348,13 @@ public class ConsultorioController {
 						request.addressLine(),
 						request.phone(),
 						request.contactEmail(),
-						request.version()));
+						request.version(),
+						new SedeDatosCommand(
+								request.alias(), request.pais(), request.provincia(), request.ciudad(),
+								request.calle(), request.numero(), request.codigoPostal(), request.piso(),
+								request.referencias(), ubicacionDe(request.ubicacion()),
+								request.agendaHabilitada(), request.direccionPublica(),
+								request.datosFiscalesPropios())));
 
 		return ResponseEntity.ok(ConsultorioResponse.from(actualizada));
 	}
@@ -472,6 +486,30 @@ public class ConsultorioController {
 			}
 			partes.add(horario.toString());
 		}
+		// Idem para la direccion, la ubicacion y las opciones (V140): cada una entra SOLO si viene,
+		// con un prefijo propio, asi un cuerpo sin ellas produce exactamente el hash de antes.
+		agregarSiViene(partes, "alias", request.alias());
+		agregarSiViene(partes, "pais", request.pais());
+		agregarSiViene(partes, "provincia", request.provincia());
+		agregarSiViene(partes, "ciudad", request.ciudad());
+		agregarSiViene(partes, "calle", request.calle());
+		agregarSiViene(partes, "numero", request.numero());
+		agregarSiViene(partes, "codigoPostal", request.codigoPostal());
+		agregarSiViene(partes, "piso", request.piso());
+		agregarSiViene(partes, "referencias", request.referencias());
+		if (request.ubicacion() != null) {
+			partes.add("ubicacion:" + request.ubicacion().latitud() + "," + request.ubicacion().longitud()
+					+ "," + request.ubicacion().origen());
+		}
+		if (request.agendaHabilitada() != null) {
+			partes.add("agendaHabilitada:" + request.agendaHabilitada());
+		}
+		if (request.direccionPublica() != null) {
+			partes.add("direccionPublica:" + request.direccionPublica());
+		}
+		if (request.datosFiscalesPropios() != null) {
+			partes.add("datosFiscalesPropios:" + request.datosFiscalesPropios());
+		}
 		String canonico = String.join(SEPARADOR_CANONICO, partes);
 		try {
 			MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
@@ -504,6 +542,24 @@ public class ConsultorioController {
 	private static LocalTime hora(String texto) {
 		String limpio = texto.strip();
 		return limpio.startsWith("24:") ? LocalTime.MAX : LocalTime.parse(limpio);
+	}
+
+	/**
+	 * Las coordenadas del request al comando. {@code null} queda {@code null} ("no tocar"); un
+	 * objeto con las dos coordenadas en {@code null} llega como "borrar". La validacion de que
+	 * vengan las dos juntas la hace el servicio, que es el que responde con el campo.
+	 */
+	private static SedeDatosCommand.UbicacionCommand ubicacionDe(UbicacionRequest ubicacion) {
+		return ubicacion == null
+				? null
+				: new SedeDatosCommand.UbicacionCommand(
+						ubicacion.latitud(), ubicacion.longitud(), ubicacion.origen());
+	}
+
+	private static void agregarSiViene(List<String> partes, String clave, String valor) {
+		if (valor != null) {
+			partes.add(clave + ":" + normalizar(valor));
+		}
 	}
 
 	private static String normalizar(String valor) {

@@ -41,6 +41,17 @@ public class Organization extends TimestampedEntity {
 	@Column(name = "timezone", nullable = false, length = 64)
 	private String timezone;
 
+	// --- Datos fiscales del tenant (V140). Los heredan las sedes sin datos fiscales propios ---
+
+	@Column(name = "legal_name", length = 200)
+	private String legalName;
+
+	@Column(name = "tax_id", length = 32)
+	private String taxId;
+
+	@Column(name = "fiscal_address_line", length = 240)
+	private String fiscalAddressLine;
+
 	@Column(name = "active", nullable = false)
 	private boolean active = true;
 
@@ -70,6 +81,26 @@ public class Organization extends TimestampedEntity {
 	}
 
 	/**
+	 * Datos fiscales del tenant, PATCH: {@code null} deja lo que estaba y la cadena vacia borra,
+	 * igual que los datos institucionales de la sede ({@code Consultorio.updateDatos}).
+	 */
+	public void updateDatosFiscales(String legalName, String taxId, String fiscalAddressLine) {
+		if (legalName != null) {
+			this.legalName = vacioEsNulo(legalName);
+		}
+		if (taxId != null) {
+			this.taxId = vacioEsNulo(taxId);
+		}
+		if (fiscalAddressLine != null) {
+			this.fiscalAddressLine = vacioEsNulo(fiscalAddressLine);
+		}
+	}
+
+	private static String vacioEsNulo(String valor) {
+		return valor.isBlank() ? null : valor;
+	}
+
+	/**
 	 * Baja logica. Nunca hay DELETE fisico: la organizacion es el ancla de historia clinica,
 	 * obligaciones y auditoria (regla maestra 10).
 	 */
@@ -92,6 +123,18 @@ public class Organization extends TimestampedEntity {
 
 	public String getTimezone() {
 		return timezone;
+	}
+
+	public String getLegalName() {
+		return legalName;
+	}
+
+	public String getTaxId() {
+		return taxId;
+	}
+
+	public String getFiscalAddressLine() {
+		return fiscalAddressLine;
 	}
 
 	public boolean isActive() {

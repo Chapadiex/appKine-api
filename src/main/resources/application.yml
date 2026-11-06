@@ -175,7 +175,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.159.0
+    version: 0.160.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
@@ -293,6 +293,30 @@ akine:
       # recibiria un 500 generico en vez del 400 que explica que su archivo pesa demasiado.
       # Subir de aca exige subir primero el del contenedor, que afecta tambien a M07/M25.
       max-bytes: ${AKINE_CLINICAL_ADJUNTOS_MAX_BYTES:10485760}
+
+  geo:
+    # Geocodificacion de direcciones para ubicar sedes (M03, V140). NOMINATIM | NINGUNO.
+    #
+    # El default es el Nominatim PUBLICO de OpenStreetMap: gratis, sin clave, y con condiciones de
+    # uso que el adaptador hace cumplir (operations.osmfoundation.org/policies/nominatim): como
+    # maximo UNA consulta por segundo para todo el proceso, User-Agent propio con contacto, cache
+    # de resultados (500 entradas, 24 h) y nada de autocompletado (la pantalla busca cuando la
+    # persona lo pide, no tecla a tecla). La atribucion "(c) OpenStreetMap contributors" viaja en
+    # cada respuesta y la pantalla TIENE que mostrarla: lo exige la licencia ODbL.
+    #
+    # Costo: cero en plata; el limite es el cupo. NO sirve para volumen ni para uso comercial
+    # intensivo: un despliegue con muchas altas de sede o varias instancias tiene que apuntar
+    # base-url a un Nominatim propio (software libre, se levanta con Docker) o pagar otro
+    # proveedor. Con NINGUNO la busqueda responde 503 geocodificador-no-disponible y la sede se
+    # ubica a mano.
+    proveedor: ${AKINE_GEO_PROVEEDOR:NOMINATIM}
+    # Tope de conexion y de lectura por consulta. El publico responde en menos de un segundo.
+    timeout: ${AKINE_GEO_TIMEOUT:5s}
+    nominatim:
+      base-url: ${AKINE_GEO_NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
+      # Identificacion de la aplicacion con un contacto. Nominatim bloquea a los User-Agent
+      # genericos; en produccion poner el contacto real del despliegue.
+      user-agent: ${AKINE_GEO_NOMINATIM_USER_AGENT:AKINE/0.1 (akine-tesis; contacto@akine.app)}
 
   observability:
     metrics:

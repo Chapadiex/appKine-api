@@ -37,6 +37,9 @@ class SanitizedPayloadTest {
 						"claseInicio", "consultorioNombre",
 						// AKINE E-5: los avisos de turno. Fecha, hora y servicio; nada clinico.
 						"turnoInicio", "turnoInicioAnterior", "servicioNombre",
+						// V140: direccion y coordenadas de la sede, solo si la sede las publica. Dato
+						// del centro, no de la persona; el enlace lo arma el template.
+						"consultorioDireccion", "consultorioLatitud", "consultorioLongitud",
 						// "Tu turno cambio": sede de antes y marcas sin nombre de profesional o box.
 						"consultorioNombreAnterior", "cambioProfesional", "cambioEspacio",
 						// AKINE-08.08: los avisos de pases (RF-M26-008). Producto, vencimiento y saldo.
@@ -116,6 +119,21 @@ class SanitizedPayloadTest {
 
 		assertThatCode(() -> SanitizedPayload.of(Map.of("nombre", "a".repeat(200))))
 				.doesNotThrowAnyException();
+	}
+
+	@Test
+	@DisplayName("V140: la direccion formateada de la sede puede pasar de 200 sin perderse")
+	void la_direccion_de_la_sede_tiene_tope_propio() {
+		String direccion = ("Avenida Presidente Doctor Raul Ricardo Alfonsin 12345, "
+				+ "Torre 2 piso 14 oficina 1401, Ciudad Autonoma de Buenos Aires, "
+				+ "Provincia de Buenos Aires, C1426AAN ").repeat(3).trim();
+		assertThat(direccion.length()).isBetween(201, 500);
+
+		assertThatCode(() -> SanitizedPayload.of(Map.of("consultorioDireccion", direccion)))
+				.doesNotThrowAnyException();
+		assertThatThrownBy(() -> SanitizedPayload.of(Map.of("consultorioDireccion", "a".repeat(501))))
+				.isInstanceOf(SensitiveContentException.class)
+				.hasMessageContaining("500");
 	}
 
 	@Test

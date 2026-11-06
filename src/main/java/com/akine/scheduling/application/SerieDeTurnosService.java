@@ -238,6 +238,10 @@ public class SerieDeTurnosService {
 			}
 		}
 
+		// V140: misma puerta que reservar un turno, y en el mismo lugar: despues de la idempotencia,
+		// para que el reintento de una serie ya creada no choque contra una agenda que se apago despues.
+		BloqueoDeAgenda.exigirAgendaHabilitada(sede);
+
 		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, command.ofertaId())
 				.orElseThrow(() -> new OfertaNotAccessibleException(command.ofertaId()));
 		exigirPacienteVigente(organizationId, command.personaId());

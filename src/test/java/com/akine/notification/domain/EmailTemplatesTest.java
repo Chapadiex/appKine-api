@@ -172,6 +172,39 @@ class EmailTemplatesTest {
 	}
 
 	@Test
+	@DisplayName("V140: con direccion publica el aviso dice la direccion, y con coordenadas el enlace para llegar")
+	void el_turno_reservado_dice_como_llegar() {
+		EmailMessage conCoordenadas = EmailTemplates.render(
+				NotificationType.TURNO_RESERVADO,
+				DESTINATARIO,
+				SanitizedPayload.of(Map.of(
+						"nombre", "Ana",
+						"turnoInicio", "01/03/2027 a las 09:00",
+						"consultorioNombre", "Sede Centro",
+						"consultorioDireccion", "Av. Colon 1234, Cordoba, AR",
+						"consultorioLatitud", "-31.420083",
+						"consultorioLongitud", "-64.188776")),
+				null);
+
+		assertThat(conCoordenadas.cuerpo())
+				.contains("en Sede Centro.\nDireccion: Av. Colon 1234, Cordoba, AR")
+				.contains("Como llegar: https://www.google.com/maps/dir/?api=1&destination=-31.420083,-64.188776");
+
+		// Direccion sin coordenadas: la linea de la direccion y ningun enlace.
+		EmailMessage sinCoordenadas = EmailTemplates.render(
+				NotificationType.TURNO_CANCELADO,
+				DESTINATARIO,
+				SanitizedPayload.of(Map.of(
+						"consultorioNombre", "Sede Centro",
+						"consultorioDireccion", "Av. Colon 1234, Cordoba, AR")),
+				null);
+
+		assertThat(sinCoordenadas.cuerpo())
+				.contains("Direccion: Av. Colon 1234, Cordoba, AR")
+				.doesNotContain("http");
+	}
+
+	@Test
 	@DisplayName("el aviso de reprogramacion dice de donde a donde se movio el turno")
 	void el_turno_reprogramado_dice_de_donde_a_donde() {
 		EmailMessage mensaje = EmailTemplates.render(

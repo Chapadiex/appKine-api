@@ -198,6 +198,21 @@ public class OrganizationService {
 	public OrganizationView update(
 			long organizationId, String name, String timezone,
 			long expectedVersion, Long actorAccountId) {
+		return update(organizationId, name, timezone, null, null, null, expectedVersion, actorAccountId);
+	}
+
+	/**
+	 * Lo mismo, con los datos fiscales del tenant (V140): PATCH, {@code null} deja y la cadena
+	 * vacia borra. Una identificacion fiscal con forma de CUIT tiene que tener el digito
+	 * verificador correcto ({@link ConsultorioService#exigirCuitSiParece}).
+	 *
+	 * @throws CampoInvalidoException CUIT mal formado (400 {@code validation-error}, {@code errors.taxId})
+	 */
+	@Transactional
+	public OrganizationView update(
+			long organizationId, String name, String timezone,
+			String legalName, String taxId, String fiscalAddressLine,
+			long expectedVersion, Long actorAccountId) {
 
 		Organization organization = requireActive(organizationId);
 		if (organization.getVersion() != expectedVersion) {
@@ -216,8 +231,14 @@ public class OrganizationService {
 		if (!zonaFinal.equals(organization.getTimezone())) {
 			details.put("timezone", organization.getTimezone() + " -> " + zonaFinal);
 		}
+		ConsultorioService.exigirCuitSiParece(taxId);
+		if (legalName != null || taxId != null || fiscalAddressLine != null) {
+			// Solo la marca: el dato fiscal ya esta en la organizacion y no hace falta copiarlo.
+			details.put("datosFiscalesCambiados", "true");
+		}
 
 		organization.update(nombreFinal, zonaFinal);
+		organization.updateDatosFiscales(legalName, taxId, fiscalAddressLine);
 		organizationRepository.save(organization);
 
 		// Se audita aunque no haya cambiado nada: el intento de edicion tambien es un hecho, y
@@ -303,13 +324,13 @@ public class OrganizationService {
 	 */
 	@Transactional(readOnly = true)
 	public List<ConsultorioView> consultorios(long organizationId, ConsultorioEstadoFiltro estado) {
-		requireActive(organizationId);
+		Organization organization = requireActive(organizationId);
 		List<Consultorio> sedes = estado == ConsultorioEstadoFiltro.ACTIVO
 				? consultorioRepository.findAllByOrganizationIdAndActiveTrue(organizationId)
 				: consultorioRepository.findAllByOrganizationId(organizationId);
 		return sedes.stream()
 				.filter(c -> estado != ConsultorioEstadoFiltro.INACTIVO || !c.isActive())
-				.map(ConsultorioView::de)
+				.map(c -> ConsultorioView.de(c, organization))
 				.toList();
 	}
 
@@ -371,6 +392,9 @@ public class OrganizationService {
 				organization.getTimezone(),
 				organization.isActive(),
 				organization.getVersion(),
-				subscription.operationalStatus(organization.isActive()));
+				subscription.operationalStatus(organization.isActive()),
+				organization.getLegalName(),
+				organization.getTaxId(),
+				organization.getFiscalAddressLine());
 	}
 }

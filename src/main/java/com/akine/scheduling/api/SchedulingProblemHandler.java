@@ -10,6 +10,7 @@ import com.akine.scheduling.domain.exception.EspacioNoElegibleException;
 import com.akine.scheduling.domain.exception.PlanSinSesionesException;
 import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
 import com.akine.scheduling.domain.exception.SedeDadaDeBajaException;
+import com.akine.scheduling.domain.exception.SedeSinAgendaException;
 import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.application.IdempotencyKeyConflictException;
@@ -55,6 +56,7 @@ public class SchedulingProblemHandler {
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
 	private static final URI OFERTA_NO_AGENDABLE = ProblemType.OFERTA_NO_AGENDABLE.uri();
 	private static final URI CONSULTORIO_INACTIVE = ProblemType.CONSULTORIO_INACTIVE.uri();
+	private static final URI CONSULTORIO_SIN_AGENDA = ProblemType.CONSULTORIO_SIN_AGENDA.uri();
 	private static final URI VENTANA_DEMASIADO_AMPLIA = ProblemType.VENTANA_DEMASIADO_AMPLIA.uri();
 	private static final URI SLOT_NO_DISPONIBLE = ProblemType.SLOT_NO_DISPONIBLE.uri();
 	private static final URI SLOT_COMPLETO = ProblemType.SLOT_COMPLETO.uri();
@@ -123,6 +125,21 @@ public class SchedulingProblemHandler {
 				HttpStatus.CONFLICT, exception.getMessage());
 		problem.setType(CONSULTORIO_INACTIVE);
 		problem.setTitle("La sede esta dada de baja");
+		return problem;
+	}
+
+	/**
+	 * La sede esta activa pero todavia no abrio su agenda (V140). Distinto de la baja: esta va a
+	 * abrir, y la pantalla tiene que poder decir "termina de configurar la sede".
+	 */
+	@ExceptionHandler(SedeSinAgendaException.class)
+	public ProblemDetail handleSedeSinAgenda(SedeSinAgendaException exception) {
+		log.debug("Escritura de agenda en sede sin agenda habilitada: consultorioId={}",
+				exception.getConsultorioId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(CONSULTORIO_SIN_AGENDA);
+		problem.setTitle("La sede no esta habilitada para agenda");
 		return problem;
 	}
 

@@ -15,8 +15,12 @@ import com.akine.organization.domain.OperationalStatus;
  * logica de la organizacion—, no una columna: si el estado viviera en dos entidades existiria
  * una organizacion "activa" con la suscripcion cancelada y nadie sabria cual gana.
  *
- * @param version version optimista actual. Viaja hasta el cliente porque el PATCH la exige de
- *                vuelta: sin ella, dos ediciones concurrentes se pisan en silencio
+ * @param version           version optimista actual. Viaja hasta el cliente porque el PATCH la
+ *                          exige de vuelta: sin ella, dos ediciones concurrentes se pisan en
+ *                          silencio
+ * @param legalName         razon social del tenant (V140), o {@code null}
+ * @param taxId             identificacion fiscal del tenant (V140), o {@code null}
+ * @param fiscalAddressLine domicilio fiscal del tenant (V140), o {@code null}
  */
 public record OrganizationView(
 		long id,
@@ -25,5 +29,20 @@ public record OrganizationView(
 		String timezone,
 		boolean active,
 		long version,
-		OperationalStatus operationalStatus) {
+		OperationalStatus operationalStatus,
+		String legalName,
+		String taxId,
+		String fiscalAddressLine) {
+
+	/** La forma anterior a V140, sin datos fiscales. */
+	public OrganizationView(
+			long id,
+			String name,
+			String slug,
+			String timezone,
+			boolean active,
+			long version,
+			OperationalStatus operationalStatus) {
+		this(id, name, slug, timezone, active, version, operationalStatus, null, null, null);
+	}
 }

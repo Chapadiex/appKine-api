@@ -47,7 +47,18 @@ public record OrganizationResponse(
 				description = "Estado operativo efectivo del tenant, derivado de la suscripcion y "
 						+ "de la baja logica de la organizacion",
 				example = "ACTIVA")
-		OperationalStatus operationalStatus) {
+		OperationalStatus operationalStatus,
+
+		@Schema(description = "Razon social del tenant (V140). La heredan las sedes sin datos fiscales "
+				+ "propios. null si no se cargo", example = "Centro Kinesico Belgrano SRL")
+		String legalName,
+
+		@Schema(description = "Identificacion fiscal del tenant. null si no se cargo", example = "30-71234567-1")
+		String taxId,
+
+		@Schema(description = "Domicilio fiscal del tenant. null si no se cargo",
+				example = "Av. Colon 1234, Cordoba")
+		String fiscalAddressLine) {
 
 	public static OrganizationResponse from(OrganizationView view) {
 		return new OrganizationResponse(
@@ -57,6 +68,9 @@ public record OrganizationResponse(
 				view.timezone(),
 				view.active(),
 				view.version(),
-				view.operationalStatus());
+				view.operationalStatus(),
+				view.legalName(),
+				view.taxId(),
+				view.fiscalAddressLine());
 	}
 }
