@@ -405,9 +405,13 @@ public class Consultorio extends TimestampedEntity {
 		return active && deletedAt == null;
 	}
 
+	/** Pais de casi todas las sedes: decirlo en cada direccion seria ruido. */
+	private static final String PAIS_POR_DEFECTO = "AR";
+
 	/**
 	 * La direccion fisica en una linea: "Calle Numero, Piso, Ciudad, Provincia, CP, Pais", con
-	 * las partes que haya. {@code null} si no hay ninguna.
+	 * las partes que haya. El pais se omite cuando es Argentina, y la provincia cuando repite la
+	 * ciudad (CABA). {@code null} si no hay ninguna. El frontend arma el mismo renglon.
 	 */
 	public String direccionFormateada() {
 		List<String> partes = new ArrayList<>();
@@ -417,9 +421,13 @@ public class Consultorio extends TimestampedEntity {
 		}
 		agregar(partes, piso);
 		agregar(partes, ciudad);
-		agregar(partes, provincia);
+		if (provincia == null || !provincia.equals(ciudad)) {
+			agregar(partes, provincia);
+		}
 		agregar(partes, codigoPostal);
-		agregar(partes, pais);
+		if (pais != null && !PAIS_POR_DEFECTO.equals(pais)) {
+			agregar(partes, pais);
+		}
 		return partes.isEmpty() ? null : String.join(", ", partes);
 	}
 

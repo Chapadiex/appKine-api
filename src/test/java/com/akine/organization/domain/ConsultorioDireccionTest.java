@@ -26,12 +26,13 @@ class ConsultorioDireccionTest {
 		assertThat(cambio).isTrue();
 		assertThat(sede.getPais()).as("el pais se guarda en mayusculas").isEqualTo("AR");
 		assertThat(sede.direccionFormateada())
-				.isEqualTo("Av. Colon 1234, Piso 2, Cordoba, Cordoba, X5000, AR");
+				.as("sin el pais, que es Argentina, ni la provincia, que repite la ciudad")
+				.isEqualTo("Av. Colon 1234, Piso 2, Cordoba, X5000");
 		assertThat(sede.isUbicacionPendiente()).as("hay direccion y ninguna coordenada").isTrue();
 
 		// PATCH: null deja, cadena vacia borra. Sin numero la calle va sola.
 		sede.updateDireccion(null, null, null, null, null, "", null, "", null);
-		assertThat(sede.direccionFormateada()).isEqualTo("Av. Colon, Cordoba, Cordoba, X5000, AR");
+		assertThat(sede.direccionFormateada()).isEqualTo("Av. Colon, Cordoba, X5000");
 		assertThat(sede.getAlias()).isEqualTo("Norte");
 	}
 
