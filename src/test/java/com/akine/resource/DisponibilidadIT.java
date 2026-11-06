@@ -4,6 +4,7 @@ import com.akine.TestcontainersConfiguration;
 import com.akine.organization.spi.ColaboradorDesvinculacionProbe;
 import com.akine.resource.infrastructure.ResourceDesvinculacionProbe;
 import com.akine.resource.application.BloqueAltaCommand;
+import com.akine.resource.application.BloquesAltaCommand;
 import com.akine.resource.application.BloqueView;
 import com.akine.resource.application.CalendarioService;
 import com.akine.resource.application.DisponibilidadEfectivaService;
@@ -331,6 +332,59 @@ class DisponibilidadIT {
 	 * <p>La hora normal esta en la misma prueba a proposito: un converter que arregla la
 	 * medianoche rompiendo el caso comun es peor que el bug que arregla.
 	 */
+	// =================================================================================
+	// Alta en lote: o entran todos los dias o no entra ninguno
+	// =================================================================================
+
+	/**
+	 * Un lote de lunes a viernes con el miercoles ya ocupado no deja NADA en la base.
+	 *
+	 * <p>Es la garantia que el unitario no puede dar: el servicio guarda lunes y martes dentro de la
+	 * transaccion antes de que el miercoles lance el 409, y lo unico que impide que esos dos queden
+	 * es que la transaccion haga rollback de verdad. Sin ella, la carga rapida de la semana dejaria
+	 * tres dias cargados y un error en pantalla que no lo dice: justo la carga parcial silenciosa
+	 * que el lote existe para evitar.
+	 */
+	@Test
+	@DisplayName("un lote con un dia solapado no guarda ninguno de los otros dias")
+	void un_lote_con_un_dia_solapado_no_guarda_ninguno() {
+		Fixture fixture = crearFixture();
+		LocalDate vigencia = LocalDate.of(2026, 9, 1);
+
+		BloqueView miercoles = disponibilidadService.crear(
+				fixture.admin(), fixture.consultorioId(), fixture.profesionalMembershipId(),
+				new BloqueAltaCommand(3, LocalTime.of(9, 0), LocalTime.of(12, 0), vigencia, null));
+
+		assertThatThrownBy(() -> disponibilidadService.crearVarios(
+				fixture.admin(), fixture.consultorioId(), fixture.profesionalMembershipId(),
+				new BloquesAltaCommand(java.util.Set.of(1, 2, 3, 4, 5),
+						LocalTime.of(11, 0), LocalTime.of(13, 0), vigencia, null)))
+				.isInstanceOf(BloqueSolapadoException.class);
+
+		// Solo el miercoles original: ni lunes ni martes, que el servicio habia guardado antes del 409.
+		assertThat(contar("""
+				SELECT COUNT(*) FROM profesional_disponibilidad
+				 WHERE membership_id = ? AND active = 1
+				""", fixture.profesionalMembershipId())).isEqualTo(1L);
+		assertThat(contar("""
+				SELECT COUNT(*) FROM audit_event
+				 WHERE entity_type = 'BloqueDisponibilidad' AND organization_id = ?
+				   AND event_type = 'DISPONIBILIDAD_BLOQUE_CREATED'
+				""", fixture.organizationId())).isEqualTo(1L);
+
+		// Y sin el choque, el mismo lote entra entero.
+		List<BloqueView> creados = disponibilidadService.crearVarios(
+				fixture.admin(), fixture.consultorioId(), fixture.profesionalMembershipId(),
+				new BloquesAltaCommand(java.util.Set.of(1, 2, 4, 5),
+						LocalTime.of(11, 0), LocalTime.of(13, 0), vigencia, null));
+		assertThat(creados).hasSize(4).allMatch(BloqueView::nuevo);
+		assertThat(contar("""
+				SELECT COUNT(*) FROM profesional_disponibilidad
+				 WHERE membership_id = ? AND active = 1
+				""", fixture.profesionalMembershipId())).isEqualTo(5L);
+		assertThat(leerDeLaBase(fixture, miercoles.id()).isOperable()).isTrue();
+	}
+
 	@Test
 	@DisplayName("el fin de dia y una hora normal sobreviven el viaje de ida y vuelta a MySQL")
 	void el_fin_de_dia_sobrevive_el_viaje_de_ida_y_vuelta() {

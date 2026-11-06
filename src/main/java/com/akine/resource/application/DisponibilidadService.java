@@ -35,12 +35,14 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Administracion de la disponibilidad semanal de un profesional en una sede (M05).
@@ -225,13 +227,78 @@ public class DisponibilidadService {
 		// misma persona no puede pisarse entre sedes.
 		agendasDeProfesional.asegurar(organizationId, List.of(membershipId));
 
-		return transaccionReadCommitted.execute(estado -> crearEnTransaccion(
-				actor, consultorioId, membershipId, command, organizationId, sede));
+		return transaccionReadCommitted.execute(estado -> {
+			AltaAbierta alta = abrirAlta(organizationId, consultorioId, membershipId, sede);
+			return altaDeUnDia(actor, alta, command, null);
+		});
 	}
 
-	private BloqueView crearEnTransaccion(
-			OperatingActor actor, long consultorioId, long membershipId,
-			BloqueAltaCommand command, long organizationId, ConsultorioSnapshot sede) {
+	/**
+	 * Da de alta VARIOS bloques del mismo horario y la misma vigencia, uno por dia, en UNA
+	 * transaccion: "de lunes a viernes de 09 a 13" (RF-M05-003, carga rapida del horario).
+	 *
+	 * <p>Mismo protocolo que {@link #crear}: los locks de la sede y de la persona se toman una vez
+	 * y cada dia pasa por exactamente las mismas comprobaciones que un alta suelta —coincidencia
+	 * exacta devuelve el bloque que ya existe, solapamiento es 409—. Lo que agrega el lote es la
+	 * atomicidad: <b>si un dia no puede guardarse, no se guarda ninguno</b>. Antes, cargar la
+	 * semana eran cinco pedidos y el cuarto podia fallar dejando tres, sin que nada lo dijera.
+	 *
+	 * <p>Los dias se procesan en orden ISO (lunes primero): el 409 de solapamiento nombra el dia
+	 * que lo produjo y la pantalla lo senala. Los bloques de distintos dias no se pisan entre si,
+	 * asi que el orden no cambia el desenlace, solo cual dia se reporta primero.
+	 *
+	 * <p>Cada bloque se audita por separado, como siempre: el historial por bloque tiene que leerse
+	 * igual haya nacido solo o en lote. El detalle {@code diasDelLote} deja constancia de que fue
+	 * una carga rapida.
+	 *
+	 * @return una vista por dia, en el orden de los dias. {@code nuevo()} dice cuales se crearon y
+	 *         cuales ya existian
+	 * @throws BloqueSolapadoException si algun dia se pisa con otro bloque activo (409); no se
+	 *         guarda ninguno
+	 */
+	public List<BloqueView> crearVarios(
+			OperatingActor actor, long consultorioId, long membershipId, BloquesAltaCommand lote) {
+
+		if (lote.diasSemana() == null || lote.diasSemana().isEmpty()) {
+			throw new IllegalArgumentException("El lote tiene que incluir al menos un dia de la semana");
+		}
+
+		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
+		ConsultorioSnapshot sede = exigirSedeOperable(organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, membershipId);
+
+		calendarioIniciador.asegurar(organizationId, consultorioId);
+		agendasDeProfesional.asegurar(organizationId, List.of(membershipId));
+
+		List<Integer> dias = lote.diasSemana().stream().sorted().toList();
+		String diasDelLote = dias.stream().map(String::valueOf).collect(Collectors.joining(","));
+
+		return transaccionReadCommitted.execute(estado -> {
+			AltaAbierta alta = abrirAlta(organizationId, consultorioId, membershipId, sede);
+			List<BloqueView> resultado = new ArrayList<>(dias.size());
+			for (int dia : dias) {
+				resultado.add(altaDeUnDia(actor, alta, lote.paraElDia(dia), diasDelLote));
+			}
+			return resultado;
+		});
+	}
+
+	/** Lo que un alta —de un dia o de varios— resuelve una sola vez, ya dentro de la transaccion. */
+	private record AltaAbierta(
+			long organizationId,
+			long consultorioId,
+			long membershipId,
+			Instant ahora,
+			LocalDate hoy,
+			Set<Long> mismaPersona) {
+	}
+
+	/**
+	 * Primer tramo del alta dentro de la transaccion: vinculo vigente y los dos locks, en ese orden
+	 * (sede y despues persona). Se hace UNA vez por transaccion, tenga uno o siete dias.
+	 */
+	private AltaAbierta abrirAlta(
+			long organizationId, long consultorioId, long membershipId, ConsultorioSnapshot sede) {
 
 		Instant ahora = Instant.now();
 		exigirProfesionalDeLaSede(organizationId, consultorioId, membershipId, ahora);
@@ -239,10 +306,33 @@ public class DisponibilidadService {
 		bloquearLaSede(organizationId, consultorioId);
 		Set<Long> mismaPersona = agendasDeProfesional.bloquear(organizationId, membershipId);
 
+		return new AltaAbierta(organizationId, consultorioId, membershipId, ahora,
+				LocalDate.ofInstant(ahora, zonaDe(sede)), mismaPersona);
+	}
+
+	/**
+	 * El alta de UN dia, con los locks ya tomados: leer los activos, coincidencia exacta,
+	 * solapamientos, guardar y auditar.
+	 *
+	 * <p>Los activos se releen en cada dia a proposito. En un lote, el dia anterior acaba de
+	 * guardar un bloque en esta misma transaccion, y aunque dos dias distintos no pueden pisarse,
+	 * leer siempre el estado actual es lo que mantiene a este metodo identico al alta suelta.
+	 *
+	 * @param diasDelLote los dias del lote, para la auditoria; {@code null} en un alta suelta
+	 */
+	private BloqueView altaDeUnDia(
+			OperatingActor actor, AltaAbierta alta, BloqueAltaCommand command, String diasDelLote) {
+
+		long organizationId = alta.organizationId();
+		long consultorioId = alta.consultorioId();
+		long membershipId = alta.membershipId();
+		Instant ahora = alta.ahora();
+		LocalDate hoy = alta.hoy();
+		Set<Long> mismaPersona = alta.mismaPersona();
+
 		int dia = command.diaSemana();
 		LocalTime horaDesde = command.horaDesde();
 		LocalTime horaHasta = command.horaHasta();
-		LocalDate hoy = LocalDate.ofInstant(ahora, zonaDe(sede));
 		LocalDate vigenciaDesde =
 				command.vigenciaDesde() == null ? hoy : command.vigenciaDesde();
 		LocalDate vigenciaHasta = command.vigenciaHasta();
@@ -282,6 +372,9 @@ public class DisponibilidadService {
 		detalles.put("diaSemana", String.valueOf(dia));
 		detalles.put("horario", horaDesde + " -> " + horaHasta);
 		detalles.put("vigenciaDesde", String.valueOf(vigenciaDesde));
+		if (diasDelLote != null) {
+			detalles.put("diasDelLote", diasDelLote);
+		}
 		ResumenDeAgendaParaAuditoria.con(detalles, null, ResumenDeAgendaParaAuditoria.de(guardado));
 		auditar(AuditEvents.DISPONIBILIDAD_BLOQUE_CREATED, guardado, actor.accountId(),
 				null, "ACTIVO", null, AuditEvents.conActor(actor, guardado.getMembershipId(), detalles), ahora);
